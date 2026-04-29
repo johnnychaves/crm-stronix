@@ -637,7 +637,7 @@ if (csatToken) {
              <div className="flex h-full items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>
           ) : (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full transition-all duration-300">
-              {activeTab === 'dashboard' && <DashboardView leads={leads} changeTab={changeTab} appUser={appUser} usersList={usersList} />}
+              {activeTab === 'dashboard' && <DashboardView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
               {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} />}
@@ -822,10 +822,12 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
 // ==========================================
 // VISÃO GERAL (DASHBOARD) - PATCH 1 (AULA E VISITA)
 // ==========================================
-function DashboardView({ leads, changeTab, appUser, usersList }) {
+function DashboardView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db }) {
   const [periodPreset, setPeriodPreset] = useState('monthly');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
+  const [funnelDetail, setFunnelDetail] = useState(null);
+  const [selectedLead, setSelectedLead] = useState(null);
 
  const periodRange = useMemo(() => {
   const now = new Date();
@@ -1223,24 +1225,28 @@ const teamMetrics = useMemo(() => {
                 count={stats.total}
                 max={stats.total}
                 color="bg-blue-500"
+                onClick={() => setFunnelDetail({ title: 'Leads Recebidos', data: capturedLeads })}
               />
               <FunnelBar
                 label="Agendamentos (Visita)"
                 count={stats.agendadosVisita}
                 max={stats.total}
                 color="bg-yellow-500"
+                onClick={() => setFunnelDetail({ title: 'Visitas Agendadas', data: scheduledLeads.filter(l => getLeadAppointmentType(l) === 'Visita') })}
               />
               <FunnelBar
                 label="Agendamentos (Aula Exp.)"
                 count={stats.agendadosAula}
                 max={stats.total}
                 color="bg-purple-500"
+                onClick={() => setFunnelDetail({ title: 'Aulas Exp. Agendadas', data: scheduledLeads.filter(l => getLeadAppointmentType(l) === 'Aula Experimental') })}
               />
               <FunnelBar
                 label="Matrículas"
                 count={stats.convertidos}
                 max={stats.total}
                 color="bg-green-500"
+                onClick={() => setFunnelDetail({ title: 'Matrículas', data: convertedLeads })}
               />
             </div>
           </div>
@@ -1466,6 +1472,23 @@ const teamMetrics = useMemo(() => {
           </div>
         </div>
       </div>
+      
+      {funnelDetail && <FunnelDetailModal detail={funnelDetail} onClose={() => setFunnelDetail(null)} onLeadClick={(lead) => { setSelectedLead(lead); setFunnelDetail(null); }} />}
+      
+      {selectedLead && (
+        <LeadDetailsModal 
+          lead={selectedLead} 
+          interactions={interactions.filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))} 
+          onClose={() => setSelectedLead(null)} 
+          appUser={appUser} 
+          statuses={statuses} 
+          tags={tags} 
+          lossReasons={lossReasons} 
+          usersList={usersList}
+          db={db} 
+        />
+      )}
+      
     </div>
   );
 }
@@ -1474,9 +1497,44 @@ function StatCard({ title, value, subtitle, icon }) {
   return <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-6 rounded-[2.5rem] flex items-center justify-between shadow-2xl relative overflow-hidden group hover:border-gray-300 dark:border-neutral-700 transition-all"><div><p className="text-gray-400 dark:text-neutral-500 text-xs font-bold uppercase tracking-widest">{title}</p><p className="text-4xl font-bold text-gray-900 dark:text-white mt-1">{value}</p><p className="text-[10px] text-gray-600 dark:text-neutral-400 font-bold mt-2 uppercase tracking-tighter">{subtitle}</p></div><div className="bg-[#eaedf2] dark:bg-neutral-800 p-5 rounded-2xl border border-gray-200 dark:border-neutral-700 group-hover:scale-110 transition-transform">{icon}</div></div>;
 }
 
-function FunnelBar({ label, count, max, color }) {
+function FunnelBar({ label, count, max, color, onClick }) {
   const p = max > 0 ? (count / max) * 100 : 0;
-  return <div><div className="flex justify-between text-xs font-bold uppercase tracking-widest mb-3"><span className="text-gray-500 dark:text-neutral-400">{label}</span><span className="text-gray-900 dark:text-white">{count} ({Math.round(p)}%)</span></div><div className="w-full bg-[#eaedf2] dark:bg-neutral-950 rounded-full h-4 overflow-hidden border border-gray-200 dark:border-neutral-800 shadow-inner"><div className={`h-full rounded-full ${color} transition-all duration-1000 shadow-lg`} style={{ width: `${p}%` }} /></div></div>;
+  return <div onClick={onClick} className={onClick ? "cursor-pointer hover:opacity-80 transition-opacity active:scale-95" : ""}><div className="flex justify-between text-xs font-bold uppercase tracking-widest mb-3"><span className="text-gray-500 dark:text-neutral-400">{label}</span><span className="text-gray-900 dark:text-white">{count} ({Math.round(p)}%)</span></div><div className="w-full bg-[#eaedf2] dark:bg-neutral-950 rounded-full h-4 overflow-hidden border border-gray-200 dark:border-neutral-800 shadow-inner"><div className={`h-full rounded-full ${color} transition-all duration-1000 shadow-lg`} style={{ width: `${p}%` }} /></div></div>;
+}
+
+function FunnelDetailModal({ detail, onClose, onLeadClick }) {
+  if (!detail) return null;
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4 animate-fade-in">
+      <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 w-full max-w-lg max-h-[80vh] rounded-2xl flex flex-col overflow-hidden shadow-2xl relative">
+        <div className="p-6 border-b border-gray-200 dark:border-neutral-800 flex justify-between items-center bg-[#eaedf2] dark:bg-neutral-950">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white uppercase tracking-widest">
+            {detail.title} <span className="text-blue-500">({detail.data.length})</span>
+          </h3>
+          <button onClick={onClose} className="p-2 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white rounded-full bg-white dark:bg-neutral-800 shadow-sm transition-all active:scale-95"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-3">
+          {detail.data.length === 0 ? (
+            <p className="text-sm font-medium text-gray-500 dark:text-neutral-400 text-center py-6">Nenhum registro encontrado neste período.</p>
+          ) : (
+            detail.data.map(lead => (
+              <div 
+                key={lead.id} 
+                onClick={() => onLeadClick && onLeadClick(lead)}
+                className="bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-xl border border-gray-200 dark:border-neutral-800 flex flex-col gap-1 shadow-sm cursor-pointer hover:bg-white dark:hover:bg-neutral-900 transition-colors active:scale-95 group"
+              >
+                <div className="flex justify-between items-start">
+                  <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
+                  <span className="text-[10px] font-bold px-2 py-1 bg-white dark:bg-neutral-800 text-gray-600 dark:text-neutral-300 rounded-md uppercase border border-gray-200 dark:border-neutral-700">{lead.status}</span>
+                </div>
+                <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 mt-1">{lead.whatsapp}</span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ==========================================
