@@ -2654,40 +2654,31 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
             })}
 
             {/* Creation node */}
-            {(() => {
-              const hasSource = Boolean(lead.source && lead.source.trim() !== '' && lead.source.toLowerCase() !== 'não informado');
-              const sourceLabel = hasSource ? lead.source : 'Sem Origem';
-              const badgeClasses = hasSource ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300';
-              const dotClasses = hasSource ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300';
-
-              return (
-                <div className="relative flex items-center md:justify-between animate-fade-in md:flex-row-reverse">
-                  <div className="absolute top-1/2 -translate-y-1/2 h-0.5 bg-gray-300 dark:bg-neutral-700 z-0 left-6 w-14 md:left-auto md:right-1/2 md:w-[calc(8%+3rem)]"></div>
-                  <div className="hidden md:block md:w-[42%]"></div>
-                  <div className={`absolute left-6 md:left-1/2 w-12 h-12 rounded-full border-4 border-[#eaedf2] dark:border-neutral-950 flex items-center justify-center shadow-xl -translate-x-1/2 z-10 ${dotClasses}`}>
-                    <Plus className="w-5 h-5" />
-                  </div>
-                  <div className="w-full ml-20 md:ml-0 md:w-[42%] md:pr-12">
-                    <div className="rounded-2xl border p-6 bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800">
-                      <div className="flex flex-col gap-2 mb-3">
-                        <span className={`self-start px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${badgeClasses}`}>
-                          {sourceLabel}
-                        </span>
-                        <div className="flex items-center justify-between mt-1">
-                          <p className="text-sm font-bold text-gray-900 dark:text-white">Sistema STRONIX</p>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-neutral-500">
-                            {lead.createdAt?.toLocaleString('pt-BR')}
-                          </p>
-                        </div>
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-neutral-400 leading-relaxed font-medium">
-                        Lead registrado no CRM na data oficial de {lead.createdAt?.toLocaleDateString('pt-BR') || "data"}.
+            <div className="relative flex items-center md:justify-between animate-fade-in md:flex-row-reverse">
+              <div className="absolute top-1/2 -translate-y-1/2 h-0.5 bg-gray-300 dark:bg-neutral-700 z-0 left-6 w-14 md:left-auto md:right-1/2 md:w-[calc(8%+3rem)]"></div>
+              <div className="hidden md:block md:w-[42%]"></div>
+              <div className="absolute left-6 md:left-1/2 w-12 h-12 rounded-full border-4 border-[#eaedf2] dark:border-neutral-950 flex items-center justify-center shadow-xl -translate-x-1/2 z-10 bg-green-500 text-white">
+                <Plus className="w-5 h-5" />
+              </div>
+              <div className="w-full ml-20 md:ml-0 md:w-[42%] md:pr-12">
+                <div className="rounded-2xl border p-6 bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800">
+                  <div className="flex flex-col gap-2 mb-3">
+                    <span className="self-start px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
+                      Cadastro Original
+                    </span>
+                    <div className="flex items-center justify-between mt-1">
+                      <p className="text-sm font-bold text-gray-900 dark:text-white">Sistema STRONIX</p>
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-neutral-500">
+                        {lead.createdAt?.toLocaleString('pt-BR')}
                       </p>
                     </div>
                   </div>
+                  <p className="text-sm text-gray-600 dark:text-neutral-400 leading-relaxed font-medium">
+                    Lead registrado no CRM na data oficial de {lead.createdAt?.toLocaleDateString('pt-BR') || "data"}.
+                  </p>
                 </div>
-              );
-            })()}
+              </div>
+            </div>
 
           </div>
         </div>
