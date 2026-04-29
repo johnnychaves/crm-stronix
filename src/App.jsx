@@ -2502,86 +2502,100 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
              </div>
            ) : (
              <div className="animate-fade-in mt-12 md:mt-0">
-               <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">{lead.name}</h2>
-               <div className="flex flex-wrap gap-2 mb-6"> {(lead.tags || []).map(tName => <TagBadge key={tName} tagName={tName} tagsArray={tags} />)} </div>
-               
+               {/* Header Info */}
+               <div className="mb-8">
+                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">{lead.name}</h2>
+                 <div className="flex flex-wrap gap-2 mb-4"> {(lead.tags || []).map(tName => <TagBadge key={tName} tagName={tName} tagsArray={tags} />)} </div>
+                 <button onClick={handleWhatsApp} className="text-sm font-semibold text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-2 mt-2 transition-all hover:underline" title="Chamar no WhatsApp">
+                   <Phone className="w-4 h-4" /> {lead.whatsapp}
+                 </button>
+                 <div className="text-xs font-semibold text-gray-500 dark:text-neutral-500 flex items-center gap-2 mt-2">
+                   <Tag className="w-3.5 h-3.5" /> Origem: <span className="text-gray-700 dark:text-neutral-300">{lead.source || 'Não informada'}</span>
+                 </div>
+               </div>
+
+               {/* Clean Action Buttons */}
+               <div className="flex gap-3 mb-8 border-b border-gray-200 dark:border-neutral-800 pb-8">
+                 <button onClick={handleWin} className="px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"><Trophy className="w-3.5 h-3.5"/> Ganho</button>
+                 <button onClick={()=>setLossModalOpen(true)} className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"><ThumbsDown className="w-3.5 h-3.5"/> Perda</button>
+               </div>
+
+               {/* Lead Lost Banner */}
                {lead.status === 'Perda' && lead.lossReason && (
-                 <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl mb-6 flex items-center gap-3">
-                   <ThumbsDown className="w-5 h-5 text-red-500" />
-                   <div><p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Lead Perdido</p><p className="text-sm font-bold text-red-400 mt-0.5">{lead.lossReason}</p></div>
+                 <div className="mb-8 p-4 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 flex items-start gap-3">
+                   <ThumbsDown className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
+                   <div><p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest mb-1">Motivo da Perda</p><p className="text-sm font-semibold text-red-800 dark:text-red-300">{lead.lossReason}</p></div>
                  </div>
                )}
 
-               <div className="bg-blue-600/5 border border-blue-600/10 p-5 rounded-2xl mb-8 shadow-sm">
-                 <div className="flex items-center gap-2 mb-3">
-                   <FileText className="w-4 h-4 text-blue-600" />
-                   <span className="text-sm font-bold text-blue-600 uppercase tracking-widest">Contexto do cadastro</span>
-                 </div>
-                 <p className="text-sm text-gray-700 dark:text-neutral-300 leading-relaxed font-medium">
-                   {lead.observation || "Sem observações no cadastro."}
+               {/* Contexto Minimalista */}
+               <div className="mb-8">
+                 <h4 className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-3">Contexto Inicial</h4>
+                 <p className="text-sm text-gray-800 dark:text-neutral-200 leading-relaxed font-medium">
+                   {lead.observation || "Nenhuma observação registrada no momento do cadastro."}
                  </p>
                </div>
-               
-               <div className="grid grid-cols-3 gap-3 mb-8">
-                 <button onClick={handleWin} className="bg-green-500 hover:bg-green-600 text-white p-4 rounded-2xl text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 shadow-xl shadow-green-500/20 active:scale-95"><Trophy className="w-6 h-6"/> Matricular</button>
-                 <button onClick={()=>setLossModalOpen(true)} className="bg-red-500 hover:bg-red-600 text-white p-4 rounded-2xl text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 shadow-xl shadow-red-500/20 active:scale-95"><ThumbsDown className="w-6 h-6"/> Perda</button>
-                 <button onClick={handleWhatsApp} className="bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-2xl text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 shadow-xl shadow-blue-500/20 active:scale-95"><MessageCircle className="w-6 h-6"/> WhatsApp</button>
-               </div>
 
-               <div className="bg-[#eaedf2] dark:bg-neutral-950 p-6 md:p-8 rounded-3xl border border-gray-200 dark:border-neutral-800 space-y-6 shadow-sm mb-8">
-                 <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-200 dark:border-neutral-800 pb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-blue-600"/> Registrar atividade</h4>
-                 <div>
-                   <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-2 block uppercase tracking-wider">Mudar fase do funil</label>
-                   <select value={status} onChange={e => setStatus(e.target.value)} className="w-full bg-white dark:bg-neutral-900 p-4 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-semibold transition-all appearance-none shadow-sm">
-                     {(statuses || []).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                   </select>
-                 </div>
-                 <div>
-                   <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-2 block uppercase tracking-wider">Nota da atividade</label>
-                   <textarea value={note} onChange={e => setNote(e.target.value)} className="w-full bg-white dark:bg-neutral-900 p-4 text-sm rounded-xl text-gray-900 dark:text-white h-24 outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-medium leading-relaxed resize-none transition-all shadow-sm" placeholder="O que foi conversado hoje?" />
-                 </div>
-                 <div className="p-4 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 shadow-sm">
-                   <label className="flex items-center gap-3 text-sm font-bold text-gray-900 dark:text-white cursor-pointer">
-                     <input type="checkbox" checked={enableFollowUp} onChange={e => setEnableFollowUp(e.target.checked)} className="w-5 h-5 rounded-md border-gray-300 dark:border-neutral-700 text-blue-600 focus:ring-0 transition-all cursor-pointer" />
-                     Agendar Próximo Contato?
-                   </label>
-                   {enableFollowUp && (
-                     <div className="mt-5 space-y-4 animate-fade-in border-t border-gray-100 dark:border-neutral-800 pt-4">
-                       <div className="grid grid-cols-2 gap-2">
-                         {['Mensagem', 'Ligação', 'Visita', 'Aula Experimental'].map(t => (
-                           <button key={t} type="button" onClick={() => setFollowUpType(t)} className={`py-3 px-2 rounded-xl text-xs font-bold transition-all ${followUpType === t ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'bg-[#eaedf2] dark:bg-neutral-950 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white'}`}>{t}</button>
-                         ))}
-                       </div>
-                       <div className="bg-[#eaedf2] dark:bg-neutral-950 rounded-xl p-4 shadow-inner">
-                         <p className="text-[10px] font-bold text-gray-500 dark:text-neutral-400 mb-2 uppercase tracking-widest">Data e hora</p>
-                         <div className="flex items-center gap-3">
-                           <Calendar className="w-5 h-5 text-blue-600 shrink-0" />
-                           <input type="datetime-local" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} className="bg-transparent text-gray-900 dark:text-white outline-none text-sm font-bold w-full" />
+               {/* Registrar Atividade Minimalista */}
+               <div className="mb-8 border-t border-gray-200 dark:border-neutral-800 pt-8">
+                 <h4 className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Clock className="w-4 h-4"/> Registrar Atividade</h4>
+                 
+                 <div className="space-y-4">
+                   <div>
+                     <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1.5 block">Fase do Funil</label>
+                     <select value={status} onChange={e => setStatus(e.target.value)} className="w-full bg-transparent p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-300 dark:border-neutral-700 focus:border-blue-500 transition-all appearance-none font-semibold shadow-sm">
+                       {(statuses || []).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                     </select>
+                   </div>
+                   
+                   <div>
+                     <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1.5 block">Anotações da Conversa</label>
+                     <textarea value={note} onChange={e => setNote(e.target.value)} className="w-full bg-transparent p-3 text-sm rounded-xl text-gray-900 dark:text-white h-24 outline-none border border-gray-300 dark:border-neutral-700 focus:border-blue-500 font-medium resize-none transition-all shadow-sm" placeholder="O que foi discutido?" />
+                   </div>
+
+                   <div className="p-4 rounded-xl border border-gray-200 dark:border-neutral-800 bg-gray-50/50 dark:bg-neutral-900/30">
+                     <label className="flex items-center gap-3 text-sm font-semibold text-gray-800 dark:text-neutral-200 cursor-pointer">
+                       <input type="checkbox" checked={enableFollowUp} onChange={e => setEnableFollowUp(e.target.checked)} className="w-4 h-4 rounded border-gray-300 dark:border-neutral-700 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer" />
+                       Agendar Próximo Contato
+                     </label>
+                     {enableFollowUp && (
+                       <div className="mt-4 space-y-4 animate-fade-in border-t border-gray-200 dark:border-neutral-800 pt-4">
+                         <div className="grid grid-cols-2 gap-2">
+                           {['Mensagem', 'Ligação', 'Visita', 'Aula Experimental'].map(t => (
+                             <button key={t} type="button" onClick={() => setFollowUpType(t)} className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all border ${followUpType === t ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300 shadow-sm' : 'bg-transparent border-gray-200 dark:border-neutral-700 text-gray-600 dark:text-neutral-400 hover:border-gray-300 dark:hover:border-neutral-600'}`}>{t}</button>
+                           ))}
+                         </div>
+                         <div>
+                           <label className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 mb-1.5 block uppercase tracking-widest">Data e Hora</label>
+                           <div className="flex items-center gap-3">
+                             <Calendar className="w-5 h-5 text-gray-400 dark:text-neutral-500 shrink-0" />
+                             <input type="datetime-local" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} className="w-full bg-transparent p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-300 dark:border-neutral-700 focus:border-blue-500 transition-all font-semibold" />
+                           </div>
                          </div>
                        </div>
-                     </div>
-                   )}
+                     )}
+                   </div>
+                   
+                   <button onClick={saveInteraction} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold tracking-widest uppercase py-4 rounded-xl shadow-md text-xs transition-all active:scale-95">Salvar Atividade</button>
                  </div>
-                 <button onClick={saveInteraction} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-xl shadow-blue-600/20 text-xs tracking-widest uppercase active:scale-95 transition-all">REGISTRAR ATIVIDADE</button>
                </div>
 
-               <div className="bg-white dark:bg-neutral-900 p-6 md:p-8 rounded-3xl border border-gray-200 dark:border-neutral-800 space-y-6 shadow-sm mb-10">
-                 <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-200 dark:border-neutral-800 pb-4 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-blue-600"/> Pesquisa de Satisfação (CSAT)</h4>
-                 <div>
-                   <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-2 block uppercase tracking-wider">Momento da Pesquisa</label>
-                   <div className="grid grid-cols-2 gap-3">
-                     <button type="button" onClick={() => setCsatStage('pos_agendamento')} className={`py-4 rounded-xl text-xs font-bold transition-all border ${csatStage === 'pos_agendamento' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 text-blue-700 dark:text-blue-300' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-500 dark:text-neutral-400'}`}>Pós-Agendamento</button>
-                     <button type="button" onClick={() => setCsatStage('cliente_novo')} className={`py-4 rounded-xl text-xs font-bold transition-all border ${csatStage === 'cliente_novo' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 text-blue-700 dark:text-blue-300' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-500 dark:text-neutral-400'}`}>Pós-Matrícula</button>
-                   </div>
+               {/* CSAT Minimalista */}
+               <div className="border-t border-gray-200 dark:border-neutral-800 pt-8 pb-4">
+                 <div className="flex items-center justify-between mb-5">
+                   <h4 className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Pesquisa CSAT</h4>
+                   <span className="text-xs font-semibold text-gray-500 dark:text-neutral-400 bg-gray-100 dark:bg-neutral-800 px-2 py-1 rounded-md">
+                     {lead.csatStatus === 'answered' ? 'Respondido' : lead.csatStatus === 'pending' ? 'Aguardando' : 'Não enviado'}
+                   </span>
                  </div>
-                 <div className="bg-[#eaedf2] dark:bg-neutral-950 rounded-xl p-4 shadow-inner">
-                   <p className="text-[10px] font-bold text-gray-500 dark:text-neutral-400 uppercase tracking-widest">Status atual do envio</p>
-                   <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">
-                     {lead.csatStatus === 'answered' ? 'Respondido pelo cliente' : lead.csatStatus === 'pending' ? 'Aguardando resposta' : 'Nenhum envio realizado'}
-                   </p>
+                 
+                 <div className="grid grid-cols-2 gap-2 mb-4">
+                   <button type="button" onClick={() => setCsatStage('pos_agendamento')} className={`py-3 px-3 rounded-xl text-xs font-semibold transition-all border ${csatStage === 'pos_agendamento' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300 shadow-sm' : 'bg-transparent border-gray-200 dark:border-neutral-700 text-gray-600 dark:text-neutral-400 hover:border-gray-300 dark:hover:border-neutral-600'}`}>Pós-Agendamento</button>
+                   <button type="button" onClick={() => setCsatStage('cliente_novo')} className={`py-3 px-3 rounded-xl text-xs font-semibold transition-all border ${csatStage === 'cliente_novo' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300 shadow-sm' : 'bg-transparent border-gray-200 dark:border-neutral-700 text-gray-600 dark:text-neutral-400 hover:border-gray-300 dark:hover:border-neutral-600'}`}>Pós-Matrícula</button>
                  </div>
-                 <button type="button" onClick={handleSendCsat} disabled={sendingCsat} className="w-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/50 font-bold py-4 rounded-xl text-xs tracking-widest uppercase active:scale-95 transition-all">
-                   {sendingCsat ? 'GERANDO LINK...' : 'ENVIAR CSAT PELO WHATSAPP'}
+                 
+                 <button type="button" onClick={handleSendCsat} disabled={sendingCsat} className="w-full bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-neutral-800 border border-gray-200 dark:border-neutral-700 text-gray-800 dark:text-neutral-200 font-bold py-3 rounded-xl shadow-sm text-xs tracking-widest uppercase transition-all flex items-center justify-center gap-2 active:scale-95">
+                   {sendingCsat ? 'Gerando...' : <><MessageCircle className="w-4 h-4"/> Enviar Link por WhatsApp</>}
                  </button>
                </div>
 
