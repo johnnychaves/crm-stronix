@@ -3835,28 +3835,28 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
               </div>
             ) : (
               <div className="space-y-6">
-                {pendingAtrasados.length > 0 && (
+                {pending24h.length > 0 && (
                   <div>
-                    <h4 className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-3 border-b border-red-500/20 pb-1">Follow-ups Atrasados</h4>
-                    <div className="space-y-3">{pendingAtrasados.map(renderPendingCard)}</div>
+                    <h4 className="text-sm font-bold text-blue-500 mb-3 border-b border-blue-500/20 pb-2">Novos Leads 24 horas</h4>
+                    <div className="space-y-3">{pending24h.map(renderPendingCard)}</div>
                   </div>
                 )}
                 {pendingVisitas.length > 0 && (
                   <div>
-                    <h4 className="text-[10px] font-bold text-purple-500 uppercase tracking-widest mb-3 border-b border-purple-500/20 pb-1">Visitas Hoje</h4>
+                    <h4 className="text-sm font-bold text-purple-500 mb-3 border-b border-purple-500/20 pb-2">Visitas</h4>
                     <div className="space-y-3">{pendingVisitas.map(renderPendingCard)}</div>
                   </div>
                 )}
                 {pendingAulas.length > 0 && (
                   <div>
-                    <h4 className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mb-3 border-b border-orange-500/20 pb-1">Aulas Exp. Hoje</h4>
+                    <h4 className="text-sm font-bold text-orange-500 mb-3 border-b border-orange-500/20 pb-2">Aulas Experimentais</h4>
                     <div className="space-y-3">{pendingAulas.map(renderPendingCard)}</div>
                   </div>
                 )}
-                {pending24h.length > 0 && (
+                {pendingAtrasados.length > 0 && (
                   <div>
-                    <h4 className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-3 border-b border-blue-500/20 pb-1">Novos Leads 24h</h4>
-                    <div className="space-y-3">{pending24h.map(renderPendingCard)}</div>
+                    <h4 className="text-sm font-bold text-red-500 mb-3 border-b border-red-500/20 pb-2">Follow-ups Atrasados</h4>
+                    <div className="space-y-3">{pendingAtrasados.map(renderPendingCard)}</div>
                   </div>
                 )}
               </div>
