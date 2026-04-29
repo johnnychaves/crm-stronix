@@ -150,13 +150,17 @@ const getLeadSatisfactionDate = (lead) => {
 
 // --- MAPA DE CORES GRADIENTES (GLOBAL) ---
 const statusGradientMap = {
-  blue: "from-blue-600 to-cyan-500",
-  green: "from-green-600 to-emerald-400",
-  yellow: "from-yellow-600 to-yellow-400",
-  red: "from-red-600 to-pink-500",
-  purple: "from-purple-600 to-indigo-500",
-  orange: "from-blue-600 to-amber-500",
-  gray: "from-neutral-600 to-neutral-400"
+  blue: "from-blue-600 to-cyan-500 text-white",
+  green: "from-green-600 to-emerald-400 text-white",
+  yellow: "from-yellow-500 to-amber-400 text-gray-900",
+  red: "from-red-600 to-pink-500 text-white",
+  purple: "from-purple-600 to-indigo-500 text-white",
+  orange: "from-orange-500 to-amber-500 text-white",
+  gray: "from-neutral-600 to-neutral-400 text-white",
+  teal: "from-teal-600 to-cyan-600 text-white",
+  pink: "from-pink-500 to-rose-400 text-white",
+  indigo: "from-indigo-600 to-blue-600 text-white",
+  lime: "from-lime-500 to-green-500 text-gray-900"
 };
 
 // --- FUNÇÕES DE BIOMETRIA ---
@@ -774,7 +778,7 @@ function StatusBadge({ statusName, statusesArray }) {
   const statusObj = (statusesArray || []).find(s => s.name === statusName);
   const color = statusObj?.color || 'gray';
   return (
-    <span className={`px-3 py-1 rounded-full text-[9px] font-bold text-gray-900 dark:text-white uppercase tracking-widest bg-gradient-to-r shadow-lg ${statusGradientMap[color] || statusGradientMap.gray}`}>
+    <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest bg-gradient-to-r shadow-lg ${statusGradientMap[color] || statusGradientMap.gray}`}>
       {statusName}
     </span>
   );
@@ -784,7 +788,7 @@ function TagBadge({ tagName, tagsArray }) {
   const tagObj = (tagsArray || []).find(t => t.name === tagName);
   const color = tagObj?.color || 'gray';
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold text-gray-900 dark:text-white uppercase tracking-tighter bg-gradient-to-br shadow-sm ${statusGradientMap[color] || statusGradientMap.gray}`}>
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-tighter bg-gradient-to-br shadow-sm ${statusGradientMap[color] || statusGradientMap.gray}`}>
       <Tag className="w-2.5 h-2.5" /> {tagName}
     </span>
   );
@@ -2889,7 +2893,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         <button onClick={()=>setActiveTab('lossReasons')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='lossReasons'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Motivos Perda</button>
       </div>
       {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
-      {activeTab === 'statuses' && <ManageStatusesTab db={db} statuses={statuses} />}
+      {activeTab === 'statuses' && <ManageStatusesTab db={db} statuses={statuses} leads={leads} />}
       {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} />}
       {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
       {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} />}
@@ -3510,13 +3514,76 @@ const backfillSecurityFields = async () => {
   );
 }
 
-function ManageStatusesTab({ db, statuses }) {
+function ManageStatusesTab({ db, statuses, leads }) {
   const [name, setName] = useState(''); const [color, setColor] = useState('blue');
-  const add = async (e) => { e.preventDefault(); await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), { name, color, order: statuses.length }); setName(''); };
+  const [editingId, setEditingId] = useState(null);
+
+  const save = async (e) => { 
+    e.preventDefault(); 
+    if (editingId) {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, editingId), { name, color }, { merge: true });
+      setEditingId(null);
+    } else {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), { name, color, order: statuses.length }); 
+    }
+    setName(''); 
+  };
   const drop = async (dragIdx, dropIdx) => { if(dragIdx===dropIdx) return; const arr=[...statuses]; const [item]=arr.splice(dragIdx,1); arr.splice(dropIdx,0,item); await Promise.all(arr.map((s,i)=>setDoc(doc(db,'artifacts',appId,'public', 'data', STATUSES_PATH,s.id),{order:i},{merge:true}))); };
+  
+  const handleDelete = async (s) => {
+    const leadsInStatus = (leads || []).filter(l => l.status === s.name);
+    if (leadsInStatus.length > 0) {
+      alert(`Não é possível excluir a etapa "${s.name}" pois existem ${leadsInStatus.length} lead(s) nela. Transfira-os para outra etapa primeiro.`);
+      return;
+    }
+    if (window.confirm(`Tem certeza que deseja excluir a etapa "${s.name}"?`)) {
+      await deleteDoc(doc(db,'artifacts',appId,'public','data',STATUSES_PATH,s.id));
+      if (editingId === s.id) { setEditingId(null); setName(''); }
+    }
+  };
+
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-10 shadow-2xl animate-fade-in"><h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-10 tracking-tight leading-none">Pipeline Comercial</h3><form onSubmit={add} className="flex flex-col md:flex-row gap-4 mb-12 bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800"><input placeholder="ETAPA..." required value={name} onChange={e=>setName(e.target.value)} className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"/><select value={color} onChange={e=>setColor(e.target.value)} className="bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white border border-gray-200 dark:border-neutral-800 text-xs font-semibold uppercase"><option value="blue">AZUL-CYAN</option><option value="green">VERDE-EMERALD</option><option value="yellow">AMARELO-GOLD</option><option value="purple">ROXO-INDIGO</option><option value="red">VERMELHO-ROSE</option><option value="orange">LARANJA-VIVO</option></select><button className="bg-blue-600 text-white px-10 py-4 rounded-xl font-semibold uppercase text-[10px]  shadow-xl shadow-blue-600/20 active:scale-95">ADICIONAR</button></form>
-    <div className="space-y-4">{(statuses || []).map((s,i)=><div key={s.id} draggable onDragStart={e=>e.dataTransfer.setData('idx',i)} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e.dataTransfer.getData('idx'),i)} className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 flex justify-between items-center group cursor-grab hover:border-blue-600 shadow-xl transition-all"><div className="flex items-center gap-5"><GripVertical className="text-gray-800 dark:text-neutral-200 group-hover:text-blue-600 transition-colors" /><StatusBadge statusName={s.name} statusesArray={statuses}/></div><button onClick={async ()=>{if(window.confirm('Excluir?')) await deleteDoc(doc(db,'artifacts',appId,'public','data',STATUSES_PATH,s.id))}} className="text-gray-800 dark:text-neutral-200 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"><Trash2 className="w-4 h-4"/></button></div>)}</div></div>
+    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-10 shadow-2xl animate-fade-in">
+      <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-10 tracking-tight leading-none">Pipeline Comercial</h3>
+      <form onSubmit={save} className="flex flex-col md:flex-row gap-4 mb-12 bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800">
+        <input placeholder="ETAPA..." required value={name} onChange={e=>setName(e.target.value)} className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"/>
+        <select value={color} onChange={e=>setColor(e.target.value)} className="bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white border border-gray-200 dark:border-neutral-800 text-xs font-semibold uppercase">
+          <option value="blue">AZUL-CYAN</option>
+          <option value="green">VERDE-EMERALD</option>
+          <option value="yellow">AMARELO-GOLD</option>
+          <option value="purple">ROXO-INDIGO</option>
+          <option value="red">VERMELHO-ROSE</option>
+          <option value="orange">LARANJA-VIVO</option>
+          <option value="teal">TEAL-OCEAN</option>
+          <option value="pink">ROSA-PINK</option>
+          <option value="indigo">INDIGO-DEEP</option>
+          <option value="lime">LIMA-NEON</option>
+          <option value="gray">CINZA-SLATE</option>
+        </select>
+        {editingId ? (
+           <div className="flex gap-2">
+             <button type="submit" className="bg-green-600 text-white px-8 py-4 rounded-xl font-semibold uppercase text-[10px] shadow-xl shadow-green-600/20 active:scale-95">SALVAR</button>
+             <button type="button" onClick={() => { setEditingId(null); setName(''); }} className="bg-gray-400 text-white px-8 py-4 rounded-xl font-semibold uppercase text-[10px] shadow-xl active:scale-95">CANCELAR</button>
+           </div>
+        ) : (
+           <button className="bg-blue-600 text-white px-10 py-4 rounded-xl font-semibold uppercase text-[10px] shadow-xl shadow-blue-600/20 active:scale-95">ADICIONAR</button>
+        )}
+      </form>
+      <div className="space-y-4">
+        {(statuses || []).map((s,i) => (
+          <div key={s.id} draggable onDragStart={e=>e.dataTransfer.setData('idx',i)} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e.dataTransfer.getData('idx'),i)} className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 flex justify-between items-center group cursor-grab hover:border-blue-600 shadow-xl transition-all">
+            <div className="flex items-center gap-5">
+              <GripVertical className="text-gray-800 dark:text-neutral-200 group-hover:text-blue-600 transition-colors" />
+              <StatusBadge statusName={s.name} statusesArray={statuses}/>
+            </div>
+            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+              <button onClick={() => { setName(s.name); setColor(s.color || 'blue'); setEditingId(s.id); }} className="text-gray-800 dark:text-neutral-200 hover:text-blue-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"><Pencil className="w-4 h-4"/></button>
+              <button onClick={() => handleDelete(s)} className="text-gray-800 dark:text-neutral-200 hover:text-red-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"><Trash2 className="w-4 h-4"/></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 
