@@ -3842,10 +3842,21 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const total = processedLeads.length;
   const progress = total > 0 ? Math.round((done.length / total) * 100) : 100;
 
+  const total24h = processedLeads.filter(l => l.categories.includes('Novo Lead 24h'));
   const pending24h = pending.filter(l => l.categories.includes('Novo Lead 24h'));
+  const done24hCount = total24h.filter(l => l.isDone).length;
+
+  const totalAtrasados = processedLeads.filter(l => l.categories.includes('Atrasado'));
   const pendingAtrasados = pending.filter(l => l.categories.includes('Atrasado'));
+  const doneAtrasadosCount = totalAtrasados.filter(l => l.isDone).length;
+
+  const totalVisitas = processedLeads.filter(l => l.categories.includes('Visita Hoje'));
   const pendingVisitas = pending.filter(l => l.categories.includes('Visita Hoje'));
+  const doneVisitasCount = totalVisitas.filter(l => l.isDone).length;
+
+  const totalAulas = processedLeads.filter(l => l.categories.includes('Aula Experimental Hoje'));
   const pendingAulas = pending.filter(l => l.categories.includes('Aula Experimental Hoje'));
+  const doneAulasCount = totalAulas.filter(l => l.isDone).length;
 
   const renderPendingCard = (lead) => (
     <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 cursor-pointer hover:border-blue-500 transition-all shadow-sm group">
@@ -3895,35 +3906,47 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             <span className="bg-red-500/10 text-red-500 text-xs font-bold px-2.5 py-1 rounded-full">{pending.length}</span>
           </div>
           <div className="flex-1 overflow-y-auto space-y-6 custom-scrollbar pr-2">
-            {pending.length === 0 ? (
+            {total === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-neutral-500">
                 <CheckCircle className="w-12 h-12 mb-3 opacity-20" />
-                <p className="text-xs font-bold uppercase tracking-widest">Tudo zerado!</p>
+                <p className="text-xs font-bold uppercase tracking-widest">Sua meta está vazia hoje!</p>
               </div>
             ) : (
               <div className="space-y-6">
-                {pending24h.length > 0 && (
+                {total24h.length > 0 && (
                   <div>
-                    <h4 className="text-sm font-bold text-blue-500 mb-3 border-b border-blue-500/20 pb-2">Novos Leads 24 horas</h4>
-                    <div className="space-y-3">{pending24h.map(renderPendingCard)}</div>
+                    <h4 className="text-sm font-bold text-blue-500 mb-3 border-b border-blue-500/20 pb-2 flex justify-between items-center">
+                      <span>Novos Leads 24 horas</span>
+                      <span className="text-[10px] font-bold bg-blue-500/10 px-2 py-1 rounded-md">{done24hCount}/{total24h.length}</span>
+                    </h4>
+                    {pending24h.length > 0 ? <div className="space-y-3">{pending24h.map(renderPendingCard)}</div> : <div className="text-[10px] font-bold text-blue-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
                   </div>
                 )}
-                {pendingVisitas.length > 0 && (
+                {totalVisitas.length > 0 && (
                   <div>
-                    <h4 className="text-sm font-bold text-purple-500 mb-3 border-b border-purple-500/20 pb-2">Visitas</h4>
-                    <div className="space-y-3">{pendingVisitas.map(renderPendingCard)}</div>
+                    <h4 className="text-sm font-bold text-purple-500 mb-3 border-b border-purple-500/20 pb-2 flex justify-between items-center">
+                      <span>Visitas</span>
+                      <span className="text-[10px] font-bold bg-purple-500/10 px-2 py-1 rounded-md">{doneVisitasCount}/{totalVisitas.length}</span>
+                    </h4>
+                    {pendingVisitas.length > 0 ? <div className="space-y-3">{pendingVisitas.map(renderPendingCard)}</div> : <div className="text-[10px] font-bold text-purple-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
                   </div>
                 )}
-                {pendingAulas.length > 0 && (
+                {totalAulas.length > 0 && (
                   <div>
-                    <h4 className="text-sm font-bold text-orange-500 mb-3 border-b border-orange-500/20 pb-2">Aulas Experimentais</h4>
-                    <div className="space-y-3">{pendingAulas.map(renderPendingCard)}</div>
+                    <h4 className="text-sm font-bold text-orange-500 mb-3 border-b border-orange-500/20 pb-2 flex justify-between items-center">
+                      <span>Aulas Experimentais</span>
+                      <span className="text-[10px] font-bold bg-orange-500/10 px-2 py-1 rounded-md">{doneAulasCount}/{totalAulas.length}</span>
+                    </h4>
+                    {pendingAulas.length > 0 ? <div className="space-y-3">{pendingAulas.map(renderPendingCard)}</div> : <div className="text-[10px] font-bold text-orange-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
                   </div>
                 )}
-                {pendingAtrasados.length > 0 && (
+                {totalAtrasados.length > 0 && (
                   <div>
-                    <h4 className="text-sm font-bold text-red-500 mb-3 border-b border-red-500/20 pb-2">Follow-ups Atrasados</h4>
-                    <div className="space-y-3">{pendingAtrasados.map(renderPendingCard)}</div>
+                    <h4 className="text-sm font-bold text-red-500 mb-3 border-b border-red-500/20 pb-2 flex justify-between items-center">
+                      <span>Follow-ups Atrasados</span>
+                      <span className="text-[10px] font-bold bg-red-500/10 px-2 py-1 rounded-md">{doneAtrasadosCount}/{totalAtrasados.length}</span>
+                    </h4>
+                    {pendingAtrasados.length > 0 ? <div className="space-y-3">{pendingAtrasados.map(renderPendingCard)}</div> : <div className="text-[10px] font-bold text-red-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
                   </div>
                 )}
               </div>
