@@ -36,8 +36,8 @@ import {
   ThumbsDown,
   Tag,
   Download,
-  Sun,
-  Moon
+  Moon,
+  Target
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -600,6 +600,7 @@ if (csatToken) {
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
           <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard Geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
           <SidebarItem icon={<Kanban className="w-5 h-5" />} label="Quadro Kanban" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
+          <SidebarItem icon={<Target className="w-5 h-5" />} label="Meta Diária" active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
           <SidebarItem icon={<Users className="w-5 h-5" />} label="Todos os Leads" active={activeTab === 'leads'} onClick={() => changeTab('leads')} />
           {isAdminUser(appUser) && <SidebarItem icon={<Settings className="w-5 h-5" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />}
         </nav>
@@ -619,6 +620,7 @@ if (csatToken) {
             <h2 className="text-xl font-bold text-gray-900 dark:text-white capitalize truncate">
               {activeTab === 'dashboard' && 'Visão Geral'}
               {activeTab === 'kanban' && 'Pipeline de Vendas'}
+              {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
               {activeTab === 'leads' && 'Gestão de Leads'}
               {activeTab === 'settings' && 'Configurações'}
             </h2>
@@ -639,6 +641,7 @@ if (csatToken) {
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full transition-all duration-300">
               {activeTab === 'dashboard' && <DashboardView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
+              {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} />}
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
               {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} />}
             </div>
@@ -3694,6 +3697,195 @@ const handleTransfer = async () => {
         <div><label className="text-sm font-semibold text-gray-600 dark:text-neutral-400 mb-3 block">Para (Consultor Novo)</label><select value={toUser} onChange={e=>setToUser(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl p-5 text-gray-900 dark:text-white outline-none focus:border-green-500 font-bold appearance-none shadow-inner"><option value="">Selecione o consultor...</option>{(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
         <button onClick={handleTransfer} disabled={loading} className="w-full bg-white dark:bg-neutral-900 text-gray-900 dark:text-white hover:bg-neutral-200 font-semibold py-5 rounded-2xl transition-all shadow-xl uppercase  text-[10px] disabled:opacity-50 active:scale-95">EXECUTAR MUDANÇA</button>
       </div>
+    </div>
+  );
+}
+
+// ==========================================
+// DAILY GOAL VIEW (META DIÁRIA)
+// ==========================================
+function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossReasons, usersList }) {
+  const [selectedLead, setSelectedLead] = useState(null);
+
+  const processedLeads = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0,0,0,0);
+    const todayEnd = new Date();
+    todayEnd.setHours(23,59,59,999);
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const firstStatusName = statuses && statuses.length > 0 ? statuses[0].name : '';
+
+    const myLeads = (leads || []).filter(l => l.consultantId === appUser.id);
+    const allTargetLeadsMap = new Map();
+
+    const hasInteractionToday = (lead) => (interactions || []).some(i => i.leadId === lead.id && i.createdAt && i.createdAt >= todayStart);
+    const isVendaOrPerdaToday = (lead) => (lead.status === 'Venda' && lead.convertedAt && lead.convertedAt >= todayStart) || (lead.status === 'Perda' && lead.lostAt && lead.lostAt >= todayStart);
+    const isTouchedToday = (lead) => hasInteractionToday(lead) || isVendaOrPerdaToday(lead);
+
+    const addTarget = (lead, category, extraCheckIsDone = false) => {
+        if (!allTargetLeadsMap.has(lead.id)) {
+            allTargetLeadsMap.set(lead.id, { 
+              ...lead, 
+              categories: [category], 
+              isDone: isTouchedToday(lead) || extraCheckIsDone 
+            });
+        } else {
+            if (!allTargetLeadsMap.get(lead.id).categories.includes(category)) {
+              allTargetLeadsMap.get(lead.id).categories.push(category);
+            }
+        }
+    };
+
+    myLeads.forEach(lead => {
+      // 1. Leads 24h
+      if (lead.createdAt && lead.createdAt >= oneDayAgo) {
+        const movedOut = lead.status !== firstStatusName && lead.status !== 'Novo';
+        addTarget(lead, 'Novo Lead 24h', movedOut);
+      }
+
+      // 2. Atrasados
+      if (lead.status !== 'Venda' && lead.status !== 'Perda' && lead.nextFollowUp && lead.nextFollowUp < todayStart) {
+        addTarget(lead, 'Atrasado');
+      }
+
+      // 3. Visitas Hoje
+      if (lead.status !== 'Venda' && lead.status !== 'Perda') {
+        const apptType = getLeadAppointmentType(lead);
+        const apptDate = getLeadAppointmentDate(lead);
+        if (apptType === 'visita' && apptDate >= todayStart && apptDate <= todayEnd) {
+          addTarget(lead, 'Visita Hoje');
+        }
+      }
+
+      // 4. Aulas Exp. Hoje
+      if (lead.status !== 'Venda' && lead.status !== 'Perda') {
+        const apptType = getLeadAppointmentType(lead);
+        const apptDate = getLeadAppointmentDate(lead);
+        if (apptType === 'aula_experimental' && apptDate >= todayStart && apptDate <= todayEnd) {
+          addTarget(lead, 'Aula Experimental Hoje');
+        }
+      }
+    });
+
+    return Array.from(allTargetLeadsMap.values()).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [leads, appUser, interactions, statuses]);
+
+  const pending = processedLeads.filter(l => !l.isDone);
+  const done = processedLeads.filter(l => l.isDone);
+  const total = processedLeads.length;
+  const progress = total > 0 ? Math.round((done.length / total) * 100) : 100;
+
+  return (
+    <div className="h-full flex flex-col space-y-6 animate-fade-in relative">
+      <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
+        <div className="absolute -top-10 -right-10 opacity-5 dark:opacity-10 pointer-events-none">
+          <Target className="w-64 h-64" />
+        </div>
+        <div className="relative z-10 flex flex-col md:flex-row gap-8 items-center justify-between">
+          <div>
+            <h2 className="text-3xl font-bold text-gray-900 dark:text-white uppercase tracking-tighter">Sua Meta Diária</h2>
+            <p className="text-sm text-gray-500 dark:text-neutral-400 font-medium mt-2 max-w-md">
+              Sua lista de tarefas matadora: atenda os novos leads, recupere os atrasados e foque nas visitas e aulas experimentais de hoje. Vamos lá, {appUser.name.split(' ')[0]}!
+            </p>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <p className="text-4xl font-bold text-gray-900 dark:text-white">{progress}%</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-blue-600">Concluído</p>
+            </div>
+            <div className="w-24 h-24 rounded-full border-[6px] border-gray-100 dark:border-neutral-800 relative flex items-center justify-center bg-[#eaedf2] dark:bg-neutral-950 shadow-inner">
+               <svg className="w-full h-full absolute top-0 left-0 -rotate-90">
+                 <circle cx="50%" cy="50%" r="42" fill="transparent" stroke="currentColor" strokeWidth="6" className="text-blue-500" strokeDasharray="264" strokeDashoffset={264 - (264 * progress) / 100} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-in-out' }} />
+               </svg>
+               <Target className={`w-8 h-8 ${progress === 100 ? 'text-green-500' : 'text-blue-500'}`} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-[400px]">
+        {/* PENDENTES */}
+        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-6 shadow-2xl flex flex-col">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-red-500">
+              <Clock className="w-4 h-4" /> A Fazer
+            </h3>
+            <span className="bg-red-500/10 text-red-500 text-xs font-bold px-2.5 py-1 rounded-full">{pending.length}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-2">
+            {pending.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-neutral-500">
+                <CheckCircle className="w-12 h-12 mb-3 opacity-20" />
+                <p className="text-xs font-bold uppercase tracking-widest">Tudo zerado!</p>
+              </div>
+            ) : (
+              pending.map(lead => (
+                <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 cursor-pointer hover:border-blue-500 transition-all shadow-sm group">
+                  <div className="flex justify-between items-start gap-4">
+                    <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
+                    <div className="flex flex-col gap-1.5 items-end">
+                      {(lead.categories || []).map(cat => (
+                         <span key={cat} className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase border whitespace-nowrap ${
+                            cat.includes('Atrasado') ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                            cat.includes('Visita') ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' :
+                            cat.includes('Aula') ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                            'bg-blue-500/10 text-blue-500 border-blue-500/20'
+                         }`}>{cat}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <span className="text-xs font-bold text-gray-500 dark:text-neutral-400">{lead.whatsapp}</span>
+                  <div className="text-[10px] text-gray-400 mt-2 font-semibold">Entrou em: {lead.createdAt?.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* CONCLUÍDOS */}
+        <div className="bg-[#f4f5f7] dark:bg-neutral-900/50 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-6 shadow-inner flex flex-col opacity-80">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-green-500">
+              <CheckCircle className="w-4 h-4" /> Feitos Hoje
+            </h3>
+            <span className="bg-green-500/10 text-green-500 text-xs font-bold px-2.5 py-1 rounded-full">{done.length}</span>
+          </div>
+          <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-2">
+            {done.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-neutral-500">
+                <Target className="w-12 h-12 mb-3 opacity-20" />
+                <p className="text-xs font-bold uppercase tracking-widest">Nenhum ainda</p>
+              </div>
+            ) : (
+              done.map(lead => (
+                <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex justify-between items-center cursor-pointer hover:border-gray-400 transition-all shadow-sm">
+                  <div>
+                    <span className="font-bold text-sm text-gray-800 dark:text-neutral-200 line-through decoration-green-500/50">{lead.name}</span>
+                    <p className="text-[10px] text-gray-400 mt-1 font-bold uppercase truncate">
+                      {(lead.categories || []).join(' • ')}
+                    </p>
+                  </div>
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      {selectedLead && (
+        <LeadDetailsModal 
+          lead={selectedLead} 
+          interactions={(interactions || []).filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))} 
+          onClose={() => setSelectedLead(null)} 
+          appUser={appUser} 
+          statuses={statuses} 
+          tags={tags} 
+          lossReasons={lossReasons} 
+          usersList={usersList}
+          db={db} 
+        />
+      )}
     </div>
   );
 }
