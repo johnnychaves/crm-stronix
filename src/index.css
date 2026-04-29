@@ -61,3 +61,18 @@
 .dark .custom-scrollbar::-webkit-scrollbar-corner {
   background: #171717;
 }
+
+/* =========================
+   ANIMATIONS
+   ========================= */
+@keyframes wiggle {
+  0% { transform: rotate(0deg); }
+  25% { transform: rotate(-2deg) scale(1.02); }
+  50% { transform: rotate(0deg) scale(1.02); }
+  75% { transform: rotate(2deg) scale(1.02); }
+  100% { transform: rotate(0deg); }
+}
+
+.animate-wiggle {
+  animation: wiggle 0.3s ease-in-out infinite;
+}

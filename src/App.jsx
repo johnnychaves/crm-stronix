@@ -1545,6 +1545,8 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, l
   const [consultantFilter, setConsultantFilter] = useState('');
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [draggingLeadId, setDraggingLeadId] = useState(null);
+  const [draggedOverColumn, setDraggedOverColumn] = useState(null);
 
   const kanbanScrollRef = useRef(null);
 const dragScrollRef = useRef({
@@ -1743,6 +1745,13 @@ if (!lead) return;
   const handleDragStart = (e, leadId) => {
     e.dataTransfer.setData('leadId', leadId);
     e.dataTransfer.effectAllowed = 'move';
+    // Timeout to prevent the browser from capturing the modified styles in the drag ghost
+    setTimeout(() => setDraggingLeadId(leadId), 0);
+  };
+
+  const handleDragEnd = () => {
+    setDraggingLeadId(null);
+    setDraggedOverColumn(null);
   };
 
   const getLeadsByStatus = (statusName) => {
@@ -1781,15 +1790,22 @@ if (!lead) return;
       !isNaN(lead.nextFollowUp.getTime()) &&
       lead.nextFollowUp < new Date();
 
+    const isDraggingThis = draggingLeadId === lead.id;
+
     return (
       <div
-  key={lead.id}
-  data-no-pan="true"
-  draggable
-  onDragStart={(e) => handleDragStart(e, lead.id)}
-  onClick={() => setSelectedLead(lead)}
-  className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-4 cursor-pointer hover:border-blue-600/40 transition-all shadow-sm active:scale-[0.99]"
->
+        key={lead.id}
+        data-no-pan="true"
+        draggable
+        onDragStart={(e) => handleDragStart(e, lead.id)}
+        onDragEnd={handleDragEnd}
+        onClick={() => setSelectedLead(lead)}
+        className={`bg-white dark:bg-neutral-900 border rounded-2xl p-4 cursor-pointer shadow-sm transition-all active:scale-[0.99] ${
+          isDraggingThis 
+            ? 'opacity-50 scale-105 border-blue-500 animate-wiggle z-50 shadow-2xl' 
+            : 'border-gray-200 dark:border-neutral-800 hover:border-blue-600/40'
+        }`}
+      >
         <div className="flex items-start justify-between gap-3 mb-3">
           <div>
             <p className={`font-bold text-sm leading-tight ${isOverdue ? 'text-red-400' : 'text-gray-900 dark:text-white'}`}>
@@ -1901,9 +1917,20 @@ if (!lead) return;
               return (
                 <div
                   key={column.id}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => handleDrop(e, column.name)}
-                  className="w-[320px] bg-[#f4f5f7] dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2rem] flex flex-col"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    if (draggedOverColumn !== column.name) setDraggedOverColumn(column.name);
+                  }}
+                  onDrop={(e) => {
+                    setDraggedOverColumn(null);
+                    setDraggingLeadId(null);
+                    handleDrop(e, column.name);
+                  }}
+                  className={`w-[320px] rounded-[2rem] flex flex-col transition-colors duration-300 border ${
+                    draggedOverColumn === column.name
+                      ? 'bg-gray-200 dark:bg-neutral-800 border-blue-500/50'
+                      : 'bg-[#f4f5f7] dark:bg-neutral-900 border-gray-200 dark:border-neutral-800'
+                  }`}
                 >
                   <div className="p-5 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -1928,9 +1955,20 @@ if (!lead) return;
             })}
 
             <div
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleWinDrop}
-              className="w-[320px] bg-[#f4f5f7] dark:bg-neutral-900 border border-green-500/20 rounded-[2rem] flex flex-col"
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (draggedOverColumn !== 'Venda') setDraggedOverColumn('Venda');
+              }}
+              onDrop={(e) => {
+                setDraggedOverColumn(null);
+                setDraggingLeadId(null);
+                handleWinDrop(e);
+              }}
+              className={`w-[320px] rounded-[2rem] flex flex-col transition-colors duration-300 border ${
+                draggedOverColumn === 'Venda'
+                  ? 'bg-green-100 dark:bg-green-900/40 border-green-500'
+                  : 'bg-[#f4f5f7] dark:bg-neutral-900 border-green-500/20'
+              }`}
             >
               <div className="p-5 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -1963,9 +2001,20 @@ if (!lead) return;
             </div>
 
             <div
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={handleLossDrop}
-              className="w-[320px] bg-[#f4f5f7] dark:bg-neutral-900 border border-red-500/20 rounded-[2rem] flex flex-col"
+              onDragOver={(e) => {
+                e.preventDefault();
+                if (draggedOverColumn !== 'Perda') setDraggedOverColumn('Perda');
+              }}
+              onDrop={(e) => {
+                setDraggedOverColumn(null);
+                setDraggingLeadId(null);
+                handleLossDrop(e);
+              }}
+              className={`w-[320px] rounded-[2rem] flex flex-col transition-colors duration-300 border ${
+                draggedOverColumn === 'Perda'
+                  ? 'bg-red-100 dark:bg-red-900/40 border-red-500'
+                  : 'bg-[#f4f5f7] dark:bg-neutral-900 border-red-500/20'
+              }`}
             >
               <div className="p-5 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between">
                 <div className="flex items-center gap-3">
