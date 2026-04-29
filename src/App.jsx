@@ -3775,6 +3775,21 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const total = processedLeads.length;
   const progress = total > 0 ? Math.round((done.length / total) * 100) : 100;
 
+  const pending24h = pending.filter(l => l.categories.includes('Novo Lead 24h'));
+  const pendingAtrasados = pending.filter(l => l.categories.includes('Atrasado'));
+  const pendingVisitas = pending.filter(l => l.categories.includes('Visita Hoje'));
+  const pendingAulas = pending.filter(l => l.categories.includes('Aula Experimental Hoje'));
+
+  const renderPendingCard = (lead) => (
+    <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 cursor-pointer hover:border-blue-500 transition-all shadow-sm group">
+      <div className="flex justify-between items-start gap-4">
+        <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
+      </div>
+      <span className="text-xs font-bold text-gray-500 dark:text-neutral-400">{lead.whatsapp}</span>
+      <div className="text-[10px] text-gray-400 mt-2 font-semibold">Entrou em: {lead.createdAt?.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
+    </div>
+  );
+
   return (
     <div className="h-full flex flex-col space-y-6 animate-fade-in relative">
       <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
@@ -3812,32 +3827,39 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             </h3>
             <span className="bg-red-500/10 text-red-500 text-xs font-bold px-2.5 py-1 rounded-full">{pending.length}</span>
           </div>
-          <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-2">
+          <div className="flex-1 overflow-y-auto space-y-6 custom-scrollbar pr-2">
             {pending.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-neutral-500">
                 <CheckCircle className="w-12 h-12 mb-3 opacity-20" />
                 <p className="text-xs font-bold uppercase tracking-widest">Tudo zerado!</p>
               </div>
             ) : (
-              pending.map(lead => (
-                <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 cursor-pointer hover:border-blue-500 transition-all shadow-sm group">
-                  <div className="flex justify-between items-start gap-4">
-                    <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
-                    <div className="flex flex-col gap-1.5 items-end">
-                      {(lead.categories || []).map(cat => (
-                         <span key={cat} className={`text-[9px] font-bold px-2 py-0.5 rounded-md uppercase border whitespace-nowrap ${
-                            cat.includes('Atrasado') ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                            cat.includes('Visita') ? 'bg-purple-500/10 text-purple-500 border-purple-500/20' :
-                            cat.includes('Aula') ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
-                            'bg-blue-500/10 text-blue-500 border-blue-500/20'
-                         }`}>{cat}</span>
-                      ))}
-                    </div>
+              <div className="space-y-6">
+                {pendingAtrasados.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-3 border-b border-red-500/20 pb-1">Follow-ups Atrasados</h4>
+                    <div className="space-y-3">{pendingAtrasados.map(renderPendingCard)}</div>
                   </div>
-                  <span className="text-xs font-bold text-gray-500 dark:text-neutral-400">{lead.whatsapp}</span>
-                  <div className="text-[10px] text-gray-400 mt-2 font-semibold">Entrou em: {lead.createdAt?.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
-                </div>
-              ))
+                )}
+                {pendingVisitas.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-bold text-purple-500 uppercase tracking-widest mb-3 border-b border-purple-500/20 pb-1">Visitas Hoje</h4>
+                    <div className="space-y-3">{pendingVisitas.map(renderPendingCard)}</div>
+                  </div>
+                )}
+                {pendingAulas.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-bold text-orange-500 uppercase tracking-widest mb-3 border-b border-orange-500/20 pb-1">Aulas Exp. Hoje</h4>
+                    <div className="space-y-3">{pendingAulas.map(renderPendingCard)}</div>
+                  </div>
+                )}
+                {pending24h.length > 0 && (
+                  <div>
+                    <h4 className="text-[10px] font-bold text-blue-500 uppercase tracking-widest mb-3 border-b border-blue-500/20 pb-1">Novos Leads 24h</h4>
+                    <div className="space-y-3">{pending24h.map(renderPendingCard)}</div>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
