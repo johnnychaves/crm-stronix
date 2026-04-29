@@ -1,0 +1,63 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    font-family: 'Inter', sans-serif;
+  }
+}
+
+/* =========================
+   SCROLLBAR STRONIX
+   ========================= */
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #d1d5db #f3f4f6;
+}
+
+.dark .custom-scrollbar {
+  scrollbar-color: #525252 #171717;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 999px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-track {
+  background: #171717;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 999px;
+  border: 2px solid #f3f4f6;
+  min-height: 40px;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #525252;
+  border: 2px solid #171717;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #737373;
+}
+
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: #f3f4f6;
+}
+
+.dark .custom-scrollbar::-webkit-scrollbar-corner {
+  background: #171717;
+}
