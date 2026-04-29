@@ -640,7 +640,7 @@ if (csatToken) {
               {activeTab === 'dashboard' && <DashboardView leads={leads} changeTab={changeTab} appUser={appUser} usersList={usersList} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} />}
             </div>
           )}
         </div>
@@ -1486,6 +1486,7 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, l
   const [selectedLead, setSelectedLead] = useState(null);
   const [consultantFilter, setConsultantFilter] = useState('');
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   const kanbanScrollRef = useRef(null);
 const dragScrollRef = useRef({
@@ -1496,10 +1497,20 @@ const dragScrollRef = useRef({
 const [isPanning, setIsPanning] = useState(false);
 
   const kanbanLeads = useMemo(() => {
-    return consultantFilter
-      ? (leads || []).filter(l => l.consultantId === consultantFilter)
-      : (leads || []);
-  }, [leads, consultantFilter]);
+    let filtered = leads || [];
+    if (consultantFilter) {
+      filtered = filtered.filter(l => l.consultantId === consultantFilter);
+    }
+    if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase();
+      filtered = filtered.filter(l => 
+        (l.name && l.name.toLowerCase().includes(lowerSearch)) || 
+        (l.whatsapp && l.whatsapp.includes(searchTerm)) ||
+        (l.observation && l.observation.toLowerCase().includes(lowerSearch))
+      );
+    }
+    return filtered;
+  }, [leads, consultantFilter, searchTerm]);
 
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
@@ -1677,9 +1688,31 @@ if (!lead) return;
   };
 
   const getLeadsByStatus = (statusName) => {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfTomorrow = startOfToday + 86400000;
+
+    const getPriority = (lead) => {
+      if (!lead.nextFollowUp || !(lead.nextFollowUp instanceof Date) || isNaN(lead.nextFollowUp.getTime())) {
+        return 4; // Lowest priority
+      }
+      const time = lead.nextFollowUp.getTime();
+      if (time < now.getTime()) return 1; // Overdue
+      if (time >= startOfToday && time < startOfTomorrow) return 2; // Today
+      return 3; // Future
+    };
+
     return (kanbanLeads || [])
       .filter(l => l.status === statusName)
-      .sort((a, b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
+      .sort((a, b) => {
+        const pA = getPriority(a);
+        const pB = getPriority(b);
+        if (pA !== pB) return pA - pB;
+        if (pA !== 4 && a.nextFollowUp && b.nextFollowUp) {
+          return a.nextFollowUp.getTime() - b.nextFollowUp.getTime();
+        }
+        return (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0);
+      });
   };
 
   const renderLeadCard = (lead) => {
@@ -1763,22 +1796,34 @@ if (!lead) return;
             </p>
           </div>
 
-          {isAdminUser(appUser) && (
-            <div className="w-full md:w-[280px]">
-              <select
-                value={consultantFilter}
-                onChange={(e) => setConsultantFilter(e.target.value)}
-                className="w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm text-gray-900 dark:text-white outline-none"
-              >
-                <option value="">Todos os consultores</option>
-                {(usersList || []).map(u => (
-                  <option key={u.id} value={u.id}>
-                    {u.name}
-                  </option>
-                ))}
-              </select>
+          <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto items-center">
+            <div className="relative w-full md:w-[320px]">
+              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Buscar leads por nome, telefone..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl pl-11 pr-4 py-3 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 transition-all shadow-sm"
+              />
             </div>
-          )}
+            {isAdminUser(appUser) && (
+              <div className="w-full md:w-[280px]">
+                <select
+                  value={consultantFilter}
+                  onChange={(e) => setConsultantFilter(e.target.value)}
+                  className="w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm text-gray-900 dark:text-white outline-none shadow-sm cursor-pointer"
+                >
+                  <option value="">Todos os consultores</option>
+                  {(usersList || []).map(u => (
+                    <option key={u.id} value={u.id}>
+                      {u.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
         </div>
 
         <div
@@ -2293,10 +2338,10 @@ const getInteractionVisual = (interaction, statusesArray = []) => {
     : { label: 'Observação', icon: MessageCircle, ...interactionToneMap.gray };
 };
 
-function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags, lossReasons, db }) {
+function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags, lossReasons, usersList, db }) {
   const isReadOnly = !canEditLead(appUser, lead);
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState({ name: lead.name, whatsapp: lead.whatsapp, source: lead.source, observation: lead.observation || '', tags: lead.tags || [] });
+  const [editData, setEditData] = useState({ name: lead.name, whatsapp: lead.whatsapp, source: lead.source, observation: lead.observation || '', tags: lead.tags || [], consultantId: lead.consultantId || '' });
   const [note, setNote] = useState('');
   const [status, setStatus] = useState(lead.status);
   const [loading, setLoading] = useState(false);
@@ -2310,7 +2355,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   const [sendingCsat, setSendingCsat] = useState(false);
 
   useEffect(() => {
-    setEditData({ name: lead.name, whatsapp: lead.whatsapp, source: lead.source, observation: lead.observation || '', tags: lead.tags || [] });
+    setEditData({ name: lead.name, whatsapp: lead.whatsapp, source: lead.source, observation: lead.observation || '', tags: lead.tags || [], consultantId: lead.consultantId || '' });
     setStatus(lead.status);
     setCsatStage(lead.csatRequestedStage || 'pos_agendamento');
   }, [lead]);
@@ -2377,7 +2422,12 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
     if (isReadOnly) { alert('Você não tem permissão para editar este lead.'); return; }
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), editData);
+      let finalData = { ...editData };
+      if (finalData.consultantId) {
+        const c = (usersList || []).find(u => u.id === finalData.consultantId);
+        if (c) finalData.consultantName = c.name;
+      }
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), finalData);
       setIsEditing(false);
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -2496,6 +2546,13 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Nome Completo</label><input type="text" value={editData.name} onChange={e=>setEditData({...editData, name: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
                <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">WhatsApp</label><input type="tel" value={editData.whatsapp} onChange={e=>setEditData({...editData, whatsapp: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
                <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Origem</label><input type="text" value={editData.source} onChange={e=>setEditData({...editData, source: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
+               <div>
+                 <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Consultor Responsável</label>
+                 <select value={editData.consultantId} onChange={e=>setEditData({...editData, consultantId: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold appearance-none cursor-pointer">
+                   <option value="">Selecione um consultor...</option>
+                   {(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                 </select>
+               </div>
                <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Etiquetas</label><div className="flex flex-wrap gap-2 mt-2">{(tags || []).map(t => ( <button key={t.id} onClick={() => setEditData(prev => ({...prev, tags: prev.tags.includes(t.name) ? prev.tags.filter(x=>x!==t.name) : [...prev.tags, t.name]}))} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${editData.tags.includes(t.name) ? 'bg-blue-600 border-blue-600 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-neutral-800 border-gray-300 dark:border-neutral-700 text-gray-400 dark:text-neutral-500'}`}>{t.name}</button> ))}</div></div>
                <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Observação Fixa (Contexto Inicial)</label><textarea value={editData.observation} onChange={e=>setEditData({...editData, observation: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-medium h-32 resize-none" /></div>
                <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-neutral-800"><button onClick={()=>setIsEditing(false)} className="flex-1 py-3 bg-gray-100 dark:bg-neutral-800 rounded-xl font-semibold text-sm text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700 transition-all">Cancelar</button><button onClick={handleUpdateLead} disabled={loading} className="flex-1 py-3 bg-blue-600 rounded-xl font-semibold text-sm text-white shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all">Salvar</button></div>
@@ -2512,6 +2569,11 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                  <div className="text-xs font-semibold text-gray-500 dark:text-neutral-500 flex items-center gap-2 mt-2">
                    <Tag className="w-3.5 h-3.5" /> Origem: <span className="text-gray-700 dark:text-neutral-300">{lead.source || 'Não informada'}</span>
                  </div>
+                 {lead.consultantName && (
+                   <div className="text-xs font-semibold text-gray-500 dark:text-neutral-500 flex items-center gap-2 mt-2">
+                     <Users className="w-3.5 h-3.5" /> Responsável: <span className="text-blue-600 dark:text-blue-400">@{lead.consultantName}</span>
+                   </div>
+                 )}
                </div>
 
                {/* Clean Action Buttons */}
@@ -2704,7 +2766,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 // ==========================================
 // CONFIGURAÇÕES (ADMIN)ADMIN)
 // ==========================================
-function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons }) {
+function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads }) {
   const [activeTab, setActiveTab] = useState('users');
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
@@ -2719,7 +2781,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
       {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
       {activeTab === 'statuses' && <ManageStatusesTab db={db} statuses={statuses} />}
       {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} />}
-      {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} />}
+      {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
       {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} />}
       {activeTab === 'lossReasons' && <ManageLossReasonsTab db={db} lossReasons={lossReasons} />}
     </div>
@@ -3397,10 +3459,29 @@ function ManageLossReasonsTab({ db, lossReasons }) {
   );
 }
 
-function TransferLeadsTab({ db, usersList, appUser }) {
+function TransferLeadsTab({ db, usersList, appUser, leads }) {
   const [fromUser, setFromUser] = useState('');
   const [toUser, setToUser] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const orphanedConsultants = useMemo(() => {
+    if (!leads || !usersList) return [];
+    const activeIds = new Set(usersList.map(u => u.id));
+    const orphans = new Map();
+    leads.forEach(l => {
+      if (l.consultantId && !activeIds.has(l.consultantId)) {
+        if (!orphans.has(l.consultantId)) {
+          orphans.set(l.consultantId, {
+            id: l.consultantId,
+            name: l.consultantName ? `${l.consultantName} (Excluído)` : `Consultor Excluído (${l.consultantId.substring(0, 4)})`
+          });
+        }
+      }
+    });
+    return Array.from(orphans.values());
+  }, [leads, usersList]);
+
+  const allFromConsultants = [...(usersList || []), ...orphanedConsultants];
 
 const commitOpsInChunks = async (ops, chunkSize = 400) => {
   for (let i = 0; i < ops.length; i += chunkSize) {
@@ -3501,9 +3582,9 @@ const handleTransfer = async () => {
     <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-12 max-w-3xl mx-auto shadow-2xl animate-fade-in">
       <div className="flex items-center gap-5 mb-10"><div className="bg-blue-500/10 p-4 rounded-xl"><ArrowRightLeft className="w-10 h-10 text-blue-500" /></div><div><h3 className="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight leading-none uppercase">Migração em Massa</h3><p className="text-gray-400 dark:text-neutral-500 text-[11px] font-bold  mt-2">Transfira carteiras completas</p></div></div>
       <div className="space-y-8">
-        <div><label className="text-sm font-semibold text-gray-600 dark:text-neutral-400 mb-3 block">De (Consultor Antigo)</label><select value={fromUser} onChange={e=>setFromUser(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl p-5 text-gray-900 dark:text-white outline-none focus:border-blue-500 font-bold appearance-none shadow-inner">{(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+        <div><label className="text-sm font-semibold text-gray-600 dark:text-neutral-400 mb-3 block">De (Consultor Antigo)</label><select value={fromUser} onChange={e=>setFromUser(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl p-5 text-gray-900 dark:text-white outline-none focus:border-blue-500 font-bold appearance-none shadow-inner"><option value="">Selecione o consultor...</option>{(allFromConsultants || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
         <div className="flex justify-center"><RefreshCw className="w-8 h-8 text-gray-800 dark:text-neutral-200 animate-spin-slow" /></div>
-        <div><label className="text-sm font-semibold text-gray-600 dark:text-neutral-400 mb-3 block">Para (Consultor Novo)</label><select value={toUser} onChange={e=>setToUser(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl p-5 text-gray-900 dark:text-white outline-none focus:border-green-500 font-bold appearance-none shadow-inner">{(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
+        <div><label className="text-sm font-semibold text-gray-600 dark:text-neutral-400 mb-3 block">Para (Consultor Novo)</label><select value={toUser} onChange={e=>setToUser(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl p-5 text-gray-900 dark:text-white outline-none focus:border-green-500 font-bold appearance-none shadow-inner"><option value="">Selecione o consultor...</option>{(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
         <button onClick={handleTransfer} disabled={loading} className="w-full bg-white dark:bg-neutral-900 text-gray-900 dark:text-white hover:bg-neutral-200 font-semibold py-5 rounded-2xl transition-all shadow-xl uppercase  text-[10px] disabled:opacity-50 active:scale-95">EXECUTAR MUDANÇA</button>
       </div>
     </div>
