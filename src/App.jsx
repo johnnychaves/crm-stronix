@@ -2641,17 +2641,17 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   return (
     <div className="fixed inset-y-0 right-0 left-0 md:left-64 z-[100] bg-[#eaedf2] dark:bg-neutral-950 flex flex-col md:flex-row overflow-hidden animate-fade-in shadow-[-20px_0_40px_rgba(0,0,0,0.1)]">
         
-        {/* RIGHT ACTION BUTTONS */}
-        <div className="absolute right-6 top-6 z-50 flex gap-3">
-          {!isEditing && !isReadOnly && <button onClick={()=>setIsEditing(true)} title="Editar Cadastro" className="p-3 bg-white dark:bg-neutral-800 text-blue-500 hover:bg-blue-600 hover:text-white dark:hover:text-white rounded-full transition-all shadow-xl active:scale-90"><Pencil className="w-5 h-5"/></button>}
-          {isAdminUser(appUser) && <button onClick={handleDelete} title="Excluir Permanentemente" className="p-3 bg-white dark:bg-neutral-800 text-red-500 hover:bg-red-600 hover:text-white rounded-full transition-all shadow-xl active:scale-90"><Trash className="w-5 h-5"/></button>}
-          <button onClick={onClose} title="Fechar Detalhes" className="p-3 bg-white dark:bg-neutral-800 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white rounded-full transition-all shadow-xl active:scale-90"><X className="w-5 h-5" /></button>
-        </div>
-
         {/* LEFT COLUMN: Lead Info & Actions */}
         <div className="w-full md:w-[450px] lg:w-[480px] shrink-0 p-6 md:p-8 border-r border-gray-200 dark:border-neutral-800 overflow-y-auto bg-white dark:bg-neutral-900 relative z-10 custom-scrollbar">
+           
+           <div className="flex justify-end gap-2 mb-4">
+             {!isEditing && !isReadOnly && <button onClick={()=>setIsEditing(true)} title="Editar Cadastro" className="p-2 bg-gray-100 dark:bg-neutral-800 text-blue-500 hover:bg-blue-600 hover:text-white rounded-full transition-all shadow-sm active:scale-90"><Pencil className="w-4 h-4"/></button>}
+             {!isEditing && isAdminUser(appUser) && <button onClick={handleDelete} title="Excluir Permanentemente" className="p-2 bg-gray-100 dark:bg-neutral-800 text-red-500 hover:bg-red-600 hover:text-white rounded-full transition-all shadow-sm active:scale-90"><Trash className="w-4 h-4"/></button>}
+             <button onClick={onClose} title="Fechar Detalhes" className="p-2 bg-gray-100 dark:bg-neutral-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:text-neutral-400 dark:hover:text-white rounded-full transition-all shadow-sm active:scale-90"><X className="w-4 h-4" /></button>
+           </div>
+
            {isEditing ? (
-             <div className="space-y-6 animate-fade-in mt-12 md:mt-0">
+             <div className="space-y-6 animate-fade-in">
                <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Editar Cadastro</h3>
                <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Nome Completo</label><input type="text" value={editData.name} onChange={e=>setEditData({...editData, name: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
                <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">WhatsApp</label><input type="tel" value={editData.whatsapp} onChange={e=>setEditData({...editData, whatsapp: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
