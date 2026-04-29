@@ -46,6 +46,7 @@ import {
   getAuth,
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  sendPasswordResetEmail,
   signOut
 } from 'firebase/auth';
 
@@ -176,6 +177,9 @@ const buildCsatUrl = (token) => {
 };
 
 const isAdminUser = (user) => user?.role === 'admin';
+
+const canEditLead = (user, lead) =>
+  isAdminUser(user) || (Boolean(lead?.consultantAuthUid) && lead.consultantAuthUid === user?.authUid);
 
 const getLeadOwnershipFields = (user) => ({
   consultantId: user?.id || null,
@@ -435,10 +439,12 @@ export default function App() {
 
       setAppUser(null);
       setAuthSetupError('Usuário autenticado sem vínculo interno no CRM.');
+      try { await signOut(auth); } catch (signOutErr) { console.error(signOutErr); }
     } catch (e) {
       console.error('Erro ao recuperar sessão do usuário', e);
       setAppUser(null);
       setAuthSetupError('Erro ao validar sessão do usuário.');
+      try { await signOut(auth); } catch (signOutErr) { console.error(signOutErr); }
     }
 
     setIsAuthChecking(false);
@@ -681,10 +687,12 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [resetMessage, setResetMessage] = useState('');
 
   const handleLogin = async (e) => {
   e.preventDefault();
   setError('');
+  setResetMessage('');
   setLoading(true);
 
   try {
@@ -706,6 +714,27 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
 
   setLoading(false);
 };
+
+  const handleForgotPassword = async () => {
+    setError('');
+    setResetMessage('');
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setError('Informe o e-mail antes de solicitar redefinição.');
+      return;
+    }
+    try {
+      await sendPasswordResetEmail(auth, normalizedEmail);
+      setResetMessage('Enviamos um link de redefinição para o e-mail informado.');
+    } catch (err) {
+      console.error(err);
+      if (err.code === 'auth/user-not-found') {
+        setError('Não há conta cadastrada para esse e-mail.');
+      } else {
+        setError('Não foi possível enviar o e-mail de redefinição.');
+      }
+    }
+  };
   return (
     <div className="min-h-screen bg-[#eaedf2] dark:bg-neutral-950 flex items-center justify-center p-4" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
       <div className="w-full max-w-md bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative">
@@ -717,10 +746,12 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
         </div>
         {authSetupError && <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-xs text-center">{authSetupError}</div>}
         {error && <div className="mb-6 p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-sm text-center">{error}</div>}
+        {resetMessage && <div className="mb-6 p-3 bg-green-500/10 border border-green-500/20 text-green-400 rounded-lg text-sm text-center">{resetMessage}</div>}
         <form onSubmit={handleLogin} className="space-y-4">
           <div className="relative"><Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-neutral-500" /><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="E-mail" className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-xl py-3.5 pl-12 pr-4 text-gray-900 dark:text-white focus:border-blue-600 outline-none font-medium" required /></div>
           <div className="relative"><Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-neutral-500" /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Senha" className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-xl py-3.5 pl-12 pr-4 text-gray-900 dark:text-white focus:border-blue-600 outline-none font-medium" required /></div>
           <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-600/20 uppercase tracking-widest active:scale-95">Entrar</button>
+          <button type="button" onClick={handleForgotPassword} className="w-full text-xs text-gray-500 dark:text-neutral-400 hover:text-blue-500 font-semibold uppercase tracking-widest pt-2">Esqueci minha senha</button>
         </form>
       </div>
     </div>
@@ -1513,6 +1544,10 @@ const handleKanbanMouseMove = (e) => {
 
     const lead = leads.find(l => l.id === leadId);
     if (!lead || lead.status === newStatus) return;
+    if (!canEditLead(appUser, lead)) {
+      alert('Você não tem permissão para mover este lead.');
+      return;
+    }
 
     try {
       const payload = { status: newStatus };
@@ -1555,6 +1590,10 @@ const handleKanbanMouseMove = (e) => {
 
     const lead = leads.find(l => l.id === leadId);
     if (!lead || lead.status === 'Venda') return;
+    if (!canEditLead(appUser, lead)) {
+      alert('Você não tem permissão para alterar este lead.');
+      return;
+    }
 
     try {
       await updateDoc(
@@ -1591,6 +1630,10 @@ const handleKanbanMouseMove = (e) => {
 
     const lead = leads.find(l => l.id === leadId);
     if (!lead || lead.status === 'Perda') return;
+    if (!canEditLead(appUser, lead)) {
+      alert('Você não tem permissão para alterar este lead.');
+      return;
+    }
 
     setLossModalLeadId(leadId);
   };
@@ -2136,55 +2179,57 @@ const handleSubmit = async (e) => {
 }
 const interactionToneMap = {
   blue: {
-    dot: 'bg-blue-500 text-gray-900 dark:text-white',
+    dot: 'bg-blue-500 text-white',
     card: 'border-blue-500/20 bg-blue-500/5',
-    pill: 'bg-blue-500/10 text-blue-300',
+    pill: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
     text: 'text-gray-900 dark:text-white',
-    meta: 'text-blue-200/70'
+    meta: 'text-blue-600 dark:text-blue-200/70'
   },
   green: {
-    dot: 'bg-green-500 text-gray-900 dark:text-white',
+    dot: 'bg-green-500 text-white',
     card: 'border-green-500/20 bg-green-500/5',
-    pill: 'bg-green-500/10 text-green-300',
+    pill: 'bg-green-500/10 text-green-700 dark:text-green-300',
     text: 'text-gray-900 dark:text-white',
-    meta: 'text-green-200/70'
+    meta: 'text-green-600 dark:text-green-200/70'
   },
   yellow: {
-    dot: 'bg-yellow-500 text-gray-900 dark:text-white',
-    card: 'border-yellow-500/20 bg-yellow-500/5',
-    pill: 'bg-yellow-500/10 text-yellow-300',
+    dot: 'bg-yellow-400 text-yellow-900',
+    card: 'border-yellow-500/30 bg-yellow-500/10',
+    pill: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400',
     text: 'text-gray-900 dark:text-white',
-    meta: 'text-yellow-200/70'
+    meta: 'text-yellow-600 dark:text-yellow-400/80'
   },
   purple: {
-    dot: 'bg-purple-500 text-gray-900 dark:text-white',
+    dot: 'bg-purple-500 text-white',
     card: 'border-purple-500/20 bg-purple-500/5',
-    pill: 'bg-purple-500/10 text-purple-300',
+    pill: 'bg-purple-500/10 text-purple-700 dark:text-purple-300',
     text: 'text-gray-900 dark:text-white',
-    meta: 'text-purple-200/70'
+    meta: 'text-purple-600 dark:text-purple-200/70'
   },
   red: {
-    dot: 'bg-red-500 text-gray-900 dark:text-white',
+    dot: 'bg-red-500 text-white',
     card: 'border-red-500/20 bg-red-500/5',
-    pill: 'bg-red-500/10 text-red-300',
+    pill: 'bg-red-500/10 text-red-700 dark:text-red-300',
     text: 'text-gray-900 dark:text-white',
-    meta: 'text-red-200/70'
+    meta: 'text-red-600 dark:text-red-200/70'
   },
   orange: {
-    dot: 'bg-blue-600 text-gray-900 dark:text-white',
+    dot: 'bg-blue-600 text-white',
     card: 'border-blue-600/20 bg-blue-600/5',
-    pill: 'bg-blue-600/10 text-blue-600',
+    pill: 'bg-blue-600/10 text-blue-700 dark:text-blue-400',
     text: 'text-gray-900 dark:text-white',
-    meta: 'text-blue-500/70'
+    meta: 'text-blue-600 dark:text-blue-400/70'
   },
   gray: {
-    dot: 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300',
+    dot: 'bg-gray-200 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300',
     card: 'border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60',
     pill: 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300',
     text: 'text-gray-800 dark:text-neutral-200',
-    meta: 'text-gray-400 dark:text-neutral-500'
+    meta: 'text-gray-500 dark:text-neutral-500'
   }
 };
+
+
 
 const extractStageNameFromInteractionText = (text = '') => {
   const match = String(text).match(/\[([^\]]+)\]/);
@@ -2249,6 +2294,7 @@ const getInteractionVisual = (interaction, statusesArray = []) => {
 };
 
 function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags, lossReasons, db }) {
+  const isReadOnly = !canEditLead(appUser, lead);
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({ name: lead.name, whatsapp: lead.whatsapp, source: lead.source, observation: lead.observation || '', tags: lead.tags || [] });
   const [note, setNote] = useState('');
@@ -2260,10 +2306,8 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   
   const [lossModalOpen, setLossModalOpen] = useState(false);
 
-  const [csatStage, setCsatStage] = useState(
-  lead.csatRequestedStage || 'pos_agendamento'
-);
-const [sendingCsat, setSendingCsat] = useState(false);
+  const [csatStage, setCsatStage] = useState(lead.csatRequestedStage || 'pos_agendamento');
+  const [sendingCsat, setSendingCsat] = useState(false);
 
   useEffect(() => {
     setEditData({ name: lead.name, whatsapp: lead.whatsapp, source: lead.source, observation: lead.observation || '', tags: lead.tags || [] });
@@ -2278,69 +2322,48 @@ const [sendingCsat, setSendingCsat] = useState(false);
   };
   
   const handleSendCsat = async () => {
-  if (!lead.whatsapp) {
-    alert('Este lead não possui WhatsApp cadastrado.');
-    return;
-  }
+    if (!lead.whatsapp) {
+      alert('Este lead não possui WhatsApp cadastrado.');
+      return;
+    }
+    if (csatStage === 'cliente_novo' && lead.status !== 'Venda') {
+      const confirmSend = window.confirm('Este lead ainda não está em Venda. Deseja mesmo enviar o CSAT de pós-matrícula?');
+      if (!confirmSend) return;
+    }
+    setSendingCsat(true);
+    try {
+      const token = bufferToBase64url(generateRandomBuffer(24));
+      const csatUrl = buildCsatUrl(token);
 
-  if (csatStage === 'cliente_novo' && lead.status !== 'Venda') {
-    const confirmSend = window.confirm(
-      'Este lead ainda não está em Venda. Deseja mesmo enviar o CSAT de pós-matrícula?'
-    );
-    if (!confirmSend) return;
-  }
-
-  setSendingCsat(true);
-
-  try {
-    const token = bufferToBase64url(generateRandomBuffer(24));
-    const csatUrl = buildCsatUrl(token);
-
-    await setDoc(
-      doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
-      {
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
         csatToken: token,
         csatStatus: 'pending',
         csatRequestedAt: serverTimestamp(),
         csatRequestedStage: csatStage,
         csatLinkSentById: appUser.id,
         csatLinkSentByName: appUser.name
-      },
-      { merge: true }
-    );
+      }, { merge: true });
 
-    const stageLabel =
-      csatStage === 'cliente_novo' ? 'pós-matrícula' : 'pós-agendamento';
+      const stageLabel = csatStage === 'cliente_novo' ? 'pós-matrícula' : 'pós-agendamento';
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: `Link de CSAT enviado (${stageLabel}).`,
+        type: 'note',
+        createdAt: serverTimestamp()
+      });
 
-    await addDoc(
-  collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH),
-  {
-    leadId: lead.id,
-    consultantName: appUser.name,
-    ...getInteractionSecurityFields(lead, appUser),
-    text: `Link de CSAT enviado (${stageLabel}).`,
-    type: 'note',
-    createdAt: serverTimestamp()
-  }
-);
-
-    let n = lead.whatsapp.replace(/\D/g, '');
-    if (n.length <= 11) n = '55' + n;
-
-    const message =
-      `Olá, ${lead.name}! ` +
-      `Aqui é da STRONIX. ` +
-      `Queremos avaliar seu atendimento comercial (${stageLabel}). ` +
-      `Sua resposta leva menos de 1 minuto:\n\n${csatUrl}`;
-
-    window.open(`https://wa.me/${n}?text=${encodeURIComponent(message)}`, '_blank');
-  } catch (e) {
-    console.error(e);
-    alert('Erro ao gerar e enviar o link de CSAT.');
-  }
-
-  setSendingCsat(false);
-};
+      let n = lead.whatsapp.replace(/\D/g, '');
+      if (n.length <= 11) n = '55' + n;
+      const message = `Olá, ${lead.name}! Aqui é da STRONIX. Queremos avaliar seu atendimento comercial (${stageLabel}). Sua resposta leva menos de 1 minuto:\n\n${csatUrl}`;
+      window.open(`https://wa.me/${n}?text=${encodeURIComponent(message)}`, '_blank');
+    } catch (e) {
+      console.error(e);
+      alert('Erro ao gerar e enviar o link de CSAT.');
+    }
+    setSendingCsat(false);
+  };
 
   const handleDelete = async () => {
     if (window.confirm("⚠️ AÇÃO IRREVERSÍVEL: Deseja EXCLUIR este lead permanentemente?")) {
@@ -2351,6 +2374,7 @@ const [sendingCsat, setSendingCsat] = useState(false);
   };
 
   const handleUpdateLead = async () => {
+    if (isReadOnly) { alert('Você não tem permissão para editar este lead.'); return; }
     setLoading(true);
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), editData);
@@ -2359,395 +2383,321 @@ const [sendingCsat, setSendingCsat] = useState(false);
     setLoading(false);
   };
 
-  // Botão 🏆 MATRICULAR (Venda Direta)
   const handleWin = async () => {
+    if (isReadOnly) { alert('Você não tem permissão para alterar este lead.'); return; }
     if (window.confirm("Confirmar matrícula deste lead?")) {
       setLoading(true);
-await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-  status: 'Venda',
-  nextFollowUp: null,
-  isConverted: true,
-  convertedAt: serverTimestamp()
-});      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), 
-{ leadId: lead.id, 
-  consultantName: appUser.name,
-  ...getInteractionSecurityFields(lead, appUser),
-  text: `Matrícula realizada com sucesso! (Venda)`, 
-  type: 'status_change', 
-  createdAt: serverTimestamp() });
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+        status: 'Venda',
+        nextFollowUp: null,
+        isConverted: true,
+        convertedAt: serverTimestamp()
+      });      
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), { 
+        leadId: lead.id, 
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: `Matrícula realizada com sucesso! (Venda)`, 
+        type: 'status_change', 
+        createdAt: serverTimestamp() 
+      });
       setLoading(false);
       setStatus('Venda');
     }
   };
 
-  // Botão ❌ PERDA (Confirmado via Modal)
   const confirmLoss = async (reason) => {
+    if (isReadOnly) { alert('Você não tem permissão para alterar este lead.'); return; }
     setLoading(true);
-await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-  status: 'Perda',
-  lossReason: reason,
-  nextFollowUp: null,
-  lostAt: serverTimestamp()
-});    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), 
-{ leadId: lead.id, 
-  consultantName: appUser.name, 
-  ...getInteractionSecurityFields(lead, appUser),
-  text: `Lead perdido. Motivo: ${reason}`, 
-  type: 'status_change', createdAt: serverTimestamp() });
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+      status: 'Perda',
+      lossReason: reason,
+      nextFollowUp: null,
+      lostAt: serverTimestamp()
+    });    
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), { 
+      leadId: lead.id, 
+      consultantName: appUser.name, 
+      ...getInteractionSecurityFields(lead, appUser),
+      text: `Lead perdido. Motivo: ${reason}`, 
+      type: 'status_change', 
+      createdAt: serverTimestamp() 
+    });
     setLossModalOpen(false);
     setLoading(false);
     setStatus('Perda');
   };
 
   const saveInteraction = async () => {
-  if (!note.trim() && status === lead.status && !enableFollowUp) return;
-
-  if (enableFollowUp && !followUpDate) {
-    alert("Por favor, selecione a data e o horário do agendamento no calendário.");
-    return;
-  }
-
-  setLoading(true);
-
-  try {
-    let actionText = '';
-
-    if (status !== lead.status) actionText += `Fase alterada para [${status}]. `;
-    if (note) actionText += `Obs: ${note}. `;
-    if (enableFollowUp) {
-      actionText += `🔔 Retorno agendado (${followUpType}) p/ ${new Date(followUpDate).toLocaleString('pt-BR')}.`;
+    if (isReadOnly) { alert('Você não tem permissão para registrar interações neste lead.'); return; }
+    if (!note.trim() && status === lead.status && !enableFollowUp) return;
+    if (enableFollowUp && !followUpDate) {
+      alert("Por favor, selecione a data e o horário do agendamento no calendário.");
+      return;
     }
+    setLoading(true);
+    try {
+      let actionText = '';
+      if (status !== lead.status) actionText += `Fase alterada para [${status}]. `;
+      if (note) actionText += `Obs: ${note}. `;
+      if (enableFollowUp) {
+        actionText += `🔔 Retorno agendado (${followUpType}) p/ ${new Date(followUpDate).toLocaleString('pt-BR')}.`;
+      }
 
-    await addDoc(
-      collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH),
-      {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
         leadId: lead.id,
         consultantName: appUser.name,
         ...getInteractionSecurityFields(lead, appUser),
         text: actionText || 'Atualização registrada.',
         type: status !== lead.status ? 'status_change' : 'note',
         createdAt: serverTimestamp()
+      });
+
+      const up = { status };
+      if (enableFollowUp) {
+        const appointmentDate = new Date(followUpDate);
+        const appointmentType = normalizeAppointmentType(followUpType);
+        up.nextFollowUp = appointmentDate;
+        up.nextFollowUpType = followUpType;
+        if (appointmentType) {
+          up.appointmentType = appointmentType;
+          up.appointmentScheduledFor = appointmentDate;
+        }
       }
-    );
-
-    const up = { status };
-
-if (enableFollowUp) {
-  const appointmentDate = new Date(followUpDate);
-  const appointmentType = normalizeAppointmentType(followUpType);
-
-  up.nextFollowUp = appointmentDate;
-  up.nextFollowUpType = followUpType;
-
-  if (appointmentType) {
-    up.appointmentType = appointmentType;
-    up.appointmentScheduledFor = appointmentDate;
-  }
-}
-
-    await setDoc(
-      doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
-      up,
-      { merge: true }
-    );
-
-    setNote('');
-    setEnableFollowUp(false);
-    setFollowUpDate('');
-    setFollowUpType('Mensagem');
-    setLoading(false);
-  } catch (e) {
-    console.error(e);
-    alert("Erro ao gravar agendamento.");
-    setLoading(false);
-  }
-};
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), up, { merge: true });
+      
+      setNote('');
+      setEnableFollowUp(false);
+      setFollowUpDate('');
+      setFollowUpType('Mensagem');
+      setLoading(false);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao gravar agendamento.");
+      setLoading(false);
+    }
+  };
 
   return (
-    <div className="fixed inset-0 bg-black/95 flex items-center justify-center z-[110] p-4 animate-fade-in">
-<div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 w-full max-w-7xl h-[92vh] rounded-2xl flex flex-col md:flex-row overflow-hidden relative shadow-2xl border-blue-600/10">        <div className="absolute right-6 top-6 z-30 flex gap-3">
-          {!isEditing && <button onClick={()=>setIsEditing(true)} title="Editar Cadastro" className="p-3 bg-gray-100 dark:bg-neutral-800 text-blue-400 hover:bg-blue-600 hover:text-gray-900 dark:hover:text-white dark:text-white rounded-full transition-all shadow-xl active:scale-90"><Pencil className="w-5 h-5"/></button>}
-          {isAdminUser(appUser) && <button onClick={handleDelete} title="Excluir Permanentemente" className="p-3 bg-gray-100 dark:bg-neutral-800 text-red-400 hover:bg-red-600 hover:text-white rounded-full transition-all shadow-xl active:scale-90"><Trash className="w-5 h-5"/></button>}
-          <button onClick={onClose} title="Fechar Detalhes" className="p-3 bg-gray-100 dark:bg-neutral-800 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white rounded-full transition-all shadow-xl active:scale-90"><X className="w-5 h-5" /></button>
+    <div className="fixed inset-y-0 right-0 left-0 md:left-64 z-[100] bg-[#eaedf2] dark:bg-neutral-950 flex flex-col md:flex-row overflow-hidden animate-fade-in shadow-[-20px_0_40px_rgba(0,0,0,0.1)]">
+        
+        {/* RIGHT ACTION BUTTONS */}
+        <div className="absolute right-6 top-6 z-50 flex gap-3">
+          {!isEditing && !isReadOnly && <button onClick={()=>setIsEditing(true)} title="Editar Cadastro" className="p-3 bg-white dark:bg-neutral-800 text-blue-500 hover:bg-blue-600 hover:text-white dark:hover:text-white rounded-full transition-all shadow-xl active:scale-90"><Pencil className="w-5 h-5"/></button>}
+          {isAdminUser(appUser) && <button onClick={handleDelete} title="Excluir Permanentemente" className="p-3 bg-white dark:bg-neutral-800 text-red-500 hover:bg-red-600 hover:text-white rounded-full transition-all shadow-xl active:scale-90"><Trash className="w-5 h-5"/></button>}
+          <button onClick={onClose} title="Fechar Detalhes" className="p-3 bg-white dark:bg-neutral-800 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white rounded-full transition-all shadow-xl active:scale-90"><X className="w-5 h-5" /></button>
         </div>
 
-<div className="w-full md:w-[430px] lg:w-[460px] shrink-0 p-7 lg:p-8 border-r border-gray-200 dark:border-neutral-800 overflow-y-auto bg-white dark:bg-neutral-900 relative z-10 custom-scrollbar">           {isEditing ? (
-             <div className="space-y-6 animate-fade-in">
-               <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Editar Cadastro</h3>
-               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Nome Completo</label><input type="text" value={editData.name} onChange={e=>setEditData({...editData, name: e.target.value})} className="w-full bg-gray-50 dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
-               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">WhatsApp</label><input type="tel" value={editData.whatsapp} onChange={e=>setEditData({...editData, whatsapp: e.target.value})} className="w-full bg-gray-50 dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
-               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Origem</label><input type="text" value={editData.source} onChange={e=>setEditData({...editData, source: e.target.value})} className="w-full bg-gray-50 dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
+        {/* LEFT COLUMN: Lead Info & Actions */}
+        <div className="w-full md:w-[450px] lg:w-[480px] shrink-0 p-6 md:p-8 border-r border-gray-200 dark:border-neutral-800 overflow-y-auto bg-white dark:bg-neutral-900 relative z-10 custom-scrollbar">
+           {isEditing ? (
+             <div className="space-y-6 animate-fade-in mt-12 md:mt-0">
+               <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Editar Cadastro</h3>
+               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Nome Completo</label><input type="text" value={editData.name} onChange={e=>setEditData({...editData, name: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
+               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">WhatsApp</label><input type="tel" value={editData.whatsapp} onChange={e=>setEditData({...editData, whatsapp: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
+               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Origem</label><input type="text" value={editData.source} onChange={e=>setEditData({...editData, source: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
                <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Etiquetas</label><div className="flex flex-wrap gap-2 mt-2">{(tags || []).map(t => ( <button key={t.id} onClick={() => setEditData(prev => ({...prev, tags: prev.tags.includes(t.name) ? prev.tags.filter(x=>x!==t.name) : [...prev.tags, t.name]}))} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${editData.tags.includes(t.name) ? 'bg-blue-600 border-blue-600 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-neutral-800 border-gray-300 dark:border-neutral-700 text-gray-400 dark:text-neutral-500'}`}>{t.name}</button> ))}</div></div>
-               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Observação Fixa (Contexto Inicial)</label><textarea value={editData.observation} onChange={e=>setEditData({...editData, observation: e.target.value})} className="w-full bg-gray-50 dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-medium h-32 resize-none" /></div>
-               <div className="flex gap-3"><button onClick={()=>setIsEditing(false)} className="flex-1 py-3 bg-gray-100 dark:bg-neutral-800 rounded-xl font-semibold text-sm text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:bg-neutral-700 transition-all">Cancelar</button><button onClick={handleUpdateLead} disabled={loading} className="flex-1 py-3 bg-blue-600 rounded-xl font-semibold text-sm text-white shadow-sm hover:bg-blue-700 transition-all">Gravar Mudanças</button></div>
+               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Observação Fixa (Contexto Inicial)</label><textarea value={editData.observation} onChange={e=>setEditData({...editData, observation: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-medium h-32 resize-none" /></div>
+               <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-neutral-800"><button onClick={()=>setIsEditing(false)} className="flex-1 py-3 bg-gray-100 dark:bg-neutral-800 rounded-xl font-semibold text-sm text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700 transition-all">Cancelar</button><button onClick={handleUpdateLead} disabled={loading} className="flex-1 py-3 bg-blue-600 rounded-xl font-semibold text-sm text-white shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all">Salvar</button></div>
              </div>
            ) : (
-             <div className="animate-fade-in">
-               <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{lead.name}</h2>
+             <div className="animate-fade-in mt-12 md:mt-0">
+               <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">{lead.name}</h2>
                <div className="flex flex-wrap gap-2 mb-6"> {(lead.tags || []).map(tName => <TagBadge key={tName} tagName={tName} tagsArray={tags} />)} </div>
                
                {lead.status === 'Perda' && lead.lossReason && (
                  <div className="bg-red-500/10 border border-red-500/20 p-4 rounded-2xl mb-6 flex items-center gap-3">
                    <ThumbsDown className="w-5 h-5 text-red-500" />
-                   <div><p className="text-[9px] font-bold text-red-500 uppercase tracking-widest">Lead Perdido</p><p className="text-sm font-bold text-red-400">{lead.lossReason}</p></div>
+                   <div><p className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Lead Perdido</p><p className="text-sm font-bold text-red-400 mt-0.5">{lead.lossReason}</p></div>
                  </div>
                )}
 
-               <div className="bg-blue-600/5 border border-blue-600/10 p-4 rounded-xl mb-6 shadow-sm">
-  <div className="flex items-center gap-2 mb-2">
-    <FileText className="w-4 h-4 text-blue-600" />
-    <span className="text-sm font-semibold text-blue-600">
-      Contexto do cadastro
-    </span>
-  </div>
-
-  <p className="text-sm text-gray-700 dark:text-neutral-300 leading-6 mt-2">
-    {lead.observation || "Sem observações no cadastro."}
-  </p>
-</div>
-               
-               <div className="grid grid-cols-3 gap-3 mb-6">
-                 <button onClick={handleWin} className="bg-green-500 hover:bg-green-600 text-white p-3.5 rounded-xl text-sm font-semibold transition-all flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95"><Trophy className="w-5 h-5 mb-1"/> Matricular</button>
-                 <button onClick={()=>setLossModalOpen(true)} className="bg-red-500 hover:bg-red-600 text-gray-900 dark:text-white p-4 rounded-xl text-sm font-semibold transition-all flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95"><ThumbsDown className="w-5 h-5 mb-1"/> Perda</button>
-                 <button onClick={handleWhatsApp} className="bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-xl text-sm font-semibold transition-all flex flex-col items-center justify-center gap-1 shadow-sm active:scale-95"><MessageCircle className="w-5 h-5 mb-1"/> WhatsApp</button>
+               <div className="bg-blue-600/5 border border-blue-600/10 p-5 rounded-2xl mb-8 shadow-sm">
+                 <div className="flex items-center gap-2 mb-3">
+                   <FileText className="w-4 h-4 text-blue-600" />
+                   <span className="text-sm font-bold text-blue-600 uppercase tracking-widest">Contexto do cadastro</span>
+                 </div>
+                 <p className="text-sm text-gray-700 dark:text-neutral-300 leading-relaxed font-medium">
+                   {lead.observation || "Sem observações no cadastro."}
+                 </p>
                </div>
-<div className="bg-[#eaedf2] dark:bg-neutral-950 p-8 rounded-xl border border-gray-200 dark:border-neutral-800 space-y-6 shadow-2xl mb-10">
-  <h4 className="text-sm font-semibold text-blue-600 border-b border-gray-200 dark:border-neutral-800 pb-3">
-    Enviar CSAT ao Cliente
-  </h4>
+               
+               <div className="grid grid-cols-3 gap-3 mb-8">
+                 <button onClick={handleWin} className="bg-green-500 hover:bg-green-600 text-white p-4 rounded-2xl text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 shadow-xl shadow-green-500/20 active:scale-95"><Trophy className="w-6 h-6"/> Matricular</button>
+                 <button onClick={()=>setLossModalOpen(true)} className="bg-red-500 hover:bg-red-600 text-white p-4 rounded-2xl text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 shadow-xl shadow-red-500/20 active:scale-95"><ThumbsDown className="w-6 h-6"/> Perda</button>
+                 <button onClick={handleWhatsApp} className="bg-blue-500 hover:bg-blue-600 text-white p-4 rounded-2xl text-sm font-bold transition-all flex flex-col items-center justify-center gap-2 shadow-xl shadow-blue-500/20 active:scale-95"><MessageCircle className="w-6 h-6"/> WhatsApp</button>
+               </div>
 
-  <div>
-    <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">
-      Momento da Pesquisa
-    </label>
+               <div className="bg-[#eaedf2] dark:bg-neutral-950 p-6 md:p-8 rounded-3xl border border-gray-200 dark:border-neutral-800 space-y-6 shadow-sm mb-8">
+                 <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-200 dark:border-neutral-800 pb-4 flex items-center gap-2"><Clock className="w-4 h-4 text-blue-600"/> Registrar atividade</h4>
+                 <div>
+                   <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-2 block uppercase tracking-wider">Mudar fase do funil</label>
+                   <select value={status} onChange={e => setStatus(e.target.value)} className="w-full bg-white dark:bg-neutral-900 p-4 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-semibold transition-all appearance-none shadow-sm">
+                     {(statuses || []).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                   </select>
+                 </div>
+                 <div>
+                   <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-2 block uppercase tracking-wider">Nota da atividade</label>
+                   <textarea value={note} onChange={e => setNote(e.target.value)} className="w-full bg-white dark:bg-neutral-900 p-4 text-sm rounded-xl text-gray-900 dark:text-white h-24 outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-medium leading-relaxed resize-none transition-all shadow-sm" placeholder="O que foi conversado hoje?" />
+                 </div>
+                 <div className="p-4 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 shadow-sm">
+                   <label className="flex items-center gap-3 text-sm font-bold text-gray-900 dark:text-white cursor-pointer">
+                     <input type="checkbox" checked={enableFollowUp} onChange={e => setEnableFollowUp(e.target.checked)} className="w-5 h-5 rounded-md border-gray-300 dark:border-neutral-700 text-blue-600 focus:ring-0 transition-all cursor-pointer" />
+                     Agendar Próximo Contato?
+                   </label>
+                   {enableFollowUp && (
+                     <div className="mt-5 space-y-4 animate-fade-in border-t border-gray-100 dark:border-neutral-800 pt-4">
+                       <div className="grid grid-cols-2 gap-2">
+                         {['Mensagem', 'Ligação', 'Visita', 'Aula Experimental'].map(t => (
+                           <button key={t} type="button" onClick={() => setFollowUpType(t)} className={`py-3 px-2 rounded-xl text-xs font-bold transition-all ${followUpType === t ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'bg-[#eaedf2] dark:bg-neutral-950 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white'}`}>{t}</button>
+                         ))}
+                       </div>
+                       <div className="bg-[#eaedf2] dark:bg-neutral-950 rounded-xl p-4 shadow-inner">
+                         <p className="text-[10px] font-bold text-gray-500 dark:text-neutral-400 mb-2 uppercase tracking-widest">Data e hora</p>
+                         <div className="flex items-center gap-3">
+                           <Calendar className="w-5 h-5 text-blue-600 shrink-0" />
+                           <input type="datetime-local" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} className="bg-transparent text-gray-900 dark:text-white outline-none text-sm font-bold w-full" />
+                         </div>
+                       </div>
+                     </div>
+                   )}
+                 </div>
+                 <button onClick={saveInteraction} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-xl shadow-xl shadow-blue-600/20 text-xs tracking-widest uppercase active:scale-95 transition-all">REGISTRAR ATIVIDADE</button>
+               </div>
 
-    <div className="grid grid-cols-2 gap-3">
-      <button
-        type="button"
-        onClick={() => setCsatStage('pos_agendamento')}
-        className={`py-4 rounded-xl text-xs font-semibold transition-all border ${
-          csatStage === 'pos_agendamento'
-            ? 'bg-blue-500 border-blue-500 text-gray-900 dark:text-white shadow-xl shadow-blue-500/20'
-            : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:border-gray-300 dark:border-neutral-700'
-        }`}
-      >
-        Pós-Agendamento
-      </button>
+               <div className="bg-white dark:bg-neutral-900 p-6 md:p-8 rounded-3xl border border-gray-200 dark:border-neutral-800 space-y-6 shadow-sm mb-10">
+                 <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest border-b border-gray-200 dark:border-neutral-800 pb-4 flex items-center gap-2"><CheckCircle className="w-4 h-4 text-blue-600"/> Pesquisa de Satisfação (CSAT)</h4>
+                 <div>
+                   <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-2 block uppercase tracking-wider">Momento da Pesquisa</label>
+                   <div className="grid grid-cols-2 gap-3">
+                     <button type="button" onClick={() => setCsatStage('pos_agendamento')} className={`py-4 rounded-xl text-xs font-bold transition-all border ${csatStage === 'pos_agendamento' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 text-blue-700 dark:text-blue-300' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-500 dark:text-neutral-400'}`}>Pós-Agendamento</button>
+                     <button type="button" onClick={() => setCsatStage('cliente_novo')} className={`py-4 rounded-xl text-xs font-bold transition-all border ${csatStage === 'cliente_novo' ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800 text-blue-700 dark:text-blue-300' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-500 dark:text-neutral-400'}`}>Pós-Matrícula</button>
+                   </div>
+                 </div>
+                 <div className="bg-[#eaedf2] dark:bg-neutral-950 rounded-xl p-4 shadow-inner">
+                   <p className="text-[10px] font-bold text-gray-500 dark:text-neutral-400 uppercase tracking-widest">Status atual do envio</p>
+                   <p className="text-sm font-bold text-gray-900 dark:text-white mt-1">
+                     {lead.csatStatus === 'answered' ? 'Respondido pelo cliente' : lead.csatStatus === 'pending' ? 'Aguardando resposta' : 'Nenhum envio realizado'}
+                   </p>
+                 </div>
+                 <button type="button" onClick={handleSendCsat} disabled={sendingCsat} className="w-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/50 font-bold py-4 rounded-xl text-xs tracking-widest uppercase active:scale-95 transition-all">
+                   {sendingCsat ? 'GERANDO LINK...' : 'ENVIAR CSAT PELO WHATSAPP'}
+                 </button>
+               </div>
 
-      <button
-        type="button"
-        onClick={() => setCsatStage('cliente_novo')}
-        className={`py-4 rounded-xl text-xs font-semibold transition-all border ${
-          csatStage === 'cliente_novo'
-            ? 'bg-blue-500 border-blue-500 text-gray-900 dark:text-white shadow-xl shadow-blue-500/20'
-            : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:border-gray-300 dark:border-neutral-700'
-        }`}
-      >
-        Pós-Matrícula
-      </button>
-    </div>
-  </div>
-
-  <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-4">
-    <p className="text-xs font-semibold text-gray-500 dark:text-neutral-400">
-      Status atual do envio
-    </p>
-    <p className="text-sm font-bold text-gray-900 dark:text-white mt-2">
-      {lead.csatStatus === 'answered'
-        ? 'Respondido pelo cliente'
-        : lead.csatStatus === 'pending'
-        ? 'Link enviado e aguardando resposta'
-        : 'Nenhum envio realizado ainda'}
-    </p>
-  </div>
-
-  <button
-    type="button"
-    onClick={handleSendCsat}
-    disabled={sendingCsat}
-    className="w-full bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white font-bold py-5 rounded-2xl shadow-xl text-sm active:scale-95 transition-all"
-  >
-    {sendingCsat ? 'GERANDO LINK...' : 'ENVIAR CSAT POR WHATSAPP'}
-  </button>
-</div>
-   <div className="bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800 space-y-5 shadow-2xl">
-  <h4 className="text-base font-bold text-gray-900 dark:text-white border-b border-gray-200 dark:border-neutral-800 pb-3">
-    Registrar atividade
-  </h4>
-
-  <div>
-    <label className="text-sm font-semibold text-gray-700 dark:text-neutral-300 mb-2 block">
-      Mudar fase do funil
-    </label>
-    <select
-      value={status}
-      onChange={e => setStatus(e.target.value)}
-      className="w-full bg-white dark:bg-neutral-900 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 text-sm font-semibold transition-all appearance-none"
-    >
-      {(statuses || []).map(s => (
-        <option key={s.id} value={s.name}>{s.name}</option>
-      ))}
-    </select>
-  </div>
-
-  <div>
-    <label className="text-sm font-semibold text-gray-700 dark:text-neutral-300 mb-2 block">
-      Nota da atividade
-    </label>
-    <textarea
-      value={note}
-      onChange={e => setNote(e.target.value)}
-      className="w-full bg-white dark:bg-neutral-900 p-3 text-sm rounded-xl text-gray-900 dark:text-white h-24 outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 text-sm font-medium leading-6 resize-none transition-all shadow-sm"
-      placeholder="O que foi conversado hoje?"
-    />
-  </div>
-
-  <div className="p-4 bg-white dark:bg-neutral-900 rounded-xl border border-gray-200 dark:border-neutral-800 shadow-sm">
-    <label className="flex items-center gap-3 text-sm font-medium text-gray-700 dark:text-neutral-300 cursor-pointer">
-      <input
-        type="checkbox"
-        checked={enableFollowUp}
-        onChange={e => setEnableFollowUp(e.target.checked)}
-        className="w-5 h-5 rounded-lg border-gray-300 dark:border-neutral-700 text-blue-600 bg-[#eaedf2] dark:bg-neutral-950 focus:ring-0 shadow-lg transition-all"
-      />
-      Próximo contato?
-    </label>
-
-    {enableFollowUp && (
-      <div className="mt-5 space-y-4 animate-fade-in">
-        <div className="grid grid-cols-2 gap-2">
-          {['Mensagem', 'Ligação', 'Visita', 'Aula Experimental'].map(t => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setFollowUpType(t)}
-              className={`py-3 px-3 rounded-xl text-xs font-medium text-gray-500 dark:text-neutral-400 transition-all ${
-                followUpType === t
-                  ? 'bg-blue-600 text-gray-900 dark:text-white shadow-xl shadow-blue-600/20'
-                  : 'bg-[#eaedf2] dark:bg-neutral-900 text-gray-400 dark:text-neutral-500 border border-gray-200 dark:border-neutral-800 hover:border-gray-300 dark:border-neutral-700'
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
-
-        <div className="bg-[#eaedf2] dark:bg-neutral-950 rounded-xl border border-gray-200 dark:border-neutral-800 p-4 shadow-sm">
-          <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mb-2">
-            Data e hora
-          </p>
-
-          <div className="flex items-center gap-3">
-            <Calendar className="w-5 h-5 text-blue-600 shrink-0" />
-            <input
-              type="datetime-local"
-              value={followUpDate}
-              onChange={e => setFollowUpDate(e.target.value)}
-              className="bg-transparent text-gray-900 dark:text-white outline-none text-sm font-semibold w-full"
-            />
-          </div>
-        </div>
-      </div>
-    )}
-  </div>
-
-  <button
-    onClick={saveInteraction}
-    disabled={loading}
-    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl shadow-xl text-sm active:scale-95 transition-all"
-  >
-    REGISTRAR ATIVIDADE
-  </button>
-</div>
              </div>
            )}
         </div>
 
-<div className="flex-1 min-w-0 bg-[#eaedf2] dark:bg-neutral-950 p-7 lg:p-8 overflow-y-auto relative custom-scrollbar">          
-  <div className="flex flex-col gap-4 mb-8 sticky top-0 bg-[#eaedf2]/95 backdrop-blur-2xl pb-6 border-b border-neutral-900/80 z-20">
-  <h3 className="text-xl md:text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-    <Clock className="w-6 h-6 text-blue-600" />
-    Histórico de ações
-  </h3>
-</div>
-          
-          <div className="space-y-6 border-l-2 border-gray-200 dark:border-neutral-800/80 ml-4 pl-8 relative pb-8">
-  {interactions.map(i => {
-    const visual = getInteractionVisual(i, statuses);
-    const Icon = visual.icon;
-
-    return (
-      <div key={i.id} className="relative animate-fade-in">
-        <div className={`absolute -left-[41px] top-2 w-8 h-8 rounded-full border-4 border-neutral-950 flex items-center justify-center shadow-xl ${visual.dot}`}>
-          <Icon className="w-4 h-4" />
-        </div>
-
-        <div className={`rounded-xl border p-5 transition-all ${visual.card}`}>
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                {i.consultantName}
-              </p>
-
-              {visual.stageName ? (
-                <StatusBadge statusName={visual.stageName} statusesArray={statuses} />
-              ) : (
-                <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${visual.pill}`}>
-                  {visual.label}
-                </span>
-              )}
-            </div>
-
-            <p className={`text-xs font-medium text-gray-500 dark:text-neutral-400 ${visual.meta}`}>
-              {i.createdAt?.toLocaleString('pt-BR')}
-            </p>
+        {/* RIGHT COLUMN: Alternating Timeline */}
+        <div className="flex-1 bg-[#eaedf2] dark:bg-neutral-950 p-6 md:p-12 overflow-y-auto relative custom-scrollbar">          
+          <div className="flex flex-col gap-4 mb-12">
+            <h3 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+              <Clock className="w-8 h-8 text-blue-600" />
+              Jornada do Cliente
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-neutral-400 font-medium">Histórico completo de interações e mudanças de fase.</p>
           </div>
+          
+          <div className="relative max-w-4xl mx-auto pb-12">
+            {/* The vertical connecting line */}
+            <div className="absolute left-6 md:left-1/2 top-0 bottom-0 w-1 bg-gray-200 dark:bg-neutral-800 md:-translate-x-1/2 rounded-full"></div>
 
-          <p className={`${visual.text} text-sm text-gray-700 dark:text-neutral-300 leading-6 mt-1`}>
-            {i.text}
-          </p>
+            {interactions.map((i, index) => {
+              const visual = getInteractionVisual(i, statuses);
+              const Icon = visual.icon;
+              const isEven = index % 2 === 0;
+              const lineClasses = isEven
+                ? "absolute top-1/2 -translate-y-1/2 h-0.5 bg-gray-300 dark:bg-neutral-700 z-0 left-6 w-14 md:left-auto md:right-1/2 md:w-[calc(8%+3rem)]"
+                : "absolute top-1/2 -translate-y-1/2 h-0.5 bg-gray-300 dark:bg-neutral-700 z-0 left-6 w-14 md:left-1/2 md:right-auto md:w-[calc(8%+3rem)]";
+
+              return (
+                <div key={i.id} className={`relative flex items-center md:justify-between mb-10 ${isEven ? 'md:flex-row-reverse' : ''} animate-fade-in group`}>
+                  <div className={lineClasses}></div>
+                  {/* Empty space for the opposite side on desktop */}
+                  <div className="hidden md:block md:w-[42%]"></div>
+                  
+                  {/* The dot icon */}
+                  <div className={`absolute left-6 md:left-1/2 w-12 h-12 rounded-full border-4 border-[#eaedf2] dark:border-neutral-950 flex items-center justify-center shadow-xl -translate-x-1/2 z-10 transition-transform group-hover:scale-110 ${visual.dot}`}>
+                    <Icon className="w-5 h-5" />
+                  </div>
+
+                  {/* Content Card */}
+                  <div className={`w-full ml-20 md:ml-0 md:w-[42%] ${isEven ? 'md:pr-12' : 'md:pl-12'}`}>
+                    <div className={`rounded-2xl border p-6 transition-all hover:shadow-lg ${visual.card}`}>
+                      <div className="flex flex-col gap-2 mb-3">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {visual.stageName ? (
+                            <StatusBadge statusName={visual.stageName} statusesArray={statuses} />
+                          ) : (
+                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${visual.pill}`}>
+                              {visual.label}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">
+                            {i.consultantName}
+                          </p>
+                          <p className={`text-[10px] font-bold uppercase tracking-wider ${visual.meta}`}>
+                            {i.createdAt?.toLocaleString('pt-BR')}
+                          </p>
+                        </div>
+                      </div>
+                      <p className={`${visual.text} text-sm leading-relaxed mt-2 font-medium`}>
+                        {i.text}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* Creation node */}
+            {(() => {
+              const hasSource = Boolean(lead.source && lead.source.trim() !== '' && lead.source.toLowerCase() !== 'não informado');
+              const sourceLabel = hasSource ? lead.source : 'Sem Origem';
+              const badgeClasses = hasSource ? 'bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300';
+              const dotClasses = hasSource ? 'bg-green-500 text-white' : 'bg-gray-200 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300';
+
+              return (
+                <div className="relative flex items-center md:justify-between animate-fade-in md:flex-row-reverse">
+                  <div className="absolute top-1/2 -translate-y-1/2 h-0.5 bg-gray-300 dark:bg-neutral-700 z-0 left-6 w-14 md:left-auto md:right-1/2 md:w-[calc(8%+3rem)]"></div>
+                  <div className="hidden md:block md:w-[42%]"></div>
+                  <div className={`absolute left-6 md:left-1/2 w-12 h-12 rounded-full border-4 border-[#eaedf2] dark:border-neutral-950 flex items-center justify-center shadow-xl -translate-x-1/2 z-10 ${dotClasses}`}>
+                    <Plus className="w-5 h-5" />
+                  </div>
+                  <div className="w-full ml-20 md:ml-0 md:w-[42%] md:pr-12">
+                    <div className="rounded-2xl border p-6 bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800">
+                      <div className="flex flex-col gap-2 mb-3">
+                        <span className={`self-start px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${badgeClasses}`}>
+                          {sourceLabel}
+                        </span>
+                        <div className="flex items-center justify-between mt-1">
+                          <p className="text-sm font-bold text-gray-900 dark:text-white">Sistema STRONIX</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-neutral-500">
+                            {lead.createdAt?.toLocaleString('pt-BR')}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-neutral-400 leading-relaxed font-medium">
+                        Lead registrado no CRM na data oficial de {lead.createdAt?.toLocaleDateString('pt-BR') || "data"}.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+          </div>
         </div>
-      </div>
-    );
-  })}
-
-  <div className="relative animate-fade-in">
-    <div className="absolute -left-[41px] top-2 w-8 h-8 rounded-full bg-green-500 text-white border-4 border-neutral-950 flex items-center justify-center shadow-2xl shadow-green-500/20">
-      <Plus className="w-4 h-4" />
-    </div>
-
-    <div className="rounded-xl border border-green-500/20 bg-green-500/5 p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-semibold text-gray-900 dark:text-white">
-            Sistema STRONIX
-          </p>
-          <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-green-500/10 text-green-300">
-            Cadastro
-          </span>
-        </div>
-
-        <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 text-green-200/70">
-          {lead.createdAt?.toLocaleString('pt-BR')}
-        </p>
-      </div>
-
-      <p className="text-gray-900 dark:text-white text-sm text-gray-700 dark:text-neutral-300 leading-6 mt-1">
-        Lead registrado oficialmente em {lead.createdAt?.toLocaleDateString('pt-BR') || "data"} às{' '}
-        {lead.createdAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) || "hora"}.
-      </p>
-    </div>
-  </div>
-</div>
-        </div>
-      </div>
       {lossModalOpen && <LossReasonModal lossReasons={lossReasons} onClose={()=>setLossModalOpen(false)} onConfirm={confirmLoss} />}
     </div>
   );
 }
 
 // ==========================================
-// CONFIGURAÇÕES (ADMIN)
+// CONFIGURAÇÕES (ADMIN)ADMIN)
 // ==========================================
 function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons }) {
   const [activeTab, setActiveTab] = useState('users');
@@ -2761,7 +2711,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         <button onClick={()=>setActiveTab('sources')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='sources'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Origens</button>
         <button onClick={()=>setActiveTab('lossReasons')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='lossReasons'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Motivos Perda</button>
       </div>
-      {activeTab === 'users' && <ManageUsersTab db={db} />}
+      {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
       {activeTab === 'statuses' && <ManageStatusesTab db={db} statuses={statuses} />}
       {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} />}
       {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} />}
@@ -2771,13 +2721,15 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
   );
 }
 
-function ManageUsersTab({ db }) {
+function ManageUsersTab({ db, appUser }) {
   const [users, setUsers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [form, setForm] = useState({ name: '', email: '', authUid: '' });
+  const [form, setForm] = useState({ name: '', email: '', authUid: '', password: '' });
   const [loadingCleanup, setLoadingCleanup] = useState(false);
   const [loadingSecuritySync, setLoadingSecuritySync] = useState(false);
+  const [loadingSubmit, setLoadingSubmit] = useState(false);
+  const [loadingDocIdMigration, setLoadingDocIdMigration] = useState(false);
 
   useEffect(() => {
     return onSnapshot(
@@ -2787,7 +2739,14 @@ function ManageUsersTab({ db }) {
   }, [db]);
 
   const resetForm = () => {
-    setForm({ name: '', email: '', authUid: '' });
+    setForm({ name: '', email: '', authUid: '', password: '' });
+  };
+
+  const generatePassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const buf = new Uint32Array(12);
+    window.crypto.getRandomValues(buf);
+    return Array.from(buf, n => chars[n % chars.length]).join('');
   };
 
   const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
@@ -2812,7 +2771,8 @@ function ManageUsersTab({ db }) {
     setForm({
       name: user.name || '',
       email: user.email || '',
-      authUid: user.authUid || ''
+      authUid: user.authUid || '',
+      password: ''
     });
     setShowAdd(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2820,45 +2780,154 @@ function ManageUsersTab({ db }) {
 
   const add = async (e) => {
     e.preventDefault();
-    if (!form.name.trim() || !form.email.trim()) return;
+    if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
+      alert('Preencha nome, e-mail e senha temporária.');
+      return;
+    }
+    if (!appUser?.authUid) {
+      alert('Sessão master sem authUid. Reentre no sistema.');
+      return;
+    }
 
-    await addDoc(
-      collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH),
-      {
-        name: form.name.trim(),
-        email: normalizeEmail(form.email),
-        authUid: normalizeUid(form.authUid) || null,
-        role: 'consultant',
-        createdAt: serverTimestamp()
+    setLoadingSubmit(true);
+    try {
+      const res = await fetch('/api/admin-create-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name.trim(),
+          email: normalizeEmail(form.email),
+          password: form.password,
+          requesterAuthUid: appUser.authUid
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Erro ao cadastrar consultor.');
+        return;
       }
-    );
 
-    resetForm();
-    setShowAdd(false);
+      alert(
+        `Consultor cadastrado.\n\nE-mail: ${normalizeEmail(form.email)}\nSenha temporária: ${form.password}\n\nEntregue essas credenciais ao consultor.`
+      );
+      resetForm();
+      setShowAdd(false);
+    } catch (err) {
+      console.error(err);
+      alert('Falha de rede ao cadastrar consultor.');
+    } finally {
+      setLoadingSubmit(false);
+    }
   };
 
   const update = async (e) => {
     e.preventDefault();
     if (!editingUser) return;
 
-    await updateDoc(
-      doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, editingUser.id),
-      {
-        name: form.name.trim(),
-        email: normalizeEmail(form.email),
-        authUid: normalizeUid(form.authUid) || null,
-        password: deleteField()
-      }
-    );
+    setLoadingSubmit(true);
+    try {
+      await updateDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, editingUser.id),
+        {
+          name: form.name.trim(),
+          email: normalizeEmail(form.email),
+          authUid: normalizeUid(form.authUid) || null,
+          password: deleteField()
+        }
+      );
 
-    setEditingUser(null);
-    resetForm();
+      if (form.password.trim()) {
+        const targetUid = normalizeUid(form.authUid) || editingUser.authUid;
+        if (!targetUid) {
+          alert('Cadastro sem authUid. Não é possível redefinir senha.');
+        } else {
+          const res = await fetch('/api/admin-set-password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              targetAuthUid: targetUid,
+              password: form.password,
+              requesterAuthUid: appUser?.authUid
+            })
+          });
+          const data = await res.json();
+          if (!res.ok) {
+            alert(data.error || 'Erro ao redefinir senha.');
+            return;
+          }
+          alert(`Senha redefinida.\n\nNova senha: ${form.password}`);
+        }
+      }
+
+      setEditingUser(null);
+      resetForm();
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao salvar alterações.');
+    } finally {
+      setLoadingSubmit(false);
+    }
   };
 
-  const delUser = async (id) => {
-    if (window.confirm("⚠️ EXCLUIR ACESSO? O consultor não conseguirá mais entrar no sistema.")) {
-      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, id));
+  const delUser = async (user) => {
+    const target = typeof user === 'object' ? user : (users || []).find(u => u.id === user);
+    if (!target) return;
+    if (!window.confirm("⚠️ EXCLUIR ACESSO? Apaga a conta no Auth e o cadastro interno. Essa ação é irreversível.")) return;
+    if (!appUser?.authUid) {
+      alert('Sessão master sem authUid. Reentre no sistema.');
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/admin-delete-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userDocId: target.id,
+          targetAuthUid: target.authUid || null,
+          requesterAuthUid: appUser.authUid
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || 'Erro ao excluir consultor.');
+        return;
+      }
       setEditingUser(null);
+    } catch (err) {
+      console.error(err);
+      alert('Falha de rede ao excluir consultor.');
+    }
+  };
+
+  const migrateUserDocIds = async () => {
+    if (!window.confirm('Migrar IDs dos documentos de usuários para coincidir com authUid? (Necessário para Firestore Rules.)')) return;
+    setLoadingDocIdMigration(true);
+    try {
+      const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH));
+      let migrated = 0;
+      let skipped = 0;
+      for (const d of snap.docs) {
+        const data = d.data();
+        const targetUid = data?.authUid;
+        if (!targetUid) { skipped += 1; continue; }
+        if (d.id === targetUid) { continue; }
+        const targetRef = doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, targetUid);
+        const existing = await getDoc(targetRef);
+        if (existing.exists()) {
+          await deleteDoc(d.ref);
+          continue;
+        }
+        await setDoc(targetRef, data);
+        await deleteDoc(d.ref);
+        migrated += 1;
+      }
+      alert(`Migração concluída. Migrados: ${migrated} | Pulados (sem authUid): ${skipped}`);
+    } catch (err) {
+      console.error(err);
+      alert('Erro durante migração.');
+    } finally {
+      setLoadingDocIdMigration(false);
     }
   };
 
@@ -3027,6 +3096,16 @@ const backfillSecurityFields = async () => {
 
 <button
   type="button"
+  onClick={migrateUserDocIds}
+  disabled={loadingDocIdMigration}
+  className="bg-amber-500 text-white px-6 py-3 rounded-xl text-xs font-semibold shadow-xl active:scale-95 transition-all disabled:opacity-50"
+  title="Migra docId dos usuários para igualar ao authUid (necessário para Firestore Rules)"
+>
+  {loadingDocIdMigration ? 'MIGRANDO...' : 'MIGRAR DOC IDS'}
+</button>
+
+<button
+  type="button"
   onClick={openNewForm}
   className="bg-blue-600 text-white px-8 py-3 rounded-xl text-xs font-semibold shadow-xl shadow-blue-600/20 active:scale-95 transition-all"
 >
@@ -3097,25 +3176,71 @@ const backfillSecurityFields = async () => {
 
             <div>
               <label className="text-[9px] font-semibold text-gray-600 dark:text-neutral-400 uppercase mb-2 block tracking-widest">
-                Auth UID
+                {editingUser ? 'Auth UID' : 'Senha temporária'}
               </label>
-              <input
-                type="text"
-                placeholder="Cole o UID do Firebase Auth"
-                value={form.authUid}
-                onChange={e => setForm({ ...form, authUid: e.target.value })}
-                className="w-full bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-xs font-bold"
-              />
+              {editingUser ? (
+                <input
+                  type="text"
+                  placeholder="Auth UID (somente leitura)"
+                  value={form.authUid}
+                  readOnly
+                  className="w-full bg-gray-100 dark:bg-neutral-800 p-4 rounded-xl text-gray-500 dark:text-neutral-400 outline-none border border-gray-200 dark:border-neutral-800 text-xs font-bold"
+                />
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="Mín. 6 caracteres"
+                    required
+                    value={form.password}
+                    onChange={e => setForm({ ...form, password: e.target.value })}
+                    className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-xs font-bold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, password: generatePassword() })}
+                    className="bg-blue-600 text-white px-3 rounded-xl text-[10px] font-bold shadow-xl active:scale-95 transition-all"
+                  >
+                    GERAR
+                  </button>
+                </div>
+              )}
             </div>
           </div>
+
+          {editingUser && (
+            <div>
+              <label className="text-[9px] font-semibold text-gray-600 dark:text-neutral-400 uppercase mb-2 block tracking-widest">
+                Nova senha (opcional)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="Deixe em branco para não alterar"
+                  value={form.password}
+                  onChange={e => setForm({ ...form, password: e.target.value })}
+                  className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-xs font-bold"
+                />
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, password: generatePassword() })}
+                  className="bg-blue-600 text-white px-3 rounded-xl text-[10px] font-bold shadow-xl active:scale-95 transition-all"
+                >
+                  GERAR
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-4">
             <p className="text-[10px] font-semibold text-gray-400 dark:text-neutral-500  mb-2">
               Observação operacional
             </p>
             <p className="text-xs text-gray-500 dark:text-neutral-400 font-medium leading-6">
-              Primeiro crie o acesso no Firebase Authentication. Depois copie o UID e cole aqui.
-              Sem <span className="text-gray-900 dark:text-white font-bold">authUid</span>, o usuário não entra no CRM mesmo que exista no Firestore.
+              {editingUser
+                ? <>Para redefinir a senha, preencha o campo acima. O <span className="text-gray-900 dark:text-white font-bold">authUid</span> é gerado automaticamente no cadastro e não pode ser alterado.</>
+                : <>O cadastro cria a conta no Firebase Auth e o registro interno em uma única operação. Anote a senha temporária para entregar ao consultor.</>
+              }
             </p>
           </div>
 
@@ -3134,9 +3259,10 @@ const backfillSecurityFields = async () => {
 
             <button
               type="submit"
-              className="flex-[2] bg-blue-600 text-white py-4 rounded-xl font-semibold uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/10 active:scale-95 transition-all"
+              disabled={loadingSubmit}
+              className="flex-[2] bg-blue-600 text-white py-4 rounded-xl font-semibold uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/10 active:scale-95 transition-all disabled:opacity-50"
             >
-              {editingUser ? 'SALVAR ALTERAÇÕES' : 'CADASTRAR NOVO'}
+              {loadingSubmit ? 'PROCESSANDO...' : editingUser ? 'SALVAR ALTERAÇÕES' : 'CADASTRAR NOVO'}
             </button>
           </div>
         </form>

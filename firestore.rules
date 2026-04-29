@@ -1,0 +1,67 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc(appId) {
+      return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/stronix_users/$(request.auth.uid));
+    }
+
+    function isAdmin(appId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/stronix_users/$(request.auth.uid))
+        && userDoc(appId).data.role == 'admin';
+    }
+
+    function ownsLead(appId, lead) {
+      return isSignedIn() && lead.consultantAuthUid == request.auth.uid;
+    }
+
+    match /artifacts/{appId}/public/data/stronix_leads/{leadId} {
+      allow read: if isAdmin(appId) || ownsLead(appId, resource.data);
+      allow create: if isSignedIn()
+        && (isAdmin(appId) || request.resource.data.consultantAuthUid == request.auth.uid);
+      allow update, delete: if isAdmin(appId) || ownsLead(appId, resource.data);
+    }
+
+    match /artifacts/{appId}/public/data/stronix_interactions/{id} {
+      allow read: if isAdmin(appId)
+        || (isSignedIn() && resource.data.leadConsultantAuthUid == request.auth.uid);
+      allow create: if isSignedIn()
+        && (isAdmin(appId) || request.resource.data.leadConsultantAuthUid == request.auth.uid);
+      allow update, delete: if isAdmin(appId)
+        || (isSignedIn() && resource.data.leadConsultantAuthUid == request.auth.uid);
+    }
+
+    match /artifacts/{appId}/public/data/stronix_users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(appId);
+      // permite o próprio usuário gravar passkey/authUid no seu próprio doc
+      allow update: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    match /artifacts/{appId}/public/data/stronix_sources/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(appId);
+    }
+
+    match /artifacts/{appId}/public/data/stronix_statuses/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(appId);
+    }
+
+    match /artifacts/{appId}/public/data/stronix_tags/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(appId);
+    }
+
+    match /artifacts/{appId}/public/data/stronix_loss_reasons/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(appId);
+    }
+  }
+}
