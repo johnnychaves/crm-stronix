@@ -5,6 +5,9 @@
   html {
     font-family: 'Inter', sans-serif;
   }
+  body {
+    @apply bg-[#eaedf2] dark:bg-neutral-950 text-gray-900 dark:text-white;
+  }
 }
 
 /* =========================

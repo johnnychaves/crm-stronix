@@ -37,10 +37,12 @@ import {
   Tag,
   Download,
   Moon,
+  Sun,
   Target
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
+import confetti from 'canvas-confetti';
 
 import {
   getAuth,
@@ -3773,6 +3775,7 @@ const handleTransfer = async () => {
 // ==========================================
 function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossReasons, usersList }) {
   const [selectedLead, setSelectedLead] = useState(null);
+  const prevProgress = useRef(0);
 
   const processedLeads = useMemo(() => {
     const todayStart = new Date();
@@ -3858,12 +3861,44 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const pendingAulas = pending.filter(l => l.categories.includes('Aula Experimental Hoje'));
   const doneAulasCount = totalAulas.filter(l => l.isDone).length;
 
+  useEffect(() => {
+    if (progress === 100 && prevProgress.current !== 100 && total > 0) {
+      confetti({ particleCount: 150, spread: 80, origin: { y: 0.5 }, zIndex: 99999 });
+    }
+    prevProgress.current = progress;
+  }, [progress, total]);
+
+  const handleSnooze = async (lead, e) => {
+    e.stopPropagation();
+    if (!window.confirm("Adiar o contato deste lead para amanhã?")) return;
+    try {
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+        nextFollowUp: tomorrow
+      });
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: `Contato adiado para amanhã via Meta Diária.`,
+        type: 'note',
+        createdAt: serverTimestamp()
+      });
+    } catch(err) { console.error(err); alert("Erro ao adiar lead"); }
+  };
+
   const renderPendingCard = (lead) => (
     <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 cursor-pointer hover:border-blue-500 transition-all shadow-sm group">
       <div className="flex justify-between items-start gap-4">
-        <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
+        <div className="flex flex-col">
+          <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
+          <span className="text-xs font-bold text-gray-500 dark:text-neutral-400 mt-1">{lead.whatsapp}</span>
+        </div>
+        <button onClick={(e) => handleSnooze(lead, e)} className="p-2 bg-white dark:bg-neutral-900 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all shadow-sm active:scale-90" title="Adiar para amanhã">
+          <Calendar className="w-4 h-4" />
+        </button>
       </div>
-      <span className="text-xs font-bold text-gray-500 dark:text-neutral-400">{lead.whatsapp}</span>
       <div className="text-[10px] text-gray-400 mt-2 font-semibold">Entrou em: {lead.createdAt?.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
     </div>
   );
