@@ -99,6 +99,65 @@ import {
 } from './lib/leads.js';
 import { getDefaultFunnel, isItemInFunnel, commitOpsInChunks } from './lib/funnels.js';
 
+// --- HELPERS DE TEMPERATURA DO LEAD ---
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+
+const getLastInteractionDate = (lead, interactions) => {
+  if (!lead || !Array.isArray(interactions)) return null;
+  const fromList = interactions
+    .filter(i => i.leadId === lead.id && i.createdAt instanceof Date)
+    .reduce((latest, i) => (!latest || i.createdAt > latest ? i.createdAt : latest), null);
+  return fromList;
+};
+
+const getDaysSinceLastContact = (lead, interactions) => {
+  const last = getLastInteractionDate(lead, interactions) || lead?.createdAt;
+  if (!(last instanceof Date) || isNaN(last.getTime())) return null;
+  const diffMs = Date.now() - last.getTime();
+  return Math.max(0, Math.floor(diffMs / DAY_MS));
+};
+
+const isLeadActive = (lead) => {
+  return lead && lead.status !== 'Venda' && lead.status !== 'Perda';
+};
+
+const isHotLead = (lead, interactions) => {
+  if (!isLeadActive(lead)) return false;
+  const now = Date.now();
+
+  // Critério 1: lead recém-criado (últimas 6 horas)
+  if (lead.createdAt instanceof Date) {
+    const ageMs = now - lead.createdAt.getTime();
+    if (ageMs >= 0 && ageMs <= 6 * HOUR_MS) return true;
+  }
+
+  // Critério 2: interação nas últimas 24h
+  const lastInteraction = getLastInteractionDate(lead, interactions);
+  if (lastInteraction instanceof Date) {
+    const sinceMs = now - lastInteraction.getTime();
+    if (sinceMs >= 0 && sinceMs <= 24 * HOUR_MS) return true;
+  }
+
+  // Critério 3: visita ou aula experimental agendada nas próximas 48h
+  const appointmentType = getLeadAppointmentType(lead);
+  const appointmentDate = getLeadAppointmentDate(lead);
+  if (appointmentType && appointmentDate instanceof Date && !isNaN(appointmentDate.getTime())) {
+    const untilMs = appointmentDate.getTime() - now;
+    if (untilMs >= 0 && untilMs <= 48 * HOUR_MS) return true;
+  }
+
+  return false;
+};
+
+const isColdLead = (lead, interactions) => {
+  if (!isLeadActive(lead)) return false;
+  // Hot e cold são mutuamente exclusivos — hot tem prioridade
+  if (isHotLead(lead, interactions)) return false;
+  const days = getDaysSinceLastContact(lead, interactions);
+  return days !== null && days >= 7;
+};
+
 function PublicCsatView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -675,7 +734,9 @@ if (csatToken) {
         
         <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
           {loadingData ? (
-             <div className="flex h-full items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>
+            <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
+              <ViewSkeleton activeTab={activeTab} />
+            </div>
           ) : (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full transition-all duration-300">
               {activeTab === 'dashboard' && <DashboardView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
@@ -841,6 +902,132 @@ function FunnelSelector({ funnels, value, onChange, compact = false, variant = '
   );
 }
 
+// --- SKELETON LOADING ---
+function Skeleton({ className = '', rounded = 'rounded-2xl' }) {
+  return (
+    <div
+      className={`animate-pulse bg-gray-200/70 dark:bg-neutral-800/70 ${rounded} ${className}`}
+      aria-hidden="true"
+    />
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <div className="flex flex-wrap items-center gap-3">
+        <Skeleton className="h-12 w-[260px]" />
+        <Skeleton className="h-12 w-[360px]" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-32" rounded="rounded-[2.5rem]" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-28" rounded="rounded-[2.5rem]" />
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Skeleton className="lg:col-span-2 h-96" rounded="rounded-[2.5rem]" />
+        <Skeleton className="h-96" rounded="rounded-[2.5rem]" />
+      </div>
+    </div>
+  );
+}
+
+function KanbanSkeleton() {
+  return (
+    <div className="h-[calc(100vh-10rem)] flex flex-col animate-fade-in">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
+        <div className="flex items-center gap-4 flex-wrap">
+          <div>
+            <Skeleton className="h-6 w-48 mb-2" rounded="rounded-lg" />
+            <Skeleton className="h-3 w-40" rounded="rounded-md" />
+          </div>
+          <Skeleton className="h-12 w-[280px]" />
+        </div>
+        <div className="flex gap-3">
+          <Skeleton className="h-12 w-[320px]" />
+          <Skeleton className="h-12 w-[280px]" />
+        </div>
+      </div>
+      <div className="flex gap-5 min-w-max h-full pb-2 overflow-hidden">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="w-[320px] rounded-[2rem] bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-5 flex flex-col gap-3">
+            <Skeleton className="h-6 w-28 mb-2" rounded="rounded-full" />
+            {Array.from({ length: 2 + (i % 3) }).map((_, j) => (
+              <Skeleton key={j} className="h-28" rounded="rounded-2xl" />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function LeadsSkeleton() {
+  return (
+    <div className="h-full flex flex-col space-y-6 animate-fade-in">
+      <div className="flex flex-col md:flex-row gap-4 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-5 rounded-[2rem] shadow-xl">
+        <Skeleton className="h-12 w-[280px]" />
+        <Skeleton className="h-12 flex-1" />
+        <Skeleton className="h-12 w-12" />
+        <Skeleton className="h-12 w-28" />
+        <Skeleton className="h-12 w-32" />
+      </div>
+      <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] overflow-hidden flex-1 shadow-2xl p-6 space-y-3">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <Skeleton key={i} className="h-16" rounded="rounded-2xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DailyGoalSkeleton() {
+  return (
+    <div className="space-y-6 animate-fade-in">
+      <Skeleton className="h-32" rounded="rounded-[2.5rem]" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Skeleton className="h-[500px]" rounded="rounded-[2.5rem]" />
+        <Skeleton className="h-[500px]" rounded="rounded-[2.5rem]" />
+      </div>
+    </div>
+  );
+}
+
+function SettingsSkeleton() {
+  return (
+    <div className="h-full flex flex-col md:flex-row gap-6 animate-fade-in max-w-7xl mx-auto w-full">
+      <div className="w-full md:w-64 shrink-0 flex flex-col gap-2">
+        <Skeleton className="h-8 w-40 mb-4" rounded="rounded-lg" />
+        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-2 rounded-2xl shadow-xl space-y-1">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-11" rounded="rounded-xl" />
+          ))}
+        </div>
+      </div>
+      <div className="flex-1">
+        <Skeleton className="h-[600px]" rounded="rounded-[2rem]" />
+      </div>
+    </div>
+  );
+}
+
+function ViewSkeleton({ activeTab }) {
+  switch (activeTab) {
+    case 'kanban': return <KanbanSkeleton />;
+    case 'dailyGoal': return <DailyGoalSkeleton />;
+    case 'leads': return <LeadsSkeleton />;
+    case 'settings': return <SettingsSkeleton />;
+    case 'dashboard':
+    default:
+      return <DashboardSkeleton />;
+  }
+}
+
 function SidebarItem({ icon, label, active, onClick }) {
   return <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-blue-600/10 text-blue-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:bg-neutral-950 hover:text-gray-800 dark:text-neutral-200'}`}>{icon} <span className="text-sm tracking-tight">{label}</span></button>;
 }
@@ -863,6 +1050,52 @@ function TagBadge({ tagName, tagsArray }) {
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-tighter bg-gradient-to-br shadow-sm ${statusGradientMap[color] || statusGradientMap.gray}`}>
       <Tag className="w-2.5 h-2.5" /> {tagName}
+    </span>
+  );
+}
+
+function LeadTemperatureBadge({ lead, interactions, compact = false }) {
+  if (!lead || !isLeadActive(lead)) return null;
+  const hot = isHotLead(lead, interactions);
+  const cold = !hot && isColdLead(lead, interactions);
+  if (!hot && !cold) return null;
+
+  const size = compact ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-0.5';
+
+  if (hot) {
+    return (
+      <span
+        title="Lead com atividade recente ou agendamento próximo"
+        className={`inline-flex items-center gap-1 rounded-md font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-sm ${size}`}
+      >
+        <span aria-hidden="true">🔥</span> Hot
+      </span>
+    );
+  }
+
+  return (
+    <span
+      title="Lead sem interação há 7 dias ou mais"
+      className={`inline-flex items-center gap-1 rounded-md font-bold uppercase tracking-wider bg-gradient-to-r from-sky-400 to-blue-300 text-white shadow-sm ${size}`}
+    >
+      <span aria-hidden="true">❄️</span> Esfriando
+    </span>
+  );
+}
+
+function DaysSinceContactBadge({ lead, interactions }) {
+  if (!lead || !isLeadActive(lead)) return null;
+  const days = getDaysSinceLastContact(lead, interactions);
+  if (days === null) return null;
+  if (days < 1) return null; // Sem badge se foi hoje
+  const tone = days >= 7
+    ? 'text-red-500 dark:text-red-400'
+    : days >= 3
+    ? 'text-orange-500 dark:text-orange-400'
+    : 'text-gray-400 dark:text-neutral-500';
+  return (
+    <span className={`text-[10px] font-bold uppercase tracking-wider ${tone}`}>
+      {days === 1 ? '1 dia sem contato' : `${days} dias sem contato`}
     </span>
   );
 }
@@ -1929,9 +2162,12 @@ if (!lead) return;
         </div>
 
         <div className="flex items-center justify-between gap-2 mb-3">
-          <StatusBadge statusName={lead.status} statusesArray={statuses} />
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <StatusBadge statusName={lead.status} statusesArray={statuses} />
+            <LeadTemperatureBadge lead={lead} interactions={interactions} compact />
+          </div>
           {lead.consultantName && isAdminUser(appUser) && (
-            <span className="text-[9px] font-bold uppercase tracking-widest text-blue-600/60">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-blue-600/60 shrink-0">
               @{lead.consultantName}
             </span>
           )}
@@ -1945,7 +2181,7 @@ if (!lead) return;
           </div>
         )}
 
-        {lead.nextFollowUp && (
+        {lead.nextFollowUp ? (
           <div className={`mt-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider ${isOverdue ? 'text-red-400' : 'text-yellow-400'}`}>
             {isOverdue ? (
               <AlertCircle className="w-3.5 h-3.5 animate-pulse" />
@@ -1959,6 +2195,10 @@ if (!lead) return;
                 minute: '2-digit'
               })}
             </span>
+          </div>
+        ) : (
+          <div className="mt-3">
+            <DaysSinceContactBadge lead={lead} interactions={interactions} />
           </div>
         )}
       </div>
@@ -2210,6 +2450,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
   const [statusFilters, setStatusFilters] = useState([]);
   const [consultantFilters, setConsultantFilters] = useState([]);
   const [overdueOnly, setOverdueOnly] = useState(false);
+  const [hotOnly, setHotOnly] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -2230,9 +2471,10 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
       const matchConsultant = consultantFilters.length === 0 || consultantFilters.includes(l.consultantId);
       const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
       const matchOverdue = !overdueOnly || isOverdue;
-      return matchFunnel && matchSearch && matchStatus && matchOverdue && matchConsultant;
+      const matchHot = !hotOnly || isHotLead(l, interactions);
+      return matchFunnel && matchSearch && matchStatus && matchOverdue && matchConsultant && matchHot;
     }).sort((a,b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
-  }, [leads, searchTerm, statusFilters, overdueOnly, consultantFilters, selectedFunnelId, defaultFunnelId]);
+  }, [leads, interactions, searchTerm, statusFilters, overdueOnly, hotOnly, consultantFilters, selectedFunnelId, defaultFunnelId]);
 
   const toggleStatus = (s) => setStatusFilters(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   const toggleConsultant = (id) => setConsultantFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -2293,8 +2535,8 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
           <button onClick={exportToCSV} title="Exportar para Excel" className="px-5 py-3 rounded-2xl font-bold flex items-center gap-2 bg-gray-100 dark:bg-neutral-800 text-gray-900 dark:text-white border border-gray-300 dark:border-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:bg-neutral-700 transition-all">
             <Download className="w-4 h-4" />
           </button>
-          <button onClick={()=>setIsFilterOpen(true)} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 border transition-all ${statusFilters.length > 0 || overdueOnly || consultantFilters.length > 0 ? 'bg-blue-600 text-gray-900 dark:text-white border-blue-600' : 'bg-gray-100 dark:bg-neutral-800 text-gray-900 dark:text-white border-gray-300 dark:border-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:bg-neutral-700'}`}>
-            <Filter className="w-4 h-4" /> Filtros {(statusFilters.length + consultantFilters.length + (overdueOnly?1:0)) > 0 && `(${(statusFilters.length + consultantFilters.length + (overdueOnly?1:0))})`}
+          <button onClick={()=>setIsFilterOpen(true)} className={`px-6 py-3 rounded-2xl font-bold flex items-center gap-2 border transition-all ${statusFilters.length > 0 || overdueOnly || hotOnly || consultantFilters.length > 0 ? 'bg-blue-600 text-gray-900 dark:text-white border-blue-600' : 'bg-gray-100 dark:bg-neutral-800 text-gray-900 dark:text-white border-gray-300 dark:border-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:bg-neutral-700'}`}>
+            <Filter className="w-4 h-4" /> Filtros {(statusFilters.length + consultantFilters.length + (overdueOnly?1:0) + (hotOnly?1:0)) > 0 && `(${(statusFilters.length + consultantFilters.length + (overdueOnly?1:0) + (hotOnly?1:0))})`}
           </button>
           <button onClick={()=>setIsAddModalOpen(true)} className="bg-blue-600 hover:bg-blue-700 text-gray-900 dark:text-white px-7 py-3 rounded-2xl font-bold flex items-center gap-2 shadow-xl active:scale-95 transition-all text-xs uppercase tracking-widest"><Plus className="w-5 h-5" /> Novo Lead</button>
         </div>
@@ -2325,14 +2567,24 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
                         </div>
                       </div>
                     </td>
-                    <td className="py-5 px-8 text-center"><StatusBadge statusName={l.status} statusesArray={statuses} /></td>
+                    <td className="py-5 px-8 text-center">
+                      <div className="inline-flex items-center gap-1.5 flex-wrap justify-center">
+                        <StatusBadge statusName={l.status} statusesArray={statuses} />
+                        <LeadTemperatureBadge lead={l} interactions={interactions} compact />
+                      </div>
+                    </td>
                     <td className="py-5 px-8">
                       {l.nextFollowUp ? (
                         <div className={`flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider ${isOverdue ? 'text-red-400' : 'text-yellow-400'}`}>
                           {isOverdue ? <AlertCircle className="w-4 h-4 animate-pulse" /> : <FollowUpIcon type={l.nextFollowUpType} className="w-4 h-4" />}
                           <span>{l.nextFollowUp.toLocaleDateString('pt-BR')} às {l.nextFollowUp.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</span>
                         </div>
-                      ) : <span className="text-gray-700 dark:text-neutral-300 text-[10px] font-bold italic uppercase tracking-widest">Sem agendamento</span>}
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <span className="text-gray-700 dark:text-neutral-300 text-[10px] font-bold italic uppercase tracking-widest">Sem agendamento</span>
+                          <DaysSinceContactBadge lead={l} interactions={interactions} />
+                        </div>
+                      )}
                     </td>
                     <td className="py-5 px-8 text-right text-gray-600 dark:text-neutral-400 text-xs font-semibold">{l.createdAt?.toLocaleDateString('pt-BR') || ""}</td>
                   </tr>
@@ -2362,10 +2614,16 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
             <div className="flex-1 space-y-8 overflow-y-auto pr-2 custom-scrollbar">
               <section>
                 <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-600 mb-4 flex items-center gap-2"><Clock className="w-3 h-3" /> Situação Operacional</p>
-                <button onClick={()=>setOverdueOnly(!overdueOnly)} className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${overdueOnly ? 'bg-red-500/10 border-red-500/50 text-red-400' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
-                  <span className="font-bold text-xs uppercase tracking-widest">Em Atraso</span>
-                  <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${overdueOnly ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{overdueOnly && <Check className="w-3 h-3 font-bold" />}</div>
-                </button>
+                <div className="grid grid-cols-1 gap-2">
+                  <button onClick={()=>setHotOnly(!hotOnly)} className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${hotOnly ? 'bg-orange-500/10 border-orange-500/50 text-orange-500' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
+                    <span className="font-bold text-xs uppercase tracking-widest flex items-center gap-2">🔥 Apenas Hot Leads</span>
+                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${hotOnly ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{hotOnly && <Check className="w-3 h-3 font-bold" />}</div>
+                  </button>
+                  <button onClick={()=>setOverdueOnly(!overdueOnly)} className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${overdueOnly ? 'bg-red-500/10 border-red-500/50 text-red-400' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
+                    <span className="font-bold text-xs uppercase tracking-widest">Em Atraso</span>
+                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${overdueOnly ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{overdueOnly && <Check className="w-3 h-3 font-bold" />}</div>
+                  </button>
+                </div>
               </section>
 
               {isAdminUser(appUser) && (
@@ -2396,7 +2654,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
             </div>
 
             <div className="pt-6 mt-4 border-t border-gray-200 dark:border-neutral-800 grid grid-cols-2 gap-3">
-              <button onClick={()=>{setStatusFilters([]); setOverdueOnly(false); setConsultantFilters([]);}} className="py-3 rounded-xl text-gray-400 dark:text-neutral-500 font-bold hover:bg-white dark:bg-neutral-900 transition-all text-[10px] uppercase tracking-[0.2em]">Limpar</button>
+              <button onClick={()=>{setStatusFilters([]); setOverdueOnly(false); setHotOnly(false); setConsultantFilters([]);}} className="py-3 rounded-xl text-gray-400 dark:text-neutral-500 font-bold hover:bg-white dark:bg-neutral-900 transition-all text-[10px] uppercase tracking-[0.2em]">Limpar</button>
               <button onClick={()=>setIsFilterOpen(false)} className="py-3 rounded-xl bg-blue-600 text-gray-900 dark:text-white font-bold shadow-xl text-[10px] uppercase tracking-[0.2em] active:scale-95 transition-all">Aplicar</button>
             </div>
           </div>
