@@ -42,11 +42,9 @@ import {
   Globe
 } from 'lucide-react';
 
-import { initializeApp } from 'firebase/app';
 import confetti from 'canvas-confetti';
 
 import {
-  getAuth,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
@@ -54,7 +52,6 @@ import {
 } from 'firebase/auth';
 
 import {
-  getFirestore,
   collection,
   onSnapshot,
   doc,
@@ -71,158 +68,36 @@ import {
   deleteField
 } from 'firebase/firestore';
 
-const firebaseConfig = {
-  apiKey: "AIzaSyC641_wb--R8B4SklAIQjXWSLp8egz9U-E",
-  authDomain: "crm-stronix.firebaseapp.com",
-  projectId: "crm-stronix",
-  storageBucket: "crm-stronix.firebasestorage.app",
-  messagingSenderId: "963219155705",
-  appId: "1:963219155705:web:42aa0decf0d942dc779028",
-  measurementId: "G-4XDH5H2VY0"
-};
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = "stronix-crm-app"; 
-
-const LEADS_PATH = 'stronix_leads';
-const INTERACTIONS_PATH = 'stronix_interactions';
-const USERS_PATH = 'stronix_users';
-const SOURCES_PATH = 'stronix_sources';
-const STATUSES_PATH = 'stronix_statuses';
-const TAGS_PATH = 'stronix_tags';
-const LOSS_REASONS_PATH = 'stronix_loss_reasons'; // NOVO CAMINHO
-const FUNNELS_PATH = 'stronix_funnels';
-
-// --- BLINDAGEM DE DADOS (EVITA TELA BRANCA E ERROS DE DATA) ---
-const getSafeDate = (val) => {
-  if (!val) return new Date();
-  if (typeof val.toDate === 'function') return val.toDate();
-  if (val.seconds) return new Date(val.seconds * 1000);
-  if (val instanceof Date) return isNaN(val.getTime()) ? new Date() : val;
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? new Date() : d;
-};
-
-const getSafeDateOrNull = (val) => {
-  if (!val) return null;
-  if (typeof val.toDate === 'function') return val.toDate();
-  if (val.seconds) return new Date(val.seconds * 1000);
-  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
-  const d = new Date(val);
-  return isNaN(d.getTime()) ? null : d;
-};
-
-const normalizeAppointmentType = (value) => {
-  if (!value) return null;
-
-  const raw = String(value).trim().toLowerCase();
-
-  if (raw.includes('aula')) return 'aula_experimental';
-  if (raw.includes('visita')) return 'visita';
-
-  return null;
-};
-
-const getLeadAppointmentType = (lead) => {
-  return lead?.appointmentType || normalizeAppointmentType(lead?.nextFollowUpType);
-};
-
-const getLeadAppointmentDate = (lead) => {
-  return (
-    getSafeDateOrNull(lead?.appointmentScheduledFor) ||
-    (getLeadAppointmentType(lead) ? getSafeDateOrNull(lead?.nextFollowUp) : null)
-  );
-};
-
-const isLeadConverted = (lead) => {
-  return Boolean(
-    lead?.isConverted ||
-    lead?.status === 'Venda' ||
-    String(lead?.status || '').toLowerCase().includes('convertid') ||
-    String(lead?.status || '').toLowerCase().includes('matricul')
-  );
-};
-
-const getLeadConversionDate = (lead) => {
-  return getSafeDateOrNull(lead?.convertedAt) || getSafeDateOrNull(lead?.createdAt);
-};
-
-const getLeadSatisfactionDate = (lead) => {
-  return getSafeDateOrNull(lead?.satisfactionAt);
-};
-
-// --- MAPA DE CORES GRADIENTES (GLOBAL) ---
-const statusGradientMap = {
-  blue: "from-blue-600 to-cyan-500 text-white",
-  green: "from-green-600 to-emerald-400 text-white",
-  yellow: "from-yellow-500 to-amber-400 text-gray-900",
-  red: "from-red-600 to-pink-500 text-white",
-  purple: "from-purple-600 to-indigo-500 text-white",
-  orange: "from-orange-500 to-amber-500 text-white",
-  gray: "from-neutral-600 to-neutral-400 text-white",
-  teal: "from-teal-600 to-cyan-600 text-white",
-  pink: "from-pink-500 to-rose-400 text-white",
-  indigo: "from-indigo-600 to-blue-600 text-white",
-  lime: "from-lime-500 to-green-500 text-gray-900"
-};
-
-// --- FUNÇÕES DE BIOMETRIA ---
-const bufferToBase64url = (buffer) => {
-  const bytes = new Uint8Array(buffer);
-  let str = '';
-  for (let char of bytes) str += String.fromCharCode(char);
-  return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-};
-const generateRandomBuffer = (length) => {
-  const array = new Uint8Array(length);
-  window.crypto.getRandomValues(array);
-  return array;
-};
-
-const buildCsatUrl = (token) => {
-  return `${window.location.origin}/?csat=${encodeURIComponent(token)}`;
-};
-
-const isAdminUser = (user) => user?.role === 'admin';
-
-const canEditLead = (user, lead) =>
-  isAdminUser(user) || (Boolean(lead?.consultantAuthUid) && lead.consultantAuthUid === user?.authUid);
-
-const getLeadOwnershipFields = (user) => ({
-  consultantId: user?.id || null,
-  consultantName: user?.name || null,
-  consultantAuthUid: user?.authUid || null
-});
-
-const getInteractionSecurityFields = (lead, user) => ({
-  leadConsultantId: lead?.consultantId || user?.id || null,
-  leadConsultantAuthUid: lead?.consultantAuthUid || user?.authUid || null
-});
-
-// --- HELPERS DE FUNIS ---
-const getDefaultFunnel = (funnels) => {
-  if (!Array.isArray(funnels) || funnels.length === 0) return null;
-  return funnels.find(f => f.isDefault === true) || funnels[0] || null;
-};
-
-const isItemInFunnel = (item, selectedFunnelId, defaultFunnelId) => {
-  if (!selectedFunnelId) return true;
-  if (item?.funnelId === selectedFunnelId) return true;
-  if (!item?.funnelId && selectedFunnelId === defaultFunnelId) return true;
-  return false;
-};
-
-const commitOpsInChunks = async (dbInstance, ops, chunkSize = 400) => {
-  for (let i = 0; i < ops.length; i += chunkSize) {
-    const chunk = ops.slice(i, i + chunkSize);
-    const batch = writeBatch(dbInstance);
-    chunk.forEach(op => {
-      batch.update(op.ref, op.data);
-    });
-    await batch.commit();
-  }
-};
+// Firebase init + collection paths now live in src/lib/firebase.js
+import {
+  auth,
+  db,
+  appId,
+  LEADS_PATH,
+  INTERACTIONS_PATH,
+  USERS_PATH,
+  SOURCES_PATH,
+  STATUSES_PATH,
+  TAGS_PATH,
+  LOSS_REASONS_PATH,
+  FUNNELS_PATH
+} from './lib/firebase.js';
+// Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
+import { statusGradientMap } from './lib/constants.js';
+import { getSafeDate, getSafeDateOrNull, normalizeAppointmentType } from './lib/dates.js';
+import { bufferToBase64url, generateRandomBuffer, buildCsatUrl } from './lib/auth.js';
+import {
+  getLeadAppointmentType,
+  getLeadAppointmentDate,
+  isLeadConverted,
+  getLeadConversionDate,
+  getLeadSatisfactionDate,
+  isAdminUser,
+  canEditLead,
+  getLeadOwnershipFields,
+  getInteractionSecurityFields
+} from './lib/leads.js';
+import { getDefaultFunnel, isItemInFunnel, commitOpsInChunks } from './lib/funnels.js';
 
 function PublicCsatView() {
   const [loading, setLoading] = useState(true);
@@ -4133,18 +4008,11 @@ function ManageSourcesTab({ db, sources, leads }) {
       if (oldSource && oldSource.name !== name) {
         const leadsToUpdate = (leads || []).filter(l => l.source === oldSource.name);
         if (leadsToUpdate.length > 0) {
-          const { writeBatch } = await import('firebase/firestore');
-          const batchSize = 400;
-          for (let i = 0; i < leadsToUpdate.length; i += batchSize) {
-            const chunk = leadsToUpdate.slice(i, i + batchSize);
-            const batch = writeBatch(db);
-            chunk.forEach(lead => {
-              batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stronix_leads', lead.id), {
-                source: name
-              });
-            });
-            await batch.commit();
-          }
+          const ops = leadsToUpdate.map(lead => ({
+            ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+            data: { source: name }
+          }));
+          await commitOpsInChunks(db, ops, 400);
         }
       }
       setEditingId(null);
@@ -4215,19 +4083,11 @@ function ManageTagsTab({ db, tags, leads }) {
       if (oldTag && oldTag.name !== name) {
         const leadsToUpdate = (leads || []).filter(l => (l.tags || []).includes(oldTag.name));
         if (leadsToUpdate.length > 0) {
-          const { writeBatch } = await import('firebase/firestore');
-          const batchSize = 400;
-          for (let i = 0; i < leadsToUpdate.length; i += batchSize) {
-            const chunk = leadsToUpdate.slice(i, i + batchSize);
-            const batch = writeBatch(db);
-            chunk.forEach(lead => {
-              const newTags = (lead.tags || []).map(t => t === oldTag.name ? name : t);
-              batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stronix_leads', lead.id), {
-                tags: newTags
-              });
-            });
-            await batch.commit();
-          }
+          const ops = leadsToUpdate.map(lead => ({
+            ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+            data: { tags: (lead.tags || []).map(t => t === oldTag.name ? name : t) }
+          }));
+          await commitOpsInChunks(db, ops, 400);
         }
       }
       setEditingId(null);
@@ -4313,18 +4173,11 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
       if (oldReason && oldReason.name !== name) {
         const leadsToUpdate = (leads || []).filter(l => l.lossReason === oldReason.name);
         if (leadsToUpdate.length > 0) {
-          const { writeBatch } = await import('firebase/firestore');
-          const batchSize = 400;
-          for (let i = 0; i < leadsToUpdate.length; i += batchSize) {
-            const chunk = leadsToUpdate.slice(i, i + batchSize);
-            const batch = writeBatch(db);
-            chunk.forEach(lead => {
-              batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stronix_leads', lead.id), {
-                lossReason: name
-              });
-            });
-            await batch.commit();
-          }
+          const ops = leadsToUpdate.map(lead => ({
+            ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+            data: { lossReason: name }
+          }));
+          await commitOpsInChunks(db, ops, 400);
         }
       }
       setEditingId(null);
