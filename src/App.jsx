@@ -622,26 +622,58 @@ useEffect(() => {
 
     (async () => {
       try {
-        // Passo 1: garantir funil default
-        let defaultFunnel = funnels.find(f => f.isDefault === true);
+        // Passo 1: garantir EXATAMENTE um funil default
+        const funnelsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH));
+        const allFunnels = funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+        const defaults = allFunnels.filter(f => f.isDefault === true);
 
-        if (!defaultFunnel) {
-          // Double-check via getDocs para evitar race com snapshot ainda não propagado
-          const funnelsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH));
-          const defaultDoc = funnelsSnap.docs.find(d => d.data().isDefault === true);
-          if (defaultDoc) {
-            defaultFunnel = { id: defaultDoc.id, ...defaultDoc.data() };
+        let defaultFunnel = null;
+
+        if (defaults.length === 0) {
+          if (allFunnels.length === 0) {
+            // Sem nenhum funil → cria o "Comercial" como default
+            const ref = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH), {
+              name: 'Comercial',
+              order: 0,
+              isDefault: true,
+              createdAt: serverTimestamp()
+            });
+            defaultFunnel = { id: ref.id, name: 'Comercial', order: 0, isDefault: true };
+          } else {
+            // Há funis mas nenhum é default → promove o de menor order
+            const sorted = [...allFunnels].sort((a, b) => (a.order || 0) - (b.order || 0));
+            const promote = sorted[0];
+            await setDoc(
+              doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, promote.id),
+              { isDefault: true },
+              { merge: true }
+            );
+            defaultFunnel = { ...promote, isDefault: true };
           }
-        }
-
-        if (!defaultFunnel) {
-          const ref = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH), {
-            name: 'Comercial',
-            order: 0,
-            isDefault: true,
-            createdAt: serverTimestamp()
+        } else if (defaults.length === 1) {
+          defaultFunnel = defaults[0];
+        } else {
+          // Múltiplos isDefault → manter o criado primeiro (createdAt mais antigo),
+          // empate por menor order. Demove os outros.
+          const getTs = (f) => {
+            const c = f.createdAt;
+            if (!c) return Number.POSITIVE_INFINITY;
+            if (typeof c.toMillis === 'function') return c.toMillis();
+            if (c.seconds) return c.seconds * 1000;
+            return Number(c) || Number.POSITIVE_INFINITY;
+          };
+          const sorted = [...defaults].sort((a, b) => {
+            const ta = getTs(a);
+            const tb = getTs(b);
+            if (ta !== tb) return ta - tb;
+            return (a.order || 0) - (b.order || 0);
           });
-          defaultFunnel = { id: ref.id, name: 'Comercial', order: 0, isDefault: true };
+          defaultFunnel = sorted[0];
+          const demoteOps = sorted.slice(1).map(f => ({
+            ref: doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id),
+            data: { isDefault: false }
+          }));
+          if (demoteOps.length) await commitOpsInChunks(db, demoteOps, 400);
         }
 
         const defaultId = defaultFunnel.id;
@@ -3209,6 +3241,15 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
   const [activeTab, setActiveTab] = useState('users');
   const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
 
+  const tabs = [
+    { id: 'users', label: 'Consultores', icon: Users },
+    { id: 'transfer', label: 'Migrar Leads', icon: ArrowRightLeft },
+    { id: 'statuses', label: 'Funil Pipeline', icon: Kanban },
+    { id: 'tags', label: 'Etiquetas', icon: Tag },
+    { id: 'sources', label: 'Origens', icon: Filter },
+    { id: 'lossReasons', label: 'Motivos de Perda', icon: ThumbsDown }
+  ];
+
   const goToTab = (tab) => {
     setActiveTab(tab);
     if (tab !== 'statuses') setSelectedFunnelInTab(null);
@@ -3217,34 +3258,53 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
   const funnelInTab = (funnels || []).find(f => f.id === selectedFunnelInTab);
 
   return (
-    <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
-      <div className="flex bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-1.5 rounded-2xl overflow-x-auto scrollbar-hide shadow-xl">
-        <button onClick={()=>goToTab('users')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='users'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Consultores</button>
-        <button onClick={()=>goToTab('transfer')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='transfer'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Migrar Leads</button>
-        <button onClick={()=>goToTab('statuses')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='statuses'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Funil Pipeline</button>
-        <button onClick={()=>goToTab('tags')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='tags'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Etiquetas</button>
-        <button onClick={()=>goToTab('sources')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='sources'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Origens</button>
-        <button onClick={()=>goToTab('lossReasons')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='lossReasons'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Motivos Perda</button>
-      </div>
-      {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
-      {activeTab === 'statuses' && !selectedFunnelInTab && (
-        <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
-      )}
-      {activeTab === 'statuses' && selectedFunnelInTab && (
-        <div className="space-y-4">
-          <button
-            onClick={() => setSelectedFunnelInTab(null)}
-            className="text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-500/10 hover:bg-blue-500/20 px-5 py-3 rounded-2xl transition-all active:scale-95"
-          >
-            ← Voltar para Funis
-          </button>
-          <ManageStatusesTab db={db} statuses={statuses} leads={leads} funnelId={selectedFunnelInTab} funnelName={funnelInTab?.name} />
+    <div className="h-full flex flex-col md:flex-row gap-6 animate-fade-in max-w-7xl mx-auto w-full">
+      {/* Sidebar */}
+      <div className="w-full md:w-64 shrink-0 flex flex-col gap-2">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 px-2">Configurações</h2>
+        <div className="flex flex-col gap-1 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-2 rounded-2xl shadow-xl">
+          {tabs.map(tab => {
+            const Icon = tab.icon;
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => goToTab(tab.id)}
+                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${isActive
+                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
+                    : 'text-gray-500 hover:bg-gray-50 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200'
+                  }`}
+              >
+                <Icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            );
+          })}
         </div>
-      )}
-      {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} />}
-      {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
-      {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} />}
-      {activeTab === 'lossReasons' && <ManageLossReasonsTab db={db} lossReasons={lossReasons} />}
+      </div>
+
+      {/* Content Area */}
+      <div className="flex-1 overflow-x-hidden">
+        {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
+        {activeTab === 'statuses' && !selectedFunnelInTab && (
+          <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
+        )}
+        {activeTab === 'statuses' && selectedFunnelInTab && (
+          <div className="space-y-4">
+            <button
+              onClick={() => setSelectedFunnelInTab(null)}
+              className="text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-500/10 hover:bg-blue-500/20 px-5 py-3 rounded-2xl transition-all active:scale-95"
+            >
+              ← Voltar para Funis
+            </button>
+            <ManageStatusesTab db={db} statuses={statuses} leads={leads} funnelId={selectedFunnelInTab} funnelName={funnelInTab?.name} />
+          </div>
+        )}
+        {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} />}
+        {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
+        {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} />}
+        {activeTab === 'lossReasons' && <ManageLossReasonsTab db={db} lossReasons={lossReasons} />}
+      </div>
     </div>
   );
 }
@@ -3872,10 +3932,11 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
     e.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
+    // Novos funis nunca nascem como padrão. O único "padrão" é definido pelo botão dedicado.
     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH), {
       name: trimmed,
       order: safeFunnels.length,
-      isDefault: safeFunnels.length === 0,
+      isDefault: false,
       createdAt: serverTimestamp()
     });
     setName('');
