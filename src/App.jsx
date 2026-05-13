@@ -928,27 +928,41 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
 // ==========================================
 // COMPONENTES AUXILIARES
 // ==========================================
-function FunnelSelector({ funnels, value, onChange, compact = false, className = '' }) {
+function FunnelSelector({ funnels, value, onChange, compact = false, variant = 'standalone', className = '' }) {
   const list = Array.isArray(funnels) ? funnels : [];
   if (list.length === 0) {
     return (
-      <div className={`text-xs font-medium text-gray-500 dark:text-neutral-400 italic ${className}`}>
-        Sem funis
+      <div className={`text-xs font-medium text-gray-400 dark:text-neutral-500 italic px-4 py-3 ${className}`}>
+        Sem funis cadastrados
       </div>
     );
   }
-  const padding = compact ? 'px-3 py-2' : 'px-4 py-3';
+  const padY = compact ? 'py-2.5' : 'py-3';
+  const padX = compact ? 'pl-10 pr-10' : 'pl-12 pr-11';
   const textSize = compact ? 'text-xs' : 'text-sm';
+  const bg = variant === 'soft'
+    ? 'bg-[#eaedf2] dark:bg-neutral-950'
+    : 'bg-white dark:bg-neutral-900';
+  const iconPos = compact ? 'left-3.5' : 'left-4';
+  const chevronPos = compact ? 'right-3' : 'right-4';
+  const iconSize = compact ? 'w-3.5 h-3.5' : 'w-4 h-4';
+
   return (
-    <select
-      value={value || ''}
-      onChange={(e) => onChange(e.target.value)}
-      className={`bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl ${padding} ${textSize} font-semibold text-gray-900 dark:text-white outline-none focus:border-blue-500 transition-all shadow-sm cursor-pointer ${className}`}
-    >
-      {list.map((f) => (
-        <option key={f.id} value={f.id}>{f.name}{f.isDefault ? ' • Padrão' : ''}</option>
-      ))}
-    </select>
+    <div className={`relative group ${className}`}>
+      <Kanban className={`absolute ${iconPos} top-1/2 -translate-y-1/2 ${iconSize} text-gray-400 dark:text-neutral-500 group-focus-within:text-blue-600 transition-colors pointer-events-none`} />
+      <select
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        className={`w-full ${bg} border border-gray-200 dark:border-neutral-800 rounded-2xl ${padX} ${padY} ${textSize} font-semibold text-gray-900 dark:text-white outline-none focus:border-blue-600 transition-all shadow-sm cursor-pointer appearance-none`}
+      >
+        {list.map((f) => (
+          <option key={f.id} value={f.id}>{f.name}{f.isDefault ? ' • Padrão' : ''}</option>
+        ))}
+      </select>
+      <svg className={`absolute ${chevronPos} top-1/2 -translate-y-1/2 ${iconSize} text-gray-400 dark:text-neutral-500 pointer-events-none`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+      </svg>
+    </div>
   );
 }
 
@@ -1326,6 +1340,7 @@ const teamMetrics = useMemo(() => {
             funnels={funnels}
             value={selectedFunnelId}
             onChange={setSelectedFunnelId}
+            className="w-full sm:w-[260px]"
           />
         )}
         <div className="flex bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-1 rounded-xl shadow-2xl">
@@ -2097,27 +2112,29 @@ if (!lead) return;
                 funnels={funnels}
                 value={selectedFunnelId}
                 onChange={setSelectedFunnelId}
+                className="w-full md:w-[280px]"
               />
             )}
           </div>
 
           <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto items-center">
-            <div className="relative w-full md:w-[320px]">
-              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400" />
+            <div className="relative w-full md:w-[320px] group">
+              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500 group-focus-within:text-blue-600 transition-colors pointer-events-none" />
               <input
                 type="text"
                 placeholder="Buscar leads por nome, telefone..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl pl-11 pr-4 py-3 text-sm text-gray-900 dark:text-white outline-none focus:border-blue-500 transition-all shadow-sm"
+                className="w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl pl-12 pr-4 py-3 text-sm font-semibold text-gray-900 dark:text-white outline-none focus:border-blue-600 transition-all shadow-sm placeholder:font-medium placeholder:text-gray-400"
               />
             </div>
             {isAdminUser(appUser) && (
-              <div className="w-full md:w-[280px]">
+              <div className="relative w-full md:w-[280px] group">
+                <Users className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500 group-focus-within:text-blue-600 transition-colors pointer-events-none" />
                 <select
                   value={consultantFilter}
                   onChange={(e) => setConsultantFilter(e.target.value)}
-                  className="w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl px-4 py-3 text-sm text-gray-900 dark:text-white outline-none shadow-sm cursor-pointer"
+                  className="w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl pl-12 pr-11 py-3 text-sm font-semibold text-gray-900 dark:text-white outline-none focus:border-blue-600 transition-all shadow-sm cursor-pointer appearance-none"
                 >
                   <option value="">Todos os consultores</option>
                   {(usersList || []).map(u => (
@@ -2126,6 +2143,9 @@ if (!lead) return;
                     </option>
                   ))}
                 </select>
+                <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-neutral-500 pointer-events-none" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                </svg>
               </div>
             )}
           </div>
@@ -2386,11 +2406,13 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
             funnels={funnels}
             value={selectedFunnelId}
             onChange={setSelectedFunnelId}
+            variant="soft"
+            className="w-full md:w-[280px]"
           />
         )}
         <div className="relative flex-1 group">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-neutral-500 group-focus-within:text-blue-600 transition-colors" />
-          <input type="text" placeholder="Pesquisar por nome ou telefone..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl py-3 pl-12 pr-4 text-gray-900 dark:text-white focus:border-blue-600 outline-none transition-all font-medium" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-neutral-500 group-focus-within:text-blue-600 transition-colors pointer-events-none" />
+          <input type="text" placeholder="Pesquisar por nome ou telefone..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl py-3 pl-12 pr-4 text-gray-900 dark:text-white focus:border-blue-600 outline-none transition-all font-medium placeholder:text-gray-400 placeholder:font-medium" />
         </div>
         <div className="flex gap-3">
           <button onClick={exportToCSV} title="Exportar para Excel" className="px-5 py-3 rounded-2xl font-bold flex items-center gap-2 bg-gray-100 dark:bg-neutral-800 text-gray-900 dark:text-white border border-gray-300 dark:border-neutral-700 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:bg-neutral-700 transition-all">
