@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -39,7 +39,8 @@ import {
   Moon,
   Sun,
   Target,
-  Globe
+  Globe,
+  Info
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -284,6 +285,7 @@ const isColdLead = (lead, interactions) => {
 };
 
 function PublicCsatView() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
@@ -327,7 +329,7 @@ function PublicCsatView() {
 
   const handleSubmit = async () => {
     if (!score) {
-      alert('Selecione uma nota de 1 a 5.');
+      toast.warning('Selecione uma nota de 1 a 5.');
       return;
     }
 
@@ -442,8 +444,16 @@ function PublicCsatView() {
 // COMPONENTE PRINCIPAL (APP)
 // ==========================================
 export default function App() {
+  return (
+    <ToastProvider>
+      <AppInner />
+    </ToastProvider>
+  );
+}
+
+function AppInner() {
   const [firebaseUser, setFirebaseUser] = useState(null);
-  const [appUser, setAppUser] = useState(null); 
+  const [appUser, setAppUser] = useState(null);
   const [authSetupError, setAuthSetupError] = useState('');
   const [isAuthChecking, setIsAuthChecking] = useState(true);
   
@@ -881,9 +891,10 @@ if (csatToken) {
 // TELA DE LOGIN & RECUPERAÇÃO ADMIN
 // ==========================================
 function BiometricSetupButton({ appUser, setAppUser, db }) {
+  const toast = useToast();
   const [isRegistering, setIsRegistering] = useState(false);
   const handleRegisterBiometrics = async () => {
-    if (!window.PublicKeyCredential) return alert("Dispositivo não suporta Passkeys.");
+    if (!window.PublicKeyCredential) { toast.error("Dispositivo não suporta Passkeys."); return; }
     setIsRegistering(true);
     try {
       const publicKey = {
@@ -898,7 +909,7 @@ function BiometricSetupButton({ appUser, setAppUser, db }) {
       const credentialIdBase64 = bufferToBase64url(credential.rawId);
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, appUser.id), { passkeyId: credentialIdBase64 }, { merge: true });
       setAppUser({ ...appUser, passkeyId: credentialIdBase64 });
-      alert("Face ID Ativado!");
+      toast.success("Face ID ativado!");
     } catch (error) { console.error(error); }
     setIsRegistering(false);
   };
@@ -1023,6 +1034,130 @@ function FunnelSelector({ funnels, value, onChange, compact = false, variant = '
       <svg className={`absolute ${chevronPos} top-1/2 -translate-y-1/2 ${iconSize} text-gray-400 dark:text-neutral-500 pointer-events-none`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
         <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
       </svg>
+    </div>
+  );
+}
+
+// --- TOAST NOTIFICATIONS ---
+const ToastContext = createContext(null);
+
+const TOAST_DEFAULT_DURATION = 4000;
+
+function ToastProvider({ children }) {
+  const [toasts, setToasts] = useState([]);
+
+  const removeToast = useCallback((id) => {
+    setToasts(prev => prev.filter(t => t.id !== id));
+  }, []);
+
+  const showToast = useCallback((message, options = {}) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const toast = {
+      id,
+      message,
+      type: options.type || 'info',
+      duration: options.duration === 0 ? 0 : (options.duration || TOAST_DEFAULT_DURATION),
+      title: options.title || null
+    };
+    setToasts(prev => [...prev, toast]);
+    if (toast.duration > 0) {
+      setTimeout(() => removeToast(id), toast.duration);
+    }
+    return id;
+  }, [removeToast]);
+
+  const api = useMemo(() => ({
+    show: showToast,
+    success: (msg, opts = {}) => showToast(msg, { ...opts, type: 'success' }),
+    error: (msg, opts = {}) => showToast(msg, { ...opts, type: 'error' }),
+    info: (msg, opts = {}) => showToast(msg, { ...opts, type: 'info' }),
+    warning: (msg, opts = {}) => showToast(msg, { ...opts, type: 'warning' }),
+    dismiss: removeToast
+  }), [showToast, removeToast]);
+
+  return (
+    <ToastContext.Provider value={api}>
+      {children}
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
+    </ToastContext.Provider>
+  );
+}
+
+function useToast() {
+  const ctx = useContext(ToastContext);
+  if (!ctx) {
+    // Fallback seguro: caso algum componente seja renderizado fora do Provider
+    return {
+      show: (msg) => { console.warn('Toast fora do Provider:', msg); },
+      success: (msg) => { console.warn('Toast fora do Provider:', msg); },
+      error: (msg) => { console.warn('Toast fora do Provider:', msg); window.alert(msg); },
+      info: (msg) => { console.warn('Toast fora do Provider:', msg); },
+      warning: (msg) => { console.warn('Toast fora do Provider:', msg); },
+      dismiss: () => {}
+    };
+  }
+  return ctx;
+}
+
+function ToastContainer({ toasts, onDismiss }) {
+  return (
+    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-3 pointer-events-none max-w-md w-[calc(100%-3rem)]">
+      {toasts.map(t => (
+        <ToastItem key={t.id} toast={t} onDismiss={onDismiss} />
+      ))}
+    </div>
+  );
+}
+
+function ToastItem({ toast, onDismiss }) {
+  const config = {
+    success: {
+      Icon: CheckCircle,
+      iconClass: 'text-green-500',
+      bar: 'from-green-500 to-emerald-400'
+    },
+    error: {
+      Icon: AlertCircle,
+      iconClass: 'text-red-500',
+      bar: 'from-red-500 to-pink-500'
+    },
+    warning: {
+      Icon: AlertCircle,
+      iconClass: 'text-yellow-500',
+      bar: 'from-yellow-500 to-amber-400'
+    },
+    info: {
+      Icon: Info,
+      iconClass: 'text-blue-500',
+      bar: 'from-blue-500 to-cyan-400'
+    }
+  };
+  const { Icon, iconClass, bar } = config[toast.type] || config.info;
+
+  return (
+    <div
+      role="status"
+      className="pointer-events-auto bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl shadow-2xl overflow-hidden animate-fade-in"
+    >
+      <div className={`h-1 bg-gradient-to-r ${bar}`} />
+      <div className="flex items-start gap-3 p-4">
+        <Icon className={`w-5 h-5 shrink-0 mt-0.5 ${iconClass}`} />
+        <div className="flex-1 min-w-0">
+          {toast.title && (
+            <p className="text-sm font-bold text-gray-900 dark:text-white mb-0.5">{toast.title}</p>
+          )}
+          <p className="text-sm text-gray-700 dark:text-neutral-300 font-medium leading-snug break-words">
+            {toast.message}
+          </p>
+        </div>
+        <button
+          onClick={() => onDismiss(toast.id)}
+          className="text-gray-400 dark:text-neutral-500 hover:text-gray-700 dark:hover:text-neutral-200 transition-colors shrink-0"
+          aria-label="Fechar"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }
@@ -1234,6 +1369,7 @@ function FollowUpIcon({ type, className }) {
 
 // Modal Global de Motivo de Perda
 function LossReasonModal({ lossReasons, onClose, onConfirm }) {
+  const toast = useToast();
   const options = lossReasons?.length > 0 ? lossReasons : [{id: 'default', name: 'Sem motivo configurado'}];
   const [reason, setReason] = useState(options[0].name);
 
@@ -1250,7 +1386,7 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
         </select>
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 py-4 bg-gray-100 dark:bg-neutral-800 rounded-xl font-bold text-[10px] uppercase text-gray-500 dark:text-neutral-400 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:bg-neutral-700 transition-all">Cancelar</button>
-          <button onClick={()=>{if(reason) onConfirm(reason); else alert('Selecione um motivo!');}} className="flex-1 py-4 bg-red-600 rounded-xl font-bold text-[10px] uppercase text-gray-900 dark:text-white shadow-xl shadow-red-500/20 active:scale-95 transition-all">Confirmar Perda</button>
+          <button onClick={()=>{if(reason) onConfirm(reason); else toast.warning('Selecione um motivo!');}} className="flex-1 py-4 bg-red-600 rounded-xl font-bold text-[10px] uppercase text-gray-900 dark:text-white shadow-xl shadow-red-500/20 active:scale-95 transition-all">Confirmar Perda</button>
         </div>
       </div>
     </div>
@@ -1998,6 +2134,7 @@ function FunnelDetailModal({ detail, onClose, onLeadClick }) {
 // KANBAN VIEW (COM VENDA E PERDA FIXAS)
 // ==========================================
 function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
+  const toast = useToast();
   const [selectedLead, setSelectedLead] = useState(null);
   const [consultantFilter, setConsultantFilter] = useState('');
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
@@ -2079,7 +2216,7 @@ const handleKanbanMouseMove = (e) => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead || lead.status === newStatus) return;
     if (!canEditLead(appUser, lead)) {
-      alert('Você não tem permissão para mover este lead.');
+      toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
 
@@ -2130,7 +2267,7 @@ const handleKanbanMouseMove = (e) => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead || lead.status === 'Venda') return;
     if (!canEditLead(appUser, lead)) {
-      alert('Você não tem permissão para alterar este lead.');
+      toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
 
@@ -2170,7 +2307,7 @@ const handleKanbanMouseMove = (e) => {
     const lead = leads.find(l => l.id === leadId);
     if (!lead || lead.status === 'Perda') return;
     if (!canEditLead(appUser, lead)) {
-      alert('Você não tem permissão para alterar este lead.');
+      toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
 
@@ -2571,6 +2708,7 @@ if (!lead) return;
 // LEADS VIEW (LISTA E EXPORTAÇÃO CSV)
 // ==========================================
 function LeadsView({ leads, interactions, appUser, sources, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
+  const toast = useToast();
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [statusFilters, setStatusFilters] = useState([]);
   const [consultantFilters, setConsultantFilters] = useState([]);
@@ -2610,7 +2748,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
   // EXPORTAÇÃO CSV
   const exportToCSV = () => {
     if (!filteredLeads || filteredLeads.length === 0) {
-      alert("Não há leads para exportar com os filtros atuais.");
+      toast.warning("Não há leads para exportar com os filtros atuais.");
       return;
     }
     
@@ -2796,6 +2934,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
 // MODAL DE CADASTRO
 // ==========================================
 function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId }) {
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
   const initialFunnelId = selectedFunnelId || getDefaultFunnel(safeFunnels)?.id || null;
@@ -2826,7 +2965,7 @@ const handleSubmit = async (e) => {
   e.preventDefault();
   if (!formData.name || !formData.whatsapp) return;
   if (!formData.funnelId) {
-    alert('Selecione um funil para o lead. Se nenhum funil estiver disponível, crie um em Configurações → Funil Pipeline.');
+    toast.warning('Selecione um funil para o lead. Crie um em Configurações → Funil Pipeline se não houver opções.');
     return;
   }
 
@@ -3050,6 +3189,7 @@ const getInteractionVisual = (interaction, statusesArray = []) => {
 };
 
 function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
+  const toast = useToast();
   const isReadOnly = !canEditLead(appUser, lead);
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
   const fallbackFunnelId = lead.funnelId || getDefaultFunnel(safeFunnels)?.id || null;
@@ -3098,7 +3238,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   
   const handleSendCsat = async () => {
     if (!lead.whatsapp) {
-      alert('Este lead não possui WhatsApp cadastrado.');
+      toast.warning('Este lead não possui WhatsApp cadastrado.');
       return;
     }
     if (csatStage === 'cliente_novo' && lead.status !== 'Venda') {
@@ -3135,7 +3275,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
       window.open(`https://wa.me/${n}?text=${encodeURIComponent(message)}`, '_blank');
     } catch (e) {
       console.error(e);
-      alert('Erro ao gerar e enviar o link de CSAT.');
+      toast.error('Erro ao gerar e enviar o link de CSAT.');
     }
     setSendingCsat(false);
   };
@@ -3149,7 +3289,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   };
 
   const handleUpdateLead = async () => {
-    if (isReadOnly) { alert('Você não tem permissão para editar este lead.'); return; }
+    if (isReadOnly) { toast.warning('Você não tem permissão para editar este lead.'); return; }
     setLoading(true);
     try {
       let finalData = { ...editData };
@@ -3164,7 +3304,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   };
 
   const handleWin = async () => {
-    if (isReadOnly) { alert('Você não tem permissão para alterar este lead.'); return; }
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     if (window.confirm("Confirmar matrícula deste lead?")) {
       setLoading(true);
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
@@ -3187,7 +3327,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   };
 
   const confirmLoss = async (reason) => {
-    if (isReadOnly) { alert('Você não tem permissão para alterar este lead.'); return; }
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     setLoading(true);
     await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
       status: 'Perda',
@@ -3209,12 +3349,12 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   };
 
   const saveInteraction = async () => {
-    if (isReadOnly) { alert('Você não tem permissão para registrar interações neste lead.'); return; }
+    if (isReadOnly) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
     // Só conta como mudança quando o lead já tinha um funnelId e o usuário escolheu outro
     const funnelChanged = Boolean(lead.funnelId) && funnelId && funnelId !== lead.funnelId;
     if (!note.trim() && status === lead.status && !enableFollowUp && !funnelChanged) return;
     if (enableFollowUp && !followUpDate) {
-      alert("Por favor, selecione a data e o horário do agendamento no calendário.");
+      toast.warning('Selecione a data e o horário do agendamento no calendário.');
       return;
     }
     setLoading(true);
@@ -3260,7 +3400,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
       setLoading(false);
     } catch (e) {
       console.error(e);
-      alert("Erro ao gravar agendamento.");
+      toast.error('Erro ao gravar agendamento.');
       setLoading(false);
     }
   };
@@ -3591,6 +3731,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
 }
 
 function ManageUsersTab({ db, appUser }) {
+  const toast = useToast();
   const [users, setUsers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
@@ -3659,11 +3800,11 @@ function ManageUsersTab({ db, appUser }) {
   const add = async (e) => {
     e.preventDefault();
     if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
-      alert('Preencha nome, e-mail e senha temporária.');
+      toast.warning('Preencha nome, e-mail e senha temporária.');
       return;
     }
     if (!appUser?.authUid) {
-      alert('Sessão master sem authUid. Reentre no sistema.');
+      toast.error('Sessão sem authUid. Reentre no sistema.');
       return;
     }
 
@@ -3681,18 +3822,16 @@ function ManageUsersTab({ db, appUser }) {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Erro ao cadastrar consultor.');
+        toast.error(data.error || 'Erro ao cadastrar consultor.');
         return;
       }
 
-      alert(
-        `Consultor cadastrado.\n\nE-mail: ${normalizeEmail(form.email)}\nSenha temporária: ${form.password}\n\nEntregue essas credenciais ao consultor.`
-      );
+      toast.success(`Consultor ${form.name.trim()} cadastrado. Senha temporária: ${form.password}`, { duration: 8000, title: 'Cadastrado com sucesso' });
       resetForm();
       setShowAdd(false);
     } catch (err) {
       console.error(err);
-      alert('Falha de rede ao cadastrar consultor.');
+      toast.error('Falha de rede ao cadastrar consultor.');
     } finally {
       setLoadingSubmit(false);
     }
@@ -3719,7 +3858,7 @@ function ManageUsersTab({ db, appUser }) {
       if (form.password.trim()) {
         const targetUid = normalizeUid(form.authUid) || editingUser.authUid;
         if (!targetUid) {
-          alert('Cadastro sem authUid. Não é possível redefinir senha.');
+          toast.error('Cadastro sem authUid. Não é possível redefinir senha.');
         } else {
           const res = await fetch('/api/admin-set-password', {
             method: 'POST',
@@ -3732,10 +3871,10 @@ function ManageUsersTab({ db, appUser }) {
           });
           const data = await res.json();
           if (!res.ok) {
-            alert(data.error || 'Erro ao redefinir senha.');
+            toast.error(data.error || 'Erro ao redefinir senha.');
             return;
           }
-          alert(`Senha redefinida.\n\nNova senha: ${form.password}`);
+          toast.success(`Senha redefinida. Nova senha: ${form.password}`, { duration: 8000 });
         }
       }
 
@@ -3743,7 +3882,7 @@ function ManageUsersTab({ db, appUser }) {
       resetForm();
     } catch (err) {
       console.error(err);
-      alert('Erro ao salvar alterações.');
+      toast.error('Erro ao salvar alterações.');
     } finally {
       setLoadingSubmit(false);
     }
@@ -3754,7 +3893,7 @@ function ManageUsersTab({ db, appUser }) {
     if (!target) return;
     if (!window.confirm("⚠️ EXCLUIR ACESSO? Apaga a conta no Auth e o cadastro interno. Essa ação é irreversível.")) return;
     if (!appUser?.authUid) {
-      alert('Sessão master sem authUid. Reentre no sistema.');
+      toast.error('Sessão sem authUid. Reentre no sistema.');
       return;
     }
 
@@ -3770,13 +3909,13 @@ function ManageUsersTab({ db, appUser }) {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error || 'Erro ao excluir consultor.');
+        toast.error(data.error || 'Erro ao excluir consultor.');
         return;
       }
       setEditingUser(null);
     } catch (err) {
       console.error(err);
-      alert('Falha de rede ao excluir consultor.');
+      toast.error('Falha de rede ao excluir consultor.');
     }
   };
 
@@ -4056,6 +4195,7 @@ function ManageUsersTab({ db, appUser }) {
 }
 
 function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
+  const toast = useToast();
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editingName, setEditingName] = useState('');
@@ -4113,12 +4253,12 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
 
   const handleDelete = async (f) => {
     if (f.isDefault) {
-      alert('Não é possível excluir o funil padrão. Marque outro funil como padrão antes.');
+      toast.warning('Não é possível excluir o funil padrão. Marque outro como padrão antes.');
       return;
     }
     const leadsInFunnel = (leads || []).filter(l => l.funnelId === f.id);
     if (leadsInFunnel.length > 0) {
-      alert(`Não é possível excluir o funil "${f.name}". Existem ${leadsInFunnel.length} lead(s) nele. Mova-os para outro funil primeiro.`);
+      toast.warning(`Funil "${f.name}" tem ${leadsInFunnel.length} lead(s). Mova-os para outro funil antes de excluir.`);
       return;
     }
     const statusesInFunnel = (statuses || []).filter(s => s.funnelId === f.id);
@@ -4248,6 +4388,7 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
 }
 
 function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
+  const toast = useToast();
   const [name, setName] = useState('');
   const [color, setColor] = useState('blue');
   const [editingId, setEditingId] = useState(null);
@@ -4300,7 +4441,7 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
   const handleDelete = async (s) => {
     const leadsInStatus = (leads || []).filter(l => l.funnelId === funnelId && l.status === s.name);
     if (leadsInStatus.length > 0) {
-      alert(`Não é possível excluir a etapa "${s.name}" pois existem ${leadsInStatus.length} lead(s) nela. Transfira-os para outra etapa primeiro.`);
+      toast.warning(`Etapa "${s.name}" tem ${leadsInStatus.length} lead(s). Transfira-os para outra etapa antes de excluir.`);
       return;
     }
     if (window.confirm(`Tem certeza que deseja excluir a etapa "${s.name}"?`)) {
@@ -4379,6 +4520,7 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
 }
 
 function ManageSourcesTab({ db, sources, leads }) {
+  const toast = useToast();
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState(null);
 
@@ -4415,7 +4557,7 @@ function ManageSourcesTab({ db, sources, leads }) {
   const handleDelete = async (s) => {
     const leadsWithSource = (leads || []).filter(l => l.source === s.name);
     if (leadsWithSource.length > 0) {
-      alert(`Não é possível excluir a origem "${s.name}" pois existem ${leadsWithSource.length} lead(s) com ela.`);
+      toast.warning(`Origem "${s.name}" está em uso por ${leadsWithSource.length} lead(s). Não é possível excluí-la.`);
       return;
     }
     if (window.confirm(`Tem certeza que deseja excluir a origem "${s.name}"?`)) {
@@ -4461,6 +4603,7 @@ function ManageSourcesTab({ db, sources, leads }) {
 }
 
 function ManageTagsTab({ db, tags, leads }) {
+  const toast = useToast();
   const [name, setName] = useState(''); const [color, setColor] = useState('blue');
   const [editingId, setEditingId] = useState(null);
 
@@ -4498,7 +4641,7 @@ function ManageTagsTab({ db, tags, leads }) {
   const handleDelete = async (t) => {
     const leadsWithTag = (leads || []).filter(l => (l.tags || []).includes(t.name));
     if (leadsWithTag.length > 0) {
-      alert(`Não é possível excluir a etiqueta "${t.name}" pois existem ${leadsWithTag.length} lead(s) com ela. Remova a etiqueta desses leads primeiro.`);
+      toast.warning(`Etiqueta "${t.name}" está em ${leadsWithTag.length} lead(s). Remova-a desses leads antes de excluir.`);
       return;
     }
     if (window.confirm(`Tem certeza que deseja excluir a etiqueta "${t.name}"?`)) {
@@ -4559,6 +4702,7 @@ function ManageTagsTab({ db, tags, leads }) {
 }
 
 function ManageLossReasonsTab({ db, lossReasons, leads }) {
+  const toast = useToast();
   const [name, setName] = useState('');
   const [editingId, setEditingId] = useState(null);
 
@@ -4595,7 +4739,7 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
   const handleDelete = async (r) => {
     const leadsWithReason = (leads || []).filter(l => l.lossReason === r.name);
     if (leadsWithReason.length > 0) {
-      alert(`Não é possível excluir o motivo "${r.name}" pois existem ${leadsWithReason.length} lead(s) com ele.`);
+      toast.warning(`Motivo "${r.name}" está em uso por ${leadsWithReason.length} lead(s). Não é possível excluí-lo.`);
       return;
     }
     if (window.confirm(`Tem certeza que deseja excluir o motivo "${r.name}"?`)) {
@@ -4641,6 +4785,7 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
 }
 
 function TransferLeadsTab({ db, usersList, appUser, leads }) {
+  const toast = useToast();
   const [fromUser, setFromUser] = useState('');
   const [toUser, setToUser] = useState('');
   const [loading, setLoading] = useState(false);
@@ -4665,8 +4810,8 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
   const allFromConsultants = [...(usersList || []), ...orphanedConsultants];
 
   const handleTransfer = async () => {
-    if (!fromUser || !toUser) return alert("Selecione os consultores.");
-    if (fromUser === toUser) return alert("Origem e Destino são os mesmos.");
+    if (!fromUser || !toUser) { toast.warning('Selecione consultor de origem e de destino.'); return; }
+    if (fromUser === toUser) { toast.warning('Origem e destino são os mesmos.'); return; }
     if (!window.confirm("CONFIRMAR MIGRAÇÃO TOTAL?")) return;
 
     setLoading(true);
@@ -4735,12 +4880,12 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
         }
       );
 
-      alert(`Feito! ${count} leads migrados.`);
+      toast.success(`${count} lead(s) migrado(s) com sucesso.`);
       setFromUser('');
       setToUser('');
     } catch (err) {
       console.error(err);
-      alert("Erro.");
+      toast.error('Erro ao migrar leads. Tente novamente.');
     }
 
     setLoading(false);
@@ -4806,6 +4951,7 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
 // ==========================================
 
 function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossReasons, usersList, funnels }) {
+  const toast = useToast();
   const [selectedLead, setSelectedLead] = useState(null);
   const prevProgress = useRef(0);
 
@@ -4917,7 +5063,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         type: 'note',
         createdAt: serverTimestamp()
       });
-    } catch(err) { console.error(err); alert("Erro ao adiar lead"); }
+    } catch(err) { console.error(err); toast.error('Não foi possível adiar o lead. Tente novamente.'); }
   };
 
   const renderPendingCard = (lead) => (
