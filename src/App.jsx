@@ -38,7 +38,8 @@ import {
   Download,
   Moon,
   Sun,
-  Target
+  Target,
+  Globe
 } from 'lucide-react';
 
 import { initializeApp } from 'firebase/app';
@@ -3300,10 +3301,10 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
             <ManageStatusesTab db={db} statuses={statuses} leads={leads} funnelId={selectedFunnelInTab} funnelName={funnelInTab?.name} />
           </div>
         )}
-        {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} />}
+        {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} leads={leads} />}
         {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
-        {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} />}
-        {activeTab === 'lossReasons' && <ManageLossReasonsTab db={db} lossReasons={lossReasons} />}
+        {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} leads={leads} />}
+        {activeTab === 'lossReasons' && <ManageLossReasonsTab db={db} lossReasons={lossReasons} leads={leads} />}
       </div>
     </div>
   );
@@ -3313,11 +3314,8 @@ function ManageUsersTab({ db, appUser }) {
   const [users, setUsers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [form, setForm] = useState({ name: '', email: '', authUid: '', password: '' });
-  const [loadingCleanup, setLoadingCleanup] = useState(false);
-  const [loadingSecuritySync, setLoadingSecuritySync] = useState(false);
+  const [form, setForm] = useState({ name: '', email: '', authUid: '', password: '', shiftStart: '', shiftEnd: '' });
   const [loadingSubmit, setLoadingSubmit] = useState(false);
-  const [loadingDocIdMigration, setLoadingDocIdMigration] = useState(false);
 
   useEffect(() => {
     return onSnapshot(
@@ -3327,7 +3325,7 @@ function ManageUsersTab({ db, appUser }) {
   }, [db]);
 
   const resetForm = () => {
-    setForm({ name: '', email: '', authUid: '', password: '' });
+    setForm({ name: '', email: '', authUid: '', password: '', shiftStart: '', shiftEnd: '' });
   };
 
   const generatePassword = () => {
@@ -3354,13 +3352,25 @@ function ManageUsersTab({ db, appUser }) {
     setShowAdd(true);
   };
 
+  const handleToggleAddEdit = () => {
+    if (showAdd || editingUser) {
+      setEditingUser(null);
+      setShowAdd(false);
+      resetForm();
+    } else {
+      openNewForm();
+    }
+  };
+
   const openEditForm = (user) => {
     setEditingUser(user);
     setForm({
       name: user.name || '',
       email: user.email || '',
       authUid: user.authUid || '',
-      password: ''
+      password: '',
+      shiftStart: user.shiftStart || '',
+      shiftEnd: user.shiftEnd || ''
     });
     setShowAdd(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -3420,6 +3430,8 @@ function ManageUsersTab({ db, appUser }) {
           name: form.name.trim(),
           email: normalizeEmail(form.email),
           authUid: normalizeUid(form.authUid) || null,
+          shiftStart: form.shiftStart || null,
+          shiftEnd: form.shiftEnd || null,
           password: deleteField()
         }
       );
@@ -3488,255 +3500,60 @@ function ManageUsersTab({ db, appUser }) {
     }
   };
 
-  const migrateUserDocIds = async () => {
-    if (!window.confirm('Migrar IDs dos documentos de usuários para coincidir com authUid? (Necessário para Firestore Rules.)')) return;
-    setLoadingDocIdMigration(true);
-    try {
-      const snap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH));
-      let migrated = 0;
-      let skipped = 0;
-      for (const d of snap.docs) {
-        const data = d.data();
-        const targetUid = data?.authUid;
-        if (!targetUid) { skipped += 1; continue; }
-        if (d.id === targetUid) { continue; }
-        const targetRef = doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, targetUid);
-        const existing = await getDoc(targetRef);
-        if (existing.exists()) {
-          await deleteDoc(d.ref);
-          continue;
-        }
-        await setDoc(targetRef, data);
-        await deleteDoc(d.ref);
-        migrated += 1;
-      }
-      alert(`Migração concluída. Migrados: ${migrated} | Pulados (sem authUid): ${skipped}`);
-    } catch (err) {
-      console.error(err);
-      alert('Erro durante migração.');
-    } finally {
-      setLoadingDocIdMigration(false);
-    }
-  };
-
-  const sanitizeLegacyPasswords = async () => {
-    if (!window.confirm('Remover todas as senhas legadas salvas no Firestore?')) return;
-
-    setLoadingCleanup(true);
-
-    try {
-      const snap = await getDocs(
-        collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH)
-      );
-
-      const batch = writeBatch(db);
-      let count = 0;
-
-      snap.forEach((userDoc) => {
-        const data = userDoc.data();
-        if (Object.prototype.hasOwnProperty.call(data, 'password')) {
-          batch.update(
-            doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, userDoc.id),
-            { password: deleteField() }
-          );
-          count += 1;
-        }
-      });
-
-      if (count > 0) {
-        await batch.commit();
-      }
-
-      alert(`Saneamento concluído. ${count} registro(s) limpo(s).`);
-    } catch (err) {
-      console.error(err);
-      alert('Erro ao remover senhas legadas.');
-    }
-
-    setLoadingCleanup(false);
-  };
-
-  const commitOpsInChunks = async (ops, chunkSize = 400) => {
-  for (let i = 0; i < ops.length; i += chunkSize) {
-    const chunk = ops.slice(i, i + chunkSize);
-    const batch = writeBatch(db);
-
-    chunk.forEach(op => {
-      batch.update(op.ref, op.data);
-    });
-
-    await batch.commit();
-  }
-};
-
-const backfillSecurityFields = async () => {
-  if (!window.confirm('Sincronizar consultantAuthUid nos leads e leadConsultantAuthUid nas interações?')) return;
-
-  setLoadingSecuritySync(true);
-
-  try {
-    const usersById = {};
-    (users || []).forEach(user => {
-      usersById[user.id] = user;
-    });
-
-    const leadsSnap = await getDocs(
-      collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH)
-    );
-
-    const leadsMap = {};
-    const leadOps = [];
-
-    leadsSnap.forEach((leadDoc) => {
-      const lead = leadDoc.data();
-      const owner = usersById[lead.consultantId];
-      const targetAuthUid = owner?.authUid || lead.consultantAuthUid || null;
-
-      leadsMap[leadDoc.id] = {
-        id: leadDoc.id,
-        ...lead,
-        consultantAuthUid: targetAuthUid
-      };
-
-      if ((lead.consultantAuthUid || null) !== (targetAuthUid || null)) {
-        leadOps.push({
-          ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, leadDoc.id),
-          data: {
-            consultantAuthUid: targetAuthUid
-          }
-        });
-      }
-    });
-
-    const interactionsSnap = await getDocs(
-      collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH)
-    );
-
-    const interactionOps = [];
-
-    interactionsSnap.forEach((interactionDoc) => {
-      const item = interactionDoc.data();
-      if (!item.leadId) return;
-
-      const lead = leadsMap[item.leadId];
-      if (!lead) return;
-
-      const patch = {};
-
-      if ((item.leadConsultantId || null) !== (lead.consultantId || null)) {
-        patch.leadConsultantId = lead.consultantId || null;
-      }
-
-      if ((item.leadConsultantAuthUid || null) !== (lead.consultantAuthUid || null)) {
-        patch.leadConsultantAuthUid = lead.consultantAuthUid || null;
-      }
-
-      if (Object.keys(patch).length > 0) {
-        interactionOps.push({
-          ref: doc(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH, interactionDoc.id),
-          data: patch
-        });
-      }
-    });
-
-    await commitOpsInChunks(leadOps);
-    await commitOpsInChunks(interactionOps);
-
-    alert(`Sincronização concluída. Leads: ${leadOps.length} | Interações: ${interactionOps.length}`);
-  } catch (err) {
-    console.error(err);
-    alert('Erro ao sincronizar campos de segurança.');
-  }
-
-  setLoadingSecuritySync(false);
-};
-
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-10 shadow-2xl animate-fade-in">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
         <div>
-          <h3 className="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight leading-none">
-            Equipa STRONIX
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+            <Users className="w-6 h-6 text-blue-500" /> Equipe STRONIX
           </h3>
-          <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-2">
-            Cadastro interno vinculado ao Firebase Auth
+          <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">
+            Cadastro interno e credenciais de acesso
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3">
+        <div className="flex justify-end w-full md:w-auto mt-4 md:mt-0">
           <button
-  type="button"
-  onClick={sanitizeLegacyPasswords}
-  disabled={loadingCleanup}
-  className="bg-gray-100 dark:bg-neutral-800 text-gray-800 dark:text-neutral-200 px-6 py-3 rounded-xl text-xs font-semibold shadow-xl active:scale-95 transition-all disabled:opacity-50"
->
-  {loadingCleanup ? 'LIMPANDO...' : 'SANEAR LEGADO'}
-</button>
-
-<button
-  type="button"
-  onClick={backfillSecurityFields}
-  disabled={loadingSecuritySync}
-  className="bg-blue-500 text-white px-6 py-3 rounded-xl text-xs font-semibold shadow-xl active:scale-95 transition-all disabled:opacity-50"
->
-  {loadingSecuritySync ? 'SINCRONIZANDO...' : 'SINCRONIZAR SEGURANÇA'}
-</button>
-
-<button
-  type="button"
-  onClick={migrateUserDocIds}
-  disabled={loadingDocIdMigration}
-  className="bg-amber-500 text-white px-6 py-3 rounded-xl text-xs font-semibold shadow-xl active:scale-95 transition-all disabled:opacity-50"
-  title="Migra docId dos usuários para igualar ao authUid (necessário para Firestore Rules)"
->
-  {loadingDocIdMigration ? 'MIGRANDO...' : 'MIGRAR DOC IDS'}
-</button>
-
-<button
-  type="button"
-  onClick={openNewForm}
-  className="bg-blue-600 text-white px-8 py-3 rounded-xl text-xs font-semibold shadow-xl shadow-blue-600/20 active:scale-95 transition-all"
->
-  {showAdd ? 'EDITANDO' : 'NOVO CONSULTOR'}
-</button>
+            type="button"
+            onClick={handleToggleAddEdit}
+            className="text-blue-500 hover:text-blue-600 font-bold uppercase tracking-widest text-[10px] transition-colors"
+          >
+            {showAdd || editingUser ? 'CANCELAR EDIÇÃO' : '+ ADICIONAR NOVO CONSULTOR'}
+          </button>
         </div>
-      </div>
-
-      <div className="mb-10 bg-blue-500/10 border border-blue-500/20 rounded-xl p-5">
-        <p className="text-[11px] font-semibold text-blue-300 uppercase  mb-2">
-          Novo modelo de acesso
-        </p>
-        <p className="text-sm text-gray-700 dark:text-neutral-300 leading-6 font-medium">
-          O login do CRM agora acontece no Firebase Authentication. O documento interno do consultor
-          serve para permissões e vínculo operacional. O campo <span className="text-gray-900 dark:text-white font-bold">authUid</span> conecta o usuário interno ao acesso real.
-        </p>
       </div>
 
       {(showAdd || editingUser) && (
         <form
           onSubmit={editingUser ? update : add}
-          className="bg-[#eaedf2] dark:bg-neutral-950 p-8 rounded-xl border border-gray-200 dark:border-neutral-800 animate-fade-in mb-10 space-y-6 shadow-inner"
+          className="bg-white dark:bg-neutral-900/80 p-8 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30 animate-fade-in mb-10 space-y-8 shadow-2xl relative overflow-hidden"
         >
-          <div className="flex justify-between items-center border-b border-gray-200 dark:border-neutral-800 pb-4 mb-2">
-            <h4 className="text-[10px] font-semibold text-blue-600 ">
-              {editingUser ? `Editando: ${editingUser.name}` : 'Novo Cadastro'}
-            </h4>
+          
+          <div className="flex justify-between items-center border-b border-gray-100 dark:border-neutral-800 pb-5 mb-4">
+            <div>
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-widest">
+                {editingUser ? `Editando: ${editingUser.name}` : 'Novo Cadastro'}
+              </h4>
+              <p className="text-[10px] text-gray-500 font-medium uppercase tracking-widest mt-1">
+                {editingUser ? 'Atualize as informações do consultor' : 'Preencha os dados do novo membro da equipe'}
+              </p>
+            </div>
 
             {editingUser && editingUser.role !== 'admin' && (
               <button
                 type="button"
                 onClick={() => delUser(editingUser.id)}
-                className="text-[10px] font-semibold text-red-500  flex items-center gap-1 hover:text-red-400 transition-colors"
+                className="text-[10px] font-bold text-red-500 flex items-center gap-2 hover:text-red-600 transition-colors uppercase tracking-widest bg-red-50 hover:bg-red-100 dark:bg-red-500/10 dark:hover:bg-red-500/20 px-4 py-2.5 rounded-xl active:scale-95"
               >
-                <Trash className="w-3 h-3" />
-                Excluir Consultor
+                <Trash2 className="w-3.5 h-3.5" />
+                Excluir
               </button>
             )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div>
-              <label className="text-[9px] font-semibold text-gray-600 dark:text-neutral-400 uppercase mb-2 block tracking-widest">
+            <div className="space-y-2">
+              <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
                 Nome do Consultor
               </label>
               <input
@@ -3744,12 +3561,12 @@ const backfillSecurityFields = async () => {
                 required
                 value={form.name}
                 onChange={e => setForm({ ...form, name: e.target.value })}
-                className="w-full bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-xs font-bold"
+                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
               />
             </div>
 
-            <div>
-              <label className="text-[9px] font-semibold text-gray-600 dark:text-neutral-400 uppercase mb-2 block tracking-widest">
+            <div className="space-y-2">
+              <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
                 E-mail de Login
               </label>
               <input
@@ -3758,12 +3575,12 @@ const backfillSecurityFields = async () => {
                 required
                 value={form.email}
                 onChange={e => setForm({ ...form, email: e.target.value })}
-                className="w-full bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-xs font-bold"
+                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
               />
             </div>
 
-            <div>
-              <label className="text-[9px] font-semibold text-gray-600 dark:text-neutral-400 uppercase mb-2 block tracking-widest">
+            <div className="space-y-2">
+              <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
                 {editingUser ? 'Auth UID' : 'Senha temporária'}
               </label>
               {editingUser ? (
@@ -3772,24 +3589,24 @@ const backfillSecurityFields = async () => {
                   placeholder="Auth UID (somente leitura)"
                   value={form.authUid}
                   readOnly
-                  className="w-full bg-gray-100 dark:bg-neutral-800 p-4 rounded-xl text-gray-500 dark:text-neutral-400 outline-none border border-gray-200 dark:border-neutral-800 text-xs font-bold"
+                  className="w-full bg-gray-100/50 dark:bg-neutral-900/50 px-5 py-4 rounded-2xl text-gray-400 dark:text-neutral-600 outline-none border border-transparent text-xs font-bold cursor-not-allowed"
                 />
               ) : (
-                <div className="flex gap-2">
+                <div className="flex gap-2 relative">
                   <input
                     type="text"
                     placeholder="Mín. 6 caracteres"
                     required
                     value={form.password}
                     onChange={e => setForm({ ...form, password: e.target.value })}
-                    className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-xs font-bold"
+                    className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm pr-20"
                   />
                   <button
                     type="button"
                     onClick={() => setForm({ ...form, password: generatePassword() })}
-                    className="bg-blue-600 text-white px-3 rounded-xl text-[10px] font-bold shadow-xl active:scale-95 transition-all"
+                    className="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-xl text-[9px] font-bold shadow-md active:scale-95 transition-all uppercase tracking-widest"
                   >
-                    GERAR
+                    Gerar
                   </button>
                 </div>
               )}
@@ -3797,50 +3614,71 @@ const backfillSecurityFields = async () => {
           </div>
 
           {editingUser && (
-            <div>
-              <label className="text-[9px] font-semibold text-gray-600 dark:text-neutral-400 uppercase mb-2 block tracking-widest">
+            <div className="space-y-2 max-w-sm">
+              <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
                 Nova senha (opcional)
               </label>
-              <div className="flex gap-2">
+              <div className="flex gap-2 relative">
                 <input
                   type="text"
                   placeholder="Deixe em branco para não alterar"
                   value={form.password}
                   onChange={e => setForm({ ...form, password: e.target.value })}
-                  className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-xs font-bold"
+                  className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm pr-20"
                 />
                 <button
                   type="button"
                   onClick={() => setForm({ ...form, password: generatePassword() })}
-                  className="bg-blue-600 text-white px-3 rounded-xl text-[10px] font-bold shadow-xl active:scale-95 transition-all"
+                  className="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-xl text-[9px] font-bold shadow-md active:scale-95 transition-all uppercase tracking-widest"
                 >
-                  GERAR
+                  Gerar
                 </button>
               </div>
             </div>
           )}
 
-          <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-xl p-4">
-            <p className="text-[10px] font-semibold text-gray-400 dark:text-neutral-500  mb-2">
-              Observação operacional
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+            <div className="space-y-2">
+              <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
+                Início do Turno
+              </label>
+              <input
+                type="time"
+                value={form.shiftStart}
+                onChange={e => setForm({ ...form, shiftStart: e.target.value })}
+                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
+                Fim do Turno
+              </label>
+              <input
+                type="time"
+                value={form.shiftEnd}
+                onChange={e => setForm({ ...form, shiftEnd: e.target.value })}
+                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
+              />
+            </div>
+          </div>
+
+          <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-5 mt-4">
+            <p className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+               <AlertCircle className="w-3.5 h-3.5" /> Observação operacional
             </p>
-            <p className="text-xs text-gray-500 dark:text-neutral-400 font-medium leading-6">
+            <p className="text-xs text-gray-600 dark:text-neutral-400 font-medium leading-relaxed">
               {editingUser
-                ? <>Para redefinir a senha, preencha o campo acima. O <span className="text-gray-900 dark:text-white font-bold">authUid</span> é gerado automaticamente no cadastro e não pode ser alterado.</>
+                ? <>Para redefinir a senha, preencha o campo opcional. O <span className="text-gray-900 dark:text-white font-bold">authUid</span> é gerado automaticamente no cadastro e não pode ser alterado.</>
                 : <>O cadastro cria a conta no Firebase Auth e o registro interno em uma única operação. Anote a senha temporária para entregar ao consultor.</>
               }
             </p>
           </div>
 
-          <div className="flex gap-4">
+          <div className="flex gap-4 pt-4 border-t border-gray-100 dark:border-neutral-800">
             <button
               type="button"
-              onClick={() => {
-                setEditingUser(null);
-                setShowAdd(false);
-                resetForm();
-              }}
-              className="flex-1 py-4 bg-gray-100 dark:bg-neutral-800 rounded-xl font-semibold text-[10px]  transition-all hover:bg-gray-200 dark:hover:bg-neutral-700 dark:bg-neutral-700"
+              onClick={handleToggleAddEdit}
+              className="flex-1 py-4 bg-gray-100 dark:bg-neutral-800 rounded-2xl font-bold text-[10px] uppercase tracking-widest transition-all hover:bg-gray-200 dark:hover:bg-neutral-700 text-gray-600 dark:text-neutral-300"
             >
               Cancelar
             </button>
@@ -3848,7 +3686,7 @@ const backfillSecurityFields = async () => {
             <button
               type="submit"
               disabled={loadingSubmit}
-              className="flex-[2] bg-blue-600 text-white py-4 rounded-xl font-semibold uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/10 active:scale-95 transition-all disabled:opacity-50"
+              className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/20 active:scale-95 transition-all disabled:opacity-50"
             >
               {loadingSubmit ? 'PROCESSANDO...' : editingUser ? 'SALVAR ALTERAÇÕES' : 'CADASTRAR NOVO'}
             </button>
@@ -3856,62 +3694,78 @@ const backfillSecurityFields = async () => {
         </form>
       )}
 
-      <div className="space-y-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {(users || []).map(u => (
           <div
             key={u.id}
-            className="flex justify-between items-center bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 hover:border-gray-300 dark:border-neutral-700 transition-all shadow-lg group"
+            className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 flex flex-col"
           >
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-blue-600 text-white rounded-full flex items-center justify-center font-semibold text-lg shadow-xl shadow-blue-600/10">
-                {(u.name || 'C')[0]}
-              </div>
-
-              <div>
-                <p className="text-base font-semibold text-gray-900 dark:text-white leading-none tracking-tight">
-                  {u.name}
-                  {u.role === 'admin' && (
-                    <Shield className="w-3.5 h-3.5 inline ml-2 text-blue-500" />
-                  )}
-                </p>
-
-                <p className="text-[10px] text-gray-600 dark:text-neutral-400 font-bold  mt-1.5">
-                  {u.email}
-                </p>
-
-                <div className="flex flex-wrap items-center gap-2 mt-2">
-                  <span
-                    className={`px-2.5 py-1 rounded-full text-[9px] font-semibold  ${
-                      isAuthLinked(u)
-                        ? 'bg-green-500/10 text-green-300'
-                        : 'bg-red-500/10 text-red-300'
-                    }`}
-                  >
-                    {isAuthLinked(u) ? 'Vinculado ao Auth' : 'Sem vínculo'}
-                  </span>
-
-                  <span className="px-2.5 py-1 rounded-full text-[9px] font-semibold  bg-white dark:bg-neutral-900 text-gray-500 dark:text-neutral-400 border border-gray-200 dark:border-neutral-800">
-                    UID: {shortUid(u.authUid)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="text-right flex items-center gap-4">
+            <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
               <button
                 onClick={() => openEditForm(u)}
-                className="p-3 bg-gray-100 dark:bg-neutral-800 text-blue-400 hover:bg-blue-600 hover:text-gray-900 dark:hover:text-white dark:text-white rounded-xl active:scale-90 transition-all"
+                className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                title="Editar"
               >
-                <Pencil className="w-4 h-4" />
+                <Pencil className="w-3.5 h-3.5" />
               </button>
 
               {u.role !== 'admin' && (
                 <button
                   onClick={() => delUser(u.id)}
-                  className="p-3 bg-gray-100 dark:bg-neutral-800 text-red-400 hover:bg-red-600 hover:text-gray-900 dark:hover:text-white dark:text-white rounded-xl transition-all shadow-xl active:scale-90"
+                  className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                  title="Excluir"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
+              )}
+            </div>
+
+            <div className="flex flex-col items-center text-center mb-4 mt-2">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-full flex items-center justify-center font-bold text-2xl shadow-lg shadow-blue-500/20 mb-3 relative">
+                {(u.name || 'C')[0]}
+                {u.role === 'admin' && (
+                  <div className="absolute -bottom-1 -right-1 bg-white dark:bg-neutral-900 rounded-full p-1 shadow-sm">
+                    <Shield className="w-3.5 h-3.5 text-blue-500" />
+                  </div>
+                )}
+              </div>
+              <h4 className="text-sm font-bold text-gray-900 dark:text-white leading-tight">
+                {u.name}
+              </h4>
+              <p className="text-[10px] text-gray-500 dark:text-neutral-400 font-medium mt-1 truncate w-full px-4">
+                {u.email}
+              </p>
+            </div>
+
+            <div className="mt-auto space-y-2 pt-4 border-t border-gray-50 dark:border-neutral-800/50">
+              <div className="flex justify-between items-center">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Status Auth</span>
+                <span
+                  className={`px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest ${
+                    isAuthLinked(u)
+                      ? 'bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400'
+                      : 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'
+                  }`}
+                >
+                  {isAuthLinked(u) ? 'Vinculado' : 'Sem vínculo'}
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">UID</span>
+                <span className="text-[10px] font-medium text-gray-600 dark:text-neutral-400 font-mono">
+                  {shortUid(u.authUid)}
+                </span>
+              </div>
+
+              {(u.shiftStart && u.shiftEnd) && (
+                <div className="flex justify-between items-center">
+                  <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest">Turno</span>
+                  <span className="px-2.5 py-1 rounded-md text-[9px] font-bold uppercase tracking-widest bg-purple-50 text-purple-600 dark:bg-purple-500/10 dark:text-purple-400 flex items-center gap-1.5">
+                    <Clock className="w-3 h-3" />
+                    {u.shiftStart} - {u.shiftEnd}
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -4003,86 +3857,105 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-10 shadow-2xl animate-fade-in">
-      <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2 tracking-tight leading-none">Funis Ativos</h3>
-      <p className="text-xs text-gray-500 dark:text-neutral-400 mb-10 font-medium">Crie funis paralelos (ex.: Comercial, Indicação, Inativos, Renovações) e configure as etapas de cada um.</p>
-      <form onSubmit={handleAdd} className="flex flex-col md:flex-row gap-4 mb-12 bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800">
+    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
+      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+          <Kanban className="w-6 h-6 text-blue-500" /> Funis Ativos
+        </h3>
+        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">
+          Crie funis paralelos (Comercial, Indicação, Inativos, Renovações…) e configure as etapas de cada um
+        </p>
+      </div>
+
+      <form onSubmit={handleAdd} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
         <input
-          placeholder="NOME DO FUNIL..."
+          placeholder="NOME DO FUNIL (EX: INDICAÇÃO)..."
           value={name}
-          onChange={e=>setName(e.target.value)}
-          className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"
+          onChange={e => setName(e.target.value)}
+          className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
         />
-        <button className="bg-blue-600 text-white px-10 py-4 rounded-xl font-semibold uppercase text-[10px] shadow-xl shadow-blue-600/20 active:scale-95">ADICIONAR FUNIL</button>
+        <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">
+          ADICIONAR FUNIL
+        </button>
       </form>
+
       <div className="space-y-4">
-        {safeFunnels.length === 0 && (
-          <div className="text-center text-sm text-gray-500 dark:text-neutral-400 py-12 italic">
+        {safeFunnels.length === 0 ? (
+          <div className="text-center text-xs font-semibold text-gray-400 dark:text-neutral-500 py-12 uppercase tracking-widest">
             Nenhum funil cadastrado ainda. Crie o primeiro funil acima.
           </div>
+        ) : (
+          <p className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest text-center mb-2 flex items-center justify-center gap-2 bg-blue-50 dark:bg-blue-900/10 py-3 rounded-2xl border border-blue-100 dark:border-blue-900/30">
+            <GripVertical className="w-4 h-4" />
+            Segure e arraste os funis para reordenar
+          </p>
         )}
         {safeFunnels.map((f, i) => (
           <div
             key={f.id}
-            draggable
-            onDragStart={e=>e.dataTransfer.setData('idx', i)}
-            onDragOver={e=>e.preventDefault()}
-            onDrop={e=>handleReorder(Number(e.dataTransfer.getData('idx')), i)}
-            className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 flex justify-between items-center group cursor-grab hover:border-blue-600 shadow-xl transition-all"
+            draggable={editingId !== f.id}
+            onDragStart={e => e.dataTransfer.setData('idx', i)}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => handleReorder(Number(e.dataTransfer.getData('idx')), i)}
+            className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 flex justify-between items-center cursor-grab active:cursor-grabbing hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300"
           >
-            <div className="flex items-center gap-5 flex-1 min-w-0">
-              <GripVertical className="text-gray-800 dark:text-neutral-200 group-hover:text-blue-600 transition-colors shrink-0" />
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <div className="flex items-center justify-center p-2 rounded-xl bg-gray-50 dark:bg-neutral-800 text-gray-400 group-hover:text-blue-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-all shadow-sm border border-gray-100 dark:border-neutral-700 shrink-0" title="Segure para arrastar">
+                <GripVertical className="w-5 h-5" />
+              </div>
               {editingId === f.id ? (
                 <form onSubmit={handleSaveEdit} className="flex gap-2 flex-1">
                   <input
                     autoFocus
                     value={editingName}
-                    onChange={e=>setEditingName(e.target.value)}
-                    className="flex-1 bg-white dark:bg-neutral-900 p-3 rounded-lg text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"
+                    onChange={e => setEditingName(e.target.value)}
+                    className="flex-1 bg-gray-50 dark:bg-neutral-950 px-4 py-3 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 transition-all text-xs font-bold shadow-sm"
                   />
-                  <button type="submit" className="bg-green-600 text-white px-5 py-3 rounded-lg font-semibold uppercase text-[10px] shadow-xl active:scale-95">SALVAR</button>
-                  <button type="button" onClick={()=>{ setEditingId(null); setEditingName(''); }} className="bg-gray-400 text-white px-5 py-3 rounded-lg font-semibold uppercase text-[10px] shadow-xl active:scale-95">CANCELAR</button>
+                  <button type="submit" className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">SALVAR</button>
+                  <button type="button" onClick={() => { setEditingId(null); setEditingName(''); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-5 py-3 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
                 </form>
               ) : (
                 <>
                   <span className="text-sm font-bold text-gray-900 dark:text-white truncate">{f.name}</span>
                   {f.isDefault && (
-                    <span className="text-[9px] uppercase tracking-widest font-bold px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/30">Padrão</span>
+                    <span className="text-[9px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 shrink-0">
+                      Padrão
+                    </span>
                   )}
                 </>
               )}
             </div>
             {editingId !== f.id && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   onClick={() => onSelectFunnel(f.id)}
-                  className="text-[10px] uppercase font-bold tracking-widest text-blue-600 hover:text-white hover:bg-blue-600 bg-white dark:bg-neutral-900 border border-blue-600/30 px-4 py-3 rounded-xl transition-all active:scale-95"
+                  className="text-[10px] uppercase font-bold tracking-widest text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 dark:bg-blue-900/20 hover:dark:bg-blue-600 border border-blue-100 dark:border-blue-900/30 px-4 py-3 rounded-2xl transition-all active:scale-95"
                 >
                   Configurar Etapas
                 </button>
-                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
                   {!f.isDefault && (
                     <button
                       title="Tornar padrão"
                       onClick={() => handleSetDefault(f)}
-                      className="text-gray-800 dark:text-neutral-200 hover:text-yellow-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"
+                      className="text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 p-2 rounded-lg active:scale-90 transition-all"
                     >
-                      <Trophy className="w-4 h-4" />
+                      <Trophy className="w-3.5 h-3.5" />
                     </button>
                   )}
                   <button
                     title="Renomear"
                     onClick={() => { setEditingId(f.id); setEditingName(f.name); }}
-                    className="text-gray-800 dark:text-neutral-200 hover:text-blue-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"
+                    className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all"
                   >
-                    <Pencil className="w-4 h-4" />
+                    <Pencil className="w-3.5 h-3.5" />
                   </button>
                   <button
                     title="Excluir"
                     onClick={() => handleDelete(f)}
-                    className="text-gray-800 dark:text-neutral-200 hover:text-red-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"
+                    className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 </div>
               </div>
@@ -4095,7 +3968,8 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
 }
 
 function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
-  const [name, setName] = useState(''); const [color, setColor] = useState('blue');
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('blue');
   const [editingId, setEditingId] = useState(null);
 
   const statusesForFunnel = (statuses || []).filter(s => s.funnelId === funnelId);
@@ -4103,19 +3977,44 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
   const save = async (e) => {
     e.preventDefault();
     if (editingId) {
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, editingId), { name, color }, { merge: true });
+      const oldStatus = statuses.find(s => s.id === editingId);
+      await setDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, editingId),
+        { name, color },
+        { merge: true }
+      );
+
+      // Renomeação propaga para os leads (apenas do mesmo funil)
+      if (oldStatus && oldStatus.name !== name) {
+        const leadsToUpdate = (leads || []).filter(
+          l => l.funnelId === funnelId && l.status === oldStatus.name
+        );
+        if (leadsToUpdate.length > 0) {
+          const ops = leadsToUpdate.map(lead => ({
+            ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+            data: { status: name }
+          }));
+          await commitOpsInChunks(db, ops, 400);
+        }
+      }
       setEditingId(null);
     } else {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), { name, color, order: statusesForFunnel.length, funnelId });
+      await addDoc(
+        collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH),
+        { name, color, order: statusesForFunnel.length, funnelId }
+      );
     }
     setName('');
   };
+
   const drop = async (dragIdx, dropIdx) => {
-    if(dragIdx===dropIdx) return;
-    const arr=[...statusesForFunnel];
-    const [item]=arr.splice(dragIdx,1);
-    arr.splice(dropIdx,0,item);
-    await Promise.all(arr.map((s,i)=>setDoc(doc(db,'artifacts',appId,'public', 'data', STATUSES_PATH,s.id),{order:i},{merge:true})));
+    if (dragIdx === dropIdx) return;
+    const arr = [...statusesForFunnel];
+    const [item] = arr.splice(dragIdx, 1);
+    arr.splice(dropIdx, 0, item);
+    await Promise.all(arr.map((s, i) =>
+      setDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id), { order: i }, { merge: true })
+    ));
   };
 
   const handleDelete = async (s) => {
@@ -4125,17 +4024,23 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
       return;
     }
     if (window.confirm(`Tem certeza que deseja excluir a etapa "${s.name}"?`)) {
-      await deleteDoc(doc(db,'artifacts',appId,'public','data',STATUSES_PATH,s.id));
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id));
       if (editingId === s.id) { setEditingId(null); setName(''); }
     }
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-10 shadow-2xl animate-fade-in">
-      <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-10 tracking-tight leading-none">Pipeline: {funnelName || 'Funil'}</h3>
-      <form onSubmit={save} className="flex flex-col md:flex-row gap-4 mb-12 bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800">
-        <input placeholder="ETAPA..." required value={name} onChange={e=>setName(e.target.value)} className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"/>
-        <select value={color} onChange={e=>setColor(e.target.value)} className="bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white border border-gray-200 dark:border-neutral-800 text-xs font-semibold uppercase">
+    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
+      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+          <Kanban className="w-6 h-6 text-blue-500" /> Pipeline: {funnelName || 'Funil'}
+        </h3>
+        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">Defina as etapas da jornada deste funil</p>
+      </div>
+
+      <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
+        <input placeholder="ETAPA..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
+        <select value={color} onChange={e => setColor(e.target.value)} className="bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold uppercase shadow-sm">
           <option value="blue">AZUL-CYAN</option>
           <option value="green">VERDE-EMERALD</option>
           <option value="yellow">AMARELO-GOLD</option>
@@ -4149,29 +4054,42 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
           <option value="gray">CINZA-SLATE</option>
         </select>
         {editingId ? (
-           <div className="flex gap-2">
-             <button type="submit" className="bg-green-600 text-white px-8 py-4 rounded-xl font-semibold uppercase text-[10px] shadow-xl shadow-green-600/20 active:scale-95">SALVAR</button>
-             <button type="button" onClick={() => { setEditingId(null); setName(''); }} className="bg-gray-400 text-white px-8 py-4 rounded-xl font-semibold uppercase text-[10px] shadow-xl active:scale-95">CANCELAR</button>
-           </div>
+          <div className="flex gap-2">
+            <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">SALVAR</button>
+            <button type="button" onClick={() => { setEditingId(null); setName(''); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
+          </div>
         ) : (
-           <button className="bg-blue-600 text-white px-10 py-4 rounded-xl font-semibold uppercase text-[10px] shadow-xl shadow-blue-600/20 active:scale-95">ADICIONAR</button>
+          <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">ADICIONAR</button>
         )}
       </form>
+
       <div className="space-y-4">
-        {statusesForFunnel.length === 0 && (
-          <div className="text-center text-sm text-gray-500 dark:text-neutral-400 py-12 italic">
+        {statusesForFunnel.length === 0 ? (
+          <div className="text-center text-xs font-semibold text-gray-400 dark:text-neutral-500 py-12 uppercase tracking-widest">
             Nenhuma etapa neste funil ainda. Crie a primeira etapa acima.
           </div>
+        ) : (
+          <p className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest text-center mb-2 flex items-center justify-center gap-2 bg-blue-50 dark:bg-blue-900/10 py-3 rounded-2xl border border-blue-100 dark:border-blue-900/30">
+            <GripVertical className="w-4 h-4" />
+            Segure e arraste as etapas para reordenar o funil
+          </p>
         )}
-        {statusesForFunnel.map((s,i) => (
-          <div key={s.id} draggable onDragStart={e=>e.dataTransfer.setData('idx',i)} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(Number(e.dataTransfer.getData('idx')),i)} className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 flex justify-between items-center group cursor-grab hover:border-blue-600 shadow-xl transition-all">
-            <div className="flex items-center gap-5">
-              <GripVertical className="text-gray-800 dark:text-neutral-200 group-hover:text-blue-600 transition-colors" />
-              <StatusBadge statusName={s.name} statusesArray={statuses}/>
+        {statusesForFunnel.map((s, i) => (
+          <div key={s.id} draggable onDragStart={e => e.dataTransfer.setData('idx', i)} onDragOver={e => e.preventDefault()} onDrop={e => drop(Number(e.dataTransfer.getData('idx')), i)} className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 flex justify-between items-center cursor-grab active:cursor-grabbing hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center justify-center p-2 rounded-xl bg-gray-50 dark:bg-neutral-800 text-gray-400 group-hover:text-blue-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-all shadow-sm border border-gray-100 dark:border-neutral-700" title="Segure para arrastar">
+                <GripVertical className="w-5 h-5" />
+              </div>
+              <span className="text-[10px] font-bold text-gray-500 dark:text-neutral-400 uppercase tracking-widest bg-gray-100 dark:bg-neutral-800 px-3 py-1.5 rounded-lg shadow-inner">
+                Etapa {i + 1}
+              </span>
+              <div className="scale-110 origin-left ml-2">
+                <StatusBadge statusName={s.name} statusesArray={statuses} />
+              </div>
             </div>
-            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
-              <button onClick={() => { setName(s.name); setColor(s.color || 'blue'); setEditingId(s.id); }} className="text-gray-800 dark:text-neutral-200 hover:text-blue-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"><Pencil className="w-4 h-4"/></button>
-              <button onClick={() => handleDelete(s)} className="text-gray-800 dark:text-neutral-200 hover:text-red-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"><Trash2 className="w-4 h-4"/></button>
+            <div className="absolute right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
+              <button onClick={() => { setName(s.name); setColor(s.color || 'blue'); setEditingId(s.id); }} className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Editar"><Pencil className="w-3.5 h-3.5" /></button>
+              <button onClick={() => handleDelete(s)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
             </div>
           </div>
         ))}
@@ -4180,48 +4098,261 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
   );
 }
 
-function ManageSourcesTab({ db, sources }) {
+function ManageSourcesTab({ db, sources, leads }) {
   const [name, setName] = useState('');
-  const add = async (e) => { e.preventDefault(); await addDoc(collection(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH), { name, createdAt: serverTimestamp() }); setName(''); };
-  return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-10 shadow-2xl animate-fade-in"><h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-10 tracking-tight leading-none">Fontes de Alunos</h3><form onSubmit={add} className="flex gap-4 mb-10 bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800"><input placeholder="EX: TIKTOK, FACEBOOK ADS..." required value={name} onChange={e=>setName(e.target.value)} className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"/><button className="bg-blue-600 text-white px-10 py-4 rounded-xl font-semibold uppercase text-[10px] tracking-widest shadow-xl active:scale-95">SALVAR FONTE</button></form>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{(sources || []).map(s=><div key={s.id} className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 flex justify-between items-center group shadow-xl hover:border-gray-300 dark:border-neutral-700 transition-all"><span className="text-xs font-semibold text-gray-900 dark:text-white ">{s.name}</span><button onClick={async ()=>{if(window.confirm('Excluir?')) await deleteDoc(doc(db,'artifacts',appId,'public','data',SOURCES_PATH,s.id))}} className="text-gray-800 dark:text-neutral-200 hover:text-red-500 p-2 bg-white dark:bg-neutral-900 rounded-lg transition-colors active:scale-90"><Trash2 className="w-4 h-4"/></button></div>)}</div></div>
-  );
-}
+  const [editingId, setEditingId] = useState(null);
 
-function ManageTagsTab({ db, tags }) {
-  const [name, setName] = useState(''); const [color, setColor] = useState('blue');
-  const add = async (e) => { e.preventDefault(); await addDoc(collection(db, 'artifacts', appId, 'public', 'data', TAGS_PATH), { name, color }); setName(''); };
+  const save = async (e) => {
+    e.preventDefault();
+    if (editingId) {
+      const oldSource = sources.find(s => s.id === editingId);
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH, editingId), { name }, { merge: true });
+
+      if (oldSource && oldSource.name !== name) {
+        const leadsToUpdate = (leads || []).filter(l => l.source === oldSource.name);
+        if (leadsToUpdate.length > 0) {
+          const { writeBatch } = await import('firebase/firestore');
+          const batchSize = 400;
+          for (let i = 0; i < leadsToUpdate.length; i += batchSize) {
+            const chunk = leadsToUpdate.slice(i, i + batchSize);
+            const batch = writeBatch(db);
+            chunk.forEach(lead => {
+              batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stronix_leads', lead.id), {
+                source: name
+              });
+            });
+            await batch.commit();
+          }
+        }
+      }
+      setEditingId(null);
+    } else {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH), { name, createdAt: serverTimestamp() });
+    }
+    setName('');
+  };
+
+  const handleDelete = async (s) => {
+    const leadsWithSource = (leads || []).filter(l => l.source === s.name);
+    if (leadsWithSource.length > 0) {
+      alert(`Não é possível excluir a origem "${s.name}" pois existem ${leadsWithSource.length} lead(s) com ela.`);
+      return;
+    }
+    if (window.confirm(`Tem certeza que deseja excluir a origem "${s.name}"?`)) {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH, s.id));
+      if (editingId === s.id) { setEditingId(null); setName(''); }
+    }
+  };
+
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-10 shadow-2xl animate-fade-in">
-      <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-10 tracking-tight leading-none">Gestão de Etiquetas</h3>
-      <form onSubmit={add} className="flex flex-col md:flex-row gap-4 mb-12 bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800">
-        <input placeholder="ETIQUETA (EX: VIP)..." required value={name} onChange={e=>setName(e.target.value)} className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"/>
-        <select value={color} onChange={e=>setColor(e.target.value)} className="bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white border border-gray-200 dark:border-neutral-800 text-xs font-semibold uppercase">
-          <option value="blue">AZUL-CYAN</option><option value="green">VERDE-ESMERALDA</option><option value="yellow">AMARELO-OURO</option><option value="purple">ROXO-INDIGO</option><option value="red">VERMELHO-ROSA</option><option value="orange">LARANJA-VIVO</option>
-        </select>
-        <button className="bg-blue-600 text-white px-10 py-4 rounded-xl font-semibold uppercase text-[10px]  shadow-xl active:scale-95">CRIAR</button>
+    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
+      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+          <Globe className="w-6 h-6 text-blue-500" /> Origens de Alunos
+        </h3>
+        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">Controle de onde vêm os seus leads</p>
+      </div>
+
+      <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
+        <input placeholder="Ex: TikTok, Facebook Ads..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
+        {editingId ? (
+          <div className="flex gap-2">
+            <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">SALVAR</button>
+            <button type="button" onClick={() => { setEditingId(null); setName(''); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
+          </div>
+        ) : (
+          <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">CRIAR ORIGEM</button>
+        )}
       </form>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4"> {(tags || []).map(t => ( <div key={t.id} className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 flex justify-between items-center shadow-lg"><TagBadge tagName={t.name} tagsArray={tags} /><button onClick={async ()=>{if(window.confirm('EXCLUIR?')) await deleteDoc(doc(db,'artifacts',appId,'public','data',TAGS_PATH,t.id))}} className="text-gray-800 dark:text-neutral-200 hover:text-red-500 transition-colors active:scale-90"><Trash2 className="w-4 h-4" /></button></div> ))} </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {(sources || []).map(s => (
+          <div key={s.id} className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 flex justify-between items-center">
+            <span className="text-sm font-bold text-gray-900 dark:text-white">{s.name}</span>
+            <div className="absolute right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
+              <button onClick={() => { setName(s.name); setEditingId(s.id); }} className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Editar"><Pencil className="w-3.5 h-3.5" /></button>
+              <button onClick={() => handleDelete(s)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
-function ManageLossReasonsTab({ db, lossReasons }) {
-  const [name, setName] = useState('');
-  const add = async (e) => { e.preventDefault(); await addDoc(collection(db, 'artifacts', appId, 'public', 'data', LOSS_REASONS_PATH), { name, createdAt: serverTimestamp() }); setName(''); };
+function ManageTagsTab({ db, tags, leads }) {
+  const [name, setName] = useState(''); const [color, setColor] = useState('blue');
+  const [editingId, setEditingId] = useState(null);
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (editingId) {
+      const oldTag = tags.find(t => t.id === editingId);
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', TAGS_PATH, editingId), { name, color }, { merge: true });
+
+      if (oldTag && oldTag.name !== name) {
+        const leadsToUpdate = (leads || []).filter(l => (l.tags || []).includes(oldTag.name));
+        if (leadsToUpdate.length > 0) {
+          const { writeBatch } = await import('firebase/firestore');
+          const batchSize = 400;
+          for (let i = 0; i < leadsToUpdate.length; i += batchSize) {
+            const chunk = leadsToUpdate.slice(i, i + batchSize);
+            const batch = writeBatch(db);
+            chunk.forEach(lead => {
+              const newTags = (lead.tags || []).map(t => t === oldTag.name ? name : t);
+              batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stronix_leads', lead.id), {
+                tags: newTags
+              });
+            });
+            await batch.commit();
+          }
+        }
+      }
+      setEditingId(null);
+    } else {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', TAGS_PATH), { name, color });
+    }
+    setName('');
+  };
+
+  const handleDelete = async (t) => {
+    const leadsWithTag = (leads || []).filter(l => (l.tags || []).includes(t.name));
+    if (leadsWithTag.length > 0) {
+      alert(`Não é possível excluir a etiqueta "${t.name}" pois existem ${leadsWithTag.length} lead(s) com ela. Remova a etiqueta desses leads primeiro.`);
+      return;
+    }
+    if (window.confirm(`Tem certeza que deseja excluir a etiqueta "${t.name}"?`)) {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', TAGS_PATH, t.id));
+      if (editingId === t.id) { setEditingId(null); setName(''); }
+    }
+  };
+
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-10 shadow-2xl animate-fade-in">
-      <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-10 tracking-tight leading-none">Motivos de Perda</h3>
-      <form onSubmit={add} className="flex gap-4 mb-10 bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800">
-        <input placeholder="EX: ACHOU CARO, LONGE DE CASA..." required value={name} onChange={e=>setName(e.target.value)} className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"/>
-        <button className="bg-red-500 hover:bg-red-600 text-white px-10 py-4 rounded-xl font-semibold uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all">SALVAR MOTIVO</button>
+    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
+      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+          <Tag className="w-6 h-6 text-blue-500" /> Etiquetas
+        </h3>
+        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">Organize e classifique seus leads</p>
+      </div>
+
+      <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
+        <input placeholder="ETIQUETA (EX: VIP)..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
+        <select value={color} onChange={e => setColor(e.target.value)} className="bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold uppercase shadow-sm">
+          <option value="blue">AZUL-CYAN</option>
+          <option value="green">VERDE-EMERALD</option>
+          <option value="yellow">AMARELO-GOLD</option>
+          <option value="purple">ROXO-INDIGO</option>
+          <option value="red">VERMELHO-ROSE</option>
+          <option value="orange">LARANJA-VIVO</option>
+          <option value="teal">TEAL-OCEAN</option>
+          <option value="pink">ROSA-PINK</option>
+          <option value="indigo">INDIGO-DEEP</option>
+          <option value="lime">LIMA-NEON</option>
+          <option value="gray">CINZA-SLATE</option>
+        </select>
+        {editingId ? (
+          <div className="flex gap-2">
+            <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">SALVAR</button>
+            <button type="button" onClick={() => { setEditingId(null); setName(''); setColor('blue'); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
+          </div>
+        ) : (
+          <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">CRIAR</button>
+        )}
       </form>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+        {(tags || []).map(t => (
+          <div key={t.id} className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 flex justify-between items-center">
+            <div className="scale-110 origin-left">
+              <TagBadge tagName={t.name} tagsArray={tags} />
+            </div>
+            <div className="absolute right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
+              <button onClick={() => { setName(t.name); setColor(t.color || 'blue'); setEditingId(t.id); }} className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Editar"><Pencil className="w-3.5 h-3.5" /></button>
+              <button onClick={() => handleDelete(t)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ManageLossReasonsTab({ db, lossReasons, leads }) {
+  const [name, setName] = useState('');
+  const [editingId, setEditingId] = useState(null);
+
+  const save = async (e) => {
+    e.preventDefault();
+    if (editingId) {
+      const oldReason = lossReasons.find(r => r.id === editingId);
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LOSS_REASONS_PATH, editingId), { name }, { merge: true });
+
+      if (oldReason && oldReason.name !== name) {
+        const leadsToUpdate = (leads || []).filter(l => l.lossReason === oldReason.name);
+        if (leadsToUpdate.length > 0) {
+          const { writeBatch } = await import('firebase/firestore');
+          const batchSize = 400;
+          for (let i = 0; i < leadsToUpdate.length; i += batchSize) {
+            const chunk = leadsToUpdate.slice(i, i + batchSize);
+            const batch = writeBatch(db);
+            chunk.forEach(lead => {
+              batch.update(doc(db, 'artifacts', appId, 'public', 'data', 'stronix_leads', lead.id), {
+                lossReason: name
+              });
+            });
+            await batch.commit();
+          }
+        }
+      }
+      setEditingId(null);
+    } else {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', LOSS_REASONS_PATH), { name, createdAt: serverTimestamp() });
+    }
+    setName('');
+  };
+
+  const handleDelete = async (r) => {
+    const leadsWithReason = (leads || []).filter(l => l.lossReason === r.name);
+    if (leadsWithReason.length > 0) {
+      alert(`Não é possível excluir o motivo "${r.name}" pois existem ${leadsWithReason.length} lead(s) com ele.`);
+      return;
+    }
+    if (window.confirm(`Tem certeza que deseja excluir o motivo "${r.name}"?`)) {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', LOSS_REASONS_PATH, r.id));
+      if (editingId === r.id) { setEditingId(null); setName(''); }
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
+      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
+        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
+          <ThumbsDown className="w-6 h-6 text-red-500" /> Motivos de Perda
+        </h3>
+        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">Categorize por que os leads não fecharam</p>
+      </div>
+
+      <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-red-100 dark:border-red-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
+        <input placeholder="Ex: Achou caro, Longe de casa..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-red-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
+        {editingId ? (
+          <div className="flex gap-2">
+            <button type="submit" className="bg-red-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20 hover:bg-red-700 active:scale-95 transition-all">SALVAR</button>
+            <button type="button" onClick={() => { setEditingId(null); setName(''); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
+          </div>
+        ) : (
+          <button type="submit" className="bg-red-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20 hover:bg-red-700 active:scale-95 transition-all">CRIAR MOTIVO</button>
+        )}
+      </form>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {(lossReasons || []).map(r => (
-          <div key={r.id} className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-red-500/20 flex justify-between items-center shadow-xl">
-            <span className="text-xs font-semibold text-red-400 ">{r.name}</span>
-            <button onClick={async ()=>{if(window.confirm('Excluir motivo?')) await deleteDoc(doc(db,'artifacts',appId,'public','data',LOSS_REASONS_PATH,r.id))}} className="text-gray-800 dark:text-neutral-200 hover:text-red-500 p-2 bg-white dark:bg-neutral-900 rounded-lg transition-colors active:scale-90"><Trash2 className="w-4 h-4"/></button>
+          <div key={r.id} className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 hover:border-red-200 dark:hover:border-red-900/50 hover:shadow-xl hover:shadow-red-500/5 transition-all duration-300 flex justify-between items-center">
+            <span className="text-sm font-bold text-red-500 dark:text-red-400">{r.name}</span>
+            <div className="absolute right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
+              <button onClick={() => { setName(r.name); setEditingId(r.id); }} className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Editar"><Pencil className="w-3.5 h-3.5" /></button>
+              <button onClick={() => handleDelete(r)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
           </div>
         ))}
       </div>
@@ -4253,96 +4384,138 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
 
   const allFromConsultants = [...(usersList || []), ...orphanedConsultants];
 
-const handleTransfer = async () => {
-  if (!fromUser || !toUser) return alert("Selecione os consultores.");
-  if (fromUser === toUser) return alert("Origem e Destino são os mesmos.");
-  if (!window.confirm("CONFIRMAR MIGRAÇÃO TOTAL?")) return;
+  const handleTransfer = async () => {
+    if (!fromUser || !toUser) return alert("Selecione os consultores.");
+    if (fromUser === toUser) return alert("Origem e Destino são os mesmos.");
+    if (!window.confirm("CONFIRMAR MIGRAÇÃO TOTAL?")) return;
 
-  setLoading(true);
+    setLoading(true);
 
-  try {
-    const q = query(
-      collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH),
-      where("consultantId", "==", fromUser)
-    );
-
-    const snap = await getDocs(q);
-    const targetUser = (usersList || []).find(u => u.id === toUser);
-
-    const movedLeadIds = [];
-    const leadOps = [];
-    let count = 0;
-
-    snap.forEach(l => {
-      movedLeadIds.push(l.id);
-
-      leadOps.push({
-        ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, l.id),
-        data: {
-          consultantId: toUser,
-          consultantName: targetUser?.name || "Consultor",
-          consultantAuthUid: targetUser?.authUid || null
-        }
-      });
-
-      count++;
-    });
-
-    await commitOpsInChunks(db, leadOps);
-
-    if (movedLeadIds.length > 0) {
-      const movedSet = new Set(movedLeadIds);
-      const interactionsSnap = await getDocs(
-        collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH)
+    try {
+      const q = query(
+        collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH),
+        where("consultantId", "==", fromUser)
       );
 
-      const interactionOps = [];
+      const snap = await getDocs(q);
+      const targetUser = (usersList || []).find(u => u.id === toUser);
 
-      interactionsSnap.forEach(interactionDoc => {
-        const item = interactionDoc.data();
-        if (!item.leadId || !movedSet.has(item.leadId)) return;
+      const movedLeadIds = [];
+      const leadOps = [];
+      let count = 0;
 
-        interactionOps.push({
-          ref: doc(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH, interactionDoc.id),
+      snap.forEach(l => {
+        movedLeadIds.push(l.id);
+
+        leadOps.push({
+          ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, l.id),
           data: {
-            leadConsultantId: toUser,
-            leadConsultantAuthUid: targetUser?.authUid || null
+            consultantId: toUser,
+            consultantName: targetUser?.name || "Consultor",
+            consultantAuthUid: targetUser?.authUid || null
           }
         });
+
+        count++;
       });
 
-      await commitOpsInChunks(db, interactionOps);
+      await commitOpsInChunks(db, leadOps);
+
+      if (movedLeadIds.length > 0) {
+        const movedSet = new Set(movedLeadIds);
+        const interactionsSnap = await getDocs(
+          collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH)
+        );
+
+        const interactionOps = [];
+
+        interactionsSnap.forEach(interactionDoc => {
+          const item = interactionDoc.data();
+          if (!item.leadId || !movedSet.has(item.leadId)) return;
+
+          interactionOps.push({
+            ref: doc(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH, interactionDoc.id),
+            data: {
+              leadConsultantId: toUser,
+              leadConsultantAuthUid: targetUser?.authUid || null
+            }
+          });
+        });
+
+        await commitOpsInChunks(db, interactionOps);
+      }
+
+      await addDoc(
+        collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH),
+        {
+          text: `MIGRAÇÃO MASTER: ${count} leads movidos para [${targetUser?.name || "Novo Consultor"}].`,
+          consultantName: appUser.name,
+          type: 'note',
+          createdAt: serverTimestamp()
+        }
+      );
+
+      alert(`Feito! ${count} leads migrados.`);
+      setFromUser('');
+      setToUser('');
+    } catch (err) {
+      console.error(err);
+      alert("Erro.");
     }
 
-    await addDoc(
-      collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH),
-      {
-        text: `MIGRAÇÃO MASTER: ${count} leads movidos para [${targetUser?.name || "Novo Consultor"}].`,
-        consultantName: appUser.name,
-        type: 'note',
-        createdAt: serverTimestamp()
-      }
-    );
-
-    alert(`Feito! ${count} leads migrados.`);
-    setFromUser('');
-    setToUser('');
-  } catch (err) {
-    console.error(err);
-    alert("Erro.");
-  }
-
-  setLoading(false);
-};
+    setLoading(false);
+  };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-12 max-w-3xl mx-auto shadow-2xl animate-fade-in">
-      <div className="flex items-center gap-5 mb-10"><div className="bg-blue-500/10 p-4 rounded-xl"><ArrowRightLeft className="w-10 h-10 text-blue-500" /></div><div><h3 className="text-2xl font-semibold text-gray-900 dark:text-white tracking-tight leading-none uppercase">Migração em Massa</h3><p className="text-gray-400 dark:text-neutral-500 text-[11px] font-bold  mt-2">Transfira carteiras completas</p></div></div>
-      <div className="space-y-8">
-        <div><label className="text-sm font-semibold text-gray-600 dark:text-neutral-400 mb-3 block">De (Consultor Antigo)</label><select value={fromUser} onChange={e=>setFromUser(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl p-5 text-gray-900 dark:text-white outline-none focus:border-blue-500 font-bold appearance-none shadow-inner"><option value="">Selecione o consultor...</option>{(allFromConsultants || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
-        <div className="flex justify-center"><RefreshCw className="w-8 h-8 text-gray-800 dark:text-neutral-200 animate-spin-slow" /></div>
-        <div><label className="text-sm font-semibold text-gray-600 dark:text-neutral-400 mb-3 block">Para (Consultor Novo)</label><select value={toUser} onChange={e=>setToUser(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl p-5 text-gray-900 dark:text-white outline-none focus:border-green-500 font-bold appearance-none shadow-inner"><option value="">Selecione o consultor...</option>{(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}</select></div>
-        <button onClick={handleTransfer} disabled={loading} className="w-full bg-white dark:bg-neutral-900 text-gray-900 dark:text-white hover:bg-neutral-200 font-semibold py-5 rounded-2xl transition-all shadow-xl uppercase  text-[10px] disabled:opacity-50 active:scale-95">EXECUTAR MUDANÇA</button>
+    <div className="relative bg-white dark:bg-neutral-900/80 p-8 sm:p-10 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30 shadow-2xl max-w-3xl mx-auto flex flex-col mt-4 animate-fade-in">
+      
+      <div className="mb-8 text-center flex flex-col items-center justify-center border-b border-gray-100 dark:border-neutral-800 pb-8">
+        <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mb-4 shadow-inner">
+          <ArrowRightLeft className="w-8 h-8 text-blue-500" />
+        </div>
+        <h3 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-wider">
+          Migração em Massa
+        </h3>
+        <p className="text-xs font-semibold text-gray-500 dark:text-neutral-400 mt-2 uppercase tracking-widest max-w-sm">
+          Transfira carteiras completas de leads de um consultor para outro de forma segura
+        </p>
+      </div>
+
+      <div className="space-y-6 relative">
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 block uppercase tracking-widest px-2">De (Consultor Antigo)</label>
+          <select value={fromUser} onChange={e => setFromUser(e.target.value)} className="w-full bg-gray-50 dark:bg-neutral-950 border border-transparent focus:border-blue-500 dark:focus:border-blue-500 rounded-2xl px-5 py-4 text-gray-900 dark:text-white outline-none transition-all text-sm font-bold shadow-sm appearance-none cursor-pointer">
+            <option value="">Selecione o consultor de origem...</option>
+            {(allFromConsultants || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </div>
+
+        <div className="flex justify-center -my-2 relative z-10">
+          <div className="bg-white dark:bg-neutral-900 p-3.5 rounded-full border border-gray-100 dark:border-neutral-800 shadow-lg text-blue-500">
+            <RefreshCw className="w-5 h-5 animate-[spin_3s_linear_infinite]" />
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <label className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 block uppercase tracking-widest px-2">Para (Consultor Novo)</label>
+          <select value={toUser} onChange={e => setToUser(e.target.value)} className="w-full bg-gray-50 dark:bg-neutral-950 border border-transparent focus:border-green-500 dark:focus:border-green-500 rounded-2xl px-5 py-4 text-gray-900 dark:text-white outline-none transition-all text-sm font-bold shadow-sm appearance-none cursor-pointer">
+            <option value="">Selecione o consultor de destino...</option>
+            {(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="mt-10">
+        <button onClick={handleTransfer} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 rounded-2xl transition-all shadow-xl shadow-blue-600/20 uppercase text-[11px] tracking-widest disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2">
+          {loading ? (
+            <>PROCESSANDO MIGRAÇÃO...</>
+          ) : (
+            <>
+              EXECUTAR MUDANÇA
+              <ArrowRightLeft className="w-4 h-4 ml-1" />
+            </>
+          )}
+        </button>
       </div>
     </div>
   );
@@ -4351,6 +4524,7 @@ const handleTransfer = async () => {
 // ==========================================
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
+
 function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossReasons, usersList, funnels }) {
   const [selectedLead, setSelectedLead] = useState(null);
   const prevProgress = useRef(0);
