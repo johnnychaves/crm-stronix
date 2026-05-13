@@ -91,6 +91,7 @@ const SOURCES_PATH = 'stronix_sources';
 const STATUSES_PATH = 'stronix_statuses';
 const TAGS_PATH = 'stronix_tags';
 const LOSS_REASONS_PATH = 'stronix_loss_reasons'; // NOVO CAMINHO
+const FUNNELS_PATH = 'stronix_funnels';
 
 // --- BLINDAGEM DE DADOS (EVITA TELA BRANCA E ERROS DE DATA) ---
 const getSafeDate = (val) => {
@@ -197,6 +198,30 @@ const getInteractionSecurityFields = (lead, user) => ({
   leadConsultantId: lead?.consultantId || user?.id || null,
   leadConsultantAuthUid: lead?.consultantAuthUid || user?.authUid || null
 });
+
+// --- HELPERS DE FUNIS ---
+const getDefaultFunnel = (funnels) => {
+  if (!Array.isArray(funnels) || funnels.length === 0) return null;
+  return funnels.find(f => f.isDefault === true) || funnels[0] || null;
+};
+
+const isItemInFunnel = (item, selectedFunnelId, defaultFunnelId) => {
+  if (!selectedFunnelId) return true;
+  if (item?.funnelId === selectedFunnelId) return true;
+  if (!item?.funnelId && selectedFunnelId === defaultFunnelId) return true;
+  return false;
+};
+
+const commitOpsInChunks = async (dbInstance, ops, chunkSize = 400) => {
+  for (let i = 0; i < ops.length; i += chunkSize) {
+    const chunk = ops.slice(i, i + chunkSize);
+    const batch = writeBatch(dbInstance);
+    chunk.forEach(op => {
+      batch.update(op.ref, op.data);
+    });
+    await batch.commit();
+  }
+};
 
 function PublicCsatView() {
   const [loading, setLoading] = useState(true);
@@ -386,6 +411,11 @@ export default function App() {
   const [tags, setTags] = useState([]);
   const [usersList, setUsersList] = useState([]);
   const [lossReasons, setLossReasons] = useState([]); // NOVO ESTADO
+  const [funnels, setFunnels] = useState([]);
+  const [selectedFunnelId, setSelectedFunnelId] = useState(() => {
+    try { return localStorage.getItem('crm-selected-funnel') || null; } catch { return null; }
+  });
+  const [funnelsMigrationStatus, setFunnelsMigrationStatus] = useState('idle');
   const [loadingData, setLoadingData] = useState(true);
 
   // 1. Inicialização Auth e Persistência de Sessão
@@ -534,6 +564,15 @@ useEffect(() => {
     }
   );
 
+  const unsubFunnels = onSnapshot(
+    collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
+    (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      data.sort((a, b) => (a.order || 0) - (b.order || 0));
+      setFunnels(data);
+    }
+  );
+
   let unsubUsers = () => {};
   if (isAdminUser(appUser)) {
     unsubUsers = onSnapshot(usersRef, (snapshot) => {
@@ -550,9 +589,95 @@ useEffect(() => {
     unsubStatuses();
     unsubTags();
     unsubLossReasons();
+    unsubFunnels();
     unsubUsers();
   };
 }, [firebaseUser, appUser]);
+
+  // Persiste a seleção de funil no localStorage
+  useEffect(() => {
+    try {
+      if (selectedFunnelId) {
+        localStorage.setItem('crm-selected-funnel', selectedFunnelId);
+      }
+    } catch (e) { /* ignore */ }
+  }, [selectedFunnelId]);
+
+  // Garante que selectedFunnelId é sempre válido (cai para o default se sumir)
+  useEffect(() => {
+    if (!funnels || funnels.length === 0) return;
+    if (!selectedFunnelId || !funnels.find(f => f.id === selectedFunnelId)) {
+      const fallback = getDefaultFunnel(funnels);
+      if (fallback) setSelectedFunnelId(fallback.id);
+    }
+  }, [funnels, selectedFunnelId]);
+
+  // Migração idempotente: cria funil "Comercial" default e backfill de funnelId em leads/statuses
+  useEffect(() => {
+    if (!appUser || !isAdminUser(appUser)) return;
+    if (loadingData) return;
+    if (funnelsMigrationStatus !== 'idle') return;
+
+    setFunnelsMigrationStatus('running');
+
+    (async () => {
+      try {
+        // Passo 1: garantir funil default
+        let defaultFunnel = funnels.find(f => f.isDefault === true);
+
+        if (!defaultFunnel) {
+          // Double-check via getDocs para evitar race com snapshot ainda não propagado
+          const funnelsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH));
+          const defaultDoc = funnelsSnap.docs.find(d => d.data().isDefault === true);
+          if (defaultDoc) {
+            defaultFunnel = { id: defaultDoc.id, ...defaultDoc.data() };
+          }
+        }
+
+        if (!defaultFunnel) {
+          const ref = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH), {
+            name: 'Comercial',
+            order: 0,
+            isDefault: true,
+            createdAt: serverTimestamp()
+          });
+          defaultFunnel = { id: ref.id, name: 'Comercial', order: 0, isDefault: true };
+        }
+
+        const defaultId = defaultFunnel.id;
+
+        // Passo 2: backfill statuses sem funnelId
+        const statusesSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH));
+        const statusOps = [];
+        statusesSnap.forEach(d => {
+          const data = d.data();
+          if (!data.funnelId) {
+            statusOps.push({ ref: d.ref, data: { funnelId: defaultId } });
+          }
+        });
+        if (statusOps.length) await commitOpsInChunks(db, statusOps, 400);
+
+        // Passo 3: backfill leads sem funnelId
+        const leadsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH));
+        const leadOps = [];
+        leadsSnap.forEach(d => {
+          const data = d.data();
+          if (!data.funnelId) {
+            leadOps.push({ ref: d.ref, data: { funnelId: defaultId } });
+          }
+        });
+        if (leadOps.length) await commitOpsInChunks(db, leadOps, 400);
+
+        // Define seleção inicial se ainda não houver
+        setSelectedFunnelId(prev => prev || defaultId);
+
+        setFunnelsMigrationStatus('done');
+      } catch (err) {
+        console.error('Erro na migração de funis', err);
+        setFunnelsMigrationStatus('error');
+      }
+    })();
+  }, [appUser, funnels, loadingData, funnelsMigrationStatus]);
 
   const handleLogout = async () => {
   try {
@@ -645,11 +770,11 @@ if (csatToken) {
              <div className="flex h-full items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>
           ) : (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full transition-all duration-300">
-              {activeTab === 'dashboard' && <DashboardView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
-              {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
-              {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} />}
-              {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} />}
+              {activeTab === 'dashboard' && <DashboardView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
+              {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
+              {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
+              {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} />}
             </div>
           )}
         </div>
@@ -770,6 +895,30 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
 // ==========================================
 // COMPONENTES AUXILIARES
 // ==========================================
+function FunnelSelector({ funnels, value, onChange, compact = false, className = '' }) {
+  const list = Array.isArray(funnels) ? funnels : [];
+  if (list.length === 0) {
+    return (
+      <div className={`text-xs font-medium text-gray-500 dark:text-neutral-400 italic ${className}`}>
+        Sem funis
+      </div>
+    );
+  }
+  const padding = compact ? 'px-3 py-2' : 'px-4 py-3';
+  const textSize = compact ? 'text-xs' : 'text-sm';
+  return (
+    <select
+      value={value || ''}
+      onChange={(e) => onChange(e.target.value)}
+      className={`bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl ${padding} ${textSize} font-semibold text-gray-900 dark:text-white outline-none focus:border-blue-500 transition-all shadow-sm cursor-pointer ${className}`}
+    >
+      {list.map((f) => (
+        <option key={f.id} value={f.id}>{f.name}{f.isDefault ? ' • Padrão' : ''}</option>
+      ))}
+    </select>
+  );
+}
+
 function SidebarItem({ icon, label, active, onClick }) {
   return <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-blue-600/10 text-blue-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:bg-neutral-950 hover:text-gray-800 dark:text-neutral-200'}`}>{icon} <span className="text-sm tracking-tight">{label}</span></button>;
 }
@@ -831,12 +980,22 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
 // ==========================================
 // VISÃO GERAL (DASHBOARD) - PATCH 1 (AULA E VISITA)
 // ==========================================
-function DashboardView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db }) {
+function DashboardView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const [periodPreset, setPeriodPreset] = useState('monthly');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [funnelDetail, setFunnelDetail] = useState(null);
   const [selectedLead, setSelectedLead] = useState(null);
+
+  const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
+  const hasFunnels = (funnels || []).length > 0;
+  const currentFunnel = useMemo(
+    () => (funnels || []).find(f => f.id === selectedFunnelId) || null,
+    [funnels, selectedFunnelId]
+  );
+  const funnelLeads = useMemo(() => {
+    return (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId));
+  }, [leads, selectedFunnelId, defaultFunnelId]);
 
  const periodRange = useMemo(() => {
   const now = new Date();
@@ -890,28 +1049,28 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
   };
 
   const capturedLeads = useMemo(() => {
-    return (leads || []).filter(l => isWithinSelectedRange(l.createdAt));
-  }, [leads, periodRange]);
+    return funnelLeads.filter(l => isWithinSelectedRange(l.createdAt));
+  }, [funnelLeads, periodRange]);
 
   const scheduledLeads = useMemo(() => {
-    return (leads || []).filter(l => {
+    return funnelLeads.filter(l => {
       const appointmentType = getLeadAppointmentType(l);
       const appointmentDate = getLeadAppointmentDate(l);
 
       return Boolean(appointmentType && appointmentDate && isWithinSelectedRange(appointmentDate));
     });
-  }, [leads, periodRange]);
+  }, [funnelLeads, periodRange]);
 
   const convertedLeads = useMemo(() => {
-    return (leads || []).filter(l => {
+    return funnelLeads.filter(l => {
       return isLeadConverted(l) && isWithinSelectedRange(getLeadConversionDate(l));
     });
-  }, [leads, periodRange]);
+  }, [funnelLeads, periodRange]);
 
   const satisfactionLeads = useMemo(() => {
   const allowedStages = ['pos_agendamento', 'cliente_novo'];
 
-  return (leads || []).filter(l => {
+  return funnelLeads.filter(l => {
     const score = Number(l.satisfactionScore || 0);
     const satisfactionDate = getLeadSatisfactionDate(l);
     const stage = String(l.satisfactionStage || '');
@@ -924,7 +1083,7 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
       allowedStages.includes(stage)
     );
   });
-}, [leads, periodRange]);
+}, [funnelLeads, periodRange]);
 
   const stats = useMemo(() => {
     const total = capturedLeads.length;
@@ -998,7 +1157,7 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
 }, [satisfactionLeads]);
 
   const pendingFollowUps = useMemo(() => {
-    return (leads || [])
+    return funnelLeads
       .filter(
         l =>
           l.status !== 'Venda' &&
@@ -1007,7 +1166,7 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
           !isNaN(l.nextFollowUp.getTime())
       )
       .sort((a, b) => a.nextFollowUp.getTime() - b.nextFollowUp.getTime());
-  }, [leads]);
+  }, [funnelLeads]);
 
 const teamMetrics = useMemo(() => {
   const metrics = {};
@@ -1129,6 +1288,13 @@ const teamMetrics = useMemo(() => {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-wrap items-center gap-3">
+        {hasFunnels && (
+          <FunnelSelector
+            funnels={funnels}
+            value={selectedFunnelId}
+            onChange={setSelectedFunnelId}
+          />
+        )}
         <div className="flex bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-1 rounded-xl shadow-2xl">
           {[
             { id: 'today', label: 'Hoje' },
@@ -1225,7 +1391,7 @@ const teamMetrics = useMemo(() => {
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-8 uppercase tracking-widest">
-              Funil Comercial
+              {currentFunnel?.name ? `Funil ${currentFunnel.name}` : 'Funil Comercial'}
             </h3>
 
             <div className="space-y-8">
@@ -1485,16 +1651,17 @@ const teamMetrics = useMemo(() => {
       {funnelDetail && <FunnelDetailModal detail={funnelDetail} onClose={() => setFunnelDetail(null)} onLeadClick={(lead) => { setSelectedLead(lead); setFunnelDetail(null); }} />}
       
       {selectedLead && (
-        <LeadDetailsModal 
-          lead={selectedLead} 
-          interactions={interactions.filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))} 
-          onClose={() => setSelectedLead(null)} 
-          appUser={appUser} 
-          statuses={statuses} 
-          tags={tags} 
-          lossReasons={lossReasons} 
+        <LeadDetailsModal
+          lead={selectedLead}
+          interactions={interactions.filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))}
+          onClose={() => setSelectedLead(null)}
+          appUser={appUser}
+          statuses={statuses}
+          tags={tags}
+          lossReasons={lossReasons}
           usersList={usersList}
-          db={db} 
+          db={db}
+          funnels={funnels}
         />
       )}
       
@@ -1549,7 +1716,7 @@ function FunnelDetailModal({ detail, onClose, onLeadClick }) {
 // ==========================================
 // KANBAN VIEW (COM VENDA E PERDA FIXAS)
 // ==========================================
-function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db }) {
+function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const [selectedLead, setSelectedLead] = useState(null);
   const [consultantFilter, setConsultantFilter] = useState('');
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
@@ -1565,21 +1732,27 @@ const dragScrollRef = useRef({
 });
 const [isPanning, setIsPanning] = useState(false);
 
+  const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
+  const currentFunnel = useMemo(
+    () => (funnels || []).find(f => f.id === selectedFunnelId) || null,
+    [funnels, selectedFunnelId]
+  );
+
   const kanbanLeads = useMemo(() => {
-    let filtered = leads || [];
+    let filtered = (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId));
     if (consultantFilter) {
       filtered = filtered.filter(l => l.consultantId === consultantFilter);
     }
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
-      filtered = filtered.filter(l => 
-        (l.name && l.name.toLowerCase().includes(lowerSearch)) || 
+      filtered = filtered.filter(l =>
+        (l.name && l.name.toLowerCase().includes(lowerSearch)) ||
         (l.whatsapp && l.whatsapp.includes(searchTerm)) ||
         (l.observation && l.observation.toLowerCase().includes(lowerSearch))
       );
     }
     return filtered;
-  }, [leads, consultantFilter, searchTerm]);
+  }, [leads, consultantFilter, searchTerm, selectedFunnelId, defaultFunnelId]);
 
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
@@ -1639,6 +1812,11 @@ const handleKanbanMouseMove = (e) => {
         if (!lead.appointmentScheduledFor) {
           payload.appointmentScheduledFor = serverTimestamp();
         }
+      }
+
+      // Preserva o vínculo com o funil (corrige leads legacy sem funnelId)
+      if (selectedFunnelId && !lead.funnelId) {
+        payload.funnelId = selectedFunnelId;
       }
 
       await updateDoc(
@@ -1864,19 +2042,30 @@ if (!lead) return;
     );
   };
 
-  const pipelineColumns = statuses || [];
+  const pipelineColumns = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
+  const kanbanTitle = currentFunnel?.name || 'Quadro Kanban';
+  const hasFunnels = (funnels || []).length > 0;
 
   return (
     <>
       <div className="h-[calc(100vh-10rem)] flex flex-col animate-fade-in">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-              Quadro Kanban
-            </h3>
-            <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-1">
-              Arraste os leads entre as etapas
-            </p>
+          <div className="flex items-center gap-4 flex-wrap">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {kanbanTitle}
+              </h3>
+              <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-1">
+                Arraste os leads entre as etapas
+              </p>
+            </div>
+            {hasFunnels && (
+              <FunnelSelector
+                funnels={funnels}
+                value={selectedFunnelId}
+                onChange={setSelectedFunnelId}
+              />
+            )}
           </div>
 
           <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto items-center">
@@ -2070,6 +2259,7 @@ if (!lead) return;
           tags={tags}
           lossReasons={lossReasons}
           db={db}
+          funnels={funnels}
         />
       )}
 
@@ -2087,7 +2277,7 @@ if (!lead) return;
 // ==========================================
 // LEADS VIEW (LISTA E EXPORTAÇÃO CSV)
 // ==========================================
-function LeadsView({ leads, interactions, appUser, sources, statuses, usersList, tags, lossReasons, db }) {
+function LeadsView({ leads, interactions, appUser, sources, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [statusFilters, setStatusFilters] = useState([]);
   const [consultantFilters, setConsultantFilters] = useState([]);
@@ -2096,21 +2286,31 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
   const [selectedLead, setSelectedLead] = useState(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
+  const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
+  const hasFunnels = (funnels || []).length > 0;
+
+  // Quando o funil ativo muda, limpamos filtros de status para evitar listar etapas inexistentes
+  useEffect(() => {
+    setStatusFilters([]);
+  }, [selectedFunnelId]);
+
   const filteredLeads = useMemo(() => {
     return (leads || []).filter(l => {
+      const matchFunnel = isItemInFunnel(l, selectedFunnelId, defaultFunnelId);
       const matchSearch = (l.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (l.whatsapp || '').includes(searchTerm);
       const matchStatus = statusFilters.length === 0 || statusFilters.includes(l.status);
       const matchConsultant = consultantFilters.length === 0 || consultantFilters.includes(l.consultantId);
       const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
       const matchOverdue = !overdueOnly || isOverdue;
-      return matchSearch && matchStatus && matchOverdue && matchConsultant;
+      return matchFunnel && matchSearch && matchStatus && matchOverdue && matchConsultant;
     }).sort((a,b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
-  }, [leads, searchTerm, statusFilters, overdueOnly, consultantFilters]);
+  }, [leads, searchTerm, statusFilters, overdueOnly, consultantFilters, selectedFunnelId, defaultFunnelId]);
 
   const toggleStatus = (s) => setStatusFilters(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   const toggleConsultant = (id) => setConsultantFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
-  const allStatuses = [...(statuses || []).map(s=>s.name), 'Venda', 'Perda'];
+  const statusesForFunnel = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
+  const allStatuses = [...statusesForFunnel.map(s=>s.name), 'Venda', 'Perda'];
 
   // EXPORTAÇÃO CSV
   const exportToCSV = () => {
@@ -2148,6 +2348,13 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
   return (
     <div className="h-full flex flex-col space-y-6 animate-fade-in relative">
       <div className="flex flex-col md:flex-row gap-4 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-5 rounded-[2rem] shadow-xl">
+        {hasFunnels && (
+          <FunnelSelector
+            funnels={funnels}
+            value={selectedFunnelId}
+            onChange={setSelectedFunnelId}
+          />
+        )}
         <div className="relative flex-1 group">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-neutral-500 group-focus-within:text-blue-600 transition-colors" />
           <input type="text" placeholder="Pesquisar por nome ou telefone..." value={searchTerm} onChange={e=>setSearchTerm(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl py-3 pl-12 pr-4 text-gray-900 dark:text-white focus:border-blue-600 outline-none transition-all font-medium" />
@@ -2266,8 +2473,8 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
         </div>
       )}
 
-      {isAddModalOpen && <AddLeadModal onClose={() => setIsAddModalOpen(false)} appUser={appUser} sources={sources} statuses={statuses} tags={tags} db={db} />}
-      {selectedLead && <LeadDetailsModal lead={selectedLead} interactions={interactions.filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))} onClose={() => setSelectedLead(null)} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} />}
+      {isAddModalOpen && <AddLeadModal onClose={() => setIsAddModalOpen(false)} appUser={appUser} sources={sources} statuses={statuses} tags={tags} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} />}
+      {selectedLead && <LeadDetailsModal lead={selectedLead} interactions={interactions.filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))} onClose={() => setSelectedLead(null)} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
     </div>
   );
 }
@@ -2275,20 +2482,40 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
 // ==========================================
 // MODAL DE CADASTRO
 // ==========================================
-function AddLeadModal({ onClose, appUser, sources, statuses, tags, db }) {
+function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId }) {
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({ 
-    name: '', 
-    whatsapp: '', 
-    source: sources?.[0]?.name || 'Instagram', 
-    status: statuses?.[0]?.name || 'Novo', 
+  const safeFunnels = Array.isArray(funnels) ? funnels : [];
+  const initialFunnelId = selectedFunnelId || getDefaultFunnel(safeFunnels)?.id || null;
+  const initialStatuses = (statuses || []).filter(s => s.funnelId === initialFunnelId);
+
+  const [formData, setFormData] = useState({
+    name: '',
+    whatsapp: '',
+    source: sources?.[0]?.name || 'Instagram',
+    funnelId: initialFunnelId,
+    status: initialStatuses?.[0]?.name || 'Novo',
     observation: '',
     tags: []
   });
 
+  const statusesForFunnel = (statuses || []).filter(s => s.funnelId === formData.funnelId);
+
+  const handleFunnelChange = (newFunnelId) => {
+    const nextStatuses = (statuses || []).filter(s => s.funnelId === newFunnelId);
+    setFormData(prev => ({
+      ...prev,
+      funnelId: newFunnelId,
+      status: nextStatuses[0]?.name || 'Novo'
+    }));
+  };
+
 const handleSubmit = async (e) => {
   e.preventDefault();
   if (!formData.name || !formData.whatsapp) return;
+  if (!formData.funnelId) {
+    alert('Selecione um funil para o lead. Se nenhum funil estiver disponível, crie um em Configurações → Funil Pipeline.');
+    return;
+  }
 
   setLoading(true);
 
@@ -2335,7 +2562,62 @@ const handleSubmit = async (e) => {
 };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[130] p-4"><div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.6)] animate-fade-in"><div className="p-8 border-b border-gray-200 dark:border-neutral-800 flex justify-between items-center bg-gray-50 dark:bg-neutral-950/50"><h3 className="text-2xl font-bold text-gray-900 dark:text-white uppercase tracking-tighter">Novo Registro de Lead</h3><button onClick={onClose} className="p-2 bg-gray-100 dark:bg-neutral-800 text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white rounded-full transition-all active:scale-90"><X className="w-5 h-5"/></button></div><form onSubmit={handleSubmit} className="p-10 space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div><label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Nome do Aluno</label><input type="text" required value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all" placeholder="Nome Completo" /></div><div><label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">WhatsApp</label><input type="tel" required value={formData.whatsapp} onChange={e=>setFormData({...formData, whatsapp: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all" placeholder="(00) 00000-0000" /></div><div><label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Origem do Lead</label><select value={formData.source} onChange={e=>setFormData({...formData, source: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all appearance-none">{(sources || []).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></div><div><label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Fase Inicial</label><select value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all appearance-none">{(statuses || []).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}</select></div></div><div><label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Etiquetas</label><div className="flex flex-wrap gap-2 mt-2">{(tags || []).map(t => ( <button type="button" key={t.id} onClick={() => setFormData(prev => ({...prev, tags: prev.tags.includes(t.name) ? prev.tags.filter(x=>x!==t.name) : [...prev.tags, t.name]}))} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${formData.tags.includes(t.name) ? 'bg-blue-600 border-blue-600 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-neutral-800 border-gray-300 dark:border-neutral-700 text-gray-400 dark:text-neutral-500'}`}>{t.name}</button> ))}</div></div><div className="w-full"><label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Observação Adicional</label><textarea value={formData.observation} onChange={e=>setFormData({...formData, observation: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-medium resize-none h-24" placeholder="Algum detalhe importante para o primeiro atendimento?"></textarea></div><div className="flex justify-end gap-4 pt-4"><button type="button" onClick={onClose} className="px-8 py-4 rounded-2xl text-gray-400 dark:text-neutral-500 font-bold uppercase text-[10px] hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800 tracking-widest transition-all">Cancelar</button><button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-10 py-4 rounded-2xl text-white font-bold uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-blue-600/20 active:scale-95 transition-all">{loading ? 'SALVANDO...' : 'CADASTRAR ALUNO'}</button></div></form></div></div>
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[130] p-4">
+      <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 w-full max-w-2xl rounded-[2.5rem] overflow-hidden shadow-[0_0_80px_rgba(0,0,0,0.6)] animate-fade-in">
+        <div className="p-8 border-b border-gray-200 dark:border-neutral-800 flex justify-between items-center bg-gray-50 dark:bg-neutral-950/50">
+          <h3 className="text-2xl font-bold text-gray-900 dark:text-white uppercase tracking-tighter">Novo Registro de Lead</h3>
+          <button onClick={onClose} className="p-2 bg-gray-100 dark:bg-neutral-800 text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white rounded-full transition-all active:scale-90"><X className="w-5 h-5"/></button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-10 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Nome do Aluno</label>
+              <input type="text" required value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all" placeholder="Nome Completo" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">WhatsApp</label>
+              <input type="tel" required value={formData.whatsapp} onChange={e=>setFormData({...formData, whatsapp: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all" placeholder="(00) 00000-0000" />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Origem do Lead</label>
+              <select value={formData.source} onChange={e=>setFormData({...formData, source: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all appearance-none">
+                {(sources || []).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Funil</label>
+              <select value={formData.funnelId || ''} onChange={e=>handleFunnelChange(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all appearance-none">
+                {safeFunnels.length === 0 && <option value="">Nenhum funil disponível</option>}
+                {safeFunnels.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
+              </select>
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Fase Inicial</label>
+              <select value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all appearance-none">
+                {statusesForFunnel.length === 0 && <option value="Novo">Novo</option>}
+                {statusesForFunnel.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Etiquetas</label>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {(tags || []).map(t => (
+                <button type="button" key={t.id} onClick={() => setFormData(prev => ({...prev, tags: prev.tags.includes(t.name) ? prev.tags.filter(x=>x!==t.name) : [...prev.tags, t.name]}))} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${formData.tags.includes(t.name) ? 'bg-blue-600 border-blue-600 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-neutral-800 border-gray-300 dark:border-neutral-700 text-gray-400 dark:text-neutral-500'}`}>{t.name}</button>
+              ))}
+            </div>
+          </div>
+          <div className="w-full">
+            <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Observação Adicional</label>
+            <textarea value={formData.observation} onChange={e=>setFormData({...formData, observation: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-medium resize-none h-24" placeholder="Algum detalhe importante para o primeiro atendimento?"></textarea>
+          </div>
+          <div className="flex justify-end gap-4 pt-4">
+            <button type="button" onClick={onClose} className="px-8 py-4 rounded-2xl text-gray-400 dark:text-neutral-500 font-bold uppercase text-[10px] hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800 tracking-widest transition-all">Cancelar</button>
+            <button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-10 py-4 rounded-2xl text-white font-bold uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-blue-600/20 active:scale-95 transition-all">{loading ? 'SALVANDO...' : 'CADASTRAR ALUNO'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 const interactionToneMap = {
@@ -2454,27 +2736,46 @@ const getInteractionVisual = (interaction, statusesArray = []) => {
     : { label: 'Observação', icon: MessageCircle, ...interactionToneMap.gray };
 };
 
-function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags, lossReasons, usersList, db }) {
+function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
   const isReadOnly = !canEditLead(appUser, lead);
+  const safeFunnels = Array.isArray(funnels) ? funnels : [];
+  const fallbackFunnelId = lead.funnelId || getDefaultFunnel(safeFunnels)?.id || null;
+
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState({ name: lead.name, whatsapp: lead.whatsapp, source: lead.source, observation: lead.observation || '', tags: lead.tags || [], consultantId: lead.consultantId || '' });
   const [note, setNote] = useState('');
   const [status, setStatus] = useState(lead.status);
+  const [funnelId, setFunnelId] = useState(fallbackFunnelId);
   const [loading, setLoading] = useState(false);
   const [enableFollowUp, setEnableFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpType, setFollowUpType] = useState('Mensagem');
-  
+
   const [lossModalOpen, setLossModalOpen] = useState(false);
 
   const [csatStage, setCsatStage] = useState(lead.csatRequestedStage || 'pos_agendamento');
   const [sendingCsat, setSendingCsat] = useState(false);
 
+  const statusesForFunnel = (statuses || []).filter(s => s.funnelId === funnelId);
+
   useEffect(() => {
     setEditData({ name: lead.name, whatsapp: lead.whatsapp, source: lead.source, observation: lead.observation || '', tags: lead.tags || [], consultantId: lead.consultantId || '' });
     setStatus(lead.status);
+    setFunnelId(lead.funnelId || getDefaultFunnel(safeFunnels)?.id || null);
     setCsatStage(lead.csatRequestedStage || 'pos_agendamento');
   }, [lead]);
+
+  const handleFunnelChange = (newFunnelId) => {
+    setFunnelId(newFunnelId);
+    // Se o lead estava em uma etapa que não existe no novo funil, alinhar para a primeira
+    const nextStatuses = (statuses || []).filter(s => s.funnelId === newFunnelId);
+    if (status !== 'Venda' && status !== 'Perda') {
+      const stillValid = nextStatuses.some(s => s.name === status);
+      if (!stillValid) {
+        setStatus(nextStatuses[0]?.name || status);
+      }
+    }
+  };
 
   const handleWhatsApp = () => { 
     let n = lead.whatsapp.replace(/\D/g, ''); 
@@ -2596,7 +2897,9 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 
   const saveInteraction = async () => {
     if (isReadOnly) { alert('Você não tem permissão para registrar interações neste lead.'); return; }
-    if (!note.trim() && status === lead.status && !enableFollowUp) return;
+    // Só conta como mudança quando o lead já tinha um funnelId e o usuário escolheu outro
+    const funnelChanged = Boolean(lead.funnelId) && funnelId && funnelId !== lead.funnelId;
+    if (!note.trim() && status === lead.status && !enableFollowUp && !funnelChanged) return;
     if (enableFollowUp && !followUpDate) {
       alert("Por favor, selecione a data e o horário do agendamento no calendário.");
       return;
@@ -2604,6 +2907,10 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
     setLoading(true);
     try {
       let actionText = '';
+      if (funnelChanged) {
+        const newFunnelName = safeFunnels.find(f => f.id === funnelId)?.name || 'outro funil';
+        actionText += `Lead movido para o funil [${newFunnelName}]. `;
+      }
       if (status !== lead.status) actionText += `Fase alterada para [${status}]. `;
       if (note) actionText += `Obs: ${note}. `;
       if (enableFollowUp) {
@@ -2615,11 +2922,12 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         consultantName: appUser.name,
         ...getInteractionSecurityFields(lead, appUser),
         text: actionText || 'Atualização registrada.',
-        type: status !== lead.status ? 'status_change' : 'note',
+        type: (status !== lead.status || funnelChanged) ? 'status_change' : 'note',
         createdAt: serverTimestamp()
       });
 
       const up = { status };
+      if (funnelChanged) up.funnelId = funnelId;
       if (enableFollowUp) {
         const appointmentDate = new Date(followUpDate);
         const appointmentType = normalizeAppointmentType(followUpType);
@@ -2631,7 +2939,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         }
       }
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), up, { merge: true });
-      
+
       setNote('');
       setEnableFollowUp(false);
       setFollowUpDate('');
@@ -2719,10 +3027,25 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                  <h4 className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Clock className="w-4 h-4"/> Registrar Atividade</h4>
                  
                  <div className="space-y-4">
+                   {safeFunnels.length > 0 && (
+                     <div>
+                       <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1.5 block">Funil</label>
+                       <select value={funnelId || ''} onChange={e => handleFunnelChange(e.target.value)} className="w-full bg-transparent p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-300 dark:border-neutral-700 focus:border-blue-500 transition-all appearance-none font-semibold shadow-sm">
+                         {safeFunnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                       </select>
+                       {funnelId && funnelId !== (lead.funnelId || null) && (
+                         <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold mt-1.5">A etapa será redefinida para a primeira do novo funil.</p>
+                       )}
+                     </div>
+                   )}
                    <div>
                      <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1.5 block">Fase do Funil</label>
                      <select value={status} onChange={e => setStatus(e.target.value)} className="w-full bg-transparent p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-300 dark:border-neutral-700 focus:border-blue-500 transition-all appearance-none font-semibold shadow-sm">
-                       {(statuses || []).map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                       {statusesForFunnel.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                       {/* Inclui status atual caso não esteja no funil (ex.: Venda/Perda) */}
+                       {!statusesForFunnel.some(s => s.name === status) && status && (
+                         <option value={status}>{status}</option>
+                       )}
                      </select>
                    </div>
                    
@@ -2882,20 +3205,42 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 // ==========================================
 // CONFIGURAÇÕES (ADMIN)ADMIN)
 // ==========================================
-function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads }) {
+function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels }) {
   const [activeTab, setActiveTab] = useState('users');
+  const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
+
+  const goToTab = (tab) => {
+    setActiveTab(tab);
+    if (tab !== 'statuses') setSelectedFunnelInTab(null);
+  };
+
+  const funnelInTab = (funnels || []).find(f => f.id === selectedFunnelInTab);
+
   return (
     <div className="max-w-5xl mx-auto space-y-8 animate-fade-in">
       <div className="flex bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-1.5 rounded-2xl overflow-x-auto scrollbar-hide shadow-xl">
-        <button onClick={()=>setActiveTab('users')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='users'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Consultores</button>
-        <button onClick={()=>setActiveTab('transfer')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='transfer'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Migrar Leads</button>
-        <button onClick={()=>setActiveTab('statuses')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='statuses'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Funil Pipeline</button>
-        <button onClick={()=>setActiveTab('tags')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='tags'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Etiquetas</button>
-        <button onClick={()=>setActiveTab('sources')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='sources'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Origens</button>
-        <button onClick={()=>setActiveTab('lossReasons')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='lossReasons'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Motivos Perda</button>
+        <button onClick={()=>goToTab('users')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='users'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Consultores</button>
+        <button onClick={()=>goToTab('transfer')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='transfer'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Migrar Leads</button>
+        <button onClick={()=>goToTab('statuses')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='statuses'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Funil Pipeline</button>
+        <button onClick={()=>goToTab('tags')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='tags'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Etiquetas</button>
+        <button onClick={()=>goToTab('sources')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='sources'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Origens</button>
+        <button onClick={()=>goToTab('lossReasons')} className={`flex-1 px-6 py-4 text-sm font-semibold rounded-xl transition-all whitespace-nowrap ${activeTab==='lossReasons'?'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-2xl':'text-gray-400 dark:text-neutral-500 hover:text-gray-900 dark:hover:text-white dark:text-white'}`}>Motivos Perda</button>
       </div>
       {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
-      {activeTab === 'statuses' && <ManageStatusesTab db={db} statuses={statuses} leads={leads} />}
+      {activeTab === 'statuses' && !selectedFunnelInTab && (
+        <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
+      )}
+      {activeTab === 'statuses' && selectedFunnelInTab && (
+        <div className="space-y-4">
+          <button
+            onClick={() => setSelectedFunnelInTab(null)}
+            className="text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-500/10 hover:bg-blue-500/20 px-5 py-3 rounded-2xl transition-all active:scale-95"
+          >
+            ← Voltar para Funis
+          </button>
+          <ManageStatusesTab db={db} statuses={statuses} leads={leads} funnelId={selectedFunnelInTab} funnelName={funnelInTab?.name} />
+        </div>
+      )}
       {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} />}
       {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
       {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} />}
@@ -3516,24 +3861,204 @@ const backfillSecurityFields = async () => {
   );
 }
 
-function ManageStatusesTab({ db, statuses, leads }) {
+function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
+  const [name, setName] = useState('');
+  const [editingId, setEditingId] = useState(null);
+  const [editingName, setEditingName] = useState('');
+
+  const safeFunnels = Array.isArray(funnels) ? funnels : [];
+
+  const handleAdd = async (e) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH), {
+      name: trimmed,
+      order: safeFunnels.length,
+      isDefault: safeFunnels.length === 0,
+      createdAt: serverTimestamp()
+    });
+    setName('');
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    const trimmed = editingName.trim();
+    if (!trimmed || !editingId) return;
+    await setDoc(
+      doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, editingId),
+      { name: trimmed },
+      { merge: true }
+    );
+    setEditingId(null);
+    setEditingName('');
+  };
+
+  const handleReorder = async (dragIdx, dropIdx) => {
+    if (dragIdx === dropIdx) return;
+    const arr = [...safeFunnels];
+    const [item] = arr.splice(dragIdx, 1);
+    arr.splice(dropIdx, 0, item);
+    await Promise.all(arr.map((f, i) =>
+      setDoc(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id), { order: i }, { merge: true })
+    ));
+  };
+
+  const handleSetDefault = async (f) => {
+    if (f.isDefault) return;
+    const batch = writeBatch(db);
+    safeFunnels.forEach(item => {
+      if (item.isDefault) {
+        batch.update(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, item.id), { isDefault: false });
+      }
+    });
+    batch.update(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id), { isDefault: true });
+    await batch.commit();
+  };
+
+  const handleDelete = async (f) => {
+    if (f.isDefault) {
+      alert('Não é possível excluir o funil padrão. Marque outro funil como padrão antes.');
+      return;
+    }
+    const leadsInFunnel = (leads || []).filter(l => l.funnelId === f.id);
+    if (leadsInFunnel.length > 0) {
+      alert(`Não é possível excluir o funil "${f.name}". Existem ${leadsInFunnel.length} lead(s) nele. Mova-os para outro funil primeiro.`);
+      return;
+    }
+    const statusesInFunnel = (statuses || []).filter(s => s.funnelId === f.id);
+    if (statusesInFunnel.length > 0) {
+      if (!window.confirm(`Este funil tem ${statusesInFunnel.length} etapa(s) configurada(s). Excluir o funil também excluirá essas etapas. Confirma?`)) return;
+      const batch = writeBatch(db);
+      statusesInFunnel.forEach(s => {
+        batch.delete(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id));
+      });
+      batch.delete(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id));
+      await batch.commit();
+    } else {
+      if (!window.confirm(`Excluir o funil "${f.name}"?`)) return;
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id));
+    }
+  };
+
+  return (
+    <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-10 shadow-2xl animate-fade-in">
+      <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-2 tracking-tight leading-none">Funis Ativos</h3>
+      <p className="text-xs text-gray-500 dark:text-neutral-400 mb-10 font-medium">Crie funis paralelos (ex.: Comercial, Indicação, Inativos, Renovações) e configure as etapas de cada um.</p>
+      <form onSubmit={handleAdd} className="flex flex-col md:flex-row gap-4 mb-12 bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800">
+        <input
+          placeholder="NOME DO FUNIL..."
+          value={name}
+          onChange={e=>setName(e.target.value)}
+          className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"
+        />
+        <button className="bg-blue-600 text-white px-10 py-4 rounded-xl font-semibold uppercase text-[10px] shadow-xl shadow-blue-600/20 active:scale-95">ADICIONAR FUNIL</button>
+      </form>
+      <div className="space-y-4">
+        {safeFunnels.length === 0 && (
+          <div className="text-center text-sm text-gray-500 dark:text-neutral-400 py-12 italic">
+            Nenhum funil cadastrado ainda. Crie o primeiro funil acima.
+          </div>
+        )}
+        {safeFunnels.map((f, i) => (
+          <div
+            key={f.id}
+            draggable
+            onDragStart={e=>e.dataTransfer.setData('idx', i)}
+            onDragOver={e=>e.preventDefault()}
+            onDrop={e=>handleReorder(Number(e.dataTransfer.getData('idx')), i)}
+            className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 flex justify-between items-center group cursor-grab hover:border-blue-600 shadow-xl transition-all"
+          >
+            <div className="flex items-center gap-5 flex-1 min-w-0">
+              <GripVertical className="text-gray-800 dark:text-neutral-200 group-hover:text-blue-600 transition-colors shrink-0" />
+              {editingId === f.id ? (
+                <form onSubmit={handleSaveEdit} className="flex gap-2 flex-1">
+                  <input
+                    autoFocus
+                    value={editingName}
+                    onChange={e=>setEditingName(e.target.value)}
+                    className="flex-1 bg-white dark:bg-neutral-900 p-3 rounded-lg text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"
+                  />
+                  <button type="submit" className="bg-green-600 text-white px-5 py-3 rounded-lg font-semibold uppercase text-[10px] shadow-xl active:scale-95">SALVAR</button>
+                  <button type="button" onClick={()=>{ setEditingId(null); setEditingName(''); }} className="bg-gray-400 text-white px-5 py-3 rounded-lg font-semibold uppercase text-[10px] shadow-xl active:scale-95">CANCELAR</button>
+                </form>
+              ) : (
+                <>
+                  <span className="text-sm font-bold text-gray-900 dark:text-white truncate">{f.name}</span>
+                  {f.isDefault && (
+                    <span className="text-[9px] uppercase tracking-widest font-bold px-2 py-1 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/30">Padrão</span>
+                  )}
+                </>
+              )}
+            </div>
+            {editingId !== f.id && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => onSelectFunnel(f.id)}
+                  className="text-[10px] uppercase font-bold tracking-widest text-blue-600 hover:text-white hover:bg-blue-600 bg-white dark:bg-neutral-900 border border-blue-600/30 px-4 py-3 rounded-xl transition-all active:scale-95"
+                >
+                  Configurar Etapas
+                </button>
+                <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                  {!f.isDefault && (
+                    <button
+                      title="Tornar padrão"
+                      onClick={() => handleSetDefault(f)}
+                      className="text-gray-800 dark:text-neutral-200 hover:text-yellow-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"
+                    >
+                      <Trophy className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    title="Renomear"
+                    onClick={() => { setEditingId(f.id); setEditingName(f.name); }}
+                    className="text-gray-800 dark:text-neutral-200 hover:text-blue-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"
+                  >
+                    <Pencil className="w-4 h-4" />
+                  </button>
+                  <button
+                    title="Excluir"
+                    onClick={() => handleDelete(f)}
+                    className="text-gray-800 dark:text-neutral-200 hover:text-red-500 p-3 bg-white dark:bg-neutral-900 rounded-xl active:scale-90"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
   const [name, setName] = useState(''); const [color, setColor] = useState('blue');
   const [editingId, setEditingId] = useState(null);
 
-  const save = async (e) => { 
-    e.preventDefault(); 
+  const statusesForFunnel = (statuses || []).filter(s => s.funnelId === funnelId);
+
+  const save = async (e) => {
+    e.preventDefault();
     if (editingId) {
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, editingId), { name, color }, { merge: true });
       setEditingId(null);
     } else {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), { name, color, order: statuses.length }); 
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), { name, color, order: statusesForFunnel.length, funnelId });
     }
-    setName(''); 
+    setName('');
   };
-  const drop = async (dragIdx, dropIdx) => { if(dragIdx===dropIdx) return; const arr=[...statuses]; const [item]=arr.splice(dragIdx,1); arr.splice(dropIdx,0,item); await Promise.all(arr.map((s,i)=>setDoc(doc(db,'artifacts',appId,'public', 'data', STATUSES_PATH,s.id),{order:i},{merge:true}))); };
-  
+  const drop = async (dragIdx, dropIdx) => {
+    if(dragIdx===dropIdx) return;
+    const arr=[...statusesForFunnel];
+    const [item]=arr.splice(dragIdx,1);
+    arr.splice(dropIdx,0,item);
+    await Promise.all(arr.map((s,i)=>setDoc(doc(db,'artifacts',appId,'public', 'data', STATUSES_PATH,s.id),{order:i},{merge:true})));
+  };
+
   const handleDelete = async (s) => {
-    const leadsInStatus = (leads || []).filter(l => l.status === s.name);
+    const leadsInStatus = (leads || []).filter(l => l.funnelId === funnelId && l.status === s.name);
     if (leadsInStatus.length > 0) {
       alert(`Não é possível excluir a etapa "${s.name}" pois existem ${leadsInStatus.length} lead(s) nela. Transfira-os para outra etapa primeiro.`);
       return;
@@ -3546,7 +4071,7 @@ function ManageStatusesTab({ db, statuses, leads }) {
 
   return (
     <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl p-10 shadow-2xl animate-fade-in">
-      <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-10 tracking-tight leading-none">Pipeline Comercial</h3>
+      <h3 className="text-2xl font-semibold text-gray-900 dark:text-white mb-10 tracking-tight leading-none">Pipeline: {funnelName || 'Funil'}</h3>
       <form onSubmit={save} className="flex flex-col md:flex-row gap-4 mb-12 bg-[#eaedf2] dark:bg-neutral-950 p-6 rounded-xl border border-gray-200 dark:border-neutral-800">
         <input placeholder="ETAPA..." required value={name} onChange={e=>setName(e.target.value)} className="flex-1 bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 text-sm font-semibold"/>
         <select value={color} onChange={e=>setColor(e.target.value)} className="bg-white dark:bg-neutral-900 p-4 rounded-xl text-gray-900 dark:text-white border border-gray-200 dark:border-neutral-800 text-xs font-semibold uppercase">
@@ -3572,8 +4097,13 @@ function ManageStatusesTab({ db, statuses, leads }) {
         )}
       </form>
       <div className="space-y-4">
-        {(statuses || []).map((s,i) => (
-          <div key={s.id} draggable onDragStart={e=>e.dataTransfer.setData('idx',i)} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(e.dataTransfer.getData('idx'),i)} className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 flex justify-between items-center group cursor-grab hover:border-blue-600 shadow-xl transition-all">
+        {statusesForFunnel.length === 0 && (
+          <div className="text-center text-sm text-gray-500 dark:text-neutral-400 py-12 italic">
+            Nenhuma etapa neste funil ainda. Crie a primeira etapa acima.
+          </div>
+        )}
+        {statusesForFunnel.map((s,i) => (
+          <div key={s.id} draggable onDragStart={e=>e.dataTransfer.setData('idx',i)} onDragOver={e=>e.preventDefault()} onDrop={e=>drop(Number(e.dataTransfer.getData('idx')),i)} className="bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-xl border border-gray-200 dark:border-neutral-800 flex justify-between items-center group cursor-grab hover:border-blue-600 shadow-xl transition-all">
             <div className="flex items-center gap-5">
               <GripVertical className="text-gray-800 dark:text-neutral-200 group-hover:text-blue-600 transition-colors" />
               <StatusBadge statusName={s.name} statusesArray={statuses}/>
@@ -3662,19 +4192,6 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
 
   const allFromConsultants = [...(usersList || []), ...orphanedConsultants];
 
-const commitOpsInChunks = async (ops, chunkSize = 400) => {
-  for (let i = 0; i < ops.length; i += chunkSize) {
-    const chunk = ops.slice(i, i + chunkSize);
-    const batch = writeBatch(db);
-
-    chunk.forEach(op => {
-      batch.update(op.ref, op.data);
-    });
-
-    await batch.commit();
-  }
-};
-
 const handleTransfer = async () => {
   if (!fromUser || !toUser) return alert("Selecione os consultores.");
   if (fromUser === toUser) return alert("Origem e Destino são os mesmos.");
@@ -3710,7 +4227,7 @@ const handleTransfer = async () => {
       count++;
     });
 
-    await commitOpsInChunks(leadOps);
+    await commitOpsInChunks(db, leadOps);
 
     if (movedLeadIds.length > 0) {
       const movedSet = new Set(movedLeadIds);
@@ -3733,7 +4250,7 @@ const handleTransfer = async () => {
         });
       });
 
-      await commitOpsInChunks(interactionOps);
+      await commitOpsInChunks(db, interactionOps);
     }
 
     await addDoc(
@@ -3773,7 +4290,7 @@ const handleTransfer = async () => {
 // ==========================================
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
-function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossReasons, usersList }) {
+function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossReasons, usersList, funnels }) {
   const [selectedLead, setSelectedLead] = useState(null);
   const prevProgress = useRef(0);
 
@@ -4021,16 +4538,17 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       </div>
 
       {selectedLead && (
-        <LeadDetailsModal 
-          lead={selectedLead} 
-          interactions={(interactions || []).filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))} 
-          onClose={() => setSelectedLead(null)} 
-          appUser={appUser} 
-          statuses={statuses} 
-          tags={tags} 
-          lossReasons={lossReasons} 
+        <LeadDetailsModal
+          lead={selectedLead}
+          interactions={(interactions || []).filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))}
+          onClose={() => setSelectedLead(null)}
+          appUser={appUser}
+          statuses={statuses}
+          tags={tags}
+          lossReasons={lossReasons}
           usersList={usersList}
-          db={db} 
+          db={db}
+          funnels={funnels}
         />
       )}
     </div>
