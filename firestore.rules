@@ -63,5 +63,10 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow write: if isAdmin(appId);
     }
+
+    match /artifacts/{appId}/public/data/stronix_funnels/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(appId);
+    }
   }
 }
