@@ -5376,7 +5376,7 @@ function DgSection({ slug, tasks, render }) {
 
 // Renders a single (lead × categorySlug) task card.
 // Same lead with two pending categories renders TWICE — once per slug — with independent actions per main's per-category status model.
-function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onGoalDone, onWhatsapp, onCall }) {
+function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
   const m = DG_CATEGORY_META[slug];
   if (!m) return null;
   const t = COLOR_TONES[m.color];
@@ -5471,7 +5471,7 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onGoalDone, on
             <>
               <Btn kind="success" icon={<Check size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'attended', slug, e)}>Compareceu</Btn>
               <Btn kind="secondary" icon={<X size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'no_show', slug, e)}>Não veio</Btn>
-              <Btn kind="soft" onClick={(e) => onOutcome && onOutcome(task, 'rescheduled', slug, e)}>Remarcou</Btn>
+              <Btn kind="soft" onClick={(e) => { e.stopPropagation(); onReschedule && onReschedule(task, slug); }}>Remarcou</Btn>
               <Btn kind="soft" onClick={(e) => onOutcome && onOutcome(task, 'cancelled', slug, e)}>Cancelou</Btn>
             </>
           ) : isAppt && outcome ? (
@@ -5513,6 +5513,101 @@ function DoneCard({ lead, onOpen }) {
   );
 }
 
+// Build a `YYYY-MM-DDTHH:MM` string in LOCAL time for <input type="datetime-local">.
+function toDatetimeLocalValue(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function RescheduleModal({ lead, categorySlug, currentDate, onConfirm, onClose }) {
+  const isVisita = categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE;
+  const apptKindLabel = isVisita ? 'visita' : 'aula experimental';
+
+  const defaultValue = useMemo(() => {
+    const base = currentDate ? new Date(currentDate) : new Date();
+    base.setDate(base.getDate() + 1);
+    return toDatetimeLocalValue(base);
+  }, [currentDate]);
+
+  const [dateValue, setDateValue] = useState(defaultValue);
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!dateValue || submitting) return;
+    const newDate = new Date(dateValue);
+    if (isNaN(newDate.getTime())) return;
+    setSubmitting(true);
+    await onConfirm(newDate, note);
+    setSubmitting(false);
+  };
+
+  return createPortal(
+    <>
+      <div onClick={onClose} className="fixed inset-0 z-[110] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in" />
+      <div className="fixed inset-0 z-[111] grid place-items-center p-4 animate-fade-in pointer-events-none">
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
+          <div className="flex items-start gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 grid place-items-center shrink-0 text-lg">
+              🔄
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">Remarcar {apptKindLabel}</h3>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{lead.name} · <span className="num">{lead.whatsapp}</span></p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Nova data e horário
+              </label>
+              <input
+                type="datetime-local"
+                value={dateValue}
+                onChange={(e) => setDateValue(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
+                required
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Observação (opcional)
+              </label>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                placeholder="Ex: lead pediu para remarcar por motivo de trabalho"
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
+              />
+            </div>
+          </div>
+
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-4 leading-relaxed">
+            A tarefa de hoje será concluída e o lead voltará para a sua Meta Diária na nova data.
+          </p>
+
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <Btn kind="secondary" onClick={onClose}>Cancelar</Btn>
+            <button
+              type="submit"
+              disabled={submitting || !dateValue}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold whitespace-nowrap transition active:scale-[.98] bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Check size={14} />
+              {submitting ? 'Salvando...' : 'Confirmar remarcação'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>,
+    document.body
+  );
+}
+
 // ==========================================
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
@@ -5522,6 +5617,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const [selectedLead, setSelectedLead] = useState(null);
   const [filter, setFilter] = useState('all');
   const [now, setNow] = useState(() => new Date());
+  const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const prevProgress = useRef(0);
   const focusAnchorRef = useRef(null);
 
@@ -5730,6 +5826,45 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     }
   };
 
+  // Reschedule: opens the date dialog (set on TaskCard click), then this commits.
+  // Differs from `handleOutcome(... 'rescheduled')` because it ALSO updates
+  // appointmentScheduledFor and clears appointmentOutcome — so the lead
+  // re-enters Meta Diária on the new date with a fresh appointment.
+  const handleReschedule = async (newDate, note) => {
+    if (!rescheduleTarget) return;
+    const { lead, categorySlug } = rescheduleTarget;
+    const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
+    const formattedDate = newDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const formattedTime = newDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const noteText = (note || '').trim();
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+        appointmentScheduledFor: newDate,
+        appointmentOutcome: null,
+        appointmentOutcomeAt: null,
+        appointmentOutcomeBy: null
+      });
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: noteText
+          ? `🔄 Remarcou ${categoryLabel.toLowerCase()} para ${formattedDate} às ${formattedTime} — Meta Diária. Obs: ${noteText}`
+          : `🔄 Remarcou ${categoryLabel.toLowerCase()} para ${formattedDate} às ${formattedTime} — Meta Diária.`,
+        type: 'daily_goal_done',
+        dailyGoalCategory: categorySlug,
+        appointmentOutcome: 'rescheduled',
+        rescheduledFor: newDate,
+        createdAt: serverTimestamp()
+      });
+      toast.success(`Remarcado para ${formattedDate} às ${formattedTime}.`);
+      setRescheduleTarget(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar a remarcação. Tente novamente.');
+    }
+  };
+
   const handleWhatsapp = (lead) => {
     const num = String(lead.whatsapp || '').replace(/\D/g, '');
     if (num) window.open(`https://wa.me/${num}`, '_blank', 'noopener,noreferrer');
@@ -5828,6 +5963,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       onOpen={setSelectedLead}
       onSnooze={handleSnooze}
       onOutcome={handleOutcome}
+      onReschedule={(t, s) => setRescheduleTarget({ lead: t, categorySlug: s })}
       onGoalDone={handleGoalDone}
       onWhatsapp={handleWhatsapp}
       onCall={handleCall}
@@ -5974,6 +6110,16 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       <footer className="pt-1 pb-2 text-center text-[11.5px] text-slate-400">
         Atualizado agora · {todayLabel} · Stronix
       </footer>
+
+      {rescheduleTarget && (
+        <RescheduleModal
+          lead={rescheduleTarget.lead}
+          categorySlug={rescheduleTarget.categorySlug}
+          currentDate={getLeadAppointmentDate(rescheduleTarget.lead)}
+          onConfirm={handleReschedule}
+          onClose={() => setRescheduleTarget(null)}
+        />
+      )}
 
       {selectedLead && (
         <LeadDetailsModal
