@@ -32,6 +32,74 @@ export const getLeadSatisfactionDate = (lead) => {
   return getSafeDateOrNull(lead?.satisfactionAt);
 };
 
+// --- Daily Goal (Meta Diária) ---
+// A Meta Diária tem uma regra clara: uma tarefa só é considerada
+// concluída quando o consultor explicitamente "Conclui" dentro do
+// fluxo da Meta — independentemente do que ele tenha feito no Kanban,
+// no LeadDetailsModal etc. A única exceção é Venda/Perda registrada
+// hoje: nesse caso a tarefa é auto-concluída (o consultor obviamente
+// atuou pra matricular ou descartar).
+
+// Slugs canônicos das categorias da meta. Persistidos como metadata
+// em interactions tipo 'daily_goal_done' — mudar isso quebra o
+// histórico, então tratar como contrato estável.
+export const DAILY_GOAL_CATEGORIES = {
+  NOVO_24H: 'novo_24h',
+  ATRASADO: 'atrasado',
+  VISITA_HOJE: 'visita_hoje',
+  AULA_HOJE: 'aula_hoje'
+};
+
+// Label legível por categoria (usado na UI).
+export const DAILY_GOAL_CATEGORY_LABEL = {
+  novo_24h: 'Novo Lead 24h',
+  atrasado: 'Atrasado',
+  visita_hoje: 'Visita Hoje',
+  aula_hoje: 'Aula Experimental Hoje'
+};
+
+// Retorna true se há ao menos uma interaction `daily_goal_done`
+// criada hoje para o par (lead, categoria). `todayStart` deve ser um
+// Date com hora 00:00.
+export const hasGoalDoneToday = (lead, categorySlug, interactions, todayStart) => {
+  if (!lead || !categorySlug || !todayStart) return false;
+  return (interactions || []).some(i =>
+    i.leadId === lead.id &&
+    i.type === 'daily_goal_done' &&
+    (i.dailyGoalCategory === categorySlug || i.metadata?.category === categorySlug) &&
+    i.createdAt instanceof Date &&
+    i.createdAt >= todayStart
+  );
+};
+
+// True se o lead virou Venda/Perda hoje. Auto-marca todas as
+// categorias da meta para esse lead (decisão de produto: matricular
+// ou perder é trabalho real, não precisa duplicar com "concluir" na
+// Meta).
+export const isLeadResolvedToday = (lead, todayStart) => {
+  if (!lead || !todayStart) return false;
+  if (lead.status === 'Venda' && lead.convertedAt instanceof Date && lead.convertedAt >= todayStart) return true;
+  if (lead.status === 'Perda' && lead.lostAt instanceof Date && lead.lostAt >= todayStart) return true;
+  return false;
+};
+
+// True se houve qualquer interaction "ativa" hoje (mudança de fase,
+// nota, follow-up agendado, etc.) que NÃO seja 'daily_goal_done' nem
+// observação automática do cadastro. Usado para o badge "Já
+// interagido hoje" — informa o consultor que ele já tocou no lead
+// mas ainda precisa fechar a tarefa via Meta Diária.
+export const hasActiveInteractionToday = (lead, interactions, todayStart) => {
+  if (!lead || !todayStart) return false;
+  return (interactions || []).some(i => {
+    if (i.leadId !== lead.id) return false;
+    if (!(i.createdAt instanceof Date) || i.createdAt < todayStart) return false;
+    if (i.type === 'daily_goal_done') return false;
+    const text = String(i.text || '');
+    if (text.startsWith('OBSERVAÇÃO DO CADASTRO:')) return false;
+    return true;
+  });
+};
+
 // --- Appointment outcome (comparecimento) ---
 // Outcome marca o desfecho de um agendamento de visita/aula experimental:
 //   - 'attended'    → o lead compareceu

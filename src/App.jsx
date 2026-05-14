@@ -97,6 +97,11 @@ import {
   getLeadAttendanceDate,
   getAppointmentOutcomeMeta,
   APPOINTMENT_OUTCOMES,
+  DAILY_GOAL_CATEGORIES,
+  DAILY_GOAL_CATEGORY_LABEL,
+  hasGoalDoneToday,
+  isLeadResolvedToday,
+  hasActiveInteractionToday,
   isAdminUser,
   canEditLead,
   getLeadOwnershipFields,
@@ -4969,45 +4974,49 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     const todayEnd = new Date();
     todayEnd.setHours(23,59,59,999);
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const firstStatusName = statuses && statuses.length > 0 ? statuses[0].name : '';
 
     const myLeads = (leads || []).filter(l => l.consultantId === appUser.id);
     const allTargetLeadsMap = new Map();
 
-    const hasInteractionToday = (lead) => (interactions || []).some(i => i.leadId === lead.id && i.createdAt && i.createdAt >= todayStart);
-    const isVendaOrPerdaToday = (lead) => (lead.status === 'Venda' && lead.convertedAt && lead.convertedAt >= todayStart) || (lead.status === 'Perda' && lead.lostAt && lead.lostAt >= todayStart);
-    const hasOutcomeToday = (lead) => {
-      // Para cards de Visita/Aula Hoje: marcar outcome conta como "feito"
-      if (!lead.appointmentOutcome) return false;
-      const outcomeDate = lead.appointmentOutcomeAt instanceof Date ? lead.appointmentOutcomeAt : null;
-      return outcomeDate && outcomeDate >= todayStart;
+    // Regra única: tarefa é considerada "feita" SOMENTE se
+    //   (a) lead virou Venda/Perda hoje (auto-conclui todas as
+    //       categorias do lead — decisão de produto), OU
+    //   (b) há uma interaction type='daily_goal_done' criada hoje
+    //       com dailyGoalCategory matching aquela categoria.
+    // Mover no Kanban, anotar no LeadDetailsModal, mudar fase, etc
+    // NÃO marcam a tarefa. O consultor precisa confirmar pela Meta.
+    const isCategoryDone = (lead, categorySlug) => {
+      if (isLeadResolvedToday(lead, todayStart)) return true;
+      return hasGoalDoneToday(lead, categorySlug, interactions, todayStart);
     };
-    const isTouchedToday = (lead) => hasInteractionToday(lead) || isVendaOrPerdaToday(lead) || hasOutcomeToday(lead);
 
-    const addTarget = (lead, category, extraCheckIsDone = false) => {
-        if (!allTargetLeadsMap.has(lead.id)) {
-            allTargetLeadsMap.set(lead.id, { 
-              ...lead, 
-              categories: [category], 
-              isDone: isTouchedToday(lead) || extraCheckIsDone 
-            });
-        } else {
-            if (!allTargetLeadsMap.get(lead.id).categories.includes(category)) {
-              allTargetLeadsMap.get(lead.id).categories.push(category);
-            }
-        }
+    const addTarget = (lead, categoryLabel, categorySlug) => {
+      if (!allTargetLeadsMap.has(lead.id)) {
+        allTargetLeadsMap.set(lead.id, {
+          ...lead,
+          categories: [],
+          categorySlugs: [],
+          categoryStatus: {},
+          hasOtherActivityToday: hasActiveInteractionToday(lead, interactions, todayStart)
+        });
+      }
+      const entry = allTargetLeadsMap.get(lead.id);
+      if (!entry.categorySlugs.includes(categorySlug)) {
+        entry.categories.push(categoryLabel);
+        entry.categorySlugs.push(categorySlug);
+        entry.categoryStatus[categorySlug] = isCategoryDone(lead, categorySlug);
+      }
     };
 
     myLeads.forEach(lead => {
-      // 1. Leads 24h
-      if (lead.createdAt && lead.createdAt >= oneDayAgo) {
-        const movedOut = lead.status !== firstStatusName && lead.status !== 'Novo';
-        addTarget(lead, 'Novo Lead 24h', movedOut);
+      // 1. Novo Lead 24h
+      if (lead.createdAt && lead.createdAt >= oneDayAgo && lead.status !== 'Venda' && lead.status !== 'Perda') {
+        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.novo_24h, DAILY_GOAL_CATEGORIES.NOVO_24H);
       }
 
       // 2. Atrasados
       if (lead.status !== 'Venda' && lead.status !== 'Perda' && lead.nextFollowUp && lead.nextFollowUp < todayStart) {
-        addTarget(lead, 'Atrasado');
+        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.atrasado, DAILY_GOAL_CATEGORIES.ATRASADO);
       }
 
       // 3. Visitas Hoje
@@ -5015,7 +5024,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         const apptType = getLeadAppointmentType(lead);
         const apptDate = getLeadAppointmentDate(lead);
         if (apptType === 'visita' && apptDate >= todayStart && apptDate <= todayEnd) {
-          addTarget(lead, 'Visita Hoje');
+          addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.visita_hoje, DAILY_GOAL_CATEGORIES.VISITA_HOJE);
         }
       }
 
@@ -5024,34 +5033,59 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         const apptType = getLeadAppointmentType(lead);
         const apptDate = getLeadAppointmentDate(lead);
         if (apptType === 'aula_experimental' && apptDate >= todayStart && apptDate <= todayEnd) {
-          addTarget(lead, 'Aula Experimental Hoje');
+          addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.aula_hoje, DAILY_GOAL_CATEGORIES.AULA_HOJE);
         }
       }
     });
 
     return Array.from(allTargetLeadsMap.values()).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
-  }, [leads, appUser, interactions, statuses]);
+  }, [leads, appUser, interactions]);
 
-  const pending = processedLeads.filter(l => !l.isDone);
-  const done = processedLeads.filter(l => l.isDone);
-  const total = processedLeads.length;
-  const progress = total > 0 ? Math.round((done.length / total) * 100) : 100;
+  // Helper para filtragem por categoria. Lead com 2 categorias pode
+  // estar "feito" em uma e "pendente" na outra.
+  const isLeadDoneForCategory = (lead, categorySlug) =>
+    Boolean(lead.categoryStatus?.[categorySlug]);
 
-  const total24h = processedLeads.filter(l => l.categories.includes('Novo Lead 24h'));
-  const pending24h = pending.filter(l => l.categories.includes('Novo Lead 24h'));
-  const done24hCount = total24h.filter(l => l.isDone).length;
+  // Agora cada lead pode estar em múltiplas categorias e cada uma
+  // tem status independente. Total de "slots" = soma das categorias
+  // de cada lead. Done = slots concluídos.
+  const totalSlots = processedLeads.reduce((acc, l) => acc + l.categorySlugs.length, 0);
+  const doneSlots = processedLeads.reduce(
+    (acc, l) => acc + l.categorySlugs.filter(s => isLeadDoneForCategory(l, s)).length,
+    0
+  );
+  const total = totalSlots;
+  const progress = totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 100;
 
-  const totalAtrasados = processedLeads.filter(l => l.categories.includes('Atrasado'));
-  const pendingAtrasados = pending.filter(l => l.categories.includes('Atrasado'));
-  const doneAtrasadosCount = totalAtrasados.filter(l => l.isDone).length;
+  // Para a coluna "Feitos Hoje" — mostra leads que têm AO MENOS uma
+  // categoria concluída. Lead pendente em qualquer categoria continua
+  // aparecendo na coluna "A Fazer".
+  const done = processedLeads.filter(l => l.categorySlugs.some(s => isLeadDoneForCategory(l, s)));
+  const pending = processedLeads.filter(l => l.categorySlugs.some(s => !isLeadDoneForCategory(l, s)));
 
-  const totalVisitas = processedLeads.filter(l => l.categories.includes('Visita Hoje'));
-  const pendingVisitas = pending.filter(l => l.categories.includes('Visita Hoje'));
-  const doneVisitasCount = totalVisitas.filter(l => l.isDone).length;
+  const byCategory = (slug) => {
+    const total = processedLeads.filter(l => l.categorySlugs.includes(slug));
+    const pending = total.filter(l => !isLeadDoneForCategory(l, slug));
+    const doneCount = total.length - pending.length;
+    return { total, pending, doneCount };
+  };
+  const c24h = byCategory(DAILY_GOAL_CATEGORIES.NOVO_24H);
+  const cAtrasados = byCategory(DAILY_GOAL_CATEGORIES.ATRASADO);
+  const cVisitas = byCategory(DAILY_GOAL_CATEGORIES.VISITA_HOJE);
+  const cAulas = byCategory(DAILY_GOAL_CATEGORIES.AULA_HOJE);
 
-  const totalAulas = processedLeads.filter(l => l.categories.includes('Aula Experimental Hoje'));
-  const pendingAulas = pending.filter(l => l.categories.includes('Aula Experimental Hoje'));
-  const doneAulasCount = totalAulas.filter(l => l.isDone).length;
+  const total24h = c24h.total;
+  const pending24h = c24h.pending;
+  const done24hCount = c24h.doneCount;
+  const totalAtrasados = cAtrasados.total;
+  const pendingAtrasados = cAtrasados.pending;
+  const doneAtrasadosCount = cAtrasados.doneCount;
+  const totalVisitas = cVisitas.total;
+  const pendingVisitas = cVisitas.pending;
+  const doneVisitasCount = cVisitas.doneCount;
+  const totalAulas = cAulas.total;
+  const pendingAulas = cAulas.pending;
+  const doneAulasCount = cAulas.doneCount;
 
   useEffect(() => {
     if (progress === 100 && prevProgress.current !== 100 && total > 0) {
@@ -5080,7 +5114,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     } catch(err) { console.error(err); toast.error('Não foi possível adiar o lead. Tente novamente.'); }
   };
 
-  const handleOutcome = async (lead, outcome, e) => {
+  const handleOutcome = async (lead, outcome, categorySlug, e) => {
     if (e) e.stopPropagation();
     if (!APPOINTMENT_OUTCOMES.includes(outcome)) return;
     const meta = getAppointmentOutcomeMeta(outcome);
@@ -5090,12 +5124,17 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         appointmentOutcomeAt: serverTimestamp(),
         appointmentOutcomeBy: appUser.authUid || appUser.id || null
       });
+      // Marca a tarefa da Meta como concluída para essa categoria
+      // específica. Type='daily_goal_done' é a fonte ÚNICA de verdade
+      // para "tarefa cumprida" no fluxo da Meta Diária.
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
         leadId: lead.id,
         consultantName: appUser.name,
         ...getInteractionSecurityFields(lead, appUser),
-        text: `${meta.icon} ${meta.label} — registrado via Meta Diária.`,
-        type: 'status_change',
+        text: `${meta.icon} ${meta.label} — Meta Diária (${DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug})`,
+        type: 'daily_goal_done',
+        dailyGoalCategory: categorySlug,
+        appointmentOutcome: outcome,
         createdAt: serverTimestamp()
       });
       toast.success(`${meta.label} registrado para ${lead.name}.`);
@@ -5105,13 +5144,39 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     }
   };
 
-  const renderPendingCard = (lead) => {
-    const isAppointmentCard = lead.categories.some(c => c === 'Visita Hoje' || c === 'Aula Experimental Hoje');
+  const handleGoalDone = async (lead, categorySlug, note, e) => {
+    if (e) e.stopPropagation();
+    if (!Object.values(DAILY_GOAL_CATEGORIES).includes(categorySlug)) return;
+    const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
+    const noteText = (note || '').trim();
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: noteText
+          ? `✅ ${categoryLabel} — Meta Diária. Obs: ${noteText}`
+          : `✅ ${categoryLabel} — Meta Diária concluída.`,
+        type: 'daily_goal_done',
+        dailyGoalCategory: categorySlug,
+        createdAt: serverTimestamp()
+      });
+      toast.success(`Tarefa "${categoryLabel}" concluída.`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível concluir a tarefa. Tente novamente.');
+    }
+  };
+
+  const renderPendingCard = (lead, categorySlug) => {
+    const isAppointmentCategory = categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE
+      || categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE;
     const outcome = lead.appointmentOutcome || null;
     const outcomeMeta = outcome ? getAppointmentOutcomeMeta(outcome) : null;
+    const showInteractedBadge = !isLeadDoneForCategory(lead, categorySlug) && lead.hasOtherActivityToday;
 
     return (
-      <div key={lead.id} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 transition-all shadow-sm group">
+      <div key={`${lead.id}-${categorySlug}`} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 transition-all shadow-sm group">
         <div onClick={() => setSelectedLead(lead)} className="cursor-pointer hover:opacity-80 transition-opacity">
           <div className="flex justify-between items-start gap-4">
             <div className="flex flex-col">
@@ -5123,36 +5188,43 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             </button>
           </div>
           <div className="text-[10px] text-gray-400 mt-2 font-semibold">Entrou em: {lead.createdAt?.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
+          {showInteractedBadge && (
+            <div className="mt-2">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30">
+                ⚠️ Já interagido hoje — feche pela Meta
+              </span>
+            </div>
+          )}
         </div>
 
-        {isAppointmentCard && !outcome && (
+        {isAppointmentCategory && !outcome && (
           <div className="mt-2 pt-3 border-t border-gray-200 dark:border-neutral-800">
             <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500 dark:text-neutral-400 mb-2">Marcar desfecho</p>
             <div className="grid grid-cols-2 gap-1.5">
               <button
                 type="button"
-                onClick={(e) => handleOutcome(lead, 'attended', e)}
+                onClick={(e) => handleOutcome(lead, 'attended', categorySlug, e)}
                 className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white border border-green-500/30 transition-all active:scale-95 flex items-center justify-center gap-1"
               >
                 ✅ Compareceu
               </button>
               <button
                 type="button"
-                onClick={(e) => handleOutcome(lead, 'no_show', e)}
+                onClick={(e) => handleOutcome(lead, 'no_show', categorySlug, e)}
                 className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white border border-red-500/30 transition-all active:scale-95 flex items-center justify-center gap-1"
               >
                 ❌ Não veio
               </button>
               <button
                 type="button"
-                onClick={(e) => handleOutcome(lead, 'rescheduled', e)}
+                onClick={(e) => handleOutcome(lead, 'rescheduled', categorySlug, e)}
                 className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500 hover:text-white border border-yellow-500/30 transition-all active:scale-95 flex items-center justify-center gap-1"
               >
                 🔄 Remarcou
               </button>
               <button
                 type="button"
-                onClick={(e) => handleOutcome(lead, 'cancelled', e)}
+                onClick={(e) => handleOutcome(lead, 'cancelled', categorySlug, e)}
                 className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-gray-500/10 text-gray-600 dark:text-neutral-300 hover:bg-gray-500 hover:text-white border border-gray-300 dark:border-neutral-700 transition-all active:scale-95 flex items-center justify-center gap-1"
               >
                 🚫 Cancelou
@@ -5161,7 +5233,19 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           </div>
         )}
 
-        {outcomeMeta && (
+        {!isAppointmentCategory && (
+          <div className="mt-2 pt-3 border-t border-gray-200 dark:border-neutral-800">
+            <button
+              type="button"
+              onClick={(e) => handleGoalDone(lead, categorySlug, '', e)}
+              className="w-full px-3 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white border border-green-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"
+            >
+              ✅ Concluir Tarefa
+            </button>
+          </div>
+        )}
+
+        {isAppointmentCategory && outcomeMeta && (
           <div className="mt-2 pt-3 border-t border-gray-200 dark:border-neutral-800 flex items-center justify-between gap-2">
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${outcomeMeta.badgeClass}`}>
               {outcomeMeta.icon} {outcomeMeta.label}
@@ -5228,7 +5312,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                       <span>Novos Leads 24 horas</span>
                       <span className="text-[10px] font-bold bg-blue-500/10 px-2 py-1 rounded-md">{done24hCount}/{total24h.length}</span>
                     </h4>
-                    {pending24h.length > 0 ? <div className="space-y-3">{pending24h.map(renderPendingCard)}</div> : <div className="text-[10px] font-bold text-blue-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
+                    {pending24h.length > 0 ? <div className="space-y-3">{pending24h.map(l => renderPendingCard(l, DAILY_GOAL_CATEGORIES.NOVO_24H))}</div> : <div className="text-[10px] font-bold text-blue-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
                   </div>
                 )}
                 {totalVisitas.length > 0 && (
@@ -5237,7 +5321,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                       <span>Visitas</span>
                       <span className="text-[10px] font-bold bg-purple-500/10 px-2 py-1 rounded-md">{doneVisitasCount}/{totalVisitas.length}</span>
                     </h4>
-                    {pendingVisitas.length > 0 ? <div className="space-y-3">{pendingVisitas.map(renderPendingCard)}</div> : <div className="text-[10px] font-bold text-purple-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
+                    {pendingVisitas.length > 0 ? <div className="space-y-3">{pendingVisitas.map(l => renderPendingCard(l, DAILY_GOAL_CATEGORIES.VISITA_HOJE))}</div> : <div className="text-[10px] font-bold text-purple-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
                   </div>
                 )}
                 {totalAulas.length > 0 && (
@@ -5246,7 +5330,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                       <span>Aulas Experimentais</span>
                       <span className="text-[10px] font-bold bg-orange-500/10 px-2 py-1 rounded-md">{doneAulasCount}/{totalAulas.length}</span>
                     </h4>
-                    {pendingAulas.length > 0 ? <div className="space-y-3">{pendingAulas.map(renderPendingCard)}</div> : <div className="text-[10px] font-bold text-orange-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
+                    {pendingAulas.length > 0 ? <div className="space-y-3">{pendingAulas.map(l => renderPendingCard(l, DAILY_GOAL_CATEGORIES.AULA_HOJE))}</div> : <div className="text-[10px] font-bold text-orange-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
                   </div>
                 )}
                 {totalAtrasados.length > 0 && (
@@ -5255,7 +5339,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                       <span>Follow-ups Atrasados</span>
                       <span className="text-[10px] font-bold bg-red-500/10 px-2 py-1 rounded-md">{doneAtrasadosCount}/{totalAtrasados.length}</span>
                     </h4>
-                    {pendingAtrasados.length > 0 ? <div className="space-y-3">{pendingAtrasados.map(renderPendingCard)}</div> : <div className="text-[10px] font-bold text-red-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
+                    {pendingAtrasados.length > 0 ? <div className="space-y-3">{pendingAtrasados.map(l => renderPendingCard(l, DAILY_GOAL_CATEGORIES.ATRASADO))}</div> : <div className="text-[10px] font-bold text-red-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
                   </div>
                 )}
               </div>
