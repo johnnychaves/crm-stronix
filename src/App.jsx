@@ -1,4 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
   Users,
@@ -3448,14 +3449,17 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
     }
   };
 
-  return (
+  // Rendered via Portal at <body> level — escapes the <main>/header stacking
+  // context where the global topbar's backdrop-blur creates its own layer and
+  // would otherwise sit above this modal regardless of z-index.
+  return createPortal(
     <>
       {/* Backdrop: blur + dark overlay over the page behind the modal. Click to close. */}
       <div
         onClick={onClose}
-        className="fixed inset-0 z-[99] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in"
+        className="fixed inset-0 z-[100] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in"
       />
-      <div className="fixed inset-y-0 right-0 left-0 md:left-64 z-[100] bg-[#eaedf2] dark:bg-neutral-950 flex flex-col md:flex-row overflow-hidden animate-fade-in shadow-[-20px_0_40px_rgba(0,0,0,0.1)]">
+      <div className="fixed inset-0 z-[101] bg-[#eaedf2] dark:bg-neutral-950 md:inset-y-4 md:inset-x-4 md:rounded-3xl flex flex-col md:flex-row overflow-hidden animate-fade-in shadow-2xl">
 
         {/* LEFT COLUMN: Lead Info & Actions */}
         <div className="w-full md:w-[450px] lg:w-[480px] shrink-0 p-6 md:p-8 border-r border-gray-200 dark:border-neutral-800 overflow-y-auto bg-white dark:bg-neutral-900 relative z-10 custom-scrollbar">
@@ -3701,7 +3705,8 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         </div>
       {lossModalOpen && <LossReasonModal lossReasons={lossReasons} onClose={()=>setLossModalOpen(false)} onConfirm={confirmLoss} />}
       </div>
-    </>
+    </>,
+    document.body
   );
 }
 
