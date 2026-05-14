@@ -148,9 +148,12 @@
   overflow: hidden;
 }
 
+/* Note: only opacity is animated — adding `transform` here would create a
+   containing block for descendant `position: fixed` elements, breaking
+   the LeadDetailsModal that lives inside DailyGoalView. */
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(2px); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .fade-in,
 .animate-fade-in {
