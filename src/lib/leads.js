@@ -47,7 +47,8 @@ export const DAILY_GOAL_CATEGORIES = {
   NOVO_24H: 'novo_24h',
   ATRASADO: 'atrasado',
   VISITA_HOJE: 'visita_hoje',
-  AULA_HOJE: 'aula_hoje'
+  AULA_HOJE: 'aula_hoje',
+  CONTATO_HOJE: 'contato_hoje'
 };
 
 // Label legível por categoria (usado na UI).
@@ -55,7 +56,8 @@ export const DAILY_GOAL_CATEGORY_LABEL = {
   novo_24h: 'Novo Lead 24h',
   atrasado: 'Atrasado',
   visita_hoje: 'Visita Hoje',
-  aula_hoje: 'Aula Experimental Hoje'
+  aula_hoje: 'Aula Experimental Hoje',
+  contato_hoje: 'Contato Hoje'
 };
 
 // Retorna true se há ao menos uma interaction `daily_goal_done`

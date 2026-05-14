@@ -5026,6 +5026,7 @@ const DG_CATEGORY_META = {
   [DAILY_GOAL_CATEGORIES.NOVO_24H]: { label: DAILY_GOAL_CATEGORY_LABEL.novo_24h, short: 'Novos leads', color: 'blue', Icon: Zap },
   [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.visita_hoje, short: 'Visitas', color: 'violet', Icon: Building2 },
   [DAILY_GOAL_CATEGORIES.AULA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.aula_hoje, short: 'Aulas exp.', color: 'amber', Icon: BookOpen },
+  [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.contato_hoje, short: 'Contatos', color: 'teal', Icon: MessageSquare },
   [DAILY_GOAL_CATEGORIES.ATRASADO]: { label: DAILY_GOAL_CATEGORY_LABEL.atrasado, short: 'Atrasados', color: 'rose', Icon: AlertCircle }
 };
 
@@ -5033,6 +5034,7 @@ const DG_CATEGORY_ORDER = [
   DAILY_GOAL_CATEGORIES.NOVO_24H,
   DAILY_GOAL_CATEGORIES.VISITA_HOJE,
   DAILY_GOAL_CATEGORIES.AULA_HOJE,
+  DAILY_GOAL_CATEGORIES.CONTATO_HOJE,
   DAILY_GOAL_CATEGORIES.ATRASADO
 ];
 
@@ -5519,9 +5521,8 @@ function toDatetimeLocalValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function RescheduleModal({ lead, categorySlug, currentDate, onConfirm, onClose }) {
-  const isVisita = categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE;
-  const apptKindLabel = isVisita ? 'visita' : 'aula experimental';
+function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
+  const isAfterNoShow = flow === 'after_no_show';
 
   const defaultValue = useMemo(() => {
     const base = currentDate ? new Date(currentDate) : new Date();
@@ -5529,7 +5530,12 @@ function RescheduleModal({ lead, categorySlug, currentDate, onConfirm, onClose }
     return toDatetimeLocalValue(base);
   }, [currentDate]);
 
+  const initialType = currentType === 'aula_experimental' || categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE
+    ? 'aula_experimental'
+    : 'visita';
+
   const [dateValue, setDateValue] = useState(defaultValue);
+  const [apptType, setApptType] = useState(initialType);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
@@ -5539,8 +5545,33 @@ function RescheduleModal({ lead, categorySlug, currentDate, onConfirm, onClose }
     const newDate = new Date(dateValue);
     if (isNaN(newDate.getTime())) return;
     setSubmitting(true);
-    await onConfirm(newDate, note);
+    await onConfirm(newDate, note, apptType);
     setSubmitting(false);
+  };
+
+  const title = isAfterNoShow
+    ? 'Agendar próxima tentativa'
+    : `Remarcar ${apptType === 'aula_experimental' ? 'aula experimental' : 'visita'}`;
+
+  const helperText = isAfterNoShow
+    ? 'A tarefa de hoje já foi marcada como "Não veio". O lead voltará à Meta Diária na nova data.'
+    : 'A tarefa de hoje será concluída e o lead voltará para a sua Meta Diária na nova data.';
+
+  const TypeBtn = ({ value, label }) => {
+    const active = apptType === value;
+    return (
+      <button
+        type="button"
+        onClick={() => setApptType(value)}
+        className={`flex-1 h-9 px-3 rounded-lg text-[12.5px] font-semibold transition border ${
+          active
+            ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
+            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-white/[0.03] dark:text-slate-300 dark:border-white/[0.07] dark:hover:bg-white/[0.06]'
+        }`}
+      >
+        {label}
+      </button>
+    );
   };
 
   return createPortal(
@@ -5549,16 +5580,29 @@ function RescheduleModal({ lead, categorySlug, currentDate, onConfirm, onClose }
       <div className="fixed inset-0 z-[111] grid place-items-center p-4 animate-fade-in pointer-events-none">
         <form onSubmit={handleSubmit} className="bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
           <div className="flex items-start gap-3 mb-5">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300 grid place-items-center shrink-0 text-lg">
-              🔄
+            <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 text-lg ${
+              isAfterNoShow
+                ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
+                : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+            }`}>
+              {isAfterNoShow ? '↻' : '🔄'}
             </div>
             <div className="min-w-0 flex-1">
-              <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">Remarcar {apptKindLabel}</h3>
+              <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">{title}</h3>
               <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{lead.name} · <span className="num">{lead.whatsapp}</span></p>
             </div>
           </div>
 
           <div className="space-y-4">
+            <div>
+              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Tipo
+              </label>
+              <div className="flex gap-2">
+                <TypeBtn value="visita" label="Visita" />
+                <TypeBtn value="aula_experimental" label="Aula Experimental" />
+              </div>
+            </div>
             <div>
               <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                 Nova data e horário
@@ -5580,25 +5624,25 @@ function RescheduleModal({ lead, categorySlug, currentDate, onConfirm, onClose }
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={2}
-                placeholder="Ex: lead pediu para remarcar por motivo de trabalho"
+                placeholder={isAfterNoShow ? 'Ex: combinar pela manhã, ligar antes' : 'Ex: lead pediu para remarcar por motivo de trabalho'}
                 className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
               />
             </div>
           </div>
 
-          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-4 leading-relaxed">
-            A tarefa de hoje será concluída e o lead voltará para a sua Meta Diária na nova data.
-          </p>
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-4 leading-relaxed">{helperText}</p>
 
           <div className="mt-5 flex items-center justify-end gap-2">
-            <Btn kind="secondary" onClick={onClose}>Cancelar</Btn>
+            <Btn kind="secondary" onClick={onClose}>
+              {isAfterNoShow ? 'Não remarcar agora' : 'Cancelar'}
+            </Btn>
             <button
               type="submit"
               disabled={submitting || !dateValue}
               className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold whitespace-nowrap transition active:scale-[.98] bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Check size={14} />
-              {submitting ? 'Salvando...' : 'Confirmar remarcação'}
+              {submitting ? 'Salvando...' : (isAfterNoShow ? 'Confirmar agendamento' : 'Confirmar remarcação')}
             </button>
           </div>
         </form>
@@ -5692,6 +5736,22 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         const apptDate = getLeadAppointmentDate(lead);
         if (apptType === 'aula_experimental' && apptDate >= todayStart && apptDate <= todayEnd) {
           addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.aula_hoje, DAILY_GOAL_CATEGORIES.AULA_HOJE);
+        }
+      }
+
+      // 5. Contato Hoje — follow-up via Mensagem/Ligação agendado para hoje
+      // (qualquer tipo que NÃO seja visita/aula). Pega WhatsApp + ligações sem
+      // duplicar quem já está nas seções de visita/aula.
+      if (
+        lead.status !== 'Venda' &&
+        lead.status !== 'Perda' &&
+        lead.nextFollowUp &&
+        lead.nextFollowUp >= todayStart &&
+        lead.nextFollowUp <= todayEnd
+      ) {
+        const apptType = getLeadAppointmentType(lead);
+        if (apptType !== 'visita' && apptType !== 'aula_experimental') {
+          addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.contato_hoje, DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
         }
       }
     });
@@ -5796,6 +5856,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         createdAt: serverTimestamp()
       });
       toast.success(`${meta.label} registrado para ${lead.name}.`);
+      // After 'no_show', immediately offer to reschedule. Today's task is
+      // already closed; the modal in 'after_no_show' flow only updates the
+      // appointment date without writing another daily_goal_done.
+      if (outcome === 'no_show') {
+        setRescheduleTarget({ lead, categorySlug, flow: 'after_no_show' });
+      }
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível registrar o comparecimento. Tente novamente.');
@@ -5806,6 +5872,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     if (e) e.stopPropagation();
     if (!Object.values(DAILY_GOAL_CATEGORIES).includes(categorySlug)) return;
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
+    if (!window.confirm(`Concluir a tarefa "${categoryLabel}" deste lead?`)) return;
     const noteText = (note || '').trim();
     try {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
@@ -5826,17 +5893,16 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     }
   };
 
-  // Reschedule: opens the date dialog (set on TaskCard click), then this commits.
-  // - Always updates appointmentScheduledFor and clears appointmentOutcome so
-  //   the lead re-enters Meta Diária fresh on the new date.
-  // - If the new date is on a DIFFERENT day, writes a daily_goal_done so
-  //   today's task closes (the consultor handled it by rescheduling away).
-  // - If the new date is STILL today, writes a regular 'note' instead — the
-  //   task remains pending with the new time, because the user just shifted
-  //   the appointment within the same day, not completed it.
-  const handleReschedule = async (newDate, note) => {
+  // Reschedule: opens the date dialog (set on TaskCard click or after no_show), then this commits.
+  // Three flows:
+  //   - flow='manual', cross-day  → writes daily_goal_done (today's task closes)
+  //   - flow='manual', same-day   → writes plain 'note' (task remains pending, just new time)
+  //   - flow='after_no_show'      → writes plain 'note' (task already closed via no_show)
+  // Always updates appointment fields and clears appointmentOutcome so the
+  // new appointment is fresh.
+  const handleReschedule = async (newDate, note, newApptType) => {
     if (!rescheduleTarget) return;
-    const { lead, categorySlug } = rescheduleTarget;
+    const { lead, categorySlug, flow = 'manual' } = rescheduleTarget;
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
     const formattedDate = newDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const formattedTime = newDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -5845,41 +5911,57 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
     const isStillToday = newDate >= todayStart && newDate <= todayEnd;
+    const isAfterNoShow = flow === 'after_no_show';
+    // Cross-day manual reschedule is the only path that needs to close today's task.
+    const shouldCloseToday = !isAfterNoShow && !isStillToday;
+
+    // Type may change during reschedule (decision 4): user can flip Visita ↔ Aula.
+    const finalApptType = newApptType || getLeadAppointmentType(lead) || 'visita';
+    const finalApptTypeLabel = finalApptType === 'aula_experimental' ? 'Aula Experimental' : 'Visita';
 
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
         appointmentScheduledFor: newDate,
         nextFollowUp: newDate, // keep legacy field in sync so the lead doesn't show up as "Atrasado" after rescheduling
+        appointmentType: finalApptType,
+        nextFollowUpType: finalApptTypeLabel,
         appointmentOutcome: null,
         appointmentOutcomeAt: null,
         appointmentOutcomeBy: null
       });
 
-      const baseText = isStillToday
-        ? `🔄 Horário ajustado: ${categoryLabel.toLowerCase()} para hoje às ${formattedTime}.`
-        : `🔄 Remarcou ${categoryLabel.toLowerCase()} para ${formattedDate} às ${formattedTime} — Meta Diária.`;
+      let baseText;
+      if (isAfterNoShow) {
+        baseText = `🔄 Próxima tentativa marcada (${finalApptTypeLabel}) para ${formattedDate} às ${formattedTime}, após "Não veio".`;
+      } else if (isStillToday) {
+        baseText = `🔄 Horário ajustado: ${finalApptTypeLabel.toLowerCase()} para hoje às ${formattedTime}.`;
+      } else {
+        baseText = `🔄 Remarcou ${finalApptTypeLabel.toLowerCase()} para ${formattedDate} às ${formattedTime} — Meta Diária.`;
+      }
 
       const interactionPayload = {
         leadId: lead.id,
         consultantName: appUser.name,
         ...getInteractionSecurityFields(lead, appUser),
         text: noteText ? `${baseText} Obs: ${noteText}` : baseText,
-        type: isStillToday ? 'note' : 'daily_goal_done',
+        type: shouldCloseToday ? 'daily_goal_done' : 'note',
         rescheduledFor: newDate,
         createdAt: serverTimestamp()
       };
-      // Only attach Meta Diária metadata when we're actually closing today's task.
-      if (!isStillToday) {
+      if (shouldCloseToday) {
         interactionPayload.dailyGoalCategory = categorySlug;
         interactionPayload.appointmentOutcome = 'rescheduled';
       }
 
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), interactionPayload);
-      toast.success(
-        isStillToday
-          ? `Horário ajustado para hoje às ${formattedTime}.`
-          : `Remarcado para ${formattedDate} às ${formattedTime}.`
-      );
+
+      if (isAfterNoShow) {
+        toast.success(`Próxima tentativa em ${formattedDate} às ${formattedTime}.`);
+      } else if (isStillToday) {
+        toast.success(`Horário ajustado para hoje às ${formattedTime}.`);
+      } else {
+        toast.success(`Remarcado para ${formattedDate} às ${formattedTime}.`);
+      }
       setRescheduleTarget(null);
     } catch (err) {
       console.error(err);
@@ -6023,18 +6105,17 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           icon={<Calendar size={15} />}
         />
         <KpiCard
-          label="Atrasados"
-          value={pendingAtrasados.length}
-          sub={pendingAtrasados.length > 0 ? 'recuperar até sexta' : 'sem pendência'}
-          icon={<AlertCircle size={15} />}
-          tone={pendingAtrasados.length > 1 ? 'slate' : 'emerald'}
+          label="Contatos do dia"
+          value={counts[DAILY_GOAL_CATEGORIES.CONTATO_HOJE]}
+          sub={counts[DAILY_GOAL_CATEGORIES.CONTATO_HOJE] > 0 ? 'follow-up agendado' : 'todos feitos'}
+          icon={<MessageSquare size={15} />}
         />
         <KpiCard
-          label="Progresso geral"
-          value={`${doneSlots}/${totalSlots || 0}`}
-          sub={`${progress}% concluído`}
-          icon={<CheckCircle size={15} />}
-          tone="emerald"
+          label="Atrasados"
+          value={pendingAtrasados.length}
+          sub={pendingAtrasados.length > 0 ? 'recuperar hoje' : 'sem pendência'}
+          icon={<AlertCircle size={15} />}
+          tone={pendingAtrasados.length > 1 ? 'slate' : 'emerald'}
         />
       </div>
 
@@ -6138,6 +6219,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           lead={rescheduleTarget.lead}
           categorySlug={rescheduleTarget.categorySlug}
           currentDate={getLeadAppointmentDate(rescheduleTarget.lead)}
+          currentType={getLeadAppointmentType(rescheduleTarget.lead)}
+          flow={rescheduleTarget.flow || 'manual'}
           onConfirm={handleReschedule}
           onClose={() => setRescheduleTarget(null)}
         />
