@@ -93,6 +93,10 @@ import {
   isLeadConverted,
   getLeadConversionDate,
   getLeadSatisfactionDate,
+  isLeadAttended,
+  getLeadAttendanceDate,
+  getAppointmentOutcomeMeta,
+  APPOINTMENT_OUTCOMES,
   isAdminUser,
   canEditLead,
   getLeadOwnershipFields,
@@ -458,7 +462,8 @@ useEffect(() => {
         id: docSnap.id,
         ...data,
         createdAt: getSafeDate(data.createdAt),
-        nextFollowUp: getSafeDateOrNull(data.nextFollowUp)
+        nextFollowUp: getSafeDateOrNull(data.nextFollowUp),
+        appointmentOutcomeAt: getSafeDateOrNull(data.appointmentOutcomeAt)
       };
     });
 
@@ -4971,7 +4976,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
 
     const hasInteractionToday = (lead) => (interactions || []).some(i => i.leadId === lead.id && i.createdAt && i.createdAt >= todayStart);
     const isVendaOrPerdaToday = (lead) => (lead.status === 'Venda' && lead.convertedAt && lead.convertedAt >= todayStart) || (lead.status === 'Perda' && lead.lostAt && lead.lostAt >= todayStart);
-    const isTouchedToday = (lead) => hasInteractionToday(lead) || isVendaOrPerdaToday(lead);
+    const hasOutcomeToday = (lead) => {
+      // Para cards de Visita/Aula Hoje: marcar outcome conta como "feito"
+      if (!lead.appointmentOutcome) return false;
+      const outcomeDate = lead.appointmentOutcomeAt instanceof Date ? lead.appointmentOutcomeAt : null;
+      return outcomeDate && outcomeDate >= todayStart;
+    };
+    const isTouchedToday = (lead) => hasInteractionToday(lead) || isVendaOrPerdaToday(lead) || hasOutcomeToday(lead);
 
     const addTarget = (lead, category, extraCheckIsDone = false) => {
         if (!allTargetLeadsMap.has(lead.id)) {
@@ -5069,20 +5080,102 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     } catch(err) { console.error(err); toast.error('Não foi possível adiar o lead. Tente novamente.'); }
   };
 
-  const renderPendingCard = (lead) => (
-    <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 cursor-pointer hover:border-blue-500 transition-all shadow-sm group">
-      <div className="flex justify-between items-start gap-4">
-        <div className="flex flex-col">
-          <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
-          <span className="text-xs font-bold text-gray-500 dark:text-neutral-400 mt-1">{lead.whatsapp}</span>
+  const handleOutcome = async (lead, outcome, e) => {
+    if (e) e.stopPropagation();
+    if (!APPOINTMENT_OUTCOMES.includes(outcome)) return;
+    const meta = getAppointmentOutcomeMeta(outcome);
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+        appointmentOutcome: outcome,
+        appointmentOutcomeAt: serverTimestamp(),
+        appointmentOutcomeBy: appUser.authUid || appUser.id || null
+      });
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: `${meta.icon} ${meta.label} — registrado via Meta Diária.`,
+        type: 'status_change',
+        createdAt: serverTimestamp()
+      });
+      toast.success(`${meta.label} registrado para ${lead.name}.`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível registrar o comparecimento. Tente novamente.');
+    }
+  };
+
+  const renderPendingCard = (lead) => {
+    const isAppointmentCard = lead.categories.some(c => c === 'Visita Hoje' || c === 'Aula Experimental Hoje');
+    const outcome = lead.appointmentOutcome || null;
+    const outcomeMeta = outcome ? getAppointmentOutcomeMeta(outcome) : null;
+
+    return (
+      <div key={lead.id} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 transition-all shadow-sm group">
+        <div onClick={() => setSelectedLead(lead)} className="cursor-pointer hover:opacity-80 transition-opacity">
+          <div className="flex justify-between items-start gap-4">
+            <div className="flex flex-col">
+              <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
+              <span className="text-xs font-bold text-gray-500 dark:text-neutral-400 mt-1">{lead.whatsapp}</span>
+            </div>
+            <button onClick={(e) => handleSnooze(lead, e)} className="p-2 bg-white dark:bg-neutral-900 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all shadow-sm active:scale-90" title="Adiar para amanhã">
+              <Calendar className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="text-[10px] text-gray-400 mt-2 font-semibold">Entrou em: {lead.createdAt?.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
         </div>
-        <button onClick={(e) => handleSnooze(lead, e)} className="p-2 bg-white dark:bg-neutral-900 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all shadow-sm active:scale-90" title="Adiar para amanhã">
-          <Calendar className="w-4 h-4" />
-        </button>
+
+        {isAppointmentCard && !outcome && (
+          <div className="mt-2 pt-3 border-t border-gray-200 dark:border-neutral-800">
+            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500 dark:text-neutral-400 mb-2">Marcar desfecho</p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                type="button"
+                onClick={(e) => handleOutcome(lead, 'attended', e)}
+                className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white border border-green-500/30 transition-all active:scale-95 flex items-center justify-center gap-1"
+              >
+                ✅ Compareceu
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleOutcome(lead, 'no_show', e)}
+                className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white border border-red-500/30 transition-all active:scale-95 flex items-center justify-center gap-1"
+              >
+                ❌ Não veio
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleOutcome(lead, 'rescheduled', e)}
+                className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500 hover:text-white border border-yellow-500/30 transition-all active:scale-95 flex items-center justify-center gap-1"
+              >
+                🔄 Remarcou
+              </button>
+              <button
+                type="button"
+                onClick={(e) => handleOutcome(lead, 'cancelled', e)}
+                className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-gray-500/10 text-gray-600 dark:text-neutral-300 hover:bg-gray-500 hover:text-white border border-gray-300 dark:border-neutral-700 transition-all active:scale-95 flex items-center justify-center gap-1"
+              >
+                🚫 Cancelou
+              </button>
+            </div>
+          </div>
+        )}
+
+        {outcomeMeta && (
+          <div className="mt-2 pt-3 border-t border-gray-200 dark:border-neutral-800 flex items-center justify-between gap-2">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${outcomeMeta.badgeClass}`}>
+              {outcomeMeta.icon} {outcomeMeta.label}
+            </span>
+            <span className="text-[9px] text-gray-400 dark:text-neutral-500 font-medium uppercase tracking-widest">
+              {lead.appointmentOutcomeAt instanceof Date
+                ? lead.appointmentOutcomeAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+                : ''}
+            </span>
+          </div>
+        )}
       </div>
-      <div className="text-[10px] text-gray-400 mt-2 font-semibold">Entrou em: {lead.createdAt?.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
-    </div>
-  );
+    );
+  };
 
   return (
     <div className="h-full flex flex-col space-y-6 animate-fade-in relative">
@@ -5185,17 +5278,27 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                 <p className="text-xs font-bold uppercase tracking-widest">Nenhum ainda</p>
               </div>
             ) : (
-              done.map(lead => (
-                <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex justify-between items-center cursor-pointer hover:border-gray-400 transition-all shadow-sm">
-                  <div>
-                    <span className="font-bold text-sm text-gray-800 dark:text-neutral-200 line-through decoration-green-500/50">{lead.name}</span>
-                    <p className="text-[10px] text-gray-400 mt-1 font-bold uppercase truncate">
-                      {(lead.categories || []).join(' • ')}
-                    </p>
+              done.map(lead => {
+                const doneOutcomeMeta = lead.appointmentOutcome ? getAppointmentOutcomeMeta(lead.appointmentOutcome) : null;
+                return (
+                  <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex justify-between items-center cursor-pointer hover:border-gray-400 transition-all shadow-sm">
+                    <div className="min-w-0">
+                      <span className="font-bold text-sm text-gray-800 dark:text-neutral-200 line-through decoration-green-500/50">{lead.name}</span>
+                      <p className="text-[10px] text-gray-400 mt-1 font-bold uppercase truncate">
+                        {(lead.categories || []).join(' • ')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {doneOutcomeMeta && (
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${doneOutcomeMeta.badgeClass}`}>
+                          {doneOutcomeMeta.icon} {doneOutcomeMeta.label}
+                        </span>
+                      )}
+                      <CheckCircle className="w-5 h-5 text-green-500" />
+                    </div>
                   </div>
-                  <CheckCircle className="w-5 h-5 text-green-500" />
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
