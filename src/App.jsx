@@ -5849,6 +5849,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
         appointmentScheduledFor: newDate,
+        nextFollowUp: newDate, // keep legacy field in sync so the lead doesn't show up as "Atrasado" after rescheduling
         appointmentOutcome: null,
         appointmentOutcomeAt: null,
         appointmentOutcomeBy: null
