@@ -4409,6 +4409,12 @@ function ColorBadge({ color, name, size = 'md' }) {
   );
 }
 
+// Palette shown in the color pickers for Pipeline (Funil) and Tags (Etiquetas).
+// Legacy values like 'green', 'yellow', 'red', 'orange', 'purple', 'gray'
+// still render correctly via settingsColorTone(); they just won't be highlighted
+// in the picker — editing the item lets the user pick from this canonical set.
+const SETTINGS_COLOR_OPTIONS = ['blue', 'amber', 'violet', 'teal', 'rose', 'emerald', 'pink', 'indigo', 'lime', 'slate'];
+
 function ColorDot({ color, active, onClick, size = 22 }) {
   const t = settingsColorTone(color);
   return (
@@ -5290,28 +5296,31 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
       hint="Defina as etapas da jornada deste funil"
       icon={<Kanban size={16} />}
     >
-      <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
-        <input placeholder="ETAPA..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
-        <select value={color} onChange={e => setColor(e.target.value)} className="bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold uppercase shadow-sm">
-          <option value="blue">AZUL-CYAN</option>
-          <option value="green">VERDE-EMERALD</option>
-          <option value="yellow">AMARELO-GOLD</option>
-          <option value="purple">ROXO-INDIGO</option>
-          <option value="red">VERMELHO-ROSE</option>
-          <option value="orange">LARANJA-VIVO</option>
-          <option value="teal">TEAL-OCEAN</option>
-          <option value="pink">ROSA-PINK</option>
-          <option value="indigo">INDIGO-DEEP</option>
-          <option value="lime">LIMA-NEON</option>
-          <option value="gray">CINZA-SLATE</option>
-        </select>
+      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+        <div className="flex-1 min-w-[220px]">
+          <StyledInput
+            icon={<Kanban size={14} />}
+            placeholder="Nome da etapa (ex: Em contato)"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5 text-center">Cor</div>
+          <div className="flex items-center gap-1.5 h-10">
+            {SETTINGS_COLOR_OPTIONS.map(c => (
+              <ColorDot key={c} color={c} active={color === c} onClick={() => setColor(c)} size={22} />
+            ))}
+          </div>
+        </div>
         {editingId ? (
           <div className="flex gap-2">
-            <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">SALVAR</button>
-            <button type="button" onClick={() => { setEditingId(null); setName(''); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
+            <Btn kind="brand" type="submit" icon={<Check size={13} />}>Salvar</Btn>
+            <Btn kind="soft" onClick={() => { setEditingId(null); setName(''); }} type="button">Cancelar</Btn>
           </div>
         ) : (
-          <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">ADICIONAR</button>
+          <Btn kind="primary" type="submit" icon={<Zap size={13} />}>Adicionar etapa</Btn>
         )}
       </form>
 
@@ -5469,28 +5478,31 @@ function ManageTagsTab({ db, tags, leads }) {
       hint="Marcadores rápidos para segmentar e filtrar leads"
       icon={<Tag size={16} />}
     >
-      <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
-        <input placeholder="ETIQUETA (EX: VIP)..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
-        <select value={color} onChange={e => setColor(e.target.value)} className="bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold uppercase shadow-sm">
-          <option value="blue">AZUL-CYAN</option>
-          <option value="green">VERDE-EMERALD</option>
-          <option value="yellow">AMARELO-GOLD</option>
-          <option value="purple">ROXO-INDIGO</option>
-          <option value="red">VERMELHO-ROSE</option>
-          <option value="orange">LARANJA-VIVO</option>
-          <option value="teal">TEAL-OCEAN</option>
-          <option value="pink">ROSA-PINK</option>
-          <option value="indigo">INDIGO-DEEP</option>
-          <option value="lime">LIMA-NEON</option>
-          <option value="gray">CINZA-SLATE</option>
-        </select>
+      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+        <div className="flex-1 min-w-[220px]">
+          <StyledInput
+            icon={<Tag size={14} />}
+            placeholder="Nome da etiqueta (ex: Plano anual)"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5 text-center">Cor</div>
+          <div className="flex items-center gap-1.5 h-10">
+            {SETTINGS_COLOR_OPTIONS.map(c => (
+              <ColorDot key={c} color={c} active={color === c} onClick={() => setColor(c)} size={22} />
+            ))}
+          </div>
+        </div>
         {editingId ? (
           <div className="flex gap-2">
-            <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">SALVAR</button>
-            <button type="button" onClick={() => { setEditingId(null); setName(''); setColor('blue'); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
+            <Btn kind="brand" type="submit" icon={<Check size={13} />}>Salvar</Btn>
+            <Btn kind="soft" onClick={() => { setEditingId(null); setName(''); setColor('blue'); }} type="button">Cancelar</Btn>
           </div>
         ) : (
-          <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">CRIAR</button>
+          <Btn kind="primary" type="submit" icon={<Zap size={13} />}>Criar etiqueta</Btn>
         )}
       </form>
 
