@@ -49,7 +49,8 @@ import {
   MessageSquare,
   MoreHorizontal,
   TrendingUp,
-  ChevronRight
+  ChevronRight,
+  Ban
 } from 'lucide-react';
 
 import confetti from 'canvas-confetti';
@@ -4187,13 +4188,29 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {!isEditing && !isReadOnly && (
-              <Btn kind="secondary" icon={<Pencil size={13} />} onClick={() => setIsEditing(true)}>Editar</Btn>
+              <Btn kind="secondary" icon={<RefreshCw size={13} />} onClick={() => setIsEditing(true)}>Editar</Btn>
             )}
-            {!isEditing && lead.status !== 'Venda' && (
-              <Btn kind="success" icon={<Trophy size={13} />} onClick={handleWin}>Marcar venda</Btn>
+            {!isEditing && (
+              <Btn
+                kind="success"
+                icon={<TrendingUp size={13} />}
+                onClick={handleWin}
+                disabled={lead.status === 'Venda' || loading}
+                title={lead.status === 'Venda' ? 'Lead já marcado como venda' : 'Marcar venda'}
+              >
+                Marcar venda
+              </Btn>
             )}
-            {!isEditing && lead.status !== 'Perda' && (
-              <Btn kind="danger" icon={<ThumbsDown size={13} />} onClick={() => setLossModalOpen(true)}>Marcar perda</Btn>
+            {!isEditing && (
+              <Btn
+                kind="danger"
+                icon={<Ban size={13} />}
+                onClick={() => setLossModalOpen(true)}
+                disabled={lead.status === 'Perda' || loading}
+                title={lead.status === 'Perda' ? 'Lead já marcado como perda' : 'Marcar perda'}
+              >
+                Marcar perda
+              </Btn>
             )}
             <div className="w-px h-6 bg-slate-200 dark:bg-white/[0.08] mx-1"></div>
             {!isEditing && isAdminUser(appUser) && (
