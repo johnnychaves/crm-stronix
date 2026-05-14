@@ -3859,6 +3859,9 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   const [csatStage, setCsatStage] = useState(lead.csatRequestedStage || 'pos_agendamento');
   const [sendingCsat, setSendingCsat] = useState(false);
 
+  // Composer tab — drives which form is shown in the activity Composer card.
+  const [composerTab, setComposerTab] = useState('note');
+
   const statusesForFunnel = (statuses || []).filter(s => s.funnelId === funnelId);
 
   useEffect(() => {
@@ -4053,6 +4056,79 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
       toast.error('Erro ao gravar agendamento.');
       setLoading(false);
     }
+  };
+
+  // Composer tab handlers — each maps to the existing Firestore patterns.
+  const handleSendWhatsAppMessage = async () => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
+    const msg = note.trim();
+    if (!msg) { toast.warning('Escreva a mensagem antes de enviar.'); return; }
+    setLoading(true);
+    try {
+      // Open WhatsApp Web with the typed message
+      const num = String(lead.whatsapp || '').replace(/\D/g, '');
+      const phone = num.length <= 11 ? '55' + num : num;
+      window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
+      // Log the outbound message in the timeline
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: `📲 Mensagem WhatsApp enviada: ${msg}`,
+        type: 'note',
+        createdAt: serverTimestamp()
+      });
+      setNote('');
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível registrar o envio.');
+    }
+    setLoading(false);
+  };
+
+  const handleLogCall = async () => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
+    const summary = note.trim();
+    if (!summary) { toast.warning('Resuma o que rolou na ligação antes de salvar.'); return; }
+    setLoading(true);
+    try {
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: `📞 Ligação: ${summary}`,
+        type: 'note',
+        createdAt: serverTimestamp()
+      });
+      setNote('');
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível registrar a ligação.');
+    }
+    setLoading(false);
+  };
+
+  const handleComposerSubmit = () => {
+    if (composerTab === 'whatsapp') return handleSendWhatsAppMessage();
+    if (composerTab === 'call')     return handleLogCall();
+    // 'note', 'status', 'schedule' all flow through saveInteraction; for
+    // 'schedule' the caller has already toggled enableFollowUp=true.
+    return saveInteraction();
+  };
+
+  const composerSubmitLabel =
+    composerTab === 'whatsapp' ? 'Enviar' :
+    composerTab === 'status'   ? 'Salvar fase' :
+    composerTab === 'schedule' ? 'Agendar' :
+    'Salvar';
+
+  const resetComposer = () => {
+    setNote('');
+    setEnableFollowUp(false);
+    setFollowUpDate('');
+    setFollowUpType('Mensagem');
+    setStatus(lead.status);
+    setFunnelId(fallbackFunnelId);
   };
 
   // Rendered via Portal at <body> level — escapes the <main>/header stacking
@@ -4340,83 +4416,172 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                   </p>
                 </div>
 
-                {/* Composer: Registrar Atividade */}
-                <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-5">
-                  <div className="flex items-center gap-2 mb-4">
-                    <Clock size={14} className="text-brand-600" />
-                    <h3 className="text-[14px] font-semibold">Registrar atividade</h3>
+                {/* Composer with tabs */}
+                <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card">
+                  {/* Tabs */}
+                  <div className="px-4 pt-3 flex items-center gap-1 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto thin-scroll">
+                    {[
+                      { id: 'note',     label: 'Anotação',   icon: <MessageCircle size={13} /> },
+                      { id: 'whatsapp', label: 'WhatsApp',   icon: <MessageCircle size={13} /> },
+                      { id: 'call',     label: 'Ligação',    icon: <Phone size={13} /> },
+                      { id: 'status',   label: 'Mudar fase', icon: <RefreshCw size={13} /> },
+                      { id: 'schedule', label: 'Agendar',    icon: <Calendar size={13} /> }
+                    ].map(t => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setComposerTab(t.id);
+                          // When switching to schedule tab, auto-enable follow-up so saveInteraction picks it up
+                          if (t.id === 'schedule') setEnableFollowUp(true);
+                          else if (composerTab === 'schedule' && t.id !== 'schedule') setEnableFollowUp(false);
+                        }}
+                        className={`inline-flex items-center gap-1.5 h-9 px-3 text-[12.5px] font-medium rounded-t-md transition border-b-2 -mb-px whitespace-nowrap ${
+                          composerTab === t.id
+                            ? 'text-slate-900 dark:text-white border-brand-600'
+                            : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 border-transparent'
+                        }`}
+                      >
+                        {t.icon}{t.label}
+                      </button>
+                    ))}
                   </div>
-                  <div className="space-y-3">
-                    {safeFunnels.length > 0 && (
-                      <Field label="Funil">
-                        <StyledSelect value={funnelId || ''} onChange={e => handleFunnelChange(e.target.value)}>
-                          {safeFunnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                        </StyledSelect>
-                        {funnelId && funnelId !== (lead.funnelId || null) && (
-                          <p className="text-[11px] text-brand-600 dark:text-brand-300 font-medium mt-1">A etapa será redefinida para a primeira do novo funil.</p>
-                        )}
-                      </Field>
-                    )}
-                    <Field label="Fase do funil">
-                      <StyledSelect value={status} onChange={e => setStatus(e.target.value)}>
-                        {statusesForFunnel.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                        {!statusesForFunnel.some(s => s.name === status) && status && (
-                          <option value={status}>{status}</option>
-                        )}
-                      </StyledSelect>
-                    </Field>
-                    <Field label="Anotações da conversa">
-                      <textarea
-                        value={note}
-                        onChange={e => setNote(e.target.value)}
-                        placeholder="O que foi discutido?"
-                        rows={3}
-                        className="w-full rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
-                      />
-                    </Field>
 
-                    <div className="p-3 rounded-lg bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
-                      <label className="inline-flex items-center gap-2 text-[12.5px] font-medium text-slate-700 dark:text-slate-200 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={enableFollowUp}
-                          onChange={e => setEnableFollowUp(e.target.checked)}
-                          className="w-4 h-4 rounded border-slate-300 dark:border-white/15 text-brand-600 focus:ring-brand-500"
-                        />
-                        Agendar próximo contato
-                      </label>
-                      {enableFollowUp && (
-                        <div className="mt-3 space-y-3 animate-fade-in border-t border-slate-200 dark:border-white/[0.06] pt-3">
-                          <div className="grid grid-cols-2 gap-1.5">
-                            {['Mensagem', 'Ligação', 'Visita', 'Aula Experimental'].map(t => (
-                              <button
-                                key={t}
-                                type="button"
-                                onClick={() => setFollowUpType(t)}
-                                className={`h-9 rounded-lg border text-[12px] font-semibold transition ${
-                                  followUpType === t
-                                    ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/10 dark:border-brand-500/30 dark:text-brand-300'
-                                    : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-white/[0.02] dark:border-white/[0.07] text-slate-600 dark:text-slate-300'
-                                }`}
-                              >
-                                {t}
-                              </button>
-                            ))}
+                  {/* Body */}
+                  <div className="p-4">
+                    <div className="flex gap-3">
+                      <Avatar name={appUser?.name || 'Você'} size={32} />
+                      <div className="flex-1 min-w-0 space-y-3">
+
+                        {composerTab === 'note' && (
+                          <textarea
+                            value={note}
+                            onChange={e => setNote(e.target.value)}
+                            placeholder="O que rolou nessa conversa? Detalhes que vão te ajudar no próximo contato..."
+                            rows={3}
+                            className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
+                          />
+                        )}
+
+                        {composerTab === 'whatsapp' && (
+                          <textarea
+                            value={note}
+                            onChange={e => setNote(e.target.value)}
+                            placeholder={`Mensagem para ${firstName}...`}
+                            rows={3}
+                            className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
+                          />
+                        )}
+
+                        {composerTab === 'call' && (
+                          <textarea
+                            value={note}
+                            onChange={e => setNote(e.target.value)}
+                            placeholder="Resumo da ligação, próximos passos..."
+                            rows={3}
+                            className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
+                          />
+                        )}
+
+                        {composerTab === 'status' && (
+                          <div className="space-y-3">
+                            {safeFunnels.length > 1 && (
+                              <Field label="Funil" hint={funnelId && funnelId !== (lead.funnelId || null) ? 'Ao mudar o funil, a etapa será redefinida para a primeira do novo funil.' : null}>
+                                <StyledSelect value={funnelId || ''} onChange={e => handleFunnelChange(e.target.value)}>
+                                  {safeFunnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                                </StyledSelect>
+                              </Field>
+                            )}
+                            <Field label="Fase do funil">
+                              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
+                                {statusesForFunnel.map(s => {
+                                  const t = settingsColorTone(s.color || 'blue');
+                                  const active = status === s.name;
+                                  return (
+                                    <button
+                                      key={s.id}
+                                      type="button"
+                                      onClick={() => setStatus(s.name)}
+                                      className={`h-9 px-2.5 rounded-lg border text-[12px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition ${
+                                        active
+                                          ? `${t.soft} ${t.text} ${t.darkSoft} ${t.darkText} border-transparent ring-1 ring-current/30`
+                                          : 'bg-white border-slate-200 hover:border-slate-300 text-slate-700 dark:bg-white/[0.02] dark:border-white/[0.07] dark:text-slate-300'
+                                      }`}
+                                    >
+                                      <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`}></span>
+                                      {s.name}
+                                    </button>
+                                  );
+                                })}
+                                {!statusesForFunnel.some(s => s.name === status) && status && (
+                                  <span className="h-9 px-2.5 rounded-lg border border-slate-200 dark:border-white/[0.07] text-[12px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap text-slate-500 dark:text-slate-400 italic">
+                                    {status} (atual)
+                                  </span>
+                                )}
+                              </div>
+                            </Field>
+                            <Field label="Observação (opcional)">
+                              <textarea
+                                value={note}
+                                onChange={e => setNote(e.target.value)}
+                                placeholder="Motivo da mudança, contexto..."
+                                rows={2}
+                                className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
+                              />
+                            </Field>
                           </div>
-                          <Field label="Data e hora">
-                            <input
-                              type="datetime-local"
-                              value={followUpDate}
-                              onChange={e => setFollowUpDate(e.target.value)}
-                              className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] num px-3 transition"
-                            />
-                          </Field>
-                        </div>
-                      )}
-                    </div>
+                        )}
 
-                    <div className="flex items-center justify-end gap-2 pt-1">
-                      <Btn kind="brand" icon={<Check size={13} />} onClick={saveInteraction} disabled={loading}>Salvar atividade</Btn>
+                        {composerTab === 'schedule' && (
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <Field label="Tipo">
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  {['Mensagem', 'Ligação', 'Visita', 'Aula Experimental'].map(t => (
+                                    <button
+                                      key={t}
+                                      type="button"
+                                      onClick={() => setFollowUpType(t)}
+                                      className={`h-9 rounded-lg border text-[12px] font-semibold transition ${
+                                        followUpType === t
+                                          ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/10 dark:border-brand-500/30 dark:text-brand-300'
+                                          : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-white/[0.02] dark:border-white/[0.07] text-slate-600 dark:text-slate-300'
+                                      }`}
+                                    >
+                                      {t}
+                                    </button>
+                                  ))}
+                                </div>
+                              </Field>
+                              <Field label="Data e hora">
+                                <input
+                                  type="datetime-local"
+                                  value={followUpDate}
+                                  onChange={e => setFollowUpDate(e.target.value)}
+                                  className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] num px-3 transition"
+                                />
+                              </Field>
+                            </div>
+                            <Field label="Anotação (opcional)">
+                              <textarea
+                                value={note}
+                                onChange={e => setNote(e.target.value)}
+                                placeholder="O que precisa ser tratado no próximo contato?"
+                                rows={2}
+                                className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
+                              />
+                            </Field>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <div className="flex-1"></div>
+                          <Btn kind="soft" onClick={resetComposer} disabled={loading}>Cancelar</Btn>
+                          <Btn kind="brand" icon={<Check size={13} />} onClick={handleComposerSubmit} disabled={loading}>
+                            {composerSubmitLabel}
+                          </Btn>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </section>
