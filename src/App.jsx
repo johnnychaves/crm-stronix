@@ -4969,12 +4969,42 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     const todayEnd = new Date();
     todayEnd.setHours(23,59,59,999);
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const firstStatusName = statuses && statuses.length > 0 ? statuses[0].name : '';
+
+    // Primeira etapa POR FUNIL — usado para detectar se o lead foi
+    // movido da etapa inicial. Antes era statuses[0].name (global), o
+    // que tornava o "movedOut" agnóstico de funil e gerava falsos
+    // positivos (lead recém-criado em funil B aparecia como "feito"
+    // porque status[0] global pertencia ao funil A).
+    const firstStatusByFunnel = (() => {
+      const acc = {};
+      (statuses || []).forEach(s => {
+        if (!s.funnelId) return;
+        const cur = acc[s.funnelId];
+        if (!cur || (s.order || 0) < (cur.order || 0)) acc[s.funnelId] = s;
+      });
+      return acc;
+    })();
+    const firstStatusForLead = (lead) => firstStatusByFunnel[lead?.funnelId]?.name || '';
 
     const myLeads = (leads || []).filter(l => l.consultantId === appUser.id);
     const allTargetLeadsMap = new Map();
 
-    const hasInteractionToday = (lead) => (interactions || []).some(i => i.leadId === lead.id && i.createdAt && i.createdAt >= todayStart);
+    // Interações que NÃO contam como "atendimento ativo" do dia. Hoje
+    // só a observação automática do cadastro entra aqui — ela é gerada
+    // automaticamente ao salvar o formulário de novo lead e não
+    // representa um contato real do consultor com o aluno.
+    const PASSIVE_INTERACTION_PREFIXES = ['OBSERVAÇÃO DO CADASTRO:'];
+    const isPassiveInteraction = (i) => {
+      const text = String(i?.text || '');
+      return PASSIVE_INTERACTION_PREFIXES.some(p => text.startsWith(p));
+    };
+
+    const hasInteractionToday = (lead) => (interactions || []).some(
+      i => i.leadId === lead.id
+        && i.createdAt
+        && i.createdAt >= todayStart
+        && !isPassiveInteraction(i)
+    );
     const isVendaOrPerdaToday = (lead) => (lead.status === 'Venda' && lead.convertedAt && lead.convertedAt >= todayStart) || (lead.status === 'Perda' && lead.lostAt && lead.lostAt >= todayStart);
     const hasOutcomeToday = (lead) => {
       // Para cards de Visita/Aula Hoje: marcar outcome conta como "feito"
@@ -4999,9 +5029,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     };
 
     myLeads.forEach(lead => {
-      // 1. Leads 24h
+      // 1. Leads 24h — só é "feito" automaticamente se o consultor JÁ
+      // moveu o lead da etapa inicial DO FUNIL desse lead. Comparação
+      // por funil corrige o bug em que lead recém-criado em um funil
+      // com primeira etapa diferente do global aparecia como "feito".
       if (lead.createdAt && lead.createdAt >= oneDayAgo) {
-        const movedOut = lead.status !== firstStatusName && lead.status !== 'Novo';
+        const firstStatus = firstStatusForLead(lead);
+        const movedOut = Boolean(firstStatus) && lead.status !== firstStatus && lead.status !== 'Novo';
         addTarget(lead, 'Novo Lead 24h', movedOut);
       }
 
