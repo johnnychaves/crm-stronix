@@ -5140,90 +5140,65 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
         <Btn kind="primary" type="submit" icon={<Zap size={13} />}>Adicionar funil</Btn>
       </form>
 
-      <div className="space-y-4">
-        {safeFunnels.length === 0 ? (
-          <div className="text-center text-xs font-semibold text-gray-400 dark:text-neutral-500 py-12 uppercase tracking-widest">
-            Nenhum funil cadastrado ainda. Crie o primeiro funil acima.
+      {safeFunnels.length === 0 ? (
+        <div className="text-center text-[12.5px] text-slate-400 italic py-12">
+          Nenhum funil cadastrado ainda. Crie o primeiro funil acima.
+        </div>
+      ) : (
+        <>
+          <div className="p-3 rounded-lg bg-slate-50 dark:bg-white/[0.02] border border-dashed border-slate-300 dark:border-white/[0.1] text-center mb-3">
+            <p className="text-[11.5px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5">
+              <GripVertical size={12} /> Arraste os funis para reordenar
+            </p>
           </div>
-        ) : (
-          <p className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest text-center mb-2 flex items-center justify-center gap-2 bg-blue-50 dark:bg-blue-900/10 py-3 rounded-2xl border border-blue-100 dark:border-blue-900/30">
-            <GripVertical className="w-4 h-4" />
-            Segure e arraste os funis para reordenar
-          </p>
-        )}
-        {safeFunnels.map((f, i) => (
-          <div
-            key={f.id}
-            draggable={editingId !== f.id}
-            onDragStart={e => e.dataTransfer.setData('idx', i)}
-            onDragOver={e => e.preventDefault()}
-            onDrop={e => handleReorder(Number(e.dataTransfer.getData('idx')), i)}
-            className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 flex justify-between items-center cursor-grab active:cursor-grabbing hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300"
-          >
-            <div className="flex items-center gap-4 flex-1 min-w-0">
-              <div className="flex items-center justify-center p-2 rounded-xl bg-gray-50 dark:bg-neutral-800 text-gray-400 group-hover:text-blue-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-all shadow-sm border border-gray-100 dark:border-neutral-700 shrink-0" title="Segure para arrastar">
-                <GripVertical className="w-5 h-5" />
+          <div className="space-y-2">
+            {safeFunnels.map((f, i) => (
+              <div
+                key={f.id}
+                draggable={editingId !== f.id}
+                onDragStart={e => e.dataTransfer.setData('idx', i)}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => handleReorder(Number(e.dataTransfer.getData('idx')), i)}
+                className="group flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-slate-300 dark:hover:border-white/10 transition cursor-grab active:cursor-grabbing"
+              >
+                <span className="w-8 h-8 rounded-lg grid place-items-center text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06] dark:text-slate-600 dark:hover:text-slate-300 transition shrink-0">
+                  <GripVertical size={16} />
+                </span>
+                {editingId === f.id ? (
+                  <form onSubmit={handleSaveEdit} className="flex gap-2 flex-1 items-center">
+                    <StyledInput
+                      autoFocus
+                      value={editingName}
+                      onChange={e => setEditingName(e.target.value)}
+                      className="flex-1"
+                    />
+                    <Btn kind="brand" type="submit" icon={<Check size={13} />}>Salvar</Btn>
+                    <Btn kind="soft" type="button" onClick={() => { setEditingId(null); setEditingName(''); }}>Cancelar</Btn>
+                  </form>
+                ) : (
+                  <>
+                    <span className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{f.name}</span>
+                    {f.isDefault && (
+                      <span className="text-[10px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 shrink-0">
+                        Padrão
+                      </span>
+                    )}
+                    <div className="flex-1"></div>
+                    <Btn kind="soft" size="sm" onClick={() => onSelectFunnel(f.id)}>Configurar etapas</Btn>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                      {!f.isDefault && (
+                        <IconBtn icon={<Trophy size={14} />} title="Tornar padrão" onClick={() => handleSetDefault(f)} />
+                      )}
+                      <IconBtn icon={<Pencil size={14} />} kind="edit" title="Renomear" onClick={() => { setEditingId(f.id); setEditingName(f.name); }} />
+                      <IconBtn icon={<Trash2 size={14} />} kind="danger" title="Excluir" onClick={() => handleDelete(f)} />
+                    </div>
+                  </>
+                )}
               </div>
-              {editingId === f.id ? (
-                <form onSubmit={handleSaveEdit} className="flex gap-2 flex-1">
-                  <input
-                    autoFocus
-                    value={editingName}
-                    onChange={e => setEditingName(e.target.value)}
-                    className="flex-1 bg-gray-50 dark:bg-neutral-950 px-4 py-3 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 transition-all text-xs font-bold shadow-sm"
-                  />
-                  <button type="submit" className="bg-blue-600 text-white px-5 py-3 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">SALVAR</button>
-                  <button type="button" onClick={() => { setEditingId(null); setEditingName(''); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-5 py-3 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
-                </form>
-              ) : (
-                <>
-                  <span className="text-sm font-bold text-gray-900 dark:text-white truncate">{f.name}</span>
-                  {f.isDefault && (
-                    <span className="text-[9px] uppercase tracking-widest font-bold px-2.5 py-1 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400 shrink-0">
-                      Padrão
-                    </span>
-                  )}
-                </>
-              )}
-            </div>
-            {editingId !== f.id && (
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  onClick={() => onSelectFunnel(f.id)}
-                  className="text-[10px] uppercase font-bold tracking-widest text-blue-600 hover:text-white hover:bg-blue-600 bg-blue-50 dark:bg-blue-900/20 hover:dark:bg-blue-600 border border-blue-100 dark:border-blue-900/30 px-4 py-3 rounded-2xl transition-all active:scale-95"
-                >
-                  Configurar Etapas
-                </button>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
-                  {!f.isDefault && (
-                    <button
-                      title="Tornar padrão"
-                      onClick={() => handleSetDefault(f)}
-                      className="text-gray-400 hover:text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 p-2 rounded-lg active:scale-90 transition-all"
-                    >
-                      <Trophy className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  <button
-                    title="Renomear"
-                    onClick={() => { setEditingId(f.id); setEditingName(f.name); }}
-                    className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all"
-                  >
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    title="Excluir"
-                    onClick={() => handleDelete(f)}
-                    className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
+            ))}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </SettingsCard>
   );
 }
@@ -5325,37 +5300,48 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
         )}
       </form>
 
-      <div className="space-y-4">
-        {statusesForFunnel.length === 0 ? (
-          <div className="text-center text-xs font-semibold text-gray-400 dark:text-neutral-500 py-12 uppercase tracking-widest">
-            Nenhuma etapa neste funil ainda. Crie a primeira etapa acima.
+      {statusesForFunnel.length === 0 ? (
+        <div className="text-center text-[12.5px] text-slate-400 italic py-12">
+          Nenhuma etapa neste funil ainda. Crie a primeira etapa acima.
+        </div>
+      ) : (
+        <>
+          <div className="p-3 rounded-lg bg-slate-50 dark:bg-white/[0.02] border border-dashed border-slate-300 dark:border-white/[0.1] text-center mb-3">
+            <p className="text-[11.5px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5">
+              <GripVertical size={12} /> Arraste as etapas para reordenar o seu funil
+            </p>
           </div>
-        ) : (
-          <p className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest text-center mb-2 flex items-center justify-center gap-2 bg-blue-50 dark:bg-blue-900/10 py-3 rounded-2xl border border-blue-100 dark:border-blue-900/30">
-            <GripVertical className="w-4 h-4" />
-            Segure e arraste as etapas para reordenar o funil
-          </p>
-        )}
-        {statusesForFunnel.map((s, i) => (
-          <div key={s.id} draggable onDragStart={e => e.dataTransfer.setData('idx', i)} onDragOver={e => e.preventDefault()} onDrop={e => drop(Number(e.dataTransfer.getData('idx')), i)} className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 flex justify-between items-center cursor-grab active:cursor-grabbing hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center p-2 rounded-xl bg-gray-50 dark:bg-neutral-800 text-gray-400 group-hover:text-blue-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-all shadow-sm border border-gray-100 dark:border-neutral-700" title="Segure para arrastar">
-                <GripVertical className="w-5 h-5" />
-              </div>
-              <span className="text-[10px] font-bold text-gray-500 dark:text-neutral-400 uppercase tracking-widest bg-gray-100 dark:bg-neutral-800 px-3 py-1.5 rounded-lg shadow-inner">
-                Etapa {i + 1}
-              </span>
-              <div className="scale-110 origin-left ml-2">
-                <StatusBadge statusName={s.name} statusesArray={statuses} />
-              </div>
-            </div>
-            <div className="absolute right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
-              <button onClick={() => { setName(s.name); setColor(s.color || 'blue'); setEditingId(s.id); }} className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Editar"><Pencil className="w-3.5 h-3.5" /></button>
-              <button onClick={() => handleDelete(s)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
-            </div>
+          <div className="space-y-2">
+            {statusesForFunnel.map((s, i) => {
+              const leadCount = (leads || []).filter(l => l.status === s.name).length;
+              return (
+                <div
+                  key={s.id}
+                  draggable
+                  onDragStart={e => e.dataTransfer.setData('idx', i)}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => drop(Number(e.dataTransfer.getData('idx')), i)}
+                  className="group flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-slate-300 dark:hover:border-white/10 transition cursor-grab active:cursor-grabbing"
+                >
+                  <span className="w-8 h-8 rounded-lg grid place-items-center text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06] dark:text-slate-600 dark:hover:text-slate-300 transition shrink-0">
+                    <GripVertical size={16} />
+                  </span>
+                  <span className="text-[11px] font-semibold num text-slate-500 dark:text-slate-400 w-6 text-center shrink-0">{i + 1}</span>
+                  <ColorBadge color={s.color || 'blue'} name={s.name} />
+                  <div className="flex-1"></div>
+                  <span className="text-[11.5px] text-slate-500 dark:text-slate-400 num whitespace-nowrap">
+                    <span className="num font-semibold text-slate-700 dark:text-slate-200">{leadCount}</span> {leadCount === 1 ? 'lead na etapa' : 'leads na etapa'}
+                  </span>
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                    <IconBtn icon={<Pencil size={14} />} kind="edit" title="Editar" onClick={() => { setName(s.name); setColor(s.color || 'blue'); setEditingId(s.id); }} />
+                    <IconBtn icon={<Trash2 size={14} />} kind="danger" title="Excluir" onClick={() => handleDelete(s)} />
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
+        </>
+      )}
     </SettingsCard>
   );
 }
