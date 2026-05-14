@@ -1304,6 +1304,452 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
 // ==========================================
 // VISÃO GERAL (DASHBOARD) - PATCH 1 (AULA E VISITA)
 // ==========================================
+// ==========================================
+// DASHBOARD — DESIGN PRIMITIVES
+// ==========================================
+// Extended color tones for dashboard (adds brand/emerald/slate vs Meta Diária's set).
+// Uses `text-*` for stroke so SVG `stroke="currentColor"` resolves cleanly.
+const DASH_TONES = {
+  brand:   { dot: 'bg-brand-600',   strong: 'bg-brand-600',   stroke: 'text-brand-600',   text: 'text-brand-700',   soft: 'bg-brand-50',   darkText: 'dark:text-brand-300',   darkSoft: 'dark:bg-brand-500/10' },
+  amber:   { dot: 'bg-amber-500',   strong: 'bg-amber-500',   stroke: 'text-amber-500',   text: 'text-amber-700',   soft: 'bg-amber-50',   darkText: 'dark:text-amber-300',   darkSoft: 'dark:bg-amber-500/10' },
+  violet:  { dot: 'bg-violet-500',  strong: 'bg-violet-500',  stroke: 'text-violet-500',  text: 'text-violet-700',  soft: 'bg-violet-50',  darkText: 'dark:text-violet-300',  darkSoft: 'dark:bg-violet-500/10' },
+  emerald: { dot: 'bg-emerald-500', strong: 'bg-emerald-500', stroke: 'text-emerald-500', text: 'text-emerald-700', soft: 'bg-emerald-50', darkText: 'dark:text-emerald-300', darkSoft: 'dark:bg-emerald-500/10' },
+  rose:    { dot: 'bg-rose-500',    strong: 'bg-rose-500',    stroke: 'text-rose-500',    text: 'text-rose-700',    soft: 'bg-rose-50',    darkText: 'dark:text-rose-300',    darkSoft: 'dark:bg-rose-500/10' },
+  teal:    { dot: 'bg-teal-500',    strong: 'bg-teal-500',    stroke: 'text-teal-500',    text: 'text-teal-700',    soft: 'bg-teal-50',    darkText: 'dark:text-teal-300',    darkSoft: 'dark:bg-teal-500/10' },
+  slate:   { dot: 'bg-slate-400',   strong: 'bg-slate-400',   stroke: 'text-slate-400',   text: 'text-slate-700',   soft: 'bg-slate-100',  darkText: 'dark:text-slate-300',   darkSoft: 'dark:bg-white/[0.05]' }
+};
+
+function DashCard({ title, hint, icon, action, children, padded = true }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card">
+      {title && (
+        <header className="px-5 py-4 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.05]">
+          <div className="flex items-center gap-2.5 min-w-0">
+            {icon && (
+              <span className="w-7 h-7 rounded-md grid place-items-center bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300 shrink-0">
+                {icon}
+              </span>
+            )}
+            <div className="min-w-0">
+              <h3 className="text-[14px] font-semibold whitespace-nowrap">{title}</h3>
+              {hint && <p className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate">{hint}</p>}
+            </div>
+          </div>
+          {action}
+        </header>
+      )}
+      <div className={padded ? 'p-5' : ''}>{children}</div>
+    </section>
+  );
+}
+
+function DashSparkline({ data, accent = 'brand', height = 42 }) {
+  const w = 120;
+  const h = height;
+  const p = 3;
+  const safeData = (data && data.length > 0) ? data : [0];
+  const min = Math.min(...safeData);
+  const max = Math.max(...safeData);
+  const range = max - min || 1;
+  const stepX = safeData.length > 1 ? (w - p * 2) / (safeData.length - 1) : 0;
+  const pts = safeData.map((v, i) => [p + i * stepX, h - p - ((v - min) / range) * (h - p * 2)]);
+  const path = pts.map((pt, i) => (i === 0 ? 'M' : 'L') + pt[0].toFixed(1) + ',' + pt[1].toFixed(1)).join(' ');
+  const area = path + ` L${(w - p).toFixed(1)},${(h - p).toFixed(1)} L${p.toFixed(1)},${(h - p).toFixed(1)} Z`;
+  const t = DASH_TONES[accent] || DASH_TONES.brand;
+  const gradId = useMemo(() => `g-${accent}-${Math.random().toString(36).slice(2, 7)}`, [accent]);
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className={`w-full ${t.stroke}`} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={gradId} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="currentColor" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${gradId})`} stroke="none" />
+      <path d={path} fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" />
+      {pts.length > 0 && (
+        <circle cx={pts[pts.length - 1][0]} cy={pts[pts.length - 1][1]} r="2.5" stroke="currentColor" strokeWidth="1.5" fill="white" />
+      )}
+    </svg>
+  );
+}
+
+function DashKpiCard({ label, value, delta, accent = 'brand', series, sub }) {
+  const up = delta == null ? null : delta >= 0;
+  return (
+    <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-5 shadow-card">
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</div>
+        {delta != null && (
+          <span className={`inline-flex items-center gap-1 px-1.5 h-5 rounded-md text-[11px] font-semibold num whitespace-nowrap ${
+            up
+              ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+              : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+          }`}>
+            {up ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}%
+          </span>
+        )}
+      </div>
+      <div className="mt-2 flex items-baseline gap-1.5">
+        <span className="num text-[32px] font-semibold tracking-tight leading-none">{value}</span>
+      </div>
+      <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 whitespace-nowrap truncate">
+        {sub || 'vs. período anterior'}
+      </div>
+      {series && series.length > 0 && (
+        <div className="mt-3 -mx-1">
+          <DashSparkline data={series} accent={accent} height={42} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DashPeriodTabs({ value, onChange }) {
+  const opts = [
+    { id: 'today',   label: 'Hoje' },
+    { id: 'weekly',  label: 'Semana' },
+    { id: 'monthly', label: 'Mês' },
+    { id: 'custom',  label: 'Personalizado' }
+  ];
+  return (
+    <div className="inline-flex p-1 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
+      {opts.map((o) => (
+        <button
+          key={o.id}
+          type="button"
+          onClick={() => onChange(o.id)}
+          className={`h-8 px-3.5 rounded-lg text-[12.5px] font-semibold whitespace-nowrap transition ${
+            value === o.id
+              ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+              : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+          }`}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function DashFunnel({ steps, onStepClick }) {
+  if (!steps || steps.length === 0) return null;
+  const max = Math.max(...steps.map((s) => s.count), 1);
+  const top = steps[0].count || 0;
+  return (
+    <div className="space-y-3">
+      {steps.map((s, i) => {
+        const t = DASH_TONES[s.color] || DASH_TONES.brand;
+        const widthPct = Math.max(2, (s.count / max) * 100);
+        const prev = i > 0 ? steps[i - 1].count : null;
+        const conv = prev ? Math.round((s.count / prev) * 100) : 100;
+        const drop = prev != null ? prev - s.count : 0;
+        const topPct = top > 0 ? Math.round((s.count / top) * 100) : 0;
+        const clickable = Boolean(onStepClick);
+        return (
+          <div
+            key={s.id}
+            onClick={clickable ? () => onStepClick(s) : undefined}
+            className={clickable ? 'cursor-pointer hover:opacity-90 transition' : ''}
+          >
+            <div className="flex items-center justify-between gap-3 mb-1.5 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`}></span>
+                <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">{s.label}</span>
+                {s.hint && <span className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate">· {s.hint}</span>}
+              </div>
+              <div className="flex items-center gap-3 text-[12px] num whitespace-nowrap">
+                {i > 0 && drop > 0 && (
+                  <span className="text-slate-400 dark:text-slate-500">
+                    <span className={conv >= 60 ? 'text-emerald-600 dark:text-emerald-400 font-semibold' : 'text-amber-600 dark:text-amber-400 font-semibold'}>{conv}%</span>
+                    <span className="mx-1">·</span>
+                    <span>−{drop}</span>
+                  </span>
+                )}
+                <span className="font-semibold text-slate-900 dark:text-white">{s.count}</span>
+              </div>
+            </div>
+            <div className="h-9 rounded-lg bg-slate-100 dark:bg-white/[0.04] overflow-hidden flex items-center px-1">
+              <div
+                className={`h-7 rounded-md ${t.strong} flex items-center px-2.5 text-white text-[12px] font-semibold num`}
+                style={{ width: `${widthPct}%` }}
+              >
+                <span className="opacity-90 whitespace-nowrap">{topPct}% do topo</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DashGauge({ value, max = 5 }) {
+  const pct = Math.max(0, Math.min(1, value / max));
+  const R = 64;
+  const C = Math.PI * R;
+  const offset = C - C * pct;
+  return (
+    <div className="relative w-[160px] h-[90px] shrink-0">
+      <svg viewBox="0 0 160 90" className="w-full h-full">
+        <path d="M16 80 A64 64 0 0 1 144 80" stroke="currentColor" className="text-slate-100 dark:text-white/[0.06]" strokeWidth="12" fill="none" strokeLinecap="round" />
+        <path
+          d="M16 80 A64 64 0 0 1 144 80"
+          stroke="currentColor"
+          className="text-brand-600"
+          strokeWidth="12"
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={offset}
+          style={{ transition: 'stroke-dashoffset .8s cubic-bezier(.2,.7,.2,1)' }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-end pb-0">
+        <div className="num text-[28px] font-semibold tracking-tight leading-none">{Number(value || 0).toFixed(1)}</div>
+        <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5">de {max}</div>
+      </div>
+    </div>
+  );
+}
+
+function DashRingStat({ value, accent = 'brand', size = 80 }) {
+  const R = 30;
+  const C = 2 * Math.PI * R;
+  const t = DASH_TONES[accent] || DASH_TONES.brand;
+  const pct = Math.max(0, Math.min(100, value));
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }}>
+      <svg viewBox="0 0 80 80" className="w-full h-full -rotate-90">
+        <circle cx="40" cy="40" r={R} stroke="currentColor" className="text-slate-100 dark:text-white/[0.06]" strokeWidth="7" fill="none" />
+        <circle
+          cx="40"
+          cy="40"
+          r={R}
+          stroke="currentColor"
+          className={t.stroke}
+          strokeWidth="7"
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={C - (C * pct) / 100}
+          style={{ transition: 'stroke-dashoffset .8s cubic-bezier(.2,.7,.2,1)' }}
+        />
+      </svg>
+      <div className="absolute inset-0 grid place-items-center">
+        <span className="num text-[14px] font-semibold">{pct}%</span>
+      </div>
+    </div>
+  );
+}
+
+function DashMiniStat({ label, value, tone = 'slate' }) {
+  const tones = {
+    emerald: 'text-emerald-700 dark:text-emerald-300',
+    amber:   'text-amber-700 dark:text-amber-300',
+    rose:    'text-rose-700 dark:text-rose-300',
+    slate:   'text-slate-700 dark:text-slate-200'
+  };
+  return (
+    <div className="text-center">
+      <div className={`num text-[15px] font-semibold ${tones[tone] || tones.slate}`}>{value}</div>
+      <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5 whitespace-nowrap">{label}</div>
+    </div>
+  );
+}
+
+function DashCsatDist({ dist, total }) {
+  return (
+    <div className="space-y-1.5">
+      {dist.map((d) => {
+        const pct = total ? Math.round((d.n / total) * 100) : 0;
+        const color = d.score >= 4 ? 'bg-emerald-500' : d.score === 3 ? 'bg-amber-500' : 'bg-rose-500';
+        return (
+          <div key={d.score} className="flex items-center gap-2.5 text-[12px] num">
+            <span className="w-3 text-slate-500 dark:text-slate-400">{d.score}</span>
+            <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+              <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }}></div>
+            </div>
+            <span className="w-8 text-right font-semibold text-slate-700 dark:text-slate-200">{d.n}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DashTeamRow({ row, maxLeads }) {
+  return (
+    <tr className="border-t border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition">
+      <td className="py-3 pl-5 pr-3">
+        <div className="flex items-center gap-2.5">
+          <Avatar name={row.name} size={30} />
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[13px] font-semibold text-slate-900 dark:text-white whitespace-nowrap">{row.name}</span>
+              {row.isYou && (
+                <span className="text-[10px] font-semibold px-1.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">você</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </td>
+      <td className="py-3 px-3">
+        <div className="flex items-center gap-2">
+          <span className="num text-[13px] font-semibold text-slate-700 dark:text-slate-200 w-7 text-right">{row.total}</span>
+          <div className="w-24 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+            <div className="h-full bg-brand-600 rounded-full" style={{ width: `${maxLeads > 0 ? (row.total / maxLeads) * 100 : 0}%` }}></div>
+          </div>
+        </div>
+      </td>
+      <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosVisita}</td>
+      <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosAula}</td>
+      <td className="py-3 px-3 num text-[13px] text-center font-semibold text-emerald-600 dark:text-emerald-400">{row.convertidos}</td>
+      <td className="py-3 pr-5 pl-3 num text-[13px] text-right font-semibold text-slate-900 dark:text-white">{row.txConversaoGlobal}%</td>
+    </tr>
+  );
+}
+
+function DashTeamTable({ rows, appUser }) {
+  const maxLeads = Math.max(...rows.map((r) => r.total), 1);
+  return (
+    <div className="overflow-x-auto thin-scroll">
+      <table className="w-full text-left min-w-[640px]">
+        <thead>
+          <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <th className="py-2.5 pl-5 pr-3 font-semibold">Consultor</th>
+            <th className="py-2.5 px-3 font-semibold">Leads</th>
+            <th className="py-2.5 px-3 font-semibold text-center">Visitas</th>
+            <th className="py-2.5 px-3 font-semibold text-center">Aulas</th>
+            <th className="py-2.5 px-3 font-semibold text-center">Matr.</th>
+            <th className="py-2.5 pr-5 pl-3 font-semibold text-right">Conv. global</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r, i) => (
+            <DashTeamRow key={r.name + i} row={{ ...r, isYou: r.name === appUser?.name }} maxLeads={maxLeads} />
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function DashCsatTeamGrid({ rows }) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+      {rows.map((r, i) => {
+        const pct = r.pctSatisfeitos || 0;
+        const barColor = pct >= 80 ? 'bg-emerald-500' : pct >= 65 ? 'bg-amber-500' : 'bg-rose-500';
+        return (
+          <div key={r.name + i} className="rounded-xl border border-slate-200/70 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-3.5">
+            <div className="flex items-center gap-2.5">
+              <Avatar name={r.name} size={32} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[13px] font-semibold truncate">{r.name}</div>
+                <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num whitespace-nowrap">{r.totalAvaliacoes} avaliações</div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="num text-[18px] font-semibold leading-none">{r.media}</div>
+                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">média</div>
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+                <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }}></div>
+              </div>
+              <span className="num text-[11.5px] font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">{pct}%</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function DashSourceList({ items }) {
+  const total = items.reduce((s, x) => s + x.count, 0);
+  const palette = ['brand', 'rose', 'emerald', 'teal', 'amber', 'slate'];
+  return (
+    <div className="space-y-3">
+      {items.map((s, i) => {
+        const t = DASH_TONES[s.color || palette[i % palette.length]] || DASH_TONES.slate;
+        const pct = total ? Math.round((s.count / total) * 100) : 0;
+        return (
+          <div key={s.name}>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2 text-[12.5px] text-slate-700 dark:text-slate-200 whitespace-nowrap">
+                <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`}></span>
+                <span className="font-medium truncate max-w-[140px]">{s.name}</span>
+              </div>
+              <div className="num text-[12px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                <span className="font-semibold text-slate-900 dark:text-white">{s.count}</span>
+                <span className="mx-1 opacity-50">·</span>
+                <span>{pct}%</span>
+              </div>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+              <div className={`h-full ${t.strong}`} style={{ width: `${pct}%` }}></div>
+            </div>
+          </div>
+        );
+      })}
+      {items.length === 0 && (
+        <p className="text-[12px] text-slate-400 dark:text-slate-500 italic py-2">Nenhum dado captado no período.</p>
+      )}
+    </div>
+  );
+}
+
+function DashTaskItem({ lead, onClick }) {
+  const apptDate = getLeadAppointmentDate(lead) || lead.nextFollowUp;
+  const apptType = getLeadAppointmentType(lead);
+  const isOverdue = apptDate && apptDate < new Date();
+  const when = apptDate ? `${apptDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} · ${formatHourLabel(apptDate)}` : '';
+  const TypeIcon = apptType === 'visita' || apptType === 'aula_experimental' ? Calendar : Phone;
+  return (
+    <div
+      onClick={() => onClick && onClick(lead)}
+      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/[0.05] hover:border-slate-300 dark:hover:border-white/10 transition cursor-pointer"
+    >
+      <Avatar name={lead.name} size={32} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-[13px] truncate">{lead.name}</span>
+          {isOverdue && (
+            <span className="text-[10px] font-semibold px-1.5 rounded bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 whitespace-nowrap">atrasado</span>
+          )}
+        </div>
+        <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num">{lead.whatsapp}</div>
+      </div>
+      <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num whitespace-nowrap inline-flex items-center gap-1 shrink-0">
+        <TypeIcon size={12} />
+        {when}
+      </div>
+    </div>
+  );
+}
+
+function DashActivityRow({ item }) {
+  const t = DASH_TONES[item.tone] || DASH_TONES.slate;
+  return (
+    <div className="flex items-start gap-3 py-2.5">
+      <div className={`mt-0.5 w-2 h-2 rounded-full ${t.dot} ring-4 ring-white dark:ring-ink-900 shrink-0`}></div>
+      <div className="min-w-0 flex-1">
+        <div className="text-[12.5px] text-slate-700 dark:text-slate-200 leading-snug">
+          <span className="font-semibold text-slate-900 dark:text-white">{item.who}</span>
+          <span className="text-slate-500 dark:text-slate-400"> {item.what} </span>
+          <span className="font-medium">{item.who2}</span>
+        </div>
+        <div className="text-[11px] text-slate-400 dark:text-slate-500 num mt-0.5">{item.when}</div>
+      </div>
+    </div>
+  );
+}
+
+// ==========================================
+// DASHBOARD VIEW
+// ==========================================
 function DashboardView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const [periodPreset, setPeriodPreset] = useState('monthly');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -1666,451 +2112,473 @@ const teamMetrics = useMemo(() => {
     return { ...sum, rate };
   }, [funnelComparisonRows]);
 
+  // --- NEW DASHBOARD COMPUTATIONS ---
+
+  // Compareceram = scheduled leads with isLeadAttended === true (uses outcome OR conversion OR legacy hasAttended).
+  const compareceram = useMemo(
+    () => scheduledLeads.filter((l) => isLeadAttended(l)).length,
+    [scheduledLeads]
+  );
+  const totalAppt = stats.agendadosVisita + stats.agendadosAula;
+  const taxaComp = totalAppt > 0 ? Math.round((compareceram / totalAppt) * 100) : 0;
+
+  // CSAT distribution (5 → 1)
+  const csatDist = useMemo(() => {
+    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    satisfactionLeads.forEach((l) => {
+      const score = Math.round(Number(l.satisfactionScore || 0));
+      if (counts[score] != null) counts[score]++;
+    });
+    return [5, 4, 3, 2, 1].map((score) => ({ score, n: counts[score] }));
+  }, [satisfactionLeads]);
+
+  const pctNeutros = satisfactionStats.total > 0
+    ? Math.max(0, 100 - satisfactionStats.pctSatisfeitos - satisfactionStats.pctInsatisfeitos)
+    : 0;
+
+  // 14-day sparkline series for each KPI.
+  const sparklines = useMemo(() => {
+    const days = 14;
+    const series = { leads: [], visitas: [], aulas: [], matriculas: [] };
+    for (let i = days - 1; i >= 0; i--) {
+      const dayStart = new Date();
+      dayStart.setHours(0, 0, 0, 0);
+      dayStart.setDate(dayStart.getDate() - i);
+      const dayEnd = new Date(dayStart);
+      dayEnd.setHours(23, 59, 59, 999);
+      const inDay = (d) => d && d >= dayStart && d <= dayEnd;
+
+      series.leads.push(funnelLeads.filter((l) => inDay(l.createdAt)).length);
+      series.visitas.push(funnelLeads.filter((l) => getLeadAppointmentType(l) === 'visita' && inDay(getLeadAppointmentDate(l))).length);
+      series.aulas.push(funnelLeads.filter((l) => getLeadAppointmentType(l) === 'aula_experimental' && inDay(getLeadAppointmentDate(l))).length);
+      series.matriculas.push(funnelLeads.filter((l) => isLeadConverted(l) && inDay(getLeadConversionDate(l))).length);
+    }
+    return series;
+  }, [funnelLeads]);
+
+  // Delta % vs immediately previous equivalent period.
+  const deltas = useMemo(() => {
+    if (!periodRange) return { leads: null, visitas: null, aulas: null, matriculas: null };
+    const span = periodRange.end - periodRange.start;
+    const prevStart = new Date(periodRange.start.getTime() - span - 1);
+    const prevEnd = new Date(periodRange.start.getTime() - 1);
+    const within = (d) => d && d >= prevStart && d <= prevEnd;
+
+    const prevLeads = funnelLeads.filter((l) => within(l.createdAt)).length;
+    const prevVisitas = funnelLeads.filter((l) => getLeadAppointmentType(l) === 'visita' && within(getLeadAppointmentDate(l))).length;
+    const prevAulas = funnelLeads.filter((l) => getLeadAppointmentType(l) === 'aula_experimental' && within(getLeadAppointmentDate(l))).length;
+    const prevMatriculas = funnelLeads.filter((l) => isLeadConverted(l) && within(getLeadConversionDate(l))).length;
+
+    const pct = (curr, prev) => (prev > 0 ? ((curr - prev) / prev) * 100 : (curr > 0 ? 100 : null));
+    return {
+      leads: pct(stats.total, prevLeads),
+      visitas: pct(stats.agendadosVisita, prevVisitas),
+      aulas: pct(stats.agendadosAula, prevAulas),
+      matriculas: pct(stats.convertidos, prevMatriculas)
+    };
+  }, [funnelLeads, periodRange, stats]);
+
+  // Activity feed: last 5 interactions in period, mapped to a UI shape.
+  const activityFeed = useMemo(() => {
+    if (!periodRange) return [];
+    const leadById = new Map((leads || []).map((l) => [l.id, l]));
+    const myAuthUid = appUser?.authUid || appUser?.id || null;
+    return (interactions || [])
+      .filter((i) => i.createdAt instanceof Date && i.createdAt >= periodRange.start && i.createdAt <= periodRange.end)
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, 6)
+      .map((i) => {
+        const lead = leadById.get(i.leadId);
+        const isYou =
+          myAuthUid &&
+          (i.consultantAuthUid === myAuthUid || i.leadConsultantAuthUid === myAuthUid || i.consultantName === appUser?.name);
+        const who = isYou ? 'Você' : (i.consultantName || 'Sistema');
+        let what = 'registrou atividade em';
+        let tone = 'slate';
+        const txt = String(i.text || '');
+        if (i.type === 'daily_goal_done') {
+          if (i.appointmentOutcome === 'attended' || /compareceu/i.test(txt)) {
+            what = 'marcou comparecimento de'; tone = 'emerald';
+          } else if (i.appointmentOutcome === 'no_show' || /não veio/i.test(txt)) {
+            what = 'marcou Não veio de'; tone = 'rose';
+          } else if (i.appointmentOutcome === 'rescheduled' || /remarc/i.test(txt)) {
+            what = 'remarcou'; tone = 'amber';
+          } else if (i.appointmentOutcome === 'cancelled' || /cancelou/i.test(txt)) {
+            what = 'cancelou agendamento de'; tone = 'slate';
+          } else {
+            what = 'concluiu tarefa de'; tone = 'brand';
+          }
+        } else if (i.type === 'status_change') {
+          if (lead?.status === 'Venda' || /matrícul/i.test(txt)) {
+            what = 'fechou matrícula de'; tone = 'emerald';
+          } else if (lead?.status === 'Perda' || /perd/i.test(txt)) {
+            what = 'registrou perda de'; tone = 'rose';
+          } else if (/agendou|retorno agendado/i.test(txt)) {
+            what = 'agendou retorno para'; tone = 'violet';
+          } else {
+            what = 'atualizou fase de'; tone = 'amber';
+          }
+        } else if (i.type === 'note') {
+          if (/observação do cadastro/i.test(txt)) {
+            what = 'cadastrou'; tone = 'brand';
+          } else {
+            what = 'anotou em'; tone = 'slate';
+          }
+        }
+        return {
+          id: i.id,
+          who,
+          what,
+          who2: lead?.name || 'lead',
+          when: humanizeAge(i.createdAt, new Date()),
+          tone
+        };
+      });
+  }, [interactions, leads, periodRange, appUser]);
+
+  // Human-friendly period label for the hero.
+  const periodLabel = useMemo(() => {
+    if (!periodRange) return '—';
+    const fmt = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+    const sameDay = periodRange.start.toDateString() === periodRange.end.toDateString();
+    if (sameDay) return periodRange.start.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' });
+    return `${fmt(periodRange.start)} – ${fmt(periodRange.end)}`;
+  }, [periodRange]);
+
+  const firstName = (appUser?.name || '').split(' ')[0] || 'consultor';
+  const greeting = useMemo(() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'Bom dia';
+    if (h < 18) return 'Boa tarde';
+    return 'Boa noite';
+  }, []);
+
+  // Lead list for "Compareceram" funnel step (also used in funnel modal).
+  const compareceramLeads = scheduledLeads.filter((l) => isLeadAttended(l));
+
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-wrap items-center gap-3">
-        {hasFunnels && (
-          <FunnelSelector
-            funnels={funnels}
-            value={selectedFunnelId}
-            onChange={setSelectedFunnelId}
-            allowAll={true}
-            className="w-full sm:w-[260px]"
-          />
-        )}
-        <div className="flex bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-1 rounded-xl shadow-2xl">
-          {[
-            { id: 'today', label: 'Hoje' },
-            { id: 'weekly', label: 'Semana' },
-            { id: 'monthly', label: 'Mês' },
-            { id: 'custom', label: 'Período' }
-          ].map(p => (
-            <button
-              key={p.id}
-              onClick={() => setPeriodPreset(p.id)}
-              className={`px-5 py-2 rounded-lg text-sm font-bold transition-all ${
-                periodPreset === p.id
-                  ? 'bg-gray-100 dark:bg-neutral-800 text-blue-500 shadow-xl'
-                  : 'text-gray-400 dark:text-neutral-500'
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {periodPreset === 'custom' && (
-          <div className="flex flex-wrap items-center gap-3 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-3 rounded-xl shadow-2xl">
-            <input
-              type="date"
-              value={customStartDate}
-              onChange={e => setCustomStartDate(e.target.value)}
-              className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-sm text-gray-900 dark:text-white outline-none"
-            />
-            <span className="text-gray-400 dark:text-neutral-500 text-sm font-bold">até</span>
-            <input
-              type="date"
-              value={customEndDate}
-              onChange={e => setCustomEndDate(e.target.value)}
-              className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-xl px-4 py-2 text-sm text-gray-900 dark:text-white outline-none"
-            />
+    <div className="space-y-6 animate-fade-in font-sans">
+      {/* ---- Hero ---- */}
+      <section className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <LayoutDashboard size={13} className="text-brand-600" /> Dashboard
           </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <StatCard
-          title="Leads Captados"
-          value={stats.total}
-          subtitle="No período"
-          icon={<Users className="w-8 h-8 text-blue-500" />}
-        />
-
-        <StatCard
-          title="Visitas Agendadas"
-          value={stats.agendadosVisita}
-          subtitle={`${stats.txAgVisita}% dos leads | ${stats.txConvVisita}% conv.`}
-          icon={<Users className="w-8 h-8 text-yellow-500" />}
-        />
-
-        <StatCard
-          title="Aulas Exp. Agendadas"
-          value={stats.agendadosAula}
-          subtitle={`${stats.txAgAula}% dos leads | ${stats.txConvAula}% conv.`}
-          icon={<Calendar className="w-8 h-8 text-purple-500" />}
-        />
-
-        <StatCard
-          title="Matrículas"
-          value={stats.convertidos}
-          subtitle={`${stats.txConv}% fechamento geral`}
-          icon={<Trophy className="w-8 h-8 text-green-500" />}
-        />
-      </div>
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-  <StatCard
-    title="CSAT Médio"
-    value={satisfactionStats.media}
-    subtitle={`${satisfactionStats.total} avaliações`}
-    icon={<CheckCircle className="w-8 h-8 text-blue-500" />}
-  />
-
-  <StatCard
-    title="% Satisfeitos"
-    value={`${satisfactionStats.pctSatisfeitos}%`}
-    subtitle="Notas 4 e 5"
-    icon={<CheckCircle className="w-8 h-8 text-green-500" />}
-  />
-
-  <StatCard
-    title="% Insatisfeitos"
-    value={`${satisfactionStats.pctInsatisfeitos}%`}
-    subtitle="Notas 1 e 2"
-    icon={<AlertCircle className="w-8 h-8 text-red-500" />}
-  />
-</div>
-
-      {isAllFunnels(selectedFunnelId) && funnels.length > 1 && (
-        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl">
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3 uppercase tracking-widest">
-            <Kanban className="w-6 h-6 text-blue-500" /> Métricas por Funil
-          </h3>
-          <p className="text-xs font-semibold text-gray-400 dark:text-neutral-500 mb-6 uppercase tracking-widest">
-            Comparativo de desempenho no período selecionado
+          <h2 className="mt-1.5 text-[26px] font-semibold tracking-tight leading-tight">
+            {greeting}, {firstName}. <span className="text-slate-500 dark:text-slate-400 font-medium">Aqui está o panorama do período.</span>
+          </h2>
+          <p className="mt-1 text-[13.5px] text-slate-500 dark:text-slate-400">
+            Período: <span className="font-medium text-slate-700 dark:text-slate-200">{periodLabel}</span> · <span className="num">{stats.total}</span> leads · taxa de conversão global <span className="font-medium text-emerald-600 dark:text-emerald-400 num">{stats.txConv}%</span>
           </p>
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse min-w-[800px]">
-              <thead>
-                <tr className="border-b border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 text-xs font-semibold">
-                  <th className="py-4 px-4">Funil</th>
-                  <th className="py-4 px-4 text-center">Leads</th>
-                  <th className="py-4 px-4 text-center">Visitas</th>
-                  <th className="py-4 px-4 text-center">Aulas Exp.</th>
-                  <th className="py-4 px-4 text-center">Matrículas</th>
-                  <th className="py-4 px-4 text-right">Tx. Conv.</th>
-                </tr>
-              </thead>
-              <tbody>
-                {funnelComparisonRows.map((row) => {
-                  const rateTone =
-                    row.rate >= 20 ? 'text-green-500'
-                    : row.rate >= 10 ? 'text-yellow-500'
-                    : 'text-gray-400 dark:text-neutral-500';
-                  return (
-                    <tr key={row.funnel.id} className="border-b border-gray-200 dark:border-neutral-800/50 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800/30 transition-all">
-                      <td className="py-4 px-4">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedFunnelId(row.funnel.id)}
-                          className="font-bold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-2 text-left"
-                          title={`Ver Dashboard apenas do funil ${row.funnel.name}`}
-                        >
-                          {row.funnel.name}
-                          {row.funnel.isDefault && (
-                            <span className="text-[9px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
-                              Padrão
-                            </span>
-                          )}
-                        </button>
-                      </td>
-                      <td className="py-4 px-4 text-center text-gray-500 dark:text-neutral-400 font-bold">{row.captured}</td>
-                      <td className="py-4 px-4 text-center text-yellow-500 font-bold">{row.visits}</td>
-                      <td className="py-4 px-4 text-center text-purple-500 font-bold">{row.classes}</td>
-                      <td className="py-4 px-4 text-center text-green-500 font-bold">{row.converted}</td>
-                      <td className={`py-4 px-4 text-right font-bold ${rateTone}`}>{row.rate}%</td>
-                    </tr>
-                  );
-                })}
-                {funnelComparisonRows.length === 0 && (
-                  <tr>
-                    <td colSpan="6" className="py-6 text-center text-gray-400 dark:text-neutral-500 text-xs font-bold uppercase tracking-widest">
-                      Sem dados no período
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-              {funnelComparisonTotals && funnelComparisonRows.length > 0 && (
-                <tfoot>
-                  <tr className="border-t-2 border-gray-300 dark:border-neutral-700">
-                    <td className="py-4 px-4 font-bold text-gray-900 dark:text-white uppercase tracking-widest text-xs">Total</td>
-                    <td className="py-4 px-4 text-center text-gray-900 dark:text-white font-bold">{funnelComparisonTotals.captured}</td>
-                    <td className="py-4 px-4 text-center text-yellow-600 dark:text-yellow-400 font-bold">{funnelComparisonTotals.visits}</td>
-                    <td className="py-4 px-4 text-center text-purple-600 dark:text-purple-400 font-bold">{funnelComparisonTotals.classes}</td>
-                    <td className="py-4 px-4 text-center text-green-600 dark:text-green-400 font-bold">{funnelComparisonTotals.converted}</td>
-                    <td className="py-4 px-4 text-right text-gray-900 dark:text-white font-bold">{funnelComparisonTotals.rate}%</td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {hasFunnels && (
+            <FunnelSelector
+              funnels={funnels}
+              value={selectedFunnelId}
+              onChange={setSelectedFunnelId}
+              allowAll={true}
+              className="w-full sm:w-[220px]"
+            />
+          )}
+          <DashPeriodTabs value={periodPreset} onChange={setPeriodPreset} />
+        </div>
+      </section>
+
+      {periodPreset === 'custom' && (
+        <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] shadow-card">
+          <span className="text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Período personalizado</span>
+          <input
+            type="date"
+            value={customStartDate}
+            onChange={(e) => setCustomStartDate(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[13px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
+          />
+          <span className="text-slate-400 text-[12.5px] font-medium">até</span>
+          <input
+            type="date"
+            value={customEndDate}
+            onChange={(e) => setCustomEndDate(e.target.value)}
+            className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[13px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
+          />
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl">
-            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-8 uppercase tracking-widest">
-              {isAllFunnels(selectedFunnelId)
-                ? 'Compilado de Todos os Funis'
-                : currentFunnel?.name ? `Funil ${currentFunnel.name}` : 'Funil Comercial'}
-            </h3>
+      {/* ---- Primary KPIs ---- */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <DashKpiCard
+          label="Leads captados"
+          value={stats.total}
+          delta={deltas.leads}
+          accent="brand"
+          series={sparklines.leads}
+        />
+        <DashKpiCard
+          label="Visitas agendadas"
+          value={stats.agendadosVisita}
+          delta={deltas.visitas}
+          accent="amber"
+          series={sparklines.visitas}
+          sub={`${stats.txAgVisita}% dos leads · ${stats.txConvVisita}% conv.`}
+        />
+        <DashKpiCard
+          label="Aulas experimentais"
+          value={stats.agendadosAula}
+          delta={deltas.aulas}
+          accent="violet"
+          series={sparklines.aulas}
+          sub={`${stats.txAgAula}% dos leads · ${stats.txConvAula}% conv.`}
+        />
+        <DashKpiCard
+          label="Matrículas"
+          value={stats.convertidos}
+          delta={deltas.matriculas}
+          accent="emerald"
+          series={sparklines.matriculas}
+          sub={`${stats.txConv}% fechamento geral`}
+        />
+      </div>
 
-            <div className="space-y-8">
-              <FunnelBar
-                label="Leads Recebidos"
-                count={stats.total}
-                max={stats.total}
-                color="bg-blue-500"
-                onClick={() => setFunnelDetail({ title: 'Leads Recebidos', data: capturedLeads })}
-              />
-              <FunnelBar
-                label="Agendamentos (Visita)"
-                count={stats.agendadosVisita}
-                max={stats.total}
-                color="bg-yellow-500"
-                onClick={() => setFunnelDetail({ title: 'Visitas Agendadas', data: scheduledLeads.filter(l => getLeadAppointmentType(l) === 'visita') })}
-              />
-              <FunnelBar
-                label="Agendamentos (Aula Exp.)"
-                count={stats.agendadosAula}
-                max={stats.total}
-                color="bg-purple-500"
-                onClick={() => setFunnelDetail({ title: 'Aulas Exp. Agendadas', data: scheduledLeads.filter(l => getLeadAppointmentType(l) === 'aula_experimental') })}
-              />
-              <FunnelBar
-                label="Matrículas"
-                count={stats.convertidos}
-                max={stats.total}
-                color="bg-green-500"
-                onClick={() => setFunnelDetail({ title: 'Matrículas', data: convertedLeads })}
-              />
+      {/* ---- Secondary KPIs ---- */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <DashCard padded>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">CSAT médio</div>
+              <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{satisfactionStats.media}</div>
+              <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
+                <span className="text-emerald-600 dark:text-emerald-400 font-semibold num">{satisfactionStats.pctSatisfeitos}%</span> satisfeitos · <span className="num">{satisfactionStats.total}</span> avaliações
+              </div>
             </div>
+            <DashGauge value={Number(satisfactionStats.media) || 0} />
           </div>
+        </DashCard>
 
-          {isAdminUser(appUser) && (
-            <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-3 uppercase tracking-widest">
-                <BarChart3 className="w-6 h-6 text-blue-500" />
-                Relatório de Desempenho
-              </h3>
-              <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left border-collapse min-w-[900px]">
+        <DashCard padded>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">Taxa de comparecimento</div>
+              <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{taxaComp}%</div>
+              <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
+                <span className="num font-medium text-slate-700 dark:text-slate-200">{compareceram}</span> compareceram / <span className="num">{totalAppt}</span> agendados
+              </div>
+            </div>
+            <DashRingStat value={taxaComp} accent="teal" />
+          </div>
+        </DashCard>
+
+        <DashCard padded>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">Conversão global</div>
+              <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{stats.txConv}%</div>
+              <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
+                lead → matrícula · <span className="num">{stats.convertidos}</span> de <span className="num">{stats.total}</span>
+              </div>
+            </div>
+            <DashRingStat value={stats.txConv} accent="emerald" />
+          </div>
+        </DashCard>
+      </div>
+
+      {/* ---- Main grid ---- */}
+      <div className="grid grid-cols-12 gap-4">
+
+        {/* LEFT — funnel + tables */}
+        <div className="col-span-12 xl:col-span-8 space-y-4">
+
+          <DashCard
+            title={isAllFunnels(selectedFunnelId)
+              ? 'Funil comercial · todos os funis'
+              : currentFunnel?.name ? `Funil · ${currentFunnel.name}` : 'Funil comercial'}
+            hint="Conversão por etapa · clique para ver os leads"
+            icon={<Filter size={14} />}
+          >
+            <DashFunnel
+              steps={[
+                { id: 'leads',  label: 'Leads recebidos', count: stats.total, color: 'brand' },
+                { id: 'agend',  label: 'Agendamentos',    count: stats.agendadosVisita + stats.agendadosAula, color: 'amber',  hint: `${stats.agendadosVisita} visitas · ${stats.agendadosAula} aulas exp.` },
+                { id: 'comp',   label: 'Compareceram',    count: compareceram, color: 'teal' },
+                { id: 'matric', label: 'Matrículas',      count: stats.convertidos, color: 'emerald' }
+              ]}
+              onStepClick={(s) => {
+                if (s.id === 'leads')  setFunnelDetail({ title: 'Leads Recebidos', data: capturedLeads });
+                if (s.id === 'agend')  setFunnelDetail({ title: 'Agendamentos',    data: scheduledLeads });
+                if (s.id === 'comp')   setFunnelDetail({ title: 'Compareceram',    data: compareceramLeads });
+                if (s.id === 'matric') setFunnelDetail({ title: 'Matrículas',      data: convertedLeads });
+              }}
+            />
+          </DashCard>
+
+          {isAllFunnels(selectedFunnelId) && funnels.length > 1 && (
+            <DashCard
+              title="Métricas por funil"
+              hint="Comparativo no período selecionado"
+              icon={<Kanban size={14} />}
+              padded={false}
+            >
+              <div className="overflow-x-auto thin-scroll">
+                <table className="w-full text-left min-w-[640px]">
                   <thead>
-                    <tr className="border-b border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 text-xs font-semibold">
-                      <th className="py-4 px-4">Consultor</th>
-                      <th className="py-4 px-4 text-center">Leads</th>
-<th className="py-4 px-4 text-center">Visitas</th>
-<th className="py-4 px-4 text-center">Aulas Exp.</th>
-<th className="py-4 px-4 text-center">Matrículas</th>
-<th className="py-4 px-4 text-center">Conv. Visita</th>
-<th className="py-4 px-4 text-center">Conv. Aula</th>
-<th className="py-4 px-4 text-right">Tx. Conv. Global</th>
+                    <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                      <th className="py-2.5 pl-5 pr-3 font-semibold">Funil</th>
+                      <th className="py-2.5 px-3 font-semibold text-center">Leads</th>
+                      <th className="py-2.5 px-3 font-semibold text-center">Visitas</th>
+                      <th className="py-2.5 px-3 font-semibold text-center">Aulas</th>
+                      <th className="py-2.5 px-3 font-semibold text-center">Matr.</th>
+                      <th className="py-2.5 pr-5 pl-3 font-semibold text-right">Tx. Conv.</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {teamMetrics.map((m, i) => (
-                      <tr key={i} className="border-b border-gray-200 dark:border-neutral-800/50 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800/30 transition-all">
-                        <td className="py-4 px-4 font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                          {i === 0 && m.convertidos > 0 && <span className="text-yellow-500">🏆</span>}
-                          {m.name}
-                        </td>
-<td className="py-4 px-4 text-center text-gray-500 dark:text-neutral-400 font-bold">{m.total}</td>
-
-<td className="py-4 px-4 text-center">
-  <div className="flex flex-col items-center leading-tight">
-    <span className="text-yellow-400 font-bold">{m.agendadosVisita}</span>
-    <span className="text-[10px] text-gray-400 dark:text-neutral-500 font-bold uppercase tracking-widest">
-      {m.txVisita}%
-    </span>
-  </div>
-</td>
-
-<td className="py-4 px-4 text-center">
-  <div className="flex flex-col items-center leading-tight">
-    <span className="text-purple-400 font-bold">{m.agendadosAula}</span>
-    <span className="text-[10px] text-gray-400 dark:text-neutral-500 font-bold uppercase tracking-widest">
-      {m.txAula}%
-    </span>
-  </div>
-</td>
-
-<td className="py-4 px-4 text-center text-green-400 font-bold">
-  {m.convertidos}
-</td>
-
-<td className="py-4 px-4 text-center">
-  <div className="flex flex-col items-center leading-tight">
-    <span className="text-yellow-300 font-bold">{m.convertidosVisita}</span>
-    <span className="text-[10px] text-gray-400 dark:text-neutral-500 font-bold uppercase tracking-widest">
-      {m.txConvVisita}%
-    </span>
-  </div>
-</td>
-
-<td className="py-4 px-4 text-center">
-  <div className="flex flex-col items-center leading-tight">
-    <span className="text-purple-300 font-bold">{m.convertidosAula}</span>
-    <span className="text-[10px] text-gray-400 dark:text-neutral-500 font-bold uppercase tracking-widest">
-      {m.txConvAula}%
-    </span>
-  </div>
-</td>
-
-<td className="py-4 px-4 text-right text-gray-900 dark:text-white font-bold">
-  {m.txConversaoGlobal}%
-</td>
-                      </tr>
-                    ))}
-
-                    {teamMetrics.length === 0 && (
+                    {funnelComparisonRows.map((row) => {
+                      const rateTone = row.rate >= 20 ? 'text-emerald-600 dark:text-emerald-400' : row.rate >= 10 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400';
+                      return (
+                        <tr key={row.funnel.id} className="border-t border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition">
+                          <td className="py-3 pl-5 pr-3">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedFunnelId(row.funnel.id)}
+                              className="text-[13px] font-semibold text-slate-900 dark:text-white hover:text-brand-600 dark:hover:text-brand-400 transition flex items-center gap-1.5 text-left whitespace-nowrap"
+                              title={`Ver Dashboard apenas do funil ${row.funnel.name}`}
+                            >
+                              {row.funnel.name}
+                              {row.funnel.isDefault && (
+                                <span className="text-[9px] uppercase tracking-widest font-bold px-1.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">Padrão</span>
+                              )}
+                            </button>
+                          </td>
+                          <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.captured}</td>
+                          <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.visits}</td>
+                          <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.classes}</td>
+                          <td className="py-3 px-3 num text-[13px] text-center font-semibold text-emerald-600 dark:text-emerald-400">{row.converted}</td>
+                          <td className={`py-3 pr-5 pl-3 num text-[13px] text-right font-semibold ${rateTone}`}>{row.rate}%</td>
+                        </tr>
+                      );
+                    })}
+                    {funnelComparisonRows.length === 0 && (
                       <tr>
-<td colSpan="8" className="py-6 text-center text-gray-400 dark:text-neutral-500 text-xs font-bold uppercase tracking-widest">                          Sem dados no período
-                        </td>
+                        <td colSpan="6" className="py-6 text-center text-[12px] text-slate-400 italic">Sem dados no período</td>
                       </tr>
                     )}
                   </tbody>
+                  {funnelComparisonTotals && funnelComparisonRows.length > 0 && (
+                    <tfoot>
+                      <tr className="border-t-2 border-slate-200 dark:border-white/[0.06]">
+                        <td className="py-3 pl-5 pr-3 text-[12px] font-bold text-slate-900 dark:text-white uppercase tracking-wider">Total</td>
+                        <td className="py-3 px-3 num text-[13px] text-center font-semibold text-slate-900 dark:text-white">{funnelComparisonTotals.captured}</td>
+                        <td className="py-3 px-3 num text-[13px] text-center font-semibold text-slate-900 dark:text-white">{funnelComparisonTotals.visits}</td>
+                        <td className="py-3 px-3 num text-[13px] text-center font-semibold text-slate-900 dark:text-white">{funnelComparisonTotals.classes}</td>
+                        <td className="py-3 px-3 num text-[13px] text-center font-semibold text-emerald-600 dark:text-emerald-400">{funnelComparisonTotals.converted}</td>
+                        <td className="py-3 pr-5 pl-3 num text-[13px] text-right font-semibold text-slate-900 dark:text-white">{funnelComparisonTotals.rate}%</td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
-            </div>
+            </DashCard>
           )}
+
           {isAdminUser(appUser) && (
-  <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl">
-    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center gap-3 uppercase tracking-widest">
-      <CheckCircle className="w-6 h-6 text-blue-500" />
-      CSAT por Consultor
-    </h3>
-
-    <div className="overflow-x-auto custom-scrollbar">
-      <table className="w-full text-left border-collapse min-w-[700px]">
-        <thead>
-          <tr className="border-b border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 text-xs font-semibold">
-            <th className="py-4 px-4">Consultor</th>
-            <th className="py-4 px-4 text-center">Avaliações</th>
-            <th className="py-4 px-4 text-center">CSAT Médio</th>
-            <th className="py-4 px-4 text-right">% Satisfeitos</th>
-          </tr>
-        </thead>
-        <tbody>
-          {consultantSatisfactionMetrics.map((m, i) => (
-            <tr
-              key={i}
-              className="border-b border-gray-200 dark:border-neutral-800/50 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800/30 transition-all"
+            <DashCard
+              title="Desempenho da equipe"
+              hint="Consultores ranqueados por matrículas"
+              icon={<BarChart3 size={14} />}
+              padded={false}
             >
-              <td className="py-4 px-4 font-bold text-gray-900 dark:text-white">{m.name}</td>
-              <td className="py-4 px-4 text-center text-gray-500 dark:text-neutral-400 font-bold">
-                {m.totalAvaliacoes}
-              </td>
-              <td className="py-4 px-4 text-center text-blue-400 font-bold">
-                {m.media}
-              </td>
-              <td className="py-4 px-4 text-right text-gray-900 dark:text-white font-bold">
-                {m.pctSatisfeitos}%
-              </td>
-            </tr>
-          ))}
-
-          {consultantSatisfactionMetrics.length === 0 && (
-            <tr>
-              <td
-                colSpan="4"
-                className="py-6 text-center text-gray-400 dark:text-neutral-500 text-xs font-bold uppercase tracking-widest"
-              >
-                Sem avaliações no período
-              </td>
-            </tr>
+              {teamMetrics.length > 0 ? (
+                <DashTeamTable rows={teamMetrics} appUser={appUser} />
+              ) : (
+                <div className="px-5 py-8 text-center text-[12px] text-slate-400 italic">Sem dados no período</div>
+              )}
+            </DashCard>
           )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}
+
+          {isAdminUser(appUser) && (
+            <DashCard
+              title="CSAT por consultor"
+              hint="Média e % de satisfeitos no período"
+              icon={<CheckCircle size={14} />}
+            >
+              {consultantSatisfactionMetrics.length > 0 ? (
+                <DashCsatTeamGrid rows={consultantSatisfactionMetrics} />
+              ) : (
+                <div className="py-8 text-center text-[12px] text-slate-400 italic">Sem avaliações no período</div>
+              )}
+            </DashCard>
+          )}
         </div>
 
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 flex flex-col max-h-[450px] shadow-2xl">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2 uppercase tracking-widest">
-                <Bell className="w-5 h-5 text-blue-600" />
-                Tarefas
-              </h3>
-              <span className="bg-blue-600/10 text-blue-600 text-xs px-2 py-1 rounded-full font-bold">
-                {pendingFollowUps.length}
-              </span>
-            </div>
+        {/* RIGHT — widgets */}
+        <div className="col-span-12 xl:col-span-4 space-y-4">
 
-            <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-2">
+          <DashCard
+            title="Distribuição CSAT"
+            hint={`${satisfactionStats.total} avaliações no período`}
+            icon={<Activity size={14} />}
+          >
+            <div className="flex items-start gap-4">
+              <DashGauge value={Number(satisfactionStats.media) || 0} />
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 whitespace-nowrap">Notas (5 → 1)</div>
+                <DashCsatDist dist={csatDist} total={satisfactionStats.total} />
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 dark:border-white/[0.05]">
+              <DashMiniStat label="Satisfeitos" value={`${satisfactionStats.pctSatisfeitos}%`} tone="emerald" />
+              <DashMiniStat label="Neutros" value={`${pctNeutros}%`} tone="amber" />
+              <DashMiniStat label="Insatisfeitos" value={`${satisfactionStats.pctInsatisfeitos}%`} tone="rose" />
+            </div>
+          </DashCard>
+
+          <DashCard
+            title="Canais de aquisição"
+            hint={`${stats.total} leads · top ${Math.min(sourceMetrics.length, 6)}`}
+            icon={<Zap size={14} />}
+          >
+            <DashSourceList items={sourceMetrics.slice(0, 6)} />
+          </DashCard>
+
+          <DashCard
+            title="Próximos follow-ups"
+            hint="Tarefas pendentes"
+            icon={<Bell size={14} />}
+            action={
+              <span className="text-[11.5px] font-medium text-slate-500 dark:text-slate-400 num whitespace-nowrap">{pendingFollowUps.length}</span>
+            }
+          >
+            <div className="space-y-2 max-h-[360px] overflow-y-auto thin-scroll -mx-1 px-1">
               {pendingFollowUps.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full text-gray-400 dark:text-neutral-500 gap-2">
-                  <CheckCircle className="w-10 h-10 opacity-20" />
-                  <p className="text-sm font-medium">Tudo em dia!</p>
-                </div>
+                <div className="py-8 text-center text-[12.5px] text-slate-400 italic">Tudo em dia.</div>
               ) : (
-                pendingFollowUps.map(lead => {
-                  const isOverdue = lead.nextFollowUp < new Date();
-
-                  return (
-                    <div key={lead.id} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex justify-between items-start relative overflow-hidden group">
-                      <div className={`absolute top-0 left-0 w-1 h-full ${isOverdue ? 'bg-red-500' : 'bg-yellow-500'}`}></div>
-                      <div className="pl-1">
-                        <p className="font-bold text-sm text-gray-800 dark:text-neutral-200">{lead.name}</p>
-                        <p className="text-[10px] text-gray-400 dark:text-neutral-500 font-bold uppercase">{lead.whatsapp}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className={`text-[10px] font-bold uppercase ${isOverdue ? 'text-red-400 animate-pulse' : 'text-yellow-400'}`}>
-                          {isOverdue ? 'Atrasado' : 'Agendado'}
-                        </p>
-                        <div className="text-[10px] text-gray-400 dark:text-neutral-500 mt-1 flex items-center justify-end gap-1 font-bold">
-                          <FollowUpIcon type={lead.nextFollowUpType} className="w-3 h-3" />
-                          <span>
-                            {lead.nextFollowUp.toLocaleDateString('pt-BR')} às{' '}
-                            {lead.nextFollowUp.toLocaleTimeString('pt-BR', {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+                pendingFollowUps.slice(0, 8).map((lead) => (
+                  <DashTaskItem key={lead.id} lead={lead} onClick={setSelectedLead} />
+                ))
               )}
             </div>
-          </div>
+          </DashCard>
 
-          <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl">
-            <h3 className="text-sm font-bold text-gray-900 dark:text-white mb-6 uppercase tracking-widest flex items-center gap-2">
-              <Activity className="w-4 h-4 text-blue-600" />
-              Canais de Aquisição
-            </h3>
-
-            <div className="space-y-5">
-              {sourceMetrics.map((s, i) => (
-                <div key={i}>
-                  <div className="flex justify-between text-xs font-semibold mb-1.5">
-                    <span className="text-gray-500 dark:text-neutral-400">{s.name}</span>
-                    <span className="text-gray-900 dark:text-white">{s.count}</span>
-                  </div>
-                  <div className="w-full bg-[#eaedf2] dark:bg-neutral-950 rounded-full h-2.5 overflow-hidden border border-gray-200 dark:border-neutral-800">
-                    <div
-                      className="h-full bg-gradient-to-r from-blue-600 to-amber-400 rounded-full"
-                      style={{ width: `${stats.total > 0 ? (s.count / stats.total) * 100 : 0}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-
-              {sourceMetrics.length === 0 && (
-                <p className="text-xs text-gray-400 dark:text-neutral-500 font-bold italic py-4">
-                  Nenhum dado captado.
-                </p>
-              )}
-            </div>
-          </div>
+          <DashCard
+            title="Atividade recente"
+            hint="Últimas ações no período"
+            icon={<Clock size={14} />}
+          >
+            {activityFeed.length === 0 ? (
+              <div className="py-6 text-center text-[12.5px] text-slate-400 italic">Sem atividade no período.</div>
+            ) : (
+              <div className="-my-1">
+                {activityFeed.map((a) => <DashActivityRow key={a.id} item={a} />)}
+              </div>
+            )}
+          </DashCard>
         </div>
       </div>
-      
+
+      <footer className="pt-2 pb-2 text-center text-[11.5px] text-slate-400 whitespace-nowrap">
+        Atualizado agora · Período: {periodLabel}
+      </footer>
+
       {funnelDetail && <FunnelDetailModal detail={funnelDetail} onClose={() => setFunnelDetail(null)} onLeadClick={(lead) => { setSelectedLead(lead); setFunnelDetail(null); }} />}
-      
+
       {selectedLead && (
         <LeadDetailsModal
           lead={selectedLead}
@@ -2125,10 +2593,11 @@ const teamMetrics = useMemo(() => {
           funnels={funnels}
         />
       )}
-      
+
     </div>
   );
 }
+
 
 function StatCard({ title, value, subtitle, icon }) {
   return <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-6 rounded-[2.5rem] flex items-center justify-between shadow-2xl relative overflow-hidden group hover:border-gray-300 dark:border-neutral-700 transition-all"><div><p className="text-gray-400 dark:text-neutral-500 text-xs font-bold uppercase tracking-widest">{title}</p><p className="text-4xl font-bold text-gray-900 dark:text-white mt-1">{value}</p><p className="text-[10px] text-gray-600 dark:text-neutral-400 font-bold mt-2 uppercase tracking-tighter">{subtitle}</p></div><div className="bg-[#eaedf2] dark:bg-neutral-800 p-5 rounded-2xl border border-gray-200 dark:border-neutral-700 group-hover:scale-110 transition-transform">{icon}</div></div>;
@@ -5026,6 +5495,7 @@ const DG_CATEGORY_META = {
   [DAILY_GOAL_CATEGORIES.NOVO_24H]: { label: DAILY_GOAL_CATEGORY_LABEL.novo_24h, short: 'Novos leads', color: 'blue', Icon: Zap },
   [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.visita_hoje, short: 'Visitas', color: 'violet', Icon: Building2 },
   [DAILY_GOAL_CATEGORIES.AULA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.aula_hoje, short: 'Aulas exp.', color: 'amber', Icon: BookOpen },
+  [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.contato_hoje, short: 'Contatos', color: 'teal', Icon: MessageSquare },
   [DAILY_GOAL_CATEGORIES.ATRASADO]: { label: DAILY_GOAL_CATEGORY_LABEL.atrasado, short: 'Atrasados', color: 'rose', Icon: AlertCircle }
 };
 
@@ -5033,6 +5503,7 @@ const DG_CATEGORY_ORDER = [
   DAILY_GOAL_CATEGORIES.NOVO_24H,
   DAILY_GOAL_CATEGORIES.VISITA_HOJE,
   DAILY_GOAL_CATEGORIES.AULA_HOJE,
+  DAILY_GOAL_CATEGORIES.CONTATO_HOJE,
   DAILY_GOAL_CATEGORIES.ATRASADO
 ];
 
@@ -5376,7 +5847,7 @@ function DgSection({ slug, tasks, render }) {
 
 // Renders a single (lead × categorySlug) task card.
 // Same lead with two pending categories renders TWICE — once per slug — with independent actions per main's per-category status model.
-function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onGoalDone, onWhatsapp, onCall }) {
+function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
   const m = DG_CATEGORY_META[slug];
   if (!m) return null;
   const t = COLOR_TONES[m.color];
@@ -5471,7 +5942,7 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onGoalDone, on
             <>
               <Btn kind="success" icon={<Check size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'attended', slug, e)}>Compareceu</Btn>
               <Btn kind="secondary" icon={<X size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'no_show', slug, e)}>Não veio</Btn>
-              <Btn kind="soft" onClick={(e) => onOutcome && onOutcome(task, 'rescheduled', slug, e)}>Remarcou</Btn>
+              <Btn kind="soft" onClick={(e) => { e.stopPropagation(); onReschedule && onReschedule(task, slug); }}>Remarcou</Btn>
               <Btn kind="soft" onClick={(e) => onOutcome && onOutcome(task, 'cancelled', slug, e)}>Cancelou</Btn>
             </>
           ) : isAppt && outcome ? (
@@ -5513,6 +5984,143 @@ function DoneCard({ lead, onOpen }) {
   );
 }
 
+// Build a `YYYY-MM-DDTHH:MM` string in LOCAL time for <input type="datetime-local">.
+function toDatetimeLocalValue(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
+  const isAfterNoShow = flow === 'after_no_show';
+
+  const defaultValue = useMemo(() => {
+    const base = currentDate ? new Date(currentDate) : new Date();
+    base.setDate(base.getDate() + 1);
+    return toDatetimeLocalValue(base);
+  }, [currentDate]);
+
+  const initialType = currentType === 'aula_experimental' || categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE
+    ? 'aula_experimental'
+    : 'visita';
+
+  const [dateValue, setDateValue] = useState(defaultValue);
+  const [apptType, setApptType] = useState(initialType);
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!dateValue || submitting) return;
+    const newDate = new Date(dateValue);
+    if (isNaN(newDate.getTime())) return;
+    setSubmitting(true);
+    await onConfirm(newDate, note, apptType);
+    setSubmitting(false);
+  };
+
+  const title = isAfterNoShow
+    ? 'Agendar próxima tentativa'
+    : `Remarcar ${apptType === 'aula_experimental' ? 'aula experimental' : 'visita'}`;
+
+  const helperText = isAfterNoShow
+    ? 'A tarefa de hoje já foi marcada como "Não veio". O lead voltará à Meta Diária na nova data.'
+    : 'A tarefa de hoje será concluída e o lead voltará para a sua Meta Diária na nova data.';
+
+  const TypeBtn = ({ value, label }) => {
+    const active = apptType === value;
+    return (
+      <button
+        type="button"
+        onClick={() => setApptType(value)}
+        className={`flex-1 h-9 px-3 rounded-lg text-[12.5px] font-semibold transition border ${
+          active
+            ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
+            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-white/[0.03] dark:text-slate-300 dark:border-white/[0.07] dark:hover:bg-white/[0.06]'
+        }`}
+      >
+        {label}
+      </button>
+    );
+  };
+
+  return createPortal(
+    <>
+      <div onClick={onClose} className="fixed inset-0 z-[110] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in" />
+      <div className="fixed inset-0 z-[111] grid place-items-center p-4 animate-fade-in pointer-events-none">
+        <form onSubmit={handleSubmit} className="bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
+          <div className="flex items-start gap-3 mb-5">
+            <div className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 text-lg ${
+              isAfterNoShow
+                ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300'
+                : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+            }`}>
+              {isAfterNoShow ? '↻' : '🔄'}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">{title}</h3>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{lead.name} · <span className="num">{lead.whatsapp}</span></p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Tipo
+              </label>
+              <div className="flex gap-2">
+                <TypeBtn value="visita" label="Visita" />
+                <TypeBtn value="aula_experimental" label="Aula Experimental" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Nova data e horário
+              </label>
+              <input
+                type="datetime-local"
+                value={dateValue}
+                onChange={(e) => setDateValue(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
+                required
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Observação (opcional)
+              </label>
+              <textarea
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                rows={2}
+                placeholder={isAfterNoShow ? 'Ex: combinar pela manhã, ligar antes' : 'Ex: lead pediu para remarcar por motivo de trabalho'}
+                className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
+              />
+            </div>
+          </div>
+
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-4 leading-relaxed">{helperText}</p>
+
+          <div className="mt-5 flex items-center justify-end gap-2">
+            <Btn kind="secondary" onClick={onClose}>
+              {isAfterNoShow ? 'Não remarcar agora' : 'Cancelar'}
+            </Btn>
+            <button
+              type="submit"
+              disabled={submitting || !dateValue}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold whitespace-nowrap transition active:scale-[.98] bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Check size={14} />
+              {submitting ? 'Salvando...' : (isAfterNoShow ? 'Confirmar agendamento' : 'Confirmar remarcação')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </>,
+    document.body
+  );
+}
+
 // ==========================================
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
@@ -5522,6 +6130,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const [selectedLead, setSelectedLead] = useState(null);
   const [filter, setFilter] = useState('all');
   const [now, setNow] = useState(() => new Date());
+  const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const prevProgress = useRef(0);
   const focusAnchorRef = useRef(null);
 
@@ -5596,6 +6205,22 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         const apptDate = getLeadAppointmentDate(lead);
         if (apptType === 'aula_experimental' && apptDate >= todayStart && apptDate <= todayEnd) {
           addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.aula_hoje, DAILY_GOAL_CATEGORIES.AULA_HOJE);
+        }
+      }
+
+      // 5. Contato Hoje — follow-up via Mensagem/Ligação agendado para hoje
+      // (qualquer tipo que NÃO seja visita/aula). Pega WhatsApp + ligações sem
+      // duplicar quem já está nas seções de visita/aula.
+      if (
+        lead.status !== 'Venda' &&
+        lead.status !== 'Perda' &&
+        lead.nextFollowUp &&
+        lead.nextFollowUp >= todayStart &&
+        lead.nextFollowUp <= todayEnd
+      ) {
+        const apptType = getLeadAppointmentType(lead);
+        if (apptType !== 'visita' && apptType !== 'aula_experimental') {
+          addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.contato_hoje, DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
         }
       }
     });
@@ -5700,6 +6325,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         createdAt: serverTimestamp()
       });
       toast.success(`${meta.label} registrado para ${lead.name}.`);
+      // After 'no_show', immediately offer to reschedule. Today's task is
+      // already closed; the modal in 'after_no_show' flow only updates the
+      // appointment date without writing another daily_goal_done.
+      if (outcome === 'no_show') {
+        setRescheduleTarget({ lead, categorySlug, flow: 'after_no_show' });
+      }
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível registrar o comparecimento. Tente novamente.');
@@ -5710,6 +6341,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     if (e) e.stopPropagation();
     if (!Object.values(DAILY_GOAL_CATEGORIES).includes(categorySlug)) return;
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
+    if (!window.confirm(`Concluir a tarefa "${categoryLabel}" deste lead?`)) return;
     const noteText = (note || '').trim();
     try {
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
@@ -5727,6 +6359,82 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível concluir a tarefa. Tente novamente.');
+    }
+  };
+
+  // Reschedule: opens the date dialog (set on TaskCard click or after no_show), then this commits.
+  // Three flows:
+  //   - flow='manual', cross-day  → writes daily_goal_done (today's task closes)
+  //   - flow='manual', same-day   → writes plain 'note' (task remains pending, just new time)
+  //   - flow='after_no_show'      → writes plain 'note' (task already closed via no_show)
+  // Always updates appointment fields and clears appointmentOutcome so the
+  // new appointment is fresh.
+  const handleReschedule = async (newDate, note, newApptType) => {
+    if (!rescheduleTarget) return;
+    const { lead, categorySlug, flow = 'manual' } = rescheduleTarget;
+    const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
+    const formattedDate = newDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const formattedTime = newDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const noteText = (note || '').trim();
+
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+    const isStillToday = newDate >= todayStart && newDate <= todayEnd;
+    const isAfterNoShow = flow === 'after_no_show';
+    // Cross-day manual reschedule is the only path that needs to close today's task.
+    const shouldCloseToday = !isAfterNoShow && !isStillToday;
+
+    // Type may change during reschedule (decision 4): user can flip Visita ↔ Aula.
+    const finalApptType = newApptType || getLeadAppointmentType(lead) || 'visita';
+    const finalApptTypeLabel = finalApptType === 'aula_experimental' ? 'Aula Experimental' : 'Visita';
+
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+        appointmentScheduledFor: newDate,
+        nextFollowUp: newDate, // keep legacy field in sync so the lead doesn't show up as "Atrasado" after rescheduling
+        appointmentType: finalApptType,
+        nextFollowUpType: finalApptTypeLabel,
+        appointmentOutcome: null,
+        appointmentOutcomeAt: null,
+        appointmentOutcomeBy: null
+      });
+
+      let baseText;
+      if (isAfterNoShow) {
+        baseText = `🔄 Próxima tentativa marcada (${finalApptTypeLabel}) para ${formattedDate} às ${formattedTime}, após "Não veio".`;
+      } else if (isStillToday) {
+        baseText = `🔄 Horário ajustado: ${finalApptTypeLabel.toLowerCase()} para hoje às ${formattedTime}.`;
+      } else {
+        baseText = `🔄 Remarcou ${finalApptTypeLabel.toLowerCase()} para ${formattedDate} às ${formattedTime} — Meta Diária.`;
+      }
+
+      const interactionPayload = {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: noteText ? `${baseText} Obs: ${noteText}` : baseText,
+        type: shouldCloseToday ? 'daily_goal_done' : 'note',
+        rescheduledFor: newDate,
+        createdAt: serverTimestamp()
+      };
+      if (shouldCloseToday) {
+        interactionPayload.dailyGoalCategory = categorySlug;
+        interactionPayload.appointmentOutcome = 'rescheduled';
+      }
+
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), interactionPayload);
+
+      if (isAfterNoShow) {
+        toast.success(`Próxima tentativa em ${formattedDate} às ${formattedTime}.`);
+      } else if (isStillToday) {
+        toast.success(`Horário ajustado para hoje às ${formattedTime}.`);
+      } else {
+        toast.success(`Remarcado para ${formattedDate} às ${formattedTime}.`);
+      }
+      setRescheduleTarget(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar a remarcação. Tente novamente.');
     }
   };
 
@@ -5828,6 +6536,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       onOpen={setSelectedLead}
       onSnooze={handleSnooze}
       onOutcome={handleOutcome}
+      onReschedule={(t, s) => setRescheduleTarget({ lead: t, categorySlug: s })}
       onGoalDone={handleGoalDone}
       onWhatsapp={handleWhatsapp}
       onCall={handleCall}
@@ -5865,18 +6574,17 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           icon={<Calendar size={15} />}
         />
         <KpiCard
-          label="Atrasados"
-          value={pendingAtrasados.length}
-          sub={pendingAtrasados.length > 0 ? 'recuperar até sexta' : 'sem pendência'}
-          icon={<AlertCircle size={15} />}
-          tone={pendingAtrasados.length > 1 ? 'slate' : 'emerald'}
+          label="Contatos do dia"
+          value={counts[DAILY_GOAL_CATEGORIES.CONTATO_HOJE]}
+          sub={counts[DAILY_GOAL_CATEGORIES.CONTATO_HOJE] > 0 ? 'follow-up agendado' : 'todos feitos'}
+          icon={<MessageSquare size={15} />}
         />
         <KpiCard
-          label="Progresso geral"
-          value={`${doneSlots}/${totalSlots || 0}`}
-          sub={`${progress}% concluído`}
-          icon={<CheckCircle size={15} />}
-          tone="emerald"
+          label="Atrasados"
+          value={pendingAtrasados.length}
+          sub={pendingAtrasados.length > 0 ? 'recuperar hoje' : 'sem pendência'}
+          icon={<AlertCircle size={15} />}
+          tone={pendingAtrasados.length > 1 ? 'slate' : 'emerald'}
         />
       </div>
 
@@ -5974,6 +6682,18 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       <footer className="pt-1 pb-2 text-center text-[11.5px] text-slate-400">
         Atualizado agora · {todayLabel} · Stronix
       </footer>
+
+      {rescheduleTarget && (
+        <RescheduleModal
+          lead={rescheduleTarget.lead}
+          categorySlug={rescheduleTarget.categorySlug}
+          currentDate={getLeadAppointmentDate(rescheduleTarget.lead)}
+          currentType={getLeadAppointmentType(rescheduleTarget.lead)}
+          flow={rescheduleTarget.flow || 'manual'}
+          onConfirm={handleReschedule}
+          onClose={() => setRescheduleTarget(null)}
+        />
+      )}
 
       {selectedLead && (
         <LeadDetailsModal
