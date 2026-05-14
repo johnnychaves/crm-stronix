@@ -5392,29 +5392,72 @@ function ManageSourcesTab({ db, sources, leads }) {
       hint="Controle de onde vêm os seus leads"
       icon={<Globe size={16} />}
     >
-      <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
-        <input placeholder="Ex: TikTok, Facebook Ads..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
+      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+        <div className="flex-1 min-w-[220px]">
+          <StyledInput
+            icon={<Zap size={14} />}
+            placeholder="Nome da origem (ex: TikTok)"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            required
+          />
+        </div>
         {editingId ? (
           <div className="flex gap-2">
-            <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">SALVAR</button>
-            <button type="button" onClick={() => { setEditingId(null); setName(''); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
+            <Btn kind="brand" type="submit" icon={<Check size={13} />}>Salvar</Btn>
+            <Btn kind="soft" type="button" onClick={() => { setEditingId(null); setName(''); }}>Cancelar</Btn>
           </div>
         ) : (
-          <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">CRIAR ORIGEM</button>
+          <Btn kind="primary" type="submit" icon={<Zap size={13} />}>Criar origem</Btn>
         )}
       </form>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {(sources || []).map(s => (
-          <div key={s.id} className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 flex justify-between items-center">
-            <span className="text-sm font-bold text-gray-900 dark:text-white">{s.name}</span>
-            <div className="absolute right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
-              <button onClick={() => { setName(s.name); setEditingId(s.id); }} className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Editar"><Pencil className="w-3.5 h-3.5" /></button>
-              <button onClick={() => handleDelete(s)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
-            </div>
+      {(() => {
+        const totalLeads = (leads || []).length;
+        const sourceIconFor = (name) => {
+          const n = String(name || '').toLowerCase();
+          if (n.includes('indica')) return Users;
+          if (n.includes('whatsapp')) return MessageCircle;
+          if (n.includes('site') || n.includes('web')) return LayoutDashboard;
+          if (n.includes('instagram') || n.includes('facebook') || n.includes('tiktok') || n.includes('rede')) return Activity;
+          if (n.includes('tráfego') || n.includes('trafego') || n.includes('ads')) return Zap;
+          return Zap;
+        };
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {(sources || []).map(s => {
+              const sourceLeads = (leads || []).filter(l => l.source === s.name).length;
+              const pct = totalLeads > 0 ? Math.round((sourceLeads / totalLeads) * 100) : 0;
+              const Icon = sourceIconFor(s.name);
+              return (
+                <div
+                  key={s.id}
+                  className="group rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4 hover:border-slate-300 dark:hover:border-white/10 transition relative"
+                >
+                  <div className="absolute top-3 right-3 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                    <IconBtn icon={<Pencil size={13} />} kind="edit" title="Editar" onClick={() => { setName(s.name); setEditingId(s.id); }} />
+                    <IconBtn icon={<Trash2 size={13} />} kind="danger" title="Excluir" onClick={() => handleDelete(s)} />
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="w-10 h-10 rounded-lg grid place-items-center bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300 shrink-0">
+                      <Icon size={16} />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[14px] truncate">{s.name}</div>
+                      <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num whitespace-nowrap">
+                        {sourceLeads} {sourceLeads === 1 ? 'lead' : 'leads'} · {pct}%
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+                    <div className="h-full bg-brand-600 rounded-full" style={{ width: `${pct}%` }}></div>
+                  </div>
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
+        );
+      })()}
     </SettingsCard>
   );
 }
@@ -5493,18 +5536,24 @@ function ManageTagsTab({ db, tags, leads }) {
         )}
       </form>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-        {(tags || []).map(t => (
-          <div key={t.id} className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 flex justify-between items-center">
-            <div className="scale-110 origin-left">
-              <TagBadge tagName={t.name} tagsArray={tags} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+        {(tags || []).map(t => {
+          const tagLeads = (leads || []).filter(l => Array.isArray(l.tags) && l.tags.includes(t.name)).length;
+          return (
+            <div
+              key={t.id}
+              className="group flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-slate-300 dark:hover:border-white/10 transition"
+            >
+              <ColorBadge color={t.color || 'blue'} name={t.name} />
+              <div className="flex-1"></div>
+              <span className="num text-[11.5px] text-slate-500 dark:text-slate-400 whitespace-nowrap">{tagLeads}</span>
+              <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                <IconBtn icon={<Pencil size={13} />} kind="edit" title="Editar" onClick={() => { setName(t.name); setColor(t.color || 'blue'); setEditingId(t.id); }} />
+                <IconBtn icon={<Trash2 size={13} />} kind="danger" title="Excluir" onClick={() => handleDelete(t)} />
+              </div>
             </div>
-            <div className="absolute right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
-              <button onClick={() => { setName(t.name); setColor(t.color || 'blue'); setEditingId(t.id); }} className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Editar"><Pencil className="w-3.5 h-3.5" /></button>
-              <button onClick={() => handleDelete(t)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </SettingsCard>
   );
@@ -5556,29 +5605,70 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
       hint="Justificativas padronizadas para análise de perdas"
       icon={<ThumbsDown size={16} />}
     >
-      <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-red-100 dark:border-red-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
-        <input placeholder="Ex: Achou caro, Longe de casa..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-red-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
+      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+        <div className="flex-1 min-w-[220px]">
+          <StyledInput
+            icon={<ThumbsDown size={14} />}
+            placeholder="Novo motivo (ex: Mudou de cidade)"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            required
+          />
+        </div>
         {editingId ? (
           <div className="flex gap-2">
-            <button type="submit" className="bg-red-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20 hover:bg-red-700 active:scale-95 transition-all">SALVAR</button>
-            <button type="button" onClick={() => { setEditingId(null); setName(''); }} className="bg-gray-100 dark:bg-neutral-800 text-gray-600 dark:text-neutral-400 px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-sm hover:bg-gray-200 dark:hover:bg-neutral-700 active:scale-95 transition-all">CANCELAR</button>
+            <Btn kind="brand" type="submit" icon={<Check size={13} />}>Salvar</Btn>
+            <Btn kind="soft" type="button" onClick={() => { setEditingId(null); setName(''); }}>Cancelar</Btn>
           </div>
         ) : (
-          <button type="submit" className="bg-red-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-red-600/20 hover:bg-red-700 active:scale-95 transition-all">CRIAR MOTIVO</button>
+          <Btn kind="primary" type="submit" icon={<Zap size={13} />}>Criar motivo</Btn>
         )}
       </form>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {(lossReasons || []).map(r => (
-          <div key={r.id} className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 hover:border-red-200 dark:hover:border-red-900/50 hover:shadow-xl hover:shadow-red-500/5 transition-all duration-300 flex justify-between items-center">
-            <span className="text-sm font-bold text-red-500 dark:text-red-400">{r.name}</span>
-            <div className="absolute right-4 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
-              <button onClick={() => { setName(r.name); setEditingId(r.id); }} className="text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Editar"><Pencil className="w-3.5 h-3.5" /></button>
-              <button onClick={() => handleDelete(r)} className="text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 p-2 rounded-lg active:scale-90 transition-all" title="Excluir"><Trash2 className="w-3.5 h-3.5" /></button>
+      {(() => {
+        const counts = (lossReasons || []).map(r => ({
+          r,
+          n: (leads || []).filter(l => l.status === 'Perda' && l.lossReason === r.name).length
+        }));
+        const total = counts.reduce((s, x) => s + x.n, 0);
+        const max = counts.reduce((m, x) => Math.max(m, x.n), 0);
+        if (counts.length === 0) {
+          return <div className="text-center text-[12.5px] text-slate-400 italic py-12">Nenhum motivo cadastrado ainda.</div>;
+        }
+        return (
+          <div>
+            <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.05] text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              <span>Motivo</span>
+              <span>Ocorrências no mês</span>
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+              {counts.map(({ r, n }) => {
+                const pct = max ? Math.round((n / max) * 100) : 0;
+                const share = total ? Math.round((n / total) * 100) : 0;
+                return (
+                  <div key={r.id} className="group flex items-center gap-4 px-4 py-3 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition">
+                    <span className="w-7 h-7 rounded-lg grid place-items-center bg-rose-50 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300 shrink-0">
+                      <ThumbsDown size={13} />
+                    </span>
+                    <span className="text-[13.5px] font-medium text-slate-800 dark:text-slate-100 min-w-[160px] flex-shrink-0 truncate">{r.name}</span>
+                    <div className="flex-1 flex items-center gap-3 min-w-0">
+                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+                        <div className="h-full bg-rose-500 rounded-full" style={{ width: `${pct}%` }}></div>
+                      </div>
+                      <span className="num text-[12px] text-slate-500 dark:text-slate-400 w-10 text-right whitespace-nowrap">{share}%</span>
+                    </div>
+                    <span className="num text-[13px] font-semibold text-slate-800 dark:text-slate-100 w-10 text-right">{n}</span>
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition shrink-0">
+                      <IconBtn icon={<Pencil size={13} />} kind="edit" title="Editar" onClick={() => { setName(r.name); setEditingId(r.id); }} />
+                      <IconBtn icon={<Trash2 size={13} />} kind="danger" title="Excluir" onClick={() => handleDelete(r)} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        ))}
-      </div>
+        );
+      })()}
     </SettingsCard>
   );
 }
@@ -5696,42 +5786,93 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
       hint="Transfira a base de um consultor para outro"
       icon={<ArrowRightLeft size={16} />}
     >
-      <div className="space-y-6 relative">
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 block uppercase tracking-widest px-2">De (Consultor Antigo)</label>
-          <select value={fromUser} onChange={e => setFromUser(e.target.value)} className="w-full bg-gray-50 dark:bg-neutral-950 border border-transparent focus:border-blue-500 dark:focus:border-blue-500 rounded-2xl px-5 py-4 text-gray-900 dark:text-white outline-none transition-all text-sm font-bold shadow-sm appearance-none cursor-pointer">
-            <option value="">Selecione o consultor de origem...</option>
-            {(allFromConsultants || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
-        </div>
+      {(() => {
+        const fromObj = (allFromConsultants || []).find(u => u.id === fromUser);
+        const toObj = (usersList || []).find(u => u.id === toUser);
+        const fromLeadsCount = fromUser ? (leads || []).filter(l => l.consultantId === fromUser && l.status !== 'Venda' && l.status !== 'Perda').length : 0;
+        const toLeadsCount = toUser ? (leads || []).filter(l => l.consultantId === toUser && l.status !== 'Venda' && l.status !== 'Perda').length : 0;
+        const totalFromBase = fromUser ? (leads || []).filter(l => l.consultantId === fromUser).length : 0;
+        const canSubmit = fromUser && toUser && fromUser !== toUser && !loading;
 
-        <div className="flex justify-center -my-2 relative z-10">
-          <div className="bg-white dark:bg-neutral-900 p-3.5 rounded-full border border-gray-100 dark:border-neutral-800 shadow-lg text-blue-500">
-            <RefreshCw className="w-5 h-5 animate-[spin_3s_linear_infinite]" />
-          </div>
-        </div>
+        return (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-4 items-stretch">
+              {/* ORIGEM */}
+              <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4">
+                <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5">Origem</div>
+                <StyledSelect value={fromUser} onChange={e => setFromUser(e.target.value)}>
+                  <option value="">Selecione o consultor de origem...</option>
+                  {(allFromConsultants || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </StyledSelect>
+                {fromObj && (
+                  <div className="mt-4 flex items-center gap-3">
+                    <Avatar name={fromObj.name} size={40} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-[13.5px] truncate">{fromObj.name}</div>
+                      {fromObj.email && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate">{fromObj.email}</div>}
+                    </div>
+                    <div className="ml-auto text-right shrink-0">
+                      <div className="num text-[20px] font-semibold tracking-tight leading-none">{fromLeadsCount}</div>
+                      <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5 whitespace-nowrap">leads ativos</div>
+                    </div>
+                  </div>
+                )}
+              </div>
 
-        <div className="space-y-2">
-          <label className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 block uppercase tracking-widest px-2">Para (Consultor Novo)</label>
-          <select value={toUser} onChange={e => setToUser(e.target.value)} className="w-full bg-gray-50 dark:bg-neutral-950 border border-transparent focus:border-green-500 dark:focus:border-green-500 rounded-2xl px-5 py-4 text-gray-900 dark:text-white outline-none transition-all text-sm font-bold shadow-sm appearance-none cursor-pointer">
-            <option value="">Selecione o consultor de destino...</option>
-            {(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
-        </div>
-      </div>
+              {/* Arrow */}
+              <div className="hidden lg:flex flex-col items-center justify-center px-2">
+                <div className="w-10 h-10 rounded-full bg-brand-600 text-white grid place-items-center shadow-card">
+                  <ArrowRightLeft size={16} />
+                </div>
+              </div>
 
-      <div className="mt-10">
-        <button onClick={handleTransfer} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-5 rounded-2xl transition-all shadow-xl shadow-blue-600/20 uppercase text-[11px] tracking-widest disabled:opacity-50 active:scale-95 flex items-center justify-center gap-2">
-          {loading ? (
-            <>PROCESSANDO MIGRAÇÃO...</>
-          ) : (
-            <>
-              EXECUTAR MUDANÇA
-              <ArrowRightLeft className="w-4 h-4 ml-1" />
-            </>
-          )}
-        </button>
-      </div>
+              {/* DESTINO */}
+              <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4">
+                <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5">Destino</div>
+                <StyledSelect value={toUser} onChange={e => setToUser(e.target.value)}>
+                  <option value="">Selecione o consultor de destino...</option>
+                  {(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </StyledSelect>
+                {toObj && (
+                  <div className="mt-4 flex items-center gap-3">
+                    <Avatar name={toObj.name} size={40} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-[13.5px] truncate">{toObj.name}</div>
+                      {toObj.email && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate">{toObj.email}</div>}
+                    </div>
+                    <div className="ml-auto text-right shrink-0">
+                      <div className="num text-[20px] font-semibold tracking-tight leading-none">{toLeadsCount}</div>
+                      <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5 whitespace-nowrap">leads ativos</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Summary */}
+            {fromObj && toObj && (
+              <div className="mt-6 p-4 rounded-xl bg-amber-50/70 dark:bg-amber-500/[0.06] border border-amber-200/70 dark:border-amber-500/20 flex items-start gap-3">
+                <AlertCircle size={16} className="text-amber-600 dark:text-amber-300 mt-0.5 shrink-0" />
+                <div className="flex-1">
+                  <p className="text-[13px] font-medium text-amber-900 dark:text-amber-200">
+                    <span className="num font-semibold">{totalFromBase}</span> {totalFromBase === 1 ? 'lead será migrado' : 'leads serão migrados'} de <span className="font-semibold">{fromObj.name}</span> para <span className="font-semibold">{toObj.name}</span>.
+                  </p>
+                  <p className="text-[12px] text-amber-800/80 dark:text-amber-200/80 mt-0.5">
+                    Inclui toda a base do consultor de origem (ativos, Venda e Perda) + todas as interações vinculadas.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-5 flex items-center justify-end gap-2">
+              <Btn kind="soft" onClick={() => { setFromUser(''); setToUser(''); }}>Cancelar</Btn>
+              <Btn kind="brand" icon={<ArrowRightLeft size={13} />} onClick={handleTransfer} disabled={!canSubmit}>
+                {loading ? 'Migrando...' : 'Confirmar migração'}
+              </Btn>
+            </div>
+          </>
+        );
+      })()}
     </SettingsCard>
   );
 }
