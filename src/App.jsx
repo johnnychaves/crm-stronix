@@ -40,7 +40,15 @@ import {
   Sun,
   Target,
   Globe,
-  Info
+  Info,
+  Flame,
+  Zap,
+  Building2,
+  BookOpen,
+  MessageSquare,
+  MoreHorizontal,
+  TrendingUp,
+  ChevronRight
 } from 'lucide-react';
 
 import confetti from 'canvas-confetti';
@@ -4960,13 +4968,555 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
 }
 
 // ==========================================
+// DAILY GOAL VIEW — DESIGN PRIMITIVES
+// ==========================================
+
+const initials = (name) =>
+  (name || '?')
+    .split(' ')
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join('')
+    .toUpperCase();
+
+const AVATAR_PALETTES = [
+  ['#fde68a', '#92400e'],
+  ['#bbf7d0', '#065f46'],
+  ['#bae6fd', '#075985'],
+  ['#fbcfe8', '#9d174d'],
+  ['#ddd6fe', '#5b21b6'],
+  ['#fecaca', '#9f1212'],
+  ['#a7f3d0', '#065f46'],
+  ['#fef08a', '#854d0e']
+];
+
+const avatarTone = (seed) => {
+  const s = String(seed || '');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTES[h % AVATAR_PALETTES.length];
+};
+
+function Avatar({ name, size = 36 }) {
+  const [bg, fg] = avatarTone(name);
+  return (
+    <div
+      className="rounded-full grid place-items-center font-semibold shrink-0 ring-1 ring-black/[0.04]"
+      style={{ width: size, height: size, background: bg, color: fg, fontSize: size * 0.36 }}
+    >
+      {initials(name)}
+    </div>
+  );
+}
+
+// Slug-keyed metadata for the 4 daily goal categories (matches src/lib/leads.js).
+const DG_CATEGORY_META = {
+  [DAILY_GOAL_CATEGORIES.NOVO_24H]: { label: DAILY_GOAL_CATEGORY_LABEL.novo_24h, short: 'Novos leads', color: 'blue', Icon: Zap },
+  [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.visita_hoje, short: 'Visitas', color: 'violet', Icon: Building2 },
+  [DAILY_GOAL_CATEGORIES.AULA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.aula_hoje, short: 'Aulas exp.', color: 'amber', Icon: BookOpen },
+  [DAILY_GOAL_CATEGORIES.ATRASADO]: { label: DAILY_GOAL_CATEGORY_LABEL.atrasado, short: 'Atrasados', color: 'rose', Icon: AlertCircle }
+};
+
+const DG_CATEGORY_ORDER = [
+  DAILY_GOAL_CATEGORIES.NOVO_24H,
+  DAILY_GOAL_CATEGORIES.VISITA_HOJE,
+  DAILY_GOAL_CATEGORIES.AULA_HOJE,
+  DAILY_GOAL_CATEGORIES.ATRASADO
+];
+
+const COLOR_TONES = {
+  blue: { dot: 'bg-blue-500', text: 'text-blue-700', soft: 'bg-blue-50', strong: 'bg-blue-600', border: 'border-blue-200', darkText: 'dark:text-blue-300', darkSoft: 'dark:bg-blue-500/10' },
+  violet: { dot: 'bg-violet-500', text: 'text-violet-700', soft: 'bg-violet-50', strong: 'bg-violet-600', border: 'border-violet-200', darkText: 'dark:text-violet-300', darkSoft: 'dark:bg-violet-500/10' },
+  amber: { dot: 'bg-amber-500', text: 'text-amber-700', soft: 'bg-amber-50', strong: 'bg-amber-600', border: 'border-amber-200', darkText: 'dark:text-amber-300', darkSoft: 'dark:bg-amber-500/10' },
+  teal: { dot: 'bg-teal-500', text: 'text-teal-700', soft: 'bg-teal-50', strong: 'bg-teal-600', border: 'border-teal-200', darkText: 'dark:text-teal-300', darkSoft: 'dark:bg-teal-500/10' },
+  rose: { dot: 'bg-rose-500', text: 'text-rose-700', soft: 'bg-rose-50', strong: 'bg-rose-600', border: 'border-rose-200', darkText: 'dark:text-rose-300', darkSoft: 'dark:bg-rose-500/10' }
+};
+
+function humanizeAge(date, now = new Date()) {
+  if (!date) return '';
+  const diff = Math.max(0, now - date);
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return 'agora';
+  if (min < 60) return `há ${min}min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24);
+  return `há ${d}d`;
+}
+
+function humanizeUntil(date, now = new Date()) {
+  if (!date) return '';
+  const diff = date - now;
+  if (diff < -60000) return humanizeAge(date, now);
+  const mins = Math.round(diff / 60000);
+  if (Math.abs(mins) < 1) return 'agora';
+  if (mins < 60) return `em ${mins}min`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `em ${h}h`;
+  const d = Math.floor(h / 24);
+  return `em ${d}d`;
+}
+
+function formatHourLabel(date) {
+  if (!date) return '';
+  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function WhatsappGlyph({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 12a8 8 0 1 1-3.2-6.4L20 4l-1.4 3.2A8 8 0 0 1 20 12z" />
+      <path d="M8.5 9.5c0 3 2 5 5 5l1.5-1.5-2-1-1 1c-1 0-2-1-2-2l1-1-1-2L9 7c-.5 1-.5 2-.5 2.5z" />
+    </svg>
+  );
+}
+
+function DgCategoryChip({ slug }) {
+  const m = DG_CATEGORY_META[slug];
+  if (!m) return null;
+  const t = COLOR_TONES[m.color];
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`}></span>
+      {m.short}
+    </span>
+  );
+}
+
+function TimePill({ icon, children, tone = 'slate' }) {
+  const toneMap = {
+    slate: 'bg-slate-100 text-slate-700 dark:bg-white/5 dark:text-slate-200',
+    rose: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
+    amber: 'bg-amber-50 text-amber-800 dark:bg-amber-500/10 dark:text-amber-200'
+  };
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-md whitespace-nowrap ${toneMap[tone]}`}>
+      {icon}
+      {children}
+    </span>
+  );
+}
+
+function Btn({ kind = 'secondary', icon, children, onClick, type = 'button' }) {
+  const styles = {
+    primary: 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm',
+    secondary: 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 dark:bg-white/[0.04] dark:text-slate-200 dark:border-white/10 dark:hover:bg-white/[0.08]',
+    success: 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm',
+    soft: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 dark:hover:bg-white/[0.12]',
+    danger: 'bg-white text-rose-600 hover:bg-rose-50 border border-slate-200 dark:bg-white/[0.04] dark:border-white/10 dark:hover:bg-rose-500/10'
+  };
+  return (
+    <button
+      type={type}
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold whitespace-nowrap transition active:scale-[.98] ${styles[kind]}`}
+    >
+      {icon}
+      {children}
+    </button>
+  );
+}
+
+function IconBtn({ icon, title, onClick }) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      className="w-8 h-8 grid place-items-center rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] transition"
+    >
+      {icon}
+    </button>
+  );
+}
+
+function Dial({ progress }) {
+  const R = 38;
+  const C = 2 * Math.PI * R;
+  return (
+    <div className="relative w-[96px] h-[96px]">
+      <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
+        <circle cx="50" cy="50" r={R} stroke="currentColor" className="text-slate-100 dark:text-white/[0.06]" strokeWidth="8" fill="none" />
+        <circle
+          cx="50"
+          cy="50"
+          r={R}
+          stroke="currentColor"
+          className="text-brand-600"
+          strokeWidth="8"
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray={C}
+          strokeDashoffset={C - (C * progress) / 100}
+          style={{ transition: 'stroke-dashoffset .8s cubic-bezier(.2,.7,.2,1)' }}
+        />
+      </svg>
+      <div className="absolute inset-0 grid place-items-center">
+        <Target size={26} className="text-brand-600" />
+      </div>
+    </div>
+  );
+}
+
+function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, progress, onStartFocus }) {
+  const pendingCount = totalSlots - doneSlots;
+  const segs = DG_CATEGORY_ORDER
+    .map((c) => ({ c, n: counts[c] || 0 }))
+    .filter((s) => s.n > 0);
+  const sum = segs.reduce((s, x) => s + x.n, 0) || 1;
+
+  return (
+    <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-6 shadow-card">
+      <div className="flex items-start justify-between gap-8 flex-wrap">
+        <div className="max-w-xl min-w-0">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <Target size={13} className="text-brand-600" /> Meta diária
+          </div>
+          <h2 className="mt-1.5 text-[26px] font-semibold tracking-tight leading-tight">
+            {greeting}, {firstName}.{' '}
+            {pendingCount > 0 ? (
+              <>
+                Você tem <span className="text-brand-600">{pendingCount} {pendingCount === 1 ? 'tarefa' : 'tarefas'}</span> antes de fechar o dia.
+              </>
+            ) : totalSlots === 0 ? (
+              <span className="text-slate-500">Nenhuma tarefa por hoje. Aproveite o turno.</span>
+            ) : (
+              <span className="text-emerald-600">Meta batida!</span>
+            )}
+          </h2>
+          <p className="mt-2 text-[13.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            Foque nos novos leads recentes e nas visitas/aulas agendadas. Os atrasados podem esperar o fim do turno.
+          </p>
+          <div className="mt-5 flex items-center gap-2 flex-wrap">
+            <Btn kind="primary" icon={<Zap size={14} />} onClick={onStartFocus}>Iniciar sessão de foco</Btn>
+            <Btn kind="secondary" icon={<Filter size={14} />}>Ver agenda do dia</Btn>
+          </div>
+        </div>
+
+        <div className="shrink-0 flex items-center gap-5">
+          <div className="text-right">
+            <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Concluído hoje</div>
+            <div className="num text-[44px] font-semibold leading-none tracking-tight mt-1">
+              {progress}
+              <span className="text-[22px] text-slate-400 dark:text-slate-500">%</span>
+            </div>
+            <div className="text-[12px] text-slate-500 dark:text-slate-400 num mt-1">
+              {doneSlots} de {totalSlots} tarefas
+            </div>
+          </div>
+          <Dial progress={progress} />
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <div className="h-2 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden flex gap-[2px]">
+          {segs.map((s) => {
+            const m = DG_CATEGORY_META[s.c];
+            const t = COLOR_TONES[m.color];
+            return (
+              <div
+                key={s.c}
+                className={`seg h-full ${t.strong} opacity-90`}
+                style={{ flexBasis: `${(s.n / sum) * 100}%` }}
+                title={`${m.short}: ${s.n}`}
+              />
+            );
+          })}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-[12px]">
+          {segs.map((s) => {
+            const m = DG_CATEGORY_META[s.c];
+            const t = COLOR_TONES[m.color];
+            return (
+              <span key={s.c} className="inline-flex items-center gap-1.5 text-slate-600 dark:text-slate-300">
+                <span className={`w-2 h-2 rounded-full ${t.dot}`}></span>
+                <span className="font-medium">{m.short}</span>
+                <span className="num text-slate-400">{s.n}</span>
+              </span>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function KpiCard({ label, value, sub, trend, icon, tone = 'slate' }) {
+  const tones = {
+    slate: 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/[0.05]',
+    emerald: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10',
+    brand: 'text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-500/10'
+  };
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11.5px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap truncate">{label}</span>
+        <span className={`w-7 h-7 shrink-0 rounded-lg grid place-items-center ${tones[tone]}`}>{icon}</span>
+      </div>
+      <div className="mt-2.5 flex items-baseline gap-2">
+        <span className="num text-[22px] font-semibold tracking-tight">{value}</span>
+        {trend && (
+          <span className={`text-[11.5px] font-medium num inline-flex items-center gap-0.5 whitespace-nowrap ${trend.startsWith('+') ? 'text-emerald-600' : 'text-rose-600'}`}>
+            <TrendingUp size={11} /> {trend}
+          </span>
+        )}
+      </div>
+      {sub && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-0.5 whitespace-nowrap truncate">{sub}</div>}
+    </div>
+  );
+}
+
+function FilterChip({ active, label, count, color, onClick }) {
+  const t = color ? COLOR_TONES[color] : null;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-8 px-3 rounded-lg text-[12.5px] font-medium inline-flex items-center gap-2 transition whitespace-nowrap ${active ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200 dark:bg-white/[0.03] dark:text-slate-300 dark:border-white/[0.07] dark:hover:bg-white/[0.06]'}`}
+    >
+      {t && <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`}></span>}
+      {label}
+      <span className={`num text-[11px] px-1.5 h-[18px] rounded-md grid place-items-center min-w-[18px] ${active ? 'bg-white/15 text-white dark:bg-slate-900/10 dark:text-slate-900' : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400'}`}>{count}</span>
+    </button>
+  );
+}
+
+function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOutcome }) {
+  if (!task) return null;
+  const m = DG_CATEGORY_META[slug] || DG_CATEGORY_META[DAILY_GOAL_CATEGORIES.VISITA_HOJE];
+  const t = COLOR_TONES[m.color];
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">Próximo compromisso</div>
+        {countdownLabel && <span className="num text-[11px] text-slate-400 whitespace-nowrap">{countdownLabel}</span>}
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <Avatar name={task.name} size={40} />
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-[14px] truncate">{task.name}</div>
+          <div className="text-[12px] text-slate-500 dark:text-slate-400 num">{task.whatsapp}</div>
+        </div>
+        {appointmentLabel && (
+          <div className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold whitespace-nowrap ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
+            {appointmentLabel}
+          </div>
+        )}
+      </div>
+      <div className="mt-3 flex items-center gap-1.5">
+        <Btn kind="soft" icon={<WhatsappGlyph size={13} />} onClick={() => onWhatsapp && onWhatsapp(task)}>WhatsApp</Btn>
+        {!task.appointmentOutcome && (
+          <Btn kind="success" icon={<CheckCircle size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'attended', slug, e)}>Compareceu</Btn>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StreakCard({ history14, monthHits, monthTarget, streak }) {
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">Ritmo do mês</div>
+        <Flame size={14} className="text-amber-500" />
+      </div>
+      <div className="mt-2 flex items-baseline gap-2 whitespace-nowrap">
+        <span className="num text-[22px] font-semibold tracking-tight">{monthHits}/{monthTarget}</span>
+        <span className="text-[12px] text-slate-500 dark:text-slate-400">metas batidas</span>
+      </div>
+      <div className="mt-3 grid gap-1" style={{ gridTemplateColumns: 'repeat(14,minmax(0,1fr))' }}>
+        {history14.map((day, i) => (
+          <div
+            key={i}
+            className={`h-5 rounded-[3px] ${day.isToday ? 'bg-brand-600/20 ring-1 ring-brand-500' : day.hit ? 'bg-emerald-500/80' : 'bg-slate-100 dark:bg-white/[0.05]'}`}
+            title={day.label || ''}
+          />
+        ))}
+      </div>
+      <div className="mt-2 text-[11.5px] text-slate-500 dark:text-slate-400">
+        Sequência atual: <span className="font-semibold text-slate-700 dark:text-slate-200 num">{streak} {streak === 1 ? 'dia' : 'dias'}</span>
+      </div>
+    </div>
+  );
+}
+
+function DgSection({ slug, tasks, render }) {
+  const m = DG_CATEGORY_META[slug];
+  if (!m || !tasks.length) return null;
+  const t = COLOR_TONES[m.color];
+  const Icon = m.Icon;
+  return (
+    <div>
+      <div className="flex items-center gap-2.5 mb-3">
+        <span className={`w-6 h-6 rounded-md grid place-items-center ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
+          <Icon size={13} />
+        </span>
+        <h3 className="text-[13px] font-semibold text-slate-900 dark:text-white">{m.label}</h3>
+        <span className="num text-[11.5px] text-slate-500 dark:text-slate-400">{tasks.length}</span>
+        <div className="flex-1 h-px bg-slate-100 dark:bg-white/[0.06] ml-1"></div>
+      </div>
+      <div className="space-y-2.5">
+        {tasks.map((task) => render(task, slug))}
+      </div>
+    </div>
+  );
+}
+
+// Renders a single (lead × categorySlug) task card.
+// Same lead with two pending categories renders TWICE — once per slug — with independent actions per main's per-category status model.
+function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onGoalDone, onWhatsapp, onCall }) {
+  const m = DG_CATEGORY_META[slug];
+  if (!m) return null;
+  const t = COLOR_TONES[m.color];
+  const isAppt = slug === DAILY_GOAL_CATEGORIES.VISITA_HOJE || slug === DAILY_GOAL_CATEGORIES.AULA_HOJE;
+  const isOverdue = slug === DAILY_GOAL_CATEGORIES.ATRASADO;
+  const isNovo = slug === DAILY_GOAL_CATEGORIES.NOVO_24H;
+  const Icon = m.Icon;
+  const outcome = task.appointmentOutcome || null;
+  const outcomeMeta = outcome ? getAppointmentOutcomeMeta(outcome) : null;
+
+  const apptDate = getLeadAppointmentDate(task);
+  const appointmentLabel = (isAppt && apptDate) ? `Hoje · ${formatHourLabel(apptDate)}` : null;
+  const enteredAtLabel = (isNovo && task.createdAt) ? formatHourLabel(task.createdAt) : null;
+  const age = isNovo ? humanizeAge(task.createdAt, now) : null;
+  // TODO: substituir por critério Hot/Cold real (src/lib/leads) quando integrado aqui
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  const isHot = isNovo && task.createdAt && task.createdAt >= oneHourAgo;
+  const overdueDays = (isOverdue && task.nextFollowUp)
+    ? Math.max(1, Math.ceil((new Date().setHours(0, 0, 0, 0) - task.nextFollowUp) / 86400000))
+    : 0;
+  const note = task.observation || '';
+
+  return (
+    <div className="task-card group bg-white dark:bg-white/[0.03] rounded-xl border border-slate-200/80 dark:border-white/[0.06] shadow-card hover:shadow-card-lg hover:border-slate-300 dark:hover:border-white/10 transition fade-in">
+      <div className="p-3.5 flex items-start gap-3 cursor-pointer" onClick={() => onOpen && onOpen(task)}>
+        <Avatar name={task.name} size={40} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            <span className="font-semibold text-[14px] text-slate-900 dark:text-white truncate">{task.name}</span>
+            {isHot && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">
+                <Flame size={11} /> Quente
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2 mt-0.5 text-[12px] text-slate-500 dark:text-slate-400 num flex-wrap">
+            <span>{task.whatsapp}</span>
+            {task.source && (
+              <>
+                <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/20"></span>
+                <span className="truncate">{task.source}</span>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+            <DgCategoryChip slug={slug} />
+            {appointmentLabel && (
+              <TimePill icon={<Calendar size={11} />}>{appointmentLabel}</TimePill>
+            )}
+            {enteredAtLabel && (
+              <TimePill icon={<Clock size={11} />}>
+                Entrou {enteredAtLabel}{age ? <span className="opacity-60"> · {age}</span> : null}
+              </TimePill>
+            )}
+            {isOverdue && overdueDays > 0 && (
+              <TimePill icon={<AlertCircle size={11} />} tone="rose">{overdueDays} {overdueDays === 1 ? 'dia' : 'dias'} atrasado</TimePill>
+            )}
+            {task.hasOtherActivityToday && (
+              <TimePill icon={<Check size={11} />} tone="amber">Já interagido — feche pela Meta</TimePill>
+            )}
+            {outcomeMeta && (
+              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${outcomeMeta.badgeClass}`}>
+                {outcomeMeta.icon} {outcomeMeta.label}
+              </span>
+            )}
+          </div>
+
+          {note && (
+            <p className="text-[12.5px] leading-snug text-slate-600 dark:text-slate-300 mt-2 clip-1">{note}</p>
+          )}
+        </div>
+
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <div className={`w-8 h-8 grid place-items-center rounded-lg ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
+            <Icon size={15} />
+          </div>
+          <IconBtn icon={<MoreHorizontal size={16} />} title="Mais" onClick={(e) => { e.stopPropagation(); onOpen && onOpen(task); }} />
+        </div>
+      </div>
+
+      <div className="px-3.5 pb-3 pt-1 flex items-center justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-1.5">
+          <Btn kind="soft" icon={<WhatsappGlyph size={14} />} onClick={(e) => { e.stopPropagation(); onWhatsapp && onWhatsapp(task); }}>WhatsApp</Btn>
+          <IconBtn icon={<Phone size={15} />} title="Ligar" onClick={(e) => { e.stopPropagation(); onCall && onCall(task); }} />
+          {!isAppt && (
+            <IconBtn icon={<Calendar size={15} />} title="Adiar p/ amanhã" onClick={(e) => onSnooze && onSnooze(task, e)} />
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap justify-end">
+          {isAppt && !outcome ? (
+            <>
+              <Btn kind="success" icon={<Check size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'attended', slug, e)}>Compareceu</Btn>
+              <Btn kind="secondary" icon={<X size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'no_show', slug, e)}>Não veio</Btn>
+              <Btn kind="soft" onClick={(e) => onOutcome && onOutcome(task, 'rescheduled', slug, e)}>Remarcou</Btn>
+              <Btn kind="soft" onClick={(e) => onOutcome && onOutcome(task, 'cancelled', slug, e)}>Cancelou</Btn>
+            </>
+          ) : isAppt && outcome ? (
+            <span className="text-[11px] font-medium text-slate-400 italic">Desfecho registrado</span>
+          ) : (
+            <Btn kind="primary" icon={<Check size={14} />} onClick={(e) => { e.stopPropagation(); onGoalDone && onGoalDone(task, slug, '', e); }}>Concluir</Btn>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DoneCard({ lead, onOpen }) {
+  const firstDoneSlug = (lead.categorySlugs || []).find(s => lead.categoryStatus?.[s]);
+  const outcomeMeta = lead.appointmentOutcome ? getAppointmentOutcomeMeta(lead.appointmentOutcome) : null;
+  return (
+    <div
+      onClick={() => onOpen && onOpen(lead)}
+      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/60 dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/[0.05] cursor-pointer hover:bg-white dark:hover:bg-white/[0.04] transition"
+    >
+      <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 grid place-items-center pop">
+        <Check size={13} />
+      </div>
+      <Avatar name={lead.name} size={28} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-[13px] text-slate-800 dark:text-slate-100 line-through decoration-slate-400/60 truncate">{lead.name}</span>
+          {firstDoneSlug && <DgCategoryChip slug={firstDoneSlug} />}
+        </div>
+        {outcomeMeta ? (
+          <div className="text-[11.5px] text-slate-500 dark:text-slate-400">{outcomeMeta.icon} {outcomeMeta.label}</div>
+        ) : (
+          <div className="text-[11.5px] text-slate-500 dark:text-slate-400">Concluído</div>
+        )}
+      </div>
+      <ChevronRight size={16} className="text-slate-400" />
+    </div>
+  );
+}
+
+// ==========================================
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
 
 function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossReasons, usersList, funnels }) {
   const toast = useToast();
   const [selectedLead, setSelectedLead] = useState(null);
+  const [filter, setFilter] = useState('all');
+  const [now, setNow] = useState(() => new Date());
   const prevProgress = useRef(0);
+  const focusAnchorRef = useRef(null);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const processedLeads = useMemo(() => {
     const todayStart = new Date();
@@ -5168,225 +5718,250 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     }
   };
 
-  const renderPendingCard = (lead, categorySlug) => {
-    const isAppointmentCategory = categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE
-      || categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE;
-    const outcome = lead.appointmentOutcome || null;
-    const outcomeMeta = outcome ? getAppointmentOutcomeMeta(outcome) : null;
-    const showInteractedBadge = !isLeadDoneForCategory(lead, categorySlug) && lead.hasOtherActivityToday;
-
-    return (
-      <div key={`${lead.id}-${categorySlug}`} className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex flex-col gap-2 transition-all shadow-sm group">
-        <div onClick={() => setSelectedLead(lead)} className="cursor-pointer hover:opacity-80 transition-opacity">
-          <div className="flex justify-between items-start gap-4">
-            <div className="flex flex-col">
-              <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
-              <span className="text-xs font-bold text-gray-500 dark:text-neutral-400 mt-1">{lead.whatsapp}</span>
-            </div>
-            <button onClick={(e) => handleSnooze(lead, e)} className="p-2 bg-white dark:bg-neutral-900 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all shadow-sm active:scale-90" title="Adiar para amanhã">
-              <Calendar className="w-4 h-4" />
-            </button>
-          </div>
-          <div className="text-[10px] text-gray-400 mt-2 font-semibold">Entrou em: {lead.createdAt?.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'})}</div>
-          {showInteractedBadge && (
-            <div className="mt-2">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30">
-                ⚠️ Já interagido hoje — feche pela Meta
-              </span>
-            </div>
-          )}
-        </div>
-
-        {isAppointmentCategory && !outcome && (
-          <div className="mt-2 pt-3 border-t border-gray-200 dark:border-neutral-800">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-gray-500 dark:text-neutral-400 mb-2">Marcar desfecho</p>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                type="button"
-                onClick={(e) => handleOutcome(lead, 'attended', categorySlug, e)}
-                className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white border border-green-500/30 transition-all active:scale-95 flex items-center justify-center gap-1"
-              >
-                ✅ Compareceu
-              </button>
-              <button
-                type="button"
-                onClick={(e) => handleOutcome(lead, 'no_show', categorySlug, e)}
-                className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500 hover:text-white border border-red-500/30 transition-all active:scale-95 flex items-center justify-center gap-1"
-              >
-                ❌ Não veio
-              </button>
-              <button
-                type="button"
-                onClick={(e) => handleOutcome(lead, 'rescheduled', categorySlug, e)}
-                className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500 hover:text-white border border-yellow-500/30 transition-all active:scale-95 flex items-center justify-center gap-1"
-              >
-                🔄 Remarcou
-              </button>
-              <button
-                type="button"
-                onClick={(e) => handleOutcome(lead, 'cancelled', categorySlug, e)}
-                className="px-2 py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-gray-500/10 text-gray-600 dark:text-neutral-300 hover:bg-gray-500 hover:text-white border border-gray-300 dark:border-neutral-700 transition-all active:scale-95 flex items-center justify-center gap-1"
-              >
-                🚫 Cancelou
-              </button>
-            </div>
-          </div>
-        )}
-
-        {!isAppointmentCategory && (
-          <div className="mt-2 pt-3 border-t border-gray-200 dark:border-neutral-800">
-            <button
-              type="button"
-              onClick={(e) => handleGoalDone(lead, categorySlug, '', e)}
-              className="w-full px-3 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-wider bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500 hover:text-white border border-green-500/30 transition-all active:scale-95 flex items-center justify-center gap-2"
-            >
-              ✅ Concluir Tarefa
-            </button>
-          </div>
-        )}
-
-        {isAppointmentCategory && outcomeMeta && (
-          <div className="mt-2 pt-3 border-t border-gray-200 dark:border-neutral-800 flex items-center justify-between gap-2">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider ${outcomeMeta.badgeClass}`}>
-              {outcomeMeta.icon} {outcomeMeta.label}
-            </span>
-            <span className="text-[9px] text-gray-400 dark:text-neutral-500 font-medium uppercase tracking-widest">
-              {lead.appointmentOutcomeAt instanceof Date
-                ? lead.appointmentOutcomeAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
-                : ''}
-            </span>
-          </div>
-        )}
-      </div>
-    );
+  const handleWhatsapp = (lead) => {
+    const num = String(lead.whatsapp || '').replace(/\D/g, '');
+    if (num) window.open(`https://wa.me/${num}`, '_blank', 'noopener,noreferrer');
   };
 
+  const handleCall = (lead) => {
+    const num = String(lead.whatsapp || '').replace(/\D/g, '');
+    if (num) window.location.href = `tel:${num}`;
+  };
+
+  const handleStartFocus = () => {
+    const el = focusAnchorRef.current?.querySelector('.task-card');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  };
+
+  // Per-slug pending tasks. A lead with two pending categories renders TWICE — once per slug — preserving main's per-category status model.
+  const pendingBySlug = useMemo(() => {
+    const groups = {
+      [DAILY_GOAL_CATEGORIES.NOVO_24H]: [],
+      [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: [],
+      [DAILY_GOAL_CATEGORIES.AULA_HOJE]: [],
+      [DAILY_GOAL_CATEGORIES.ATRASADO]: []
+    };
+    processedLeads.forEach(lead => {
+      (lead.categorySlugs || []).forEach(slug => {
+        if (!isLeadDoneForCategory(lead, slug) && groups[slug]) groups[slug].push(lead);
+      });
+    });
+    return groups;
+  }, [processedLeads]);
+
+  const counts = {
+    [DAILY_GOAL_CATEGORIES.NOVO_24H]: pendingBySlug[DAILY_GOAL_CATEGORIES.NOVO_24H].length,
+    [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: pendingBySlug[DAILY_GOAL_CATEGORIES.VISITA_HOJE].length,
+    [DAILY_GOAL_CATEGORIES.AULA_HOJE]: pendingBySlug[DAILY_GOAL_CATEGORIES.AULA_HOJE].length,
+    [DAILY_GOAL_CATEGORIES.ATRASADO]: pendingBySlug[DAILY_GOAL_CATEGORIES.ATRASADO].length
+  };
+  const totalPendingSlots = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  const yesterdayLeadCount = useMemo(() => {
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const yStart = new Date(todayStart); yStart.setDate(yStart.getDate() - 1);
+    return (leads || []).filter(l => l.consultantId === appUser.id && l.createdAt && l.createdAt >= yStart && l.createdAt < todayStart).length;
+  }, [leads, appUser]);
+
+  const novoDelta = total24h.length - yesterdayLeadCount;
+  const trendLabelNovos = yesterdayLeadCount === 0 && total24h.length === 0
+    ? null
+    : (novoDelta === 0 ? null : (novoDelta > 0 ? `+${novoDelta} vs. ontem` : `${novoDelta} vs. ontem`));
+
+  const nextAppt = useMemo(() => {
+    const apptLeads = [
+      ...pendingBySlug[DAILY_GOAL_CATEGORIES.VISITA_HOJE].map(l => ({ l, slug: DAILY_GOAL_CATEGORIES.VISITA_HOJE })),
+      ...pendingBySlug[DAILY_GOAL_CATEGORIES.AULA_HOJE].map(l => ({ l, slug: DAILY_GOAL_CATEGORIES.AULA_HOJE }))
+    ];
+    return apptLeads
+      .map(x => ({ ...x, when: getLeadAppointmentDate(x.l) }))
+      .filter(x => x.when)
+      .sort((a, b) => a.when - b.when)[0] || null;
+  }, [pendingBySlug]);
+
+  const nextApptDate = nextAppt ? getLeadAppointmentDate(nextAppt.l) : null;
+  const countdownLabel = nextApptDate ? humanizeUntil(nextApptDate, now) : null;
+  const nextApptLabel = nextApptDate ? `Hoje · ${formatHourLabel(nextApptDate)}` : null;
+
+  // V1: histórico vazio (sem coleção stronix_dailyGoalHistory).
+  // TODO(stronix_dailyGoalHistory): substituir por leitura da coleção real.
+  const history14 = useMemo(() => {
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
+      days.push({ hit: false, isToday: i === 0, label: d.toLocaleDateString('pt-BR') });
+    }
+    return days;
+  }, []);
+
+  const greeting = useMemo(() => {
+    const h = now.getHours();
+    if (h < 12) return 'Bom dia';
+    if (h < 18) return 'Boa tarde';
+    return 'Boa noite';
+  }, [now]);
+
+  const todayLabel = useMemo(() =>
+    now.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }),
+  [now]);
+
+  const firstName = (appUser.name || '').split(' ')[0] || 'consultor';
+
+  const renderTaskCard = (task, slug) => (
+    <TaskCard
+      key={`${task.id}-${slug}`}
+      task={task}
+      slug={slug}
+      now={now}
+      onOpen={setSelectedLead}
+      onSnooze={handleSnooze}
+      onOutcome={handleOutcome}
+      onGoalDone={handleGoalDone}
+      onWhatsapp={handleWhatsapp}
+      onCall={handleCall}
+    />
+  );
+
+  const visibleSlugs = filter === 'all' ? DG_CATEGORY_ORDER : [filter];
+  const visibleCount = filter === 'all' ? totalPendingSlots : (counts[filter] || 0);
+
   return (
-    <div className="h-full flex flex-col space-y-6 animate-fade-in relative">
-      <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl relative overflow-hidden">
-        <div className="absolute -top-10 -right-10 opacity-5 dark:opacity-10 pointer-events-none">
-          <Target className="w-64 h-64" />
-        </div>
-        <div className="relative z-10 flex flex-col md:flex-row gap-8 items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white uppercase tracking-tighter">Sua Meta Diária</h2>
-            <p className="text-sm text-gray-500 dark:text-neutral-400 font-medium mt-2 max-w-md">
-              Sua lista de tarefas matadora: atenda os novos leads, recupere os atrasados e foque nas visitas e aulas experimentais de hoje. Vamos lá, {appUser.name.split(' ')[0]}!
-            </p>
-          </div>
-          <div className="flex items-center gap-6">
-            <div className="text-right">
-              <p className="text-4xl font-bold text-gray-900 dark:text-white">{progress}%</p>
-              <p className="text-xs font-bold uppercase tracking-widest text-blue-600">Concluído</p>
-            </div>
-            <div className="w-24 h-24 rounded-full border-[6px] border-gray-100 dark:border-neutral-800 relative flex items-center justify-center bg-[#eaedf2] dark:bg-neutral-950 shadow-inner">
-               <svg className="w-full h-full absolute top-0 left-0 -rotate-90">
-                 <circle cx="50%" cy="50%" r="42" fill="transparent" stroke="currentColor" strokeWidth="6" className="text-blue-500" strokeDasharray="264" strokeDashoffset={264 - (264 * progress) / 100} strokeLinecap="round" style={{ transition: 'stroke-dashoffset 1s ease-in-out' }} />
-               </svg>
-               <Target className={`w-8 h-8 ${progress === 100 ? 'text-green-500' : 'text-blue-500'}`} />
-            </div>
-          </div>
-        </div>
+    <div className="h-full flex flex-col gap-6 animate-fade-in relative font-sans">
+      <ProgressHero
+        firstName={firstName}
+        greeting={greeting}
+        counts={counts}
+        totalSlots={totalSlots}
+        doneSlots={doneSlots}
+        progress={progress}
+        onStartFocus={handleStartFocus}
+      />
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <KpiCard
+          label="Novos leads (24h)"
+          value={total24h.length}
+          sub={pending24h.length > 0 ? `${pending24h.length} sem contato` : 'todos atendidos'}
+          icon={<Zap size={15} />}
+          tone="brand"
+          trend={trendLabelNovos}
+        />
+        <KpiCard
+          label="Compromissos hoje"
+          value={totalVisitas.length + totalAulas.length}
+          sub={countdownLabel ? `próximo ${countdownLabel}` : '—'}
+          icon={<Calendar size={15} />}
+        />
+        <KpiCard
+          label="Atrasados"
+          value={pendingAtrasados.length}
+          sub={pendingAtrasados.length > 0 ? 'recuperar até sexta' : 'sem pendência'}
+          icon={<AlertCircle size={15} />}
+          tone={pendingAtrasados.length > 1 ? 'slate' : 'emerald'}
+        />
+        <KpiCard
+          label="Progresso geral"
+          value={`${doneSlots}/${totalSlots || 0}`}
+          sub={`${progress}% concluído`}
+          icon={<CheckCircle size={15} />}
+          tone="emerald"
+        />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 min-h-[400px]">
-        {/* PENDENTES */}
-        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-6 shadow-2xl flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-red-500">
-              <Clock className="w-4 h-4" /> A Fazer
-            </h3>
-            <span className="bg-red-500/10 text-red-500 text-xs font-bold px-2.5 py-1 rounded-full">{pending.length}</span>
-          </div>
-          <div className="flex-1 overflow-y-auto space-y-6 custom-scrollbar pr-2">
-            {total === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-neutral-500">
-                <CheckCircle className="w-12 h-12 mb-3 opacity-20" />
-                <p className="text-xs font-bold uppercase tracking-widest">Sua meta está vazia hoje!</p>
+      <div className="grid grid-cols-12 gap-6 flex-1 min-h-[400px]">
+        {/* LEFT — A FAZER */}
+        <section className="col-span-12 lg:col-span-8" ref={focusAnchorRef}>
+          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden h-full flex flex-col">
+            <div className="px-5 pt-5 pb-3 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.05]">
+              <div className="flex items-center gap-2.5">
+                <h2 className="text-[15px] font-semibold">A fazer hoje</h2>
+                <span className="num text-[11.5px] px-1.5 h-[20px] rounded-md grid place-items-center bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">{visibleCount}</span>
               </div>
-            ) : (
-              <div className="space-y-6">
-                {total24h.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-bold text-blue-500 mb-3 border-b border-blue-500/20 pb-2 flex justify-between items-center">
-                      <span>Novos Leads 24 horas</span>
-                      <span className="text-[10px] font-bold bg-blue-500/10 px-2 py-1 rounded-md">{done24hCount}/{total24h.length}</span>
-                    </h4>
-                    {pending24h.length > 0 ? <div className="space-y-3">{pending24h.map(l => renderPendingCard(l, DAILY_GOAL_CATEGORIES.NOVO_24H))}</div> : <div className="text-[10px] font-bold text-blue-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
-                  </div>
-                )}
-                {totalVisitas.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-bold text-purple-500 mb-3 border-b border-purple-500/20 pb-2 flex justify-between items-center">
-                      <span>Visitas</span>
-                      <span className="text-[10px] font-bold bg-purple-500/10 px-2 py-1 rounded-md">{doneVisitasCount}/{totalVisitas.length}</span>
-                    </h4>
-                    {pendingVisitas.length > 0 ? <div className="space-y-3">{pendingVisitas.map(l => renderPendingCard(l, DAILY_GOAL_CATEGORIES.VISITA_HOJE))}</div> : <div className="text-[10px] font-bold text-purple-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
-                  </div>
-                )}
-                {totalAulas.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-bold text-orange-500 mb-3 border-b border-orange-500/20 pb-2 flex justify-between items-center">
-                      <span>Aulas Experimentais</span>
-                      <span className="text-[10px] font-bold bg-orange-500/10 px-2 py-1 rounded-md">{doneAulasCount}/{totalAulas.length}</span>
-                    </h4>
-                    {pendingAulas.length > 0 ? <div className="space-y-3">{pendingAulas.map(l => renderPendingCard(l, DAILY_GOAL_CATEGORIES.AULA_HOJE))}</div> : <div className="text-[10px] font-bold text-orange-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
-                  </div>
-                )}
-                {totalAtrasados.length > 0 && (
-                  <div>
-                    <h4 className="text-sm font-bold text-red-500 mb-3 border-b border-red-500/20 pb-2 flex justify-between items-center">
-                      <span>Follow-ups Atrasados</span>
-                      <span className="text-[10px] font-bold bg-red-500/10 px-2 py-1 rounded-md">{doneAtrasadosCount}/{totalAtrasados.length}</span>
-                    </h4>
-                    {pendingAtrasados.length > 0 ? <div className="space-y-3">{pendingAtrasados.map(l => renderPendingCard(l, DAILY_GOAL_CATEGORIES.ATRASADO))}</div> : <div className="text-[10px] font-bold text-red-500/50 uppercase tracking-widest py-1 flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Limpo!</div>}
-                  </div>
-                )}
+              <div className="flex items-center gap-1.5">
+                <IconBtn icon={<Filter size={15} />} title="Filtros avançados" />
               </div>
-            )}
-          </div>
-        </div>
+            </div>
 
-        {/* CONCLUÍDOS */}
-        <div className="bg-[#f4f5f7] dark:bg-neutral-900/50 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-6 shadow-inner flex flex-col opacity-80">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-sm font-bold uppercase tracking-widest flex items-center gap-2 text-green-500">
-              <CheckCircle className="w-4 h-4" /> Feitos Hoje
-            </h3>
-            <span className="bg-green-500/10 text-green-500 text-xs font-bold px-2.5 py-1 rounded-full">{done.length}</span>
-          </div>
-          <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar pr-2">
-            {done.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-neutral-500">
-                <Target className="w-12 h-12 mb-3 opacity-20" />
-                <p className="text-xs font-bold uppercase tracking-widest">Nenhum ainda</p>
-              </div>
-            ) : (
-              done.map(lead => {
-                const doneOutcomeMeta = lead.appointmentOutcome ? getAppointmentOutcomeMeta(lead.appointmentOutcome) : null;
-                return (
-                  <div key={lead.id} onClick={() => setSelectedLead(lead)} className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-4 rounded-2xl flex justify-between items-center cursor-pointer hover:border-gray-400 transition-all shadow-sm">
-                    <div className="min-w-0">
-                      <span className="font-bold text-sm text-gray-800 dark:text-neutral-200 line-through decoration-green-500/50">{lead.name}</span>
-                      <p className="text-[10px] text-gray-400 mt-1 font-bold uppercase truncate">
-                        {(lead.categories || []).join(' • ')}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {doneOutcomeMeta && (
-                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${doneOutcomeMeta.badgeClass}`}>
-                          {doneOutcomeMeta.icon} {doneOutcomeMeta.label}
-                        </span>
-                      )}
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                    </div>
+            <div className="px-5 py-3 border-b border-slate-100 dark:border-white/[0.05] flex flex-wrap gap-1.5">
+              <FilterChip active={filter === 'all'} label="Todos" count={totalPendingSlots} onClick={() => setFilter('all')} />
+              {DG_CATEGORY_ORDER.map(slug => (
+                <FilterChip
+                  key={slug}
+                  active={filter === slug}
+                  color={DG_CATEGORY_META[slug].color}
+                  label={DG_CATEGORY_META[slug].short}
+                  count={counts[slug] || 0}
+                  onClick={() => setFilter(slug)}
+                />
+              ))}
+            </div>
+
+            <div className="p-5 space-y-7 flex-1 overflow-y-auto thin-scroll">
+              {totalSlots === 0 ? (
+                <div className="py-14 grid place-items-center text-slate-400">
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 grid place-items-center mb-3">
+                    <CheckCircle size={22} className="text-emerald-500" />
                   </div>
-                );
-              })
-            )}
+                  <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Sua meta está vazia hoje</p>
+                  <p className="text-[12.5px] mt-1">Aproveite o turno para prospectar novos leads.</p>
+                </div>
+              ) : visibleCount === 0 ? (
+                <div className="py-14 grid place-items-center text-slate-400">
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 grid place-items-center mb-3">
+                    <CheckCircle size={22} className="text-emerald-500" />
+                  </div>
+                  <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Nenhuma tarefa por aqui</p>
+                  <p className="text-[12.5px] mt-1">Você está em dia com essa categoria. Bom trabalho!</p>
+                </div>
+              ) : (
+                visibleSlugs.map(slug => (
+                  <DgSection
+                    key={slug}
+                    slug={slug}
+                    tasks={pendingBySlug[slug] || []}
+                    render={renderTaskCard}
+                  />
+                ))
+              )}
+            </div>
           </div>
-        </div>
+        </section>
+
+        {/* RIGHT — Sidebar */}
+        <section className="col-span-12 lg:col-span-4 flex flex-col gap-3">
+          <NextUp
+            task={nextAppt?.l}
+            slug={nextAppt?.slug}
+            countdownLabel={countdownLabel}
+            appointmentLabel={nextApptLabel}
+            onWhatsapp={handleWhatsapp}
+            onOutcome={handleOutcome}
+          />
+          <StreakCard history14={history14} monthHits={0} monthTarget={22} streak={0} />
+
+          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card flex-1 min-h-0 flex flex-col">
+            <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.05]">
+              <div className="flex items-center gap-2">
+                <h3 className="text-[13.5px] font-semibold">Feitos hoje</h3>
+                <span className="num text-[11px] px-1.5 h-[18px] rounded-md grid place-items-center bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{done.length}</span>
+              </div>
+            </div>
+            <div className="p-3 space-y-2 flex-1 overflow-y-auto thin-scroll">
+              {done.length === 0 ? (
+                <div className="py-8 text-center text-slate-400 text-[12.5px]">
+                  Nenhuma tarefa concluída ainda — a primeira virá em breve.
+                </div>
+              ) : (
+                done.map(lead => <DoneCard key={lead.id} lead={lead} onOpen={setSelectedLead} />)
+              )}
+            </div>
+          </div>
+        </section>
       </div>
+
+      <footer className="pt-1 pb-2 text-center text-[11.5px] text-slate-400">
+        Atualizado agora · {todayLabel} · Stronix
+      </footer>
 
       {selectedLead && (
         <LeadDetailsModal
