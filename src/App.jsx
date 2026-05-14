@@ -5827,9 +5827,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   };
 
   // Reschedule: opens the date dialog (set on TaskCard click), then this commits.
-  // Differs from `handleOutcome(... 'rescheduled')` because it ALSO updates
-  // appointmentScheduledFor and clears appointmentOutcome — so the lead
-  // re-enters Meta Diária on the new date with a fresh appointment.
+  // - Always updates appointmentScheduledFor and clears appointmentOutcome so
+  //   the lead re-enters Meta Diária fresh on the new date.
+  // - If the new date is on a DIFFERENT day, writes a daily_goal_done so
+  //   today's task closes (the consultor handled it by rescheduling away).
+  // - If the new date is STILL today, writes a regular 'note' instead — the
+  //   task remains pending with the new time, because the user just shifted
+  //   the appointment within the same day, not completed it.
   const handleReschedule = async (newDate, note) => {
     if (!rescheduleTarget) return;
     const { lead, categorySlug } = rescheduleTarget;
@@ -5837,6 +5841,11 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     const formattedDate = newDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const formattedTime = newDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const noteText = (note || '').trim();
+
+    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(); todayEnd.setHours(23, 59, 59, 999);
+    const isStillToday = newDate >= todayStart && newDate <= todayEnd;
+
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
         appointmentScheduledFor: newDate,
@@ -5844,20 +5853,32 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         appointmentOutcomeAt: null,
         appointmentOutcomeBy: null
       });
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+
+      const baseText = isStillToday
+        ? `🔄 Horário ajustado: ${categoryLabel.toLowerCase()} para hoje às ${formattedTime}.`
+        : `🔄 Remarcou ${categoryLabel.toLowerCase()} para ${formattedDate} às ${formattedTime} — Meta Diária.`;
+
+      const interactionPayload = {
         leadId: lead.id,
         consultantName: appUser.name,
         ...getInteractionSecurityFields(lead, appUser),
-        text: noteText
-          ? `🔄 Remarcou ${categoryLabel.toLowerCase()} para ${formattedDate} às ${formattedTime} — Meta Diária. Obs: ${noteText}`
-          : `🔄 Remarcou ${categoryLabel.toLowerCase()} para ${formattedDate} às ${formattedTime} — Meta Diária.`,
-        type: 'daily_goal_done',
-        dailyGoalCategory: categorySlug,
-        appointmentOutcome: 'rescheduled',
+        text: noteText ? `${baseText} Obs: ${noteText}` : baseText,
+        type: isStillToday ? 'note' : 'daily_goal_done',
         rescheduledFor: newDate,
         createdAt: serverTimestamp()
-      });
-      toast.success(`Remarcado para ${formattedDate} às ${formattedTime}.`);
+      };
+      // Only attach Meta Diária metadata when we're actually closing today's task.
+      if (!isStillToday) {
+        interactionPayload.dailyGoalCategory = categorySlug;
+        interactionPayload.appointmentOutcome = 'rescheduled';
+      }
+
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), interactionPayload);
+      toast.success(
+        isStillToday
+          ? `Horário ajustado para hoje às ${formattedTime}.`
+          : `Remarcado para ${formattedDate} às ${formattedTime}.`
+      );
       setRescheduleTarget(null);
     } catch (err) {
       console.error(err);
