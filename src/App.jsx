@@ -98,7 +98,7 @@ import {
   getLeadOwnershipFields,
   getInteractionSecurityFields
 } from './lib/leads.js';
-import { getDefaultFunnel, isItemInFunnel, commitOpsInChunks } from './lib/funnels.js';
+import { getDefaultFunnel, isItemInFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 
 // --- HELPERS DE TEMPERATURA DO LEAD ---
 const HOUR_MS = 60 * 60 * 1000;
@@ -548,14 +548,25 @@ useEffect(() => {
     } catch (e) { /* ignore */ }
   }, [selectedFunnelId]);
 
-  // Garante que selectedFunnelId é sempre válido (cai para o default se sumir)
+  // Garante que selectedFunnelId é sempre válido (cai para o default se sumir).
+  // O sentinel ALL_FUNNELS_ID é sempre válido — não cai no fallback.
   useEffect(() => {
     if (!funnels || funnels.length === 0) return;
+    if (isAllFunnels(selectedFunnelId)) return;
     if (!selectedFunnelId || !funnels.find(f => f.id === selectedFunnelId)) {
       const fallback = getDefaultFunnel(funnels);
       if (fallback) setSelectedFunnelId(fallback.id);
     }
   }, [funnels, selectedFunnelId]);
+
+  // Cross-tab reset: o modo "Todos os funis" só existe no Dashboard.
+  // Ao trocar para Kanban/Leads/Meta, voltar para o funil default.
+  useEffect(() => {
+    if (!isAllFunnels(selectedFunnelId)) return;
+    if (activeTab === 'dashboard') return;
+    const fallback = getDefaultFunnel(funnels)?.id;
+    if (fallback) setSelectedFunnelId(fallback);
+  }, [activeTab, selectedFunnelId, funnels]);
 
   // Migração idempotente: cria funil "Comercial" default e backfill de funnelId em leads/statuses
   useEffect(() => {
@@ -875,7 +886,7 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
 // ==========================================
 // COMPONENTES AUXILIARES
 // ==========================================
-function FunnelSelector({ funnels, value, onChange, compact = false, variant = 'standalone', className = '' }) {
+function FunnelSelector({ funnels, value, onChange, compact = false, variant = 'standalone', allowAll = false, className = '' }) {
   const list = Array.isArray(funnels) ? funnels : [];
   if (list.length === 0) {
     return (
@@ -902,6 +913,9 @@ function FunnelSelector({ funnels, value, onChange, compact = false, variant = '
         onChange={(e) => onChange(e.target.value)}
         className={`w-full ${bg} border border-gray-200 dark:border-neutral-800 rounded-2xl ${padX} ${padY} ${textSize} font-semibold text-gray-900 dark:text-white outline-none focus:border-blue-600 transition-all shadow-sm cursor-pointer appearance-none`}
       >
+        {allowAll && (
+          <option value={ALL_FUNNELS_ID}>★ Todos os funis</option>
+        )}
         {list.map((f) => (
           <option key={f.id} value={f.id}>{f.name}{f.isDefault ? ' • Padrão' : ''}</option>
         ))}
@@ -1285,6 +1299,7 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
     [funnels, selectedFunnelId]
   );
   const funnelLeads = useMemo(() => {
+    if (isAllFunnels(selectedFunnelId)) return leads || [];
     return (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId));
   }, [leads, selectedFunnelId, defaultFunnelId]);
 
@@ -1576,6 +1591,62 @@ const teamMetrics = useMemo(() => {
   );
 }, [satisfactionLeads]);
 
+  // --- TABELA "MÉTRICAS POR FUNIL" (modo Geral) ---
+  // Agnóstica de etapas: cada linha agrega leads/visitas/aulas/matrículas/taxa
+  // usando os mesmos campos usados pelos KPIs globais. Funcione para qualquer
+  // funil criado pelo usuário (ou por tenants futuros).
+  const funnelComparisonRows = useMemo(() => {
+    if (!isAllFunnels(selectedFunnelId)) return [];
+    if (!Array.isArray(funnels) || funnels.length === 0) return [];
+
+    const rows = funnels.map(funnel => {
+      const scope = (leads || []).filter(l => isItemInFunnel(l, funnel.id, defaultFunnelId));
+      const captured = scope.filter(l => isWithinSelectedRange(l.createdAt));
+      const visits = scope.filter(l => {
+        const t = getLeadAppointmentType(l);
+        const d = getLeadAppointmentDate(l);
+        return t === 'visita' && d && isWithinSelectedRange(d);
+      });
+      const classes = scope.filter(l => {
+        const t = getLeadAppointmentType(l);
+        const d = getLeadAppointmentDate(l);
+        return t === 'aula_experimental' && d && isWithinSelectedRange(d);
+      });
+      const converted = scope.filter(l => isLeadConverted(l) && isWithinSelectedRange(getLeadConversionDate(l)));
+      const rate = captured.length > 0 ? Math.round((converted.length / captured.length) * 100) : 0;
+      return {
+        funnel,
+        captured: captured.length,
+        visits: visits.length,
+        classes: classes.length,
+        converted: converted.length,
+        rate
+      };
+    });
+
+    // Ordenação: matrículas DESC → leads DESC → ordem de criação ASC (tie-break)
+    rows.sort((a, b) => {
+      if (b.converted !== a.converted) return b.converted - a.converted;
+      if (b.captured !== a.captured) return b.captured - a.captured;
+      return (a.funnel.order || 0) - (b.funnel.order || 0);
+    });
+
+    return rows;
+  }, [selectedFunnelId, leads, funnels, defaultFunnelId, periodRange]);
+
+  // Totais da tabela. Taxa é recalculada do agregado (não média de rates) — Simpson's paradox.
+  const funnelComparisonTotals = useMemo(() => {
+    if (funnelComparisonRows.length === 0) return null;
+    const sum = funnelComparisonRows.reduce((acc, r) => ({
+      captured: acc.captured + r.captured,
+      visits: acc.visits + r.visits,
+      classes: acc.classes + r.classes,
+      converted: acc.converted + r.converted
+    }), { captured: 0, visits: 0, classes: 0, converted: 0 });
+    const rate = sum.captured > 0 ? Math.round((sum.converted / sum.captured) * 100) : 0;
+    return { ...sum, rate };
+  }, [funnelComparisonRows]);
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex flex-wrap items-center gap-3">
@@ -1584,6 +1655,7 @@ const teamMetrics = useMemo(() => {
             funnels={funnels}
             value={selectedFunnelId}
             onChange={setSelectedFunnelId}
+            allowAll={true}
             className="w-full sm:w-[260px]"
           />
         )}
@@ -1679,11 +1751,89 @@ const teamMetrics = useMemo(() => {
   />
 </div>
 
+      {isAllFunnels(selectedFunnelId) && funnels.length > 1 && (
+        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl">
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-3 uppercase tracking-widest">
+            <Kanban className="w-6 h-6 text-blue-500" /> Métricas por Funil
+          </h3>
+          <p className="text-xs font-semibold text-gray-400 dark:text-neutral-500 mb-6 uppercase tracking-widest">
+            Comparativo de desempenho no período selecionado
+          </p>
+          <div className="overflow-x-auto custom-scrollbar">
+            <table className="w-full text-left border-collapse min-w-[800px]">
+              <thead>
+                <tr className="border-b border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 text-xs font-semibold">
+                  <th className="py-4 px-4">Funil</th>
+                  <th className="py-4 px-4 text-center">Leads</th>
+                  <th className="py-4 px-4 text-center">Visitas</th>
+                  <th className="py-4 px-4 text-center">Aulas Exp.</th>
+                  <th className="py-4 px-4 text-center">Matrículas</th>
+                  <th className="py-4 px-4 text-right">Tx. Conv.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {funnelComparisonRows.map((row) => {
+                  const rateTone =
+                    row.rate >= 20 ? 'text-green-500'
+                    : row.rate >= 10 ? 'text-yellow-500'
+                    : 'text-gray-400 dark:text-neutral-500';
+                  return (
+                    <tr key={row.funnel.id} className="border-b border-gray-200 dark:border-neutral-800/50 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800/30 transition-all">
+                      <td className="py-4 px-4">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedFunnelId(row.funnel.id)}
+                          className="font-bold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors flex items-center gap-2 text-left"
+                          title={`Ver Dashboard apenas do funil ${row.funnel.name}`}
+                        >
+                          {row.funnel.name}
+                          {row.funnel.isDefault && (
+                            <span className="text-[9px] uppercase tracking-widest font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400">
+                              Padrão
+                            </span>
+                          )}
+                        </button>
+                      </td>
+                      <td className="py-4 px-4 text-center text-gray-500 dark:text-neutral-400 font-bold">{row.captured}</td>
+                      <td className="py-4 px-4 text-center text-yellow-500 font-bold">{row.visits}</td>
+                      <td className="py-4 px-4 text-center text-purple-500 font-bold">{row.classes}</td>
+                      <td className="py-4 px-4 text-center text-green-500 font-bold">{row.converted}</td>
+                      <td className={`py-4 px-4 text-right font-bold ${rateTone}`}>{row.rate}%</td>
+                    </tr>
+                  );
+                })}
+                {funnelComparisonRows.length === 0 && (
+                  <tr>
+                    <td colSpan="6" className="py-6 text-center text-gray-400 dark:text-neutral-500 text-xs font-bold uppercase tracking-widest">
+                      Sem dados no período
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {funnelComparisonTotals && funnelComparisonRows.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-gray-300 dark:border-neutral-700">
+                    <td className="py-4 px-4 font-bold text-gray-900 dark:text-white uppercase tracking-widest text-xs">Total</td>
+                    <td className="py-4 px-4 text-center text-gray-900 dark:text-white font-bold">{funnelComparisonTotals.captured}</td>
+                    <td className="py-4 px-4 text-center text-yellow-600 dark:text-yellow-400 font-bold">{funnelComparisonTotals.visits}</td>
+                    <td className="py-4 px-4 text-center text-purple-600 dark:text-purple-400 font-bold">{funnelComparisonTotals.classes}</td>
+                    <td className="py-4 px-4 text-center text-green-600 dark:text-green-400 font-bold">{funnelComparisonTotals.converted}</td>
+                    <td className="py-4 px-4 text-right text-gray-900 dark:text-white font-bold">{funnelComparisonTotals.rate}%</td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-8 shadow-2xl">
             <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-8 uppercase tracking-widest">
-              {currentFunnel?.name ? `Funil ${currentFunnel.name}` : 'Funil Comercial'}
+              {isAllFunnels(selectedFunnelId)
+                ? 'Compilado de Todos os Funis'
+                : currentFunnel?.name ? `Funil ${currentFunnel.name}` : 'Funil Comercial'}
             </h3>
 
             <div className="space-y-8">
@@ -1699,14 +1849,14 @@ const teamMetrics = useMemo(() => {
                 count={stats.agendadosVisita}
                 max={stats.total}
                 color="bg-yellow-500"
-                onClick={() => setFunnelDetail({ title: 'Visitas Agendadas', data: scheduledLeads.filter(l => getLeadAppointmentType(l) === 'Visita') })}
+                onClick={() => setFunnelDetail({ title: 'Visitas Agendadas', data: scheduledLeads.filter(l => getLeadAppointmentType(l) === 'visita') })}
               />
               <FunnelBar
                 label="Agendamentos (Aula Exp.)"
                 count={stats.agendadosAula}
                 max={stats.total}
                 color="bg-purple-500"
-                onClick={() => setFunnelDetail({ title: 'Aulas Exp. Agendadas', data: scheduledLeads.filter(l => getLeadAppointmentType(l) === 'Aula Experimental') })}
+                onClick={() => setFunnelDetail({ title: 'Aulas Exp. Agendadas', data: scheduledLeads.filter(l => getLeadAppointmentType(l) === 'aula_experimental') })}
               />
               <FunnelBar
                 label="Matrículas"
