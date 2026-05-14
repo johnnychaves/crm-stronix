@@ -4058,6 +4058,38 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   // Rendered via Portal at <body> level — escapes the <main>/header stacking
   // context where the global topbar's backdrop-blur creates its own layer and
   // would otherwise sit above this modal regardless of z-index.
+  // ----- Derived computations for the redesigned shell -----
+  const firstName = (lead.name || '').split(' ')[0] || 'lead';
+  const ageDays = lead.createdAt
+    ? Math.max(0, Math.floor((Date.now() - lead.createdAt.getTime()) / 86400000))
+    : 0;
+  const statusChangeCount = (interactions || []).filter(i => i.type === 'status_change').length;
+
+  const groupTimeline = (events) => {
+    const now = new Date();
+    const dayKey = (d) => d.toISOString().slice(0, 10);
+    const todayKey = dayKey(now);
+    const yKey = (() => { const y = new Date(now); y.setDate(y.getDate() - 1); return dayKey(y); })();
+    const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0, 0, 0, 0);
+    const map = new Map();
+    events.forEach((e) => {
+      const d = e.createdAt instanceof Date ? e.createdAt : null;
+      if (!d) return;
+      const k = dayKey(d);
+      let label;
+      if (k === todayKey) label = 'Hoje';
+      else if (k === yKey) label = 'Ontem';
+      else if (d >= startOfWeek) label = 'Esta semana';
+      else if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) label = 'Este mês';
+      else label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      if (!map.has(label)) map.set(label, []);
+      map.get(label).push(e);
+    });
+    return Array.from(map.entries());
+  };
+
+  const groupedEvents = groupTimeline(interactions || []);
+
   return createPortal(
     <>
       {/* Backdrop: blur + dark overlay over the page behind the modal. Click to close. */}
@@ -4065,250 +4097,403 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         onClick={onClose}
         className="fixed inset-0 z-[100] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in"
       />
-      <div className="fixed inset-0 z-[101] bg-[#eaedf2] dark:bg-neutral-950 md:inset-y-4 md:inset-x-4 md:rounded-3xl flex flex-col md:flex-row overflow-hidden animate-fade-in shadow-2xl">
+      <div className="fixed inset-0 z-[101] bg-paper-50 dark:bg-ink-950 md:inset-y-4 md:inset-x-4 md:rounded-3xl flex flex-col overflow-hidden animate-fade-in shadow-2xl font-sans">
 
-        {/* LEFT COLUMN: Lead Info & Actions */}
-        <div className="w-full md:w-[450px] lg:w-[480px] shrink-0 p-6 md:p-8 border-r border-gray-200 dark:border-neutral-800 overflow-y-auto bg-white dark:bg-neutral-900 relative z-10 custom-scrollbar">
-           
-           <div className="flex justify-end gap-2 mb-4">
-             {!isEditing && !isReadOnly && <button onClick={()=>setIsEditing(true)} title="Editar Cadastro" className="p-2 bg-gray-100 dark:bg-neutral-800 text-blue-500 hover:bg-blue-600 hover:text-white rounded-full transition-all shadow-sm active:scale-90"><Pencil className="w-4 h-4"/></button>}
-             {!isEditing && isAdminUser(appUser) && <button onClick={handleDelete} title="Excluir Permanentemente" className="p-2 bg-gray-100 dark:bg-neutral-800 text-red-500 hover:bg-red-600 hover:text-white rounded-full transition-all shadow-sm active:scale-90"><Trash className="w-4 h-4"/></button>}
-             <button onClick={onClose} title="Fechar Detalhes" className="p-2 bg-gray-100 dark:bg-neutral-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:text-neutral-400 dark:hover:text-white rounded-full transition-all shadow-sm active:scale-90"><X className="w-4 h-4" /></button>
-           </div>
-
-           {isEditing ? (
-             <div className="space-y-6 animate-fade-in">
-               <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Editar Cadastro</h3>
-               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Nome Completo</label><input type="text" value={editData.name} onChange={e=>setEditData({...editData, name: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
-               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">WhatsApp</label><input type="tel" value={editData.whatsapp} onChange={e=>setEditData({...editData, whatsapp: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
-               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Origem</label><input type="text" value={editData.source} onChange={e=>setEditData({...editData, source: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold" /></div>
-               <div>
-                 <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Consultor Responsável</label>
-                 <select value={editData.consultantId} onChange={e=>setEditData({...editData, consultantId: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-bold appearance-none cursor-pointer">
-                   <option value="">Selecione um consultor...</option>
-                   {(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                 </select>
-               </div>
-               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Etiquetas</label><div className="flex flex-wrap gap-2 mt-2">{(tags || []).map(t => ( <button key={t.id} onClick={() => setEditData(prev => ({...prev, tags: prev.tags.includes(t.name) ? prev.tags.filter(x=>x!==t.name) : [...prev.tags, t.name]}))} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${editData.tags.includes(t.name) ? 'bg-blue-600 border-blue-600 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-neutral-800 border-gray-300 dark:border-neutral-700 text-gray-400 dark:text-neutral-500'}`}>{t.name}</button> ))}</div></div>
-               <div><label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1 block">Observação Fixa (Contexto Inicial)</label><textarea value={editData.observation} onChange={e=>setEditData({...editData, observation: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-500 font-medium h-32 resize-none" /></div>
-               <div className="flex gap-3 pt-4 border-t border-gray-200 dark:border-neutral-800"><button onClick={()=>setIsEditing(false)} className="flex-1 py-3 bg-gray-100 dark:bg-neutral-800 rounded-xl font-semibold text-sm text-gray-700 dark:text-neutral-300 hover:bg-gray-200 dark:hover:bg-neutral-700 transition-all">Cancelar</button><button onClick={handleUpdateLead} disabled={loading} className="flex-1 py-3 bg-blue-600 rounded-xl font-semibold text-sm text-white shadow-xl shadow-blue-600/20 hover:bg-blue-700 transition-all">Salvar</button></div>
-             </div>
-           ) : (
-             <div className="animate-fade-in mt-12 md:mt-0">
-               {/* Header Info */}
-               <div className="mb-8">
-                 <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-3">{lead.name}</h2>
-                 <div className="flex flex-wrap gap-2 mb-4"> {(lead.tags || []).map(tName => <TagBadge key={tName} tagName={tName} tagsArray={tags} />)} </div>
-                 <button onClick={handleWhatsApp} className="text-sm font-semibold text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-2 mt-2 transition-all hover:underline" title="Chamar no WhatsApp">
-                   <Phone className="w-4 h-4" /> {lead.whatsapp}
-                 </button>
-                 <div className="text-xs font-semibold text-gray-500 dark:text-neutral-500 flex items-center gap-2 mt-2">
-                   <Tag className="w-3.5 h-3.5" /> Origem: <span className="text-gray-700 dark:text-neutral-300">{lead.source || 'Não informada'}</span>
-                 </div>
-                 {lead.consultantName && (
-                   <div className="text-xs font-semibold text-gray-500 dark:text-neutral-500 flex items-center gap-2 mt-2">
-                     <Users className="w-3.5 h-3.5" /> Responsável: <span className="text-blue-600 dark:text-blue-400">@{lead.consultantName}</span>
-                   </div>
-                 )}
-               </div>
-
-               {/* Clean Action Buttons */}
-               <div className="flex gap-3 mb-8 border-b border-gray-200 dark:border-neutral-800 pb-8">
-                 <button onClick={handleWin} className="px-4 py-2 rounded-lg bg-green-500 hover:bg-green-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"><Trophy className="w-3.5 h-3.5"/> Ganho</button>
-                 <button onClick={()=>setLossModalOpen(true)} className="px-4 py-2 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm active:scale-95"><ThumbsDown className="w-3.5 h-3.5"/> Perda</button>
-               </div>
-
-               {/* Lead Lost Banner */}
-               {lead.status === 'Perda' && lead.lossReason && (
-                 <div className="mb-8 p-4 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-900/10 flex items-start gap-3">
-                   <ThumbsDown className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
-                   <div><p className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest mb-1">Motivo da Perda</p><p className="text-sm font-semibold text-red-800 dark:text-red-300">{lead.lossReason}</p></div>
-                 </div>
-               )}
-
-               {/* Contexto Minimalista */}
-               <div className="mb-8">
-                 <h4 className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-3">Contexto Inicial</h4>
-                 <p className="text-sm text-gray-800 dark:text-neutral-200 leading-relaxed font-medium">
-                   {lead.observation || "Nenhuma observação registrada no momento do cadastro."}
-                 </p>
-               </div>
-
-               {/* Registrar Atividade Minimalista */}
-               <div className="mb-8 border-t border-gray-200 dark:border-neutral-800 pt-8">
-                 <h4 className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Clock className="w-4 h-4"/> Registrar Atividade</h4>
-                 
-                 <div className="space-y-4">
-                   {safeFunnels.length > 0 && (
-                     <div>
-                       <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1.5 block">Funil</label>
-                       <select value={funnelId || ''} onChange={e => handleFunnelChange(e.target.value)} className="w-full bg-transparent p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-300 dark:border-neutral-700 focus:border-blue-500 transition-all appearance-none font-semibold shadow-sm">
-                         {safeFunnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                       </select>
-                       {funnelId && funnelId !== (lead.funnelId || null) && (
-                         <p className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold mt-1.5">A etapa será redefinida para a primeira do novo funil.</p>
-                       )}
-                     </div>
-                   )}
-                   <div>
-                     <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1.5 block">Fase do Funil</label>
-                     <select value={status} onChange={e => setStatus(e.target.value)} className="w-full bg-transparent p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-300 dark:border-neutral-700 focus:border-blue-500 transition-all appearance-none font-semibold shadow-sm">
-                       {statusesForFunnel.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
-                       {/* Inclui status atual caso não esteja no funil (ex.: Venda/Perda) */}
-                       {!statusesForFunnel.some(s => s.name === status) && status && (
-                         <option value={status}>{status}</option>
-                       )}
-                     </select>
-                   </div>
-                   
-                   <div>
-                     <label className="text-xs font-semibold text-gray-600 dark:text-neutral-400 mb-1.5 block">Anotações da Conversa</label>
-                     <textarea value={note} onChange={e => setNote(e.target.value)} className="w-full bg-transparent p-3 text-sm rounded-xl text-gray-900 dark:text-white h-24 outline-none border border-gray-300 dark:border-neutral-700 focus:border-blue-500 font-medium resize-none transition-all shadow-sm" placeholder="O que foi discutido?" />
-                   </div>
-
-                   <div className="p-4 rounded-xl border border-gray-200 dark:border-neutral-800 bg-gray-50/50 dark:bg-neutral-900/30">
-                     <label className="flex items-center gap-3 text-sm font-semibold text-gray-800 dark:text-neutral-200 cursor-pointer">
-                       <input type="checkbox" checked={enableFollowUp} onChange={e => setEnableFollowUp(e.target.checked)} className="w-4 h-4 rounded border-gray-300 dark:border-neutral-700 text-blue-600 focus:ring-blue-500 transition-all cursor-pointer" />
-                       Agendar Próximo Contato
-                     </label>
-                     {enableFollowUp && (
-                       <div className="mt-4 space-y-4 animate-fade-in border-t border-gray-200 dark:border-neutral-800 pt-4">
-                         <div className="grid grid-cols-2 gap-2">
-                           {['Mensagem', 'Ligação', 'Visita', 'Aula Experimental'].map(t => (
-                             <button key={t} type="button" onClick={() => setFollowUpType(t)} className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all border ${followUpType === t ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300 shadow-sm' : 'bg-transparent border-gray-200 dark:border-neutral-700 text-gray-600 dark:text-neutral-400 hover:border-gray-300 dark:hover:border-neutral-600'}`}>{t}</button>
-                           ))}
-                         </div>
-                         <div>
-                           <label className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 mb-1.5 block uppercase tracking-widest">Data e Hora</label>
-                           <div className="flex items-center gap-3">
-                             <Calendar className="w-5 h-5 text-gray-400 dark:text-neutral-500 shrink-0" />
-                             <input type="datetime-local" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)} className="w-full bg-transparent p-3 text-sm rounded-xl text-gray-900 dark:text-white outline-none border border-gray-300 dark:border-neutral-700 focus:border-blue-500 transition-all font-semibold" />
-                           </div>
-                         </div>
-                       </div>
-                     )}
-                   </div>
-                   
-                   <button onClick={saveInteraction} disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold tracking-widest uppercase py-4 rounded-xl shadow-md text-xs transition-all active:scale-95">Salvar Atividade</button>
-                 </div>
-               </div>
-
-               {/* CSAT Minimalista */}
-               <div className="border-t border-gray-200 dark:border-neutral-800 pt-8 pb-4">
-                 <div className="flex items-center justify-between mb-5">
-                   <h4 className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest flex items-center gap-2"><CheckCircle className="w-4 h-4"/> Pesquisa CSAT</h4>
-                   <span className="text-xs font-semibold text-gray-500 dark:text-neutral-400 bg-gray-100 dark:bg-neutral-800 px-2 py-1 rounded-md">
-                     {lead.csatStatus === 'answered' ? 'Respondido' : lead.csatStatus === 'pending' ? 'Aguardando' : 'Não enviado'}
-                   </span>
-                 </div>
-                 
-                 <div className="grid grid-cols-2 gap-2 mb-4">
-                   <button type="button" onClick={() => setCsatStage('pos_agendamento')} className={`py-3 px-3 rounded-xl text-xs font-semibold transition-all border ${csatStage === 'pos_agendamento' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300 shadow-sm' : 'bg-transparent border-gray-200 dark:border-neutral-700 text-gray-600 dark:text-neutral-400 hover:border-gray-300 dark:hover:border-neutral-600'}`}>Pós-Agendamento</button>
-                   <button type="button" onClick={() => setCsatStage('cliente_novo')} className={`py-3 px-3 rounded-xl text-xs font-semibold transition-all border ${csatStage === 'cliente_novo' ? 'bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-900/20 dark:border-blue-800 dark:text-blue-300 shadow-sm' : 'bg-transparent border-gray-200 dark:border-neutral-700 text-gray-600 dark:text-neutral-400 hover:border-gray-300 dark:hover:border-neutral-600'}`}>Pós-Matrícula</button>
-                 </div>
-                 
-                 <button type="button" onClick={handleSendCsat} disabled={sendingCsat} className="w-full bg-white dark:bg-neutral-900 hover:bg-gray-50 dark:hover:bg-neutral-800 border border-gray-200 dark:border-neutral-700 text-gray-800 dark:text-neutral-200 font-bold py-3 rounded-xl shadow-sm text-xs tracking-widest uppercase transition-all flex items-center justify-center gap-2 active:scale-95">
-                   {sendingCsat ? 'Gerando...' : <><MessageCircle className="w-4 h-4"/> Enviar Link por WhatsApp</>}
-                 </button>
-               </div>
-
-             </div>
-           )}
-        </div>
-
-        {/* RIGHT COLUMN: Alternating Timeline */}
-        <div className="flex-1 bg-[#eaedf2] dark:bg-neutral-950 p-6 md:p-12 overflow-y-auto relative custom-scrollbar">          
-          <div className="flex flex-col gap-4 mb-12">
-            <h3 className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-              <Clock className="w-8 h-8 text-blue-600" />
-              Jornada do Cliente
-            </h3>
-            <p className="text-sm text-gray-500 dark:text-neutral-400 font-medium">Histórico completo de interações e mudanças de fase.</p>
+        {/* TOP BAR */}
+        <header className="h-16 border-b border-slate-200 dark:border-white/[0.06] bg-white/80 dark:bg-ink-900/70 backdrop-blur flex items-center justify-between gap-3 px-4 md:px-6 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <button onClick={onClose} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[12.5px] font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] whitespace-nowrap transition">
+              <ChevronRight size={14} className="rotate-180" /> Todos os leads
+            </button>
+            <span className="text-slate-300 dark:text-white/15 shrink-0">/</span>
+            <span className="text-[14px] font-semibold truncate">{lead.name}</span>
+            <StatusBadge statusName={lead.status} statusesArray={statuses} />
           </div>
-          
-          <div className="relative max-w-4xl mx-auto pb-12">
-            {/* The vertical connecting line */}
-            <div className="absolute left-6 md:left-1/2 top-0 bottom-0 w-1 bg-gray-200 dark:bg-neutral-800 md:-translate-x-1/2 rounded-full"></div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            {!isEditing && !isReadOnly && (
+              <Btn kind="secondary" icon={<Pencil size={13} />} onClick={() => setIsEditing(true)}>Editar</Btn>
+            )}
+            {!isEditing && lead.status !== 'Venda' && (
+              <Btn kind="success" icon={<Trophy size={13} />} onClick={handleWin}>Marcar venda</Btn>
+            )}
+            {!isEditing && lead.status !== 'Perda' && (
+              <Btn kind="danger" icon={<ThumbsDown size={13} />} onClick={() => setLossModalOpen(true)}>Marcar perda</Btn>
+            )}
+            <div className="w-px h-6 bg-slate-200 dark:bg-white/[0.08] mx-1"></div>
+            {!isEditing && isAdminUser(appUser) && (
+              <IconBtn icon={<Trash size={15} />} kind="danger" title="Excluir lead" onClick={handleDelete} />
+            )}
+            <IconBtn icon={<X size={15} />} title="Fechar" onClick={onClose} />
+          </div>
+        </header>
 
-            {interactions.map((i, index) => {
-              const visual = getInteractionVisual(i, statuses);
-              const Icon = visual.icon;
-              const isEven = index % 2 === 0;
-              const lineClasses = isEven
-                ? "absolute top-1/2 -translate-y-1/2 h-0.5 bg-gray-300 dark:bg-neutral-700 z-0 left-6 w-14 md:left-auto md:right-1/2 md:w-[calc(8%+3rem)]"
-                : "absolute top-1/2 -translate-y-1/2 h-0.5 bg-gray-300 dark:bg-neutral-700 z-0 left-6 w-14 md:left-1/2 md:right-auto md:w-[calc(8%+3rem)]";
+        {/* BODY: scrollable content with 12-col grid */}
+        <div className="flex-1 overflow-y-auto thin-scroll">
+          <div className="max-w-[1320px] mx-auto px-4 md:px-8 py-6">
+            <div className="grid grid-cols-12 gap-6">
 
-              return (
-                <div key={i.id} className={`relative flex items-center md:justify-between mb-10 ${isEven ? 'md:flex-row-reverse' : ''} animate-fade-in group`}>
-                  <div className={lineClasses}></div>
-                  {/* Empty space for the opposite side on desktop */}
-                  <div className="hidden md:block md:w-[42%]"></div>
-                  
-                  {/* The dot icon */}
-                  <div className={`absolute left-6 md:left-1/2 w-12 h-12 rounded-full border-4 border-[#eaedf2] dark:border-neutral-950 flex items-center justify-center shadow-xl -translate-x-1/2 z-10 transition-transform group-hover:scale-110 ${visual.dot}`}>
-                    <Icon className="w-5 h-5" />
-                  </div>
-
-                  {/* Content Card */}
-                  <div className={`w-full ml-20 md:ml-0 md:w-[42%] ${isEven ? 'md:pr-12' : 'md:pl-12'}`}>
-                    <div className={`rounded-2xl border p-6 transition-all hover:shadow-lg ${visual.card}`}>
-                      <div className="flex flex-col gap-2 mb-3">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          {visual.stageName ? (
-                            <StatusBadge statusName={visual.stageName} statusesArray={statuses} />
-                          ) : (
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${visual.pill}`}>
-                              {visual.label}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between mt-1">
-                          <p className="text-sm font-bold text-gray-900 dark:text-white">
-                            {i.consultantName}
-                          </p>
-                          <p className={`text-[10px] font-bold uppercase tracking-wider ${visual.meta}`}>
-                            {i.createdAt?.toLocaleString('pt-BR')}
-                          </p>
+              {/* LEFT: Lead Summary (sticky) */}
+              <div className="col-span-12 lg:col-span-4 xl:col-span-3">
+                {isEditing ? (
+                  <aside className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-5 space-y-4 lg:sticky lg:top-4">
+                    <h3 className="text-[15px] font-semibold">Editar cadastro</h3>
+                    <Field label="Nome completo">
+                      <StyledInput value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
+                    </Field>
+                    <Field label="WhatsApp">
+                      <StyledInput type="tel" value={editData.whatsapp} onChange={e => setEditData({ ...editData, whatsapp: e.target.value })} />
+                    </Field>
+                    <Field label="Origem">
+                      <StyledInput value={editData.source} onChange={e => setEditData({ ...editData, source: e.target.value })} />
+                    </Field>
+                    <Field label="Consultor responsável">
+                      <StyledSelect value={editData.consultantId} onChange={e => setEditData({ ...editData, consultantId: e.target.value })}>
+                        <option value="">Selecione um consultor...</option>
+                        {(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </StyledSelect>
+                    </Field>
+                    <Field label="Etiquetas">
+                      <div className="flex flex-wrap gap-1.5">
+                        {(tags || []).map(t => {
+                          const active = editData.tags.includes(t.name);
+                          return (
+                            <button
+                              key={t.id}
+                              type="button"
+                              onClick={() => setEditData(prev => ({ ...prev, tags: active ? prev.tags.filter(x => x !== t.name) : [...prev.tags, t.name] }))}
+                              className={`px-2 py-1 rounded-md text-[11.5px] font-semibold border transition ${
+                                active
+                                  ? 'bg-brand-50 text-brand-700 border-brand-200 dark:bg-brand-500/15 dark:text-brand-300 dark:border-brand-500/30'
+                                  : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 dark:bg-white/[0.03] dark:text-slate-300 dark:border-white/[0.07]'
+                              }`}
+                            >
+                              {t.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </Field>
+                    <Field label="Observação fixa (contexto inicial)">
+                      <textarea
+                        value={editData.observation}
+                        onChange={e => setEditData({ ...editData, observation: e.target.value })}
+                        rows={4}
+                        className="w-full rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
+                      />
+                    </Field>
+                    <div className="flex gap-2 pt-2">
+                      <Btn kind="soft" onClick={() => setIsEditing(false)} className="flex-1">Cancelar</Btn>
+                      <Btn kind="brand" icon={<Check size={13} />} onClick={handleUpdateLead} disabled={loading}>Salvar</Btn>
+                    </div>
+                  </aside>
+                ) : (
+                  <aside className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden lg:sticky lg:top-4">
+                    <div className="p-5">
+                      <div className="flex items-center gap-4">
+                        <Avatar name={lead.name} size={56} />
+                        <div className="min-w-0 flex-1">
+                          <h2 className="text-[20px] font-semibold tracking-tight truncate">{lead.name}</h2>
+                          <button
+                            onClick={handleWhatsApp}
+                            className="text-[12.5px] text-brand-600 hover:text-brand-700 dark:text-brand-300 dark:hover:text-brand-200 font-medium num inline-flex items-center gap-1 transition"
+                            title="Abrir no WhatsApp"
+                          >
+                            <Phone size={11} /> {lead.whatsapp}
+                          </button>
                         </div>
                       </div>
-                      <p className={`${visual.text} text-sm leading-relaxed mt-2 font-medium`}>
-                        {i.text}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
 
-            {/* Creation node */}
-            <div className="relative flex items-center md:justify-between animate-fade-in md:flex-row-reverse">
-              <div className="absolute top-1/2 -translate-y-1/2 h-0.5 bg-gray-300 dark:bg-neutral-700 z-0 left-6 w-14 md:left-auto md:right-1/2 md:w-[calc(8%+3rem)]"></div>
-              <div className="hidden md:block md:w-[42%]"></div>
-              <div className="absolute left-6 md:left-1/2 w-12 h-12 rounded-full border-4 border-[#eaedf2] dark:border-neutral-950 flex items-center justify-center shadow-xl -translate-x-1/2 z-10 bg-green-500 text-white">
-                <Plus className="w-5 h-5" />
-              </div>
-              <div className="w-full ml-20 md:ml-0 md:w-[42%] md:pr-12">
-                <div className="rounded-2xl border p-6 bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800">
-                  <div className="flex flex-col gap-2 mb-3">
-                    <span className="self-start px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-green-100 dark:bg-green-500/20 text-green-700 dark:text-green-400">
-                      Cadastro Original
-                    </span>
-                    <div className="flex items-center justify-between mt-1">
-                      <p className="text-sm font-bold text-gray-900 dark:text-white">Sistema STRONIX</p>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400 dark:text-neutral-500">
-                        {lead.createdAt?.toLocaleString('pt-BR')}
+                      <div className="mt-4 flex flex-wrap items-center gap-1.5">
+                        {(lead.tags || []).map(tName => (
+                          <TagBadge key={tName} tagName={tName} tagsArray={tags} />
+                        ))}
+                      </div>
+
+                      <div className="mt-5 grid grid-cols-2 gap-2">
+                        <Btn kind="primary" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
+                        <Btn kind="secondary" icon={<Phone size={14} />} onClick={() => { const num = String(lead.whatsapp || '').replace(/\D/g, ''); if (num) window.location.href = `tel:${num}`; }}>Ligar</Btn>
+                      </div>
+                    </div>
+
+                    {/* Mini stats */}
+                    <div className="px-5 py-4 grid grid-cols-3 gap-3 border-t border-slate-100 dark:border-white/[0.05]">
+                      <div className="text-center">
+                        <div className="num text-[18px] font-semibold tracking-tight leading-none">{ageDays}d</div>
+                        <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1 whitespace-nowrap">Idade do lead</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="num text-[18px] font-semibold tracking-tight leading-none">{(interactions || []).length}</div>
+                        <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1 whitespace-nowrap">Interações</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="num text-[18px] font-semibold tracking-tight leading-none">{statusChangeCount + 1}</div>
+                        <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-1 whitespace-nowrap">Etapas</div>
+                      </div>
+                    </div>
+
+                    {/* Info rows */}
+                    <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.05] space-y-3.5">
+                      <div className="flex items-start gap-3">
+                        <span className="w-7 h-7 rounded-lg grid place-items-center bg-slate-100 text-slate-500 dark:bg-white/[0.05] dark:text-slate-400 shrink-0"><Tag size={13} /></span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 whitespace-nowrap">Origem</div>
+                          <div className="text-[13px] text-slate-800 dark:text-slate-100 mt-0.5">{lead.source || '—'}</div>
+                        </div>
+                      </div>
+                      {lead.consultantName && (
+                        <div className="flex items-start gap-3">
+                          <span className="w-7 h-7 rounded-lg grid place-items-center bg-slate-100 text-slate-500 dark:bg-white/[0.05] dark:text-slate-400 shrink-0"><Users size={13} /></span>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 whitespace-nowrap">Consultor</div>
+                            <div className="text-[13px] text-slate-800 dark:text-slate-100 mt-0.5 inline-flex items-center gap-2">
+                              <Avatar name={lead.consultantName} size={20} />
+                              <span className="truncate">{lead.consultantName}</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div className="flex items-start gap-3">
+                        <span className="w-7 h-7 rounded-lg grid place-items-center bg-slate-100 text-slate-500 dark:bg-white/[0.05] dark:text-slate-400 shrink-0"><Calendar size={13} /></span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 whitespace-nowrap">Cadastrado em</div>
+                          <div className="text-[13px] text-slate-800 dark:text-slate-100 mt-0.5 num">
+                            {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
+                            {lead.createdAt && <> · {lead.createdAt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3">
+                        <span className="w-7 h-7 rounded-lg grid place-items-center bg-slate-100 text-slate-500 dark:bg-white/[0.05] dark:text-slate-400 shrink-0"><Clock size={13} /></span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 whitespace-nowrap">Próximo contato</div>
+                          <div className="text-[13px] mt-0.5">
+                            {lead.nextFollowUp ? (
+                              <span className="num font-medium text-slate-800 dark:text-slate-100">
+                                {lead.nextFollowUp.toLocaleDateString('pt-BR')} às {lead.nextFollowUp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                              </span>
+                            ) : (
+                              <span className="italic text-slate-400 dark:text-slate-500">Sem agendamento</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Loss banner */}
+                    {lead.status === 'Perda' && lead.lossReason && (
+                      <div className="mx-5 mb-4 p-3 rounded-xl border border-rose-200 dark:border-rose-500/20 bg-rose-50 dark:bg-rose-500/10 flex items-start gap-2.5">
+                        <ThumbsDown size={14} className="text-rose-600 dark:text-rose-300 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="text-[10.5px] font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-300">Motivo da perda</p>
+                          <p className="text-[12.5px] font-medium text-rose-800 dark:text-rose-200 mt-0.5">{lead.lossReason}</p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Observação */}
+                    <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.05]">
+                      <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Contexto inicial</div>
+                      <p className="text-[12.5px] leading-relaxed text-slate-700 dark:text-slate-200">
+                        {lead.observation || <span className="italic text-slate-400">Nenhuma observação registrada no momento do cadastro.</span>}
                       </p>
                     </div>
+
+                    {/* CSAT */}
+                    <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.05]">
+                      <div className="flex items-center justify-between mb-2.5">
+                        <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 inline-flex items-center gap-1.5"><CheckCircle size={12} /> Pesquisa CSAT</div>
+                        <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300 whitespace-nowrap">
+                          {lead.csatStatus === 'answered' ? 'Respondido' : lead.csatStatus === 'pending' ? 'Aguardando' : 'Não enviado'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-1.5 mb-2.5">
+                        <button
+                          type="button"
+                          onClick={() => setCsatStage('pos_agendamento')}
+                          className={`h-9 rounded-lg border text-[11.5px] font-semibold transition ${csatStage === 'pos_agendamento' ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/10 dark:border-brand-500/30 dark:text-brand-300' : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-white/[0.02] dark:border-white/[0.07] text-slate-600 dark:text-slate-300'}`}
+                        >Pós-agendamento</button>
+                        <button
+                          type="button"
+                          onClick={() => setCsatStage('cliente_novo')}
+                          className={`h-9 rounded-lg border text-[11.5px] font-semibold transition ${csatStage === 'cliente_novo' ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/10 dark:border-brand-500/30 dark:text-brand-300' : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-white/[0.02] dark:border-white/[0.07] text-slate-600 dark:text-slate-300'}`}
+                        >Pós-matrícula</button>
+                      </div>
+                      <Btn kind="secondary" icon={<MessageCircle size={13} />} onClick={handleSendCsat} disabled={sendingCsat} className="w-full">
+                        {sendingCsat ? 'Gerando...' : 'Enviar link por WhatsApp'}
+                      </Btn>
+                    </div>
+                  </aside>
+                )}
+              </div>
+
+              {/* RIGHT: Timeline */}
+              <div className="col-span-12 lg:col-span-8 xl:col-span-9 min-w-0 space-y-4">
+                <div>
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                    <Clock size={13} className="text-brand-600" /> Linha do tempo
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-neutral-400 leading-relaxed font-medium">
-                    Lead registrado no CRM na data oficial de {lead.createdAt?.toLocaleDateString('pt-BR') || "data"}.
+                  <h2 className="mt-1.5 text-[22px] font-semibold tracking-tight leading-tight">
+                    Jornada de {firstName}
+                  </h2>
+                  <p className="mt-0.5 text-[13px] text-slate-500 dark:text-slate-400">
+                    Todas as interações, agendamentos e mudanças de fase em ordem cronológica.
                   </p>
                 </div>
-              </div>
-            </div>
 
+                {/* Composer: Registrar Atividade */}
+                <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-5">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Clock size={14} className="text-brand-600" />
+                    <h3 className="text-[14px] font-semibold">Registrar atividade</h3>
+                  </div>
+                  <div className="space-y-3">
+                    {safeFunnels.length > 0 && (
+                      <Field label="Funil">
+                        <StyledSelect value={funnelId || ''} onChange={e => handleFunnelChange(e.target.value)}>
+                          {safeFunnels.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                        </StyledSelect>
+                        {funnelId && funnelId !== (lead.funnelId || null) && (
+                          <p className="text-[11px] text-brand-600 dark:text-brand-300 font-medium mt-1">A etapa será redefinida para a primeira do novo funil.</p>
+                        )}
+                      </Field>
+                    )}
+                    <Field label="Fase do funil">
+                      <StyledSelect value={status} onChange={e => setStatus(e.target.value)}>
+                        {statusesForFunnel.map(s => <option key={s.id} value={s.name}>{s.name}</option>)}
+                        {!statusesForFunnel.some(s => s.name === status) && status && (
+                          <option value={status}>{status}</option>
+                        )}
+                      </StyledSelect>
+                    </Field>
+                    <Field label="Anotações da conversa">
+                      <textarea
+                        value={note}
+                        onChange={e => setNote(e.target.value)}
+                        placeholder="O que foi discutido?"
+                        rows={3}
+                        className="w-full rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
+                      />
+                    </Field>
+
+                    <div className="p-3 rounded-lg bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+                      <label className="inline-flex items-center gap-2 text-[12.5px] font-medium text-slate-700 dark:text-slate-200 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={enableFollowUp}
+                          onChange={e => setEnableFollowUp(e.target.checked)}
+                          className="w-4 h-4 rounded border-slate-300 dark:border-white/15 text-brand-600 focus:ring-brand-500"
+                        />
+                        Agendar próximo contato
+                      </label>
+                      {enableFollowUp && (
+                        <div className="mt-3 space-y-3 animate-fade-in border-t border-slate-200 dark:border-white/[0.06] pt-3">
+                          <div className="grid grid-cols-2 gap-1.5">
+                            {['Mensagem', 'Ligação', 'Visita', 'Aula Experimental'].map(t => (
+                              <button
+                                key={t}
+                                type="button"
+                                onClick={() => setFollowUpType(t)}
+                                className={`h-9 rounded-lg border text-[12px] font-semibold transition ${
+                                  followUpType === t
+                                    ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/10 dark:border-brand-500/30 dark:text-brand-300'
+                                    : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-white/[0.02] dark:border-white/[0.07] text-slate-600 dark:text-slate-300'
+                                }`}
+                              >
+                                {t}
+                              </button>
+                            ))}
+                          </div>
+                          <Field label="Data e hora">
+                            <input
+                              type="datetime-local"
+                              value={followUpDate}
+                              onChange={e => setFollowUpDate(e.target.value)}
+                              className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] num px-3 transition"
+                            />
+                          </Field>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-1">
+                      <Btn kind="brand" icon={<Check size={13} />} onClick={saveInteraction} disabled={loading}>Salvar atividade</Btn>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Timeline */}
+                {(interactions || []).length === 0 ? (
+                  <div className="py-16 grid place-items-center text-slate-400">
+                    <Clock size={22} className="opacity-40 mb-2" />
+                    <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Nenhum evento por aqui ainda</p>
+                    <p className="text-[12.5px]">Registre a primeira atividade acima.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-6 pb-4">
+                    {groupedEvents.map(([label, events]) => (
+                      <section key={label}>
+                        <header className="mb-2 px-1 py-1.5 sticky top-0 bg-paper-50/95 dark:bg-ink-950/95 backdrop-blur z-[1]">
+                          <div className="flex items-center gap-2 pl-1">
+                            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</span>
+                            <div className="flex-1 h-px bg-slate-200/80 dark:bg-white/[0.06] ml-1"></div>
+                            <span className="text-[11px] num text-slate-400 dark:text-slate-500 whitespace-nowrap">{events.length} {events.length === 1 ? 'evento' : 'eventos'}</span>
+                          </div>
+                        </header>
+                        <div className="relative">
+                          <div className="absolute left-[18px] top-0 bottom-0 w-px bg-slate-200 dark:bg-white/[0.08]"></div>
+                          <div className="space-y-1">
+                            {events.map((i) => {
+                              const visual = getInteractionVisual(i, statuses);
+                              const Icon = visual.icon;
+                              return (
+                                <article key={i.id} className="relative pl-12 pr-2 py-2.5 fade-in group">
+                                  <div className={`absolute left-0 top-2.5 z-10 w-9 h-9 rounded-full grid place-items-center shrink-0 ring-4 ring-paper-50 dark:ring-ink-950 ${visual.dot}`}>
+                                    <Icon className="w-3.5 h-3.5" />
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <Avatar name={i.consultantName || 'Sistema'} size={20} />
+                                    <span className="text-[13px] font-semibold text-slate-900 dark:text-white whitespace-nowrap">{i.consultantName || 'Sistema'}</span>
+                                    {visual.stageName ? (
+                                      <span className="text-[12px] text-slate-500 dark:text-slate-400 whitespace-nowrap">moveu para</span>
+                                    ) : (
+                                      <span className={`text-[12px] whitespace-nowrap ${visual.meta || 'text-slate-500 dark:text-slate-400'}`}>{visual.label}</span>
+                                    )}
+                                    {visual.stageName && <StatusBadge statusName={visual.stageName} statusesArray={statuses} />}
+                                    <span className="flex-1"></span>
+                                    <span className="text-[11.5px] num text-slate-400 dark:text-slate-500 whitespace-nowrap" title={i.createdAt?.toLocaleString('pt-BR')}>
+                                      {i.createdAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                  {i.text && (
+                                    <div className={`mt-2 rounded-xl p-3 max-w-[640px] border ${visual.card || 'bg-white border-slate-200 dark:bg-white/[0.03] dark:border-white/[0.06]'}`}>
+                                      <p className={`text-[13px] leading-relaxed whitespace-pre-wrap ${visual.text || 'text-slate-700 dark:text-slate-200'}`}>{i.text}</p>
+                                    </div>
+                                  )}
+                                </article>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </section>
+                    ))}
+
+                    {/* Origin marker */}
+                    <div className="relative pl-12">
+                      <div className="absolute left-[15px] top-0">
+                        <div className="w-3 h-3 rounded-full bg-slate-200 dark:bg-white/[0.1] ring-4 ring-paper-50 dark:ring-ink-950"></div>
+                      </div>
+                      <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 whitespace-nowrap">
+                        Início da jornada · {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+            </div>
           </div>
         </div>
+
       {lossModalOpen && <LossReasonModal lossReasons={lossReasons} onClose={()=>setLossModalOpen(false)} onConfirm={confirmLoss} />}
       </div>
     </>,
