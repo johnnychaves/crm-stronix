@@ -4,6 +4,13 @@
 
 import { writeBatch } from 'firebase/firestore';
 
+// Sentinel for the Dashboard "Todos os funis" (aggregated/general) mode.
+// Stored in localStorage and passed via setSelectedFunnelId(). Chosen to
+// not collide with Firestore-generated IDs (which are alphanumeric).
+export const ALL_FUNNELS_ID = '__all_funnels__';
+
+export const isAllFunnels = (id) => id === ALL_FUNNELS_ID;
+
 export const getDefaultFunnel = (funnels) => {
   if (!Array.isArray(funnels) || funnels.length === 0) return null;
   return funnels.find(f => f.isDefault === true) || funnels[0] || null;
