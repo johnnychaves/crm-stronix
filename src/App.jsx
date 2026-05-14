@@ -3863,6 +3863,10 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   // Composer tab — drives which form is shown in the activity Composer card.
   const [composerTab, setComposerTab] = useState('note');
 
+  // Timeline filter + search
+  const [timelineFilter, setTimelineFilter] = useState('all');
+  const [timelineQuery, setTimelineQuery] = useState('');
+
   const statusesForFunnel = (statuses || []).filter(s => s.funnelId === funnelId);
 
   useEffect(() => {
@@ -4165,7 +4169,75 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
     return Array.from(map.entries());
   };
 
-  const groupedEvents = groupTimeline(interactions || []);
+  // Classify each interaction into one of the 5 design filter buckets.
+  // Inference uses both the `type` field and prefixes injected by the composer.
+  const classifyInteraction = (i) => {
+    const t = String(i.text || '');
+    if (i.type === 'status_change') return 'status';
+    if (/^📲|whatsapp enviada/i.test(t) || /^📞/.test(t)) return 'conversation';
+    if (/retorno agendado|🔔/i.test(t)) return 'appointment';
+    if (/observação do cadastro|csat/i.test(t)) return 'system';
+    if (i.type === 'note') return 'note';
+    return 'system';
+  };
+
+  const TIMELINE_FILTERS = [
+    { id: 'all',          label: 'Tudo' },
+    { id: 'conversation', label: 'Conversas' },
+    { id: 'status',       label: 'Mudanças' },
+    { id: 'appointment',  label: 'Agendamentos' },
+    { id: 'note',         label: 'Anotações' },
+    { id: 'system',       label: 'Sistema' }
+  ];
+
+  const interactionsWithClass = (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }));
+
+  const timelineCounts = (() => {
+    const counts = { all: interactionsWithClass.length, conversation: 0, status: 0, appointment: 0, note: 0, system: 0 };
+    interactionsWithClass.forEach(i => { counts[i._kind] = (counts[i._kind] || 0) + 1; });
+    return counts;
+  })();
+
+  const filteredInteractions = (() => {
+    let list = timelineFilter === 'all' ? interactionsWithClass : interactionsWithClass.filter(i => i._kind === timelineFilter);
+    const q = timelineQuery.trim().toLowerCase();
+    if (q) {
+      list = list.filter(i => `${i.text || ''} ${i.consultantName || ''}`.toLowerCase().includes(q));
+    }
+    return list;
+  })();
+
+  const groupedEvents = groupTimeline(filteredInteractions);
+
+  // Detect appointment metadata embedded in an interaction's text so the
+  // timeline can render the highlighted appointment card. Returns
+  // `{ kind, label, when }` or null.
+  const parseAppointment = (i) => {
+    const t = String(i.text || '');
+    if (!/retorno agendado|🔔/i.test(t)) return null;
+    const typeMatch = t.match(/Retorno agendado \(([^)]+)\)/i);
+    const dateMatch = t.match(/p\/\s*([\d/]+(?:[,\s]+[\d:]+)?)/i);
+    const kindRaw = typeMatch ? typeMatch[1] : '';
+    const lower = kindRaw.toLowerCase();
+    let kind = 'follow', label = kindRaw || 'Próximo contato';
+    if (lower.includes('aula')) { kind = 'class'; label = 'Aula experimental'; }
+    else if (lower.includes('visita')) { kind = 'visit'; label = 'Visita à unidade'; }
+    else if (lower.includes('ligação') || lower.includes('ligacao')) { kind = 'call'; label = 'Ligação'; }
+    else if (lower.includes('mensagem')) { kind = 'message'; label = 'Mensagem'; }
+    let when = null;
+    if (dateMatch) {
+      const raw = dateMatch[1].trim();
+      const [datePart, timePart] = raw.split(/[,\s]+/);
+      const dParts = (datePart || '').split('/');
+      if (dParts.length === 3) {
+        const [day, month, year] = dParts.map(n => parseInt(n, 10));
+        const [hh, mm] = (timePart || '00:00').split(':').map(n => parseInt(n, 10) || 0);
+        when = new Date(year, month - 1, day, hh, mm);
+        if (isNaN(when.getTime())) when = null;
+      }
+    }
+    return { kind, label, when };
+  };
 
   return createPortal(
     <>
@@ -4603,12 +4675,59 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                   </div>
                 </section>
 
+                {/* Timeline filters + search */}
+                {(interactions || []).length > 0 && (
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07]">
+                      {TIMELINE_FILTERS.map(f => {
+                        const active = timelineFilter === f.id;
+                        const c = timelineCounts[f.id] || 0;
+                        return (
+                          <button
+                            key={f.id}
+                            type="button"
+                            onClick={() => setTimelineFilter(f.id)}
+                            className={`h-7 px-2.5 rounded-md text-[12px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition ${
+                              active
+                                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                                : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                            }`}
+                          >
+                            {f.label}
+                            <span className={`num text-[10.5px] px-1 h-[15px] rounded grid place-items-center min-w-[15px] ${
+                              active
+                                ? 'bg-white/20 text-white dark:bg-slate-900/15 dark:text-slate-900'
+                                : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400'
+                            }`}>{c}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="flex-1"></div>
+                    <div className="relative">
+                      <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                      <input
+                        value={timelineQuery}
+                        onChange={e => setTimelineQuery(e.target.value)}
+                        placeholder="Buscar na linha do tempo..."
+                        className="h-9 w-64 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[12.5px] pl-8 pr-3 placeholder:text-slate-400 transition"
+                      />
+                    </div>
+                  </div>
+                )}
+
                 {/* Timeline */}
                 {(interactions || []).length === 0 ? (
                   <div className="py-16 grid place-items-center text-slate-400">
                     <Clock size={22} className="opacity-40 mb-2" />
                     <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Nenhum evento por aqui ainda</p>
                     <p className="text-[12.5px]">Registre a primeira atividade acima.</p>
+                  </div>
+                ) : filteredInteractions.length === 0 ? (
+                  <div className="py-16 grid place-items-center text-slate-400">
+                    <Search size={22} className="opacity-40 mb-2" />
+                    <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Nenhum evento por aqui</p>
+                    <p className="text-[12.5px]">Tente ajustar o filtro ou a busca.</p>
                   </div>
                 ) : (
                   <div className="space-y-6 pb-4">
@@ -4617,6 +4736,9 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                         <header className="mb-2 px-1 py-1.5 sticky top-0 bg-paper-50/95 dark:bg-ink-950/95 backdrop-blur z-[1]">
                           <div className="flex items-center gap-2 pl-1">
                             <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</span>
+                            {events[0]?.createdAt && (
+                              <span className="text-[11.5px] text-slate-400 dark:text-slate-500 num whitespace-nowrap">· {events[0].createdAt.toLocaleDateString('pt-BR')}</span>
+                            )}
                             <div className="flex-1 h-px bg-slate-200/80 dark:bg-white/[0.06] ml-1"></div>
                             <span className="text-[11px] num text-slate-400 dark:text-slate-500 whitespace-nowrap">{events.length} {events.length === 1 ? 'evento' : 'eventos'}</span>
                           </div>
@@ -4627,15 +4749,23 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                             {events.map((i) => {
                               const visual = getInteractionVisual(i, statuses);
                               const Icon = visual.icon;
+                              const appt = parseAppointment(i);
+                              const isAppointment = i._kind === 'appointment';
                               return (
                                 <article key={i.id} className="relative pl-12 pr-2 py-2.5 fade-in group">
-                                  <div className={`absolute left-0 top-2.5 z-10 w-9 h-9 rounded-full grid place-items-center shrink-0 ring-4 ring-paper-50 dark:ring-ink-950 ${visual.dot}`}>
-                                    <Icon className="w-3.5 h-3.5" />
+                                  <div className={`absolute left-0 top-2.5 z-10 w-9 h-9 rounded-full grid place-items-center shrink-0 ring-4 ring-paper-50 dark:ring-ink-950 ${
+                                    isAppointment
+                                      ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
+                                      : visual.dot
+                                  }`}>
+                                    {isAppointment ? <Calendar className="w-3.5 h-3.5" /> : <Icon className="w-3.5 h-3.5" />}
                                   </div>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <Avatar name={i.consultantName || 'Sistema'} size={20} />
                                     <span className="text-[13px] font-semibold text-slate-900 dark:text-white whitespace-nowrap">{i.consultantName || 'Sistema'}</span>
-                                    {visual.stageName ? (
+                                    {isAppointment ? (
+                                      <span className="text-[12px] text-brand-700 dark:text-brand-300 whitespace-nowrap">criou um agendamento</span>
+                                    ) : visual.stageName ? (
                                       <span className="text-[12px] text-slate-500 dark:text-slate-400 whitespace-nowrap">moveu para</span>
                                     ) : (
                                       <span className={`text-[12px] whitespace-nowrap ${visual.meta || 'text-slate-500 dark:text-slate-400'}`}>{visual.label}</span>
@@ -4646,11 +4776,28 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                                       {i.createdAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                   </div>
-                                  {i.text && (
+                                  {isAppointment && appt && appt.when ? (
+                                    <div className="mt-2 max-w-[520px] rounded-xl border border-brand-200/70 dark:border-brand-500/20 bg-gradient-to-br from-brand-50 to-white dark:from-brand-500/10 dark:to-transparent p-4">
+                                      <div className="flex items-center gap-3">
+                                        <div className="text-center shrink-0">
+                                          <div className="text-[10px] font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-300">{appt.when.toLocaleString('pt-BR', { month: 'short' }).replace('.', '')}</div>
+                                          <div className="num text-[24px] font-semibold tracking-tight leading-none text-brand-700 dark:text-brand-300">{String(appt.when.getDate()).padStart(2, '0')}</div>
+                                          <div className="text-[10.5px] text-brand-600 dark:text-brand-300 num mt-0.5">{appt.when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+                                        </div>
+                                        <div className="w-px h-12 bg-brand-200/70 dark:bg-brand-500/20"></div>
+                                        <div className="flex-1 min-w-0">
+                                          <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-300">
+                                            {appt.kind === 'class' ? <BookOpen size={11} /> : appt.kind === 'visit' ? <Building2 size={11} /> : appt.kind === 'call' ? <Phone size={11} /> : <MessageCircle size={11} />} {appt.label}
+                                          </div>
+                                          <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white mt-0.5">{appt.when.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : i.text ? (
                                     <div className={`mt-2 rounded-xl p-3 max-w-[640px] border ${visual.card || 'bg-white border-slate-200 dark:bg-white/[0.03] dark:border-white/[0.06]'}`}>
                                       <p className={`text-[13px] leading-relaxed whitespace-pre-wrap ${visual.text || 'text-slate-700 dark:text-slate-200'}`}>{i.text}</p>
                                     </div>
-                                  )}
+                                  ) : null}
                                 </article>
                               );
                             })}
@@ -4660,14 +4807,16 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                     ))}
 
                     {/* Origin marker */}
-                    <div className="relative pl-12">
-                      <div className="absolute left-[15px] top-0">
-                        <div className="w-3 h-3 rounded-full bg-slate-200 dark:bg-white/[0.1] ring-4 ring-paper-50 dark:ring-ink-950"></div>
+                    {timelineFilter === 'all' && !timelineQuery && (
+                      <div className="relative pl-12">
+                        <div className="absolute left-[15px] top-0">
+                          <div className="w-3 h-3 rounded-full bg-slate-200 dark:bg-white/[0.1] ring-4 ring-paper-50 dark:ring-ink-950"></div>
+                        </div>
+                        <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 whitespace-nowrap">
+                          Início da jornada · {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
+                        </p>
                       </div>
-                      <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 whitespace-nowrap">
-                        Início da jornada · {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
-                      </p>
-                    </div>
+                    )}
                   </div>
                 )}
               </div>
