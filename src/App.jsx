@@ -5127,16 +5127,17 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
       hint="Crie funis paralelos (Comercial, Indicação, Inativos, Renovações…) e configure as etapas"
       icon={<Kanban size={16} />}
     >
-      <form onSubmit={handleAdd} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
-        <input
-          placeholder="NOME DO FUNIL (EX: INDICAÇÃO)..."
-          value={name}
-          onChange={e => setName(e.target.value)}
-          className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
-        />
-        <button type="submit" className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-lg shadow-blue-600/20 hover:bg-blue-700 active:scale-95 transition-all">
-          ADICIONAR FUNIL
-        </button>
+      <form onSubmit={handleAdd} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+        <div className="flex-1 min-w-[220px]">
+          <StyledInput
+            icon={<Kanban size={14} />}
+            placeholder="Nome do funil (ex: Indicação)"
+            value={name}
+            onChange={e => setName(e.target.value)}
+            required
+          />
+        </div>
+        <Btn kind="primary" type="submit" icon={<Zap size={13} />}>Adicionar funil</Btn>
       </form>
 
       <div className="space-y-4">
