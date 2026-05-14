@@ -4182,17 +4182,194 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 // ==========================================
 // CONFIGURAÇÕES (ADMIN)ADMIN)
 // ==========================================
+// ==========================================
+// SETTINGS — DESIGN PRIMITIVES
+// ==========================================
+
+function Field({ label, hint, children, error }) {
+  return (
+    <div className="space-y-1.5">
+      {label && (
+        <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
+          {label}
+        </label>
+      )}
+      {children}
+      {hint && !error && <p className="text-[11.5px] text-slate-500 dark:text-slate-400">{hint}</p>}
+      {error && <p className="text-[11.5px] text-rose-600 dark:text-rose-300">{error}</p>}
+    </div>
+  );
+}
+
+const StyledInput = React.forwardRef(function StyledInput({ icon, className = '', ...p }, ref) {
+  return (
+    <div className="relative">
+      {icon && (
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+          {icon}
+        </span>
+      )}
+      <input
+        ref={ref}
+        {...p}
+        className={`w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:focus:border-white/20 outline-none text-[13px] ${icon ? 'pl-9' : 'pl-3'} pr-3 placeholder:text-slate-400 transition ${className}`}
+      />
+    </div>
+  );
+});
+
+function StyledSelect({ children, className = '', ...p }) {
+  return (
+    <select
+      {...p}
+      className={`w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:focus:border-white/20 outline-none text-[13px] pl-3 pr-8 transition appearance-none cursor-pointer ${className}`}
+      style={{
+        backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'><path d='M3 5l3 3 3-3'/></svg>")`,
+        backgroundRepeat: 'no-repeat',
+        backgroundPosition: 'right .7rem center'
+      }}
+    >
+      {children}
+    </select>
+  );
+}
+
+// Tailwind 4 color name → utility classnames for the pipeline/tag badges.
+// Maps to the colors used historically by the app (statusGradientMap keys) so
+// existing data still renders sensibly under new visual treatment.
+function settingsColorTone(color) {
+  const palette = {
+    blue:    { dot: 'bg-blue-500',    soft: 'bg-blue-50',    text: 'text-blue-700',    darkSoft: 'dark:bg-blue-500/10',    darkText: 'dark:text-blue-300',    strong: 'bg-blue-500' },
+    indigo:  { dot: 'bg-indigo-500',  soft: 'bg-indigo-50',  text: 'text-indigo-700',  darkSoft: 'dark:bg-indigo-500/10',  darkText: 'dark:text-indigo-300',  strong: 'bg-indigo-500' },
+    violet:  { dot: 'bg-violet-500',  soft: 'bg-violet-50',  text: 'text-violet-700',  darkSoft: 'dark:bg-violet-500/10',  darkText: 'dark:text-violet-300',  strong: 'bg-violet-500' },
+    purple:  { dot: 'bg-purple-500',  soft: 'bg-purple-50',  text: 'text-purple-700',  darkSoft: 'dark:bg-purple-500/10',  darkText: 'dark:text-purple-300',  strong: 'bg-purple-500' },
+    pink:    { dot: 'bg-pink-500',    soft: 'bg-pink-50',    text: 'text-pink-700',    darkSoft: 'dark:bg-pink-500/10',    darkText: 'dark:text-pink-300',    strong: 'bg-pink-500' },
+    rose:    { dot: 'bg-rose-500',    soft: 'bg-rose-50',    text: 'text-rose-700',    darkSoft: 'dark:bg-rose-500/10',    darkText: 'dark:text-rose-300',    strong: 'bg-rose-500' },
+    red:     { dot: 'bg-red-500',     soft: 'bg-red-50',     text: 'text-red-700',     darkSoft: 'dark:bg-red-500/10',     darkText: 'dark:text-red-300',     strong: 'bg-red-500' },
+    orange:  { dot: 'bg-orange-500',  soft: 'bg-orange-50',  text: 'text-orange-700',  darkSoft: 'dark:bg-orange-500/10',  darkText: 'dark:text-orange-300',  strong: 'bg-orange-500' },
+    amber:   { dot: 'bg-amber-500',   soft: 'bg-amber-50',   text: 'text-amber-700',   darkSoft: 'dark:bg-amber-500/10',   darkText: 'dark:text-amber-300',   strong: 'bg-amber-500' },
+    yellow:  { dot: 'bg-yellow-500',  soft: 'bg-yellow-50',  text: 'text-yellow-700',  darkSoft: 'dark:bg-yellow-500/10',  darkText: 'dark:text-yellow-300',  strong: 'bg-yellow-500' },
+    lime:    { dot: 'bg-lime-500',    soft: 'bg-lime-50',    text: 'text-lime-700',    darkSoft: 'dark:bg-lime-500/10',    darkText: 'dark:text-lime-300',    strong: 'bg-lime-500' },
+    green:   { dot: 'bg-green-500',   soft: 'bg-green-50',   text: 'text-green-700',   darkSoft: 'dark:bg-green-500/10',   darkText: 'dark:text-green-300',   strong: 'bg-green-500' },
+    emerald: { dot: 'bg-emerald-500', soft: 'bg-emerald-50', text: 'text-emerald-700', darkSoft: 'dark:bg-emerald-500/10', darkText: 'dark:text-emerald-300', strong: 'bg-emerald-500' },
+    teal:    { dot: 'bg-teal-500',    soft: 'bg-teal-50',    text: 'text-teal-700',    darkSoft: 'dark:bg-teal-500/10',    darkText: 'dark:text-teal-300',    strong: 'bg-teal-500' },
+    cyan:    { dot: 'bg-cyan-500',    soft: 'bg-cyan-50',    text: 'text-cyan-700',    darkSoft: 'dark:bg-cyan-500/10',    darkText: 'dark:text-cyan-300',    strong: 'bg-cyan-500' },
+    sky:     { dot: 'bg-sky-500',     soft: 'bg-sky-50',     text: 'text-sky-700',     darkSoft: 'dark:bg-sky-500/10',     darkText: 'dark:text-sky-300',     strong: 'bg-sky-500' },
+    brand:   { dot: 'bg-brand-600',   soft: 'bg-brand-50',   text: 'text-brand-700',   darkSoft: 'dark:bg-brand-500/10',   darkText: 'dark:text-brand-300',   strong: 'bg-brand-600' },
+    slate:   { dot: 'bg-slate-400',   soft: 'bg-slate-100',  text: 'text-slate-700',   darkSoft: 'dark:bg-white/[0.05]',   darkText: 'dark:text-slate-300',   strong: 'bg-slate-400' }
+  };
+  return palette[color] || palette.slate;
+}
+
+function ColorBadge({ color, name, size = 'md' }) {
+  const t = settingsColorTone(color);
+  const sizing = size === 'sm' ? 'text-[11px] px-2 py-0.5' : 'text-[12px] px-2.5 py-1';
+  return (
+    <span className={`inline-flex items-center gap-1.5 font-semibold rounded-md whitespace-nowrap ${sizing} ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`}></span>
+      {name}
+    </span>
+  );
+}
+
+function ColorDot({ color, active, onClick, size = 22 }) {
+  const t = settingsColorTone(color);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      style={{ width: size, height: size }}
+      className={`rounded-full grid place-items-center transition ${t.strong} ${active ? 'ring-2 ring-offset-2 ring-slate-900 dark:ring-white dark:ring-offset-neutral-900 scale-110' : 'ring-1 ring-black/[0.06] hover:scale-105'}`}
+      title={color}
+    >
+      {active && <Check size={12} className="text-white" />}
+    </button>
+  );
+}
+
+function SettingsCard({ title, hint, icon, action, children, padded = true, className = '' }) {
+  return (
+    <section className={`rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card ${className}`}>
+      {(title || action) && (
+        <header className="px-6 py-5 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.05]">
+          <div className="flex items-center gap-3 min-w-0">
+            {icon && (
+              <span className="w-9 h-9 rounded-lg grid place-items-center bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300 shrink-0">
+                {icon}
+              </span>
+            )}
+            <div className="min-w-0">
+              <h3 className="text-[15px] font-semibold whitespace-nowrap">{title}</h3>
+              {hint && <p className="text-[12px] text-slate-500 dark:text-slate-400 truncate mt-0.5">{hint}</p>}
+            </div>
+          </div>
+          {action}
+        </header>
+      )}
+      <div className={padded ? 'p-6' : ''}>{children}</div>
+    </section>
+  );
+}
+
+function SettingsTabItem({ icon, label, hint, badge, active, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full p-3 rounded-xl flex items-start gap-3 text-left transition group ${
+        active
+          ? 'bg-brand-50 dark:bg-brand-500/10 ring-1 ring-brand-200 dark:ring-brand-500/20'
+          : 'hover:bg-slate-50 dark:hover:bg-white/[0.03]'
+      }`}
+    >
+      <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 transition ${
+        active
+          ? 'bg-brand-600 text-white'
+          : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400 group-hover:bg-slate-200 dark:group-hover:bg-white/[0.1]'
+      }`}>
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className={`text-[13px] font-semibold whitespace-nowrap ${active ? 'text-brand-700 dark:text-brand-300' : 'text-slate-900 dark:text-white'}`}>{label}</span>
+          {badge != null && (
+            <span className={`text-[10.5px] font-bold num px-1.5 h-[18px] rounded-md min-w-[18px] grid place-items-center ${
+              active ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-700 dark:bg-white/[0.08] dark:text-slate-300'
+            }`}>{badge}</span>
+          )}
+        </div>
+        {hint && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">{hint}</div>}
+      </div>
+    </button>
+  );
+}
+
+function SettingsRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 whitespace-nowrap">{label}</span>
+      <span className="text-right">{value}</span>
+    </div>
+  );
+}
+
 function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels }) {
   const [activeTab, setActiveTab] = useState('users');
   const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
 
+  const usersCount = (usersList || []).length;
+  const funnelsCount = (funnels || []).length;
+  const tagsCount = (tags || []).length;
+  const sourcesCount = (sources || []).length;
+  const lossCount = (lossReasons || []).length;
+
   const tabs = [
-    { id: 'users', label: 'Consultores', icon: Users },
-    { id: 'transfer', label: 'Migrar Leads', icon: ArrowRightLeft },
-    { id: 'statuses', label: 'Funil Pipeline', icon: Kanban },
-    { id: 'tags', label: 'Etiquetas', icon: Tag },
-    { id: 'sources', label: 'Origens', icon: Filter },
-    { id: 'lossReasons', label: 'Motivos de Perda', icon: ThumbsDown }
+    { id: 'users',       label: 'Consultores',      hint: 'Time, credenciais e turnos',       icon: <Users size={15} />,         badge: usersCount },
+    { id: 'transfer',    label: 'Migrar leads',     hint: 'Transferir base entre consultores', icon: <ArrowRightLeft size={15} />, badge: null },
+    { id: 'statuses',    label: 'Funil pipeline',   hint: 'Etapas do processo comercial',     icon: <Kanban size={15} />,        badge: funnelsCount },
+    { id: 'tags',        label: 'Etiquetas',        hint: 'Marcadores para segmentar leads',  icon: <Tag size={15} />,           badge: tagsCount },
+    { id: 'sources',     label: 'Origens',          hint: 'De onde os leads chegam',          icon: <Filter size={15} />,        badge: sourcesCount },
+    { id: 'lossReasons', label: 'Motivos de perda', hint: 'Justificativas padrão de perda',   icon: <ThumbsDown size={15} />,    badge: lossCount }
   ];
 
   const goToTab = (tab) => {
@@ -4203,52 +4380,61 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
   const funnelInTab = (funnels || []).find(f => f.id === selectedFunnelInTab);
 
   return (
-    <div className="h-full flex flex-col md:flex-row gap-6 animate-fade-in max-w-7xl mx-auto w-full">
-      {/* Sidebar */}
-      <div className="w-full md:w-64 shrink-0 flex flex-col gap-2">
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 px-2">Configurações</h2>
-        <div className="flex flex-col gap-1 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-2 rounded-2xl shadow-xl">
-          {tabs.map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => goToTab(tab.id)}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all ${isActive
-                    ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400'
-                    : 'text-gray-500 hover:bg-gray-50 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-200'
-                  }`}
-              >
-                <Icon className="w-4 h-4" />
-                {tab.label}
-              </button>
-            );
-          })}
+    <div className="animate-fade-in font-sans space-y-6">
+      {/* Page hero */}
+      <section>
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <Settings size={13} className="text-brand-600" /> Configurações
         </div>
-      </div>
+        <h2 className="mt-1.5 text-[24px] font-semibold tracking-tight leading-tight">
+          Ajustes da operação
+        </h2>
+        <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
+          Configure o seu CRM — equipe, funil, marcadores e regras de negócio.
+        </p>
+      </section>
 
-      {/* Content Area */}
-      <div className="flex-1 overflow-x-hidden">
-        {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
-        {activeTab === 'statuses' && !selectedFunnelInTab && (
-          <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
-        )}
-        {activeTab === 'statuses' && selectedFunnelInTab && (
-          <div className="space-y-4">
-            <button
-              onClick={() => setSelectedFunnelInTab(null)}
-              className="text-sm font-semibold text-blue-600 hover:text-blue-700 bg-blue-500/10 hover:bg-blue-500/20 px-5 py-3 rounded-2xl transition-all active:scale-95"
-            >
-              ← Voltar para Funis
-            </button>
-            <ManageStatusesTab db={db} statuses={statuses} leads={leads} funnelId={selectedFunnelInTab} funnelName={funnelInTab?.name} />
+      <div className="grid grid-cols-12 gap-6">
+        {/* Tabs nav */}
+        <aside className="col-span-12 lg:col-span-3">
+          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-2 space-y-1 lg:sticky lg:top-20">
+            {tabs.map(t => (
+              <SettingsTabItem
+                key={t.id}
+                icon={t.icon}
+                label={t.label}
+                hint={t.hint}
+                badge={t.badge}
+                active={activeTab === t.id}
+                onClick={() => goToTab(t.id)}
+              />
+            ))}
           </div>
-        )}
-        {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} leads={leads} />}
-        {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
-        {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} leads={leads} />}
-        {activeTab === 'lossReasons' && <ManageLossReasonsTab db={db} lossReasons={lossReasons} leads={leads} />}
+        </aside>
+
+        {/* Content */}
+        <div className="col-span-12 lg:col-span-9 space-y-6" key={activeTab}>
+          {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
+          {activeTab === 'statuses' && !selectedFunnelInTab && (
+            <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
+          )}
+          {activeTab === 'statuses' && selectedFunnelInTab && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setSelectedFunnelInTab(null)}
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-700 dark:text-brand-300 hover:text-brand-800 dark:hover:text-brand-200 bg-brand-50 hover:bg-brand-100 dark:bg-brand-500/10 dark:hover:bg-brand-500/15 px-3 py-2 rounded-lg transition active:scale-95"
+              >
+                <ChevronRight size={14} className="rotate-180" />
+                Voltar para funis
+              </button>
+              <ManageStatusesTab db={db} statuses={statuses} leads={leads} funnelId={selectedFunnelInTab} funnelName={funnelInTab?.name} />
+            </div>
+          )}
+          {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} leads={leads} />}
+          {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
+          {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} leads={leads} />}
+          {activeTab === 'lossReasons' && <ManageLossReasonsTab db={db} lossReasons={lossReasons} leads={leads} />}
+        </div>
       </div>
     </div>
   );
@@ -4444,28 +4630,20 @@ function ManageUsersTab({ db, appUser }) {
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
-      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
-        <div>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-            <Users className="w-6 h-6 text-blue-500" /> Equipe STRONIX
-          </h3>
-          <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">
-            Cadastro interno e credenciais de acesso
-          </p>
-        </div>
-
-        <div className="flex justify-end w-full md:w-auto mt-4 md:mt-0">
-          <button
-            type="button"
-            onClick={handleToggleAddEdit}
-            className="text-blue-500 hover:text-blue-600 font-bold uppercase tracking-widest text-[10px] transition-colors"
-          >
-            {showAdd || editingUser ? 'CANCELAR EDIÇÃO' : '+ ADICIONAR NOVO CONSULTOR'}
-          </button>
-        </div>
-      </div>
-
+    <SettingsCard
+      title="Consultores"
+      hint="Cadastre e gerencie quem tem acesso ao CRM"
+      icon={<Users size={16} />}
+      action={
+        <Btn
+          kind={showAdd || editingUser ? 'soft' : 'brand'}
+          icon={showAdd || editingUser ? <X size={13} /> : <Plus size={13} />}
+          onClick={handleToggleAddEdit}
+        >
+          {showAdd || editingUser ? 'Cancelar' : 'Novo consultor'}
+        </Btn>
+      }
+    >
       {(showAdd || editingUser) && (
         <form
           onSubmit={editingUser ? update : add}
@@ -4714,7 +4892,7 @@ function ManageUsersTab({ db, appUser }) {
           </div>
         ))}
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -4801,16 +4979,11 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
-      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-          <Kanban className="w-6 h-6 text-blue-500" /> Funis Ativos
-        </h3>
-        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">
-          Crie funis paralelos (Comercial, Indicação, Inativos, Renovações…) e configure as etapas de cada um
-        </p>
-      </div>
-
+    <SettingsCard
+      title="Funis ativos"
+      hint="Crie funis paralelos (Comercial, Indicação, Inativos, Renovações…) e configure as etapas"
+      icon={<Kanban size={16} />}
+    >
       <form onSubmit={handleAdd} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
         <input
           placeholder="NOME DO FUNIL (EX: INDICAÇÃO)..."
@@ -4907,7 +5080,7 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
           </div>
         ))}
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -4975,14 +5148,11 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
-      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-          <Kanban className="w-6 h-6 text-blue-500" /> Pipeline: {funnelName || 'Funil'}
-        </h3>
-        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">Defina as etapas da jornada deste funil</p>
-      </div>
-
+    <SettingsCard
+      title={`Pipeline · ${funnelName || 'Funil'}`}
+      hint="Defina as etapas da jornada deste funil"
+      icon={<Kanban size={16} />}
+    >
       <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
         <input placeholder="ETAPA..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
         <select value={color} onChange={e => setColor(e.target.value)} className="bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold uppercase shadow-sm">
@@ -5039,7 +5209,7 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
           </div>
         ))}
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -5084,14 +5254,11 @@ function ManageSourcesTab({ db, sources, leads }) {
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
-      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-          <Globe className="w-6 h-6 text-blue-500" /> Origens de Alunos
-        </h3>
-        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">Controle de onde vêm os seus leads</p>
-      </div>
-
+    <SettingsCard
+      title="Origens"
+      hint="Controle de onde vêm os seus leads"
+      icon={<Globe size={16} />}
+    >
       <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
         <input placeholder="Ex: TikTok, Facebook Ads..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
         {editingId ? (
@@ -5115,7 +5282,7 @@ function ManageSourcesTab({ db, sources, leads }) {
           </div>
         ))}
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -5160,14 +5327,11 @@ function ManageTagsTab({ db, tags, leads }) {
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
-      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-          <Tag className="w-6 h-6 text-blue-500" /> Etiquetas
-        </h3>
-        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">Organize e classifique seus leads</p>
-      </div>
-
+    <SettingsCard
+      title="Etiquetas"
+      hint="Marcadores rápidos para segmentar e filtrar leads"
+      icon={<Tag size={16} />}
+    >
       <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-blue-100 dark:border-blue-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
         <input placeholder="ETIQUETA (EX: VIP)..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
         <select value={color} onChange={e => setColor(e.target.value)} className="bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold uppercase shadow-sm">
@@ -5206,7 +5370,7 @@ function ManageTagsTab({ db, tags, leads }) {
           </div>
         ))}
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -5251,14 +5415,11 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
   };
 
   return (
-    <div className="bg-white dark:bg-neutral-900 border border-gray-100 dark:border-neutral-800 rounded-[2rem] p-8 shadow-sm animate-fade-in flex flex-col">
-      <div className="mb-8 border-b border-gray-100 dark:border-neutral-800 pb-5">
-        <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-          <ThumbsDown className="w-6 h-6 text-red-500" /> Motivos de Perda
-        </h3>
-        <p className="text-xs font-semibold text-gray-400 mt-2 uppercase tracking-widest">Categorize por que os leads não fecharam</p>
-      </div>
-
+    <SettingsCard
+      title="Motivos de perda"
+      hint="Justificativas padronizadas para análise de perdas"
+      icon={<ThumbsDown size={16} />}
+    >
       <form onSubmit={save} className="relative bg-white dark:bg-neutral-900/80 p-6 rounded-[2rem] border border-red-100 dark:border-red-900/30 shadow-xl flex flex-col md:flex-row gap-4 mb-8">
         <input placeholder="Ex: Achou caro, Longe de casa..." required value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-red-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm" />
         {editingId ? (
@@ -5282,7 +5443,7 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
           </div>
         ))}
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -5394,20 +5555,11 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
   };
 
   return (
-    <div className="relative bg-white dark:bg-neutral-900/80 p-8 sm:p-10 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30 shadow-2xl max-w-3xl mx-auto flex flex-col mt-4 animate-fade-in">
-      
-      <div className="mb-8 text-center flex flex-col items-center justify-center border-b border-gray-100 dark:border-neutral-800 pb-8">
-        <div className="w-16 h-16 bg-blue-50 dark:bg-blue-900/20 rounded-full flex items-center justify-center mb-4 shadow-inner">
-          <ArrowRightLeft className="w-8 h-8 text-blue-500" />
-        </div>
-        <h3 className="text-2xl font-black text-gray-900 dark:text-white uppercase tracking-wider">
-          Migração em Massa
-        </h3>
-        <p className="text-xs font-semibold text-gray-500 dark:text-neutral-400 mt-2 uppercase tracking-widest max-w-sm">
-          Transfira carteiras completas de leads de um consultor para outro de forma segura
-        </p>
-      </div>
-
+    <SettingsCard
+      title="Migrar leads"
+      hint="Transfira a base de um consultor para outro"
+      icon={<ArrowRightLeft size={16} />}
+    >
       <div className="space-y-6 relative">
         <div className="space-y-2">
           <label className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 block uppercase tracking-widest px-2">De (Consultor Antigo)</label>
@@ -5444,7 +5596,7 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
           )}
         </button>
       </div>
-    </div>
+    </SettingsCard>
   );
 }
 
@@ -5580,19 +5732,23 @@ function TimePill({ icon, children, tone = 'slate' }) {
   );
 }
 
-function Btn({ kind = 'secondary', icon, children, onClick, type = 'button' }) {
+function Btn({ kind = 'secondary', icon, children, onClick, type = 'button', disabled, size = 'sm', className = '' }) {
   const styles = {
-    primary: 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm',
+    primary:   'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm',
+    brand:     'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
     secondary: 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 dark:bg-white/[0.04] dark:text-slate-200 dark:border-white/10 dark:hover:bg-white/[0.08]',
-    success: 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm',
-    soft: 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 dark:hover:bg-white/[0.12]',
-    danger: 'bg-white text-rose-600 hover:bg-rose-50 border border-slate-200 dark:bg-white/[0.04] dark:border-white/10 dark:hover:bg-rose-500/10'
+    success:   'bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm',
+    soft:      'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 dark:hover:bg-white/[0.12]',
+    danger:    'bg-white text-rose-600 hover:bg-rose-50 border border-slate-200 dark:bg-white/[0.04] dark:border-white/10 dark:hover:bg-rose-500/10',
+    ghost:     'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06]'
   };
+  const sizing = size === 'md' ? 'h-9 px-3.5 text-[12.5px]' : 'h-8 px-3 text-[12px]';
   return (
     <button
       type={type}
       onClick={onClick}
-      className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12px] font-semibold whitespace-nowrap transition active:scale-[.98] ${styles[kind]}`}
+      disabled={disabled}
+      className={`inline-flex items-center gap-1.5 ${sizing} rounded-lg font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed ${styles[kind] || styles.secondary} ${className}`}
     >
       {icon}
       {children}
@@ -5600,13 +5756,18 @@ function Btn({ kind = 'secondary', icon, children, onClick, type = 'button' }) {
   );
 }
 
-function IconBtn({ icon, title, onClick }) {
+function IconBtn({ icon, title, onClick, kind = 'default', className = '' }) {
+  const styles = {
+    default: 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06]',
+    edit:    'text-slate-400 hover:text-brand-700 hover:bg-brand-50 dark:hover:text-brand-300 dark:hover:bg-brand-500/10',
+    danger:  'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:text-rose-300 dark:hover:bg-rose-500/10'
+  };
   return (
     <button
       type="button"
       title={title}
       onClick={onClick}
-      className="w-8 h-8 grid place-items-center rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] transition"
+      className={`w-8 h-8 grid place-items-center rounded-lg transition ${styles[kind] || styles.default} ${className}`}
     >
       {icon}
     </button>
