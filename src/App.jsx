@@ -6960,9 +6960,10 @@ function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOu
       </div>
       <div className="mt-3 flex items-center gap-1.5">
         <Btn kind="soft" icon={<WhatsappGlyph size={13} />} onClick={() => onWhatsapp && onWhatsapp(task)}>WhatsApp</Btn>
-        {!task.appointmentOutcome && (
-          <Btn kind="success" icon={<CheckCircle size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'attended', slug, e)}>Compareceu</Btn>
-        )}
+        {/* NextUp deriva de pendingBySlug (categoria sempre pendente). O campo
+            appointmentOutcome no doc pode estar stale de um agendamento anterior,
+            por isso não condicionamos o botão a ele. */}
+        <Btn kind="success" icon={<CheckCircle size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'attended', slug, e)}>Compareceu</Btn>
       </div>
     </div>
   );
@@ -7027,8 +7028,12 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, 
   const isOverdue = slug === DAILY_GOAL_CATEGORIES.ATRASADO;
   const isNovo = slug === DAILY_GOAL_CATEGORIES.NOVO_24H;
   const Icon = m.Icon;
-  const outcome = task.appointmentOutcome || null;
-  const outcomeMeta = outcome ? getAppointmentOutcomeMeta(outcome) : null;
+  // TaskCard só renderiza para categorias pendentes (filtro em pendingBySlug),
+  // então qualquer appointmentOutcome no documento é de um agendamento ANTERIOR
+  // já tratado (o campo persiste entre agendamentos). Ignorar para não
+  // bloquear as ações do agendamento atual com um "Desfecho registrado" stale.
+  const outcome = null;
+  const outcomeMeta = null;
 
   const apptDate = getLeadAppointmentDate(task);
   const appointmentLabel = (isAppt && apptDate) ? `Hoje · ${formatHourLabel(apptDate)}` : null;
@@ -7110,15 +7115,13 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, 
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
-          {isAppt && !outcome ? (
+          {isAppt ? (
             <>
               <Btn kind="success" icon={<Check size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'attended', slug, e)}>Compareceu</Btn>
               <Btn kind="secondary" icon={<X size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'no_show', slug, e)}>Não veio</Btn>
               <Btn kind="soft" onClick={(e) => { e.stopPropagation(); onReschedule && onReschedule(task, slug); }}>Remarcou</Btn>
               <Btn kind="soft" onClick={(e) => onOutcome && onOutcome(task, 'cancelled', slug, e)}>Cancelou</Btn>
             </>
-          ) : isAppt && outcome ? (
-            <span className="text-[11px] font-medium text-slate-400 italic">Desfecho registrado</span>
           ) : (
             <Btn kind="primary" icon={<Check size={14} />} onClick={(e) => { e.stopPropagation(); onGoalDone && onGoalDone(task, slug, '', e); }}>Concluir</Btn>
           )}
@@ -7128,9 +7131,12 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, 
   );
 }
 
-function DoneCard({ lead, onOpen }) {
+function DoneCard({ lead, onOpen, onReschedule }) {
   const firstDoneSlug = (lead.categorySlugs || []).find(s => lead.categoryStatus?.[s]);
   const outcomeMeta = lead.appointmentOutcome ? getAppointmentOutcomeMeta(lead.appointmentOutcome) : null;
+  const apptSlug = (lead.categorySlugs || []).find(
+    s => s === DAILY_GOAL_CATEGORIES.VISITA_HOJE || s === DAILY_GOAL_CATEGORIES.AULA_HOJE
+  );
   return (
     <div
       onClick={() => onOpen && onOpen(lead)}
@@ -7151,6 +7157,16 @@ function DoneCard({ lead, onOpen }) {
           <div className="text-[11.5px] text-slate-500 dark:text-slate-400">Concluído</div>
         )}
       </div>
+      {apptSlug && onReschedule && (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onReschedule(lead, apptSlug); }}
+          title="Remarcar agendamento"
+          className="w-7 h-7 grid place-items-center rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] transition shrink-0"
+        >
+          <RefreshCw size={13} />
+        </button>
+      )}
       <ChevronRight size={16} className="text-slate-400" />
     </div>
   );
@@ -7844,7 +7860,14 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                   Nenhuma tarefa concluída ainda — a primeira virá em breve.
                 </div>
               ) : (
-                done.map(lead => <DoneCard key={lead.id} lead={lead} onOpen={setSelectedLead} />)
+                done.map(lead => (
+                  <DoneCard
+                    key={lead.id}
+                    lead={lead}
+                    onOpen={setSelectedLead}
+                    onReschedule={(l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
+                  />
+                ))
               )}
             </div>
           </div>
