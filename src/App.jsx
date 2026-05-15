@@ -178,6 +178,68 @@ const isColdLead = (lead, interactions) => {
   return days !== null && days >= 7;
 };
 
+// --- KANBAN: cor de destaque por coluna (faixa do card + bolinha do header) ---
+const KANBAN_COLUMN_ACCENT = {
+  blue:   { dot: 'bg-blue-500',    border: '#3b82f6' },
+  green:  { dot: 'bg-emerald-500', border: '#10b981' },
+  yellow: { dot: 'bg-amber-500',   border: '#f59e0b' },
+  red:    { dot: 'bg-rose-500',    border: '#f43f5e' },
+  purple: { dot: 'bg-violet-500',  border: '#8b5cf6' },
+  orange: { dot: 'bg-orange-500',  border: '#f97316' },
+  gray:   { dot: 'bg-slate-400',   border: '#94a3b8' },
+  teal:   { dot: 'bg-teal-500',    border: '#14b8a6' },
+  pink:   { dot: 'bg-pink-500',    border: '#ec4899' },
+  indigo: { dot: 'bg-indigo-500',  border: '#6366f1' },
+  lime:   { dot: 'bg-lime-500',    border: '#84cc16' },
+};
+const getKanbanColumnAccent = (color) => KANBAN_COLUMN_ACCENT[color] || KANBAN_COLUMN_ACCENT.gray;
+
+// --- KANBAN: avatar com iniciais (cor estável por hash do nome) ---
+const KANBAN_AVATAR_PALETTES = [
+  ['#fde68a','#92400e'], ['#bbf7d0','#065f46'], ['#bae6fd','#075985'],
+  ['#fbcfe8','#9d174d'], ['#ddd6fe','#5b21b6'], ['#fecaca','#9f1212'],
+  ['#a7f3d0','#065f46'], ['#fef08a','#854d0e'],
+];
+const getKanbanAvatarPalette = (seed = '') => {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return KANBAN_AVATAR_PALETTES[h % KANBAN_AVATAR_PALETTES.length];
+};
+const getKanbanInitials = (name = '') => {
+  const parts = String(name).trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
+};
+function KanbanAvatar({ name = '', size = 32 }) {
+  const [bg, fg] = getKanbanAvatarPalette(name);
+  return (
+    <div
+      className="rounded-full grid place-items-center font-semibold shrink-0 ring-1 ring-black/5"
+      style={{ width: size, height: size, background: bg, color: fg, fontSize: Math.round(size * 0.36) }}
+    >
+      {getKanbanInitials(name)}
+    </div>
+  );
+}
+
+// --- KANBAN: formatação relativa de datas ---
+const fmtKanbanRelDate = (d) => {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startThat = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const days = Math.round((startThat - startToday) / 86400000);
+  if (days === 0) return 'Hoje';
+  if (days === 1) return 'Amanhã';
+  if (days === -1) return 'Ontem';
+  if (days > 1 && days < 7) return `Em ${days}d`;
+  if (days < -1 && days > -7) return `${Math.abs(days)}d atrás`;
+  return d.toLocaleDateString('pt-BR');
+};
+const fmtKanbanRelDateTime = (d) => {
+  if (!(d instanceof Date) || isNaN(d.getTime())) return '';
+  return `${fmtKanbanRelDate(d)} · ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+};
+
 function PublicCsatView() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -2655,6 +2717,7 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, l
   const [searchTerm, setSearchTerm] = useState('');
   const [draggingLeadId, setDraggingLeadId] = useState(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState(null);
+  const [onlyOverdue, setOnlyOverdue] = useState(false);
 
   const kanbanScrollRef = useRef(null);
 const dragScrollRef = useRef({
@@ -2670,8 +2733,13 @@ const [isPanning, setIsPanning] = useState(false);
     [funnels, selectedFunnelId]
   );
 
+  const funnelLeads = useMemo(
+    () => (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId)),
+    [leads, selectedFunnelId, defaultFunnelId]
+  );
+
   const kanbanLeads = useMemo(() => {
-    let filtered = (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId));
+    let filtered = funnelLeads;
     if (consultantFilter) {
       filtered = filtered.filter(l => l.consultantId === consultantFilter);
     }
@@ -2683,8 +2751,36 @@ const [isPanning, setIsPanning] = useState(false);
         (l.observation && l.observation.toLowerCase().includes(lowerSearch))
       );
     }
+    if (onlyOverdue) {
+      const now = new Date();
+      filtered = filtered.filter(l =>
+        l.status !== 'Venda' && l.status !== 'Perda' &&
+        l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) &&
+        l.nextFollowUp < now
+      );
+    }
     return filtered;
-  }, [leads, consultantFilter, searchTerm, selectedFunnelId, defaultFunnelId]);
+  }, [funnelLeads, consultantFilter, searchTerm, onlyOverdue]);
+
+  const kanbanKpis = useMemo(() => {
+    const now = new Date();
+    const active = kanbanLeads.filter(l => l.status !== 'Venda' && l.status !== 'Perda');
+    const won = kanbanLeads.filter(l => l.status === 'Venda');
+    const lost = kanbanLeads.filter(l => l.status === 'Perda');
+    const overdue = active.filter(l =>
+      l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) && l.nextFollowUp < now
+    );
+    const winRate = (won.length + lost.length) > 0
+      ? Math.round((won.length / (won.length + lost.length)) * 100)
+      : 0;
+    return {
+      active: active.length,
+      won: won.length,
+      lost: lost.length,
+      overdue: overdue.length,
+      winRate
+    };
+  }, [kanbanLeads]);
 
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
@@ -2901,292 +2997,414 @@ if (!lead) return;
       });
   };
 
-  const renderLeadCard = (lead) => {
+  const renderLeadCard = (lead, columnColor = 'gray') => {
+    const isWon = lead.status === 'Venda';
+    const isLost = lead.status === 'Perda';
     const isOverdue =
-      lead.status !== 'Venda' &&
-      lead.status !== 'Perda' &&
+      !isWon && !isLost &&
       lead.nextFollowUp instanceof Date &&
       !isNaN(lead.nextFollowUp.getTime()) &&
       lead.nextFollowUp < new Date();
-
     const isDraggingThis = draggingLeadId === lead.id;
+    const accent = getKanbanColumnAccent(columnColor);
+    const interactionCount = (interactions || []).filter(i => i.leadId === lead.id).length;
+    const convertedAt = getSafeDateOrNull(lead.convertedAt);
+    const daysSince = !isWon && !isLost ? getDaysSinceLastContact(lead, interactions) : null;
 
     return (
-      <div
+      <article
         key={lead.id}
         data-no-pan="true"
         draggable
         onDragStart={(e) => handleDragStart(e, lead.id)}
         onDragEnd={handleDragEnd}
         onClick={() => setSelectedLead(lead)}
-        className={`bg-white dark:bg-neutral-900 border rounded-2xl p-4 cursor-pointer shadow-sm transition-all active:scale-[0.99] ${
-          isDraggingThis 
-            ? 'opacity-50 scale-105 border-blue-500 animate-wiggle z-50 shadow-2xl' 
-            : 'border-gray-200 dark:border-neutral-800 hover:border-blue-600/40'
+        style={{ borderTopColor: accent.border, borderTopWidth: 2 }}
+        className={`group relative rounded-xl border bg-white dark:bg-neutral-900 cursor-grab active:cursor-grabbing shadow-sm transition-all ${
+          isDraggingThis
+            ? 'opacity-80 z-50 shadow-xl border-blue-500'
+            : isOverdue
+              ? 'border-rose-200 dark:border-rose-500/20 hover:border-rose-300 dark:hover:border-rose-500/40 hover:shadow-md'
+              : 'border-gray-200 dark:border-neutral-800 hover:border-gray-300 dark:hover:border-neutral-700 hover:shadow-md'
         }`}
       >
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div>
-            <p className={`font-bold text-sm leading-tight ${isOverdue ? 'text-red-400' : 'text-gray-900 dark:text-white'}`}>
-              {lead.name}
-            </p>
-            <p className="text-[10px] text-gray-400 dark:text-neutral-500 font-bold uppercase mt-1">
-              {lead.whatsapp}
-            </p>
-          </div>
-          <GripVertical className="w-4 h-4 text-gray-700 dark:text-neutral-300 shrink-0" />
+        <div className="absolute top-2 right-2 z-10">
+          <LeadTemperatureBadge lead={lead} interactions={interactions} compact />
         </div>
 
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <StatusBadge statusName={lead.status} statusesArray={statuses} />
-            <LeadTemperatureBadge lead={lead} interactions={interactions} compact />
+        <div className="p-3 pb-2.5">
+          <div className="flex items-start gap-2.5">
+            <KanbanAvatar name={lead.name || ''} size={32} />
+            <div className="min-w-0 flex-1 pr-14">
+              <div
+                className={`font-semibold text-[13.5px] leading-tight truncate ${
+                  isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white'
+                }`}
+                title={lead.name}
+              >
+                {lead.name}
+              </div>
+              <div
+                className="text-[11.5px] text-gray-500 dark:text-neutral-400 truncate"
+                style={{ fontVariantNumeric: 'tabular-nums' }}
+              >
+                {lead.whatsapp}
+              </div>
+            </div>
           </div>
-          {lead.consultantName && isAdminUser(appUser) && (
-            <span className="text-[9px] font-bold uppercase tracking-widest text-blue-600/60 shrink-0">
-              @{lead.consultantName}
-            </span>
+
+          {(lead.tags || []).length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-1">
+              {lead.tags.slice(0, 2).map(tagName => (
+                <TagBadge key={tagName} tagName={tagName} tagsArray={tags} />
+              ))}
+              {lead.tags.length > 2 && (
+                <span
+                  className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 dark:bg-neutral-800 dark:text-neutral-400"
+                  title={lead.tags.slice(2).join(', ')}
+                >
+                  +{lead.tags.length - 2}
+                </span>
+              )}
+            </div>
+          )}
+
+          {(lead.source || interactionCount > 0) && (
+            <div className="mt-2.5 flex items-center gap-2 text-[11px] text-gray-500 dark:text-neutral-400 min-w-0">
+              {lead.source && (
+                <span className="inline-flex items-center gap-1 truncate" title={lead.source}>
+                  {lead.source}
+                </span>
+              )}
+              {lead.source && interactionCount > 0 && (
+                <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-neutral-700 shrink-0" />
+              )}
+              {interactionCount > 0 && (
+                <span
+                  className="inline-flex items-center gap-1 whitespace-nowrap shrink-0"
+                  style={{ fontVariantNumeric: 'tabular-nums' }}
+                >
+                  <MessageCircle className="w-3 h-3" /> {interactionCount}
+                </span>
+              )}
+            </div>
           )}
         </div>
 
-        {(lead.tags || []).length > 0 && (
-          <div className="flex flex-wrap gap-1.5 mb-3">
-            {lead.tags.map(tagName => (
-              <TagBadge key={tagName} tagName={tagName} tagsArray={tags} />
-            ))}
-          </div>
-        )}
-
-        {lead.nextFollowUp ? (
-          <div className={`mt-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider ${isOverdue ? 'text-red-400' : 'text-yellow-400'}`}>
-            {isOverdue ? (
-              <AlertCircle className="w-3.5 h-3.5 animate-pulse" />
-            ) : (
-              <FollowUpIcon type={lead.nextFollowUpType} className="w-3.5 h-3.5" />
-            )}
-            <span>
-              {lead.nextFollowUp.toLocaleDateString('pt-BR')} às{' '}
-              {lead.nextFollowUp.toLocaleTimeString('pt-BR', {
-                hour: '2-digit',
-                minute: '2-digit'
-              })}
+        <footer className="px-3 py-2 border-t border-gray-100 dark:border-neutral-800 flex items-center justify-between gap-2">
+          {isWon ? (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap min-w-0 truncate">
+              <CheckCircle className="w-3 h-3 shrink-0" />
+              Matriculado{convertedAt ? ` ${fmtKanbanRelDate(convertedAt)}` : ''}
             </span>
-          </div>
-        ) : (
-          <div className="mt-3">
+          ) : isLost ? (
+            <span
+              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 dark:text-neutral-400 min-w-0 truncate"
+              title={lead.lossReason || 'Perdido'}
+            >
+              <Ban className="w-3 h-3 shrink-0" />
+              <span className="truncate">{lead.lossReason || 'Perdido'}</span>
+            </span>
+          ) : lead.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime()) ? (
+            <span
+              className={`inline-flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap ${
+                isOverdue ? 'text-rose-600 dark:text-rose-300' : 'text-gray-600 dark:text-neutral-300'
+              }`}
+              style={{ fontVariantNumeric: 'tabular-nums' }}
+            >
+              <FollowUpIcon type={lead.nextFollowUpType} className="w-3 h-3" />
+              {fmtKanbanRelDateTime(lead.nextFollowUp)}
+            </span>
+          ) : daysSince !== null && daysSince >= 1 ? (
             <DaysSinceContactBadge lead={lead} interactions={interactions} />
-          </div>
-        )}
-      </div>
+          ) : (
+            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 whitespace-nowrap">
+              <AlertCircle className="w-3 h-3" /> Sem agendamento
+            </span>
+          )}
+          {lead.consultantName && isAdminUser(appUser) && (
+            <span title={lead.consultantName} className="shrink-0">
+              <KanbanAvatar name={lead.consultantName} size={20} />
+            </span>
+          )}
+        </footer>
+      </article>
+    );
+  };
+
+  const renderKanbanColumn = ({ key, name, color, special, columnLeads, onDropHandler }) => {
+    const accent = getKanbanColumnAccent(color);
+    const isHovered = draggedOverColumn === name;
+    const isWinCol = special === 'win';
+    const isLossCol = special === 'loss';
+    const emptyText = isWinCol
+      ? 'Arraste para fechar venda'
+      : isLossCol
+        ? 'Arraste para marcar perda'
+        : isHovered
+          ? 'Soltar aqui'
+          : 'Sem leads';
+
+    return (
+      <section
+        key={key}
+        onDragOver={(e) => {
+          e.preventDefault();
+          if (draggedOverColumn !== name) setDraggedOverColumn(name);
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget)) return;
+          if (draggedOverColumn === name) setDraggedOverColumn(null);
+        }}
+        onDrop={(e) => {
+          setDraggedOverColumn(null);
+          setDraggingLeadId(null);
+          onDropHandler(e);
+        }}
+        className={`w-[300px] shrink-0 rounded-2xl flex flex-col transition-colors border ${
+          isHovered
+            ? 'bg-blue-50/60 dark:bg-blue-500/[0.06] ring-2 ring-blue-200 dark:ring-blue-500/30 border-blue-200 dark:border-blue-500/30'
+            : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800'
+        }`}
+      >
+        <header className="px-3 pt-3 pb-2 border-b border-gray-100 dark:border-neutral-800 flex items-center gap-2">
+          {isWinCol ? (
+            <span className="w-5 h-5 rounded-md grid place-items-center bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 shrink-0">
+              <TrendingUp className="w-3 h-3" />
+            </span>
+          ) : isLossCol ? (
+            <span className="w-5 h-5 rounded-md grid place-items-center bg-gray-100 text-gray-500 dark:bg-neutral-800 dark:text-neutral-400 shrink-0">
+              <Ban className="w-3 h-3" />
+            </span>
+          ) : (
+            <span className={`w-2 h-2 rounded-full shrink-0 ${accent.dot}`} />
+          )}
+          <h3 className="text-[13px] font-semibold whitespace-nowrap text-gray-900 dark:text-white truncate" title={name}>
+            {name}
+          </h3>
+          <span
+            className="text-[11px] font-semibold px-1.5 h-[18px] rounded-md grid place-items-center min-w-[20px] bg-gray-100 text-gray-600 dark:bg-neutral-800 dark:text-neutral-300 shrink-0"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            {columnLeads.length}
+          </span>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 custom-scrollbar">
+          {columnLeads.length === 0 ? (
+            <div
+              className={`min-h-[120px] rounded-xl border-2 border-dashed grid place-items-center text-[11px] font-semibold uppercase tracking-wider transition text-center px-3 ${
+                isHovered
+                  ? 'border-blue-300 text-blue-600 dark:border-blue-500/40 dark:text-blue-300'
+                  : isWinCol
+                    ? 'border-emerald-200 text-emerald-600/70 dark:border-emerald-500/20 dark:text-emerald-300/60'
+                    : isLossCol
+                      ? 'border-rose-200 text-rose-600/70 dark:border-rose-500/20 dark:text-rose-300/60'
+                      : 'border-gray-200 text-gray-400 dark:border-neutral-800 dark:text-neutral-500'
+              }`}
+            >
+              {emptyText}
+            </div>
+          ) : (
+            columnLeads.map(lead => renderLeadCard(lead, color))
+          )}
+        </div>
+      </section>
     );
   };
 
   const pipelineColumns = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
   const kanbanTitle = currentFunnel?.name || 'Quadro Kanban';
   const hasFunnels = (funnels || []).length > 0;
+  const totalFunnelLeads = funnelLeads.length;
+  const isAdmin = isAdminUser(appUser);
+  const isMineActive = !!(consultantFilter && appUser?.id && consultantFilter === appUser.id);
+
+  const kpiCards = [
+    { key: 'active',  icon: Users,       label: 'Leads ativos',         value: kanbanKpis.active,        sub: 'no pipeline',              tone: 'slate' },
+    { key: 'won',     icon: TrendingUp,  label: 'Vendas',               value: kanbanKpis.won,           sub: 'matrículas',               tone: 'emerald' },
+    { key: 'lost',    icon: Ban,         label: 'Perdas',               value: kanbanKpis.lost,          sub: 'motivos em relatórios',    tone: 'slate' },
+    { key: 'overdue', icon: AlertCircle, label: 'Em atraso',            value: kanbanKpis.overdue,       sub: 'follow-ups vencidos',      tone: kanbanKpis.overdue > 0 ? 'rose' : 'slate' },
+    { key: 'rate',    icon: Activity,    label: 'Taxa de fechamento',   value: `${kanbanKpis.winRate}%`, sub: 'vendas / (vendas + perdas)', tone: 'blue' }
+  ];
+
+  const kpiToneStyles = {
+    slate:   'bg-gray-100 text-gray-600 dark:bg-neutral-800 dark:text-neutral-300',
+    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
+    blue:    'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
+    rose:    'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+  };
 
   return (
     <>
       <div className="h-[calc(100vh-10rem)] flex flex-col animate-fade-in">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-          <div className="flex items-center gap-4 flex-wrap">
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-                {kanbanTitle}
-              </h3>
-              <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-1">
-                Arraste os leads entre as etapas
-              </p>
-            </div>
-            {hasFunnels && (
-              <FunnelSelector
-                funnels={funnels}
-                value={selectedFunnelId}
-                onChange={setSelectedFunnelId}
-                className="w-full md:w-[280px]"
-              />
-            )}
+        {/* Title + funnel selector */}
+        <div className="flex items-center gap-4 flex-wrap mb-4">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              {kanbanTitle}
+            </h3>
+            <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-1">
+              Arraste os leads entre as etapas. Use as colunas{' '}
+              <span className="font-semibold text-emerald-700 dark:text-emerald-300">Venda</span> e{' '}
+              <span className="font-semibold text-gray-700 dark:text-neutral-200">Perda</span> para concluir.
+            </p>
+          </div>
+          {hasFunnels && (
+            <FunnelSelector
+              funnels={funnels}
+              value={selectedFunnelId}
+              onChange={setSelectedFunnelId}
+              className="w-full md:w-[280px]"
+            />
+          )}
+        </div>
+
+        {/* KPI strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-5 gap-3 mb-4">
+          {kpiCards.map((card) => {
+            const KpiIcon = card.icon;
+            return (
+              <div
+                key={card.key}
+                className="rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3.5 flex items-center gap-3"
+              >
+                <span className={`w-9 h-9 rounded-lg grid place-items-center shrink-0 ${kpiToneStyles[card.tone]}`}>
+                  <KpiIcon className="w-4 h-4" />
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-medium text-gray-500 dark:text-neutral-400 whitespace-nowrap truncate">
+                    {card.label}
+                  </div>
+                  <div
+                    className="text-[18px] font-semibold tracking-tight leading-none mt-0.5 text-gray-900 dark:text-white"
+                    style={{ fontVariantNumeric: 'tabular-nums' }}
+                  >
+                    {card.value}
+                  </div>
+                  <div className="text-[11px] text-gray-500 dark:text-neutral-400 mt-0.5 truncate">
+                    {card.sub}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center gap-2 flex-wrap mb-4">
+          <div className="relative flex-1 min-w-[240px] max-w-md">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Buscar lead, telefone ou observação..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full h-10 rounded-lg bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 focus:border-blue-500 dark:focus:border-blue-500 outline-none text-sm pl-9 pr-3 placeholder:text-gray-400 dark:placeholder:text-neutral-500 text-gray-900 dark:text-white shadow-sm transition-all"
+            />
           </div>
 
-          <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto items-center">
-            <div className="relative w-full md:w-[320px] group">
-              <Search className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500 group-focus-within:text-blue-600 transition-colors pointer-events-none" />
-              <input
-                type="text"
-                placeholder="Buscar leads por nome, telefone..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl pl-12 pr-4 py-3 text-sm font-semibold text-gray-900 dark:text-white outline-none focus:border-blue-600 transition-all shadow-sm placeholder:font-medium placeholder:text-gray-400"
-              />
+          {isAdmin && (
+            <select
+              value={consultantFilter}
+              onChange={(e) => setConsultantFilter(e.target.value)}
+              className="h-10 rounded-lg bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 outline-none text-sm pl-3 pr-8 text-gray-900 dark:text-white shadow-sm cursor-pointer font-medium"
+            >
+              <option value="">Todos os consultores</option>
+              {(usersList || []).map(u => (
+                <option key={u.id} value={u.id}>{u.name}</option>
+              ))}
+            </select>
+          )}
+
+          {isAdmin && appUser?.id && (
+            <div className="inline-flex p-1 rounded-lg bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setConsultantFilter('')}
+                className={`h-7 px-3 rounded-md text-[12px] font-semibold whitespace-nowrap transition ${
+                  !isMineActive
+                    ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                    : 'text-gray-500 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-white'
+                }`}
+              >
+                Toda equipe
+              </button>
+              <button
+                type="button"
+                onClick={() => setConsultantFilter(appUser.id)}
+                className={`h-7 px-3 rounded-md text-[12px] font-semibold whitespace-nowrap transition ${
+                  isMineActive
+                    ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
+                    : 'text-gray-500 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-white'
+                }`}
+              >
+                Apenas meus
+              </button>
             </div>
-            {isAdminUser(appUser) && (
-              <div className="relative w-full md:w-[280px] group">
-                <Users className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500 group-focus-within:text-blue-600 transition-colors pointer-events-none" />
-                <select
-                  value={consultantFilter}
-                  onChange={(e) => setConsultantFilter(e.target.value)}
-                  className="w-full bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-2xl pl-12 pr-11 py-3 text-sm font-semibold text-gray-900 dark:text-white outline-none focus:border-blue-600 transition-all shadow-sm cursor-pointer appearance-none"
-                >
-                  <option value="">Todos os consultores</option>
-                  {(usersList || []).map(u => (
-                    <option key={u.id} value={u.id}>
-                      {u.name}
-                    </option>
-                  ))}
-                </select>
-                <svg className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-neutral-500 pointer-events-none" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-                </svg>
-              </div>
-            )}
+          )}
+
+          <button
+            type="button"
+            onClick={() => setOnlyOverdue(o => !o)}
+            className={`h-10 px-3 rounded-lg text-[12.5px] font-semibold whitespace-nowrap transition inline-flex items-center gap-1.5 shadow-sm ${
+              onlyOverdue
+                ? 'bg-rose-600 text-white border border-rose-600'
+                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 dark:bg-neutral-900 dark:text-neutral-200 dark:border-neutral-800 dark:hover:bg-neutral-800'
+            }`}
+          >
+            <AlertCircle className="w-3.5 h-3.5" /> Em atraso
+          </button>
+
+          <div className="flex-1" />
+
+          <div
+            className="text-[11.5px] text-gray-500 dark:text-neutral-400 whitespace-nowrap"
+            style={{ fontVariantNumeric: 'tabular-nums' }}
+          >
+            <span className="font-semibold text-gray-700 dark:text-neutral-200">{kanbanLeads.length}</span>{' '}
+            de {totalFunnelLeads} leads
           </div>
         </div>
 
+        {/* Board */}
         <div
-  ref={kanbanScrollRef}
-  onMouseDown={handleKanbanMouseDown}
-  onMouseMove={handleKanbanMouseMove}
-  onMouseUp={stopKanbanPan}
-  onMouseLeave={stopKanbanPan}
-  className={`flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar select-none ${
-    isPanning ? 'cursor-grabbing' : 'cursor-grab'
-  }`}
->
-  <div className="flex gap-5 min-w-max h-full pb-2">
-            {pipelineColumns.map((column) => {
-              const columnLeads = getLeadsByStatus(column.name);
+          ref={kanbanScrollRef}
+          onMouseDown={handleKanbanMouseDown}
+          onMouseMove={handleKanbanMouseMove}
+          onMouseUp={stopKanbanPan}
+          onMouseLeave={stopKanbanPan}
+          className={`flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar select-none ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+        >
+          <div className="flex gap-3 min-w-max h-full pb-2">
+            {pipelineColumns.map((column) =>
+              renderKanbanColumn({
+                key: column.id,
+                name: column.name,
+                color: column.color,
+                special: null,
+                columnLeads: getLeadsByStatus(column.name),
+                onDropHandler: (e) => handleDrop(e, column.name)
+              })
+            )}
 
-              return (
-                <div
-                  key={column.id}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    if (draggedOverColumn !== column.name) setDraggedOverColumn(column.name);
-                  }}
-                  onDrop={(e) => {
-                    setDraggedOverColumn(null);
-                    setDraggingLeadId(null);
-                    handleDrop(e, column.name);
-                  }}
-                  className={`w-[320px] rounded-[2rem] flex flex-col transition-colors duration-300 border ${
-                    draggedOverColumn === column.name
-                      ? 'bg-gray-200 dark:bg-neutral-800 border-blue-500/50'
-                      : 'bg-[#f4f5f7] dark:bg-neutral-900 border-gray-200 dark:border-neutral-800'
-                  }`}
-                >
-                  <div className="p-5 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <StatusBadge statusName={column.name} statusesArray={statuses} />
-                    </div>
-                    <span className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 bg-[#eaedf2] dark:bg-neutral-950 px-2.5 py-1 rounded-full">
-                      {columnLeads.length}
-                    </span>
-                  </div>
-
-                  <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-                    {columnLeads.length === 0 ? (
-                      <div className="h-24 rounded-2xl border border-dashed border-gray-200 dark:border-neutral-800 flex items-center justify-center text-[10px] font-bold uppercase tracking-widest text-gray-700 dark:text-neutral-300">
-                        Solte aqui
-                      </div>
-                    ) : (
-                      columnLeads.map(renderLeadCard)
-                    )}
-                  </div>
-                </div>
-              );
+            {renderKanbanColumn({
+              key: '__venda',
+              name: 'Venda',
+              color: 'green',
+              special: 'win',
+              columnLeads: getLeadsByStatus('Venda'),
+              onDropHandler: handleWinDrop
             })}
 
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (draggedOverColumn !== 'Venda') setDraggedOverColumn('Venda');
-              }}
-              onDrop={(e) => {
-                setDraggedOverColumn(null);
-                setDraggingLeadId(null);
-                handleWinDrop(e);
-              }}
-              className={`w-[320px] rounded-[2rem] flex flex-col transition-colors duration-300 border ${
-                draggedOverColumn === 'Venda'
-                  ? 'bg-green-100 dark:bg-green-900/40 border-green-500'
-                  : 'bg-[#f4f5f7] dark:bg-neutral-900 border-green-500/20'
-              }`}
-            >
-              <div className="p-5 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-green-500/10 flex items-center justify-center">
-                    <Trophy className="w-5 h-5 text-green-400" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-green-400 font-bold uppercase tracking-widest">
-                      Venda
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-neutral-500 font-bold uppercase">
-                      Matrículas concluídas
-                    </p>
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold text-green-400 bg-green-500/10 px-2.5 py-1 rounded-full">
-                  {getLeadsByStatus('Venda').length}
-                </span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-                {getLeadsByStatus('Venda').length === 0 ? (
-                  <div className="h-24 rounded-2xl border border-dashed border-green-500/20 flex items-center justify-center text-[10px] font-bold uppercase tracking-widest text-green-500/40">
-                    Arraste para vender
-                  </div>
-                ) : (
-                  getLeadsByStatus('Venda').map(renderLeadCard)
-                )}
-              </div>
-            </div>
-
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                if (draggedOverColumn !== 'Perda') setDraggedOverColumn('Perda');
-              }}
-              onDrop={(e) => {
-                setDraggedOverColumn(null);
-                setDraggingLeadId(null);
-                handleLossDrop(e);
-              }}
-              className={`w-[320px] rounded-[2rem] flex flex-col transition-colors duration-300 border ${
-                draggedOverColumn === 'Perda'
-                  ? 'bg-red-100 dark:bg-red-900/40 border-red-500'
-                  : 'bg-[#f4f5f7] dark:bg-neutral-900 border-red-500/20'
-              }`}
-            >
-              <div className="p-5 border-b border-gray-200 dark:border-neutral-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-red-500/10 flex items-center justify-center">
-                    <ThumbsDown className="w-5 h-5 text-red-400" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] text-red-400 font-bold uppercase tracking-widest">
-                      Perda
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-neutral-500 font-bold uppercase">
-                      Leads perdidos
-                    </p>
-                  </div>
-                </div>
-                <span className="text-[10px] font-bold text-red-400 bg-red-500/10 px-2.5 py-1 rounded-full">
-                  {getLeadsByStatus('Perda').length}
-                </span>
-              </div>
-
-              <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-                {getLeadsByStatus('Perda').length === 0 ? (
-                  <div className="h-24 rounded-2xl border border-dashed border-red-500/20 flex items-center justify-center text-[10px] font-bold uppercase tracking-widest text-red-500/40">
-                    Arraste para perda
-                  </div>
-                ) : (
-                  getLeadsByStatus('Perda').map(renderLeadCard)
-                )}
-              </div>
-            </div>
+            {renderKanbanColumn({
+              key: '__perda',
+              name: 'Perda',
+              color: 'gray',
+              special: 'loss',
+              columnLeads: getLeadsByStatus('Perda'),
+              onDropHandler: handleLossDrop
+            })}
           </div>
         </div>
       </div>
