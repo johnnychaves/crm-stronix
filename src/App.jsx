@@ -846,16 +846,6 @@ if (csatToken) {
           </div>
         </div>
 
-        <div className="px-4 mb-3">
-          <button
-            onClick={() => { setIsAddLeadModalOpen(true); setIsMobileMenuOpen(false); }}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-sm shadow-sm shadow-blue-600/20 transition"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Cadastrar Lead</span>
-          </button>
-        </div>
-
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
           <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard Geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
           <SidebarItem icon={<Kanban className="w-5 h-5" />} label="Quadro Kanban" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
@@ -865,6 +855,18 @@ if (csatToken) {
         </nav>
 
         <div className="p-4 border-t border-gray-200 dark:border-neutral-800 space-y-2 pb-8 md:pb-4">
+          {/* FAB "Cadastrar Lead" — redondo, ancorado à direita, logo acima
+              do "Sair do Sistema". Atalho rápido alcançável de qualquer aba. */}
+          <div className="flex justify-end">
+            <button
+              onClick={() => { setIsAddLeadModalOpen(true); setIsMobileMenuOpen(false); }}
+              title="Cadastrar Lead"
+              aria-label="Cadastrar Lead"
+              className="w-11 h-11 rounded-full inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-md shadow-blue-600/30 transition"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
           <button onClick={handleLogout} className="flex items-center gap-3 text-gray-500 dark:text-neutral-400 hover:text-red-400 bg-gray-50 dark:bg-neutral-950/50 hover:bg-white dark:bg-neutral-900 rounded-xl transition-all w-full px-4 py-3 font-medium text-sm">
             <LogOut className="w-5 h-5" /><span>Sair do Sistema</span>
           </button>
