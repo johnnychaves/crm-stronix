@@ -17,7 +17,6 @@ import {
   Shield,
   Lock,
   Mail,
-  ScanFace,
   Trash2,
   Menu,
   Bell,
@@ -444,6 +443,18 @@ function AppInner() {
   const [funnelsMigrationStatus, setFunnelsMigrationStatus] = useState('idle');
   const [loadingData, setLoadingData] = useState(true);
 
+  // Quick-add lead: aberto pelo botão "Cadastrar Lead" no menu lateral OU
+  // pelo botão dentro de LeadsView (que recebe `onAddLeadClick` via prop).
+  // O modal mora aqui em App pra ficar acessível de qualquer aba.
+  const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
+
+  // Após criar o lead, abrimos o perfil dele automaticamente. Como o
+  // `addDoc` retorna só o ref, esperamos o lead aparecer em `leads` via
+  // onSnapshot (geralmente <100ms). justCreatedLeadId é o ID alvo;
+  // appLevelSelectedLead é o doc completo já hidratado.
+  const [justCreatedLeadId, setJustCreatedLeadId] = useState(null);
+  const [appLevelSelectedLead, setAppLevelSelectedLead] = useState(null);
+
   // 1. Inicialização Auth e Persistência de Sessão
   useEffect(() => {
   const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -629,6 +640,18 @@ useEffect(() => {
       }
     } catch (e) { /* ignore */ }
   }, [selectedFunnelId]);
+
+  // Quando um lead é criado pelo AddLeadModal global, ele guarda o ID em
+  // justCreatedLeadId. Aqui esperamos o doc aparecer em `leads` (via
+  // onSnapshot) e abrimos o perfil dele automaticamente.
+  useEffect(() => {
+    if (!justCreatedLeadId) return;
+    const lead = (leads || []).find(l => l.id === justCreatedLeadId);
+    if (lead) {
+      setAppLevelSelectedLead(lead);
+      setJustCreatedLeadId(null);
+    }
+  }, [justCreatedLeadId, leads]);
 
   // Garante que selectedFunnelId é sempre válido (cai para o default se sumir).
   // O sentinel ALL_FUNNELS_ID é sempre válido — não cai no fallback.
@@ -823,6 +846,16 @@ if (csatToken) {
           </div>
         </div>
 
+        <div className="px-4 mb-3">
+          <button
+            onClick={() => { setIsAddLeadModalOpen(true); setIsMobileMenuOpen(false); }}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] text-white font-semibold text-sm shadow-sm shadow-blue-600/20 transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Cadastrar Lead</span>
+          </button>
+        </div>
+
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
           <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard Geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
           <SidebarItem icon={<Kanban className="w-5 h-5" />} label="Quadro Kanban" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
@@ -832,7 +865,6 @@ if (csatToken) {
         </nav>
 
         <div className="p-4 border-t border-gray-200 dark:border-neutral-800 space-y-2 pb-8 md:pb-4">
-          <BiometricSetupButton appUser={appUser} setAppUser={setAppUser} db={db} />
           <button onClick={handleLogout} className="flex items-center gap-3 text-gray-500 dark:text-neutral-400 hover:text-red-400 bg-gray-50 dark:bg-neutral-950/50 hover:bg-white dark:bg-neutral-900 rounded-xl transition-all w-full px-4 py-3 font-medium text-sm">
             <LogOut className="w-5 h-5" /><span>Sair do Sistema</span>
           </button>
@@ -870,12 +902,43 @@ if (csatToken) {
               {activeTab === 'dashboard' && <DashboardView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
-              {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
+              {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} />}
             </div>
           )}
         </div>
       </main>
+
+      {/* Quick-add lead, alcançável de qualquer aba pelo botão do menu lateral
+          ou pelo botão da LeadsView. Ao salvar, abrimos automaticamente o
+          perfil do lead recém-criado (via justCreatedLeadId → useEffect). */}
+      {isAddLeadModalOpen && (
+        <AddLeadModal
+          onClose={() => setIsAddLeadModalOpen(false)}
+          appUser={appUser}
+          sources={sources}
+          statuses={statuses}
+          tags={tags}
+          db={db}
+          funnels={funnels}
+          selectedFunnelId={selectedFunnelId}
+          leads={leads}
+          onCreated={(newLeadId) => setJustCreatedLeadId(newLeadId)}
+        />
+      )}
+      {appLevelSelectedLead && (
+        <LeadDetailsModal
+          lead={appLevelSelectedLead}
+          interactions={(interactions || []).filter(i => i.leadId === appLevelSelectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))}
+          onClose={() => setAppLevelSelectedLead(null)}
+          appUser={appUser}
+          statuses={statuses}
+          tags={tags}
+          lossReasons={lossReasons}
+          db={db}
+          funnels={funnels}
+        />
+      )}
     </div>
   );
 }
@@ -883,37 +946,6 @@ if (csatToken) {
 // ==========================================
 // TELA DE LOGIN & RECUPERAÇÃO ADMIN
 // ==========================================
-function BiometricSetupButton({ appUser, setAppUser, db }) {
-  const toast = useToast();
-  const [isRegistering, setIsRegistering] = useState(false);
-  const handleRegisterBiometrics = async () => {
-    if (!window.PublicKeyCredential) { toast.error("Dispositivo não suporta Passkeys."); return; }
-    setIsRegistering(true);
-    try {
-      const publicKey = {
-        challenge: generateRandomBuffer(32),
-        rp: { name: "STRONIX CRM" },
-        user: { id: generateRandomBuffer(16), name: appUser.email, displayName: appUser.name },
-        pubKeyCredParams: [{ alg: -7, type: "public-key" }, { alg: -257, type: "public-key" }],
-        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
-        timeout: 60000,
-      };
-      const credential = await navigator.credentials.create({ publicKey });
-      const credentialIdBase64 = bufferToBase64url(credential.rawId);
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, appUser.id), { passkeyId: credentialIdBase64 }, { merge: true });
-      setAppUser({ ...appUser, passkeyId: credentialIdBase64 });
-      toast.success("Face ID ativado!");
-    } catch (error) { console.error(error); }
-    setIsRegistering(false);
-  };
-  if (appUser.passkeyId) return <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-green-500/10 text-green-400 font-medium w-full text-sm border border-green-500/20"><ScanFace className="w-5 h-5 shrink-0" /><span>Face ID Ativo</span></div>;
-  return (
-    <button onClick={handleRegisterBiometrics} disabled={isRegistering} className="flex items-center gap-3 text-blue-500 hover:text-white bg-blue-600/10 hover:bg-blue-600/20 border border-blue-600/20 rounded-xl transition-all w-full px-4 py-3 font-medium text-sm disabled:opacity-50">
-      <ScanFace className="w-5 h-5 shrink-0" /><span>{isRegistering ? 'Aguardando...' : 'Ativar Face ID'}</span>
-    </button>
-  );
-}
-
 function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -3506,7 +3538,7 @@ function ActiveFilterChip({ label, onRemove, accent = 'slate' }) {
   );
 }
 
-function LeadsView({ leads, interactions, appUser, sources, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
+function LeadsView({ leads, interactions, appUser, sources, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId, onAddLeadClick }) {
   const toast = useToast();
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [statusFilters, setStatusFilters] = useState([]);
@@ -3515,7 +3547,8 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
   const [hotOnly, setHotOnly] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  // O AddLeadModal mora no App-level. O botão local apenas dispara o
+  // callback `onAddLeadClick` recebido por prop.
 
   const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
   const hasFunnels = (funnels || []).length > 0;
@@ -3640,7 +3673,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
           >
             Filtros{filterCount > 0 ? ` (${filterCount})` : ''}
           </Btn>
-          <Btn kind="brand" icon={<Plus size={13} />} onClick={() => setIsAddModalOpen(true)}>Novo lead</Btn>
+          <Btn kind="brand" icon={<Plus size={13} />} onClick={() => onAddLeadClick && onAddLeadClick()}>Novo lead</Btn>
         </div>
       </div>
 
@@ -3818,7 +3851,6 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
         </div>
       )}
 
-      {isAddModalOpen && <AddLeadModal onClose={() => setIsAddModalOpen(false)} appUser={appUser} sources={sources} statuses={statuses} tags={tags} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} leads={leads} />}
       {selectedLead && <LeadDetailsModal lead={selectedLead} interactions={interactions.filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))} onClose={() => setSelectedLead(null)} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
     </div>
   );
@@ -3827,7 +3859,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
 // ==========================================
 // MODAL DE CADASTRO
 // ==========================================
-function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId, leads }) {
+function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId, leads, onCreated }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
@@ -3919,6 +3951,10 @@ const handleSubmit = async (e) => {
       );
     }
 
+    // Notifica o App pra abrir o perfil do lead recém-criado.
+    // O App espera o doc aparecer em `leads` via onSnapshot e abre o
+    // LeadDetailsModal — assim o consultor já pode agendar visita/aula.
+    if (onCreated) onCreated(leadRef.id);
     onClose();
   } catch (error) {
     console.error(error);

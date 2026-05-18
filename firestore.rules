@@ -40,7 +40,7 @@ service cloud.firestore {
     match /artifacts/{appId}/public/data/stronix_users/{userId} {
       allow read: if isSignedIn();
       allow write: if isAdmin(appId);
-      // permite o próprio usuário gravar passkey/authUid no seu próprio doc
+      // permite o próprio usuário atualizar o próprio doc (ex.: authUid de vínculo)
       allow update: if isSignedIn() && request.auth.uid == userId;
     }
 
