@@ -738,6 +738,31 @@ useEffect(() => {
         });
         if (leadOps.length) await commitOpsInChunks(db, leadOps, 400);
 
+        // Passo 4: garantir que TODO funil tem a etapa de sistema "Negociação"
+        // (criada como protegida; ManageStatusesTab bloqueia edit/delete por nome).
+        const statusesAfter = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH));
+        const statusesByFunnel = new Map();
+        statusesAfter.forEach(d => {
+          const s = { id: d.id, ...d.data() };
+          if (!statusesByFunnel.has(s.funnelId)) statusesByFunnel.set(s.funnelId, []);
+          statusesByFunnel.get(s.funnelId).push(s);
+        });
+        const allFunnelIds = (await getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)))
+          .docs.map(d => d.id);
+        for (const fId of allFunnelIds) {
+          const stagesInFunnel = statusesByFunnel.get(fId) || [];
+          const hasNegociacao = stagesInFunnel.some(s => (s.name || '').trim().toLowerCase() === 'negociação');
+          if (!hasNegociacao) {
+            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
+              name: 'Negociação',
+              color: 'purple',
+              order: stagesInFunnel.length,
+              funnelId: fId,
+              isSystem: true
+            });
+          }
+        }
+
         // Define seleção inicial se ainda não houver
         setSelectedFunnelId(prev => prev || defaultId);
 
@@ -3793,7 +3818,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
         </div>
       )}
 
-      {isAddModalOpen && <AddLeadModal onClose={() => setIsAddModalOpen(false)} appUser={appUser} sources={sources} statuses={statuses} tags={tags} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} />}
+      {isAddModalOpen && <AddLeadModal onClose={() => setIsAddModalOpen(false)} appUser={appUser} sources={sources} statuses={statuses} tags={tags} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} leads={leads} />}
       {selectedLead && <LeadDetailsModal lead={selectedLead} interactions={interactions.filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))} onClose={() => setSelectedLead(null)} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
     </div>
   );
@@ -3802,12 +3827,15 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
 // ==========================================
 // MODAL DE CADASTRO
 // ==========================================
-function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId }) {
+function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId, leads }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
   const initialFunnelId = selectedFunnelId || getDefaultFunnel(safeFunnels)?.id || null;
   const initialStatuses = (statuses || []).filter(s => s.funnelId === initialFunnelId);
+  // Normaliza WhatsApp para apenas dígitos. Aceita o caso vazio sem trocar
+  // por undefined pra evitar match acidental ("" === "" → true).
+  const normalizePhone = (raw) => String(raw || '').replace(/\D/g, '');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -3835,6 +3863,23 @@ const handleSubmit = async (e) => {
   if (!formData.name || !formData.whatsapp) return;
   if (!formData.funnelId) {
     toast.warning('Selecione um funil para o lead. Crie um em Configurações → Funil Pipeline se não houver opções.');
+    return;
+  }
+
+  // Bloqueio de duplicidade por WhatsApp.
+  // Comparamos versões com apenas dígitos para ignorar formatação ((11) 9..., +55, etc).
+  // Validação de defesa em profundidade: a UI bloqueia aqui; em paralelo seria
+  // ideal ter uma regra Firestore + índice unique, mas isso é fora de escopo.
+  const newPhoneDigits = normalizePhone(formData.whatsapp);
+  if (newPhoneDigits.length < 8) {
+    toast.warning('Informe um número de WhatsApp válido (com DDD).');
+    return;
+  }
+  const duplicate = (leads || []).find(l => normalizePhone(l.whatsapp) === newPhoneDigits);
+  if (duplicate) {
+    const ownerLabel = duplicate.consultantName ? ` (consultor: ${duplicate.consultantName})` : '';
+    const statusLabel = duplicate.status ? ` · etapa "${duplicate.status}"` : '';
+    toast.warning(`Já existe um lead com este WhatsApp: ${duplicate.name}${ownerLabel}${statusLabel}.`);
     return;
   }
 
@@ -5786,11 +5831,22 @@ function ManageFunnelsTab({ db, funnels, statuses, leads, onSelectFunnel }) {
     const trimmed = name.trim();
     if (!trimmed) return;
     // Novos funis nunca nascem como padrão. O único "padrão" é definido pelo botão dedicado.
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH), {
+    const funnelRef = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH), {
       name: trimmed,
       order: safeFunnels.length,
       isDefault: false,
       createdAt: serverTimestamp()
+    });
+    // Todo funil novo já nasce com a etapa de sistema "Negociação" — junto
+    // com Venda/Perda (hardcoded como colunas terminais), são as três fases
+    // fixas do sistema. A etapa carrega isSystem=true para o ManageStatusesTab
+    // bloquear edit/delete.
+    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
+      name: 'Negociação',
+      color: 'purple',
+      order: 0,
+      funnelId: funnelRef.id,
+      isSystem: true
     });
     setName('');
   };
@@ -5945,10 +6001,21 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
 
   const statusesForFunnel = (statuses || []).filter(s => s.funnelId === funnelId);
 
+  // Etapa de sistema: junto com Venda/Perda (hardcoded), Negociação é fixa em
+  // todo funil. Identificada por isSystem=true OU pelo nome (legado).
+  const isSystemStage = (s) =>
+    Boolean(s?.isSystem) || (s?.name || '').trim().toLowerCase() === 'negociação';
+
   const save = async (e) => {
     e.preventDefault();
     if (editingId) {
       const oldStatus = statuses.find(s => s.id === editingId);
+      if (oldStatus && isSystemStage(oldStatus)) {
+        toast.warning(`A etapa "${oldStatus.name}" é uma fase fixa do sistema e não pode ser renomeada.`);
+        setEditingId(null);
+        setName('');
+        return;
+      }
       await setDoc(
         doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, editingId),
         { name, color },
@@ -5970,6 +6037,12 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
       }
       setEditingId(null);
     } else {
+      // Bloqueia criação duplicada da etapa "Negociação" — ela é única por funil.
+      if ((name || '').trim().toLowerCase() === 'negociação' &&
+          statusesForFunnel.some(s => (s.name || '').trim().toLowerCase() === 'negociação')) {
+        toast.warning('A etapa "Negociação" já existe neste funil (etapa fixa do sistema).');
+        return;
+      }
       await addDoc(
         collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH),
         { name, color, order: statusesForFunnel.length, funnelId }
@@ -5989,6 +6062,10 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
   };
 
   const handleDelete = async (s) => {
+    if (isSystemStage(s)) {
+      toast.warning(`A etapa "${s.name}" é uma fase fixa do sistema e não pode ser excluída.`);
+      return;
+    }
     const leadsInStatus = (leads || []).filter(l => l.funnelId === funnelId && l.status === s.name);
     if (leadsInStatus.length > 0) {
       toast.warning(`Etapa "${s.name}" tem ${leadsInStatus.length} lead(s). Transfira-os para outra etapa antes de excluir.`);
@@ -6048,28 +6125,45 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
           <div className="space-y-2">
             {statusesForFunnel.map((s, i) => {
               const leadCount = (leads || []).filter(l => l.status === s.name).length;
+              const isSystem = isSystemStage(s);
               return (
                 <div
                   key={s.id}
-                  draggable
-                  onDragStart={e => e.dataTransfer.setData('idx', i)}
+                  draggable={!isSystem}
+                  onDragStart={e => { if (!isSystem) e.dataTransfer.setData('idx', i); }}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => drop(Number(e.dataTransfer.getData('idx')), i)}
-                  className="group flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-slate-300 dark:hover:border-white/10 transition cursor-grab active:cursor-grabbing"
+                  className={`group flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-slate-300 dark:hover:border-white/10 transition ${
+                    isSystem ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
+                  }`}
                 >
-                  <span className="w-8 h-8 rounded-lg grid place-items-center text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06] dark:text-slate-600 dark:hover:text-slate-300 transition shrink-0">
-                    <GripVertical size={16} />
+                  <span className={`w-8 h-8 rounded-lg grid place-items-center transition shrink-0 ${
+                    isSystem
+                      ? 'text-slate-200 dark:text-white/[0.08]'
+                      : 'text-slate-300 hover:text-slate-500 hover:bg-slate-100 dark:hover:bg-white/[0.06] dark:text-slate-600 dark:hover:text-slate-300'
+                  }`}>
+                    {isSystem ? <Lock size={14} /> : <GripVertical size={16} />}
                   </span>
                   <span className="text-[11px] font-semibold num text-slate-500 dark:text-slate-400 w-6 text-center shrink-0">{i + 1}</span>
                   <ColorBadge color={s.color || 'blue'} name={s.name} />
+                  {isSystem && (
+                    <span
+                      title="Etapa fixa do sistema — não pode ser editada ou excluída"
+                      className="text-[9.5px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400 shrink-0"
+                    >
+                      Fixa
+                    </span>
+                  )}
                   <div className="flex-1"></div>
                   <span className="text-[11.5px] text-slate-500 dark:text-slate-400 num whitespace-nowrap">
                     <span className="num font-semibold text-slate-700 dark:text-slate-200">{leadCount}</span> {leadCount === 1 ? 'lead na etapa' : 'leads na etapa'}
                   </span>
-                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
-                    <IconBtn icon={<Pencil size={14} />} kind="edit" title="Editar" onClick={() => { setName(s.name); setColor(s.color || 'blue'); setEditingId(s.id); }} />
-                    <IconBtn icon={<Trash2 size={14} />} kind="danger" title="Excluir" onClick={() => handleDelete(s)} />
-                  </div>
+                  {!isSystem && (
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                      <IconBtn icon={<Pencil size={14} />} kind="edit" title="Editar" onClick={() => { setName(s.name); setColor(s.color || 'blue'); setEditingId(s.id); }} />
+                      <IconBtn icon={<Trash2 size={14} />} kind="danger" title="Excluir" onClick={() => handleDelete(s)} />
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -7493,12 +7587,38 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     if (e) e.stopPropagation();
     if (!APPOINTMENT_OUTCOMES.includes(outcome)) return;
     const meta = getAppointmentOutcomeMeta(outcome);
+    // Auto-move "Compareceu" em visita/aula → fase Negociação no mesmo funil.
+    // Só dispara se: (a) a etapa Negociação existe pro funil do lead
+    // (a migration garante isso) E (b) o lead ainda não está em Negociação/Venda/Perda.
+    const isAttendedAppt =
+      outcome === 'attended' &&
+      (categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE ||
+       categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE);
+    const negStatus = isAttendedAppt
+      ? (statuses || []).find(s =>
+          s.funnelId === lead.funnelId &&
+          (s.name || '').trim().toLowerCase() === 'negociação'
+        )
+      : null;
+    const shouldPromoteToNegociacao =
+      Boolean(negStatus) &&
+      lead.status !== negStatus.name &&
+      lead.status !== 'Venda' &&
+      lead.status !== 'Perda';
+
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+      const leadUpdate = {
         appointmentOutcome: outcome,
         appointmentOutcomeAt: serverTimestamp(),
         appointmentOutcomeBy: appUser.authUid || appUser.id || null
-      });
+      };
+      if (shouldPromoteToNegociacao) {
+        leadUpdate.status = negStatus.name; // 'Negociação'
+      }
+      await updateDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+        leadUpdate
+      );
       // Marca a tarefa da Meta como concluída para essa categoria
       // específica. Type='daily_goal_done' é a fonte ÚNICA de verdade
       // para "tarefa cumprida" no fluxo da Meta Diária.
@@ -7512,7 +7632,22 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         appointmentOutcome: outcome,
         createdAt: serverTimestamp()
       });
-      toast.success(`${meta.label} registrado para ${lead.name}.`);
+      // Log adicional da mudança de fase para o feed do lead.
+      if (shouldPromoteToNegociacao) {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+          leadId: lead.id,
+          consultantName: appUser.name,
+          ...getInteractionSecurityFields(lead, appUser),
+          text: `Fase alterada para [${negStatus.name}] após comparecimento em ${DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug}.`,
+          type: 'status_change',
+          createdAt: serverTimestamp()
+        });
+      }
+      if (shouldPromoteToNegociacao) {
+        toast.success(`${meta.label} registrado. ${lead.name} → Negociação.`);
+      } else {
+        toast.success(`${meta.label} registrado para ${lead.name}.`);
+      }
       // After 'no_show', immediately offer to reschedule. Today's task is
       // already closed; the modal in 'after_no_show' flow only updates the
       // appointment date without writing another daily_goal_done.
