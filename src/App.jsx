@@ -7502,7 +7502,16 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
 
     myLeads.forEach(lead => {
       // 1. Novo Lead 24h
-      if (lead.createdAt && lead.createdAt >= oneDayAgo && lead.status !== 'Venda' && lead.status !== 'Perda') {
+      // A regra entra em vigor APENAS no dia seguinte ao cadastro: leads
+      // criados hoje não aparecem nessa categoria (o consultor acabou de
+      // cadastrar — não precisa de lembrete imediato). Critério: criado
+      // antes do início de hoje E dentro das últimas 24h.
+      if (
+        lead.createdAt &&
+        lead.createdAt < todayStart &&
+        lead.createdAt >= oneDayAgo &&
+        lead.status !== 'Venda' && lead.status !== 'Perda'
+      ) {
         addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.novo_24h, DAILY_GOAL_CATEGORIES.NOVO_24H);
       }
 
