@@ -74,6 +74,11 @@ service cloud.firestore {
       allow write: if isAdmin(appId);
     }
 
+    match /artifacts/{appId}/public/data/stronix_units/{id} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(appId);
+    }
+
     // Config geral da academia (doc único "general"): leitura p/ todos logados,
     // escrita só admin.
     match /artifacts/{appId}/public/data/stronix_config/{id} {
