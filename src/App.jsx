@@ -128,6 +128,24 @@ import { getDefaultFunnel, isItemInFunnel, commitOpsInChunks, ALL_FUNNELS_ID, is
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
+// Normaliza a lista de opções de quantidade de aulas experimentais:
+// inteiros positivos, sem repetição, ordenados. Aceita também um número
+// legado `fallbackMax` (config antiga com maxTrialClasses) → vira [1..max].
+// Nunca retorna vazio: cai para [1, 2, 3].
+const normalizeTrialClassOptions = (raw, fallbackMax) => {
+  let list = [];
+  if (Array.isArray(raw)) {
+    list = raw;
+  } else if (Number.isFinite(Number(fallbackMax)) && Number(fallbackMax) > 0) {
+    const max = Math.floor(Number(fallbackMax));
+    list = Array.from({ length: max }, (_, i) => i + 1);
+  }
+  const clean = Array.from(new Set(
+    list.map(n => Math.floor(Number(n))).filter(n => Number.isFinite(n) && n >= 1 && n <= 99)
+  )).sort((a, b) => a - b);
+  return clean.length ? clean : [1, 2, 3];
+};
+
 const getLastInteractionDate = (lead, interactions) => {
   if (!lead || !Array.isArray(interactions)) return null;
   const fromList = interactions
@@ -445,14 +463,14 @@ function AppInner() {
   const [usersList, setUsersList] = useState([]);
   const [lossReasons, setLossReasons] = useState([]); // NOVO ESTADO
   const [funnels, setFunnels] = useState([]);
-  // Configurações Gerais da academia: modalidades + nº máx de aulas experimentais.
+  // Configurações Gerais da academia: modalidades + opções de quantidade de aulas.
   const [modalities, setModalities] = useState([]);
-  const [maxTrialClasses, setMaxTrialClasses] = useState(3);
+  const [trialClassOptions, setTrialClassOptions] = useState([1, 2, 3]);
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, maxTrialClasses }),
-    [modalities, maxTrialClasses]
+    () => ({ modalities, trialClassOptions }),
+    [modalities, trialClassOptions]
   );
   const [selectedFunnelId, setSelectedFunnelId] = useState(() => {
     try { return localStorage.getItem('crm-selected-funnel') || null; } catch { return null; }
@@ -637,14 +655,15 @@ useEffect(() => {
     }
   );
 
-  // Config geral é um doc único (singleton). maxTrialClasses cai p/ 3 se ausente/ inválido.
+  // Config geral é um doc único (singleton). Lê a lista de opções de quantidade
+  // de aulas experimentais; aceita config antiga (maxTrialClasses) como fallback.
   const unsubConfig = onSnapshot(
     doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
     (snap) => {
-      const n = Number(snap.exists() ? snap.data()?.maxTrialClasses : NaN);
-      setMaxTrialClasses(Number.isFinite(n) && n > 0 ? Math.floor(n) : 3);
+      const data = snap.exists() ? snap.data() : null;
+      setTrialClassOptions(normalizeTrialClassOptions(data?.trialClassOptions, data?.maxTrialClasses));
     },
-    () => setMaxTrialClasses(3)
+    () => setTrialClassOptions([1, 2, 3])
   );
 
   let unsubUsers = () => {};
@@ -965,7 +984,7 @@ if (csatToken) {
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} maxTrialClasses={maxTrialClasses} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} />}
             </div>
           )}
         </div>
@@ -1194,9 +1213,9 @@ function useToast() {
 // Context para evitar threading por todos os componentes que renderizam o
 // LeadDetailsModal / RescheduleModal. Funciona através de portais (createPortal
 // mantém a posição na árvore React).
-const GeneralConfigContext = createContext({ modalities: [], maxTrialClasses: 3 });
+const GeneralConfigContext = createContext({ modalities: [], trialClassOptions: [1, 2, 3] });
 function useGeneralConfig() {
-  return useContext(GeneralConfigContext) || { modalities: [], maxTrialClasses: 3 };
+  return useContext(GeneralConfigContext) || { modalities: [], trialClassOptions: [1, 2, 3] };
 }
 
 function ToastContainer({ toasts, onDismiss }) {
@@ -4581,7 +4600,7 @@ const getInteractionVisual = (interaction, statusesArray = []) => {
 
 function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
   const toast = useToast();
-  const { modalities, maxTrialClasses } = useGeneralConfig();
+  const { modalities, trialClassOptions } = useGeneralConfig();
   const isReadOnly = !canEditLead(appUser, lead);
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
   const fallbackFunnelId = lead.funnelId || getDefaultFunnel(safeFunnels)?.id || null;
@@ -4595,9 +4614,9 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   const [enableFollowUp, setEnableFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpType, setFollowUpType] = useState('Mensagem');
-  // Aula experimental: modalidade + quantidade prevista (1..maxTrialClasses).
+  // Aula experimental: modalidade + quantidade (escolhida entre trialClassOptions).
   const [scheduleModality, setScheduleModality] = useState('');
-  const [scheduleQty, setScheduleQty] = useState(1);
+  const [scheduleQty, setScheduleQty] = useState(() => (trialClassOptions && trialClassOptions[0]) || 1);
 
   const [lossModalOpen, setLossModalOpen] = useState(false);
 
@@ -4769,7 +4788,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
       if (status !== lead.status) actionText += `Fase alterada para [${status}]. `;
       if (note) actionText += `Obs: ${note}. `;
       const schedulingAula = enableFollowUp && normalizeAppointmentType(followUpType) === 'aula_experimental';
-      const qty = Math.max(1, Math.min(Number(scheduleQty) || 1, maxTrialClasses || 1));
+      const qty = Number(scheduleQty) > 0 ? Math.floor(Number(scheduleQty)) : ((trialClassOptions && trialClassOptions[0]) || 1);
       const modalityName = (scheduleModality || '').trim();
       if (enableFollowUp) {
         const extra = schedulingAula
@@ -4815,7 +4834,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
       setFollowUpDate('');
       setFollowUpType('Mensagem');
       setScheduleModality('');
-      setScheduleQty(1);
+      setScheduleQty((trialClassOptions && trialClassOptions[0]) || 1);
       setLoading(false);
     } catch (e) {
       console.error(e);
@@ -5428,13 +5447,13 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                                     {(modalities || []).map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
                                   </select>
                                 </Field>
-                                <Field label="Aulas experimentais previstas">
+                                <Field label="Quantas aulas experimentais">
                                   <select
                                     value={scheduleQty}
                                     onChange={e => setScheduleQty(Number(e.target.value))}
                                     className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] px-3 pr-8 transition appearance-none cursor-pointer num"
                                   >
-                                    {Array.from({ length: Math.max(1, maxTrialClasses || 1) }, (_, i) => i + 1).map(n => (
+                                    {(trialClassOptions && trialClassOptions.length ? trialClassOptions : [1]).map(n => (
                                       <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>
                                     ))}
                                   </select>
@@ -5803,7 +5822,7 @@ function SettingsRow({ label, value }) {
   );
 }
 
-function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, maxTrialClasses }) {
+function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, trialClassOptions }) {
   const [activeTab, setActiveTab] = useState('users');
   const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
 
@@ -5867,7 +5886,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         {/* Content */}
         <div className="col-span-12 lg:col-span-9 space-y-6" key={activeTab}>
           {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
-          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} maxTrialClasses={maxTrialClasses} leads={leads} />}
+          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} leads={leads} />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
           )}
@@ -7032,16 +7051,15 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
   );
 }
 
-// Configurações Gerais: modalidades da academia + nº máx de aulas experimentais.
-function ManageGeneralSettingsTab({ db, modalities, maxTrialClasses, leads }) {
+// Configurações Gerais: modalidades da academia + opções de quantidade de aulas.
+function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, leads }) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [color, setColor] = useState('blue');
   const [editingId, setEditingId] = useState(null);
 
-  const [maxInput, setMaxInput] = useState(String(maxTrialClasses || 3));
-  const [savingMax, setSavingMax] = useState(false);
-  useEffect(() => { setMaxInput(String(maxTrialClasses || 3)); }, [maxTrialClasses]);
+  const [optionInput, setOptionInput] = useState('');
+  const [savingOpts, setSavingOpts] = useState(false);
 
   const resetForm = () => { setName(''); setColor('blue'); setEditingId(null); };
 
@@ -7093,54 +7111,95 @@ function ManageGeneralSettingsTab({ db, modalities, maxTrialClasses, leads }) {
     }
   };
 
-  const saveMax = async () => {
-    const n = Math.floor(Number(maxInput));
-    if (!Number.isFinite(n) || n < 1 || n > 20) {
-      toast.warning('Informe um número entre 1 e 20.');
-      return;
-    }
-    setSavingMax(true);
+  // Persiste a lista completa de opções no config doc.
+  const persistOptions = async (next) => {
+    const clean = normalizeTrialClassOptions(next);
+    setSavingOpts(true);
     try {
       await setDoc(
         doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
-        { maxTrialClasses: n },
+        { trialClassOptions: clean },
         { merge: true }
       );
-      toast.success(`Limite definido: até ${n} aula(s) experimental(is).`);
     } catch (err) {
       console.error(err);
-      toast.error('Não foi possível salvar o limite.');
+      toast.error('Não foi possível salvar as opções de aulas.');
     }
-    setSavingMax(false);
+    setSavingOpts(false);
+  };
+
+  const addOption = async (e) => {
+    if (e) e.preventDefault();
+    const n = Math.floor(Number(optionInput));
+    if (!Number.isFinite(n) || n < 1 || n > 99) {
+      toast.warning('Informe um número entre 1 e 99.');
+      return;
+    }
+    if ((trialClassOptions || []).includes(n)) {
+      toast.warning(`A opção "${n}" já existe.`);
+      setOptionInput('');
+      return;
+    }
+    await persistOptions([...(trialClassOptions || []), n]);
+    setOptionInput('');
+  };
+
+  const removeOption = async (n) => {
+    const next = (trialClassOptions || []).filter(x => x !== n);
+    if (next.length === 0) {
+      toast.warning('Mantenha ao menos uma opção de quantidade.');
+      return;
+    }
+    await persistOptions(next);
   };
 
   return (
     <>
       <SettingsCard
         title="Aulas experimentais"
-        hint="Quantas aulas experimentais o consultor pode oferecer por lead ao agendar"
+        hint="Opções de quantidade que o consultor pode escolher ao agendar (ex: 1, 2, 5, 10, 15)"
         icon={<BookOpen size={16} />}
       >
-        <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
-          <div className="min-w-[160px]">
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-              Limite de aulas por lead
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={20}
-              value={maxInput}
-              onChange={e => setMaxInput(e.target.value)}
-              className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[14px] num px-3 transition"
-            />
+        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] space-y-4">
+          <form onSubmit={addOption} className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[160px]">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                Adicionar opção de quantidade
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                value={optionInput}
+                onChange={e => setOptionInput(e.target.value)}
+                placeholder="ex: 15"
+                className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[14px] num px-3 transition placeholder:text-slate-400"
+              />
+            </div>
+            <Btn kind="primary" type="submit" icon={<Plus size={13} />} disabled={savingOpts}>Adicionar</Btn>
+            <p className="text-[11.5px] text-slate-500 dark:text-slate-400 flex-1 min-w-[200px]">
+              O consultor escolhe uma destas opções ao agendar uma aula experimental — o que foi combinado com o aluno.
+            </p>
+          </form>
+
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Opções disponíveis</div>
+            <div className="flex flex-wrap gap-2">
+              {(trialClassOptions || []).map(n => (
+                <span key={n} className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 rounded-lg bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] text-[13px] font-semibold text-slate-700 dark:text-slate-200">
+                  <span className="num">{n} {n === 1 ? 'aula' : 'aulas'}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeOption(n)}
+                    title="Remover opção"
+                    className="w-5 h-5 grid place-items-center rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
           </div>
-          <Btn kind="brand" icon={<Check size={13} />} onClick={saveMax} disabled={savingMax}>
-            {savingMax ? 'Salvando...' : 'Salvar limite'}
-          </Btn>
-          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 flex-1 min-w-[200px]">
-            No agendamento de uma aula experimental, o consultor escolhe a quantidade prevista de 1 até este limite.
-          </p>
         </div>
       </SettingsCard>
 
@@ -7974,7 +8033,7 @@ function toDatetimeLocalValue(date) {
 
 function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
   const isAfterNoShow = flow === 'after_no_show';
-  const { modalities, maxTrialClasses } = useGeneralConfig();
+  const { modalities, trialClassOptions } = useGeneralConfig();
 
   const defaultValue = useMemo(() => {
     const base = currentDate ? new Date(currentDate) : new Date();
@@ -7994,8 +8053,15 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
   const [modality, setModality] = useState(lead?.appointmentModality || '');
   const [qty, setQty] = useState(() => {
     const n = Number(lead?.trialClassesPlanned);
-    return Number.isFinite(n) && n > 0 ? n : 1;
+    return Number.isFinite(n) && n > 0 ? n : ((trialClassOptions && trialClassOptions[0]) || 1);
   });
+
+  // Garante que a opção semeada do lead apareça no select mesmo que não esteja
+  // mais na lista configurada (ex.: opção removida depois do agendamento).
+  const qtyOptions = useMemo(() => {
+    const base = (trialClassOptions && trialClassOptions.length ? trialClassOptions : [1]);
+    return base.includes(qty) ? base : [...base, qty].sort((a, b) => a - b);
+  }, [trialClassOptions, qty]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -8003,9 +8069,9 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
     const newDate = new Date(dateValue);
     if (isNaN(newDate.getTime())) return;
     const isAula = apptType === 'aula_experimental';
-    const clampedQty = Math.max(1, Math.min(Number(qty) || 1, maxTrialClasses || 1));
+    const finalQty = Number(qty) > 0 ? Math.floor(Number(qty)) : ((trialClassOptions && trialClassOptions[0]) || 1);
     setSubmitting(true);
-    await onConfirm(newDate, note, apptType, isAula ? (modality || '').trim() : null, isAula ? clampedQty : null);
+    await onConfirm(newDate, note, apptType, isAula ? (modality || '').trim() : null, isAula ? finalQty : null);
     setSubmitting(false);
   };
 
@@ -8100,7 +8166,7 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
                     onChange={(e) => setQty(Number(e.target.value))}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
                   >
-                    {Array.from({ length: Math.max(1, maxTrialClasses || 1) }, (_, i) => i + 1).map(n => (
+                    {qtyOptions.map(n => (
                       <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>
                     ))}
                   </select>
