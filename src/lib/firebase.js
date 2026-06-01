@@ -34,3 +34,7 @@ export const STATUSES_PATH = 'stronix_statuses';
 export const TAGS_PATH = 'stronix_tags';
 export const LOSS_REASONS_PATH = 'stronix_loss_reasons';
 export const FUNNELS_PATH = 'stronix_funnels';
+export const MODALITIES_PATH = 'stronix_modalities';
+// Config "geral" da academia — doc único (singleton) sob este path.
+export const CONFIG_PATH = 'stronix_config';
+export const CONFIG_GENERAL_ID = 'general';
