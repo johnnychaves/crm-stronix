@@ -172,3 +172,33 @@
 .pop {
   animation: pop 0.25s ease-out both;
 }
+
+/* ===== ScheduleWizard (agendamento passo a passo) ===== */
+/* Revelação de passo: slide + fade ao ficar ativo. */
+@keyframes stepReveal {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.step-reveal { animation: stepReveal 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* Stagger das opções (delay inline por índice). */
+@keyframes optIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+.opt-in { animation: optIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+/* Fade do resumo colapsado. */
+@keyframes sumIn { from { opacity: 0; } to { opacity: 1; } }
+.sum-in { animation: sumIn 0.25s ease both; }
+
+/* Selo de check. */
+@keyframes checkPop {
+  0% { transform: scale(0.4); opacity: 0; }
+  60% { transform: scale(1.1); }
+  100% { transform: scale(1); opacity: 1; }
+}
+.check-pop { animation: checkPop 0.26s ease-out both; }
+
+/* Linha conectora entre passos. */
+.conn { transition: background-color 0.3s ease; }
