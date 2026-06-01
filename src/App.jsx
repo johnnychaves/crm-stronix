@@ -49,6 +49,9 @@ import {
   MoreHorizontal,
   TrendingUp,
   ChevronRight,
+  ChevronDown,
+  Dumbbell,
+  SlidersHorizontal,
   Ban
 } from 'lucide-react';
 
@@ -90,7 +93,10 @@ import {
   STATUSES_PATH,
   TAGS_PATH,
   LOSS_REASONS_PATH,
-  FUNNELS_PATH
+  FUNNELS_PATH,
+  MODALITIES_PATH,
+  CONFIG_PATH,
+  CONFIG_GENERAL_ID
 } from './lib/firebase.js';
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
 import { statusGradientMap } from './lib/constants.js';
@@ -414,6 +420,8 @@ function AppInner() {
   
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
+  const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
   
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
@@ -437,6 +445,15 @@ function AppInner() {
   const [usersList, setUsersList] = useState([]);
   const [lossReasons, setLossReasons] = useState([]); // NOVO ESTADO
   const [funnels, setFunnels] = useState([]);
+  // Configurações Gerais da academia: modalidades + nº máx de aulas experimentais.
+  const [modalities, setModalities] = useState([]);
+  const [maxTrialClasses, setMaxTrialClasses] = useState(3);
+  // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
+  // para respeitar as regras dos hooks).
+  const generalConfigValue = useMemo(
+    () => ({ modalities, maxTrialClasses }),
+    [modalities, maxTrialClasses]
+  );
   const [selectedFunnelId, setSelectedFunnelId] = useState(() => {
     try { return localStorage.getItem('crm-selected-funnel') || null; } catch { return null; }
   });
@@ -611,6 +628,25 @@ useEffect(() => {
     }
   );
 
+  const unsubModalities = onSnapshot(
+    collection(db, 'artifacts', appId, 'public', 'data', MODALITIES_PATH),
+    (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      data.sort((a, b) => (a.order || 0) - (b.order || 0));
+      setModalities(data);
+    }
+  );
+
+  // Config geral é um doc único (singleton). maxTrialClasses cai p/ 3 se ausente/ inválido.
+  const unsubConfig = onSnapshot(
+    doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+    (snap) => {
+      const n = Number(snap.exists() ? snap.data()?.maxTrialClasses : NaN);
+      setMaxTrialClasses(Number.isFinite(n) && n > 0 ? Math.floor(n) : 3);
+    },
+    () => setMaxTrialClasses(3)
+  );
+
   let unsubUsers = () => {};
   if (isAdminUser(appUser)) {
     unsubUsers = onSnapshot(usersRef, (snapshot) => {
@@ -628,6 +664,8 @@ useEffect(() => {
     unsubTags();
     unsubLossReasons();
     unsubFunnels();
+    unsubModalities();
+    unsubConfig();
     unsubUsers();
   };
 }, [firebaseUser, appUser]);
@@ -809,6 +847,12 @@ useEffect(() => {
 };
 
   const changeTab = (tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); }
+
+  // Mantém o grupo "Leads" aberto quando uma de suas sub-abas está ativa.
+  const isLeadsTab = activeTab === 'leads' || activeTab === 'aulas' || activeTab === 'visitas';
+  useEffect(() => {
+    if (isLeadsTab) setLeadsMenuOpen(true);
+  }, [isLeadsTab]);
 const csatToken = new URLSearchParams(window.location.search).get('csat');
 
 if (csatToken) {
@@ -826,6 +870,7 @@ if (csatToken) {
   if (!appUser) return <LoginScreen setAppUser={setAppUser} firebaseUser={firebaseUser} db={db} authSetupError={authSetupError} />;
 
   return (
+    <GeneralConfigContext.Provider value={generalConfigValue}>
     <div className="flex h-[100dvh] bg-[#eaedf2] dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-blue-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
       {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />}
 
@@ -850,9 +895,17 @@ if (csatToken) {
           <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard Geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
           <SidebarItem icon={<Kanban className="w-5 h-5" />} label="Quadro Kanban" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
           <SidebarItem icon={<Target className="w-5 h-5" />} label="Meta Diária" active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
-          <SidebarItem icon={<Users className="w-5 h-5" />} label="Todos os Leads" active={activeTab === 'leads'} onClick={() => changeTab('leads')} />
-          <SidebarItem icon={<BookOpen className="w-5 h-5" />} label="Aulas Experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
-          <SidebarItem icon={<Building2 className="w-5 h-5" />} label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
+          <SidebarGroup
+            icon={<Users className="w-5 h-5" />}
+            label="Leads"
+            active={isLeadsTab}
+            open={leadsMenuOpen}
+            onToggle={() => setLeadsMenuOpen(o => !o)}
+          >
+            <SidebarSubItem label="Todos os leads" active={activeTab === 'leads'} onClick={() => changeTab('leads')} />
+            <SidebarSubItem label="Aulas experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
+            <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
+          </SidebarGroup>
           {isAdminUser(appUser) && <SidebarItem icon={<Settings className="w-5 h-5" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />}
         </nav>
 
@@ -912,7 +965,7 @@ if (csatToken) {
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} maxTrialClasses={maxTrialClasses} />}
             </div>
           )}
         </div>
@@ -949,6 +1002,7 @@ if (csatToken) {
         />
       )}
     </div>
+    </GeneralConfigContext.Provider>
   );
 }
 
@@ -1134,6 +1188,15 @@ function useToast() {
     };
   }
   return ctx;
+}
+
+// Config geral (modalidades + nº máx de aulas experimentais) exposta via
+// Context para evitar threading por todos os componentes que renderizam o
+// LeadDetailsModal / RescheduleModal. Funciona através de portais (createPortal
+// mantém a posição na árvore React).
+const GeneralConfigContext = createContext({ modalities: [], maxTrialClasses: 3 });
+function useGeneralConfig() {
+  return useContext(GeneralConfigContext) || { modalities: [], maxTrialClasses: 3 };
 }
 
 function ToastContainer({ toasts, onDismiss }) {
@@ -1329,6 +1392,41 @@ function ViewSkeleton({ activeTab }) {
 
 function SidebarItem({ icon, label, active, onClick }) {
   return <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-blue-600/10 text-blue-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:bg-neutral-950 hover:text-gray-800 dark:text-neutral-200'}`}>{icon} <span className="text-sm tracking-tight">{label}</span></button>;
+}
+
+// Item-pai recolhível: abre um "slide para baixo" com os sub-itens.
+function SidebarGroup({ icon, label, active, open, onToggle, children }) {
+  return (
+    <div>
+      <button
+        onClick={onToggle}
+        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-blue-600/10 text-blue-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-950 hover:text-gray-800 dark:hover:text-neutral-200'}`}
+      >
+        {icon}
+        <span className="text-sm tracking-tight">{label}</span>
+        <ChevronDown className={`w-4 h-4 ml-auto transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      <div className={`grid transition-all duration-200 ease-in-out ${open ? 'grid-rows-[1fr] opacity-100 mt-1' : 'grid-rows-[0fr] opacity-0'}`}>
+        <div className="overflow-hidden">
+          <div className="ml-5 pl-3 border-l border-gray-200 dark:border-neutral-800 space-y-1 py-0.5">
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SidebarSubItem({ label, active, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-blue-600/10 text-blue-600 font-semibold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-950 hover:text-gray-800 dark:hover:text-neutral-200'}`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-blue-600' : 'bg-gray-300 dark:bg-neutral-700'}`} />
+      <span className="tracking-tight truncate">{label}</span>
+    </button>
+  );
 }
 
 function StatusBadge({ statusName, statusesArray }) {
@@ -1969,6 +2067,19 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
     });
   }, [funnelLeads, periodRange]);
 
+  // Breakdown de aulas experimentais agendadas por modalidade (no período/funil).
+  const aulasPorModalidade = useMemo(() => {
+    const map = new Map();
+    scheduledLeads.forEach(l => {
+      if (getLeadAppointmentType(l) !== 'aula_experimental') return;
+      const key = (l.appointmentModality || '').trim() || 'Sem modalidade';
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return Array.from(map.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [scheduledLeads]);
+
   const satisfactionLeads = useMemo(() => {
   const allowedStages = ['pos_agendamento', 'cliente_novo'];
 
@@ -2540,6 +2651,31 @@ const teamMetrics = useMemo(() => {
               }}
             />
           </DashCard>
+
+          {aulasPorModalidade.length > 0 && (
+            <DashCard
+              title="Aulas experimentais por modalidade"
+              hint="Distribuição das aulas agendadas no período"
+              icon={<Dumbbell size={14} />}
+            >
+              <div className="space-y-2.5">
+                {(() => {
+                  const max = aulasPorModalidade.reduce((m, x) => Math.max(m, x.count), 0) || 1;
+                  const total = aulasPorModalidade.reduce((s, x) => s + x.count, 0) || 1;
+                  return aulasPorModalidade.map(({ name, count }) => (
+                    <div key={name} className="flex items-center gap-3">
+                      <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 w-32 shrink-0 truncate">{name}</span>
+                      <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+                        <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.round((count / max) * 100)}%` }} />
+                      </div>
+                      <span className="num text-[12px] text-slate-500 dark:text-slate-400 w-9 text-right whitespace-nowrap">{Math.round((count / total) * 100)}%</span>
+                      <span className="num text-[13px] font-semibold text-slate-800 dark:text-slate-100 w-7 text-right">{count}</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+            </DashCard>
+          )}
 
           {isAllFunnels(selectedFunnelId) && funnels.length > 1 && (
             <DashCard
@@ -3736,6 +3872,7 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
                 <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   <th className="py-3 pl-5 pr-3">Aluno</th>
                   <th className="py-3 px-3">Data marcada</th>
+                  {isAula && <th className="py-3 px-3">Modalidade</th>}
                   <th className="py-3 px-3 text-center">Compareceu</th>
                   <th className="py-3 pr-5 pl-3 text-center">Finalizou</th>
                 </tr>
@@ -3780,6 +3917,21 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
                           <span className="text-[11.5px] text-slate-400 italic">—</span>
                         )}
                       </td>
+                      {isAula && (
+                        <td className="py-3.5 px-3">
+                          {l.appointmentModality ? (
+                            <div className="inline-flex items-center gap-1.5 text-[12px] font-medium text-slate-700 dark:text-slate-200">
+                              <Dumbbell size={12} className="text-brand-600 dark:text-brand-300 shrink-0" />
+                              <span className="truncate max-w-[140px]">{l.appointmentModality}</span>
+                              {Number(l.trialClassesPlanned) > 0 && (
+                                <span className="num text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300 whitespace-nowrap">{l.trialClassesPlanned}x</span>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-[11.5px] text-slate-400 italic">—</span>
+                          )}
+                        </td>
+                      )}
                       <td className="py-3.5 px-3 text-center">
                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold whitespace-nowrap ${att.badgeClass}`}>
                           <span aria-hidden="true">{att.icon}</span> {att.label}
@@ -3795,7 +3947,7 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
                 })}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan="4" className="py-16 text-center text-slate-400">
+                    <td colSpan={isAula ? 5 : 4} className="py-16 text-center text-slate-400">
                       <div className="grid place-items-center gap-2">
                         <HeaderIcon size={22} className="opacity-40" />
                         <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Nenhuma {typeLabelSingular} por aqui</p>
@@ -4429,6 +4581,7 @@ const getInteractionVisual = (interaction, statusesArray = []) => {
 
 function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
   const toast = useToast();
+  const { modalities, maxTrialClasses } = useGeneralConfig();
   const isReadOnly = !canEditLead(appUser, lead);
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
   const fallbackFunnelId = lead.funnelId || getDefaultFunnel(safeFunnels)?.id || null;
@@ -4442,6 +4595,9 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   const [enableFollowUp, setEnableFollowUp] = useState(false);
   const [followUpDate, setFollowUpDate] = useState('');
   const [followUpType, setFollowUpType] = useState('Mensagem');
+  // Aula experimental: modalidade + quantidade prevista (1..maxTrialClasses).
+  const [scheduleModality, setScheduleModality] = useState('');
+  const [scheduleQty, setScheduleQty] = useState(1);
 
   const [lossModalOpen, setLossModalOpen] = useState(false);
 
@@ -4612,8 +4768,14 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
       }
       if (status !== lead.status) actionText += `Fase alterada para [${status}]. `;
       if (note) actionText += `Obs: ${note}. `;
+      const schedulingAula = enableFollowUp && normalizeAppointmentType(followUpType) === 'aula_experimental';
+      const qty = Math.max(1, Math.min(Number(scheduleQty) || 1, maxTrialClasses || 1));
+      const modalityName = (scheduleModality || '').trim();
       if (enableFollowUp) {
-        actionText += `🔔 Retorno agendado (${followUpType}) p/ ${new Date(followUpDate).toLocaleString('pt-BR')}.`;
+        const extra = schedulingAula
+          ? ` — ${modalityName ? modalityName + ', ' : ''}${qty} aula(s) prevista(s)`
+          : '';
+        actionText += `🔔 Retorno agendado (${followUpType}${extra}) p/ ${new Date(followUpDate).toLocaleString('pt-BR')}.`;
       }
 
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
@@ -4635,6 +4797,15 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         if (appointmentType) {
           up.appointmentType = appointmentType;
           up.appointmentScheduledFor = appointmentDate;
+          // Modalidade + quantidade só fazem sentido para aula experimental.
+          // Para visita, limpamos para não herdar dados de um agendamento anterior.
+          if (appointmentType === 'aula_experimental') {
+            up.appointmentModality = modalityName || null;
+            up.trialClassesPlanned = qty;
+          } else {
+            up.appointmentModality = null;
+            up.trialClassesPlanned = null;
+          }
         }
       }
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), up, { merge: true });
@@ -4643,6 +4814,8 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
       setEnableFollowUp(false);
       setFollowUpDate('');
       setFollowUpType('Mensagem');
+      setScheduleModality('');
+      setScheduleQty(1);
       setLoading(false);
     } catch (e) {
       console.error(e);
@@ -4720,6 +4893,8 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
     setEnableFollowUp(false);
     setFollowUpDate('');
     setFollowUpType('Mensagem');
+    setScheduleModality('');
+    setScheduleQty(1);
     setStatus(lead.status);
     setFunnelId(fallbackFunnelId);
   };
@@ -5239,6 +5414,34 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                                 />
                               </Field>
                             </div>
+
+                            {/* Aula experimental: modalidade + quantidade prevista */}
+                            {followUpType === 'Aula Experimental' && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 rounded-lg bg-brand-50/50 dark:bg-brand-500/[0.06] border border-brand-100 dark:border-brand-500/20">
+                                <Field label="Modalidade">
+                                  <select
+                                    value={scheduleModality}
+                                    onChange={e => setScheduleModality(e.target.value)}
+                                    className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] px-3 pr-8 transition appearance-none cursor-pointer"
+                                  >
+                                    <option value="">{(modalities || []).length ? 'Selecione a modalidade...' : 'Cadastre em Configurações Gerais'}</option>
+                                    {(modalities || []).map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                                  </select>
+                                </Field>
+                                <Field label="Aulas experimentais previstas">
+                                  <select
+                                    value={scheduleQty}
+                                    onChange={e => setScheduleQty(Number(e.target.value))}
+                                    className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] px-3 pr-8 transition appearance-none cursor-pointer num"
+                                  >
+                                    {Array.from({ length: Math.max(1, maxTrialClasses || 1) }, (_, i) => i + 1).map(n => (
+                                      <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>
+                                    ))}
+                                  </select>
+                                </Field>
+                              </div>
+                            )}
+
                             <Field label="Anotação (opcional)">
                               <textarea
                                 value={note}
@@ -5600,7 +5803,7 @@ function SettingsRow({ label, value }) {
   );
 }
 
-function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels }) {
+function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, maxTrialClasses }) {
   const [activeTab, setActiveTab] = useState('users');
   const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
 
@@ -5609,9 +5812,11 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
   const tagsCount = (tags || []).length;
   const sourcesCount = (sources || []).length;
   const lossCount = (lossReasons || []).length;
+  const modalitiesCount = (modalities || []).length;
 
   const tabs = [
     { id: 'users',       label: 'Consultores',      hint: 'Time, credenciais e turnos',       icon: <Users size={15} />,         badge: usersCount },
+    { id: 'general',     label: 'Configurações gerais', hint: 'Modalidades e aulas experimentais', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount },
     { id: 'transfer',    label: 'Migrar leads',     hint: 'Transferir base entre consultores', icon: <ArrowRightLeft size={15} />, badge: null },
     { id: 'statuses',    label: 'Funil pipeline',   hint: 'Etapas do processo comercial',     icon: <Kanban size={15} />,        badge: funnelsCount },
     { id: 'tags',        label: 'Etiquetas',        hint: 'Marcadores para segmentar leads',  icon: <Tag size={15} />,           badge: tagsCount },
@@ -5662,6 +5867,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         {/* Content */}
         <div className="col-span-12 lg:col-span-9 space-y-6" key={activeTab}>
           {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
+          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} maxTrialClasses={maxTrialClasses} leads={leads} />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
           )}
@@ -6826,6 +7032,175 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
   );
 }
 
+// Configurações Gerais: modalidades da academia + nº máx de aulas experimentais.
+function ManageGeneralSettingsTab({ db, modalities, maxTrialClasses, leads }) {
+  const toast = useToast();
+  const [name, setName] = useState('');
+  const [color, setColor] = useState('blue');
+  const [editingId, setEditingId] = useState(null);
+
+  const [maxInput, setMaxInput] = useState(String(maxTrialClasses || 3));
+  const [savingMax, setSavingMax] = useState(false);
+  useEffect(() => { setMaxInput(String(maxTrialClasses || 3)); }, [maxTrialClasses]);
+
+  const resetForm = () => { setName(''); setColor('blue'); setEditingId(null); };
+
+  const saveModality = async (e) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    // Evita duplicada (case-insensitive), exceto a própria em edição.
+    const dup = (modalities || []).some(m => m.id !== editingId && (m.name || '').trim().toLowerCase() === trimmed.toLowerCase());
+    if (dup) { toast.warning(`A modalidade "${trimmed}" já existe.`); return; }
+    try {
+      if (editingId) {
+        const old = (modalities || []).find(m => m.id === editingId);
+        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', MODALITIES_PATH, editingId), { name: trimmed, color }, { merge: true });
+        // Propaga renomeação para os leads que já têm essa modalidade gravada.
+        if (old && old.name !== trimmed) {
+          const leadsToUpdate = (leads || []).filter(l => l.appointmentModality === old.name);
+          if (leadsToUpdate.length > 0) {
+            const ops = leadsToUpdate.map(lead => ({
+              ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+              data: { appointmentModality: trimmed }
+            }));
+            await commitOpsInChunks(db, ops, 400);
+          }
+        }
+        toast.success('Modalidade atualizada.');
+      } else {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', MODALITIES_PATH), {
+          name: trimmed, color, order: (modalities || []).length, createdAt: serverTimestamp()
+        });
+        toast.success('Modalidade criada.');
+      }
+      resetForm();
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar a modalidade.');
+    }
+  };
+
+  const handleDelete = async (m) => {
+    const inUse = (leads || []).filter(l => l.appointmentModality === m.name).length;
+    if (inUse > 0) {
+      toast.warning(`A modalidade "${m.name}" está em uso por ${inUse} lead(s). Não é possível excluí-la.`);
+      return;
+    }
+    if (window.confirm(`Excluir a modalidade "${m.name}"?`)) {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', MODALITIES_PATH, m.id));
+      if (editingId === m.id) resetForm();
+    }
+  };
+
+  const saveMax = async () => {
+    const n = Math.floor(Number(maxInput));
+    if (!Number.isFinite(n) || n < 1 || n > 20) {
+      toast.warning('Informe um número entre 1 e 20.');
+      return;
+    }
+    setSavingMax(true);
+    try {
+      await setDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+        { maxTrialClasses: n },
+        { merge: true }
+      );
+      toast.success(`Limite definido: até ${n} aula(s) experimental(is).`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar o limite.');
+    }
+    setSavingMax(false);
+  };
+
+  return (
+    <>
+      <SettingsCard
+        title="Aulas experimentais"
+        hint="Quantas aulas experimentais o consultor pode oferecer por lead ao agendar"
+        icon={<BookOpen size={16} />}
+      >
+        <div className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+          <div className="min-w-[160px]">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+              Limite de aulas por lead
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={20}
+              value={maxInput}
+              onChange={e => setMaxInput(e.target.value)}
+              className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[14px] num px-3 transition"
+            />
+          </div>
+          <Btn kind="brand" icon={<Check size={13} />} onClick={saveMax} disabled={savingMax}>
+            {savingMax ? 'Salvando...' : 'Salvar limite'}
+          </Btn>
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 flex-1 min-w-[200px]">
+            No agendamento de uma aula experimental, o consultor escolhe a quantidade prevista de 1 até este limite.
+          </p>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Modalidades"
+        hint="Modalidades da academia (ex: Musculação, Funcional, Cross)"
+        icon={<Dumbbell size={16} />}
+      >
+        <form onSubmit={saveModality} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+          <div className="flex-1 min-w-[220px]">
+            <StyledInput
+              icon={<Dumbbell size={14} />}
+              placeholder="Nova modalidade (ex: Musculação)"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              required
+            />
+          </div>
+          <div className="flex items-center gap-1.5">
+            {SETTINGS_COLOR_OPTIONS.map(c => (
+              <ColorDot key={c} color={c} active={color === c} onClick={() => setColor(c)} />
+            ))}
+          </div>
+          {editingId ? (
+            <div className="flex gap-2">
+              <Btn kind="brand" type="submit" icon={<Check size={13} />}>Salvar</Btn>
+              <Btn kind="soft" type="button" onClick={resetForm}>Cancelar</Btn>
+            </div>
+          ) : (
+            <Btn kind="primary" type="submit" icon={<Zap size={13} />}>Criar modalidade</Btn>
+          )}
+        </form>
+
+        {(modalities || []).length === 0 ? (
+          <div className="text-center text-[12.5px] text-slate-400 italic py-12">Nenhuma modalidade cadastrada ainda.</div>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+            {(modalities || []).map(m => {
+              const inUse = (leads || []).filter(l => l.appointmentModality === m.name).length;
+              return (
+                <div key={m.id} className="group flex items-center gap-3 px-4 py-3 hover:bg-slate-50/60 dark:hover:bg-white/[0.02] transition">
+                  <ColorDot color={m.color || 'blue'} active={false} onClick={() => {}} size={18} />
+                  <span className="text-[13.5px] font-medium text-slate-800 dark:text-slate-100 flex-1 truncate">{m.name}</span>
+                  {inUse > 0 && (
+                    <span className="num text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">{inUse} lead(s)</span>
+                  )}
+                  <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition shrink-0">
+                    <IconBtn icon={<Pencil size={13} />} kind="edit" title="Editar" onClick={() => { setName(m.name); setColor(m.color || 'blue'); setEditingId(m.id); }} />
+                    <IconBtn icon={<Trash2 size={13} />} kind="danger" title="Excluir" onClick={() => handleDelete(m)} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </SettingsCard>
+    </>
+  );
+}
+
 function TransferLeadsTab({ db, usersList, appUser, leads }) {
   const toast = useToast();
   const [fromUser, setFromUser] = useState('');
@@ -7599,6 +7974,7 @@ function toDatetimeLocalValue(date) {
 
 function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
   const isAfterNoShow = flow === 'after_no_show';
+  const { modalities, maxTrialClasses } = useGeneralConfig();
 
   const defaultValue = useMemo(() => {
     const base = currentDate ? new Date(currentDate) : new Date();
@@ -7614,14 +7990,22 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
   const [apptType, setApptType] = useState(initialType);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // Aula experimental: modalidade + quantidade (semeadas do lead, se houver).
+  const [modality, setModality] = useState(lead?.appointmentModality || '');
+  const [qty, setQty] = useState(() => {
+    const n = Number(lead?.trialClassesPlanned);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  });
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!dateValue || submitting) return;
     const newDate = new Date(dateValue);
     if (isNaN(newDate.getTime())) return;
+    const isAula = apptType === 'aula_experimental';
+    const clampedQty = Math.max(1, Math.min(Number(qty) || 1, maxTrialClasses || 1));
     setSubmitting(true);
-    await onConfirm(newDate, note, apptType);
+    await onConfirm(newDate, note, apptType, isAula ? (modality || '').trim() : null, isAula ? clampedQty : null);
     setSubmitting(false);
   };
 
@@ -7692,6 +8076,37 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
                 autoFocus
               />
             </div>
+            {apptType === 'aula_experimental' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                    Modalidade
+                  </label>
+                  <select
+                    value={modality}
+                    onChange={(e) => setModality(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
+                  >
+                    <option value="">{(modalities || []).length ? 'Selecione...' : 'Cadastre em Config. Gerais'}</option>
+                    {(modalities || []).map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                    Aulas previstas
+                  </label>
+                  <select
+                    value={qty}
+                    onChange={(e) => setQty(Number(e.target.value))}
+                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
+                  >
+                    {Array.from({ length: Math.max(1, maxTrialClasses || 1) }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                 Observação (opcional)
@@ -8026,7 +8441,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   //   - flow='after_no_show'      → writes plain 'note' (task already closed via no_show)
   // Always updates appointment fields and clears appointmentOutcome so the
   // new appointment is fresh.
-  const handleReschedule = async (newDate, note, newApptType) => {
+  const handleReschedule = async (newDate, note, newApptType, newModality, newQty) => {
     if (!rescheduleTarget) return;
     const { lead, categorySlug, flow = 'manual' } = rescheduleTarget;
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
@@ -8044,6 +8459,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     // Type may change during reschedule (decision 4): user can flip Visita ↔ Aula.
     const finalApptType = newApptType || getLeadAppointmentType(lead) || 'visita';
     const finalApptTypeLabel = finalApptType === 'aula_experimental' ? 'Aula Experimental' : 'Visita';
+    const isAula = finalApptType === 'aula_experimental';
+    const finalModality = isAula ? ((newModality || '').trim() || null) : null;
+    const finalQty = isAula ? (Number(newQty) > 0 ? Number(newQty) : null) : null;
 
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
@@ -8051,6 +8469,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         nextFollowUp: newDate, // keep legacy field in sync so the lead doesn't show up as "Atrasado" after rescheduling
         appointmentType: finalApptType,
         nextFollowUpType: finalApptTypeLabel,
+        appointmentModality: finalModality,
+        trialClassesPlanned: finalQty,
         appointmentOutcome: null,
         appointmentOutcomeAt: null,
         appointmentOutcomeBy: null
