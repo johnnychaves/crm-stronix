@@ -156,18 +156,33 @@ export default async function handler(req, res) {
       await adminAuth.setCustomUserClaims(userRecord.uid, { tenantId: slug });
 
       // 3. registro do tenant (raiz) — com plano, status e trial.
-      await tenantsCol().doc(slug).set({
-        displayName: String(displayName).trim(),
-        status,
-        plan: normalizedPlan,
-        trialEndsAt,
-        settings: { logoUrl: '', city: '', state: '' },
-        primaryAdminUid: userRecord.uid,
-        primaryAdminEmail: normalizedEmail,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        createdBy: auth.uid
-      });
+      // .create() é ATÔMICO: falha se o slug já existir, fechando a corrida
+      // (TOCTOU) entre o get() acima e este write quando dois provisionamentos
+      // simultâneos usam o mesmo slug.
+      try {
+        await tenantsCol().doc(slug).create({
+          displayName: String(displayName).trim(),
+          status,
+          plan: normalizedPlan,
+          trialEndsAt,
+          settings: { logoUrl: '', city: '', state: '' },
+          primaryAdminUid: userRecord.uid,
+          primaryAdminEmail: normalizedEmail,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdBy: auth.uid
+        });
+      } catch (createErr) {
+        const already = createErr?.code === 6 || createErr?.code === 'already-exists'
+          || /already exists/i.test(String(createErr?.message || ''));
+        if (already) {
+          // Corrida perdida: outro provisionamento criou o slug. Remove o
+          // usuário Auth recém-criado para não deixar conta órfã.
+          try { await adminAuth.deleteUser(userRecord.uid); } catch { /* best-effort */ }
+          return res.status(409).json({ error: `Já existe uma organização com o identificador "${slug}".` });
+        }
+        throw createErr;
+      }
 
       // 4. doc do admin dentro do tenant
       await usersCollection(slug).doc(userRecord.uid).set({

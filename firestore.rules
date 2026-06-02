@@ -20,6 +20,25 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.tenantId == appId;
     }
 
+    // Bloqueio server-side de academias SUSPENSAS ou com TRIAL EXPIRADO — espelha
+    // a checagem feita no login (App.jsx). FAIL-OPEN: se o doc /tenants/{appId}
+    // não existir (tenant legado) ou não tiver `status`, LIBERA; só NEGA quando o
+    // status é explicitamente 'suspended' ou um trial com `trialEndsAt` no passado.
+    // Usa exists()+get() (sem ambiguidade); `||` faz short-circuit e o get() só
+    // roda quando o doc existe.
+    function tenantNotBlocked(d) {
+      return !('status' in d)
+        || (d.status != 'suspended'
+            && !(d.status == 'trial'
+                 && 'trialEndsAt' in d
+                 && d.trialEndsAt is timestamp
+                 && d.trialEndsAt < request.time));
+    }
+    function tenantActive(appId) {
+      return !exists(/databases/$(database)/documents/tenants/$(appId))
+        || tenantNotBlocked(get(/databases/$(database)/documents/tenants/$(appId)).data);
+    }
+
     function userDoc(appId) {
       return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/stronix_users/$(request.auth.uid));
     }
@@ -35,21 +54,24 @@ service cloud.firestore {
     }
 
     match /artifacts/{appId}/public/data/stronix_leads/{leadId} {
-      allow read: if inTenant(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
-      allow create: if inTenant(appId)
+      allow read: if inTenant(appId) && tenantActive(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
+      allow create: if inTenant(appId) && tenantActive(appId)
         && (isAdmin(appId) || request.resource.data.consultantAuthUid == request.auth.uid);
-      allow update, delete: if inTenant(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
+      allow update, delete: if inTenant(appId) && tenantActive(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
     }
 
     match /artifacts/{appId}/public/data/stronix_interactions/{id} {
-      allow read: if inTenant(appId)
+      allow read: if inTenant(appId) && tenantActive(appId)
         && (isAdmin(appId) || resource.data.leadConsultantAuthUid == request.auth.uid);
-      allow create: if inTenant(appId)
+      allow create: if inTenant(appId) && tenantActive(appId)
         && (isAdmin(appId) || request.resource.data.leadConsultantAuthUid == request.auth.uid);
-      allow update, delete: if inTenant(appId)
+      allow update, delete: if inTenant(appId) && tenantActive(appId)
         && (isAdmin(appId) || resource.data.leadConsultantAuthUid == request.auth.uid);
     }
 
+    // stronix_users: NÃO usa tenantActive — o login precisa ler/vincular o doc do
+    // próprio usuário mesmo para conseguir mostrar a tela de bloqueio. O self-update
+    // já é travado (role/tenantId imutáveis) contra escalada de privilégio.
     match /artifacts/{appId}/public/data/stronix_users/{userId} {
       allow read: if inTenant(appId);
       allow write: if isAdmin(appId) && inTenant(appId);
@@ -62,50 +84,50 @@ service cloud.firestore {
     }
 
     match /artifacts/{appId}/public/data/stronix_sources/{id} {
-      allow read: if inTenant(appId);
-      allow write: if isAdmin(appId) && inTenant(appId);
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_statuses/{id} {
-      allow read: if inTenant(appId);
-      allow write: if isAdmin(appId) && inTenant(appId);
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_tags/{id} {
-      allow read: if inTenant(appId);
-      allow write: if isAdmin(appId) && inTenant(appId);
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_loss_reasons/{id} {
-      allow read: if inTenant(appId);
-      allow write: if isAdmin(appId) && inTenant(appId);
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_funnels/{id} {
-      allow read: if inTenant(appId);
-      allow write: if isAdmin(appId) && inTenant(appId);
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_modalities/{id} {
-      allow read: if inTenant(appId);
-      allow write: if isAdmin(appId) && inTenant(appId);
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_units/{id} {
-      allow read: if inTenant(appId);
-      allow write: if isAdmin(appId) && inTenant(appId);
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
     // Config geral da academia (doc único "general").
     match /artifacts/{appId}/public/data/stronix_config/{id} {
-      allow read: if inTenant(appId);
-      allow write: if isAdmin(appId) && inTenant(appId);
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
     // Registro de tenants (raiz). Escrita SEMPRE via Admin SDK (provisionamento,
     // status, convites) — nunca pelo cliente. Leitura liberada para os membros
     // do próprio tenant (o app lê status/trial no login para bloquear academias
-    // suspensas/expiradas) e para o super-admin.
+    // suspensas/expiradas — por isso NÃO usa tenantActive aqui) e para o super-admin.
     match /tenants/{tenantId} {
       allow read: if isSuperAdmin() || inTenant(tenantId);
       allow write: if false;
