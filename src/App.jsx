@@ -1059,64 +1059,91 @@ useEffect(() => {
     <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
       {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 flex flex-col transition-transform duration-300 ease-in-out transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
-        <div className="p-6 flex items-center justify-between md:justify-start gap-3">
-          <div className="flex items-center gap-2.5">
-            <SurgeMark size={30} />
-            <StronileadWordmark className="text-[19px] text-gray-900 dark:text-white" />
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-white dark:bg-ink-900 border-r border-slate-200 dark:border-white/[0.06] flex flex-col transition-transform duration-300 ease-in-out transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
+        {/* Marca */}
+        <div className="h-16 px-5 flex items-center justify-between gap-3 border-b border-slate-200/80 dark:border-white/[0.06] shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl grid place-items-center bg-brand-50 dark:bg-white/[0.06] ring-1 ring-brand-100 dark:ring-white/[0.08] shrink-0">
+              <SurgeMark size={22} />
+            </div>
+            <StronileadWordmark className="text-[16px] text-gray-900 dark:text-white" />
           </div>
-          <button className="md:hidden text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-2" onClick={() => setIsMobileMenuOpen(false)}><X className="w-6 h-6" /></button>
-        </div>
-        
-        <div className="px-6 pb-4 mb-4 border-b border-gray-200 dark:border-neutral-800">
-          <p className="text-xs text-gray-500 dark:text-neutral-400 uppercase tracking-wider mb-1 font-semibold">{appUser.superAdminOnly ? 'Super-admin' : isAdminUser(appUser) ? 'Acesso Master' : 'Consultor'}</p>
-          <div className="flex items-center gap-2">
-            {appUser.superAdminOnly ? <Globe className="w-4 h-4 text-brand-600 shrink-0" /> : isAdminUser(appUser) ? <Shield className="w-4 h-4 text-brand-600 shrink-0" /> : <User className="w-4 h-4 text-brand-500 shrink-0" />}
-            <p className="font-semibold truncate text-brand-500">{appUser.name}</p>
-          </div>
+          <button className="md:hidden text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white p-1 shrink-0" onClick={() => setIsMobileMenuOpen(false)}><X className="w-5 h-5" /></button>
         </div>
 
-        <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
+        {/* Navegação */}
+        <nav className="flex-1 px-3 pt-5 overflow-y-auto custom-scrollbar">
           {!appUser.superAdminOnly && (
             <>
-              <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard Geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
-              <SidebarItem icon={<Kanban className="w-5 h-5" />} label="Quadro Kanban" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
-              <SidebarItem icon={<Target className="w-5 h-5" />} label="Meta Diária" active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
-              <SidebarGroup
-                icon={<Users className="w-5 h-5" />}
-                label="Leads"
-                active={isLeadsTab}
-                open={leadsMenuOpen}
-                onToggle={() => setLeadsMenuOpen(o => !o)}
-              >
-                <SidebarSubItem label="Todos os leads" active={activeTab === 'leads'} onClick={() => changeTab('leads')} />
-                <SidebarSubItem label="Aulas experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
-                <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
-              </SidebarGroup>
-              {isAdminUser(appUser) && <SidebarItem icon={<Settings className="w-5 h-5" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />}
+              <div className="px-2.5 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500">Workspace</div>
+              <div className="space-y-1">
+                <SidebarItem icon={<LayoutDashboard className="w-[18px] h-[18px]" />} label="Visão geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
+                <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
+                <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
+                <SidebarGroup
+                  icon={<Users className="w-[18px] h-[18px]" />}
+                  label="Leads"
+                  active={isLeadsTab}
+                  open={leadsMenuOpen}
+                  onToggle={() => setLeadsMenuOpen(o => !o)}
+                >
+                  <SidebarSubItem label="Todos os leads" active={activeTab === 'leads'} onClick={() => changeTab('leads')} />
+                  <SidebarSubItem label="Aulas experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
+                  <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
+                </SidebarGroup>
+              </div>
             </>
           )}
-          {appUser?.superAdmin && <SidebarItem icon={<Globe className="w-5 h-5" />} label="Organizações" active={activeTab === 'superadmin'} onClick={() => changeTab('superadmin')} />}
+
+          {(appUser?.superAdmin || (!appUser.superAdminOnly && isAdminUser(appUser))) && (
+            <>
+              <div className="px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500">Administração</div>
+              <div className="space-y-1">
+                {!appUser.superAdminOnly && isAdminUser(appUser) && (
+                  <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />
+                )}
+                {appUser?.superAdmin && (
+                  <SidebarItem icon={<Globe className="w-[18px] h-[18px]" />} label="Organizações" active={activeTab === 'superadmin'} onClick={() => changeTab('superadmin')} />
+                )}
+              </div>
+            </>
+          )}
         </nav>
 
-        {/* FAB "Cadastrar Lead" — só pra quem opera dentro de um tenant. */}
+        {/* Cadastrar lead — só pra quem opera dentro de um tenant. */}
         {!appUser.superAdminOnly && (
-          <div className="px-4 pb-3 flex justify-end">
+          <div className="px-3 pb-2 shrink-0">
             <button
               onClick={() => { setIsAddLeadModalOpen(true); setIsMobileMenuOpen(false); }}
               title="Cadastrar Lead"
               aria-label="Cadastrar Lead"
-              className="w-11 h-11 rounded-full inline-flex items-center justify-center bg-brand-600 hover:bg-brand-700 active:scale-95 text-white shadow-md shadow-brand-600/30 transition"
+              className="w-full h-10 rounded-xl inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 active:scale-[.99] text-white text-[13px] font-semibold shadow-[0_6px_16px_-6px_rgba(43,89,255,.65)] transition"
             >
-              <Plus className="w-5 h-5" />
+              <Plus className="w-4 h-4" /> Cadastrar lead
             </button>
           </div>
         )}
 
-        <div className="p-4 border-t border-gray-200 dark:border-neutral-800 space-y-2 pb-8 md:pb-4">
-          <button onClick={handleLogout} className="flex items-center gap-3 text-gray-500 dark:text-neutral-400 hover:text-red-400 bg-gray-50 dark:bg-neutral-950/50 hover:bg-white dark:bg-neutral-900 rounded-xl transition-all w-full px-4 py-3 font-medium text-sm">
-            <LogOut className="w-5 h-5" /><span>Sair do Sistema</span>
-          </button>
+        {/* Usuário + sair */}
+        <div className="p-3 border-t border-slate-200/80 dark:border-white/[0.06] shrink-0 pb-6 md:pb-3">
+          <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-white/[0.04] transition">
+            {appUser.superAdminOnly ? (
+              <div className="w-[34px] h-[34px] rounded-full grid place-items-center bg-brand-50 text-brand-700 dark:bg-white/[0.06] dark:text-brand-300 shrink-0"><Globe className="w-4 h-4" /></div>
+            ) : (
+              <Avatar name={appUser?.name} size={34} />
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="text-[13px] font-semibold truncate text-gray-900 dark:text-white">{appUser?.name}</div>
+              <div className="text-[10.5px] text-brand-600 dark:text-brand-400 font-semibold whitespace-nowrap flex items-center gap-1">
+                {appUser.superAdminOnly ? <Globe className="w-3 h-3" /> : isAdminUser(appUser) ? <Shield className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                {appUser.superAdminOnly ? 'Super-admin' : isAdminUser(appUser) ? 'Acesso Master' : 'Consultor'}
+              </div>
+            </div>
+            <button onClick={handleLogout} title="Sair do sistema"
+              className="w-8 h-8 grid place-items-center rounded-lg text-gray-500 hover:text-rose-600 hover:bg-rose-50 dark:text-neutral-400 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 transition shrink-0">
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -1966,8 +1993,22 @@ function ViewSkeleton({ activeTab }) {
   }
 }
 
-function SidebarItem({ icon, label, active, onClick }) {
-  return <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-brand-600/10 text-brand-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:bg-neutral-950 hover:text-gray-800 dark:text-neutral-200'}`}>{icon} <span className="text-sm tracking-tight">{label}</span></button>;
+function SidebarItem({ icon, label, active, badge, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`group relative w-full h-11 pl-3.5 pr-3 rounded-xl flex items-center gap-3 text-[13.5px] font-medium transition-all ${active
+        ? 'bg-brand-600 text-white shadow-[0_6px_16px_-6px_rgba(43,89,255,.65)]'
+        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-300 dark:hover:bg-white/[0.06] dark:hover:text-white'}`}
+    >
+      {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-accent-500" />}
+      <span className={active ? 'text-white' : 'text-gray-400 group-hover:text-brand-600 dark:text-neutral-500 dark:group-hover:text-white transition-colors'}>{icon}</span>
+      <span className="flex-1 text-left whitespace-nowrap tracking-tight">{label}</span>
+      {badge != null && (
+        <span className={`text-[10.5px] font-bold px-1.5 h-[18px] rounded-md min-w-[18px] grid place-items-center tabular-nums shrink-0 ${active ? 'bg-white/20 text-white' : 'bg-accent-500/12 text-accent-600 dark:bg-accent-500/15 dark:text-accent-400'}`}>{badge}</span>
+      )}
+    </button>
+  );
 }
 
 // Item-pai recolhível: abre um "slide para baixo" com os sub-itens.
@@ -1976,15 +2017,17 @@ function SidebarGroup({ icon, label, active, open, onToggle, children }) {
     <div>
       <button
         onClick={onToggle}
-        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-brand-600/10 text-brand-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-950 hover:text-gray-800 dark:hover:text-neutral-200'}`}
+        className={`group w-full h-11 pl-3.5 pr-3 rounded-xl flex items-center gap-3 text-[13.5px] font-medium transition-all ${active
+          ? 'bg-brand-50 text-brand-700 dark:bg-white/[0.06] dark:text-brand-300'
+          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-300 dark:hover:bg-white/[0.06] dark:hover:text-white'}`}
       >
-        {icon}
-        <span className="text-sm tracking-tight">{label}</span>
-        <ChevronDown className={`w-4 h-4 ml-auto transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        <span className={active ? 'text-brand-600 dark:text-brand-300' : 'text-gray-400 group-hover:text-brand-600 dark:text-neutral-500 dark:group-hover:text-white transition-colors'}>{icon}</span>
+        <span className="flex-1 text-left whitespace-nowrap tracking-tight">{label}</span>
+        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${active ? 'text-brand-500 dark:text-brand-300' : 'text-gray-400 dark:text-neutral-500'}`} />
       </button>
       <div className={`grid transition-all duration-200 ease-in-out ${open ? 'grid-rows-[1fr] opacity-100 mt-1' : 'grid-rows-[0fr] opacity-0'}`}>
         <div className="overflow-hidden">
-          <div className="ml-5 pl-3 border-l border-gray-200 dark:border-neutral-800 space-y-1 py-0.5">
+          <div className="ml-[26px] pl-3 border-l border-slate-200 dark:border-white/[0.08] space-y-0.5 py-0.5">
             {children}
           </div>
         </div>
@@ -1997,9 +2040,9 @@ function SidebarSubItem({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-brand-600/10 text-brand-600 font-semibold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-950 hover:text-gray-800 dark:hover:text-neutral-200'}`}
+      className={`group w-full flex items-center gap-2.5 pl-3 pr-2.5 h-9 rounded-lg text-[13px] font-medium transition-all ${active ? 'bg-brand-600 text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-white'}`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-brand-600' : 'bg-gray-300 dark:bg-neutral-700'}`} />
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-white' : 'bg-gray-300 group-hover:bg-brand-500 dark:bg-neutral-600'}`} />
       <span className="tracking-tight truncate">{label}</span>
     </button>
   );
