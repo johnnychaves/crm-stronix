@@ -379,7 +379,7 @@ function AppInner() {
       // Super-admin SEM tenant: não tem claim de tenant, então NÃO pode (nem
       // precisa) consultar stronix_users — as regras bloqueariam (permission
       // denied) e cairia no catch. Entra direto numa sessão só de super-admin
-      // (tela "Academias"), antes de qualquer acesso ao Firestore.
+      // (tela "Organizações"), antes de qualquer acesso ao Firestore.
       if (superAdmin && !tenantId) {
         const normalizedEmail = String(currentUser.email || '').trim().toLowerCase();
         setAppUser({
@@ -444,7 +444,7 @@ function AppInner() {
 
       // Super-admin "puro": tem o claim superAdmin mas não é membro de nenhum
       // tenant. Em vez de deslogar, deixa entrar numa sessão só de super-admin
-      // (vê apenas a tela "Academias"; não carrega dados de tenant).
+      // (vê apenas a tela "Organizações"; não carrega dados de tenant).
       if (superAdmin) {
         const fallbackName = (normalizedEmail || 'Super-admin').split('@')[0];
         setAppUser({
@@ -481,7 +481,7 @@ function AppInner() {
   // 2. Leitura de Dados
 useEffect(() => {
   if (!firebaseUser || !appUser) return;
-  // Super-admin sem tenant não carrega dados de academia (só usa a tela Academias).
+  // Super-admin sem tenant não carrega dados de organização (só usa a tela Organizações).
   if (appUser.superAdminOnly) { setLoadingData(false); return; }
   setLoadingData(true);
 
@@ -802,7 +802,7 @@ useEffect(() => {
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
 
-  // Super-admin sem tenant entra direto na tela "Academias" (única que vê).
+  // Super-admin sem tenant entra direto na tela "Organizações" (única que vê).
   useEffect(() => {
     if (appUser?.superAdminOnly) setActiveTab('superadmin');
   }, [appUser]);
@@ -860,7 +860,7 @@ useEffect(() => {
               {isAdminUser(appUser) && <SidebarItem icon={<Settings className="w-5 h-5" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />}
             </>
           )}
-          {appUser?.superAdmin && <SidebarItem icon={<Globe className="w-5 h-5" />} label="Academias" active={activeTab === 'superadmin'} onClick={() => changeTab('superadmin')} />}
+          {appUser?.superAdmin && <SidebarItem icon={<Globe className="w-5 h-5" />} label="Organizações" active={activeTab === 'superadmin'} onClick={() => changeTab('superadmin')} />}
         </nav>
 
         {/* FAB "Cadastrar Lead" — só pra quem opera dentro de um tenant. */}
@@ -896,7 +896,7 @@ useEffect(() => {
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
               {activeTab === 'settings' && 'Configurações'}
-              {activeTab === 'superadmin' && 'Academias (Super-admin)'}
+              {activeTab === 'superadmin' && 'Organizações (Super-admin)'}
             </h2>
           </div>
           <button 
@@ -968,9 +968,9 @@ useEffect(() => {
 }
 
 // ==========================================
-// SUPER-ADMIN — provisionamento de academias (tenants)
+// SUPER-ADMIN — provisionamento de organizações (tenants)
 // ==========================================
-// Visível só para quem tem o claim superAdmin. Cria uma academia nova
+// Visível só para quem tem o claim superAdmin. Cria uma organização nova
 // (tenant + 1º admin + claim + doc) via /api/provision-tenant. Os padrões
 // (funil "Comercial" + etapa "Negociação") são semeados no 1º login do admin.
 const slugify = (s) => String(s || '')
@@ -999,10 +999,10 @@ function SuperAdminView() {
       const res = await fetch('/api/provision-tenant', { headers: await authHeader() });
       const data = await res.json();
       if (res.ok) setTenants(data.tenants || []);
-      else toast.error(data.error || 'Erro ao listar academias.');
+      else toast.error(data.error || 'Erro ao listar organizações.');
     } catch (e) {
       console.error(e);
-      toast.error('Erro ao listar academias.');
+      toast.error('Erro ao listar organizações.');
     }
     setLoadingList(false);
   };
@@ -1036,14 +1036,14 @@ function SuperAdminView() {
         })
       });
       const data = await res.json();
-      if (!res.ok) { toast.error(data.error || 'Erro ao criar academia.'); setSubmitting(false); return; }
-      toast.success(`Academia "${form.displayName.trim()}" criada. Admin: ${form.adminEmail.trim()}`, { duration: 8000, title: 'Academia provisionada' });
+      if (!res.ok) { toast.error(data.error || 'Erro ao criar organização.'); setSubmitting(false); return; }
+      toast.success(`Organização "${form.displayName.trim()}" criada. Admin: ${form.adminEmail.trim()}`, { duration: 8000, title: 'Organização provisionada' });
       setForm({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '' });
       setSlugTouched(false);
       loadTenants();
     } catch (e2) {
       console.error(e2);
-      toast.error('Erro ao criar academia.');
+      toast.error('Erro ao criar organização.');
     }
     setSubmitting(false);
   };
@@ -1054,17 +1054,17 @@ function SuperAdminView() {
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           <Globe size={13} className="text-brand-600" /> Super-admin
         </div>
-        <h2 className="mt-1.5 text-[24px] font-semibold tracking-tight leading-tight">Academias</h2>
+        <h2 className="mt-1.5 text-[24px] font-semibold tracking-tight leading-tight">Organizações</h2>
         <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
-          Crie uma academia nova (cliente) com dados totalmente isolados e o primeiro admin dela.
+          Crie uma organização nova (cliente) com dados totalmente isolados e o primeiro admin dela.
         </p>
       </section>
 
-      <SettingsCard title="Nova academia" hint="Provisiona o tenant + o primeiro admin" icon={<Plus size={16} />}>
+      <SettingsCard title="Nova organização" hint="Provisiona o tenant + o primeiro admin" icon={<Plus size={16} />}>
         <form onSubmit={submit} className="space-y-4 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Field label="Nome da academia">
-              <StyledInput placeholder="Ex: Academia Corpo & Movimento" value={form.displayName} onChange={e => onNameChange(e.target.value)} required />
+            <Field label="Nome da organização">
+              <StyledInput placeholder="Ex: Studio Corpo & Movimento" value={form.displayName} onChange={e => onNameChange(e.target.value)} required />
             </Field>
             <Field label="Identificador (slug)" hint="minúsculas, números e hífen">
               <StyledInput placeholder="ex: corpo-e-movimento" value={form.tenantId}
@@ -1076,7 +1076,7 @@ function SuperAdminView() {
               <StyledInput placeholder="Nome completo" value={form.adminName} onChange={e => setField('adminName', e.target.value)} required />
             </Field>
             <Field label="E-mail do admin">
-              <StyledInput type="email" placeholder="admin@academia.com" value={form.adminEmail} onChange={e => setField('adminEmail', e.target.value)} required />
+              <StyledInput type="email" placeholder="admin@organizacao.com" value={form.adminEmail} onChange={e => setField('adminEmail', e.target.value)} required />
             </Field>
             <Field label="Senha temporária">
               <StyledInput type="text" placeholder="mín. 6 caracteres" value={form.adminPassword} onChange={e => setField('adminPassword', e.target.value)} required />
@@ -1084,17 +1084,17 @@ function SuperAdminView() {
           </div>
           <div className="flex justify-end">
             <Btn kind="brand" type="submit" icon={<Check size={13} />} disabled={submitting}>
-              {submitting ? 'Criando...' : 'Criar academia'}
+              {submitting ? 'Criando...' : 'Criar organização'}
             </Btn>
           </div>
         </form>
       </SettingsCard>
 
-      <SettingsCard title="Academias cadastradas" hint={`${tenants.length} no total`} icon={<Globe size={16} />}>
+      <SettingsCard title="Organizações cadastradas" hint={`${tenants.length} no total`} icon={<Globe size={16} />}>
         {loadingList ? (
           <div className="text-center text-[12.5px] text-slate-400 py-10">Carregando...</div>
         ) : tenants.length === 0 ? (
-          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Nenhuma academia cadastrada ainda.</div>
+          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Nenhuma organização cadastrada ainda.</div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
             {tenants.map(t => (
