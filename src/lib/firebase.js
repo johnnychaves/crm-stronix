@@ -7,14 +7,19 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
+// Config do Firebase Web. Os valores são PÚBLICOS (embarcam no bundle do
+// cliente — apiKey de Firebase Web não é segredo). Lê de import.meta.env
+// (VITE_FIREBASE_*) quando definido, com fallback para os valores do projeto
+// atual — assim a app funciona mesmo sem env configurado.
+const env = import.meta.env || {};
 const firebaseConfig = {
-  apiKey: "AIzaSyC641_wb--R8B4SklAIQjXWSLp8egz9U-E",
-  authDomain: "crm-stronix.firebaseapp.com",
-  projectId: "crm-stronix",
-  storageBucket: "crm-stronix.firebasestorage.app",
-  messagingSenderId: "963219155705",
-  appId: "1:963219155705:web:42aa0decf0d942dc779028",
-  measurementId: "G-4XDH5H2VY0"
+  apiKey: env.VITE_FIREBASE_API_KEY || "AIzaSyC641_wb--R8B4SklAIQjXWSLp8egz9U-E",
+  authDomain: env.VITE_FIREBASE_AUTH_DOMAIN || "crm-stronix.firebaseapp.com",
+  projectId: env.VITE_FIREBASE_PROJECT_ID || "crm-stronix",
+  storageBucket: env.VITE_FIREBASE_STORAGE_BUCKET || "crm-stronix.firebasestorage.app",
+  messagingSenderId: env.VITE_FIREBASE_MESSAGING_SENDER_ID || "963219155705",
+  appId: env.VITE_FIREBASE_APP_ID || "1:963219155705:web:42aa0decf0d942dc779028",
+  measurementId: env.VITE_FIREBASE_MEASUREMENT_ID || "G-4XDH5H2VY0"
 };
 
 const app = initializeApp(firebaseConfig);
