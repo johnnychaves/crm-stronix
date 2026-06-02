@@ -474,6 +474,18 @@ export default function App() {
   );
 }
 
+// Lê o slug da academia do hash da URL (crmstronix.com.br/#<slug>).
+// Aceita "#slug", "#/slug" e "#/t/slug". Retorna '' se não houver/for inválido.
+function getTenantSlugFromHash() {
+  try {
+    const raw = String(window.location.hash || '').replace(/^#\/?(t\/)?/i, '').trim().toLowerCase();
+    const slug = raw.split(/[/?#&]/)[0];
+    return /^[a-z0-9][a-z0-9-]{0,63}$/.test(slug) ? slug : '';
+  } catch {
+    return '';
+  }
+}
+
 function AppInner() {
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [appUser, setAppUser] = useState(null);
@@ -482,7 +494,14 @@ function AppInner() {
   // Bloqueio da academia: 'suspended' | 'trial_expired' | null. Lido do doc
   // /tenants/{id} no login (regra permite leitura ao próprio tenant).
   const [tenantBlock, setTenantBlock] = useState(null);
-  
+  // Academia identificada pela URL (#<slug>) — só para exibir a MARCA no login.
+  // NÃO controla acesso (isso continua sendo o claim tenantId + as rules).
+  // Formato: { slug, loading? , found?, displayName? }. Init lazy a partir do hash.
+  const [urlTenant, setUrlTenant] = useState(() => {
+    const slug = getTenantSlugFromHash();
+    return slug ? { slug, loading: true } : null;
+  });
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
@@ -501,7 +520,31 @@ function AppInner() {
       localStorage.setItem('theme', 'light');
     }
   }, [isDarkMode]);
-  
+
+  // Resolve a academia do hash da URL (#<slug>) para exibir o nome na tela de
+  // login. Público (pré-auth) via /api/tenant-resolve. Roda uma vez no mount.
+  useEffect(() => {
+    const slug = getTenantSlugFromHash();
+    if (!slug) return;
+    let alive = true;
+    fetch(`/api/tenant-resolve?slug=${encodeURIComponent(slug)}`)
+      .then(r => r.json())
+      .then(d => { if (alive) setUrlTenant(d?.found ? { slug, found: true, displayName: d.displayName } : { slug, found: false }); })
+      .catch(() => { if (alive) setUrlTenant({ slug, found: false }); });
+    return () => { alive = false; };
+  }, []);
+
+  // Mantém a URL (#<slug>) em sincronia com o tenant real após o login — cada
+  // academia fica com um link próprio e bookmarkável. O acesso vem do claim; se
+  // a URL apontava para outra academia, é apenas corrigida (sem bloquear ninguém).
+  useEffect(() => {
+    if (appUser && !appUser.superAdminOnly && appUser.tenantId) {
+      if (getTenantSlugFromHash() !== appUser.tenantId) {
+        try { window.location.hash = appUser.tenantId; } catch { /* noop */ }
+      }
+    }
+  }, [appUser]);
+
   const [leads, setLeads] = useState([]);
   const [interactions, setInteractions] = useState([]);
   const [sources, setSources] = useState([]);
@@ -1047,7 +1090,7 @@ useEffect(() => {
     );
   }
 
-  if (!appUser) return <LoginScreen setAppUser={setAppUser} firebaseUser={firebaseUser} db={db} authSetupError={authSetupError} />;
+  if (!appUser) return <LoginScreen setAppUser={setAppUser} firebaseUser={firebaseUser} db={db} authSetupError={authSetupError} urlTenant={urlTenant} />;
 
   // Academia suspensa ou com trial expirado: bloqueia o acesso ao app (super-admin
   // sem tenant não é afetado). O usuário está autenticado, mas a organização não.
@@ -1253,6 +1296,17 @@ function SuperAdminView() {
   const [slugTouched, setSlugTouched] = useState(false);
   const [statusBusy, setStatusBusy] = useState(null); // tenantId em transição de status
 
+  // Copia o link de acesso da academia (crmstronix.com.br/#<slug>).
+  const copyTenantLink = async (slug) => {
+    const url = `${window.location.origin}/#${slug}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      toast.success(`Link copiado: ${url}`);
+    } catch {
+      toast.info(url);
+    }
+  };
+
   const authHeader = async () => ({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
@@ -1427,6 +1481,10 @@ function SuperAdminView() {
                   <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${statusStyle}`}>
                     {statusLabel}
                   </span>
+                  <button onClick={() => copyTenantLink(t.id)} title={`Copiar link de acesso · /#${t.id}`}
+                    className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-300 transition whitespace-nowrap">
+                    Copiar link
+                  </button>
                   {t.status === 'suspended' ? (
                     <button onClick={() => updateStatus(t.id, 'active')} disabled={busy}
                       className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition whitespace-nowrap">
@@ -1451,7 +1509,7 @@ function SuperAdminView() {
 // ==========================================
 // TELA DE LOGIN & RECUPERAÇÃO ADMIN
 // ==========================================
-function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
+function LoginScreen({ setAppUser, firebaseUser, db, authSetupError, urlTenant }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1609,8 +1667,22 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
         <div className="flex-1 flex flex-col justify-center">
           <div className="w-full max-w-[380px] mx-auto rise">
             <div className="mb-7">
+              {urlTenant?.found && (
+                <div className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-brand-50 dark:bg-white/[0.06] ring-1 ring-brand-100 dark:ring-white/[0.08] px-2.5 py-1 text-[12px] font-semibold text-brand-700 dark:text-brand-300">
+                  <Building2 className="w-3.5 h-3.5" /> {urlTenant.displayName}
+                </div>
+              )}
               <h1 className="font-display text-[26px] font-semibold tracking-tight">Bem-vindo de volta</h1>
-              <p className="text-[14px] text-gray-500 dark:text-neutral-400 mt-1.5">Entre para acessar seu painel de vendas.</p>
+              <p className="text-[14px] text-gray-500 dark:text-neutral-400 mt-1.5">
+                {urlTenant?.found
+                  ? <>Entre para acessar o painel da <span className="font-semibold text-gray-700 dark:text-neutral-200">{urlTenant.displayName}</span>.</>
+                  : 'Entre para acessar seu painel de vendas.'}
+              </p>
+              {urlTenant && urlTenant.found === false && (
+                <p className="mt-2 text-[12px] text-amber-600 dark:text-amber-400">
+                  Academia “{urlTenant.slug}” não encontrada — confira o link. Você ainda pode entrar normalmente.
+                </p>
+              )}
             </div>
 
             {authSetupError && (
