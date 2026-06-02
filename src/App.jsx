@@ -6351,12 +6351,14 @@ function ManageUsersTab({ db, appUser }) {
     try {
       const res = await fetch('/api/admin-create-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
+        },
         body: JSON.stringify({
           name: form.name.trim(),
           email: normalizeEmail(form.email),
-          password: form.password,
-          requesterAuthUid: appUser.authUid
+          password: form.password
         })
       });
       const data = await res.json();
@@ -6401,11 +6403,13 @@ function ManageUsersTab({ db, appUser }) {
         } else {
           const res = await fetch('/api/admin-set-password', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
+            },
             body: JSON.stringify({
               targetAuthUid: targetUid,
-              password: form.password,
-              requesterAuthUid: appUser?.authUid
+              password: form.password
             })
           });
           const data = await res.json();
@@ -6439,11 +6443,13 @@ function ManageUsersTab({ db, appUser }) {
     try {
       const res = await fetch('/api/admin-delete-user', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
+        },
         body: JSON.stringify({
           userDocId: target.id,
-          targetAuthUid: target.authUid || null,
-          requesterAuthUid: appUser.authUid
+          targetAuthUid: target.authUid || null
         })
       });
       const data = await res.json();

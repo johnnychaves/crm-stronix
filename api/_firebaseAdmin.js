@@ -21,3 +21,24 @@ if (!admin.apps.length) {
 export const adminDb = admin.firestore();
 export const adminAuth = admin.auth();
 export { admin };
+
+// Verifica o Firebase ID token do header Authorization: Bearer <token>.
+// Retorna { uid, tenantId, superAdmin } do token verificado, ou null se
+// ausente/inválido. Substitui o padrão antigo de confiar no requesterAuthUid
+// vindo do body (que não era verificado).
+export async function verifyRequest(req) {
+  const header = req.headers?.authorization || req.headers?.Authorization || '';
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (!match) return null;
+  try {
+    const decoded = await adminAuth.verifyIdToken(match[1]);
+    return {
+      uid: decoded.uid,
+      tenantId: decoded.tenantId || null,
+      superAdmin: decoded.superAdmin === true
+    };
+  } catch (err) {
+    console.error('verifyRequest: token inválido', err?.message || err);
+    return null;
+  }
+}
