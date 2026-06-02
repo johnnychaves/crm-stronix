@@ -421,6 +421,26 @@ function AppInner() {
         }
       }
 
+      // Super-admin "puro": tem o claim superAdmin mas não é membro de nenhum
+      // tenant. Em vez de deslogar, deixa entrar numa sessão só de super-admin
+      // (vê apenas a tela "Academias"; não carrega dados de tenant).
+      if (superAdmin) {
+        const fallbackName = (normalizedEmail || 'Super-admin').split('@')[0];
+        setAppUser({
+          id: currentUser.uid,
+          authUid: currentUser.uid,
+          name: fallbackName,
+          email: normalizedEmail,
+          role: 'superadmin',
+          superAdmin: true,
+          superAdminOnly: true,
+          tenantId: null
+        });
+        setAuthSetupError('');
+        setIsAuthChecking(false);
+        return;
+      }
+
       setAppUser(null);
       setAuthSetupError('Usuário autenticado sem vínculo interno no CRM.');
       try { await signOut(auth); } catch (signOutErr) { console.error(signOutErr); }
@@ -440,6 +460,8 @@ function AppInner() {
   // 2. Leitura de Dados
 useEffect(() => {
   if (!firebaseUser || !appUser) return;
+  // Super-admin sem tenant não carrega dados de academia (só usa a tela Academias).
+  if (appUser.superAdminOnly) { setLoadingData(false); return; }
   setLoadingData(true);
 
   const leadsRef = collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH);
@@ -759,6 +781,11 @@ useEffect(() => {
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
 
+  // Super-admin sem tenant entra direto na tela "Academias" (única que vê).
+  useEffect(() => {
+    if (appUser?.superAdminOnly) setActiveTab('superadmin');
+  }, [appUser]);
+
   if (isAuthChecking) {
     return (
       <div className="min-h-screen bg-[#eaedf2] dark:bg-neutral-950 flex flex-col items-center justify-center p-4">
@@ -785,44 +812,49 @@ useEffect(() => {
         </div>
         
         <div className="px-6 pb-4 mb-4 border-b border-gray-200 dark:border-neutral-800">
-          <p className="text-xs text-gray-500 dark:text-neutral-400 uppercase tracking-wider mb-1 font-semibold">{isAdminUser(appUser) ? 'Acesso Master' : 'Consultor'}</p>
+          <p className="text-xs text-gray-500 dark:text-neutral-400 uppercase tracking-wider mb-1 font-semibold">{appUser.superAdminOnly ? 'Super-admin' : isAdminUser(appUser) ? 'Acesso Master' : 'Consultor'}</p>
           <div className="flex items-center gap-2">
-            {isAdminUser(appUser) ? <Shield className="w-4 h-4 text-blue-600 shrink-0" /> : <User className="w-4 h-4 text-blue-500 shrink-0" />}
+            {appUser.superAdminOnly ? <Globe className="w-4 h-4 text-blue-600 shrink-0" /> : isAdminUser(appUser) ? <Shield className="w-4 h-4 text-blue-600 shrink-0" /> : <User className="w-4 h-4 text-blue-500 shrink-0" />}
             <p className="font-semibold truncate text-blue-500">{appUser.name}</p>
           </div>
         </div>
 
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto">
-          <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard Geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
-          <SidebarItem icon={<Kanban className="w-5 h-5" />} label="Quadro Kanban" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
-          <SidebarItem icon={<Target className="w-5 h-5" />} label="Meta Diária" active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
-          <SidebarGroup
-            icon={<Users className="w-5 h-5" />}
-            label="Leads"
-            active={isLeadsTab}
-            open={leadsMenuOpen}
-            onToggle={() => setLeadsMenuOpen(o => !o)}
-          >
-            <SidebarSubItem label="Todos os leads" active={activeTab === 'leads'} onClick={() => changeTab('leads')} />
-            <SidebarSubItem label="Aulas experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
-            <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
-          </SidebarGroup>
-          {isAdminUser(appUser) && <SidebarItem icon={<Settings className="w-5 h-5" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />}
+          {!appUser.superAdminOnly && (
+            <>
+              <SidebarItem icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard Geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
+              <SidebarItem icon={<Kanban className="w-5 h-5" />} label="Quadro Kanban" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
+              <SidebarItem icon={<Target className="w-5 h-5" />} label="Meta Diária" active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
+              <SidebarGroup
+                icon={<Users className="w-5 h-5" />}
+                label="Leads"
+                active={isLeadsTab}
+                open={leadsMenuOpen}
+                onToggle={() => setLeadsMenuOpen(o => !o)}
+              >
+                <SidebarSubItem label="Todos os leads" active={activeTab === 'leads'} onClick={() => changeTab('leads')} />
+                <SidebarSubItem label="Aulas experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
+                <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
+              </SidebarGroup>
+              {isAdminUser(appUser) && <SidebarItem icon={<Settings className="w-5 h-5" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />}
+            </>
+          )}
           {appUser?.superAdmin && <SidebarItem icon={<Globe className="w-5 h-5" />} label="Academias" active={activeTab === 'superadmin'} onClick={() => changeTab('superadmin')} />}
         </nav>
 
-        {/* FAB "Cadastrar Lead" — redondo, ancorado à direita, ACIMA da
-            linha horizontal que separa nav items do "Sair do Sistema". */}
-        <div className="px-4 pb-3 flex justify-end">
-          <button
-            onClick={() => { setIsAddLeadModalOpen(true); setIsMobileMenuOpen(false); }}
-            title="Cadastrar Lead"
-            aria-label="Cadastrar Lead"
-            className="w-11 h-11 rounded-full inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-md shadow-blue-600/30 transition"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-        </div>
+        {/* FAB "Cadastrar Lead" — só pra quem opera dentro de um tenant. */}
+        {!appUser.superAdminOnly && (
+          <div className="px-4 pb-3 flex justify-end">
+            <button
+              onClick={() => { setIsAddLeadModalOpen(true); setIsMobileMenuOpen(false); }}
+              title="Cadastrar Lead"
+              aria-label="Cadastrar Lead"
+              className="w-11 h-11 rounded-full inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-md shadow-blue-600/30 transition"
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          </div>
+        )}
 
         <div className="p-4 border-t border-gray-200 dark:border-neutral-800 space-y-2 pb-8 md:pb-4">
           <button onClick={handleLogout} className="flex items-center gap-3 text-gray-500 dark:text-neutral-400 hover:text-red-400 bg-gray-50 dark:bg-neutral-950/50 hover:bg-white dark:bg-neutral-900 rounded-xl transition-all w-full px-4 py-3 font-medium text-sm">
@@ -856,7 +888,11 @@ useEffect(() => {
         </header>
         
         <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
-          {loadingData ? (
+          {appUser.superAdminOnly ? (
+            <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
+              <SuperAdminView />
+            </div>
+          ) : loadingData ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
               <ViewSkeleton activeTab={activeTab} />
             </div>
