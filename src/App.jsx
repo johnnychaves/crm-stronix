@@ -376,6 +376,27 @@ function AppInner() {
       }
       setTenantId(tenantId || DEFAULT_TENANT_ID);
 
+      // Super-admin SEM tenant: não tem claim de tenant, então NÃO pode (nem
+      // precisa) consultar stronix_users — as regras bloqueariam (permission
+      // denied) e cairia no catch. Entra direto numa sessão só de super-admin
+      // (tela "Academias"), antes de qualquer acesso ao Firestore.
+      if (superAdmin && !tenantId) {
+        const normalizedEmail = String(currentUser.email || '').trim().toLowerCase();
+        setAppUser({
+          id: currentUser.uid,
+          authUid: currentUser.uid,
+          name: (normalizedEmail || 'Super-admin').split('@')[0],
+          email: normalizedEmail,
+          role: 'superadmin',
+          superAdmin: true,
+          superAdminOnly: true,
+          tenantId: null
+        });
+        setAuthSetupError('');
+        setIsAuthChecking(false);
+        return;
+      }
+
       const usersRef = collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH);
 
       const byUidQuery = query(usersRef, where('authUid', '==', currentUser.uid));
