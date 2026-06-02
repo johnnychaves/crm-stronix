@@ -14,14 +14,14 @@ const usersCollection = (tenantId) =>
     .collection(USERS_PATH);
 
 export default async function handler(req, res) {
-  // Só o super-admin gerencia academias (claim superAdmin no token verificado).
+  // Só o super-admin gerencia organizações (claim superAdmin no token verificado).
   const auth = await verifyRequest(req);
   if (!auth) return res.status(401).json({ error: 'Não autenticado.' });
   if (!auth.superAdmin) {
-    return res.status(403).json({ error: 'Apenas o super-admin pode gerenciar academias.' });
+    return res.status(403).json({ error: 'Apenas o super-admin pode gerenciar organizações.' });
   }
 
-  // GET → lista as academias.
+  // GET → lista as organizações.
   if (req.method === 'GET') {
     try {
       const snap = await tenantsCol().get();
@@ -39,11 +39,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ tenants });
     } catch (error) {
       console.error('provision-tenant GET', error);
-      return res.status(500).json({ error: 'Erro ao listar academias.' });
+      return res.status(500).json({ error: 'Erro ao listar organizações.' });
     }
   }
 
-  // POST → provisiona uma academia nova.
+  // POST → provisiona uma organização nova.
   if (req.method === 'POST') {
     try {
       const { tenantId, displayName, adminEmail, adminPassword, adminName } = req.body || {};
@@ -66,7 +66,7 @@ export default async function handler(req, res) {
 
       const existing = await tenantsCol().doc(slug).get();
       if (existing.exists) {
-        return res.status(409).json({ error: `Já existe uma academia com o identificador "${slug}".` });
+        return res.status(409).json({ error: `Já existe uma organização com o identificador "${slug}".` });
       }
 
       const normalizedEmail = String(adminEmail).trim().toLowerCase();
@@ -115,7 +115,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, tenantId: slug, adminUid: userRecord.uid });
     } catch (error) {
       console.error('provision-tenant POST', error);
-      return res.status(500).json({ error: 'Erro interno ao provisionar academia.' });
+      return res.status(500).json({ error: 'Erro interno ao provisionar organização.' });
     }
   }
 
