@@ -7,6 +7,13 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Multi-tenant: o usuário só acessa o tenant gravado no seu custom claim.
+    // `appId` é o segmento de path do tenant. O claim é emitido no provisionamento
+    // (api/) e no backfill; só atualiza no refresh do token (~1h ou re-login).
+    function inTenant(appId) {
+      return isSignedIn() && request.auth.token.tenantId == appId;
+    }
+
     function userDoc(appId) {
       return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/stronix_users/$(request.auth.uid));
     }
@@ -22,68 +29,73 @@ service cloud.firestore {
     }
 
     match /artifacts/{appId}/public/data/stronix_leads/{leadId} {
-      allow read: if isAdmin(appId) || ownsLead(appId, resource.data);
-      allow create: if isSignedIn()
+      allow read: if inTenant(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
+      allow create: if inTenant(appId)
         && (isAdmin(appId) || request.resource.data.consultantAuthUid == request.auth.uid);
-      allow update, delete: if isAdmin(appId) || ownsLead(appId, resource.data);
+      allow update, delete: if inTenant(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
     }
 
     match /artifacts/{appId}/public/data/stronix_interactions/{id} {
-      allow read: if isAdmin(appId)
-        || (isSignedIn() && resource.data.leadConsultantAuthUid == request.auth.uid);
-      allow create: if isSignedIn()
+      allow read: if inTenant(appId)
+        && (isAdmin(appId) || resource.data.leadConsultantAuthUid == request.auth.uid);
+      allow create: if inTenant(appId)
         && (isAdmin(appId) || request.resource.data.leadConsultantAuthUid == request.auth.uid);
-      allow update, delete: if isAdmin(appId)
-        || (isSignedIn() && resource.data.leadConsultantAuthUid == request.auth.uid);
+      allow update, delete: if inTenant(appId)
+        && (isAdmin(appId) || resource.data.leadConsultantAuthUid == request.auth.uid);
     }
 
     match /artifacts/{appId}/public/data/stronix_users/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(appId);
-      // permite o próprio usuário atualizar o próprio doc (ex.: authUid de vínculo)
-      allow update: if isSignedIn() && request.auth.uid == userId;
+      allow read: if inTenant(appId);
+      allow write: if isAdmin(appId) && inTenant(appId);
+      // o próprio usuário pode atualizar o próprio doc (ex.: vínculo de authUid)
+      allow update: if inTenant(appId) && request.auth.uid == userId;
     }
 
     match /artifacts/{appId}/public/data/stronix_sources/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(appId);
+      allow read: if inTenant(appId);
+      allow write: if isAdmin(appId) && inTenant(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_statuses/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(appId);
+      allow read: if inTenant(appId);
+      allow write: if isAdmin(appId) && inTenant(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_tags/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(appId);
+      allow read: if inTenant(appId);
+      allow write: if isAdmin(appId) && inTenant(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_loss_reasons/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(appId);
+      allow read: if inTenant(appId);
+      allow write: if isAdmin(appId) && inTenant(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_funnels/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(appId);
+      allow read: if inTenant(appId);
+      allow write: if isAdmin(appId) && inTenant(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_modalities/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(appId);
+      allow read: if inTenant(appId);
+      allow write: if isAdmin(appId) && inTenant(appId);
     }
 
     match /artifacts/{appId}/public/data/stronix_units/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(appId);
+      allow read: if inTenant(appId);
+      allow write: if isAdmin(appId) && inTenant(appId);
     }
 
-    // Config geral da academia (doc único "general"): leitura p/ todos logados,
-    // escrita só admin.
+    // Config geral da academia (doc único "general").
     match /artifacts/{appId}/public/data/stronix_config/{id} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(appId);
+      allow read: if inTenant(appId);
+      allow write: if isAdmin(appId) && inTenant(appId);
+    }
+
+    // Registro de tenants (raiz). Só o Admin SDK (provisionamento) acessa;
+    // nenhum cliente lê/escreve direto.
+    match /tenants/{tenantId} {
+      allow read, write: if false;
     }
   }
 }
