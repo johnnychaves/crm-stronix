@@ -172,6 +172,38 @@ function StronileadWordmark({ className = '', leadOnDark = false }) {
   );
 }
 
+// Tela de bloqueio quando a academia está suspensa ou com trial expirado.
+// O usuário autenticou, mas a organização não está liberada — só resta sair.
+function TenantBlockedScreen({ reason, onLogout }) {
+  const suspended = reason === 'suspended';
+  const Icon = suspended ? Ban : Clock;
+  const title = suspended ? 'Academia suspensa' : 'Período de teste encerrado';
+  const message = suspended
+    ? 'Esta academia está temporariamente suspensa. Entre em contato com o suporte do STRONILEAD para regularizar o acesso.'
+    : 'O período de teste desta academia terminou. Fale com o suporte do STRONILEAD para ativar um plano e continuar usando o sistema.';
+  return (
+    <div className="min-h-screen bg-paper-50 dark:bg-ink-950 flex flex-col items-center justify-center p-6 text-center">
+      <div className="w-full max-w-md rounded-3xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.03] shadow-card-lg p-8">
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <SurgeMark size={26} />
+          <StronileadWordmark className="text-[18px] text-gray-900 dark:text-white" />
+        </div>
+        <span className={`mx-auto mb-4 w-14 h-14 rounded-2xl grid place-items-center ${suspended ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' : 'bg-accent-50 text-accent-500 dark:bg-accent-500/10'}`}>
+          <Icon className="w-7 h-7" />
+        </span>
+        <h1 className="font-display text-[22px] font-semibold tracking-tight text-gray-900 dark:text-white">{title}</h1>
+        <p className="mt-2 text-[14px] text-gray-500 dark:text-neutral-400 leading-relaxed">{message}</p>
+        <button
+          onClick={onLogout}
+          className="mt-7 w-full h-11 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold transition active:scale-[.99]"
+        >
+          Sair
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // --- HELPERS DE TEMPERATURA DO LEAD ---
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -327,6 +359,9 @@ function AppInner() {
   const [appUser, setAppUser] = useState(null);
   const [authSetupError, setAuthSetupError] = useState('');
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  // Bloqueio da academia: 'suspended' | 'trial_expired' | null. Lido do doc
+  // /tenants/{id} no login (regra permite leitura ao próprio tenant).
+  const [tenantBlock, setTenantBlock] = useState(null);
   
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -394,6 +429,7 @@ function AppInner() {
 
     if (!currentUser) {
       setAppUser(null);
+      setTenantBlock(null);
       setIsAuthChecking(false);
       return;
     }
@@ -422,6 +458,34 @@ function AppInner() {
         console.warn('Usuário sem claim de tenant — fallback para o tenant padrão.');
       }
       setTenantId(tenantId || DEFAULT_TENANT_ID);
+
+      // Status da academia (suspensão / trial expirado). Best-effort: se o doc
+      // /tenants/{id} não existir (tenant legado) ou a leitura falhar, libera o
+      // acesso. Super-admin sem tenant não tem o que checar.
+      if (tenantId) {
+        try {
+          const tenantSnap = await getDoc(doc(db, 'tenants', tenantId));
+          const tData = tenantSnap.exists() ? tenantSnap.data() : null;
+          let block = null;
+          if (tData) {
+            if (tData.status === 'suspended') {
+              block = 'suspended';
+            } else if (
+              tData.status === 'trial' &&
+              typeof tData.trialEndsAt?.toMillis === 'function' &&
+              tData.trialEndsAt.toMillis() < Date.now()
+            ) {
+              block = 'trial_expired';
+            }
+          }
+          setTenantBlock(block);
+        } catch (statusErr) {
+          console.warn('Falha ao ler status do tenant; liberando acesso.', statusErr);
+          setTenantBlock(null);
+        }
+      } else {
+        setTenantBlock(null);
+      }
 
       // Super-admin SEM tenant: não tem claim de tenant, então NÃO pode (nem
       // precisa) consultar stronix_users — as regras bloqueariam (permission
@@ -864,6 +928,12 @@ useEffect(() => {
   }
 
   if (!appUser) return <LoginScreen setAppUser={setAppUser} firebaseUser={firebaseUser} db={db} authSetupError={authSetupError} />;
+
+  // Academia suspensa ou com trial expirado: bloqueia o acesso ao app (super-admin
+  // sem tenant não é afetado). O usuário está autenticado, mas a organização não.
+  if (!appUser.superAdminOnly && tenantBlock) {
+    return <TenantBlockedScreen reason={tenantBlock} onLogout={handleLogout} />;
+  }
 
   return (
     <GeneralConfigContext.Provider value={generalConfigValue}>
