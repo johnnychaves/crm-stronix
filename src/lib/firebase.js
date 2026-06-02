@@ -23,7 +23,18 @@ export const auth = getAuth(app);
 export const db = getFirestore(app);
 
 // Tenant / namespace
-export const appId = "stronix-crm-app";
+// Multi-tenant: `appId` é o segmento de path que isola cada academia
+// (artifacts/{appId}/public/data/...). É um *live-binding* mutável: começa no
+// tenant padrão e é trocado UMA vez no boot, após resolver o tenant do usuário
+// (claim `tenantId` do Firebase Auth). Como todos os call sites leem `appId`
+// em tempo de chamada (dentro de effects), o setter propaga pra todos sem
+// editar cada um. Enquanto `setTenantId` não é chamado, comporta-se igual ao
+// sistema mono-tenant de antes.
+export const DEFAULT_TENANT_ID = "stronix-crm-app";
+export let appId = DEFAULT_TENANT_ID;
+export function setTenantId(id) {
+  appId = id || DEFAULT_TENANT_ID;
+}
 
 // Firestore collection paths under /artifacts/{appId}/public/data/
 export const LEADS_PATH = 'stronix_leads';

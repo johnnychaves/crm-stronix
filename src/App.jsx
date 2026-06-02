@@ -86,6 +86,8 @@ import {
   auth,
   db,
   appId,
+  DEFAULT_TENANT_ID,
+  setTenantId,
   LEADS_PATH,
   INTERACTIONS_PATH,
   USERS_PATH,
@@ -474,8 +476,12 @@ function AppInner() {
     () => ({ modalities, trialClassOptions, units }),
     [modalities, trialClassOptions, units]
   );
+  // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
+  // tenant ainda não foi resolvido (appId = default), o que é correto para o
+  // tenant #1; para outros tenants, um id de funil "estranho" é auto-corrigido
+  // pelo effect de validação de funil (cai no default).
   const [selectedFunnelId, setSelectedFunnelId] = useState(() => {
-    try { return localStorage.getItem('crm-selected-funnel') || null; } catch { return null; }
+    try { return localStorage.getItem(`crm-selected-funnel:${appId}`) || null; } catch { return null; }
   });
   const [funnelsMigrationStatus, setFunnelsMigrationStatus] = useState('idle');
   const [loadingData, setLoadingData] = useState(true);
@@ -504,6 +510,28 @@ function AppInner() {
     }
 
     try {
+      // --- Multi-tenant: resolve o tenant ANTES de qualquer acesso ao
+      // Firestore, lendo o custom claim `tenantId` do token. Se faltar (usuário
+      // legado ainda sem claim), força um refresh do token e tenta de novo;
+      // persistindo a ausência, cai no tenant padrão (compatível com o estado
+      // mono-tenant). setTenantId precede setAppUser, então os effects de
+      // data-load e seed (que gateiam em appUser) já enxergam o tenant certo.
+      let tenantId;
+      try {
+        let tokenResult = await currentUser.getIdTokenResult();
+        tenantId = tokenResult.claims.tenantId;
+        if (!tenantId) {
+          tokenResult = await currentUser.getIdTokenResult(true); // force refresh
+          tenantId = tokenResult.claims.tenantId;
+        }
+      } catch (claimErr) {
+        console.warn('Falha ao ler claim de tenant; usando tenant padrão.', claimErr);
+      }
+      if (!tenantId) {
+        console.warn('Usuário sem claim de tenant — fallback para o tenant padrão.');
+      }
+      setTenantId(tenantId || DEFAULT_TENANT_ID);
+
       const usersRef = collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH);
 
       const byUidQuery = query(usersRef, where('authUid', '==', currentUser.uid));
@@ -511,7 +539,7 @@ function AppInner() {
 
       if (!byUidSnap.empty) {
         const userDoc = byUidSnap.docs[0];
-        setAppUser({ id: userDoc.id, ...userDoc.data() });
+        setAppUser({ id: userDoc.id, ...userDoc.data(), tenantId: appId });
         setAuthSetupError('');
         setIsAuthChecking(false);
         return;
@@ -538,7 +566,8 @@ function AppInner() {
             id: userDoc.id,
             ...userDoc.data(),
             authUid: currentUser.uid,
-            email: normalizedEmail
+            email: normalizedEmail,
+            tenantId: appId
           });
 
           setAuthSetupError('');
@@ -701,14 +730,14 @@ useEffect(() => {
   };
 }, [firebaseUser, appUser]);
 
-  // Persiste a seleção de funil no localStorage
+  // Persiste a seleção de funil no localStorage, com chave por tenant.
   useEffect(() => {
     try {
       if (selectedFunnelId) {
-        localStorage.setItem('crm-selected-funnel', selectedFunnelId);
+        localStorage.setItem(`crm-selected-funnel:${appId}`, selectedFunnelId);
       }
     } catch (e) { /* ignore */ }
-  }, [selectedFunnelId]);
+  }, [selectedFunnelId, appUser]);
 
   // Quando um lead é criado pelo AddLeadModal global, ele guarda o ID em
   // justCreatedLeadId. Aqui esperamos o doc aparecer em `leads` (via
