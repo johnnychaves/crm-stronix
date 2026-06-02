@@ -1,7 +1,6 @@
 import { adminDb } from './_firebaseAdmin.js';
 import admin from 'firebase-admin';
 
-const APP_ID = 'stronix-crm-app';
 const LEADS_PATH = 'stronix_leads';
 
 export default async function handler(req, res) {
@@ -22,12 +21,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Nota inválida' });
     }
 
+    // Multi-tenant: busca o lead pelo token em todos os tenants (collectionGroup).
+    // O write usa leadDoc.ref, que aponta para o doc no tenant correto.
     const snap = await adminDb
-      .collection('artifacts')
-      .doc(APP_ID)
-      .collection('public')
-      .doc('data')
-      .collection(LEADS_PATH)
+      .collectionGroup(LEADS_PATH)
       .where('csatToken', '==', token)
       .limit(1)
       .get();

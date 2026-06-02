@@ -1,6 +1,5 @@
 import { adminDb } from './_firebaseAdmin.js';
 
-const APP_ID = 'stronix-crm-app';
 const LEADS_PATH = 'stronix_leads';
 
 export default async function handler(req, res) {
@@ -15,12 +14,11 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Token ausente' });
     }
 
+    // Multi-tenant: o token CSAT é aleatório de 192 bits (globalmente único),
+    // então buscamos em TODOS os tenants via collectionGroup. Links já enviados
+    // continuam válidos (a URL não muda).
     const snap = await adminDb
-      .collection('artifacts')
-      .doc(APP_ID)
-      .collection('public')
-      .doc('data')
-      .collection(LEADS_PATH)
+      .collectionGroup(LEADS_PATH)
       .where('csatToken', '==', token)
       .limit(1)
       .get();
