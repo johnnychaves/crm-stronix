@@ -8,6 +8,10 @@ import {
   Calendar,
   MessageCircle,
   CheckCircle,
+  Eye,
+  EyeOff,
+  AlertTriangle,
+  ArrowRight,
   Clock,
   LogOut,
   Activity,
@@ -61,7 +65,10 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
-  signOut
+  signOut,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
 } from 'firebase/auth';
 
 import {
@@ -124,6 +131,46 @@ import {
   getInteractionSecurityFields
 } from './lib/leads.js';
 import { getDefaultFunnel, isItemInFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
+
+// ============================================================
+// MARCA STRONILEAD — símbolo "The Surge" + wordmark
+// (apenas apresentação; usados no login, sidebar e header)
+// ============================================================
+
+// Símbolo: três chevrons ascendentes (funil → conversão → matrícula).
+// Os dois inferiores em brand; o topo em accent (laranja) = resultado.
+// tone: 'brand' (chevrons em brand-600) | 'onDark' (chevrons brancos).
+function SurgeMark({ size = 32, tone = 'brand', className = '' }) {
+  const lower = tone === 'onDark' ? '#FFFFFF' : 'var(--color-brand-600)';
+  const top = 'var(--color-accent-500)';
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 48 48"
+      fill="none"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-label="STRONILEAD"
+      className={className}
+    >
+      <path d="M11 39 L24 29 L37 39" stroke={lower} strokeWidth="4.4" />
+      <path d="M13.5 30 L24 21.5 L34.5 30" stroke={lower} strokeWidth="4.4" />
+      <path d="M16 21 L24 14 L32 21" stroke={top} strokeWidth="4.4" />
+    </svg>
+  );
+}
+
+// Wordmark: STRONI (peso 500) + LEAD (peso 700).
+// leadOnDark → "LEAD" em brand-300 sobre fundo escuro; senão brand-600.
+function StronileadWordmark({ className = '', leadOnDark = false }) {
+  return (
+    <span className={`font-display tracking-tight leading-none whitespace-nowrap ${className}`}>
+      <span className="font-medium">STRONI</span>
+      <span className={`font-bold ${leadOnDark ? 'text-brand-300' : 'text-brand-600'}`}>LEAD</span>
+    </span>
+  );
+}
 
 // --- HELPERS DE TEMPERATURA DO LEAD ---
 const HOUR_MS = 60 * 60 * 1000;
@@ -809,8 +856,8 @@ useEffect(() => {
 
   if (isAuthChecking) {
     return (
-      <div className="min-h-screen bg-[#eaedf2] dark:bg-neutral-950 flex flex-col items-center justify-center p-4">
-        <Activity className="w-12 h-12 text-blue-600 mb-4 animate-pulse" />
+      <div className="min-h-screen bg-paper-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-4">
+        <Activity className="w-12 h-12 text-brand-600 mb-4 animate-pulse" />
         <p className="text-gray-400 dark:text-neutral-500 text-sm font-bold uppercase tracking-widest">Carregando Sessão...</p>
       </div>
     );
@@ -820,14 +867,14 @@ useEffect(() => {
 
   return (
     <GeneralConfigContext.Provider value={generalConfigValue}>
-    <div className="flex h-[100dvh] bg-[#eaedf2] dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-blue-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
+    <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
       {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />}
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 flex flex-col transition-transform duration-300 ease-in-out transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
         <div className="p-6 flex items-center justify-between md:justify-start gap-3">
-          <div className="flex items-center gap-3">
-            <Activity className="w-8 h-8 text-blue-600" />
-            <h1 className="text-xl font-bold tracking-wider text-gray-900 dark:text-white uppercase">STRONIX</h1>
+          <div className="flex items-center gap-2.5">
+            <SurgeMark size={30} />
+            <StronileadWordmark className="text-[19px] text-gray-900 dark:text-white" />
           </div>
           <button className="md:hidden text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-2" onClick={() => setIsMobileMenuOpen(false)}><X className="w-6 h-6" /></button>
         </div>
@@ -835,8 +882,8 @@ useEffect(() => {
         <div className="px-6 pb-4 mb-4 border-b border-gray-200 dark:border-neutral-800">
           <p className="text-xs text-gray-500 dark:text-neutral-400 uppercase tracking-wider mb-1 font-semibold">{appUser.superAdminOnly ? 'Super-admin' : isAdminUser(appUser) ? 'Acesso Master' : 'Consultor'}</p>
           <div className="flex items-center gap-2">
-            {appUser.superAdminOnly ? <Globe className="w-4 h-4 text-blue-600 shrink-0" /> : isAdminUser(appUser) ? <Shield className="w-4 h-4 text-blue-600 shrink-0" /> : <User className="w-4 h-4 text-blue-500 shrink-0" />}
-            <p className="font-semibold truncate text-blue-500">{appUser.name}</p>
+            {appUser.superAdminOnly ? <Globe className="w-4 h-4 text-brand-600 shrink-0" /> : isAdminUser(appUser) ? <Shield className="w-4 h-4 text-brand-600 shrink-0" /> : <User className="w-4 h-4 text-brand-500 shrink-0" />}
+            <p className="font-semibold truncate text-brand-500">{appUser.name}</p>
           </div>
         </div>
 
@@ -870,7 +917,7 @@ useEffect(() => {
               onClick={() => { setIsAddLeadModalOpen(true); setIsMobileMenuOpen(false); }}
               title="Cadastrar Lead"
               aria-label="Cadastrar Lead"
-              className="w-11 h-11 rounded-full inline-flex items-center justify-center bg-blue-600 hover:bg-blue-700 active:scale-95 text-white shadow-md shadow-blue-600/30 transition"
+              className="w-11 h-11 rounded-full inline-flex items-center justify-center bg-brand-600 hover:bg-brand-700 active:scale-95 text-white shadow-md shadow-brand-600/30 transition"
             >
               <Plus className="w-5 h-5" />
             </button>
@@ -888,7 +935,7 @@ useEffect(() => {
         <header className="h-16 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10 shrink-0">
           <div className="flex items-center">
             <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setIsMobileMenuOpen(true)}><Menu className="w-6 h-6" /></button>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white capitalize truncate">
+            <h2 className="font-display text-xl font-bold text-gray-900 dark:text-white capitalize truncate tracking-tight">
               {activeTab === 'dashboard' && 'Visão Geral'}
               {activeTab === 'kanban' && 'Pipeline de Vendas'}
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
@@ -904,7 +951,7 @@ useEffect(() => {
             className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
             title="Alternar Tema"
           >
-            {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-blue-600" />}
+            {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-brand-600" />}
           </button>
         </header>
         
@@ -1054,7 +1101,7 @@ function SuperAdminView() {
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           <Globe size={13} className="text-brand-600" /> Super-admin
         </div>
-        <h2 className="mt-1.5 text-[24px] font-semibold tracking-tight leading-tight">Organizações</h2>
+        <h2 className="mt-1.5 font-display text-[24px] font-semibold tracking-tight leading-tight">Organizações</h2>
         <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
           Crie uma organização nova (cliente) com dados totalmente isolados e o primeiro admin dela.
         </p>
@@ -1127,6 +1174,18 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetMessage, setResetMessage] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const formRef = useRef(null);
+
+  // Dispara a animação de shake no card do formulário ao falhar.
+  const triggerShake = () => {
+    const el = formRef.current;
+    if (!el) return;
+    el.classList.remove('shake');
+    void el.offsetWidth; // reflow para reiniciar a animação
+    el.classList.add('shake');
+  };
 
   const handleLogin = async (e) => {
   e.preventDefault();
@@ -1135,6 +1194,9 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
   setLoading(true);
 
   try {
+    // "Manter conectado": local (padrão do Firebase = comportamento atual)
+    // quando marcado; sessão quando desmarcado. Falha aqui não bloqueia o login.
+    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence).catch(() => {});
     const normalizedEmail = email.trim().toLowerCase();
     await signInWithEmailAndPassword(auth, normalizedEmail, password);
   } catch (err) {
@@ -1149,6 +1211,7 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
     } else {
       setError('Erro ao autenticar. Verifique a configuração do Firebase Auth.');
     }
+    triggerShake();
   }
 
   setLoading(false);
@@ -1174,24 +1237,170 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError }) {
       }
     }
   };
+  const inputClass =
+    'w-full h-12 bg-transparent outline-none text-[14px] px-3 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-neutral-500';
+  const fieldWrap =
+    'mt-1.5 relative flex items-center rounded-xl border bg-white dark:bg-white/[0.03] transition border-gray-200 dark:border-white/[0.08] focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/15';
+
   return (
-    <div className="min-h-screen bg-[#eaedf2] dark:bg-neutral-950 flex items-center justify-center p-4" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' }}>
-      <div className="w-full max-w-md bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-3xl p-8 shadow-2xl overflow-hidden relative">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600 to-blue-400"></div>
-        <div className="flex flex-col items-center mb-8">
-          <Activity className="w-12 h-12 text-blue-600 mb-4" />
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2 tracking-tighter uppercase">STRONIX</h1>
-          <p className="text-gray-500 dark:text-neutral-400 text-sm font-medium uppercase tracking-widest">Painel de Vendas</p>
+    <div className="min-h-screen grid lg:grid-cols-2 bg-paper-50 dark:bg-ink-950 text-gray-900 dark:text-white">
+      {/* ===== Painel de marca (esquerda) ===== */}
+      <div className="relative hidden lg:flex flex-col justify-between overflow-hidden bg-ink-950 text-white p-10 xl:p-12">
+        <div className="absolute inset-0 brandgrid opacity-60" aria-hidden="true"></div>
+        <div className="absolute -top-24 -left-16 w-[420px] h-[420px] rounded-full bg-brand-600/40 glow" aria-hidden="true"></div>
+        <div className="absolute bottom-0 right-0 w-[360px] h-[360px] rounded-full bg-accent-500/20 glow" aria-hidden="true"></div>
+
+        {/* topo: wordmark */}
+        <div className="relative z-10 flex items-center gap-3">
+          <span className="w-11 h-11 rounded-xl grid place-items-center bg-white/10 ring-1 ring-white/15">
+            <SurgeMark size={26} tone="onDark" />
+          </span>
+          <div>
+            <StronileadWordmark className="text-[18px] text-white" leadOnDark />
+            <div className="text-[11.5px] text-white/55 -mt-0.5">Gestão de leads para academias</div>
+          </div>
         </div>
-        {authSetupError && <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl text-xs text-center">{authSetupError}</div>}
-        {error && <div className="mb-6 p-3 bg-red-500/10 border border-red-500/20 text-red-400 rounded-lg text-sm text-center">{error}</div>}
-        {resetMessage && <div className="mb-6 p-3 bg-green-500/10 border border-green-500/20 text-green-400 rounded-lg text-sm text-center">{resetMessage}</div>}
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div className="relative"><Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-neutral-500" /><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="E-mail" className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-xl py-3.5 pl-12 pr-4 text-gray-900 dark:text-white focus:border-blue-600 outline-none font-medium" required /></div>
-          <div className="relative"><Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 dark:text-neutral-500" /><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Senha" className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-xl py-3.5 pl-12 pr-4 text-gray-900 dark:text-white focus:border-blue-600 outline-none font-medium" required /></div>
-          <button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3.5 rounded-xl transition-all shadow-lg shadow-blue-600/20 uppercase tracking-widest active:scale-95">Entrar</button>
-          <button type="button" onClick={handleForgotPassword} className="w-full text-xs text-gray-500 dark:text-neutral-400 hover:text-blue-500 font-semibold uppercase tracking-widest pt-2">Esqueci minha senha</button>
-        </form>
+
+        {/* centro: cards flutuantes de preview */}
+        <div className="relative z-10 my-8 h-[300px]">
+          <div className="floaty absolute left-2 top-4 rounded-2xl bg-white/95 dark:bg-white/10 backdrop-blur shadow-float border border-white/40 dark:border-white/10 p-4 w-[200px]">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-300">Leads no mês</div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="num text-[26px] font-semibold tracking-tight text-slate-900 dark:text-white">1.284</span>
+              <span className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400 num inline-flex items-center gap-0.5"><TrendingUp className="w-3 h-3" />+12%</span>
+            </div>
+            <div className="mt-3 h-1.5 rounded-full bg-slate-100 dark:bg-white/10 overflow-hidden">
+              <div className="h-full bg-brand-500 rounded-full" style={{ width: '72%' }}></div>
+            </div>
+          </div>
+
+          <div className="floaty2 absolute right-0 top-24 rounded-2xl bg-white/95 dark:bg-white/10 backdrop-blur shadow-float border border-white/40 dark:border-white/10 p-3.5 w-[220px]">
+            <div className="flex items-center justify-between">
+              <span className="text-[11.5px] font-semibold text-slate-500 dark:text-slate-300">Meta diária</span>
+              <span className="num text-[11px] font-bold text-brand-600 dark:text-brand-300">86%</span>
+            </div>
+            <div className="mt-2.5 space-y-2">
+              {[['Mariana Costa', 'bg-emerald-500'], ['Bruno Tavares', 'bg-brand-500'], ['Júlia Pacheco', 'bg-accent-500']].map(([n, c], i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className={`w-5 h-5 rounded-full grid place-items-center text-white ${c}`}><Check className="w-3 h-3" /></span>
+                  <span className="text-[12px] text-slate-700 dark:text-slate-200 font-medium">{n}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="absolute left-6 bottom-2 floaty2 rounded-2xl bg-white/95 dark:bg-white/10 backdrop-blur shadow-float border border-white/40 dark:border-white/10 px-4 py-3 w-[210px]">
+            <div className="flex items-center gap-2.5">
+              <span className="w-9 h-9 rounded-xl bg-accent-500/15 text-accent-500 grid place-items-center"><Calendar className="w-4 h-4" /></span>
+              <div>
+                <div className="num text-[18px] font-semibold text-slate-900 dark:text-white leading-none">7 visitas</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-300 mt-0.5">agendadas hoje</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* base: headline */}
+        <div className="relative z-10 max-w-md">
+          <h2 className="font-display text-[26px] xl:text-[30px] font-semibold leading-tight tracking-tight">
+            Transforme cada lead em matrícula.
+          </h2>
+          <p className="mt-3 text-[14px] text-white/60 leading-relaxed">
+            Pipeline, meta diária e agendamentos num só lugar — sua equipe focada no que importa: fechar.
+          </p>
+          <div className="mt-6 flex items-center gap-5 text-[12px] text-white/50">
+            <span className="inline-flex items-center gap-1.5"><Shield className="w-3.5 h-3.5" /> Dados criptografados</span>
+            <span className="inline-flex items-center gap-1.5"><Zap className="w-3.5 h-3.5" /> Pipeline em tempo real</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ===== Formulário (direita) ===== */}
+      <div className="relative flex flex-col min-h-screen lg:min-h-0 px-6 py-8 sm:px-10 bg-paper-50 dark:bg-ink-950">
+        {/* wordmark mobile */}
+        <div className="lg:hidden flex items-center gap-2.5 mb-10">
+          <SurgeMark size={22} />
+          <StronileadWordmark className="text-[16px]" />
+        </div>
+
+        <div className="flex-1 flex flex-col justify-center">
+          <div className="w-full max-w-[380px] mx-auto rise">
+            <div className="mb-7">
+              <h1 className="font-display text-[26px] font-semibold tracking-tight">Bem-vindo de volta</h1>
+              <p className="text-[14px] text-gray-500 dark:text-neutral-400 mt-1.5">Entre para acessar seu painel de vendas.</p>
+            </div>
+
+            {authSetupError && (
+              <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3.5 py-2.5 text-[12.5px] text-rose-700 dark:text-rose-300">
+                <AlertTriangle className="w-[15px] h-[15px] mt-px shrink-0" />
+                <span>{authSetupError}</span>
+              </div>
+            )}
+            {error && (
+              <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3.5 py-2.5 text-[12.5px] text-rose-700 dark:text-rose-300">
+                <AlertTriangle className="w-[15px] h-[15px] mt-px shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+            {resetMessage && (
+              <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-3.5 py-2.5 text-[12.5px] text-emerald-700 dark:text-emerald-300">
+                <CheckCircle className="w-[15px] h-[15px] mt-px shrink-0" />
+                <span>{resetMessage}</span>
+              </div>
+            )}
+
+            <form ref={formRef} onSubmit={handleLogin} className="space-y-4">
+              <label className="block">
+                <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-300">E-mail</span>
+                <div className={fieldWrap}>
+                  <span className="pl-3.5 text-gray-400 dark:text-neutral-500"><Mail className="w-[17px] h-[17px]" /></span>
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="voce@stronix.com.br" autoComplete="username" className={inputClass} required />
+                </div>
+              </label>
+
+              <div>
+                <label className="block">
+                  <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-300">Senha</span>
+                  <div className={fieldWrap}>
+                    <span className="pl-3.5 text-gray-400 dark:text-neutral-500"><Lock className="w-[17px] h-[17px]" /></span>
+                    <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" className={inputClass} required />
+                    <span className="pr-2">
+                      <button type="button" onClick={() => setShowPass(s => !s)} title={showPass ? 'Ocultar' : 'Mostrar'} className="w-9 h-9 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-neutral-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition">
+                        {showPass ? <EyeOff className="w-[17px] h-[17px]" /> : <Eye className="w-[17px] h-[17px]" />}
+                      </button>
+                    </span>
+                  </div>
+                </label>
+                <div className="mt-2.5 flex items-center justify-between">
+                  <button type="button" onClick={() => setRemember(r => !r)} className="inline-flex items-center gap-2 group">
+                    <span className={`w-[18px] h-[18px] rounded-[6px] grid place-items-center border transition ${remember ? 'bg-brand-600 border-brand-600 text-white' : 'border-gray-300 dark:border-white/20 text-transparent group-hover:border-gray-400'}`}>
+                      <Check className="w-3 h-3" />
+                    </span>
+                    <span className="text-[12.5px] text-gray-600 dark:text-neutral-300 font-medium">Manter conectado</span>
+                  </button>
+                  <button type="button" onClick={handleForgotPassword} className="text-[12.5px] font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-700 hover:underline">
+                    Esqueci a senha
+                  </button>
+                </div>
+              </div>
+
+              <button type="submit" disabled={loading} className="w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold inline-flex items-center justify-center gap-2 transition active:scale-[.99] shadow-sm shadow-brand-600/20 disabled:opacity-90 disabled:cursor-default">
+                {loading
+                  ? (<><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white spin"></span> Entrando…</>)
+                  : (<>Entrar <ArrowRight className="w-4 h-4" /></>)}
+              </button>
+            </form>
+
+            <p className="mt-7 text-center text-[12.5px] text-gray-500 dark:text-neutral-400">
+              Problemas para acessar?{' '}
+              <button type="button" onClick={handleForgotPassword} className="font-semibold text-gray-700 dark:text-neutral-200 hover:underline">Recuperar acesso</button>
+            </p>
+          </div>
+        </div>
+
+        <div className="pt-8 flex items-center justify-center gap-1.5 text-[11.5px] text-gray-400 dark:text-neutral-500">
+          <Shield className="w-3.5 h-3.5" /> Conexão segura · STRONILEAD © 2026
+        </div>
       </div>
     </div>
   );
@@ -1213,7 +1422,7 @@ function FunnelSelector({ funnels, value, onChange, compact = false, variant = '
   const padX = compact ? 'pl-10 pr-10' : 'pl-12 pr-11';
   const textSize = compact ? 'text-xs' : 'text-sm';
   const bg = variant === 'soft'
-    ? 'bg-[#eaedf2] dark:bg-neutral-950'
+    ? 'bg-paper-50 dark:bg-neutral-950'
     : 'bg-white dark:bg-neutral-900';
   const iconPos = compact ? 'left-3.5' : 'left-4';
   const chevronPos = compact ? 'right-3' : 'right-4';
@@ -1221,11 +1430,11 @@ function FunnelSelector({ funnels, value, onChange, compact = false, variant = '
 
   return (
     <div className={`relative group ${className}`}>
-      <Kanban className={`absolute ${iconPos} top-1/2 -translate-y-1/2 ${iconSize} text-gray-400 dark:text-neutral-500 group-focus-within:text-blue-600 transition-colors pointer-events-none`} />
+      <Kanban className={`absolute ${iconPos} top-1/2 -translate-y-1/2 ${iconSize} text-gray-400 dark:text-neutral-500 group-focus-within:text-brand-600 transition-colors pointer-events-none`} />
       <select
         value={value || ''}
         onChange={(e) => onChange(e.target.value)}
-        className={`w-full ${bg} border border-gray-200 dark:border-neutral-800 rounded-2xl ${padX} ${padY} ${textSize} font-semibold text-gray-900 dark:text-white outline-none focus:border-blue-600 transition-all shadow-sm cursor-pointer appearance-none`}
+        className={`w-full ${bg} border border-gray-200 dark:border-neutral-800 rounded-2xl ${padX} ${padY} ${textSize} font-semibold text-gray-900 dark:text-white outline-none focus:border-brand-600 transition-all shadow-sm cursor-pointer appearance-none`}
       >
         {allowAll && (
           <option value={ALL_FUNNELS_ID}>★ Todos os funis</option>
@@ -1340,8 +1549,8 @@ function ToastItem({ toast, onDismiss }) {
     },
     info: {
       Icon: Info,
-      iconClass: 'text-blue-500',
-      bar: 'from-blue-500 to-cyan-400'
+      iconClass: 'text-brand-500',
+      bar: 'from-brand-500 to-brand-400'
     }
   };
   const { Icon, iconClass, bar } = config[toast.type] || config.info;
@@ -1503,7 +1712,7 @@ function ViewSkeleton({ activeTab }) {
 }
 
 function SidebarItem({ icon, label, active, onClick }) {
-  return <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-blue-600/10 text-blue-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:bg-neutral-950 hover:text-gray-800 dark:text-neutral-200'}`}>{icon} <span className="text-sm tracking-tight">{label}</span></button>;
+  return <button onClick={onClick} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-brand-600/10 text-brand-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:bg-neutral-950 hover:text-gray-800 dark:text-neutral-200'}`}>{icon} <span className="text-sm tracking-tight">{label}</span></button>;
 }
 
 // Item-pai recolhível: abre um "slide para baixo" com os sub-itens.
@@ -1512,7 +1721,7 @@ function SidebarGroup({ icon, label, active, open, onToggle, children }) {
     <div>
       <button
         onClick={onToggle}
-        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-blue-600/10 text-blue-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-950 hover:text-gray-800 dark:hover:text-neutral-200'}`}
+        className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${active ? 'bg-brand-600/10 text-brand-600 font-bold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-950 hover:text-gray-800 dark:hover:text-neutral-200'}`}
       >
         {icon}
         <span className="text-sm tracking-tight">{label}</span>
@@ -1533,9 +1742,9 @@ function SidebarSubItem({ label, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-blue-600/10 text-blue-600 font-semibold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-950 hover:text-gray-800 dark:hover:text-neutral-200'}`}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[13px] transition-all ${active ? 'bg-brand-600/10 text-brand-600 font-semibold' : 'text-gray-500 dark:text-neutral-400 hover:bg-gray-50 dark:hover:bg-neutral-950 hover:text-gray-800 dark:hover:text-neutral-200'}`}
     >
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-blue-600' : 'bg-gray-300 dark:bg-neutral-700'}`} />
+      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-brand-600' : 'bg-gray-300 dark:bg-neutral-700'}`} />
       <span className="tracking-tight truncate">{label}</span>
     </button>
   );
@@ -1575,7 +1784,7 @@ function LeadTemperatureBadge({ lead, interactions, compact = false }) {
     return (
       <span
         title="Lead com atividade recente ou agendamento próximo"
-        className={`inline-flex items-center gap-1 rounded-md font-bold uppercase tracking-wider bg-gradient-to-r from-orange-500 to-red-500 text-white shadow-sm ${size}`}
+        className={`inline-flex items-center gap-1 rounded-md font-bold uppercase tracking-wider bg-gradient-to-r from-accent-500 to-red-500 text-white shadow-sm ${size}`}
       >
         <span aria-hidden="true">🔥</span> Hot
       </span>
@@ -1585,7 +1794,7 @@ function LeadTemperatureBadge({ lead, interactions, compact = false }) {
   return (
     <span
       title="Lead sem interação há 7 dias ou mais"
-      className={`inline-flex items-center gap-1 rounded-md font-bold uppercase tracking-wider bg-gradient-to-r from-sky-400 to-blue-300 text-white shadow-sm ${size}`}
+      className={`inline-flex items-center gap-1 rounded-md font-bold uppercase tracking-wider bg-gradient-to-r from-sky-400 to-brand-300 text-white shadow-sm ${size}`}
     >
       <span aria-hidden="true">❄️</span> Esfriando
     </span>
@@ -1600,7 +1809,7 @@ function DaysSinceContactBadge({ lead, interactions }) {
   const tone = days >= 7
     ? 'text-red-500 dark:text-red-400'
     : days >= 3
-    ? 'text-orange-500 dark:text-orange-400'
+    ? 'text-accent-500 dark:text-accent-400'
     : 'text-gray-400 dark:text-neutral-500';
   return (
     <span className={`text-[10px] font-bold uppercase tracking-wider ${tone}`}>
@@ -1630,7 +1839,7 @@ function LossReasonModal({ lossReasons, onClose, onConfirm }) {
           <h3 className="text-xl font-bold text-red-500 uppercase tracking-tighter">Sinalizar Perda</h3>
         </div>
         <p className="text-xs text-gray-500 dark:text-neutral-400 font-bold mb-6">Por favor, informe o motivo da perda deste lead.</p>
-        <select value={reason} onChange={e=>setReason(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-red-500 text-xs font-bold mb-6 appearance-none">
+        <select value={reason} onChange={e=>setReason(e.target.value)} className="w-full bg-paper-50 dark:bg-neutral-950 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-red-500 text-xs font-bold mb-6 appearance-none">
            {options.map(r => <option key={r.id || r.name} value={r.name}>{r.name}</option>)}
         </select>
         <div className="flex gap-3">
@@ -2424,7 +2633,7 @@ const teamMetrics = useMemo(() => {
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <LayoutDashboard size={13} className="text-brand-600" /> Dashboard
           </div>
-          <h2 className="mt-1.5 text-[26px] font-semibold tracking-tight leading-tight">
+          <h2 className="mt-1.5 font-display text-[26px] font-semibold tracking-tight leading-tight">
             {greeting}, {firstName}. <span className="text-slate-500 dark:text-slate-400 font-medium">Aqui está o panorama do período.</span>
           </h2>
           <p className="mt-1 text-[13.5px] text-slate-500 dark:text-slate-400">
@@ -2740,12 +2949,12 @@ const teamMetrics = useMemo(() => {
 
 
 function StatCard({ title, value, subtitle, icon }) {
-  return <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-6 rounded-[2.5rem] flex items-center justify-between shadow-2xl relative overflow-hidden group hover:border-gray-300 dark:border-neutral-700 transition-all"><div><p className="text-gray-400 dark:text-neutral-500 text-xs font-bold uppercase tracking-widest">{title}</p><p className="text-4xl font-bold text-gray-900 dark:text-white mt-1">{value}</p><p className="text-[10px] text-gray-600 dark:text-neutral-400 font-bold mt-2 uppercase tracking-tighter">{subtitle}</p></div><div className="bg-[#eaedf2] dark:bg-neutral-800 p-5 rounded-2xl border border-gray-200 dark:border-neutral-700 group-hover:scale-110 transition-transform">{icon}</div></div>;
+  return <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-6 rounded-[2.5rem] flex items-center justify-between shadow-2xl relative overflow-hidden group hover:border-gray-300 dark:border-neutral-700 transition-all"><div><p className="text-gray-400 dark:text-neutral-500 text-xs font-bold uppercase tracking-widest">{title}</p><p className="text-4xl font-bold text-gray-900 dark:text-white mt-1">{value}</p><p className="text-[10px] text-gray-600 dark:text-neutral-400 font-bold mt-2 uppercase tracking-tighter">{subtitle}</p></div><div className="bg-paper-50 dark:bg-neutral-800 p-5 rounded-2xl border border-gray-200 dark:border-neutral-700 group-hover:scale-110 transition-transform">{icon}</div></div>;
 }
 
 function FunnelBar({ label, count, max, color, onClick }) {
   const p = max > 0 ? (count / max) * 100 : 0;
-  return <div onClick={onClick} className={onClick ? "cursor-pointer hover:opacity-80 transition-opacity active:scale-95" : ""}><div className="flex justify-between text-xs font-bold uppercase tracking-widest mb-3"><span className="text-gray-500 dark:text-neutral-400">{label}</span><span className="text-gray-900 dark:text-white">{count} ({Math.round(p)}%)</span></div><div className="w-full bg-[#eaedf2] dark:bg-neutral-950 rounded-full h-4 overflow-hidden border border-gray-200 dark:border-neutral-800 shadow-inner"><div className={`h-full rounded-full ${color} transition-all duration-1000 shadow-lg`} style={{ width: `${p}%` }} /></div></div>;
+  return <div onClick={onClick} className={onClick ? "cursor-pointer hover:opacity-80 transition-opacity active:scale-95" : ""}><div className="flex justify-between text-xs font-bold uppercase tracking-widest mb-3"><span className="text-gray-500 dark:text-neutral-400">{label}</span><span className="text-gray-900 dark:text-white">{count} ({Math.round(p)}%)</span></div><div className="w-full bg-paper-50 dark:bg-neutral-950 rounded-full h-4 overflow-hidden border border-gray-200 dark:border-neutral-800 shadow-inner"><div className={`h-full rounded-full ${color} transition-all duration-1000 shadow-lg`} style={{ width: `${p}%` }} /></div></div>;
 }
 
 function FunnelDetailModal({ detail, onClose, onLeadClick }) {
@@ -2753,9 +2962,9 @@ function FunnelDetailModal({ detail, onClose, onLeadClick }) {
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4 animate-fade-in">
       <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 w-full max-w-lg max-h-[80vh] rounded-2xl flex flex-col overflow-hidden shadow-2xl relative">
-        <div className="p-6 border-b border-gray-200 dark:border-neutral-800 flex justify-between items-center bg-[#eaedf2] dark:bg-neutral-950">
+        <div className="p-6 border-b border-gray-200 dark:border-neutral-800 flex justify-between items-center bg-paper-50 dark:bg-neutral-950">
           <h3 className="text-lg font-bold text-gray-900 dark:text-white uppercase tracking-widest">
-            {detail.title} <span className="text-blue-500">({detail.data.length})</span>
+            {detail.title} <span className="text-brand-500">({detail.data.length})</span>
           </h3>
           <button onClick={onClose} className="p-2 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white rounded-full bg-white dark:bg-neutral-800 shadow-sm transition-all active:scale-95"><X className="w-4 h-4" /></button>
         </div>
@@ -2767,13 +2976,13 @@ function FunnelDetailModal({ detail, onClose, onLeadClick }) {
               <div 
                 key={lead.id} 
                 onClick={() => onLeadClick && onLeadClick(lead)}
-                className="bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-xl border border-gray-200 dark:border-neutral-800 flex flex-col gap-1 shadow-sm cursor-pointer hover:bg-white dark:hover:bg-neutral-900 transition-colors active:scale-95 group"
+                className="bg-paper-50 dark:bg-neutral-950 p-4 rounded-xl border border-gray-200 dark:border-neutral-800 flex flex-col gap-1 shadow-sm cursor-pointer hover:bg-white dark:hover:bg-neutral-900 transition-colors active:scale-95 group"
               >
                 <div className="flex justify-between items-start">
-                  <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">{lead.name}</span>
+                  <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-brand-600 transition-colors">{lead.name}</span>
                   <span className="text-[10px] font-bold px-2 py-1 bg-white dark:bg-neutral-800 text-gray-600 dark:text-neutral-300 rounded-md uppercase border border-gray-200 dark:border-neutral-700">{lead.status}</span>
                 </div>
-                <span className="text-xs font-semibold text-blue-600 dark:text-blue-400 mt-1">{lead.whatsapp}</span>
+                <span className="text-xs font-semibold text-brand-600 dark:text-brand-400 mt-1">{lead.whatsapp}</span>
               </div>
             ))
           )}
@@ -3099,7 +3308,7 @@ if (!lead) return;
         style={{ borderTopColor: accent.border, borderTopWidth: 2 }}
         className={`group relative rounded-xl border bg-white dark:bg-neutral-900 cursor-grab active:cursor-grabbing shadow-sm transition-all ${
           isDraggingThis
-            ? 'opacity-80 z-50 shadow-xl border-blue-500'
+            ? 'opacity-80 z-50 shadow-xl border-brand-500'
             : isOverdue
               ? 'border-rose-200 dark:border-rose-500/20 hover:border-rose-300 dark:hover:border-rose-500/40 hover:shadow-md'
               : 'border-gray-200 dark:border-neutral-800 hover:border-gray-300 dark:hover:border-neutral-700 hover:shadow-md'
@@ -3240,7 +3449,7 @@ if (!lead) return;
         }}
         className={`w-[300px] shrink-0 rounded-2xl flex flex-col transition-colors border ${
           isHovered
-            ? 'bg-blue-50/60 dark:bg-blue-500/[0.06] ring-2 ring-blue-200 dark:ring-blue-500/30 border-blue-200 dark:border-blue-500/30'
+            ? 'bg-brand-50/60 dark:bg-brand-500/[0.06] ring-2 ring-brand-100 dark:ring-brand-500/30 border-brand-100 dark:border-brand-500/30'
             : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800'
         }`}
       >
@@ -3272,7 +3481,7 @@ if (!lead) return;
             <div
               className={`min-h-[120px] rounded-xl border-2 border-dashed grid place-items-center text-[11px] font-semibold uppercase tracking-wider transition text-center px-3 ${
                 isHovered
-                  ? 'border-blue-300 text-blue-600 dark:border-blue-500/40 dark:text-blue-300'
+                  ? 'border-brand-300 text-brand-600 dark:border-brand-500/40 dark:text-brand-300'
                   : isWinCol
                     ? 'border-emerald-200 text-emerald-600/70 dark:border-emerald-500/20 dark:text-emerald-300/60'
                     : isLossCol
@@ -3318,7 +3527,7 @@ if (!lead) return;
         {/* Title + funnel selector */}
         <div className="flex items-center gap-4 flex-wrap mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h3 className="font-display text-lg font-semibold text-gray-900 dark:text-white tracking-tight">
               {kanbanTitle}
             </h3>
             <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-1">
@@ -3377,7 +3586,7 @@ if (!lead) return;
               placeholder="Buscar lead, telefone ou observação..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-10 rounded-lg bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 focus:border-blue-500 dark:focus:border-blue-500 outline-none text-sm pl-9 pr-3 placeholder:text-gray-400 dark:placeholder:text-neutral-500 text-gray-900 dark:text-white shadow-sm transition-all"
+              className="w-full h-10 rounded-lg bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 focus:border-brand-500 dark:focus:border-brand-500 outline-none text-sm pl-9 pr-3 placeholder:text-gray-400 dark:placeholder:text-neutral-500 text-gray-900 dark:text-white shadow-sm transition-all"
             />
           </div>
 
@@ -3584,7 +3793,7 @@ function getApptAttendanceState(lead) {
   if (d && d.getTime() < Date.now()) {
     return { key: 'pending', label: 'Aguardando desfecho', icon: '⏳', badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-400' };
   }
-  return { key: 'scheduled', label: 'Agendado', icon: '📅', badgeClass: 'bg-blue-500/10 text-blue-700 dark:text-blue-300' };
+  return { key: 'scheduled', label: 'Agendado', icon: '📅', badgeClass: 'bg-brand-500/10 text-brand-700 dark:text-brand-300' };
 }
 
 function getApptFinalState(lead) {
@@ -3942,7 +4151,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
             <Users size={13} className="text-brand-600" /> Base de leads
           </div>
-          <h2 className="mt-1.5 text-[24px] font-semibold tracking-tight leading-tight">
+          <h2 className="mt-1.5 font-display text-[24px] font-semibold tracking-tight leading-tight">
             Todos os leads
           </h2>
           <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
@@ -4105,7 +4314,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
       {isFilterOpen && (
         <div className="fixed inset-0 z-[120] overflow-hidden flex justify-end animate-fade-in">
           <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={()=>setIsFilterOpen(false)} />
-          <div className="relative w-full max-w-sm bg-[#eaedf2] dark:bg-neutral-950 shadow-[0_0_50px_rgba(0,0,0,0.5)] border-l border-gray-200 dark:border-neutral-800 p-8 flex flex-col h-full animate-slide-in-right">
+          <div className="relative w-full max-w-sm bg-paper-50 dark:bg-neutral-950 shadow-[0_0_50px_rgba(0,0,0,0.5)] border-l border-gray-200 dark:border-neutral-800 p-8 flex flex-col h-full animate-slide-in-right">
             
             <div className="flex justify-between items-center mb-8">
               <div>
@@ -4117,11 +4326,11 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
 
             <div className="flex-1 space-y-8 overflow-y-auto pr-2 custom-scrollbar">
               <section>
-                <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-600 mb-4 flex items-center gap-2"><Clock className="w-3 h-3" /> Situação Operacional</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-600 mb-4 flex items-center gap-2"><Clock className="w-3 h-3" /> Situação Operacional</p>
                 <div className="grid grid-cols-1 gap-2">
-                  <button onClick={()=>setHotOnly(!hotOnly)} className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${hotOnly ? 'bg-orange-500/10 border-orange-500/50 text-orange-500' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
+                  <button onClick={()=>setHotOnly(!hotOnly)} className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${hotOnly ? 'bg-accent-500/10 border-accent-500/50 text-accent-500' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
                     <span className="font-bold text-xs uppercase tracking-widest flex items-center gap-2">🔥 Apenas Hot Leads</span>
-                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${hotOnly ? 'bg-orange-500 border-orange-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{hotOnly && <Check className="w-3 h-3 font-bold" />}</div>
+                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${hotOnly ? 'bg-accent-500 border-accent-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{hotOnly && <Check className="w-3 h-3 font-bold" />}</div>
                   </button>
                   <button onClick={()=>setOverdueOnly(!overdueOnly)} className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${overdueOnly ? 'bg-red-500/10 border-red-500/50 text-red-400' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
                     <span className="font-bold text-xs uppercase tracking-widest">Em Atraso</span>
@@ -4132,12 +4341,12 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
 
               {isAdminUser(appUser) && (
                 <section>
-                  <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-600 mb-4 flex items-center gap-2"><Users className="w-3 h-3" /> Consultores</p>
+                  <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-600 mb-4 flex items-center gap-2"><Users className="w-3 h-3" /> Consultores</p>
                   <div className="grid grid-cols-1 gap-2">
                     {(usersList || []).map(u => (
-                      <button key={u.id} onClick={()=>toggleConsultant(u.id)} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${consultantFilters.includes(u.id) ? 'bg-blue-500/10 border-blue-500/50 text-blue-400' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
+                      <button key={u.id} onClick={()=>toggleConsultant(u.id)} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${consultantFilters.includes(u.id) ? 'bg-brand-500/10 border-brand-500/50 text-brand-400' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
                         <span className="text-xs font-semibold">{u.name}</span>
-                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${consultantFilters.includes(u.id) ? 'bg-blue-500 border-blue-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{consultantFilters.includes(u.id) && <Check className="w-3 h-3" />}</div>
+                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${consultantFilters.includes(u.id) ? 'bg-brand-500 border-brand-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{consultantFilters.includes(u.id) && <Check className="w-3 h-3" />}</div>
                       </button>
                     ))}
                   </div>
@@ -4145,12 +4354,12 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
               )}
 
               <section>
-                <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-blue-600 mb-4 flex items-center gap-2"><Tag className="w-3 h-3" /> Fase do Funil</p>
+                <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-600 mb-4 flex items-center gap-2"><Tag className="w-3 h-3" /> Fase do Funil</p>
                 <div className="grid grid-cols-1 gap-2">
                   {allStatuses.map(s => (
-                    <button key={s} onClick={()=>toggleStatus(s)} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${statusFilters.includes(s) ? 'bg-blue-600/10 border-blue-600/50 text-blue-500' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
+                    <button key={s} onClick={()=>toggleStatus(s)} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${statusFilters.includes(s) ? 'bg-brand-600/10 border-brand-600/50 text-brand-500' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
                       <span className="text-xs font-semibold">{s}</span>
-                      <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${statusFilters.includes(s) ? 'bg-blue-600 border-blue-600 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{statusFilters.includes(s) && <Check className="w-3 h-3" />}</div>
+                      <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${statusFilters.includes(s) ? 'bg-brand-600 border-brand-600 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{statusFilters.includes(s) && <Check className="w-3 h-3" />}</div>
                     </button>
                   ))}
                 </div>
@@ -4159,7 +4368,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
 
             <div className="pt-6 mt-4 border-t border-gray-200 dark:border-neutral-800 grid grid-cols-2 gap-3">
               <button onClick={()=>{setStatusFilters([]); setOverdueOnly(false); setHotOnly(false); setConsultantFilters([]);}} className="py-3 rounded-xl text-gray-400 dark:text-neutral-500 font-bold hover:bg-white dark:bg-neutral-900 transition-all text-[10px] uppercase tracking-[0.2em]">Limpar</button>
-              <button onClick={()=>setIsFilterOpen(false)} className="py-3 rounded-xl bg-blue-600 text-gray-900 dark:text-white font-bold shadow-xl text-[10px] uppercase tracking-[0.2em] active:scale-95 transition-all">Aplicar</button>
+              <button onClick={()=>setIsFilterOpen(false)} className="py-3 rounded-xl bg-brand-600 text-gray-900 dark:text-white font-bold shadow-xl text-[10px] uppercase tracking-[0.2em] active:scale-95 transition-all">Aplicar</button>
             </div>
           </div>
         </div>
@@ -4288,28 +4497,28 @@ const handleSubmit = async (e) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Nome do Aluno</label>
-              <input type="text" required value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all" placeholder="Nome Completo" />
+              <input type="text" required value={formData.name} onChange={e=>setFormData({...formData, name: e.target.value})} className="w-full bg-paper-50 dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-brand-600 font-bold transition-all" placeholder="Nome Completo" />
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">WhatsApp</label>
-              <input type="tel" required value={formData.whatsapp} onChange={e=>setFormData({...formData, whatsapp: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all" placeholder="(00) 00000-0000" />
+              <input type="tel" required value={formData.whatsapp} onChange={e=>setFormData({...formData, whatsapp: e.target.value})} className="w-full bg-paper-50 dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-brand-600 font-bold transition-all" placeholder="(00) 00000-0000" />
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Origem do Lead</label>
-              <select value={formData.source} onChange={e=>setFormData({...formData, source: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all appearance-none">
+              <select value={formData.source} onChange={e=>setFormData({...formData, source: e.target.value})} className="w-full bg-paper-50 dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-brand-600 font-bold transition-all appearance-none">
                 {(sources || []).map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Funil</label>
-              <select value={formData.funnelId || ''} onChange={e=>handleFunnelChange(e.target.value)} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all appearance-none">
+              <select value={formData.funnelId || ''} onChange={e=>handleFunnelChange(e.target.value)} className="w-full bg-paper-50 dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-brand-600 font-bold transition-all appearance-none">
                 {safeFunnels.length === 0 && <option value="">Nenhum funil disponível</option>}
                 {safeFunnels.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </div>
             <div className="md:col-span-2">
               <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Fase Inicial</label>
-              <select value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-bold transition-all appearance-none">
+              <select value={formData.status} onChange={e=>setFormData({...formData, status: e.target.value})} className="w-full bg-paper-50 dark:bg-neutral-950 p-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-brand-600 font-bold transition-all appearance-none">
                 {statusesForFunnel.length === 0 && <option value="Novo">Novo</option>}
                 {statusesForFunnel.map(s=><option key={s.id} value={s.name}>{s.name}</option>)}
               </select>
@@ -4319,17 +4528,17 @@ const handleSubmit = async (e) => {
             <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Etiquetas</label>
             <div className="flex flex-wrap gap-2 mt-2">
               {(tags || []).map(t => (
-                <button type="button" key={t.id} onClick={() => setFormData(prev => ({...prev, tags: prev.tags.includes(t.name) ? prev.tags.filter(x=>x!==t.name) : [...prev.tags, t.name]}))} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${formData.tags.includes(t.name) ? 'bg-blue-600 border-blue-600 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-neutral-800 border-gray-300 dark:border-neutral-700 text-gray-400 dark:text-neutral-500'}`}>{t.name}</button>
+                <button type="button" key={t.id} onClick={() => setFormData(prev => ({...prev, tags: prev.tags.includes(t.name) ? prev.tags.filter(x=>x!==t.name) : [...prev.tags, t.name]}))} className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${formData.tags.includes(t.name) ? 'bg-brand-600 border-brand-600 text-gray-900 dark:text-white' : 'bg-gray-100 dark:bg-neutral-800 border-gray-300 dark:border-neutral-700 text-gray-400 dark:text-neutral-500'}`}>{t.name}</button>
               ))}
             </div>
           </div>
           <div className="w-full">
             <label className="block text-[10px] font-bold uppercase text-gray-400 dark:text-neutral-500 mb-2 tracking-widest">Observação Adicional</label>
-            <textarea value={formData.observation} onChange={e=>setFormData({...formData, observation: e.target.value})} className="w-full bg-[#eaedf2] dark:bg-neutral-950 p-5 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-blue-600 font-medium resize-none h-24" placeholder="Algum detalhe importante para o primeiro atendimento?"></textarea>
+            <textarea value={formData.observation} onChange={e=>setFormData({...formData, observation: e.target.value})} className="w-full bg-paper-50 dark:bg-neutral-950 p-5 rounded-2xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-brand-600 font-medium resize-none h-24" placeholder="Algum detalhe importante para o primeiro atendimento?"></textarea>
           </div>
           <div className="flex justify-end gap-4 pt-4">
             <button type="button" onClick={onClose} className="px-8 py-4 rounded-2xl text-gray-400 dark:text-neutral-500 font-bold uppercase text-[10px] hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800 tracking-widest transition-all">Cancelar</button>
-            <button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-10 py-4 rounded-2xl text-white font-bold uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-blue-600/20 active:scale-95 transition-all">{loading ? 'SALVANDO...' : 'CADASTRAR ALUNO'}</button>
+            <button type="submit" disabled={loading} className="bg-brand-600 hover:bg-brand-700 disabled:opacity-50 px-10 py-4 rounded-2xl text-white font-bold uppercase text-[10px] tracking-[0.2em] shadow-xl shadow-brand-600/20 active:scale-95 transition-all">{loading ? 'SALVANDO...' : 'CADASTRAR ALUNO'}</button>
           </div>
         </form>
       </div>
@@ -5331,7 +5540,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                       <div className="flex items-center gap-4">
                         <Avatar name={lead.name} size={56} />
                         <div className="min-w-0 flex-1">
-                          <h2 className="text-[20px] font-semibold tracking-tight truncate">{lead.name}</h2>
+                          <h2 className="font-display text-[20px] font-semibold tracking-tight truncate">{lead.name}</h2>
                           <button
                             onClick={handleWhatsApp}
                             className="text-[12.5px] text-brand-600 hover:text-brand-700 dark:text-brand-300 dark:hover:text-brand-200 font-medium num inline-flex items-center gap-1 transition"
@@ -5447,7 +5656,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                   <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
                     <Clock size={13} className="text-brand-600" /> Linha do tempo
                   </div>
-                  <h2 className="mt-1.5 text-[22px] font-semibold tracking-tight leading-tight">
+                  <h2 className="mt-1.5 font-display text-[22px] font-semibold tracking-tight leading-tight">
                     Jornada de {firstName}
                   </h2>
                   <p className="mt-0.5 text-[13px] text-slate-500 dark:text-slate-400">
@@ -5956,7 +6165,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           <Settings size={13} className="text-brand-600" /> Configurações
         </div>
-        <h2 className="mt-1.5 text-[24px] font-semibold tracking-tight leading-tight">
+        <h2 className="mt-1.5 font-display text-[24px] font-semibold tracking-tight leading-tight">
           Ajustes da operação
         </h2>
         <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
@@ -6224,7 +6433,7 @@ function ManageUsersTab({ db, appUser }) {
       {(showAdd || editingUser) && (
         <form
           onSubmit={editingUser ? update : add}
-          className="bg-white dark:bg-neutral-900/80 p-8 rounded-[2.5rem] border border-blue-100 dark:border-blue-900/30 animate-fade-in mb-10 space-y-8 shadow-2xl relative overflow-hidden"
+          className="bg-white dark:bg-neutral-900/80 p-8 rounded-[2.5rem] border border-brand-100 dark:border-brand-800/30 animate-fade-in mb-10 space-y-8 shadow-2xl relative overflow-hidden"
         >
           
           <div className="flex justify-between items-center border-b border-gray-100 dark:border-neutral-800 pb-5 mb-4">
@@ -6259,7 +6468,7 @@ function ManageUsersTab({ db, appUser }) {
                 required
                 value={form.name}
                 onChange={e => setForm({ ...form, name: e.target.value })}
-                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
+                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
               />
             </div>
 
@@ -6273,7 +6482,7 @@ function ManageUsersTab({ db, appUser }) {
                 required
                 value={form.email}
                 onChange={e => setForm({ ...form, email: e.target.value })}
-                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
+                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
               />
             </div>
 
@@ -6297,12 +6506,12 @@ function ManageUsersTab({ db, appUser }) {
                     required
                     value={form.password}
                     onChange={e => setForm({ ...form, password: e.target.value })}
-                    className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm pr-20"
+                    className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm pr-20"
                   />
                   <button
                     type="button"
                     onClick={() => setForm({ ...form, password: generatePassword() })}
-                    className="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-xl text-[9px] font-bold shadow-md active:scale-95 transition-all uppercase tracking-widest"
+                    className="absolute right-2 top-2 bottom-2 bg-brand-600 hover:bg-brand-700 text-white px-4 rounded-xl text-[9px] font-bold shadow-md active:scale-95 transition-all uppercase tracking-widest"
                   >
                     Gerar
                   </button>
@@ -6322,12 +6531,12 @@ function ManageUsersTab({ db, appUser }) {
                   placeholder="Deixe em branco para não alterar"
                   value={form.password}
                   onChange={e => setForm({ ...form, password: e.target.value })}
-                  className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm pr-20"
+                  className="flex-1 bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm pr-20"
                 />
                 <button
                   type="button"
                   onClick={() => setForm({ ...form, password: generatePassword() })}
-                  className="absolute right-2 top-2 bottom-2 bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-xl text-[9px] font-bold shadow-md active:scale-95 transition-all uppercase tracking-widest"
+                  className="absolute right-2 top-2 bottom-2 bg-brand-600 hover:bg-brand-700 text-white px-4 rounded-xl text-[9px] font-bold shadow-md active:scale-95 transition-all uppercase tracking-widest"
                 >
                   Gerar
                 </button>
@@ -6344,7 +6553,7 @@ function ManageUsersTab({ db, appUser }) {
                 type="time"
                 value={form.shiftStart}
                 onChange={e => setForm({ ...form, shiftStart: e.target.value })}
-                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
+                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
               />
             </div>
             <div className="space-y-2">
@@ -6355,13 +6564,13 @@ function ManageUsersTab({ db, appUser }) {
                 type="time"
                 value={form.shiftEnd}
                 onChange={e => setForm({ ...form, shiftEnd: e.target.value })}
-                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
+                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
               />
             </div>
           </div>
 
-          <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-900/30 rounded-2xl p-5 mt-4">
-            <p className="text-[10px] font-bold text-blue-500 dark:text-blue-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
+          <div className="bg-brand-50/50 dark:bg-brand-800/10 border border-brand-100 dark:border-brand-800/30 rounded-2xl p-5 mt-4">
+            <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">
                <AlertCircle className="w-3.5 h-3.5" /> Observação operacional
             </p>
             <p className="text-xs text-gray-600 dark:text-neutral-400 font-medium leading-relaxed">
@@ -6384,7 +6593,7 @@ function ManageUsersTab({ db, appUser }) {
             <button
               type="submit"
               disabled={loadingSubmit}
-              className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-xl shadow-blue-600/20 active:scale-95 transition-all disabled:opacity-50"
+              className="flex-[2] bg-brand-600 hover:bg-brand-700 text-white py-4 rounded-2xl font-bold uppercase text-[10px] tracking-widest shadow-xl shadow-brand-600/20 active:scale-95 transition-all disabled:opacity-50"
             >
               {loadingSubmit ? 'PROCESSANDO...' : editingUser ? 'SALVAR ALTERAÇÕES' : 'CADASTRAR NOVO'}
             </button>
@@ -6396,12 +6605,12 @@ function ManageUsersTab({ db, appUser }) {
         {(users || []).map(u => (
           <div
             key={u.id}
-            className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 hover:border-blue-200 dark:hover:border-blue-900/50 hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 flex flex-col"
+            className="group relative bg-white dark:bg-neutral-900 p-6 rounded-[2rem] border border-gray-100 dark:border-neutral-800 hover:border-brand-100 dark:hover:border-brand-800/50 hover:shadow-xl hover:shadow-brand-500/5 transition-all duration-300 flex flex-col"
           >
             <div className="absolute top-4 right-4 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white/80 dark:bg-neutral-900/80 backdrop-blur-md p-1 rounded-xl shadow-sm border border-gray-100 dark:border-neutral-800">
               <button
                 onClick={() => openEditForm(u)}
-                className="p-2 text-gray-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors"
+                className="p-2 text-gray-400 hover:text-brand-500 hover:bg-brand-50 dark:hover:bg-brand-800/20 rounded-lg transition-colors"
                 title="Editar"
               >
                 <Pencil className="w-3.5 h-3.5" />
@@ -6419,11 +6628,11 @@ function ManageUsersTab({ db, appUser }) {
             </div>
 
             <div className="flex flex-col items-center text-center mb-4 mt-2">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-500 to-blue-700 text-white rounded-full flex items-center justify-center font-bold text-2xl shadow-lg shadow-blue-500/20 mb-3 relative">
+              <div className="w-16 h-16 bg-gradient-to-br from-brand-500 to-brand-700 text-white rounded-full flex items-center justify-center font-bold text-2xl shadow-lg shadow-brand-500/20 mb-3 relative">
                 {(u.name || 'C')[0]}
                 {u.role === 'admin' && (
                   <div className="absolute -bottom-1 -right-1 bg-white dark:bg-neutral-900 rounded-full p-1 shadow-sm">
-                    <Shield className="w-3.5 h-3.5 text-blue-500" />
+                    <Shield className="w-3.5 h-3.5 text-brand-500" />
                   </div>
                 )}
               </div>
@@ -7889,7 +8098,7 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <Target size={13} className="text-brand-600" /> Meta diária
           </div>
-          <h2 className="mt-1.5 text-[26px] font-semibold tracking-tight leading-tight">
+          <h2 className="mt-1.5 font-display text-[26px] font-semibold tracking-tight leading-tight">
             {greeting}, {firstName}.{' '}
             {pendingCount > 0 ? (
               <>
@@ -9039,7 +9248,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       </div>
 
       <footer className="pt-1 pb-2 text-center text-[11.5px] text-slate-400">
-        Atualizado agora · {todayLabel} · Stronix
+        Atualizado agora · {todayLabel} · <span className="font-display font-medium">STRONI</span><span className="font-display font-bold text-brand-600 dark:text-brand-400">LEAD</span>
       </footer>
 
       {rescheduleTarget && (
