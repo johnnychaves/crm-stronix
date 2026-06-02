@@ -983,9 +983,9 @@ if (csatToken) {
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-white dark:bg-neutral-900 border-r border-gray-200 dark:border-neutral-800 flex flex-col transition-transform duration-300 ease-in-out transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
         <div className="p-6 flex items-center justify-between md:justify-start gap-3">
-          <div className="flex items-center gap-3">
-            <Activity className="w-8 h-8 text-brand-600" />
-            <h1 className="text-xl font-bold tracking-wider text-gray-900 dark:text-white uppercase">STRONIX</h1>
+          <div className="flex items-center gap-2.5">
+            <SurgeMark size={30} />
+            <StronileadWordmark className="text-[19px] text-gray-900 dark:text-white" />
           </div>
           <button className="md:hidden text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-2" onClick={() => setIsMobileMenuOpen(false)}><X className="w-6 h-6" /></button>
         </div>
@@ -1040,7 +1040,7 @@ if (csatToken) {
         <header className="h-16 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10 shrink-0">
           <div className="flex items-center">
             <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setIsMobileMenuOpen(true)}><Menu className="w-6 h-6" /></button>
-            <h2 className="text-xl font-bold text-gray-900 dark:text-white capitalize truncate">
+            <h2 className="font-display text-xl font-bold text-gray-900 dark:text-white capitalize truncate tracking-tight">
               {activeTab === 'dashboard' && 'Visão Geral'}
               {activeTab === 'kanban' && 'Pipeline de Vendas'}
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
@@ -2775,7 +2775,7 @@ const teamMetrics = useMemo(() => {
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <LayoutDashboard size={13} className="text-brand-600" /> Dashboard
           </div>
-          <h2 className="mt-1.5 text-[26px] font-semibold tracking-tight leading-tight">
+          <h2 className="mt-1.5 font-display text-[26px] font-semibold tracking-tight leading-tight">
             {greeting}, {firstName}. <span className="text-slate-500 dark:text-slate-400 font-medium">Aqui está o panorama do período.</span>
           </h2>
           <p className="mt-1 text-[13.5px] text-slate-500 dark:text-slate-400">
@@ -3714,7 +3714,7 @@ if (!lead) return;
         {/* Title + funnel selector */}
         <div className="flex items-center gap-4 flex-wrap mb-4">
           <div>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            <h3 className="font-display text-lg font-semibold text-gray-900 dark:text-white tracking-tight">
               {kanbanTitle}
             </h3>
             <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-1">
@@ -4338,7 +4338,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
             <Users size={13} className="text-brand-600" /> Base de leads
           </div>
-          <h2 className="mt-1.5 text-[24px] font-semibold tracking-tight leading-tight">
+          <h2 className="mt-1.5 font-display text-[24px] font-semibold tracking-tight leading-tight">
             Todos os leads
           </h2>
           <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
@@ -6423,7 +6423,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           <Settings size={13} className="text-brand-600" /> Configurações
         </div>
-        <h2 className="mt-1.5 text-[24px] font-semibold tracking-tight leading-tight">
+        <h2 className="mt-1.5 font-display text-[24px] font-semibold tracking-tight leading-tight">
           Ajustes da operação
         </h2>
         <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
@@ -8350,7 +8350,7 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
             <Target size={13} className="text-brand-600" /> Meta diária
           </div>
-          <h2 className="mt-1.5 text-[26px] font-semibold tracking-tight leading-tight">
+          <h2 className="mt-1.5 font-display text-[26px] font-semibold tracking-tight leading-tight">
             {greeting}, {firstName}.{' '}
             {pendingCount > 0 ? (
               <>
@@ -9500,7 +9500,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       </div>
 
       <footer className="pt-1 pb-2 text-center text-[11.5px] text-slate-400">
-        Atualizado agora · {todayLabel} · Stronix
+        Atualizado agora · {todayLabel} · <span className="font-display font-medium">STRONI</span><span className="font-display font-bold text-brand-600 dark:text-brand-400">LEAD</span>
       </footer>
 
       {rescheduleTarget && (
