@@ -7,6 +7,12 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Super-admin: dono do STRONILEAD (claim `superAdmin` no token). Pode ler
+    // o registro de qualquer tenant. Escritas seguem via Admin SDK (api/).
+    function isSuperAdmin() {
+      return isSignedIn() && request.auth.token.superAdmin == true;
+    }
+
     // Multi-tenant: o usuário só acessa o tenant gravado no seu custom claim.
     // `appId` é o segmento de path do tenant. O claim é emitido no provisionamento
     // (api/) e no backfill; só atualiza no refresh do token (~1h ou re-login).
@@ -92,10 +98,20 @@ service cloud.firestore {
       allow write: if isAdmin(appId) && inTenant(appId);
     }
 
-    // Registro de tenants (raiz). Só o Admin SDK (provisionamento) acessa;
-    // nenhum cliente lê/escreve direto.
+    // Registro de tenants (raiz). Escrita SEMPRE via Admin SDK (provisionamento,
+    // status, convites) — nunca pelo cliente. Leitura liberada para os membros
+    // do próprio tenant (o app lê status/trial no login para bloquear academias
+    // suspensas/expiradas) e para o super-admin.
     match /tenants/{tenantId} {
-      allow read, write: if false;
+      allow read: if isSuperAdmin() || inTenant(tenantId);
+      allow write: if false;
+
+      // Convites do tenant. Escrita só via Admin SDK (invite-create/invite-accept).
+      // Leitura: admin do tenant (para listar convites pendentes) ou super-admin.
+      match /invites/{inviteId} {
+        allow read: if isSuperAdmin() || isAdmin(tenantId);
+        allow write: if false;
+      }
     }
   }
 }

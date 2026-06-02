@@ -172,6 +172,145 @@ function StronileadWordmark({ className = '', leadOnDark = false }) {
   );
 }
 
+// Tela de bloqueio quando a academia está suspensa ou com trial expirado.
+// O usuário autenticou, mas a organização não está liberada — só resta sair.
+function TenantBlockedScreen({ reason, onLogout }) {
+  const suspended = reason === 'suspended';
+  const Icon = suspended ? Ban : Clock;
+  const title = suspended ? 'Academia suspensa' : 'Período de teste encerrado';
+  const message = suspended
+    ? 'Esta academia está temporariamente suspensa. Entre em contato com o suporte do STRONILEAD para regularizar o acesso.'
+    : 'O período de teste desta academia terminou. Fale com o suporte do STRONILEAD para ativar um plano e continuar usando o sistema.';
+  return (
+    <div className="min-h-screen bg-paper-50 dark:bg-ink-950 flex flex-col items-center justify-center p-6 text-center">
+      <div className="w-full max-w-md rounded-3xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.03] shadow-card-lg p-8">
+        <div className="flex items-center justify-center gap-2 mb-6">
+          <SurgeMark size={26} />
+          <StronileadWordmark className="text-[18px] text-gray-900 dark:text-white" />
+        </div>
+        <span className={`mx-auto mb-4 w-14 h-14 rounded-2xl grid place-items-center ${suspended ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' : 'bg-accent-50 text-accent-500 dark:bg-accent-500/10'}`}>
+          <Icon className="w-7 h-7" />
+        </span>
+        <h1 className="font-display text-[22px] font-semibold tracking-tight text-gray-900 dark:text-white">{title}</h1>
+        <p className="mt-2 text-[14px] text-gray-500 dark:text-neutral-400 leading-relaxed">{message}</p>
+        <button
+          onClick={onLogout}
+          className="mt-7 w-full h-11 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold transition active:scale-[.99]"
+        >
+          Sair
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// Tela pública de aceite de convite (/?invite=<token>&t=<tenantId>). Cria a
+// conta do convidado (e-mail vem do convite) e faz login automático.
+function AcceptInviteScreen({ token, tenantId }) {
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  const fieldWrap = 'mt-1.5 relative flex items-center rounded-xl border bg-white dark:bg-white/[0.03] transition border-gray-200 dark:border-white/[0.08] focus-within:border-brand-500 focus-within:ring-2 focus-within:ring-brand-500/15';
+  const inputClass = 'w-full h-12 bg-transparent outline-none text-[14px] px-3 text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-neutral-500';
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (loading) return;
+    setError('');
+    if (!name.trim()) { setError('Informe seu nome.'); return; }
+    if (password.length < 6) { setError('A senha precisa ter ao menos 6 caracteres.'); return; }
+    setLoading(true);
+    try {
+      const res = await fetch('/api/invite-accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenantId, token, password, name: name.trim() })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || 'Não foi possível aceitar o convite.');
+        setLoading(false);
+        return;
+      }
+      // Login automático e entrada no app (recarrega sem o ?invite).
+      try {
+        await signInWithEmailAndPassword(auth, data.email, password);
+        window.location.replace('/');
+        return;
+      } catch {
+        // Conta criada mas auto-login falhou: orienta login manual.
+        setDone(true);
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setError('Erro ao aceitar o convite. Tente novamente.');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-paper-50 dark:bg-ink-950 flex flex-col items-center justify-center p-6">
+      <div className="w-full max-w-[400px] rounded-3xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-white/[0.03] shadow-card-lg p-8">
+        <div className="flex items-center gap-2.5 mb-6">
+          <SurgeMark size={24} />
+          <StronileadWordmark className="text-[17px] text-gray-900 dark:text-white" />
+        </div>
+        {done ? (
+          <div className="text-center">
+            <span className="mx-auto mb-4 w-12 h-12 rounded-2xl grid place-items-center bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
+              <Check className="w-6 h-6" />
+            </span>
+            <h1 className="font-display text-[20px] font-semibold tracking-tight text-gray-900 dark:text-white">Conta criada!</h1>
+            <p className="mt-2 text-[13.5px] text-gray-500 dark:text-neutral-400">Faça login com seu e-mail e a senha que você acabou de definir.</p>
+            <button onClick={() => window.location.replace('/')} className="mt-6 w-full h-11 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold transition">Ir para o login</button>
+          </div>
+        ) : (
+          <>
+            <h1 className="font-display text-[22px] font-semibold tracking-tight text-gray-900 dark:text-white">Você foi convidado</h1>
+            <p className="mt-1.5 text-[13.5px] text-gray-500 dark:text-neutral-400">
+              Crie sua conta para acessar a academia <span className="font-semibold text-gray-700 dark:text-neutral-200 num">{tenantId}</span>.
+            </p>
+            {error && (
+              <div className="mt-4 flex items-start gap-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3.5 py-2.5 text-[12.5px] text-rose-700 dark:text-rose-300">
+                <AlertTriangle className="w-[15px] h-[15px] mt-px shrink-0" /><span>{error}</span>
+              </div>
+            )}
+            <form onSubmit={submit} className="mt-5 space-y-4">
+              <label className="block">
+                <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-300">Seu nome</span>
+                <div className={fieldWrap}>
+                  <span className="pl-3.5 text-gray-400 dark:text-neutral-500"><User className="w-[17px] h-[17px]" /></span>
+                  <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Nome completo" className={inputClass} required />
+                </div>
+              </label>
+              <label className="block">
+                <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-300">Senha</span>
+                <div className={fieldWrap}>
+                  <span className="pl-3.5 text-gray-400 dark:text-neutral-500"><Lock className="w-[17px] h-[17px]" /></span>
+                  <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="mín. 6 caracteres" className={inputClass} required />
+                  <span className="pr-2">
+                    <button type="button" onClick={() => setShowPass(s => !s)} className="w-9 h-9 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-neutral-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition">
+                      {showPass ? <EyeOff className="w-[17px] h-[17px]" /> : <Eye className="w-[17px] h-[17px]" />}
+                    </button>
+                  </span>
+                </div>
+              </label>
+              <button type="submit" disabled={loading} className="w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold inline-flex items-center justify-center gap-2 transition active:scale-[.99] disabled:opacity-90">
+                {loading ? (<><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white spin"></span> Criando…</>) : (<>Aceitar convite <ArrowRight className="w-4 h-4" /></>)}
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- HELPERS DE TEMPERATURA DO LEAD ---
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -315,9 +454,21 @@ const fmtKanbanRelDateTime = (d) => {
 // COMPONENTE PRINCIPAL (APP)
 // ==========================================
 export default function App() {
+  // Roteamento mínimo por query-param (app single-page, sem react-router):
+  // /?invite=<token>&t=<tenantId> abre a tela pública de aceite de convite.
+  const [invite] = useState(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      return { token: p.get('invite'), tenantId: p.get('t') };
+    } catch {
+      return { token: null, tenantId: null };
+    }
+  });
   return (
     <ToastProvider>
-      <AppInner />
+      {invite.token && invite.tenantId
+        ? <AcceptInviteScreen token={invite.token} tenantId={invite.tenantId} />
+        : <AppInner />}
     </ToastProvider>
   );
 }
@@ -327,6 +478,9 @@ function AppInner() {
   const [appUser, setAppUser] = useState(null);
   const [authSetupError, setAuthSetupError] = useState('');
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  // Bloqueio da academia: 'suspended' | 'trial_expired' | null. Lido do doc
+  // /tenants/{id} no login (regra permite leitura ao próprio tenant).
+  const [tenantBlock, setTenantBlock] = useState(null);
   
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -394,6 +548,7 @@ function AppInner() {
 
     if (!currentUser) {
       setAppUser(null);
+      setTenantBlock(null);
       setIsAuthChecking(false);
       return;
     }
@@ -422,6 +577,34 @@ function AppInner() {
         console.warn('Usuário sem claim de tenant — fallback para o tenant padrão.');
       }
       setTenantId(tenantId || DEFAULT_TENANT_ID);
+
+      // Status da academia (suspensão / trial expirado). Best-effort: se o doc
+      // /tenants/{id} não existir (tenant legado) ou a leitura falhar, libera o
+      // acesso. Super-admin sem tenant não tem o que checar.
+      if (tenantId) {
+        try {
+          const tenantSnap = await getDoc(doc(db, 'tenants', tenantId));
+          const tData = tenantSnap.exists() ? tenantSnap.data() : null;
+          let block = null;
+          if (tData) {
+            if (tData.status === 'suspended') {
+              block = 'suspended';
+            } else if (
+              tData.status === 'trial' &&
+              typeof tData.trialEndsAt?.toMillis === 'function' &&
+              tData.trialEndsAt.toMillis() < Date.now()
+            ) {
+              block = 'trial_expired';
+            }
+          }
+          setTenantBlock(block);
+        } catch (statusErr) {
+          console.warn('Falha ao ler status do tenant; liberando acesso.', statusErr);
+          setTenantBlock(null);
+        }
+      } else {
+        setTenantBlock(null);
+      }
 
       // Super-admin SEM tenant: não tem claim de tenant, então NÃO pode (nem
       // precisa) consultar stronix_users — as regras bloqueariam (permission
@@ -865,6 +1048,12 @@ useEffect(() => {
 
   if (!appUser) return <LoginScreen setAppUser={setAppUser} firebaseUser={firebaseUser} db={db} authSetupError={authSetupError} />;
 
+  // Academia suspensa ou com trial expirado: bloqueia o acesso ao app (super-admin
+  // sem tenant não é afetado). O usuário está autenticado, mas a organização não.
+  if (!appUser.superAdminOnly && tenantBlock) {
+    return <TenantBlockedScreen reason={tenantBlock} onLogout={handleLogout} />;
+  }
+
   return (
     <GeneralConfigContext.Provider value={generalConfigValue}>
     <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
@@ -1032,8 +1221,9 @@ function SuperAdminView() {
   const [tenants, setTenants] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '' });
+  const [form, setForm] = useState({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '' });
   const [slugTouched, setSlugTouched] = useState(false);
+  const [statusBusy, setStatusBusy] = useState(null); // tenantId em transição de status
 
   const authHeader = async () => ({
     'Content-Type': 'application/json',
@@ -1079,13 +1269,15 @@ function SuperAdminView() {
           displayName: form.displayName.trim(),
           adminName: form.adminName.trim(),
           adminEmail: form.adminEmail.trim(),
-          adminPassword: form.adminPassword
+          adminPassword: form.adminPassword,
+          plan: form.plan,
+          trialDays: form.trialDays ? Number(form.trialDays) : 0
         })
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || 'Erro ao criar organização.'); setSubmitting(false); return; }
       toast.success(`Organização "${form.displayName.trim()}" criada. Admin: ${form.adminEmail.trim()}`, { duration: 8000, title: 'Organização provisionada' });
-      setForm({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '' });
+      setForm({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '' });
       setSlugTouched(false);
       loadTenants();
     } catch (e2) {
@@ -1093,6 +1285,32 @@ function SuperAdminView() {
       toast.error('Erro ao criar organização.');
     }
     setSubmitting(false);
+  };
+
+  // Suspende ou reativa uma organização (superadmin). Ao suspender, o backend
+  // revoga as sessões; o admin/consultor cai na tela de bloqueio no próximo acesso.
+  const updateStatus = async (tenantId, status) => {
+    if (statusBusy) return;
+    const verb = status === 'suspended' ? 'suspender' : 'reativar';
+    if (status === 'suspended' && !window.confirm(`Suspender "${tenantId}"? Os usuários serão desconectados e não conseguirão acessar até reativar.`)) return;
+    setStatusBusy(tenantId);
+    try {
+      const res = await fetch('/api/tenant-status', {
+        method: 'POST',
+        headers: await authHeader(),
+        body: JSON.stringify({ tenantId, status })
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || `Erro ao ${verb} organização.`); }
+      else {
+        toast.success(status === 'suspended' ? 'Organização suspensa.' : 'Organização reativada.');
+        loadTenants();
+      }
+    } catch (e3) {
+      console.error(e3);
+      toast.error(`Erro ao ${verb} organização.`);
+    }
+    setStatusBusy(null);
   };
 
   return (
@@ -1129,6 +1347,18 @@ function SuperAdminView() {
               <StyledInput type="text" placeholder="mín. 6 caracteres" value={form.adminPassword} onChange={e => setField('adminPassword', e.target.value)} required />
             </Field>
           </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Plano">
+              <StyledSelect value={form.plan} onChange={e => setField('plan', e.target.value)}>
+                <option value="starter">Starter</option>
+                <option value="pro">Pro</option>
+                <option value="enterprise">Enterprise</option>
+              </StyledSelect>
+            </Field>
+            <Field label="Dias de teste" hint="0 = já ativa, sem trial">
+              <StyledInput type="number" min="0" placeholder="0" value={form.trialDays} onChange={e => setField('trialDays', e.target.value)} />
+            </Field>
+          </div>
           <div className="flex justify-end">
             <Btn kind="brand" type="submit" icon={<Check size={13} />} disabled={submitting}>
               {submitting ? 'Criando...' : 'Criar organização'}
@@ -1144,20 +1374,45 @@ function SuperAdminView() {
           <div className="text-center text-[12.5px] text-slate-400 italic py-10">Nenhuma organização cadastrada ainda.</div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
-            {tenants.map(t => (
-              <div key={t.id} className="flex items-center gap-3 px-4 py-3">
-                <span className="w-7 h-7 rounded-lg grid place-items-center bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 shrink-0">
-                  <Globe size={13} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13.5px] font-medium text-slate-800 dark:text-slate-100 truncate">{t.displayName}</div>
-                  <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate num">{t.id}{t.primaryAdminEmail ? ` · ${t.primaryAdminEmail}` : ''}</div>
+            {tenants.map(t => {
+              const statusStyle = t.status === 'active'
+                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
+                : t.status === 'trial'
+                  ? 'bg-accent-50 text-accent-600 dark:bg-accent-500/10 dark:text-accent-400'
+                  : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
+              const statusLabel = t.status === 'active' ? 'Ativa' : t.status === 'trial' ? 'Trial' : t.status === 'suspended' ? 'Suspensa' : t.status;
+              const busy = statusBusy === t.id;
+              return (
+                <div key={t.id} className="flex items-center gap-3 px-4 py-3">
+                  <span className="w-7 h-7 rounded-lg grid place-items-center bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 shrink-0">
+                    <Globe size={13} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[13.5px] font-medium text-slate-800 dark:text-slate-100 truncate">
+                      {t.displayName}
+                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{t.plan || 'starter'}</span>
+                    </div>
+                    <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate num">
+                      {t.id}{t.primaryAdminEmail ? ` · ${t.primaryAdminEmail}` : ''}{typeof t.userCount === 'number' ? ` · ${t.userCount} usuário${t.userCount === 1 ? '' : 's'}` : ''}
+                    </div>
+                  </div>
+                  <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${statusStyle}`}>
+                    {statusLabel}
+                  </span>
+                  {t.status === 'suspended' ? (
+                    <button onClick={() => updateStatus(t.id, 'active')} disabled={busy}
+                      className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition whitespace-nowrap">
+                      {busy ? '...' : 'Reativar'}
+                    </button>
+                  ) : (
+                    <button onClick={() => updateStatus(t.id, 'suspended')} disabled={busy}
+                      className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 disabled:opacity-50 transition inline-flex items-center gap-1 whitespace-nowrap">
+                      <Ban size={12} /> {busy ? '...' : 'Suspender'}
+                    </button>
+                  )}
                 </div>
-                <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${t.status === 'active' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400'}`}>
-                  {t.status === 'active' ? 'Ativa' : t.status}
-                </span>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </SettingsCard>
@@ -6227,6 +6482,43 @@ function ManageUsersTab({ db, appUser }) {
   const [editingUser, setEditingUser] = useState(null);
   const [form, setForm] = useState({ name: '', email: '', authUid: '', password: '', shiftStart: '', shiftEnd: '' });
   const [loadingSubmit, setLoadingSubmit] = useState(false);
+  // Convite por e-mail (alternativa ao cadastro direto: o convidado define a
+  // própria senha via link /?invite=token&t=tenant).
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('consultant');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [inviteLink, setInviteLink] = useState('');
+
+  const createInvite = async (e) => {
+    e.preventDefault();
+    if (inviteLoading) return;
+    const email = String(inviteEmail || '').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.warning('E-mail inválido.'); return; }
+    setInviteLoading(true);
+    setInviteLink('');
+    try {
+      const res = await fetch('/api/invite-create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` },
+        body: JSON.stringify({ email, role: inviteRole })
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || 'Erro ao criar convite.'); setInviteLoading(false); return; }
+      const link = `${window.location.origin}/?invite=${encodeURIComponent(data.token)}&t=${encodeURIComponent(data.tenantId)}`;
+      setInviteLink(link);
+      toast.success('Convite criado. Copie o link e envie ao convidado.', { duration: 7000 });
+    } catch (err) {
+      console.error(err);
+      toast.error('Erro ao criar convite.');
+    }
+    setInviteLoading(false);
+  };
+
+  const copyInviteLink = async () => {
+    try { await navigator.clipboard.writeText(inviteLink); toast.success('Link copiado!'); }
+    catch { toast.info('Copie o link manualmente.'); }
+  };
 
   useEffect(() => {
     return onSnapshot(
@@ -6421,15 +6713,53 @@ function ManageUsersTab({ db, appUser }) {
       hint="Cadastre e gerencie quem tem acesso ao CRM"
       icon={<Users size={16} />}
       action={
-        <Btn
-          kind={showAdd || editingUser ? 'soft' : 'brand'}
-          icon={showAdd || editingUser ? <X size={13} /> : <Plus size={13} />}
-          onClick={handleToggleAddEdit}
-        >
-          {showAdd || editingUser ? 'Cancelar' : 'Novo consultor'}
-        </Btn>
+        <div className="flex items-center gap-2">
+          <Btn
+            kind={inviteOpen ? 'soft' : 'secondary'}
+            icon={inviteOpen ? <X size={13} /> : <Mail size={13} />}
+            onClick={() => { setInviteOpen(o => !o); setInviteLink(''); }}
+          >
+            {inviteOpen ? 'Fechar' : 'Convidar'}
+          </Btn>
+          <Btn
+            kind={showAdd || editingUser ? 'soft' : 'brand'}
+            icon={showAdd || editingUser ? <X size={13} /> : <Plus size={13} />}
+            onClick={handleToggleAddEdit}
+          >
+            {showAdd || editingUser ? 'Cancelar' : 'Novo consultor'}
+          </Btn>
+        </div>
       }
     >
+      {inviteOpen && (
+        <div className="mb-8 p-5 rounded-2xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] animate-fade-in">
+          <h4 className="text-[13px] font-bold text-gray-900 dark:text-white">Convidar por e-mail</h4>
+          <p className="text-[11.5px] text-gray-500 dark:text-neutral-400 mt-0.5 mb-4">
+            O convidado define a própria senha pelo link. Envie o link gerado por e-mail/WhatsApp (validade: 7 dias).
+          </p>
+          <form onSubmit={createInvite} className="flex flex-col sm:flex-row gap-2">
+            <input
+              type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@convidado.com" required
+              className="flex-1 h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] px-3 placeholder:text-slate-400 transition"
+            />
+            <StyledSelect value={inviteRole} onChange={e => setInviteRole(e.target.value)} className="sm:w-44">
+              <option value="consultant">Consultor</option>
+              <option value="admin">Admin</option>
+            </StyledSelect>
+            <Btn kind="brand" type="submit" icon={<Mail size={13} />} disabled={inviteLoading}>
+              {inviteLoading ? 'Gerando...' : 'Gerar convite'}
+            </Btn>
+          </form>
+          {inviteLink && (
+            <div className="mt-4 flex items-center gap-2 p-2.5 rounded-lg bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08]">
+              <span className="flex-1 text-[12px] text-slate-600 dark:text-slate-300 truncate num">{inviteLink}</span>
+              <button type="button" onClick={copyInviteLink} className="shrink-0 text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-500/15 dark:text-brand-300 transition">
+                Copiar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {(showAdd || editingUser) && (
         <form
           onSubmit={editingUser ? update : add}
