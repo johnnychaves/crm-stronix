@@ -1,24 +1,21 @@
-import { adminAuth, adminDb } from './_firebaseAdmin.js';
+import { adminAuth, adminDb, verifyRequest } from './_firebaseAdmin.js';
 
-const APP_ID = 'stronix-crm-app';
 const USERS_PATH = 'stronix_users';
 
-const usersCollection = () =>
+const usersCollection = (tenantId) =>
   adminDb
     .collection('artifacts')
-    .doc(APP_ID)
+    .doc(tenantId)
     .collection('public')
     .doc('data')
     .collection(USERS_PATH);
 
-const requireAdmin = async (requesterAuthUid) => {
-  if (!requesterAuthUid) return false;
-  const direct = await usersCollection().doc(requesterAuthUid).get();
+const requireAdmin = async (tenantId, uid) => {
+  if (!tenantId || !uid) return false;
+  const col = usersCollection(tenantId);
+  const direct = await col.doc(uid).get();
   if (direct.exists && direct.data()?.role === 'admin') return true;
-  const byField = await usersCollection()
-    .where('authUid', '==', requesterAuthUid)
-    .limit(1)
-    .get();
+  const byField = await col.where('authUid', '==', uid).limit(1).get();
   if (byField.empty) return false;
   return byField.docs[0].data()?.role === 'admin';
 };
@@ -29,21 +26,35 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { targetAuthUid, password, requesterAuthUid } = req.body || {};
+    const auth = await verifyRequest(req);
+    if (!auth || !auth.tenantId) {
+      return res.status(401).json({ error: 'Não autenticado.' });
+    }
 
-    if (!targetAuthUid || !password || !requesterAuthUid) {
+    const { targetAuthUid, password } = req.body || {};
+
+    if (!targetAuthUid || !password) {
       return res
         .status(400)
-        .json({ error: 'Campos obrigatórios: targetAuthUid, password, requesterAuthUid.' });
+        .json({ error: 'Campos obrigatórios: targetAuthUid, password.' });
     }
 
     if (String(password).length < 6) {
       return res.status(400).json({ error: 'Senha precisa ter ao menos 6 caracteres.' });
     }
 
-    const isAdmin = await requireAdmin(requesterAuthUid);
+    const isAdmin = await requireAdmin(auth.tenantId, auth.uid);
     if (!isAdmin) {
       return res.status(403).json({ error: 'Apenas o master pode redefinir senhas.' });
+    }
+
+    // O alvo precisa pertencer ao MESMO tenant do admin.
+    const targetSnap = await usersCollection(auth.tenantId)
+      .where('authUid', '==', targetAuthUid)
+      .limit(1)
+      .get();
+    if (targetSnap.empty) {
+      return res.status(404).json({ error: 'Usuário não encontrado neste tenant.' });
     }
 
     await adminAuth.updateUser(targetAuthUid, { password });

@@ -1,24 +1,21 @@
-import { adminAuth, adminDb } from './_firebaseAdmin.js';
+import { adminAuth, adminDb, verifyRequest } from './_firebaseAdmin.js';
 
-const APP_ID = 'stronix-crm-app';
 const USERS_PATH = 'stronix_users';
 
-const usersCollection = () =>
+const usersCollection = (tenantId) =>
   adminDb
     .collection('artifacts')
-    .doc(APP_ID)
+    .doc(tenantId)
     .collection('public')
     .doc('data')
     .collection(USERS_PATH);
 
-const requireAdmin = async (requesterAuthUid) => {
-  if (!requesterAuthUid) return false;
-  const direct = await usersCollection().doc(requesterAuthUid).get();
+const requireAdmin = async (tenantId, uid) => {
+  if (!tenantId || !uid) return false;
+  const col = usersCollection(tenantId);
+  const direct = await col.doc(uid).get();
   if (direct.exists && direct.data()?.role === 'admin') return true;
-  const byField = await usersCollection()
-    .where('authUid', '==', requesterAuthUid)
-    .limit(1)
-    .get();
+  const byField = await col.where('authUid', '==', uid).limit(1).get();
   if (byField.empty) return false;
   return byField.docs[0].data()?.role === 'admin';
 };
@@ -29,25 +26,34 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userDocId, targetAuthUid, requesterAuthUid } = req.body || {};
-
-    if (!userDocId || !requesterAuthUid) {
-      return res
-        .status(400)
-        .json({ error: 'Campos obrigatórios: userDocId, requesterAuthUid.' });
+    const auth = await verifyRequest(req);
+    if (!auth || !auth.tenantId) {
+      return res.status(401).json({ error: 'Não autenticado.' });
     }
 
-    if (userDocId === requesterAuthUid) {
+    const { userDocId, targetAuthUid } = req.body || {};
+
+    if (!userDocId) {
+      return res.status(400).json({ error: 'Campo obrigatório: userDocId.' });
+    }
+
+    if (userDocId === auth.uid) {
       return res.status(400).json({ error: 'Não é possível excluir a própria conta.' });
     }
 
-    const isAdmin = await requireAdmin(requesterAuthUid);
+    const isAdmin = await requireAdmin(auth.tenantId, auth.uid);
     if (!isAdmin) {
       return res.status(403).json({ error: 'Apenas o master pode excluir consultores.' });
     }
 
-    const docRef = usersCollection().doc(userDocId);
+    // O doc precisa existir DENTRO do tenant do admin — garante que ele não
+    // exclui usuário de outra academia.
+    const docRef = usersCollection(auth.tenantId).doc(userDocId);
     const docSnap = await docRef.get();
+    if (!docSnap.exists) {
+      return res.status(404).json({ error: 'Usuário não encontrado neste tenant.' });
+    }
+
     const resolvedAuthUid = targetAuthUid || docSnap.data()?.authUid || null;
 
     if (resolvedAuthUid) {
@@ -58,9 +64,7 @@ export default async function handler(req, res) {
       }
     }
 
-    if (docSnap.exists) {
-      await docRef.delete();
-    }
+    await docRef.delete();
 
     return res.status(200).json({ ok: true });
   } catch (error) {
