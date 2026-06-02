@@ -1,4 +1,5 @@
 import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
+import { getSeatUsage, seatLimitMessage } from './_plans.js';
 
 const USERS_PATH = 'stronix_users';
 
@@ -47,6 +48,12 @@ export default async function handler(req, res) {
     const isAdmin = await requireAdmin(auth.tenantId, auth.uid);
     if (!isAdmin) {
       return res.status(403).json({ error: 'Apenas o master pode cadastrar consultores.' });
+    }
+
+    // Limite de seats por plano: novo usuário consome um assento.
+    const seats = await getSeatUsage(auth.tenantId);
+    if (seats.currentUsers >= seats.maxUsers) {
+      return res.status(403).json({ error: seatLimitMessage(seats.plan, seats.maxUsers) });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();

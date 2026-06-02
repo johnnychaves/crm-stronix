@@ -54,7 +54,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { tenantId, status, plan, trialDays } = req.body || {};
+    const { tenantId, status, plan, trialDays, archived } = req.body || {};
     const slug = String(tenantId || '').trim().toLowerCase();
     if (!slug) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
 
@@ -83,6 +83,17 @@ export default async function handler(req, res) {
       update.trialEndsAt = Number.isFinite(days) && days > 0
         ? admin.firestore.Timestamp.fromMillis(Date.now() + days * 24 * 60 * 60 * 1000)
         : null;
+    }
+    // Desativar/arquivar (soft-delete): arquivar bloqueia o acesso (status
+    // 'suspended' já é negado pelas rules) e sai da lista de ativas; restaurar
+    // reativa. Reversível, preserva todos os dados.
+    if (archived !== undefined) {
+      update.archived = archived === true;
+      if (update.archived) {
+        update.status = 'suspended';
+      } else if (status === undefined) {
+        update.status = 'active';
+      }
     }
 
     if (Object.keys(update).length === 1) {
