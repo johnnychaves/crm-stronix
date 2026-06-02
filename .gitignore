@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 .vercel
 .env*.local
+
+# Pacote de referência do redesign (handoff) e tooling local de preview
+design_redesign/
+.claude/launch.json
