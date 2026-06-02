@@ -53,8 +53,12 @@ service cloud.firestore {
     match /artifacts/{appId}/public/data/stronix_users/{userId} {
       allow read: if inTenant(appId);
       allow write: if isAdmin(appId) && inTenant(appId);
-      // o próprio usuário pode atualizar o próprio doc (ex.: vínculo de authUid)
-      allow update: if inTenant(appId) && request.auth.uid == userId;
+      // o próprio usuário pode atualizar o próprio doc (ex.: vínculo de authUid no
+      // login), MAS sem alterar campos sensíveis (role/tenantId) — caso contrário
+      // um consultor poderia se autopromover a admin editando o próprio doc.
+      allow update: if inTenant(appId) && request.auth.uid == userId
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.tenantId == resource.data.tenantId;
     }
 
     match /artifacts/{appId}/public/data/stronix_sources/{id} {
