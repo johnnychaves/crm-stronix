@@ -90,7 +90,7 @@ export default async function handler(req, res) {
       { merge: true }
     );
 
-    return res.status(200).json({ ok: true, tenantId: slug, role });
+    return res.status(200).json({ ok: true, tenantId: slug, role, email });
   } catch (error) {
     console.error('invite-accept', error);
     return res.status(500).json({ error: 'Erro interno ao aceitar convite.' });
