@@ -1,5 +1,6 @@
 import { adminAuth, adminDb, admin } from './_firebaseAdmin.js';
 import { checkRateLimit, clientIp } from './_rateLimit.js';
+import { getSeatUsage, seatLimitMessage } from './_plans.js';
 
 // Aceita um convite e cria a conta do usuário no tenant. PÚBLICO (o token UUID
 // é o segredo). Vercel serverless function.
@@ -66,6 +67,12 @@ export default async function handler(req, res) {
     const role = invite.role === 'admin' ? 'admin' : 'consultant';
     if (!email) {
       return res.status(400).json({ error: 'Convite sem e-mail válido.' });
+    }
+
+    // Limite de seats por plano: aceitar o convite consome um assento.
+    const seats = await getSeatUsage(slug);
+    if (seats.currentUsers >= seats.maxUsers) {
+      return res.status(403).json({ error: seatLimitMessage(seats.plan, seats.maxUsers) });
     }
 
     // Cria a conta no Firebase Auth.

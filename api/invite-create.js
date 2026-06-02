@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
+import { getSeatUsage, seatLimitMessage } from './_plans.js';
 
 // Cria um convite para adicionar um usuário (admin ou consultor) ao tenant.
 // ADMIN do tenant only. Vercel serverless function.
@@ -49,6 +50,12 @@ export default async function handler(req, res) {
 
     if (!normalizedEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
       return res.status(400).json({ error: 'E-mail inválido.' });
+    }
+
+    // Limite de seats por plano: não adianta convidar se já está no limite.
+    const seats = await getSeatUsage(auth.tenantId);
+    if (seats.currentUsers >= seats.maxUsers) {
+      return res.status(403).json({ error: seatLimitMessage(seats.plan, seats.maxUsers) });
     }
 
     const token = randomUUID();

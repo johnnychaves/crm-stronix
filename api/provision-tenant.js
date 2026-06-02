@@ -85,6 +85,7 @@ export default async function handler(req, res) {
             displayName: data.displayName || d.id,
             status: data.status || 'active',
             plan: data.plan || 'starter',
+            archived: data.archived === true,
             trialEndsAt: data.trialEndsAt ? (data.trialEndsAt.toMillis?.() ?? null) : null,
             createdAt: data.createdAt ? (data.createdAt.toMillis?.() ?? null) : null,
             primaryAdminEmail: data.primaryAdminEmail || null,

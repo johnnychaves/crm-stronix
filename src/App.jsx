@@ -1291,6 +1291,15 @@ const slugify = (s) => String(s || '')
   .replace(/^-+|-+$/g, '')
   .slice(0, 40);
 
+// Limites de seats por plano (espelha api/_plans.js) — só p/ exibição no painel.
+const PLAN_MAX_USERS = { starter: 3, pro: 10, enterprise: Infinity };
+const planLabel = (p) => ({ starter: 'Starter', pro: 'Pro', enterprise: 'Enterprise' }[p] || p || 'starter');
+const tenantSeatLabel = (t) => {
+  if (typeof t.userCount !== 'number') return null;
+  const max = PLAN_MAX_USERS[t.plan] ?? 3;
+  return max === Infinity ? `${t.userCount} usuários` : `${t.userCount}/${max} seats`;
+};
+
 function SuperAdminView() {
   const toast = useToast();
   const [tenants, setTenants] = useState([]);
@@ -1298,7 +1307,9 @@ function SuperAdminView() {
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '' });
   const [slugTouched, setSlugTouched] = useState(false);
-  const [statusBusy, setStatusBusy] = useState(null); // tenantId em transição de status
+  const [manage, setManage] = useState(null);          // org aberta no painel de detalhe
+  const [stats, setStats] = useState(null);            // { loading, data }
+  const [manageBusy, setManageBusy] = useState(null);  // ação em andamento no detalhe
 
   // Copia o link de acesso da academia (crmstronix.com.br/#<slug>).
   const copyTenantLink = async (slug) => {
@@ -1331,6 +1342,56 @@ function SuperAdminView() {
   };
 
   useEffect(() => { loadTenants(); }, []);
+
+  // Abre o painel de detalhe e busca as estatísticas de uso (Admin SDK).
+  const openManage = async (t) => {
+    setManage(t);
+    setStats({ loading: true });
+    try {
+      const res = await fetch(`/api/tenant-stats?tenantId=${encodeURIComponent(t.id)}`, { headers: await authHeader() });
+      const data = await res.json();
+      setStats(res.ok ? { data } : { error: data.error || 'Erro ao carregar uso.' });
+    } catch (e) {
+      console.error(e);
+      setStats({ error: 'Erro ao carregar uso.' });
+    }
+  };
+  const closeManage = () => { setManage(null); setStats(null); };
+
+  // Patch genérico no tenant-status (plano / trial / status / arquivar).
+  const patchTenant = async (tenantId, body, successMsg, action) => {
+    if (manageBusy) return false;
+    setManageBusy(action || 'patch');
+    let ok = false;
+    try {
+      const res = await fetch('/api/tenant-status', {
+        method: 'POST', headers: await authHeader(),
+        body: JSON.stringify({ tenantId, ...body })
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || 'Erro ao atualizar organização.'); }
+      else {
+        ok = true;
+        if (successMsg) toast.success(successMsg);
+        setManage(m => (m && m.id === tenantId ? { ...m, ...body } : m));
+        loadTenants();
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao atualizar organização.');
+    }
+    setManageBusy(null);
+    return ok;
+  };
+
+  const changePlan = (tenantId, plan) => patchTenant(tenantId, { plan }, `Plano alterado para ${planLabel(plan)}.`, 'plan');
+  const extendTrial = (tenantId, days) => patchTenant(tenantId, { trialDays: Number(days) }, Number(days) > 0 ? `Trial de ${days} dias aplicado.` : 'Trial encerrado.', 'trial');
+  const setActive = (tenantId, status) => patchTenant(tenantId, { status }, status === 'active' ? 'Organização ativada.' : 'Organização suspensa.', 'status');
+  const setArchived = async (tenantId, archived) => {
+    if (archived && !window.confirm('Desativar esta organização? Os usuários perdem o acesso (dados preservados). Você pode restaurar depois.')) return;
+    const ok = await patchTenant(tenantId, { archived }, archived ? 'Organização desativada.' : 'Organização restaurada.', 'archive');
+    if (ok && archived) closeManage();
+  };
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const onNameChange = (v) => {
@@ -1373,31 +1434,8 @@ function SuperAdminView() {
     setSubmitting(false);
   };
 
-  // Suspende ou reativa uma organização (superadmin). Ao suspender, o backend
-  // revoga as sessões; o admin/consultor cai na tela de bloqueio no próximo acesso.
-  const updateStatus = async (tenantId, status) => {
-    if (statusBusy) return;
-    const verb = status === 'suspended' ? 'suspender' : 'reativar';
-    if (status === 'suspended' && !window.confirm(`Suspender "${tenantId}"? Os usuários serão desconectados e não conseguirão acessar até reativar.`)) return;
-    setStatusBusy(tenantId);
-    try {
-      const res = await fetch('/api/tenant-status', {
-        method: 'POST',
-        headers: await authHeader(),
-        body: JSON.stringify({ tenantId, status })
-      });
-      const data = await res.json();
-      if (!res.ok) { toast.error(data.error || `Erro ao ${verb} organização.`); }
-      else {
-        toast.success(status === 'suspended' ? 'Organização suspensa.' : 'Organização reativada.');
-        loadTenants();
-      }
-    } catch (e3) {
-      console.error(e3);
-      toast.error(`Erro ao ${verb} organização.`);
-    }
-    setStatusBusy(null);
-  };
+  const activeTenants = tenants.filter(t => !t.archived);
+  const archivedTenants = tenants.filter(t => t.archived);
 
   return (
     <div className="animate-fade-in font-sans space-y-6 max-w-3xl">
@@ -1453,21 +1491,21 @@ function SuperAdminView() {
         </form>
       </SettingsCard>
 
-      <SettingsCard title="Organizações cadastradas" hint={`${tenants.length} no total`} icon={<Globe size={16} />}>
+      <SettingsCard title="Organizações" hint={`${activeTenants.length} ativa${activeTenants.length === 1 ? '' : 's'}`} icon={<Globe size={16} />}>
         {loadingList ? (
           <div className="text-center text-[12.5px] text-slate-400 py-10">Carregando...</div>
-        ) : tenants.length === 0 ? (
-          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Nenhuma organização cadastrada ainda.</div>
+        ) : activeTenants.length === 0 ? (
+          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Nenhuma organização ativa.</div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
-            {tenants.map(t => {
+            {activeTenants.map(t => {
               const statusStyle = t.status === 'active'
                 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
                 : t.status === 'trial'
                   ? 'bg-accent-50 text-accent-600 dark:bg-accent-500/10 dark:text-accent-400'
                   : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
               const statusLabel = t.status === 'active' ? 'Ativa' : t.status === 'trial' ? 'Trial' : t.status === 'suspended' ? 'Suspensa' : t.status;
-              const busy = statusBusy === t.id;
+              const seats = tenantSeatLabel(t);
               return (
                 <div key={t.id} className="flex items-center gap-3 px-4 py-3">
                   <span className="w-7 h-7 rounded-lg grid place-items-center bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 shrink-0">
@@ -1476,10 +1514,10 @@ function SuperAdminView() {
                   <div className="min-w-0 flex-1">
                     <div className="text-[13.5px] font-medium text-slate-800 dark:text-slate-100 truncate">
                       {t.displayName}
-                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{t.plan || 'starter'}</span>
+                      <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{planLabel(t.plan)}</span>
                     </div>
                     <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate num">
-                      {t.id}{t.primaryAdminEmail ? ` · ${t.primaryAdminEmail}` : ''}{typeof t.userCount === 'number' ? ` · ${t.userCount} usuário${t.userCount === 1 ? '' : 's'}` : ''}
+                      {t.id}{seats ? ` · ${seats}` : ''}
                     </div>
                   </div>
                   <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${statusStyle}`}>
@@ -1489,23 +1527,133 @@ function SuperAdminView() {
                     className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-300 transition whitespace-nowrap">
                     Copiar link
                   </button>
-                  {t.status === 'suspended' ? (
-                    <button onClick={() => updateStatus(t.id, 'active')} disabled={busy}
-                      className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition whitespace-nowrap">
-                      {busy ? '...' : 'Reativar'}
-                    </button>
-                  ) : (
-                    <button onClick={() => updateStatus(t.id, 'suspended')} disabled={busy}
-                      className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 disabled:opacity-50 transition inline-flex items-center gap-1 whitespace-nowrap">
-                      <Ban size={12} /> {busy ? '...' : 'Suspender'}
-                    </button>
-                  )}
+                  <button onClick={() => openManage(t)}
+                    className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-brand-600 text-white hover:bg-brand-700 transition inline-flex items-center gap-1 whitespace-nowrap">
+                    <Settings size={12} /> Gerenciar
+                  </button>
                 </div>
               );
             })}
           </div>
         )}
       </SettingsCard>
+
+      {archivedTenants.length > 0 && (
+        <SettingsCard title="Desativadas" hint={`${archivedTenants.length} arquivada${archivedTenants.length === 1 ? '' : 's'}`} icon={<Ban size={16} />}>
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+            {archivedTenants.map(t => (
+              <div key={t.id} className="flex items-center gap-3 px-4 py-3 opacity-90">
+                <span className="w-7 h-7 rounded-lg grid place-items-center bg-slate-100 text-slate-400 dark:bg-white/[0.06] dark:text-slate-500 shrink-0">
+                  <Ban size={13} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px] font-medium text-slate-700 dark:text-slate-200 truncate">{t.displayName}</div>
+                  <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate num">{t.id}</div>
+                </div>
+                <button onClick={() => setArchived(t.id, false)} disabled={!!manageBusy}
+                  className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition whitespace-nowrap">
+                  Restaurar
+                </button>
+              </div>
+            ))}
+          </div>
+        </SettingsCard>
+      )}
+
+      {manage && (
+        <TenantManageModal
+          t={manage} stats={stats} busy={manageBusy}
+          onClose={closeManage}
+          onCopy={() => copyTenantLink(manage.id)}
+          onChangePlan={(p) => changePlan(manage.id, p)}
+          onExtendTrial={(d) => extendTrial(manage.id, d)}
+          onSetActive={(s) => setActive(manage.id, s)}
+          onArchive={() => setArchived(manage.id, true)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Painel de detalhe/gestão de uma organização (super-admin): uso, plano, trial,
+// status e desativar. Props são handlers do SuperAdminView.
+function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onArchive }) {
+  const [trialDays, setTrialDays] = useState('');
+  const d = stats?.data;
+  const seatLabel = d
+    ? (d.maxUsers == null ? `${d.userCount} usuários (ilimitado)` : `${d.userCount}/${d.maxUsers} seats`)
+    : '—';
+  const statRow = (label, value) => (
+    <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3 text-center">
+      <div className="num text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white">{value}</div>
+      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{label}</div>
+    </div>
+  );
+
+  return (
+    <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-ink-950/55 backdrop-blur-[3px]" onClick={onClose} />
+      <div className="relative w-full max-w-[520px] max-h-[92vh] overflow-y-auto custom-scrollbar rounded-2xl bg-white dark:bg-ink-900 border border-slate-200 dark:border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(8,13,34,.55)]">
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200/80 dark:border-white/[0.07]">
+          <div className="min-w-0">
+            <h2 className="font-display text-[17px] font-bold tracking-tight truncate text-gray-900 dark:text-white">{t.displayName}</h2>
+            <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num truncate">{t.id}</div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-white/[0.06] transition shrink-0"><X size={17} /></button>
+        </div>
+
+        <div className="p-5 space-y-5">
+          {/* uso */}
+          <div className="grid grid-cols-3 gap-2.5">
+            {statRow('Leads', d ? d.leadCount : (stats?.loading ? '…' : '—'))}
+            {statRow('Interações', d ? d.interactionCount : (stats?.loading ? '…' : '—'))}
+            {statRow('Usuários', d ? seatLabel : (stats?.loading ? '…' : '—'))}
+          </div>
+
+          {/* plano */}
+          <div>
+            <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-200 mb-1.5">Plano</div>
+            <div className="flex gap-1.5">
+              {['starter', 'pro', 'enterprise'].map(p => (
+                <button key={p} type="button" disabled={!!busy} onClick={() => p !== t.plan && onChangePlan(p)}
+                  className={`flex-1 h-9 rounded-lg text-[12.5px] font-semibold transition disabled:opacity-50 ${t.plan === p ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.04] dark:text-slate-300'}`}>
+                  {planLabel(p)}
+                </button>
+              ))}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">Starter: 3 seats · Pro: 10 · Enterprise: ilimitado.</p>
+          </div>
+
+          {/* trial */}
+          <div>
+            <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-200 mb-1.5">Trial</div>
+            <div className="flex items-center gap-2">
+              <input type="number" min="0" value={trialDays} onChange={e => setTrialDays(e.target.value)} placeholder="dias"
+                className="w-24 h-9 px-3 rounded-lg text-[13px] num bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500" />
+              <button type="button" disabled={!!busy || trialDays === ''} onClick={() => { onExtendTrial(trialDays); setTrialDays(''); }}
+                className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 disabled:opacity-50 transition">
+                Aplicar
+              </button>
+              <span className="text-[11px] text-slate-400">0 = encerra o trial (ativa)</span>
+            </div>
+          </div>
+
+          {/* status + ações */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button onClick={onCopy} className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 transition">Copiar link</button>
+            {t.status === 'suspended' ? (
+              <button onClick={() => onSetActive('active')} disabled={!!busy}
+                className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition">Reativar</button>
+            ) : (
+              <button onClick={() => onSetActive('suspended')} disabled={!!busy}
+                className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-300 disabled:opacity-50 transition inline-flex items-center gap-1"><Ban size={13} /> Suspender</button>
+            )}
+            <button onClick={onArchive} disabled={!!busy}
+              className="ml-auto h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 disabled:opacity-50 transition">Desativar</button>
+          </div>
+          {stats?.error && <p className="text-[11.5px] text-rose-600 dark:text-rose-400">{stats.error}</p>}
+        </div>
+      </div>
     </div>
   );
 }
