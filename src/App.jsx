@@ -359,6 +359,7 @@ function AppInner() {
       // mono-tenant). setTenantId precede setAppUser, então os effects de
       // data-load e seed (que gateiam em appUser) já enxergam o tenant certo.
       let tenantId;
+      let superAdmin = false;
       try {
         let tokenResult = await currentUser.getIdTokenResult();
         tenantId = tokenResult.claims.tenantId;
@@ -366,6 +367,7 @@ function AppInner() {
           tokenResult = await currentUser.getIdTokenResult(true); // force refresh
           tenantId = tokenResult.claims.tenantId;
         }
+        superAdmin = tokenResult.claims.superAdmin === true;
       } catch (claimErr) {
         console.warn('Falha ao ler claim de tenant; usando tenant padrão.', claimErr);
       }
@@ -381,7 +383,7 @@ function AppInner() {
 
       if (!byUidSnap.empty) {
         const userDoc = byUidSnap.docs[0];
-        setAppUser({ id: userDoc.id, ...userDoc.data(), tenantId: appId });
+        setAppUser({ id: userDoc.id, ...userDoc.data(), tenantId: appId, superAdmin });
         setAuthSetupError('');
         setIsAuthChecking(false);
         return;
@@ -409,7 +411,8 @@ function AppInner() {
             ...userDoc.data(),
             authUid: currentUser.uid,
             email: normalizedEmail,
-            tenantId: appId
+            tenantId: appId,
+            superAdmin
           });
 
           setAuthSetupError('');
@@ -805,6 +808,7 @@ useEffect(() => {
             <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
           </SidebarGroup>
           {isAdminUser(appUser) && <SidebarItem icon={<Settings className="w-5 h-5" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />}
+          {appUser?.superAdmin && <SidebarItem icon={<Globe className="w-5 h-5" />} label="Academias" active={activeTab === 'superadmin'} onClick={() => changeTab('superadmin')} />}
         </nav>
 
         {/* FAB "Cadastrar Lead" — redondo, ancorado à direita, ACIMA da
@@ -839,6 +843,7 @@ useEffect(() => {
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
               {activeTab === 'settings' && 'Configurações'}
+              {activeTab === 'superadmin' && 'Academias (Super-admin)'}
             </h2>
           </div>
           <button 
@@ -864,6 +869,7 @@ useEffect(() => {
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
               {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} />}
+              {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView />}
             </div>
           )}
         </div>
@@ -901,6 +907,157 @@ useEffect(() => {
       )}
     </div>
     </GeneralConfigContext.Provider>
+  );
+}
+
+// ==========================================
+// SUPER-ADMIN — provisionamento de academias (tenants)
+// ==========================================
+// Visível só para quem tem o claim superAdmin. Cria uma academia nova
+// (tenant + 1º admin + claim + doc) via /api/provision-tenant. Os padrões
+// (funil "Comercial" + etapa "Negociação") são semeados no 1º login do admin.
+const slugify = (s) => String(s || '')
+  .toLowerCase()
+  .normalize('NFD').replace(/[̀-ͯ]/g, '') // remove acentos
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-+|-+$/g, '')
+  .slice(0, 40);
+
+function SuperAdminView() {
+  const toast = useToast();
+  const [tenants, setTenants] = useState([]);
+  const [loadingList, setLoadingList] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '' });
+  const [slugTouched, setSlugTouched] = useState(false);
+
+  const authHeader = async () => ({
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
+  });
+
+  const loadTenants = async () => {
+    setLoadingList(true);
+    try {
+      const res = await fetch('/api/provision-tenant', { headers: await authHeader() });
+      const data = await res.json();
+      if (res.ok) setTenants(data.tenants || []);
+      else toast.error(data.error || 'Erro ao listar academias.');
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao listar academias.');
+    }
+    setLoadingList(false);
+  };
+
+  useEffect(() => { loadTenants(); }, []);
+
+  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const onNameChange = (v) => {
+    setForm(f => ({ ...f, displayName: v, tenantId: slugTouched ? f.tenantId : slugify(v) }));
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (submitting) return;
+    if (!form.displayName.trim() || !form.tenantId.trim() || !form.adminName.trim() || !form.adminEmail.trim() || !form.adminPassword) {
+      toast.warning('Preencha todos os campos.');
+      return;
+    }
+    if (form.adminPassword.length < 6) { toast.warning('Senha precisa ter ao menos 6 caracteres.'); return; }
+    setSubmitting(true);
+    try {
+      const res = await fetch('/api/provision-tenant', {
+        method: 'POST',
+        headers: await authHeader(),
+        body: JSON.stringify({
+          tenantId: form.tenantId.trim(),
+          displayName: form.displayName.trim(),
+          adminName: form.adminName.trim(),
+          adminEmail: form.adminEmail.trim(),
+          adminPassword: form.adminPassword
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || 'Erro ao criar academia.'); setSubmitting(false); return; }
+      toast.success(`Academia "${form.displayName.trim()}" criada. Admin: ${form.adminEmail.trim()}`, { duration: 8000, title: 'Academia provisionada' });
+      setForm({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '' });
+      setSlugTouched(false);
+      loadTenants();
+    } catch (e2) {
+      console.error(e2);
+      toast.error('Erro ao criar academia.');
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div className="animate-fade-in font-sans space-y-6 max-w-3xl">
+      <section>
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <Globe size={13} className="text-brand-600" /> Super-admin
+        </div>
+        <h2 className="mt-1.5 text-[24px] font-semibold tracking-tight leading-tight">Academias</h2>
+        <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
+          Crie uma academia nova (cliente) com dados totalmente isolados e o primeiro admin dela.
+        </p>
+      </section>
+
+      <SettingsCard title="Nova academia" hint="Provisiona o tenant + o primeiro admin" icon={<Plus size={16} />}>
+        <form onSubmit={submit} className="space-y-4 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Field label="Nome da academia">
+              <StyledInput placeholder="Ex: Academia Corpo & Movimento" value={form.displayName} onChange={e => onNameChange(e.target.value)} required />
+            </Field>
+            <Field label="Identificador (slug)" hint="minúsculas, números e hífen">
+              <StyledInput placeholder="ex: corpo-e-movimento" value={form.tenantId}
+                onChange={e => { setSlugTouched(true); setField('tenantId', slugify(e.target.value)); }} required />
+            </Field>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Field label="Nome do admin">
+              <StyledInput placeholder="Nome completo" value={form.adminName} onChange={e => setField('adminName', e.target.value)} required />
+            </Field>
+            <Field label="E-mail do admin">
+              <StyledInput type="email" placeholder="admin@academia.com" value={form.adminEmail} onChange={e => setField('adminEmail', e.target.value)} required />
+            </Field>
+            <Field label="Senha temporária">
+              <StyledInput type="text" placeholder="mín. 6 caracteres" value={form.adminPassword} onChange={e => setField('adminPassword', e.target.value)} required />
+            </Field>
+          </div>
+          <div className="flex justify-end">
+            <Btn kind="brand" type="submit" icon={<Check size={13} />} disabled={submitting}>
+              {submitting ? 'Criando...' : 'Criar academia'}
+            </Btn>
+          </div>
+        </form>
+      </SettingsCard>
+
+      <SettingsCard title="Academias cadastradas" hint={`${tenants.length} no total`} icon={<Globe size={16} />}>
+        {loadingList ? (
+          <div className="text-center text-[12.5px] text-slate-400 py-10">Carregando...</div>
+        ) : tenants.length === 0 ? (
+          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Nenhuma academia cadastrada ainda.</div>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+            {tenants.map(t => (
+              <div key={t.id} className="flex items-center gap-3 px-4 py-3">
+                <span className="w-7 h-7 rounded-lg grid place-items-center bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 shrink-0">
+                  <Globe size={13} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13.5px] font-medium text-slate-800 dark:text-slate-100 truncate">{t.displayName}</div>
+                  <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate num">{t.id}{t.primaryAdminEmail ? ` · ${t.primaryAdminEmail}` : ''}</div>
+                </div>
+                <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${t.status === 'active' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400'}`}>
+                  {t.status === 'active' ? 'Ativa' : t.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </SettingsCard>
+    </div>
   );
 }
 
