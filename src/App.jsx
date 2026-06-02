@@ -3079,9 +3079,9 @@ const teamMetrics = useMemo(() => {
                     <div key={name} className="flex items-center gap-3">
                       <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 w-32 shrink-0 truncate">{name}</span>
                       <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
-                        <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.round((count / max) * 100)}%` }} />
+                        <div className="h-full bg-brand-500 rounded-full" style={{ width: `${max > 0 ? Math.round((count / max) * 100) : 0}%` }} />
                       </div>
-                      <span className="num text-[12px] text-slate-500 dark:text-slate-400 w-9 text-right whitespace-nowrap">{Math.round((count / total) * 100)}%</span>
+                      <span className="num text-[12px] text-slate-500 dark:text-slate-400 w-9 text-right whitespace-nowrap">{total > 0 ? Math.round((count / total) * 100) : 0}%</span>
                       <span className="num text-[13px] font-semibold text-slate-800 dark:text-slate-100 w-7 text-right">{count}</span>
                     </div>
                   ));
@@ -5456,7 +5456,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
               <span className="num text-[11.5px] font-semibold text-slate-700 dark:text-slate-200">{doneCount}/{totalCount}</span>
             </div>
             <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
-              <div className={`h-full ${t.strong}`} style={{ width: `${(doneCount / totalCount) * 100}%`, transition: 'width .4s' }} />
+              <div className={`h-full ${t.strong}`} style={{ width: `${totalCount > 0 ? (doneCount / totalCount) * 100 : 0}%`, transition: 'width .4s' }} />
             </div>
           </div>
         )}
