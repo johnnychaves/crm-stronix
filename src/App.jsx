@@ -104,13 +104,11 @@ import {
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
 import { statusGradientMap } from './lib/constants.js';
 import { getSafeDate, getSafeDateOrNull, normalizeAppointmentType } from './lib/dates.js';
-import { bufferToBase64url, generateRandomBuffer, buildCsatUrl } from './lib/auth.js';
 import {
   getLeadAppointmentType,
   getLeadAppointmentDate,
   isLeadConverted,
   getLeadConversionDate,
-  getLeadSatisfactionDate,
   isLeadAttended,
   getLeadAttendanceDate,
   getAppointmentOutcomeMeta,
@@ -266,162 +264,6 @@ const fmtKanbanRelDateTime = (d) => {
   return `${fmtKanbanRelDate(d)} · ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 };
 
-function PublicCsatView() {
-  const toast = useToast();
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
-  const [leadName, setLeadName] = useState('');
-  const [stage, setStage] = useState('pos_agendamento');
-  const [score, setScore] = useState(0);
-  const [comment, setComment] = useState('');
-
-  const token = new URLSearchParams(window.location.search).get('csat');
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const res = await fetch(`/api/csat-load?token=${encodeURIComponent(token)}`);
-        const data = await res.json();
-
-        if (!res.ok) {
-          setError(data.error || 'Não foi possível carregar a pesquisa.');
-          setLoading(false);
-          return;
-        }
-
-        setLeadName(data.name || '');
-        setStage(data.stage || 'pos_agendamento');
-        setLoading(false);
-      } catch (e) {
-        console.error(e);
-        setError('Erro ao carregar pesquisa.');
-        setLoading(false);
-      }
-    };
-
-    if (!token) {
-      setError('Token ausente.');
-      setLoading(false);
-      return;
-    }
-
-    load();
-  }, [token]);
-
-  const handleSubmit = async () => {
-    if (!score) {
-      toast.warning('Selecione uma nota de 1 a 5.');
-      return;
-    }
-
-    try {
-      const res = await fetch('/api/csat-submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, score, comment })
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || 'Não foi possível enviar sua resposta.');
-        return;
-      }
-
-      setSuccess(true);
-    } catch (e) {
-      console.error(e);
-      setError('Erro ao enviar resposta.');
-    }
-  };
-
-  const stageLabel =
-    stage === 'cliente_novo'
-      ? 'pós-matrícula'
-      : 'pós-agendamento';
-
-  return (
-    <div className="min-h-screen bg-[#eaedf2] dark:bg-neutral-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-xl bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] p-10 shadow-2xl">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white uppercase tracking-tighter mb-3">
-          STRONIX
-        </h1>
-        <p className="text-gray-500 dark:text-neutral-400 text-sm font-bold uppercase tracking-widest mb-8">
-          Pesquisa de satisfação do atendimento
-        </p>
-
-        {loading && (
-          <p className="text-gray-400 dark:text-neutral-500 font-bold">Carregando...</p>
-        )}
-
-        {!loading && error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-4 rounded-2xl text-sm font-bold">
-            {error}
-          </div>
-        )}
-
-        {!loading && !error && success && (
-          <div className="bg-green-500/10 border border-green-500/20 text-green-400 p-6 rounded-2xl text-sm font-bold">
-            Obrigado! Sua avaliação foi registrada com sucesso.
-          </div>
-        )}
-
-        {!loading && !error && !success && (
-          <div className="space-y-6">
-            <div className="bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl p-5">
-              <p className="text-gray-900 dark:text-white font-bold text-lg">{leadName}</p>
-              <p className="text-gray-400 dark:text-neutral-500 text-xs font-bold uppercase tracking-widest mt-2">
-                Avaliação do atendimento comercial ({stageLabel})
-              </p>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block mb-3">
-                Sua nota
-              </label>
-              <div className="grid grid-cols-5 gap-2">
-                {[1, 2, 3, 4, 5].map(n => (
-                  <button
-                    key={n}
-                    type="button"
-                    onClick={() => setScore(n)}
-                    className={`py-4 rounded-xl font-bold text-lg transition-all border ${
-                      score === n
-                        ? 'bg-blue-600 border-blue-600 text-gray-900 dark:text-white'
-                        : 'bg-[#eaedf2] dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-500 dark:text-neutral-400'
-                    }`}
-                  >
-                    {n}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="text-[10px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block mb-3">
-                Comentário
-              </label>
-              <textarea
-                value={comment}
-                onChange={e => setComment(e.target.value)}
-                className="w-full bg-[#eaedf2] dark:bg-neutral-950 border border-gray-200 dark:border-neutral-800 rounded-2xl p-4 h-28 text-gray-900 dark:text-white outline-none"
-                placeholder="Comentário opcional sobre o atendimento"
-              />
-            </div>
-
-            <button
-              onClick={handleSubmit}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-4 rounded-2xl uppercase tracking-[0.2em] text-[10px]"
-            >
-              ENVIAR AVALIAÇÃO
-            </button>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
 // ==========================================
@@ -913,11 +755,7 @@ useEffect(() => {
   useEffect(() => {
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
-const csatToken = new URLSearchParams(window.location.search).get('csat');
 
-if (csatToken) {
-  return <PublicCsatView />;
-}
   if (isAuthChecking) {
     return (
       <div className="min-h-screen bg-[#eaedf2] dark:bg-neutral-950 flex flex-col items-center justify-center p-4">
@@ -1773,34 +1611,6 @@ function DashFunnel({ steps, onStepClick }) {
   );
 }
 
-function DashGauge({ value, max = 5 }) {
-  const pct = Math.max(0, Math.min(1, value / max));
-  const R = 64;
-  const C = Math.PI * R;
-  const offset = C - C * pct;
-  return (
-    <div className="relative w-[160px] h-[90px] shrink-0">
-      <svg viewBox="0 0 160 90" className="w-full h-full">
-        <path d="M16 80 A64 64 0 0 1 144 80" stroke="currentColor" className="text-slate-100 dark:text-white/[0.06]" strokeWidth="12" fill="none" strokeLinecap="round" />
-        <path
-          d="M16 80 A64 64 0 0 1 144 80"
-          stroke="currentColor"
-          className="text-brand-600"
-          strokeWidth="12"
-          fill="none"
-          strokeLinecap="round"
-          strokeDasharray={C}
-          strokeDashoffset={offset}
-          style={{ transition: 'stroke-dashoffset .8s cubic-bezier(.2,.7,.2,1)' }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-end pb-0">
-        <div className="num text-[28px] font-semibold tracking-tight leading-none">{Number(value || 0).toFixed(1)}</div>
-        <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5">de {max}</div>
-      </div>
-    </div>
-  );
-}
 
 function DashRingStat({ value, accent = 'brand', size = 80 }) {
   const R = 30;
@@ -1832,40 +1642,7 @@ function DashRingStat({ value, accent = 'brand', size = 80 }) {
   );
 }
 
-function DashMiniStat({ label, value, tone = 'slate' }) {
-  const tones = {
-    emerald: 'text-emerald-700 dark:text-emerald-300',
-    amber:   'text-amber-700 dark:text-amber-300',
-    rose:    'text-rose-700 dark:text-rose-300',
-    slate:   'text-slate-700 dark:text-slate-200'
-  };
-  return (
-    <div className="text-center">
-      <div className={`num text-[15px] font-semibold ${tones[tone] || tones.slate}`}>{value}</div>
-      <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5 whitespace-nowrap">{label}</div>
-    </div>
-  );
-}
 
-function DashCsatDist({ dist, total }) {
-  return (
-    <div className="space-y-1.5">
-      {dist.map((d) => {
-        const pct = total ? Math.round((d.n / total) * 100) : 0;
-        const color = d.score >= 4 ? 'bg-emerald-500' : d.score === 3 ? 'bg-amber-500' : 'bg-rose-500';
-        return (
-          <div key={d.score} className="flex items-center gap-2.5 text-[12px] num">
-            <span className="w-3 text-slate-500 dark:text-slate-400">{d.score}</span>
-            <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
-              <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }}></div>
-            </div>
-            <span className="w-8 text-right font-semibold text-slate-700 dark:text-slate-200">{d.n}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function DashTeamRow({ row, maxLeads }) {
   return (
@@ -1924,37 +1701,6 @@ function DashTeamTable({ rows, appUser }) {
   );
 }
 
-function DashCsatTeamGrid({ rows }) {
-  return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-      {rows.map((r, i) => {
-        const pct = r.pctSatisfeitos || 0;
-        const barColor = pct >= 80 ? 'bg-emerald-500' : pct >= 65 ? 'bg-amber-500' : 'bg-rose-500';
-        return (
-          <div key={r.name + i} className="rounded-xl border border-slate-200/70 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-3.5">
-            <div className="flex items-center gap-2.5">
-              <Avatar name={r.name} size={32} />
-              <div className="min-w-0 flex-1">
-                <div className="text-[13px] font-semibold truncate">{r.name}</div>
-                <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num whitespace-nowrap">{r.totalAvaliacoes} avaliações</div>
-              </div>
-              <div className="text-right shrink-0">
-                <div className="num text-[18px] font-semibold leading-none">{r.media}</div>
-                <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5">média</div>
-              </div>
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
-                <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }}></div>
-              </div>
-              <span className="num text-[11.5px] font-semibold text-slate-700 dark:text-slate-200 whitespace-nowrap">{pct}%</span>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 function DashSourceList({ items }) {
   const total = items.reduce((s, x) => s + x.count, 0);
@@ -2140,24 +1886,6 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
       .sort((a, b) => b.count - a.count);
   }, [scheduledLeads]);
 
-  const satisfactionLeads = useMemo(() => {
-  const allowedStages = ['pos_agendamento', 'cliente_novo'];
-
-  return funnelLeads.filter(l => {
-    const score = Number(l.satisfactionScore || 0);
-    const satisfactionDate = getLeadSatisfactionDate(l);
-    const stage = String(l.satisfactionStage || '');
-
-    return (
-      score >= 1 &&
-      score <= 5 &&
-      satisfactionDate &&
-      isWithinSelectedRange(satisfactionDate) &&
-      allowedStages.includes(stage)
-    );
-  });
-}, [funnelLeads, periodRange]);
-
   const stats = useMemo(() => {
     const total = capturedLeads.length;
 
@@ -2200,34 +1928,6 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
       txConvAula
     };
   }, [capturedLeads, scheduledLeads, convertedLeads]);
-
-  const satisfactionStats = useMemo(() => {
-  const total = satisfactionLeads.length;
-
-  const somaNotas = satisfactionLeads.reduce(
-    (acc, l) => acc + Number(l.satisfactionScore || 0),
-    0
-  );
-
-  const satisfeitos = satisfactionLeads.filter(
-    l => Number(l.satisfactionScore) >= 4
-  ).length;
-
-  const insatisfeitos = satisfactionLeads.filter(
-    l => Number(l.satisfactionScore) <= 2
-  ).length;
-
-  const media = total > 0 ? (somaNotas / total).toFixed(1) : '0.0';
-  const pctSatisfeitos = total > 0 ? Math.round((satisfeitos / total) * 100) : 0;
-  const pctInsatisfeitos = total > 0 ? Math.round((insatisfeitos / total) * 100) : 0;
-
-  return {
-    total,
-    media,
-    pctSatisfeitos,
-    pctInsatisfeitos
-  };
-}, [satisfactionLeads]);
 
   const pendingFollowUps = useMemo(() => {
     return funnelLeads
@@ -2316,48 +2016,6 @@ const teamMetrics = useMemo(() => {
       .sort((a, b) => b.count - a.count);
   }, [capturedLeads]);
 
-  const consultantSatisfactionMetrics = useMemo(() => {
-  const metrics = {};
-
-  satisfactionLeads.forEach(l => {
-    const cId = l.satisfactionConsultantId || l.consultantId || 'unassigned';
-
-    if (!metrics[cId]) {
-      metrics[cId] = {
-        name: l.satisfactionConsultantName || l.consultantName || 'Desconhecido',
-        totalAvaliacoes: 0,
-        somaNotas: 0,
-        satisfeitos: 0,
-        media: '0.0',
-        pctSatisfeitos: 0
-      };
-    }
-
-    const score = Number(l.satisfactionScore || 0);
-
-    metrics[cId].totalAvaliacoes += 1;
-    metrics[cId].somaNotas += score;
-
-    if (score >= 4) metrics[cId].satisfeitos += 1;
-  });
-
-  Object.values(metrics).forEach(m => {
-    m.media =
-      m.totalAvaliacoes > 0
-        ? (m.somaNotas / m.totalAvaliacoes).toFixed(1)
-        : '0.0';
-
-    m.pctSatisfeitos =
-      m.totalAvaliacoes > 0
-        ? Math.round((m.satisfeitos / m.totalAvaliacoes) * 100)
-        : 0;
-  });
-
-  return Object.values(metrics).sort(
-    (a, b) => Number(b.media) - Number(a.media) || b.totalAvaliacoes - a.totalAvaliacoes
-  );
-}, [satisfactionLeads]);
-
   // --- TABELA "MÉTRICAS POR FUNIL" (modo Geral) ---
   // Agnóstica de etapas: cada linha agrega leads/visitas/aulas/matrículas/taxa
   // usando os mesmos campos usados pelos KPIs globais. Funcione para qualquer
@@ -2423,20 +2081,6 @@ const teamMetrics = useMemo(() => {
   );
   const totalAppt = stats.agendadosVisita + stats.agendadosAula;
   const taxaComp = totalAppt > 0 ? Math.round((compareceram / totalAppt) * 100) : 0;
-
-  // CSAT distribution (5 → 1)
-  const csatDist = useMemo(() => {
-    const counts = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
-    satisfactionLeads.forEach((l) => {
-      const score = Math.round(Number(l.satisfactionScore || 0));
-      if (counts[score] != null) counts[score]++;
-    });
-    return [5, 4, 3, 2, 1].map((score) => ({ score, n: counts[score] }));
-  }, [satisfactionLeads]);
-
-  const pctNeutros = satisfactionStats.total > 0
-    ? Math.max(0, 100 - satisfactionStats.pctSatisfeitos - satisfactionStats.pctInsatisfeitos)
-    : 0;
 
   // 14-day sparkline series for each KPI.
   const sparklines = useMemo(() => {
@@ -2642,20 +2286,7 @@ const teamMetrics = useMemo(() => {
       </div>
 
       {/* ---- Secondary KPIs ---- */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <DashCard padded>
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">CSAT médio</div>
-              <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{satisfactionStats.media}</div>
-              <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-                <span className="text-emerald-600 dark:text-emerald-400 font-semibold num">{satisfactionStats.pctSatisfeitos}%</span> satisfeitos · <span className="num">{satisfactionStats.total}</span> avaliações
-              </div>
-            </div>
-            <DashGauge value={Number(satisfactionStats.media) || 0} />
-          </div>
-        </DashCard>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <DashCard padded>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -2820,42 +2451,10 @@ const teamMetrics = useMemo(() => {
             </DashCard>
           )}
 
-          {isAdminUser(appUser) && (
-            <DashCard
-              title="CSAT por consultor"
-              hint="Média e % de satisfeitos no período"
-              icon={<CheckCircle size={14} />}
-            >
-              {consultantSatisfactionMetrics.length > 0 ? (
-                <DashCsatTeamGrid rows={consultantSatisfactionMetrics} />
-              ) : (
-                <div className="py-8 text-center text-[12px] text-slate-400 italic">Sem avaliações no período</div>
-              )}
-            </DashCard>
-          )}
         </div>
 
         {/* RIGHT — widgets */}
         <div className="col-span-12 xl:col-span-4 space-y-4">
-
-          <DashCard
-            title="Distribuição CSAT"
-            hint={`${satisfactionStats.total} avaliações no período`}
-            icon={<Activity size={14} />}
-          >
-            <div className="flex items-start gap-4">
-              <DashGauge value={Number(satisfactionStats.media) || 0} />
-              <div className="flex-1 min-w-0">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2 whitespace-nowrap">Notas (5 → 1)</div>
-                <DashCsatDist dist={csatDist} total={satisfactionStats.total} />
-              </div>
-            </div>
-            <div className="mt-4 grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 dark:border-white/[0.05]">
-              <DashMiniStat label="Satisfeitos" value={`${satisfactionStats.pctSatisfeitos}%`} tone="emerald" />
-              <DashMiniStat label="Neutros" value={`${pctNeutros}%`} tone="amber" />
-              <DashMiniStat label="Insatisfeitos" value={`${satisfactionStats.pctInsatisfeitos}%`} tone="rose" />
-            </div>
-          </DashCard>
 
           <DashCard
             title="Canais de aquisição"
@@ -5034,9 +4633,6 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 
   const [lossModalOpen, setLossModalOpen] = useState(false);
 
-  const [csatStage, setCsatStage] = useState(lead.csatRequestedStage || 'pos_agendamento');
-  const [sendingCsat, setSendingCsat] = useState(false);
-
   // Composer tab — drives which form is shown in the activity Composer card.
   const [composerTab, setComposerTab] = useState('note');
 
@@ -5050,7 +4646,6 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
     setEditData({ name: lead.name, whatsapp: lead.whatsapp, source: lead.source, observation: lead.observation || '', tags: lead.tags || [], consultantId: lead.consultantId || '' });
     setStatus(lead.status);
     setFunnelId(lead.funnelId || getDefaultFunnel(safeFunnels)?.id || null);
-    setCsatStage(lead.csatRequestedStage || 'pos_agendamento');
   }, [lead]);
 
   const handleFunnelChange = (newFunnelId) => {
@@ -5071,49 +4666,6 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
     window.open(`https://wa.me/${n}?text=Ol%C3%A1%20${encodeURIComponent(lead.name)}`); 
   };
   
-  const handleSendCsat = async () => {
-    if (!lead.whatsapp) {
-      toast.warning('Este lead não possui WhatsApp cadastrado.');
-      return;
-    }
-    if (csatStage === 'cliente_novo' && lead.status !== 'Venda') {
-      const confirmSend = window.confirm('Este lead ainda não está em Venda. Deseja mesmo enviar o CSAT de pós-matrícula?');
-      if (!confirmSend) return;
-    }
-    setSendingCsat(true);
-    try {
-      const token = bufferToBase64url(generateRandomBuffer(24));
-      const csatUrl = buildCsatUrl(token);
-
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-        csatToken: token,
-        csatStatus: 'pending',
-        csatRequestedAt: serverTimestamp(),
-        csatRequestedStage: csatStage,
-        csatLinkSentById: appUser.id,
-        csatLinkSentByName: appUser.name
-      }, { merge: true });
-
-      const stageLabel = csatStage === 'cliente_novo' ? 'pós-matrícula' : 'pós-agendamento';
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: `Link de CSAT enviado (${stageLabel}).`,
-        type: 'note',
-        createdAt: serverTimestamp()
-      });
-
-      let n = lead.whatsapp.replace(/\D/g, '');
-      if (n.length <= 11) n = '55' + n;
-      const message = `Olá, ${lead.name}! Aqui é da STRONIX. Queremos avaliar seu atendimento comercial (${stageLabel}). Sua resposta leva menos de 1 minuto:\n\n${csatUrl}`;
-      window.open(`https://wa.me/${n}?text=${encodeURIComponent(message)}`, '_blank');
-    } catch (e) {
-      console.error(e);
-      toast.error('Erro ao gerar e enviar o link de CSAT.');
-    }
-    setSendingCsat(false);
-  };
 
   const handleDelete = async () => {
     if (window.confirm("⚠️ AÇÃO IRREVERSÍVEL: Deseja EXCLUIR este lead permanentemente?")) {
@@ -5671,30 +5223,6 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                       </p>
                     </div>
 
-                    {/* CSAT */}
-                    <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.05]">
-                      <div className="flex items-center justify-between mb-2.5">
-                        <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 inline-flex items-center gap-1.5"><CheckCircle size={12} /> Pesquisa CSAT</div>
-                        <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300 whitespace-nowrap">
-                          {lead.csatStatus === 'answered' ? 'Respondido' : lead.csatStatus === 'pending' ? 'Aguardando' : 'Não enviado'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-1.5 mb-2.5">
-                        <button
-                          type="button"
-                          onClick={() => setCsatStage('pos_agendamento')}
-                          className={`h-9 rounded-lg border text-[11.5px] font-semibold transition ${csatStage === 'pos_agendamento' ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/10 dark:border-brand-500/30 dark:text-brand-300' : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-white/[0.02] dark:border-white/[0.07] text-slate-600 dark:text-slate-300'}`}
-                        >Pós-agendamento</button>
-                        <button
-                          type="button"
-                          onClick={() => setCsatStage('cliente_novo')}
-                          className={`h-9 rounded-lg border text-[11.5px] font-semibold transition ${csatStage === 'cliente_novo' ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/10 dark:border-brand-500/30 dark:text-brand-300' : 'bg-white border-slate-200 hover:border-slate-300 dark:bg-white/[0.02] dark:border-white/[0.07] text-slate-600 dark:text-slate-300'}`}
-                        >Pós-matrícula</button>
-                      </div>
-                      <Btn kind="secondary" icon={<MessageCircle size={13} />} onClick={handleSendCsat} disabled={sendingCsat} className="w-full">
-                        {sendingCsat ? 'Gerando...' : 'Enviar link por WhatsApp'}
-                      </Btn>
-                    </div>
                   </aside>
                 )}
               </div>
