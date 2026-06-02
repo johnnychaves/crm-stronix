@@ -1,4 +1,5 @@
 import { adminAuth, adminDb, admin } from './_firebaseAdmin.js';
+import { checkRateLimit, clientIp } from './_rateLimit.js';
 
 // Aceita um convite e cria a conta do usuário no tenant. PÚBLICO (o token UUID
 // é o segredo). Vercel serverless function.
@@ -19,6 +20,13 @@ const invitesCollection = (tenantId) =>
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
+  }
+
+  // Endpoint público — limita tentativas por IP (defesa em profundidade contra
+  // abuso/enumeração; o token UUID já é forte). Fail-open se a checagem falhar.
+  const rl = await checkRateLimit(`invite-accept:${clientIp(req)}`, { limit: 15, windowMs: 10 * 60 * 1000 });
+  if (!rl.ok) {
+    return res.status(429).json({ error: 'Muitas tentativas. Aguarde alguns minutos e tente novamente.' });
   }
 
   try {

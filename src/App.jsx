@@ -757,6 +757,10 @@ useEffect(() => {
   if (!firebaseUser || !appUser) return;
   // Super-admin sem tenant não carrega dados de organização (só usa a tela Organizações).
   if (appUser.superAdminOnly) { setLoadingData(false); return; }
+  // Academia bloqueada (suspensa / trial expirado): não tenta carregar dados —
+  // a tela de bloqueio é exibida e as rules também negam no servidor. Evita
+  // permission-denied silencioso nos onSnapshot.
+  if (tenantBlock) { setLoadingData(false); return; }
   setLoadingData(true);
 
   const leadsRef = collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH);
@@ -890,7 +894,7 @@ useEffect(() => {
     unsubConfig();
     unsubUsers();
   };
-}, [firebaseUser, appUser]);
+}, [firebaseUser, appUser, tenantBlock]);
 
   // Persiste a seleção de funil no localStorage, com chave por tenant.
   useEffect(() => {
