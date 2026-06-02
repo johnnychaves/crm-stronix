@@ -5774,7 +5774,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                       <div className="flex items-center gap-4">
                         <Avatar name={lead.name} size={56} />
                         <div className="min-w-0 flex-1">
-                          <h2 className="text-[20px] font-semibold tracking-tight truncate">{lead.name}</h2>
+                          <h2 className="font-display text-[20px] font-semibold tracking-tight truncate">{lead.name}</h2>
                           <button
                             onClick={handleWhatsApp}
                             className="text-[12.5px] text-brand-600 hover:text-brand-700 dark:text-brand-300 dark:hover:text-brand-200 font-medium num inline-flex items-center gap-1 transition"
@@ -5914,7 +5914,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                   <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
                     <Clock size={13} className="text-brand-600" /> Linha do tempo
                   </div>
-                  <h2 className="mt-1.5 text-[22px] font-semibold tracking-tight leading-tight">
+                  <h2 className="mt-1.5 font-display text-[22px] font-semibold tracking-tight leading-tight">
                     Jornada de {firstName}
                   </h2>
                   <p className="mt-0.5 text-[13px] text-slate-500 dark:text-slate-400">
