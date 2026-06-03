@@ -2923,6 +2923,8 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
   const stats = useMemo(() => {
     const total = capturedLeads.length;
 
+    // Contadores operacionais (eventos cuja DATA caiu no período).
+    // Usados como números absolutos nos KPIs e no funil.
     const agendadosVisita = scheduledLeads.filter(
       l => getLeadAppointmentType(l) === 'visita'
     ).length;
@@ -2941,12 +2943,31 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
       l => getLeadAppointmentType(l) === 'aula_experimental'
     ).length;
 
-    const txAgVisita = total > 0 ? Math.round((agendadosVisita / total) * 100) : 0;
-    const txAgAula = total > 0 ? Math.round((agendadosAula / total) * 100) : 0;
-    const txConv = total > 0 ? Math.round((convertidos / total) * 100) : 0;
+    // Taxas calculadas SOBRE A COORTE de captação do período (mesmo
+    // denominador e numerador). Evita o paradoxo de mostrar "150% de
+    // conversão" quando o numerador vem de uma coorte e o denominador
+    // de outra (leads captados em meses anteriores que matricularam
+    // agora, etc.).
+    const coorteVisita = capturedLeads.filter(l =>
+      getLeadAppointmentType(l) === 'visita' && getLeadAppointmentDate(l)
+    ).length;
+    const coorteAula = capturedLeads.filter(l =>
+      getLeadAppointmentType(l) === 'aula_experimental' && getLeadAppointmentDate(l)
+    ).length;
+    const coorteConvertidos = capturedLeads.filter(isLeadConverted).length;
+    const coorteConvVisita = capturedLeads.filter(l =>
+      getLeadAppointmentType(l) === 'visita' && isLeadConverted(l)
+    ).length;
+    const coorteConvAula = capturedLeads.filter(l =>
+      getLeadAppointmentType(l) === 'aula_experimental' && isLeadConverted(l)
+    ).length;
 
-    const txConvVisita = agendadosVisita > 0 ? Math.round((convertidosVisita / agendadosVisita) * 100) : 0;
-    const txConvAula = agendadosAula > 0 ? Math.round((convertidosAula / agendadosAula) * 100) : 0;
+    const txAgVisita = total > 0 ? Math.round((coorteVisita / total) * 100) : 0;
+    const txAgAula = total > 0 ? Math.round((coorteAula / total) * 100) : 0;
+    const txConv = total > 0 ? Math.round((coorteConvertidos / total) * 100) : 0;
+
+    const txConvVisita = coorteVisita > 0 ? Math.round((coorteConvVisita / coorteVisita) * 100) : 0;
+    const txConvAula = coorteAula > 0 ? Math.round((coorteConvAula / coorteAula) * 100) : 0;
 
     return {
       total,
@@ -2955,6 +2976,7 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
       convertidos,
       convertidosVisita,
       convertidosAula,
+      coorteConvertidos,
       txAgVisita,
       txAgAula,
       txConv,
@@ -3113,8 +3135,19 @@ const teamMetrics = useMemo(() => {
     () => scheduledLeads.filter((l) => isLeadAttended(l)).length,
     [scheduledLeads]
   );
+  // Denominador da taxa de comparecimento: apenas agendamentos cuja data
+  // já chegou. Agendamentos futuros (semana/mês em andamento) ainda não
+  // tiveram chance de comparecer e não devem deflacionar a taxa.
+  const apptPassados = useMemo(() => {
+    const now = new Date();
+    return scheduledLeads.filter(l => {
+      const t = getLeadAppointmentType(l);
+      const d = getLeadAppointmentDate(l);
+      return (t === 'visita' || t === 'aula_experimental') && d && d <= now;
+    }).length;
+  }, [scheduledLeads]);
   const totalAppt = stats.agendadosVisita + stats.agendadosAula;
-  const taxaComp = totalAppt > 0 ? Math.round((compareceram / totalAppt) * 100) : 0;
+  const taxaComp = apptPassados > 0 ? Math.round((compareceram / apptPassados) * 100) : 0;
 
   // 14-day sparkline series for each KPI.
   const sparklines = useMemo(() => {
@@ -3159,11 +3192,14 @@ const teamMetrics = useMemo(() => {
   }, [funnelLeads, periodRange, stats]);
 
   // Activity feed: last 5 interactions in period, mapped to a UI shape.
+  // Filtra por funnelLeads para respeitar o filtro de funil selecionado
+  // — o restante do Dashboard já filtra; o feed precisa acompanhar.
   const activityFeed = useMemo(() => {
     if (!periodRange) return [];
-    const leadById = new Map((leads || []).map((l) => [l.id, l]));
+    const leadById = new Map(funnelLeads.map((l) => [l.id, l]));
     const myAuthUid = appUser?.authUid || appUser?.id || null;
     return (interactions || [])
+      .filter((i) => leadById.has(i.leadId))
       .filter((i) => i.createdAt instanceof Date && i.createdAt >= periodRange.start && i.createdAt <= periodRange.end)
       .sort((a, b) => b.createdAt - a.createdAt)
       .slice(0, 6)
@@ -3214,7 +3250,7 @@ const teamMetrics = useMemo(() => {
           tone
         };
       });
-  }, [interactions, leads, periodRange, appUser]);
+  }, [interactions, funnelLeads, periodRange, appUser]);
 
   // Human-friendly period label for the hero.
   const periodLabel = useMemo(() => {
@@ -3327,7 +3363,10 @@ const teamMetrics = useMemo(() => {
               <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">Taxa de comparecimento</div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{taxaComp}%</div>
               <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-                <span className="num font-medium text-slate-700 dark:text-slate-200">{compareceram}</span> compareceram / <span className="num">{totalAppt}</span> agendados
+                <span className="num font-medium text-slate-700 dark:text-slate-200">{compareceram}</span> compareceram / <span className="num">{apptPassados}</span> já realizados
+                {totalAppt > apptPassados && (
+                  <> · <span className="num text-slate-400">+{totalAppt - apptPassados} futuros</span></>
+                )}
               </div>
             </div>
             <DashRingStat value={taxaComp} accent="teal" />
@@ -3340,7 +3379,7 @@ const teamMetrics = useMemo(() => {
               <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">Conversão global</div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{stats.txConv}%</div>
               <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-                lead → matrícula · <span className="num">{stats.convertidos}</span> de <span className="num">{stats.total}</span>
+                lead → matrícula · <span className="num">{stats.coorteConvertidos}</span> de <span className="num">{stats.total}</span> captados
               </div>
             </div>
             <DashRingStat value={stats.txConv} accent="emerald" />
