@@ -9408,15 +9408,12 @@ function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOu
       </div>
       <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
-          <TypeIcon size={11} /> {typeLabel}
+          <TypeIcon size={11} /> {typeLabel}{isAula && Number.isFinite(qty) && qty > 0 ? ` · ${qty} ${qty === 1 ? 'aula' : 'aulas'}` : ''}
         </span>
         {isAula && modality && (
           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">
             <Dumbbell size={11} /> {modality}
           </span>
-        )}
-        {isAula && Number.isFinite(qty) && qty > 0 && (
-          <span className="num text-[11px] font-medium text-slate-500 dark:text-slate-400">{qty} {qty === 1 ? 'aula' : 'aulas'}</span>
         )}
       </div>
       <div className="mt-3 flex items-center gap-1.5">
