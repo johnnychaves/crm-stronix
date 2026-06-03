@@ -496,13 +496,19 @@ export default function App() {
   );
 }
 
-// Lê o slug da academia do hash da URL (crmstronix.com.br/#<slug>).
-// Aceita "#slug", "#/slug" e "#/t/slug". Retorna '' se não houver/for inválido.
-function getTenantSlugFromHash() {
+// Lê o slug da academia da URL: primeiro o PATH (crmstronix.com.br/<slug>) e,
+// como compatibilidade com links antigos, o HASH (#<slug>, #/slug, #/t/slug).
+// Retorna '' se não houver/for inválido.
+function getTenantSlug() {
+  const re = /^[a-z0-9][a-z0-9-]{0,63}$/;
   try {
+    // 1) path-based: /<slug>
+    const seg = String(window.location.pathname || '').replace(/^\/+/, '').split('/')[0].trim().toLowerCase();
+    if (re.test(seg)) return seg;
+    // 2) fallback: hash
     const raw = String(window.location.hash || '').replace(/^#\/?(t\/)?/i, '').trim().toLowerCase();
-    const slug = raw.split(/[/?#&]/)[0];
-    return /^[a-z0-9][a-z0-9-]{0,63}$/.test(slug) ? slug : '';
+    const h = raw.split(/[/?#&]/)[0];
+    return re.test(h) ? h : '';
   } catch {
     return '';
   }
@@ -523,7 +529,7 @@ function AppInner() {
   // NÃO controla acesso (isso continua sendo o claim tenantId + as rules).
   // Formato: { slug, loading? , found?, displayName? }. Init lazy a partir do hash.
   const [urlTenant, setUrlTenant] = useState(() => {
-    const slug = getTenantSlugFromHash();
+    const slug = getTenantSlug();
     return slug ? { slug, loading: true } : null;
   });
 
@@ -549,7 +555,7 @@ function AppInner() {
   // Resolve a academia do hash da URL (#<slug>) para exibir o nome na tela de
   // login. Público (pré-auth) via /api/tenant-resolve. Roda uma vez no mount.
   useEffect(() => {
-    const slug = getTenantSlugFromHash();
+    const slug = getTenantSlug();
     if (!slug) return;
     let alive = true;
     fetch(`/api/tenant-resolve?slug=${encodeURIComponent(slug)}`)
@@ -559,16 +565,22 @@ function AppInner() {
     return () => { alive = false; };
   }, []);
 
-  // Mantém a URL (#<slug>) em sincronia com o tenant real após o login — cada
-  // academia fica com um link próprio e bookmarkável. O acesso vem do claim; se
-  // a URL apontava para outra academia, é apenas corrigida (sem bloquear ninguém).
+  // Mantém a URL (/<slug>) em sincronia com o tenant real após o login — cada
+  // academia fica com um link próprio e bookmarkável (crmstronix.com.br/<slug>).
+  // O acesso vem do claim; se a URL apontava para outra academia, é apenas
+  // corrigida (sem bloquear ninguém). replaceState não recarrega a página.
   useEffect(() => {
     if (appUser && !appUser.superAdminOnly && appUser.tenantId) {
-      if (getTenantSlugFromHash() !== appUser.tenantId) {
-        try { window.location.hash = appUser.tenantId; } catch { /* noop */ }
+      if (getTenantSlug() !== appUser.tenantId) {
+        try { window.history.replaceState(null, '', '/' + appUser.tenantId + window.location.search); } catch { /* noop */ }
       }
     }
   }, [appUser]);
+
+  // Título da aba do navegador: nome da academia (quando resolvido) + STRONILEAD.
+  useEffect(() => {
+    document.title = urlTenant?.displayName ? `${urlTenant.displayName} · STRONILEAD` : 'STRONILEAD';
+  }, [urlTenant]);
 
   const [leads, setLeads] = useState([]);
   const [interactions, setInteractions] = useState([]);
@@ -1378,7 +1390,7 @@ function SuperAdminView() {
 
   // Copia o link de acesso da academia (crmstronix.com.br/#<slug>).
   const copyTenantLink = async (slug) => {
-    const url = `${window.location.origin}/#${slug}`;
+    const url = `${window.location.origin}/${slug}`;
     try {
       await navigator.clipboard.writeText(url);
       toast.success(`Link copiado: ${url}`);
@@ -1588,7 +1600,7 @@ function SuperAdminView() {
                   <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${statusStyle}`}>
                     {statusLabel}
                   </span>
-                  <button onClick={() => copyTenantLink(t.id)} title={`Copiar link de acesso · /#${t.id}`}
+                  <button onClick={() => copyTenantLink(t.id)} title={`Copiar link de acesso · /${t.id}`}
                     className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-300 transition whitespace-nowrap">
                     Copiar link
                   </button>

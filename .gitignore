@@ -23,6 +23,9 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+.env
+.env.*
+!.env.example
 .env*.local
 
 # Pacote de referência do redesign (handoff) e tooling local de preview
