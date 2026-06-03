@@ -9305,6 +9305,24 @@ function toDatetimeLocalValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// Botão de tipo do RescheduleModal — fora do componente pai para não ser
+// recriado a cada render (evitava perder foco/estado dos inputs irmãos do modal).
+function RescheduleTypeBtn({ active, label, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`flex-1 h-9 px-3 rounded-lg text-[12.5px] font-semibold transition border ${
+        active
+          ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
+          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-white/[0.03] dark:text-slate-300 dark:border-white/[0.07] dark:hover:bg-white/[0.06]'
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
   const isAfterNoShow = flow === 'after_no_show';
   const { modalities, trialClassOptions } = useGeneralConfig();
@@ -9357,23 +9375,6 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
     ? 'A tarefa de hoje já foi marcada como "Não veio". O lead voltará à Meta Diária na nova data.'
     : 'A tarefa de hoje será concluída e o lead voltará para a sua Meta Diária na nova data.';
 
-  const TypeBtn = ({ value, label }) => {
-    const active = apptType === value;
-    return (
-      <button
-        type="button"
-        onClick={() => setApptType(value)}
-        className={`flex-1 h-9 px-3 rounded-lg text-[12.5px] font-semibold transition border ${
-          active
-            ? 'bg-slate-900 text-white border-slate-900 dark:bg-white dark:text-slate-900 dark:border-white'
-            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50 dark:bg-white/[0.03] dark:text-slate-300 dark:border-white/[0.07] dark:hover:bg-white/[0.06]'
-        }`}
-      >
-        {label}
-      </button>
-    );
-  };
-
   return createPortal(
     <>
       <div onClick={onClose} className="fixed inset-0 z-[110] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in" />
@@ -9399,8 +9400,8 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
                 Tipo
               </label>
               <div className="flex gap-2">
-                <TypeBtn value="visita" label="Visita" />
-                <TypeBtn value="aula_experimental" label="Aula Experimental" />
+                <RescheduleTypeBtn active={apptType === 'visita'} onClick={() => setApptType('visita')} label="Visita" />
+                <RescheduleTypeBtn active={apptType === 'aula_experimental'} onClick={() => setApptType('aula_experimental')} label="Aula Experimental" />
               </div>
             </div>
             <div>
@@ -9511,6 +9512,17 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     const myLeads = (leads || []).filter(l => l.consultantId === appUser.id);
     const allTargetLeadsMap = new Map();
 
+    // Índice de interações por leadId — antes varria TODAS as interações por lead
+    // (O(leads × interações), travava a UI em volume). Agora O(interações) p/ montar
+    // + lookups O(1). hasGoalDoneToday/hasActiveInteractionToday filtram por leadId
+    // internamente, então passar só as do lead dá EXATAMENTE o mesmo resultado.
+    const interactionsByLead = new Map();
+    (interactions || []).forEach(i => {
+      const arr = interactionsByLead.get(i.leadId);
+      if (arr) arr.push(i); else interactionsByLead.set(i.leadId, [i]);
+    });
+    const leadInteractions = (id) => interactionsByLead.get(id) || [];
+
     // Regra única: tarefa é considerada "feita" SOMENTE se
     //   (a) lead virou Venda/Perda hoje (auto-conclui todas as
     //       categorias do lead — decisão de produto), OU
@@ -9520,7 +9532,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     // NÃO marcam a tarefa. O consultor precisa confirmar pela Meta.
     const isCategoryDone = (lead, categorySlug) => {
       if (isLeadResolvedToday(lead, todayStart)) return true;
-      return hasGoalDoneToday(lead, categorySlug, interactions, todayStart);
+      return hasGoalDoneToday(lead, categorySlug, leadInteractions(lead.id), todayStart);
     };
 
     const addTarget = (lead, categoryLabel, categorySlug) => {
@@ -9530,7 +9542,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           categories: [],
           categorySlugs: [],
           categoryStatus: {},
-          hasOtherActivityToday: hasActiveInteractionToday(lead, interactions, todayStart)
+          hasOtherActivityToday: hasActiveInteractionToday(lead, leadInteractions(lead.id), todayStart)
         });
       }
       const entry = allTargetLeadsMap.get(lead.id);
