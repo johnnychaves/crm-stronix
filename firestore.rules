@@ -124,6 +124,17 @@ service cloud.firestore {
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
+    // Histórico do "Ritmo do mês" da Meta Diária. Cada consultor grava só os
+    // seus próprios dias (consultantAuthUid == uid); admin lê os de todos.
+    // Não há delete (o histórico é imutável). ID = `${consultantId}_${data}`.
+    match /artifacts/{appId}/public/data/stronix_daily_goal_history/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId)
+        && (isAdmin(appId) || resource.data.consultantAuthUid == request.auth.uid);
+      allow create, update: if inTenant(appId) && tenantActive(appId)
+        && request.resource.data.consultantAuthUid == request.auth.uid;
+      allow delete: if false;
+    }
+
     // Registro de tenants (raiz). Escrita SEMPRE via Admin SDK (provisionamento,
     // status, convites) — nunca pelo cliente. Leitura liberada para os membros
     // do próprio tenant (o app lê status/trial no login para bloquear academias
