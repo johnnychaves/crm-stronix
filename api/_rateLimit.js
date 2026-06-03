@@ -29,8 +29,10 @@ export async function checkRateLimit(key, { limit = 10, windowMs = 10 * 60 * 100
         return { ok: true };
       }
 
-      // primeira requisição da janela (ou janela expirada → reinicia)
-      tx.set(ref, { count: 1, windowStartMs: nowMs });
+      // primeira requisição da janela (ou janela expirada → reinicia).
+      // expiresAt permite limpeza automática via TTL policy do Firestore (campo
+      // `expiresAt`, configurada no console) — evita que /_ratelimit cresça sem fim.
+      tx.set(ref, { count: 1, windowStartMs: nowMs, expiresAt: new Date(nowMs + windowMs * 2) });
       return { ok: true };
     });
   } catch (err) {
