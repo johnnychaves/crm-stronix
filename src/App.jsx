@@ -9362,31 +9362,6 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
   );
 }
 
-function KpiCard({ label, value, sub, trend, icon, tone = 'slate' }) {
-  const tones = {
-    slate: 'text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-white/[0.05]',
-    emerald: 'text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-500/10',
-    brand: 'text-brand-700 dark:text-brand-300 bg-brand-50 dark:bg-brand-500/10'
-  };
-  return (
-    <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11.5px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap truncate">{label}</span>
-        <span className={`w-7 h-7 shrink-0 rounded-lg grid place-items-center ${tones[tone]}`}>{icon}</span>
-      </div>
-      <div className="mt-2.5 flex items-baseline gap-2">
-        <span className="num text-[22px] font-semibold tracking-tight">{value}</span>
-        {trend && (
-          <span className={`text-[11.5px] font-medium num inline-flex items-center gap-0.5 whitespace-nowrap ${trend.startsWith('+') ? 'text-emerald-600' : 'text-rose-600'}`}>
-            <TrendingUp size={11} /> {trend}
-          </span>
-        )}
-      </div>
-      {sub && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-0.5 whitespace-nowrap truncate">{sub}</div>}
-    </div>
-  );
-}
-
 function FilterChip({ active, label, count, color, onClick }) {
   const t = color ? COLOR_TONES[color] : null;
   return (
@@ -9979,29 +9954,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const done = processedLeads.filter(l => l.categorySlugs.some(s => isLeadDoneForCategory(l, s)));
   const pending = processedLeads.filter(l => l.categorySlugs.some(s => !isLeadDoneForCategory(l, s)));
 
-  const byCategory = (slug) => {
-    const total = processedLeads.filter(l => l.categorySlugs.includes(slug));
-    const pending = total.filter(l => !isLeadDoneForCategory(l, slug));
-    const doneCount = total.length - pending.length;
-    return { total, pending, doneCount };
-  };
-  const c24h = byCategory(DAILY_GOAL_CATEGORIES.NOVO_24H);
-  const cAtrasados = byCategory(DAILY_GOAL_CATEGORIES.ATRASADO);
-  const cVisitas = byCategory(DAILY_GOAL_CATEGORIES.VISITA_HOJE);
-  const cAulas = byCategory(DAILY_GOAL_CATEGORIES.AULA_HOJE);
-
-  const total24h = c24h.total;
-  const pending24h = c24h.pending;
-  const done24hCount = c24h.doneCount;
-  const totalAtrasados = cAtrasados.total;
-  const pendingAtrasados = cAtrasados.pending;
-  const doneAtrasadosCount = cAtrasados.doneCount;
-  const totalVisitas = cVisitas.total;
-  const pendingVisitas = cVisitas.pending;
-  const doneVisitasCount = cVisitas.doneCount;
-  const totalAulas = cAulas.total;
-  const pendingAulas = cAulas.pending;
-  const doneAulasCount = cAulas.doneCount;
 
   useEffect(() => {
     if (progress === 100 && prevProgress.current !== 100 && total > 0) {
@@ -10017,7 +9969,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-        nextFollowUp: tomorrow
+        nextFollowUp: tomorrow,
+        // A3: limpa o agendamento formal antigo (visita/aula que já passou e
+        // virou "Atrasado") para o lead não ficar preso com a data velha em
+        // getLeadAppointmentDate — assim ele aparece corretamente em "Amanhã".
+        // O tipo de contato (nextFollowUpType: Ligação/Mensagem) é preservado.
+        appointmentScheduledFor: null,
+        appointmentType: null
       });
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
         leadId: lead.id,
@@ -10250,17 +10208,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   };
   const totalPendingSlots = Object.values(counts).reduce((a, b) => a + b, 0);
 
-  const yesterdayLeadCount = useMemo(() => {
-    const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
-    const yStart = new Date(todayStart); yStart.setDate(yStart.getDate() - 1);
-    return (leads || []).filter(l => l.consultantId === appUser.id && l.createdAt && l.createdAt >= yStart && l.createdAt < todayStart).length;
-  }, [leads, appUser]);
-
-  const novoDelta = total24h.length - yesterdayLeadCount;
-  const trendLabelNovos = yesterdayLeadCount === 0 && total24h.length === 0
-    ? null
-    : (novoDelta === 0 ? null : (novoDelta > 0 ? `+${novoDelta} vs. ontem` : `${novoDelta} vs. ontem`));
-
   const nextAppt = useMemo(() => {
     const apptLeads = [
       ...pendingBySlug[DAILY_GOAL_CATEGORIES.VISITA_HOJE].map(l => ({ l, slug: DAILY_GOAL_CATEGORIES.VISITA_HOJE })),
@@ -10341,48 +10288,14 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         progress={progress}
       />
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <KpiCard
-          label="Novos leads (24h)"
-          value={total24h.length}
-          sub={pending24h.length > 0 ? `${pending24h.length} sem contato` : 'todos atendidos'}
-          icon={<Zap size={15} />}
-          tone="brand"
-          trend={trendLabelNovos}
-        />
-        <KpiCard
-          label="Compromissos hoje"
-          value={totalVisitas.length + totalAulas.length}
-          sub={countdownLabel ? `próximo ${countdownLabel}` : '—'}
-          icon={<Calendar size={15} />}
-        />
-        <KpiCard
-          label="Contatos do dia"
-          value={counts[DAILY_GOAL_CATEGORIES.CONTATO_HOJE]}
-          sub={counts[DAILY_GOAL_CATEGORIES.CONTATO_HOJE] > 0 ? 'follow-up agendado' : 'todos feitos'}
-          icon={<MessageSquare size={15} />}
-        />
-        <KpiCard
-          label="Atrasados"
-          value={pendingAtrasados.length}
-          sub={pendingAtrasados.length > 0 ? 'recuperar hoje' : 'sem pendência'}
-          icon={<AlertCircle size={15} />}
-          tone={pendingAtrasados.length > 1 ? 'slate' : 'emerald'}
-        />
-      </div>
 
       <div className="grid grid-cols-12 gap-6 flex-1 min-h-[400px]">
         {/* LEFT — A FAZER */}
         <section className="col-span-12 lg:col-span-8">
           <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden h-full flex flex-col">
-            <div className="px-5 pt-5 pb-3 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.05]">
-              <div className="flex items-center gap-2.5">
-                <h2 className="text-[15px] font-semibold">{isTomorrowView ? 'Amanhã' : 'A fazer hoje'}</h2>
-                <span className="num text-[11.5px] px-1.5 h-[20px] rounded-md grid place-items-center bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">{visibleCount}</span>
-              </div>
-              <div className="flex items-center gap-1.5">
-                <IconBtn icon={<Filter size={15} />} title="Filtros avançados" />
-              </div>
+            <div className="px-5 pt-5 pb-3 flex items-center gap-2.5 border-b border-slate-100 dark:border-white/[0.05]">
+              <h2 className="text-[15px] font-semibold">{isTomorrowView ? 'Amanhã' : 'A fazer hoje'}</h2>
+              <span className="num text-[11.5px] px-1.5 h-[20px] rounded-md grid place-items-center bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">{visibleCount}</span>
             </div>
 
             <div className="px-5 py-3 border-b border-slate-100 dark:border-white/[0.05] flex flex-wrap gap-1.5">
