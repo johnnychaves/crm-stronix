@@ -1,24 +1,9 @@
-import { adminAuth, adminDb, verifyRequest } from './_firebaseAdmin.js';
+import { adminAuth, verifyRequest } from './_firebaseAdmin.js';
+import { usersCollection, isTenantAdmin } from './_auth.js';
 
-const USERS_PATH = 'stronix_users';
-
-const usersCollection = (tenantId) =>
-  adminDb
-    .collection('artifacts')
-    .doc(tenantId)
-    .collection('public')
-    .doc('data')
-    .collection(USERS_PATH);
-
-const requireAdmin = async (tenantId, uid) => {
-  if (!tenantId || !uid) return false;
-  const col = usersCollection(tenantId);
-  const direct = await col.doc(uid).get();
-  if (direct.exists && direct.data()?.role === 'admin') return true;
-  const byField = await col.where('authUid', '==', uid).limit(1).get();
-  if (byField.empty) return false;
-  return byField.docs[0].data()?.role === 'admin';
-};
+// Exclui um consultor do tenant do admin. ADMIN do tenant only.
+// SEGURANÇA: o authUid a deletar vem SEMPRE do doc validado dentro do tenant —
+// nunca do body — para evitar IDOR (admin de A apagando conta de usuário de B).
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -31,31 +16,27 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Não autenticado.' });
     }
 
-    const { userDocId, targetAuthUid } = req.body || {};
-
+    const { userDocId } = req.body || {};
     if (!userDocId) {
       return res.status(400).json({ error: 'Campo obrigatório: userDocId.' });
     }
-
     if (userDocId === auth.uid) {
       return res.status(400).json({ error: 'Não é possível excluir a própria conta.' });
     }
 
-    const isAdmin = await requireAdmin(auth.tenantId, auth.uid);
-    if (!isAdmin) {
+    if (!(await isTenantAdmin(auth.tenantId, auth.uid))) {
       return res.status(403).json({ error: 'Apenas o master pode excluir consultores.' });
     }
 
-    // O doc precisa existir DENTRO do tenant do admin — garante que ele não
-    // exclui usuário de outra academia.
+    // O doc precisa existir DENTRO do tenant do admin.
     const docRef = usersCollection(auth.tenantId).doc(userDocId);
     const docSnap = await docRef.get();
     if (!docSnap.exists) {
       return res.status(404).json({ error: 'Usuário não encontrado neste tenant.' });
     }
 
-    const resolvedAuthUid = targetAuthUid || docSnap.data()?.authUid || null;
-
+    // authUid SEMPRE do doc validado (não confiar em valor do body).
+    const resolvedAuthUid = docSnap.data()?.authUid || null;
     if (resolvedAuthUid) {
       try {
         await adminAuth.deleteUser(resolvedAuthUid);

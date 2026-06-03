@@ -1,4 +1,5 @@
 import { adminDb } from './_firebaseAdmin.js';
+import { checkRateLimit, clientIp } from './_rateLimit.js';
 
 // Resolve PÚBLICO de organização por slug (?slug=ironfit).
 // Usado pela tela de login (pré-autenticação) para mostrar a MARCA da academia
@@ -14,6 +15,13 @@ const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Método não permitido' });
+  }
+
+  // Endpoint público — limita enumeração de slugs por IP (limite generoso, é
+  // chamado a cada abertura da tela de login). Fail-open se a checagem falhar.
+  const rl = await checkRateLimit(`tenant-resolve:${clientIp(req)}`, { limit: 60, windowMs: 5 * 60 * 1000 });
+  if (!rl.ok) {
+    return res.status(429).json({ error: 'Muitas requisições. Aguarde um momento.' });
   }
 
   const slug = String(req.query?.slug || '').trim().toLowerCase();

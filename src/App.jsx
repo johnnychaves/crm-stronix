@@ -496,13 +496,19 @@ export default function App() {
   );
 }
 
-// Lê o slug da academia do hash da URL (crmstronix.com.br/#<slug>).
-// Aceita "#slug", "#/slug" e "#/t/slug". Retorna '' se não houver/for inválido.
-function getTenantSlugFromHash() {
+// Lê o slug da academia da URL: primeiro o PATH (crmstronix.com.br/<slug>) e,
+// como compatibilidade com links antigos, o HASH (#<slug>, #/slug, #/t/slug).
+// Retorna '' se não houver/for inválido.
+function getTenantSlug() {
+  const re = /^[a-z0-9][a-z0-9-]{0,63}$/;
   try {
+    // 1) path-based: /<slug>
+    const seg = String(window.location.pathname || '').replace(/^\/+/, '').split('/')[0].trim().toLowerCase();
+    if (re.test(seg)) return seg;
+    // 2) fallback: hash
     const raw = String(window.location.hash || '').replace(/^#\/?(t\/)?/i, '').trim().toLowerCase();
-    const slug = raw.split(/[/?#&]/)[0];
-    return /^[a-z0-9][a-z0-9-]{0,63}$/.test(slug) ? slug : '';
+    const h = raw.split(/[/?#&]/)[0];
+    return re.test(h) ? h : '';
   } catch {
     return '';
   }
@@ -523,7 +529,7 @@ function AppInner() {
   // NÃO controla acesso (isso continua sendo o claim tenantId + as rules).
   // Formato: { slug, loading? , found?, displayName? }. Init lazy a partir do hash.
   const [urlTenant, setUrlTenant] = useState(() => {
-    const slug = getTenantSlugFromHash();
+    const slug = getTenantSlug();
     return slug ? { slug, loading: true } : null;
   });
 
@@ -549,7 +555,7 @@ function AppInner() {
   // Resolve a academia do hash da URL (#<slug>) para exibir o nome na tela de
   // login. Público (pré-auth) via /api/tenant-resolve. Roda uma vez no mount.
   useEffect(() => {
-    const slug = getTenantSlugFromHash();
+    const slug = getTenantSlug();
     if (!slug) return;
     let alive = true;
     fetch(`/api/tenant-resolve?slug=${encodeURIComponent(slug)}`)
@@ -559,16 +565,22 @@ function AppInner() {
     return () => { alive = false; };
   }, []);
 
-  // Mantém a URL (#<slug>) em sincronia com o tenant real após o login — cada
-  // academia fica com um link próprio e bookmarkável. O acesso vem do claim; se
-  // a URL apontava para outra academia, é apenas corrigida (sem bloquear ninguém).
+  // Mantém a URL (/<slug>) em sincronia com o tenant real após o login — cada
+  // academia fica com um link próprio e bookmarkável (crmstronix.com.br/<slug>).
+  // O acesso vem do claim; se a URL apontava para outra academia, é apenas
+  // corrigida (sem bloquear ninguém). replaceState não recarrega a página.
   useEffect(() => {
     if (appUser && !appUser.superAdminOnly && appUser.tenantId) {
-      if (getTenantSlugFromHash() !== appUser.tenantId) {
-        try { window.location.hash = appUser.tenantId; } catch { /* noop */ }
+      if (getTenantSlug() !== appUser.tenantId) {
+        try { window.history.replaceState(null, '', '/' + appUser.tenantId + window.location.search); } catch { /* noop */ }
       }
     }
   }, [appUser]);
+
+  // Título da aba do navegador: nome da academia (quando resolvido) + STRONILEAD.
+  useEffect(() => {
+    document.title = urlTenant?.displayName ? `${urlTenant.displayName} · STRONILEAD` : 'STRONILEAD';
+  }, [urlTenant]);
 
   const [leads, setLeads] = useState([]);
   const [interactions, setInteractions] = useState([]);
@@ -597,6 +609,8 @@ function AppInner() {
   });
   const [funnelsMigrationStatus, setFunnelsMigrationStatus] = useState('idle');
   const [loadingData, setLoadingData] = useState(true);
+  // Erro de leitura em algum onSnapshot (permissão/rede) — evita falha silenciosa.
+  const [loadError, setLoadError] = useState(false);
 
   // Quick-add lead: aberto pelo botão "Cadastrar Lead" no menu lateral OU
   // pelo botão dentro de LeadsView (que recebe `onAddLeadClick` via prop).
@@ -643,8 +657,17 @@ function AppInner() {
       } catch (claimErr) {
         console.warn('Falha ao ler claim de tenant; usando tenant padrão.', claimErr);
       }
-      if (!tenantId) {
-        console.warn('Usuário sem claim de tenant — fallback para o tenant padrão.');
+      // Conta sem organização e que NÃO é super-admin: não cair no tenant padrão
+      // (evita uma sessão "logada" apontando para o tenant errado). Desloga com
+      // mensagem clara. (As rules já negariam as leituras, mas isto torna o
+      // comportamento explícito e seguro — sem sessão num tenant que não é o seu.)
+      if (!tenantId && !superAdmin) {
+        console.warn('Usuário sem claim de tenant e sem super-admin — acesso negado.');
+        setAuthSetupError('Sua conta não está vinculada a nenhuma organização. Contate o suporte.');
+        setAppUser(null);
+        try { await signOut(auth); } catch (signOutErr) { console.error(signOutErr); }
+        setIsAuthChecking(false);
+        return;
       }
       setTenantId(tenantId || DEFAULT_TENANT_ID);
 
@@ -790,6 +813,15 @@ useEffect(() => {
   // permission-denied silencioso nos onSnapshot.
   if (tenantBlock) { setLoadingData(false); return; }
   setLoadingData(true);
+  setLoadError(false);
+
+  // Falha em qualquer listener (permissão negada por corrida de suspensão, rede,
+  // etc.) NÃO pode ser silenciosa — sinaliza erro e encerra o loading.
+  const onSnapErr = (label) => (err) => {
+    console.error(`onSnapshot ${label} falhou`, err);
+    setLoadError(true);
+    setLoadingData(false);
+  };
 
   const leadsRef = collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH);
   const interactionsRef = collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH);
@@ -817,7 +849,7 @@ useEffect(() => {
 
     setLeads(leadsData);
     setLoadingData(false);
-  });
+  }, onSnapErr('leads'));
 
   const unsubInteractions = onSnapshot(interactionsSource, (snapshot) => {
     setInteractions(
@@ -830,13 +862,14 @@ useEffect(() => {
         };
       })
     );
-  });
+  }, onSnapErr('interactions'));
 
   const unsubSources = onSnapshot(
     collection(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH),
     (snapshot) => {
       setSources(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }
+    },
+    onSnapErr('sources')
   );
 
   const unsubStatuses = onSnapshot(
@@ -845,21 +878,24 @@ useEffect(() => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       data.sort((a, b) => (a.order || 0) - (b.order || 0));
       setStatuses(data);
-    }
+    },
+    onSnapErr('statuses')
   );
 
   const unsubTags = onSnapshot(
     collection(db, 'artifacts', appId, 'public', 'data', TAGS_PATH),
     (snapshot) => {
       setTags(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }
+    },
+    onSnapErr('tags')
   );
 
   const unsubLossReasons = onSnapshot(
     collection(db, 'artifacts', appId, 'public', 'data', LOSS_REASONS_PATH),
     (snapshot) => {
       setLossReasons(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }
+    },
+    onSnapErr('lossReasons')
   );
 
   const unsubFunnels = onSnapshot(
@@ -868,7 +904,8 @@ useEffect(() => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       data.sort((a, b) => (a.order || 0) - (b.order || 0));
       setFunnels(data);
-    }
+    },
+    onSnapErr('funnels')
   );
 
   const unsubModalities = onSnapshot(
@@ -877,7 +914,8 @@ useEffect(() => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       data.sort((a, b) => (a.order || 0) - (b.order || 0));
       setModalities(data);
-    }
+    },
+    onSnapErr('modalities')
   );
 
   const unsubUnits = onSnapshot(
@@ -886,7 +924,8 @@ useEffect(() => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       data.sort((a, b) => (a.order || 0) - (b.order || 0));
       setUnits(data);
-    }
+    },
+    onSnapErr('units')
   );
 
   // Config geral é um doc único (singleton). Lê a lista de opções de quantidade
@@ -1249,6 +1288,14 @@ useEffect(() => {
 
         {!appUser.superAdminOnly && trialEndsAtMs && <TrialBanner endsAtMs={trialEndsAtMs} />}
 
+        {loadError && (
+          <div className="shrink-0 px-4 md:px-8 py-2 flex items-center justify-center gap-3 text-[12.5px] font-medium border-b bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+            <span>Falha ao carregar alguns dados.</span>
+            <button onClick={() => window.location.reload()} className="font-semibold underline underline-offset-2 hover:opacity-80">Recarregar</button>
+          </div>
+        )}
+
         <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
           {appUser.superAdminOnly ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
@@ -1343,7 +1390,7 @@ function SuperAdminView() {
 
   // Copia o link de acesso da academia (crmstronix.com.br/#<slug>).
   const copyTenantLink = async (slug) => {
-    const url = `${window.location.origin}/#${slug}`;
+    const url = `${window.location.origin}/${slug}`;
     try {
       await navigator.clipboard.writeText(url);
       toast.success(`Link copiado: ${url}`);
@@ -1553,7 +1600,7 @@ function SuperAdminView() {
                   <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${statusStyle}`}>
                     {statusLabel}
                   </span>
-                  <button onClick={() => copyTenantLink(t.id)} title={`Copiar link de acesso · /#${t.id}`}
+                  <button onClick={() => copyTenantLink(t.id)} title={`Copiar link de acesso · /${t.id}`}
                     className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-300 transition whitespace-nowrap">
                     Copiar link
                   </button>
@@ -3715,6 +3762,7 @@ const handleKanbanMouseMove = (e) => {
       );
     } catch (err) {
       console.error("Erro Kanban:", err);
+      toast.error('Não foi possível mover o lead. Tente novamente.');
     }
   };
 
@@ -3755,6 +3803,7 @@ const handleKanbanMouseMove = (e) => {
       );
     } catch (err) {
       console.error("Erro Venda:", err);
+      toast.error('Não foi possível registrar a matrícula. Tente novamente.');
     }
   };
 
@@ -3804,6 +3853,7 @@ if (!lead) return;
       setLossModalLeadId(null);
     } catch (err) {
       console.error(err);
+      toast.error('Não foi possível registrar a perda. Tente novamente.');
     }
   };
 
@@ -4980,6 +5030,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const nameRef = useRef(null);
+  const submittingRef = useRef(false); // guarda síncrona contra duplo-submit
   useEffect(() => { nameRef.current?.focus(); }, []);
 
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
@@ -5050,6 +5101,10 @@ const handleSubmit = async (e) => {
     return;
   }
 
+  // Guarda contra duplo-submit (o `loading`/`disabled` não atualiza a tempo de um
+  // clique duplo rápido; a ref é síncrona e impede o 2º addDoc → evita duplicata).
+  if (submittingRef.current) return;
+  submittingRef.current = true;
   setLoading(true);
 
   try {
@@ -5094,9 +5149,10 @@ const handleSubmit = async (e) => {
   } catch (error) {
     console.error(error);
     toast.error?.('Erro ao cadastrar lead.');
+  } finally {
+    submittingRef.current = false;
+    setLoading(false);
   }
-
-  setLoading(false);
 };
 
   return (
@@ -5788,10 +5844,27 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   
 
   const handleDelete = async () => {
-    if (window.confirm("⚠️ AÇÃO IRREVERSÍVEL: Deseja EXCLUIR este lead permanentemente?")) {
-      setLoading(true);
+    if (!window.confirm("⚠️ AÇÃO IRREVERSÍVEL: Deseja EXCLUIR este lead permanentemente?")) return;
+    setLoading(true);
+    try {
+      // Apaga as interações ligadas ao lead (senão ficam órfãs na coleção).
+      // Em lotes de 450 (limite do writeBatch é 500) para suportar qualquer volume.
+      const interSnap = await getDocs(query(
+        collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH),
+        where('leadId', '==', lead.id)
+      ));
+      const interDocs = interSnap.docs;
+      for (let i = 0; i < interDocs.length; i += 450) {
+        const batch = writeBatch(db);
+        interDocs.slice(i, i + 450).forEach(d => batch.delete(d.ref));
+        await batch.commit();
+      }
       await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id));
       onClose();
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao excluir o lead. Tente novamente.');
+      setLoading(false);
     }
   };
 
@@ -5812,47 +5885,58 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 
   const handleWin = async () => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
-    if (window.confirm("Confirmar matrícula deste lead?")) {
-      setLoading(true);
+    if (!window.confirm("Confirmar matrícula deste lead?")) return;
+    setLoading(true);
+    try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
         status: 'Venda',
         nextFollowUp: null,
         isConverted: true,
         convertedAt: serverTimestamp()
-      });      
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), { 
-        leadId: lead.id, 
+      });
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
         consultantName: appUser.name,
         ...getInteractionSecurityFields(lead, appUser),
-        text: `Matrícula realizada com sucesso! (Venda)`, 
-        type: 'status_change', 
-        createdAt: serverTimestamp() 
+        text: `Matrícula realizada com sucesso! (Venda)`,
+        type: 'status_change',
+        createdAt: serverTimestamp()
       });
-      setLoading(false);
       setStatus('Venda');
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao registrar a matrícula. Tente novamente.');
+    } finally {
+      setLoading(false);
     }
   };
 
   const confirmLoss = async (reason) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     setLoading(true);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-      status: 'Perda',
-      lossReason: reason,
-      nextFollowUp: null,
-      lostAt: serverTimestamp()
-    });    
-    await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), { 
-      leadId: lead.id, 
-      consultantName: appUser.name, 
-      ...getInteractionSecurityFields(lead, appUser),
-      text: `Lead perdido. Motivo: ${reason}`, 
-      type: 'status_change', 
-      createdAt: serverTimestamp() 
-    });
-    setLossModalOpen(false);
-    setLoading(false);
-    setStatus('Perda');
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+        status: 'Perda',
+        lossReason: reason,
+        nextFollowUp: null,
+        lostAt: serverTimestamp()
+      });
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: `Lead perdido. Motivo: ${reason}`,
+        type: 'status_change',
+        createdAt: serverTimestamp()
+      });
+      setLossModalOpen(false);
+      setStatus('Perda');
+    } catch (e) {
+      console.error(e);
+      toast.error('Erro ao registrar a perda. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Anotação / Mudar fase / Mover funil. O agendamento é tratado pelo

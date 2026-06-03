@@ -31,14 +31,16 @@ export async function verifyRequest(req) {
   const match = /^Bearer\s+(.+)$/i.exec(header);
   if (!match) return null;
   try {
-    const decoded = await adminAuth.verifyIdToken(match[1]);
+    // checkRevoked=true: rejeita tokens já revogados (ex.: ao suspender um tenant
+    // chamamos revokeRefreshTokens) sem depender da expiração natural de ~1h.
+    const decoded = await adminAuth.verifyIdToken(match[1], true);
     return {
       uid: decoded.uid,
       tenantId: decoded.tenantId || null,
       superAdmin: decoded.superAdmin === true
     };
   } catch (err) {
-    console.error('verifyRequest: token inválido', err?.message || err);
+    console.error('verifyRequest: token inválido/revogado', err?.message || err);
     return null;
   }
 }
