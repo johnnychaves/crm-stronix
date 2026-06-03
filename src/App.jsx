@@ -359,6 +359,15 @@ const normalizeTrialClassOptions = (raw, fallbackMax) => {
   return clean.length ? clean : [1, 2, 3];
 };
 
+// Dias da semana (0=dom..6=sáb) em que a Meta Diária vale. Default seg–sex.
+const normalizeMetaWeekdays = (raw) => {
+  if (!Array.isArray(raw)) return [1, 2, 3, 4, 5];
+  const clean = Array.from(new Set(
+    raw.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6)
+  )).sort((a, b) => a - b);
+  return clean.length ? clean : [1, 2, 3, 4, 5];
+};
+
 const getLastInteractionDate = (lead, interactions) => {
   if (!lead || !Array.isArray(interactions)) return null;
   const fromList = interactions
@@ -597,11 +606,14 @@ function AppInner() {
   const [modalities, setModalities] = useState([]);
   const [trialClassOptions, setTrialClassOptions] = useState([1, 2, 3]);
   const [units, setUnits] = useState([]);
+  // Dias da semana em que a Meta Diária vale para a equipe (0=dom..6=sáb).
+  // Política da ACADEMIA — definida pelo admin nas Configurações Gerais.
+  const [metaWeekdays, setMetaWeekdays] = useState([1, 2, 3, 4, 5]);
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, units }),
-    [modalities, trialClassOptions, units]
+    () => ({ modalities, trialClassOptions, units, metaWeekdays }),
+    [modalities, trialClassOptions, units, metaWeekdays]
   );
   // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
   // tenant ainda não foi resolvido (appId = default), o que é correto para o
@@ -938,8 +950,9 @@ useEffect(() => {
     (snap) => {
       const data = snap.exists() ? snap.data() : null;
       setTrialClassOptions(normalizeTrialClassOptions(data?.trialClassOptions, data?.maxTrialClasses));
+      setMetaWeekdays(normalizeMetaWeekdays(data?.metaWeekdays));
     },
-    () => setTrialClassOptions([1, 2, 3])
+    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); }
   );
 
   let unsubUsers = () => {};
@@ -1316,7 +1329,7 @@ useEffect(() => {
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView />}
             </div>
           )}
@@ -2113,9 +2126,9 @@ function useToast() {
 // Context para evitar threading por todos os componentes que renderizam o
 // LeadDetailsModal / RescheduleModal. Funciona através de portais (createPortal
 // mantém a posição na árvore React).
-const GeneralConfigContext = createContext({ modalities: [], trialClassOptions: [1, 2, 3], units: [] });
+const GeneralConfigContext = createContext({ modalities: [], trialClassOptions: [1, 2, 3], units: [], metaWeekdays: [1, 2, 3, 4, 5] });
 function useGeneralConfig() {
-  return useContext(GeneralConfigContext) || { modalities: [], trialClassOptions: [1, 2, 3], units: [] };
+  return useContext(GeneralConfigContext) || { modalities: [], trialClassOptions: [1, 2, 3], units: [], metaWeekdays: [1, 2, 3, 4, 5] };
 }
 
 function ToastContainer({ toasts, onDismiss }) {
@@ -7255,7 +7268,7 @@ function SettingsRow({ label, value }) {
   );
 }
 
-function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, trialClassOptions, units }) {
+function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, trialClassOptions, units, metaWeekdays }) {
   const [activeTab, setActiveTab] = useState('users');
   const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
 
@@ -7319,7 +7332,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         {/* Content */}
         <div className="col-span-12 lg:col-span-9 space-y-6" key={activeTab}>
           {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
-          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} />}
+          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
           )}
@@ -8566,7 +8579,7 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
 }
 
 // Configurações Gerais: modalidades da academia + opções de quantidade de aulas.
-function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, leads }) {
+function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, leads, metaWeekdays }) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [color, setColor] = useState('blue');
@@ -8695,6 +8708,24 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
     setSavingOpts(false);
   };
 
+  // Liga/desliga um dia da semana na política de Meta Diária (config da
+  // academia). 0=dom..6=sáb. Persiste no config geral (write só admin).
+  const toggleMetaWeekday = async (dow) => {
+    const set = new Set(Array.isArray(metaWeekdays) ? metaWeekdays : [1, 2, 3, 4, 5]);
+    if (set.has(dow)) set.delete(dow); else set.add(dow);
+    const next = Array.from(set).sort((a, b) => a - b);
+    try {
+      await setDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+        { metaWeekdays: next },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar os dias da meta.');
+    }
+  };
+
   const addOption = async (e) => {
     if (e) e.preventDefault();
     const n = Math.floor(Number(optionInput));
@@ -8722,6 +8753,38 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
 
   return (
     <>
+      <SettingsCard
+        title="Dias da meta diária"
+        hint="Dias da semana em que a Meta Diária vale para a equipe. A sequência do ritmo do mês pula os dias desligados."
+        icon={<Target size={16} />}
+      >
+        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+          <div className="flex flex-wrap items-center gap-2">
+            {DG_WEEKDAY_NAMES.map((name, dow) => {
+              const on = (metaWeekdays || []).includes(dow);
+              return (
+                <button
+                  key={dow}
+                  type="button"
+                  onClick={() => toggleMetaWeekday(dow)}
+                  aria-pressed={on}
+                  className={`px-3 h-9 rounded-lg text-[12.5px] font-semibold transition border ${
+                    on
+                      ? 'bg-brand-600 text-white border-brand-600'
+                      : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-50 dark:bg-white/[0.03] dark:text-slate-400 dark:border-white/[0.07] dark:hover:bg-white/[0.06]'
+                  }`}
+                >
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-3">
+            Dias desligados não contam como meta (folga) e não quebram a sequência do consultor.
+          </p>
+        </div>
+      </SettingsCard>
+
       <SettingsCard
         title="Aulas experimentais"
         hint="Opções de quantidade que o consultor pode escolher ao agendar (ex: 1, 2, 5, 10, 15)"
@@ -9439,14 +9502,13 @@ function dgApptTypeMeta(lead) {
   return { Icon: MessageSquare, label: 'Contato' };
 }
 
-// Rótulos curtos dos dias da semana (0=dom..6=sáb), para o seletor de dias
-// da meta no card "Ritmo do mês".
-const DG_WEEKDAY_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+// Nomes dos dias da semana (0=dom..6=sáb), usados no seletor de dias da
+// meta nas Configurações Gerais.
 const DG_WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
-// Ritmo do mês: dias batidos / sequência / 14 dias + seletor de dias da meta.
-// 100% real — lê o histórico persistido (não mais mockado).
-function StreakCard({ history14, monthHits, monthTarget, streak, metaWeekdays, onToggleWeekday }) {
+// Ritmo do mês: dias batidos / sequência / 14 dias. 100% real — lê o
+// histórico persistido (não mais mockado). A config de dias é da academia.
+function StreakCard({ history14, monthHits, monthTarget, streak }) {
   return (
     <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
       <div className="flex items-center justify-between">
@@ -9473,30 +9535,6 @@ function StreakCard({ history14, monthHits, monthTarget, streak, metaWeekdays, o
       </div>
       <div className="mt-2 text-[11.5px] text-slate-500 dark:text-slate-400">
         Sequência atual: <span className="font-semibold text-slate-700 dark:text-slate-200 num">{streak} {streak === 1 ? 'dia' : 'dias'}</span>
-      </div>
-      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/[0.05]">
-        <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Dias da meta</div>
-        <div className="flex items-center gap-1">
-          {DG_WEEKDAY_LABELS.map((lbl, dow) => {
-            const on = metaWeekdays.includes(dow);
-            return (
-              <button
-                key={dow}
-                type="button"
-                onClick={() => onToggleWeekday(dow)}
-                title={`${DG_WEEKDAY_NAMES[dow]} — ${on ? 'conta na meta' : 'fora da meta'}`}
-                aria-pressed={on}
-                className={`w-7 h-7 rounded-md text-[11px] font-semibold transition ${
-                  on
-                    ? 'bg-brand-600 text-white'
-                    : 'bg-slate-100 text-slate-400 hover:bg-slate-200 dark:bg-white/[0.05] dark:text-slate-500 dark:hover:bg-white/[0.08]'
-                }`}
-              >
-                {lbl}
-              </button>
-            );
-          })}
-        </div>
       </div>
     </div>
   );
@@ -9912,17 +9950,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   }, []);
 
   // ── Ritmo do mês (histórico de metas batidas, por consultor) ──────────
-  // Dias da semana em que a meta vale para ESTE consultor (0=dom..6=sáb).
-  // Configurável no card "Ritmo do mês"; default seg–sex. A sequência pula
-  // os dias inativos (não quebram nem contam).
-  const myUser = useMemo(
-    () => (usersList || []).find(u => u.id === appUser.id) || appUser,
-    [usersList, appUser]
-  );
-  const metaWeekdays = useMemo(() => {
-    const w = myUser?.metaWeekdays;
-    return Array.isArray(w) && w.length ? w : [1, 2, 3, 4, 5];
-  }, [myUser]);
+  // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
+  // definida pelo admin nas Configurações Gerais. A sequência pula os dias
+  // inativos (não quebram nem contam). Default seg–sex.
+  const { metaWeekdays = [1, 2, 3, 4, 5] } = useGeneralConfig();
 
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
@@ -9955,15 +9986,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         { merge: true }
       );
     } catch { /* regras podem não estar publicadas ainda — silencioso */ }
-  };
-
-  const toggleMetaWeekday = async (dow) => {
-    const set = new Set(metaWeekdays);
-    if (set.has(dow)) set.delete(dow); else set.add(dow);
-    const next = Array.from(set).sort((a, b) => a - b);
-    try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, appUser.id), { metaWeekdays: next });
-    } catch { toast.error('Não foi possível salvar os dias da meta.'); }
   };
 
   const ritmoMes = useMemo(() => {
@@ -10589,8 +10611,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             monthHits={ritmoMes.monthHits}
             monthTarget={ritmoMes.monthTarget}
             streak={ritmoMes.streak}
-            metaWeekdays={metaWeekdays}
-            onToggleWeekday={toggleMetaWeekday}
           />
 
           <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card flex-1 min-h-0 flex flex-col">
