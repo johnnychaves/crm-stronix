@@ -6116,7 +6116,10 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         status: 'Venda',
         nextFollowUp: null,
         isConverted: true,
-        convertedAt: serverTimestamp()
+        convertedAt: serverTimestamp(),
+        // Limpa resquício caso o lead viesse de Perda.
+        lossReason: null,
+        lostAt: null
       });
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
         leadId: lead.id,
@@ -6143,7 +6146,10 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         status: 'Perda',
         lossReason: reason,
         nextFollowUp: null,
-        lostAt: serverTimestamp()
+        lostAt: serverTimestamp(),
+        // Limpa resquício caso o lead viesse de Venda.
+        isConverted: false,
+        convertedAt: null
       });
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
         leadId: lead.id,
@@ -6190,6 +6196,16 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 
       const up = { status };
       if (funnelChanged) up.funnelId = funnelId;
+      // Saindo de Venda/Perda para outra fase: limpa os campos de
+      // resolução, senão o lead segue contando como matrícula/perda.
+      if (lead.status === 'Venda' && status !== 'Venda') {
+        up.isConverted = false;
+        up.convertedAt = null;
+      }
+      if (lead.status === 'Perda' && status !== 'Perda') {
+        up.lossReason = null;
+        up.lostAt = null;
+      }
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), up, { merge: true });
 
       setNote('');
