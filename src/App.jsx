@@ -3205,14 +3205,31 @@ const teamMetrics = useMemo(() => {
   const totalAppt = stats.agendadosVisita + stats.agendadosAula;
   const taxaComp = apptPassados > 0 ? Math.round((compareceram / apptPassados) * 100) : 0;
 
-  // 14-day sparkline series for each KPI.
+  // Série diária dos sparklines. Quando o período já TERMINOU (ex.: "Mês
+  // anterior"), o gráfico acompanha o próprio período — mostra a
+  // distribuição dia a dia do que compõe cada KPI naquele intervalo.
+  // Quando o período inclui hoje (Hoje/Semana/Mês atual), mostra os
+  // últimos 14 dias até hoje: tendência recente "cheia", sem a zona
+  // morta dos dias que ainda não chegaram.
   const sparklines = useMemo(() => {
-    const days = 14;
+    const DAY = 86400000;
+    let firstDay, nDays;
+    if (periodRange && periodRange.end < new Date()) {
+      const start = new Date(periodRange.start); start.setHours(0, 0, 0, 0);
+      const end = new Date(periodRange.end); end.setHours(0, 0, 0, 0);
+      nDays = Math.round((end - start) / DAY) + 1;
+      firstDay = start;
+    } else {
+      firstDay = new Date(); firstDay.setHours(0, 0, 0, 0);
+      firstDay.setDate(firstDay.getDate() - 13);
+      nDays = 14;
+    }
+
     const series = { leads: [], visitas: [], aulas: [], matriculas: [] };
-    for (let i = days - 1; i >= 0; i--) {
-      const dayStart = new Date();
+    for (let i = 0; i < nDays; i++) {
+      const dayStart = new Date(firstDay);
+      dayStart.setDate(dayStart.getDate() + i);
       dayStart.setHours(0, 0, 0, 0);
-      dayStart.setDate(dayStart.getDate() - i);
       const dayEnd = new Date(dayStart);
       dayEnd.setHours(23, 59, 59, 999);
       const inDay = (d) => d && d >= dayStart && d <= dayEnd;
@@ -3223,7 +3240,7 @@ const teamMetrics = useMemo(() => {
       series.matriculas.push(funnelLeads.filter((l) => isLeadConverted(l) && inDay(getLeadConversionDate(l))).length);
     }
     return series;
-  }, [funnelLeads]);
+  }, [funnelLeads, periodRange]);
 
   // Período equivalente anterior usado nos deltas (▲▼ dos KPIs).
   // Calculado por PRESET (não por span em ms) para casar com o
@@ -3452,7 +3469,7 @@ const teamMetrics = useMemo(() => {
           delta={deltas.leads}
           accent="brand"
           series={sparklines.leads}
-          help="Leads novos que chegaram no período, contados pelo dia em que foram cadastrados. O gráfico mostra a evolução dos últimos 14 dias."
+          help="Leads novos que chegaram no período, contados pelo dia em que foram cadastrados. O gráfico mostra a evolução dia a dia."
         />
         <DashKpiCard
           label="Visitas agendadas"
