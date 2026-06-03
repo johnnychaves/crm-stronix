@@ -55,3 +55,6 @@ export const UNITS_PATH = 'stronix_units';
 // Config "geral" da academia — doc único (singleton) sob este path.
 export const CONFIG_PATH = 'stronix_config';
 export const CONFIG_GENERAL_ID = 'general';
+// Histórico do "Ritmo do mês" da Meta Diária: 1 doc por (consultor, dia)
+// gravado quando o consultor zera a meta. ID = `${consultantId}_${YYYY-MM-DD}`.
+export const DAILY_GOAL_HISTORY_PATH = 'stronix_daily_goal_history';

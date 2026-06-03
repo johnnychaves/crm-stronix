@@ -108,7 +108,8 @@ import {
   MODALITIES_PATH,
   UNITS_PATH,
   CONFIG_PATH,
-  CONFIG_GENERAL_ID
+  CONFIG_GENERAL_ID,
+  DAILY_GOAL_HISTORY_PATH
 } from './lib/firebase.js';
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
 import { statusGradientMap } from './lib/constants.js';
@@ -9438,6 +9439,69 @@ function dgApptTypeMeta(lead) {
   return { Icon: MessageSquare, label: 'Contato' };
 }
 
+// Rótulos curtos dos dias da semana (0=dom..6=sáb), para o seletor de dias
+// da meta no card "Ritmo do mês".
+const DG_WEEKDAY_LABELS = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+const DG_WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+// Ritmo do mês: dias batidos / sequência / 14 dias + seletor de dias da meta.
+// 100% real — lê o histórico persistido (não mais mockado).
+function StreakCard({ history14, monthHits, monthTarget, streak, metaWeekdays, onToggleWeekday }) {
+  return (
+    <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
+      <div className="flex items-center justify-between">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">Ritmo do mês</div>
+        <Flame size={14} className="text-amber-500" />
+      </div>
+      <div className="mt-2 flex items-baseline gap-2 whitespace-nowrap">
+        <span className="num text-[22px] font-semibold tracking-tight">{monthHits}/{monthTarget}</span>
+        <span className="text-[12px] text-slate-500 dark:text-slate-400">{monthTarget === 1 ? 'dia batido' : 'dias batidos'}</span>
+      </div>
+      <div className="mt-3 grid gap-1" style={{ gridTemplateColumns: 'repeat(14,minmax(0,1fr))' }}>
+        {history14.map((day, i) => (
+          <div
+            key={i}
+            className={`h-5 rounded-[3px] ${
+              day.isToday ? 'bg-brand-600/20 ring-1 ring-brand-500'
+                : day.hit ? 'bg-emerald-500/80'
+                  : day.active ? 'bg-slate-100 dark:bg-white/[0.05]'
+                    : 'bg-slate-50 dark:bg-white/[0.02]'
+            }`}
+            title={`${day.label}${day.hit ? ' · meta batida' : day.active ? ' · não batida' : ' · fora da meta'}`}
+          />
+        ))}
+      </div>
+      <div className="mt-2 text-[11.5px] text-slate-500 dark:text-slate-400">
+        Sequência atual: <span className="font-semibold text-slate-700 dark:text-slate-200 num">{streak} {streak === 1 ? 'dia' : 'dias'}</span>
+      </div>
+      <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/[0.05]">
+        <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-1.5">Dias da meta</div>
+        <div className="flex items-center gap-1">
+          {DG_WEEKDAY_LABELS.map((lbl, dow) => {
+            const on = metaWeekdays.includes(dow);
+            return (
+              <button
+                key={dow}
+                type="button"
+                onClick={() => onToggleWeekday(dow)}
+                title={`${DG_WEEKDAY_NAMES[dow]} — ${on ? 'conta na meta' : 'fora da meta'}`}
+                aria-pressed={on}
+                className={`w-7 h-7 rounded-md text-[11px] font-semibold transition ${
+                  on
+                    ? 'bg-brand-600 text-white'
+                    : 'bg-slate-100 text-slate-400 hover:bg-slate-200 dark:bg-white/[0.05] dark:text-slate-500 dark:hover:bg-white/[0.08]'
+                }`}
+              >
+                {lbl}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DgSection({ slug, tasks, render }) {
   const m = DG_CATEGORY_META[slug];
   if (!m || !tasks.length) return null;
@@ -9644,6 +9708,13 @@ function toDatetimeLocalValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+// Chave de dia em hora LOCAL ('YYYY-MM-DD'), usada como ID do histórico de
+// metas batidas. Local (não UTC) para o dia bater com o fuso do consultor.
+function dgDateKey(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 // Botão de tipo do RescheduleModal — fora do componente pai para não ser
 // recriado a cada render (evitava perder foco/estado dos inputs irmãos do modal).
 function RescheduleTypeBtn({ active, label, onClick }) {
@@ -9840,6 +9911,94 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     return () => clearInterval(id);
   }, []);
 
+  // ── Ritmo do mês (histórico de metas batidas, por consultor) ──────────
+  // Dias da semana em que a meta vale para ESTE consultor (0=dom..6=sáb).
+  // Configurável no card "Ritmo do mês"; default seg–sex. A sequência pula
+  // os dias inativos (não quebram nem contam).
+  const myUser = useMemo(
+    () => (usersList || []).find(u => u.id === appUser.id) || appUser,
+    [usersList, appUser]
+  );
+  const metaWeekdays = useMemo(() => {
+    const w = myUser?.metaWeekdays;
+    return Array.isArray(w) && w.length ? w : [1, 2, 3, 4, 5];
+  }, [myUser]);
+
+  // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
+  const [dailyHistory, setDailyHistory] = useState([]);
+  useEffect(() => {
+    if (!appUser?.authUid) return;
+    const ref = collection(db, 'artifacts', appId, 'public', 'data', DAILY_GOAL_HISTORY_PATH);
+    const unsub = onSnapshot(
+      query(ref, where('consultantAuthUid', '==', appUser.authUid)),
+      (snap) => setDailyHistory(snap.docs.map(d => d.data())),
+      () => { /* regras ainda não publicadas → mantém vazio sem quebrar a UI */ }
+    );
+    return () => unsub();
+  }, [db, appUser]);
+
+  // Grava (idempotente) a marca de "meta batida hoje". ID determinístico
+  // por (consultor, dia) → setDoc/merge não duplica.
+  const recordGoalHit = async () => {
+    if (!appUser?.authUid) return;
+    const key = dgDateKey(new Date());
+    try {
+      await setDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', DAILY_GOAL_HISTORY_PATH, `${appUser.id}_${key}`),
+        {
+          consultantId: appUser.id,
+          consultantAuthUid: appUser.authUid,
+          consultantName: appUser.name || null,
+          date: key,
+          hitAt: serverTimestamp()
+        },
+        { merge: true }
+      );
+    } catch { /* regras podem não estar publicadas ainda — silencioso */ }
+  };
+
+  const toggleMetaWeekday = async (dow) => {
+    const set = new Set(metaWeekdays);
+    if (set.has(dow)) set.delete(dow); else set.add(dow);
+    const next = Array.from(set).sort((a, b) => a - b);
+    try {
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, appUser.id), { metaWeekdays: next });
+    } catch { toast.error('Não foi possível salvar os dias da meta.'); }
+  };
+
+  const ritmoMes = useMemo(() => {
+    const hits = new Set(dailyHistory.map(h => h.date).filter(Boolean));
+    const isActive = (d) => metaWeekdays.includes(d.getDay());
+
+    const history14 = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
+      history14.push({ hit: hits.has(dgDateKey(d)), active: isActive(d), isToday: i === 0, label: d.toLocaleDateString('pt-BR') });
+    }
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    let monthHits = 0, monthTarget = 0;
+    for (let day = 1; day <= today.getDate(); day++) {
+      const d = new Date(today.getFullYear(), today.getMonth(), day);
+      if (!isActive(d)) continue;
+      monthTarget++;
+      if (hits.has(dgDateKey(d))) monthHits++;
+    }
+
+    // Sequência: anda para trás a partir de hoje; pula dias inativos; um dia
+    // ativo SEM hit quebra (exceto hoje, que ainda está em andamento).
+    let streak = 0;
+    for (let i = 0; i < 400; i++) {
+      const d = new Date(today); d.setDate(d.getDate() - i);
+      if (!isActive(d)) continue;
+      if (hits.has(dgDateKey(d))) streak++;
+      else if (i === 0) continue;
+      else break;
+    }
+
+    return { history14, monthHits, monthTarget, streak };
+  }, [dailyHistory, metaWeekdays]);
+
   const processedLeads = useMemo(() => {
     const todayStart = new Date();
     todayStart.setHours(0,0,0,0);
@@ -9975,6 +10134,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   useEffect(() => {
     if (progress === 100 && prevProgress.current !== 100 && total > 0) {
       confetti({ particleCount: 150, spread: 80, origin: { y: 0.5 }, zIndex: 99999 });
+      // Registra o dia como "meta batida" (idempotente). Só quando havia
+      // tarefa (total > 0) — dia de folga não conta no ritmo.
+      recordGoalHit();
     }
     prevProgress.current = progress;
   }, [progress, total]);
@@ -10420,6 +10582,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             appointmentLabel={nextApptLabel}
             onWhatsapp={handleWhatsapp}
             onOutcome={handleOutcome}
+          />
+
+          <StreakCard
+            history14={ritmoMes.history14}
+            monthHits={ritmoMes.monthHits}
+            monthTarget={ritmoMes.monthTarget}
+            streak={ritmoMes.streak}
+            metaWeekdays={metaWeekdays}
+            onToggleWeekday={toggleMetaWeekday}
           />
 
           <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card flex-1 min-h-0 flex flex-col">
