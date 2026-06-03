@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { getSeatUsage, seatLimitMessage } from './_plans.js';
+import { isTenantAdmin } from './_auth.js';
 
 // Cria um convite para adicionar um usuário (admin ou consultor) ao tenant.
 // ADMIN do tenant only. Vercel serverless function.
@@ -9,24 +10,11 @@ import { getSeatUsage, seatLimitMessage } from './_plans.js';
 // Retorna { inviteId, token, tenantId, expiresAt } — o app monta o link
 // /?invite=<token>&t=<tenantId> e o admin envia ao convidado.
 
-const USERS_PATH = 'stronix_users';
 const ROLES = ['admin', 'consultant'];
 const INVITE_TTL_DAYS = 7;
 
-const usersCollection = (tenantId) =>
-  adminDb.collection('artifacts').doc(tenantId).collection('public').doc('data').collection(USERS_PATH);
 const invitesCollection = (tenantId) =>
   adminDb.collection('tenants').doc(tenantId).collection('invites');
-
-const requireAdmin = async (tenantId, uid) => {
-  if (!tenantId || !uid) return false;
-  const col = usersCollection(tenantId);
-  const direct = await col.doc(uid).get();
-  if (direct.exists && direct.data()?.role === 'admin') return true;
-  const byField = await col.where('authUid', '==', uid).limit(1).get();
-  if (byField.empty) return false;
-  return byField.docs[0].data()?.role === 'admin';
-};
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -39,7 +27,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Não autenticado.' });
     }
 
-    const isAdmin = await requireAdmin(auth.tenantId, auth.uid);
+    const isAdmin = await isTenantAdmin(auth.tenantId, auth.uid);
     if (!isAdmin) {
       return res.status(403).json({ error: 'Apenas o master pode convidar usuários.' });
     }

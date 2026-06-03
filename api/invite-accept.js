@@ -46,6 +46,17 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Informe seu nome.' });
     }
 
+    // A organização precisa estar ATIVA — não aceitar convite em tenant
+    // suspenso/arquivado (senão um convite pendente cria conta numa org parada).
+    const tenantSnap = await adminDb.collection('tenants').doc(slug).get();
+    if (!tenantSnap.exists) {
+      return res.status(404).json({ error: 'Organização não encontrada.' });
+    }
+    const tData = tenantSnap.data() || {};
+    if (tData.status === 'suspended' || tData.archived === true) {
+      return res.status(403).json({ error: 'Esta organização está indisponível no momento. Contate o administrador.' });
+    }
+
     // Localiza o convite pelo token dentro do tenant.
     const snap = await invitesCollection(slug).where('token', '==', cleanToken).limit(1).get();
     if (snap.empty) {
