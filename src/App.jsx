@@ -2569,10 +2569,11 @@ function DashKpiCard({ label, value, delta, accent = 'brand', series, sub }) {
 
 function DashPeriodTabs({ value, onChange }) {
   const opts = [
-    { id: 'today',   label: 'Hoje' },
-    { id: 'weekly',  label: 'Semana' },
-    { id: 'monthly', label: 'Mês' },
-    { id: 'custom',  label: 'Personalizado' }
+    { id: 'today',       label: 'Hoje' },
+    { id: 'weekly',      label: 'Semana' },
+    { id: 'monthly',     label: 'Mês atual' },
+    { id: 'monthlyPrev', label: 'Mês anterior' },
+    { id: 'custom',      label: 'Personalizado' }
   ];
   return (
     <div className="inline-flex p-1 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
@@ -2881,6 +2882,15 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
     return { start, end };
   }
 
+  if (periodPreset === 'monthlyPrev') {
+    // Mês civil anterior completo (jan → dez do ano anterior auto-rola
+    // pelo construtor Date).
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    return { start, end };
+  }
+
+  // Default: 'monthly' (mês atual).
   const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
@@ -3206,8 +3216,11 @@ const teamMetrics = useMemo(() => {
       return { start, end };
     }
 
-    if (periodPreset === 'monthly') {
-      // Mês civil anterior completo (jan→dez do ano anterior auto-rola).
+    if (periodPreset === 'monthly' || periodPreset === 'monthlyPrev') {
+      // Sempre o mês civil completo IMEDIATAMENTE ANTES do mês exibido:
+      // - 'monthly'     (mês atual)    → previous = mês passado
+      // - 'monthlyPrev' (mês passado)  → previous = mês retrasado
+      // jan→dez do ano anterior auto-rola pelo construtor Date.
       const y = periodRange.start.getFullYear();
       const m = periodRange.start.getMonth();
       const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
