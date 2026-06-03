@@ -2976,6 +2976,8 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
       convertidos,
       convertidosVisita,
       convertidosAula,
+      coorteVisita,
+      coorteAula,
       coorteConvertidos,
       txAgVisita,
       txAgAula,
@@ -3269,8 +3271,25 @@ const teamMetrics = useMemo(() => {
     return 'Boa noite';
   }, []);
 
-  // Lead list for "Compareceram" funnel step (also used in funnel modal).
-  const compareceramLeads = scheduledLeads.filter((l) => isLeadAttended(l));
+  // Listas da COORTE de captação (mesma base das taxas e do funil).
+  // O funil exibe a jornada dos leads que CAPTAMOS no período — então
+  // cada etapa filtra capturedLeads, garantindo monotonicidade
+  // (etapa N ≤ etapa N-1) e taxas entre etapas ≤ 100%.
+  const coorteAgendamentoLeads = useMemo(
+    () => capturedLeads.filter(l => {
+      const t = getLeadAppointmentType(l);
+      return (t === 'visita' || t === 'aula_experimental') && getLeadAppointmentDate(l);
+    }),
+    [capturedLeads]
+  );
+  const coorteCompareceramLeads = useMemo(
+    () => coorteAgendamentoLeads.filter(l => isLeadAttended(l)),
+    [coorteAgendamentoLeads]
+  );
+  const coorteMatriculaLeads = useMemo(
+    () => capturedLeads.filter(isLeadConverted),
+    [capturedLeads]
+  );
 
   return (
     <div className="space-y-6 animate-fade-in font-sans">
@@ -3397,21 +3416,21 @@ const teamMetrics = useMemo(() => {
             title={isAllFunnels(selectedFunnelId)
               ? 'Funil comercial · todos os funis'
               : currentFunnel?.name ? `Funil · ${currentFunnel.name}` : 'Funil comercial'}
-            hint="Conversão por etapa · clique para ver os leads"
+            hint="Jornada dos leads captados no período · clique para ver os leads"
             icon={<Filter size={14} />}
           >
             <DashFunnel
               steps={[
                 { id: 'leads',  label: 'Leads recebidos', count: stats.total, color: 'brand' },
-                { id: 'agend',  label: 'Agendamentos',    count: stats.agendadosVisita + stats.agendadosAula, color: 'amber',  hint: `${stats.agendadosVisita} visitas · ${stats.agendadosAula} aulas exp.` },
-                { id: 'comp',   label: 'Compareceram',    count: compareceram, color: 'teal' },
-                { id: 'matric', label: 'Matrículas',      count: stats.convertidos, color: 'emerald' }
+                { id: 'agend',  label: 'Agendamentos',    count: stats.coorteVisita + stats.coorteAula, color: 'amber',  hint: `${stats.coorteVisita} visitas · ${stats.coorteAula} aulas exp.` },
+                { id: 'comp',   label: 'Compareceram',    count: coorteCompareceramLeads.length, color: 'teal' },
+                { id: 'matric', label: 'Matrículas',      count: stats.coorteConvertidos, color: 'emerald' }
               ]}
               onStepClick={(s) => {
                 if (s.id === 'leads')  setFunnelDetail({ title: 'Leads Recebidos', data: capturedLeads });
-                if (s.id === 'agend')  setFunnelDetail({ title: 'Agendamentos',    data: scheduledLeads });
-                if (s.id === 'comp')   setFunnelDetail({ title: 'Compareceram',    data: compareceramLeads });
-                if (s.id === 'matric') setFunnelDetail({ title: 'Matrículas',      data: convertedLeads });
+                if (s.id === 'agend')  setFunnelDetail({ title: 'Agendamentos',    data: coorteAgendamentoLeads });
+                if (s.id === 'comp')   setFunnelDetail({ title: 'Compareceram',    data: coorteCompareceramLeads });
+                if (s.id === 'matric') setFunnelDetail({ title: 'Matrículas',      data: coorteMatriculaLeads });
               }}
             />
           </DashCard>
