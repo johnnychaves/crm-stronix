@@ -3178,13 +3178,56 @@ const teamMetrics = useMemo(() => {
     return series;
   }, [funnelLeads]);
 
-  // Delta % vs immediately previous equivalent period.
-  const deltas = useMemo(() => {
-    if (!periodRange) return { leads: null, visitas: null, aulas: null, matriculas: null };
+  // Período equivalente anterior usado nos deltas (▲▼ dos KPIs).
+  // Calculado por PRESET (não por span em ms) para casar com o
+  // calendário civil: "Mês" vira mês civil anterior completo, etc.
+  // — assim a comparação não desliza pelos meses de 28/30/31 dias.
+  const previousRange = useMemo(() => {
+    if (!periodRange) return null;
+
+    if (periodPreset === 'today') {
+      // Ontem inteiro.
+      const start = new Date(periodRange.start);
+      start.setDate(start.getDate() - 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    if (periodPreset === 'weekly') {
+      // Semana anterior (seg-dom).
+      const start = new Date(periodRange.start);
+      start.setDate(start.getDate() - 7);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    if (periodPreset === 'monthly') {
+      // Mês civil anterior completo (jan→dez do ano anterior auto-rola).
+      const y = periodRange.start.getFullYear();
+      const m = periodRange.start.getMonth();
+      const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+      const end = new Date(y, m, 0, 23, 59, 59, 999);
+      return { start, end };
+    }
+
+    // 'custom' — janela de mesma duração imediatamente antes (sem
+    // alternativa civil razoável quando o usuário escolheu datas
+    // arbitrárias).
     const span = periodRange.end - periodRange.start;
-    const prevStart = new Date(periodRange.start.getTime() - span - 1);
-    const prevEnd = new Date(periodRange.start.getTime() - 1);
-    const within = (d) => d && d >= prevStart && d <= prevEnd;
+    const start = new Date(periodRange.start.getTime() - span - 1);
+    const end = new Date(periodRange.start.getTime() - 1);
+    return { start, end };
+  }, [periodPreset, periodRange]);
+
+  // Delta % vs período anterior equivalente.
+  const deltas = useMemo(() => {
+    if (!previousRange) return { leads: null, visitas: null, aulas: null, matriculas: null };
+    const within = (d) => d && d >= previousRange.start && d <= previousRange.end;
 
     const prevLeads = funnelLeads.filter((l) => within(l.createdAt)).length;
     const prevVisitas = funnelLeads.filter((l) => getLeadAppointmentType(l) === 'visita' && within(getLeadAppointmentDate(l))).length;
@@ -3198,7 +3241,7 @@ const teamMetrics = useMemo(() => {
       aulas: pct(stats.agendadosAula, prevAulas),
       matriculas: pct(stats.convertidos, prevMatriculas)
     };
-  }, [funnelLeads, periodRange, stats]);
+  }, [funnelLeads, previousRange, stats]);
 
   // Activity feed: last 5 interactions in period, mapped to a UI shape.
   // Filtra por funnelLeads para respeitar o filtro de funil selecionado
