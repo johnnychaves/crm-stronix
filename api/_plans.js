@@ -12,6 +12,28 @@ export function planMaxUsers(plan) {
   return (PLAN_LIMITS[plan] || PLAN_LIMITS.starter).maxUsers;
 }
 
+// Preço mensal por plano (BRL) — base para o MRR estimado no painel super-admin.
+// PLACEHOLDER: ajuste para os valores reais que você cobra. Pode ser sobrescrito
+// por organização (ex.: desconto negociado) via campo `monthlyPrice` no doc
+// /tenants/{id}, tratado em effectivePrice().
+export const PLAN_PRICES = {
+  starter: 97,
+  pro: 197,
+  enterprise: 397,
+};
+
+export function planPrice(plan) {
+  return PLAN_PRICES[plan] ?? PLAN_PRICES.starter;
+}
+
+// Preço efetivo de uma organização: usa o override por-tenant (monthlyPrice)
+// quando definido (número finito ≥ 0), senão o preço do plano. Base do MRR.
+export function effectivePrice(tenant) {
+  const override = Number(tenant?.monthlyPrice);
+  if (Number.isFinite(override) && override >= 0) return override;
+  return planPrice(tenant?.plan);
+}
+
 const usersCol = (tenantId) =>
   adminDb.collection('artifacts').doc(tenantId).collection('public').doc('data').collection('stronix_users');
 
