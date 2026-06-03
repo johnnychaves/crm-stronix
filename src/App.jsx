@@ -3396,7 +3396,7 @@ const teamMetrics = useMemo(() => {
             {greeting}, {firstName}. <span className="text-slate-500 dark:text-slate-400 font-medium">Aqui está o panorama do período.</span>
           </h2>
           <p className="mt-1 text-[13.5px] text-slate-500 dark:text-slate-400">
-            Período: <span className="font-medium text-slate-700 dark:text-slate-200">{periodLabel}</span> · <span className="num">{stats.total}</span> leads · taxa de conversão global <span className="font-medium text-emerald-600 dark:text-emerald-400 num">{stats.txConv}%</span>
+            Período: <span className="font-medium text-slate-700 dark:text-slate-200">{periodLabel}</span> · <span className="num">{stats.total}</span> {stats.total === 1 ? 'lead' : 'leads'} · taxa de conversão global <span className="font-medium text-emerald-600 dark:text-emerald-400 num">{stats.txConv}%</span>
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -3490,9 +3490,9 @@ const teamMetrics = useMemo(() => {
               </div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{taxaComp}%</div>
               <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-                <span className="num font-medium text-slate-700 dark:text-slate-200">{compareceram}</span> compareceram / <span className="num">{apptPassados}</span> já realizados
+                <span className="num font-medium text-slate-700 dark:text-slate-200">{compareceram}</span> {compareceram === 1 ? 'compareceu' : 'compareceram'} / <span className="num">{apptPassados}</span> {apptPassados === 1 ? 'já realizado' : 'já realizados'}
                 {totalAppt > apptPassados && (
-                  <> · <span className="num text-slate-400">+{totalAppt - apptPassados} futuros</span></>
+                  <> · <span className="num text-slate-400">+{totalAppt - apptPassados} {(totalAppt - apptPassados) === 1 ? 'futuro' : 'futuros'}</span></>
                 )}
               </div>
             </div>
@@ -3512,7 +3512,7 @@ const teamMetrics = useMemo(() => {
               </div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{stats.txConv}%</div>
               <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
-                lead → matrícula · <span className="num">{stats.coorteConvertidos}</span> de <span className="num">{stats.total}</span> captados
+                lead → matrícula · <span className="num">{stats.coorteConvertidos}</span> de <span className="num">{stats.total}</span> {stats.total === 1 ? 'captado' : 'captados'}
               </div>
             </div>
             <DashRingStat value={stats.txConv} accent="emerald" />
@@ -3536,7 +3536,7 @@ const teamMetrics = useMemo(() => {
             <DashFunnel
               steps={[
                 { id: 'leads',  label: 'Leads recebidos', count: stats.total, color: 'brand' },
-                { id: 'agend',  label: 'Agendamentos',    count: stats.coorteVisita + stats.coorteAula, color: 'amber',  hint: `${stats.coorteVisita} visitas · ${stats.coorteAula} aulas exp.` },
+                { id: 'agend',  label: 'Agendamentos',    count: stats.coorteVisita + stats.coorteAula, color: 'amber',  hint: `${stats.coorteVisita} ${stats.coorteVisita === 1 ? 'visita' : 'visitas'} · ${stats.coorteAula} ${stats.coorteAula === 1 ? 'aula exp.' : 'aulas exp.'}` },
                 { id: 'comp',   label: 'Compareceram',    count: coorteCompareceramLeads.length, color: 'teal' },
                 { id: 'matric', label: 'Matrículas',      count: stats.coorteConvertidos, color: 'emerald' }
               ]}
@@ -3664,7 +3664,7 @@ const teamMetrics = useMemo(() => {
 
           <DashCard
             title="Canais de aquisição"
-            hint={`${stats.total} leads · top ${Math.min(sourceMetrics.length, 6)}`}
+            hint={`${stats.total} ${stats.total === 1 ? 'lead' : 'leads'} · top ${Math.min(sourceMetrics.length, 6)}`}
             icon={<Zap size={14} />}
           >
             <DashSourceList items={sourceMetrics.slice(0, 6)} />
