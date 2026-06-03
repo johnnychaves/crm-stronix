@@ -2554,7 +2554,12 @@ function DashHelpTip({ text, label = 'O que isso significa?' }) {
       </button>
       <span
         role="tooltip"
-        className="pointer-events-none absolute left-0 bottom-full mb-2 z-40 w-60 p-2.5 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-[11.5px] leading-snug font-normal shadow-xl opacity-0 -translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 transition duration-150"
+        // whitespace-normal/break-words: o pai do tooltip tem
+        // whitespace-nowrap (label do KPI não pode quebrar). Como
+        // white-space é HERDADO, sem override o texto do balão sai
+        // numa linha só e o bg fica preso aos 280px declarados,
+        // vazando o texto.
+        className="pointer-events-none absolute left-0 bottom-full mb-2 z-40 w-72 p-3 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-[11.5px] leading-relaxed font-normal whitespace-normal break-words shadow-xl opacity-0 -translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 transition duration-150"
       >
         {text}
         <span className="absolute top-full left-3 w-0 h-0 border-[5px] border-transparent border-t-slate-900 dark:border-t-slate-100" />
