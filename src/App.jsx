@@ -3831,16 +3831,25 @@ const [isPanning, setIsPanning] = useState(false);
     [leads, selectedFunnelId, defaultFunnelId]
   );
 
+  // Escopo dos KPIs: aplica apenas o recorte "de quem" (filtro de
+  // consultor), NÃO os filtros de visualização do board (busca, "Em
+  // atraso"). Sem isso, ligar "Em atraso" — que exclui Venda/Perda —
+  // zerava os KPIs de Vendas/Perdas/Taxa, e buscar um nome distorcia
+  // os totais. Os KPIs refletem o pipeline (do consultor) inteiro.
+  const kpiScopeLeads = useMemo(() => {
+    if (!consultantFilter) return funnelLeads;
+    return funnelLeads.filter(l => l.consultantId === consultantFilter);
+  }, [funnelLeads, consultantFilter]);
+
   const kanbanLeads = useMemo(() => {
-    let filtered = funnelLeads;
-    if (consultantFilter) {
-      filtered = filtered.filter(l => l.consultantId === consultantFilter);
-    }
+    let filtered = kpiScopeLeads;
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
+      const searchDigits = searchTerm.replace(/\D/g, '');
       filtered = filtered.filter(l =>
         (l.name && l.name.toLowerCase().includes(lowerSearch)) ||
-        (l.whatsapp && l.whatsapp.includes(searchTerm)) ||
+        (l.whatsapp && (l.whatsapp.includes(searchTerm) ||
+          (searchDigits && String(l.whatsapp).replace(/\D/g, '').includes(searchDigits)))) ||
         (l.observation && l.observation.toLowerCase().includes(lowerSearch))
       );
     }
@@ -3853,13 +3862,13 @@ const [isPanning, setIsPanning] = useState(false);
       );
     }
     return filtered;
-  }, [funnelLeads, consultantFilter, searchTerm, onlyOverdue]);
+  }, [kpiScopeLeads, searchTerm, onlyOverdue]);
 
   const kanbanKpis = useMemo(() => {
     const now = new Date();
-    const active = kanbanLeads.filter(l => l.status !== 'Venda' && l.status !== 'Perda');
-    const won = kanbanLeads.filter(l => l.status === 'Venda');
-    const lost = kanbanLeads.filter(l => l.status === 'Perda');
+    const active = kpiScopeLeads.filter(l => l.status !== 'Venda' && l.status !== 'Perda');
+    const won = kpiScopeLeads.filter(l => l.status === 'Venda');
+    const lost = kpiScopeLeads.filter(l => l.status === 'Perda');
     const overdue = active.filter(l =>
       l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) && l.nextFollowUp < now
     );
@@ -3873,7 +3882,7 @@ const [isPanning, setIsPanning] = useState(false);
       overdue: overdue.length,
       winRate
     };
-  }, [kanbanLeads]);
+  }, [kpiScopeLeads]);
 
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
@@ -3940,6 +3949,19 @@ const handleKanbanMouseMove = (e) => {
         payload.funnelId = selectedFunnelId;
       }
 
+      // Ao tirar o lead de Venda/Perda para uma etapa ativa, limpa os
+      // campos de resolução da origem. Sem isso, isConverted/convertedAt
+      // (ou lossReason/lostAt) ficam grudados e o lead segue contando
+      // como matrícula/perda nas métricas, mesmo fora daquela coluna.
+      if (lead.status === 'Venda') {
+        payload.isConverted = false;
+        payload.convertedAt = null;
+      }
+      if (lead.status === 'Perda') {
+        payload.lossReason = null;
+        payload.lostAt = null;
+      }
+
       await updateDoc(
         doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, leadId),
         payload
@@ -3982,7 +4004,10 @@ const handleKanbanMouseMove = (e) => {
           status: 'Venda',
           nextFollowUp: null,
           isConverted: true,
-          convertedAt: serverTimestamp()
+          convertedAt: serverTimestamp(),
+          // Limpa resquício caso o lead viesse da coluna Perda.
+          lossReason: null,
+          lostAt: null
         }
       );
 
@@ -4030,7 +4055,10 @@ if (!lead) return;
           status: 'Perda',
           lossReason: reason,
           nextFollowUp: null,
-          lostAt: serverTimestamp()
+          lostAt: serverTimestamp(),
+          // Limpa resquício caso o lead viesse da coluna Venda.
+          isConverted: false,
+          convertedAt: null
         }
       );
 
@@ -6088,7 +6116,10 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         status: 'Venda',
         nextFollowUp: null,
         isConverted: true,
-        convertedAt: serverTimestamp()
+        convertedAt: serverTimestamp(),
+        // Limpa resquício caso o lead viesse de Perda.
+        lossReason: null,
+        lostAt: null
       });
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
         leadId: lead.id,
@@ -6115,7 +6146,10 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         status: 'Perda',
         lossReason: reason,
         nextFollowUp: null,
-        lostAt: serverTimestamp()
+        lostAt: serverTimestamp(),
+        // Limpa resquício caso o lead viesse de Venda.
+        isConverted: false,
+        convertedAt: null
       });
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
         leadId: lead.id,
@@ -6162,6 +6196,16 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 
       const up = { status };
       if (funnelChanged) up.funnelId = funnelId;
+      // Saindo de Venda/Perda para outra fase: limpa os campos de
+      // resolução, senão o lead segue contando como matrícula/perda.
+      if (lead.status === 'Venda' && status !== 'Venda') {
+        up.isConverted = false;
+        up.convertedAt = null;
+      }
+      if (lead.status === 'Perda' && status !== 'Perda') {
+        up.lossReason = null;
+        up.lostAt = null;
+      }
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), up, { merge: true });
 
       setNote('');
