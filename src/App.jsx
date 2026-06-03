@@ -9381,6 +9381,13 @@ function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOu
   if (!task) return null;
   const m = DG_CATEGORY_META[slug] || DG_CATEGORY_META[DAILY_GOAL_CATEGORIES.VISITA_HOJE];
   const t = COLOR_TONES[m.color];
+  // Tipo do compromisso (Visita / Aula Experimental). Sendo aula, mostra
+  // também a modalidade e a quantidade de aulas previstas.
+  const isAula = slug === DAILY_GOAL_CATEGORIES.AULA_HOJE;
+  const TypeIcon = m.Icon;
+  const typeLabel = isAula ? 'Aula Experimental' : 'Visita';
+  const modality = String(task.appointmentModality || '').trim();
+  const qty = Number(task.trialClassesPlanned);
   return (
     <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
       <div className="flex items-center justify-between gap-2">
@@ -9397,6 +9404,19 @@ function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOu
           <div className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold whitespace-nowrap ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
             {appointmentLabel}
           </div>
+        )}
+      </div>
+      <div className="mt-2.5 flex items-center gap-1.5 flex-wrap">
+        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
+          <TypeIcon size={11} /> {typeLabel}
+        </span>
+        {isAula && modality && (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">
+            <Dumbbell size={11} /> {modality}
+          </span>
+        )}
+        {isAula && Number.isFinite(qty) && qty > 0 && (
+          <span className="num text-[11px] font-medium text-slate-500 dark:text-slate-400">{qty} {qty === 1 ? 'aula' : 'aulas'}</span>
         )}
       </div>
       <div className="mt-3 flex items-center gap-1.5">
