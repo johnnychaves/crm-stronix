@@ -6353,6 +6353,8 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
       const up = {
         nextFollowUp: date,
         nextFollowUpType: typeLabel,
+        // Observação do agendamento, exibida no card da Meta Diária.
+        nextFollowUpNote: noteStr || null,
         // Limpa extras de agendamentos anteriores e grava só os do tipo atual.
         appointmentModality: isAula ? (modalidade || null) : null,
         trialClassesPlanned: isAula ? (quantidade || null) : null,
@@ -9281,7 +9283,7 @@ function Dial({ progress }) {
   );
 }
 
-function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, progress, onStartFocus }) {
+function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, progress }) {
   const pendingCount = totalSlots - doneSlots;
   const segs = DG_CATEGORY_ORDER
     .map((c) => ({ c, n: counts[c] || 0 }))
@@ -9310,10 +9312,6 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
           <p className="mt-2 text-[13.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
             Foque nos novos leads recentes e nas visitas/aulas agendadas. Os atrasados podem esperar o fim do turno.
           </p>
-          <div className="mt-5 flex items-center gap-2 flex-wrap">
-            <Btn kind="primary" icon={<Zap size={14} />} onClick={onStartFocus}>Iniciar sessão de foco</Btn>
-            <Btn kind="secondary" icon={<Filter size={14} />}>Ver agenda do dia</Btn>
-          </div>
         </div>
 
         <div className="shrink-0 flex items-center gap-5">
@@ -9437,29 +9435,53 @@ function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOu
   );
 }
 
-function StreakCard({ history14, monthHits, monthTarget, streak }) {
+// Tipo (ícone + label) do compromisso, usado no card "Amanhã".
+function dgApptTypeMeta(lead) {
+  const t = getLeadAppointmentType(lead); // 'visita' | 'aula_experimental' | null
+  if (t === 'visita') return { Icon: Building2, label: 'Visita' };
+  if (t === 'aula_experimental') return { Icon: BookOpen, label: 'Aula exp.' };
+  const ft = String(lead?.nextFollowUpType || '');
+  if (/liga/i.test(ft)) return { Icon: Phone, label: 'Ligação' };
+  if (/mensagem|whats/i.test(ft)) return { Icon: MessageCircle, label: 'Mensagem' };
+  return { Icon: MessageSquare, label: 'Contato' };
+}
+
+// Prévia dos agendamentos de AMANHÃ. Não faz parte da meta de hoje — é só
+// uma antecipação para o consultor se preparar.
+function TomorrowCard({ appts, onOpen }) {
   return (
     <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
       <div className="flex items-center justify-between">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">Ritmo do mês</div>
-        <Flame size={14} className="text-amber-500" />
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">Amanhã</div>
+        <span className="num text-[11px] px-1.5 h-[18px] rounded-md grid place-items-center bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">{appts.length}</span>
       </div>
-      <div className="mt-2 flex items-baseline gap-2 whitespace-nowrap">
-        <span className="num text-[22px] font-semibold tracking-tight">{monthHits}/{monthTarget}</span>
-        <span className="text-[12px] text-slate-500 dark:text-slate-400">metas batidas</span>
-      </div>
-      <div className="mt-3 grid gap-1" style={{ gridTemplateColumns: 'repeat(14,minmax(0,1fr))' }}>
-        {history14.map((day, i) => (
-          <div
-            key={i}
-            className={`h-5 rounded-[3px] ${day.isToday ? 'bg-brand-600/20 ring-1 ring-brand-500' : day.hit ? 'bg-emerald-500/80' : 'bg-slate-100 dark:bg-white/[0.05]'}`}
-            title={day.label || ''}
-          />
-        ))}
-      </div>
-      <div className="mt-2 text-[11.5px] text-slate-500 dark:text-slate-400">
-        Sequência atual: <span className="font-semibold text-slate-700 dark:text-slate-200 num">{streak} {streak === 1 ? 'dia' : 'dias'}</span>
-      </div>
+      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Não conta na meta de hoje</p>
+      {appts.length === 0 ? (
+        <p className="mt-3 text-[12.5px] text-slate-400 dark:text-slate-500">Nenhum agendamento para amanhã.</p>
+      ) : (
+        <div className="mt-3 space-y-1.5 max-h-[220px] overflow-y-auto thin-scroll -mx-1 px-1">
+          {appts.map(({ lead, when }) => {
+            const { Icon, label } = dgApptTypeMeta(lead);
+            return (
+              <button
+                key={lead.id}
+                type="button"
+                onClick={() => onOpen && onOpen(lead)}
+                className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-white/[0.04] transition text-left"
+              >
+                <Avatar name={lead.name} size={28} />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12.5px] font-medium text-slate-800 dark:text-slate-100 truncate">{lead.name}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1">
+                    <Icon size={11} /> {label}
+                  </div>
+                </div>
+                <span className="num text-[11.5px] font-medium text-slate-500 dark:text-slate-400 shrink-0">{formatHourLabel(when)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -9495,7 +9517,20 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, 
   const isAppt = slug === DAILY_GOAL_CATEGORIES.VISITA_HOJE || slug === DAILY_GOAL_CATEGORIES.AULA_HOJE;
   const isOverdue = slug === DAILY_GOAL_CATEGORIES.ATRASADO;
   const isNovo = slug === DAILY_GOAL_CATEGORIES.NOVO_24H;
+  const isContato = slug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE;
   const Icon = m.Icon;
+
+  // Contato: especifica se o follow-up agendado é Ligação ou Mensagem
+  // (lido de nextFollowUpType). Fallback "Contato" p/ tipo genérico/legado.
+  const followUpType = String(task.nextFollowUpType || '');
+  const isLigacao = /liga/i.test(followUpType);
+  const isMensagem = /mensagem|whats/i.test(followUpType);
+  const contatoTypeLabel = isLigacao ? 'Ligação' : isMensagem ? 'Mensagem' : 'Contato';
+  const ContatoIcon = isLigacao ? Phone : MessageCircle;
+  const contatoDate = isContato && task.nextFollowUp instanceof Date && !isNaN(task.nextFollowUp.getTime())
+    ? task.nextFollowUp : null;
+  // Observação que o consultor registrou ao agendar o contato.
+  const followUpNote = String(task.nextFollowUpNote || '').trim();
   // TaskCard só renderiza para categorias pendentes (filtro em pendingBySlug),
   // então qualquer appointmentOutcome no documento é de um agendamento ANTERIOR
   // já tratado (o campo persiste entre agendamentos). Ignorar para não
@@ -9540,6 +9575,11 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, 
 
           <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
             <DgCategoryChip slug={slug} />
+            {isContato && (
+              <TimePill icon={<ContatoIcon size={11} />}>
+                {contatoTypeLabel}{contatoDate ? <span className="opacity-60"> · Hoje {formatHourLabel(contatoDate)}</span> : null}
+              </TimePill>
+            )}
             {appointmentLabel && (
               <TimePill icon={<Calendar size={11} />}>{appointmentLabel}</TimePill>
             )}
@@ -9561,8 +9601,14 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, 
             )}
           </div>
 
+          {followUpNote && (
+            <div className="mt-2 flex items-start gap-1.5 rounded-lg bg-slate-50 dark:bg-white/[0.04] border border-slate-100 dark:border-white/[0.05] px-2.5 py-1.5 text-[12.5px] leading-snug text-slate-600 dark:text-slate-300">
+              <MessageSquare size={12} className="mt-0.5 shrink-0 text-slate-400" />
+              <span className="clip-2">{followUpNote}</span>
+            </div>
+          )}
           {note && (
-            <p className="text-[12.5px] leading-snug text-slate-600 dark:text-slate-300 mt-2 clip-1">{note}</p>
+            <p className="text-[12.5px] leading-snug text-slate-500 dark:text-slate-400 mt-2 clip-1">{note}</p>
           )}
         </div>
 
@@ -9836,7 +9882,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const [now, setNow] = useState(() => new Date());
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const prevProgress = useRef(0);
-  const focusAnchorRef = useRef(null);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -10162,6 +10207,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         nextFollowUp: newDate, // keep legacy field in sync so the lead doesn't show up as "Atrasado" after rescheduling
         appointmentType: finalApptType,
         nextFollowUpType: finalApptTypeLabel,
+        nextFollowUpNote: noteText || null,
         appointmentModality: finalModality,
         trialClassesPlanned: finalQty,
         appointmentOutcome: null,
@@ -10218,17 +10264,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     if (num) window.location.href = `tel:${num}`;
   };
 
-  const handleStartFocus = () => {
-    const el = focusAnchorRef.current?.querySelector('.task-card');
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  };
-
   // Per-slug pending tasks. A lead with two pending categories renders TWICE — once per slug — preserving main's per-category status model.
   const pendingBySlug = useMemo(() => {
     const groups = {
       [DAILY_GOAL_CATEGORIES.NOVO_24H]: [],
       [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: [],
       [DAILY_GOAL_CATEGORIES.AULA_HOJE]: [],
+      [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: [],
       [DAILY_GOAL_CATEGORIES.ATRASADO]: []
     };
     processedLeads.forEach(lead => {
@@ -10243,6 +10285,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     [DAILY_GOAL_CATEGORIES.NOVO_24H]: pendingBySlug[DAILY_GOAL_CATEGORIES.NOVO_24H].length,
     [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: pendingBySlug[DAILY_GOAL_CATEGORIES.VISITA_HOJE].length,
     [DAILY_GOAL_CATEGORIES.AULA_HOJE]: pendingBySlug[DAILY_GOAL_CATEGORIES.AULA_HOJE].length,
+    [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: pendingBySlug[DAILY_GOAL_CATEGORIES.CONTATO_HOJE].length,
     [DAILY_GOAL_CATEGORIES.ATRASADO]: pendingBySlug[DAILY_GOAL_CATEGORIES.ATRASADO].length
   };
   const totalPendingSlots = Object.values(counts).reduce((a, b) => a + b, 0);
@@ -10273,16 +10316,22 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const countdownLabel = nextApptDate ? humanizeUntil(nextApptDate, now) : null;
   const nextApptLabel = nextApptDate ? `Hoje · ${formatHourLabel(nextApptDate)}` : null;
 
-  // V1: histórico vazio (sem coleção stronix_dailyGoalHistory).
-  // TODO(stronix_dailyGoalHistory): substituir por leitura da coleção real.
-  const history14 = useMemo(() => {
-    const days = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0);
-      days.push({ hit: false, isToday: i === 0, label: d.toLocaleDateString('pt-BR') });
-    }
-    return days;
-  }, []);
+  // Agendamentos de AMANHÃ (prévia) — visitas, aulas e contatos do consultor
+  // marcados para o dia seguinte. NÃO entram na meta de hoje (não tocam em
+  // processedLeads/totalSlots): é só uma antecipação do que vem pela frente.
+  const tomorrowAppts = useMemo(() => {
+    const tStart = new Date(); tStart.setHours(0, 0, 0, 0); tStart.setDate(tStart.getDate() + 1);
+    const tEnd = new Date(tStart); tEnd.setHours(23, 59, 59, 999);
+    return (leads || [])
+      .filter(l => l.consultantId === appUser.id && l.status !== 'Venda' && l.status !== 'Perda')
+      .map(l => {
+        const when = getLeadAppointmentDate(l) ||
+          (l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) ? l.nextFollowUp : null);
+        return { lead: l, when };
+      })
+      .filter(x => x.when && x.when >= tStart && x.when <= tEnd)
+      .sort((a, b) => a.when - b.when);
+  }, [leads, appUser]);
 
   const greeting = useMemo(() => {
     const h = now.getHours();
@@ -10325,7 +10374,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         totalSlots={totalSlots}
         doneSlots={doneSlots}
         progress={progress}
-        onStartFocus={handleStartFocus}
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -10360,7 +10408,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
 
       <div className="grid grid-cols-12 gap-6 flex-1 min-h-[400px]">
         {/* LEFT — A FAZER */}
-        <section className="col-span-12 lg:col-span-8" ref={focusAnchorRef}>
+        <section className="col-span-12 lg:col-span-8">
           <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden h-full flex flex-col">
             <div className="px-5 pt-5 pb-3 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.05]">
               <div className="flex items-center gap-2.5">
@@ -10427,7 +10475,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             onWhatsapp={handleWhatsapp}
             onOutcome={handleOutcome}
           />
-          <StreakCard history14={history14} monthHits={0} monthTarget={22} streak={0} />
+          <TomorrowCard appts={tomorrowAppts} onOpen={setSelectedLead} />
 
           <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card flex-1 min-h-0 flex flex-col">
             <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.05]">
