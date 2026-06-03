@@ -57,7 +57,8 @@ import {
   ChevronDown,
   Dumbbell,
   SlidersHorizontal,
-  Ban
+  Ban,
+  HelpCircle
 } from 'lucide-react';
 
 import confetti from 'canvas-confetti';
@@ -2536,12 +2537,41 @@ function DashSparkline({ data, accent = 'brand', height = 42 }) {
   );
 }
 
-function DashKpiCard({ label, value, delta, accent = 'brand', series, sub }) {
+// Ícone "?" com tooltip on hover/focus. Acessível via teclado (Tab),
+// fecha ao tirar o foco. Tooltip aparece acima do ícone, alinhado ao
+// canto esquerdo do próprio ícone para evitar sair do viewport quando
+// o card está colado na borda direita. Largura fixa para texto longo
+// quebrar bonito.
+function DashHelpTip({ text, label = 'O que isso significa?' }) {
+  return (
+    <span className="relative inline-flex group">
+      <button
+        type="button"
+        aria-label={label}
+        className="inline-flex items-center justify-center w-4 h-4 rounded-full text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/[0.06] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition cursor-help peer"
+      >
+        <HelpCircle size={12} strokeWidth={2.2} />
+      </button>
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-0 bottom-full mb-2 z-40 w-60 p-2.5 rounded-lg bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-[11.5px] leading-snug font-normal shadow-xl opacity-0 -translate-y-1 group-hover:opacity-100 group-hover:translate-y-0 peer-focus-visible:opacity-100 peer-focus-visible:translate-y-0 transition duration-150"
+      >
+        {text}
+        <span className="absolute top-full left-3 w-0 h-0 border-[5px] border-transparent border-t-slate-900 dark:border-t-slate-100" />
+      </span>
+    </span>
+  );
+}
+
+function DashKpiCard({ label, value, delta, accent = 'brand', series, sub, help }) {
   const up = delta == null ? null : delta >= 0;
   return (
     <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-5 shadow-card">
       <div className="flex items-start justify-between gap-2">
-        <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</div>
+        <div className="flex items-center gap-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+          <span>{label}</span>
+          {help && <DashHelpTip text={help} label={`O que é "${label}"?`} />}
+        </div>
         {delta != null && (
           <span className={`inline-flex items-center gap-1 px-1.5 h-5 rounded-md text-[11px] font-semibold num whitespace-nowrap ${
             up
@@ -3415,6 +3445,7 @@ const teamMetrics = useMemo(() => {
           delta={deltas.leads}
           accent="brand"
           series={sparklines.leads}
+          help="Leads novos cadastrados no período. Conta pela data de criação do lead. O sparkline mostra os últimos 14 dias."
         />
         <DashKpiCard
           label="Visitas agendadas"
@@ -3423,6 +3454,7 @@ const teamMetrics = useMemo(() => {
           accent="amber"
           series={sparklines.visitas}
           sub={`${stats.txAgVisita}% dos leads · ${stats.txConvVisita}% conv.`}
+          help="Visitas com data marcada para o período — inclui visitas de leads captados antes. O sub mostra: % dos leads do período que agendaram visita, e desses, quantos % converteram."
         />
         <DashKpiCard
           label="Aulas experimentais"
@@ -3431,6 +3463,7 @@ const teamMetrics = useMemo(() => {
           accent="violet"
           series={sparklines.aulas}
           sub={`${stats.txAgAula}% dos leads · ${stats.txConvAula}% conv.`}
+          help="Aulas experimentais com data marcada para o período — inclui aulas de leads captados antes. O sub mostra: % dos leads do período que agendaram aula, e desses, quantos % converteram."
         />
         <DashKpiCard
           label="Matrículas"
@@ -3439,6 +3472,7 @@ const teamMetrics = useMemo(() => {
           accent="emerald"
           series={sparklines.matriculas}
           sub={`${stats.txConv}% fechamento geral`}
+          help="Leads que viraram Venda dentro do período — inclui leads captados em meses anteriores que fecharam agora. O sub mostra: dos leads CAPTADOS no período, quantos % converteram até agora (coorte)."
         />
       </div>
 
@@ -3447,7 +3481,13 @@ const teamMetrics = useMemo(() => {
         <DashCard padded>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">Taxa de comparecimento</div>
+              <div className="flex items-center gap-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                <span>Taxa de comparecimento</span>
+                <DashHelpTip
+                  label="O que é Taxa de comparecimento?"
+                  text="Dos agendamentos cuja data JÁ chegou, quantos % o lead efetivamente compareceu. Agendamentos futuros (ainda esta semana/mês) aparecem como '+N futuros' mas não entram na conta — assim a taxa não cai artificialmente no começo do período."
+                />
+              </div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{taxaComp}%</div>
               <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
                 <span className="num font-medium text-slate-700 dark:text-slate-200">{compareceram}</span> compareceram / <span className="num">{apptPassados}</span> já realizados
@@ -3463,7 +3503,13 @@ const teamMetrics = useMemo(() => {
         <DashCard padded>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <div className="text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">Conversão global</div>
+              <div className="flex items-center gap-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                <span>Conversão global</span>
+                <DashHelpTip
+                  label="O que é Conversão global?"
+                  text="Dos leads CAPTADOS no período, quantos % viraram matrícula até agora. É a saúde da coorte — pode estar baixa no começo do período e subir conforme os leads avançam no funil."
+                />
+              </div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{stats.txConv}%</div>
               <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
                 lead → matrícula · <span className="num">{stats.coorteConvertidos}</span> de <span className="num">{stats.total}</span> captados
