@@ -126,6 +126,7 @@ import {
   hasGoalDoneToday,
   isLeadResolvedToday,
   hasActiveInteractionToday,
+  isRegistrationNote,
   isAdminUser,
   canEditLead,
   getLeadOwnershipFields,
@@ -2568,10 +2569,11 @@ function DashKpiCard({ label, value, delta, accent = 'brand', series, sub }) {
 
 function DashPeriodTabs({ value, onChange }) {
   const opts = [
-    { id: 'today',   label: 'Hoje' },
-    { id: 'weekly',  label: 'Semana' },
-    { id: 'monthly', label: 'Mês' },
-    { id: 'custom',  label: 'Personalizado' }
+    { id: 'today',       label: 'Hoje' },
+    { id: 'weekly',      label: 'Semana' },
+    { id: 'monthly',     label: 'Mês atual' },
+    { id: 'monthlyPrev', label: 'Mês anterior' },
+    { id: 'custom',      label: 'Personalizado' }
   ];
   return (
     <div className="inline-flex p-1 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
@@ -2705,7 +2707,11 @@ function DashTeamRow({ row, maxLeads }) {
       <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosVisita}</td>
       <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosAula}</td>
       <td className="py-3 px-3 num text-[13px] text-center font-semibold text-emerald-600 dark:text-emerald-400">{row.convertidos}</td>
-      <td className="py-3 pr-5 pl-3 num text-[13px] text-right font-semibold text-slate-900 dark:text-white">{row.txConversaoGlobal}%</td>
+      <td className="py-3 pr-5 pl-3 num text-[13px] text-right font-semibold text-slate-900 dark:text-white">
+        {row.txConversaoGlobal == null ? (
+          <span className="text-slate-400 dark:text-slate-500" title="Sem leads captados no período">—</span>
+        ) : `${row.txConversaoGlobal}%`}
+      </td>
     </tr>
   );
 }
@@ -2876,6 +2882,15 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
     return { start, end };
   }
 
+  if (periodPreset === 'monthlyPrev') {
+    // Mês civil anterior completo (jan → dez do ano anterior auto-rola
+    // pelo construtor Date).
+    const start = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+    return { start, end };
+  }
+
+  // Default: 'monthly' (mês atual).
   const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
@@ -2976,6 +2991,8 @@ function DashboardView({ leads, interactions, appUser, statuses, usersList, tags
       convertidos,
       convertidosVisita,
       convertidosAula,
+      coorteVisita,
+      coorteAula,
       coorteConvertidos,
       txAgVisita,
       txAgAula,
@@ -3049,11 +3066,13 @@ const teamMetrics = useMemo(() => {
   });
 
   Object.values(metrics).forEach(m => {
-    m.txVisita = m.total > 0 ? Math.round((m.agendadosVisita / m.total) * 100) : 0;
-    m.txAula = m.total > 0 ? Math.round((m.agendadosAula / m.total) * 100) : 0;
-    m.txConvVisita = m.agendadosVisita > 0 ? Math.round((m.convertidosVisita / m.agendadosVisita) * 100) : 0;
-    m.txConvAula = m.agendadosAula > 0 ? Math.round((m.convertidosAula / m.agendadosAula) * 100) : 0;
-    m.txConversaoGlobal = m.total > 0 ? Math.round((m.convertidos / m.total) * 100) : 0;
+    // null quando não há coorte de captação no período — evita
+    // mostrar "0%" para consultor que fechou leads captados antes.
+    m.txVisita = m.total > 0 ? Math.round((m.agendadosVisita / m.total) * 100) : null;
+    m.txAula = m.total > 0 ? Math.round((m.agendadosAula / m.total) * 100) : null;
+    m.txConvVisita = m.agendadosVisita > 0 ? Math.round((m.convertidosVisita / m.agendadosVisita) * 100) : null;
+    m.txConvAula = m.agendadosAula > 0 ? Math.round((m.convertidosAula / m.agendadosAula) * 100) : null;
+    m.txConversaoGlobal = m.total > 0 ? Math.round((m.convertidos / m.total) * 100) : null;
   });
 
   return Object.values(metrics).sort(
@@ -3169,13 +3188,59 @@ const teamMetrics = useMemo(() => {
     return series;
   }, [funnelLeads]);
 
-  // Delta % vs immediately previous equivalent period.
-  const deltas = useMemo(() => {
-    if (!periodRange) return { leads: null, visitas: null, aulas: null, matriculas: null };
+  // Período equivalente anterior usado nos deltas (▲▼ dos KPIs).
+  // Calculado por PRESET (não por span em ms) para casar com o
+  // calendário civil: "Mês" vira mês civil anterior completo, etc.
+  // — assim a comparação não desliza pelos meses de 28/30/31 dias.
+  const previousRange = useMemo(() => {
+    if (!periodRange) return null;
+
+    if (periodPreset === 'today') {
+      // Ontem inteiro.
+      const start = new Date(periodRange.start);
+      start.setDate(start.getDate() - 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    if (periodPreset === 'weekly') {
+      // Semana anterior (seg-dom).
+      const start = new Date(periodRange.start);
+      start.setDate(start.getDate() - 7);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 6);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    if (periodPreset === 'monthly' || periodPreset === 'monthlyPrev') {
+      // Sempre o mês civil completo IMEDIATAMENTE ANTES do mês exibido:
+      // - 'monthly'     (mês atual)    → previous = mês passado
+      // - 'monthlyPrev' (mês passado)  → previous = mês retrasado
+      // jan→dez do ano anterior auto-rola pelo construtor Date.
+      const y = periodRange.start.getFullYear();
+      const m = periodRange.start.getMonth();
+      const start = new Date(y, m - 1, 1, 0, 0, 0, 0);
+      const end = new Date(y, m, 0, 23, 59, 59, 999);
+      return { start, end };
+    }
+
+    // 'custom' — janela de mesma duração imediatamente antes (sem
+    // alternativa civil razoável quando o usuário escolheu datas
+    // arbitrárias).
     const span = periodRange.end - periodRange.start;
-    const prevStart = new Date(periodRange.start.getTime() - span - 1);
-    const prevEnd = new Date(periodRange.start.getTime() - 1);
-    const within = (d) => d && d >= prevStart && d <= prevEnd;
+    const start = new Date(periodRange.start.getTime() - span - 1);
+    const end = new Date(periodRange.start.getTime() - 1);
+    return { start, end };
+  }, [periodPreset, periodRange]);
+
+  // Delta % vs período anterior equivalente.
+  const deltas = useMemo(() => {
+    if (!previousRange) return { leads: null, visitas: null, aulas: null, matriculas: null };
+    const within = (d) => d && d >= previousRange.start && d <= previousRange.end;
 
     const prevLeads = funnelLeads.filter((l) => within(l.createdAt)).length;
     const prevVisitas = funnelLeads.filter((l) => getLeadAppointmentType(l) === 'visita' && within(getLeadAppointmentDate(l))).length;
@@ -3189,7 +3254,7 @@ const teamMetrics = useMemo(() => {
       aulas: pct(stats.agendadosAula, prevAulas),
       matriculas: pct(stats.convertidos, prevMatriculas)
     };
-  }, [funnelLeads, periodRange, stats]);
+  }, [funnelLeads, previousRange, stats]);
 
   // Activity feed: last 5 interactions in period, mapped to a UI shape.
   // Filtra por funnelLeads para respeitar o filtro de funil selecionado
@@ -3235,7 +3300,7 @@ const teamMetrics = useMemo(() => {
             what = 'atualizou fase de'; tone = 'amber';
           }
         } else if (i.type === 'note') {
-          if (/observação do cadastro/i.test(txt)) {
+          if (isRegistrationNote(txt)) {
             what = 'cadastrou'; tone = 'brand';
           } else {
             what = 'anotou em'; tone = 'slate';
@@ -3269,8 +3334,25 @@ const teamMetrics = useMemo(() => {
     return 'Boa noite';
   }, []);
 
-  // Lead list for "Compareceram" funnel step (also used in funnel modal).
-  const compareceramLeads = scheduledLeads.filter((l) => isLeadAttended(l));
+  // Listas da COORTE de captação (mesma base das taxas e do funil).
+  // O funil exibe a jornada dos leads que CAPTAMOS no período — então
+  // cada etapa filtra capturedLeads, garantindo monotonicidade
+  // (etapa N ≤ etapa N-1) e taxas entre etapas ≤ 100%.
+  const coorteAgendamentoLeads = useMemo(
+    () => capturedLeads.filter(l => {
+      const t = getLeadAppointmentType(l);
+      return (t === 'visita' || t === 'aula_experimental') && getLeadAppointmentDate(l);
+    }),
+    [capturedLeads]
+  );
+  const coorteCompareceramLeads = useMemo(
+    () => coorteAgendamentoLeads.filter(l => isLeadAttended(l)),
+    [coorteAgendamentoLeads]
+  );
+  const coorteMatriculaLeads = useMemo(
+    () => capturedLeads.filter(isLeadConverted),
+    [capturedLeads]
+  );
 
   return (
     <div className="space-y-6 animate-fade-in font-sans">
@@ -3317,6 +3399,11 @@ const teamMetrics = useMemo(() => {
             onChange={(e) => setCustomEndDate(e.target.value)}
             className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[13px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
           />
+          {!periodRange && (
+            <span className="text-[11.5px] font-medium text-amber-600 dark:text-amber-400 whitespace-nowrap">
+              Preencha início e fim para ver os resultados.
+            </span>
+          )}
         </div>
       )}
 
@@ -3397,21 +3484,21 @@ const teamMetrics = useMemo(() => {
             title={isAllFunnels(selectedFunnelId)
               ? 'Funil comercial · todos os funis'
               : currentFunnel?.name ? `Funil · ${currentFunnel.name}` : 'Funil comercial'}
-            hint="Conversão por etapa · clique para ver os leads"
+            hint="Jornada dos leads captados no período · clique para ver os leads"
             icon={<Filter size={14} />}
           >
             <DashFunnel
               steps={[
                 { id: 'leads',  label: 'Leads recebidos', count: stats.total, color: 'brand' },
-                { id: 'agend',  label: 'Agendamentos',    count: stats.agendadosVisita + stats.agendadosAula, color: 'amber',  hint: `${stats.agendadosVisita} visitas · ${stats.agendadosAula} aulas exp.` },
-                { id: 'comp',   label: 'Compareceram',    count: compareceram, color: 'teal' },
-                { id: 'matric', label: 'Matrículas',      count: stats.convertidos, color: 'emerald' }
+                { id: 'agend',  label: 'Agendamentos',    count: stats.coorteVisita + stats.coorteAula, color: 'amber',  hint: `${stats.coorteVisita} visitas · ${stats.coorteAula} aulas exp.` },
+                { id: 'comp',   label: 'Compareceram',    count: coorteCompareceramLeads.length, color: 'teal' },
+                { id: 'matric', label: 'Matrículas',      count: stats.coorteConvertidos, color: 'emerald' }
               ]}
               onStepClick={(s) => {
                 if (s.id === 'leads')  setFunnelDetail({ title: 'Leads Recebidos', data: capturedLeads });
-                if (s.id === 'agend')  setFunnelDetail({ title: 'Agendamentos',    data: scheduledLeads });
-                if (s.id === 'comp')   setFunnelDetail({ title: 'Compareceram',    data: compareceramLeads });
-                if (s.id === 'matric') setFunnelDetail({ title: 'Matrículas',      data: convertedLeads });
+                if (s.id === 'agend')  setFunnelDetail({ title: 'Agendamentos',    data: coorteAgendamentoLeads });
+                if (s.id === 'comp')   setFunnelDetail({ title: 'Compareceram',    data: coorteCompareceramLeads });
+                if (s.id === 'matric') setFunnelDetail({ title: 'Matrículas',      data: coorteMatriculaLeads });
               }}
             />
           </DashCard>
@@ -3549,7 +3636,7 @@ const teamMetrics = useMemo(() => {
               {pendingFollowUps.length === 0 ? (
                 <div className="py-8 text-center text-[12.5px] text-slate-400 italic">Tudo em dia.</div>
               ) : (
-                pendingFollowUps.slice(0, 8).map((lead) => (
+                pendingFollowUps.map((lead) => (
                   <DashTaskItem key={lead.id} lead={lead} onClick={setSelectedLead} />
                 ))
               )}

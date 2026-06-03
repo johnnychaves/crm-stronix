@@ -85,6 +85,13 @@ export const isLeadResolvedToday = (lead, todayStart) => {
   return false;
 };
 
+// True se o texto da interaction é a observação automática gerada no
+// cadastro do lead (prefixo literal "OBSERVAÇÃO DO CADASTRO:"). Usado
+// pra (i) ignorar essas observações no contador de atividade ativa e
+// (ii) rotular o evento corretamente no feed da Dashboard.
+export const isRegistrationNote = (text) =>
+  typeof text === 'string' && text.startsWith('OBSERVAÇÃO DO CADASTRO:');
+
 // True se houve qualquer interaction "ativa" hoje (mudança de fase,
 // nota, follow-up agendado, etc.) que NÃO seja 'daily_goal_done' nem
 // observação automática do cadastro. Usado para o badge "Já
@@ -96,8 +103,7 @@ export const hasActiveInteractionToday = (lead, interactions, todayStart) => {
     if (i.leadId !== lead.id) return false;
     if (!(i.createdAt instanceof Date) || i.createdAt < todayStart) return false;
     if (i.type === 'daily_goal_done') return false;
-    const text = String(i.text || '');
-    if (text.startsWith('OBSERVAÇÃO DO CADASTRO:')) return false;
+    if (isRegistrationNote(i.text)) return false;
     return true;
   });
 };
