@@ -498,7 +498,7 @@ export default function App() {
   );
 }
 
-// Lê o slug da academia da URL: primeiro o PATH (crmstronix.com.br/<slug>) e,
+// Lê o slug da academia da URL: primeiro o PATH (stronilead.com.br/<slug>) e,
 // como compatibilidade com links antigos, o HASH (#<slug>, #/slug, #/t/slug).
 // Retorna '' se não houver/for inválido.
 function getTenantSlug() {
@@ -568,7 +568,7 @@ function AppInner() {
   }, []);
 
   // Mantém a URL (/<slug>) em sincronia com o tenant real após o login — cada
-  // academia fica com um link próprio e bookmarkável (crmstronix.com.br/<slug>).
+  // academia fica com um link próprio e bookmarkável (stronilead.com.br/<slug>).
   // O acesso vem do claim; se a URL apontava para outra academia, é apenas
   // corrigida (sem bloquear ninguém). replaceState não recarrega a página.
   useEffect(() => {
@@ -1390,7 +1390,7 @@ function SuperAdminView() {
   const [stats, setStats] = useState(null);            // { loading, data }
   const [manageBusy, setManageBusy] = useState(null);  // ação em andamento no detalhe
 
-  // Copia o link de acesso da academia (crmstronix.com.br/#<slug>).
+  // Copia o link de acesso da academia (stronilead.com.br/<slug>).
   const copyTenantLink = async (slug) => {
     const url = `${window.location.origin}/${slug}`;
     try {
@@ -1951,7 +1951,7 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError, urlTenant }
                 <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-300">E-mail</span>
                 <div className={fieldWrap}>
                   <span className="pl-3.5 text-gray-400 dark:text-neutral-500"><Mail className="w-[17px] h-[17px]" /></span>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="voce@stronix.com.br" autoComplete="username" className={inputClass} required />
+                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="voce@stronilead.com.br" autoComplete="username" className={inputClass} required />
                 </div>
               </label>
 
@@ -7530,7 +7530,7 @@ function ManageUsersTab({ db, appUser }) {
               </label>
               <input
                 type="email"
-                placeholder="maria@stronix.com"
+                placeholder="maria@stronilead.com.br"
                 required
                 value={form.email}
                 onChange={e => setForm({ ...form, email: e.target.value })}

@@ -3,7 +3,7 @@ import { checkRateLimit, clientIp } from './_rateLimit.js';
 
 // Resolve PÚBLICO de organização por slug (?slug=ironfit).
 // Usado pela tela de login (pré-autenticação) para mostrar a MARCA da academia
-// identificada pela URL (crmstronix.com.br/#<slug>). Retorna apenas dados
+// identificada pela URL (stronilead.com.br/<slug>). Retorna apenas dados
 // públicos (nome) — nunca ownerEmail/plan/status/etc. O acesso aos dados
 // continua 100% gateado pelo login + claim tenantId + Firestore Rules; este
 // endpoint só informa "qual academia" para a UI do login.
