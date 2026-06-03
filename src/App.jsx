@@ -175,6 +175,28 @@ function StronileadWordmark({ className = '', leadOnDark = false }) {
 
 // Tela de bloqueio quando a academia está suspensa ou com trial expirado.
 // O usuário autenticou, mas a organização não está liberada — só resta sair.
+// Banner de contagem regressiva do período de teste (mostrado ao cliente quando
+// a academia está em trial ATIVO). Fica âmbar (urgência) quando faltam <= 3 dias.
+function TrialBanner({ endsAtMs }) {
+  const DAY = 24 * 60 * 60 * 1000;
+  const daysLeft = Math.max(0, Math.ceil((endsAtMs - Date.now()) / DAY));
+  const dateLabel = new Date(endsAtMs).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const urgent = daysLeft <= 3;
+  const msg = daysLeft <= 0
+    ? 'Seu período de teste termina hoje'
+    : daysLeft === 1
+      ? 'Falta 1 dia do seu período de teste'
+      : `Faltam ${daysLeft} dias do seu período de teste`;
+  return (
+    <div className={`shrink-0 px-4 md:px-8 py-2 flex items-center justify-center gap-2 text-[12.5px] font-medium border-b ${urgent
+      ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20'
+      : 'bg-brand-50 text-brand-700 border-brand-100 dark:bg-brand-500/10 dark:text-brand-300 dark:border-white/[0.06]'}`}>
+      <Clock className="w-3.5 h-3.5 shrink-0" />
+      <span>{msg} <span className="opacity-70">· termina em {dateLabel}</span></span>
+    </div>
+  );
+}
+
 function TenantBlockedScreen({ reason, onLogout }) {
   const suspended = reason === 'suspended';
   const Icon = suspended ? Ban : Clock;
@@ -494,6 +516,9 @@ function AppInner() {
   // Bloqueio da academia: 'suspended' | 'trial_expired' | null. Lido do doc
   // /tenants/{id} no login (regra permite leitura ao próprio tenant).
   const [tenantBlock, setTenantBlock] = useState(null);
+  // Fim do trial (ms) quando a academia está em teste ATIVO — alimenta o
+  // banner de contagem regressiva. null quando não há trial ativo.
+  const [trialEndsAtMs, setTrialEndsAtMs] = useState(null);
   // Academia identificada pela URL (#<slug>) — só para exibir a MARCA no login.
   // NÃO controla acesso (isso continua sendo o claim tenantId + as rules).
   // Formato: { slug, loading? , found?, displayName? }. Init lazy a partir do hash.
@@ -593,6 +618,7 @@ function AppInner() {
     if (!currentUser) {
       setAppUser(null);
       setTenantBlock(null);
+      setTrialEndsAtMs(null);
       setIsAuthChecking(false);
       return;
     }
@@ -630,24 +656,26 @@ function AppInner() {
           const tenantSnap = await getDoc(doc(db, 'tenants', tenantId));
           const tData = tenantSnap.exists() ? tenantSnap.data() : null;
           let block = null;
+          let trialMs = null;
           if (tData) {
             if (tData.status === 'suspended') {
               block = 'suspended';
-            } else if (
-              tData.status === 'trial' &&
-              typeof tData.trialEndsAt?.toMillis === 'function' &&
-              tData.trialEndsAt.toMillis() < Date.now()
-            ) {
-              block = 'trial_expired';
+            } else if (tData.status === 'trial' && typeof tData.trialEndsAt?.toMillis === 'function') {
+              const ms = tData.trialEndsAt.toMillis();
+              if (ms < Date.now()) block = 'trial_expired';
+              else trialMs = ms; // trial ativo → alimenta o banner de contagem
             }
           }
           setTenantBlock(block);
+          setTrialEndsAtMs(trialMs);
         } catch (statusErr) {
           console.warn('Falha ao ler status do tenant; liberando acesso.', statusErr);
           setTenantBlock(null);
+          setTrialEndsAtMs(null);
         }
       } else {
         setTenantBlock(null);
+        setTrialEndsAtMs(null);
       }
 
       // Super-admin SEM tenant: não tem claim de tenant, então NÃO pode (nem
@@ -1218,7 +1246,9 @@ useEffect(() => {
             {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-brand-600" />}
           </button>
         </header>
-        
+
+        {!appUser.superAdminOnly && trialEndsAtMs && <TrialBanner endsAtMs={trialEndsAtMs} />}
+
         <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
           {appUser.superAdminOnly ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
@@ -1626,7 +1656,18 @@ function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onEx
 
           {/* trial */}
           <div>
-            <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-200 mb-1.5">Trial</div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Trial</span>
+              {t.status === 'trial' && t.trialEndsAt && (
+                <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                  {(() => {
+                    const left = Math.max(0, Math.ceil((t.trialEndsAt - Date.now()) / 86400000));
+                    const dt = new Date(t.trialEndsAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                    return left <= 0 ? `termina hoje (${dt})` : `${left} dia${left === 1 ? '' : 's'} restante${left === 1 ? '' : 's'} (${dt})`;
+                  })()}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-2">
               <input type="number" min="0" value={trialDays} onChange={e => setTrialDays(e.target.value)} placeholder="dias"
                 className="w-24 h-9 px-3 rounded-lg text-[13px] num bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500" />
