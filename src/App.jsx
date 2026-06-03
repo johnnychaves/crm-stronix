@@ -3450,7 +3450,7 @@ const teamMetrics = useMemo(() => {
           delta={deltas.leads}
           accent="brand"
           series={sparklines.leads}
-          help="Leads novos cadastrados no período. Conta pela data de criação do lead. O sparkline mostra os últimos 14 dias."
+          help="Leads novos que chegaram no período, contados pelo dia em que foram cadastrados. O gráfico mostra a evolução dos últimos 14 dias."
         />
         <DashKpiCard
           label="Visitas agendadas"
@@ -3459,7 +3459,7 @@ const teamMetrics = useMemo(() => {
           accent="amber"
           series={sparklines.visitas}
           sub={`${stats.txAgVisita}% dos leads · ${stats.txConvVisita}% conv.`}
-          help="Visitas com data marcada para o período — inclui visitas de leads captados antes. O sub mostra: % dos leads do período que agendaram visita, e desses, quantos % converteram."
+          help="Visitas marcadas para o período — inclui leads que chegaram antes. Abaixo: de cada 100 leads que chegaram no período, quantos marcaram visita e, desses, quantos viraram matrícula."
         />
         <DashKpiCard
           label="Aulas experimentais"
@@ -3468,7 +3468,7 @@ const teamMetrics = useMemo(() => {
           accent="violet"
           series={sparklines.aulas}
           sub={`${stats.txAgAula}% dos leads · ${stats.txConvAula}% conv.`}
-          help="Aulas experimentais com data marcada para o período — inclui aulas de leads captados antes. O sub mostra: % dos leads do período que agendaram aula, e desses, quantos % converteram."
+          help="Aulas experimentais marcadas para o período — inclui leads que chegaram antes. Abaixo: de cada 100 leads que chegaram no período, quantos marcaram aula e, desses, quantos viraram matrícula."
         />
         <DashKpiCard
           label="Matrículas"
@@ -3477,7 +3477,7 @@ const teamMetrics = useMemo(() => {
           accent="emerald"
           series={sparklines.matriculas}
           sub={`${stats.txConv}% fechamento geral`}
-          help="Leads que viraram Venda dentro do período — inclui leads captados em meses anteriores que fecharam agora. O sub mostra: dos leads CAPTADOS no período, quantos % converteram até agora (coorte)."
+          help="Leads que fecharam matrícula no período — inclui quem chegou em meses anteriores e fechou agora. Abaixo: dos leads que chegaram neste período, quantos por cento já se matricularam."
         />
       </div>
 
@@ -3490,7 +3490,7 @@ const teamMetrics = useMemo(() => {
                 <span>Taxa de comparecimento</span>
                 <DashHelpTip
                   label="O que é Taxa de comparecimento?"
-                  text="Dos agendamentos cuja data JÁ chegou, quantos % o lead efetivamente compareceu. Agendamentos futuros (ainda esta semana/mês) aparecem como '+N futuros' mas não entram na conta — assim a taxa não cai artificialmente no começo do período."
+                  text="Das visitas e aulas cuja data já passou, em quantas o lead realmente apareceu. Os agendamentos que ainda vão acontecer aparecem como 'futuros' e não entram na conta — assim a taxa não fica baixa à toa no começo do período."
                 />
               </div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{taxaComp}%</div>
@@ -3512,7 +3512,7 @@ const teamMetrics = useMemo(() => {
                 <span>Conversão global</span>
                 <DashHelpTip
                   label="O que é Conversão global?"
-                  text="Dos leads CAPTADOS no período, quantos % viraram matrícula até agora. É a saúde da coorte — pode estar baixa no começo do período e subir conforme os leads avançam no funil."
+                  text="Dos leads que chegaram no período, quantos por cento já viraram matrícula. Esse número costuma começar baixo e ir subindo conforme você trabalha cada lead."
                 />
               </div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{stats.txConv}%</div>
