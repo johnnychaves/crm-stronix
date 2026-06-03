@@ -3950,15 +3950,12 @@ const handleKanbanMouseMove = (e) => {
 
     try {
       const payload = { status: newStatus };
-      const appointmentType = normalizeAppointmentType(newStatus);
 
-      if (appointmentType) {
-        payload.appointmentType = appointmentType;
-
-        if (!lead.appointmentScheduledFor) {
-          payload.appointmentScheduledFor = serverTimestamp();
-        }
-      }
+      // Mover o card só muda a FASE. Antes, soltar numa coluna cujo nome
+      // contém "visita"/"aula" agendava a visita para o INSTANTE do drop
+      // (serverTimestamp), criando um agendamento com data falsa que
+      // poluía as métricas. O agendamento real é feito pelo wizard (que
+      // pede dia e hora) — arrastar não deve inventar uma data.
 
       // Preserva o vínculo com o funil (corrige leads legacy sem funnelId)
       if (selectedFunnelId && !lead.funnelId) {
