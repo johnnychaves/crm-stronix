@@ -3184,21 +3184,23 @@ const teamMetrics = useMemo(() => {
 
   // --- NEW DASHBOARD COMPUTATIONS ---
 
-  // Compareceram = scheduled leads with isLeadAttended === true (uses outcome OR conversion OR legacy hasAttended).
-  const compareceram = useMemo(
-    () => scheduledLeads.filter((l) => isLeadAttended(l)).length,
-    [scheduledLeads]
-  );
-  // Denominador da taxa de comparecimento: apenas agendamentos cuja data
-  // já chegou. Agendamentos futuros (semana/mês em andamento) ainda não
-  // tiveram chance de comparecer e não devem deflacionar a taxa.
-  const apptPassados = useMemo(() => {
+  // Taxa de comparecimento: numerador e denominador SAEM DA MESMA BASE
+  // — apenas agendamentos cuja data já passou. Contar comparecimento
+  // sobre todos os agendados (incluindo futuros já marcados como
+  // atendidos, ex.: lead que virou Venda antes da aula marcada) inflava
+  // o numerador e a taxa podia passar de 100% ("2 compareceram / 1
+  // realizado"). Agendamentos futuros entram só como "+N futuros".
+  const { compareceram, apptPassados } = useMemo(() => {
     const now = new Date();
-    return scheduledLeads.filter(l => {
+    const passados = scheduledLeads.filter(l => {
       const t = getLeadAppointmentType(l);
       const d = getLeadAppointmentDate(l);
       return (t === 'visita' || t === 'aula_experimental') && d && d <= now;
-    }).length;
+    });
+    return {
+      compareceram: passados.filter(isLeadAttended).length,
+      apptPassados: passados.length
+    };
   }, [scheduledLeads]);
   const totalAppt = stats.agendadosVisita + stats.agendadosAula;
   const taxaComp = apptPassados > 0 ? Math.round((compareceram / apptPassados) * 100) : 0;
