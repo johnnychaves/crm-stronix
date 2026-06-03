@@ -9446,46 +9446,6 @@ function dgApptTypeMeta(lead) {
   return { Icon: MessageSquare, label: 'Contato' };
 }
 
-// Prévia dos agendamentos de AMANHÃ. Não faz parte da meta de hoje — é só
-// uma antecipação para o consultor se preparar.
-function TomorrowCard({ appts, onOpen }) {
-  return (
-    <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
-      <div className="flex items-center justify-between">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">Amanhã</div>
-        <span className="num text-[11px] px-1.5 h-[18px] rounded-md grid place-items-center bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">{appts.length}</span>
-      </div>
-      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">Não conta na meta de hoje</p>
-      {appts.length === 0 ? (
-        <p className="mt-3 text-[12.5px] text-slate-400 dark:text-slate-500">Nenhum agendamento para amanhã.</p>
-      ) : (
-        <div className="mt-3 space-y-1.5 max-h-[220px] overflow-y-auto thin-scroll -mx-1 px-1">
-          {appts.map(({ lead, when }) => {
-            const { Icon, label } = dgApptTypeMeta(lead);
-            return (
-              <button
-                key={lead.id}
-                type="button"
-                onClick={() => onOpen && onOpen(lead)}
-                className="w-full flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-white/[0.04] transition text-left"
-              >
-                <Avatar name={lead.name} size={28} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[12.5px] font-medium text-slate-800 dark:text-slate-100 truncate">{lead.name}</div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1">
-                    <Icon size={11} /> {label}
-                  </div>
-                </div>
-                <span className="num text-[11.5px] font-medium text-slate-500 dark:text-slate-400 shrink-0">{formatHourLabel(when)}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function DgSection({ slug, tasks, render }) {
   const m = DG_CATEGORY_META[slug];
   if (!m || !tasks.length) return null;
@@ -10362,8 +10322,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     />
   );
 
+  const isTomorrowView = filter === 'tomorrow';
   const visibleSlugs = filter === 'all' ? DG_CATEGORY_ORDER : [filter];
-  const visibleCount = filter === 'all' ? totalPendingSlots : (counts[filter] || 0);
+  const visibleCount = filter === 'all'
+    ? totalPendingSlots
+    : isTomorrowView
+      ? tomorrowAppts.length
+      : (counts[filter] || 0);
 
   return (
     <div className="h-full flex flex-col gap-6 animate-fade-in relative font-sans">
@@ -10412,7 +10377,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden h-full flex flex-col">
             <div className="px-5 pt-5 pb-3 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.05]">
               <div className="flex items-center gap-2.5">
-                <h2 className="text-[15px] font-semibold">A fazer hoje</h2>
+                <h2 className="text-[15px] font-semibold">{isTomorrowView ? 'Amanhã' : 'A fazer hoje'}</h2>
                 <span className="num text-[11.5px] px-1.5 h-[20px] rounded-md grid place-items-center bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">{visibleCount}</span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -10432,10 +10397,61 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                   onClick={() => setFilter(slug)}
                 />
               ))}
+              {/* Prévia: agendamentos de amanhã — não conta na meta de hoje,
+                  por isso fica separado por um divisor das categorias acima. */}
+              <span className="w-px h-5 bg-slate-200 dark:bg-white/10 self-center mx-0.5" aria-hidden="true" />
+              <FilterChip
+                active={isTomorrowView}
+                label="Amanhã"
+                count={tomorrowAppts.length}
+                onClick={() => setFilter('tomorrow')}
+              />
             </div>
 
-            <div className="p-5 space-y-7 flex-1 overflow-y-auto thin-scroll">
-              {totalSlots === 0 ? (
+            <div className={`p-5 flex-1 overflow-y-auto thin-scroll ${isTomorrowView ? 'space-y-2.5' : 'space-y-7'}`}>
+              {isTomorrowView ? (
+                tomorrowAppts.length === 0 ? (
+                  <div className="py-14 grid place-items-center text-slate-400">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-white/[0.05] grid place-items-center mb-3">
+                      <Calendar size={22} className="text-slate-400" />
+                    </div>
+                    <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Nada agendado para amanhã</p>
+                    <p className="text-[12.5px] mt-1">Sem visitas, aulas ou contatos marcados para o dia seguinte.</p>
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                      Prévia do dia seguinte — <span className="font-medium text-slate-600 dark:text-slate-300">não conta na meta de hoje</span>.
+                    </p>
+                    {tomorrowAppts.map(({ lead, when }) => {
+                      const { Icon, label } = dgApptTypeMeta(lead);
+                      return (
+                        <button
+                          key={lead.id}
+                          type="button"
+                          onClick={() => setSelectedLead(lead)}
+                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition text-left"
+                        >
+                          <Avatar name={lead.name} size={38} />
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[14px] font-semibold text-slate-900 dark:text-white truncate">{lead.name}</div>
+                            <div className="text-[12px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5 flex-wrap">
+                              <span className="inline-flex items-center gap-1"><Icon size={12} /> {label}</span>
+                              {lead.whatsapp && (
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/20" />
+                                  <span className="num">{lead.whatsapp}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          <span className="num text-[12.5px] font-semibold text-slate-600 dark:text-slate-300 shrink-0">{formatHourLabel(when)}</span>
+                        </button>
+                      );
+                    })}
+                  </>
+                )
+              ) : totalSlots === 0 ? (
                 <div className="py-14 grid place-items-center text-slate-400">
                   <div className="w-12 h-12 rounded-full bg-emerald-50 dark:bg-emerald-500/10 grid place-items-center mb-3">
                     <CheckCircle size={22} className="text-emerald-500" />
@@ -10475,7 +10491,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             onWhatsapp={handleWhatsapp}
             onOutcome={handleOutcome}
           />
-          <TomorrowCard appts={tomorrowAppts} onOpen={setSelectedLead} />
 
           <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card flex-1 min-h-0 flex flex-col">
             <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.05]">
