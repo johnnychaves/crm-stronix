@@ -3884,6 +3884,22 @@ const [isPanning, setIsPanning] = useState(false);
     };
   }, [kpiScopeLeads]);
 
+  // Índice leadId → { count, lastDate }. Percorre interactions UMA vez,
+  // evitando que cada card refaça interactions.filter()/getLastInteraction
+  // (era O(cards × interações) a cada render/drag).
+  const interactionIndex = useMemo(() => {
+    const idx = new Map();
+    (interactions || []).forEach(i => {
+      let e = idx.get(i.leadId);
+      if (!e) { e = { count: 0, lastDate: null }; idx.set(i.leadId, e); }
+      e.count += 1;
+      if (i.createdAt instanceof Date && (!e.lastDate || i.createdAt > e.lastDate)) {
+        e.lastDate = i.createdAt;
+      }
+    });
+    return idx;
+  }, [interactions]);
+
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
   setIsPanning(false);
@@ -4131,9 +4147,16 @@ if (!lead) return;
       lead.nextFollowUp < new Date();
     const isDraggingThis = draggingLeadId === lead.id;
     const accent = getKanbanColumnAccent(columnColor);
-    const interactionCount = (interactions || []).filter(i => i.leadId === lead.id).length;
+    const idxEntry = interactionIndex.get(lead.id);
+    const interactionCount = idxEntry?.count || 0;
     const convertedAt = getSafeDateOrNull(lead.convertedAt);
-    const daysSince = !isWon && !isLost ? getDaysSinceLastContact(lead, interactions) : null;
+    let daysSince = null;
+    if (!isWon && !isLost) {
+      const last = idxEntry?.lastDate || lead.createdAt;
+      if (last instanceof Date && !isNaN(last.getTime())) {
+        daysSince = Math.max(0, Math.floor((Date.now() - last.getTime()) / 86400000));
+      }
+    }
 
     return (
       <article
@@ -4256,11 +4279,18 @@ if (!lead) return;
     );
   };
 
-  const renderKanbanColumn = ({ key, name, color, special, columnLeads, onDropHandler }) => {
+  const renderKanbanColumn = ({ key, name, color, special, columnLeads, onDropHandler, renderLimit = 0 }) => {
     const accent = getKanbanColumnAccent(color);
     const isHovered = draggedOverColumn === name;
     const isWinCol = special === 'win';
     const isLossCol = special === 'loss';
+    // Colunas terminais (Venda/Perda) acumulam histórico; renderizar
+    // todos os cards trava o board. Mostra os mais recentes e indica
+    // quantos restam (acessíveis pela busca ou pelo Dashboard).
+    const shownLeads = renderLimit > 0 && columnLeads.length > renderLimit
+      ? columnLeads.slice(0, renderLimit)
+      : columnLeads;
+    const hiddenCount = columnLeads.length - shownLeads.length;
     const emptyText = isWinCol
       ? 'Arraste para fechar venda'
       : isLossCol
@@ -4330,7 +4360,14 @@ if (!lead) return;
               {emptyText}
             </div>
           ) : (
-            columnLeads.map(lead => renderLeadCard(lead, color))
+            <>
+              {shownLeads.map(lead => renderLeadCard(lead, color))}
+              {hiddenCount > 0 && (
+                <div className="py-2 text-center text-[11px] font-medium text-gray-400 dark:text-neutral-500">
+                  + {hiddenCount} {hiddenCount === 1 ? 'lead mais antigo' : 'leads mais antigos'} · use a busca para encontrar
+                </div>
+              )}
+            </>
           )}
         </div>
       </section>
@@ -4518,7 +4555,8 @@ if (!lead) return;
               color: 'green',
               special: 'win',
               columnLeads: getLeadsByStatus('Venda'),
-              onDropHandler: handleWinDrop
+              onDropHandler: handleWinDrop,
+              renderLimit: 50
             })}
 
             {renderKanbanColumn({
@@ -4527,7 +4565,8 @@ if (!lead) return;
               color: 'gray',
               special: 'loss',
               columnLeads: getLeadsByStatus('Perda'),
-              onDropHandler: handleLossDrop
+              onDropHandler: handleLossDrop,
+              renderLimit: 50
             })}
           </div>
         </div>
