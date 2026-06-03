@@ -126,6 +126,7 @@ import {
   hasGoalDoneToday,
   isLeadResolvedToday,
   hasActiveInteractionToday,
+  isRegistrationNote,
   isAdminUser,
   canEditLead,
   getLeadOwnershipFields,
@@ -2705,7 +2706,11 @@ function DashTeamRow({ row, maxLeads }) {
       <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosVisita}</td>
       <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosAula}</td>
       <td className="py-3 px-3 num text-[13px] text-center font-semibold text-emerald-600 dark:text-emerald-400">{row.convertidos}</td>
-      <td className="py-3 pr-5 pl-3 num text-[13px] text-right font-semibold text-slate-900 dark:text-white">{row.txConversaoGlobal}%</td>
+      <td className="py-3 pr-5 pl-3 num text-[13px] text-right font-semibold text-slate-900 dark:text-white">
+        {row.txConversaoGlobal == null ? (
+          <span className="text-slate-400 dark:text-slate-500" title="Sem leads captados no período">—</span>
+        ) : `${row.txConversaoGlobal}%`}
+      </td>
     </tr>
   );
 }
@@ -3051,11 +3056,13 @@ const teamMetrics = useMemo(() => {
   });
 
   Object.values(metrics).forEach(m => {
-    m.txVisita = m.total > 0 ? Math.round((m.agendadosVisita / m.total) * 100) : 0;
-    m.txAula = m.total > 0 ? Math.round((m.agendadosAula / m.total) * 100) : 0;
-    m.txConvVisita = m.agendadosVisita > 0 ? Math.round((m.convertidosVisita / m.agendadosVisita) * 100) : 0;
-    m.txConvAula = m.agendadosAula > 0 ? Math.round((m.convertidosAula / m.agendadosAula) * 100) : 0;
-    m.txConversaoGlobal = m.total > 0 ? Math.round((m.convertidos / m.total) * 100) : 0;
+    // null quando não há coorte de captação no período — evita
+    // mostrar "0%" para consultor que fechou leads captados antes.
+    m.txVisita = m.total > 0 ? Math.round((m.agendadosVisita / m.total) * 100) : null;
+    m.txAula = m.total > 0 ? Math.round((m.agendadosAula / m.total) * 100) : null;
+    m.txConvVisita = m.agendadosVisita > 0 ? Math.round((m.convertidosVisita / m.agendadosVisita) * 100) : null;
+    m.txConvAula = m.agendadosAula > 0 ? Math.round((m.convertidosAula / m.agendadosAula) * 100) : null;
+    m.txConversaoGlobal = m.total > 0 ? Math.round((m.convertidos / m.total) * 100) : null;
   });
 
   return Object.values(metrics).sort(
@@ -3237,7 +3244,7 @@ const teamMetrics = useMemo(() => {
             what = 'atualizou fase de'; tone = 'amber';
           }
         } else if (i.type === 'note') {
-          if (/observação do cadastro/i.test(txt)) {
+          if (isRegistrationNote(txt)) {
             what = 'cadastrou'; tone = 'brand';
           } else {
             what = 'anotou em'; tone = 'slate';
@@ -3336,6 +3343,11 @@ const teamMetrics = useMemo(() => {
             onChange={(e) => setCustomEndDate(e.target.value)}
             className="px-3 py-1.5 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[13px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
           />
+          {!periodRange && (
+            <span className="text-[11.5px] font-medium text-amber-600 dark:text-amber-400 whitespace-nowrap">
+              Preencha início e fim para ver os resultados.
+            </span>
+          )}
         </div>
       )}
 
@@ -3568,7 +3580,7 @@ const teamMetrics = useMemo(() => {
               {pendingFollowUps.length === 0 ? (
                 <div className="py-8 text-center text-[12.5px] text-slate-400 italic">Tudo em dia.</div>
               ) : (
-                pendingFollowUps.slice(0, 8).map((lead) => (
+                pendingFollowUps.map((lead) => (
                   <DashTaskItem key={lead.id} lead={lead} onClick={setSelectedLead} />
                 ))
               )}
