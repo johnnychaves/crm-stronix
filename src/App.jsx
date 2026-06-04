@@ -4778,10 +4778,21 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
     [leads, appointmentType]
   );
 
-  // 2) Contadores para stats + chips.
+  // 2) Escopo por consultor (admin) — "de quem são os agendamentos".
+  //    Aplica ANTES dos contadores, pra que StatPills e chips reflitam o
+  //    consultor selecionado. Sem isso, o chip dizia "Hoje 12" e o clique
+  //    entregava 3 (o filtro só agia na lista, não no badge). A busca textual
+  //    é uma lupa à parte: mexe só na lista, não nos contadores — mesmo
+  //    padrão do LeadsView.
+  const scopedLeads = useMemo(
+    () => (consultantFilter ? typeLeads.filter(l => l.consultantId === consultantFilter) : typeLeads),
+    [typeLeads, consultantFilter]
+  );
+
+  // 3) Contadores para stats + chips (sobre o escopo de consultor).
   const counts = useMemo(() => {
     let attended = 0, waiting = 0, finished = 0, today = 0, matriculados = 0;
-    typeLeads.forEach(l => {
+    scopedLeads.forEach(l => {
       const a = getApptAttendanceState(l);
       if (a.key === 'attended') attended++;
       if (a.key === 'scheduled' || a.key === 'pending') waiting++;
@@ -4789,16 +4800,23 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
       if (l.status === 'Venda' || isLeadConverted(l)) matriculados++;
       if (isApptSameDay(getLeadAppointmentDate(l))) today++;
     });
-    return { total: typeLeads.length, attended, waiting, finished, today, matriculados };
-  }, [typeLeads]);
+    return { total: scopedLeads.length, attended, waiting, finished, today, matriculados };
+  }, [scopedLeads]);
 
-  // 3) Filtros + ordenação (futuros primeiro/mais próximos no topo; depois passados/mais recentes).
+  // 4) Busca (nome ou telefone) + filtro de status + ordenação (futuros mais
+  //    próximos no topo; depois passados mais recentes). O telefone casa tanto
+  //    pelo texto cru quanto pelos dígitos normalizados, então "(51) 99999-8888"
+  //    e "5199999" acham o mesmo lead (mesmo padrão canônico do LeadsView).
   const filtered = useMemo(() => {
-    let list = typeLeads;
-    if (consultantFilter) list = list.filter(l => l.consultantId === consultantFilter);
+    let list = scopedLeads;
     if (searchTerm) {
       const q = searchTerm.toLowerCase();
-      list = list.filter(l => (l.name && l.name.toLowerCase().includes(q)) || (l.whatsapp && l.whatsapp.includes(searchTerm)));
+      const digits = searchTerm.replace(/\D/g, '');
+      list = list.filter(l =>
+        (l.name && l.name.toLowerCase().includes(q)) ||
+        (l.whatsapp && l.whatsapp.includes(searchTerm)) ||
+        (digits && String(l.whatsapp || '').replace(/\D/g, '').includes(digits))
+      );
     }
     if (statusFilter === 'today') list = list.filter(l => isApptSameDay(getLeadAppointmentDate(l)));
     else if (statusFilter === 'waiting') list = list.filter(l => { const k = getApptAttendanceState(l).key; return k === 'scheduled' || k === 'pending'; });
@@ -4813,7 +4831,7 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
       if (aF !== bF) return aF ? -1 : 1;
       return aF ? (da - db2) : (db2 - da);
     });
-  }, [typeLeads, consultantFilter, searchTerm, statusFilter]);
+  }, [scopedLeads, searchTerm, statusFilter]);
 
   const chips = [
     { id: 'all', label: 'Todos', count: counts.total },
