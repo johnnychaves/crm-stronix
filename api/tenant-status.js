@@ -54,7 +54,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { tenantId, status, plan, trialDays, archived, internal } = req.body || {};
+    const { tenantId, status, plan, trialDays, archived, internal, internalNotes, monthlyPrice } = req.body || {};
     const slug = String(tenantId || '').trim().toLowerCase();
     if (!slug) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
 
@@ -99,6 +99,22 @@ export default async function handler(req, res) {
     // (MRR, clientes, ticket médio, em risco). Não muda acesso nem status.
     if (internal !== undefined) {
       update.internal = internal === true;
+    }
+    // Notas internas (CRM do dono sobre o cliente) — só o super-admin lê/escreve.
+    if (internalNotes !== undefined) {
+      update.internalNotes = String(internalNotes || '').slice(0, 2000);
+    }
+    // Preço mensal por cliente (override do preço do plano; vazio/null = usa o plano).
+    if (monthlyPrice !== undefined) {
+      if (monthlyPrice === null || monthlyPrice === '') {
+        update.monthlyPrice = null;
+      } else {
+        const p = Number(monthlyPrice);
+        if (!Number.isFinite(p) || p < 0) {
+          return res.status(400).json({ error: 'monthlyPrice deve ser um número ≥ 0 (ou vazio para usar o preço do plano).' });
+        }
+        update.monthlyPrice = p;
+      }
     }
 
     if (Object.keys(update).length === 1) {
