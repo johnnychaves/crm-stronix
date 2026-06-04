@@ -1153,9 +1153,10 @@ useEffect(() => {
       // Pede o token de retorno on-demand (autorizado pelo claim impersonatedBy da
       // sessão atual — nada reutilizável fica guardado no cliente). Restaura a
       // persistência local e volta à conta de super-admin em 1 clique.
-      const res = await fetch('/api/impersonate-return', {
+      const res = await fetch('/api/impersonate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` }
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` },
+        body: JSON.stringify({ action: 'return' })
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.returnToken) {
@@ -1641,7 +1642,7 @@ function SuperAdminView() {
     try {
       const res = await fetch('/api/super-overview', { headers: await authHeader() });
       const data = await res.json();
-      if (res.ok) { setTenants(data.tenants || []); setOverview(data.totals || null); }
+      if (res.ok) { setTenants(data.tenants || []); setOverview(data.totals || null); setAudit(data.audit || []); }
       else toast.error(data.error || 'Erro ao carregar a visão geral.');
     } catch (e) {
       console.error(e);
@@ -1650,15 +1651,7 @@ function SuperAdminView() {
     setLoadingList(false);
   };
 
-  const loadAudit = async () => {
-    try {
-      const res = await fetch('/api/super-audit', { headers: await authHeader() });
-      const data = await res.json();
-      if (res.ok) setAudit(data.entries || []);
-    } catch (e) { console.error('loadAudit', e); }
-  };
-
-  useEffect(() => { loadTenants(); loadAudit(); }, []);
+  useEffect(() => { loadTenants(); }, []);
 
   // Abre o painel de detalhe e busca as estatísticas de uso (Admin SDK).
   const openManage = async (t) => {

@@ -2,18 +2,16 @@ import { adminAuth, adminDb, verifyRequest } from './_firebaseAdmin.js';
 import { usersCollection } from './_auth.js';
 import { logAudit } from './_audit.js';
 
-// "Entrar como" — o super-admin assume a sessão do admin de um tenant para dar
-// suporte/diagnosticar. SUPER-ADMIN only.
+// "Entrar como" — duas ações num só endpoint (o plano Hobby do Vercel limita o
+// nº de Serverless Functions, então start+return moram aqui):
 //
-// Devolve dois custom tokens:
-//   - token:       assume a sessão do admin do tenant (claims extra
-//                  impersonatedBy/impersonatedTenant sinalizam a impersonação).
-//   - returnToken: custom token do próprio super-admin, para voltar em 1 clique
-//                  (gerado agora, enquanto a requisição ainda é autenticada como
-//                  super-admin — depois de trocar a sessão isso não seria possível).
+//   POST { action: 'start', tenantId } → SUPER-ADMIN assume a sessão do admin do
+//     tenant. Devolve um custom token (claims tenantId + impersonatedBy).
+//   POST { action: 'return' }          → de uma sessão impersonada, volta ao
+//     super-admin. Autorizado pelo claim impersonatedBy; devolve o token de
+//     retorno ON-DEMAND (nada reutilizável fica guardado no cliente).
 //
-// Registra a entrada no log de auditoria. NÃO afrouxa as Firestore rules: a
-// sessão assumida é um admin de tenant normal e passa pelas regras existentes.
+// NÃO afrouxa as Firestore rules: a sessão assumida é um admin de tenant normal.
 
 async function resolveTenantAdmin(tenantId) {
   const tenantSnap = await adminDb.collection('tenants').doc(tenantId).get();
@@ -21,8 +19,7 @@ async function resolveTenantAdmin(tenantId) {
   const data = tenantSnap.data() || {};
   // 1) primaryAdminUid do registro do tenant (caminho normal).
   if (data.primaryAdminUid) return { adminUid: data.primaryAdminUid, tenant: data };
-  // 2) fallback p/ tenants legados (registrados via script, sem primaryAdminUid):
-  //    1º usuário com role 'admin' no stronix_users.
+  // 2) fallback p/ tenants legados (sem primaryAdminUid): 1º usuário role 'admin'.
   const snap = await usersCollection(tenantId).where('role', '==', 'admin').limit(1).get();
   if (!snap.empty) {
     const d = snap.docs[0];
@@ -31,54 +28,60 @@ async function resolveTenantAdmin(tenantId) {
   return { error: 'no-admin', tenant: data };
 }
 
+// Volta ao super-admin: emite o token de retorno on-demand, autorizado pelo
+// claim impersonatedBy da sessão atual (que precisa apontar para um super-admin).
+async function handleReturn(auth, res) {
+  const superUid = auth.impersonatedBy;
+  if (!superUid) return res.status(403).json({ error: 'Esta sessão não é uma visualização.' });
+  const userRecord = await adminAuth.getUser(superUid);
+  if (userRecord.customClaims?.superAdmin !== true) {
+    return res.status(403).json({ error: 'Conta de retorno inválida.' });
+  }
+  const returnToken = await adminAuth.createCustomToken(superUid);
+  await logAudit({ action: 'impersonate.stop', tenantId: auth.tenantId || null, actorUid: superUid, details: { from: auth.uid } });
+  return res.status(200).json({ ok: true, returnToken });
+}
+
+// Inicia a visualização: super-admin assume a sessão do admin do tenant.
+async function handleStart(auth, tenantId, res) {
+  if (!auth.superAdmin) return res.status(403).json({ error: 'Apenas o super-admin pode entrar como cliente.' });
+  if (!tenantId) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
+
+  const resolved = await resolveTenantAdmin(tenantId);
+  if (resolved.error === 'not-found') return res.status(404).json({ error: `Organização "${tenantId}" não encontrada.` });
+  if (resolved.error === 'no-admin') return res.status(409).json({ error: 'Esta organização não tem um admin para entrar como.' });
+
+  const { adminUid, tenant } = resolved;
+  // Não impersona org suspensa/arquivada (o acesso já é bloqueado pelas rules).
+  if (tenant?.archived === true || tenant?.status === 'suspended') {
+    return res.status(409).json({ error: 'Reative a organização antes de entrar como ela.' });
+  }
+
+  const token = await adminAuth.createCustomToken(adminUid, {
+    tenantId, // garante o tenant certo mesmo se o admin legado não tiver o claim persistido
+    impersonatedBy: auth.uid,
+    impersonatedTenant: tenantId,
+  });
+  await logAudit({
+    action: 'impersonate.start', tenantId, actorUid: auth.uid,
+    details: { adminUid, tenantName: tenant?.displayName || tenantId },
+  });
+  return res.status(200).json({ ok: true, token, tenantName: tenant?.displayName || tenantId, adminUid });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
 
   const auth = await verifyRequest(req);
   if (!auth) return res.status(401).json({ error: 'Não autenticado.' });
-  if (!auth.superAdmin) return res.status(403).json({ error: 'Apenas o super-admin pode entrar como cliente.' });
 
   try {
+    const action = req.body?.action || 'start';
+    if (action === 'return') return await handleReturn(auth, res);
     const tenantId = String(req.body?.tenantId || '').trim().toLowerCase();
-    if (!tenantId) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
-
-    const resolved = await resolveTenantAdmin(tenantId);
-    if (resolved.error === 'not-found') return res.status(404).json({ error: `Organização "${tenantId}" não encontrada.` });
-    if (resolved.error === 'no-admin') return res.status(409).json({ error: 'Esta organização não tem um admin para entrar como.' });
-
-    const { adminUid, tenant } = resolved;
-
-    // Não deixa impersonar uma org suspensa/arquivada (o acesso já é bloqueado
-    // pelas rules; a sessão cairia direto na tela de bloqueio).
-    if (tenant?.archived === true || tenant?.status === 'suspended') {
-      return res.status(409).json({ error: 'Reative a organização antes de entrar como ela.' });
-    }
-
-    // O token de RETORNO (do super-admin) NÃO é gerado aqui nem guardado no
-    // cliente — seria um custom token de super-admin reutilizável exposto a
-    // qualquer XSS na sessão do cliente. O retorno é emitido on-demand em
-    // /api/impersonate-return, que valida o claim impersonatedBy da sessão.
-    const token = await adminAuth.createCustomToken(adminUid, {
-      tenantId, // garante o tenant certo mesmo se o admin legado não tiver o claim persistido
-      impersonatedBy: auth.uid,
-      impersonatedTenant: tenantId,
-    });
-
-    await logAudit({
-      action: 'impersonate.start',
-      tenantId,
-      actorUid: auth.uid,
-      details: { adminUid, tenantName: tenant?.displayName || tenantId },
-    });
-
-    return res.status(200).json({
-      ok: true,
-      token,
-      tenantName: tenant?.displayName || tenantId,
-      adminUid,
-    });
+    return await handleStart(auth, tenantId, res);
   } catch (error) {
     console.error('impersonate', error);
-    return res.status(500).json({ error: 'Erro ao gerar o acesso de visualização.' });
+    return res.status(500).json({ error: 'Erro na operação de visualização.' });
   }
 }
