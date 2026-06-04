@@ -1544,6 +1544,7 @@ function SuperAdminView() {
   const changePlan = (tenantId, plan) => patchTenant(tenantId, { plan }, `Plano alterado para ${planLabel(plan)}.`, 'plan');
   const extendTrial = (tenantId, days) => patchTenant(tenantId, { trialDays: Number(days) }, Number(days) > 0 ? `Trial de ${days} dias aplicado.` : 'Trial encerrado.', 'trial');
   const setActive = (tenantId, status) => patchTenant(tenantId, { status }, status === 'active' ? 'Organização ativada.' : 'Organização suspensa.', 'status');
+  const setInternal = (tenantId, internal) => patchTenant(tenantId, { internal }, internal ? 'Marcada como interna/teste — fora dos números.' : 'Voltou a contar como cliente.', 'internal');
   const setArchived = async (tenantId, archived) => {
     if (archived && !window.confirm('Desativar esta organização? Os usuários perdem o acesso (dados preservados). Você pode restaurar depois.')) return;
     const ok = await patchTenant(tenantId, { archived }, archived ? 'Organização desativada.' : 'Organização restaurada.', 'archive');
@@ -1674,6 +1675,7 @@ function SuperAdminView() {
                     <div className="text-[13.5px] font-medium text-slate-800 dark:text-slate-100 truncate">
                       {t.displayName}
                       <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{planLabel(t.plan)}</span>
+                      {t.internal && <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 dark:bg-white/[0.08] dark:text-slate-400" title="Conta interna/teste — fora dos números de negócio">Interna</span>}
                     </div>
                     <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate num">
                       {t.id}{seats ? ` · ${seats}` : ''}
@@ -1727,6 +1729,7 @@ function SuperAdminView() {
           onChangePlan={(p) => changePlan(manage.id, p)}
           onExtendTrial={(d) => extendTrial(manage.id, d)}
           onSetActive={(s) => setActive(manage.id, s)}
+          onSetInternal={(v) => setInternal(manage.id, v)}
           onArchive={() => setArchived(manage.id, true)}
         />
       )}
@@ -1736,7 +1739,7 @@ function SuperAdminView() {
 
 // Painel de detalhe/gestão de uma organização (super-admin): uso, plano, trial,
 // status e desativar. Props são handlers do SuperAdminView.
-function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onArchive }) {
+function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onSetInternal, onArchive }) {
   const [trialDays, setTrialDays] = useState('');
   const d = stats?.data;
   const seatLabel = d
@@ -1806,6 +1809,19 @@ function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onEx
               </button>
               <span className="text-[11px] text-slate-400">0 = encerra o trial (ativa)</span>
             </div>
+          </div>
+
+          {/* classificação: conta interna/teste (fora dos KPIs de negócio) */}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] px-3.5 py-2.5">
+            <div className="min-w-0">
+              <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Conta interna / teste</div>
+              <div className="text-[11px] text-slate-400 dark:text-slate-500">Fora do MRR, clientes e em risco. Continua na lista.</div>
+            </div>
+            <button type="button" disabled={!!busy} onClick={() => onSetInternal(!t.internal)}
+              role="switch" aria-checked={!!t.internal} title="Marcar como conta interna/teste"
+              className={`relative w-11 h-6 rounded-full transition shrink-0 disabled:opacity-50 ${t.internal ? 'bg-brand-600' : 'bg-slate-300 dark:bg-white/[0.15]'}`}>
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${t.internal ? 'translate-x-5' : ''}`} />
+            </button>
           </div>
 
           {/* status + ações */}

@@ -55,6 +55,7 @@ async function tenantMetrics(doc) {
     status: data.status || 'active',
     plan,
     archived: data.archived === true,
+    internal: data.internal === true, // conta interna/teste: fica na lista mas fora dos KPIs de negócio
     trialEndsAt: toMillis(data.trialEndsAt),
     createdAt,
     primaryAdminEmail: data.primaryAdminEmail || null,
@@ -90,22 +91,22 @@ export default async function handler(req, res) {
     const totals = {
       total: tenants.length,
       active: 0, trial: 0, suspended: 0, archived: 0,
+      internal: 0,        // contas internas/teste — ficam na lista, fora dos KPIs de negócio
       mrr: 0,
       atRisk: 0,          // clientes ativos/trial sem uso há RISK_DAYS+ dias
-      leads: 0, interactions: 0, users: 0, // somas brutas (não exibidas como KPI; uso interno/futuro)
       trialsExpiring: [], // { id, displayName, trialEndsAt, daysLeft }
       newByMonth: [],     // últimos 6 meses [{ ym, label, count }]
     };
 
     for (const t of tenants) {
+      // Contas internas/teste (a própria academia do dono, ambientes de teste):
+      // ficam visíveis na lista, mas NUNCA entram nos números de negócio.
+      if (t.internal) { totals.internal += 1; continue; }
+
       if (t.archived) totals.archived += 1;
       else if (t.status === 'trial') totals.trial += 1;
       else if (t.status === 'suspended') totals.suspended += 1;
       else totals.active += 1;
-
-      totals.leads += t.leadCount;
-      totals.interactions += t.interactionCount;
-      totals.users += t.userCount;
 
       // MRR = receita recorrente real: só organizações ativas e pagantes.
       // Trials (ainda não pagam) e suspensas/arquivadas não entram.
@@ -137,7 +138,7 @@ export default async function handler(req, res) {
     }
     const monthIndex = Object.fromEntries(months.map((m, i) => [m.ym, i]));
     for (const t of tenants) {
-      if (!t.createdAt) continue;
+      if (t.internal || !t.createdAt) continue;
       const d = new Date(t.createdAt);
       const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
       if (ym in monthIndex) months[monthIndex[ym]].count += 1;
