@@ -8228,7 +8228,7 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
           </div>
           <div className="space-y-2">
             {statusesForFunnel.map((s, i) => {
-              const leadCount = (leads || []).filter(l => l.status === s.name).length;
+              const leadCount = (leads || []).filter(l => l.funnelId === funnelId && l.status === s.name).length;
               const isSystem = isSystemStage(s);
               return (
                 <div
@@ -8571,7 +8571,7 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
           <div>
             <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.05] text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
               <span>Motivo</span>
-              <span>Ocorrências no mês</span>
+              <span>Ocorrências</span>
             </div>
             <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
               {counts.map(({ r, n }) => {
@@ -8739,7 +8739,12 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
   // academia). 0=dom..6=sáb. Persiste no config geral (write só admin).
   const toggleMetaWeekday = async (dow) => {
     const set = new Set(Array.isArray(metaWeekdays) ? metaWeekdays : [1, 2, 3, 4, 5]);
-    if (set.has(dow)) set.delete(dow); else set.add(dow);
+    if (set.has(dow)) {
+      // Não deixa zerar: ao menos um dia precisa valer, senão a Meta Diária
+      // nunca dispara (todo dia vira "folga") e o ritmo do mês trava.
+      if (set.size === 1) { toast.warning('Mantenha ao menos um dia ativo na meta.'); return; }
+      set.delete(dow);
+    } else set.add(dow);
     const next = Array.from(set).sort((a, b) => a - b);
     try {
       await setDoc(
@@ -8996,7 +9001,15 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
   const handleTransfer = async () => {
     if (!fromUser || !toUser) { toast.warning('Selecione consultor de origem e de destino.'); return; }
     if (fromUser === toUser) { toast.warning('Origem e destino são os mesmos.'); return; }
-    if (!window.confirm("CONFIRMAR MIGRAÇÃO TOTAL?")) return;
+    // Confirmação informativa: operação em massa e irreversível. Mostra
+    // quantos leads, de quem para quem, e o escopo (base inteira + interações).
+    const fromObj = (allFromConsultants || []).find(u => u.id === fromUser);
+    const toObj = (usersList || []).find(u => u.id === toUser);
+    const totalToMove = (leads || []).filter(l => l.consultantId === fromUser).length;
+    if (!window.confirm(
+      `Migrar ${totalToMove} lead(s) de "${fromObj?.name || 'origem'}" para "${toObj?.name || 'destino'}"?\n\n` +
+      `Inclui toda a base do consultor de origem (ativos, Venda e Perda) e todas as interações vinculadas. Esta ação não pode ser desfeita.`
+    )) return;
 
     setLoading(true);
 
