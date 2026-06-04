@@ -37,7 +37,8 @@ export async function verifyRequest(req) {
     return {
       uid: decoded.uid,
       tenantId: decoded.tenantId || null,
-      superAdmin: decoded.superAdmin === true
+      superAdmin: decoded.superAdmin === true,
+      impersonatedBy: decoded.impersonatedBy || null
     };
   } catch (err) {
     console.error('verifyRequest: token inválido/revogado', err?.message || err);

@@ -1,4 +1,5 @@
 import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
+import { logAudit } from './_audit.js';
 
 const USERS_PATH = 'stronix_users';
 const SOURCES_PATH = 'stronix_sources';
@@ -205,6 +206,11 @@ export default async function handler(req, res) {
         // recriar catálogos nas Configurações. Loga sem falhar o provisionamento.
         console.error('provision-tenant seed', seedErr);
       }
+
+      await logAudit({
+        action: 'tenant.provision', tenantId: slug, actorUid: auth.uid,
+        details: { displayName: String(displayName).trim(), plan: normalizedPlan, status },
+      });
 
       return res.status(200).json({ ok: true, tenantId: slug, adminUid: userRecord.uid, plan: normalizedPlan, status });
     } catch (error) {

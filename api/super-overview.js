@@ -145,7 +145,20 @@ export default async function handler(req, res) {
     }
     totals.newByMonth = months;
 
-    return res.status(200).json({ totals, tenants });
+    // Atividade recente (auditoria) — vai no mesmo GET para não gastar uma
+    // Serverless Function só para isso (limite do plano Hobby do Vercel).
+    let audit = [];
+    try {
+      const auditSnap = await adminDb.collection('superadmin_audit').orderBy('at', 'desc').limit(30).get();
+      audit = auditSnap.docs.map((d) => {
+        const x = d.data() || {};
+        return { id: d.id, action: x.action || '', tenantId: x.tenantId || null, actorUid: x.actorUid || null, details: x.details || {}, at: toMillis(x.at) };
+      });
+    } catch (err) {
+      console.error('super-overview audit', err?.message || err);
+    }
+
+    return res.status(200).json({ totals, tenants, audit });
   } catch (error) {
     console.error('super-overview', error);
     return res.status(500).json({ error: 'Erro ao montar a visão geral.' });

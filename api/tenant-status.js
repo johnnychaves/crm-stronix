@@ -1,4 +1,5 @@
 import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
+import { logAudit } from './_audit.js';
 
 // Atualiza o status/plano de uma organização — SUPERADMIN only.
 //
@@ -122,6 +123,11 @@ export default async function handler(req, res) {
     }
 
     await ref.set(update, { merge: true });
+
+    await logAudit({
+      action: 'tenant.update', tenantId: slug, actorUid: auth.uid,
+      details: { changed: Object.keys(update).filter((k) => k !== 'updatedAt') },
+    });
 
     // Ao suspender, derruba as sessões ativas imediatamente.
     let revoked = 0;

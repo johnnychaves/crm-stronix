@@ -67,6 +67,7 @@ import confetti from 'canvas-confetti';
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithCustomToken,
   sendPasswordResetEmail,
   signOut,
   setPersistence,
@@ -662,6 +663,8 @@ function AppInner() {
       // data-load e seed (que gateiam em appUser) já enxergam o tenant certo.
       let tenantId;
       let superAdmin = false;
+      let impersonatedBy = null;      // claim presente quando o super-admin entrou "como" este tenant
+      let impersonatedTenant = null;
       try {
         let tokenResult = await currentUser.getIdTokenResult();
         tenantId = tokenResult.claims.tenantId;
@@ -670,6 +673,8 @@ function AppInner() {
           tenantId = tokenResult.claims.tenantId;
         }
         superAdmin = tokenResult.claims.superAdmin === true;
+        impersonatedBy = tokenResult.claims.impersonatedBy || null;
+        impersonatedTenant = tokenResult.claims.impersonatedTenant || null;
       } catch (claimErr) {
         console.warn('Falha ao ler claim de tenant; usando tenant padrão.', claimErr);
       }
@@ -745,7 +750,7 @@ function AppInner() {
 
       if (!byUidSnap.empty) {
         const userDoc = byUidSnap.docs[0];
-        setAppUser({ id: userDoc.id, ...userDoc.data(), tenantId: appId, superAdmin });
+        setAppUser({ id: userDoc.id, ...userDoc.data(), tenantId: appId, superAdmin, impersonating: !!impersonatedBy, impersonatedTenant });
         setAuthSetupError('');
         setIsAuthChecking(false);
         return;
@@ -774,7 +779,9 @@ function AppInner() {
             authUid: currentUser.uid,
             email: normalizedEmail,
             tenantId: appId,
-            superAdmin
+            superAdmin,
+            impersonating: !!impersonatedBy,
+            impersonatedTenant
           });
 
           setAuthSetupError('');
@@ -1145,6 +1152,41 @@ useEffect(() => {
     })();
   }, [appUser, funnels, loadingData, funnelsMigrationStatus]);
 
+  // Impersonação ("entrar como"): o banner e o "sair" vivem aqui (nível do app);
+  // o "entrar" é feito no SuperAdminView. Ressincroniza com o sessionStorage
+  // sempre que a sessão (appUser) troca — começar/voltar trocam o usuário do
+  // Firebase, então o effect reflete o estado no banner.
+  const [impersonation, setImpersonation] = useState(readImpersonation);
+  const [exitingImpersonation, setExitingImpersonation] = useState(false);
+  useEffect(() => { setImpersonation(readImpersonation()); }, [appUser]);
+  const stopImpersonation = async () => {
+    setExitingImpersonation(true);
+    try { sessionStorage.removeItem(IMPERSONATION_KEY); } catch { /* ignore */ }
+    try {
+      // Pede o token de retorno on-demand (autorizado pelo claim impersonatedBy da
+      // sessão atual — nada reutilizável fica guardado no cliente). Restaura a
+      // persistência local e volta à conta de super-admin em 1 clique.
+      const res = await fetch('/api/impersonate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` },
+        body: JSON.stringify({ action: 'return' })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.returnToken) {
+        try { await setPersistence(auth, browserLocalPersistence); } catch { /* ignore */ }
+        await signInWithCustomToken(auth, data.returnToken);
+      } else {
+        // Retorno indisponível (claim já expirado): sai com segurança para o login.
+        await signOut(auth);
+      }
+    } catch (e) {
+      console.error('stopImpersonation', e);
+      try { await signOut(auth); } catch { /* ignore */ }
+    }
+    setImpersonation(null);
+    setExitingImpersonation(false);
+  };
+
   const handleLogout = async () => {
   try {
     await signOut(auth);
@@ -1280,6 +1322,11 @@ useEffect(() => {
       </aside>
 
       <main className="flex-1 flex flex-col min-w-0 relative">
+        {(impersonation || appUser.impersonating) && (
+          <ImpersonationBanner
+            viewing={impersonation?.viewing || { id: appUser.impersonatedTenant, name: appUser.impersonatedTenant }}
+            onExit={stopImpersonation} busy={exitingImpersonation} />
+        )}
         <header className="h-16 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10 shrink-0">
           <div className="flex items-center">
             <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setIsMobileMenuOpen(true)}><Menu className="w-6 h-6" /></button>
@@ -1394,6 +1441,29 @@ const tenantSeatLabel = (t) => {
   return max === Infinity ? `${t.userCount} usuários` : `${t.userCount}/${max} seats`;
 };
 
+// "Entrar como" (impersonação): o token de retorno + dados do cliente ficam no
+// sessionStorage (escopo da aba). É a fonte de verdade do banner — ver o App
+// (banner + "sair") e o SuperAdminView (o "entrar").
+const IMPERSONATION_KEY = 'crm-impersonation';
+const readImpersonation = () => {
+  try { return JSON.parse(sessionStorage.getItem(IMPERSONATION_KEY) || 'null'); }
+  catch { return null; }
+};
+
+// Faixa fixa exibida no topo enquanto o super-admin visualiza como um cliente.
+function ImpersonationBanner({ viewing, onExit, busy }) {
+  return (
+    <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-2 bg-amber-500 text-amber-950 text-[12.5px] font-semibold">
+      <Eye className="w-4 h-4 shrink-0" />
+      <span className="truncate">Visualizando como <b>{viewing?.name || viewing?.id}</b> — você está dentro da conta deste cliente.</span>
+      <button onClick={onExit} disabled={busy}
+        className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-950/90 text-amber-50 hover:bg-amber-950 disabled:opacity-60 transition">
+        <LogOut className="w-3.5 h-3.5" /> Sair da visualização
+      </button>
+    </div>
+  );
+}
+
 // Formatação dos números do painel (BRL inteiro — os preços são redondos).
 const fmtBRL = (n) => `R$ ${Number(n || 0).toLocaleString('pt-BR')}`;
 const fmtNum = (n) => Number(n || 0).toLocaleString('pt-BR');
@@ -1419,6 +1489,29 @@ const lastActivityLabel = (ms) => {
   if (days <= 0) return 'ativo hoje';
   if (days === 1) return 'última atividade ontem';
   return `última atividade há ${days} dias`;
+};
+
+// Tempo relativo curto para o feed de auditoria.
+const timeAgo = (ms) => {
+  if (!ms) return '';
+  const s = Math.floor((Date.now() - ms) / 1000);
+  if (s < 60) return 'agora';
+  const m = Math.floor(s / 60); if (m < 60) return `há ${m}min`;
+  const h = Math.floor(m / 60); if (h < 24) return `há ${h}h`;
+  const d = Math.floor(h / 24); return `há ${d}d`;
+};
+// Descrição legível de uma entrada do log de auditoria do super-admin.
+const auditActionLabel = (e) => {
+  const t = e.tenantId || '—';
+  switch (e.action) {
+    case 'impersonate.start': return `Entrou como ${e.details?.tenantName || t}`;
+    case 'tenant.provision': return `Criou a organização ${e.details?.displayName || t}`;
+    case 'tenant.update': {
+      const ch = (e.details?.changed || []).join(', ');
+      return `Atualizou ${t}${ch ? ` (${ch})` : ''}`;
+    }
+    default: return `${e.action} · ${t}`;
+  }
 };
 
 // KPIs de negócio no topo do painel super-admin: clientes ativos, MRR estimado,
@@ -1495,6 +1588,7 @@ function SuperAdminView() {
   const toast = useToast();
   const [tenants, setTenants] = useState([]);
   const [overview, setOverview] = useState(null);     // totais agregados da plataforma (KPIs)
+  const [audit, setAudit] = useState([]);             // log de atividade do super-admin
   const [loadingList, setLoadingList] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '' });
@@ -1522,13 +1616,46 @@ function SuperAdminView() {
     Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
   });
 
+  // "Entrar como": gera o acesso de visualização e troca a sessão para o admin
+  // do cliente. Guarda o token de retorno no sessionStorage (o banner e o "sair"
+  // ficam no App). A sessão troca e este painel desmonta — não reseto o busy.
+  const enterAs = async (tenant) => {
+    if (manageBusy) return;
+    setManageBusy('impersonate');
+    try {
+      const res = await fetch('/api/impersonate', {
+        method: 'POST', headers: await authHeader(),
+        body: JSON.stringify({ tenantId: tenant.id })
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || 'Não foi possível entrar como esta organização.'); setManageBusy(null); return; }
+      try {
+        // Só metadados de exibição (sem token) — o retorno é emitido on-demand.
+        sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({
+          viewing: { id: tenant.id, name: data.tenantName || tenant.displayName },
+          at: Date.now()
+        }));
+      } catch { /* ignore */ }
+      // Persistência de SESSÃO (por aba): a sessão impersonada nunca "gruda" além
+      // da aba — fechar/reabrir sai da visualização (volta ao login) em vez de
+      // prender o dono dentro da conta do cliente.
+      try { await setPersistence(auth, browserSessionPersistence); } catch { /* ignore */ }
+      await signInWithCustomToken(auth, data.token);
+      // onAuthStateChanged remonta o app como o admin do cliente; o banner aparece.
+    } catch (e) {
+      console.error('enterAs', e);
+      toast.error('Não foi possível entrar como esta organização.');
+      setManageBusy(null);
+    }
+  };
+
   // Carrega a visão geral (totais agregados + tenants enriquecidos) num único GET.
   const loadTenants = async () => {
     setLoadingList(true);
     try {
       const res = await fetch('/api/super-overview', { headers: await authHeader() });
       const data = await res.json();
-      if (res.ok) { setTenants(data.tenants || []); setOverview(data.totals || null); }
+      if (res.ok) { setTenants(data.tenants || []); setOverview(data.totals || null); setAudit(data.audit || []); }
       else toast.error(data.error || 'Erro ao carregar a visão geral.');
     } catch (e) {
       console.error(e);
@@ -1785,6 +1912,12 @@ function SuperAdminView() {
                   <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${statusStyle}`}>
                     {statusLabel}
                   </span>
+                  {!t.archived && (t.status === 'active' || t.status === 'trial') && (
+                    <button onClick={() => enterAs(t)} disabled={!!manageBusy} title="Entrar como esta organização (ver o que o cliente vê)"
+                      className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-300 disabled:opacity-50 transition inline-flex items-center gap-1 whitespace-nowrap">
+                      <Eye size={12} /> Entrar
+                    </button>
+                  )}
                   <button onClick={() => copyTenantLink(t.id)} title={`Copiar link de acesso · /${t.id}`}
                     className="text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-300 transition whitespace-nowrap">
                     Copiar link
@@ -1822,6 +1955,20 @@ function SuperAdminView() {
         </SettingsCard>
       )}
 
+      {audit.length > 0 && (
+        <SettingsCard title="Atividade recente" hint="Últimas ações no painel (auditoria)" icon={<Activity size={16} />}>
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+            {audit.map(e => (
+              <div key={e.id} className="flex items-center gap-3 py-2.5 text-[12.5px]">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${e.action === 'impersonate.start' ? 'bg-amber-500' : 'bg-brand-500'}`} />
+                <span className="flex-1 text-slate-700 dark:text-slate-200 truncate">{auditActionLabel(e)}</span>
+                <span className="text-[11px] text-slate-400 shrink-0">{timeAgo(e.at)}</span>
+              </div>
+            ))}
+          </div>
+        </SettingsCard>
+      )}
+
       {manage && (
         <TenantManageModal
           t={manage} stats={stats} busy={manageBusy}
@@ -1832,6 +1979,7 @@ function SuperAdminView() {
           onSetActive={(s) => setActive(manage.id, s)}
           onSetInternal={(v) => setInternal(manage.id, v)}
           onSaveMeta={(body) => saveInternalMeta(manage.id, body)}
+          onEnterAs={() => enterAs(manage)}
           onArchive={() => setArchived(manage.id, true)}
         />
       )}
@@ -1841,7 +1989,7 @@ function SuperAdminView() {
 
 // Painel de detalhe/gestão de uma organização (super-admin): uso, plano, trial,
 // status e desativar. Props são handlers do SuperAdminView.
-function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onSetInternal, onSaveMeta, onArchive }) {
+function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onSetInternal, onSaveMeta, onEnterAs, onArchive }) {
   const [trialDays, setTrialDays] = useState('');
   const [notes, setNotes] = useState(t.internalNotes || '');
   const [price, setPrice] = useState(t.monthlyPrice != null ? String(t.monthlyPrice) : '');
@@ -1965,6 +2113,10 @@ function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onEx
           {/* status + ações */}
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button onClick={onCopy} className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 transition">Copiar link</button>
+            {!t.archived && (t.status === 'active' || t.status === 'trial') && (
+              <button onClick={onEnterAs} disabled={!!busy}
+                className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-300 disabled:opacity-50 transition inline-flex items-center gap-1"><Eye size={13} /> Entrar como</button>
+            )}
             {t.status === 'suspended' ? (
               <button onClick={() => onSetActive('active')} disabled={!!busy}
                 className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition">Reativar</button>
