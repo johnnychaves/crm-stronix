@@ -1398,6 +1398,29 @@ const tenantSeatLabel = (t) => {
 const fmtBRL = (n) => `R$ ${Number(n || 0).toLocaleString('pt-BR')}`;
 const fmtNum = (n) => Number(n || 0).toLocaleString('pt-BR');
 
+// Saúde do cliente pela última atividade: ativo ≤7d, ocioso 8–14d, em risco >14d
+// (alinhado ao KPI "Clientes em risco"). Usado nos badges da lista e do modal.
+const HEALTH = {
+  active: { key: 'active', label: 'Ativo',    cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' },
+  idle:   { key: 'idle',   label: 'Ocioso',   cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' },
+  risk:   { key: 'risk',   label: 'Em risco', cls: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' },
+};
+const tenantHealth = (lastActivityAt) => {
+  if (!lastActivityAt) return HEALTH.risk;
+  const days = (Date.now() - lastActivityAt) / 86400000;
+  if (days <= 7) return HEALTH.active;
+  if (days <= 14) return HEALTH.idle;
+  return HEALTH.risk;
+};
+// Rótulo curto da última atividade ("há X dias").
+const lastActivityLabel = (ms) => {
+  if (!ms) return 'sem atividade registrada';
+  const days = Math.floor((Date.now() - ms) / 86400000);
+  if (days <= 0) return 'ativo hoje';
+  if (days === 1) return 'última atividade ontem';
+  return `última atividade há ${days} dias`;
+};
+
 // KPIs de negócio no topo do painel super-admin: clientes ativos, MRR estimado,
 // leads e usuários da plataforma, alerta de trials vencendo e mini-gráfico de
 // novas organizações por mês. Alimentado por GET /api/super-overview (totals).
@@ -1479,6 +1502,9 @@ function SuperAdminView() {
   const [manage, setManage] = useState(null);          // org aberta no painel de detalhe
   const [stats, setStats] = useState(null);            // { loading, data }
   const [manageBusy, setManageBusy] = useState(null);  // ação em andamento no detalhe
+  const [search, setSearch] = useState('');            // busca por nome/slug/e-mail
+  const [statusFilter, setStatusFilter] = useState('all'); // all | active | trial | suspended | risk | internal
+  const [sortBy, setSortBy] = useState('name');        // name | activity | revenue
 
   // Copia o link de acesso da academia (stronilead.com.br/<slug>).
   const copyTenantLink = async (slug) => {
@@ -1558,6 +1584,7 @@ function SuperAdminView() {
   const extendTrial = (tenantId, days) => patchTenant(tenantId, { trialDays: Number(days) }, Number(days) > 0 ? `Trial de ${days} dias aplicado.` : 'Trial encerrado.', 'trial');
   const setActive = (tenantId, status) => patchTenant(tenantId, { status }, status === 'active' ? 'Organização ativada.' : 'Organização suspensa.', 'status');
   const setInternal = (tenantId, internal) => patchTenant(tenantId, { internal }, internal ? 'Marcada como interna/teste — fora dos números.' : 'Voltou a contar como cliente.', 'internal');
+  const saveInternalMeta = (tenantId, body) => patchTenant(tenantId, body, 'Dados internos salvos.', 'meta');
   const setArchived = async (tenantId, archived) => {
     if (archived && !window.confirm('Desativar esta organização? Os usuários perdem o acesso (dados preservados). Você pode restaurar depois.')) return;
     const ok = await patchTenant(tenantId, { archived }, archived ? 'Organização desativada.' : 'Organização restaurada.', 'archive');
@@ -1607,6 +1634,27 @@ function SuperAdminView() {
 
   const activeTenants = tenants.filter(t => !t.archived);
   const archivedTenants = tenants.filter(t => t.archived);
+
+  // Busca + filtro + ordenação (client-side, sobre as organizações não arquivadas).
+  const visibleTenants = useMemo(() => {
+    let list = tenants.filter(t => !t.archived);
+    const q = search.trim().toLowerCase();
+    if (q) list = list.filter(t =>
+      t.displayName.toLowerCase().includes(q) ||
+      t.id.toLowerCase().includes(q) ||
+      (t.primaryAdminEmail || '').toLowerCase().includes(q)
+    );
+    if (statusFilter === 'active') list = list.filter(t => !t.internal && t.status === 'active');
+    else if (statusFilter === 'trial') list = list.filter(t => !t.internal && t.status === 'trial');
+    else if (statusFilter === 'suspended') list = list.filter(t => t.status === 'suspended');
+    else if (statusFilter === 'risk') list = list.filter(t => !t.internal && (t.status === 'active' || t.status === 'trial') && tenantHealth(t.lastActivityAt).key === 'risk');
+    else if (statusFilter === 'internal') list = list.filter(t => t.internal);
+    const arr = [...list];
+    if (sortBy === 'activity') arr.sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
+    else if (sortBy === 'revenue') arr.sort((a, b) => (b.price || 0) - (a.price || 0));
+    else arr.sort((a, b) => a.displayName.localeCompare(b.displayName));
+    return arr;
+  }, [tenants, search, statusFilter, sortBy]);
 
   return (
     <div className="animate-fade-in font-sans space-y-6 max-w-3xl">
@@ -1664,14 +1712,46 @@ function SuperAdminView() {
         </form>
       </SettingsCard>
 
-      <SettingsCard title="Organizações" hint={`${activeTenants.length} ativa${activeTenants.length === 1 ? '' : 's'}`} icon={<Globe size={16} />}>
+      <SettingsCard
+        title="Organizações"
+        hint={visibleTenants.length === activeTenants.length
+          ? `${activeTenants.length} ativa${activeTenants.length === 1 ? '' : 's'}`
+          : `${visibleTenants.length} de ${activeTenants.length} ativas`}
+        icon={<Globe size={16} />}
+      >
+        {/* busca + filtros */}
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <div className="relative flex-1 min-w-[180px]">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar por nome, slug ou e-mail..."
+              className="w-full h-9 pl-8 pr-3 rounded-lg text-[12.5px] bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500" />
+          </div>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            className="h-9 px-2.5 rounded-lg text-[12px] bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500 cursor-pointer">
+            <option value="all">Todas</option>
+            <option value="active">Ativas</option>
+            <option value="trial">Trial</option>
+            <option value="suspended">Suspensas</option>
+            <option value="risk">Em risco</option>
+            <option value="internal">Internas</option>
+          </select>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)}
+            className="h-9 px-2.5 rounded-lg text-[12px] bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500 cursor-pointer">
+            <option value="name">Ordenar: Nome</option>
+            <option value="activity">Ordenar: Atividade</option>
+            <option value="revenue">Ordenar: Receita</option>
+          </select>
+        </div>
+
         {loadingList ? (
           <div className="text-center text-[12.5px] text-slate-400 py-10">Carregando...</div>
         ) : activeTenants.length === 0 ? (
           <div className="text-center text-[12.5px] text-slate-400 italic py-10">Nenhuma organização ativa.</div>
+        ) : visibleTenants.length === 0 ? (
+          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Nenhuma organização encontrada com esses filtros.</div>
         ) : (
           <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
-            {activeTenants.map(t => {
+            {visibleTenants.map(t => {
               const statusStyle = t.status === 'active'
                 ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
                 : t.status === 'trial'
@@ -1679,6 +1759,8 @@ function SuperAdminView() {
                   : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
               const statusLabel = t.status === 'active' ? 'Ativa' : t.status === 'trial' ? 'Trial' : t.status === 'suspended' ? 'Suspensa' : t.status;
               const seats = tenantSeatLabel(t);
+              // Saúde só para clientes reais (não-internos) ativos/trial.
+              const health = (!t.internal && (t.status === 'active' || t.status === 'trial')) ? tenantHealth(t.lastActivityAt) : null;
               return (
                 <div key={t.id} className="flex items-center gap-3 px-4 py-3">
                   <span className="w-7 h-7 rounded-lg grid place-items-center bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 shrink-0">
@@ -1694,6 +1776,12 @@ function SuperAdminView() {
                       {t.id}{seats ? ` · ${seats}` : ''}
                     </div>
                   </div>
+                  {t.internalNotes && <FileText size={13} className="text-slate-400 dark:text-slate-500 shrink-0" title="Tem nota interna" />}
+                  {health && health.key !== 'active' && (
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${health.cls}`} title={lastActivityLabel(t.lastActivityAt)}>
+                      {health.label}
+                    </span>
+                  )}
                   <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md whitespace-nowrap ${statusStyle}`}>
                     {statusLabel}
                   </span>
@@ -1743,6 +1831,7 @@ function SuperAdminView() {
           onExtendTrial={(d) => extendTrial(manage.id, d)}
           onSetActive={(s) => setActive(manage.id, s)}
           onSetInternal={(v) => setInternal(manage.id, v)}
+          onSaveMeta={(body) => saveInternalMeta(manage.id, body)}
           onArchive={() => setArchived(manage.id, true)}
         />
       )}
@@ -1752,8 +1841,11 @@ function SuperAdminView() {
 
 // Painel de detalhe/gestão de uma organização (super-admin): uso, plano, trial,
 // status e desativar. Props são handlers do SuperAdminView.
-function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onSetInternal, onArchive }) {
+function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onSetInternal, onSaveMeta, onArchive }) {
   const [trialDays, setTrialDays] = useState('');
+  const [notes, setNotes] = useState(t.internalNotes || '');
+  const [price, setPrice] = useState(t.monthlyPrice != null ? String(t.monthlyPrice) : '');
+  const metaDirty = notes !== (t.internalNotes || '') || price !== (t.monthlyPrice != null ? String(t.monthlyPrice) : '');
   const d = stats?.data;
   const seatLabel = d
     ? (d.maxUsers == null ? `${d.userCount} usuários (ilimitado)` : `${d.userCount}/${d.maxUsers} seats`)
@@ -1772,7 +1864,13 @@ function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onEx
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200/80 dark:border-white/[0.07]">
           <div className="min-w-0">
             <h2 className="font-display text-[17px] font-bold tracking-tight truncate text-gray-900 dark:text-white">{t.displayName}</h2>
-            <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num truncate">{t.id}</div>
+            <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num truncate flex items-center gap-2">
+              <span className="truncate">{t.id}</span>
+              {!t.internal && (t.status === 'active' || t.status === 'trial') && (() => {
+                const h = tenantHealth(t.lastActivityAt);
+                return <span className={`text-[9.5px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${h.cls}`} title={lastActivityLabel(t.lastActivityAt)}>{h.label}</span>;
+              })()}
+            </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-white/[0.06] transition shrink-0"><X size={17} /></button>
         </div>
@@ -1835,6 +1933,33 @@ function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onEx
               className={`relative w-11 h-6 rounded-full transition shrink-0 disabled:opacity-50 ${t.internal ? 'bg-brand-600' : 'bg-slate-300 dark:bg-white/[0.15]'}`}>
               <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${t.internal ? 'translate-x-5' : ''}`} />
             </button>
+          </div>
+
+          {/* interno: preço por cliente + notas (só o super-admin vê) */}
+          <div className="space-y-2.5 rounded-xl border border-slate-200 dark:border-white/[0.07] p-3.5">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-700 dark:text-slate-200">
+                <FileText size={13} className="text-slate-400" /> Interno (só você vê)
+              </div>
+              {metaDirty && (
+                <button type="button" disabled={!!busy} onClick={() => onSaveMeta({ internalNotes: notes, monthlyPrice: price === '' ? null : Number(price) })}
+                  className="h-7 px-3 rounded-lg text-[11.5px] font-semibold bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition">
+                  Salvar
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11.5px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Preço mensal</span>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-slate-400 pointer-events-none">R$</span>
+                <input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} placeholder={`padrão (${planLabel(t.plan)})`}
+                  className="w-40 h-9 pl-8 pr-3 rounded-lg text-[13px] num bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500" />
+              </div>
+              <span className="text-[10.5px] text-slate-400">vazio = preço do plano · entra no MRR</span>
+            </div>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} maxLength={2000}
+              placeholder="Anotações sobre este cliente: contato, negociação, observações..."
+              className="w-full px-3 py-2 rounded-lg text-[12.5px] bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500 resize-none custom-scrollbar" />
           </div>
 
           {/* status + ações */}
