@@ -5035,9 +5035,14 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
   }, [selectedFunnelId]);
 
   const filteredLeads = useMemo(() => {
+    const lowerSearch = searchTerm.toLowerCase();
+    const searchDigits = searchTerm.replace(/\D/g, '');
     return (leads || []).filter(l => {
       const matchFunnel = isItemInFunnel(l, selectedFunnelId, defaultFunnelId);
-      const matchSearch = (l.name || '').toLowerCase().includes(searchTerm.toLowerCase()) || (l.whatsapp || '').includes(searchTerm);
+      const matchSearch =
+        (l.name || '').toLowerCase().includes(lowerSearch) ||
+        (l.whatsapp || '').includes(searchTerm) ||
+        (searchDigits && String(l.whatsapp || '').replace(/\D/g, '').includes(searchDigits));
       const matchStatus = statusFilters.length === 0 || statusFilters.includes(l.status);
       const matchConsultant = consultantFilters.length === 0 || consultantFilters.includes(l.consultantId);
       const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
@@ -5060,21 +5065,25 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
       return;
     }
     
+    // Sanitiza cada célula: escapa aspas (em TODOS os campos) e neutraliza
+    // fórmulas (CSV injection) — um valor começando com = + - @ tab/CR seria
+    // executado pelo Excel/Sheets ao abrir o arquivo. Tudo entre aspas.
+    const csvCell = (value) => {
+      let s = String(value ?? '');
+      if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    // Separador ';' — o Excel em pt-BR usa ponto-e-vírgula como separador de
+    // lista; com vírgula o arquivo abriria tudo numa coluna só.
+    const SEP = ';';
     const headers = ["Nome", "WhatsApp", "Origem", "Fase do Funil", "Consultor", "Data Cadastro", "Observação", "Motivo Perda"];
-    const csvRows = filteredLeads.map(l => {
-      return [
-        `"${l.name || ''}"`,
-        `"${l.whatsapp || ''}"`,
-        `"${l.source || ''}"`,
-        `"${l.status || ''}"`,
-        `"${l.consultantName || ''}"`,
-        `"${l.createdAt ? l.createdAt.toLocaleDateString('pt-BR') : ''}"`,
-        `"${(l.observation || '').replace(/"/g, '""')}"`,
-        `"${(l.lossReason || '').replace(/"/g, '""')}"`
-      ].join(',');
-    });
-    
-    const csvContent = [headers.join(','), ...csvRows].join('\n');
+    const csvRows = filteredLeads.map(l => [
+      l.name, l.whatsapp, l.source, l.status, l.consultantName,
+      l.createdAt ? l.createdAt.toLocaleDateString('pt-BR') : '',
+      l.observation, l.lossReason
+    ].map(csvCell).join(SEP));
+
+    const csvContent = [headers.map(csvCell).join(SEP), ...csvRows].join('\r\n');
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }); // \uFEFF força o Excel a ler UTF-8
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
