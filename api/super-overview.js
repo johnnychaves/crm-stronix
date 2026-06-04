@@ -86,11 +86,13 @@ export default async function handler(req, res) {
 
     const now = Date.now();
     const DAY = 86400000;
+    const RISK_DAYS = 14; // cliente ativo/trial sem atividade há +14 dias = risco de churn
     const totals = {
       total: tenants.length,
       active: 0, trial: 0, suspended: 0, archived: 0,
       mrr: 0,
-      leads: 0, interactions: 0, users: 0,
+      atRisk: 0,          // clientes ativos/trial sem uso há RISK_DAYS+ dias
+      leads: 0, interactions: 0, users: 0, // somas brutas (não exibidas como KPI; uso interno/futuro)
       trialsExpiring: [], // { id, displayName, trialEndsAt, daysLeft }
       newByMonth: [],     // últimos 6 meses [{ ym, label, count }]
     };
@@ -108,6 +110,12 @@ export default async function handler(req, res) {
       // MRR = receita recorrente real: só organizações ativas e pagantes.
       // Trials (ainda não pagam) e suspensas/arquivadas não entram.
       if (!t.archived && t.status === 'active') totals.mrr += t.price || 0;
+
+      // Clientes em risco (churn): ativos/trial sem atividade há RISK_DAYS+ dias.
+      // Arquivadas e suspensas não contam (já não são clientes ativos).
+      if (!t.archived && (t.status === 'active' || t.status === 'trial')) {
+        if (!t.lastActivityAt || now - t.lastActivityAt > RISK_DAYS * DAY) totals.atRisk += 1;
+      }
 
       // Trials vencendo nos próximos 7 dias (inclui os que vencem hoje/atrasados).
       if (!t.archived && t.status === 'trial' && t.trialEndsAt && t.trialEndsAt - now <= 7 * DAY) {

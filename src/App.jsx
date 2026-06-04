@@ -49,6 +49,7 @@ import {
   Flame,
   Zap,
   Building2,
+  DollarSign,
   BookOpen,
   MessageSquare,
   MoreHorizontal,
@@ -1389,11 +1390,12 @@ const fmtNum = (n) => Number(n || 0).toLocaleString('pt-BR');
 // novas organizações por mês. Alimentado por GET /api/super-overview (totals).
 function SuperOverviewCards({ overview }) {
   if (!overview) return null;
+  const arpu = overview.active > 0 ? Math.round(overview.mrr / overview.active) : 0;
   const kpis = [
-    { label: 'Clientes ativos', value: fmtNum(overview.active), sub: `${overview.trial} em trial · ${overview.suspended} susp.`, icon: <Building2 size={15} /> },
     { label: 'MRR estimado', value: fmtBRL(overview.mrr), sub: 'receita recorrente/mês', icon: <TrendingUp size={15} /> },
-    { label: 'Leads na plataforma', value: fmtNum(overview.leads), sub: `${fmtNum(overview.interactions)} interações`, icon: <Activity size={15} /> },
-    { label: 'Usuários totais', value: fmtNum(overview.users), sub: `em ${fmtNum(overview.total)} organizaç${overview.total === 1 ? 'ão' : 'ões'}`, icon: <Users size={15} /> },
+    { label: 'Clientes ativos', value: fmtNum(overview.active), sub: `${overview.trial} em trial · ${overview.suspended} susp.`, icon: <Building2 size={15} /> },
+    { label: 'Ticket médio', value: fmtBRL(arpu), sub: 'por cliente ativo', icon: <DollarSign size={15} /> },
+    { label: 'Clientes em risco', value: fmtNum(overview.atRisk), sub: 'sem uso há 14+ dias', icon: <AlertCircle size={15} />, danger: overview.atRisk > 0 },
   ];
   const expiring = overview.trialsExpiring || [];
   const months = overview.newByMonth || [];
@@ -1409,7 +1411,7 @@ function SuperOverviewCards({ overview }) {
               <span className="text-brand-600 dark:text-brand-400 shrink-0">{k.icon}</span>
               <span className="truncate">{k.label}</span>
             </div>
-            <div className="num text-[22px] font-semibold tracking-tight text-slate-900 dark:text-white mt-1.5 leading-none">{k.value}</div>
+            <div className={`num text-[22px] font-semibold tracking-tight mt-1.5 leading-none ${k.danger ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{k.value}</div>
             <div className="text-[10.5px] text-slate-400 dark:text-slate-500 mt-1 truncate num">{k.sub}</div>
           </div>
         ))}
