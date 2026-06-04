@@ -7537,10 +7537,11 @@ function ManageUsersTab({ db, appUser }) {
 
     setLoadingSubmit(true);
     try {
+      const newName = form.name.trim();
       await updateDoc(
         doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, editingUser.id),
         {
-          name: form.name.trim(),
+          name: newName,
           email: normalizeEmail(form.email),
           authUid: normalizeUid(form.authUid) || null,
           shiftStart: form.shiftStart || null,
@@ -7548,6 +7549,25 @@ function ManageUsersTab({ db, appUser }) {
           password: deleteField()
         }
       );
+
+      // Propaga a renomeação para a base do consultor. consultantName é
+      // desnormalizado nos leads (aparece no Kanban, Agendamentos, lista de
+      // Leads, CSV e ranking do Dashboard); sem isso, renomear o consultor
+      // deixava todos esses lugares exibindo o nome antigo. Busca direto no
+      // Firestore (não só os leads em memória) pra alcançar a base inteira.
+      if (editingUser.name !== newName) {
+        const leadsSnap = await getDocs(query(
+          collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH),
+          where('consultantId', '==', editingUser.id)
+        ));
+        if (!leadsSnap.empty) {
+          const ops = leadsSnap.docs.map(d => ({
+            ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, d.id),
+            data: { consultantName: newName }
+          }));
+          await commitOpsInChunks(db, ops, 400);
+        }
+      }
 
       if (form.password.trim()) {
         const targetUid = normalizeUid(form.authUid) || editingUser.authUid;
