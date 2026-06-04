@@ -49,6 +49,7 @@ import {
   Flame,
   Zap,
   Building2,
+  DollarSign,
   BookOpen,
   MessageSquare,
   MoreHorizontal,
@@ -1393,9 +1394,84 @@ const tenantSeatLabel = (t) => {
   return max === Infinity ? `${t.userCount} usuários` : `${t.userCount}/${max} seats`;
 };
 
+// Formatação dos números do painel (BRL inteiro — os preços são redondos).
+const fmtBRL = (n) => `R$ ${Number(n || 0).toLocaleString('pt-BR')}`;
+const fmtNum = (n) => Number(n || 0).toLocaleString('pt-BR');
+
+// KPIs de negócio no topo do painel super-admin: clientes ativos, MRR estimado,
+// leads e usuários da plataforma, alerta de trials vencendo e mini-gráfico de
+// novas organizações por mês. Alimentado por GET /api/super-overview (totals).
+function SuperOverviewCards({ overview }) {
+  if (!overview) return null;
+  const arpu = overview.active > 0 ? Math.round(overview.mrr / overview.active) : 0;
+  const kpis = [
+    { label: 'MRR estimado', value: fmtBRL(overview.mrr), sub: 'receita recorrente/mês', icon: <TrendingUp size={15} /> },
+    { label: 'Clientes ativos', value: fmtNum(overview.active), sub: `${overview.trial} em trial · ${overview.suspended} susp.`, icon: <Building2 size={15} /> },
+    { label: 'Ticket médio', value: fmtBRL(arpu), sub: 'por cliente ativo', icon: <DollarSign size={15} /> },
+    { label: 'Clientes em risco', value: fmtNum(overview.atRisk), sub: 'sem uso há 14+ dias', icon: <AlertCircle size={15} />, danger: overview.atRisk > 0 },
+  ];
+  const expiring = overview.trialsExpiring || [];
+  const months = overview.newByMonth || [];
+  const maxMonth = Math.max(1, ...months.map(m => m.count));
+  const newTotal = months.reduce((s, m) => s + m.count, 0);
+
+  return (
+    <div className="space-y-2.5">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
+        {kpis.map(k => (
+          <div key={k.label} className="rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3.5">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+              <span className="text-brand-600 dark:text-brand-400 shrink-0">{k.icon}</span>
+              <span className="truncate">{k.label}</span>
+            </div>
+            <div className={`num text-[22px] font-semibold tracking-tight mt-1.5 leading-none ${k.danger ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{k.value}</div>
+            <div className="text-[10.5px] text-slate-400 dark:text-slate-500 mt-1 truncate num">{k.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {expiring.length > 0 && (
+        <div className="flex items-start gap-2.5 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-500/20 dark:bg-amber-500/[0.08] px-3.5 py-2.5">
+          <AlertTriangle size={15} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="min-w-0 text-[12px] text-amber-800 dark:text-amber-200">
+            <span className="font-semibold">{expiring.length} trial{expiring.length === 1 ? '' : 's'} vencendo em até 7 dias.</span>{' '}
+            <span className="text-amber-700/90 dark:text-amber-300/90">
+              {expiring.slice(0, 3).map(e => `${e.displayName} (${e.daysLeft <= 0 ? 'hoje' : e.daysLeft + 'd'})`).join(' · ')}
+              {expiring.length > 3 ? ` +${expiring.length - 3}` : ''}
+            </span>
+          </div>
+        </div>
+      )}
+
+      <div className="rounded-2xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+            <BarChart3 size={15} className="text-brand-600 dark:text-brand-400" /> Novas organizações
+          </div>
+          <span className="text-[10.5px] text-slate-400 dark:text-slate-500 num">{newTotal} em 6 meses</span>
+        </div>
+        <div className="mt-2.5 flex items-end gap-1.5 h-12">
+          {months.map(m => (
+            <div key={m.ym} className="flex-1 flex flex-col items-center justify-end h-full" title={`${m.label}: ${m.count}`}>
+              <div className="w-full max-w-[26px] rounded-md bg-brand-500/70 dark:bg-brand-500/60"
+                style={{ height: `${Math.max(m.count ? 10 : 2, (m.count / maxMonth) * 100)}%` }} />
+            </div>
+          ))}
+        </div>
+        <div className="mt-1.5 flex gap-1.5">
+          {months.map(m => (
+            <div key={m.ym} className="flex-1 text-center text-[9.5px] text-slate-400 dark:text-slate-500 capitalize">{m.label.replace('.', '')}</div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SuperAdminView() {
   const toast = useToast();
   const [tenants, setTenants] = useState([]);
+  const [overview, setOverview] = useState(null);     // totais agregados da plataforma (KPIs)
   const [loadingList, setLoadingList] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '' });
@@ -1420,16 +1496,17 @@ function SuperAdminView() {
     Authorization: `Bearer ${await auth.currentUser.getIdToken()}`
   });
 
+  // Carrega a visão geral (totais agregados + tenants enriquecidos) num único GET.
   const loadTenants = async () => {
     setLoadingList(true);
     try {
-      const res = await fetch('/api/provision-tenant', { headers: await authHeader() });
+      const res = await fetch('/api/super-overview', { headers: await authHeader() });
       const data = await res.json();
-      if (res.ok) setTenants(data.tenants || []);
-      else toast.error(data.error || 'Erro ao listar organizações.');
+      if (res.ok) { setTenants(data.tenants || []); setOverview(data.totals || null); }
+      else toast.error(data.error || 'Erro ao carregar a visão geral.');
     } catch (e) {
       console.error(e);
-      toast.error('Erro ao listar organizações.');
+      toast.error('Erro ao carregar a visão geral.');
     }
     setLoadingList(false);
   };
@@ -1480,6 +1557,7 @@ function SuperAdminView() {
   const changePlan = (tenantId, plan) => patchTenant(tenantId, { plan }, `Plano alterado para ${planLabel(plan)}.`, 'plan');
   const extendTrial = (tenantId, days) => patchTenant(tenantId, { trialDays: Number(days) }, Number(days) > 0 ? `Trial de ${days} dias aplicado.` : 'Trial encerrado.', 'trial');
   const setActive = (tenantId, status) => patchTenant(tenantId, { status }, status === 'active' ? 'Organização ativada.' : 'Organização suspensa.', 'status');
+  const setInternal = (tenantId, internal) => patchTenant(tenantId, { internal }, internal ? 'Marcada como interna/teste — fora dos números.' : 'Voltou a contar como cliente.', 'internal');
   const setArchived = async (tenantId, archived) => {
     if (archived && !window.confirm('Desativar esta organização? Os usuários perdem o acesso (dados preservados). Você pode restaurar depois.')) return;
     const ok = await patchTenant(tenantId, { archived }, archived ? 'Organização desativada.' : 'Organização restaurada.', 'archive');
@@ -1541,6 +1619,8 @@ function SuperAdminView() {
           Crie uma organização nova (cliente) com dados totalmente isolados e o primeiro admin dela.
         </p>
       </section>
+
+      <SuperOverviewCards overview={overview} />
 
       <SettingsCard title="Nova organização" hint="Provisiona o tenant + o primeiro admin" icon={<Plus size={16} />}>
         <form onSubmit={submit} className="space-y-4 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
@@ -1608,6 +1688,7 @@ function SuperAdminView() {
                     <div className="text-[13.5px] font-medium text-slate-800 dark:text-slate-100 truncate">
                       {t.displayName}
                       <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">{planLabel(t.plan)}</span>
+                      {t.internal && <span className="ml-1.5 text-[9px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 dark:bg-white/[0.08] dark:text-slate-400" title="Conta interna/teste — fora dos números de negócio">Interna</span>}
                     </div>
                     <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate num">
                       {t.id}{seats ? ` · ${seats}` : ''}
@@ -1661,6 +1742,7 @@ function SuperAdminView() {
           onChangePlan={(p) => changePlan(manage.id, p)}
           onExtendTrial={(d) => extendTrial(manage.id, d)}
           onSetActive={(s) => setActive(manage.id, s)}
+          onSetInternal={(v) => setInternal(manage.id, v)}
           onArchive={() => setArchived(manage.id, true)}
         />
       )}
@@ -1670,7 +1752,7 @@ function SuperAdminView() {
 
 // Painel de detalhe/gestão de uma organização (super-admin): uso, plano, trial,
 // status e desativar. Props são handlers do SuperAdminView.
-function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onArchive }) {
+function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onSetInternal, onArchive }) {
   const [trialDays, setTrialDays] = useState('');
   const d = stats?.data;
   const seatLabel = d
@@ -1740,6 +1822,19 @@ function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onEx
               </button>
               <span className="text-[11px] text-slate-400">0 = encerra o trial (ativa)</span>
             </div>
+          </div>
+
+          {/* classificação: conta interna/teste (fora dos KPIs de negócio) */}
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] px-3.5 py-2.5">
+            <div className="min-w-0">
+              <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Conta interna / teste</div>
+              <div className="text-[11px] text-slate-400 dark:text-slate-500">Fora do MRR, clientes e em risco. Continua na lista.</div>
+            </div>
+            <button type="button" disabled={!!busy} onClick={() => onSetInternal(!t.internal)}
+              role="switch" aria-checked={!!t.internal} title="Marcar como conta interna/teste"
+              className={`relative w-11 h-6 rounded-full transition shrink-0 disabled:opacity-50 ${t.internal ? 'bg-brand-600' : 'bg-slate-300 dark:bg-white/[0.15]'}`}>
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${t.internal ? 'translate-x-5' : ''}`} />
+            </button>
           </div>
 
           {/* status + ações */}

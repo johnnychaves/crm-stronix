@@ -54,7 +54,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { tenantId, status, plan, trialDays, archived } = req.body || {};
+    const { tenantId, status, plan, trialDays, archived, internal } = req.body || {};
     const slug = String(tenantId || '').trim().toLowerCase();
     if (!slug) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
 
@@ -94,6 +94,11 @@ export default async function handler(req, res) {
       } else if (status === undefined) {
         update.status = 'active';
       }
+    }
+    // Conta interna/teste: marca a org para ficar fora dos KPIs de negócio
+    // (MRR, clientes, ticket médio, em risco). Não muda acesso nem status.
+    if (internal !== undefined) {
+      update.internal = internal === true;
     }
 
     if (Object.keys(update).length === 1) {
