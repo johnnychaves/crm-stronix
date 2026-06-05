@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -370,26 +370,39 @@ const normalizeMetaWeekdays = (raw) => {
   return clean.length ? clean : [1, 2, 3, 4, 5];
 };
 
-const getLastInteractionDate = (lead, interactions) => {
-  if (!lead || !Array.isArray(interactions)) return null;
-  const fromList = interactions
-    .filter(i => i.leadId === lead.id && i.createdAt instanceof Date)
-    .reduce((latest, i) => (!latest || i.createdAt > latest ? i.createdAt : latest), null);
-  return fromList;
-};
-
-const getDaysSinceLastContact = (lead, interactions) => {
-  const last = getLastInteractionDate(lead, interactions) || lead?.createdAt;
-  if (!(last instanceof Date) || isNaN(last.getTime())) return null;
-  const diffMs = Date.now() - last.getTime();
-  return Math.max(0, Math.floor(diffMs / DAY_MS));
+// Índice leadId -> { count, lastDate } construído UMA vez em O(interações).
+// Antes, cada card/linha recomputava interactions.filter() por lead — dava
+// O(leads × interações) a cada render/tecla. Monte num useMemo([interactions])
+// e passe lastDate aos badges (LeadTemperatureBadge/DaysSinceContactBadge) e
+// use nos filtros (ex: "Apenas Hot").
+const buildInteractionIndex = (interactions) => {
+  const idx = new Map();
+  (interactions || []).forEach(i => {
+    let e = idx.get(i.leadId);
+    if (!e) { e = { count: 0, lastDate: null }; idx.set(i.leadId, e); }
+    e.count += 1;
+    if (i.createdAt instanceof Date && (!e.lastDate || i.createdAt > e.lastDate)) {
+      e.lastDate = i.createdAt;
+    }
+  });
+  return idx;
 };
 
 const isLeadActive = (lead) => {
   return lead && lead.status !== 'Venda' && lead.status !== 'Perda';
 };
 
-const isHotLead = (lead, interactions) => {
+// --- Predicados de temperatura/recência. Recebem a última data de interação
+// já resolvida (via buildInteractionIndex.get(id)?.lastDate), sem varrer o
+// array por lead — O(1) por lead em listas. ---
+
+const getDaysSinceFromDate = (lead, lastInteractionDate) => {
+  const last = (lastInteractionDate instanceof Date ? lastInteractionDate : null) || lead?.createdAt;
+  if (!(last instanceof Date) || isNaN(last.getTime())) return null;
+  return Math.max(0, Math.floor((Date.now() - last.getTime()) / DAY_MS));
+};
+
+const isHotLeadFromDate = (lead, lastInteractionDate) => {
   if (!isLeadActive(lead)) return false;
   const now = Date.now();
 
@@ -400,9 +413,8 @@ const isHotLead = (lead, interactions) => {
   }
 
   // Critério 2: interação nas últimas 24h
-  const lastInteraction = getLastInteractionDate(lead, interactions);
-  if (lastInteraction instanceof Date) {
-    const sinceMs = now - lastInteraction.getTime();
+  if (lastInteractionDate instanceof Date) {
+    const sinceMs = now - lastInteractionDate.getTime();
     if (sinceMs >= 0 && sinceMs <= 24 * HOUR_MS) return true;
   }
 
@@ -417,11 +429,11 @@ const isHotLead = (lead, interactions) => {
   return false;
 };
 
-const isColdLead = (lead, interactions) => {
+const isColdLeadFromDate = (lead, lastInteractionDate) => {
   if (!isLeadActive(lead)) return false;
   // Hot e cold são mutuamente exclusivos — hot tem prioridade
-  if (isHotLead(lead, interactions)) return false;
-  const days = getDaysSinceLastContact(lead, interactions);
+  if (isHotLeadFromDate(lead, lastInteractionDate)) return false;
+  const days = getDaysSinceFromDate(lead, lastInteractionDate);
   return days !== null && days >= 7;
 };
 
@@ -2771,10 +2783,10 @@ function TagBadge({ tagName, tagsArray }) {
   );
 }
 
-function LeadTemperatureBadge({ lead, interactions, compact = false }) {
+function LeadTemperatureBadge({ lead, lastInteractionDate, compact = false }) {
   if (!lead || !isLeadActive(lead)) return null;
-  const hot = isHotLead(lead, interactions);
-  const cold = !hot && isColdLead(lead, interactions);
+  const hot = isHotLeadFromDate(lead, lastInteractionDate);
+  const cold = !hot && isColdLeadFromDate(lead, lastInteractionDate);
   if (!hot && !cold) return null;
 
   const size = compact ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-0.5';
@@ -2800,9 +2812,9 @@ function LeadTemperatureBadge({ lead, interactions, compact = false }) {
   );
 }
 
-function DaysSinceContactBadge({ lead, interactions }) {
+function DaysSinceContactBadge({ lead, lastInteractionDate }) {
   if (!lead || !isLeadActive(lead)) return null;
-  const days = getDaysSinceLastContact(lead, interactions);
+  const days = getDaysSinceFromDate(lead, lastInteractionDate);
   if (days === null) return null;
   if (days < 1) return null; // Sem badge se foi hoje
   const tone = days >= 7
@@ -4274,18 +4286,7 @@ const [isPanning, setIsPanning] = useState(false);
   // Índice leadId → { count, lastDate }. Percorre interactions UMA vez,
   // evitando que cada card refaça interactions.filter()/getLastInteraction
   // (era O(cards × interações) a cada render/drag).
-  const interactionIndex = useMemo(() => {
-    const idx = new Map();
-    (interactions || []).forEach(i => {
-      let e = idx.get(i.leadId);
-      if (!e) { e = { count: 0, lastDate: null }; idx.set(i.leadId, e); }
-      e.count += 1;
-      if (i.createdAt instanceof Date && (!e.lastDate || i.createdAt > e.lastDate)) {
-        e.lastDate = i.createdAt;
-      }
-    });
-    return idx;
-  }, [interactions]);
+  const interactionIndex = useMemo(() => buildInteractionIndex(interactions), [interactions]);
 
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
@@ -4542,7 +4543,7 @@ if (!lead) return;
         }`}
       >
         <div className="absolute top-2 right-2 z-10">
-          <LeadTemperatureBadge lead={lead} interactions={interactions} compact />
+          <LeadTemperatureBadge lead={lead} lastInteractionDate={idxEntry?.lastDate} compact />
         </div>
 
         <div className="p-3 pb-2.5">
@@ -4629,7 +4630,7 @@ if (!lead) return;
               {fmtKanbanRelDateTime(lead.nextFollowUp)}
             </span>
           ) : daysSince !== null && daysSince >= 1 ? (
-            <DaysSinceContactBadge lead={lead} interactions={interactions} />
+            <DaysSinceContactBadge lead={lead} lastInteractionDate={idxEntry?.lastDate} />
           ) : (
             <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 whitespace-nowrap">
               <AlertCircle className="w-3 h-3" /> Sem agendamento
@@ -5424,23 +5425,33 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
     setStatusFilters([]);
   }, [selectedFunnelId]);
 
+  // Índice leadId -> última interação, construído uma vez (O(interações)).
+  // Alimenta o filtro "Apenas Hot" e os badges da tabela sem recomputar
+  // interactions.filter() por linha (era O(leads × interações) a cada tecla).
+  const interactionIndex = useMemo(() => buildInteractionIndex(interactions), [interactions]);
+
+  // Busca deferida: o input atualiza na hora (searchTerm), mas a filtragem
+  // pesada da base roda sobre o valor deferido — o React mantém a digitação
+  // fluida e refiltra quando sobra tempo, sem debounce manual/timeout.
+  const deferredSearch = useDeferredValue(searchTerm);
+
   const filteredLeads = useMemo(() => {
-    const lowerSearch = searchTerm.toLowerCase();
-    const searchDigits = searchTerm.replace(/\D/g, '');
+    const lowerSearch = deferredSearch.toLowerCase();
+    const searchDigits = deferredSearch.replace(/\D/g, '');
     return (leads || []).filter(l => {
       const matchFunnel = isItemInFunnel(l, selectedFunnelId, defaultFunnelId);
       const matchSearch =
         (l.name || '').toLowerCase().includes(lowerSearch) ||
-        (l.whatsapp || '').includes(searchTerm) ||
+        (l.whatsapp || '').includes(deferredSearch) ||
         (searchDigits && String(l.whatsapp || '').replace(/\D/g, '').includes(searchDigits));
       const matchStatus = statusFilters.length === 0 || statusFilters.includes(l.status);
       const matchConsultant = consultantFilters.length === 0 || consultantFilters.includes(l.consultantId);
       const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
       const matchOverdue = !overdueOnly || isOverdue;
-      const matchHot = !hotOnly || isHotLead(l, interactions);
+      const matchHot = !hotOnly || isHotLeadFromDate(l, interactionIndex.get(l.id)?.lastDate);
       return matchFunnel && matchSearch && matchStatus && matchOverdue && matchConsultant && matchHot;
     }).sort((a,b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
-  }, [leads, interactions, searchTerm, statusFilters, overdueOnly, hotOnly, consultantFilters, selectedFunnelId, defaultFunnelId]);
+  }, [leads, interactionIndex, deferredSearch, statusFilters, overdueOnly, hotOnly, consultantFilters, selectedFunnelId, defaultFunnelId]);
 
   const toggleStatus = (s) => setStatusFilters(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   const toggleConsultant = (id) => setConsultantFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -5623,7 +5634,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
                     <td className="py-3.5 px-3 text-center">
                       <div className="inline-flex items-center gap-1.5 flex-wrap justify-center">
                         <StatusBadge statusName={l.status} statusesArray={statuses} />
-                        <LeadTemperatureBadge lead={l} interactions={interactions} compact />
+                        <LeadTemperatureBadge lead={l} lastInteractionDate={interactionIndex.get(l.id)?.lastDate} compact />
                       </div>
                     </td>
                     <td className="py-3.5 px-3">
@@ -5637,7 +5648,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
                       ) : (
                         <div className="flex flex-col gap-1">
                           <span className="text-[11.5px] text-slate-400 dark:text-slate-500 italic">Sem agendamento</span>
-                          <DaysSinceContactBadge lead={l} interactions={interactions} />
+                          <DaysSinceContactBadge lead={l} lastInteractionDate={interactionIndex.get(l.id)?.lastDate} />
                         </div>
                       )}
                     </td>
