@@ -343,6 +343,11 @@ function AcceptInviteScreen({ token, tenantId }) {
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
+// Tamanho de página das listas longas (Leads, Agendamentos): renderiza só os
+// primeiros N e revela mais sob demanda — evita pintar centenas de linhas no
+// DOM de uma vez.
+const LIST_PAGE_SIZE = 50;
+
 // Normaliza a lista de opções de quantidade de aulas experimentais:
 // inteiros positivos, sem repetição, ordenados. Aceita também um número
 // legado `fallbackMax` (config antiga com maxTrialClasses) → vira [1..max].
@@ -5138,6 +5143,7 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
   const [searchTerm, setSearchTerm] = useState('');
   const [consultantFilter, setConsultantFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all | today | waiting | attended | finished
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
 
   const isAdmin = isAdminUser(appUser);
   const isAula = appointmentType === 'aula_experimental';
@@ -5205,6 +5211,10 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
       return aF ? (da - db2) : (db2 - da);
     });
   }, [scopedLeads, searchTerm, statusFilter]);
+
+  // Paginação "carregar mais": renderiza só os primeiros visibleCount.
+  // (Sem reset em efeito; ao filtrar, o slice já opera sobre um conjunto menor.)
+  const visibleRows = filtered.slice(0, visibleCount);
 
   const chips = [
     { id: 'all', label: 'Todos', count: counts.total },
@@ -5304,7 +5314,7 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(l => {
+                {visibleRows.map(l => {
                   const d = getLeadAppointmentDate(l);
                   const att = getApptAttendanceState(l);
                   const fin = getApptFinalState(l);
@@ -5386,6 +5396,13 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
             </table>
           </div>
         </div>
+        {filtered.length > visibleCount && (
+          <div className="flex justify-center pt-1">
+            <Btn kind="soft" onClick={() => setVisibleCount(c => c + LIST_PAGE_SIZE)}>
+              Carregar mais ({visibleRows.length} de {filtered.length})
+            </Btn>
+          </div>
+        )}
       </div>
 
       {selectedLead && (
@@ -5414,6 +5431,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
   const [hotOnly, setHotOnly] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedLead, setSelectedLead] = useState(null);
+  const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
   // O AddLeadModal mora no App-level. O botão local apenas dispara o
   // callback `onAddLeadClick` recebido por prop.
 
@@ -5452,6 +5470,12 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
       return matchFunnel && matchSearch && matchStatus && matchOverdue && matchConsultant && matchHot;
     }).sort((a,b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
   }, [leads, interactionIndex, deferredSearch, statusFilters, overdueOnly, hotOnly, consultantFilters, selectedFunnelId, defaultFunnelId]);
+
+  // Paginação "carregar mais": renderiza só os primeiros visibleCount leads.
+  // O usuário expande sob demanda; ao estreitar a busca/filtros a lista
+  // encolhe sozinha (slice de um conjunto menor), mantendo o DOM leve sem
+  // precisar resetar estado num efeito.
+  const visibleLeads = filteredLeads.slice(0, visibleCount);
 
   const toggleStatus = (s) => setStatusFilters(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   const toggleConsultant = (id) => setConsultantFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -5590,7 +5614,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
 
       {/* Results count */}
       <div className="text-[12.5px] text-slate-500 dark:text-slate-400">
-        Exibindo <span className="num font-semibold text-slate-700 dark:text-slate-200">{filteredLeads.length}</span> de <span className="num">{totalLeads}</span> leads
+        Exibindo <span className="num font-semibold text-slate-700 dark:text-slate-200">{visibleLeads.length}</span> de <span className="num">{filteredLeads.length}</span> leads
       </div>
 
       {/* Table */}
@@ -5606,7 +5630,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
               </tr>
             </thead>
             <tbody>
-              {filteredLeads.map(l => {
+              {visibleLeads.map(l => {
                 const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
                 return (
                   <tr
@@ -5673,6 +5697,14 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
           </table>
         </div>
       </div>
+
+      {filteredLeads.length > visibleCount && (
+        <div className="flex justify-center">
+          <Btn kind="soft" onClick={() => setVisibleCount(c => c + LIST_PAGE_SIZE)}>
+            Carregar mais ({visibleLeads.length} de {filteredLeads.length})
+          </Btn>
+        </div>
+      )}
 
       {isFilterOpen && (
         <div className="fixed inset-0 z-[120] overflow-hidden flex justify-end animate-fade-in">
