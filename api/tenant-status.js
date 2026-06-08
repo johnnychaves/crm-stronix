@@ -1,28 +1,30 @@
 import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { logAudit } from './_audit.js';
+import { loadPlans } from './_plans.js';
 
-// Atualiza o status/plano de uma organização — SUPERADMIN only.
+// Atualiza status / plano / cobrança / perfil de uma organização — SUPERADMIN only.
 //
-// POST body: { tenantId, status?, plan?, trialDays? }
-//   - status: 'active' | 'suspended'  (ao suspender, revoga os refresh tokens
-//     de todos os usuários do tenant → forçados a re-logar; o app bloqueia o
-//     acesso quando lê status === 'suspended').
-//   - plan:   'starter' | 'pro' | 'enterprise'  (opcional, altera o plano)
-//   - trialDays: number  (opcional; >0 reinicia o trial a partir de agora,
-//     0/null encerra o trial)
+// POST body (todos opcionais exceto tenantId):
+//   - status: 'active' | 'suspended'   (ao suspender, revoga refresh tokens)
+//   - plan:   slug de um plano EXISTENTE (validado contra a coleção plans/)
+//   - trialDays: number  (>0 reinicia trial a partir de agora; 0/null encerra)
+//   - archived, internal, internalNotes, monthlyPrice  (já existiam)
+//   - displayName, settings { city, state, logoUrl }
+//   - paymentStatus: 'paid' | 'pending' | 'overdue' | null   (cobrança manual)
+//   - lastPaymentAt, nextBillingAt: millis (number) | null
+//   NUNCA altera tenantId (imutável).
 //
 // Vercel serverless function (não Express) — consistente com os demais api/.
 
 const USERS_PATH = 'stronix_users';
-const PLANS = ['starter', 'pro', 'enterprise'];
 const STATUSES = ['active', 'suspended'];
+const PAYMENT_STATUSES = ['paid', 'pending', 'overdue'];
 
 const usersCollection = (tenantId) =>
   adminDb.collection('artifacts').doc(tenantId).collection('public').doc('data').collection(USERS_PATH);
 
-// Revoga os refresh tokens de todos os usuários do tenant. Coleta uids tanto
-// do id do doc (padrão dos usuários criados pelo provisionamento) quanto do
-// campo authUid (usuários legados). Best-effort por usuário.
+// Revoga os refresh tokens de todos os usuários do tenant. Coleta uids tanto do
+// id do doc quanto do campo authUid (legado). Best-effort por usuário.
 async function revokeAllTenantTokens(tenantId) {
   const snap = await usersCollection(tenantId).get();
   const uids = new Set();
@@ -43,6 +45,15 @@ async function revokeAllTenantTokens(tenantId) {
   return revoked;
 }
 
+// millis (number) | null | '' → Timestamp | null. Retorna undefined p/ valor
+// inválido (sinaliza "não mexer no campo").
+function toTimestampOrNull(v) {
+  if (v === null || v === '') return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return undefined;
+  return admin.firestore.Timestamp.fromMillis(n);
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
@@ -55,7 +66,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { tenantId, status, plan, trialDays, archived, internal, internalNotes, monthlyPrice } = req.body || {};
+    const {
+      tenantId, status, plan, trialDays, archived, internal, internalNotes, monthlyPrice,
+      displayName, settings, paymentStatus, lastPaymentAt, nextBillingAt,
+    } = req.body || {};
     const slug = String(tenantId || '').trim().toLowerCase();
     if (!slug) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
 
@@ -66,18 +80,22 @@ export default async function handler(req, res) {
     }
 
     const update = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    let statusChanged = false;
 
     if (status !== undefined) {
       if (!STATUSES.includes(status)) {
         return res.status(400).json({ error: "status deve ser 'active' ou 'suspended'." });
       }
       update.status = status;
+      statusChanged = true;
     }
     if (plan !== undefined) {
-      if (!PLANS.includes(plan)) {
-        return res.status(400).json({ error: "plan deve ser 'starter', 'pro' ou 'enterprise'." });
+      // Plano validado contra a coleção DINÂMICA plans/ (fallback p/ os 3 hard-coded).
+      const plans = await loadPlans();
+      if (!plans.has(String(plan))) {
+        return res.status(400).json({ error: `Plano "${plan}" não existe.` });
       }
-      update.plan = plan;
+      update.plan = String(plan);
     }
     if (trialDays !== undefined) {
       const days = Number(trialDays);
@@ -86,18 +104,13 @@ export default async function handler(req, res) {
         : null;
     }
     // Desativar/arquivar (soft-delete): arquivar bloqueia o acesso (status
-    // 'suspended' já é negado pelas rules) e sai da lista de ativas; restaurar
-    // reativa. Reversível, preserva todos os dados.
+    // 'suspended' é negado pelas rules) e sai da lista de ativas; restaurar reativa.
     if (archived !== undefined) {
       update.archived = archived === true;
-      if (update.archived) {
-        update.status = 'suspended';
-      } else if (status === undefined) {
-        update.status = 'active';
-      }
+      if (update.archived) { update.status = 'suspended'; statusChanged = true; }
+      else if (status === undefined) { update.status = 'active'; statusChanged = true; }
     }
-    // Conta interna/teste: marca a org para ficar fora dos KPIs de negócio
-    // (MRR, clientes, ticket médio, em risco). Não muda acesso nem status.
+    // Conta interna/teste: fica fora dos KPIs de negócio. Não muda acesso/status.
     if (internal !== undefined) {
       update.internal = internal === true;
     }
@@ -117,9 +130,49 @@ export default async function handler(req, res) {
         update.monthlyPrice = p;
       }
     }
+    // Nome de exibição (não pode ficar vazio se enviado).
+    if (displayName !== undefined) {
+      const name = String(displayName || '').trim();
+      if (!name) return res.status(400).json({ error: 'displayName não pode ficar vazio.' });
+      update.displayName = name.slice(0, 120);
+    }
+    // settings.{city,state,logoUrl} — merge parcial (set merge:true preserva as
+    // outras chaves de settings).
+    if (settings && typeof settings === 'object') {
+      const s = {};
+      if (settings.city !== undefined) s.city = String(settings.city || '').slice(0, 120);
+      if (settings.state !== undefined) s.state = String(settings.state || '').slice(0, 60);
+      if (settings.logoUrl !== undefined) s.logoUrl = String(settings.logoUrl || '').slice(0, 500);
+      if (Object.keys(s).length) update.settings = s;
+    }
+    // Cobrança manual (ainda sem gateway de pagamento).
+    if (paymentStatus !== undefined) {
+      if (paymentStatus === null || paymentStatus === '') {
+        update.paymentStatus = null;
+      } else if (!PAYMENT_STATUSES.includes(paymentStatus)) {
+        return res.status(400).json({ error: "paymentStatus deve ser 'paid', 'pending', 'overdue' ou vazio." });
+      } else {
+        update.paymentStatus = paymentStatus;
+      }
+    }
+    if (lastPaymentAt !== undefined) {
+      const ts = toTimestampOrNull(lastPaymentAt);
+      if (ts !== undefined) update.lastPaymentAt = ts;
+    }
+    if (nextBillingAt !== undefined) {
+      const ts = toTimestampOrNull(nextBillingAt);
+      if (ts !== undefined) update.nextBillingAt = ts;
+    }
+
+    // Marca quando o status mudou — base do "churn nos últimos 30 dias" no
+    // painel financeiro (tenants existentes sem este campo não contam: métrica
+    // forward-looking).
+    if (statusChanged) {
+      update.statusChangedAt = admin.firestore.FieldValue.serverTimestamp();
+    }
 
     if (Object.keys(update).length === 1) {
-      return res.status(400).json({ error: 'Nada para atualizar (informe status, plan e/ou trialDays).' });
+      return res.status(400).json({ error: 'Nada para atualizar.' });
     }
 
     await ref.set(update, { merge: true });

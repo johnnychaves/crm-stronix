@@ -61,6 +61,11 @@ async function tenantMetrics(doc) {
     primaryAdminEmail: data.primaryAdminEmail || null,
     monthlyPrice,
     internalNotes: data.internalNotes || '',
+    settings: data.settings || null,
+    paymentStatus: data.paymentStatus || null,
+    lastPaymentAt: toMillis(data.lastPaymentAt),
+    nextBillingAt: toMillis(data.nextBillingAt),
+    statusChangedAt: toMillis(data.statusChangedAt),
     price: effectivePrice({ plan, monthlyPrice }),
     userCount,
     leadCount,
@@ -93,10 +98,19 @@ export default async function handler(req, res) {
       active: 0, trial: 0, suspended: 0, archived: 0,
       internal: 0,        // contas internas/teste — ficam na lista, fora dos KPIs de negócio
       mrr: 0,
+      arr: 0,             // mrr * 12
+      mrrPotential: 0,    // mrr + receita esperada dos trials se converterem
+      leadsTotal: 0,      // soma de leads dos clientes (não-internos, não-arquivados)
+      usersTotal: 0,      // soma de usuários dos clientes (não-internos, não-arquivados)
+      byPlan: {},         // { slug: nº de orgs (não-internas, não-arquivadas) }
+      overdueCount: 0,    // clientes com paymentStatus 'overdue'
+      upcomingBilling: [],// { id, displayName, nextBillingAt, daysLeft } nos próximos 30d
+      churn30d: 0,        // suspensos/arquivados nos últimos 30 dias (via statusChangedAt)
       atRisk: 0,          // clientes ativos/trial sem uso há RISK_DAYS+ dias
       trialsExpiring: [], // { id, displayName, trialEndsAt, daysLeft }
       newByMonth: [],     // últimos 6 meses [{ ym, label, count }]
     };
+    let trialPotential = 0;
 
     for (const t of tenants) {
       // Contas internas/teste (a própria academia do dono, ambientes de teste):
@@ -111,6 +125,25 @@ export default async function handler(req, res) {
       // MRR = receita recorrente real: só organizações ativas e pagantes.
       // Trials (ainda não pagam) e suspensas/arquivadas não entram.
       if (!t.archived && t.status === 'active') totals.mrr += t.price || 0;
+
+      // Footprint da plataforma + distribuição por plano + cobrança (exclui arquivadas).
+      if (!t.archived) {
+        totals.leadsTotal += t.leadCount || 0;
+        totals.usersTotal += t.userCount || 0;
+        totals.byPlan[t.plan] = (totals.byPlan[t.plan] || 0) + 1;
+        if (t.status === 'trial') trialPotential += t.price || 0; // MRR potencial se converter
+        if (t.paymentStatus === 'overdue') totals.overdueCount += 1;
+        if (t.nextBillingAt && t.nextBillingAt - now <= 30 * DAY) {
+          totals.upcomingBilling.push({
+            id: t.id, displayName: t.displayName, nextBillingAt: t.nextBillingAt,
+            daysLeft: Math.ceil((t.nextBillingAt - now) / DAY),
+          });
+        }
+      }
+      // Churn: suspensos/arquivados nos últimos 30 dias (via statusChangedAt).
+      if ((t.archived || t.status === 'suspended') && t.statusChangedAt && now - t.statusChangedAt <= 30 * DAY) {
+        totals.churn30d += 1;
+      }
 
       // Clientes em risco (churn): ativos/trial sem atividade há RISK_DAYS+ dias.
       // Arquivadas e suspensas não contam (já não são clientes ativos).
@@ -127,6 +160,9 @@ export default async function handler(req, res) {
       }
     }
     totals.trialsExpiring.sort((a, b) => a.trialEndsAt - b.trialEndsAt);
+    totals.upcomingBilling.sort((a, b) => a.nextBillingAt - b.nextBillingAt);
+    totals.arr = totals.mrr * 12;
+    totals.mrrPotential = totals.mrr + trialPotential;
 
     // Novas organizações por mês (últimos 6, incluindo o atual) a partir de createdAt.
     const base = new Date(now);
