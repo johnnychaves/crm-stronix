@@ -154,6 +154,8 @@ import { Btn, IconBtn } from './components/ui/Btn.jsx';
 import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
+import { LossReasonModal } from './modals/LossReasonModal.jsx';
+import { FunnelDetailModal } from './modals/FunnelDetailModal.jsx';
 
 // ============================================================
 // MARCA STRONILEAD — símbolo "The Surge" + wordmark
@@ -2142,31 +2144,6 @@ function SuperFinanceTab({ overview, tenants, onPatch, busy }) {
 
 
 
-// Modal Global de Motivo de Perda
-function LossReasonModal({ lossReasons, onClose, onConfirm }) {
-  const toast = useToast();
-  const options = lossReasons?.length > 0 ? lossReasons : [{id: 'default', name: 'Sem motivo configurado'}];
-  const [reason, setReason] = useState(options[0].name);
-
-  return (
-    <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-[200] p-4 animate-fade-in font-sans">
-      <div className="bg-white dark:bg-neutral-900 border border-red-500/30 w-full max-w-md rounded-[2rem] p-8 shadow-2xl">
-        <div className="flex items-center gap-3 mb-2">
-          <ThumbsDown className="w-6 h-6 text-red-500" />
-          <h3 className="text-xl font-bold text-red-500 uppercase tracking-tighter">Sinalizar Perda</h3>
-        </div>
-        <p className="text-xs text-gray-500 dark:text-neutral-400 font-bold mb-6">Por favor, informe o motivo da perda deste lead.</p>
-        <select value={reason} onChange={e=>setReason(e.target.value)} className="w-full bg-paper-50 dark:bg-neutral-950 p-4 rounded-xl text-gray-900 dark:text-white outline-none border border-gray-200 dark:border-neutral-800 focus:border-red-500 text-xs font-bold mb-6 appearance-none">
-           {options.map(r => <option key={r.id || r.name} value={r.name}>{r.name}</option>)}
-        </select>
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-4 bg-gray-100 dark:bg-neutral-800 rounded-xl font-bold text-[10px] uppercase text-gray-500 dark:text-neutral-400 hover:bg-gray-200 dark:hover:bg-neutral-700 dark:bg-neutral-700 transition-all">Cancelar</button>
-          <button onClick={()=>{if(reason) onConfirm(reason); else toast.warning('Selecione um motivo!');}} className="flex-1 py-4 bg-red-600 rounded-xl font-bold text-[10px] uppercase text-gray-900 dark:text-white shadow-xl shadow-red-500/20 active:scale-95 transition-all">Confirmar Perda</button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ==========================================
 // VISÃO GERAL (DASHBOARD) - PATCH 1 (AULA E VISITA)
@@ -3468,40 +3445,6 @@ function FunnelBar({ label, count, max, color, onClick }) {
   return <div onClick={onClick} className={onClick ? "cursor-pointer hover:opacity-80 transition-opacity active:scale-95" : ""}><div className="flex justify-between text-xs font-bold uppercase tracking-widest mb-3"><span className="text-gray-500 dark:text-neutral-400">{label}</span><span className="text-gray-900 dark:text-white">{count} ({Math.round(p)}%)</span></div><div className="w-full bg-paper-50 dark:bg-neutral-950 rounded-full h-4 overflow-hidden border border-gray-200 dark:border-neutral-800 shadow-inner"><div className={`h-full rounded-full ${color} transition-all duration-1000 shadow-lg`} style={{ width: `${p}%` }} /></div></div>;
 }
 
-function FunnelDetailModal({ detail, onClose, onLeadClick }) {
-  if (!detail) return null;
-  return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-[150] p-4 animate-fade-in">
-      <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 w-full max-w-lg max-h-[80vh] rounded-2xl flex flex-col overflow-hidden shadow-2xl relative">
-        <div className="p-6 border-b border-gray-200 dark:border-neutral-800 flex justify-between items-center bg-paper-50 dark:bg-neutral-950">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white uppercase tracking-widest">
-            {detail.title} <span className="text-brand-500">({detail.data.length})</span>
-          </h3>
-          <button onClick={onClose} className="p-2 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white rounded-full bg-white dark:bg-neutral-800 shadow-sm transition-all active:scale-95"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-3">
-          {detail.data.length === 0 ? (
-            <p className="text-sm font-medium text-gray-500 dark:text-neutral-400 text-center py-6">Nenhum registro encontrado neste período.</p>
-          ) : (
-            detail.data.map(lead => (
-              <div 
-                key={lead.id} 
-                onClick={() => onLeadClick && onLeadClick(lead)}
-                className="bg-paper-50 dark:bg-neutral-950 p-4 rounded-xl border border-gray-200 dark:border-neutral-800 flex flex-col gap-1 shadow-sm cursor-pointer hover:bg-white dark:hover:bg-neutral-900 transition-colors active:scale-95 group"
-              >
-                <div className="flex justify-between items-start">
-                  <span className="font-bold text-sm text-gray-900 dark:text-white group-hover:text-brand-600 transition-colors">{lead.name}</span>
-                  <span className="text-[10px] font-bold px-2 py-1 bg-white dark:bg-neutral-800 text-gray-600 dark:text-neutral-300 rounded-md uppercase border border-gray-200 dark:border-neutral-700">{lead.status}</span>
-                </div>
-                <span className="text-xs font-semibold text-brand-600 dark:text-brand-400 mt-1">{lead.whatsapp}</span>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ==========================================
 // KANBAN VIEW (COM VENDA E PERDA FIXAS)
