@@ -114,7 +114,6 @@ import {
   DAILY_GOAL_HISTORY_PATH
 } from './lib/firebase.js';
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
-import { statusGradientMap } from './lib/constants.js';
 import { getSafeDate, getSafeDateOrNull, normalizeAppointmentType } from './lib/dates.js';
 import {
   getLeadAppointmentType,
@@ -139,74 +138,30 @@ import {
 import { getDefaultFunnel, isItemInFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider, useToast } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext, useGeneralConfig } from './contexts/GeneralConfigContext.jsx';
-import { LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, buildInteractionIndex, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate } from './lib/leadStatus.js';
-import { getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from './lib/kanban.js';
+import { LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, buildInteractionIndex, isHotLeadFromDate } from './lib/leadStatus.js';
+import { getKanbanColumnAccent, fmtKanbanRelDate, fmtKanbanRelDateTime } from './lib/kanban.js';
 import { fmtBRL, fmtNum, timeAgo, humanizeAge, humanizeUntil, formatHourLabel } from './lib/format.js';
 import { slugify, planLabel, tenantSeatLabel, IMPERSONATION_KEY, readImpersonation, tenantHealth, lastActivityLabel, auditActionLabel } from './lib/superadmin.js';
+import { SurgeMark, StronileadWordmark } from './components/brand/SurgeMark.jsx';
+import { TrialBanner, ImpersonationBanner } from './components/layout/Banners.jsx';
+import { Avatar, KanbanAvatar } from './components/ui/Avatar.jsx';
+import { FunnelSelector } from './components/ui/FunnelSelector.jsx';
+import { ViewSkeleton } from './components/ui/Skeleton.jsx';
+import { SidebarItem, SidebarGroup, SidebarSubItem } from './components/layout/Sidebar.jsx';
+import { StatusBadge, TagBadge, LeadTemperatureBadge, DaysSinceContactBadge, FollowUpIcon } from './components/ui/Badges.jsx';
+import { Field, StyledInput, StyledSelect } from './components/ui/Field.jsx';
+import { settingsColorTone, ColorBadge, SETTINGS_COLOR_OPTIONS, ColorDot } from './components/ui/ColorPicker.jsx';
+import { SettingsCard, SettingsTabItem, SettingsRow } from './components/ui/SettingsCard.jsx';
+import { Btn, IconBtn } from './components/ui/Btn.jsx';
 
 // ============================================================
 // MARCA STRONILEAD — símbolo "The Surge" + wordmark
 // (apenas apresentação; usados no login, sidebar e header)
 // ============================================================
 
-// Símbolo: três chevrons ascendentes (funil → conversão → matrícula).
-// Os dois inferiores em brand; o topo em accent (laranja) = resultado.
-// tone: 'brand' (chevrons em brand-600) | 'onDark' (chevrons brancos).
-function SurgeMark({ size = 32, tone = 'brand', className = '' }) {
-  const lower = tone === 'onDark' ? '#FFFFFF' : 'var(--color-brand-600)';
-  const top = 'var(--color-accent-500)';
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 48 48"
-      fill="none"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-label="STRONILEAD"
-      className={className}
-    >
-      <path d="M11 39 L24 29 L37 39" stroke={lower} strokeWidth="4.4" />
-      <path d="M13.5 30 L24 21.5 L34.5 30" stroke={lower} strokeWidth="4.4" />
-      <path d="M16 21 L24 14 L32 21" stroke={top} strokeWidth="4.4" />
-    </svg>
-  );
-}
-
-// Wordmark: STRONI (peso 500) + LEAD (peso 700).
-// leadOnDark → "LEAD" em brand-300 sobre fundo escuro; senão brand-600.
-function StronileadWordmark({ className = '', leadOnDark = false }) {
-  return (
-    <span className={`font-display tracking-tight leading-none whitespace-nowrap ${className}`}>
-      <span className="font-medium">STRONI</span>
-      <span className={`font-bold ${leadOnDark ? 'text-brand-300' : 'text-brand-600'}`}>LEAD</span>
-    </span>
-  );
-}
 
 // Tela de bloqueio quando a academia está suspensa ou com trial expirado.
 // O usuário autenticou, mas a organização não está liberada — só resta sair.
-// Banner de contagem regressiva do período de teste (mostrado ao cliente quando
-// a academia está em trial ATIVO). Fica âmbar (urgência) quando faltam <= 3 dias.
-function TrialBanner({ endsAtMs }) {
-  const DAY = 24 * 60 * 60 * 1000;
-  const daysLeft = Math.max(0, Math.ceil((endsAtMs - Date.now()) / DAY));
-  const dateLabel = new Date(endsAtMs).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  const urgent = daysLeft <= 3;
-  const msg = daysLeft <= 0
-    ? 'Seu período de teste termina hoje'
-    : daysLeft === 1
-      ? 'Falta 1 dia do seu período de teste'
-      : `Faltam ${daysLeft} dias do seu período de teste`;
-  return (
-    <div className={`shrink-0 px-4 md:px-8 py-2 flex items-center justify-center gap-2 text-[12.5px] font-medium border-b ${urgent
-      ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20'
-      : 'bg-brand-50 text-brand-700 border-brand-100 dark:bg-brand-500/10 dark:text-brand-300 dark:border-white/[0.06]'}`}>
-      <Clock className="w-3.5 h-3.5 shrink-0" />
-      <span>{msg} <span className="opacity-70">· termina em {dateLabel}</span></span>
-    </div>
-  );
-}
 
 function TenantBlockedScreen({ reason, onLogout }) {
   const suspended = reason === 'suspended';
@@ -346,17 +301,6 @@ function AcceptInviteScreen({ token, tenantId }) {
 }
 
 
-function KanbanAvatar({ name = '', size = 32 }) {
-  const [bg, fg] = getKanbanAvatarPalette(name);
-  return (
-    <div
-      className="rounded-full grid place-items-center font-semibold shrink-0 ring-1 ring-black/5"
-      style={{ width: size, height: size, background: bg, color: fg, fontSize: Math.round(size * 0.36) }}
-    >
-      {getKanbanInitials(name)}
-    </div>
-  );
-}
 
 
 // ==========================================
@@ -1313,18 +1257,6 @@ useEffect(() => {
 
 
 // Faixa fixa exibida no topo enquanto o super-admin visualiza como um cliente.
-function ImpersonationBanner({ viewing, onExit, busy }) {
-  return (
-    <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-2 bg-amber-500 text-amber-950 text-[12.5px] font-semibold">
-      <Eye className="w-4 h-4 shrink-0" />
-      <span className="truncate">Visualizando como <b>{viewing?.name || viewing?.id}</b> — você está dentro da conta deste cliente.</span>
-      <button onClick={onExit} disabled={busy}
-        className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-950/90 text-amber-50 hover:bg-amber-950 disabled:opacity-60 transition">
-        <LogOut className="w-3.5 h-3.5" /> Sair da visualização
-      </button>
-    </div>
-  );
-}
 
 
 
@@ -2594,304 +2526,9 @@ function LoginScreen({ setAppUser, firebaseUser, db, authSetupError, urlTenant }
 // ==========================================
 // COMPONENTES AUXILIARES
 // ==========================================
-function FunnelSelector({ funnels, value, onChange, compact = false, variant = 'standalone', allowAll = false, className = '' }) {
-  const list = Array.isArray(funnels) ? funnels : [];
-  if (list.length === 0) {
-    return (
-      <div className={`text-xs font-medium text-gray-400 dark:text-neutral-500 italic px-4 py-3 ${className}`}>
-        Sem funis cadastrados
-      </div>
-    );
-  }
-  const padY = compact ? 'py-2.5' : 'py-3';
-  const padX = compact ? 'pl-10 pr-10' : 'pl-12 pr-11';
-  const textSize = compact ? 'text-xs' : 'text-sm';
-  const bg = variant === 'soft'
-    ? 'bg-paper-50 dark:bg-neutral-950'
-    : 'bg-white dark:bg-neutral-900';
-  const iconPos = compact ? 'left-3.5' : 'left-4';
-  const chevronPos = compact ? 'right-3' : 'right-4';
-  const iconSize = compact ? 'w-3.5 h-3.5' : 'w-4 h-4';
 
-  return (
-    <div className={`relative group ${className}`}>
-      <Kanban className={`absolute ${iconPos} top-1/2 -translate-y-1/2 ${iconSize} text-gray-400 dark:text-neutral-500 group-focus-within:text-brand-600 transition-colors pointer-events-none`} />
-      <select
-        value={value || ''}
-        onChange={(e) => onChange(e.target.value)}
-        className={`w-full ${bg} border border-gray-200 dark:border-neutral-800 rounded-2xl ${padX} ${padY} ${textSize} font-semibold text-gray-900 dark:text-white outline-none focus:border-brand-600 transition-all shadow-sm cursor-pointer appearance-none`}
-      >
-        {allowAll && (
-          <option value={ALL_FUNNELS_ID}>★ Todos os funis</option>
-        )}
-        {list.map((f) => (
-          <option key={f.id} value={f.id}>{f.name}{f.isDefault ? ' • Padrão' : ''}</option>
-        ))}
-      </select>
-      <svg className={`absolute ${chevronPos} top-1/2 -translate-y-1/2 ${iconSize} text-gray-400 dark:text-neutral-500 pointer-events-none`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-        <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
-      </svg>
-    </div>
-  );
-}
 
-// --- SKELETON LOADING ---
-function Skeleton({ className = '', rounded = 'rounded-2xl' }) {
-  return (
-    <div
-      className={`animate-pulse bg-gray-200/70 dark:bg-neutral-800/70 ${rounded} ${className}`}
-      aria-hidden="true"
-    />
-  );
-}
 
-function DashboardSkeleton() {
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <div className="flex flex-wrap items-center gap-3">
-        <Skeleton className="h-12 w-[260px]" />
-        <Skeleton className="h-12 w-[360px]" />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-32" rounded="rounded-[2.5rem]" />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-28" rounded="rounded-[2.5rem]" />
-        ))}
-      </div>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Skeleton className="lg:col-span-2 h-96" rounded="rounded-[2.5rem]" />
-        <Skeleton className="h-96" rounded="rounded-[2.5rem]" />
-      </div>
-    </div>
-  );
-}
-
-function KanbanSkeleton() {
-  return (
-    <div className="h-[calc(100vh-10rem)] flex flex-col animate-fade-in">
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
-        <div className="flex items-center gap-4 flex-wrap">
-          <div>
-            <Skeleton className="h-6 w-48 mb-2" rounded="rounded-lg" />
-            <Skeleton className="h-3 w-40" rounded="rounded-md" />
-          </div>
-          <Skeleton className="h-12 w-[280px]" />
-        </div>
-        <div className="flex gap-3">
-          <Skeleton className="h-12 w-[320px]" />
-          <Skeleton className="h-12 w-[280px]" />
-        </div>
-      </div>
-      <div className="flex gap-5 min-w-max h-full pb-2 overflow-hidden">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="w-[320px] rounded-[2rem] bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-5 flex flex-col gap-3">
-            <Skeleton className="h-6 w-28 mb-2" rounded="rounded-full" />
-            {Array.from({ length: 2 + (i % 3) }).map((_, j) => (
-              <Skeleton key={j} className="h-28" rounded="rounded-2xl" />
-            ))}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LeadsSkeleton() {
-  return (
-    <div className="h-full flex flex-col space-y-6 animate-fade-in">
-      <div className="flex flex-col md:flex-row gap-4 bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-5 rounded-[2rem] shadow-xl">
-        <Skeleton className="h-12 w-[280px]" />
-        <Skeleton className="h-12 flex-1" />
-        <Skeleton className="h-12 w-12" />
-        <Skeleton className="h-12 w-28" />
-        <Skeleton className="h-12 w-32" />
-      </div>
-      <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 rounded-[2.5rem] overflow-hidden flex-1 shadow-2xl p-6 space-y-3">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Skeleton key={i} className="h-16" rounded="rounded-2xl" />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DailyGoalSkeleton() {
-  return (
-    <div className="space-y-6 animate-fade-in">
-      <Skeleton className="h-32" rounded="rounded-[2.5rem]" />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Skeleton className="h-[500px]" rounded="rounded-[2.5rem]" />
-        <Skeleton className="h-[500px]" rounded="rounded-[2.5rem]" />
-      </div>
-    </div>
-  );
-}
-
-function SettingsSkeleton() {
-  return (
-    <div className="h-full flex flex-col md:flex-row gap-6 animate-fade-in max-w-7xl mx-auto w-full">
-      <div className="w-full md:w-64 shrink-0 flex flex-col gap-2">
-        <Skeleton className="h-8 w-40 mb-4" rounded="rounded-lg" />
-        <div className="bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 p-2 rounded-2xl shadow-xl space-y-1">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Skeleton key={i} className="h-11" rounded="rounded-xl" />
-          ))}
-        </div>
-      </div>
-      <div className="flex-1">
-        <Skeleton className="h-[600px]" rounded="rounded-[2rem]" />
-      </div>
-    </div>
-  );
-}
-
-function ViewSkeleton({ activeTab }) {
-  switch (activeTab) {
-    case 'kanban': return <KanbanSkeleton />;
-    case 'dailyGoal': return <DailyGoalSkeleton />;
-    case 'leads': return <LeadsSkeleton />;
-    case 'aulas':
-    case 'visitas': return <LeadsSkeleton />;
-    case 'settings': return <SettingsSkeleton />;
-    case 'dashboard':
-    default:
-      return <DashboardSkeleton />;
-  }
-}
-
-function SidebarItem({ icon, label, active, badge, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`group relative w-full h-11 pl-3.5 pr-3 rounded-xl flex items-center gap-3 text-[13.5px] font-medium transition-all ${active
-        ? 'bg-brand-600 text-white shadow-[0_6px_16px_-6px_rgba(43,89,255,.65)]'
-        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-300 dark:hover:bg-white/[0.06] dark:hover:text-white'}`}
-    >
-      {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-accent-500" />}
-      <span className={active ? 'text-white' : 'text-gray-400 group-hover:text-brand-600 dark:text-neutral-500 dark:group-hover:text-white transition-colors'}>{icon}</span>
-      <span className="flex-1 text-left whitespace-nowrap tracking-tight">{label}</span>
-      {badge != null && (
-        <span className={`text-[10.5px] font-bold px-1.5 h-[18px] rounded-md min-w-[18px] grid place-items-center tabular-nums shrink-0 ${active ? 'bg-white/20 text-white' : 'bg-accent-500/12 text-accent-600 dark:bg-accent-500/15 dark:text-accent-400'}`}>{badge}</span>
-      )}
-    </button>
-  );
-}
-
-// Item-pai recolhível: abre um "slide para baixo" com os sub-itens.
-function SidebarGroup({ icon, label, active, open, onToggle, children }) {
-  return (
-    <div>
-      <button
-        onClick={onToggle}
-        className={`group w-full h-11 pl-3.5 pr-3 rounded-xl flex items-center gap-3 text-[13.5px] font-medium transition-all ${active
-          ? 'bg-brand-50 text-brand-700 dark:bg-white/[0.06] dark:text-brand-300'
-          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-300 dark:hover:bg-white/[0.06] dark:hover:text-white'}`}
-      >
-        <span className={active ? 'text-brand-600 dark:text-brand-300' : 'text-gray-400 group-hover:text-brand-600 dark:text-neutral-500 dark:group-hover:text-white transition-colors'}>{icon}</span>
-        <span className="flex-1 text-left whitespace-nowrap tracking-tight">{label}</span>
-        <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${open ? 'rotate-180' : ''} ${active ? 'text-brand-500 dark:text-brand-300' : 'text-gray-400 dark:text-neutral-500'}`} />
-      </button>
-      <div className={`grid transition-all duration-200 ease-in-out ${open ? 'grid-rows-[1fr] opacity-100 mt-1' : 'grid-rows-[0fr] opacity-0'}`}>
-        <div className="overflow-hidden">
-          <div className="ml-[26px] pl-3 border-l border-slate-200 dark:border-white/[0.08] space-y-0.5 py-0.5">
-            {children}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SidebarSubItem({ label, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`group w-full flex items-center gap-2.5 pl-3 pr-2.5 h-9 rounded-lg text-[13px] font-medium transition-all ${active ? 'bg-brand-600 text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-white'}`}
-    >
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-white' : 'bg-gray-300 group-hover:bg-brand-500 dark:bg-neutral-600'}`} />
-      <span className="tracking-tight truncate">{label}</span>
-    </button>
-  );
-}
-
-function StatusBadge({ statusName, statusesArray }) {
-  if (statusName === 'Venda') return <span className="px-3 py-1 rounded-full text-[9px] font-bold text-white uppercase tracking-widest bg-gradient-to-r shadow-lg from-green-600 to-emerald-400">VENDA</span>;
-  if (statusName === 'Perda') return <span className="px-3 py-1 rounded-full text-[9px] font-bold text-white uppercase tracking-widest bg-gradient-to-r shadow-lg from-red-600 to-pink-500">PERDA</span>;
-  const statusObj = (statusesArray || []).find(s => s.name === statusName);
-  const color = statusObj?.color || 'gray';
-  return (
-    <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest bg-gradient-to-r shadow-lg ${statusGradientMap[color] || statusGradientMap.gray}`}>
-      {statusName}
-    </span>
-  );
-}
-
-function TagBadge({ tagName, tagsArray }) {
-  const tagObj = (tagsArray || []).find(t => t.name === tagName);
-  const color = tagObj?.color || 'gray';
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-tighter bg-gradient-to-br shadow-sm ${statusGradientMap[color] || statusGradientMap.gray}`}>
-      <Tag className="w-2.5 h-2.5" /> {tagName}
-    </span>
-  );
-}
-
-function LeadTemperatureBadge({ lead, lastInteractionDate, compact = false }) {
-  if (!lead || !isLeadActive(lead)) return null;
-  const hot = isHotLeadFromDate(lead, lastInteractionDate);
-  const cold = !hot && isColdLeadFromDate(lead, lastInteractionDate);
-  if (!hot && !cold) return null;
-
-  const size = compact ? 'text-[8px] px-1.5 py-0.5' : 'text-[9px] px-2 py-0.5';
-
-  if (hot) {
-    return (
-      <span
-        title="Lead com atividade recente ou agendamento próximo"
-        className={`inline-flex items-center gap-1 rounded-md font-bold uppercase tracking-wider bg-gradient-to-r from-accent-500 to-red-500 text-white shadow-sm ${size}`}
-      >
-        <span aria-hidden="true">🔥</span> Hot
-      </span>
-    );
-  }
-
-  return (
-    <span
-      title="Lead sem interação há 7 dias ou mais"
-      className={`inline-flex items-center gap-1 rounded-md font-bold uppercase tracking-wider bg-gradient-to-r from-sky-400 to-brand-300 text-white shadow-sm ${size}`}
-    >
-      <span aria-hidden="true">❄️</span> Esfriando
-    </span>
-  );
-}
-
-function DaysSinceContactBadge({ lead, lastInteractionDate }) {
-  if (!lead || !isLeadActive(lead)) return null;
-  const days = getDaysSinceFromDate(lead, lastInteractionDate);
-  if (days === null) return null;
-  if (days < 1) return null; // Sem badge se foi hoje
-  const tone = days >= 7
-    ? 'text-red-500 dark:text-red-400'
-    : days >= 3
-    ? 'text-accent-500 dark:text-accent-400'
-    : 'text-gray-400 dark:text-neutral-500';
-  return (
-    <span className={`text-[10px] font-bold uppercase tracking-wider ${tone}`}>
-      {days === 1 ? '1 dia sem contato' : `${days} dias sem contato`}
-    </span>
-  );
-}
-
-function FollowUpIcon({ type, className }) {
-  if (type === 'Ligação') return <Phone className={className} />;
-  if (type === 'Presencial' || type === 'Visita') return <Users className={className} />;
-  if (type === 'Aula Experimental' || type === 'Aula experimental') return <Calendar className={className} />;
-  return <MessageCircle className={className} />;
-}
 
 // Modal Global de Motivo de Perda
 function LossReasonModal({ lossReasons, onClose, onConfirm }) {
@@ -7589,178 +7226,8 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 // SETTINGS — DESIGN PRIMITIVES
 // ==========================================
 
-function Field({ label, hint, children, error }) {
-  return (
-    <div className="space-y-1.5">
-      {label && (
-        <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
-          {label}
-        </label>
-      )}
-      {children}
-      {hint && !error && <p className="text-[11.5px] text-slate-500 dark:text-slate-400">{hint}</p>}
-      {error && <p className="text-[11.5px] text-rose-600 dark:text-rose-300">{error}</p>}
-    </div>
-  );
-}
 
-const StyledInput = React.forwardRef(function StyledInput({ icon, className = '', ...p }, ref) {
-  return (
-    <div className="relative">
-      {icon && (
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
-          {icon}
-        </span>
-      )}
-      <input
-        ref={ref}
-        {...p}
-        className={`w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:focus:border-white/20 outline-none text-[13px] ${icon ? 'pl-9' : 'pl-3'} pr-3 placeholder:text-slate-400 transition ${className}`}
-      />
-    </div>
-  );
-});
 
-function StyledSelect({ children, className = '', ...p }) {
-  return (
-    <select
-      {...p}
-      className={`w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 dark:focus:border-white/20 outline-none text-[13px] pl-3 pr-8 transition appearance-none cursor-pointer ${className}`}
-      style={{
-        backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round'><path d='M3 5l3 3 3-3'/></svg>")`,
-        backgroundRepeat: 'no-repeat',
-        backgroundPosition: 'right .7rem center'
-      }}
-    >
-      {children}
-    </select>
-  );
-}
-
-// Tailwind 4 color name → utility classnames for the pipeline/tag badges.
-// Maps to the colors used historically by the app (statusGradientMap keys) so
-// existing data still renders sensibly under new visual treatment.
-function settingsColorTone(color) {
-  const palette = {
-    blue:    { dot: 'bg-blue-500',    soft: 'bg-blue-50',    text: 'text-blue-700',    darkSoft: 'dark:bg-blue-500/10',    darkText: 'dark:text-blue-300',    strong: 'bg-blue-500' },
-    indigo:  { dot: 'bg-indigo-500',  soft: 'bg-indigo-50',  text: 'text-indigo-700',  darkSoft: 'dark:bg-indigo-500/10',  darkText: 'dark:text-indigo-300',  strong: 'bg-indigo-500' },
-    violet:  { dot: 'bg-violet-500',  soft: 'bg-violet-50',  text: 'text-violet-700',  darkSoft: 'dark:bg-violet-500/10',  darkText: 'dark:text-violet-300',  strong: 'bg-violet-500' },
-    purple:  { dot: 'bg-purple-500',  soft: 'bg-purple-50',  text: 'text-purple-700',  darkSoft: 'dark:bg-purple-500/10',  darkText: 'dark:text-purple-300',  strong: 'bg-purple-500' },
-    pink:    { dot: 'bg-pink-500',    soft: 'bg-pink-50',    text: 'text-pink-700',    darkSoft: 'dark:bg-pink-500/10',    darkText: 'dark:text-pink-300',    strong: 'bg-pink-500' },
-    rose:    { dot: 'bg-rose-500',    soft: 'bg-rose-50',    text: 'text-rose-700',    darkSoft: 'dark:bg-rose-500/10',    darkText: 'dark:text-rose-300',    strong: 'bg-rose-500' },
-    red:     { dot: 'bg-red-500',     soft: 'bg-red-50',     text: 'text-red-700',     darkSoft: 'dark:bg-red-500/10',     darkText: 'dark:text-red-300',     strong: 'bg-red-500' },
-    orange:  { dot: 'bg-orange-500',  soft: 'bg-orange-50',  text: 'text-orange-700',  darkSoft: 'dark:bg-orange-500/10',  darkText: 'dark:text-orange-300',  strong: 'bg-orange-500' },
-    amber:   { dot: 'bg-amber-500',   soft: 'bg-amber-50',   text: 'text-amber-700',   darkSoft: 'dark:bg-amber-500/10',   darkText: 'dark:text-amber-300',   strong: 'bg-amber-500' },
-    yellow:  { dot: 'bg-yellow-500',  soft: 'bg-yellow-50',  text: 'text-yellow-700',  darkSoft: 'dark:bg-yellow-500/10',  darkText: 'dark:text-yellow-300',  strong: 'bg-yellow-500' },
-    lime:    { dot: 'bg-lime-500',    soft: 'bg-lime-50',    text: 'text-lime-700',    darkSoft: 'dark:bg-lime-500/10',    darkText: 'dark:text-lime-300',    strong: 'bg-lime-500' },
-    green:   { dot: 'bg-green-500',   soft: 'bg-green-50',   text: 'text-green-700',   darkSoft: 'dark:bg-green-500/10',   darkText: 'dark:text-green-300',   strong: 'bg-green-500' },
-    emerald: { dot: 'bg-emerald-500', soft: 'bg-emerald-50', text: 'text-emerald-700', darkSoft: 'dark:bg-emerald-500/10', darkText: 'dark:text-emerald-300', strong: 'bg-emerald-500' },
-    teal:    { dot: 'bg-teal-500',    soft: 'bg-teal-50',    text: 'text-teal-700',    darkSoft: 'dark:bg-teal-500/10',    darkText: 'dark:text-teal-300',    strong: 'bg-teal-500' },
-    cyan:    { dot: 'bg-cyan-500',    soft: 'bg-cyan-50',    text: 'text-cyan-700',    darkSoft: 'dark:bg-cyan-500/10',    darkText: 'dark:text-cyan-300',    strong: 'bg-cyan-500' },
-    sky:     { dot: 'bg-sky-500',     soft: 'bg-sky-50',     text: 'text-sky-700',     darkSoft: 'dark:bg-sky-500/10',     darkText: 'dark:text-sky-300',     strong: 'bg-sky-500' },
-    brand:   { dot: 'bg-brand-600',   soft: 'bg-brand-50',   text: 'text-brand-700',   darkSoft: 'dark:bg-brand-500/10',   darkText: 'dark:text-brand-300',   strong: 'bg-brand-600' },
-    slate:   { dot: 'bg-slate-400',   soft: 'bg-slate-100',  text: 'text-slate-700',   darkSoft: 'dark:bg-white/[0.05]',   darkText: 'dark:text-slate-300',   strong: 'bg-slate-400' }
-  };
-  return palette[color] || palette.slate;
-}
-
-function ColorBadge({ color, name, size = 'md' }) {
-  const t = settingsColorTone(color);
-  const sizing = size === 'sm' ? 'text-[11px] px-2 py-0.5' : 'text-[12px] px-2.5 py-1';
-  return (
-    <span className={`inline-flex items-center gap-1.5 font-semibold rounded-md whitespace-nowrap ${sizing} ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`}></span>
-      {name}
-    </span>
-  );
-}
-
-// Palette shown in the color pickers for Pipeline (Funil) and Tags (Etiquetas).
-// Legacy values like 'green', 'yellow', 'red', 'orange', 'purple', 'gray'
-// still render correctly via settingsColorTone(); they just won't be highlighted
-// in the picker — editing the item lets the user pick from this canonical set.
-const SETTINGS_COLOR_OPTIONS = ['blue', 'amber', 'violet', 'teal', 'rose', 'emerald', 'pink', 'indigo', 'lime', 'slate'];
-
-function ColorDot({ color, active, onClick, size = 22 }) {
-  const t = settingsColorTone(color);
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{ width: size, height: size }}
-      className={`rounded-full grid place-items-center transition ${t.strong} ${active ? 'ring-2 ring-offset-2 ring-slate-900 dark:ring-white dark:ring-offset-neutral-900 scale-110' : 'ring-1 ring-black/[0.06] hover:scale-105'}`}
-      title={color}
-    >
-      {active && <Check size={12} className="text-white" />}
-    </button>
-  );
-}
-
-function SettingsCard({ title, hint, icon, action, children, padded = true, className = '' }) {
-  return (
-    <section className={`rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card ${className}`}>
-      {(title || action) && (
-        <header className="px-6 py-5 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.05]">
-          <div className="flex items-center gap-3 min-w-0">
-            {icon && (
-              <span className="w-9 h-9 rounded-lg grid place-items-center bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300 shrink-0">
-                {icon}
-              </span>
-            )}
-            <div className="min-w-0">
-              <h3 className="text-[15px] font-semibold whitespace-nowrap">{title}</h3>
-              {hint && <p className="text-[12px] text-slate-500 dark:text-slate-400 truncate mt-0.5">{hint}</p>}
-            </div>
-          </div>
-          {action}
-        </header>
-      )}
-      <div className={padded ? 'p-6' : ''}>{children}</div>
-    </section>
-  );
-}
-
-function SettingsTabItem({ icon, label, hint, badge, active, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full p-3 rounded-xl flex items-start gap-3 text-left transition group ${
-        active
-          ? 'bg-brand-50 dark:bg-brand-500/10 ring-1 ring-brand-200 dark:ring-brand-500/20'
-          : 'hover:bg-slate-50 dark:hover:bg-white/[0.03]'
-      }`}
-    >
-      <span className={`w-8 h-8 rounded-lg grid place-items-center shrink-0 transition ${
-        active
-          ? 'bg-brand-600 text-white'
-          : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400 group-hover:bg-slate-200 dark:group-hover:bg-white/[0.1]'
-      }`}>
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className={`text-[13px] font-semibold whitespace-nowrap ${active ? 'text-brand-700 dark:text-brand-300' : 'text-slate-900 dark:text-white'}`}>{label}</span>
-          {badge != null && (
-            <span className={`text-[10.5px] font-bold num px-1.5 h-[18px] rounded-md min-w-[18px] grid place-items-center ${
-              active ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-700 dark:bg-white/[0.08] dark:text-slate-300'
-            }`}>{badge}</span>
-          )}
-        </div>
-        {hint && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">{hint}</div>}
-      </div>
-    </button>
-  );
-}
-
-function SettingsRow({ label, value }) {
-  return (
-    <div className="flex items-center justify-between gap-3">
-      <span className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 whitespace-nowrap">{label}</span>
-      <span className="text-right">{value}</span>
-    </div>
-  );
-}
 
 function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, trialClassOptions, units, metaWeekdays }) {
   const [activeTab, setActiveTab] = useState('users');
@@ -9676,43 +9143,6 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
 // DAILY GOAL VIEW — DESIGN PRIMITIVES
 // ==========================================
 
-const initials = (name) =>
-  (name || '?')
-    .split(' ')
-    .slice(0, 2)
-    .map((w) => w[0])
-    .join('')
-    .toUpperCase();
-
-const AVATAR_PALETTES = [
-  ['#fde68a', '#92400e'],
-  ['#bbf7d0', '#065f46'],
-  ['#bae6fd', '#075985'],
-  ['#fbcfe8', '#9d174d'],
-  ['#ddd6fe', '#5b21b6'],
-  ['#fecaca', '#9f1212'],
-  ['#a7f3d0', '#065f46'],
-  ['#fef08a', '#854d0e']
-];
-
-const avatarTone = (seed) => {
-  const s = String(seed || '');
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTES[h % AVATAR_PALETTES.length];
-};
-
-function Avatar({ name, size = 36 }) {
-  const [bg, fg] = avatarTone(name);
-  return (
-    <div
-      className="rounded-full grid place-items-center font-semibold shrink-0 ring-1 ring-black/[0.04]"
-      style={{ width: size, height: size, background: bg, color: fg, fontSize: size * 0.36 }}
-    >
-      {initials(name)}
-    </div>
-  );
-}
 
 // Slug-keyed metadata for the 4 daily goal categories (matches src/lib/leads.js).
 const DG_CATEGORY_META = {
@@ -9775,47 +9205,6 @@ function TimePill({ icon, children, tone = 'slate' }) {
   );
 }
 
-function Btn({ kind = 'secondary', icon, children, onClick, type = 'button', disabled, size = 'sm', className = '' }) {
-  const styles = {
-    primary:   'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-sm',
-    brand:     'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
-    secondary: 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 dark:bg-white/[0.04] dark:text-slate-200 dark:border-white/10 dark:hover:bg-white/[0.08]',
-    success:   'bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm',
-    soft:      'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 dark:hover:bg-white/[0.12]',
-    danger:    'bg-white text-rose-600 hover:bg-rose-50 border border-slate-200 dark:bg-white/[0.04] dark:border-white/10 dark:hover:bg-rose-500/10',
-    ghost:     'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06]'
-  };
-  const sizing = size === 'md' ? 'h-9 px-3.5 text-[12.5px]' : 'h-8 px-3 text-[12px]';
-  return (
-    <button
-      type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={`inline-flex items-center gap-1.5 ${sizing} rounded-lg font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-50 disabled:cursor-not-allowed ${styles[kind] || styles.secondary} ${className}`}
-    >
-      {icon}
-      {children}
-    </button>
-  );
-}
-
-function IconBtn({ icon, title, onClick, kind = 'default', className = '' }) {
-  const styles = {
-    default: 'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06]',
-    edit:    'text-slate-400 hover:text-brand-700 hover:bg-brand-50 dark:hover:text-brand-300 dark:hover:bg-brand-500/10',
-    danger:  'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:text-rose-300 dark:hover:bg-rose-500/10'
-  };
-  return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      className={`w-8 h-8 grid place-items-center rounded-lg transition ${styles[kind] || styles.default} ${className}`}
-    >
-      {icon}
-    </button>
-  );
-}
 
 function Dial({ progress }) {
   const R = 38;
