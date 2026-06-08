@@ -267,6 +267,29 @@ function PlanFormModal({ plan, authHeader, onClose, onSaved }) {
             <Field label="Preço mensal (R$)"><StyledInput type="number" min="0" value={form.priceMonthly} onChange={e => set('priceMonthly', e.target.value)} placeholder="197" /></Field>
             <Field label="Preço anual (R$)" hint="opcional"><StyledInput type="number" min="0" value={form.priceAnnual} onChange={e => set('priceAnnual', e.target.value)} placeholder="—" /></Field>
           </div>
+          {(Number(form.priceMonthly) > 0 || Number(form.priceAnnual) > 0) && (() => {
+            const m = Number(form.priceMonthly) || 0;
+            const a = Number(form.priceAnnual) || 0;
+            const eqMonthly = a > 0 ? Math.round(a / 12) : null;
+            const discount = (a > 0 && m > 0) ? Math.round((1 - a / (m * 12)) * 100) : null;
+            return (
+              <div className="rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.06] px-3.5 py-2.5 text-[12px] text-slate-600 dark:text-slate-300">
+                <div className="flex items-center justify-between">
+                  <span>Mensal</span>
+                  <span className="num font-semibold text-slate-900 dark:text-white">R$ {m.toLocaleString('pt-BR')}/mês</span>
+                </div>
+                {a > 0 && (
+                  <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-200/60 dark:border-white/[0.05]">
+                    <span>Anual <span className="opacity-70">(≈ R$ {eqMonthly.toLocaleString('pt-BR')}/mês)</span></span>
+                    <span className="num font-semibold text-slate-900 dark:text-white">
+                      R$ {a.toLocaleString('pt-BR')}/ano
+                      {discount > 0 && <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">−{discount}%</span>}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Preço usuário extra" hint="opcional"><StyledInput type="number" min="0" value={form.extraUserPrice} onChange={e => set('extraUserPrice', e.target.value)} placeholder="—" /></Field>
             <Field label="Máx. extras" hint="opcional"><StyledInput type="number" min="0" value={form.maxExtraUsers} onChange={e => set('maxExtraUsers', e.target.value)} placeholder="—" /></Field>
