@@ -1840,14 +1840,60 @@ function SuperAdminView() {
       {tab === 'overview' && (
         <div className="space-y-6">
           <SuperOverviewCards overview={overview} />
+
+          <SettingsCard title="Plataforma" hint="Volume total e distribuição por plano" icon={<Globe size={16} />}>
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3 text-center">
+                <div className="num text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white">{overview ? (overview.leadsTotal ?? 0).toLocaleString('pt-BR') : '—'}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Leads na plataforma</div>
+              </div>
+              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3 text-center">
+                <div className="num text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white">{overview ? (overview.usersTotal ?? 0).toLocaleString('pt-BR') : '—'}</div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Usuários na plataforma</div>
+              </div>
+            </div>
+            {overview?.byPlan && Object.keys(overview.byPlan).length > 0 ? (
+              <div className="space-y-2">
+                {(() => {
+                  const total = Object.values(overview.byPlan).reduce((s, x) => s + x, 0) || 1;
+                  return Object.entries(overview.byPlan).sort((a, b) => b[1] - a[1]).map(([plan, n]) => (
+                    <div key={plan} className="flex items-center gap-3">
+                      <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 w-28 truncate">{planLabel(plan)}</span>
+                      <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+                        <div className="h-full bg-brand-600 rounded-full" style={{ width: `${Math.round((n / total) * 100)}%` }} />
+                      </div>
+                      <span className="num text-[12px] font-semibold text-slate-700 dark:text-slate-200 w-10 text-right">{n}</span>
+                    </div>
+                  ));
+                })()}
+              </div>
+            ) : (
+              <div className="text-center text-[12px] text-slate-400 italic py-4">Sem clientes em plano ainda.</div>
+            )}
+          </SettingsCard>
+
+          {overview?.trialsExpiring?.length > 0 && (
+            <SettingsCard title="Trials vencendo" hint="Próximos 7 dias — aja rápido" icon={<AlertCircle size={16} />}>
+              <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+                {overview.trialsExpiring.map(tr => (
+                  <div key={tr.id} className="flex items-center gap-2 px-1 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">{tr.displayName}</div>
+                      <div className="text-[11.5px] text-slate-500 num">{tr.daysLeft <= 0 ? 'vence hoje' : `${tr.daysLeft} dia${tr.daysLeft === 1 ? '' : 's'}`} · {new Date(tr.trialEndsAt).toLocaleDateString('pt-BR')}</div>
+                    </div>
+                    <button disabled={!!manageBusy} onClick={() => patchTenant(tr.id, { trialDays: 7 }, 'Trial estendido por 7 dias.', 'trial')}
+                      className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 disabled:opacity-50 transition whitespace-nowrap">+7 dias</button>
+                    <button disabled={!!manageBusy} onClick={() => patchTenant(tr.id, { trialDays: 0, status: 'active' }, 'Organização ativada.', 'status')}
+                      className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition whitespace-nowrap">Ativar</button>
+                  </div>
+                ))}
+              </div>
+            </SettingsCard>
+          )}
         </div>
       )}
 
-      {tab === 'finance' && (
-        <SettingsCard title="Financeiro" hint="MRR, ARR, inadimplentes — em breve (Fase 5)" icon={<TrendingUp size={16} />}>
-          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Painel financeiro em construção.</div>
-        </SettingsCard>
-      )}
+      {tab === 'finance' && <SuperFinanceTab overview={overview} tenants={tenants} onPatch={patchTenant} busy={manageBusy} />}
 
       {tab === 'plans' && <SuperPlansTab plans={plans} authHeader={authHeader} onReload={loadPlans} />}
 
@@ -2367,6 +2413,101 @@ function SuperPlansTab({ plans, authHeader, onReload }) {
         <PlanFormModal plan={editing} authHeader={authHeader} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); onReload(); }} />
       )}
     </SettingsCard>
+  );
+}
+
+// Aba "Financeiro" do super-admin. Lê os totais do super-overview (já carregado)
+// + a lista de tenants. Cobrança é MANUAL (sem gateway): "Marcar pago" / "Suspender"
+// usam o patch genérico (tenant-status). Receita por plano = soma do preço efetivo
+// dos clientes ativos.
+function SuperFinanceTab({ overview, tenants, onPatch, busy }) {
+  const o = overview || {};
+  const fmt = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR');
+  const overdue = (tenants || []).filter(t => !t.archived && !t.internal && t.paymentStatus === 'overdue');
+  const upcoming = o.upcomingBilling || [];
+  const byPlanRev = {};
+  (tenants || []).forEach(t => { if (!t.archived && !t.internal && t.status === 'active') byPlanRev[t.plan] = (byPlanRev[t.plan] || 0) + (t.price || 0); });
+  const planRows = Object.entries(byPlanRev).sort((a, b) => b[1] - a[1]);
+  const maxRev = planRows.reduce((m, [, v]) => Math.max(m, v), 0) || 1;
+
+  const kpi = (label, value, sub, tone) => {
+    const tones = { brand: 'text-brand-700 dark:text-brand-300', emerald: 'text-emerald-700 dark:text-emerald-300', rose: 'text-rose-700 dark:text-rose-300', amber: 'text-amber-700 dark:text-amber-300', slate: 'text-slate-900 dark:text-white' };
+    return (
+      <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-4">
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
+        <div className={`num text-[22px] font-bold tracking-tight mt-1 ${tones[tone] || tones.slate}`}>{value}</div>
+        {sub && <div className="text-[11px] text-slate-400 mt-0.5">{sub}</div>}
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+        {kpi('MRR', fmt(o.mrr), 'receita recorrente', 'brand')}
+        {kpi('ARR', fmt(o.arr), 'anualizado (MRR×12)', 'emerald')}
+        {kpi('MRR potencial', fmt(o.mrrPotential), 'se os trials converterem', 'slate')}
+        {kpi('Churn (30d)', o.churn30d ?? 0, 'suspensos/arquivados', 'rose')}
+        {kpi('Inadimplentes', o.overdueCount ?? overdue.length, 'pagamento atrasado', 'amber')}
+      </div>
+
+      <SettingsCard title="Inadimplentes" hint="Marcados como pagamento atrasado" icon={<AlertCircle size={16} />}>
+        {overdue.length === 0 ? (
+          <div className="text-center text-[12.5px] text-slate-400 italic py-8">Ninguém em atraso 🎉</div>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+            {overdue.map(t => (
+              <div key={t.id} className="flex items-center gap-2 px-1 py-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">{t.displayName}</div>
+                  <div className="text-[11.5px] text-slate-500 num">{fmt(t.price)}/mês · {t.id}</div>
+                </div>
+                <button disabled={!!busy} onClick={() => onPatch(t.id, { paymentStatus: 'paid', lastPaymentAt: Date.now() }, 'Pagamento marcado como pago.', 'pay')}
+                  className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition whitespace-nowrap">Marcar pago</button>
+                {t.status !== 'suspended' && (
+                  <button disabled={!!busy} onClick={() => onPatch(t.id, { status: 'suspended' }, 'Organização suspensa.', 'status')}
+                    className="h-8 px-2.5 rounded-lg text-[11.5px] font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-300 disabled:opacity-50 transition whitespace-nowrap">Suspender</button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </SettingsCard>
+
+      <SettingsCard title="Próximos vencimentos" hint="Cobranças nos próximos 30 dias" icon={<Calendar size={16} />}>
+        {upcoming.length === 0 ? (
+          <div className="text-center text-[12.5px] text-slate-400 italic py-8">Nenhum vencimento nos próximos 30 dias.</div>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+            {upcoming.map(u => (
+              <div key={u.id} className="flex items-center gap-3 px-1 py-2.5">
+                <div className="min-w-0 flex-1 text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">{u.displayName}</div>
+                <span className="text-[11.5px] num text-slate-500">{new Date(u.nextBillingAt).toLocaleDateString('pt-BR')}</span>
+                <span className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded ${u.daysLeft <= 3 ? 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' : 'bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300'}`}>{u.daysLeft <= 0 ? 'hoje' : `${u.daysLeft}d`}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </SettingsCard>
+
+      <SettingsCard title="Receita por plano" hint="Clientes ativos — estimativa pelo plano/valor negociado" icon={<TrendingUp size={16} />}>
+        {planRows.length === 0 ? (
+          <div className="text-center text-[12.5px] text-slate-400 italic py-8">Sem receita registrada ainda.</div>
+        ) : (
+          <div className="space-y-2.5">
+            {planRows.map(([plan, rev]) => (
+              <div key={plan} className="flex items-center gap-3">
+                <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 w-28 truncate">{planLabel(plan)}</span>
+                <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
+                  <div className="h-full bg-brand-600 rounded-full" style={{ width: `${Math.round((rev / maxRev) * 100)}%` }} />
+                </div>
+                <span className="num text-[12px] font-semibold text-slate-700 dark:text-slate-200 w-24 text-right">{fmt(rev)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </SettingsCard>
+    </div>
   );
 }
 
