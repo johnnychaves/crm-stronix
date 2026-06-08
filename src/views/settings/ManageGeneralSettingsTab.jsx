@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { BookOpen, Building2, Check, Dumbbell, Pencil, Plus, Target, Trash2, Zap } from 'lucide-react';
+import { BookOpen, Building2, Check, Dumbbell, Pencil, Plus, Target, Trash2, X, Zap } from 'lucide-react';
 import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, CONFIG_PATH, CONFIG_GENERAL_ID, LEADS_PATH, MODALITIES_PATH, UNITS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';

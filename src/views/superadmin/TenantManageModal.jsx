@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Ban, Check, Eye } from 'lucide-react';
+import { Ban, Check, Eye, X } from 'lucide-react';
 import { planLabel, slugify } from '../../lib/superadmin.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { Btn } from '../../components/ui/Btn.jsx';

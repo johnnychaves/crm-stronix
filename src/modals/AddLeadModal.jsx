@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { AlertTriangle, Check, CheckCircle2, Users, Zap } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, Users, X, Zap } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
 import { getInteractionSecurityFields, getLeadOwnershipFields } from '../lib/leads.js';

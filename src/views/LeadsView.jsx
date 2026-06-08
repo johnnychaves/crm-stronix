@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
-import { AlertCircle, Check, Clock, Download, Filter, Phone, Plus, Search, Tag, Users } from 'lucide-react';
+import { AlertCircle, Check, Clock, Download, Filter, Phone, Plus, Search, Tag, Users, X } from 'lucide-react';
 import { isAdminUser } from '../lib/leads.js';
 import { LIST_PAGE_SIZE, buildInteractionIndex, isHotLeadFromDate } from '../lib/leadStatus.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
