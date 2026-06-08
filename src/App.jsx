@@ -565,6 +565,7 @@ function AppInner() {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [superTab, setSuperTab] = useState('overview'); // sub-seção do super-admin (no menu lateral)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
@@ -1294,7 +1295,18 @@ useEffect(() => {
                   <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />
                 )}
                 {appUser?.superAdmin && (
-                  <SidebarItem icon={<Globe className="w-[18px] h-[18px]" />} label="Organizações" active={activeTab === 'superadmin'} onClick={() => changeTab('superadmin')} />
+                  <SidebarGroup
+                    icon={<Globe className="w-[18px] h-[18px]" />}
+                    label="Organizações"
+                    active={activeTab === 'superadmin'}
+                    open={activeTab === 'superadmin'}
+                    onToggle={() => { changeTab('superadmin'); setSuperTab('overview'); }}
+                  >
+                    <SidebarSubItem label="Visão Geral" active={activeTab === 'superadmin' && superTab === 'overview'} onClick={() => { changeTab('superadmin'); setSuperTab('overview'); }} />
+                    <SidebarSubItem label="Clientes" active={activeTab === 'superadmin' && superTab === 'clients'} onClick={() => { changeTab('superadmin'); setSuperTab('clients'); }} />
+                    <SidebarSubItem label="Financeiro" active={activeTab === 'superadmin' && superTab === 'finance'} onClick={() => { changeTab('superadmin'); setSuperTab('finance'); }} />
+                    <SidebarSubItem label="Planos" active={activeTab === 'superadmin' && superTab === 'plans'} onClick={() => { changeTab('superadmin'); setSuperTab('plans'); }} />
+                  </SidebarGroup>
                 )}
               </div>
             </>
@@ -1355,7 +1367,7 @@ useEffect(() => {
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
               {activeTab === 'settings' && 'Configurações'}
-              {activeTab === 'superadmin' && 'Organizações (Super-admin)'}
+              {activeTab === 'superadmin' && (({ overview: 'Visão Geral', clients: 'Clientes', finance: 'Financeiro', plans: 'Planos' }[superTab] || 'Organizações') + ' · Super-admin')}
             </h2>
           </div>
           <button 
@@ -1380,7 +1392,7 @@ useEffect(() => {
         <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
           {appUser.superAdminOnly ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
-              <SuperAdminView />
+              <SuperAdminView tab={superTab} />
             </div>
           ) : loadingData ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
@@ -1395,7 +1407,7 @@ useEffect(() => {
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
               {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
-              {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView />}
+              {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} />}
             </div>
           )}
         </div>
@@ -1601,7 +1613,7 @@ function SuperOverviewCards({ overview }) {
   );
 }
 
-function SuperAdminView() {
+function SuperAdminView({ tab }) {
   const toast = useToast();
   const [tenants, setTenants] = useState([]);
   const [overview, setOverview] = useState(null);     // totais agregados da plataforma (KPIs)
@@ -1616,8 +1628,7 @@ function SuperAdminView() {
   const [search, setSearch] = useState('');            // busca por nome/slug/e-mail
   const [statusFilter, setStatusFilter] = useState('all'); // all | active | trial | suspended | risk | internal
   const [sortBy, setSortBy] = useState('name');        // name | activity | revenue
-  const [tab, setTab] = useState('overview');          // overview | clients | finance | plans
-  const [plans, setPlans] = useState(null);            // planos (GET /api/plans, lazy ao abrir a aba)
+  const [plans, setPlans] = useState(null);            // planos (GET /api/plans) — null = carregando
   const [paymentFilter, setPaymentFilter] = useState('all'); // all | paid | pending | overdue
 
   // Copia o link de acesso da academia (stronilead.com.br/<slug>).
@@ -1684,8 +1695,7 @@ function SuperAdminView() {
     setLoadingList(false);
   };
 
-  // Planos: carregados sob demanda ao abrir a aba (event handler, não em
-  // useEffect — evita set-state-in-effect e mantém o lint no baseline).
+  // Planos: alimentam a aba Planos e o seletor de plano dinâmico do modal.
   const loadPlans = async () => {
     try {
       const res = await fetch('/api/plans', { headers: await authHeader() });
@@ -1695,7 +1705,7 @@ function SuperAdminView() {
     } catch (e) { console.error('loadPlans', e); toast.error('Erro ao carregar planos.'); setPlans([]); }
   };
 
-  useEffect(() => { loadTenants(); }, []);
+  useEffect(() => { loadTenants(); loadPlans(); }, []);
 
   // Abre o painel de detalhe e busca as estatísticas de uso (Admin SDK).
   const openManage = async (t) => {
@@ -1825,18 +1835,7 @@ function SuperAdminView() {
         </p>
       </section>
 
-      {/* Menu lateral + conteúdo */}
-      <div className="grid grid-cols-12 gap-6">
-        <aside className="col-span-12 lg:col-span-3">
-          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-2 space-y-1 lg:sticky lg:top-20">
-            <SettingsTabItem icon={<LayoutDashboard size={15} />} label="Visão Geral" hint="KPIs e saúde da base" active={tab === 'overview'} onClick={() => setTab('overview')} />
-            <SettingsTabItem icon={<Globe size={15} />} label="Clientes" hint="Organizações e gestão" badge={activeTenants.length || null} active={tab === 'clients'} onClick={() => setTab('clients')} />
-            <SettingsTabItem icon={<TrendingUp size={15} />} label="Financeiro" hint="MRR, ARR e cobrança" active={tab === 'finance'} onClick={() => setTab('finance')} />
-            <SettingsTabItem icon={<Tag size={15} />} label="Planos" hint="Gestão de planos" active={tab === 'plans'} onClick={() => { setTab('plans'); if (plans === null) loadPlans(); }} />
-          </div>
-        </aside>
-
-        <div className="col-span-12 lg:col-span-9 space-y-6" key={tab}>
+      <div className="space-y-6" key={tab}>
       {tab === 'overview' && (
         <div className="space-y-6">
           <SuperOverviewCards overview={overview} />
@@ -2081,7 +2080,6 @@ function SuperAdminView() {
         </SettingsCard>
       )}
         </div>
-      </div>
 
       {manage && (
         <TenantManageModal
