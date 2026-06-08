@@ -1617,6 +1617,7 @@ function SuperAdminView() {
   const [statusFilter, setStatusFilter] = useState('all'); // all | active | trial | suspended | risk | internal
   const [sortBy, setSortBy] = useState('name');        // name | activity | revenue
   const [tab, setTab] = useState('overview');          // overview | clients | finance | plans
+  const [plans, setPlans] = useState(null);            // planos (GET /api/plans, lazy ao abrir a aba)
 
   // Copia o link de acesso da academia (stronilead.com.br/<slug>).
   const copyTenantLink = async (slug) => {
@@ -1680,6 +1681,17 @@ function SuperAdminView() {
       toast.error('Erro ao carregar a visão geral.');
     }
     setLoadingList(false);
+  };
+
+  // Planos: carregados sob demanda ao abrir a aba (event handler, não em
+  // useEffect — evita set-state-in-effect e mantém o lint no baseline).
+  const loadPlans = async () => {
+    try {
+      const res = await fetch('/api/plans', { headers: await authHeader() });
+      const data = await res.json();
+      if (res.ok) setPlans(data.plans || []);
+      else { toast.error(data.error || 'Erro ao carregar planos.'); setPlans([]); }
+    } catch (e) { console.error('loadPlans', e); toast.error('Erro ao carregar planos.'); setPlans([]); }
   };
 
   useEffect(() => { loadTenants(); }, []);
@@ -1802,7 +1814,7 @@ function SuperAdminView() {
   }, [tenants, search, statusFilter, sortBy]);
 
   return (
-    <div className="animate-fade-in font-sans space-y-6 max-w-3xl">
+    <div className="animate-fade-in font-sans space-y-6">
       <section>
         <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
           <Globe size={13} className="text-brand-600" /> Super-admin
@@ -1813,25 +1825,18 @@ function SuperAdminView() {
         </p>
       </section>
 
-      {/* Abas do super-admin */}
-      <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.06] w-fit max-w-full overflow-x-auto">
-        {[
-          { id: 'overview', label: 'Visão Geral', icon: <LayoutDashboard size={14} /> },
-          { id: 'clients', label: 'Clientes', icon: <Globe size={14} /> },
-          { id: 'finance', label: 'Financeiro', icon: <TrendingUp size={14} /> },
-          { id: 'plans', label: 'Planos', icon: <Tag size={14} /> },
-        ].map(tb => (
-          <button
-            key={tb.id}
-            type="button"
-            onClick={() => setTab(tb.id)}
-            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-semibold whitespace-nowrap transition ${tab === tb.id ? 'bg-white text-slate-900 shadow-sm dark:bg-white/[0.1] dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
-          >
-            {tb.icon} {tb.label}
-          </button>
-        ))}
-      </div>
+      {/* Menu lateral + conteúdo */}
+      <div className="grid grid-cols-12 gap-6">
+        <aside className="col-span-12 lg:col-span-3">
+          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-2 space-y-1 lg:sticky lg:top-20">
+            <SettingsTabItem icon={<LayoutDashboard size={15} />} label="Visão Geral" hint="KPIs e saúde da base" active={tab === 'overview'} onClick={() => setTab('overview')} />
+            <SettingsTabItem icon={<Globe size={15} />} label="Clientes" hint="Organizações e gestão" badge={activeTenants.length || null} active={tab === 'clients'} onClick={() => setTab('clients')} />
+            <SettingsTabItem icon={<TrendingUp size={15} />} label="Financeiro" hint="MRR, ARR e cobrança" active={tab === 'finance'} onClick={() => setTab('finance')} />
+            <SettingsTabItem icon={<Tag size={15} />} label="Planos" hint="Gestão de planos" active={tab === 'plans'} onClick={() => { setTab('plans'); if (plans === null) loadPlans(); }} />
+          </div>
+        </aside>
 
+        <div className="col-span-12 lg:col-span-9 space-y-6" key={tab}>
       {tab === 'overview' && (
         <div className="space-y-6">
           <SuperOverviewCards overview={overview} />
@@ -1844,11 +1849,7 @@ function SuperAdminView() {
         </SettingsCard>
       )}
 
-      {tab === 'plans' && (
-        <SettingsCard title="Planos" hint="Gestão dinâmica de planos — em breve (Fase 4)" icon={<Tag size={16} />}>
-          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Gestão de planos em construção.</div>
-        </SettingsCard>
-      )}
+      {tab === 'plans' && <SuperPlansTab plans={plans} authHeader={authHeader} onReload={loadPlans} />}
 
       {tab === 'clients' && (
         <div className="space-y-6">
@@ -2026,6 +2027,8 @@ function SuperAdminView() {
           </div>
         </SettingsCard>
       )}
+        </div>
+      </div>
 
       {manage && (
         <TenantManageModal
@@ -2189,6 +2192,181 @@ function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onEx
         </div>
       </div>
     </div>
+  );
+}
+
+// Modal de criar/editar um plano (super-admin). POST/PUT em /api/plans.
+function PlanFormModal({ plan, authHeader, onClose, onSaved }) {
+  const toast = useToast();
+  const editing = !!plan?.id;
+  const [form, setForm] = useState({
+    name: plan?.name || '',
+    slug: plan?.slug || '',
+    unlimited: plan?.maxUsers == null && editing,
+    maxUsers: plan?.maxUsers != null ? String(plan.maxUsers) : '',
+    priceMonthly: plan?.priceMonthly != null ? String(plan.priceMonthly) : '',
+    priceAnnual: plan?.priceAnnual != null ? String(plan.priceAnnual) : '',
+    extraUserPrice: plan?.extraUserPrice != null ? String(plan.extraUserPrice) : '',
+    maxExtraUsers: plan?.maxExtraUsers != null ? String(plan.maxExtraUsers) : '',
+    isActive: plan?.isActive !== false,
+    isDefault: plan?.isDefault === true,
+    order: plan?.order != null ? String(plan.order) : '0',
+    features: Array.isArray(plan?.features) ? plan.features.join('\n') : '',
+  });
+  const [slugTouched, setSlugTouched] = useState(editing);
+  const [saving, setSaving] = useState(false);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const onName = (v) => setForm(f => ({ ...f, name: v, slug: slugTouched ? f.slug : slugify(v) }));
+
+  const save = async () => {
+    if (!form.name.trim()) { toast.warning('Informe o nome do plano.'); return; }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(form.slug)) { toast.warning('Slug inválido: minúsculas, números e hífen.'); return; }
+    setSaving(true);
+    const body = {
+      name: form.name.trim(),
+      slug: form.slug.trim(),
+      maxUsers: form.unlimited ? null : (form.maxUsers === '' ? 1 : Number(form.maxUsers)),
+      priceMonthly: form.priceMonthly === '' ? 0 : Number(form.priceMonthly),
+      priceAnnual: form.priceAnnual === '' ? null : Number(form.priceAnnual),
+      extraUserPrice: form.extraUserPrice === '' ? null : Number(form.extraUserPrice),
+      maxExtraUsers: form.maxExtraUsers === '' ? null : Number(form.maxExtraUsers),
+      isActive: form.isActive,
+      isDefault: form.isDefault,
+      order: form.order === '' ? 0 : Number(form.order),
+      features: form.features.split('\n').map(s => s.trim()).filter(Boolean),
+    };
+    try {
+      const res = await fetch('/api/plans', {
+        method: editing ? 'PUT' : 'POST',
+        headers: await authHeader(),
+        body: JSON.stringify(editing ? { planId: plan.id, ...body } : body),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || 'Erro ao salvar o plano.'); setSaving(false); return; }
+      toast.success(editing ? 'Plano atualizado.' : 'Plano criado.');
+      onSaved();
+    } catch (e) { console.error('plan save', e); toast.error('Erro ao salvar o plano.'); setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-ink-950/55 backdrop-blur-[3px]" onClick={onClose} />
+      <div className="relative w-full max-w-[480px] max-h-[92vh] overflow-y-auto custom-scrollbar rounded-2xl bg-white dark:bg-ink-900 border border-slate-200 dark:border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(8,13,34,.55)]">
+        <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200/80 dark:border-white/[0.07]">
+          <h2 className="font-display text-[17px] font-bold tracking-tight text-gray-900 dark:text-white">{editing ? 'Editar plano' : 'Novo plano'}</h2>
+          <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-white/[0.06] transition"><X size={17} /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Nome"><StyledInput value={form.name} onChange={e => onName(e.target.value)} placeholder="Ex: Pro Anual" /></Field>
+            <Field label="Slug" hint="referenciado no tenant"><StyledInput value={form.slug} onChange={e => { setSlugTouched(true); set('slug', slugify(e.target.value)); }} placeholder="pro-anual" /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Máx. usuários">
+              <div className="flex items-center gap-2">
+                <StyledInput type="number" min="1" value={form.unlimited ? '' : form.maxUsers} onChange={e => set('maxUsers', e.target.value)} disabled={form.unlimited} placeholder={form.unlimited ? 'Ilimitado' : 'ex: 10'} className="flex-1" />
+                <label className="flex items-center gap-1.5 text-[11.5px] text-slate-600 dark:text-slate-300 whitespace-nowrap cursor-pointer">
+                  <input type="checkbox" checked={form.unlimited} onChange={e => set('unlimited', e.target.checked)} /> ∞
+                </label>
+              </div>
+            </Field>
+            <Field label="Ordem"><StyledInput type="number" value={form.order} onChange={e => set('order', e.target.value)} /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Preço mensal (R$)"><StyledInput type="number" min="0" value={form.priceMonthly} onChange={e => set('priceMonthly', e.target.value)} placeholder="197" /></Field>
+            <Field label="Preço anual (R$)" hint="opcional"><StyledInput type="number" min="0" value={form.priceAnnual} onChange={e => set('priceAnnual', e.target.value)} placeholder="—" /></Field>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Preço usuário extra" hint="opcional"><StyledInput type="number" min="0" value={form.extraUserPrice} onChange={e => set('extraUserPrice', e.target.value)} placeholder="—" /></Field>
+            <Field label="Máx. extras" hint="opcional"><StyledInput type="number" min="0" value={form.maxExtraUsers} onChange={e => set('maxExtraUsers', e.target.value)} placeholder="—" /></Field>
+          </div>
+          <Field label="Features (uma por linha)" hint="exibidas na UI">
+            <textarea value={form.features} onChange={e => set('features', e.target.value)} rows={3}
+              className="w-full px-3 py-2 rounded-lg text-[12.5px] bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500 resize-none custom-scrollbar" placeholder={'Suporte prioritário\nRelatórios avançados'} />
+          </Field>
+          <div className="flex items-center gap-4 flex-wrap">
+            <label className="flex items-center gap-2 text-[12.5px] text-slate-700 dark:text-slate-200 cursor-pointer">
+              <input type="checkbox" checked={form.isActive} onChange={e => set('isActive', e.target.checked)} /> Ativo
+            </label>
+            <label className="flex items-center gap-2 text-[12.5px] text-slate-700 dark:text-slate-200 cursor-pointer">
+              <input type="checkbox" checked={form.isDefault} onChange={e => set('isDefault', e.target.checked)} /> Padrão ao criar org
+            </label>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <Btn kind="soft" onClick={onClose}>Cancelar</Btn>
+            <Btn kind="brand" icon={<Check size={13} />} onClick={save} disabled={saving}>{saving ? 'Salvando...' : (editing ? 'Salvar' : 'Criar plano')}</Btn>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Aba "Planos" do super-admin: lista os planos (GET /api/plans, semeia se vazio)
+// e abre o PlanFormModal para criar/editar. Excluir é bloqueado pela API se o
+// plano estiver em uso por alguma organização.
+function SuperPlansTab({ plans, authHeader, onReload }) {
+  const toast = useToast();
+  const [editing, setEditing] = useState(undefined); // undefined = fechado · null = novo · obj = editar
+
+  const del = async (p) => {
+    if (p.tenantCount > 0) { toast.warning(`"${p.name}" tem ${p.tenantCount} organização(ões). Migre-as antes de excluir.`); return; }
+    if (!window.confirm(`Excluir o plano "${p.name}"?`)) return;
+    try {
+      const res = await fetch('/api/plans', { method: 'DELETE', headers: await authHeader(), body: JSON.stringify({ planId: p.id }) });
+      const data = await res.json();
+      if (!res.ok) toast.error(data.error || 'Erro ao excluir.');
+      else { toast.success('Plano excluído.'); onReload(); }
+    } catch (e) { console.error('plan del', e); toast.error('Erro ao excluir.'); }
+  };
+
+  return (
+    <SettingsCard
+      title="Planos"
+      hint="Crie e edite os planos oferecidos aos clientes"
+      icon={<Tag size={16} />}
+      action={<Btn kind="brand" icon={<Plus size={13} />} onClick={() => setEditing(null)}>Novo plano</Btn>}
+    >
+      {plans === null ? (
+        <div className="text-center text-[12.5px] text-slate-400 py-10">Carregando...</div>
+      ) : plans.length === 0 ? (
+        <div className="text-center text-[12.5px] text-slate-400 italic py-10">Nenhum plano ainda. Crie o primeiro.</div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {plans.map(p => (
+            <div key={p.id} className="group rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[14px] font-semibold text-slate-900 dark:text-white">{p.name}</span>
+                    {p.isDefault && <span className="text-[9.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">Padrão</span>}
+                    {p.isActive === false && <span className="text-[9.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-200 text-slate-500 dark:bg-white/[0.08] dark:text-slate-400">Inativo</span>}
+                  </div>
+                  <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num mt-0.5">{p.slug}</div>
+                </div>
+                <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition shrink-0">
+                  <IconBtn icon={<Pencil size={13} />} kind="edit" title="Editar" onClick={() => setEditing(p)} />
+                  <IconBtn icon={<Trash2 size={13} />} kind="danger" title="Excluir" onClick={() => del(p)} />
+                </div>
+              </div>
+              <div className="mt-3 flex items-end justify-between">
+                <div>
+                  <span className="num text-[18px] font-bold text-slate-900 dark:text-white">R$ {Number(p.priceMonthly || 0).toLocaleString('pt-BR')}</span>
+                  <span className="text-[11px] text-slate-400">/mês</span>
+                </div>
+                <div className="text-right text-[11.5px] text-slate-500 dark:text-slate-400 num">
+                  <div>{p.maxUsers == null ? 'Usuários ilimitados' : `${p.maxUsers} usuários`}</div>
+                  <div>{p.tenantCount} org{p.tenantCount === 1 ? '' : 's'}</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {editing !== undefined && (
+        <PlanFormModal plan={editing} authHeader={authHeader} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); onReload(); }} />
+      )}
+    </SettingsCard>
   );
 }
 
