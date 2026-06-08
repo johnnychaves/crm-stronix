@@ -1616,6 +1616,7 @@ function SuperAdminView() {
   const [search, setSearch] = useState('');            // busca por nome/slug/e-mail
   const [statusFilter, setStatusFilter] = useState('all'); // all | active | trial | suspended | risk | internal
   const [sortBy, setSortBy] = useState('name');        // name | activity | revenue
+  const [tab, setTab] = useState('overview');          // overview | clients | finance | plans
 
   // Copia o link de acesso da academia (stronilead.com.br/<slug>).
   const copyTenantLink = async (slug) => {
@@ -1812,8 +1813,45 @@ function SuperAdminView() {
         </p>
       </section>
 
-      <SuperOverviewCards overview={overview} />
+      {/* Abas do super-admin */}
+      <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.06] w-fit max-w-full overflow-x-auto">
+        {[
+          { id: 'overview', label: 'Visão Geral', icon: <LayoutDashboard size={14} /> },
+          { id: 'clients', label: 'Clientes', icon: <Globe size={14} /> },
+          { id: 'finance', label: 'Financeiro', icon: <TrendingUp size={14} /> },
+          { id: 'plans', label: 'Planos', icon: <Tag size={14} /> },
+        ].map(tb => (
+          <button
+            key={tb.id}
+            type="button"
+            onClick={() => setTab(tb.id)}
+            className={`inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[12.5px] font-semibold whitespace-nowrap transition ${tab === tb.id ? 'bg-white text-slate-900 shadow-sm dark:bg-white/[0.1] dark:text-white' : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'}`}
+          >
+            {tb.icon} {tb.label}
+          </button>
+        ))}
+      </div>
 
+      {tab === 'overview' && (
+        <div className="space-y-6">
+          <SuperOverviewCards overview={overview} />
+        </div>
+      )}
+
+      {tab === 'finance' && (
+        <SettingsCard title="Financeiro" hint="MRR, ARR, inadimplentes — em breve (Fase 5)" icon={<TrendingUp size={16} />}>
+          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Painel financeiro em construção.</div>
+        </SettingsCard>
+      )}
+
+      {tab === 'plans' && (
+        <SettingsCard title="Planos" hint="Gestão dinâmica de planos — em breve (Fase 4)" icon={<Tag size={16} />}>
+          <div className="text-center text-[12.5px] text-slate-400 italic py-10">Gestão de planos em construção.</div>
+        </SettingsCard>
+      )}
+
+      {tab === 'clients' && (
+        <div className="space-y-6">
       <SettingsCard title="Nova organização" hint="Provisiona o tenant + o primeiro admin" icon={<Plus size={16} />}>
         <form onSubmit={submit} className="space-y-4 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1972,7 +2010,10 @@ function SuperAdminView() {
         </SettingsCard>
       )}
 
-      {audit.length > 0 && (
+        </div>
+      )}
+
+      {tab === 'overview' && audit.length > 0 && (
         <SettingsCard title="Atividade recente" hint="Últimas ações no painel (auditoria)" icon={<Activity size={16} />}>
           <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
             {audit.map(e => (
