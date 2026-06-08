@@ -1,5 +1,6 @@
 import { adminDb, verifyRequest } from './_firebaseAdmin.js';
 import { effectivePrice, loadPlans } from './_plans.js';
+import { isAsaasConfigured } from './_asaas.js';
 
 // Visão agregada da plataforma para o painel super-admin — SUPER-ADMIN only.
 // Usa o Admin SDK (o super-admin não lê /artifacts de outro tenant pelas rules).
@@ -66,6 +67,10 @@ async function tenantMetrics(doc, plansMap) {
     lastPaymentAt: toMillis(data.lastPaymentAt),
     nextBillingAt: toMillis(data.nextBillingAt),
     statusChangedAt: toMillis(data.statusChangedAt),
+    asaasSubscriptionId: data.asaasSubscriptionId || null,
+    billingProvider: data.billingProvider || null,
+    billingCycle: data.billingCycle || null,
+    lastInvoiceUrl: data.lastInvoiceUrl || null,
     price: effectivePrice({ plan, monthlyPrice }, plansMap),
     userCount,
     leadCount,
@@ -197,7 +202,19 @@ export default async function handler(req, res) {
       console.error('super-overview audit', err?.message || err);
     }
 
-    return res.status(200).json({ totals, tenants, audit });
+    // Pagamentos recentes (histórico alimentado pelos webhooks Asaas).
+    try {
+      const paySnap = await adminDb.collection('tenant_payments').orderBy('at', 'desc').limit(25).get();
+      totals.recentPayments = paySnap.docs.map((d) => {
+        const x = d.data() || {};
+        return { id: d.id, tenantId: x.tenantId || null, value: x.value ?? null, status: x.status || null, event: x.event || null, billingType: x.billingType || null, at: toMillis(x.at) };
+      });
+    } catch (err) {
+      console.error('super-overview payments', err?.message || err);
+      totals.recentPayments = [];
+    }
+
+    return res.status(200).json({ totals, tenants, audit, asaasConfigured: isAsaasConfigured() });
   } catch (error) {
     console.error('super-overview', error);
     return res.status(500).json({ error: 'Erro ao montar a visão geral.' });

@@ -34,4 +34,12 @@ export default defineConfig([
       'react/jsx-uses-vars': 'error',
     },
   },
+  {
+    // Funções serverless (api/) e CLIs (scripts/) rodam no Node — dão acesso a
+    // process, Buffer, fetch, console, etc. Sem isto o no-undef (modo browser)
+    // acusava esses globais falsamente e o lint não servia de portão real p/ o
+    // backend (ex.: o código de cobrança Asaas).
+    files: ['api/**/*.js', 'scripts/**/*.js'],
+    languageOptions: { globals: { ...globals.node } },
+  },
 ])
