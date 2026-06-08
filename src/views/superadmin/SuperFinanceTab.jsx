@@ -6,6 +6,7 @@ function SuperFinanceTab({ overview, tenants, onPatch, busy }) {
   const o = overview || {};
   const fmt = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR');
   const overdue = (tenants || []).filter(t => !t.archived && !t.internal && t.paymentStatus === 'overdue');
+  const overdueValue = overdue.reduce((s, t) => s + (t.price || 0), 0);
   const upcoming = o.upcomingBilling || [];
   const byPlanRev = {};
   (tenants || []).forEach(t => { if (!t.archived && !t.internal && t.status === 'active') byPlanRev[t.plan] = (byPlanRev[t.plan] || 0) + (t.price || 0); });
@@ -30,7 +31,7 @@ function SuperFinanceTab({ overview, tenants, onPatch, busy }) {
         {kpi('ARR', fmt(o.arr), 'anualizado (MRR×12)', 'emerald')}
         {kpi('MRR potencial', fmt(o.mrrPotential), 'se os trials converterem', 'slate')}
         {kpi('Churn (30d)', o.churn30d ?? 0, 'suspensos/arquivados', 'rose')}
-        {kpi('Inadimplentes', o.overdueCount ?? overdue.length, 'pagamento atrasado', 'amber')}
+        {kpi('Inadimplentes', o.overdueCount ?? overdue.length, overdue.length ? `${fmt(overdueValue)}/mês em atraso` : 'pagamento atrasado', 'amber')}
       </div>
 
       <SettingsCard title="Inadimplentes" hint="Marcados como pagamento atrasado" icon={<AlertCircle size={16} />}>
