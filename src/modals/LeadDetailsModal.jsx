@@ -13,7 +13,7 @@ import { Field, StyledInput, StyledSelect } from '../components/ui/Field.jsx';
 import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
 import { LossReasonModal } from './LossReasonModal.jsx';
 import { settingsColorTone } from '../components/ui/ColorPicker.jsx';
-import { Ban, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, MessageCircle, Phone, RefreshCw, Search, Tag, ThumbsDown, Trash, Trophy, TrendingUp, Users } from 'lucide-react';
+import { Ban, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, MessageCircle, Phone, RefreshCw, Search, Tag, ThumbsDown, Trash, TrendingUp, Trophy, Users, X } from 'lucide-react';
 
 const interactionToneMap = {
   blue: {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { AlertCircle, Clock, Kanban, Mail, Pencil, Plus, Shield, Trash2, Users } from 'lucide-react';
+import { AlertCircle, Clock, Kanban, Mail, Pencil, Plus, Shield, Trash2, Users, X } from 'lucide-react';
 import { collection, doc, getDocs, onSnapshot, query, where, updateDoc, deleteField } from 'firebase/firestore';
 import { auth, appId, LEADS_PATH, USERS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
