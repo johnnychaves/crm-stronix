@@ -139,6 +139,10 @@ import {
 import { getDefaultFunnel, isItemInFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider, useToast } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext, useGeneralConfig } from './contexts/GeneralConfigContext.jsx';
+import { LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, buildInteractionIndex, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate } from './lib/leadStatus.js';
+import { getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from './lib/kanban.js';
+import { fmtBRL, fmtNum, timeAgo, humanizeAge, humanizeUntil, formatHourLabel } from './lib/format.js';
+import { slugify, planLabel, tenantSeatLabel, IMPERSONATION_KEY, readImpersonation, tenantHealth, lastActivityLabel, auditActionLabel } from './lib/superadmin.js';
 
 // ============================================================
 // MARCA STRONILEAD — símbolo "The Surge" + wordmark
@@ -341,140 +345,7 @@ function AcceptInviteScreen({ token, tenantId }) {
   );
 }
 
-// --- HELPERS DE TEMPERATURA DO LEAD ---
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 
-// Tamanho de página das listas longas (Leads, Agendamentos): renderiza só os
-// primeiros N e revela mais sob demanda — evita pintar centenas de linhas no
-// DOM de uma vez.
-const LIST_PAGE_SIZE = 50;
-
-// Normaliza a lista de opções de quantidade de aulas experimentais:
-// inteiros positivos, sem repetição, ordenados. Aceita também um número
-// legado `fallbackMax` (config antiga com maxTrialClasses) → vira [1..max].
-// Nunca retorna vazio: cai para [1, 2, 3].
-const normalizeTrialClassOptions = (raw, fallbackMax) => {
-  let list = [];
-  if (Array.isArray(raw)) {
-    list = raw;
-  } else if (Number.isFinite(Number(fallbackMax)) && Number(fallbackMax) > 0) {
-    const max = Math.floor(Number(fallbackMax));
-    list = Array.from({ length: max }, (_, i) => i + 1);
-  }
-  const clean = Array.from(new Set(
-    list.map(n => Math.floor(Number(n))).filter(n => Number.isFinite(n) && n >= 1 && n <= 99)
-  )).sort((a, b) => a - b);
-  return clean.length ? clean : [1, 2, 3];
-};
-
-// Dias da semana (0=dom..6=sáb) em que a Meta Diária vale. Default seg–sex.
-const normalizeMetaWeekdays = (raw) => {
-  if (!Array.isArray(raw)) return [1, 2, 3, 4, 5];
-  const clean = Array.from(new Set(
-    raw.map(Number).filter(n => Number.isInteger(n) && n >= 0 && n <= 6)
-  )).sort((a, b) => a - b);
-  return clean.length ? clean : [1, 2, 3, 4, 5];
-};
-
-// Índice leadId -> { count, lastDate } construído UMA vez em O(interações).
-// Antes, cada card/linha recomputava interactions.filter() por lead — dava
-// O(leads × interações) a cada render/tecla. Monte num useMemo([interactions])
-// e passe lastDate aos badges (LeadTemperatureBadge/DaysSinceContactBadge) e
-// use nos filtros (ex: "Apenas Hot").
-const buildInteractionIndex = (interactions) => {
-  const idx = new Map();
-  (interactions || []).forEach(i => {
-    let e = idx.get(i.leadId);
-    if (!e) { e = { count: 0, lastDate: null }; idx.set(i.leadId, e); }
-    e.count += 1;
-    if (i.createdAt instanceof Date && (!e.lastDate || i.createdAt > e.lastDate)) {
-      e.lastDate = i.createdAt;
-    }
-  });
-  return idx;
-};
-
-const isLeadActive = (lead) => {
-  return lead && lead.status !== 'Venda' && lead.status !== 'Perda';
-};
-
-// --- Predicados de temperatura/recência. Recebem a última data de interação
-// já resolvida (via buildInteractionIndex.get(id)?.lastDate), sem varrer o
-// array por lead — O(1) por lead em listas. ---
-
-const getDaysSinceFromDate = (lead, lastInteractionDate) => {
-  const last = (lastInteractionDate instanceof Date ? lastInteractionDate : null) || lead?.createdAt;
-  if (!(last instanceof Date) || isNaN(last.getTime())) return null;
-  return Math.max(0, Math.floor((Date.now() - last.getTime()) / DAY_MS));
-};
-
-const isHotLeadFromDate = (lead, lastInteractionDate) => {
-  if (!isLeadActive(lead)) return false;
-  const now = Date.now();
-
-  // Critério 1: lead recém-criado (últimas 6 horas)
-  if (lead.createdAt instanceof Date) {
-    const ageMs = now - lead.createdAt.getTime();
-    if (ageMs >= 0 && ageMs <= 6 * HOUR_MS) return true;
-  }
-
-  // Critério 2: interação nas últimas 24h
-  if (lastInteractionDate instanceof Date) {
-    const sinceMs = now - lastInteractionDate.getTime();
-    if (sinceMs >= 0 && sinceMs <= 24 * HOUR_MS) return true;
-  }
-
-  // Critério 3: visita ou aula experimental agendada nas próximas 48h
-  const appointmentType = getLeadAppointmentType(lead);
-  const appointmentDate = getLeadAppointmentDate(lead);
-  if (appointmentType && appointmentDate instanceof Date && !isNaN(appointmentDate.getTime())) {
-    const untilMs = appointmentDate.getTime() - now;
-    if (untilMs >= 0 && untilMs <= 48 * HOUR_MS) return true;
-  }
-
-  return false;
-};
-
-const isColdLeadFromDate = (lead, lastInteractionDate) => {
-  if (!isLeadActive(lead)) return false;
-  // Hot e cold são mutuamente exclusivos — hot tem prioridade
-  if (isHotLeadFromDate(lead, lastInteractionDate)) return false;
-  const days = getDaysSinceFromDate(lead, lastInteractionDate);
-  return days !== null && days >= 7;
-};
-
-// --- KANBAN: cor de destaque por coluna (faixa do card + bolinha do header) ---
-const KANBAN_COLUMN_ACCENT = {
-  blue:   { dot: 'bg-blue-500',    border: '#3b82f6' },
-  green:  { dot: 'bg-emerald-500', border: '#10b981' },
-  yellow: { dot: 'bg-amber-500',   border: '#f59e0b' },
-  red:    { dot: 'bg-rose-500',    border: '#f43f5e' },
-  purple: { dot: 'bg-violet-500',  border: '#8b5cf6' },
-  orange: { dot: 'bg-orange-500',  border: '#f97316' },
-  gray:   { dot: 'bg-slate-400',   border: '#94a3b8' },
-  teal:   { dot: 'bg-teal-500',    border: '#14b8a6' },
-  pink:   { dot: 'bg-pink-500',    border: '#ec4899' },
-  indigo: { dot: 'bg-indigo-500',  border: '#6366f1' },
-  lime:   { dot: 'bg-lime-500',    border: '#84cc16' },
-};
-const getKanbanColumnAccent = (color) => KANBAN_COLUMN_ACCENT[color] || KANBAN_COLUMN_ACCENT.gray;
-
-// --- KANBAN: avatar com iniciais (cor estável por hash do nome) ---
-const KANBAN_AVATAR_PALETTES = [
-  ['#fde68a','#92400e'], ['#bbf7d0','#065f46'], ['#bae6fd','#075985'],
-  ['#fbcfe8','#9d174d'], ['#ddd6fe','#5b21b6'], ['#fecaca','#9f1212'],
-  ['#a7f3d0','#065f46'], ['#fef08a','#854d0e'],
-];
-const getKanbanAvatarPalette = (seed = '') => {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  return KANBAN_AVATAR_PALETTES[h % KANBAN_AVATAR_PALETTES.length];
-};
-const getKanbanInitials = (name = '') => {
-  const parts = String(name).trim().split(/\s+/).filter(Boolean).slice(0, 2);
-  return parts.map(p => p[0] || '').join('').toUpperCase() || '?';
-};
 function KanbanAvatar({ name = '', size = 32 }) {
   const [bg, fg] = getKanbanAvatarPalette(name);
   return (
@@ -487,24 +358,6 @@ function KanbanAvatar({ name = '', size = 32 }) {
   );
 }
 
-// --- KANBAN: formatação relativa de datas ---
-const fmtKanbanRelDate = (d) => {
-  if (!(d instanceof Date) || isNaN(d.getTime())) return '';
-  const now = new Date();
-  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  const startThat = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const days = Math.round((startThat - startToday) / 86400000);
-  if (days === 0) return 'Hoje';
-  if (days === 1) return 'Amanhã';
-  if (days === -1) return 'Ontem';
-  if (days > 1 && days < 7) return `Em ${days}d`;
-  if (days < -1 && days > -7) return `${Math.abs(days)}d atrás`;
-  return d.toLocaleDateString('pt-BR');
-};
-const fmtKanbanRelDateTime = (d) => {
-  if (!(d instanceof Date) || isNaN(d.getTime())) return '';
-  return `${fmtKanbanRelDate(d)} · ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
-};
 
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
@@ -1456,30 +1309,8 @@ useEffect(() => {
 // Visível só para quem tem o claim superAdmin. Cria uma organização nova
 // (tenant + 1º admin + claim + doc) via /api/provision-tenant. Os padrões
 // (funil "Comercial" + etapa "Negociação") são semeados no 1º login do admin.
-const slugify = (s) => String(s || '')
-  .toLowerCase()
-  .normalize('NFD').replace(/[̀-ͯ]/g, '') // remove acentos
-  .replace(/[^a-z0-9]+/g, '-')
-  .replace(/^-+|-+$/g, '')
-  .slice(0, 40);
 
-// Limites de seats por plano (espelha api/_plans.js) — só p/ exibição no painel.
-const PLAN_MAX_USERS = { starter: 3, pro: 10, enterprise: Infinity };
-const planLabel = (p) => ({ starter: 'Starter', pro: 'Pro', enterprise: 'Enterprise' }[p] || p || 'starter');
-const tenantSeatLabel = (t) => {
-  if (typeof t.userCount !== 'number') return null;
-  const max = PLAN_MAX_USERS[t.plan] ?? 3;
-  return max === Infinity ? `${t.userCount} usuários` : `${t.userCount}/${max} seats`;
-};
 
-// "Entrar como" (impersonação): o token de retorno + dados do cliente ficam no
-// sessionStorage (escopo da aba). É a fonte de verdade do banner — ver o App
-// (banner + "sair") e o SuperAdminView (o "entrar").
-const IMPERSONATION_KEY = 'crm-impersonation';
-const readImpersonation = () => {
-  try { return JSON.parse(sessionStorage.getItem(IMPERSONATION_KEY) || 'null'); }
-  catch { return null; }
-};
 
 // Faixa fixa exibida no topo enquanto o super-admin visualiza como um cliente.
 function ImpersonationBanner({ viewing, onExit, busy }) {
@@ -1495,55 +1326,8 @@ function ImpersonationBanner({ viewing, onExit, busy }) {
   );
 }
 
-// Formatação dos números do painel (BRL inteiro — os preços são redondos).
-const fmtBRL = (n) => `R$ ${Number(n || 0).toLocaleString('pt-BR')}`;
-const fmtNum = (n) => Number(n || 0).toLocaleString('pt-BR');
 
-// Saúde do cliente pela última atividade: ativo ≤7d, ocioso 8–14d, em risco >14d
-// (alinhado ao KPI "Clientes em risco"). Usado nos badges da lista e do modal.
-const HEALTH = {
-  active: { key: 'active', label: 'Ativo',    cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' },
-  idle:   { key: 'idle',   label: 'Ocioso',   cls: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300' },
-  risk:   { key: 'risk',   label: 'Em risco', cls: 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300' },
-};
-const tenantHealth = (lastActivityAt) => {
-  if (!lastActivityAt) return HEALTH.risk;
-  const days = (Date.now() - lastActivityAt) / 86400000;
-  if (days <= 7) return HEALTH.active;
-  if (days <= 14) return HEALTH.idle;
-  return HEALTH.risk;
-};
-// Rótulo curto da última atividade ("há X dias").
-const lastActivityLabel = (ms) => {
-  if (!ms) return 'sem atividade registrada';
-  const days = Math.floor((Date.now() - ms) / 86400000);
-  if (days <= 0) return 'ativo hoje';
-  if (days === 1) return 'última atividade ontem';
-  return `última atividade há ${days} dias`;
-};
 
-// Tempo relativo curto para o feed de auditoria.
-const timeAgo = (ms) => {
-  if (!ms) return '';
-  const s = Math.floor((Date.now() - ms) / 1000);
-  if (s < 60) return 'agora';
-  const m = Math.floor(s / 60); if (m < 60) return `há ${m}min`;
-  const h = Math.floor(m / 60); if (h < 24) return `há ${h}h`;
-  const d = Math.floor(h / 24); return `há ${d}d`;
-};
-// Descrição legível de uma entrada do log de auditoria do super-admin.
-const auditActionLabel = (e) => {
-  const t = e.tenantId || '—';
-  switch (e.action) {
-    case 'impersonate.start': return `Entrou como ${e.details?.tenantName || t}`;
-    case 'tenant.provision': return `Criou a organização ${e.details?.displayName || t}`;
-    case 'tenant.update': {
-      const ch = (e.details?.changed || []).join(', ');
-      return `Atualizou ${t}${ch ? ` (${ch})` : ''}`;
-    }
-    default: return `${e.action} · ${t}`;
-  }
-};
 
 // KPIs de negócio no topo do painel super-admin: clientes ativos, MRR estimado,
 // leads e usuários da plataforma, alerta de trials vencendo e mini-gráfico de
@@ -9955,35 +9739,6 @@ const COLOR_TONES = {
   rose: { dot: 'bg-rose-500', text: 'text-rose-700', soft: 'bg-rose-50', strong: 'bg-rose-600', border: 'border-rose-200', darkText: 'dark:text-rose-300', darkSoft: 'dark:bg-rose-500/10' }
 };
 
-function humanizeAge(date, now = new Date()) {
-  if (!date) return '';
-  const diff = Math.max(0, now - date);
-  const min = Math.floor(diff / 60000);
-  if (min < 1) return 'agora';
-  if (min < 60) return `há ${min}min`;
-  const h = Math.floor(min / 60);
-  if (h < 24) return `há ${h}h`;
-  const d = Math.floor(h / 24);
-  return `há ${d}d`;
-}
-
-function humanizeUntil(date, now = new Date()) {
-  if (!date) return '';
-  const diff = date - now;
-  if (diff < -60000) return humanizeAge(date, now);
-  const mins = Math.round(diff / 60000);
-  if (Math.abs(mins) < 1) return 'agora';
-  if (mins < 60) return `em ${mins}min`;
-  const h = Math.floor(mins / 60);
-  if (h < 24) return `em ${h}h`;
-  const d = Math.floor(h / 24);
-  return `em ${d}d`;
-}
-
-function formatHourLabel(date) {
-  if (!date) return '';
-  return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
 
 function WhatsappGlyph({ size = 14 }) {
   return (
