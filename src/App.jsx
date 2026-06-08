@@ -1618,6 +1618,7 @@ function SuperAdminView() {
   const [sortBy, setSortBy] = useState('name');        // name | activity | revenue
   const [tab, setTab] = useState('overview');          // overview | clients | finance | plans
   const [plans, setPlans] = useState(null);            // planos (GET /api/plans, lazy ao abrir a aba)
+  const [paymentFilter, setPaymentFilter] = useState('all'); // all | paid | pending | overdue
 
   // Copia o link de acesso da academia (stronilead.com.br/<slug>).
   const copyTenantLink = async (slug) => {
@@ -1699,6 +1700,7 @@ function SuperAdminView() {
   // Abre o painel de detalhe e busca as estatísticas de uso (Admin SDK).
   const openManage = async (t) => {
     setManage(t);
+    if (plans === null) loadPlans(); // seletor de plano dinâmico no modal
     setStats({ loading: true });
     try {
       const res = await fetch(`/api/tenant-stats?tenantId=${encodeURIComponent(t.id)}`, { headers: await authHeader() });
@@ -1737,11 +1739,8 @@ function SuperAdminView() {
     return ok;
   };
 
-  const changePlan = (tenantId, plan) => patchTenant(tenantId, { plan }, `Plano alterado para ${planLabel(plan)}.`, 'plan');
   const extendTrial = (tenantId, days) => patchTenant(tenantId, { trialDays: Number(days) }, Number(days) > 0 ? `Trial de ${days} dias aplicado.` : 'Trial encerrado.', 'trial');
   const setActive = (tenantId, status) => patchTenant(tenantId, { status }, status === 'active' ? 'Organização ativada.' : 'Organização suspensa.', 'status');
-  const setInternal = (tenantId, internal) => patchTenant(tenantId, { internal }, internal ? 'Marcada como interna/teste — fora dos números.' : 'Voltou a contar como cliente.', 'internal');
-  const saveInternalMeta = (tenantId, body) => patchTenant(tenantId, body, 'Dados internos salvos.', 'meta');
   const setArchived = async (tenantId, archived) => {
     if (archived && !window.confirm('Desativar esta organização? Os usuários perdem o acesso (dados preservados). Você pode restaurar depois.')) return;
     const ok = await patchTenant(tenantId, { archived }, archived ? 'Organização desativada.' : 'Organização restaurada.', 'archive');
@@ -1806,12 +1805,13 @@ function SuperAdminView() {
     else if (statusFilter === 'suspended') list = list.filter(t => t.status === 'suspended');
     else if (statusFilter === 'risk') list = list.filter(t => !t.internal && (t.status === 'active' || t.status === 'trial') && tenantHealth(t.lastActivityAt).key === 'risk');
     else if (statusFilter === 'internal') list = list.filter(t => t.internal);
+    if (paymentFilter !== 'all') list = list.filter(t => (t.paymentStatus || 'pending') === paymentFilter);
     const arr = [...list];
     if (sortBy === 'activity') arr.sort((a, b) => (b.lastActivityAt || 0) - (a.lastActivityAt || 0));
     else if (sortBy === 'revenue') arr.sort((a, b) => (b.price || 0) - (a.price || 0));
     else arr.sort((a, b) => a.displayName.localeCompare(b.displayName));
     return arr;
-  }, [tenants, search, statusFilter, sortBy]);
+  }, [tenants, search, statusFilter, sortBy, paymentFilter]);
 
   return (
     <div className="animate-fade-in font-sans space-y-6">
@@ -1968,7 +1968,14 @@ function SuperAdminView() {
             className="h-9 px-2.5 rounded-lg text-[12px] bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500 cursor-pointer">
             <option value="name">Ordenar: Nome</option>
             <option value="activity">Ordenar: Atividade</option>
-            <option value="revenue">Ordenar: Receita</option>
+            <option value="revenue">Ordenar: Receita (MRR)</option>
+          </select>
+          <select value={paymentFilter} onChange={e => setPaymentFilter(e.target.value)}
+            className="h-9 px-2.5 rounded-lg text-[12px] bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500 cursor-pointer">
+            <option value="all">Pgto: Todos</option>
+            <option value="paid">Pago</option>
+            <option value="pending">Pendente</option>
+            <option value="overdue">Inadimplente</option>
           </select>
         </div>
 
@@ -2078,14 +2085,12 @@ function SuperAdminView() {
 
       {manage && (
         <TenantManageModal
-          t={manage} stats={stats} busy={manageBusy}
+          t={manage} stats={stats} busy={manageBusy} plans={plans}
           onClose={closeManage}
           onCopy={() => copyTenantLink(manage.id)}
-          onChangePlan={(p) => changePlan(manage.id, p)}
+          onPatch={(body, msg) => patchTenant(manage.id, body, msg, 'edit')}
           onExtendTrial={(d) => extendTrial(manage.id, d)}
           onSetActive={(s) => setActive(manage.id, s)}
-          onSetInternal={(v) => setInternal(manage.id, v)}
-          onSaveMeta={(body) => saveInternalMeta(manage.id, body)}
           onEnterAs={() => enterAs(manage)}
           onArchive={() => setArchived(manage.id, true)}
         />
@@ -2096,145 +2101,181 @@ function SuperAdminView() {
 
 // Painel de detalhe/gestão de uma organização (super-admin): uso, plano, trial,
 // status e desativar. Props são handlers do SuperAdminView.
-function TenantManageModal({ t, stats, busy, onClose, onCopy, onChangePlan, onExtendTrial, onSetActive, onSetInternal, onSaveMeta, onEnterAs, onArchive }) {
+function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, onExtendTrial, onSetActive, onEnterAs, onArchive }) {
+  const [sub, setSub] = useState('visao');
   const [trialDays, setTrialDays] = useState('');
-  const [notes, setNotes] = useState(t.internalNotes || '');
-  const [price, setPrice] = useState(t.monthlyPrice != null ? String(t.monthlyPrice) : '');
-  const metaDirty = notes !== (t.internalNotes || '') || price !== (t.monthlyPrice != null ? String(t.monthlyPrice) : '');
+  const [f, setF] = useState({
+    displayName: t.displayName || '',
+    city: t.settings?.city || '',
+    state: t.settings?.state || '',
+    logoUrl: t.settings?.logoUrl || '',
+    paymentStatus: t.paymentStatus || '',
+    nextBillingAt: t.nextBillingAt ? new Date(t.nextBillingAt).toISOString().slice(0, 10) : '',
+    notes: t.internalNotes || '',
+    price: t.monthlyPrice != null ? String(t.monthlyPrice) : '',
+  });
+  const set = (k, v) => setF(s => ({ ...s, [k]: v }));
   const d = stats?.data;
-  const seatLabel = d
-    ? (d.maxUsers == null ? `${d.userCount} usuários (ilimitado)` : `${d.userCount}/${d.maxUsers} seats`)
-    : '—';
-  const statRow = (label, value) => (
+  const seatLabel = d ? (d.maxUsers == null ? `${d.userCount} (ilimitado)` : `${d.userCount}/${d.maxUsers}`) : '—';
+  const planOptions = (() => {
+    const list = (plans || []).filter(p => p.isActive !== false || p.slug === t.plan);
+    return list.length ? list : ['starter', 'pro', 'enterprise'].map(s => ({ slug: s, name: planLabel(s) }));
+  })();
+
+  const saveBilling = () => onPatch({
+    paymentStatus: f.paymentStatus || null,
+    nextBillingAt: f.nextBillingAt ? new Date(f.nextBillingAt + 'T12:00:00').getTime() : null,
+    monthlyPrice: f.price === '' ? null : Number(f.price),
+    internalNotes: f.notes,
+  }, 'Cobrança atualizada.');
+  const saveConfig = () => {
+    if (!f.displayName.trim()) return;
+    onPatch({ displayName: f.displayName.trim(), settings: { city: f.city.trim(), state: f.state.trim(), logoUrl: f.logoUrl.trim() } }, 'Configurações salvas.');
+  };
+
+  const statBox = (label, value) => (
     <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3 text-center">
-      <div className="num text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white">{value}</div>
-      <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">{label}</div>
+      <div className="num text-[18px] font-semibold tracking-tight text-slate-900 dark:text-white">{value}</div>
+      <div className="text-[10.5px] text-slate-500 dark:text-slate-400 mt-0.5">{label}</div>
     </div>
   );
 
   return (
     <div className="fixed inset-0 z-[140] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-ink-950/55 backdrop-blur-[3px]" onClick={onClose} />
-      <div className="relative w-full max-w-[520px] max-h-[92vh] overflow-y-auto custom-scrollbar rounded-2xl bg-white dark:bg-ink-900 border border-slate-200 dark:border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(8,13,34,.55)]">
+      <div className="relative w-full max-w-[540px] max-h-[92vh] overflow-y-auto custom-scrollbar rounded-2xl bg-white dark:bg-ink-900 border border-slate-200 dark:border-white/[0.08] shadow-[0_30px_80px_-20px_rgba(8,13,34,.55)]">
         <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-slate-200/80 dark:border-white/[0.07]">
           <div className="min-w-0">
             <h2 className="font-display text-[17px] font-bold tracking-tight truncate text-gray-900 dark:text-white">{t.displayName}</h2>
-            <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num truncate flex items-center gap-2">
-              <span className="truncate">{t.id}</span>
-              {!t.internal && (t.status === 'active' || t.status === 'trial') && (() => {
-                const h = tenantHealth(t.lastActivityAt);
-                return <span className={`text-[9.5px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${h.cls}`} title={lastActivityLabel(t.lastActivityAt)}>{h.label}</span>;
-              })()}
-            </div>
+            <div className="text-[11.5px] text-slate-500 dark:text-slate-400 num truncate">{t.id}</div>
           </div>
           <button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 dark:hover:text-white dark:hover:bg-white/[0.06] transition shrink-0"><X size={17} /></button>
         </div>
 
-        <div className="p-5 space-y-5">
-          {/* uso */}
-          <div className="grid grid-cols-3 gap-2.5">
-            {statRow('Leads', d ? d.leadCount : (stats?.loading ? '…' : '—'))}
-            {statRow('Interações', d ? d.interactionCount : (stats?.loading ? '…' : '—'))}
-            {statRow('Usuários', d ? seatLabel : (stats?.loading ? '…' : '—'))}
-          </div>
-
-          {/* plano */}
-          <div>
-            <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-200 mb-1.5">Plano</div>
-            <div className="flex gap-1.5">
-              {['starter', 'pro', 'enterprise'].map(p => (
-                <button key={p} type="button" disabled={!!busy} onClick={() => p !== t.plan && onChangePlan(p)}
-                  className={`flex-1 h-9 rounded-lg text-[12.5px] font-semibold transition disabled:opacity-50 ${t.plan === p ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.04] dark:text-slate-300'}`}>
-                  {planLabel(p)}
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-slate-400 mt-1">Starter: 3 seats · Pro: 10 · Enterprise: ilimitado.</p>
-          </div>
-
-          {/* trial */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Trial</span>
-              {t.status === 'trial' && t.trialEndsAt && (
-                <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">
-                  {(() => {
-                    const left = Math.max(0, Math.ceil((t.trialEndsAt - Date.now()) / 86400000));
-                    const dt = new Date(t.trialEndsAt).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-                    return left <= 0 ? `termina hoje (${dt})` : `${left} dia${left === 1 ? '' : 's'} restante${left === 1 ? '' : 's'} (${dt})`;
-                  })()}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              <input type="number" min="0" value={trialDays} onChange={e => setTrialDays(e.target.value)} placeholder="dias"
-                className="w-24 h-9 px-3 rounded-lg text-[13px] num bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500" />
-              <button type="button" disabled={!!busy || trialDays === ''} onClick={() => { onExtendTrial(trialDays); setTrialDays(''); }}
-                className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 disabled:opacity-50 transition">
-                Aplicar
-              </button>
-              <span className="text-[11px] text-slate-400">0 = encerra o trial (ativa)</span>
-            </div>
-          </div>
-
-          {/* classificação: conta interna/teste (fora dos KPIs de negócio) */}
-          <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] px-3.5 py-2.5">
-            <div className="min-w-0">
-              <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Conta interna / teste</div>
-              <div className="text-[11px] text-slate-400 dark:text-slate-500">Fora do MRR, clientes e em risco. Continua na lista.</div>
-            </div>
-            <button type="button" disabled={!!busy} onClick={() => onSetInternal(!t.internal)}
-              role="switch" aria-checked={!!t.internal} title="Marcar como conta interna/teste"
-              className={`relative w-11 h-6 rounded-full transition shrink-0 disabled:opacity-50 ${t.internal ? 'bg-brand-600' : 'bg-slate-300 dark:bg-white/[0.15]'}`}>
-              <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${t.internal ? 'translate-x-5' : ''}`} />
+        {/* sub-abas */}
+        <div className="px-5 pt-3 flex gap-1 flex-wrap border-b border-slate-200/80 dark:border-white/[0.07]">
+          {[{ id: 'visao', label: 'Visão Geral' }, { id: 'plano', label: 'Plano & Cobrança' }, { id: 'config', label: 'Configurações' }, { id: 'acoes', label: 'Ações' }].map(s => (
+            <button key={s.id} type="button" onClick={() => setSub(s.id)}
+              className={`px-3 h-8 text-[12px] font-semibold transition -mb-px border-b-2 ${sub === s.id ? 'border-brand-600 text-brand-700 dark:text-brand-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white'}`}>
+              {s.label}
             </button>
-          </div>
+          ))}
+        </div>
 
-          {/* interno: preço por cliente + notas (só o super-admin vê) */}
-          <div className="space-y-2.5 rounded-xl border border-slate-200 dark:border-white/[0.07] p-3.5">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-700 dark:text-slate-200">
-                <FileText size={13} className="text-slate-400" /> Interno (só você vê)
+        <div className="p-5 space-y-4">
+          {sub === 'visao' && (
+            <>
+              <div className="grid grid-cols-3 gap-2.5">
+                {statBox('Leads', d ? d.leadCount : (stats?.loading ? '…' : '—'))}
+                {statBox('Interações', d ? d.interactionCount : (stats?.loading ? '…' : '—'))}
+                {statBox('Usuários', d ? seatLabel : (stats?.loading ? '…' : '—'))}
               </div>
-              {metaDirty && (
-                <button type="button" disabled={!!busy} onClick={() => onSaveMeta({ internalNotes: notes, monthlyPrice: price === '' ? null : Number(price) })}
-                  className="h-7 px-3 rounded-lg text-[11.5px] font-semibold bg-brand-600 text-white hover:bg-brand-700 disabled:opacity-50 transition">
-                  Salvar
+              <div className="space-y-1.5 text-[12.5px]">
+                <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Plano</span><span className="font-medium text-slate-800 dark:text-slate-100">{planLabel(t.plan)}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Admin principal</span><span className="font-medium text-slate-800 dark:text-slate-100 truncate">{t.primaryAdminEmail || '—'}</span></div>
+                <div className="flex justify-between gap-3"><span className="text-slate-500 dark:text-slate-400">Criada em</span><span className="num text-slate-800 dark:text-slate-100">{t.createdAt ? new Date(t.createdAt).toLocaleDateString('pt-BR') : '—'}</span></div>
+                <div className="flex justify-between gap-3 items-center"><span className="text-slate-500 dark:text-slate-400">Link de acesso</span><button onClick={onCopy} className="font-semibold text-brand-700 dark:text-brand-300 hover:underline num">copiar /{t.id}</button></div>
+              </div>
+              {stats?.error && <p className="text-[11.5px] text-rose-600 dark:text-rose-400">{stats.error}</p>}
+            </>
+          )}
+
+          {sub === 'plano' && (
+            <>
+              <div>
+                <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-200 mb-1.5">Plano</div>
+                <div className="flex gap-1.5 flex-wrap">
+                  {planOptions.map(p => (
+                    <button key={p.slug} type="button" disabled={!!busy} onClick={() => p.slug !== t.plan && onPatch({ plan: p.slug }, `Plano alterado para ${p.name || p.slug}.`)}
+                      className={`h-9 px-3 rounded-lg text-[12.5px] font-semibold transition disabled:opacity-50 ${t.plan === p.slug ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-white/[0.04] dark:text-slate-300'}`}>
+                      {p.name || p.slug}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Trial</span>
+                  {t.status === 'trial' && t.trialEndsAt && (
+                    <span className="text-[11px] font-medium text-amber-700 dark:text-amber-300">{(() => { const left = Math.max(0, Math.ceil((t.trialEndsAt - Date.now()) / 86400000)); return left <= 0 ? 'termina hoje' : `${left} dia${left === 1 ? '' : 's'} restante${left === 1 ? '' : 's'}`; })()}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <input type="number" min="0" value={trialDays} onChange={e => setTrialDays(e.target.value)} placeholder="dias"
+                    className="w-24 h-9 px-3 rounded-lg text-[13px] num bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500" />
+                  <button type="button" disabled={!!busy || trialDays === ''} onClick={() => { onExtendTrial(trialDays); setTrialDays(''); }}
+                    className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 disabled:opacity-50 transition">Aplicar</button>
+                  <span className="text-[11px] text-slate-400">0 = ativa</span>
+                </div>
+              </div>
+              <div className="space-y-3 rounded-xl border border-slate-200 dark:border-white/[0.07] p-3.5">
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Pagamento">
+                    <StyledSelect value={f.paymentStatus} onChange={e => set('paymentStatus', e.target.value)}>
+                      <option value="">—</option>
+                      <option value="paid">Pago</option>
+                      <option value="pending">Pendente</option>
+                      <option value="overdue">Inadimplente</option>
+                    </StyledSelect>
+                  </Field>
+                  <Field label="Próxima cobrança"><StyledInput type="date" value={f.nextBillingAt} onChange={e => set('nextBillingAt', e.target.value)} /></Field>
+                </div>
+                <Field label="Valor negociado (R$/mês)" hint="vazio = preço do plano · entra no MRR">
+                  <StyledInput type="number" min="0" value={f.price} onChange={e => set('price', e.target.value)} placeholder={`padrão (${planLabel(t.plan)})`} />
+                </Field>
+                <Field label="Notas internas (só você vê)">
+                  <textarea value={f.notes} onChange={e => set('notes', e.target.value)} rows={3} maxLength={2000}
+                    className="w-full px-3 py-2 rounded-lg text-[12.5px] bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500 resize-none custom-scrollbar" placeholder="Contato, negociação, observações..." />
+                </Field>
+                <div className="flex justify-end"><Btn kind="brand" icon={<Check size={13} />} onClick={saveBilling} disabled={!!busy}>Salvar cobrança</Btn></div>
+              </div>
+            </>
+          )}
+
+          {sub === 'config' && (
+            <div className="space-y-3">
+              <Field label="Nome da organização"><StyledInput value={f.displayName} onChange={e => set('displayName', e.target.value)} /></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Cidade"><StyledInput value={f.city} onChange={e => set('city', e.target.value)} placeholder="Ex: Porto Alegre" /></Field>
+                <Field label="Estado"><StyledInput value={f.state} onChange={e => set('state', e.target.value)} placeholder="Ex: RS" /></Field>
+              </div>
+              <Field label="Logo (URL)" hint="opcional"><StyledInput value={f.logoUrl} onChange={e => set('logoUrl', e.target.value)} placeholder="https://..." /></Field>
+              <div className="flex justify-end"><Btn kind="brand" icon={<Check size={13} />} onClick={saveConfig} disabled={!!busy}>Salvar configurações</Btn></div>
+              <p className="text-[11px] text-slate-400">O identificador (slug <span className="num">{t.id}</span>) é imutável.</p>
+            </div>
+          )}
+
+          {sub === 'acoes' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-white/[0.07] px-3.5 py-2.5">
+                <div className="min-w-0">
+                  <div className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">Conta interna / teste</div>
+                  <div className="text-[11px] text-slate-400 dark:text-slate-500">Fora do MRR e dos KPIs de negócio.</div>
+                </div>
+                <button type="button" disabled={!!busy} onClick={() => onPatch({ internal: !t.internal }, t.internal ? 'Voltou a contar como cliente.' : 'Marcada como interna/teste.')}
+                  role="switch" aria-checked={!!t.internal}
+                  className={`relative w-11 h-6 rounded-full transition shrink-0 disabled:opacity-50 ${t.internal ? 'bg-brand-600' : 'bg-slate-300 dark:bg-white/[0.15]'}`}>
+                  <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${t.internal ? 'translate-x-5' : ''}`} />
                 </button>
-              )}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[11.5px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Preço mensal</span>
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[12px] text-slate-400 pointer-events-none">R$</span>
-                <input type="number" min="0" value={price} onChange={e => setPrice(e.target.value)} placeholder={`padrão (${planLabel(t.plan)})`}
-                  className="w-40 h-9 pl-8 pr-3 rounded-lg text-[13px] num bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500" />
               </div>
-              <span className="text-[10.5px] text-slate-400">vazio = preço do plano · entra no MRR</span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button onClick={onCopy} className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 transition">Copiar link</button>
+                {!t.archived && (t.status === 'active' || t.status === 'trial') && (
+                  <button onClick={onEnterAs} disabled={!!busy}
+                    className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-300 disabled:opacity-50 transition inline-flex items-center gap-1"><Eye size={13} /> Entrar como</button>
+                )}
+                {t.status === 'suspended' ? (
+                  <button onClick={() => onSetActive('active')} disabled={!!busy}
+                    className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition">Reativar</button>
+                ) : (
+                  <button onClick={() => onSetActive('suspended')} disabled={!!busy}
+                    className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-300 disabled:opacity-50 transition inline-flex items-center gap-1"><Ban size={13} /> Suspender</button>
+                )}
+                <button onClick={onArchive} disabled={!!busy}
+                  className="ml-auto h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 disabled:opacity-50 transition">Desativar</button>
+              </div>
             </div>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} maxLength={2000}
-              placeholder="Anotações sobre este cliente: contato, negociação, observações..."
-              className="w-full px-3 py-2 rounded-lg text-[12.5px] bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500 resize-none custom-scrollbar" />
-          </div>
-
-          {/* status + ações */}
-          <div className="flex flex-wrap items-center gap-2 pt-1">
-            <button onClick={onCopy} className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 transition">Copiar link</button>
-            {!t.archived && (t.status === 'active' || t.status === 'trial') && (
-              <button onClick={onEnterAs} disabled={!!busy}
-                className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-brand-50 text-brand-700 hover:bg-brand-100 dark:bg-brand-500/10 dark:text-brand-300 disabled:opacity-50 transition inline-flex items-center gap-1"><Eye size={13} /> Entrar como</button>
-            )}
-            {t.status === 'suspended' ? (
-              <button onClick={() => onSetActive('active')} disabled={!!busy}
-                className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 disabled:opacity-50 transition">Reativar</button>
-            ) : (
-              <button onClick={() => onSetActive('suspended')} disabled={!!busy}
-                className="h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-500/10 dark:text-amber-300 disabled:opacity-50 transition inline-flex items-center gap-1"><Ban size={13} /> Suspender</button>
-            )}
-            <button onClick={onArchive} disabled={!!busy}
-              className="ml-auto h-9 px-3 rounded-lg text-[12.5px] font-semibold bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-500/10 dark:text-rose-300 disabled:opacity-50 transition">Desativar</button>
-          </div>
-          {stats?.error && <p className="text-[11.5px] text-rose-600 dark:text-rose-400">{stats.error}</p>}
+          )}
         </div>
       </div>
     </div>
