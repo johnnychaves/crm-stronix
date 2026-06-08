@@ -1,5 +1,5 @@
 import { adminDb, verifyRequest } from './_firebaseAdmin.js';
-import { effectivePrice } from './_plans.js';
+import { effectivePrice, loadPlans } from './_plans.js';
 
 // Visão agregada da plataforma para o painel super-admin — SUPER-ADMIN only.
 // Usa o Admin SDK (o super-admin não lê /artifacts de outro tenant pelas rules).
@@ -34,7 +34,7 @@ async function lastInteractionMillis(tenantId) {
   }
 }
 
-async function tenantMetrics(doc) {
+async function tenantMetrics(doc, plansMap) {
   const id = doc.id;
   const data = doc.data() || {};
   const [userCount, leadCount, interactionCount, lastInteractionMs] = await Promise.all([
@@ -66,7 +66,7 @@ async function tenantMetrics(doc) {
     lastPaymentAt: toMillis(data.lastPaymentAt),
     nextBillingAt: toMillis(data.nextBillingAt),
     statusChangedAt: toMillis(data.statusChangedAt),
-    price: effectivePrice({ plan, monthlyPrice }),
+    price: effectivePrice({ plan, monthlyPrice }, plansMap),
     userCount,
     leadCount,
     interactionCount,
@@ -87,7 +87,10 @@ export default async function handler(req, res) {
 
   try {
     const snap = await adminDb.collection('tenants').get();
-    const tenants = await Promise.all(snap.docs.map(tenantMetrics));
+    // Carrega o catálogo de planos UMA vez p/ o preço do MRR refletir o valor
+    // atual de cada plano (priceMonthly), não mais o mapa hard-coded.
+    const plansMap = await loadPlans();
+    const tenants = await Promise.all(snap.docs.map((d) => tenantMetrics(d, plansMap)));
     tenants.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
     const now = Date.now();
