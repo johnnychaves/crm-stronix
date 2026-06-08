@@ -1,65 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-  LayoutDashboard,
-  Users,
-  Search,
-  Plus,
-  Calendar,
-  MessageCircle,
-  CheckCircle,
-  CheckCircle2,
-  Eye,
-  EyeOff,
-  AlertTriangle,
-  ArrowRight,
-  Clock,
-  LogOut,
-  Activity,
-  Phone,
-  User,
-  X,
-  Shield,
-  Lock,
-  Mail,
-  Trash2,
-  Menu,
-  Bell,
-  AlertCircle,
-  Pencil,
-  Trash,
-  GripVertical,
-  ArrowRightLeft,
-  RefreshCw,
-  FileText,
-  Settings,
-  Kanban,
-  Filter,
-  Check,
-  BarChart3,
-  Trophy,
-  ThumbsDown,
-  Tag,
-  Download,
-  Moon,
-  Sun,
-  Target,
-  Globe,
-  Info,
-  Flame,
-  Zap,
-  Building2,
-  DollarSign,
-  BookOpen,
-  MessageSquare,
-  MoreHorizontal,
-  TrendingUp,
-  ChevronRight,
-  ChevronDown,
-  Dumbbell,
-  SlidersHorizontal,
-  Ban,
-  HelpCircle
-} from 'lucide-react';
+import { LayoutDashboard, Users, Plus, AlertTriangle, LogOut, Activity, User, X, Shield, Menu, Settings, Kanban, Moon, Sun, Target, Globe } from 'lucide-react';
 
 import {
   onAuthStateChanged,
@@ -106,54 +46,29 @@ import {
 } from './lib/firebase.js';
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
 import { getSafeDate, getSafeDateOrNull } from './lib/dates.js';
-import {
-  getLeadAttendanceDate,
-  APPOINTMENT_OUTCOMES,
-  DAILY_GOAL_CATEGORIES,
-  DAILY_GOAL_CATEGORY_LABEL,
-  isAdminUser
-} from './lib/leads.js';
+import { isAdminUser } from './lib/leads.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
-import { LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays } from './lib/leadStatus.js';
+import { normalizeTrialClassOptions, normalizeMetaWeekdays } from './lib/leadStatus.js';
 import { IMPERSONATION_KEY, readImpersonation } from './lib/superadmin.js';
 import { SurgeMark, StronileadWordmark } from './components/brand/SurgeMark.jsx';
 import { TrialBanner, ImpersonationBanner } from './components/layout/Banners.jsx';
-import { Avatar, KanbanAvatar } from './components/ui/Avatar.jsx';
-import { FunnelSelector } from './components/ui/FunnelSelector.jsx';
+import { Avatar } from './components/ui/Avatar.jsx';
 import { ViewSkeleton } from './components/ui/Skeleton.jsx';
 import { SidebarItem, SidebarGroup, SidebarSubItem } from './components/layout/Sidebar.jsx';
-import { StatusBadge, TagBadge, LeadTemperatureBadge, DaysSinceContactBadge, FollowUpIcon } from './components/ui/Badges.jsx';
-import { Field, StyledInput, StyledSelect } from './components/ui/Field.jsx';
-import { ColorBadge, SETTINGS_COLOR_OPTIONS, ColorDot } from './components/ui/ColorPicker.jsx';
-import { SettingsCard, SettingsTabItem, SettingsRow } from './components/ui/SettingsCard.jsx';
-import { Btn, IconBtn } from './components/ui/Btn.jsx';
 import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
-import { LossReasonModal } from './modals/LossReasonModal.jsx';
-import { FunnelDetailModal } from './modals/FunnelDetailModal.jsx';
 import { LeadDetailsModal } from './modals/LeadDetailsModal.jsx';
 import { DashboardView } from './views/DashboardView.jsx';
 import { KanbanView } from './views/KanbanView.jsx';
 import { AppointmentTrackingView } from './views/AppointmentTrackingView.jsx';
 import { LeadsView } from './views/LeadsView.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
-import { DailyGoalView, DG_WEEKDAY_NAMES } from './views/DailyGoalView.jsx';
+import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
-
-// ============================================================
-// MARCA STRONILEAD — símbolo "The Surge" + wordmark
-// (apenas apresentação; usados no login, sidebar e header)
-// ============================================================
-
-
-
-
-
-
 
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
@@ -1098,56 +1013,3 @@ useEffect(() => {
     </GeneralConfigContext.Provider>
   );
 }
-
-// ==========================================
-// SUPER-ADMIN — provisionamento de organizações (tenants)
-// ==========================================
-// Visível só para quem tem o claim superAdmin. Cria uma organização nova
-// (tenant + 1º admin + claim + doc) via /api/provision-tenant. Os padrões
-// (funil "Comercial" + etapa "Negociação") são semeados no 1º login do admin.
-
-
-
-// Faixa fixa exibida no topo enquanto o super-admin visualiza como um cliente.
-
-
-
-
-// KPIs de negócio no topo do painel super-admin: clientes ativos, MRR estimado,
-// leads e usuários da plataforma, alerta de trials vencendo e mini-gráfico de
-// novas organizações por mês. Alimentado por GET /api/super-overview (totals).
-
-// ==========================================
-// TELA DE LOGIN & RECUPERAÇÃO ADMIN
-// ==========================================
-
-// ==========================================
-// COMPONENTES AUXILIARES
-// ==========================================
-
-
-
-
-
-
-
-// ==========================================
-// KANBAN VIEW (COM VENDA E PERDA FIXAS)
-// ==========================================
-
-// ==========================================
-// LEADS VIEW (LISTA E EXPORTAÇÃO CSV)
-// ==========================================
-// ==========================================
-// LEADS VIEW — DESIGN PRIMITIVES
-// ==========================================
-
-
-
-
-
-// ==========================================
-// CONFIGURAÇÕES (ADMIN)ADMIN)
-// ==========================================
-
-// ==========================================
