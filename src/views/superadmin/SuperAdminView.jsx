@@ -241,37 +241,6 @@ function SuperAdminView({ tab }) {
         <div className="space-y-6">
           <SuperOverviewCards overview={overview} />
 
-          <SettingsCard title="Plataforma" hint="Volume total e distribuição por plano" icon={<Globe size={16} />}>
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3 text-center">
-                <div className="num text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white">{overview ? (overview.leadsTotal ?? 0).toLocaleString('pt-BR') : '—'}</div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Leads na plataforma</div>
-              </div>
-              <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] p-3 text-center">
-                <div className="num text-[20px] font-semibold tracking-tight text-slate-900 dark:text-white">{overview ? (overview.usersTotal ?? 0).toLocaleString('pt-BR') : '—'}</div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Usuários na plataforma</div>
-              </div>
-            </div>
-            {overview?.byPlan && Object.keys(overview.byPlan).length > 0 ? (
-              <div className="space-y-2">
-                {(() => {
-                  const total = Object.values(overview.byPlan).reduce((s, x) => s + x, 0) || 1;
-                  return Object.entries(overview.byPlan).sort((a, b) => b[1] - a[1]).map(([plan, n]) => (
-                    <div key={plan} className="flex items-center gap-3">
-                      <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 w-28 truncate">{planLabel(plan)}</span>
-                      <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-white/[0.05] overflow-hidden">
-                        <div className="h-full bg-brand-600 rounded-full" style={{ width: `${Math.round((n / total) * 100)}%` }} />
-                      </div>
-                      <span className="num text-[12px] font-semibold text-slate-700 dark:text-slate-200 w-10 text-right">{n}</span>
-                    </div>
-                  ));
-                })()}
-              </div>
-            ) : (
-              <div className="text-center text-[12px] text-slate-400 italic py-4">Sem clientes em plano ainda.</div>
-            )}
-          </SettingsCard>
-
           {overview?.trialsExpiring?.length > 0 && (
             <SettingsCard title="Trials vencendo" hint="Próximos 7 dias — aja rápido" icon={<AlertCircle size={16} />}>
               <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
