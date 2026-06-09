@@ -816,6 +816,13 @@ useEffect(() => {
     return <TenantBlockedScreen reason={tenantBlock} onLogout={handleLogout} />;
   }
 
+  // Super-admin "puro" (dono da plataforma): entra DIRETO no Console dark — ele é
+  // a interface principal. (O SuperAdminView antigo segue como fallback p/ super-admin
+  // que também é membro de um tenant; o botão "beta" continua lá pra eles.)
+  if (appUser.superAdminOnly) {
+    return <SuperConsole appUser={appUser} onClose={handleLogout} />;
+  }
+
   return (
     <GeneralConfigContext.Provider value={generalConfigValue}>
     <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>

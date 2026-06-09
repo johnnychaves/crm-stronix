@@ -852,7 +852,7 @@ function SuperConsole({ appUser, onClose }) {
           </div>
           <span className="env-pill"><span className="d" /> PRODUÇÃO</span>
           <div className="top-search"><Icon name="search" size={16} /><input placeholder="Buscar academia, fatura, ticket…" /></div>
-          <button className="top-ic" title="Voltar ao painel" onClick={onClose}><Icon name="close" size={18} /></button>
+          <button className="top-ic" title="Sair" onClick={onClose}><Icon name="close" size={18} /></button>
         </header>
         <main className="view">
           {route === 'overview' && <Overview overview={overview} tenants={tenants} loading={loading} go={go} />}
