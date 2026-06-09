@@ -203,7 +203,7 @@ function Placeholder({ route }) {
 
 // ---------- Academias (lista, dados reais) ----------
 const CHIPS = [['todas', 'Todas'], ['ativa', 'Ativas'], ['trial', 'Trial'], ['inadimplente', 'Inadimplentes'], ['cancelada', 'Canceladas']];
-function Tenants({ tenants }) {
+function Tenants({ tenants, go }) {
   const [filter, setFilter] = useState('todas');
   const [q, setQ] = useState('');
   const list = (tenants || []).filter((t) => !t.internal);
@@ -229,7 +229,7 @@ function Tenants({ tenants }) {
           <thead><tr><th>Academia</th><th>Plano</th><th>Status</th><th style={{ textAlign: 'right' }}>MRR</th><th>Pagamento</th><th>Cliente desde</th><th>Último acesso</th></tr></thead>
           <tbody>
             {shown.length ? shown.map((t) => (
-              <tr key={t.id}>
+              <tr key={t.id} onClick={() => go('tenant', t.id)}>
                 <td><GymCell t={t} sub={[t.settings?.city, t.settings?.state].filter(Boolean).join(' · ') || t.id} /></td>
                 <td>{planChip(t.plan)}</td>
                 <td>{statusBadge(t)}</td>
@@ -376,6 +376,99 @@ function Billing({ overview, tenants }) {
   );
 }
 
+// ---------- Academia (detalhe, tela cheia) ----------
+function Detail({ tenantId, tenants, overview, audit, go }) {
+  const t = (tenants || []).find((x) => x.id === tenantId);
+  const [stats, setStats] = useState(null);
+  useEffect(() => {
+    if (!tenantId) return undefined;
+    let alive = true;
+    (async () => {
+      try {
+        const token = await auth.currentUser.getIdToken();
+        const res = await fetch(`/api/tenant-status?tenantId=${encodeURIComponent(tenantId)}`, { headers: { Authorization: `Bearer ${token}` } });
+        const json = await res.json();
+        if (alive && res.ok) setStats(json);
+      } catch (e) { console.error('console tenant-status', e); }
+    })();
+    return () => { alive = false; };
+  }, [tenantId]);
+
+  if (!t) return <div className="empty">Academia não encontrada.</div>;
+  const [bg, fg] = tone(t.id);
+  const pays = (overview?.recentPayments || []).filter((p) => p.tenantId === tenantId).slice(0, 6);
+  const events = (audit || []).filter((l) => l.tenantId === tenantId).slice(0, 6);
+  const usage = [
+    { n: 'Leads cadastrados', v: stats?.leadCount ?? null, max: Math.max(100, stats?.leadCount || 0) },
+    { n: 'Consultores', v: stats?.userCount ?? null, max: stats?.maxUsers || Math.max(3, stats?.userCount || 0) },
+    { n: 'Interações registradas', v: stats?.interactionCount ?? null, max: Math.max(100, stats?.interactionCount || 0) },
+  ];
+  return (
+    <>
+      <div className="ph">
+        <div className="detail-hero">
+          <span className="dh-logo" style={{ background: bg, color: fg }}>{initials(t.displayName)}</span>
+          <div>
+            <h1>{t.displayName} {statusBadge(t)}</h1>
+            <div className="dh-meta">
+              <span><Icon name="building" size={14} /> {[t.settings?.city, t.settings?.state].filter(Boolean).join(' · ') || t.id}</span>
+              <span>Plano <b>{planLabel(t.plan)}</b></span>
+              <span>MRR <b>{t.price ? brl(t.price) : '—'}</b></span>
+              <span>Desde <b>{t.createdAt ? new Date(t.createdAt).toLocaleDateString('pt-BR') : '—'}</b></span>
+            </div>
+          </div>
+        </div>
+        <div className="ph-actions">
+          <button className="btn btn-ghost"><Icon name="ext" size={16} /> Acessar como</button>
+          <button className="btn btn-primary"><Icon name="plans" size={16} /> Gerenciar plano</button>
+        </div>
+      </div>
+
+      <div className="grid mini-grid" style={{ marginBottom: 16 }}>
+        <div className="mini"><div className="mini-l">Usuários</div><div className="mini-v">{stats?.userCount ?? '—'}</div></div>
+        <div className="mini"><div className="mini-l">Leads</div><div className="mini-v">{stats?.leadCount != null ? stats.leadCount.toLocaleString('pt-BR') : '—'}</div></div>
+        <div className="mini"><div className="mini-l">Interações</div><div className="mini-v">{stats?.interactionCount != null ? stats.interactionCount.toLocaleString('pt-BR') : '—'}</div></div>
+        <div className="mini"><div className="mini-l">Pagamento</div><div className="mini-v" style={{ fontSize: 15, marginTop: 11 }}>{payBadge(t.paymentStatus)}</div></div>
+      </div>
+
+      <div className="grid col-2" style={{ gridTemplateColumns: '1.3fr 1fr' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="card">
+            <div className="card-h"><h3>Uso da plataforma</h3>{!stats && <span className="sub">carregando…</span>}</div>
+            <div className="card-pad">
+              {usage.map((u) => (
+                <div key={u.n} className="urow">
+                  <span className="un" style={{ flex: 1 }}>{u.n}</span>
+                  <span className="ubar"><span className="prog"><i style={{ width: `${u.v != null ? Math.min(100, (u.v / u.max) * 100) : 0}%` }} /></span></span>
+                  <span className="uv">{u.v != null ? u.v.toLocaleString('pt-BR') : '—'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="card">
+            <div className="card-h"><h3>Pagamentos</h3><a className="sub" style={{ color: 'var(--brand-300)' }} onClick={() => go('billing')}>Faturamento →</a></div>
+            {pays.length ? <table className="tbl"><tbody>{pays.map((p) => (
+              <tr key={p.id}><td className="muted">{p.event}</td><td className="tnum" style={{ textAlign: 'right' }}>{p.value != null ? brl(p.value) : '—'}</td><td className="muted tnum" style={{ textAlign: 'right' }}>{p.at ? new Date(p.at).toLocaleDateString('pt-BR') : ''}</td></tr>
+            ))}</tbody></table> : <div className="empty" style={{ padding: 24 }}>Sem pagamentos registrados.</div>}
+          </div>
+        </div>
+        <div className="card">
+          <div className="card-h"><h3>Atividade recente</h3></div>
+          <div className="card-pad">
+            <div className="tl">
+              <div className="tl-item"><span className="tl-dot" /><div className="tl-t">Último acesso — {t.lastActivityAt ? new Date(t.lastActivityAt).toLocaleString('pt-BR') : '—'}</div><div className="tl-s">app.stronilead.com</div></div>
+              {events.map((l) => (
+                <div key={l.id} className="tl-item"><span className="tl-dot" style={{ background: 'var(--accent)' }} /><div className="tl-t">{auditActionLabel(l.action) || l.action}</div><div className="tl-s">{l.at ? new Date(l.at).toLocaleString('pt-BR') : ''}{detailStr(l.details) ? ' · ' + detailStr(l.details) : ''}</div></div>
+              ))}
+              <div className="tl-item"><span className="tl-dot" style={{ background: 'var(--muted)' }} /><div className="tl-t">Conta criada</div><div className="tl-s">{t.createdAt ? new Date(t.createdAt).toLocaleDateString('pt-BR') : '—'}</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ---------- Shell ----------
 function SuperConsole({ appUser, onClose }) {
   const [route, setRoute] = useState('overview');
@@ -383,6 +476,7 @@ function SuperConsole({ appUser, onClose }) {
   const [tenants, setTenants] = useState([]);
   const [audit, setAudit] = useState([]);
   const [plans, setPlans] = useState(null);
+  const [selectedTenant, setSelectedTenant] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -402,7 +496,7 @@ function SuperConsole({ appUser, onClose }) {
     return () => { alive = false; };
   }, []);
 
-  const go = (r) => { setRoute(r); document.querySelector('.console-root .main')?.scrollTo(0, 0); };
+  const go = (r, arg) => { setRoute(r); if (arg !== undefined) setSelectedTenant(arg); document.querySelector('.console-root .main')?.scrollTo(0, 0); };
 
   return (
     <div className="console-root">
@@ -425,7 +519,7 @@ function SuperConsole({ appUser, onClose }) {
             <div className="nav-group" key={g.group}>
               <div className="nav-label">{g.group}</div>
               {g.items.map((it) => (
-                <button key={it.id} className={`nav-item${route === it.id ? ' active' : ''}`} onClick={() => go(it.id)}>
+                <button key={it.id} className={`nav-item${(route === 'tenant' ? 'tenants' : route) === it.id ? ' active' : ''}`} onClick={() => go(it.id)}>
                   <span className="ni-ic"><Icon name={it.icon} /></span>
                   <span>{it.label}</span>
                 </button>
@@ -446,18 +540,23 @@ function SuperConsole({ appUser, onClose }) {
 
       <div className="main">
         <header className="top">
-          <div className="crumb">Console / <b>{TITLES[route]}</b></div>
+          <div className="crumb">
+            {route === 'tenant'
+              ? <>Console / <a onClick={() => go('tenants')}>Academias</a> / <b>{(tenants.find((t) => t.id === selectedTenant) || {}).displayName || 'Detalhe'}</b></>
+              : <>Console / <b>{TITLES[route]}</b></>}
+          </div>
           <span className="env-pill"><span className="d" /> PRODUÇÃO</span>
           <div className="top-search"><Icon name="search" size={16} /><input placeholder="Buscar academia, fatura, ticket…" /></div>
           <button className="top-ic" title="Voltar ao painel" onClick={onClose}><Icon name="close" size={18} /></button>
         </header>
         <main className="view">
           {route === 'overview' && <Overview overview={overview} tenants={tenants} loading={loading} go={go} />}
-          {route === 'tenants' && <Tenants tenants={tenants} />}
+          {route === 'tenants' && <Tenants tenants={tenants} go={go} />}
+          {route === 'tenant' && <Detail tenantId={selectedTenant} tenants={tenants} overview={overview} audit={audit} go={go} />}
           {route === 'plans' && <Plans plans={plans} />}
           {route === 'billing' && <Billing overview={overview} tenants={tenants} />}
           {route === 'logs' && <Logs audit={audit} />}
-          {!['overview', 'tenants', 'plans', 'billing', 'logs'].includes(route) && <Placeholder route={route} />}
+          {!['overview', 'tenants', 'tenant', 'plans', 'billing', 'logs'].includes(route) && <Placeholder route={route} />}
         </main>
       </div>
     </div>
