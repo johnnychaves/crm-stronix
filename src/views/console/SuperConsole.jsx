@@ -379,12 +379,24 @@ function Billing({ overview, tenants }) {
 }
 
 // ---------- Gerenciar plano/cobrança (modal nativo do console) ----------
-function ManagePanel({ tenant, plans, onClose, onDone }) {
+function ManagePanel({ tenant, plans, asaasConfigured, onClose, onDone }) {
   const baseStatus = tenant.archived ? 'suspended' : (tenant.status || 'active');
   const [f, setF] = useState({ plan: tenant.plan || '', status: baseStatus, trialDays: '', paymentStatus: tenant.paymentStatus || '' });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
+  const [asaas, setAsaas] = useState({ cpfCnpj: '', email: tenant.primaryAdminEmail || '', cycle: 'monthly' });
+  const [asaasBusy, setAsaasBusy] = useState(false);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const callAsaas = async (method, extra) => {
+    setAsaasBusy(true); setErr('');
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/asaas', { method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ tenantId: tenant.id, ...extra }) });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error || 'Erro no Asaas.'); setAsaasBusy(false); return; }
+      onDone();
+    } catch (e) { console.error('asaas', e); setErr('Falha ao falar com o Asaas.'); setAsaasBusy(false); }
+  };
   const save = async () => {
     setSaving(true); setErr('');
     const body = { tenantId: tenant.id };
@@ -429,6 +441,27 @@ function ManagePanel({ tenant, plans, onClose, onDone }) {
           <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Trial (dias) — vazio = não mexe · 0 = encerra</span>
             <input style={FLAG_INPUT} type="number" min="0" value={f.trialDays} onChange={(e) => set('trialDays', e.target.value)} placeholder="—" />
           </label>
+          <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12 }}>
+            <div className="muted" style={{ fontSize: 12, marginBottom: 8, fontWeight: 600 }}>Cobrança automática (Asaas)</div>
+            {!asaasConfigured ? (
+              <div className="muted" style={{ fontSize: 12 }}>Asaas não configurado (defina as chaves no Vercel).</div>
+            ) : tenant.asaasSubscriptionId ? (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span className="badge b-paga">assinatura {tenant.billingCycle === 'annual' ? 'anual' : 'mensal'} ativa</span>
+                {tenant.lastInvoiceUrl && <button className="btn btn-ghost btn-sm" onClick={() => { try { navigator.clipboard?.writeText(tenant.lastInvoiceUrl); } catch { /* ignore */ } }}>Copiar fatura</button>}
+                <button className="btn btn-ghost btn-sm" onClick={() => { if (window.confirm('Cancelar a assinatura no Asaas?')) callAsaas('DELETE', {}); }} disabled={asaasBusy}>Cancelar</button>
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                  <input style={FLAG_INPUT} placeholder="CPF/CNPJ" value={asaas.cpfCnpj} onChange={(e) => setAsaas((s) => ({ ...s, cpfCnpj: e.target.value }))} />
+                  <select style={FLAG_INPUT} value={asaas.cycle} onChange={(e) => setAsaas((s) => ({ ...s, cycle: e.target.value }))}><option value="monthly">Mensal</option><option value="annual">Anual</option></select>
+                </div>
+                <input style={FLAG_INPUT} type="email" placeholder="E-mail do responsável" value={asaas.email} onChange={(e) => setAsaas((s) => ({ ...s, email: e.target.value }))} />
+                <button className="btn btn-primary btn-sm" style={{ justifySelf: 'start' }} onClick={() => callAsaas('POST', { cpfCnpj: asaas.cpfCnpj, email: asaas.email, cycle: asaas.cycle })} disabled={asaasBusy}>{asaasBusy ? 'Criando…' : 'Criar assinatura no Asaas'}</button>
+              </div>
+            )}
+          </div>
           {err && <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>{err}</div>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
@@ -441,7 +474,7 @@ function ManagePanel({ tenant, plans, onClose, onDone }) {
 }
 
 // ---------- Academia (detalhe, tela cheia) ----------
-function Detail({ tenantId, tenants, overview, audit, plans, go, reload }) {
+function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go, reload }) {
   const t = (tenants || []).find((x) => x.id === tenantId);
   const [stats, setStats] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -506,7 +539,7 @@ function Detail({ tenantId, tenants, overview, audit, plans, go, reload }) {
           <button className="btn btn-primary" onClick={() => setManageOpen(true)}><Icon name="plans" size={16} /> Gerenciar plano</button>
         </div>
       </div>
-      {manageOpen && <ManagePanel tenant={t} plans={plans} onClose={() => setManageOpen(false)} onDone={() => { setManageOpen(false); reload?.(); }} />}
+      {manageOpen && <ManagePanel tenant={t} plans={plans} asaasConfigured={asaasConfigured} onClose={() => setManageOpen(false)} onDone={() => { setManageOpen(false); reload?.(); }} />}
 
       <div className="grid mini-grid" style={{ marginBottom: 16 }}>
         <div className="mini"><div className="mini-l">Usuários</div><div className="mini-v">{stats?.userCount ?? '—'}</div></div>
@@ -749,6 +782,7 @@ function SuperConsole({ appUser, onClose }) {
   const [tenants, setTenants] = useState([]);
   const [audit, setAudit] = useState([]);
   const [plans, setPlans] = useState(null);
+  const [asaasConfigured, setAsaasConfigured] = useState(false);
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -757,7 +791,7 @@ function SuperConsole({ appUser, onClose }) {
       const token = await auth.currentUser.getIdToken();
       const res = await fetch('/api/super-overview', { headers: { Authorization: `Bearer ${token}` } });
       const json = await res.json();
-      if (res.ok) { setOverview(json.totals || null); setTenants(json.tenants || []); setAudit(json.audit || []); }
+      if (res.ok) { setOverview(json.totals || null); setTenants(json.tenants || []); setAudit(json.audit || []); setAsaasConfigured(!!json.asaasConfigured); }
       const pRes = await fetch('/api/plans', { headers: { Authorization: `Bearer ${token}` } });
       const pJson = await pRes.json().catch(() => null);
       if (pRes.ok) setPlans(Array.isArray(pJson) ? pJson : (pJson?.plans || []));
@@ -822,7 +856,7 @@ function SuperConsole({ appUser, onClose }) {
         <main className="view">
           {route === 'overview' && <Overview overview={overview} tenants={tenants} loading={loading} go={go} />}
           {route === 'tenants' && <Tenants tenants={tenants} go={go} />}
-          {route === 'tenant' && <Detail tenantId={selectedTenant} tenants={tenants} overview={overview} audit={audit} plans={plans} go={go} reload={loadData} />}
+          {route === 'tenant' && <Detail tenantId={selectedTenant} tenants={tenants} overview={overview} audit={audit} plans={plans} asaasConfigured={asaasConfigured} go={go} reload={loadData} />}
           {route === 'plans' && <Plans plans={plans} />}
           {route === 'billing' && <Billing overview={overview} tenants={tenants} />}
           {route === 'support' && <SupportScreen tenants={tenants} />}
