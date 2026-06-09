@@ -189,6 +189,21 @@ export default async function handler(req, res) {
     }
     totals.newByMonth = months;
 
+    // Evolução ESTIMADA do MRR + clientes ativos por mês: para cada mês, soma o
+    // preço das orgs ATIVAS (não-internas) criadas até o fim daquele mês. É uma
+    // estimativa (usa o preço e o conjunto de ativos ATUAIS; ignora churn/preço
+    // passados) — serve para a curva de crescimento no painel. Rotular "estimado".
+    totals.mrrByMonth = months.map((m) => {
+      const [y, mo] = m.ym.split('-').map(Number);
+      const end = new Date(y, mo, 0, 23, 59, 59, 999).getTime();
+      let mrr = 0, active = 0;
+      for (const t of tenants) {
+        if (t.internal || t.archived || t.status !== 'active' || !t.createdAt) continue;
+        if (t.createdAt <= end) { mrr += t.price || 0; active += 1; }
+      }
+      return { ym: m.ym, label: m.label, mrr, active };
+    });
+
     // Atividade recente (auditoria) — vai no mesmo GET para não gastar uma
     // Serverless Function só para isso (limite do plano Hobby do Vercel).
     let audit = [];
