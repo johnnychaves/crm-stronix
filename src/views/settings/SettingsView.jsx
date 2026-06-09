@@ -32,7 +32,9 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
   const tabs = [
     { id: 'users',       label: 'Consultores',      hint: 'Time, credenciais e turnos',       icon: <Users size={15} />,         badge: usersCount },
     { id: 'general',     label: 'Configurações gerais', hint: 'Modalidades e aulas experimentais', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount },
-    { id: 'billing',     label: 'Plano & Faturas',  hint: 'Assinatura, faturas e renovação',   icon: <CreditCard size={15} />,    badge: null },
+    // "Em breve": só aparece quando o DONO entra via "Acessar como" (impersonando).
+    // Clientes reais ainda não veem. Para liberar geral, troque por `true`.
+    ...(appUser?.impersonating ? [{ id: 'billing', label: 'Plano & Faturas', hint: 'Assinatura, faturas e renovação', icon: <CreditCard size={15} />, badge: null }] : []),
     { id: 'transfer',    label: 'Migrar leads',     hint: 'Transferir base entre consultores', icon: <ArrowRightLeft size={15} />, badge: null },
     { id: 'statuses',    label: 'Funil pipeline',   hint: 'Etapas do processo comercial',     icon: <Kanban size={15} />,        badge: funnelsCount },
     { id: 'tags',        label: 'Etiquetas',        hint: 'Marcadores para segmentar leads',  icon: <Tag size={15} />,           badge: tagsCount },
