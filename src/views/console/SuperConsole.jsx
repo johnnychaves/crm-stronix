@@ -420,6 +420,7 @@ function ManagePanel({ tenant, plans, asaasConfigured, onClose, onDone }) {
       <div className="card" style={{ position: 'relative', width: '100%', maxWidth: 460 }}>
         <div className="card-h"><h3>Gerenciar — {tenant.displayName}</h3><button className="icon-btn" onClick={onClose}><Icon name="close" size={15} /></button></div>
         <div className="card-pad" style={{ display: 'grid', gap: 14 }}>
+          <div className="muted" style={{ fontSize: 11.5, lineHeight: 1.5 }}>O acesso é controlado <b style={{ color: 'var(--text)' }}>automaticamente</b> pela cobrança: <b style={{ color: 'var(--success)' }}>pago</b> libera · <b style={{ color: '#FF8497' }}>inadimplente + 3 dias</b> bloqueia o app. Os campos abaixo são p/ ajuste manual em casos especiais.</div>
           <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Plano</span>
             <select style={FLAG_INPUT} value={f.plan} onChange={(e) => set('plan', e.target.value)}>
               {planList.length === 0 && <option value={tenant.plan}>{tenant.plan}</option>}

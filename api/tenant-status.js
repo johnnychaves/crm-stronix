@@ -176,10 +176,15 @@ export default async function handler(req, res) {
     if (paymentStatus !== undefined) {
       if (paymentStatus === null || paymentStatus === '') {
         update.paymentStatus = null;
+        update.paymentOverdueSince = admin.firestore.FieldValue.delete();
       } else if (!PAYMENT_STATUSES.includes(paymentStatus)) {
         return res.status(400).json({ error: "paymentStatus deve ser 'paid', 'pending', 'overdue' ou vazio." });
       } else {
         update.paymentStatus = paymentStatus;
+        // mantém a data de início da inadimplência em sincronia com a automação de acesso
+        update.paymentOverdueSince = paymentStatus === 'overdue'
+          ? admin.firestore.FieldValue.serverTimestamp()
+          : admin.firestore.FieldValue.delete();
       }
     }
     if (lastPaymentAt !== undefined) {
