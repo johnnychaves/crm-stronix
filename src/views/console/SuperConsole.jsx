@@ -664,6 +664,7 @@ function SupportScreen({ tenants }) {
     return () => unsub();
   }, []);
   const list = (tenants || []).filter((t) => !t.internal);
+  const nameOf = Object.fromEntries((tenants || []).map((x) => [x.id, x.displayName]));
   const open = (tickets || []).filter((t) => t.status !== 'resolvido').length;
   const highPri = (tickets || []).filter((t) => t.prioridade === 'alta' && t.status !== 'resolvido').length;
   const cycleStatus = (t) => setDoc(doc(db, 'tickets', t.id), { status: NEXT_ST[t.status] || 'aberto', updatedAt: serverTimestamp() }, { merge: true }).catch((e) => console.error('ticket status', e));
@@ -702,7 +703,7 @@ function SupportScreen({ tenants }) {
                 : tickets.map((t) => (
                   <tr key={t.id}>
                     <td className="tnum" style={{ fontWeight: 600 }}>#{String(t.id).slice(0, 5)}</td>
-                    <td style={{ fontWeight: 600 }}>{t.academia}</td>
+                    <td style={{ fontWeight: 600 }}>{nameOf[t.tenantId] || t.academia || t.tenantId}</td>
                     <td style={{ maxWidth: 280 }}>{t.assunto}</td>
                     <td><span className={`badge ${(PRI[t.prioridade] || PRI.media).c}`}>{(PRI[t.prioridade] || PRI.media).t}</span></td>
                     <td><button className={`badge ${(TST[t.status] || TST.aberto).c}`} style={{ cursor: 'pointer', border: 0 }} title="Clique p/ avançar o status" onClick={() => cycleStatus(t)}>{(TST[t.status] || TST.aberto).t}</button></td>
