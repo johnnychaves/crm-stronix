@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { auth } from '../../lib/firebase.js';
+import { auth, db } from '../../lib/firebase.js';
+import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { planLabel, auditActionLabel } from '../../lib/superadmin.js';
 import { Icon } from './consoleIcons.jsx';
 import './console.css';
@@ -469,6 +470,195 @@ function Detail({ tenantId, tenants, overview, audit, go }) {
   );
 }
 
+// ---------- Feature flags (Firestore direto, CRUD real) ----------
+const FLAG_INPUT = { height: 38, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, padding: '0 12px', color: 'var(--text)', fontSize: 13, outline: 'none', fontFamily: 'var(--ui)' };
+function FlagsScreen() {
+  const [flags, setFlags] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [form, setForm] = useState({ key: '', name: '', desc: '', scope: 'Todos' });
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'flags'),
+      (snap) => setFlags(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (e) => { console.error('flags', e); setFlags([]); });
+    return () => unsub();
+  }, []);
+  const toggle = (f) => setDoc(doc(db, 'flags', f.id), { enabled: !f.enabled, updatedAt: serverTimestamp() }, { merge: true }).catch((e) => console.error('flag toggle', e));
+  const setRollout = (f, v) => setDoc(doc(db, 'flags', f.id), { rollout: v, updatedAt: serverTimestamp() }, { merge: true }).catch((e) => console.error('flag rollout', e));
+  const remove = (f) => { if (window.confirm(`Excluir a flag "${f.name}"?`)) deleteDoc(doc(db, 'flags', f.id)).catch((e) => console.error('flag del', e)); };
+  const create = () => {
+    const key = (form.key || form.name).trim().toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    if (!key || !form.name.trim()) return;
+    setDoc(doc(db, 'flags', key), { name: form.name.trim(), desc: form.desc.trim(), scope: form.scope.trim() || 'Todos', rollout: 0, enabled: false, createdAt: serverTimestamp() })
+      .then(() => { setShowNew(false); setForm({ key: '', name: '', desc: '', scope: 'Todos' }); })
+      .catch((e) => console.error('flag create', e));
+  };
+  return (
+    <>
+      <div className="ph">
+        <div><h1>Feature flags</h1><p>Controle de funcionalidades e rollout gradual</p></div>
+        <div className="ph-actions"><button className="btn btn-primary" onClick={() => setShowNew((s) => !s)}><Icon name="plus" size={16} /> Nova flag</button></div>
+      </div>
+      {showNew && (
+        <div className="card card-pad" style={{ marginBottom: 16, display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr' }}>
+          <input style={FLAG_INPUT} placeholder="Nome (ex: Templates WhatsApp)" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
+          <input style={FLAG_INPUT} placeholder="Chave (auto se vazio)" value={form.key} onChange={(e) => setForm((s) => ({ ...s, key: e.target.value }))} />
+          <input style={{ ...FLAG_INPUT, gridColumn: '1 / 3' }} placeholder="Descrição" value={form.desc} onChange={(e) => setForm((s) => ({ ...s, desc: e.target.value }))} />
+          <input style={FLAG_INPUT} placeholder="Escopo (ex: Pro, Rede, Todos)" value={form.scope} onChange={(e) => setForm((s) => ({ ...s, scope: e.target.value }))} />
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button className="btn btn-primary btn-sm" onClick={create}>Criar flag</button>
+            <button className="btn btn-ghost btn-sm" onClick={() => setShowNew(false)}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      <div className="card">
+        {flags === null ? <div className="empty">Carregando…</div>
+          : flags.length === 0 ? <div className="empty">Nenhuma flag ainda. Crie a primeira em “Nova flag”.</div>
+            : flags.map((f) => (
+              <div className="flag" key={f.id}>
+                <div className="flag-main">
+                  <div className="flag-name">{f.name} <span className="flag-key">{f.id}</span> <span className={`badge ${f.enabled ? 'b-paga' : 'b-cancel'}`}>{f.enabled ? 'Ativo' : 'Inativo'}</span></div>
+                  <div className="flag-desc">{f.desc || '—'}</div>
+                  <div className="flag-roll">
+                    <input type="range" min="0" max="100" value={f.rollout || 0} onChange={(e) => setRollout(f, Number(e.target.value))} style={{ flex: 1, accentColor: '#3B6DF5' }} />
+                    <span className="pct">{f.rollout || 0}%</span>
+                    <span className="muted" style={{ fontSize: 11.5 }}>· {f.scope || 'Todos'}</span>
+                    <button className="icon-btn" title="Excluir" onClick={() => remove(f)}><Icon name="close" size={14} /></button>
+                  </div>
+                </div>
+                <div className={`sw${f.enabled ? ' on' : ''}`} onClick={() => toggle(f)} />
+              </div>
+            ))}
+      </div>
+    </>
+  );
+}
+
+// ---------- Suporte (tickets, Firestore direto) ----------
+const PRI = { alta: { c: 'b-inad', t: 'Alta' }, media: { c: 'b-pendente', t: 'Média' }, baixa: { c: 'b-cancel', t: 'Baixa' } };
+const TST = { aberto: { c: 'b-trial', t: 'Aberto' }, em_andamento: { c: 'b-pendente', t: 'Em andamento' }, resolvido: { c: 'b-paga', t: 'Resolvido' } };
+const NEXT_ST = { aberto: 'em_andamento', em_andamento: 'resolvido', resolvido: 'aberto' };
+function SupportScreen({ tenants }) {
+  const [tickets, setTickets] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+  const [form, setForm] = useState({ tenantId: '', assunto: '', prioridade: 'media' });
+  useEffect(() => {
+    const unsub = onSnapshot(collection(db, 'tickets'),
+      (snap) => setTickets(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))),
+      (e) => { console.error('tickets', e); setTickets([]); });
+    return () => unsub();
+  }, []);
+  const list = (tenants || []).filter((t) => !t.internal);
+  const open = (tickets || []).filter((t) => t.status !== 'resolvido').length;
+  const highPri = (tickets || []).filter((t) => t.prioridade === 'alta' && t.status !== 'resolvido').length;
+  const cycleStatus = (t) => setDoc(doc(db, 'tickets', t.id), { status: NEXT_ST[t.status] || 'aberto', updatedAt: serverTimestamp() }, { merge: true }).catch((e) => console.error('ticket status', e));
+  const create = () => {
+    if (!form.tenantId || !form.assunto.trim()) return;
+    const ten = list.find((t) => t.id === form.tenantId);
+    addDoc(collection(db, 'tickets'), { tenantId: form.tenantId, academia: ten?.displayName || form.tenantId, assunto: form.assunto.trim(), prioridade: form.prioridade, status: 'aberto', agente: '—', createdAt: serverTimestamp() })
+      .then(() => { setShowNew(false); setForm({ tenantId: '', assunto: '', prioridade: 'media' }); })
+      .catch((e) => console.error('ticket create', e));
+  };
+  return (
+    <>
+      <div className="ph">
+        <div><h1>Suporte</h1><p>{open} tickets abertos · {highPri} de alta prioridade</p></div>
+        <div className="ph-actions"><button className="btn btn-primary" onClick={() => setShowNew((s) => !s)}><Icon name="plus" size={16} /> Novo ticket</button></div>
+      </div>
+      {showNew && (
+        <div className="card card-pad" style={{ marginBottom: 16, display: 'grid', gap: 10, gridTemplateColumns: '1fr 1fr' }}>
+          <select style={FLAG_INPUT} value={form.tenantId} onChange={(e) => setForm((s) => ({ ...s, tenantId: e.target.value }))}>
+            <option value="">Academia…</option>
+            {list.map((t) => <option key={t.id} value={t.id}>{t.displayName}</option>)}
+          </select>
+          <select style={FLAG_INPUT} value={form.prioridade} onChange={(e) => setForm((s) => ({ ...s, prioridade: e.target.value }))}>
+            <option value="alta">Alta</option><option value="media">Média</option><option value="baixa">Baixa</option>
+          </select>
+          <input style={{ ...FLAG_INPUT, gridColumn: '1 / 3' }} placeholder="Assunto do ticket" value={form.assunto} onChange={(e) => setForm((s) => ({ ...s, assunto: e.target.value }))} />
+          <div style={{ display: 'flex', gap: 8 }}><button className="btn btn-primary btn-sm" onClick={create}>Abrir ticket</button><button className="btn btn-ghost btn-sm" onClick={() => setShowNew(false)}>Cancelar</button></div>
+        </div>
+      )}
+      <div className="card">
+        <table className="tbl">
+          <thead><tr><th>Ticket</th><th>Academia</th><th>Assunto</th><th>Prioridade</th><th>Status</th><th>Aberto</th></tr></thead>
+          <tbody>
+            {tickets === null ? <tr><td colSpan={6} className="empty">Carregando…</td></tr>
+              : tickets.length === 0 ? <tr><td colSpan={6} className="empty">Nenhum ticket ainda. Abra o primeiro em “Novo ticket”.</td></tr>
+                : tickets.map((t) => (
+                  <tr key={t.id}>
+                    <td className="tnum" style={{ fontWeight: 600 }}>#{String(t.id).slice(0, 5)}</td>
+                    <td style={{ fontWeight: 600 }}>{t.academia}</td>
+                    <td style={{ maxWidth: 280 }}>{t.assunto}</td>
+                    <td><span className={`badge ${(PRI[t.prioridade] || PRI.media).c}`}>{(PRI[t.prioridade] || PRI.media).t}</span></td>
+                    <td><button className={`badge ${(TST[t.status] || TST.aberto).c}`} style={{ cursor: 'pointer', border: 0 }} title="Clique p/ avançar o status" onClick={() => cycleStatus(t)}>{(TST[t.status] || TST.aberto).t}</button></td>
+                    <td className="muted tnum">{t.createdAt?.toMillis ? new Date(t.createdAt.toMillis()).toLocaleDateString('pt-BR') : '—'}</td>
+                  </tr>
+                ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ---------- Saúde do sistema (medição ao vivo no navegador) ----------
+const HEALTH_ST = { operacional: { c: 'op', t: 'Operacional', b: 'b-paga' }, degradado: { c: 'dg', t: 'Degradado', b: 'b-pendente' }, fora: { c: 'down', t: 'Fora do ar', b: 'b-inad' } };
+function HealthScreen() {
+  const [checks, setChecks] = useState(null);
+  const [ranAt, setRanAt] = useState('');
+  const run = async () => {
+    const token = await auth.currentUser.getIdToken().catch(() => null);
+    setChecks(null);
+    const probe = async (label, fn) => {
+      const t0 = performance.now();
+      try { const ok = await fn(); return { label, lat: Math.round(performance.now() - t0), estado: ok ? 'operacional' : 'degradado' }; }
+      catch { return { label, lat: Math.round(performance.now() - t0), estado: 'fora' }; }
+    };
+    const results = await Promise.all([
+      probe('App · stronilead.com.br', async () => (await fetch('/', { cache: 'no-store' })).ok),
+      probe('API · Visão geral', async () => (await fetch('/api/super-overview', { headers: token ? { Authorization: `Bearer ${token}` } : {} })).ok),
+      probe('Gateway Asaas', async () => { const r = await fetch('/api/asaas', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }); return r.status === 401 || r.ok; }),
+      probe('Banco · Firestore', async () => { await getDoc(doc(db, 'tenants', 'healthcheck-probe')); return true; }),
+    ]);
+    setChecks(results);
+    setRanAt(new Date().toLocaleTimeString('pt-BR'));
+  };
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- run() é fetch async; só faz setState após await
+  useEffect(() => { run(); }, []);
+  const measured = (checks || []).filter((c) => c.lat != null);
+  const avg = measured.length ? Math.round(measured.reduce((s, c) => s + c.lat, 0) / measured.length) : null;
+  const down = (checks || []).filter((c) => c.estado === 'fora').length;
+  return (
+    <>
+      <div className="ph">
+        <div><h1>Saúde do sistema</h1><p>Medição ao vivo (do seu navegador){ranAt ? ` · ${ranAt}` : ''}</p></div>
+        <div className="ph-actions"><button className="btn btn-ghost" onClick={run}><Icon name="health" size={16} /> Medir de novo</button></div>
+      </div>
+      <div className="grid kpis" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 16 }}>
+        <div className="kpi"><div className="kpi-top"><span className="kpi-label">Serviços OK</span><span className="kpi-ic t-success"><Icon name="check" /></span></div><div className="kpi-val">{checks ? `${checks.filter((c) => c.estado === 'operacional').length}/${checks.length}` : '—'}</div><div className="kpi-foot">medido agora</div></div>
+        <div className="kpi"><div className="kpi-top"><span className="kpi-label">Latência média</span><span className="kpi-ic t-brand"><Icon name="zap" /></span></div><div className="kpi-val">{avg != null ? avg : '—'}<small>ms</small></div><div className="kpi-foot">navegador → serviço</div></div>
+        <div className="kpi"><div className="kpi-top"><span className="kpi-label">Fora do ar</span><span className="kpi-ic t-danger"><Icon name="alert" /></span></div><div className="kpi-val">{down}</div><div className="kpi-foot">serviços agora</div></div>
+      </div>
+      <div className="card">
+        <div className="card-h"><h3>Serviços</h3><span className="sub">{checks ? 'medido agora' : 'medindo…'}</span></div>
+        <div>
+          {checks ? checks.map((c) => { const st = HEALTH_ST[c.estado]; return (
+            <div className="svc" key={c.label}>
+              <span className={`svc-dot ${st.c}`} />
+              <div><div className="svc-n">{c.label}</div></div>
+              <div className="svc-m"><span>lat <b>{c.lat != null ? c.lat + ' ms' : '—'}</b></span><span className={`badge ${st.b}`}>{st.t}</span></div>
+            </div>
+          ); }) : <div className="empty">Medindo serviços…</div>}
+        </div>
+      </div>
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-pad muted" style={{ fontSize: 12.5 }}>
+          ℹ️ Medição feita ao vivo do seu navegador (a latência inclui a rede). <b>Uptime histórico</b> (gráfico de 60 dias) precisa de cron + armazenamento — fica como próximo passo quando fizer sentido.
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ---------- Shell ----------
 function SuperConsole({ appUser, onClose }) {
   const [route, setRoute] = useState('overview');
@@ -555,8 +745,11 @@ function SuperConsole({ appUser, onClose }) {
           {route === 'tenant' && <Detail tenantId={selectedTenant} tenants={tenants} overview={overview} audit={audit} go={go} />}
           {route === 'plans' && <Plans plans={plans} />}
           {route === 'billing' && <Billing overview={overview} tenants={tenants} />}
+          {route === 'support' && <SupportScreen tenants={tenants} />}
+          {route === 'flags' && <FlagsScreen />}
+          {route === 'health' && <HealthScreen />}
           {route === 'logs' && <Logs audit={audit} />}
-          {!['overview', 'tenants', 'tenant', 'plans', 'billing', 'logs'].includes(route) && <Placeholder route={route} />}
+          {!['overview', 'tenants', 'tenant', 'plans', 'billing', 'support', 'flags', 'health', 'logs'].includes(route) && <Placeholder route={route} />}
         </main>
       </div>
     </div>

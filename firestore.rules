@@ -168,5 +168,19 @@ service cloud.firestore {
       allow read: if isSuperAdmin();
       allow write: if false;
     }
+
+    // Feature flags da plataforma. O Console (super-admin) gerencia DIRETO pelo
+    // client SDK (write só super-admin); o app lê p/ liberar funcionalidades.
+    match /flags/{flagId} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // Tickets de suporte. O tenant abre/lê os seus; o super-admin gerencia todos.
+    match /tickets/{ticketId} {
+      allow read: if isSuperAdmin() || (isSignedIn() && resource.data.tenantId == request.auth.token.tenantId);
+      allow create: if isSuperAdmin() || (isSignedIn() && request.resource.data.tenantId == request.auth.token.tenantId);
+      allow update, delete: if isSuperAdmin();
+    }
   }
 }
