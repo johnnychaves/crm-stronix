@@ -42,7 +42,7 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
     if (asaasBusy) return;
     setAsaasBusy(true);
     try {
-      const res = await fetch('/api/asaas-subscription', {
+      const res = await fetch('/api/asaas', {
         method, headers: await authHeader(), body: JSON.stringify({ tenantId: t.id, ...body }),
       });
       const data = await res.json();

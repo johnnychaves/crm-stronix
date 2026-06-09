@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { loadPlans, effectivePrice } from './_plans.js';
 import {
@@ -5,16 +6,15 @@ import {
   cancelSubscription, listSubscriptionPayments,
 } from './_asaas.js';
 
-// Gestão da assinatura Asaas de uma organização — SUPER-ADMIN only.
-//   POST   { tenantId, cpfCnpj, email, mobilePhone, cycle: 'monthly'|'annual' }  → cria/atualiza
-//   GET    ?tenantId=...                                                          → status + cobranças
-//   DELETE { tenantId }                                                           → cancela
-// O valor sai do catálogo de planos (priceMonthly ou priceAnnual), com override
-// por-tenant (monthlyPrice) no caso mensal. billingType UNDEFINED: o cliente paga
-// na fatura hospedada (Pix/boleto/cartão). Vercel serverless function.
+// Endpoint ÚNICO do Asaas (gestão de assinatura + webhook no mesmo arquivo, para
+// caber no limite de 12 Serverless Functions do Vercel Hobby).
+//   • Requisição com header `asaas-access-token`  → WEBHOOK (público, validado por token)
+//   • Caso contrário                              → gestão da assinatura (SUPER-ADMIN, Bearer)
+// Vercel serverless function.
 
 const tenantsCol = () => adminDb.collection('tenants');
 const ymd = (d) => new Date(d).toISOString().slice(0, 10);
+const toTs = (s) => { const d = s ? new Date(s.length <= 10 ? s + 'T12:00:00' : s) : new Date(); return admin.firestore.Timestamp.fromDate(d); };
 
 async function audit(action, tenantId, actorUid, details) {
   try {
@@ -25,12 +25,100 @@ async function audit(action, tenantId, actorUid, details) {
   } catch (e) { console.error('audit', e?.message || e); }
 }
 
-export default async function handler(req, res) {
+// ============================ WEBHOOK (público) ============================
+// Segurança: o Asaas manda o segredo no header `asaas-access-token` (não é HMAC).
+// Comparação constant-time. A fila do Asaas é sequencial e PAUSA em erros seguidos,
+// então respondemos 200 para tudo que foi processado/ignorado; 500 só em exceção.
+function tokenOk(req) {
+  const expected = process.env.ASAAS_WEBHOOK_TOKEN || '';
+  const got = req.headers['asaas-access-token'] || '';
+  if (!expected) return false;
+  const a = Buffer.from(String(got)); const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+const PAID = new Set(['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_RECEIVED_IN_CASH']);
+const REVOKE = new Set(['PAYMENT_REFUNDED', 'PAYMENT_DELETED', 'PAYMENT_RECEIVED_IN_CASH_UNDONE']);
+
+async function findTenantId(payment) {
+  if (payment?.externalReference) {
+    const s = await tenantsCol().doc(String(payment.externalReference)).get();
+    if (s.exists) return s.id;
+  }
+  if (payment?.subscription) {
+    const q = await tenantsCol().where('asaasSubscriptionId', '==', payment.subscription).limit(1).get();
+    if (!q.empty) return q.docs[0].id;
+  }
+  return null;
+}
+
+async function handleWebhook(req, res) {
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido.' });
+  if (!tokenOk(req)) return res.status(401).json({ error: 'Token inválido.' });
+
+  const body = req.body || {};
+  const eventId = body.id || null;
+  const event = body.event || null;
+  const payment = body.payment || null;
+  if (!event || !payment) return res.status(200).json({ ignored: 'payload sem event/payment' });
+
+  try {
+    if (eventId) {
+      const evRef = adminDb.collection('asaas_events').doc(String(eventId));
+      const seen = await evRef.get();
+      if (seen.exists) return res.status(200).json({ duplicate: true });
+      await evRef.set({ event, paymentId: payment.id || null, at: admin.firestore.FieldValue.serverTimestamp() });
+    }
+
+    const tenantId = await findTenantId(payment);
+    if (!tenantId) return res.status(200).json({ ignored: 'tenant não encontrado', event });
+
+    const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    if (PAID.has(event)) {
+      patch.paymentStatus = 'paid';
+      patch.lastPaymentAt = toTs(payment.paymentDate || payment.confirmedDate);
+    } else if (event === 'PAYMENT_OVERDUE') {
+      patch.paymentStatus = 'overdue';
+    } else if (REVOKE.has(event)) {
+      patch.paymentStatus = 'pending';
+    } else if (event === 'PAYMENT_CREATED') {
+      if (payment.dueDate) patch.nextBillingAt = toTs(payment.dueDate);
+      if (payment.invoiceUrl) patch.lastInvoiceUrl = payment.invoiceUrl;
+    }
+    if (Object.keys(patch).length > 1) await tenantsCol().doc(tenantId).update(patch);
+
+    await adminDb.collection('tenant_payments').add({
+      tenantId,
+      paymentId: payment.id || null,
+      subscriptionId: payment.subscription || null,
+      event,
+      status: payment.status || null,
+      value: typeof payment.value === 'number' ? payment.value : null,
+      netValue: typeof payment.netValue === 'number' ? payment.netValue : null,
+      billingType: payment.billingType || null,
+      dueDate: payment.dueDate || null,
+      paidAt: payment.paymentDate || payment.confirmedDate || null,
+      invoiceUrl: payment.invoiceUrl || null,
+      at: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return res.status(200).json({ ok: true, tenantId, event });
+  } catch (err) {
+    console.error('asaas-webhook', event, err?.message || err);
+    return res.status(500).json({ error: 'erro ao processar (será retentado)' });
+  }
+}
+
+// ===================== ASSINATURA (super-admin) =====================
+//   POST   { tenantId, cpfCnpj, email, mobilePhone, cycle: 'monthly'|'annual' }  → cria/atualiza
+//   GET    ?tenantId=...                                                          → status + cobranças
+//   DELETE { tenantId }                                                           → cancela
+async function handleSubscription(req, res) {
   const auth = await verifyRequest(req);
   if (!auth) return res.status(401).json({ error: 'Não autenticado.' });
   if (!auth.superAdmin) return res.status(403).json({ error: 'Apenas o super-admin gerencia cobrança.' });
   if (!isAsaasConfigured()) {
-    return res.status(503).json({ error: 'Asaas não configurado. Defina ASAAS_API_KEY (e ASAAS_WEBHOOK_TOKEN) nas variáveis de ambiente. Veja docs/ASAAS_SETUP.md.' });
+    return res.status(503).json({ error: 'Asaas não configurado. Defina ASAAS_API_KEY (e ASAAS_WEBHOOK_TOKEN). Veja docs/ASAAS_SETUP.md.' });
   }
 
   const tenantId = req.method === 'GET' ? req.query?.tenantId : req.body?.tenantId;
@@ -42,7 +130,6 @@ export default async function handler(req, res) {
   const tenant = snap.data() || {};
 
   try {
-    // ---- GET: status + últimas cobranças ----
     if (req.method === 'GET') {
       if (!tenant.asaasSubscriptionId) return res.status(200).json({ subscription: null, payments: [] });
       const payments = await listSubscriptionPayments(tenant.asaasSubscriptionId);
@@ -57,7 +144,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // ---- DELETE: cancela ----
     if (req.method === 'DELETE') {
       if (tenant.asaasSubscriptionId) await cancelSubscription(tenant.asaasSubscriptionId);
       await ref.update({
@@ -71,12 +157,10 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // ---- POST: cria ou atualiza ----
     if (req.method === 'POST') {
       const { cpfCnpj, email, mobilePhone } = req.body || {};
       const cycle = req.body?.cycle === 'annual' ? 'annual' : 'monthly';
 
-      // Valor a partir do catálogo de planos.
       const plansMap = await loadPlans();
       const planDoc = plansMap.get(tenant.plan);
       let value, cycleAsaas;
@@ -94,7 +178,6 @@ export default async function handler(req, res) {
         }
       }
 
-      // Já tem assinatura → atualiza valor/ciclo. Senão, cria (cliente + assinatura).
       let subscriptionId = tenant.asaasSubscriptionId || null;
       let customerId = tenant.asaasCustomerId || null;
       if (subscriptionId) {
@@ -105,7 +188,6 @@ export default async function handler(req, res) {
           ? { id: customerId }
           : await findOrCreateCustomer({ tenantId, name: tenant.displayName, cpfCnpj, email: email || tenant.primaryAdminEmail, mobilePhone });
         customerId = customer.id;
-        // 1ª cobrança: hoje, ou no fim do trial se ainda estiver em trial.
         const trialMs = tenant.trialEndsAt?.toMillis?.() || null;
         const nextDueDate = ymd(trialMs && trialMs > Date.now() ? trialMs : Date.now());
         const sub = await createSubscription({
@@ -115,7 +197,6 @@ export default async function handler(req, res) {
         subscriptionId = sub.id;
       }
 
-      // Pega a fatura mais recente p/ enviar o link ao cliente.
       let lastInvoiceUrl = null, nextBillingMs = null;
       try {
         const pays = await listSubscriptionPayments(subscriptionId);
@@ -142,4 +223,10 @@ export default async function handler(req, res) {
     console.error('asaas-subscription', err?.status, err?.message || err);
     return res.status(err?.status === 400 ? 400 : 502).json({ error: `Asaas: ${err?.message || 'erro ao processar a assinatura.'}` });
   }
+}
+
+export default async function handler(req, res) {
+  // Webhook do Asaas chega com o header `asaas-access-token`; o resto é gestão (super-admin).
+  if (req.headers['asaas-access-token'] !== undefined) return handleWebhook(req, res);
+  return handleSubscription(req, res);
 }

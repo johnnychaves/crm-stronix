@@ -114,7 +114,7 @@ function SuperAdminView({ tab }) {
     if (plans === null) loadPlans(); // seletor de plano dinâmico no modal
     setStats({ loading: true });
     try {
-      const res = await fetch(`/api/tenant-stats?tenantId=${encodeURIComponent(t.id)}`, { headers: await authHeader() });
+      const res = await fetch(`/api/tenant-status?tenantId=${encodeURIComponent(t.id)}`, { headers: await authHeader() });
       const data = await res.json();
       setStats(res.ok ? { data } : { error: data.error || 'Erro ao carregar uso.' });
     } catch (e) {
