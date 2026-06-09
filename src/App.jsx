@@ -297,6 +297,12 @@ function AppInner() {
               if (ms < Date.now()) block = 'trial_expired';
               else trialMs = ms; // trial ativo → alimenta o banner de contagem
             }
+            // Inadimplência além da carência (3 dias) corta o acesso automaticamente,
+            // independente do status. Pagou → webhook marca 'paid' → libera sozinho.
+            if (!block && tData.paymentStatus === 'overdue' && typeof tData.paymentOverdueSince?.toMillis === 'function'
+                && Date.now() - tData.paymentOverdueSince.toMillis() > 3 * 24 * 60 * 60 * 1000) {
+              block = 'payment_overdue';
+            }
           }
           setTenantBlock(block);
           setTrialEndsAtMs(trialMs);

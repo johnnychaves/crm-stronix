@@ -77,8 +77,10 @@ async function handleWebhook(req, res) {
     if (PAID.has(event)) {
       patch.paymentStatus = 'paid';
       patch.lastPaymentAt = toTs(payment.paymentDate || payment.confirmedDate);
+      patch.paymentOverdueSince = admin.firestore.FieldValue.delete(); // pagou → libera acesso
     } else if (event === 'PAYMENT_OVERDUE') {
       patch.paymentStatus = 'overdue';
+      patch.paymentOverdueSince = admin.firestore.FieldValue.serverTimestamp(); // marca início da carência
     } else if (REVOKE.has(event)) {
       patch.paymentStatus = 'pending';
     } else if (event === 'PAYMENT_CREATED') {
