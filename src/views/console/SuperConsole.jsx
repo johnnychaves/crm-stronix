@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { auth, db } from '../../lib/firebase.js';
 import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { planLabel, auditActionLabel } from '../../lib/superadmin.js';
+import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
+import { planLabel, auditActionLabel, IMPERSONATION_KEY } from '../../lib/superadmin.js';
 import { Icon } from './consoleIcons.jsx';
 import './console.css';
 
@@ -381,6 +382,8 @@ function Billing({ overview, tenants }) {
 function Detail({ tenantId, tenants, overview, audit, go }) {
   const t = (tenants || []).find((x) => x.id === tenantId);
   const [stats, setStats] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
   useEffect(() => {
     if (!tenantId) return undefined;
     let alive = true;
@@ -396,6 +399,21 @@ function Detail({ tenantId, tenants, overview, audit, go }) {
   }, [tenantId]);
 
   if (!t) return <div className="empty">Academia não encontrada.</div>;
+  // "Acessar como" (impersonar): reusa /api/impersonate; ao entrar, o App remonta
+  // como o admin do cliente e este console fecha sozinho (deixa de ser super-admin).
+  const enterAs = async () => {
+    if (busy) return;
+    setErr(''); setBusy(true);
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/impersonate', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ tenantId: t.id }) });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error || 'Não foi possível entrar.'); setBusy(false); return; }
+      try { sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ viewing: { id: t.id, name: data.tenantName || t.displayName } })); } catch { /* ignore */ }
+      try { await setPersistence(auth, browserSessionPersistence); } catch { /* ignore */ }
+      await signInWithCustomToken(auth, data.token);
+    } catch (e) { console.error('enterAs', e); setErr('Falha ao entrar como a organização.'); setBusy(false); }
+  };
   const [bg, fg] = tone(t.id);
   const pays = (overview?.recentPayments || []).filter((p) => p.tenantId === tenantId).slice(0, 6);
   const events = (audit || []).filter((l) => l.tenantId === tenantId).slice(0, 6);
@@ -420,7 +438,8 @@ function Detail({ tenantId, tenants, overview, audit, go }) {
           </div>
         </div>
         <div className="ph-actions">
-          <button className="btn btn-ghost"><Icon name="ext" size={16} /> Acessar como</button>
+          {err && <span style={{ color: 'var(--danger)', fontSize: 12, alignSelf: 'center', maxWidth: 220 }}>{err}</span>}
+          <button className="btn btn-ghost" onClick={enterAs} disabled={busy}><Icon name="ext" size={16} /> {busy ? 'Entrando…' : 'Acessar como'}</button>
           <button className="btn btn-primary"><Icon name="plans" size={16} /> Gerenciar plano</button>
         </div>
       </div>
