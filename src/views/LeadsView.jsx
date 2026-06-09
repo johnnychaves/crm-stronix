@@ -257,7 +257,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
                           <div className={`text-[13.5px] font-semibold tracking-tight ${isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{l.name}</div>
                           <div className="flex items-center gap-2 mt-0.5 text-[11.5px] text-slate-500 dark:text-slate-400 num flex-wrap">
                             <span className="inline-flex items-center gap-1"><Phone size={11} /> {l.whatsapp}</span>
-                            {isAdminUser(appUser) && l.consultantName && (
+                            {l.consultantName && (
                               <>
                                 <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/20"></span>
                                 <span className="text-[11px] text-brand-600 dark:text-brand-300">@{l.consultantName}</span>

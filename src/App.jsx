@@ -444,13 +444,11 @@ useEffect(() => {
   const interactionsRef = collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH);
   const usersRef = collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH);
 
-  const leadsSource = isAdminUser(appUser)
-    ? leadsRef
-    : query(leadsRef, where('consultantAuthUid', '==', appUser.authUid));
-
-  const interactionsSource = isAdminUser(appUser)
-    ? interactionsRef
-    : query(interactionsRef, where('leadConsultantAuthUid', '==', appUser.authUid));
+  // Base COMPARTILHADA: todos os consultores carregam todos os leads/interações da
+  // academia (o DONO fica em consultantAuthUid p/ atribuição/ranking/meta). As telas
+  // pessoais (Dashboard/Meta Diária) filtram pelo dono na própria tela.
+  const leadsSource = leadsRef;
+  const interactionsSource = interactionsRef;
 
   const unsubLeads = onSnapshot(leadsSource, (snapshot) => {
     const leadsData = snapshot.docs.map((docSnap) => {
@@ -984,7 +982,7 @@ useEffect(() => {
             </div>
           ) : (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full transition-all duration-300">
-              {activeTab === 'dashboard' && <DashboardView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
+              {activeTab === 'dashboard' && <DashboardView leads={isAdminUser(appUser) ? leads : (leads || []).filter(l => l.consultantId === appUser.id)} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
