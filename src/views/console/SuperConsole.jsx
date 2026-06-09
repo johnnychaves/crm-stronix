@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { auth } from '../../lib/firebase.js';
-import { planLabel } from '../../lib/superadmin.js';
+import { planLabel, auditActionLabel } from '../../lib/superadmin.js';
 import { Icon } from './consoleIcons.jsx';
 import './console.css';
 
@@ -49,6 +49,8 @@ function statusBadge(t) {
   return <span className="badge b-ativa"><span className="bd" style={{ background: 'currentColor' }} />Ativa</span>;
 }
 const planChip = (slug) => <span className="plan-chip" style={{ background: 'rgba(43,89,255,.16)', color: '#9FBCFF' }}>{planLabel(slug)}</span>;
+const statusKey = (t) => (t.archived || t.status === 'suspended') ? 'cancelada' : t.paymentStatus === 'overdue' ? 'inadimplente' : t.status === 'trial' ? 'trial' : 'ativa';
+const payBadge = (s) => s === 'paid' ? <span className="badge b-paga">Pago</span> : s === 'overdue' ? <span className="badge b-atrasada">Atrasado</span> : s === 'pending' ? <span className="badge b-pendente">Pendente</span> : <span className="muted">—</span>;
 
 const pct = (cur, prev) => (prev > 0 ? Math.round(((cur - prev) / prev) * 100) : null);
 
@@ -199,11 +201,88 @@ function Placeholder({ route }) {
   );
 }
 
+// ---------- Academias (lista, dados reais) ----------
+const CHIPS = [['todas', 'Todas'], ['ativa', 'Ativas'], ['trial', 'Trial'], ['inadimplente', 'Inadimplentes'], ['cancelada', 'Canceladas']];
+function Tenants({ tenants }) {
+  const [filter, setFilter] = useState('todas');
+  const [q, setQ] = useState('');
+  const list = (tenants || []).filter((t) => !t.internal);
+  const counts = { todas: list.length, ativa: 0, trial: 0, inadimplente: 0, cancelada: 0 };
+  list.forEach((t) => { counts[statusKey(t)] += 1; });
+  const shown = list
+    .filter((t) => filter === 'todas' || statusKey(t) === filter)
+    .filter((t) => !q || (t.displayName || '').toLowerCase().includes(q.toLowerCase()));
+  return (
+    <>
+      <div className="ph">
+        <div><h1>Academias</h1><p>{list.length} clientes na plataforma · {counts.ativa} ativas</p></div>
+        <div className="ph-actions"><button className="btn btn-ghost"><Icon name="download" size={16} /> CSV</button><button className="btn btn-primary"><Icon name="plus" size={16} /> Nova academia</button></div>
+      </div>
+      <div className="toolbar">
+        {CHIPS.map(([k, label]) => (
+          <button key={k} className={`chip${filter === k ? ' active' : ''}`} onClick={() => setFilter(k)}>{label} <span className="cn">{counts[k]}</span></button>
+        ))}
+        <div className="search-box"><Icon name="search" size={15} /><input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar academia…" /></div>
+      </div>
+      <div className="card">
+        <table className="tbl">
+          <thead><tr><th>Academia</th><th>Plano</th><th>Status</th><th style={{ textAlign: 'right' }}>MRR</th><th>Pagamento</th><th>Cliente desde</th><th>Último acesso</th></tr></thead>
+          <tbody>
+            {shown.length ? shown.map((t) => (
+              <tr key={t.id}>
+                <td><GymCell t={t} sub={[t.settings?.city, t.settings?.state].filter(Boolean).join(' · ') || t.id} /></td>
+                <td>{planChip(t.plan)}</td>
+                <td>{statusBadge(t)}</td>
+                <td className="tnum" style={{ textAlign: 'right' }}>{t.price ? brl(t.price) : '—'}</td>
+                <td>{payBadge(t.paymentStatus)}</td>
+                <td className="muted tnum">{t.createdAt ? new Date(t.createdAt).toLocaleDateString('pt-BR') : '—'}</td>
+                <td className="muted">{t.lastActivityAt ? new Date(t.lastActivityAt).toLocaleDateString('pt-BR') : '—'}</td>
+              </tr>
+            )) : <tr><td colSpan={7} className="empty">Nenhuma academia encontrada.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+// ---------- Logs & auditoria (dados reais) ----------
+function detailStr(d) {
+  if (!d || typeof d !== 'object') return '';
+  if (Array.isArray(d.changed)) return d.changed.join(', ');
+  return Object.entries(d).map(([k, v]) => `${k}: ${v}`).slice(0, 3).join(' · ');
+}
+function Logs({ audit }) {
+  const list = audit || [];
+  return (
+    <>
+      <div className="ph"><div><h1>Logs & auditoria</h1><p>Trilha de auditoria da plataforma · ações administrativas</p></div></div>
+      <div className="card">
+        <table className="tbl">
+          <thead><tr><th>Quando</th><th>Ator</th><th>Ação</th><th>Alvo</th><th>Detalhe</th></tr></thead>
+          <tbody>
+            {list.length ? list.map((l) => (
+              <tr key={l.id}>
+                <td className="tnum muted" style={{ whiteSpace: 'nowrap' }}>{l.at ? new Date(l.at).toLocaleString('pt-BR') : '—'}</td>
+                <td className="muted" style={{ whiteSpace: 'nowrap' }}>{l.actorUid ? String(l.actorUid).slice(0, 8) : 'sistema'}</td>
+                <td><span className="log-act">{auditActionLabel(l.action) || l.action}</span></td>
+                <td style={{ fontWeight: 600 }}>{l.tenantId || '—'}</td>
+                <td className="muted">{detailStr(l.details)}</td>
+              </tr>
+            )) : <tr><td colSpan={5} className="empty">Sem registros de auditoria ainda.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
 // ---------- Shell ----------
 function SuperConsole({ appUser, onClose }) {
   const [route, setRoute] = useState('overview');
   const [overview, setOverview] = useState(null);
   const [tenants, setTenants] = useState([]);
+  const [audit, setAudit] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -213,7 +292,7 @@ function SuperConsole({ appUser, onClose }) {
         const token = await auth.currentUser.getIdToken();
         const res = await fetch('/api/super-overview', { headers: { Authorization: `Bearer ${token}` } });
         const json = await res.json();
-        if (alive && res.ok) { setOverview(json.totals || null); setTenants(json.tenants || []); }
+        if (alive && res.ok) { setOverview(json.totals || null); setTenants(json.tenants || []); setAudit(json.audit || []); }
       } catch (e) { console.error('console super-overview', e); }
       finally { if (alive) setLoading(false); }
     })();
@@ -270,9 +349,10 @@ function SuperConsole({ appUser, onClose }) {
           <button className="top-ic" title="Voltar ao painel" onClick={onClose}><Icon name="close" size={18} /></button>
         </header>
         <main className="view">
-          {route === 'overview'
-            ? <Overview overview={overview} tenants={tenants} loading={loading} go={go} />
-            : <Placeholder route={route} />}
+          {route === 'overview' && <Overview overview={overview} tenants={tenants} loading={loading} go={go} />}
+          {route === 'tenants' && <Tenants tenants={tenants} />}
+          {route === 'logs' && <Logs audit={audit} />}
+          {!['overview', 'tenants', 'logs'].includes(route) && <Placeholder route={route} />}
         </main>
       </div>
     </div>
