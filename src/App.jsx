@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutDashboard, Users, Plus, AlertTriangle, LogOut, Activity, User, X, Shield, Menu, Settings, Kanban, Moon, Sun, Target, Globe } from 'lucide-react';
+import { LayoutDashboard, Users, Plus, AlertTriangle, LogOut, Activity, User, X, Shield, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy } from 'lucide-react';
 
 import {
   onAuthStateChanged,
@@ -70,6 +70,7 @@ import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
 import { SuperConsole } from './views/console/SuperConsole.jsx';
+import { CreateTicketModal } from './modals/CreateTicketModal.jsx';
 
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
@@ -134,6 +135,7 @@ function AppInner() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [superTab, setSuperTab] = useState('overview'); // sub-seção do super-admin (no menu lateral)
   const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
+  const [ticketModalOpen, setTicketModalOpen] = useState(false); // abrir chamado de suporte (cliente)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
@@ -851,6 +853,7 @@ useEffect(() => {
                   <SidebarSubItem label="Aulas experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
                   <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
                 </SidebarGroup>
+                <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" active={false} onClick={() => setTicketModalOpen(true)} />
               </div>
             </>
           )}
@@ -1014,6 +1017,7 @@ useEffect(() => {
       {consoleOpen && appUser?.superAdmin && (
         <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
       )}
+      {ticketModalOpen && <CreateTicketModal appUser={appUser} onClose={() => setTicketModalOpen(false)} />}
     </div>
     </GeneralConfigContext.Provider>
   );
