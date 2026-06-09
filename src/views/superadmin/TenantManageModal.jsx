@@ -5,9 +5,14 @@ import { useToast } from '../../contexts/ToastContext.jsx';
 import { Btn } from '../../components/ui/Btn.jsx';
 import { Field, StyledInput, StyledSelect } from '../../components/ui/Field.jsx';
 
-function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, onExtendTrial, onSetActive, onEnterAs, onArchive }) {
+function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, onExtendTrial, onSetActive, onEnterAs, onArchive, authHeader, asaasConfigured, onReload }) {
+  const toast = useToast();
   const [sub, setSub] = useState('visao');
   const [trialDays, setTrialDays] = useState('');
+  const [asaasForm, setAsaasForm] = useState({ cpfCnpj: '', email: t.primaryAdminEmail || '', cycle: 'monthly' });
+  const [asaasBusy, setAsaasBusy] = useState(false);
+  const [linked, setLinked] = useState(!!t.asaasSubscriptionId);
+  const [invoiceUrl, setInvoiceUrl] = useState(t.lastInvoiceUrl || '');
   const [f, setF] = useState({
     displayName: t.displayName || '',
     city: t.settings?.city || '',
@@ -32,6 +37,22 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
     monthlyPrice: f.price === '' ? null : Number(f.price),
     internalNotes: f.notes,
   }, 'Cobrança atualizada.');
+  // Asaas: cria/atualiza (POST) ou cancela (DELETE) a assinatura recorrente.
+  const callAsaas = async (method, body) => {
+    if (asaasBusy) return;
+    setAsaasBusy(true);
+    try {
+      const res = await fetch('/api/asaas-subscription', {
+        method, headers: await authHeader(), body: JSON.stringify({ tenantId: t.id, ...body }),
+      });
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.error || 'Erro no Asaas.'); return; }
+      if (method === 'DELETE') { setLinked(false); setInvoiceUrl(''); toast.success('Assinatura cancelada.'); }
+      else { setLinked(true); if (data.invoiceUrl) setInvoiceUrl(data.invoiceUrl); toast.success('Assinatura criada/atualizada no Asaas.'); }
+      onReload?.();
+    } catch (e) { console.error('asaas', e); toast.error('Falha de rede ao falar com o Asaas.'); }
+    finally { setAsaasBusy(false); }
+  };
   const saveConfig = () => {
     if (!f.displayName.trim()) return;
     onPatch({ displayName: f.displayName.trim(), settings: { city: f.city.trim(), state: f.state.trim(), logoUrl: f.logoUrl.trim() } }, 'Configurações salvas.');
@@ -132,6 +153,41 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
                     className="w-full px-3 py-2 rounded-lg text-[12.5px] bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] outline-none focus:border-brand-500 resize-none custom-scrollbar" placeholder="Contato, negociação, observações..." />
                 </Field>
                 <div className="flex justify-end"><Btn kind="brand" icon={<Check size={13} />} onClick={saveBilling} disabled={!!busy}>Salvar cobrança</Btn></div>
+              </div>
+
+              <div className="space-y-3 rounded-xl border border-brand-200/70 dark:border-brand-500/20 bg-brand-50/40 dark:bg-brand-500/[0.04] p-3.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-100">Cobrança automática (Asaas)</span>
+                  {linked && <span className="text-[9.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">ativa</span>}
+                </div>
+                {!asaasConfigured ? (
+                  <p className="text-[11.5px] text-slate-500 dark:text-slate-400">Asaas não configurado. Defina as chaves de API (veja <span className="num">docs/ASAAS_SETUP.md</span>) para cobrar via Pix/boleto/cartão automaticamente. A cobrança manual acima continua valendo.</p>
+                ) : linked ? (
+                  <div className="space-y-2.5">
+                    <p className="text-[11.5px] text-slate-500 dark:text-slate-400">Assinatura {t.billingCycle === 'annual' ? 'anual' : 'mensal'} ativa — os pagamentos atualizam o status sozinhos.</p>
+                    <div className="flex flex-wrap gap-2">
+                      {invoiceUrl && <Btn kind="soft" onClick={() => { try { navigator.clipboard?.writeText(invoiceUrl); toast.success('Link da fatura copiado!'); } catch { toast.info('Copie o link manualmente.'); } }}>Copiar link da fatura</Btn>}
+                      <Btn kind="soft" onClick={() => callAsaas('POST', { cycle: asaasForm.cycle })} disabled={asaasBusy}>Sincronizar valor</Btn>
+                      <Btn kind="danger" onClick={() => { if (window.confirm('Cancelar a assinatura no Asaas? As cobranças pendentes serão removidas.')) callAsaas('DELETE', {}); }} disabled={asaasBusy}>Cancelar assinatura</Btn>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5">
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="CPF/CNPJ do responsável"><StyledInput value={asaasForm.cpfCnpj} onChange={e => setAsaasForm(s => ({ ...s, cpfCnpj: e.target.value }))} placeholder="só números" /></Field>
+                      <Field label="E-mail"><StyledInput type="email" value={asaasForm.email} onChange={e => setAsaasForm(s => ({ ...s, email: e.target.value }))} placeholder="cobranca@cliente.com" /></Field>
+                    </div>
+                    <Field label="Ciclo" hint="valor vem do plano">
+                      <StyledSelect value={asaasForm.cycle} onChange={e => setAsaasForm(s => ({ ...s, cycle: e.target.value }))}>
+                        <option value="monthly">Mensal</option>
+                        <option value="annual">Anual</option>
+                      </StyledSelect>
+                    </Field>
+                    <div className="flex justify-end">
+                      <Btn kind="brand" icon={<Check size={13} />} onClick={() => callAsaas('POST', { cpfCnpj: asaasForm.cpfCnpj, email: asaasForm.email, cycle: asaasForm.cycle })} disabled={asaasBusy}>{asaasBusy ? 'Criando...' : 'Criar assinatura no Asaas'}</Btn>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -267,6 +323,29 @@ function PlanFormModal({ plan, authHeader, onClose, onSaved }) {
             <Field label="Preço mensal (R$)"><StyledInput type="number" min="0" value={form.priceMonthly} onChange={e => set('priceMonthly', e.target.value)} placeholder="197" /></Field>
             <Field label="Preço anual (R$)" hint="opcional"><StyledInput type="number" min="0" value={form.priceAnnual} onChange={e => set('priceAnnual', e.target.value)} placeholder="—" /></Field>
           </div>
+          {(Number(form.priceMonthly) > 0 || Number(form.priceAnnual) > 0) && (() => {
+            const m = Number(form.priceMonthly) || 0;
+            const a = Number(form.priceAnnual) || 0;
+            const eqMonthly = a > 0 ? Math.round(a / 12) : null;
+            const discount = (a > 0 && m > 0) ? Math.round((1 - a / (m * 12)) * 100) : null;
+            return (
+              <div className="rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.06] px-3.5 py-2.5 text-[12px] text-slate-600 dark:text-slate-300">
+                <div className="flex items-center justify-between">
+                  <span>Mensal</span>
+                  <span className="num font-semibold text-slate-900 dark:text-white">R$ {m.toLocaleString('pt-BR')}/mês</span>
+                </div>
+                {a > 0 && (
+                  <div className="flex items-center justify-between mt-1.5 pt-1.5 border-t border-slate-200/60 dark:border-white/[0.05]">
+                    <span>Anual <span className="opacity-70">(≈ R$ {eqMonthly.toLocaleString('pt-BR')}/mês)</span></span>
+                    <span className="num font-semibold text-slate-900 dark:text-white">
+                      R$ {a.toLocaleString('pt-BR')}/ano
+                      {discount > 0 && <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">−{discount}%</span>}
+                    </span>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           <div className="grid grid-cols-2 gap-3">
             <Field label="Preço usuário extra" hint="opcional"><StyledInput type="number" min="0" value={form.extraUserPrice} onChange={e => set('extraUserPrice', e.target.value)} placeholder="—" /></Field>
             <Field label="Máx. extras" hint="opcional"><StyledInput type="number" min="0" value={form.maxExtraUsers} onChange={e => set('maxExtraUsers', e.target.value)} placeholder="—" /></Field>

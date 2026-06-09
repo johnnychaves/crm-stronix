@@ -53,6 +53,9 @@ function SuperPlansTab({ plans, authHeader, onReload }) {
                 <div>
                   <span className="num text-[18px] font-bold text-slate-900 dark:text-white">R$ {Number(p.priceMonthly || 0).toLocaleString('pt-BR')}</span>
                   <span className="text-[11px] text-slate-400">/mês</span>
+                  {Number(p.priceAnnual) > 0 && (
+                    <div className="text-[11px] text-slate-400 num mt-0.5">R$ {Number(p.priceAnnual).toLocaleString('pt-BR')}/ano</div>
+                  )}
                 </div>
                 <div className="text-right text-[11.5px] text-slate-500 dark:text-slate-400 num">
                   <div>{p.maxUsers == null ? 'Usuários ilimitados' : `${p.maxUsers} usuários`}</div>

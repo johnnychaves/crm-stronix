@@ -1,5 +1,6 @@
 import { adminDb, verifyRequest } from './_firebaseAdmin.js';
-import { effectivePrice } from './_plans.js';
+import { effectivePrice, loadPlans } from './_plans.js';
+import { isAsaasConfigured } from './_asaas.js';
 
 // Visão agregada da plataforma para o painel super-admin — SUPER-ADMIN only.
 // Usa o Admin SDK (o super-admin não lê /artifacts de outro tenant pelas rules).
@@ -34,7 +35,7 @@ async function lastInteractionMillis(tenantId) {
   }
 }
 
-async function tenantMetrics(doc) {
+async function tenantMetrics(doc, plansMap) {
   const id = doc.id;
   const data = doc.data() || {};
   const [userCount, leadCount, interactionCount, lastInteractionMs] = await Promise.all([
@@ -66,7 +67,11 @@ async function tenantMetrics(doc) {
     lastPaymentAt: toMillis(data.lastPaymentAt),
     nextBillingAt: toMillis(data.nextBillingAt),
     statusChangedAt: toMillis(data.statusChangedAt),
-    price: effectivePrice({ plan, monthlyPrice }),
+    asaasSubscriptionId: data.asaasSubscriptionId || null,
+    billingProvider: data.billingProvider || null,
+    billingCycle: data.billingCycle || null,
+    lastInvoiceUrl: data.lastInvoiceUrl || null,
+    price: effectivePrice({ plan, monthlyPrice }, plansMap),
     userCount,
     leadCount,
     interactionCount,
@@ -87,7 +92,10 @@ export default async function handler(req, res) {
 
   try {
     const snap = await adminDb.collection('tenants').get();
-    const tenants = await Promise.all(snap.docs.map(tenantMetrics));
+    // Carrega o catálogo de planos UMA vez p/ o preço do MRR refletir o valor
+    // atual de cada plano (priceMonthly), não mais o mapa hard-coded.
+    const plansMap = await loadPlans();
+    const tenants = await Promise.all(snap.docs.map((d) => tenantMetrics(d, plansMap)));
     tenants.sort((a, b) => a.displayName.localeCompare(b.displayName));
 
     const now = Date.now();
@@ -194,7 +202,19 @@ export default async function handler(req, res) {
       console.error('super-overview audit', err?.message || err);
     }
 
-    return res.status(200).json({ totals, tenants, audit });
+    // Pagamentos recentes (histórico alimentado pelos webhooks Asaas).
+    try {
+      const paySnap = await adminDb.collection('tenant_payments').orderBy('at', 'desc').limit(25).get();
+      totals.recentPayments = paySnap.docs.map((d) => {
+        const x = d.data() || {};
+        return { id: d.id, tenantId: x.tenantId || null, value: x.value ?? null, status: x.status || null, event: x.event || null, billingType: x.billingType || null, at: toMillis(x.at) };
+      });
+    } catch (err) {
+      console.error('super-overview payments', err?.message || err);
+      totals.recentPayments = [];
+    }
+
+    return res.status(200).json({ totals, tenants, audit, asaasConfigured: isAsaasConfigured() });
   } catch (error) {
     console.error('super-overview', error);
     return res.status(500).json({ error: 'Erro ao montar a visão geral.' });

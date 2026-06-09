@@ -1,4 +1,4 @@
-import { AlertCircle, Calendar, TrendingUp } from 'lucide-react';
+import { AlertCircle, Calendar, CheckCircle, TrendingUp } from 'lucide-react';
 import { planLabel } from '../../lib/superadmin.js';
 import { SettingsCard } from '../../components/ui/SettingsCard.jsx';
 
@@ -6,11 +6,15 @@ function SuperFinanceTab({ overview, tenants, onPatch, busy }) {
   const o = overview || {};
   const fmt = (n) => 'R$ ' + Number(n || 0).toLocaleString('pt-BR');
   const overdue = (tenants || []).filter(t => !t.archived && !t.internal && t.paymentStatus === 'overdue');
+  const overdueValue = overdue.reduce((s, t) => s + (t.price || 0), 0);
   const upcoming = o.upcomingBilling || [];
   const byPlanRev = {};
   (tenants || []).forEach(t => { if (!t.archived && !t.internal && t.status === 'active') byPlanRev[t.plan] = (byPlanRev[t.plan] || 0) + (t.price || 0); });
   const planRows = Object.entries(byPlanRev).sort((a, b) => b[1] - a[1]);
   const maxRev = planRows.reduce((m, [, v]) => Math.max(m, v), 0) || 1;
+  const nameOf = Object.fromEntries((tenants || []).map(t => [t.id, t.displayName]));
+  const PAID_EVENTS = new Set(['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_RECEIVED_IN_CASH']);
+  const recentPaid = (o.recentPayments || []).filter(p => PAID_EVENTS.has(p.event)).slice(0, 12);
 
   const kpi = (label, value, sub, tone) => {
     const tones = { brand: 'text-brand-700 dark:text-brand-300', emerald: 'text-emerald-700 dark:text-emerald-300', rose: 'text-rose-700 dark:text-rose-300', amber: 'text-amber-700 dark:text-amber-300', slate: 'text-slate-900 dark:text-white' };
@@ -30,7 +34,7 @@ function SuperFinanceTab({ overview, tenants, onPatch, busy }) {
         {kpi('ARR', fmt(o.arr), 'anualizado (MRR×12)', 'emerald')}
         {kpi('MRR potencial', fmt(o.mrrPotential), 'se os trials converterem', 'slate')}
         {kpi('Churn (30d)', o.churn30d ?? 0, 'suspensos/arquivados', 'rose')}
-        {kpi('Inadimplentes', o.overdueCount ?? overdue.length, 'pagamento atrasado', 'amber')}
+        {kpi('Inadimplentes', o.overdueCount ?? overdue.length, overdue.length ? `${fmt(overdueValue)}/mês em atraso` : 'pagamento atrasado', 'amber')}
       </div>
 
       <SettingsCard title="Inadimplentes" hint="Marcados como pagamento atrasado" icon={<AlertCircle size={16} />}>
@@ -84,6 +88,23 @@ function SuperFinanceTab({ overview, tenants, onPatch, busy }) {
                   <div className="h-full bg-brand-600 rounded-full" style={{ width: `${Math.round((rev / maxRev) * 100)}%` }} />
                 </div>
                 <span className="num text-[12px] font-semibold text-slate-700 dark:text-slate-200 w-24 text-right">{fmt(rev)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </SettingsCard>
+
+      <SettingsCard title="Pagamentos recentes" hint="Confirmados via Asaas" icon={<CheckCircle size={16} />}>
+        {recentPaid.length === 0 ? (
+          <div className="text-center text-[12.5px] text-slate-400 italic py-8">Nenhum pagamento confirmado ainda.</div>
+        ) : (
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+            {recentPaid.map(p => (
+              <div key={p.id} className="flex items-center gap-3 px-1 py-2.5">
+                <div className="min-w-0 flex-1 text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">{nameOf[p.tenantId] || p.tenantId || '—'}</div>
+                {p.billingType && <span className="text-[10px] text-slate-400 uppercase tracking-wide">{p.billingType}</span>}
+                <span className="num text-[12.5px] font-semibold text-emerald-700 dark:text-emerald-300">{fmt(p.value)}</span>
+                <span className="text-[11px] num text-slate-400 w-20 text-right">{p.at ? new Date(p.at).toLocaleDateString('pt-BR') : ''}</span>
               </div>
             ))}
           </div>

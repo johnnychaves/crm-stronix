@@ -27,11 +27,18 @@ export function planPrice(plan) {
   return PLAN_PRICES[plan] ?? PLAN_PRICES.starter;
 }
 
-// Preço efetivo de uma organização: usa o override por-tenant (monthlyPrice)
-// quando definido (número finito ≥ 0), senão o preço do plano. Base do MRR.
-export function effectivePrice(tenant) {
+// Preço efetivo de uma organização (base do MRR). Ordem de precedência:
+//  1) override por-tenant (monthlyPrice, ex.: desconto negociado);
+//  2) preço ATUAL do catálogo dinâmico (plansMap.get(plan).priceMonthly);
+//  3) fallback hard-coded (planPrice) — retrocompat starter/pro/enterprise.
+// plansMap = Map de loadPlans(); é OPCIONAL (sem ele, cai direto no fallback,
+// preservando o comportamento antigo). Era o GAP: o MRR ignorava o preço do
+// catálogo (planos editados/custom contavam errado).
+export function effectivePrice(tenant, plansMap) {
   const override = Number(tenant?.monthlyPrice);
   if (Number.isFinite(override) && override >= 0) return override;
+  const catalog = Number(plansMap?.get?.(tenant?.plan)?.priceMonthly);
+  if (Number.isFinite(catalog) && catalog >= 0) return catalog;
   return planPrice(tenant?.plan);
 }
 

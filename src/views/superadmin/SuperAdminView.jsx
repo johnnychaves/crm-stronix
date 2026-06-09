@@ -18,6 +18,7 @@ function SuperAdminView({ tab }) {
   const [tenants, setTenants] = useState([]);
   const [overview, setOverview] = useState(null);     // totais agregados da plataforma (KPIs)
   const [audit, setAudit] = useState([]);             // log de atividade do super-admin
+  const [asaasConfigured, setAsaasConfigured] = useState(false); // gateway Asaas tem chaves?
   const [loadingList, setLoadingList] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [form, setForm] = useState({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '' });
@@ -86,7 +87,7 @@ function SuperAdminView({ tab }) {
     try {
       const res = await fetch('/api/super-overview', { headers: await authHeader() });
       const data = await res.json();
-      if (res.ok) { setTenants(data.tenants || []); setOverview(data.totals || null); setAudit(data.audit || []); }
+      if (res.ok) { setTenants(data.tenants || []); setOverview(data.totals || null); setAudit(data.audit || []); setAsaasConfigured(!!data.asaasConfigured); }
       else toast.error(data.error || 'Erro ao carregar a visão geral.');
     } catch (e) {
       console.error(e);
@@ -491,6 +492,9 @@ function SuperAdminView({ tab }) {
           onSetActive={(s) => setActive(manage.id, s)}
           onEnterAs={() => enterAs(manage)}
           onArchive={() => setArchived(manage.id, true)}
+          authHeader={authHeader}
+          asaasConfigured={asaasConfigured}
+          onReload={loadTenants}
         />
       )}
     </div>
