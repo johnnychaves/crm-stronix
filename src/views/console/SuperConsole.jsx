@@ -277,12 +277,112 @@ function Logs({ audit }) {
   );
 }
 
+// ---------- Planos & assinaturas (dados reais) ----------
+function Plans({ plans }) {
+  if (!plans) return <div className="empty">Carregando planos…</div>;
+  const active = plans.filter((p) => p.isActive !== false);
+  const totalOrgs = plans.reduce((s, p) => s + (p.tenantCount || 0), 0) || 1;
+  return (
+    <>
+      <div className="ph">
+        <div><h1>Planos & assinaturas</h1><p>Gerencie os planos comerciais da plataforma</p></div>
+        <div className="ph-actions"><button className="btn btn-primary"><Icon name="plus" size={16} /> Novo plano</button></div>
+      </div>
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>
+        {active.map((p, i) => {
+          const color = PLAN_PAL[i % PLAN_PAL.length];
+          return (
+            <div key={p.id} className="card card-pad" style={{ position: 'relative', ...(p.isDefault ? { borderColor: 'var(--brand)', boxShadow: '0 24px 60px -34px rgba(43,89,255,.6)' } : {}) }}>
+              {p.isDefault && <span className="badge b-trial" style={{ position: 'absolute', top: 16, right: 16 }}>Padrão</span>}
+              <div style={{ fontFamily: 'var(--head)', fontWeight: 700, fontSize: 19, color }}>{p.name}</div>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>{p.maxUsers == null ? 'Usuários ilimitados' : `até ${p.maxUsers} usuários`}</div>
+              <div style={{ fontFamily: 'var(--head)', fontWeight: 700, fontSize: 38, letterSpacing: '-.02em', margin: '14px 0 2px' }}>
+                {p.priceMonthly ? brl(p.priceMonthly) : 'Sob medida'}
+                {p.priceMonthly ? <span style={{ fontSize: 15, color: 'var(--muted)', fontWeight: 500, fontFamily: 'var(--ui)' }}>/mês</span> : null}
+              </div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 14 }}>{p.tenantCount || 0} academias ativas</div>
+              {Array.isArray(p.features) && p.features.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 9, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+                  {p.features.map((f, j) => <div key={j} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 13 }}><span style={{ color: 'var(--success)', marginTop: 2 }}><Icon name="check" size={14} /></span>{f}</div>)}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="card">
+        <div className="card-h"><h3>Distribuição de assinaturas</h3></div>
+        <div className="card-pad">
+          {plans.map((p, i) => (
+            <div key={p.id} className="urow">
+              <span className="un" style={{ flex: 'none', width: 120, fontWeight: 600 }}>{p.name}</span>
+              <span className="ubar" style={{ flex: 1 }}><span className="prog"><i style={{ width: `${((p.tenantCount || 0) / totalOrgs) * 100}%`, background: PLAN_PAL[i % PLAN_PAL.length] }} /></span></span>
+              <span className="uv">{p.tenantCount || 0} academias{p.priceMonthly ? ` · ${brl(p.priceMonthly * (p.tenantCount || 0))}/mês` : ''}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ---------- Faturamento (dados reais) ----------
+const PAID_EV = new Set(['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_RECEIVED_IN_CASH']);
+function Billing({ overview, tenants }) {
+  const o = overview || {};
+  const list = (tenants || []).filter((t) => !t.internal);
+  const overdue = list.filter((t) => !t.archived && t.paymentStatus === 'overdue');
+  const overdueVal = overdue.reduce((s, t) => s + (t.price || 0), 0);
+  const recent = o.recentPayments || [];
+  const recebido = recent.filter((p) => PAID_EV.has(p.event)).reduce((s, p) => s + (p.value || 0), 0);
+  const nameOf = Object.fromEntries(list.map((t) => [t.id, t.displayName]));
+  const upcoming = o.upcomingBilling || [];
+  return (
+    <>
+      <div className="ph">
+        <div><h1>Faturamento</h1><p>Cobrança e receita recorrente</p></div>
+        <div className="ph-actions"><button className="btn btn-ghost"><Icon name="download" size={16} /> Exportar</button></div>
+      </div>
+      <div className="grid kpis">
+        <div className="kpi"><div className="kpi-top"><span className="kpi-label">MRR</span><span className="kpi-ic t-brand"><Icon name="money" /></span></div><div className="kpi-val">{brl(o.mrr)}</div><div className="kpi-foot">receita recorrente/mês</div></div>
+        <div className="kpi"><div className="kpi-top"><span className="kpi-label">ARR</span><span className="kpi-ic t-success"><Icon name="money" /></span></div><div className="kpi-val">{brl(o.arr || (o.mrr || 0) * 12)}</div><div className="kpi-foot">anualizado</div></div>
+        <div className="kpi"><div className="kpi-top"><span className="kpi-label">Recebido (recente)</span><span className="kpi-ic t-success"><Icon name="check" /></span></div><div className="kpi-val">{brl(recebido)}</div><div className="kpi-foot">últimos pagamentos Asaas</div></div>
+        <div className="kpi"><div className="kpi-top"><span className="kpi-label">Inadimplência</span><span className="kpi-ic t-danger"><Icon name="alert" /></span></div><div className="kpi-val">{brl(overdueVal)}</div><div className="kpi-foot"><span className="delta down">{overdue.length} academia{overdue.length === 1 ? '' : 's'}</span> em atraso</div></div>
+      </div>
+      <div className="grid col-2" style={{ gridTemplateColumns: '1fr 1fr', marginTop: 16 }}>
+        <div className="card">
+          <div className="card-h"><h3>Próximos vencimentos</h3><span className="sub">30 dias</span></div>
+          {upcoming.length ? <table className="tbl"><tbody>{upcoming.map((u) => (
+            <tr key={u.id}><td style={{ fontWeight: 600 }}>{u.displayName}</td><td className="tnum muted" style={{ textAlign: 'right' }}>{u.nextBillingAt ? new Date(u.nextBillingAt).toLocaleDateString('pt-BR') : '—'}</td><td style={{ textAlign: 'right', width: 70 }}><span className={`badge ${u.daysLeft <= 3 ? 'b-atrasada' : 'b-pendente'}`}>{u.daysLeft <= 0 ? 'hoje' : u.daysLeft + 'd'}</span></td></tr>
+          ))}</tbody></table> : <div className="empty" style={{ padding: 30 }}>Nenhum vencimento em 30 dias.</div>}
+        </div>
+        <div className="card">
+          <div className="card-h"><h3>Inadimplentes</h3></div>
+          {overdue.length ? <table className="tbl"><tbody>{overdue.map((t) => (
+            <tr key={t.id}><td><GymCell t={t} size={28} /></td><td className="tnum" style={{ textAlign: 'right' }}>{brl(t.price)}/mês</td></tr>
+          ))}</tbody></table> : <div className="empty" style={{ padding: 30 }}>Ninguém em atraso 🎉</div>}
+        </div>
+      </div>
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card-h"><h3>Pagamentos recentes</h3><span className="sub">via Asaas</span></div>
+        {recent.length ? <table className="tbl">
+          <thead><tr><th>Academia</th><th>Evento</th><th style={{ textAlign: 'right' }}>Valor</th><th>Quando</th></tr></thead>
+          <tbody>{recent.slice(0, 15).map((p) => (
+            <tr key={p.id}><td style={{ fontWeight: 600 }}>{nameOf[p.tenantId] || p.tenantId || '—'}</td><td className="muted">{p.event}</td><td className="tnum" style={{ textAlign: 'right' }}>{p.value != null ? brl(p.value) : '—'}</td><td className="muted tnum">{p.at ? new Date(p.at).toLocaleDateString('pt-BR') : ''}</td></tr>
+          ))}</tbody>
+        </table> : <div className="empty">Nenhum pagamento registrado ainda.</div>}
+      </div>
+    </>
+  );
+}
+
 // ---------- Shell ----------
 function SuperConsole({ appUser, onClose }) {
   const [route, setRoute] = useState('overview');
   const [overview, setOverview] = useState(null);
   const [tenants, setTenants] = useState([]);
   const [audit, setAudit] = useState([]);
+  const [plans, setPlans] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -293,7 +393,10 @@ function SuperConsole({ appUser, onClose }) {
         const res = await fetch('/api/super-overview', { headers: { Authorization: `Bearer ${token}` } });
         const json = await res.json();
         if (alive && res.ok) { setOverview(json.totals || null); setTenants(json.tenants || []); setAudit(json.audit || []); }
-      } catch (e) { console.error('console super-overview', e); }
+        const pRes = await fetch('/api/plans', { headers: { Authorization: `Bearer ${token}` } });
+        const pJson = await pRes.json().catch(() => null);
+        if (alive && pRes.ok) setPlans(Array.isArray(pJson) ? pJson : (pJson?.plans || []));
+      } catch (e) { console.error('console fetch', e); }
       finally { if (alive) setLoading(false); }
     })();
     return () => { alive = false; };
@@ -351,8 +454,10 @@ function SuperConsole({ appUser, onClose }) {
         <main className="view">
           {route === 'overview' && <Overview overview={overview} tenants={tenants} loading={loading} go={go} />}
           {route === 'tenants' && <Tenants tenants={tenants} />}
+          {route === 'plans' && <Plans plans={plans} />}
+          {route === 'billing' && <Billing overview={overview} tenants={tenants} />}
           {route === 'logs' && <Logs audit={audit} />}
-          {!['overview', 'tenants', 'logs'].includes(route) && <Placeholder route={route} />}
+          {!['overview', 'tenants', 'plans', 'billing', 'logs'].includes(route) && <Placeholder route={route} />}
         </main>
       </div>
     </div>
