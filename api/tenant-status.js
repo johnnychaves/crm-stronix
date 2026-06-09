@@ -1,6 +1,6 @@
 import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { logAudit } from './_audit.js';
-import { loadPlans } from './_plans.js';
+import { loadPlans, getSeatUsage } from './_plans.js';
 
 // Atualiza status / plano / cobrança / perfil de uma organização — SUPERADMIN only.
 //
@@ -22,6 +22,9 @@ const PAYMENT_STATUSES = ['paid', 'pending', 'overdue'];
 
 const usersCollection = (tenantId) =>
   adminDb.collection('artifacts').doc(tenantId).collection('public').doc('data').collection(USERS_PATH);
+
+const dataCol = (tenantId, name) =>
+  adminDb.collection('artifacts').doc(tenantId).collection('public').doc('data').collection(name);
 
 // Revoga os refresh tokens de todos os usuários do tenant. Coleta uids tanto do
 // id do doc quanto do campo authUid (legado). Best-effort por usuário.
@@ -55,14 +58,38 @@ function toTimestampOrNull(v) {
 }
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método não permitido' });
-  }
-
   const auth = await verifyRequest(req);
   if (!auth) return res.status(401).json({ error: 'Não autenticado.' });
   if (!auth.superAdmin) {
-    return res.status(403).json({ error: 'Apenas o super-admin pode alterar organizações.' });
+    return res.status(403).json({ error: 'Apenas o super-admin pode acessar organizações.' });
+  }
+
+  // GET ?tenantId=... → estatísticas de uso da organização. (Antes era o endpoint
+  // /api/tenant-stats; fundido aqui para caber no limite de 12 funções do Hobby.)
+  if (req.method === 'GET') {
+    const tid = String(req.query?.tenantId || '').trim().toLowerCase();
+    if (!tid) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
+    try {
+      const [seats, leadCountSnap, interactionCountSnap] = await Promise.all([
+        getSeatUsage(tid),
+        dataCol(tid, 'stronix_leads').count().get(),
+        dataCol(tid, 'stronix_interactions').count().get(),
+      ]);
+      return res.status(200).json({
+        tenantId: tid, plan: seats.plan,
+        maxUsers: seats.maxUsers === Infinity ? null : seats.maxUsers,
+        userCount: seats.currentUsers,
+        leadCount: leadCountSnap.data().count || 0,
+        interactionCount: interactionCountSnap.data().count || 0,
+      });
+    } catch (err) {
+      console.error('tenant-status GET stats:', err?.message || err);
+      return res.status(500).json({ error: 'Erro ao obter estatísticas da organização.' });
+    }
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método não permitido' });
   }
 
   try {

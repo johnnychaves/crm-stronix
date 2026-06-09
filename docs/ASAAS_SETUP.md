@@ -29,7 +29,7 @@ do Firebase** (o projeto publica manualmente, não via CLI).
 
 ## 4. Cadastrar o webhook no Asaas
 No painel do Asaas: **Integrações → Webhooks → Adicionar**:
-- **URL:** `https://stronilead.com.br/api/asaas-webhook` (no sandbox, aponte para o deploy de preview/produção que tiver as env vars)
+- **URL:** `https://stronilead.com.br/api/asaas` (o webhook e a gestão de assinatura compartilham essa função; o webhook é reconhecido pelo header `asaas-access-token`)
 - **Token de autenticação:** o mesmo valor de `ASAAS_WEBHOOK_TOKEN`
 - **Versão da API:** v3
 - **Tipo de envio:** **Sequencial** (recomendado)
@@ -46,12 +46,13 @@ No painel do Asaas: **Integrações → Webhooks → Adicionar**:
 ## 6. Ir para produção
 1. Conta de produção no Asaas, gere a chave `$aact_prod_...`.
 2. No Vercel (produção): `ASAAS_API_KEY=$aact_prod_...` e `ASAAS_BASE_URL=https://api.asaas.com/v3`.
-3. Cadastre o webhook de produção apontando para `https://stronilead.com.br/api/asaas-webhook` com o `ASAAS_WEBHOOK_TOKEN` de produção.
+3. Cadastre o webhook de produção apontando para `https://stronilead.com.br/api/asaas` com o `ASAAS_WEBHOOK_TOKEN` de produção.
 4. Redeploy.
 
 ## Como funciona (resumo técnico)
 - `api/_asaas.js` — cliente (auth `access_token`, `billingType: UNDEFINED` = cliente escolhe Pix/boleto/cartão).
-- `api/asaas-subscription.js` — super-admin cria/atualiza/cancela a assinatura; valor vem do catálogo de planos (mensal = `priceMonthly`/override; anual = `priceAnnual`).
-- `api/asaas-webhook.js` — recebe eventos, valida o token, é idempotente (`asaas_events/{eventId}`), atualiza o tenant e grava `tenant_payments`.
+- `api/asaas.js` — **função única** (cabe no limite de 12 do Hobby). Roteia por header:
+  - com `asaas-access-token` → **webhook**: valida o token, é idempotente (`asaas_events/{eventId}`), atualiza o tenant e grava `tenant_payments`;
+  - com `Authorization: Bearer` → **gestão da assinatura** (super-admin): cria/atualiza/cancela; valor vem do catálogo de planos (mensal = `priceMonthly`/override; anual = `priceAnnual`).
 - Campos no `/tenants/{id}`: `asaasCustomerId`, `asaasSubscriptionId`, `billingProvider`, `billingCycle`, `lastInvoiceUrl` (+ `paymentStatus`/`lastPaymentAt`/`nextBillingAt` agora automáticos).
 - Cancelar a assinatura remove cobranças pendentes/atrasadas (pagas ficam).
