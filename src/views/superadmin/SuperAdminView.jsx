@@ -13,7 +13,7 @@ import { SuperFinanceTab } from './SuperFinanceTab.jsx';
 import { TenantManageModal } from './TenantManageModal.jsx';
 import { Activity, AlertCircle, Ban, Check, Eye, FileText, Globe, Plus, Search, Settings } from 'lucide-react';
 
-function SuperAdminView({ tab }) {
+function SuperAdminView({ tab, onOpenConsole }) {
   const toast = useToast();
   const [tenants, setTenants] = useState([]);
   const [overview, setOverview] = useState(null);     // totais agregados da plataforma (KPIs)
@@ -226,14 +226,22 @@ function SuperAdminView({ tab }) {
 
   return (
     <div className="animate-fade-in font-sans space-y-6">
-      <section>
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          <Globe size={13} className="text-brand-600" /> Super-admin
+      <section className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            <Globe size={13} className="text-brand-600" /> Super-admin
+          </div>
+          <h2 className="mt-1.5 font-display text-[24px] font-semibold tracking-tight leading-tight">Organizações</h2>
+          <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
+            Crie uma organização nova (cliente) com dados totalmente isolados e o primeiro admin dela.
+          </p>
         </div>
-        <h2 className="mt-1.5 font-display text-[24px] font-semibold tracking-tight leading-tight">Organizações</h2>
-        <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
-          Crie uma organização nova (cliente) com dados totalmente isolados e o primeiro admin dela.
-        </p>
+        {onOpenConsole && (
+          <button onClick={onOpenConsole} className="shrink-0 inline-flex items-center gap-2 h-10 px-4 rounded-xl text-[13px] font-semibold bg-brand-600 hover:bg-brand-700 text-white shadow-lg shadow-brand-600/20 transition">
+            ✨ Abrir novo Console
+            <span className="text-[9.5px] font-bold uppercase tracking-wide bg-white/20 px-1.5 py-0.5 rounded">beta</span>
+          </button>
+        )}
       </section>
 
       <div className="space-y-6" key={tab}>

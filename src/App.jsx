@@ -69,6 +69,7 @@ import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
+import { SuperConsole } from './views/console/SuperConsole.jsx';
 
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
@@ -132,6 +133,7 @@ function AppInner() {
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [superTab, setSuperTab] = useState('overview'); // sub-seção do super-admin (no menu lateral)
+  const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
@@ -958,7 +960,7 @@ useEffect(() => {
         <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
           {appUser.superAdminOnly ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
-              <SuperAdminView tab={superTab} />
+              <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />
             </div>
           ) : loadingData ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
@@ -973,7 +975,7 @@ useEffect(() => {
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
               {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
-              {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} />}
+              {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
             </div>
           )}
         </div>
@@ -1008,6 +1010,9 @@ useEffect(() => {
           db={db}
           funnels={funnels}
         />
+      )}
+      {consoleOpen && appUser?.superAdmin && (
+        <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
       )}
     </div>
     </GeneralConfigContext.Provider>
