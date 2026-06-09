@@ -26,13 +26,21 @@ service cloud.firestore {
     // status é explicitamente 'suspended' ou um trial com `trialEndsAt` no passado.
     // Usa exists()+get() (sem ambiguidade); `||` faz short-circuit e o get() só
     // roda quando o doc existe.
+    // Inadimplência além da carência (3 dias) também bloqueia — espelha o app.
+    // Pagar (webhook → paymentStatus 'paid' + limpa paymentOverdueSince) libera.
+    function paymentBlocked(d) {
+      return ('paymentStatus' in d) && d.paymentStatus == 'overdue'
+        && ('paymentOverdueSince' in d) && d.paymentOverdueSince is timestamp
+        && request.time - d.paymentOverdueSince > duration.value(3, 'd');
+    }
     function tenantNotBlocked(d) {
-      return !('status' in d)
+      return (!('status' in d)
         || (d.status != 'suspended'
             && !(d.status == 'trial'
                  && 'trialEndsAt' in d
                  && d.trialEndsAt is timestamp
-                 && d.trialEndsAt < request.time));
+                 && d.trialEndsAt < request.time)))
+        && !paymentBlocked(d);
     }
     function tenantActive(appId) {
       return !exists(/databases/$(database)/documents/tenants/$(appId))
