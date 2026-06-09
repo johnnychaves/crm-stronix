@@ -61,20 +61,25 @@ service cloud.firestore {
       return isSignedIn() && lead.consultantAuthUid == request.auth.uid;
     }
 
+    // Base COMPARTILHADA: qualquer membro do tenant lê/cria/edita leads (1 lead por
+    // pessoa, acessível por todos). O DONO (consultantAuthUid) é preservado — só
+    // admin pode trocar o dono. Excluir: dono ou admin.
     match /artifacts/{appId}/public/data/stronix_leads/{leadId} {
-      allow read: if inTenant(appId) && tenantActive(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
+      allow read: if inTenant(appId) && tenantActive(appId);
       allow create: if inTenant(appId) && tenantActive(appId)
         && (isAdmin(appId) || request.resource.data.consultantAuthUid == request.auth.uid);
-      allow update, delete: if inTenant(appId) && tenantActive(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
+      allow update: if inTenant(appId) && tenantActive(appId)
+        && (isAdmin(appId) || request.resource.data.consultantAuthUid == resource.data.consultantAuthUid);
+      allow delete: if inTenant(appId) && tenantActive(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
     }
 
+    // Interações compartilhadas: qualquer membro lê e registra (ex.: agendar num
+    // lead de outro consultor). Editar/remover: o autor da interação ou admin.
     match /artifacts/{appId}/public/data/stronix_interactions/{id} {
-      allow read: if inTenant(appId) && tenantActive(appId)
-        && (isAdmin(appId) || resource.data.leadConsultantAuthUid == request.auth.uid);
-      allow create: if inTenant(appId) && tenantActive(appId)
-        && (isAdmin(appId) || request.resource.data.leadConsultantAuthUid == request.auth.uid);
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow create: if inTenant(appId) && tenantActive(appId);
       allow update, delete: if inTenant(appId) && tenantActive(appId)
-        && (isAdmin(appId) || resource.data.leadConsultantAuthUid == request.auth.uid);
+        && (isAdmin(appId) || resource.data.consultantAuthUid == request.auth.uid);
     }
 
     // stronix_users: NÃO usa tenantActive — o login precisa ler/vincular o doc do

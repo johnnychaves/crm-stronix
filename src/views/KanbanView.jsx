@@ -451,8 +451,8 @@ if (!lead) return;
             </span>
           )}
           <div className="flex items-center gap-1.5 shrink-0">
-            {lead.consultantName && isAdminUser(appUser) && (
-              <span title={lead.consultantName} className="shrink-0">
+            {lead.consultantName && (
+              <span title={`Consultor: ${lead.consultantName}`} className="shrink-0">
                 <KanbanAvatar name={lead.consultantName} size={20} />
               </span>
             )}
