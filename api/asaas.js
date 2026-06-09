@@ -115,10 +115,7 @@ async function handleWebhook(req, res) {
 //   POST   { tenantId, cpfCnpj, email, mobilePhone, cycle: 'monthly'|'annual' }  → cria/atualiza
 //   GET    ?tenantId=...                                                          → status + cobranças
 //   DELETE { tenantId }                                                           → cancela
-async function handleSubscription(req, res) {
-  const auth = await verifyRequest(req);
-  if (!auth) return res.status(401).json({ error: 'Não autenticado.' });
-  if (!auth.superAdmin) return res.status(403).json({ error: 'Apenas o super-admin gerencia cobrança.' });
+async function handleSubscription(req, res, auth) {
   if (!isAsaasConfigured()) {
     return res.status(503).json({ error: 'Asaas não configurado. Defina ASAAS_API_KEY (e ASAAS_WEBHOOK_TOKEN). Veja docs/ASAAS_SETUP.md.' });
   }
@@ -244,8 +241,76 @@ async function handleSubscription(req, res) {
   }
 }
 
+// ============== SELF-SERVICE (admin do tenant, sobre a PRÓPRIA assinatura) ==============
+//   GET                              → plano atual + faturas + renovação + planos disponíveis
+//   POST { action:'migrate', plan }  → troca o próprio plano (ajusta a assinatura no Asaas)
+async function handleTenantSelf(req, res, auth) {
+  // Cobrança/plano é coisa de ADMIN da academia (não de consultor).
+  const userSnap = await adminDb.collection('artifacts').doc(auth.tenantId).collection('public').doc('data').collection('stronix_users').doc(auth.uid).get();
+  if (userSnap.data()?.role !== 'admin') return res.status(403).json({ error: 'Apenas o admin da academia gerencia o plano.' });
+
+  const ref = tenantsCol().doc(auth.tenantId);
+  const snap = await ref.get();
+  if (!snap.exists) return res.status(404).json({ error: 'Organização não encontrada.' });
+  const tenant = snap.data() || {};
+  const plansMap = await loadPlans();
+
+  if (req.method === 'GET') {
+    let invoices = [];
+    if (tenant.asaasSubscriptionId && isAsaasConfigured()) {
+      try {
+        const pays = await listSubscriptionPayments(tenant.asaasSubscriptionId);
+        invoices = (pays?.data || []).map((p) => ({ id: p.id, status: p.status, value: p.value, dueDate: p.dueDate, invoiceUrl: p.invoiceUrl, billingType: p.billingType }));
+      } catch (e) { console.error('self invoices', e?.message || e); }
+    }
+    const availablePlans = [...plansMap.values()]
+      .filter((p) => p.isActive !== false)
+      .map((p) => ({ slug: p.slug, name: p.name, priceMonthly: p.priceMonthly ?? null, priceAnnual: p.priceAnnual ?? null, maxUsers: p.maxUsers ?? null, features: Array.isArray(p.features) ? p.features : [] }))
+      .sort((a, b) => (a.priceMonthly || 0) - (b.priceMonthly || 0));
+    const cur = plansMap.get(tenant.plan);
+    return res.status(200).json({
+      plan: tenant.plan || null,
+      planName: cur?.name || tenant.plan || '—',
+      priceMonthly: cur?.priceMonthly ?? null,
+      billingCycle: tenant.billingCycle || 'monthly',
+      paymentStatus: tenant.paymentStatus || null,
+      nextBillingAt: tenant.nextBillingAt?.toMillis?.() || null,
+      hasSubscription: !!tenant.asaasSubscriptionId,
+      lastInvoiceUrl: tenant.lastInvoiceUrl || null,
+      invoices, availablePlans,
+    });
+  }
+
+  if (req.method === 'POST' && req.body?.action === 'migrate') {
+    const newPlan = String(req.body.plan || '');
+    const planDoc = plansMap.get(newPlan);
+    if (!planDoc || planDoc.isActive === false) return res.status(400).json({ error: 'Plano inválido ou indisponível.' });
+    if (newPlan === tenant.plan) return res.status(200).json({ ok: true, plan: newPlan });
+    // Planos sob consulta (sem preço) não são auto-migráveis — evita loophole.
+    if (!(Number(planDoc.priceMonthly) > 0)) return res.status(400).json({ error: 'Este plano é sob consulta — fale com o suporte para migrar.' });
+    // Tem assinatura Asaas → ajusta o valor (vale no próximo ciclo). Senão, só troca o plano.
+    if (tenant.asaasSubscriptionId && isAsaasConfigured()) {
+      const cycle = tenant.billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';
+      const value = cycle === 'YEARLY' ? Number(planDoc.priceAnnual) : Number(planDoc.priceMonthly);
+      if (Number.isFinite(value) && value > 0) {
+        try { await updateSubscription(tenant.asaasSubscriptionId, { value, cycle }); }
+        catch (e) { console.error('self migrate', e?.message || e); return res.status(502).json({ error: `Asaas: ${e?.message || 'erro ao atualizar a assinatura.'}` }); }
+      }
+    }
+    await ref.update({ plan: newPlan, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+    await audit('plan.migrate.self', auth.tenantId, auth.uid, { from: tenant.plan, to: newPlan });
+    return res.status(200).json({ ok: true, plan: newPlan });
+  }
+
+  return res.status(405).json({ error: 'Método não permitido.' });
+}
+
 export default async function handler(req, res) {
-  // Webhook do Asaas chega com o header `asaas-access-token`; o resto é gestão (super-admin).
+  // Webhook do Asaas chega com o header `asaas-access-token` (público, validado por token).
   if (req.headers['asaas-access-token'] !== undefined) return handleWebhook(req, res);
-  return handleSubscription(req, res);
+  const auth = await verifyRequest(req);
+  if (!auth) return res.status(401).json({ error: 'Não autenticado.' });
+  if (auth.superAdmin) return handleSubscription(req, res, auth);   // super-admin: gerencia qualquer tenant
+  if (auth.tenantId) return handleTenantSelf(req, res, auth);       // admin do tenant: self-service na própria assinatura
+  return res.status(403).json({ error: 'Sem permissão.' });
 }

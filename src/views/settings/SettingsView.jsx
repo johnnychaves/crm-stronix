@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { ArrowRightLeft, ChevronRight, Filter, Kanban, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
+import { ArrowRightLeft, ChevronRight, CreditCard, Filter, Kanban, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
 import { SettingsTabItem } from '../../components/ui/SettingsCard.jsx';
+import { PlanInvoicesTab } from './PlanInvoicesTab.jsx';
 import { ManageUsersTab } from './ManageUsersTab.jsx';
 import { ManageFunnelsTab } from './ManageFunnelsTab.jsx';
 import { ManageStatusesTab } from './ManageStatusesTab.jsx';
@@ -31,6 +32,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
   const tabs = [
     { id: 'users',       label: 'Consultores',      hint: 'Time, credenciais e turnos',       icon: <Users size={15} />,         badge: usersCount },
     { id: 'general',     label: 'Configurações gerais', hint: 'Modalidades e aulas experimentais', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount },
+    { id: 'billing',     label: 'Plano & Faturas',  hint: 'Assinatura, faturas e renovação',   icon: <CreditCard size={15} />,    badge: null },
     { id: 'transfer',    label: 'Migrar leads',     hint: 'Transferir base entre consultores', icon: <ArrowRightLeft size={15} />, badge: null },
     { id: 'statuses',    label: 'Funil pipeline',   hint: 'Etapas do processo comercial',     icon: <Kanban size={15} />,        badge: funnelsCount },
     { id: 'tags',        label: 'Etiquetas',        hint: 'Marcadores para segmentar leads',  icon: <Tag size={15} />,           badge: tagsCount },
@@ -82,6 +84,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         <div className="col-span-12 lg:col-span-9 space-y-6" key={activeTab}>
           {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
           {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} />}
+          {activeTab === 'billing' && <PlanInvoicesTab />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
           )}
