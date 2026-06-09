@@ -378,12 +378,75 @@ function Billing({ overview, tenants }) {
   );
 }
 
+// ---------- Gerenciar plano/cobrança (modal nativo do console) ----------
+function ManagePanel({ tenant, plans, onClose, onDone }) {
+  const baseStatus = tenant.archived ? 'suspended' : (tenant.status || 'active');
+  const [f, setF] = useState({ plan: tenant.plan || '', status: baseStatus, trialDays: '', paymentStatus: tenant.paymentStatus || '' });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const save = async () => {
+    setSaving(true); setErr('');
+    const body = { tenantId: tenant.id };
+    if (f.plan && f.plan !== tenant.plan) body.plan = f.plan;
+    if (f.status !== baseStatus) body.status = f.status;
+    if (f.trialDays !== '') body.trialDays = Number(f.trialDays);
+    if (f.paymentStatus !== (tenant.paymentStatus || '')) body.paymentStatus = f.paymentStatus || null;
+    if (Object.keys(body).length === 1) { onClose(); return; }
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/tenant-status', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error || 'Erro ao salvar.'); setSaving(false); return; }
+      onDone();
+    } catch (e) { console.error('manage save', e); setErr('Erro ao salvar.'); setSaving(false); }
+  };
+  const planList = (plans || []).filter((p) => p.isActive !== false || p.slug === tenant.plan);
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(7,11,24,.6)', backdropFilter: 'blur(3px)' }} onClick={onClose} />
+      <div className="card" style={{ position: 'relative', width: '100%', maxWidth: 460 }}>
+        <div className="card-h"><h3>Gerenciar — {tenant.displayName}</h3><button className="icon-btn" onClick={onClose}><Icon name="close" size={15} /></button></div>
+        <div className="card-pad" style={{ display: 'grid', gap: 14 }}>
+          <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Plano</span>
+            <select style={FLAG_INPUT} value={f.plan} onChange={(e) => set('plan', e.target.value)}>
+              {planList.length === 0 && <option value={tenant.plan}>{tenant.plan}</option>}
+              {planList.map((p) => <option key={p.id || p.slug} value={p.slug}>{p.name}{p.priceMonthly ? ` · ${brl(p.priceMonthly)}/mês` : ''}</option>)}
+            </select>
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Status</span>
+              <select style={FLAG_INPUT} value={f.status} onChange={(e) => set('status', e.target.value)}>
+                <option value="active">Ativa</option><option value="suspended">Suspensa</option>
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Pagamento</span>
+              <select style={FLAG_INPUT} value={f.paymentStatus} onChange={(e) => set('paymentStatus', e.target.value)}>
+                <option value="">—</option><option value="paid">Pago</option><option value="pending">Pendente</option><option value="overdue">Inadimplente</option>
+              </select>
+            </label>
+          </div>
+          <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Trial (dias) — vazio = não mexe · 0 = encerra</span>
+            <input style={FLAG_INPUT} type="number" min="0" value={f.trialDays} onChange={(e) => set('trialDays', e.target.value)} placeholder="—" />
+          </label>
+          {err && <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>{err}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? 'Salvando…' : 'Salvar'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Academia (detalhe, tela cheia) ----------
-function Detail({ tenantId, tenants, overview, audit, go }) {
+function Detail({ tenantId, tenants, overview, audit, plans, go, reload }) {
   const t = (tenants || []).find((x) => x.id === tenantId);
   const [stats, setStats] = useState(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  const [manageOpen, setManageOpen] = useState(false);
   useEffect(() => {
     if (!tenantId) return undefined;
     let alive = true;
@@ -440,9 +503,10 @@ function Detail({ tenantId, tenants, overview, audit, go }) {
         <div className="ph-actions">
           {err && <span style={{ color: 'var(--danger)', fontSize: 12, alignSelf: 'center', maxWidth: 220 }}>{err}</span>}
           <button className="btn btn-ghost" onClick={enterAs} disabled={busy}><Icon name="ext" size={16} /> {busy ? 'Entrando…' : 'Acessar como'}</button>
-          <button className="btn btn-primary"><Icon name="plans" size={16} /> Gerenciar plano</button>
+          <button className="btn btn-primary" onClick={() => setManageOpen(true)}><Icon name="plans" size={16} /> Gerenciar plano</button>
         </div>
       </div>
+      {manageOpen && <ManagePanel tenant={t} plans={plans} onClose={() => setManageOpen(false)} onDone={() => { setManageOpen(false); reload?.(); }} />}
 
       <div className="grid mini-grid" style={{ marginBottom: 16 }}>
         <div className="mini"><div className="mini-l">Usuários</div><div className="mini-v">{stats?.userCount ?? '—'}</div></div>
@@ -688,22 +752,19 @@ function SuperConsole({ appUser, onClose }) {
   const [selectedTenant, setSelectedTenant] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const token = await auth.currentUser.getIdToken();
-        const res = await fetch('/api/super-overview', { headers: { Authorization: `Bearer ${token}` } });
-        const json = await res.json();
-        if (alive && res.ok) { setOverview(json.totals || null); setTenants(json.tenants || []); setAudit(json.audit || []); }
-        const pRes = await fetch('/api/plans', { headers: { Authorization: `Bearer ${token}` } });
-        const pJson = await pRes.json().catch(() => null);
-        if (alive && pRes.ok) setPlans(Array.isArray(pJson) ? pJson : (pJson?.plans || []));
-      } catch (e) { console.error('console fetch', e); }
-      finally { if (alive) setLoading(false); }
-    })();
-    return () => { alive = false; };
-  }, []);
+  const loadData = async () => {
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/super-overview', { headers: { Authorization: `Bearer ${token}` } });
+      const json = await res.json();
+      if (res.ok) { setOverview(json.totals || null); setTenants(json.tenants || []); setAudit(json.audit || []); }
+      const pRes = await fetch('/api/plans', { headers: { Authorization: `Bearer ${token}` } });
+      const pJson = await pRes.json().catch(() => null);
+      if (pRes.ok) setPlans(Array.isArray(pJson) ? pJson : (pJson?.plans || []));
+    } catch (e) { console.error('console fetch', e); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { loadData(); }, []);
 
   const go = (r, arg) => { setRoute(r); if (arg !== undefined) setSelectedTenant(arg); document.querySelector('.console-root .main')?.scrollTo(0, 0); };
 
@@ -761,7 +822,7 @@ function SuperConsole({ appUser, onClose }) {
         <main className="view">
           {route === 'overview' && <Overview overview={overview} tenants={tenants} loading={loading} go={go} />}
           {route === 'tenants' && <Tenants tenants={tenants} go={go} />}
-          {route === 'tenant' && <Detail tenantId={selectedTenant} tenants={tenants} overview={overview} audit={audit} go={go} />}
+          {route === 'tenant' && <Detail tenantId={selectedTenant} tenants={tenants} overview={overview} audit={audit} plans={plans} go={go} reload={loadData} />}
           {route === 'plans' && <Plans plans={plans} />}
           {route === 'billing' && <Billing overview={overview} tenants={tenants} />}
           {route === 'support' && <SupportScreen tenants={tenants} />}
