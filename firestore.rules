@@ -159,7 +159,7 @@ service cloud.firestore {
     }
 
     // Cobrança Asaas: idempotência dos webhooks + histórico de pagamentos.
-    // Escrita SEMPRE via Admin SDK (api/asaas-webhook.js); leitura só super-admin.
+    // Escrita SEMPRE via Admin SDK (api/asaas.js); leitura só super-admin.
     match /asaas_events/{eventId} {
       allow read: if isSuperAdmin();
       allow write: if false;

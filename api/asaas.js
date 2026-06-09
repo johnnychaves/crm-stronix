@@ -145,8 +145,14 @@ async function handleSubscription(req, res) {
     }
 
     if (req.method === 'DELETE') {
-      if (tenant.asaasSubscriptionId) await cancelSubscription(tenant.asaasSubscriptionId);
+      // best-effort: se a assinatura remota não existir mais (ex.: resquício de
+      // sandbox), ainda assim desvincula localmente em vez de travar.
+      if (tenant.asaasSubscriptionId) {
+        try { await cancelSubscription(tenant.asaasSubscriptionId); }
+        catch (e) { console.error('cancelSubscription (ignorado p/ desvincular)', e?.message || e); }
+      }
       await ref.update({
+        asaasCustomerId: admin.firestore.FieldValue.delete(),
         asaasSubscriptionId: admin.firestore.FieldValue.delete(),
         billingProvider: admin.firestore.FieldValue.delete(),
         billingCycle: admin.firestore.FieldValue.delete(),
@@ -180,13 +186,24 @@ async function handleSubscription(req, res) {
 
       let subscriptionId = tenant.asaasSubscriptionId || null;
       let customerId = tenant.asaasCustomerId || null;
+
+      // Atualiza a assinatura existente; se ela não existir mais no Asaas
+      // (resquício de sandbox após migrar p/ produção), cai para recriar.
       if (subscriptionId) {
-        await updateSubscription(subscriptionId, { value, cycle: cycleAsaas });
-      } else {
+        try {
+          await updateSubscription(subscriptionId, { value, cycle: cycleAsaas });
+        } catch (e) {
+          if (e?.status === 404 || e?.status === 400) subscriptionId = null;
+          else throw e;
+        }
+      }
+
+      if (!subscriptionId) {
+        // SEMPRE resolve o cliente no ambiente ATUAL (dedupe por externalReference).
+        // NÃO reusa tenant.asaasCustomerId cru: um id de cliente de sandbox é
+        // inválido na produção e gerava "Cliente inválido ou não informado".
         if (!cpfCnpj) return res.status(400).json({ error: 'CPF/CNPJ é obrigatório para criar a assinatura.' });
-        const customer = customerId
-          ? { id: customerId }
-          : await findOrCreateCustomer({ tenantId, name: tenant.displayName, cpfCnpj, email: email || tenant.primaryAdminEmail, mobilePhone });
+        const customer = await findOrCreateCustomer({ tenantId, name: tenant.displayName, cpfCnpj, email: email || tenant.primaryAdminEmail, mobilePhone });
         customerId = customer.id;
         const trialMs = tenant.trialEndsAt?.toMillis?.() || null;
         const nextDueDate = ymd(trialMs && trialMs > Date.now() ? trialMs : Date.now());
