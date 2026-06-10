@@ -4,7 +4,7 @@ import confetti from 'canvas-confetti';
 import { collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, isAdminUser } from '../lib/leads.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS } from '../lib/dailyGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -301,7 +301,7 @@ function DgSection({ slug, tasks, render }) {
 
 // Renders a single (lead × categorySlug) task card.
 // Same lead with two pending categories renders TWICE — once per slug — with independent actions per main's per-category status model.
-function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
+function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, onOpen, onSnooze, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
   const m = DG_CATEGORY_META[slug];
   if (!m) return null;
   const t = COLOR_TONES[m.color];
@@ -379,7 +379,15 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, 
               </TimePill>
             )}
             {isOverdue && overdueDays > 0 && (
-              <TimePill icon={<AlertCircle size={11} />} tone="rose">{overdueDays} {overdueDays === 1 ? 'dia' : 'dias'} atrasado</TimePill>
+              overdueDays >= slaOverdueDays ? (
+                // Fora do SLA da academia: destaque sólido — é o lead que o
+                // gestor vê como "crítico" no painel da Equipe.
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap bg-rose-600 text-white">
+                  <AlertCircle size={11} /> {overdueDays} dias — crítico
+                </span>
+              ) : (
+                <TimePill icon={<AlertCircle size={11} />} tone="rose">{overdueDays} {overdueDays === 1 ? 'dia' : 'dias'} atrasado</TimePill>
+              )
             )}
             {task.hasOtherActivityToday && (
               <TimePill icon={<Check size={11} />} tone="amber">Já interagido — feche pela Meta</TimePill>
@@ -700,7 +708,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
   // definida pelo admin nas Configurações Gerais. A sequência pula os dias
   // inativos (não quebram nem contam). Default seg–sex.
-  const { metaWeekdays = [1, 2, 3, 4, 5] } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS } = useGeneralConfig();
 
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
@@ -1020,6 +1028,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         if (!isLeadDoneForCategory(lead, slug) && groups[slug]) groups[slug].push(lead);
       });
     });
+    // SLA: na seção Atrasados, o atraso mais antigo vem primeiro — o consultor
+    // ataca o lead mais crônico antes de o gestor precisar cobrar.
+    groups[DAILY_GOAL_CATEGORIES.ATRASADO].sort((a, b) => overdueDaysOf(b) - overdueDaysOf(a));
     return groups;
   }, [processedLeads]);
 
@@ -1084,6 +1095,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       task={task}
       slug={slug}
       now={now}
+      slaOverdueDays={slaOverdueDays}
       onOpen={setSelectedLead}
       onSnooze={handleSnooze}
       onOutcome={handleOutcome}
@@ -1119,6 +1131,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           interactions={interactions}
           usersList={usersList}
           metaWeekdays={metaWeekdays}
+          slaOverdueDays={slaOverdueDays}
           db={db}
           appUser={appUser}
           onOpenLead={setSelectedLead}

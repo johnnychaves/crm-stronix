@@ -36,6 +36,13 @@ const normalizeMetaWeekdays = (raw) => {
   return clean.length ? clean : [1, 2, 3, 4, 5];
 };
 
+// SLA de atrasados: dias de atraso a partir dos quais o lead vira "crítico".
+// Inteiro 1..30; fora disso (ou ausente) cai no default 3.
+const normalizeSlaOverdueDays = (raw) => {
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n >= 1 && n <= 30 ? n : 3;
+};
+
 // Índice leadId -> { count, lastDate } construído UMA vez em O(interações).
 // Antes, cada card/linha recomputava interactions.filter() por lead — dava
 // O(leads × interações) a cada render/tecla. Monte num useMemo([interactions])
@@ -102,4 +109,4 @@ const isColdLeadFromDate = (lead, lastInteractionDate) => {
   const days = getDaysSinceFromDate(lead, lastInteractionDate);
   return days !== null && days >= 7;
 };
-export { HOUR_MS, DAY_MS, LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, buildInteractionIndex, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate };
+export { HOUR_MS, DAY_MS, LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, buildInteractionIndex, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate };

@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { BookOpen, Building2, Check, Dumbbell, Pencil, Plus, Target, Trash2, X, Zap } from 'lucide-react';
+import { AlertCircle, BookOpen, Building2, Check, Dumbbell, Minus, Pencil, Plus, Target, Trash2, X, Zap } from 'lucide-react';
 import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, CONFIG_PATH, CONFIG_GENERAL_ID, LEADS_PATH, MODALITIES_PATH, UNITS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
 import { normalizeTrialClassOptions } from '../../lib/leadStatus.js';
+import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { Btn, IconBtn } from '../../components/ui/Btn.jsx';
 import { SettingsCard } from '../../components/ui/SettingsCard.jsx';
@@ -163,6 +164,24 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
     }
   };
 
+  // SLA de atrasados (config da academia): a partir de quantos dias de atraso
+  // o lead vira "crítico" (alerta no painel da Equipe + destaque na meta).
+  // Lido do contexto (mesmo doc geral); grava direto no clique, como os dias.
+  const { slaOverdueDays } = useGeneralConfig();
+  const saveSla = async (n) => {
+    if (!Number.isFinite(n) || n < 1 || n > 30) return;
+    try {
+      await setDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+        { slaOverdueDays: n },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar o SLA de atrasados.');
+    }
+  };
+
   const addOption = async (e) => {
     if (e) e.preventDefault();
     const n = Math.floor(Number(optionInput));
@@ -218,6 +237,36 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
           </div>
           <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-3">
             Dias desligados não contam como meta (folga) e não quebram a sequência do consultor.
+          </p>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="SLA de atrasados"
+        hint="A partir de quantos dias de atraso um lead vira crítico"
+        icon={<AlertCircle size={16} />}
+      >
+        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => saveSla(slaOverdueDays - 1)}
+                disabled={slaOverdueDays <= 1}
+                className="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition"
+              ><Minus size={14} /></button>
+              <span className="num w-12 text-center text-[20px] font-bold text-slate-900 dark:text-white">{slaOverdueDays}</span>
+              <button
+                type="button"
+                onClick={() => saveSla(slaOverdueDays + 1)}
+                disabled={slaOverdueDays >= 30}
+                className="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition"
+              ><Plus size={14} /></button>
+            </div>
+            <span className="text-[13px] text-slate-600 dark:text-slate-300">{slaOverdueDays === 1 ? 'dia de atraso' : 'dias de atraso'} → lead <b className="text-rose-600 dark:text-rose-400">crítico</b></span>
+          </div>
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-3">
+            Leads atrasados há {slaOverdueDays}+ {slaOverdueDays === 1 ? 'dia' : 'dias'} ganham alerta no painel da Equipe (gestor) e destaque vermelho na Meta Diária do consultor.
           </p>
         </div>
       </SettingsCard>
