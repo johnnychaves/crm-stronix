@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS } from '../lib/dailyGoal.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
-import { AlertCircle, CheckCircle, ChevronDown, Flame, Shield, Target, Trophy, Users } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle, ChevronDown, Flame, Shield, Target, Trophy, Users } from 'lucide-react';
 
 // ============================================================================
 // PAINEL DA EQUIPE — visão do GESTOR sobre a meta diária dos consultores.
@@ -66,7 +66,7 @@ function statusBadge(row) {
   return <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Em andamento</span>;
 }
 
-function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, db, appUser, onOpenLead }) {
+function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, db, appUser, onOpenLead }) {
   const [expandedId, setExpandedId] = useState(null);
   const [teamHistory, setTeamHistory] = useState([]);
 
@@ -98,8 +98,14 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, db, a
         processed.forEach(l => l.categorySlugs.forEach(s => {
           if (!l.categoryStatus?.[s]) pendingByCat[s] = (pendingByCat[s] || 0) + 1;
         }));
+        // SLA: atrasados pendentes com idade >= limiar viram "críticos".
+        const critical = processed.filter(l =>
+          l.categorySlugs.includes(DAILY_GOAL_CATEGORIES.ATRASADO) &&
+          !l.categoryStatus?.[DAILY_GOAL_CATEGORIES.ATRASADO] &&
+          overdueDaysOf(l) >= slaOverdueDays
+        ).length;
         const ritmo = computeRitmo(historyByConsultant.get(u.id) || [], metaWeekdays);
-        return { user: u, processed, totalSlots, doneSlots, progress, pendingByCat, ritmo };
+        return { user: u, processed, totalSlots, doneSlots, progress, pendingByCat, critical, ritmo };
       })
       // Quem precisa de atenção primeiro: menor progresso no topo; depois mais
       // pendências; "sem tarefas hoje" vai para o fim.
@@ -109,16 +115,17 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, db, a
         if (a.progress !== b.progress) return a.progress - b.progress;
         return (b.totalSlots - b.doneSlots) - (a.totalSlots - a.doneSlots);
       });
-  }, [leads, interactions, usersList, teamHistory, metaWeekdays]);
+  }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays]);
 
   const team = useMemo(() => {
     const withTasks = rows.filter(r => r.totalSlots > 0);
     const totalSlots = withTasks.reduce((s, r) => s + r.totalSlots, 0);
     const doneSlots = withTasks.reduce((s, r) => s + r.doneSlots, 0);
     const overdue = rows.reduce((s, r) => s + (r.pendingByCat[DAILY_GOAL_CATEGORIES.ATRASADO] || 0), 0);
+    const critical = rows.reduce((s, r) => s + r.critical, 0);
     const hit = withTasks.filter(r => r.progress === 100).length;
     return {
-      totalSlots, doneSlots, overdue, hit,
+      totalSlots, doneSlots, overdue, critical, hit,
       withTasks: withTasks.length,
       progress: totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 100,
     };
@@ -155,13 +162,35 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, db, a
         </div>
       </div>
 
+      {/* Alerta de SLA: leads atrasados além do limiar da academia */}
+      {team.critical > 0 && (
+        <div className="rounded-2xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/[0.08] px-5 py-4 flex items-start gap-3">
+          <span className="w-9 h-9 rounded-lg grid place-items-center bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300 shrink-0">
+            <AlertTriangle size={17} />
+          </span>
+          <div className="min-w-0">
+            <div className="text-[13.5px] font-semibold text-rose-800 dark:text-rose-200">
+              {team.critical} lead{team.critical === 1 ? '' : 's'} atrasado{team.critical === 1 ? '' : 's'} há {slaOverdueDays}+ dia{slaOverdueDays === 1 ? '' : 's'} — fora do SLA da academia
+            </div>
+            <div className="text-[12px] text-rose-600 dark:text-rose-300/90 mt-0.5">
+              {rows.filter(r => r.critical > 0).map(r => `${(r.user.name || '').split(' ')[0]} (${r.critical})`).join(' · ')} — expanda o card para cobrar pelo WhatsApp ou redistribuir.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Um card por pessoa */}
       <div className="flex flex-col gap-3">
         {rows.map((r) => {
           const u = r.user;
           const expanded = expandedId === u.id;
+          // Slots pendentes com a idade do atraso (SLA); os mais críticos primeiro.
           const pendingSlots = r.processed
-            .flatMap(l => l.categorySlugs.filter(s => !l.categoryStatus?.[s]).map(s => ({ lead: l, slug: s })));
+            .flatMap(l => l.categorySlugs.filter(s => !l.categoryStatus?.[s]).map(s => ({
+              lead: l, slug: s,
+              overdue: s === DAILY_GOAL_CATEGORIES.ATRASADO ? overdueDaysOf(l) : 0,
+            })))
+            .sort((a, b) => b.overdue - a.overdue);
           const doneSlotsList = r.processed
             .flatMap(l => l.categorySlugs.filter(s => l.categoryStatus?.[s]).map(s => ({ lead: l, slug: s })));
           return (
@@ -190,8 +219,13 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, db, a
                       {r.totalSlots === 0 ? '—' : `${r.doneSlots} de ${r.totalSlots}`}
                     </span>
                   </div>
-                  {Object.keys(r.pendingByCat).length > 0 && (
+                  {(Object.keys(r.pendingByCat).length > 0 || r.critical > 0) && (
                     <div className="mt-2 flex flex-wrap gap-1.5">
+                      {r.critical > 0 && (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap bg-rose-600 text-white">
+                          <AlertTriangle size={10} /> {r.critical} há {slaOverdueDays}+ dias
+                        </span>
+                      )}
                       {DG_CATEGORY_ORDER.map(slug => <PendingCatChip key={slug} slug={slug} count={r.pendingByCat[slug]} />)}
                     </div>
                   )}
@@ -234,16 +268,26 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, db, a
                           <p className="text-[12.5px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1.5"><CheckCircle size={13} /> Tudo concluído.</p>
                         ) : (
                           <div className="flex flex-col gap-1.5">
-                            {pendingSlots.map(({ lead, slug }) => {
+                            {pendingSlots.map(({ lead, slug, overdue }) => {
                               const waNum = String(lead.whatsapp || '').replace(/\D/g, '');
+                              const isCritical = overdue >= slaOverdueDays;
                               return (
                                 <div
                                   key={`${lead.id}-${slug}`}
-                                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.06] hover:border-slate-300 dark:hover:border-white/10 transition"
+                                  className={`flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-white/[0.03] border transition ${
+                                    isCritical
+                                      ? 'border-rose-300 dark:border-rose-500/40 hover:border-rose-400 dark:hover:border-rose-500/60'
+                                      : 'border-slate-200/80 dark:border-white/[0.06] hover:border-slate-300 dark:hover:border-white/10'
+                                  }`}
                                 >
                                   <button type="button" onClick={() => onOpenLead?.(lead)} className="flex-1 min-w-0 text-left">
                                     <span className="block text-[12.5px] font-medium text-slate-800 dark:text-slate-100 truncate">{lead.name}</span>
                                   </button>
+                                  {overdue > 0 && (
+                                    <span className={`num text-[11px] font-semibold whitespace-nowrap ${isCritical ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                                      há {overdue} {overdue === 1 ? 'dia' : 'dias'}
+                                    </span>
+                                  )}
                                   <PendingCatChip slug={slug} count={1} />
                                   {waNum && (
                                     <button

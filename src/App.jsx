@@ -51,7 +51,7 @@ import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey }
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
-import { normalizeTrialClassOptions, normalizeMetaWeekdays } from './lib/leadStatus.js';
+import { normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays } from './lib/leadStatus.js';
 import { IMPERSONATION_KEY, readImpersonation } from './lib/superadmin.js';
 import { SurgeMark, StronileadWordmark } from './components/brand/SurgeMark.jsx';
 import { TrialBanner, ImpersonationBanner } from './components/layout/Banners.jsx';
@@ -200,11 +200,14 @@ function AppInner() {
   // Dias da semana em que a Meta Diária vale para a equipe (0=dom..6=sáb).
   // Política da ACADEMIA — definida pelo admin nas Configurações Gerais.
   const [metaWeekdays, setMetaWeekdays] = useState([1, 2, 3, 4, 5]);
+  // SLA de atrasados: dias de atraso a partir dos quais o lead vira "crítico"
+  // (alerta no painel da Equipe + destaque na meta). Política da academia.
+  const [slaOverdueDays, setSlaOverdueDays] = useState(3);
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, units, metaWeekdays }),
-    [modalities, trialClassOptions, units, metaWeekdays]
+    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays }),
+    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays]
   );
   // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
   // tenant ainda não foi resolvido (appId = default), o que é correto para o
@@ -552,8 +555,9 @@ useEffect(() => {
       const data = snap.exists() ? snap.data() : null;
       setTrialClassOptions(normalizeTrialClassOptions(data?.trialClassOptions, data?.maxTrialClasses));
       setMetaWeekdays(normalizeMetaWeekdays(data?.metaWeekdays));
+      setSlaOverdueDays(normalizeSlaOverdueDays(data?.slaOverdueDays));
     },
-    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); }
+    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); }
   );
 
   let unsubUsers = () => {};

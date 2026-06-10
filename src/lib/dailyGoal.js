@@ -49,6 +49,22 @@ export function dgDateKey(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+// ── SLA de atrasados ────────────────────────────────────────────────────────
+// A partir de QUANTOS dias de atraso um lead vira "crítico" (alerta no painel
+// da equipe + destaque na meta do consultor). Política da academia, editável
+// em Configurações Gerais (campo slaOverdueDays do config geral).
+export const DEFAULT_SLA_OVERDUE_DAYS = 3;
+
+// Dias de atraso de um lead (follow-up vencido antes de hoje). 0 = em dia.
+// Mesma régua do card da Meta: dia parcial não conta, mínimo 1.
+export function overdueDaysOf(lead, refDate = new Date()) {
+  if (!lead?.nextFollowUp) return 0;
+  const todayStart = new Date(refDate);
+  todayStart.setHours(0, 0, 0, 0);
+  if (!(lead.nextFollowUp < todayStart)) return 0;
+  return Math.max(1, Math.ceil((todayStart - lead.nextFollowUp) / 86400000));
+}
+
 // Índice de interações por leadId — varrer TODAS as interações por lead é
 // O(leads × interações) e trava a UI em volume. O(interações) p/ montar +
 // lookups O(1). hasGoalDoneToday/hasActiveInteractionToday filtram por leadId
