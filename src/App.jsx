@@ -47,6 +47,7 @@ import {
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
 import { getSafeDate, getSafeDateOrNull } from './lib/dates.js';
 import { isAdminUser } from './lib/leads.js';
+import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
@@ -792,6 +793,28 @@ useEffect(() => {
 
   const changeTab = (tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); }
 
+  // ── Badge de pendências da Meta Diária no menu lateral ──────────────────
+  // dayKey vira na meia-noite (timeout re-armado a cada virada) para o badge
+  // não ficar preso no dia anterior com a aba aberta — mesmo princípio do fix
+  // A5 da Meta. Um re-render por dia, custo zero no resto do tempo.
+  const [dayKey, setDayKey] = useState(() => dgDateKey(new Date()));
+  useEffect(() => {
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 5, 0); // 00:00:05 do dia seguinte
+    const t = setTimeout(() => setDayKey(dgDateKey(new Date())), nextMidnight - now);
+    return () => clearTimeout(t);
+  }, [dayKey]);
+
+  // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
+  const dailyGoalPending = useMemo(() => {
+    if (!appUser?.id) return 0;
+    void dayKey; // recalcula na virada do dia
+    const slots = computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id);
+    const { totalSlots, doneSlots } = slotTotals(slots);
+    return totalSlots - doneSlots;
+  }, [leads, interactions, appUser, dayKey]);
+
   // Mantém o grupo "Leads" aberto quando uma de suas sub-abas está ativa.
   const isLeadsTab = activeTab === 'leads' || activeTab === 'aulas' || activeTab === 'visitas';
   useEffect(() => {
@@ -852,7 +875,7 @@ useEffect(() => {
               <div className="space-y-1">
                 <SidebarItem icon={<LayoutDashboard className="w-[18px] h-[18px]" />} label="Visão geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
                 <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
-                <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
+                <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
                 <SidebarGroup
                   icon={<Users className="w-[18px] h-[18px]" />}
                   label="Leads"
