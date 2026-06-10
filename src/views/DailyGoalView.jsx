@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
@@ -324,20 +324,19 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, 
   const followUpNote = String(task.nextFollowUpNote || '').trim();
   // TaskCard só renderiza para categorias pendentes (filtro em pendingBySlug),
   // então qualquer appointmentOutcome no documento é de um agendamento ANTERIOR
-  // já tratado (o campo persiste entre agendamentos). Ignorar para não
-  // bloquear as ações do agendamento atual com um "Desfecho registrado" stale.
-  const outcome = null;
-  const outcomeMeta = null;
-
+  // já tratado (o campo persiste entre agendamentos) — por isso o desfecho
+  // NÃO é exibido aqui (evita um "Desfecho registrado" stale bloqueando ações).
   const apptDate = getLeadAppointmentDate(task);
   const appointmentLabel = (isAppt && apptDate) ? `Hoje · ${formatHourLabel(apptDate)}` : null;
   const enteredAtLabel = (isNovo && task.createdAt) ? formatHourLabel(task.createdAt) : null;
   const age = isNovo ? humanizeAge(task.createdAt, now) : null;
   // TODO: substituir por critério Hot/Cold real (src/lib/leads) quando integrado aqui
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  // Relógio vem da prop `now` (atualizada por minuto) — não de Date.now() no
+  // render, que é instável entre re-renders e viola a pureza do componente.
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
   const isHot = isNovo && task.createdAt && task.createdAt >= oneHourAgo;
   const overdueDays = (isOverdue && task.nextFollowUp)
-    ? Math.max(1, Math.ceil((new Date().setHours(0, 0, 0, 0) - task.nextFollowUp) / 86400000))
+    ? Math.max(1, Math.ceil((new Date(now).setHours(0, 0, 0, 0) - task.nextFollowUp) / 86400000))
     : 0;
   const note = task.observation || '';
 
@@ -384,11 +383,6 @@ function TaskCard({ task, slug, now, onOpen, onSnooze, onOutcome, onReschedule, 
             )}
             {task.hasOtherActivityToday && (
               <TimePill icon={<Check size={11} />} tone="amber">Já interagido — feche pela Meta</TimePill>
-            )}
-            {outcomeMeta && (
-              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${outcomeMeta.badgeClass}`}>
-                {outcomeMeta.icon} {outcomeMeta.label}
-              </span>
             )}
           </div>
 
@@ -690,12 +684,17 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const [view, setView] = useState('mine'); // 'mine' | 'team' (team = só gestor)
   const [now, setNow] = useState(() => new Date());
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
-  const prevProgress = useRef(0);
+  const prevProgress = useRef(null); // null = ainda sem cálculo nesta montagem
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
+
+  // Chave do dia derivada do relógio (atualiza por minuto): muda SÓ na virada
+  // de meia-noite e entra como dependência dos memos baseados em "hoje" — sem
+  // ela, a categorização ficava congelada no dia anterior com a aba aberta (A5).
+  const todayKey = dgDateKey(now);
 
   // ── Ritmo do mês (histórico de metas batidas, por consultor) ──────────
   // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
@@ -718,7 +717,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
 
   // Grava (idempotente) a marca de "meta batida hoje". ID determinístico
   // por (consultor, dia) → setDoc/merge não duplica.
-  const recordGoalHit = async () => {
+  const recordGoalHit = useCallback(async () => {
     if (!appUser?.authUid) return;
     const key = dgDateKey(new Date());
     try {
@@ -734,17 +733,20 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         { merge: true }
       );
     } catch { /* regras podem não estar publicadas ainda — silencioso */ }
-  };
+  }, [db, appUser]);
 
-  const ritmoMes = useMemo(() => computeRitmo(dailyHistory, metaWeekdays), [dailyHistory, metaWeekdays]);
+  const ritmoMes = useMemo(() => {
+    void todayKey; // o "hoje" do ritmo/sequência também vira com o dia (A5)
+    return computeRitmo(dailyHistory, metaWeekdays);
+  }, [dailyHistory, metaWeekdays, todayKey]);
 
   // Slots da MINHA meta — regra única em src/lib/dailyGoal.js (Meta-only:
   // só Venda/Perda hoje ou daily_goal_done marcam tarefa), compartilhada com
   // o painel da equipe do gestor.
-  const processedLeads = useMemo(
-    () => computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id),
-    [leads, appUser, interactions]
-  );
+  const processedLeads = useMemo(() => {
+    void todayKey; // recategoriza na virada do dia (A5)
+    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id);
+  }, [leads, appUser, interactions, todayKey]);
 
   // Helper para filtragem por categoria. Lead com 2 categorias pode
   // estar "feito" em uma e "pendente" na outra.
@@ -766,18 +768,24 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // categoria concluída. Lead pendente em qualquer categoria continua
   // aparecendo na coluna "A Fazer".
   const done = processedLeads.filter(l => l.categorySlugs.some(s => isLeadDoneForCategory(l, s)));
-  const pending = processedLeads.filter(l => l.categorySlugs.some(s => !isLeadDoneForCategory(l, s)));
 
 
   useEffect(() => {
-    if (progress === 100 && prevProgress.current !== 100 && total > 0) {
-      confetti({ particleCount: 150, spread: 80, origin: { y: 0.5 }, zIndex: 99999 });
-      // Registra o dia como "meta batida" (idempotente). Só quando havia
-      // tarefa (total > 0) — dia de folga não conta no ritmo.
+    if (progress === 100 && total > 0) {
+      // Confete SÓ em transição real durante a sessão (ex.: 90% → 100%).
+      // prevProgress null = primeiro cálculo após montar — quem reabre a tela
+      // com a meta já batida não ganha celebração repetida (A4).
+      if (prevProgress.current !== null && prevProgress.current !== 100) {
+        confetti({ particleCount: 150, spread: 80, origin: { y: 0.5 }, zIndex: 99999 });
+      }
+      // A gravação do "dia batido" roda SEMPRE que a meta está zerada com
+      // tarefa (idempotente) — inclusive no mount, cobrindo quem fechou a
+      // última tarefa fora da Meta (ex.: Venda no Kanban) e só abriu depois.
+      // Dia de folga (total = 0) não conta no ritmo.
       recordGoalHit();
     }
     prevProgress.current = progress;
-  }, [progress, total]);
+  }, [progress, total, recordGoalHit]);
 
   const handleSnooze = async (lead, e) => {
     e.stopPropagation();
@@ -917,7 +925,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const handleReschedule = async (newDate, note, newApptType, newModality, newQty) => {
     if (!rescheduleTarget) return;
     const { lead, categorySlug, flow = 'manual' } = rescheduleTarget;
-    const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
     const formattedDate = newDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
     const formattedTime = newDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const noteText = (note || '').trim();
@@ -1044,6 +1051,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // marcados para o dia seguinte. NÃO entram na meta de hoje (não tocam em
   // processedLeads/totalSlots): é só uma antecipação do que vem pela frente.
   const tomorrowAppts = useMemo(() => {
+    void todayKey; // "amanhã" também vira com o dia (A5)
     const tStart = new Date(); tStart.setHours(0, 0, 0, 0); tStart.setDate(tStart.getDate() + 1);
     const tEnd = new Date(tStart); tEnd.setHours(23, 59, 59, 999);
     return (leads || [])
@@ -1055,7 +1063,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       })
       .filter(x => x.when && x.when >= tStart && x.when <= tEnd)
       .sort((a, b) => a.when - b.when);
-  }, [leads, appUser]);
+  }, [leads, appUser, todayKey]);
 
   const greeting = useMemo(() => {
     const h = now.getHours();
