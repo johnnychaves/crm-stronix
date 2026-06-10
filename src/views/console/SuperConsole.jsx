@@ -279,35 +279,76 @@ function Logs({ audit }) {
   );
 }
 
-// ---------- Planos & assinaturas (dados reais) ----------
-function Plans({ plans }) {
+// ---------- Planos & assinaturas (dados reais + CRUD) ----------
+function Plans({ plans, onReload }) {
+  const [editing, setEditing] = useState(undefined); // undefined = fechado · null = novo · obj = editar
+  const [err, setErr] = useState('');
+  const [busyId, setBusyId] = useState(null);
+
+  // Excluir: a API bloqueia se houver academias no slug; aqui antecipamos a
+  // mensagem (tenantCount vem do GET) para não pedir confirmação à toa.
+  const del = async (p) => {
+    setErr('');
+    if ((p.tenantCount || 0) > 0) {
+      setErr(`Não dá para excluir "${p.name}": ${p.tenantCount} academia${p.tenantCount === 1 ? '' : 's'} usa${p.tenantCount === 1 ? '' : 'm'} este plano. Migre-as para outro plano antes (Academias → Gerenciar plano).`);
+      return;
+    }
+    if (!window.confirm(`Excluir o plano "${p.name}"?${p.isDefault ? '\nAtenção: ele está marcado como plano padrão.' : ''}\nEssa ação não pode ser desfeita.`)) return;
+    setBusyId(p.id);
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/plans', { method: 'DELETE', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ planId: p.id }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setErr(data.error || 'Erro ao excluir o plano.');
+      else onReload?.();
+    } catch (e) { console.error('plan del', e); setErr('Erro ao excluir o plano.'); }
+    finally { setBusyId(null); }
+  };
+
   if (!plans) return <div className="empty">Carregando planos…</div>;
-  const active = plans.filter((p) => p.isActive !== false);
   const totalOrgs = plans.reduce((s, p) => s + (p.tenantCount || 0), 0) || 1;
   return (
     <>
       <div className="ph">
         <div><h1>Planos & assinaturas</h1><p>Gerencie os planos comerciais da plataforma</p></div>
-        <div className="ph-actions"><button className="btn btn-primary"><Icon name="plus" size={16} /> Novo plano</button></div>
+        <div className="ph-actions"><button className="btn btn-primary" onClick={() => setEditing(null)}><Icon name="plus" size={16} /> Novo plano</button></div>
       </div>
+      {err && <div className="card card-pad" style={{ marginBottom: 16, borderColor: 'rgba(225,29,72,.4)', color: '#FF8497', fontSize: 13 }}>{err}</div>}
       <div className="grid" style={{ gridTemplateColumns: 'repeat(3,1fr)', marginBottom: 18 }}>
-        {active.map((p, i) => {
+        {plans.map((p, i) => {
           const color = PLAN_PAL[i % PLAN_PAL.length];
+          const inactive = p.isActive === false;
           return (
-            <div key={p.id} className="card card-pad" style={{ position: 'relative', ...(p.isDefault ? { borderColor: 'var(--brand)', boxShadow: '0 24px 60px -34px rgba(43,89,255,.6)' } : {}) }}>
-              {p.isDefault && <span className="badge b-trial" style={{ position: 'absolute', top: 16, right: 16 }}>Padrão</span>}
+            <div key={p.id} className="card card-pad" style={{ position: 'relative', display: 'flex', flexDirection: 'column', ...(p.isDefault ? { borderColor: 'var(--brand)', boxShadow: '0 24px 60px -34px rgba(43,89,255,.6)' } : {}), ...(inactive ? { opacity: .68 } : {}) }}>
+              {(p.isDefault || inactive) && (
+                <span style={{ position: 'absolute', top: 16, right: 16, display: 'flex', gap: 6 }}>
+                  {p.isDefault && <span className="badge b-trial">Padrão</span>}
+                  {inactive && <span className="badge b-cancel">Inativo</span>}
+                </span>
+              )}
               <div style={{ fontFamily: 'var(--head)', fontWeight: 700, fontSize: 19, color }}>{p.name}</div>
               <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>{p.maxUsers == null ? 'Usuários ilimitados' : `até ${p.maxUsers} usuários`}</div>
               <div style={{ fontFamily: 'var(--head)', fontWeight: 700, fontSize: 38, letterSpacing: '-.02em', margin: '14px 0 2px' }}>
                 {p.priceMonthly ? brl(p.priceMonthly) : 'Sob medida'}
                 {p.priceMonthly ? <span style={{ fontSize: 15, color: 'var(--muted)', fontWeight: 500, fontFamily: 'var(--ui)' }}>/mês</span> : null}
               </div>
-              <div className="muted" style={{ fontSize: 12, marginBottom: 14 }}>{p.tenantCount || 0} academias ativas</div>
+              <div className="muted" style={{ fontSize: 12, marginBottom: 14 }}>
+                {p.tenantCount || 0} academias ativas
+                {Number(p.priceAnnual) > 0 && <> · {brl(p.priceAnnual)}/ano</>}
+              </div>
               {Array.isArray(p.features) && p.features.length > 0 && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 9, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
                   {p.features.map((f, j) => <div key={j} style={{ display: 'flex', gap: 9, alignItems: 'flex-start', fontSize: 13 }}><span style={{ color: 'var(--success)', marginTop: 2 }}><Icon name="check" size={14} /></span>{f}</div>)}
                 </div>
               )}
+              <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 14, borderTop: '1px solid var(--line)' }}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(p)}><Icon name="edit" size={14} /> Editar</button>
+                <button
+                  className="btn btn-ghost btn-sm" style={{ color: '#FF8497' }} disabled={busyId === p.id}
+                  title={(p.tenantCount || 0) > 0 ? `${p.tenantCount} academia(s) usam este plano — migre antes de excluir` : 'Excluir o plano'}
+                  onClick={() => del(p)}
+                ><Icon name="trash" size={14} /> {busyId === p.id ? 'Excluindo…' : 'Excluir'}</button>
+              </div>
             </div>
           );
         })}
@@ -324,7 +365,153 @@ function Plans({ plans }) {
           ))}
         </div>
       </div>
+      {editing !== undefined && <PlanFormPanel plan={editing} onClose={() => setEditing(undefined)} onDone={() => { setEditing(undefined); onReload?.(); }} />}
     </>
+  );
+}
+
+// ---------- Criar/editar plano (modal nativo do console) ----------
+const slugify = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+function PlanFormPanel({ plan, onClose, onDone }) {
+  const editing = !!plan?.id;
+  // Renomear o slug com academias no plano é bloqueado pela API (o campo
+  // `plan` dos tenants referencia o slug) — então já travamos o input.
+  const slugLocked = editing && (plan?.tenantCount || 0) > 0;
+  const [f, setF] = useState({
+    name: plan?.name || '',
+    slug: plan?.slug || '',
+    unlimited: editing && plan?.maxUsers == null,
+    maxUsers: plan?.maxUsers != null ? String(plan.maxUsers) : '',
+    priceMonthly: plan?.priceMonthly != null ? String(plan.priceMonthly) : '',
+    priceAnnual: plan?.priceAnnual ? String(plan.priceAnnual) : '',
+    extraUserPrice: plan?.extraUserPrice != null ? String(plan.extraUserPrice) : '',
+    maxExtraUsers: plan?.maxExtraUsers != null ? String(plan.maxExtraUsers) : '',
+    isActive: plan?.isActive !== false,
+    isDefault: plan?.isDefault === true,
+    order: plan?.order != null ? String(plan.order) : '',
+    features: Array.isArray(plan?.features) ? plan.features.join('\n') : '',
+  });
+  const [slugTouched, setSlugTouched] = useState(editing);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const onName = (v) => setF((s) => ({ ...s, name: v, slug: slugTouched ? s.slug : slugify(v) }));
+
+  const m = Number(f.priceMonthly) || 0;
+  const a = Number(f.priceAnnual) || 0;
+  const eqMonthly = a > 0 ? Math.round(a / 12) : null;
+  const discount = a > 0 && m > 0 ? Math.round((1 - a / (m * 12)) * 100) : null;
+
+  const save = async () => {
+    if (!f.name.trim()) { setErr('Informe o nome do plano.'); return; }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(f.slug)) { setErr('Identificador inválido: use minúsculas, números e hífen (ex.: pro-anual).'); return; }
+    if (!f.unlimited && (f.maxUsers === '' || Number(f.maxUsers) < 1)) { setErr('Informe o máximo de usuários (ou marque Ilimitado).'); return; }
+    setSaving(true); setErr('');
+    const body = {
+      name: f.name.trim(),
+      slug: f.slug,
+      maxUsers: f.unlimited ? null : Number(f.maxUsers),
+      priceMonthly: f.priceMonthly === '' ? 0 : Number(f.priceMonthly),
+      priceAnnual: f.priceAnnual === '' ? null : Number(f.priceAnnual),
+      extraUserPrice: f.extraUserPrice === '' ? null : Number(f.extraUserPrice),
+      maxExtraUsers: f.maxExtraUsers === '' ? null : Number(f.maxExtraUsers),
+      isActive: f.isActive,
+      isDefault: f.isDefault,
+      order: f.order === '' ? 0 : Number(f.order),
+      features: f.features.split('\n').map((s) => s.trim()).filter(Boolean),
+    };
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/plans', {
+        method: editing ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(editing ? { planId: plan.id, ...body } : body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setErr(data.error || 'Erro ao salvar o plano.'); setSaving(false); return; }
+      onDone();
+    } catch (e) { console.error('plan save', e); setErr('Erro ao salvar o plano.'); setSaving(false); }
+  };
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(7,11,24,.6)', backdropFilter: 'blur(3px)' }} onClick={onClose} />
+      <div className="card" style={{ position: 'relative', width: '100%', maxWidth: 540, maxHeight: '92vh', overflowY: 'auto' }}>
+        <div className="card-h"><h3>{editing ? `Editar plano — ${plan.name}` : 'Novo plano'}</h3><button className="icon-btn" onClick={onClose}><Icon name="close" size={15} /></button></div>
+        <div className="card-pad" style={{ display: 'grid', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nome do plano</span>
+              <input style={FLAG_INPUT} value={f.name} onChange={(e) => onName(e.target.value)} placeholder="Ex.: Pro" autoFocus />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="muted" style={{ fontSize: 12 }}>Identificador{slugLocked ? ` · em uso por ${plan.tenantCount} academia${plan.tenantCount === 1 ? '' : 's'}` : ' (slug)'}</span>
+              <input style={{ ...FLAG_INPUT, ...(slugLocked ? { opacity: .55, cursor: 'not-allowed' } : {}) }} value={f.slug} disabled={slugLocked} onChange={(e) => { setSlugTouched(true); set('slug', slugify(e.target.value)); }} placeholder="ex.: pro" />
+            </label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Valor mensal (R$)</span>
+              <input style={FLAG_INPUT} type="number" min="0" value={f.priceMonthly} onChange={(e) => set('priceMonthly', e.target.value)} placeholder="197" />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Valor anual (R$/ano · opcional)</span>
+              <input style={FLAG_INPUT} type="number" min="0" value={f.priceAnnual} onChange={(e) => set('priceAnnual', e.target.value)} placeholder="—" />
+            </label>
+          </div>
+          {(m > 0 || a > 0) && (
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, display: 'grid', gap: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}><span className="muted">Mensal</span><b className="tnum">{brl(m)}/mês</b></div>
+              {a > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--line)', paddingTop: 6 }}>
+                  <span className="muted">Anual{eqMonthly != null && <span style={{ opacity: .8 }}> (≈ {brl(eqMonthly)}/mês)</span>}</span>
+                  <b className="tnum">{brl(a)}/ano{discount > 0 && <span style={{ color: 'var(--success)', marginLeft: 6 }}>−{discount}%</span>}</b>
+                </div>
+              )}
+              <div className="muted" style={{ fontSize: 11 }}>O valor mensal alimenta o MRR das academias deste plano (sem preço negociado por academia).</div>
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <span className="muted" style={{ fontSize: 12 }}>Máx. de usuários</span>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input style={{ ...FLAG_INPUT, width: '100%', ...(f.unlimited ? { opacity: .55 } : {}) }} type="number" min="1" disabled={f.unlimited} value={f.unlimited ? '' : f.maxUsers} onChange={(e) => set('maxUsers', e.target.value)} placeholder={f.unlimited ? 'Ilimitado' : 'ex.: 10'} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={f.unlimited} onChange={(e) => set('unlimited', e.target.checked)} style={{ accentColor: '#3B6DF5' }} /> Ilimitado
+                </label>
+              </div>
+            </div>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Ordem de exibição</span>
+              <input style={FLAG_INPUT} type="number" value={f.order} onChange={(e) => set('order', e.target.value)} placeholder="0" />
+            </label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Usuário extra (R$/mês · opcional)</span>
+              <input style={FLAG_INPUT} type="number" min="0" value={f.extraUserPrice} onChange={(e) => set('extraUserPrice', e.target.value)} placeholder="—" />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Máx. de usuários extras (opcional)</span>
+              <input style={FLAG_INPUT} type="number" min="0" value={f.maxExtraUsers} onChange={(e) => set('maxExtraUsers', e.target.value)} placeholder="—" />
+            </label>
+          </div>
+          <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Recursos do plano — um por linha (aparecem no card)</span>
+            <textarea style={{ ...FLAG_INPUT, height: 92, padding: '10px 12px', resize: 'vertical', lineHeight: 1.5 }} value={f.features} onChange={(e) => set('features', e.target.value)} placeholder={'Suporte prioritário\nRelatórios avançados'} />
+          </label>
+          <div style={{ display: 'flex', gap: 22, flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className={`sw${f.isActive ? ' on' : ''}`} onClick={() => set('isActive', !f.isActive)} />
+              <div><div style={{ fontSize: 13, fontWeight: 600 }}>Plano ativo</div><div className="muted" style={{ fontSize: 11 }}>disponível para novas academias</div></div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className={`sw${f.isDefault ? ' on' : ''}`} onClick={() => set('isDefault', !f.isDefault)} />
+              <div><div style={{ fontSize: 13, fontWeight: 600 }}>Plano padrão</div><div className="muted" style={{ fontSize: 11 }}>pré-selecionado ao criar academia</div></div>
+            </div>
+          </div>
+          {err && <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>{err}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? 'Salvando…' : editing ? 'Salvar alterações' : 'Criar plano'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -859,7 +1046,7 @@ function SuperConsole({ appUser, onClose }) {
           {route === 'overview' && <Overview overview={overview} tenants={tenants} loading={loading} go={go} />}
           {route === 'tenants' && <Tenants tenants={tenants} go={go} />}
           {route === 'tenant' && <Detail tenantId={selectedTenant} tenants={tenants} overview={overview} audit={audit} plans={plans} asaasConfigured={asaasConfigured} go={go} reload={loadData} />}
-          {route === 'plans' && <Plans plans={plans} />}
+          {route === 'plans' && <Plans plans={plans} onReload={loadData} />}
           {route === 'billing' && <Billing overview={overview} tenants={tenants} />}
           {route === 'support' && <SupportScreen tenants={tenants} />}
           {route === 'flags' && <FlagsScreen />}
