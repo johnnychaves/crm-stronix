@@ -201,6 +201,23 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, db, a
                   {r.ritmo.streak > 0 && (
                     <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-amber-600 dark:text-amber-400"><Flame size={12} /> {r.ritmo.streak} {r.ritmo.streak === 1 ? 'dia' : 'dias'} seguidos</span>
                   )}
+                  {/* Régua dos últimos 14 dias — mesmo código de cores do "Ritmo
+                      do mês" da visão pessoal (verde=batida, claro=não, apagado=
+                      fora da meta, anel=hoje). Leitura de padrão num bater de olho. */}
+                  <div className="flex gap-[3px] mt-0.5">
+                    {r.ritmo.history14.map((day, i) => (
+                      <div
+                        key={i}
+                        className={`w-[9px] h-3 rounded-[2px] ${
+                          day.isToday ? 'bg-brand-600/20 ring-1 ring-brand-500'
+                            : day.hit ? 'bg-emerald-500/80'
+                              : day.active ? 'bg-slate-100 dark:bg-white/[0.05]'
+                                : 'bg-slate-50 dark:bg-white/[0.02]'
+                        }`}
+                        title={`${day.label}${day.hit ? ' · meta batida' : day.active ? ' · não batida' : ' · fora da meta'}`}
+                      />
+                    ))}
+                  </div>
                 </div>
                 <ChevronDown size={16} className={`text-slate-400 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`} />
               </button>
