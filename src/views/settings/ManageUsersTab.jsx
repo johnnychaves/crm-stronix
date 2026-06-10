@@ -22,10 +22,30 @@ function ManageUsersTab({ db, appUser }) {
   const [inviteRole, setInviteRole] = useState('consultant');
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteLink, setInviteLink] = useState('');
+  // Limites do plano (gestores/consultores inclusos + preço do consultor extra)
+  // via GET /api/asaas (self-service do admin). Sem isso a tela degrada: os
+  // contadores somem e os limites seguem valendo só no servidor.
+  const [planSeats, setPlanSeats] = useState(null);
 
-  const createInvite = async (e) => {
-    e.preventDefault();
-    if (inviteLoading) return;
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch('/api/asaas', { headers: { Authorization: `Bearer ${await auth.currentUser.getIdToken()}` } });
+        const data = await res.json().catch(() => null);
+        if (alive && res.ok && data?.seatLimits) setPlanSeats({ ...data.seatLimits, planName: data.planName });
+      } catch (err) { console.error('seat limits', err); }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // Mensagem de confirmação do consultor EXTRA (cobrado além da mensalidade).
+  const confirmExtra = (price) =>
+    window.confirm(`Os consultores inclusos no seu plano já foram usados.\n\nEste consultor entra como EXTRA: +R$ ${Number(price).toLocaleString('pt-BR')}/mês na mensalidade (vale a partir da próxima fatura).\n\nConfirmar?`);
+
+  const createInvite = async (e, allowExtra = false) => {
+    e?.preventDefault?.();
+    if (inviteLoading && !allowExtra) return;
     const email = String(inviteEmail || '').trim().toLowerCase();
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.warning('E-mail inválido.'); return; }
     setInviteLoading(true);
@@ -34,9 +54,14 @@ function ManageUsersTab({ db, appUser }) {
       const res = await fetch('/api/invite-create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await auth.currentUser.getIdToken()}` },
-        body: JSON.stringify({ email, role: inviteRole })
+        body: JSON.stringify({ email, role: inviteRole, allowExtra })
       });
       const data = await res.json();
+      if (res.status === 409 && data?.requiresExtraConfirmation) {
+        setInviteLoading(false);
+        if (confirmExtra(data.extraUserPrice)) return createInvite(e, true);
+        return;
+      }
       if (!res.ok) { toast.error(data.error || 'Erro ao criar convite.'); setInviteLoading(false); return; }
       const link = `${window.location.origin}/?invite=${encodeURIComponent(data.token)}&t=${encodeURIComponent(data.tenantId)}`;
       setInviteLink(link);
@@ -112,8 +137,8 @@ function ManageUsersTab({ db, appUser }) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const add = async (e) => {
-    e.preventDefault();
+  const add = async (e, allowExtra = false) => {
+    e?.preventDefault?.();
     if (!form.name.trim() || !form.email.trim() || !form.password.trim()) {
       toast.warning('Preencha nome, e-mail e senha temporária.');
       return;
@@ -134,16 +159,25 @@ function ManageUsersTab({ db, appUser }) {
         body: JSON.stringify({
           name: form.name.trim(),
           email: normalizeEmail(form.email),
-          password: form.password
+          password: form.password,
+          allowExtra
         })
       });
       const data = await res.json();
+      // Inclusos esgotados, mas o plano vende consultor extra → confirma o
+      // custo com o admin e reenvia com allowExtra (nunca cobra sem aviso).
+      if (res.status === 409 && data?.requiresExtraConfirmation) {
+        setLoadingSubmit(false);
+        if (confirmExtra(data.extraUserPrice)) return add(e, true);
+        return;
+      }
       if (!res.ok) {
         toast.error(data.error || 'Erro ao cadastrar consultor.');
         return;
       }
 
       toast.success(`Consultor ${form.name.trim()} cadastrado. Senha temporária: ${form.password}`, { duration: 8000, title: 'Cadastrado com sucesso' });
+      if (data.isExtra) toast.info('Este consultor entrou como extra — a mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
       resetForm();
       setShowAdd(false);
     } catch (err) {
@@ -260,9 +294,14 @@ function ManageUsersTab({ db, appUser }) {
     }
   };
 
+  const managerCount = users.filter(u => u.role === 'admin').length;
+  const consultantCount = users.length - managerCount;
+  const extraCount = planSeats?.maxConsultants != null ? Math.max(0, consultantCount - planSeats.maxConsultants) : 0;
+  const chipCls = 'inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11.5px] font-semibold';
+
   return (
     <SettingsCard
-      title="Consultores"
+      title="Equipe"
       hint="Cadastre e gerencie quem tem acesso ao CRM"
       icon={<Users size={16} />}
       action={
@@ -284,6 +323,22 @@ function ManageUsersTab({ db, appUser }) {
         </div>
       }
     >
+      {planSeats && (
+        <div className="mb-6 flex flex-wrap items-center gap-2 animate-fade-in">
+          <span className={`${chipCls} bg-slate-100 text-slate-700 dark:bg-white/[0.06] dark:text-slate-200`}>
+            <Shield size={12} /> Gestores {managerCount}{planSeats.maxManagers != null ? ` de ${planSeats.maxManagers}` : ''}
+          </span>
+          <span className={`${chipCls} bg-slate-100 text-slate-700 dark:bg-white/[0.06] dark:text-slate-200`}>
+            <Users size={12} /> Consultores {Math.min(consultantCount, planSeats.maxConsultants ?? consultantCount)}{planSeats.maxConsultants != null ? ` de ${planSeats.maxConsultants} inclusos` : ' (ilimitados)'}
+          </span>
+          {extraCount > 0 && (
+            <span className={`${chipCls} bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300`}>
+              +{extraCount} extra{extraCount === 1 ? '' : 's'}{planSeats.extraUserPrice ? ` · R$ ${Number(planSeats.extraUserPrice).toLocaleString('pt-BR')}/mês cada` : ''}
+            </span>
+          )}
+          {planSeats.planName && <span className="text-[11px] text-slate-400 dark:text-slate-500">plano {planSeats.planName}</span>}
+        </div>
+      )}
       {inviteOpen && (
         <div className="mb-8 p-5 rounded-2xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] animate-fade-in">
           <h4 className="text-[13px] font-bold text-gray-900 dark:text-white">Convidar por e-mail</h4>
@@ -297,7 +352,7 @@ function ManageUsersTab({ db, appUser }) {
             />
             <StyledSelect value={inviteRole} onChange={e => setInviteRole(e.target.value)} className="sm:w-44">
               <option value="consultant">Consultor</option>
-              <option value="admin">Admin</option>
+              <option value="admin">Gestor (admin)</option>
             </StyledSelect>
             <Btn kind="brand" type="submit" icon={<Mail size={13} />} disabled={inviteLoading}>
               {inviteLoading ? 'Gerando...' : 'Gerar convite'}

@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
-import { loadPlans, effectivePrice } from './_plans.js';
+import { loadPlans, effectivePrice, getSeatUsage, extraConsultantsCharge, planSeatLimits } from './_plans.js';
 import {
   isAsaasConfigured, findOrCreateCustomer, createSubscription, updateSubscription,
   cancelSubscription, listSubscriptionPayments,
@@ -166,8 +166,12 @@ async function handleSubscription(req, res, auth) {
       const { cpfCnpj, email, mobilePhone } = req.body || {};
       const cycle = req.body?.cycle === 'annual' ? 'annual' : 'monthly';
 
-      const plansMap = await loadPlans();
+      const [plansMap, seats] = await Promise.all([loadPlans(), getSeatUsage(tenantId)]);
       const planDoc = plansMap.get(tenant.plan);
+      // Consultores EXTRAS (além dos inclusos) entram no valor da assinatura —
+      // exceto com preço negociado (monthlyPrice), que é valor final fechado.
+      const negotiated = Number.isFinite(Number(tenant.monthlyPrice));
+      const extraMonthly = negotiated ? 0 : extraConsultantsCharge(planDoc, seats.consultants);
       let value, cycleAsaas;
       if (cycle === 'annual') {
         value = Number(planDoc?.priceAnnual);
@@ -175,8 +179,9 @@ async function handleSubscription(req, res, auth) {
         if (!Number.isFinite(value) || value <= 0) {
           return res.status(400).json({ error: `O plano "${tenant.plan}" não tem preço anual definido.` });
         }
+        value += extraMonthly * 12;
       } else {
-        value = effectivePrice({ plan: tenant.plan, monthlyPrice: tenant.monthlyPrice }, plansMap);
+        value = effectivePrice({ plan: tenant.plan, monthlyPrice: tenant.monthlyPrice, consultantCount: seats.consultants }, plansMap);
         cycleAsaas = 'MONTHLY';
         if (!Number.isFinite(value) || value <= 0) {
           return res.status(400).json({ error: 'Valor mensal do plano é zero — defina um preço antes de cobrar.' });
@@ -265,9 +270,21 @@ async function handleTenantSelf(req, res, auth) {
     }
     const availablePlans = [...plansMap.values()]
       .filter((p) => p.isActive !== false)
-      .map((p) => ({ slug: p.slug, name: p.name, priceMonthly: p.priceMonthly ?? null, priceAnnual: p.priceAnnual ?? null, maxUsers: p.maxUsers ?? null, features: Array.isArray(p.features) ? p.features : [] }))
+      .map((p) => {
+        const lim = planSeatLimits(p) || { maxManagers: 1, maxConsultants: 0 };
+        return {
+          slug: p.slug, name: p.name, priceMonthly: p.priceMonthly ?? null, priceAnnual: p.priceAnnual ?? null,
+          maxUsers: p.maxUsers ?? null,
+          maxManagers: Number.isFinite(lim.maxManagers) ? lim.maxManagers : null,       // null = ilimitado
+          maxConsultants: Number.isFinite(lim.maxConsultants) ? lim.maxConsultants : null,
+          extraUserPrice: p.extraUserPrice ?? null,
+          maxExtraUsers: p.maxExtraUsers ?? null,
+          features: Array.isArray(p.features) ? p.features : [],
+        };
+      })
       .sort((a, b) => (a.priceMonthly || 0) - (b.priceMonthly || 0));
     const cur = plansMap.get(tenant.plan);
+    const curLimits = cur ? planSeatLimits(cur) : null;
     return res.status(200).json({
       plan: tenant.plan || null,
       planName: cur?.name || tenant.plan || '—',
@@ -277,6 +294,13 @@ async function handleTenantSelf(req, res, auth) {
       nextBillingAt: tenant.nextBillingAt?.toMillis?.() || null,
       hasSubscription: !!tenant.asaasSubscriptionId,
       lastInvoiceUrl: tenant.lastInvoiceUrl || null,
+      // Limites do plano ATUAL p/ a tela de Equipe mostrar "X de Y" por papel.
+      seatLimits: curLimits ? {
+        maxManagers: Number.isFinite(curLimits.maxManagers) ? curLimits.maxManagers : null,
+        maxConsultants: Number.isFinite(curLimits.maxConsultants) ? curLimits.maxConsultants : null,
+        extraUserPrice: cur?.extraUserPrice ?? null,
+        maxExtraUsers: cur?.maxExtraUsers ?? null,
+      } : null,
       invoices, availablePlans,
     });
   }
@@ -288,10 +312,15 @@ async function handleTenantSelf(req, res, auth) {
     if (newPlan === tenant.plan) return res.status(200).json({ ok: true, plan: newPlan });
     // Planos sob consulta (sem preço) não são auto-migráveis — evita loophole.
     if (!(Number(planDoc.priceMonthly) > 0)) return res.status(400).json({ error: 'Este plano é sob consulta — fale com o suporte para migrar.' });
-    // Tem assinatura Asaas → ajusta o valor (vale no próximo ciclo). Senão, só troca o plano.
+    // Tem assinatura Asaas → ajusta o valor (vale no próximo ciclo). Senão, só
+    // troca o plano. Consultores além do incluso no plano NOVO entram como
+    // extras no valor (se o novo plano vender extras).
     if (tenant.asaasSubscriptionId && isAsaasConfigured()) {
       const cycle = tenant.billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';
-      const value = cycle === 'YEARLY' ? Number(planDoc.priceAnnual) : Number(planDoc.priceMonthly);
+      const seats = await getSeatUsage(auth.tenantId);
+      const extraMonthly = extraConsultantsCharge(planDoc, seats.consultants);
+      const base = cycle === 'YEARLY' ? Number(planDoc.priceAnnual) : Number(planDoc.priceMonthly);
+      const value = base + (cycle === 'YEARLY' ? extraMonthly * 12 : extraMonthly);
       if (Number.isFinite(value) && value > 0) {
         try { await updateSubscription(tenant.asaasSubscriptionId, { value, cycle }); }
         catch (e) { console.error('self migrate', e?.message || e); return res.status(502).json({ error: `Asaas: ${e?.message || 'erro ao atualizar a assinatura.'}` }); }
@@ -299,7 +328,7 @@ async function handleTenantSelf(req, res, auth) {
     }
     await ref.update({ plan: newPlan, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
     await audit('plan.migrate.self', auth.tenantId, auth.uid, { from: tenant.plan, to: newPlan });
-    return res.status(200).json({ ok: true, plan: newPlan });
+    return res.status(200).json({ ok: true, plan: newPlan, priceMonthly: planDoc.priceMonthly ?? null });
   }
 
   return res.status(405).json({ error: 'Método não permitido.' });

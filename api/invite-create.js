@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
-import { getSeatUsage, seatLimitMessage } from './_plans.js';
+import { getSeatUsage, canAddSeat } from './_plans.js';
 import { isTenantAdmin } from './_auth.js';
 
 // Cria um convite para adicionar um usuário (admin ou consultor) ao tenant.
@@ -32,7 +32,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Apenas o master pode convidar usuários.' });
     }
 
-    const { email, role } = req.body || {};
+    const { email, role, allowExtra } = req.body || {};
     const normalizedEmail = String(email || '').trim().toLowerCase();
     const normalizedRole = ROLES.includes(role) ? role : 'consultant';
 
@@ -40,10 +40,21 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'E-mail inválido.' });
     }
 
-    // Limite de seats por plano: não adianta convidar se já está no limite.
+    // Vagas por PAPEL do convite: gestor além do incluso → upgrade; consultor
+    // além do incluso pode entrar como EXTRA pago, com confirmação do admin
+    // AQUI (quem aprova o custo é quem convida, não o convidado). A aprovação
+    // fica gravada no convite (extraApproved) e o aceite revalida.
     const seats = await getSeatUsage(auth.tenantId);
-    if (seats.currentUsers >= seats.maxUsers) {
-      return res.status(403).json({ error: seatLimitMessage(seats.plan, seats.maxUsers) });
+    const decision = canAddSeat(seats, normalizedRole, { allowExtra: allowExtra === true });
+    if (!decision.ok) {
+      if (decision.code === 'extra_confirm') {
+        return res.status(409).json({
+          error: decision.error,
+          requiresExtraConfirmation: true,
+          extraUserPrice: decision.extraUserPrice,
+        });
+      }
+      return res.status(403).json({ error: decision.error });
     }
 
     const token = randomUUID();
@@ -57,6 +68,7 @@ export default async function handler(req, res) {
       token,
       status: 'pending',
       expiresAt,
+      extraApproved: decision.isExtra === true, // admin aceitou o custo do consultor extra
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createdBy: auth.uid
     });

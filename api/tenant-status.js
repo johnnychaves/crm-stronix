@@ -79,6 +79,13 @@ export default async function handler(req, res) {
         tenantId: tid, plan: seats.plan,
         maxUsers: seats.maxUsers === Infinity ? null : seats.maxUsers,
         userCount: seats.currentUsers,
+        // vagas por papel (modelo gestor + consultores)
+        managers: seats.managers,
+        consultants: seats.consultants,
+        maxManagers: Number.isFinite(seats.maxManagers) ? seats.maxManagers : null,
+        maxConsultants: Number.isFinite(seats.maxConsultants) ? seats.maxConsultants : null,
+        extraConsultants: seats.extraConsultants,
+        extraUserPrice: seats.extraUserPrice,
         leadCount: leadCountSnap.data().count || 0,
         interactionCount: interactionCountSnap.data().count || 0,
       });

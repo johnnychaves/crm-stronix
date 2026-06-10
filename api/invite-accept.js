@@ -1,6 +1,7 @@
 import { adminAuth, adminDb, admin } from './_firebaseAdmin.js';
 import { checkRateLimit, clientIp } from './_rateLimit.js';
-import { getSeatUsage, seatLimitMessage } from './_plans.js';
+import { getSeatUsage, canAddSeat } from './_plans.js';
+import { syncSubscriptionValue } from './_asaas.js';
 
 // Aceita um convite e cria a conta do usuário no tenant. PÚBLICO (o token UUID
 // é o segredo). Vercel serverless function.
@@ -80,10 +81,16 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Convite sem e-mail válido.' });
     }
 
-    // Limite de seats por plano: aceitar o convite consome um assento.
+    // Vagas por PAPEL no momento do aceite (o time pode ter mudado desde o
+    // convite). Consultor extra só passa se o admin aprovou o custo ao criar
+    // o convite (extraApproved); senão, orienta a pedir um convite novo.
     const seats = await getSeatUsage(slug);
-    if (seats.currentUsers >= seats.maxUsers) {
-      return res.status(403).json({ error: seatLimitMessage(seats.plan, seats.maxUsers) });
+    const decision = canAddSeat(seats, role, { allowExtra: invite.extraApproved === true });
+    if (!decision.ok) {
+      const msg = decision.code === 'extra_confirm'
+        ? 'As vagas do plano mudaram desde o convite. Peça um novo convite ao administrador.'
+        : decision.error;
+      return res.status(403).json({ error: msg });
     }
 
     // Cria a conta no Firebase Auth.
@@ -115,6 +122,9 @@ export default async function handler(req, res) {
       { status: 'accepted', acceptedAt: admin.firestore.FieldValue.serverTimestamp(), acceptedUid: userRecord.uid },
       { merge: true }
     );
+
+    // Entrou como consultor EXTRA → ajusta a assinatura Asaas (best-effort).
+    if (decision.isExtra) await syncSubscriptionValue(slug, { actorUid: invite.createdBy || null });
 
     return res.status(200).json({ ok: true, tenantId: slug, role, email });
   } catch (error) {

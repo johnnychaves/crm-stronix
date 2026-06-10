@@ -19,16 +19,30 @@ function sanitizePlan(body) {
   const slug = String(body?.slug || '').trim().toLowerCase();
   if (!SLUG_RE.test(slug)) return { error: 'Slug inválido: use apenas minúsculas, números e hífen (ex.: pro-anual).' };
 
-  // Ilimitado = maxUsers null. Caso contrário, inteiro ≥ 1.
-  const unlimited = body?.maxUsers === null || body?.maxUsers === undefined || body?.unlimited === true;
-  const maxUsersNum = toNumOrNull(body?.maxUsers);
-  const maxUsers = unlimited ? null : Math.max(1, Math.floor(maxUsersNum ?? 1));
+  // Vagas por papel (modelo gestor + consultores). null = ilimitado.
+  // Payload legado (só maxUsers, ex.: form antigo) deriva 1 gestor +
+  // (maxUsers-1) consultores — mesma conta total de antes.
+  let maxManagers, maxConsultants;
+  if (body?.maxManagers !== undefined || body?.maxConsultants !== undefined) {
+    maxManagers = body?.maxManagers == null ? null : Math.max(1, Math.floor(toNumOrNull(body.maxManagers) ?? 1));
+    maxConsultants = body?.maxConsultants == null ? null : Math.max(0, Math.floor(toNumOrNull(body.maxConsultants) ?? 0));
+  } else {
+    const unlimited = body?.maxUsers === null || body?.maxUsers === undefined || body?.unlimited === true;
+    const maxUsersNum = toNumOrNull(body?.maxUsers);
+    const total = unlimited ? null : Math.max(1, Math.floor(maxUsersNum ?? 1));
+    maxManagers = total == null ? null : 1;
+    maxConsultants = total == null ? null : Math.max(0, total - 1);
+  }
+  // maxUsers derivado mantém compatibilidade com leitores antigos do doc.
+  const maxUsers = maxManagers == null || maxConsultants == null ? null : maxManagers + maxConsultants;
 
   return {
     value: {
       name,
       slug,
-      maxUsers, // null = ilimitado
+      maxManagers,    // null = ilimitado
+      maxConsultants, // null = ilimitado (consultores INCLUSOS no preço)
+      maxUsers,       // derivado (gestores+consultores) — retrocompat
       priceMonthly: money(body?.priceMonthly),
       priceAnnual: body?.priceAnnual == null || body?.priceAnnual === '' ? null : money(body?.priceAnnual),
       extraUserPrice: body?.extraUserPrice == null || body?.extraUserPrice === '' ? null : money(body?.extraUserPrice),
@@ -106,7 +120,13 @@ export default async function handler(req, res) {
       const cur = await ref.get();
       if (!cur.exists) return res.status(404).json({ error: 'Plano não encontrado.' });
 
-      const { value, error } = sanitizePlan({ ...cur.data(), ...rest });
+      // Form legado manda só maxUsers: derruba os campos por papel do doc p/
+      // o total novo prevalecer (senão o merge ignoraria o maxUsers editado).
+      const merged = { ...cur.data(), ...rest };
+      if (rest.maxUsers !== undefined && rest.maxManagers === undefined && rest.maxConsultants === undefined) {
+        delete merged.maxManagers; delete merged.maxConsultants;
+      }
+      const { value, error } = sanitizePlan(merged);
       if (error) return res.status(400).json({ error });
 
       const oldSlug = cur.data()?.slug;

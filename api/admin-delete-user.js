@@ -1,5 +1,7 @@
 import { adminAuth, verifyRequest } from './_firebaseAdmin.js';
 import { usersCollection, isTenantAdmin } from './_auth.js';
+import { getSeatUsage } from './_plans.js';
+import { syncSubscriptionValue } from './_asaas.js';
 
 // Exclui um consultor do tenant do admin. ADMIN do tenant only.
 // SEGURANÇA: o authUid a deletar vem SEMPRE do doc validado dentro do tenant —
@@ -37,6 +39,15 @@ export default async function handler(req, res) {
 
     // authUid SEMPRE do doc validado (não confiar em valor do body).
     const resolvedAuthUid = docSnap.data()?.authUid || null;
+    const deletedRole = docSnap.data()?.role || 'consultant';
+
+    // Excluir consultor com extras faturáveis em uso muda o preço → sync depois.
+    let hadExtras = false;
+    if (deletedRole !== 'admin') {
+      try { hadExtras = (await getSeatUsage(auth.tenantId)).extraConsultants > 0; }
+      catch (e) { console.error('seat check (delete)', e?.message || e); }
+    }
+
     if (resolvedAuthUid) {
       try {
         await adminAuth.deleteUser(resolvedAuthUid);
@@ -46,6 +57,8 @@ export default async function handler(req, res) {
     }
 
     await docRef.delete();
+
+    if (hadExtras) await syncSubscriptionValue(auth.tenantId, { actorUid: auth.uid });
 
     return res.status(200).json({ ok: true });
   } catch (error) {
