@@ -280,6 +280,20 @@ function Logs({ audit }) {
 }
 
 // ---------- Planos & assinaturas (dados reais + CRUD) ----------
+// Vagas por papel do plano (docs legados só têm maxUsers → 1 gestor + resto).
+const planSeats = (p) => {
+  if (!p) return { mg: 1, co: null };
+  if (p.maxManagers !== undefined || p.maxConsultants !== undefined) return { mg: p.maxManagers ?? null, co: p.maxConsultants ?? null };
+  return p.maxUsers == null ? { mg: null, co: null } : { mg: 1, co: Math.max(0, p.maxUsers - 1) };
+};
+const seatText = (p) => {
+  const { mg, co } = planSeats(p);
+  if (mg == null && co == null) return 'Gestores e consultores ilimitados';
+  const mgTxt = mg == null ? 'gestores ilimitados' : `${mg} gestor${mg === 1 ? '' : 'es'}`;
+  const coTxt = co == null ? 'consultores ilimitados' : `${co} consultor${co === 1 ? '' : 'es'}`;
+  return `${mgTxt} + ${coTxt}`;
+};
+
 function Plans({ plans, onReload }) {
   const [editing, setEditing] = useState(undefined); // undefined = fechado · null = novo · obj = editar
   const [err, setErr] = useState('');
@@ -327,7 +341,10 @@ function Plans({ plans, onReload }) {
                 </span>
               )}
               <div style={{ fontFamily: 'var(--head)', fontWeight: 700, fontSize: 19, color }}>{p.name}</div>
-              <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>{p.maxUsers == null ? 'Usuários ilimitados' : `até ${p.maxUsers} usuários`}</div>
+              <div className="muted" style={{ fontSize: 12.5, marginTop: 4 }}>
+                {seatText(p)}
+                {Number(p.extraUserPrice) > 0 && <> · extra {brl(p.extraUserPrice)}/mês{p.maxExtraUsers != null ? ` (até ${p.maxExtraUsers})` : ''}</>}
+              </div>
               <div style={{ fontFamily: 'var(--head)', fontWeight: 700, fontSize: 38, letterSpacing: '-.02em', margin: '14px 0 2px' }}>
                 {p.priceMonthly ? brl(p.priceMonthly) : 'Sob medida'}
                 {p.priceMonthly ? <span style={{ fontSize: 15, color: 'var(--muted)', fontWeight: 500, fontFamily: 'var(--ui)' }}>/mês</span> : null}
@@ -378,11 +395,14 @@ function PlanFormPanel({ plan, onClose, onDone }) {
   // Renomear o slug com academias no plano é bloqueado pela API (o campo
   // `plan` dos tenants referencia o slug) — então já travamos o input.
   const slugLocked = editing && (plan?.tenantCount || 0) > 0;
+  const seats = planSeats(editing ? plan : null); // novo plano: 1 gestor por padrão
   const [f, setF] = useState({
     name: plan?.name || '',
     slug: plan?.slug || '',
-    unlimited: editing && plan?.maxUsers == null,
-    maxUsers: plan?.maxUsers != null ? String(plan.maxUsers) : '',
+    managersUnlimited: editing && seats.mg == null,
+    maxManagers: seats.mg != null ? String(seats.mg) : '',
+    consultantsUnlimited: editing && seats.co == null,
+    maxConsultants: seats.co != null ? String(seats.co) : '',
     priceMonthly: plan?.priceMonthly != null ? String(plan.priceMonthly) : '',
     priceAnnual: plan?.priceAnnual ? String(plan.priceAnnual) : '',
     extraUserPrice: plan?.extraUserPrice != null ? String(plan.extraUserPrice) : '',
@@ -406,12 +426,14 @@ function PlanFormPanel({ plan, onClose, onDone }) {
   const save = async () => {
     if (!f.name.trim()) { setErr('Informe o nome do plano.'); return; }
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(f.slug)) { setErr('Identificador inválido: use minúsculas, números e hífen (ex.: pro-anual).'); return; }
-    if (!f.unlimited && (f.maxUsers === '' || Number(f.maxUsers) < 1)) { setErr('Informe o máximo de usuários (ou marque Ilimitado).'); return; }
+    if (!f.managersUnlimited && (f.maxManagers === '' || Number(f.maxManagers) < 1)) { setErr('Informe o nº de gestores inclusos (ou marque Ilimitado).'); return; }
+    if (!f.consultantsUnlimited && (f.maxConsultants === '' || Number(f.maxConsultants) < 0)) { setErr('Informe o nº de consultores inclusos (ou marque Ilimitado).'); return; }
     setSaving(true); setErr('');
     const body = {
       name: f.name.trim(),
       slug: f.slug,
-      maxUsers: f.unlimited ? null : Number(f.maxUsers),
+      maxManagers: f.managersUnlimited ? null : Number(f.maxManagers),
+      maxConsultants: f.consultantsUnlimited ? null : Number(f.maxConsultants),
       priceMonthly: f.priceMonthly === '' ? 0 : Number(f.priceMonthly),
       priceAnnual: f.priceAnnual === '' ? null : Number(f.priceAnnual),
       extraUserPrice: f.extraUserPrice === '' ? null : Number(f.extraUserPrice),
@@ -471,24 +493,40 @@ function PlanFormPanel({ plan, onClose, onDone }) {
           )}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <div style={{ display: 'grid', gap: 6 }}>
-              <span className="muted" style={{ fontSize: 12 }}>Máx. de usuários</span>
+              <span className="muted" style={{ fontSize: 12 }}>Gestores inclusos</span>
               <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                <input style={{ ...FLAG_INPUT, width: '100%', ...(f.unlimited ? { opacity: .55 } : {}) }} type="number" min="1" disabled={f.unlimited} value={f.unlimited ? '' : f.maxUsers} onChange={(e) => set('maxUsers', e.target.value)} placeholder={f.unlimited ? 'Ilimitado' : 'ex.: 10'} />
+                <input style={{ ...FLAG_INPUT, width: '100%', ...(f.managersUnlimited ? { opacity: .55 } : {}) }} type="number" min="1" disabled={f.managersUnlimited} value={f.managersUnlimited ? '' : f.maxManagers} onChange={(e) => set('maxManagers', e.target.value)} placeholder={f.managersUnlimited ? 'Ilimitado' : 'ex.: 1'} />
                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={f.unlimited} onChange={(e) => set('unlimited', e.target.checked)} style={{ accentColor: '#3B6DF5' }} /> Ilimitado
+                  <input type="checkbox" checked={f.managersUnlimited} onChange={(e) => set('managersUnlimited', e.target.checked)} style={{ accentColor: '#3B6DF5' }} /> ∞
                 </label>
               </div>
             </div>
-            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Ordem de exibição</span>
-              <input style={FLAG_INPUT} type="number" value={f.order} onChange={(e) => set('order', e.target.value)} placeholder="0" />
-            </label>
+            <div style={{ display: 'grid', gap: 6 }}>
+              <span className="muted" style={{ fontSize: 12 }}>Consultores inclusos</span>
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <input style={{ ...FLAG_INPUT, width: '100%', ...(f.consultantsUnlimited ? { opacity: .55 } : {}) }} type="number" min="0" disabled={f.consultantsUnlimited} value={f.consultantsUnlimited ? '' : f.maxConsultants} onChange={(e) => set('maxConsultants', e.target.value)} placeholder={f.consultantsUnlimited ? 'Ilimitado' : 'ex.: 4'} />
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, whiteSpace: 'nowrap', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={f.consultantsUnlimited} onChange={(e) => set('consultantsUnlimited', e.target.checked)} style={{ accentColor: '#3B6DF5' }} /> ∞
+                </label>
+              </div>
+            </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Usuário extra (R$/mês · opcional)</span>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Consultor extra (R$/mês · opcional)</span>
               <input style={FLAG_INPUT} type="number" min="0" value={f.extraUserPrice} onChange={(e) => set('extraUserPrice', e.target.value)} placeholder="—" />
             </label>
-            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Máx. de usuários extras (opcional)</span>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Máx. de consultores extras (opcional)</span>
               <input style={FLAG_INPUT} type="number" min="0" value={f.maxExtraUsers} onChange={(e) => set('maxExtraUsers', e.target.value)} placeholder="—" />
+            </label>
+          </div>
+          {Number(f.extraUserPrice) > 0 && !f.consultantsUnlimited && (
+            <div className="muted" style={{ fontSize: 11.5, marginTop: -6 }}>
+              Consultores além dos {f.maxConsultants || 0} inclusos entram como extras de {brl(Number(f.extraUserPrice))}/mês cada{f.maxExtraUsers !== '' ? ` (até ${f.maxExtraUsers})` : ''} — somados automaticamente à mensalidade.
+            </div>
+          )}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Ordem de exibição</span>
+              <input style={FLAG_INPUT} type="number" value={f.order} onChange={(e) => set('order', e.target.value)} placeholder="0" />
             </label>
           </div>
           <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Recursos do plano — um por linha (aparecem no card)</span>
@@ -703,7 +741,12 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
   const events = (audit || []).filter((l) => l.tenantId === tenantId).slice(0, 6);
   const usage = [
     { n: 'Leads cadastrados', v: stats?.leadCount ?? null, max: Math.max(100, stats?.leadCount || 0) },
-    { n: 'Consultores', v: stats?.userCount ?? null, max: stats?.maxUsers || Math.max(3, stats?.userCount || 0) },
+    { n: 'Gestores', v: stats?.managers ?? null, max: stats?.maxManagers || Math.max(1, stats?.managers || 0) },
+    {
+      n: stats?.extraConsultants > 0 ? `Consultores (${stats.extraConsultants} extra${stats.extraConsultants === 1 ? '' : 's'})` : 'Consultores',
+      v: stats?.consultants ?? null,
+      max: stats?.maxConsultants != null ? stats.maxConsultants + (stats?.extraConsultants || 0) : Math.max(3, stats?.consultants || 0),
+    },
     { n: 'Interações registradas', v: stats?.interactionCount ?? null, max: Math.max(100, stats?.interactionCount || 0) },
   ];
   return (

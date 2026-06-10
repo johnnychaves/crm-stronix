@@ -38,12 +38,14 @@ async function lastInteractionMillis(tenantId) {
 async function tenantMetrics(doc, plansMap) {
   const id = doc.id;
   const data = doc.data() || {};
-  const [userCount, leadCount, interactionCount, lastInteractionMs] = await Promise.all([
+  const [userCount, managerCount, leadCount, interactionCount, lastInteractionMs] = await Promise.all([
     countOr(dataCol(id, 'stronix_users')),
+    countOr(dataCol(id, 'stronix_users').where('role', '==', 'admin')),
     countOr(dataCol(id, 'stronix_leads')),
     countOr(dataCol(id, 'stronix_interactions')),
     lastInteractionMillis(id),
   ]);
+  const consultantCount = Math.max(0, userCount - managerCount);
   const createdAt = toMillis(data.createdAt);
   const plan = data.plan || 'starter';
   const monthlyPrice = typeof data.monthlyPrice === 'number' ? data.monthlyPrice : null;
@@ -71,8 +73,11 @@ async function tenantMetrics(doc, plansMap) {
     billingProvider: data.billingProvider || null,
     billingCycle: data.billingCycle || null,
     lastInvoiceUrl: data.lastInvoiceUrl || null,
-    price: effectivePrice({ plan, monthlyPrice }, plansMap),
+    // Preço efetivo inclui consultores EXTRAS (além dos inclusos no plano).
+    price: effectivePrice({ plan, monthlyPrice, consultantCount }, plansMap),
     userCount,
+    managerCount,
+    consultantCount,
     leadCount,
     interactionCount,
     lastActivityAt,

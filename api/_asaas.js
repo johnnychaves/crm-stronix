@@ -6,6 +6,9 @@
 // Docs: https://docs.asaas.com  — auth via header `access_token`, User-Agent
 // obrigatório. Sandbox: https://api-sandbox.asaas.com/v3 · Prod: https://api.asaas.com/v3
 
+import { adminDb, admin } from './_firebaseAdmin.js';
+import { getSeatUsage, loadPlans } from './_plans.js';
+
 const BASE_URL = (process.env.ASAAS_BASE_URL || 'https://api-sandbox.asaas.com/v3').replace(/\/+$/, '');
 const API_KEY = process.env.ASAAS_API_KEY || '';
 const USER_AGENT = process.env.ASAAS_USER_AGENT || 'stronilead-crm';
@@ -108,4 +111,50 @@ export async function receiveInCash(paymentId, { value, paymentDate } = {}) {
     method: 'POST',
     body: { value, paymentDate: paymentDate || new Date().toISOString().slice(0, 10), notifyCustomer: false },
   });
+}
+
+// Recalcula o valor da assinatura do tenant a partir do estado ATUAL
+// (plano + consultores extras) e atualiza no Asaas. Best-effort: NUNCA lança —
+// criar/excluir consultor não pode falhar porque a cobrança engasgou.
+// Chamar só quando a operação cruza a fronteira do extra (preço muda).
+// Vale a partir da próxima fatura (updatePendingPayments reescreve pendentes).
+export async function syncSubscriptionValue(tenantId, { actorUid } = {}) {
+  try {
+    if (!isAsaasConfigured()) return null;
+    const snap = await adminDb.collection('tenants').doc(tenantId).get();
+    if (!snap.exists) return null;
+    const tenant = snap.data() || {};
+    if (!tenant.asaasSubscriptionId) return null;
+    // Preço negociado é valor FINAL fechado à mão — não mexe na assinatura.
+    if (Number.isFinite(Number(tenant.monthlyPrice))) return null;
+
+    const [seats, plansMap] = await Promise.all([getSeatUsage(tenantId), loadPlans()]);
+    const planDoc = plansMap.get(tenant.plan);
+    if (!planDoc) return null;
+
+    const extraMonthly = (seats.extraConsultants || 0) * (Number(planDoc.extraUserPrice) || 0);
+    let value;
+    if (tenant.billingCycle === 'annual') {
+      const base = Number(planDoc.priceAnnual);
+      if (!Number.isFinite(base) || base <= 0) return null;
+      value = base + extraMonthly * 12;
+    } else {
+      const base = Number(planDoc.priceMonthly);
+      if (!Number.isFinite(base) || base <= 0) return null;
+      value = base + extraMonthly;
+    }
+
+    await updateSubscription(tenant.asaasSubscriptionId, { value });
+    try {
+      await adminDb.collection('superadmin_audit').add({
+        action: 'asaas.subscription.sync', tenantId, actorUid: actorUid || null,
+        details: { value, extraConsultants: seats.extraConsultants || 0, cycle: tenant.billingCycle || 'monthly' },
+        at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } catch (e) { console.error('sync audit', e?.message || e); }
+    return { value, extraConsultants: seats.extraConsultants || 0 };
+  } catch (e) {
+    console.error('syncSubscriptionValue', tenantId, e?.message || e);
+    return { error: e?.message || 'sync falhou' };
+  }
 }

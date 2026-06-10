@@ -1,5 +1,6 @@
 import { adminAuth, admin, verifyRequest } from './_firebaseAdmin.js';
-import { getSeatUsage, seatLimitMessage } from './_plans.js';
+import { getSeatUsage, canAddSeat } from './_plans.js';
+import { syncSubscriptionValue } from './_asaas.js';
 import { usersCollection, isTenantAdmin } from './_auth.js';
 
 export default async function handler(req, res) {
@@ -14,7 +15,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Não autenticado.' });
     }
 
-    const { name, email, password } = req.body || {};
+    const { name, email, password, allowExtra } = req.body || {};
 
     if (!name || !email || !password) {
       return res
@@ -31,10 +32,20 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Apenas o master pode cadastrar consultores.' });
     }
 
-    // Limite de seats por plano: novo usuário consome um assento.
+    // Vagas por papel: este endpoint cria sempre CONSULTOR. Além dos inclusos,
+    // pode entrar como extra pago — mas só com confirmação explícita do admin
+    // (allowExtra), para nunca gerar cobrança surpresa.
     const seats = await getSeatUsage(auth.tenantId);
-    if (seats.currentUsers >= seats.maxUsers) {
-      return res.status(403).json({ error: seatLimitMessage(seats.plan, seats.maxUsers) });
+    const decision = canAddSeat(seats, 'consultant', { allowExtra: allowExtra === true });
+    if (!decision.ok) {
+      if (decision.code === 'extra_confirm') {
+        return res.status(409).json({
+          error: decision.error,
+          requiresExtraConfirmation: true,
+          extraUserPrice: decision.extraUserPrice,
+        });
+      }
+      return res.status(403).json({ error: decision.error });
     }
 
     const normalizedEmail = String(email).trim().toLowerCase();
@@ -70,7 +81,11 @@ export default async function handler(req, res) {
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
 
-    return res.status(200).json({ ok: true, authUid: userRecord.uid });
+    // Consultor EXTRA muda o preço → ajusta a assinatura Asaas (best-effort,
+    // vale na próxima fatura; auditado em superadmin_audit).
+    if (decision.isExtra) await syncSubscriptionValue(auth.tenantId, { actorUid: auth.uid });
+
+    return res.status(200).json({ ok: true, authUid: userRecord.uid, isExtra: decision.isExtra === true });
   } catch (error) {
     console.error('admin-create-user', error);
     return res.status(500).json({ error: 'Erro interno ao cadastrar consultor.' });
