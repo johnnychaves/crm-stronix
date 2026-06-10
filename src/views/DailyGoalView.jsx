@@ -3,43 +3,21 @@ import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isLeadResolvedToday, hasActiveInteractionToday, getInteractionSecurityFields } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, isAdminUser } from '../lib/leads.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo } from '../lib/dailyGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { LeadDetailsModal } from '../modals/LeadDetailsModal.jsx';
-import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, X, Zap } from 'lucide-react';
+import { DailyGoalTeamView } from './DailyGoalTeamView.jsx';
+import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, Users, X, Zap } from 'lucide-react';
 
 // DAILY GOAL VIEW — DESIGN PRIMITIVES
 // ==========================================
-
-
-// Slug-keyed metadata for the 4 daily goal categories (matches src/lib/leads.js).
-const DG_CATEGORY_META = {
-  [DAILY_GOAL_CATEGORIES.NOVO_24H]: { label: DAILY_GOAL_CATEGORY_LABEL.novo_24h, short: 'Novos leads', color: 'blue', Icon: Zap },
-  [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.visita_hoje, short: 'Visitas', color: 'violet', Icon: Building2 },
-  [DAILY_GOAL_CATEGORIES.AULA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.aula_hoje, short: 'Aulas exp.', color: 'amber', Icon: BookOpen },
-  [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.contato_hoje, short: 'Contatos', color: 'teal', Icon: MessageSquare },
-  [DAILY_GOAL_CATEGORIES.ATRASADO]: { label: DAILY_GOAL_CATEGORY_LABEL.atrasado, short: 'Atrasados', color: 'rose', Icon: AlertCircle }
-};
-
-const DG_CATEGORY_ORDER = [
-  DAILY_GOAL_CATEGORIES.NOVO_24H,
-  DAILY_GOAL_CATEGORIES.VISITA_HOJE,
-  DAILY_GOAL_CATEGORIES.AULA_HOJE,
-  DAILY_GOAL_CATEGORIES.CONTATO_HOJE,
-  DAILY_GOAL_CATEGORIES.ATRASADO
-];
-
-const COLOR_TONES = {
-  blue: { dot: 'bg-blue-500', text: 'text-blue-700', soft: 'bg-blue-50', strong: 'bg-blue-600', border: 'border-blue-200', darkText: 'dark:text-blue-300', darkSoft: 'dark:bg-blue-500/10' },
-  violet: { dot: 'bg-violet-500', text: 'text-violet-700', soft: 'bg-violet-50', strong: 'bg-violet-600', border: 'border-violet-200', darkText: 'dark:text-violet-300', darkSoft: 'dark:bg-violet-500/10' },
-  amber: { dot: 'bg-amber-500', text: 'text-amber-700', soft: 'bg-amber-50', strong: 'bg-amber-600', border: 'border-amber-200', darkText: 'dark:text-amber-300', darkSoft: 'dark:bg-amber-500/10' },
-  teal: { dot: 'bg-teal-500', text: 'text-teal-700', soft: 'bg-teal-50', strong: 'bg-teal-600', border: 'border-teal-200', darkText: 'dark:text-teal-300', darkSoft: 'dark:bg-teal-500/10' },
-  rose: { dot: 'bg-rose-500', text: 'text-rose-700', soft: 'bg-rose-50', strong: 'bg-rose-600', border: 'border-rose-200', darkText: 'dark:text-rose-300', darkSoft: 'dark:bg-rose-500/10' }
-};
+// (metadados de categoria/cores e a lógica de slots moraram aqui; foram para
+// src/lib/dailyGoal.js para o painel da equipe do gestor reusar a MESMA regra)
 
 
 function WhatsappGlyph({ size = 14 }) {
@@ -505,13 +483,6 @@ function toDatetimeLocalValue(date) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-// Chave de dia em hora LOCAL ('YYYY-MM-DD'), usada como ID do histórico de
-// metas batidas. Local (não UTC) para o dia bater com o fuso do consultor.
-function dgDateKey(date) {
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-
 // Botão de tipo do RescheduleModal — fora do componente pai para não ser
 // recriado a cada render (evitava perder foco/estado dos inputs irmãos do modal).
 function RescheduleTypeBtn({ active, label, onClick }) {
@@ -695,10 +666,28 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
 
+// Alternador "Minha meta | Equipe" — visível só para o gestor (admin).
+function ViewTab({ active, icon, label, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[12.5px] font-semibold transition ${
+        active
+          ? 'bg-white dark:bg-white/[0.1] text-slate-900 dark:text-white shadow-sm'
+          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+      }`}
+    >
+      {icon}{label}
+    </button>
+  );
+}
+
 function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossReasons, usersList, funnels }) {
   const toast = useToast();
   const [selectedLead, setSelectedLead] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [view, setView] = useState('mine'); // 'mine' | 'team' (team = só gestor)
   const [now, setNow] = useState(() => new Date());
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const prevProgress = useRef(0);
@@ -747,147 +736,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     } catch { /* regras podem não estar publicadas ainda — silencioso */ }
   };
 
-  const ritmoMes = useMemo(() => {
-    const hits = new Set(dailyHistory.map(h => h.date).filter(Boolean));
-    const isActive = (d) => metaWeekdays.includes(d.getDay());
+  const ritmoMes = useMemo(() => computeRitmo(dailyHistory, metaWeekdays), [dailyHistory, metaWeekdays]);
 
-    const history14 = [];
-    for (let i = 13; i >= 0; i--) {
-      const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - i);
-      history14.push({ hit: hits.has(dgDateKey(d)), active: isActive(d), isToday: i === 0, label: d.toLocaleDateString('pt-BR') });
-    }
-
-    const today = new Date(); today.setHours(0, 0, 0, 0);
-    let monthHits = 0, monthTarget = 0;
-    for (let day = 1; day <= today.getDate(); day++) {
-      const d = new Date(today.getFullYear(), today.getMonth(), day);
-      if (!isActive(d)) continue;
-      monthTarget++;
-      if (hits.has(dgDateKey(d))) monthHits++;
-    }
-
-    // Sequência: anda para trás a partir de hoje; pula dias inativos; um dia
-    // ativo SEM hit quebra (exceto hoje, que ainda está em andamento).
-    let streak = 0;
-    for (let i = 0; i < 400; i++) {
-      const d = new Date(today); d.setDate(d.getDate() - i);
-      if (!isActive(d)) continue;
-      if (hits.has(dgDateKey(d))) streak++;
-      else if (i === 0) continue;
-      else break;
-    }
-
-    return { history14, monthHits, monthTarget, streak };
-  }, [dailyHistory, metaWeekdays]);
-
-  const processedLeads = useMemo(() => {
-    const todayStart = new Date();
-    todayStart.setHours(0,0,0,0);
-    const todayEnd = new Date();
-    todayEnd.setHours(23,59,59,999);
-    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-
-    const myLeads = (leads || []).filter(l => l.consultantId === appUser.id);
-    const allTargetLeadsMap = new Map();
-
-    // Índice de interações por leadId — antes varria TODAS as interações por lead
-    // (O(leads × interações), travava a UI em volume). Agora O(interações) p/ montar
-    // + lookups O(1). hasGoalDoneToday/hasActiveInteractionToday filtram por leadId
-    // internamente, então passar só as do lead dá EXATAMENTE o mesmo resultado.
-    const interactionsByLead = new Map();
-    (interactions || []).forEach(i => {
-      const arr = interactionsByLead.get(i.leadId);
-      if (arr) arr.push(i); else interactionsByLead.set(i.leadId, [i]);
-    });
-    const leadInteractions = (id) => interactionsByLead.get(id) || [];
-
-    // Regra única: tarefa é considerada "feita" SOMENTE se
-    //   (a) lead virou Venda/Perda hoje (auto-conclui todas as
-    //       categorias do lead — decisão de produto), OU
-    //   (b) há uma interaction type='daily_goal_done' criada hoje
-    //       com dailyGoalCategory matching aquela categoria.
-    // Mover no Kanban, anotar no LeadDetailsModal, mudar fase, etc
-    // NÃO marcam a tarefa. O consultor precisa confirmar pela Meta.
-    const isCategoryDone = (lead, categorySlug) => {
-      if (isLeadResolvedToday(lead, todayStart)) return true;
-      return hasGoalDoneToday(lead, categorySlug, leadInteractions(lead.id), todayStart);
-    };
-
-    const addTarget = (lead, categoryLabel, categorySlug) => {
-      if (!allTargetLeadsMap.has(lead.id)) {
-        allTargetLeadsMap.set(lead.id, {
-          ...lead,
-          categories: [],
-          categorySlugs: [],
-          categoryStatus: {},
-          hasOtherActivityToday: hasActiveInteractionToday(lead, leadInteractions(lead.id), todayStart)
-        });
-      }
-      const entry = allTargetLeadsMap.get(lead.id);
-      if (!entry.categorySlugs.includes(categorySlug)) {
-        entry.categories.push(categoryLabel);
-        entry.categorySlugs.push(categorySlug);
-        entry.categoryStatus[categorySlug] = isCategoryDone(lead, categorySlug);
-      }
-    };
-
-    myLeads.forEach(lead => {
-      // 1. Novo Lead 24h
-      // A regra entra em vigor APENAS no dia seguinte ao cadastro: leads
-      // criados hoje não aparecem nessa categoria (o consultor acabou de
-      // cadastrar — não precisa de lembrete imediato). Critério: criado
-      // antes do início de hoje E dentro das últimas 24h.
-      if (
-        lead.createdAt &&
-        lead.createdAt < todayStart &&
-        lead.createdAt >= oneDayAgo &&
-        lead.status !== 'Venda' && lead.status !== 'Perda'
-      ) {
-        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.novo_24h, DAILY_GOAL_CATEGORIES.NOVO_24H);
-      }
-
-      // 2. Atrasados
-      if (lead.status !== 'Venda' && lead.status !== 'Perda' && lead.nextFollowUp && lead.nextFollowUp < todayStart) {
-        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.atrasado, DAILY_GOAL_CATEGORIES.ATRASADO);
-      }
-
-      // 3. Visitas Hoje
-      if (lead.status !== 'Venda' && lead.status !== 'Perda') {
-        const apptType = getLeadAppointmentType(lead);
-        const apptDate = getLeadAppointmentDate(lead);
-        if (apptType === 'visita' && apptDate >= todayStart && apptDate <= todayEnd) {
-          addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.visita_hoje, DAILY_GOAL_CATEGORIES.VISITA_HOJE);
-        }
-      }
-
-      // 4. Aulas Exp. Hoje
-      if (lead.status !== 'Venda' && lead.status !== 'Perda') {
-        const apptType = getLeadAppointmentType(lead);
-        const apptDate = getLeadAppointmentDate(lead);
-        if (apptType === 'aula_experimental' && apptDate >= todayStart && apptDate <= todayEnd) {
-          addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.aula_hoje, DAILY_GOAL_CATEGORIES.AULA_HOJE);
-        }
-      }
-
-      // 5. Contato Hoje — follow-up via Mensagem/Ligação agendado para hoje
-      // (qualquer tipo que NÃO seja visita/aula). Pega WhatsApp + ligações sem
-      // duplicar quem já está nas seções de visita/aula.
-      if (
-        lead.status !== 'Venda' &&
-        lead.status !== 'Perda' &&
-        lead.nextFollowUp &&
-        lead.nextFollowUp >= todayStart &&
-        lead.nextFollowUp <= todayEnd
-      ) {
-        const apptType = getLeadAppointmentType(lead);
-        if (apptType !== 'visita' && apptType !== 'aula_experimental') {
-          addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.contato_hoje, DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
-        }
-      }
-    });
-
-    return Array.from(allTargetLeadsMap.values()).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0));
-  }, [leads, appUser, interactions]);
+  // Slots da MINHA meta — regra única em src/lib/dailyGoal.js (Meta-only:
+  // só Venda/Perda hoje ou daily_goal_done marcam tarefa), compartilhada com
+  // o painel da equipe do gestor.
+  const processedLeads = useMemo(
+    () => computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id),
+    [leads, appUser, interactions]
+  );
 
   // Helper para filtragem por categoria. Lead com 2 categorias pode
   // estar "feito" em uma e "pendente" na outra.
@@ -1237,8 +1094,29 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       ? tomorrowAppts.length
       : (counts[filter] || 0);
 
+  const isManager = isAdminUser(appUser);
+
   return (
     <div className="h-full flex flex-col gap-6 animate-fade-in relative font-sans">
+      {isManager && (
+        <div className="flex items-center gap-1 self-start bg-slate-100 dark:bg-white/[0.05] rounded-xl p-1">
+          <ViewTab active={view === 'mine'} icon={<Target size={13} />} label="Minha meta" onClick={() => setView('mine')} />
+          <ViewTab active={view === 'team'} icon={<Users size={13} />} label="Equipe" onClick={() => setView('team')} />
+        </div>
+      )}
+
+      {isManager && view === 'team' ? (
+        <DailyGoalTeamView
+          leads={leads}
+          interactions={interactions}
+          usersList={usersList}
+          metaWeekdays={metaWeekdays}
+          db={db}
+          appUser={appUser}
+          onOpenLead={setSelectedLead}
+        />
+      ) : (
+      <>
       <ProgressHero
         firstName={firstName}
         greeting={greeting}
@@ -1398,6 +1276,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           </div>
         </section>
       </div>
+      </>
+      )}
 
       <footer className="pt-1 pb-2 text-center text-[11.5px] text-slate-400">
         Atualizado agora · {todayLabel} · <span className="font-display font-medium">STRONI</span><span className="font-display font-bold text-brand-600 dark:text-brand-400">LEAD</span>
