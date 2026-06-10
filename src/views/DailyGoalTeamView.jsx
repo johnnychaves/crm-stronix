@@ -15,6 +15,17 @@ import { AlertCircle, CheckCircle, ChevronDown, Flame, Shield, Target, Trophy, U
 // admin ler o histórico de metas batidas de todos.
 // ============================================================================
 
+// Mesmo glyph da tela da Meta (DailyGoalView) — duplicado de propósito para
+// não mexer naquele arquivo aqui; extrair p/ components/ui se ganhar 3º uso.
+function WhatsappGlyph({ size = 14 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 12a8 8 0 1 1-3.2-6.4L20 4l-1.4 3.2A8 8 0 0 1 20 12z" />
+      <path d="M8.5 9.5c0 3 2 5 5 5l1.5-1.5-2-1-1 1c-1 0-2-1-2-2l1-1-1-2L9 7c-.5 1-.5 2-.5 2.5z" />
+    </svg>
+  );
+}
+
 function TeamStat({ icon, label, value, tone = 'slate' }) {
   const tones = {
     slate: 'bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300',
@@ -206,17 +217,30 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, db, a
                           <p className="text-[12.5px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1.5"><CheckCircle size={13} /> Tudo concluído.</p>
                         ) : (
                           <div className="flex flex-col gap-1.5">
-                            {pendingSlots.map(({ lead, slug }) => (
-                              <button
-                                key={`${lead.id}-${slug}`}
-                                type="button"
-                                onClick={() => onOpenLead?.(lead)}
-                                className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.06] hover:border-slate-300 dark:hover:border-white/10 transition text-left"
-                              >
-                                <span className="text-[12.5px] font-medium text-slate-800 dark:text-slate-100 truncate">{lead.name}</span>
-                                <PendingCatChip slug={slug} count={1} />
-                              </button>
-                            ))}
+                            {pendingSlots.map(({ lead, slug }) => {
+                              const waNum = String(lead.whatsapp || '').replace(/\D/g, '');
+                              return (
+                                <div
+                                  key={`${lead.id}-${slug}`}
+                                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.06] hover:border-slate-300 dark:hover:border-white/10 transition"
+                                >
+                                  <button type="button" onClick={() => onOpenLead?.(lead)} className="flex-1 min-w-0 text-left">
+                                    <span className="block text-[12.5px] font-medium text-slate-800 dark:text-slate-100 truncate">{lead.name}</span>
+                                  </button>
+                                  <PendingCatChip slug={slug} count={1} />
+                                  {waNum && (
+                                    <button
+                                      type="button"
+                                      title="Chamar no WhatsApp"
+                                      onClick={() => window.open(`https://wa.me/${waNum}`, '_blank', 'noopener,noreferrer')}
+                                      className="w-7 h-7 grid place-items-center rounded-md shrink-0 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 transition"
+                                    >
+                                      <WhatsappGlyph size={15} />
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
