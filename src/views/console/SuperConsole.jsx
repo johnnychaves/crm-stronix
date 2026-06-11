@@ -46,6 +46,7 @@ function GymCell({ t, size = 34, sub }) {
 
 function statusBadge(t) {
   if (t.archived || t.status === 'suspended') return <span className="badge b-cancel"><span className="bd" style={{ background: 'currentColor' }} />{t.archived ? 'Cancelada' : 'Suspensa'}</span>;
+  if (t.activationPending) return <span className="badge b-pendente"><span className="bd" style={{ background: 'currentColor' }} />Aguardando ativação</span>;
   if (t.paymentStatus === 'overdue') return <span className="badge b-inad"><span className="bd" style={{ background: 'currentColor' }} />Inadimplente</span>;
   if (t.status === 'trial') return <span className="badge b-trial"><span className="bd" style={{ background: 'currentColor' }} />Trial</span>;
   return <span className="badge b-ativa"><span className="bd" style={{ background: 'currentColor' }} />Ativa</span>;
@@ -205,9 +206,10 @@ function Placeholder({ route }) {
 
 // ---------- Academias (lista, dados reais) ----------
 const CHIPS = [['todas', 'Todas'], ['ativa', 'Ativas'], ['trial', 'Trial'], ['inadimplente', 'Inadimplentes'], ['cancelada', 'Canceladas']];
-function Tenants({ tenants, go }) {
+function Tenants({ tenants, plans, go, onReload }) {
   const [filter, setFilter] = useState('todas');
   const [q, setQ] = useState('');
+  const [showNew, setShowNew] = useState(false);
   const list = (tenants || []).filter((t) => !t.internal);
   const counts = { todas: list.length, ativa: 0, trial: 0, inadimplente: 0, cancelada: 0 };
   list.forEach((t) => { counts[statusKey(t)] += 1; });
@@ -218,8 +220,9 @@ function Tenants({ tenants, go }) {
     <>
       <div className="ph">
         <div><h1>Academias</h1><p>{list.length} clientes na plataforma · {counts.ativa} ativas</p></div>
-        <div className="ph-actions"><button className="btn btn-ghost"><Icon name="download" size={16} /> CSV</button><button className="btn btn-primary"><Icon name="plus" size={16} /> Nova academia</button></div>
+        <div className="ph-actions"><button className="btn btn-ghost"><Icon name="download" size={16} /> CSV</button><button className="btn btn-primary" onClick={() => setShowNew(true)}><Icon name="plus" size={16} /> Nova academia</button></div>
       </div>
+      {showNew && <NewTenantPanel plans={plans} onClose={() => setShowNew(false)} onDone={() => { setShowNew(false); onReload?.(); }} />}
       <div className="toolbar">
         {CHIPS.map(([k, label]) => (
           <button key={k} className={`chip${filter === k ? ' active' : ''}`} onClick={() => setFilter(k)}>{label} <span className="cn">{counts[k]}</span></button>
@@ -553,6 +556,213 @@ function PlanFormPanel({ plan, onClose, onDone }) {
   );
 }
 
+// ---------- Link de ativação (copiar + atalho WhatsApp) ----------
+function ActivationLinkBox({ link, phone, tenantName }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { /* sem clipboard — o link fica visível p/ copiar manualmente */ }
+  };
+  const waNum = String(phone || '').replace(/\D/g, '');
+  const waText = encodeURIComponent(`Olá! A academia ${tenantName} já está no STRONILEAD 🎉\nAtive seu acesso de gestor por este link (válido por 7 dias):\n${link}`);
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, padding: '10px 12px' }}>
+        <span className="tnum" style={{ flex: 1, fontSize: 12, wordBreak: 'break-all' }}>{link}</span>
+        <button className="btn btn-ghost btn-sm" onClick={copy}>{copied ? 'Copiado ✓' : 'Copiar'}</button>
+      </div>
+      {waNum && (
+        <a className="btn btn-primary btn-sm" style={{ justifySelf: 'start', textDecoration: 'none' }} href={`https://wa.me/${waNum}?text=${waText}`} target="_blank" rel="noopener noreferrer">
+          Enviar no WhatsApp do responsável
+        </a>
+      )}
+      <div className="muted" style={{ fontSize: 11.5 }}>O link vale por 7 dias. Se expirar, abra a academia no console e gere um novo.</div>
+    </div>
+  );
+}
+
+// ---------- Nova academia (wizard nativo do console) ----------
+function NewTenantPanel({ plans, onClose, onDone }) {
+  const activePlans = (plans || []).filter((p) => p.isActive !== false);
+  const defaultPlan = activePlans.find((p) => p.isDefault)?.slug || activePlans[0]?.slug || 'starter';
+  const [f, setF] = useState({
+    displayName: '', tenantId: '', plan: defaultPlan, trialDays: '14',
+    city: '', state: '', responsiblePhone: '', monthlyPrice: '', internal: false,
+    mode: 'invite', adminName: '', adminEmail: '', adminPassword: '',
+  });
+  const [slugTouched, setSlugTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const [created, setCreated] = useState(null); // resposta do POST → tela de sucesso
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const onName = (v) => setF((s) => ({ ...s, displayName: v, tenantId: slugTouched ? s.tenantId : slugify(v) }));
+
+  const save = async () => {
+    if (!f.displayName.trim()) { setErr('Informe o nome da academia.'); return; }
+    if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(f.tenantId)) { setErr('Identificador inválido: 3–40 caracteres, minúsculas, números e hífen.'); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.adminEmail.trim())) { setErr('Informe um e-mail válido para o responsável.'); return; }
+    if (f.mode === 'password') {
+      if (!f.adminName.trim()) { setErr('Informe o nome do gestor.'); return; }
+      if (String(f.adminPassword).length < 6) { setErr('A senha temporária precisa de ao menos 6 caracteres.'); return; }
+    }
+    setSaving(true); setErr('');
+    const body = {
+      tenantId: f.tenantId, displayName: f.displayName.trim(),
+      adminEmail: f.adminEmail.trim(),
+      plan: f.plan,
+      trialDays: f.trialDays === '' ? 0 : Number(f.trialDays),
+      city: f.city.trim(), state: f.state.trim(),
+      responsiblePhone: f.responsiblePhone.trim(),
+      internal: f.internal,
+      ...(f.monthlyPrice !== '' ? { monthlyPrice: Number(f.monthlyPrice) } : {}),
+      ...(f.adminName.trim() ? { adminName: f.adminName.trim() } : {}),
+      ...(f.mode === 'password' ? { adminPassword: f.adminPassword } : {}),
+    };
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/provision-tenant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) { setErr(data.error || 'Erro ao criar a academia.'); setSaving(false); return; }
+      setCreated({
+        ...data,
+        link: data.inviteToken ? `${window.location.origin}/?invite=${encodeURIComponent(data.inviteToken)}&t=${encodeURIComponent(data.tenantId)}` : null,
+      });
+    } catch (e) { console.error('provision', e); setErr('Erro ao criar a academia.'); setSaving(false); }
+  };
+
+  const planLabelOf = (slug) => activePlans.find((p) => p.slug === slug)?.name || slug;
+  const modeBtn = (active) => ({
+    flex: 1, padding: '10px 12px', borderRadius: 10, cursor: 'pointer', textAlign: 'left',
+    border: `1px solid ${active ? 'var(--brand)' : 'var(--line-2)'}`,
+    background: active ? 'rgba(43,89,255,.12)' : 'var(--surface)',
+  });
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(7,11,24,.6)', backdropFilter: 'blur(3px)' }} onClick={created ? undefined : onClose} />
+      <div className="card" style={{ position: 'relative', width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto' }}>
+        <div className="card-h">
+          <h3>{created ? 'Academia criada 🎉' : 'Nova academia'}</h3>
+          <button className="icon-btn" onClick={created ? onDone : onClose}><Icon name="close" size={15} /></button>
+        </div>
+
+        {created ? (
+          <div className="card-pad" style={{ display: 'grid', gap: 14 }}>
+            <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', display: 'grid', gap: 4, fontSize: 13 }}>
+              <div><span className="muted">Academia:</span> <b>{f.displayName.trim()}</b> <span className="muted tnum">({created.tenantId})</span></div>
+              <div><span className="muted">Plano:</span> <b>{planLabelOf(created.plan)}</b> · {created.status === 'trial' ? `trial de ${f.trialDays || 0} dias` : 'ativa (sem trial)'}{f.internal ? ' · conta interna' : ''}</div>
+              <div><span className="muted">Responsável:</span> {f.adminEmail.trim()}</div>
+            </div>
+            {created.mode === 'invite' ? (
+              created.link ? (
+                <>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Link de ativação — envie ao dono da academia:</div>
+                  <ActivationLinkBox link={created.link} phone={f.responsiblePhone} tenantName={f.displayName.trim()} />
+                </>
+              ) : (
+                <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>
+                  A academia foi criada, mas o convite falhou. Abra a academia na lista e use “Gerar novo link”.
+                </div>
+              )
+            ) : (
+              <div style={{ background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, display: 'grid', gap: 4 }}>
+                <div className="muted">Acesso criado com senha manual — repasse ao gestor:</div>
+                <div className="tnum">{f.adminEmail.trim()} · senha: {f.adminPassword}</div>
+              </div>
+            )}
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button className="btn btn-primary btn-sm" onClick={onDone}>Concluir</button>
+            </div>
+          </div>
+        ) : (
+          <div className="card-pad" style={{ display: 'grid', gap: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nome da academia</span>
+                <input style={FLAG_INPUT} value={f.displayName} onChange={(e) => onName(e.target.value)} placeholder="Ex.: Studio Corpo & Movimento" autoFocus />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Identificador (slug)</span>
+                <input style={FLAG_INPUT} value={f.tenantId} onChange={(e) => { setSlugTouched(true); set('tenantId', slugify(e.target.value)); }} placeholder="ex.: corpo-e-movimento" />
+              </label>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Plano</span>
+                <select style={FLAG_INPUT} value={f.plan} onChange={(e) => set('plan', e.target.value)}>
+                  {activePlans.length === 0 && <option value="starter">Starter</option>}
+                  {activePlans.map((p) => (
+                    <option key={p.id || p.slug} value={p.slug}>
+                      {p.name} · {seatText(p)}{p.priceMonthly ? ` · ${brl(p.priceMonthly)}/mês` : ''}{p.isDefault ? ' (padrão)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Dias de teste (0 = ativa direto)</span>
+                <input style={FLAG_INPUT} type="number" min="0" max="365" value={f.trialDays} onChange={(e) => set('trialDays', e.target.value)} placeholder="14" />
+              </label>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Cidade</span>
+                <input style={FLAG_INPUT} value={f.city} onChange={(e) => set('city', e.target.value)} placeholder="Ex.: Porto Alegre" />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>UF</span>
+                <input style={FLAG_INPUT} value={f.state} maxLength={2} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="RS" />
+              </label>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>WhatsApp do responsável</span>
+                <input style={FLAG_INPUT} value={f.responsiblePhone} onChange={(e) => set('responsiblePhone', e.target.value)} placeholder="55 51 99999-9999" />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Preço negociado (R$/mês · opcional)</span>
+                <input style={FLAG_INPUT} type="number" min="0" value={f.monthlyPrice} onChange={(e) => set('monthlyPrice', e.target.value)} placeholder="vazio = preço do plano" />
+              </label>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div className={`sw${f.internal ? ' on' : ''}`} onClick={() => set('internal', !f.internal)} />
+              <div><div style={{ fontSize: 13, fontWeight: 600 }}>Conta interna (teste)</div><div className="muted" style={{ fontSize: 11 }}>fica fora do MRR e dos KPIs de negócio</div></div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'grid', gap: 12 }}>
+              <div className="muted" style={{ fontSize: 12, fontWeight: 600 }}>Acesso do gestor</div>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button type="button" style={modeBtn(f.mode === 'invite')} onClick={() => set('mode', 'invite')}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Convite por link</div>
+                  <div className="muted" style={{ fontSize: 11.5 }}>o dono cria a própria senha (recomendado)</div>
+                </button>
+                <button type="button" style={modeBtn(f.mode === 'password')} onClick={() => set('mode', 'password')}>
+                  <div style={{ fontSize: 13, fontWeight: 600 }}>Senha manual</div>
+                  <div className="muted" style={{ fontSize: 11.5 }}>você define e repassa a senha</div>
+                </button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nome do gestor{f.mode === 'invite' ? ' (opcional)' : ''}</span>
+                  <input style={FLAG_INPUT} value={f.adminName} onChange={(e) => set('adminName', e.target.value)} placeholder="Nome completo" />
+                </label>
+                <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>E-mail do gestor</span>
+                  <input style={FLAG_INPUT} type="email" value={f.adminEmail} onChange={(e) => set('adminEmail', e.target.value)} placeholder="dono@academia.com" />
+                </label>
+              </div>
+              {f.mode === 'password' && (
+                <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Senha temporária (mín. 6 caracteres)</span>
+                  <input style={FLAG_INPUT} value={f.adminPassword} onChange={(e) => set('adminPassword', e.target.value)} placeholder="repasse ao gestor por canal seguro" />
+                </label>
+              )}
+            </div>
+
+            {err && <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>{err}</div>}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
+              <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? 'Criando…' : 'Criar academia'}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ---------- Faturamento (dados reais) ----------
 const PAID_EV = new Set(['PAYMENT_CONFIRMED', 'PAYMENT_RECEIVED', 'PAYMENT_RECEIVED_IN_CASH']);
 function Billing({ overview, tenants }) {
@@ -706,6 +916,24 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [manageOpen, setManageOpen] = useState(false);
+  // Reativação: regera o link de convite do gestor (convite expirado/perdido).
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteLink, setInviteLink] = useState(null);
+  const resendInvite = async (tenant) => {
+    setInviteBusy(true); setErr('');
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/provision-tenant', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ resendInvite: true, tenantId: tenant.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) setErr(data.error || 'Erro ao gerar o link.');
+      else setInviteLink(`${window.location.origin}/?invite=${encodeURIComponent(data.inviteToken)}&t=${encodeURIComponent(data.tenantId)}`);
+    } catch (e) { console.error('resend invite', e); setErr('Erro ao gerar o link.'); }
+    finally { setInviteBusy(false); }
+  };
   useEffect(() => {
     if (!tenantId) return undefined;
     let alive = true;
@@ -771,6 +999,19 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
         </div>
       </div>
       {manageOpen && <ManagePanel tenant={t} plans={plans} asaasConfigured={asaasConfigured} onClose={() => setManageOpen(false)} onDone={() => { setManageOpen(false); reload?.(); }} />}
+
+      {t.activationPending && (
+        <div className="card card-pad" style={{ marginBottom: 16, display: 'grid', gap: 10, borderColor: 'rgba(255,176,32,.4)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 13.5 }}>Aguardando ativação do gestor</div>
+              <div className="muted" style={{ fontSize: 12 }}>Convite enviado para <b style={{ color: 'var(--text)' }}>{t.primaryAdminEmail || '—'}</b> (vale 7 dias). Expirou ou perdeu o link? Gere um novo.</div>
+            </div>
+            <button className="btn btn-ghost btn-sm" disabled={inviteBusy} onClick={() => resendInvite(t)}>{inviteBusy ? 'Gerando…' : 'Gerar novo link'}</button>
+          </div>
+          {inviteLink && <ActivationLinkBox link={inviteLink} phone={t.responsiblePhone} tenantName={t.displayName} />}
+        </div>
+      )}
 
       <div className="grid mini-grid" style={{ marginBottom: 16 }}>
         <div className="mini"><div className="mini-l">Usuários</div><div className="mini-v">{stats?.userCount ?? '—'}</div></div>
@@ -1087,7 +1328,7 @@ function SuperConsole({ appUser, onClose }) {
         </header>
         <main className="view">
           {route === 'overview' && <Overview overview={overview} tenants={tenants} loading={loading} go={go} />}
-          {route === 'tenants' && <Tenants tenants={tenants} go={go} />}
+          {route === 'tenants' && <Tenants tenants={tenants} plans={plans} go={go} onReload={loadData} />}
           {route === 'tenant' && <Detail tenantId={selectedTenant} tenants={tenants} overview={overview} audit={audit} plans={plans} asaasConfigured={asaasConfigured} go={go} reload={loadData} />}
           {route === 'plans' && <Plans plans={plans} onReload={loadData} />}
           {route === 'billing' && <Billing overview={overview} tenants={tenants} />}
