@@ -22,7 +22,7 @@ function SettingsCard({ title, hint, icon, action, children, padded = true, clas
   );
 }
 
-function SettingsTabItem({ icon, label, hint, badge, active, onClick }) {
+function SettingsTabItem({ icon, label, hint, badge, attention, active, onClick }) {
   return (
     <button
       type="button"
@@ -47,6 +47,10 @@ function SettingsTabItem({ icon, label, hint, badge, active, onClick }) {
             <span className={`text-[10.5px] font-bold num px-1.5 h-[18px] rounded-md min-w-[18px] grid place-items-center ${
               active ? 'bg-brand-600 text-white' : 'bg-slate-200 text-slate-700 dark:bg-white/[0.08] dark:text-slate-300'
             }`}>{badge}</span>
+          )}
+          {/* Ponto de atenção: algo nesta seção pede ação do gestor (tooltip explica) */}
+          {attention && (
+            <span title={attention} aria-label={attention} className="ml-auto w-2 h-2 rounded-full bg-amber-400 shrink-0" />
           )}
         </div>
         {hint && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-snug mt-0.5">{hint}</div>}
