@@ -62,6 +62,8 @@ async function tenantMetrics(doc, plansMap) {
     trialEndsAt: toMillis(data.trialEndsAt),
     createdAt,
     primaryAdminEmail: data.primaryAdminEmail || null,
+    activationPending: data.activationPending === true, // convite de ativação ainda não aceito
+    responsiblePhone: data.responsiblePhone || null,
     monthlyPrice,
     internalNotes: data.internalNotes || '',
     settings: data.settings || null,

@@ -123,6 +123,20 @@ export default async function handler(req, res) {
       { merge: true }
     );
 
+    // 1º gestor do tenant (cadastro por convite de ativação): vira o admin
+    // PRINCIPAL — preenche primaryAdminUid/Email (usados por "Acessar como",
+    // listagens e Asaas) e encerra a ativação pendente.
+    if (role === 'admin' && !tData.primaryAdminUid) {
+      try {
+        await adminDb.collection('tenants').doc(slug).update({
+          primaryAdminUid: userRecord.uid,
+          primaryAdminEmail: email,
+          activationPending: admin.firestore.FieldValue.delete(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      } catch (e) { console.error('invite-accept primaryAdmin', e?.message || e); }
+    }
+
     // Entrou como consultor EXTRA → ajusta a assinatura Asaas (best-effort).
     if (decision.isExtra) await syncSubscriptionValue(slug, { actorUid: invite.createdBy || null });
 

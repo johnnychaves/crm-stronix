@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
+import { loadPlans } from './_plans.js';
 import { logAudit } from './_audit.js';
 
 const USERS_PATH = 'stronix_users';
@@ -10,7 +12,8 @@ const CONFIG_GENERAL_ID = 'general';
 
 // slug do tenant: minúsculas, números e hífen; 3–40 chars; sem hífen nas pontas.
 const TENANT_ID_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
-const PLANS = ['starter', 'pro', 'enterprise'];
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const INVITE_TTL_DAYS = 7;
 
 // Catálogos padrão semeados em toda nova academia. São listas planas, sem
 // lógica especial por nome (diferente de 'Venda'/'Perda', que são sentinelas
@@ -102,62 +105,147 @@ export default async function handler(req, res) {
     }
   }
 
-  // POST → provisiona uma organização nova.
+  // POST → provisiona uma organização nova (ou regera o convite de ativação).
+  //
+  // Dois modos de criação do ADMIN da academia:
+  //   • CONVITE (padrão novo, sem adminPassword): cria o tenant SEM usuário e
+  //     grava um convite role=admin (mesmo mecanismo da equipe; o aceite em
+  //     /api/invite-accept cria a conta com a senha que o DONO escolher e o
+  //     promove a primaryAdmin). Devolve o token p/ o link de ativação.
+  //   • SENHA (legado, com adminPassword): cria o usuário Auth na hora —
+  //     mantido p/ cadastro presencial e retrocompat com o painel antigo.
+  //
+  // { resendInvite: true, tenantId } → regera o link de ativação de um tenant
+  // ainda sem admin (convite expirado/perdido). Convites pendentes anteriores
+  // são cancelados.
   if (req.method === 'POST') {
     try {
-      const { tenantId, displayName, adminEmail, adminPassword, adminName, plan, trialDays } = req.body || {};
+      const {
+        tenantId, displayName, adminEmail, adminPassword, adminName, plan, trialDays,
+        city, state, responsiblePhone, internal, monthlyPrice, resendInvite,
+      } = req.body || {};
 
-      if (!tenantId || !displayName || !adminEmail || !adminPassword || !adminName) {
-        return res.status(400).json({
-          error: 'Campos obrigatórios: tenantId, displayName, adminEmail, adminPassword, adminName.'
+      const slug = String(tenantId || '').trim().toLowerCase();
+
+      // ── Reenvio do link de ativação ─────────────────────────────────────
+      if (resendInvite === true) {
+        if (!slug) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
+        const snap = await tenantsCol().doc(slug).get();
+        if (!snap.exists) return res.status(404).json({ error: 'Organização não encontrada.' });
+        const tData = snap.data() || {};
+        const adminsAgg = await usersCollection(slug).where('role', '==', 'admin').count().get();
+        if ((adminsAgg.data().count || 0) > 0 || tData.primaryAdminUid) {
+          return res.status(409).json({ error: 'Esta organização já tem um gestor ativo — não há ativação pendente.' });
+        }
+        const email = String(adminEmail || tData.primaryAdminEmail || '').trim().toLowerCase();
+        if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'E-mail do responsável inválido.' });
+
+        // Cancela convites pendentes antigos (1 link válido por vez).
+        const invitesCol = tenantsCol().doc(slug).collection('invites');
+        const pend = await invitesCol.where('status', '==', 'pending').get();
+        if (!pend.empty) {
+          const batch = adminDb.batch();
+          pend.forEach((d) => batch.set(d.ref, { status: 'cancelled' }, { merge: true }));
+          await batch.commit();
+        }
+
+        const token = randomUUID();
+        await invitesCol.add({
+          email, role: 'admin', token, status: 'pending',
+          expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdBy: auth.uid,
         });
+        await tenantsCol().doc(slug).update({ primaryAdminEmail: email, activationPending: true, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+        await logAudit({ action: 'tenant.invite.resend', tenantId: slug, actorUid: auth.uid, details: { email } });
+        return res.status(200).json({ ok: true, tenantId: slug, mode: 'invite', inviteToken: token, inviteEmail: email, expiresInDays: INVITE_TTL_DAYS });
       }
 
-      const slug = String(tenantId).trim().toLowerCase();
+      // ── Provisionamento ─────────────────────────────────────────────────
+      const inviteMode = !adminPassword; // sem senha → ativação por convite
+      if (!tenantId || !displayName || !adminEmail || (!inviteMode && !adminName)) {
+        return res.status(400).json({
+          error: inviteMode
+            ? 'Campos obrigatórios: tenantId, displayName, adminEmail.'
+            : 'Campos obrigatórios: tenantId, displayName, adminEmail, adminPassword, adminName.'
+        });
+      }
       if (!TENANT_ID_RE.test(slug)) {
         return res.status(400).json({
           error: 'Identificador inválido. Use minúsculas, números e hífen (3–40 caracteres).'
         });
       }
-      if (String(adminPassword).length < 6) {
+      const normalizedEmail = String(adminEmail).trim().toLowerCase();
+      if (!EMAIL_RE.test(normalizedEmail)) {
+        return res.status(400).json({ error: 'E-mail do responsável inválido.' });
+      }
+      if (!inviteMode && String(adminPassword).length < 6) {
         return res.status(400).json({ error: 'Senha precisa ter ao menos 6 caracteres.' });
       }
 
-      const normalizedPlan = PLANS.includes(plan) ? plan : 'starter';
+      // Plano validado contra o CATÁLOGO DINÂMICO (plans/), com fallback aos 3
+      // chumbados quando a coleção está vazia. Plano informado e inexistente/
+      // inativo é ERRO (antes caía silenciosamente em starter); sem plano,
+      // usa o padrão do catálogo (isDefault) ou starter.
+      const plansMap = await loadPlans();
+      let normalizedPlan;
+      if (plan) {
+        const planDoc = plansMap.get(String(plan));
+        if (!planDoc || planDoc.isActive === false) {
+          return res.status(400).json({ error: `Plano "${plan}" não existe ou está inativo no catálogo.` });
+        }
+        normalizedPlan = planDoc.slug || String(plan);
+      } else {
+        const def = [...plansMap.values()].find((p) => p.isDefault === true && p.isActive !== false);
+        normalizedPlan = def?.slug || 'starter';
+      }
+
       const days = Number(trialDays);
+      if (trialDays !== undefined && trialDays !== '' && (!Number.isFinite(days) || days < 0 || days > 365)) {
+        return res.status(400).json({ error: 'Dias de teste deve ser um número entre 0 e 365.' });
+      }
       const useTrial = Number.isFinite(days) && days > 0;
       const status = useTrial ? 'trial' : 'active';
       const trialEndsAt = useTrial
         ? admin.firestore.Timestamp.fromMillis(Date.now() + days * 24 * 60 * 60 * 1000)
         : null;
 
+      // Preço negociado (opcional): vira o monthlyPrice do tenant (override do
+      // catálogo no MRR/assinatura — mesmo campo já usado pelo super-admin).
+      const negotiated = monthlyPrice === undefined || monthlyPrice === null || monthlyPrice === ''
+        ? null : Number(monthlyPrice);
+      if (negotiated !== null && (!Number.isFinite(negotiated) || negotiated < 0)) {
+        return res.status(400).json({ error: 'Preço negociado inválido.' });
+      }
+
       const existing = await tenantsCol().doc(slug).get();
       if (existing.exists) {
         return res.status(409).json({ error: `Já existe uma organização com o identificador "${slug}".` });
       }
 
-      const normalizedEmail = String(adminEmail).trim().toLowerCase();
-      const normalizedName = String(adminName).trim();
+      const normalizedName = String(adminName || '').trim();
 
-      // 1. cria o admin no Firebase Auth
-      let userRecord;
-      try {
-        userRecord = await adminAuth.createUser({
-          email: normalizedEmail,
-          password: adminPassword,
-          displayName: normalizedName
-        });
-      } catch (err) {
-        if (err?.code === 'auth/email-already-exists') {
-          return res.status(409).json({ error: 'Já existe uma conta com esse e-mail no Firebase Auth.' });
+      // 1. modo SENHA: cria o admin no Firebase Auth agora. Modo CONVITE pula
+      // (a conta nasce no aceite do link, com a senha escolhida pelo dono).
+      let userRecord = null;
+      if (!inviteMode) {
+        try {
+          userRecord = await adminAuth.createUser({
+            email: normalizedEmail,
+            password: adminPassword,
+            displayName: normalizedName
+          });
+        } catch (err) {
+          if (err?.code === 'auth/email-already-exists') {
+            return res.status(409).json({ error: 'Já existe uma conta com esse e-mail no Firebase Auth.' });
+          }
+          throw err;
         }
-        throw err;
+        // claim de tenant no admin
+        await adminAuth.setCustomUserClaims(userRecord.uid, { tenantId: slug });
       }
 
-      // 2. claim de tenant no admin
-      await adminAuth.setCustomUserClaims(userRecord.uid, { tenantId: slug });
-
-      // 3. registro do tenant (raiz) — com plano, status e trial.
+      // 2. registro do tenant (raiz) — com plano, status e trial.
       // .create() é ATÔMICO: falha se o slug já existir, fechando a corrida
       // (TOCTOU) entre o get() acima e este write quando dois provisionamentos
       // simultâneos usam o mesmo slug.
@@ -167,9 +255,17 @@ export default async function handler(req, res) {
           status,
           plan: normalizedPlan,
           trialEndsAt,
-          settings: { logoUrl: '', city: '', state: '' },
-          primaryAdminUid: userRecord.uid,
+          settings: {
+            logoUrl: '',
+            city: String(city || '').trim(),
+            state: String(state || '').trim().toUpperCase().slice(0, 2),
+          },
+          ...(String(responsiblePhone || '').trim() ? { responsiblePhone: String(responsiblePhone).trim() } : {}),
+          ...(internal === true ? { internal: true } : {}),
+          ...(negotiated !== null ? { monthlyPrice: negotiated } : {}),
+          primaryAdminUid: userRecord ? userRecord.uid : null,
           primaryAdminEmail: normalizedEmail,
+          ...(inviteMode ? { activationPending: true } : {}),
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
           createdBy: auth.uid
@@ -180,23 +276,25 @@ export default async function handler(req, res) {
         if (already) {
           // Corrida perdida: outro provisionamento criou o slug. Remove o
           // usuário Auth recém-criado para não deixar conta órfã.
-          try { await adminAuth.deleteUser(userRecord.uid); } catch { /* best-effort */ }
+          if (userRecord) { try { await adminAuth.deleteUser(userRecord.uid); } catch { /* best-effort */ } }
           return res.status(409).json({ error: `Já existe uma organização com o identificador "${slug}".` });
         }
         throw createErr;
       }
 
-      // 4. doc do admin dentro do tenant
-      await usersCollection(slug).doc(userRecord.uid).set({
-        name: normalizedName,
-        email: normalizedEmail,
-        authUid: userRecord.uid,
-        role: 'admin',
-        tenantId: slug,
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
+      // 3. modo SENHA: doc do admin dentro do tenant.
+      if (userRecord) {
+        await usersCollection(slug).doc(userRecord.uid).set({
+          name: normalizedName,
+          email: normalizedEmail,
+          authUid: userRecord.uid,
+          role: 'admin',
+          tenantId: slug,
+          createdAt: admin.firestore.FieldValue.serverTimestamp()
+        });
+      }
 
-      // 5. seed dos catálogos padrão (fontes, motivos de perda, modalidades, config).
+      // 4. seed dos catálogos padrão (fontes, motivos de perda, modalidades, config).
       // O funil "Comercial" + etapa "Negociação" são semeados no 1º login do admin
       // (effect idempotente no app).
       try {
@@ -207,12 +305,37 @@ export default async function handler(req, res) {
         console.error('provision-tenant seed', seedErr);
       }
 
+      // 5. modo CONVITE: grava o convite de ativação (role admin) e devolve o
+      // token p/ o front montar o link /?invite=<token>&t=<slug>.
+      let inviteToken = null;
+      if (inviteMode) {
+        try {
+          inviteToken = randomUUID();
+          await tenantsCol().doc(slug).collection('invites').add({
+            email: normalizedEmail, role: 'admin', token: inviteToken, status: 'pending',
+            expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: auth.uid,
+          });
+        } catch (invErr) {
+          // Tenant já existe e é recuperável: o super-admin regera o link com
+          // resendInvite. Não derruba o provisionamento inteiro.
+          console.error('provision-tenant invite', invErr);
+          inviteToken = null;
+        }
+      }
+
       await logAudit({
         action: 'tenant.provision', tenantId: slug, actorUid: auth.uid,
-        details: { displayName: String(displayName).trim(), plan: normalizedPlan, status },
+        details: { displayName: String(displayName).trim(), plan: normalizedPlan, status, mode: inviteMode ? 'invite' : 'password', internal: internal === true },
       });
 
-      return res.status(200).json({ ok: true, tenantId: slug, adminUid: userRecord.uid, plan: normalizedPlan, status });
+      return res.status(200).json({
+        ok: true, tenantId: slug, plan: normalizedPlan, status,
+        mode: inviteMode ? 'invite' : 'password',
+        ...(userRecord ? { adminUid: userRecord.uid } : {}),
+        ...(inviteMode ? { inviteToken, inviteEmail: normalizedEmail, expiresInDays: INVITE_TTL_DAYS } : {}),
+      });
     } catch (error) {
       console.error('provision-tenant POST', error);
       return res.status(500).json({ error: 'Erro interno ao provisionar organização.' });
