@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Activity, BarChart3, Bell, Calendar, Clock, Dumbbell, Filter, HelpCircle, Kanban, LayoutDashboard, Phone, Zap } from 'lucide-react';
+import { Activity, BarChart3, Bell, Calendar, CheckCircle, Clock, Dumbbell, Filter, HelpCircle, Kanban, LayoutDashboard, Phone, Zap } from 'lucide-react';
 import { getLeadAppointmentType, getLeadAppointmentDate, getLeadConversionDate, isLeadAttended, isLeadConverted, isAdminUser, isRegistrationNote } from '../lib/leads.js';
+import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
+import { buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeDailyVolume, volumeTargetFor } from '../lib/dailyGoal.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel, isAllFunnels } from '../lib/funnels.js';
 import { formatHourLabel, humanizeAge } from '../lib/format.js';
@@ -287,6 +289,26 @@ function DashTeamRow({ row, maxLeads }) {
       <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosVisita}</td>
       <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosAula}</td>
       <td className="py-3 px-3 num text-[13px] text-center font-semibold text-emerald-600 dark:text-emerald-400">{row.convertidos}</td>
+      {/* Execução de HOJE: Meta Diária (pendências) e meta por volume — mesma
+          régua da tela Meta/painel da Equipe. "—" = sem tarefas / régua off. */}
+      <td className="py-3 px-3 text-center">
+        {!row.today || row.today.goalTotal === 0 ? (
+          <span className="text-[12px] text-slate-400 dark:text-slate-500" title="Sem tarefas na meta de hoje">—</span>
+        ) : row.today.goalDone >= row.today.goalTotal ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><CheckCircle size={11} /> Batida</span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 num">{row.today.goalDone} de {row.today.goalTotal}</span>
+        )}
+      </td>
+      <td className="py-3 px-3 text-center">
+        {!row.today || row.today.volTarget === 0 ? (
+          <span className="text-[12px] text-slate-400 dark:text-slate-500" title="Meta por volume desligada para este usuário">—</span>
+        ) : (
+          <span className={`inline-flex items-center gap-1 text-[11px] font-semibold num ${row.today.volTotal >= row.today.volTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+            <Zap size={11} /> {row.today.volTotal} de {row.today.volTarget}
+          </span>
+        )}
+      </td>
       <td className="py-3 pr-5 pl-3 num text-[13px] text-right font-semibold text-slate-900 dark:text-white">
         {row.txConversaoGlobal == null ? (
           <span className="text-slate-400 dark:text-slate-500" title="Sem leads captados no período">—</span>
@@ -296,11 +318,11 @@ function DashTeamRow({ row, maxLeads }) {
   );
 }
 
-function DashTeamTable({ rows, appUser }) {
+function DashTeamTable({ rows, appUser, goals }) {
   const maxLeads = Math.max(...rows.map((r) => r.total), 1);
   return (
     <div className="overflow-x-auto thin-scroll">
-      <table className="w-full text-left min-w-[640px]">
+      <table className="w-full text-left min-w-[780px]">
         <thead>
           <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
             <th className="py-2.5 pl-5 pr-3 font-semibold">Consultor</th>
@@ -308,12 +330,14 @@ function DashTeamTable({ rows, appUser }) {
             <th className="py-2.5 px-3 font-semibold text-center">Visitas</th>
             <th className="py-2.5 px-3 font-semibold text-center">Aulas</th>
             <th className="py-2.5 px-3 font-semibold text-center">Matr.</th>
+            <th className="py-2.5 px-3 font-semibold text-center" title="Meta Diária de hoje (pendências)">Meta hoje</th>
+            <th className="py-2.5 px-3 font-semibold text-center" title="Meta por volume de hoje (ações de pipeline)">Volume</th>
             <th className="py-2.5 pr-5 pl-3 font-semibold text-right">Conv. global</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <DashTeamRow key={r.name + i} row={{ ...r, isYou: r.name === appUser?.name }} maxLeads={maxLeads} />
+            <DashTeamRow key={r.name + i} row={{ ...r, isYou: r.name === appUser?.name, today: goals?.[r.consultantId] || null }} maxLeads={maxLeads} />
           ))}
         </tbody>
       </table>
@@ -602,6 +626,7 @@ const teamMetrics = useMemo(() => {
 
     if (!metrics[cId]) {
       metrics[cId] = {
+        consultantId: cId, // p/ cruzar com a meta/volume de HOJE no card
         name: lead.consultantName || 'Desconhecido',
         total: 0,
         agendadosVisita: 0,
@@ -659,6 +684,23 @@ const teamMetrics = useMemo(() => {
     (a, b) => b.convertidos - a.convertidos || b.total - a.total
   );
 }, [capturedLeads, scheduledLeads, convertedLeads]);
+  // Meta de HOJE + volume por consultor — mesma régua da Meta Diária e do
+  // painel da Equipe (lib compartilhada). Usa a base CRUA (não a janela de
+  // período do dashboard): meta e volume são sempre do dia corrente.
+  const { dailyVolumeTarget: academyVolumeDefault = 0 } = useGeneralConfig();
+  const goalByConsultant = useMemo(() => {
+    if (!isAdminUser(appUser)) return {};
+    const byLead = buildInteractionsByLead(interactions);
+    const map = {};
+    (usersList || []).forEach((u) => {
+      const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(leads, byLead, u.id));
+      const volTarget = volumeTargetFor(u, academyVolumeDefault);
+      const vol = volTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : null;
+      map[u.id] = { goalDone: doneSlots, goalTotal: totalSlots, volTotal: vol?.total || 0, volTarget };
+    });
+    return map;
+  }, [appUser, usersList, leads, interactions, academyVolumeDefault]);
+
   const sourceMetrics = useMemo(() => {
     const metrics = {};
     capturedLeads.forEach(l => {
@@ -1214,12 +1256,12 @@ const teamMetrics = useMemo(() => {
           {isAdminUser(appUser) && (
             <DashCard
               title="Desempenho da equipe"
-              hint="Consultores ranqueados por matrículas"
+              hint="Resultados do período · meta e volume de hoje"
               icon={<BarChart3 size={14} />}
               padded={false}
             >
               {teamMetrics.length > 0 ? (
-                <DashTeamTable rows={teamMetrics} appUser={appUser} />
+                <DashTeamTable rows={teamMetrics} appUser={appUser} goals={goalByConsultant} />
               ) : (
                 <div className="px-5 py-8 text-center text-[12px] text-slate-400 italic">Sem dados no período</div>
               )}
