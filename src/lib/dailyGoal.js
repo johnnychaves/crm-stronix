@@ -7,7 +7,6 @@ import {
   hasGoalDoneToday,
   isLeadResolvedToday,
   hasActiveInteractionToday,
-  isRegistrationNote,
 } from './leads.js';
 
 // ============================================================================
@@ -57,30 +56,48 @@ export function dgDateKey(date) {
 export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 
 // ── Meta por VOLUME (piso de esforço diário) ───────────────────────────────
-// Conta as AÇÕES RASTREÁVEIS do consultor no dia (decisão do Johnny, 2026-06-11):
+// Régua de PIPELINE (critérios v2 do Johnny, 2026-06-11) — cada ação vale 1:
+//   • AGENDAMENTO criado: visita, aula experimental, mensagem ou ligação
+//     (interações com volumeKind, gravadas pelo wizard/remarcação — cobre o
+//     "reaquecimento": reagendar lead parado É um agendamento)
+//   • lead NOVO cadastrado (prospecção)
 //   • tarefa da Meta concluída (daily_goal_done — a moeda Meta-only)
-//   • lead NOVO cadastrado por ele (prospecção)
-//   • contato registrado manualmente na timeline (note), EXCETO a observação
-//     automática do cadastro e o snooze ("adiar p/ amanhã" não é esforço)
+//   • FECHAMENTO do dia: lead do consultor virou Venda ou Perda hoje
+// FORA da régua: anotações soltas (o registro relevante vive na observação do
+// agendamento), observação automática de cadastro, "adiar p/ amanhã" (snooze,
+// não recebe volumeKind) e mudanças de fase.
 // Volume NÃO trava o "dia batido" — quem bate pendências E volume ganha o
 // selo "dia perfeito ⚡". Gestor (role admin) fica fora da régua.
-
-const SNOOZE_NOTE_PREFIX = 'Contato adiado para amanhã';
+// Retorna { total, agendamentos, leadsNovos, tarefas, fechamentos }.
 
 export function computeDailyVolume(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
   const todayStart = new Date(refDate);
   todayStart.setHours(0, 0, 0, 0);
-  let count = 0;
+  const r = { agendamentos: 0, leadsNovos: 0, tarefas: 0, fechamentos: 0 };
   (leads || []).forEach((l) => {
-    if (l.consultantId === consultantId && l.createdAt instanceof Date && l.createdAt >= todayStart) count++;
+    if (l.consultantId !== consultantId) return;
+    if (l.createdAt instanceof Date && l.createdAt >= todayStart) r.leadsNovos++;
+    if ((l.convertedAt instanceof Date && l.convertedAt >= todayStart) ||
+        (l.lostAt instanceof Date && l.lostAt >= todayStart)) r.fechamentos++;
   });
   (interactions || []).forEach((i) => {
     if (i.consultantAuthUid !== consultantAuthUid) return;
     if (!(i.createdAt instanceof Date) || i.createdAt < todayStart) return;
-    if (i.type === 'daily_goal_done') { count++; return; }
-    if (i.type === 'note' && !isRegistrationNote(i.text) && !String(i.text || '').startsWith(SNOOZE_NOTE_PREFIX)) count++;
+    if (i.type === 'daily_goal_done') { r.tarefas++; return; }
+    if (i.volumeKind) r.agendamentos++;
   });
-  return count;
+  return { total: r.agendamentos + r.leadsNovos + r.tarefas + r.fechamentos, ...r };
+}
+
+// Composição legível do volume ("2 agendamentos · 1 lead novo · 3 tarefas").
+export function volumeBreakdownLabel(v) {
+  if (!v) return '';
+  const parts = [];
+  if (v.agendamentos) parts.push(`${v.agendamentos} agendamento${v.agendamentos === 1 ? '' : 's'}`);
+  if (v.leadsNovos) parts.push(`${v.leadsNovos} lead${v.leadsNovos === 1 ? '' : 's'} novo${v.leadsNovos === 1 ? '' : 's'}`);
+  if (v.tarefas) parts.push(`${v.tarefas} tarefa${v.tarefas === 1 ? '' : 's'} concluída${v.tarefas === 1 ? '' : 's'}`);
+  if (v.fechamentos) parts.push(`${v.fechamentos} fechamento${v.fechamentos === 1 ? '' : 's'}`);
+  return parts.join(' · ') || 'nenhuma ação ainda';
 }
 
 // Alvo de volume de um usuário: o próprio (doc do consultor) > default da

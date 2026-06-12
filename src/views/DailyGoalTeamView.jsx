@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { AlertCircle, AlertTriangle, CheckCircle, ChevronDown, Flame, Shield, Target, Trophy, Users, Zap } from 'lucide-react';
 
@@ -110,10 +110,11 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
         // Meta por VOLUME: alvo próprio do consultor > default da academia
         // (gestor fica fora). Dia perfeito ⚡ = pendências zeradas + volume.
         const volumeTarget = volumeTargetFor(u, academyVolumeDefault);
-        const volume = volumeTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : 0;
-        const perfect = totalSlots > 0 && progress === 100 && volumeTarget > 0 && volume >= volumeTarget;
+        const volume = volumeTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : null;
+        const volTotal = volume?.total || 0;
+        const perfect = totalSlots > 0 && progress === 100 && volumeTarget > 0 && volTotal >= volumeTarget;
         const ritmo = computeRitmo(historyByConsultant.get(u.id) || [], metaWeekdays);
-        return { user: u, processed, totalSlots, doneSlots, progress, pendingByCat, critical, volume, volumeTarget, perfect, ritmo };
+        return { user: u, processed, totalSlots, doneSlots, progress, pendingByCat, critical, volume, volTotal, volumeTarget, perfect, ritmo };
       })
       // Quem precisa de atenção primeiro: menor progresso no topo; depois mais
       // pendências; "sem tarefas hoje" vai para o fim.
@@ -133,7 +134,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
     const critical = rows.reduce((s, r) => s + r.critical, 0);
     const hit = withTasks.filter(r => r.progress === 100).length;
     const volumeTracked = rows.filter(r => r.volumeTarget > 0).length;
-    const volumeOk = rows.filter(r => r.volumeTarget > 0 && r.volume >= r.volumeTarget).length;
+    const volumeOk = rows.filter(r => r.volumeTarget > 0 && r.volTotal >= r.volumeTarget).length;
     return {
       totalSlots, doneSlots, overdue, critical, hit, volumeTracked, volumeOk,
       withTasks: withTasks.length,
@@ -247,10 +248,10 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
                 <div className="hidden sm:flex flex-col items-end gap-1 shrink-0">
                   {r.volumeTarget > 0 && (
                     <span
-                      className={`inline-flex items-center gap-1 text-[11.5px] num font-semibold ${r.volume >= r.volumeTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}
-                      title="Esforço do dia: tarefas concluídas + leads novos + contatos registrados"
+                      className={`inline-flex items-center gap-1 text-[11.5px] num font-semibold ${r.volTotal >= r.volumeTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}
+                      title={`Esforço do dia: ${volumeBreakdownLabel(r.volume)}`}
                     >
-                      <Zap size={11} /> {r.volume} de {r.volumeTarget} ações
+                      <Zap size={11} /> {r.volTotal} de {r.volumeTarget} ações
                     </span>
                   )}
                   <span className="num text-[12px] text-slate-500 dark:text-slate-400">{r.ritmo.monthHits} de {r.ritmo.monthTarget} no mês</span>

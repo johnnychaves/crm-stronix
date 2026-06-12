@@ -4,7 +4,7 @@ import confetti from 'canvas-confetti';
 import { collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, isAdminUser } from '../lib/leads.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -130,7 +130,7 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
                 className={`mt-1.5 inline-flex items-center gap-1 text-[11.5px] num font-semibold ${
                   volume.count >= volume.target ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
                 }`}
-                title="Esforço do dia: tarefas concluídas + leads novos + contatos registrados"
+                title={`Esforço do dia: ${volumeBreakdownLabel(volume.breakdown)}`}
               >
                 <Zap size={11} /> {volume.count} de {volume.target} ações
               </div>
@@ -789,11 +789,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // gestor fica fora da régua (target 0 = sem barra). Ações = tarefas
   // concluídas + leads novos + contatos registrados (ver lib/dailyGoal.js).
   const volumeTarget = volumeTargetFor(appUser, academyVolumeDefault);
-  const volumeCount = useMemo(() => {
-    if (!volumeTarget) return 0;
+  const volumeData = useMemo(() => {
+    if (!volumeTarget) return null;
     void todayKey; // vira com o dia, como o resto da Meta
     return computeDailyVolume(leads, interactions, appUser.id, appUser.authUid);
   }, [leads, interactions, appUser, volumeTarget, todayKey]);
+  const volumeCount = volumeData?.total || 0;
   // Dia perfeito ⚡ = pendências zeradas E volume batido (não trava o ritmo).
   const perfectDay = progress === 100 && total > 0 && volumeTarget > 0 && volumeCount >= volumeTarget;
 
@@ -1012,6 +1013,11 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       if (shouldCloseToday) {
         interactionPayload.dailyGoalCategory = categorySlug;
         interactionPayload.appointmentOutcome = 'rescheduled';
+      } else {
+        // Reagendou sem fechar tarefa de hoje (mesmo dia / pós no-show):
+        // conta no VOLUME como agendamento (o cross-day já pontua via
+        // daily_goal_done — sem dupla contagem do mesmo gesto).
+        interactionPayload.volumeKind = finalApptType;
       }
 
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), interactionPayload);
@@ -1172,7 +1178,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         totalSlots={totalSlots}
         doneSlots={doneSlots}
         progress={progress}
-        volume={{ count: volumeCount, target: volumeTarget, perfect: perfectDay }}
+        volume={{ count: volumeCount, target: volumeTarget, perfect: perfectDay, breakdown: volumeData }}
       />
 
 

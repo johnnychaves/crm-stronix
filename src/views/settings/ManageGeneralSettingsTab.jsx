@@ -309,7 +309,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
                 className="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition"
               ><Plus size={14} /></button>
             </div>
-            <span className="text-[13px] text-slate-600 dark:text-slate-300">ações por dia (tarefas concluídas + leads novos + contatos registrados)</span>
+            <span className="text-[13px] text-slate-600 dark:text-slate-300">ações por dia (agendamentos de visita/aula/mensagem/ligação + leads novos + tarefas concluídas + fechamentos)</span>
           </div>
           <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-3">
             Vale para os consultores nos dias da meta (gestor fica fora da régua). Alvo individual por consultor pode ser definido na aba Equipe e tem precedência. Quem zera as pendências E bate o volume ganha o selo <b>dia perfeito ⚡</b> — o volume não trava o "dia batido".
