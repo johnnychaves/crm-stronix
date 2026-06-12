@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor, volumeBreakdownLabel, listDailyVolumeActions } from '../lib/dailyGoal.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
-import { AlertCircle, AlertTriangle, CheckCircle, ChevronDown, Flame, Shield, Target, Trophy, Users } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle, ChevronDown, Flame, Shield, Target, Trophy, Users, Zap } from 'lucide-react';
 
 // ============================================================================
 // PAINEL DA EQUIPE — visão do GESTOR sobre a meta diária dos consultores.
@@ -60,13 +60,16 @@ function statusBadge(row) {
   if (row.totalSlots === 0) {
     return <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">Sem tarefas hoje</span>;
   }
+  if (row.perfect) {
+    return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-600 text-white"><Zap size={11} /> Dia perfeito</span>;
+  }
   if (row.progress === 100) {
     return <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><CheckCircle size={11} /> Meta batida</span>;
   }
   return <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Em andamento</span>;
 }
 
-function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, db, appUser, onOpenLead }) {
+function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, academyVolumeDefault = 0, db, appUser, onOpenLead }) {
   const [expandedId, setExpandedId] = useState(null);
   const [teamHistory, setTeamHistory] = useState([]);
 
@@ -104,8 +107,14 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           !l.categoryStatus?.[DAILY_GOAL_CATEGORIES.ATRASADO] &&
           overdueDaysOf(l) >= slaOverdueDays
         ).length;
+        // Meta por VOLUME: alvo próprio do consultor > default da academia
+        // (gestor fica fora). Dia perfeito ⚡ = pendências zeradas + volume.
+        const volumeTarget = volumeTargetFor(u, academyVolumeDefault);
+        const volume = volumeTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : null;
+        const volTotal = volume?.total || 0;
+        const perfect = totalSlots > 0 && progress === 100 && volumeTarget > 0 && volTotal >= volumeTarget;
         const ritmo = computeRitmo(historyByConsultant.get(u.id) || [], metaWeekdays);
-        return { user: u, processed, totalSlots, doneSlots, progress, pendingByCat, critical, ritmo };
+        return { user: u, processed, totalSlots, doneSlots, progress, pendingByCat, critical, volume, volTotal, volumeTarget, perfect, ritmo };
       })
       // Quem precisa de atenção primeiro: menor progresso no topo; depois mais
       // pendências; "sem tarefas hoje" vai para o fim.
@@ -115,7 +124,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
         if (a.progress !== b.progress) return a.progress - b.progress;
         return (b.totalSlots - b.doneSlots) - (a.totalSlots - a.doneSlots);
       });
-  }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays]);
+  }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays, academyVolumeDefault]);
 
   const team = useMemo(() => {
     const withTasks = rows.filter(r => r.totalSlots > 0);
@@ -124,8 +133,10 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
     const overdue = rows.reduce((s, r) => s + (r.pendingByCat[DAILY_GOAL_CATEGORIES.ATRASADO] || 0), 0);
     const critical = rows.reduce((s, r) => s + r.critical, 0);
     const hit = withTasks.filter(r => r.progress === 100).length;
+    const volumeTracked = rows.filter(r => r.volumeTarget > 0).length;
+    const volumeOk = rows.filter(r => r.volumeTarget > 0 && r.volTotal >= r.volumeTarget).length;
     return {
-      totalSlots, doneSlots, overdue, critical, hit,
+      totalSlots, doneSlots, overdue, critical, hit, volumeTracked, volumeOk,
       withTasks: withTasks.length,
       progress: totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 100,
     };
@@ -158,7 +169,11 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           <TeamStat icon={<Target size={16} />} tone="brand" value={`${team.doneSlots}/${team.totalSlots}`} label="tarefas do dia" />
           <TeamStat icon={<Trophy size={16} />} tone="emerald" value={`${team.hit} de ${team.withTasks}`} label="bateram a meta" />
           <TeamStat icon={<AlertCircle size={16} />} tone={team.overdue > 0 ? 'rose' : 'slate'} value={team.overdue} label="leads atrasados" />
-          <TeamStat icon={<Users size={16} />} tone="slate" value={rows.length} label="pessoas na equipe" />
+          {team.volumeTracked > 0 ? (
+            <TeamStat icon={<Zap size={16} />} tone={team.volumeOk === team.volumeTracked ? 'emerald' : 'slate'} value={`${team.volumeOk} de ${team.volumeTracked}`} label="no piso de prospecção" />
+          ) : (
+            <TeamStat icon={<Users size={16} />} tone="slate" value={rows.length} label="pessoas na equipe" />
+          )}
         </div>
       </div>
 
@@ -231,6 +246,14 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
                   )}
                 </div>
                 <div className="hidden sm:flex flex-col items-end gap-1 shrink-0">
+                  {r.volumeTarget > 0 && (
+                    <span
+                      className={`inline-flex items-center gap-1 text-[11.5px] num font-semibold ${r.volTotal >= r.volumeTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}
+                      title={`Prospecção do dia: ${volumeBreakdownLabel(r.volume)}`}
+                    >
+                      <Zap size={11} /> {r.volTotal} de {r.volumeTarget} ações
+                    </span>
+                  )}
                   <span className="num text-[12px] text-slate-500 dark:text-slate-400">{r.ritmo.monthHits} de {r.ritmo.monthTarget} no mês</span>
                   {r.ritmo.streak > 0 && (
                     <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-amber-600 dark:text-amber-400"><Flame size={12} /> {r.ritmo.streak} {r.ritmo.streak === 1 ? 'dia' : 'dias'} seguidos</span>
@@ -258,6 +281,36 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
 
               {expanded && (
                 <div className="border-t border-slate-100 dark:border-white/[0.05] px-5 py-4 bg-slate-50/50 dark:bg-white/[0.01]">
+                  {/* Extrato do VOLUME: como o consultor compôs o ⚡ do dia —
+                      hora, ação e lead (clicável). Auditável sem tooltip. */}
+                  {r.volumeTarget > 0 && (() => {
+                    const actions = listDailyVolumeActions(leads, interactions, u.id, u.authUid);
+                    return (
+                      <div className="mb-5">
+                        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2 inline-flex items-center gap-1.5">
+                          <Zap size={11} className="text-amber-500" /> Ações do dia — {r.volTotal} de {r.volumeTarget}
+                        </div>
+                        {actions.length === 0 ? (
+                          <p className="text-[12.5px] text-slate-400">Nenhuma ação de prospecção hoje (agendamento, lead novo, tarefa ou fechamento).</p>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            {actions.map((a, i) => (
+                              <button
+                                key={`${a.leadId}-${i}`}
+                                type="button"
+                                onClick={() => { const ld = (leads || []).find(l => l.id === a.leadId); if (ld) onOpenLead?.(ld); }}
+                                className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200/60 dark:border-white/[0.05] hover:border-slate-300 dark:hover:border-white/10 transition text-left"
+                              >
+                                <span className="num text-[11px] text-slate-400 w-10 shrink-0">{a.at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span className="text-[12px] font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">{a.label}</span>
+                                <span className="text-[12px] text-slate-400 truncate">— {a.leadName}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {r.totalSlots === 0 ? (
                     <p className="text-[12.5px] text-slate-400">Nenhuma tarefa na meta de hoje.</p>
                   ) : (

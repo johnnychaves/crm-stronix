@@ -4,7 +4,7 @@ import confetti from 'canvas-confetti';
 import { collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, isAdminUser } from '../lib/leads.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -84,7 +84,7 @@ function Dial({ progress }) {
   );
 }
 
-function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, progress }) {
+function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, progress, volume }) {
   const pendingCount = totalSlots - doneSlots;
   const segs = DG_CATEGORY_ORDER
     .map((c) => ({ c, n: counts[c] || 0 }))
@@ -107,7 +107,7 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
             ) : totalSlots === 0 ? (
               <span className="text-slate-500">Nenhuma tarefa por hoje. Aproveite o turno.</span>
             ) : (
-              <span className="text-emerald-600">Meta batida!</span>
+              <span className="text-emerald-600">{volume?.perfect ? 'Dia perfeito ⚡' : 'Meta batida!'}</span>
             )}
           </h2>
           <p className="mt-2 text-[13.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
@@ -125,6 +125,16 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
             <div className="text-[12px] text-slate-500 dark:text-slate-400 num mt-1">
               {doneSlots} de {totalSlots} tarefas
             </div>
+            {volume?.target > 0 && (
+              <div
+                className={`mt-1.5 inline-flex items-center gap-1 text-[11.5px] num font-semibold ${
+                  volume.count >= volume.target ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
+                }`}
+                title={`Prospecção do dia: ${volumeBreakdownLabel(volume.breakdown)}`}
+              >
+                <Zap size={11} /> {volume.count} de {volume.target} ações
+              </div>
+            )}
           </div>
           <Dial progress={progress} />
         </div>
@@ -708,7 +718,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
   // definida pelo admin nas Configurações Gerais. A sequência pula os dias
   // inativos (não quebram nem contam). Default seg–sex.
-  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget: academyVolumeDefault = 0 } = useGeneralConfig();
 
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
@@ -724,8 +734,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   }, [db, appUser]);
 
   // Grava (idempotente) a marca de "meta batida hoje". ID determinístico
-  // por (consultor, dia) → setDoc/merge não duplica.
-  const recordGoalHit = useCallback(async () => {
+  // por (consultor, dia) → setDoc/merge não duplica. volumeCount/volumeTarget
+  // ficam no mesmo doc — base do selo "dia perfeito" e do relatório futuro.
+  const recordGoalHit = useCallback(async (volCount = null, volTarget = null) => {
     if (!appUser?.authUid) return;
     const key = dgDateKey(new Date());
     try {
@@ -736,6 +747,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           consultantAuthUid: appUser.authUid,
           consultantName: appUser.name || null,
           date: key,
+          ...(volTarget > 0 ? { volumeCount: volCount, volumeTarget: volTarget } : {}),
           hitAt: serverTimestamp()
         },
         { merge: true }
@@ -772,6 +784,20 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const total = totalSlots;
   const progress = totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 100;
 
+  // ── Meta por VOLUME (piso de esforço) ──────────────────────────────────
+  // Alvo: o do próprio consultor (doc do usuário) > default da academia;
+  // gestor fica fora da régua (target 0 = sem barra). Ações = tarefas
+  // concluídas + leads novos + contatos registrados (ver lib/dailyGoal.js).
+  const volumeTarget = volumeTargetFor(appUser, academyVolumeDefault);
+  const volumeData = useMemo(() => {
+    if (!volumeTarget) return null;
+    void todayKey; // vira com o dia, como o resto da Meta
+    return computeDailyVolume(leads, interactions, appUser.id, appUser.authUid);
+  }, [leads, interactions, appUser, volumeTarget, todayKey]);
+  const volumeCount = volumeData?.total || 0;
+  // Dia perfeito ⚡ = pendências zeradas E volume batido (não trava o ritmo).
+  const perfectDay = progress === 100 && total > 0 && volumeTarget > 0 && volumeCount >= volumeTarget;
+
   // Para a coluna "Feitos Hoje" — mostra leads que têm AO MENOS uma
   // categoria concluída. Lead pendente em qualquer categoria continua
   // aparecendo na coluna "A Fazer".
@@ -789,11 +815,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       // A gravação do "dia batido" roda SEMPRE que a meta está zerada com
       // tarefa (idempotente) — inclusive no mount, cobrindo quem fechou a
       // última tarefa fora da Meta (ex.: Venda no Kanban) e só abriu depois.
-      // Dia de folga (total = 0) não conta no ritmo.
-      recordGoalHit();
+      // Dia de folga (total = 0) não conta no ritmo. volumeCount nas deps:
+      // o doc do dia atualiza se o volume crescer após zerar as pendências.
+      recordGoalHit(volumeCount, volumeTarget);
     }
     prevProgress.current = progress;
-  }, [progress, total, recordGoalHit]);
+  }, [progress, total, volumeCount, volumeTarget, recordGoalHit]);
 
   const handleSnooze = async (lead, e) => {
     e.stopPropagation();
@@ -986,6 +1013,11 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       if (shouldCloseToday) {
         interactionPayload.dailyGoalCategory = categorySlug;
         interactionPayload.appointmentOutcome = 'rescheduled';
+      } else {
+        // Reagendou sem fechar tarefa de hoje (mesmo dia / pós no-show):
+        // conta no VOLUME como agendamento (o cross-day já pontua via
+        // daily_goal_done — sem dupla contagem do mesmo gesto).
+        interactionPayload.volumeKind = finalApptType;
       }
 
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), interactionPayload);
@@ -1132,6 +1164,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           usersList={usersList}
           metaWeekdays={metaWeekdays}
           slaOverdueDays={slaOverdueDays}
+          academyVolumeDefault={academyVolumeDefault}
           db={db}
           appUser={appUser}
           onOpenLead={setSelectedLead}
@@ -1145,6 +1178,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         totalSlots={totalSlots}
         doneSlots={doneSlots}
         progress={progress}
+        volume={{ count: volumeCount, target: volumeTarget, perfect: perfectDay, breakdown: volumeData }}
       />
 
 
