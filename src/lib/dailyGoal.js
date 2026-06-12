@@ -89,6 +89,40 @@ export function computeDailyVolume(leads, interactions, consultantId, consultant
   return { total: r.agendamentos + r.leadsNovos + r.tarefas + r.fechamentos, ...r };
 }
 
+// Extrato das ações de volume do dia — lista cronológica (mais recente
+// primeiro) para o gestor auditar COMO o consultor compôs o número:
+// [{ at: Date, label, leadId, leadName }]. Mesmos critérios do contador.
+const VOLUME_KIND_LABEL = {
+  visita: 'Visita agendada',
+  aula_experimental: 'Aula experimental agendada',
+  mensagem: 'Mensagem agendada',
+  ligacao: 'Ligação agendada',
+};
+
+export function listDailyVolumeActions(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
+  const todayStart = new Date(refDate);
+  todayStart.setHours(0, 0, 0, 0);
+  const nameOf = new Map((leads || []).map((l) => [l.id, l.name || '—']));
+  const out = [];
+  (leads || []).forEach((l) => {
+    if (l.consultantId !== consultantId) return;
+    if (l.createdAt instanceof Date && l.createdAt >= todayStart) out.push({ at: l.createdAt, label: 'Lead cadastrado', leadId: l.id, leadName: l.name || '—' });
+    if (l.convertedAt instanceof Date && l.convertedAt >= todayStart) out.push({ at: l.convertedAt, label: 'Venda fechada', leadId: l.id, leadName: l.name || '—' });
+    if (l.lostAt instanceof Date && l.lostAt >= todayStart) out.push({ at: l.lostAt, label: 'Perda registrada', leadId: l.id, leadName: l.name || '—' });
+  });
+  (interactions || []).forEach((i) => {
+    if (i.consultantAuthUid !== consultantAuthUid) return;
+    if (!(i.createdAt instanceof Date) || i.createdAt < todayStart) return;
+    if (i.type === 'daily_goal_done') {
+      const cat = DAILY_GOAL_CATEGORY_LABEL[i.dailyGoalCategory];
+      out.push({ at: i.createdAt, label: `Tarefa concluída${cat ? ` (${cat})` : ''}`, leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
+    } else if (i.volumeKind) {
+      out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
+    }
+  });
+  return out.sort((a, b) => b.at - a.at);
+}
+
 // Composição legível do volume ("2 agendamentos · 1 lead novo · 3 tarefas").
 export function volumeBreakdownLabel(v) {
   if (!v) return '';

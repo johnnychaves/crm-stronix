@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor, volumeBreakdownLabel, listDailyVolumeActions } from '../lib/dailyGoal.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { AlertCircle, AlertTriangle, CheckCircle, ChevronDown, Flame, Shield, Target, Trophy, Users, Zap } from 'lucide-react';
 
@@ -281,6 +281,36 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
 
               {expanded && (
                 <div className="border-t border-slate-100 dark:border-white/[0.05] px-5 py-4 bg-slate-50/50 dark:bg-white/[0.01]">
+                  {/* Extrato do VOLUME: como o consultor compôs o ⚡ do dia —
+                      hora, ação e lead (clicável). Auditável sem tooltip. */}
+                  {r.volumeTarget > 0 && (() => {
+                    const actions = listDailyVolumeActions(leads, interactions, u.id, u.authUid);
+                    return (
+                      <div className="mb-5">
+                        <div className="text-[11px] font-bold uppercase tracking-wide text-slate-400 mb-2 inline-flex items-center gap-1.5">
+                          <Zap size={11} className="text-amber-500" /> Ações do dia — {r.volTotal} de {r.volumeTarget}
+                        </div>
+                        {actions.length === 0 ? (
+                          <p className="text-[12.5px] text-slate-400">Nenhuma ação de volume hoje (agendamento, lead novo, tarefa ou fechamento).</p>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            {actions.map((a, i) => (
+                              <button
+                                key={`${a.leadId}-${i}`}
+                                type="button"
+                                onClick={() => { const ld = (leads || []).find(l => l.id === a.leadId); if (ld) onOpenLead?.(ld); }}
+                                className="flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200/60 dark:border-white/[0.05] hover:border-slate-300 dark:hover:border-white/10 transition text-left"
+                              >
+                                <span className="num text-[11px] text-slate-400 w-10 shrink-0">{a.at.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span className="text-[12px] font-medium text-slate-700 dark:text-slate-200 whitespace-nowrap">{a.label}</span>
+                                <span className="text-[12px] text-slate-400 truncate">— {a.leadName}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {r.totalSlots === 0 ? (
                     <p className="text-[12.5px] text-slate-400">Nenhuma tarefa na meta de hoje.</p>
                   ) : (
