@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertCircle, BookOpen, Building2, Check, Dumbbell, Minus, Pencil, Plus, Target, Trash2, X, Zap } from 'lucide-react';
-import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
-import { appId, CONFIG_PATH, CONFIG_GENERAL_ID, LEADS_PATH, MODALITIES_PATH, UNITS_PATH } from '../../lib/firebase.js';
+import { collection, doc, addDoc, setDoc, deleteDoc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
+import { appId, CONFIG_PATH, CONFIG_GENERAL_ID, LEADS_PATH, MODALITIES_PATH, UNITS_PATH, USERS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
 import { normalizeTrialClassOptions } from '../../lib/leadStatus.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
@@ -12,7 +12,7 @@ import { StyledInput } from '../../components/ui/Field.jsx';
 import { ColorDot, SETTINGS_COLOR_OPTIONS } from '../../components/ui/ColorPicker.jsx';
 import { DG_WEEKDAY_NAMES } from '../DailyGoalView.jsx';
 
-function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, leads, metaWeekdays }) {
+function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, leads, metaWeekdays, usersList }) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [color, setColor] = useState('blue');
@@ -169,8 +169,8 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
   // Lido do contexto (mesmo doc geral); grava direto no clique, como os dias.
   const { slaOverdueDays, dailyVolumeTarget } = useGeneralConfig();
 
-  // Meta por VOLUME: piso default de ações/dia (0 = desligado). Alvo individual
-  // por consultor (na aba Equipe) tem precedência sobre este default.
+  // Meta de PROSPECÇÃO: piso default de ações/dia (0 = desligado). Alvo
+  // individual por consultor (lista abaixo / aba Equipe) tem precedência.
   const saveVolume = async (n) => {
     if (!Number.isFinite(n) || n < 0 || n > 200) return;
     try {
@@ -181,7 +181,26 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
       );
     } catch (err) {
       console.error(err);
-      toast.error('Não foi possível salvar a meta por volume.');
+      toast.error('Não foi possível salvar a meta de prospecção.');
+    }
+  };
+
+  // Alvo INDIVIDUAL de prospecção (doc do consultor): vazio = remove o campo
+  // e vale o default da academia. Mesmo campo editado na aba Equipe.
+  const saveUserTarget = async (u, raw) => {
+    const cur = u.dailyVolumeTarget ?? null;
+    const next = raw === '' ? null : Math.min(500, Math.max(1, Math.floor(Number(raw))));
+    if (raw !== '' && !Number.isFinite(next)) return;
+    if (next === cur) return;
+    try {
+      await updateDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, u.id),
+        { dailyVolumeTarget: next === null ? deleteField() : next }
+      );
+      toast.success(`Prospecção de ${u.name}: ${next === null ? 'padrão da academia' : `${next} ações/dia`}.`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar o alvo individual.');
     }
   };
   const saveSla = async (n) => {
@@ -288,7 +307,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
       </SettingsCard>
 
       <SettingsCard
-        title="Meta por volume"
+        title="Meta de prospecção"
         hint="Piso de ações por dia para cada consultor (0 = desligado)"
         icon={<Zap size={16} />}
       >
@@ -312,8 +331,33 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
             <span className="text-[13px] text-slate-600 dark:text-slate-300">ações por dia (agendamentos de visita/aula/mensagem/ligação + leads novos + tarefas concluídas + fechamentos)</span>
           </div>
           <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-3">
-            Vale para os consultores nos dias da meta (gestor fica fora da régua). Alvo individual por consultor pode ser definido na aba Equipe e tem precedência. Quem zera as pendências E bate o volume ganha o selo <b>dia perfeito ⚡</b> — o volume não trava o "dia batido".
+            Vale para os consultores nos dias da meta (gestor fica fora da régua). Quem zera as pendências E bate a prospecção ganha o selo <b>dia perfeito ⚡</b> — a prospecção não trava o "dia batido".
           </p>
+
+          {(usersList || []).filter(u => u.role !== 'admin').length > 0 && (
+            <div className="mt-4 pt-4 border-t border-slate-200/70 dark:border-white/[0.06]">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">
+                Alvos individuais — vazio = padrão da academia ({dailyVolumeTarget > 0 ? `${dailyVolumeTarget}/dia` : 'desligado'})
+              </div>
+              <div className="space-y-2">
+                {(usersList || []).filter(u => u.role !== 'admin').map(u => (
+                  <div key={u.id} className="flex items-center gap-3">
+                    <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 flex-1 truncate">{u.name}</span>
+                    <input
+                      type="number" min="1" max="500"
+                      defaultValue={u.dailyVolumeTarget ?? ''}
+                      placeholder={dailyVolumeTarget > 0 ? String(dailyVolumeTarget) : 'off'}
+                      onBlur={(e) => saveUserTarget(u, e.target.value.trim())}
+                      onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                      className="w-24 h-9 px-3 rounded-lg text-[12.5px] num text-center bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition"
+                    />
+                    <span className="text-[11px] text-slate-400 w-16">ações/dia</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2.5">Salva ao sair do campo (Enter confirma). O mesmo alvo também pode ser editado na aba Equipe.</p>
+            </div>
+          )}
         </div>
       </SettingsCard>
 

@@ -516,7 +516,7 @@ function ManageUsersTab({ db, appUser }) {
           {editingUser && editingUser.role !== 'admin' && (
             <div className="space-y-2 pt-2">
               <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
-                Meta por volume (ações/dia) — vazio = padrão da academia
+                Meta de prospecção (ações/dia) — vazio = padrão da academia
               </label>
               <input
                 type="number"

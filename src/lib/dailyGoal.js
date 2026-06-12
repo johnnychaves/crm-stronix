@@ -70,23 +70,41 @@ export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 // selo "dia perfeito ⚡". Gestor (role admin) fica fora da régua.
 // Retorna { total, agendamentos, leadsNovos, tarefas, fechamentos }.
 
-export function computeDailyVolume(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
-  const todayStart = new Date(refDate);
-  todayStart.setHours(0, 0, 0, 0);
+// Contagem num INTERVALO [from, to) — base do "hoje" e do acumulado do mês.
+export function computeVolumeInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null) {
+  const inRange = (d) => d instanceof Date && d >= from && (!to || d < to);
   const r = { agendamentos: 0, leadsNovos: 0, tarefas: 0, fechamentos: 0 };
   (leads || []).forEach((l) => {
     if (l.consultantId !== consultantId) return;
-    if (l.createdAt instanceof Date && l.createdAt >= todayStart) r.leadsNovos++;
-    if ((l.convertedAt instanceof Date && l.convertedAt >= todayStart) ||
-        (l.lostAt instanceof Date && l.lostAt >= todayStart)) r.fechamentos++;
+    if (inRange(l.createdAt)) r.leadsNovos++;
+    if (inRange(l.convertedAt) || inRange(l.lostAt)) r.fechamentos++;
   });
   (interactions || []).forEach((i) => {
     if (i.consultantAuthUid !== consultantAuthUid) return;
-    if (!(i.createdAt instanceof Date) || i.createdAt < todayStart) return;
+    if (!inRange(i.createdAt)) return;
     if (i.type === 'daily_goal_done') { r.tarefas++; return; }
     if (i.volumeKind) r.agendamentos++;
   });
   return { total: r.agendamentos + r.leadsNovos + r.tarefas + r.fechamentos, ...r };
+}
+
+export function computeDailyVolume(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
+  const todayStart = new Date(refDate);
+  todayStart.setHours(0, 0, 0, 0);
+  return computeVolumeInRange(leads, interactions, consultantId, consultantAuthUid, todayStart);
+}
+
+// Dias de META decorridos no mês (1..hoje, respeitando metaWeekdays) — régua
+// p/ alvo MENSAL de prospecção (alvo/dia × dias) e p/ "X de Y dias batidos".
+export function countMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
+  const today = new Date(refDate);
+  today.setHours(0, 0, 0, 0);
+  let n = 0;
+  for (let day = 1; day <= today.getDate(); day++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), day);
+    if ((metaWeekdays || []).includes(d.getDay())) n++;
+  }
+  return n;
 }
 
 // Extrato das ações de volume do dia — lista cronológica (mais recente

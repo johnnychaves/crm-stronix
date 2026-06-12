@@ -170,7 +170,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           <TeamStat icon={<Trophy size={16} />} tone="emerald" value={`${team.hit} de ${team.withTasks}`} label="bateram a meta" />
           <TeamStat icon={<AlertCircle size={16} />} tone={team.overdue > 0 ? 'rose' : 'slate'} value={team.overdue} label="leads atrasados" />
           {team.volumeTracked > 0 ? (
-            <TeamStat icon={<Zap size={16} />} tone={team.volumeOk === team.volumeTracked ? 'emerald' : 'slate'} value={`${team.volumeOk} de ${team.volumeTracked}`} label="no piso de volume" />
+            <TeamStat icon={<Zap size={16} />} tone={team.volumeOk === team.volumeTracked ? 'emerald' : 'slate'} value={`${team.volumeOk} de ${team.volumeTracked}`} label="no piso de prospecção" />
           ) : (
             <TeamStat icon={<Users size={16} />} tone="slate" value={rows.length} label="pessoas na equipe" />
           )}
@@ -249,7 +249,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
                   {r.volumeTarget > 0 && (
                     <span
                       className={`inline-flex items-center gap-1 text-[11.5px] num font-semibold ${r.volTotal >= r.volumeTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}
-                      title={`Esforço do dia: ${volumeBreakdownLabel(r.volume)}`}
+                      title={`Prospecção do dia: ${volumeBreakdownLabel(r.volume)}`}
                     >
                       <Zap size={11} /> {r.volTotal} de {r.volumeTarget} ações
                     </span>
@@ -291,7 +291,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
                           <Zap size={11} className="text-amber-500" /> Ações do dia — {r.volTotal} de {r.volumeTarget}
                         </div>
                         {actions.length === 0 ? (
-                          <p className="text-[12.5px] text-slate-400">Nenhuma ação de volume hoje (agendamento, lead novo, tarefa ou fechamento).</p>
+                          <p className="text-[12.5px] text-slate-400">Nenhuma ação de prospecção hoje (agendamento, lead novo, tarefa ou fechamento).</p>
                         ) : (
                           <div className="flex flex-col gap-1">
                             {actions.map((a, i) => (

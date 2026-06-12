@@ -57,7 +57,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
     {
       label: 'Operação',
       items: [
-        { id: 'general', label: 'Regras gerais', hint: 'Meta, SLA, aulas e modalidades', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount, keywords: 'sla atraso critico meta diaria dias semana aulas experimentais quantidade modalidades unidades cidade' },
+        { id: 'general', label: 'Regras gerais', hint: 'Meta, SLA, aulas e modalidades', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount, keywords: 'sla atraso critico meta diaria dias semana aulas experimentais quantidade modalidades unidades cidade prospeccao volume acoes piso' },
         // "Plano & faturas": por ora só quando o DONO entra via "Acessar como"
         // (impersonando). Para liberar geral, troque a condição por `true`.
         ...(appUser?.impersonating ? [{ id: 'billing', label: 'Plano & faturas', hint: 'Assinatura, faturas e renovação', icon: <CreditCard size={15} />, badge: null, keywords: 'plano fatura pagamento assinatura renovacao preco boleto pix cartao' }] : []),
@@ -188,7 +188,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
           </div>
 
           {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
-          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} />}
+          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} usersList={usersList} />}
           {activeTab === 'billing' && <PlanInvoicesTab />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />

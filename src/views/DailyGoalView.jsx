@@ -130,7 +130,7 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
                 className={`mt-1.5 inline-flex items-center gap-1 text-[11.5px] num font-semibold ${
                   volume.count >= volume.target ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
                 }`}
-                title={`Esforço do dia: ${volumeBreakdownLabel(volume.breakdown)}`}
+                title={`Prospecção do dia: ${volumeBreakdownLabel(volume.breakdown)}`}
               >
                 <Zap size={11} /> {volume.count} de {volume.target} ações
               </div>
