@@ -167,7 +167,23 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
   // SLA de atrasados (config da academia): a partir de quantos dias de atraso
   // o lead vira "crítico" (alerta no painel da Equipe + destaque na meta).
   // Lido do contexto (mesmo doc geral); grava direto no clique, como os dias.
-  const { slaOverdueDays } = useGeneralConfig();
+  const { slaOverdueDays, dailyVolumeTarget } = useGeneralConfig();
+
+  // Meta por VOLUME: piso default de ações/dia (0 = desligado). Alvo individual
+  // por consultor (na aba Equipe) tem precedência sobre este default.
+  const saveVolume = async (n) => {
+    if (!Number.isFinite(n) || n < 0 || n > 200) return;
+    try {
+      await setDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+        { dailyVolumeTarget: n },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar a meta por volume.');
+    }
+  };
   const saveSla = async (n) => {
     if (!Number.isFinite(n) || n < 1 || n > 30) return;
     try {
@@ -267,6 +283,36 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
           </div>
           <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-3">
             Leads atrasados há {slaOverdueDays}+ {slaOverdueDays === 1 ? 'dia' : 'dias'} ganham alerta no painel da Equipe (gestor) e destaque vermelho na Meta Diária do consultor.
+          </p>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Meta por volume"
+        hint="Piso de ações por dia para cada consultor (0 = desligado)"
+        icon={<Zap size={16} />}
+      >
+        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => saveVolume(Math.max(0, dailyVolumeTarget - 5))}
+                disabled={dailyVolumeTarget <= 0}
+                className="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition"
+              ><Minus size={14} /></button>
+              <span className="num w-14 text-center text-[20px] font-bold text-slate-900 dark:text-white">{dailyVolumeTarget === 0 ? 'off' : dailyVolumeTarget}</span>
+              <button
+                type="button"
+                onClick={() => saveVolume(Math.min(200, dailyVolumeTarget + 5))}
+                disabled={dailyVolumeTarget >= 200}
+                className="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition"
+              ><Plus size={14} /></button>
+            </div>
+            <span className="text-[13px] text-slate-600 dark:text-slate-300">ações por dia (tarefas concluídas + leads novos + contatos registrados)</span>
+          </div>
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-3">
+            Vale para os consultores nos dias da meta (gestor fica fora da régua). Alvo individual por consultor pode ser definido na aba Equipe e tem precedência. Quem zera as pendências E bate o volume ganha o selo <b>dia perfeito ⚡</b> — o volume não trava o "dia batido".
           </p>
         </div>
       </SettingsCard>

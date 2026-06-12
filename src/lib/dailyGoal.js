@@ -7,6 +7,7 @@ import {
   hasGoalDoneToday,
   isLeadResolvedToday,
   hasActiveInteractionToday,
+  isRegistrationNote,
 } from './leads.js';
 
 // ============================================================================
@@ -54,6 +55,43 @@ export function dgDateKey(date) {
 // da equipe + destaque na meta do consultor). Política da academia, editável
 // em Configurações Gerais (campo slaOverdueDays do config geral).
 export const DEFAULT_SLA_OVERDUE_DAYS = 3;
+
+// ── Meta por VOLUME (piso de esforço diário) ───────────────────────────────
+// Conta as AÇÕES RASTREÁVEIS do consultor no dia (decisão do Johnny, 2026-06-11):
+//   • tarefa da Meta concluída (daily_goal_done — a moeda Meta-only)
+//   • lead NOVO cadastrado por ele (prospecção)
+//   • contato registrado manualmente na timeline (note), EXCETO a observação
+//     automática do cadastro e o snooze ("adiar p/ amanhã" não é esforço)
+// Volume NÃO trava o "dia batido" — quem bate pendências E volume ganha o
+// selo "dia perfeito ⚡". Gestor (role admin) fica fora da régua.
+
+const SNOOZE_NOTE_PREFIX = 'Contato adiado para amanhã';
+
+export function computeDailyVolume(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
+  const todayStart = new Date(refDate);
+  todayStart.setHours(0, 0, 0, 0);
+  let count = 0;
+  (leads || []).forEach((l) => {
+    if (l.consultantId === consultantId && l.createdAt instanceof Date && l.createdAt >= todayStart) count++;
+  });
+  (interactions || []).forEach((i) => {
+    if (i.consultantAuthUid !== consultantAuthUid) return;
+    if (!(i.createdAt instanceof Date) || i.createdAt < todayStart) return;
+    if (i.type === 'daily_goal_done') { count++; return; }
+    if (i.type === 'note' && !isRegistrationNote(i.text) && !String(i.text || '').startsWith(SNOOZE_NOTE_PREFIX)) count++;
+  });
+  return count;
+}
+
+// Alvo de volume de um usuário: o próprio (doc do consultor) > default da
+// academia. 0 = sem régua. Gestor sempre 0 (fora da régua, decisão de produto).
+export function volumeTargetFor(user, academyDefault) {
+  if (!user || user.role === 'admin') return 0;
+  const own = Math.floor(Number(user.dailyVolumeTarget));
+  if (Number.isFinite(own) && own > 0) return Math.min(own, 500);
+  const def = Math.floor(Number(academyDefault));
+  return Number.isFinite(def) && def > 0 ? Math.min(def, 500) : 0;
+}
 
 // Dias de atraso de um lead (follow-up vencido antes de hoje). 0 = em dia.
 // Mesma régua do card da Meta: dia parcial não conta, mínimo 1.

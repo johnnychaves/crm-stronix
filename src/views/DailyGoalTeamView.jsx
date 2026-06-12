@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor } from '../lib/dailyGoal.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
-import { AlertCircle, AlertTriangle, CheckCircle, ChevronDown, Flame, Shield, Target, Trophy, Users } from 'lucide-react';
+import { AlertCircle, AlertTriangle, CheckCircle, ChevronDown, Flame, Shield, Target, Trophy, Users, Zap } from 'lucide-react';
 
 // ============================================================================
 // PAINEL DA EQUIPE — visão do GESTOR sobre a meta diária dos consultores.
@@ -60,13 +60,16 @@ function statusBadge(row) {
   if (row.totalSlots === 0) {
     return <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">Sem tarefas hoje</span>;
   }
+  if (row.perfect) {
+    return <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-600 text-white"><Zap size={11} /> Dia perfeito</span>;
+  }
   if (row.progress === 100) {
     return <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><CheckCircle size={11} /> Meta batida</span>;
   }
   return <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Em andamento</span>;
 }
 
-function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, db, appUser, onOpenLead }) {
+function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, academyVolumeDefault = 0, db, appUser, onOpenLead }) {
   const [expandedId, setExpandedId] = useState(null);
   const [teamHistory, setTeamHistory] = useState([]);
 
@@ -104,8 +107,13 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           !l.categoryStatus?.[DAILY_GOAL_CATEGORIES.ATRASADO] &&
           overdueDaysOf(l) >= slaOverdueDays
         ).length;
+        // Meta por VOLUME: alvo próprio do consultor > default da academia
+        // (gestor fica fora). Dia perfeito ⚡ = pendências zeradas + volume.
+        const volumeTarget = volumeTargetFor(u, academyVolumeDefault);
+        const volume = volumeTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : 0;
+        const perfect = totalSlots > 0 && progress === 100 && volumeTarget > 0 && volume >= volumeTarget;
         const ritmo = computeRitmo(historyByConsultant.get(u.id) || [], metaWeekdays);
-        return { user: u, processed, totalSlots, doneSlots, progress, pendingByCat, critical, ritmo };
+        return { user: u, processed, totalSlots, doneSlots, progress, pendingByCat, critical, volume, volumeTarget, perfect, ritmo };
       })
       // Quem precisa de atenção primeiro: menor progresso no topo; depois mais
       // pendências; "sem tarefas hoje" vai para o fim.
@@ -115,7 +123,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
         if (a.progress !== b.progress) return a.progress - b.progress;
         return (b.totalSlots - b.doneSlots) - (a.totalSlots - a.doneSlots);
       });
-  }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays]);
+  }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays, academyVolumeDefault]);
 
   const team = useMemo(() => {
     const withTasks = rows.filter(r => r.totalSlots > 0);
@@ -124,8 +132,10 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
     const overdue = rows.reduce((s, r) => s + (r.pendingByCat[DAILY_GOAL_CATEGORIES.ATRASADO] || 0), 0);
     const critical = rows.reduce((s, r) => s + r.critical, 0);
     const hit = withTasks.filter(r => r.progress === 100).length;
+    const volumeTracked = rows.filter(r => r.volumeTarget > 0).length;
+    const volumeOk = rows.filter(r => r.volumeTarget > 0 && r.volume >= r.volumeTarget).length;
     return {
-      totalSlots, doneSlots, overdue, critical, hit,
+      totalSlots, doneSlots, overdue, critical, hit, volumeTracked, volumeOk,
       withTasks: withTasks.length,
       progress: totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 100,
     };
@@ -158,7 +168,11 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           <TeamStat icon={<Target size={16} />} tone="brand" value={`${team.doneSlots}/${team.totalSlots}`} label="tarefas do dia" />
           <TeamStat icon={<Trophy size={16} />} tone="emerald" value={`${team.hit} de ${team.withTasks}`} label="bateram a meta" />
           <TeamStat icon={<AlertCircle size={16} />} tone={team.overdue > 0 ? 'rose' : 'slate'} value={team.overdue} label="leads atrasados" />
-          <TeamStat icon={<Users size={16} />} tone="slate" value={rows.length} label="pessoas na equipe" />
+          {team.volumeTracked > 0 ? (
+            <TeamStat icon={<Zap size={16} />} tone={team.volumeOk === team.volumeTracked ? 'emerald' : 'slate'} value={`${team.volumeOk} de ${team.volumeTracked}`} label="no piso de volume" />
+          ) : (
+            <TeamStat icon={<Users size={16} />} tone="slate" value={rows.length} label="pessoas na equipe" />
+          )}
         </div>
       </div>
 
@@ -231,6 +245,14 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
                   )}
                 </div>
                 <div className="hidden sm:flex flex-col items-end gap-1 shrink-0">
+                  {r.volumeTarget > 0 && (
+                    <span
+                      className={`inline-flex items-center gap-1 text-[11.5px] num font-semibold ${r.volume >= r.volumeTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}
+                      title="Esforço do dia: tarefas concluídas + leads novos + contatos registrados"
+                    >
+                      <Zap size={11} /> {r.volume} de {r.volumeTarget} ações
+                    </span>
+                  )}
                   <span className="num text-[12px] text-slate-500 dark:text-slate-400">{r.ritmo.monthHits} de {r.ritmo.monthTarget} no mês</span>
                   {r.ritmo.streak > 0 && (
                     <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-amber-600 dark:text-amber-400"><Flame size={12} /> {r.ritmo.streak} {r.ritmo.streak === 1 ? 'dia' : 'dias'} seguidos</span>
