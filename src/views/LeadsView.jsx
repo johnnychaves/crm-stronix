@@ -166,7 +166,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
       </section>
 
       {/* Toolbar */}
-      <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-3 flex flex-col md:flex-row gap-2 items-stretch md:items-center">
+      <div className="rounded-2xl border border-border bg-card shadow-card p-3 flex flex-col md:flex-row gap-2 items-stretch md:items-center">
         {hasFunnels && (
           <FunnelSelector
             funnels={funnels}
@@ -230,10 +230,10 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
       </div>
 
       {/* Table */}
-      <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden flex-1">
+      <div className="rounded-2xl border border-border bg-card shadow-card overflow-hidden flex-1">
         <div className="overflow-x-auto h-full thin-scroll">
           <table className="w-full text-left min-w-[950px]">
-            <thead className="sticky top-0 bg-white dark:bg-white/[0.02] z-10 border-b border-slate-100 dark:border-white/[0.05]">
+            <thead className="sticky top-0 bg-card z-10 border-b border-slate-100 dark:border-white/[0.05]">
               <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                 <th className="py-3 pl-5 pr-3">Informações do aluno</th>
                 <th className="py-3 px-3 text-center">Status no funil</th>

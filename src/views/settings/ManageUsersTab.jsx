@@ -340,7 +340,7 @@ function ManageUsersTab({ db, appUser }) {
         </div>
       )}
       {inviteOpen && (
-        <div className="mb-8 p-5 rounded-2xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] animate-fade-in">
+        <div className="mb-8 p-5 rounded-2xl bg-slate-50/70 dark:bg-white/[0.02] border border-border animate-fade-in">
           <h4 className="text-[13px] font-bold text-gray-900 dark:text-white">Convidar por e-mail</h4>
           <p className="text-[11.5px] text-gray-500 dark:text-neutral-400 mt-0.5 mb-4">
             O convidado define a própria senha pelo link. Envie o link gerado por e-mail/WhatsApp (validade: 7 dias).

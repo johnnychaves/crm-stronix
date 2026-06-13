@@ -54,7 +54,7 @@ function ManageSourcesTab({ db, sources, leads }) {
       hint="Controle de onde vêm os seus leads"
       icon={<Globe size={16} />}
     >
-      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border mb-5">
         <div className="flex-1 min-w-[220px]">
           <StyledInput
             icon={<Zap size={14} />}
@@ -94,7 +94,7 @@ function ManageSourcesTab({ db, sources, leads }) {
               return (
                 <div
                   key={s.id}
-                  className="group rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4 hover:border-slate-300 dark:hover:border-white/10 transition relative"
+                  className="group rounded-xl border border-border bg-card p-4 hover:border-slate-300 dark:hover:border-white/10 transition relative"
                 >
                   <div className="absolute top-3 right-3 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
                     <IconBtn icon={<Pencil size={13} />} kind="edit" title="Editar" onClick={() => { setName(s.name); setEditingId(s.id); }} />

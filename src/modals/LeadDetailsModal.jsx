@@ -370,7 +370,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
             </div>
           ) : state === 'done' ? (
             <button type="button" onClick={() => setEditing(stepId)}
-              className="sum-in w-full text-left group rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] px-3.5 py-2.5 hover:border-slate-300 dark:hover:border-white/10 transition flex items-center justify-between gap-3">
+              className="sum-in w-full text-left group rounded-xl border border-border bg-card px-3.5 py-2.5 hover:border-slate-300 dark:hover:border-white/10 transition flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">{info.title}</div>
                 <div className={`text-[13.5px] font-semibold ${t.text} ${t.darkText} truncate mt-0.5`}>{summary}</div>
@@ -425,7 +425,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
           <div className="flex-1 min-w-0 pb-5">
             {type ? (
               <button type="button" onClick={() => pickType(null)}
-                className="sum-in w-full text-left group rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] px-3.5 py-2.5 hover:border-slate-300 dark:hover:border-white/10 transition flex items-center gap-3">
+                className="sum-in w-full text-left group rounded-xl border border-border bg-card px-3.5 py-2.5 hover:border-slate-300 dark:hover:border-white/10 transition flex items-center gap-3">
                 <span className={`w-9 h-9 rounded-lg grid place-items-center shrink-0 ${t.strong} text-white`}><type.Icon size={16} /></span>
                 <div className="min-w-0 flex-1">
                   <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Tipo de agendamento</div>
@@ -488,7 +488,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
         )}
 
         {type && (
-          <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-3.5">
+          <div className="rounded-xl border border-border bg-card p-3.5">
             <div className="flex items-center justify-between mb-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Progresso</span>
               <span className="num text-[11.5px] font-semibold text-slate-700 dark:text-slate-200">{doneCount}/{totalCount}</span>
@@ -948,7 +948,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
       <div className="fixed inset-0 z-[101] bg-paper-50 dark:bg-ink-950 md:inset-y-4 md:inset-x-4 md:rounded-3xl flex flex-col overflow-hidden animate-fade-in shadow-2xl font-sans">
 
         {/* TOP BAR */}
-        <header className="h-16 border-b border-slate-200 dark:border-white/[0.06] bg-white/80 dark:bg-ink-900/70 backdrop-blur flex items-center justify-between gap-3 px-4 md:px-6 shrink-0">
+        <header className="h-16 border-b border-border bg-white/80 dark:bg-ink-900/70 backdrop-blur flex items-center justify-between gap-3 px-4 md:px-6 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <button onClick={onClose} className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-lg text-[12.5px] font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] whitespace-nowrap transition">
               <ChevronRight size={14} className="rotate-180" /> Todos os leads
@@ -999,7 +999,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
               {/* LEFT: Lead Summary (sticky) */}
               <div className="col-span-12 lg:col-span-4 xl:col-span-3">
                 {isEditing ? (
-                  <aside className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-5 space-y-4 lg:sticky lg:top-4">
+                  <aside className="rounded-2xl border border-border bg-card shadow-card p-5 space-y-4 lg:sticky lg:top-4">
                     <h3 className="text-[15px] font-semibold">Editar cadastro</h3>
                     <Field label="Nome completo">
                       <StyledInput value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} />
@@ -1051,7 +1051,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                     </div>
                   </aside>
                 ) : (
-                  <aside className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden lg:sticky lg:top-4">
+                  <aside className="rounded-2xl border border-border bg-card shadow-card overflow-hidden lg:sticky lg:top-4">
                     <div className="p-5">
                       <div className="flex items-center gap-4">
                         <Avatar name={lead.name} size={56} />
@@ -1181,7 +1181,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
                 </div>
 
                 {/* Composer with tabs */}
-                <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card">
+                <section className="rounded-2xl border border-border bg-card shadow-card">
                   {/* Tabs */}
                   <div className="px-4 pt-3 flex items-center gap-1 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto thin-scroll">
                     {[
