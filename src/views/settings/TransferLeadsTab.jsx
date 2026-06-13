@@ -142,7 +142,7 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
           <>
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto_1fr] gap-4 items-stretch">
               {/* ORIGEM */}
-              <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4">
+              <div className="rounded-xl border border-border bg-slate-50/60 dark:bg-white/[0.02] p-4">
                 <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5">Origem</div>
                 <StyledSelect value={fromUser} onChange={e => setFromUser(e.target.value)}>
                   <option value="">Selecione o consultor de origem...</option>
@@ -171,7 +171,7 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
               </div>
 
               {/* DESTINO */}
-              <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4">
+              <div className="rounded-xl border border-border bg-slate-50/60 dark:bg-white/[0.02] p-4">
                 <div className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2.5">Destino</div>
                 <StyledSelect value={toUser} onChange={e => setToUser(e.target.value)}>
                   <option value="">Selecione o consultor de destino...</option>

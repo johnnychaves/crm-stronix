@@ -1,6 +1,6 @@
 function SettingsCard({ title, hint, icon, action, children, padded = true, className = '' }) {
   return (
-    <section className={`rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card ${className}`}>
+    <section className={`rounded-2xl border border-border bg-card shadow-card ${className}`}>
       {(title || action) && (
         <header className="px-6 py-5 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.05]">
           <div className="flex items-center gap-3 min-w-0">

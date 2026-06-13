@@ -99,7 +99,7 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
       hint="Defina as etapas da jornada deste funil"
       icon={<Kanban size={16} />}
     >
-      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border mb-5">
         <div className="flex-1 min-w-[220px]">
           <StyledInput
             icon={<Kanban size={14} />}
@@ -149,7 +149,7 @@ function ManageStatusesTab({ db, statuses, leads, funnelId, funnelName }) {
                   onDragStart={e => { if (!isSystem) e.dataTransfer.setData('idx', i); }}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => drop(Number(e.dataTransfer.getData('idx')), i)}
-                  className={`group flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-slate-300 dark:hover:border-white/10 transition ${
+                  className={`group flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:border-slate-300 dark:hover:border-white/10 transition ${
                     isSystem ? 'cursor-default' : 'cursor-grab active:cursor-grabbing'
                   }`}
                 >

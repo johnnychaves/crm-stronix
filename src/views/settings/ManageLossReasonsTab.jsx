@@ -54,7 +54,7 @@ function ManageLossReasonsTab({ db, lossReasons, leads }) {
       hint="Justificativas padronizadas para análise de perdas"
       icon={<ThumbsDown size={16} />}
     >
-      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border mb-5">
         <div className="flex-1 min-w-[220px]">
           <StyledInput
             icon={<ThumbsDown size={14} />}

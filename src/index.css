@@ -73,8 +73,8 @@
   --accent-foreground: #0E1A40;
   --destructive: #F43F5E;           /* --color-danger */
   --destructive-foreground: #FFFFFF;
-  --border: #e3e6ee;                /* paper-200 */
-  --input: #e3e6ee;
+  --border: #e2e8f0;                /* slate-200 = borda dos cards do app (pixel-exato) */
+  --input: #e2e8f0;
   --ring: #2B59FF;
 }
 

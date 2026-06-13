@@ -19,7 +19,7 @@ function SuperFinanceTab({ overview, tenants, onPatch, busy }) {
   const kpi = (label, value, sub, tone) => {
     const tones = { brand: 'text-brand-700 dark:text-brand-300', emerald: 'text-emerald-700 dark:text-emerald-300', rose: 'text-rose-700 dark:text-rose-300', amber: 'text-amber-700 dark:text-amber-300', slate: 'text-slate-900 dark:text-white' };
     return (
-      <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-4">
+      <div className="rounded-2xl border border-border bg-card shadow-card p-4">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{label}</div>
         <div className={`num text-[22px] font-bold tracking-tight mt-1 ${tones[tone] || tones.slate}`}>{value}</div>
         {sub && <div className="text-[11px] text-slate-400 mt-0.5">{sub}</div>}
