@@ -919,7 +919,6 @@ function ProfilePanel({ tenant, onClose, onDone }) {
     cep: p0.cep || '', street: p0.street || '', number: p0.number || '', complement: p0.complement || '', neighborhood: p0.neighborhood || '',
     city: tenant.settings?.city || '', state: tenant.settings?.state || '',
     responsibleName: p0.responsibleName || '', whatsapp: tenant.responsiblePhone || '', email: p0.email || '', phone: p0.phone || '',
-    openingHours: p0.openingHours || '',
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -931,7 +930,7 @@ function ProfilePanel({ tenant, onClose, onDone }) {
       profile: {
         cnpjCpf: f.cnpjCpf, legalName: f.legalName,
         cep: f.cep, street: f.street, number: f.number, complement: f.complement, neighborhood: f.neighborhood,
-        responsibleName: f.responsibleName, email: f.email, phone: f.phone, openingHours: f.openingHours,
+        responsibleName: f.responsibleName, email: f.email, phone: f.phone,
       },
       settings: { city: f.city, state: f.state },
       responsiblePhone: f.whatsapp,
@@ -977,9 +976,6 @@ function ProfilePanel({ tenant, onClose, onDone }) {
             <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Telefone</span><input style={FLAG_INPUT} value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(51) 3333-3333" /></label>
           </div>
           <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>E-mail comercial</span><input style={FLAG_INPUT} type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="contato@academia.com" /></label>
-          <div style={grp}>Operacional</div>
-          <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Horário de funcionamento</span><textarea style={{ ...FLAG_INPUT, height: 'auto', padding: 10, resize: 'vertical', minHeight: 56 }} rows={2} value={f.openingHours} onChange={(e) => set('openingHours', e.target.value)} placeholder="Seg–Sex 6h–22h · Sáb 8h–14h" /></label>
-          <div className="muted" style={{ fontSize: 11 }}>Modalidades e unidades ficam no painel do cliente (Regras gerais), não aqui.</div>
           {err && <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>{err}</div>}
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
             <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
@@ -1056,7 +1052,7 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
   const profileRows = [
     ['CNPJ/CPF', pf.cnpjCpf], ['Razão social', pf.legalName],
     ['Endereço', pfAddress], ['Responsável', pf.responsibleName],
-    ['WhatsApp', t.responsiblePhone], ['E-mail', pf.email], ['Horário', pf.openingHours],
+    ['WhatsApp', t.responsiblePhone], ['E-mail', pf.email],
   ];
   const usage = [
     { n: 'Leads cadastrados', v: stats?.leadCount ?? null, max: Math.max(100, stats?.leadCount || 0) },

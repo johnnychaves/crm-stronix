@@ -22,7 +22,6 @@ const PROFILE_MAX = {
   responsibleName: 120, // contato & responsável (whatsapp = responsiblePhone)
   email: 140,
   phone: 30,
-  openingHours: 300,  // operacional (modalidades/unidades ficam em Regras gerais)
 };
 
 const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max);

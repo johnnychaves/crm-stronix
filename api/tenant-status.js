@@ -12,7 +12,7 @@ import { sanitizeProfile } from './_profile.js';
 //   - archived, internal, internalNotes, monthlyPrice  (já existiam)
 //   - displayName, settings { city, state, logoUrl }
 //   - profile { cnpjCpf, legalName, cep, street, number, complement, neighborhood,
-//               responsibleName, email, phone, openingHours }  (Perfil da academia)
+//               responsibleName, email, phone }  (Perfil da academia)
 //   - responsiblePhone: string  (WhatsApp do responsável)
 //   - paymentStatus: 'paid' | 'pending' | 'overdue' | null   (cobrança manual)
 //   - lastPaymentAt, nextBillingAt: millis (number) | null

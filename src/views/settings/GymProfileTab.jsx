@@ -1,23 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Building2, Check, Clock, FileText, MapPin, User } from 'lucide-react';
+import { Building2, Check, FileText, MapPin, User } from 'lucide-react';
 import { auth } from '../../lib/firebase.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { SettingsCard } from '../../components/ui/SettingsCard.jsx';
 import { Field, StyledInput } from '../../components/ui/Field.jsx';
 import { Btn } from '../../components/ui/Btn.jsx';
 
-// Aba self-service "Perfil da academia" (admin do tenant). Lê/grava via /api/asaas
-// (handleTenantSelf: GET + POST action:'updateProfile') — sem função nova. Logo
-// ADIADA (sem upload aqui). Modalidades e Unidades continuam em "Regras gerais"
-// (fonte única); este perfil só as referencia e adiciona o horário.
-// Direção visual aprovada: "Carteira da academia" (cartão-identidade + anel de
-// completude no topo, 4 blocos em grade).
+// Página "Perfil da academia" (admin do tenant), aberta pelo menu de persona.
+// Lê/grava via /api/asaas (handleTenantSelf: GET + POST action:'updateProfile')
+// — sem função nova. Logo ADIADA. 3 blocos: identidade & fiscal, endereço,
+// contato & responsável. Direção visual "Carteira da academia" (cartão-
+// identidade + anel de completude no topo).
 
 const EMPTY = {
   cnpjCpf: '', legalName: '',
   cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '',
   responsibleName: '', whatsapp: '', email: '', phone: '',
-  openingHours: '',
 };
 
 // Campos que contam para a completude (complemento é opcional, fica de fora).
@@ -26,7 +24,6 @@ const SCORED = [
   ['cep', 'CEP'], ['street', 'rua'], ['number', 'número'], ['neighborhood', 'bairro'],
   ['city', 'cidade'], ['state', 'UF'],
   ['responsibleName', 'responsável'], ['whatsapp', 'WhatsApp'], ['email', 'e-mail comercial'], ['phone', 'telefone'],
-  ['openingHours', 'horário'],
 ];
 
 function Ring({ pct }) {
@@ -42,7 +39,7 @@ function Ring({ pct }) {
   );
 }
 
-function GymProfileTab({ modalities, units, onManageOperational }) {
+function GymProfileTab() {
   const toast = useToast();
   const [form, setForm] = useState(EMPTY);
   const [displayName, setDisplayName] = useState('');
@@ -87,7 +84,6 @@ function GymProfileTab({ modalities, units, onManageOperational }) {
           cnpjCpf: form.cnpjCpf, legalName: form.legalName,
           cep: form.cep, street: form.street, number: form.number, complement: form.complement, neighborhood: form.neighborhood,
           responsibleName: form.responsibleName, email: form.email, phone: form.phone,
-          openingHours: form.openingHours,
         },
         settings: { city: form.city, state: form.state },
         responsiblePhone: form.whatsapp,
@@ -143,25 +139,6 @@ function GymProfileTab({ modalities, units, onManageOperational }) {
           </div>
         </SettingsCard>
 
-        {/* Endereço */}
-        <SettingsCard title="Endereço" hint="Onde a academia funciona" icon={<MapPin size={16} />}>
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="CEP"><StyledInput value={form.cep} onChange={(e) => set('cep', e.target.value)} placeholder="00000-000" /></Field>
-              <div className="col-span-2"><Field label="Rua / logradouro"><StyledInput value={form.street} onChange={(e) => set('street', e.target.value)} placeholder="Av. Exemplo" /></Field></div>
-            </div>
-            <div className="grid grid-cols-3 gap-3">
-              <Field label="Número"><StyledInput value={form.number} onChange={(e) => set('number', e.target.value)} placeholder="123" /></Field>
-              <div className="col-span-2"><Field label="Complemento"><StyledInput value={form.complement} onChange={(e) => set('complement', e.target.value)} placeholder="Sala, andar…" /></Field></div>
-            </div>
-            <Field label="Bairro"><StyledInput value={form.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="Centro" /></Field>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-2"><Field label="Cidade"><StyledInput value={form.city} onChange={(e) => set('city', e.target.value)} placeholder="Cidade" /></Field></div>
-              <Field label="UF"><StyledInput value={form.state} maxLength={2} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="UF" /></Field>
-            </div>
-          </div>
-        </SettingsCard>
-
         {/* Contato & responsável */}
         <SettingsCard title="Contato & responsável" hint="Quem responde pela academia" icon={<User size={16} />}>
           <div className="space-y-4">
@@ -174,31 +151,16 @@ function GymProfileTab({ modalities, units, onManageOperational }) {
           </div>
         </SettingsCard>
 
-        {/* Operacional */}
-        <SettingsCard title="Operacional" hint="Funcionamento da academia" icon={<Clock size={16} />}>
-          <div className="space-y-4">
-            <Field label="Horário de funcionamento" hint="Texto livre — ex.: Seg–Sex 6h–22h · Sáb 8h–14h">
-              <textarea
-                value={form.openingHours}
-                onChange={(e) => set('openingHours', e.target.value)}
-                rows={2}
-                placeholder="Seg–Sex 6h–22h · Sáb 8h–14h · Dom fechado"
-                className="w-full rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
-              />
-            </Field>
-            <div className="rounded-xl border border-slate-200 dark:border-white/[0.07] bg-slate-50/70 dark:bg-white/[0.02] p-3.5">
-              <div className="flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-[12px] text-slate-600 dark:text-slate-300">
-                  <b className="num">{(modalities || []).length}</b> modalidade{(modalities || []).length === 1 ? '' : 's'} · <b className="num">{(units || []).length}</b> unidade{(units || []).length === 1 ? '' : 's'}
-                </span>
-                {onManageOperational && (
-                  <button type="button" onClick={onManageOperational} className="text-[12px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-300 inline-flex items-center gap-1">
-                    Gerir em Regras gerais →
-                  </button>
-                )}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-1.5">Modalidades e unidades ficam em Regras gerais — são usadas ao agendar visitas.</p>
-            </div>
+        {/* Endereço — ocupa a largura toda (mais campos) e fica por último */}
+        <SettingsCard className="order-last lg:col-span-2" title="Endereço" hint="Onde a academia funciona" icon={<MapPin size={16} />}>
+          <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
+            <div className="sm:col-span-3"><Field label="CEP"><StyledInput value={form.cep} onChange={(e) => set('cep', e.target.value)} placeholder="00000-000" /></Field></div>
+            <div className="sm:col-span-7"><Field label="Rua / logradouro"><StyledInput value={form.street} onChange={(e) => set('street', e.target.value)} placeholder="Av. Exemplo" /></Field></div>
+            <div className="sm:col-span-2"><Field label="Número"><StyledInput value={form.number} onChange={(e) => set('number', e.target.value)} placeholder="123" /></Field></div>
+            <div className="sm:col-span-5"><Field label="Complemento"><StyledInput value={form.complement} onChange={(e) => set('complement', e.target.value)} placeholder="Sala, andar…" /></Field></div>
+            <div className="sm:col-span-7"><Field label="Bairro"><StyledInput value={form.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="Centro" /></Field></div>
+            <div className="sm:col-span-9"><Field label="Cidade"><StyledInput value={form.city} onChange={(e) => set('city', e.target.value)} placeholder="Cidade" /></Field></div>
+            <div className="sm:col-span-3"><Field label="UF"><StyledInput value={form.state} maxLength={2} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="UF" /></Field></div>
           </div>
         </SettingsCard>
       </div>
