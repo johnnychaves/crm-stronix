@@ -59,6 +59,7 @@ import { Avatar } from './components/ui/Avatar.jsx';
 import { ViewSkeleton } from './components/ui/Skeleton.jsx';
 import { SidebarItem, SidebarGroup, SidebarSubItem } from './components/layout/Sidebar.jsx';
 import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
+import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
 import { LeadDetailsModal } from './modals/LeadDetailsModal.jsx';
@@ -847,6 +848,11 @@ useEffect(() => {
   // Academia suspensa ou com trial expirado: bloqueia o acesso ao app (super-admin
   // sem tenant não é afetado). O usuário está autenticado, mas a organização não.
   if (!appUser.superAdminOnly && tenantBlock) {
+    // Trial expirado → tela de ativação (escolhe plano + paga e libera sozinho).
+    // Suspensa / inadimplente seguem na TenantBlockedScreen.
+    if (tenantBlock === 'trial_expired') {
+      return <TrialActivationScreen isAdmin={isAdminUser(appUser)} onLogout={handleLogout} />;
+    }
     return <TenantBlockedScreen reason={tenantBlock} onLogout={handleLogout} />;
   }
 
