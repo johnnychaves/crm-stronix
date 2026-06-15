@@ -368,6 +368,60 @@ async function handleTenantSelf(req, res, auth) {
     return res.status(200).json({ ok: true, plan: newPlan, priceMonthly: planDoc.priceMonthly ?? null });
   }
 
+  // Self-service: ATIVA a 1ª assinatura ao fim do trial (tela de ativação). Cria
+  // cliente + assinatura no Asaas e devolve o link da 1ª fatura. Valor vem do
+  // catálogo dinâmico (priceMonthly/priceAnnual) + consultores extras; preço
+  // negociado (monthlyPrice) tem prioridade. Mesma base do caminho super-admin.
+  if (req.method === 'POST' && req.body?.action === 'activate') {
+    if (!isAsaasConfigured()) return res.status(503).json({ error: 'Cobrança indisponível no momento. Fale com o suporte.' });
+    const chosen = String(req.body.plan || tenant.plan || '');
+    const planDoc = plansMap.get(chosen);
+    if (!planDoc || planDoc.isActive === false) return res.status(400).json({ error: 'Plano inválido ou indisponível.' });
+    const cpfCnpj = String(req.body.cpfCnpj || '').replace(/\D/g, '');
+    if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) return res.status(400).json({ error: 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).' });
+    const cycle = req.body.cycle === 'annual' ? 'annual' : 'monthly';
+
+    // Já tem assinatura → não duplica; devolve a fatura atual.
+    if (tenant.asaasSubscriptionId) {
+      return res.status(200).json({ ok: true, alreadyActive: true, invoiceUrl: tenant.lastInvoiceUrl || null });
+    }
+
+    const seats = await getSeatUsage(auth.tenantId);
+    const negotiated = Number.isFinite(Number(tenant.monthlyPrice));
+    const extraMonthly = negotiated ? 0 : extraConsultantsCharge(planDoc, seats.consultants);
+    let value, cycleAsaas;
+    if (cycle === 'annual') {
+      value = Number(planDoc.priceAnnual); cycleAsaas = 'YEARLY';
+      if (!Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Este plano não tem preço anual — escolha mensal ou fale com o suporte.' });
+      value += extraMonthly * 12;
+    } else {
+      value = effectivePrice({ plan: chosen, monthlyPrice: tenant.monthlyPrice, consultantCount: seats.consultants }, plansMap);
+      cycleAsaas = 'MONTHLY';
+      if (!Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Este plano é sob consulta — fale com o suporte para ativar.' });
+    }
+
+    try {
+      if (chosen !== tenant.plan) await ref.update({ plan: chosen, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      const customer = await findOrCreateCustomer({ tenantId: auth.tenantId, name: tenant.displayName, cpfCnpj, email: tenant.primaryAdminEmail, mobilePhone: tenant.responsiblePhone });
+      const nextDueDate = ymd(Date.now()); // trial encerrado → cobra a partir de hoje
+      const sub = await createSubscription({ customerId: customer.id, value, cycle: cycleAsaas, nextDueDate, description: `STRONILEAD — plano ${chosen}`, tenantId: auth.tenantId });
+      let invoiceUrl = null, nextBillingMs = null;
+      try { const pays = await listSubscriptionPayments(sub.id); const first = pays?.data?.[0]; if (first) { invoiceUrl = first.invoiceUrl || null; if (first.dueDate) nextBillingMs = new Date(first.dueDate + 'T12:00:00').getTime(); } } catch (e) { console.error('activate listPayments', e?.message || e); }
+      await ref.update({
+        asaasCustomerId: customer.id, asaasSubscriptionId: sub.id, billingProvider: 'asaas', billingCycle: cycle,
+        paymentStatus: 'pending',
+        ...(invoiceUrl ? { lastInvoiceUrl: invoiceUrl } : {}),
+        ...(nextBillingMs ? { nextBillingAt: admin.firestore.Timestamp.fromMillis(nextBillingMs) } : {}),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      await audit('asaas.subscription.activate.self', auth.tenantId, auth.uid, { plan: chosen, cycle, value, subscriptionId: sub.id });
+      return res.status(200).json({ ok: true, invoiceUrl, plan: chosen, value, cycle });
+    } catch (e) {
+      console.error('self activate', e?.status, e?.message || e);
+      return res.status(e?.status === 400 ? 400 : 502).json({ error: `Asaas: ${e?.message || 'erro ao ativar a assinatura.'}` });
+    }
+  }
+
   return res.status(405).json({ error: 'Método não permitido.' });
 }
 
