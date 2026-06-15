@@ -125,8 +125,9 @@ export async function syncSubscriptionValue(tenantId, { actorUid } = {}) {
     if (!snap.exists) return null;
     const tenant = snap.data() || {};
     if (!tenant.asaasSubscriptionId) return null;
-    // Preço negociado é valor FINAL fechado à mão — não mexe na assinatura.
-    if (Number.isFinite(Number(tenant.monthlyPrice))) return null;
+    // Preço negociado (> 0) é valor FINAL fechado à mão — não mexe na assinatura.
+    // monthlyPrice 0/ausente = sem negociação → segue o valor do catálogo.
+    if (Number(tenant.monthlyPrice) > 0) return null;
 
     const [seats, plansMap] = await Promise.all([getSeatUsage(tenantId), loadPlans()]);
     const planDoc = plansMap.get(tenant.plan);
