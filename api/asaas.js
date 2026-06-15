@@ -5,6 +5,7 @@ import {
   isAsaasConfigured, findOrCreateCustomer, createSubscription, updateSubscription,
   cancelSubscription, listSubscriptionPayments,
 } from './_asaas.js';
+import { sanitizeProfile } from './_profile.js';
 
 // Endpoint ÚNICO do Asaas (gestão de assinatura + webhook no mesmo arquivo, para
 // caber no limite de 12 Serverless Functions do Vercel Hobby).
@@ -247,8 +248,9 @@ async function handleSubscription(req, res, auth) {
 }
 
 // ============== SELF-SERVICE (admin do tenant, sobre a PRÓPRIA assinatura) ==============
-//   GET                              → plano atual + faturas + renovação + planos disponíveis
-//   POST { action:'migrate', plan }  → troca o próprio plano (ajusta a assinatura no Asaas)
+//   GET                                   → plano + faturas + renovação + planos + Perfil da academia
+//   POST { action:'migrate', plan }       → troca o próprio plano (ajusta a assinatura no Asaas)
+//   POST { action:'updateProfile', ... }  → salva o Perfil da academia (sem função nova)
 async function handleTenantSelf(req, res, auth) {
   // Cobrança/plano é coisa de ADMIN da academia (não de consultor).
   const userSnap = await adminDb.collection('artifacts').doc(auth.tenantId).collection('public').doc('data').collection('stronix_users').doc(auth.uid).get();
@@ -288,6 +290,12 @@ async function handleTenantSelf(req, res, auth) {
     return res.status(200).json({
       plan: tenant.plan || null,
       planName: cur?.name || tenant.plan || '—',
+      // Perfil da academia (lido pela aba "Perfil da academia"): nome + campos de
+      // texto (profile) + cidade/UF (settings) + WhatsApp (responsiblePhone).
+      displayName: tenant.displayName || null,
+      profile: tenant.profile || null,
+      settings: { city: tenant.settings?.city || '', state: tenant.settings?.state || '' },
+      responsiblePhone: tenant.responsiblePhone || '',
       priceMonthly: cur?.priceMonthly ?? null,
       billingCycle: tenant.billingCycle || 'monthly',
       paymentStatus: tenant.paymentStatus || null,
@@ -303,6 +311,29 @@ async function handleTenantSelf(req, res, auth) {
       } : null,
       invoices, availablePlans,
     });
+  }
+
+  // Self-service: o admin salva o Perfil da academia (campos de texto; logo
+  // adiada). Grava em tenant.profile + cidade/UF (settings) + WhatsApp
+  // (responsiblePhone) — exatamente as mesmas fontes do caminho do super-admin.
+  if (req.method === 'POST' && req.body?.action === 'updateProfile') {
+    const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    const profilePatch = sanitizeProfile(req.body.profile);
+    if (profilePatch) patch.profile = profilePatch;
+    const s = req.body.settings;
+    if (s && typeof s === 'object') {
+      const setS = {};
+      if (s.city !== undefined) setS.city = String(s.city || '').trim().slice(0, 120);
+      if (s.state !== undefined) setS.state = String(s.state || '').trim().toUpperCase().slice(0, 2);
+      if (Object.keys(setS).length) patch.settings = setS;
+    }
+    if (req.body.responsiblePhone !== undefined) {
+      patch.responsiblePhone = String(req.body.responsiblePhone || '').trim().slice(0, 30);
+    }
+    if (Object.keys(patch).length === 1) return res.status(400).json({ error: 'Nada para atualizar.' });
+    await ref.set(patch, { merge: true });
+    await audit('tenant.profile.self', auth.tenantId, auth.uid, { changed: Object.keys(patch).filter((k) => k !== 'updatedAt') });
+    return res.status(200).json({ ok: true });
   }
 
   if (req.method === 'POST' && req.body?.action === 'migrate') {

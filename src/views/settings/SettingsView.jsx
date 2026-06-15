@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRightLeft, ChevronRight, CreditCard, Filter, Kanban, Search, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
+import { ArrowRightLeft, Building2, ChevronRight, CreditCard, Filter, Kanban, Search, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
 import { SettingsTabItem } from '../../components/ui/SettingsCard.jsx';
 import { Input } from '../../components/ui/input.jsx';
 import { PlanInvoicesTab } from './PlanInvoicesTab.jsx';
+import { GymProfileTab } from './GymProfileTab.jsx';
 import { ManageUsersTab } from './ManageUsersTab.jsx';
 import { ManageFunnelsTab } from './ManageFunnelsTab.jsx';
 import { ManageStatusesTab } from './ManageStatusesTab.jsx';
@@ -58,6 +59,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
     {
       label: 'Operação',
       items: [
+        { id: 'profile', label: 'Perfil da academia', hint: 'Identidade, endereço e contato', icon: <Building2 size={15} />, badge: null, keywords: 'perfil academia identidade cnpj cpf razao social endereco cep rua bairro contato responsavel whatsapp email telefone horario funcionamento dados cadastrais empresa fiscal' },
         { id: 'general', label: 'Regras gerais', hint: 'Meta, SLA, aulas e modalidades', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount, keywords: 'sla atraso critico meta diaria dias semana aulas experimentais quantidade modalidades unidades cidade' },
         // "Plano & faturas": LIBERADO p/ todo admin de academia (self-service de
         // cobrança — assinatura, faturas, troca de plano via /api/asaas). Super-
@@ -194,6 +196,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
 
           {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
           {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} />}
+          {activeTab === 'profile' && <GymProfileTab modalities={modalities} units={units} onManageOperational={() => goToTab('general')} />}
           {activeTab === 'billing' && <PlanInvoicesTab />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
