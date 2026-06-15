@@ -298,7 +298,10 @@ function AppInner() {
               block = 'suspended';
             } else if (tData.status === 'trial' && typeof tData.trialEndsAt?.toMillis === 'function') {
               const ms = tData.trialEndsAt.toMillis();
-              if (ms < Date.now()) block = 'trial_expired';
+              // Trial vencido só bloqueia se AINDA não pagou. Se o pagamento já
+              // entrou (webhook marcou 'paid'), libera mesmo que o status ainda
+              // esteja 'trial' — rede de segurança do fix do webhook.
+              if (ms < Date.now()) { if (tData.paymentStatus !== 'paid') block = 'trial_expired'; }
               else trialMs = ms; // trial ativo → alimenta o banner de contagem
             }
             // Inadimplência além da carência (3 dias) corta o acesso automaticamente,
