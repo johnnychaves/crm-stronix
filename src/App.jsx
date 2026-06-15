@@ -69,6 +69,9 @@ import { LeadsView } from './views/LeadsView.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
+import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
+import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
+import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
 import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
 import { SuperConsole } from './views/console/SuperConsole.jsx';
 import { CreateTicketModal } from './modals/CreateTicketModal.jsx';
@@ -134,6 +137,9 @@ function AppInner() {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  // Aba-alvo ao abrir Configurações de fora (ex.: link "Regras gerais" do Perfil).
+  // SettingsView remonta ao entrar na view e aplica este initialTab no mount.
+  const [settingsTab, setSettingsTab] = useState('users');
   const [superTab, setSuperTab] = useState('overview'); // sub-seção do super-admin (no menu lateral)
   const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
   const [ticketModalOpen, setTicketModalOpen] = useState(false); // abrir chamado de suporte (cliente)
@@ -799,6 +805,8 @@ useEffect(() => {
 };
 
   const changeTab = (tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); }
+  // Abre Configurações já numa aba específica (sidebar e link "Regras gerais" do Perfil).
+  const openSettingsTab = (tab) => { setSettingsTab(tab); changeTab('settings'); };
 
   // ── Badge de pendências da Meta Diária no menu lateral ──────────────────
   // dayKey vira na meia-noite (timeout re-armado a cada virada) para o badge
@@ -904,7 +912,7 @@ useEffect(() => {
               <div className="px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500">Administração</div>
               <div className="space-y-1">
                 {!appUser.superAdminOnly && isAdminUser(appUser) && (
-                  <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />
+                  <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" active={activeTab === 'settings'} onClick={() => openSettingsTab('users')} />
                 )}
                 {appUser?.superAdmin && (
                   <SidebarGroup
@@ -979,16 +987,27 @@ useEffect(() => {
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
               {activeTab === 'settings' && 'Configurações'}
+              {activeTab === 'profile' && 'Perfil da academia'}
+              {activeTab === 'billing' && 'Plano & faturas'}
               {activeTab === 'superadmin' && (({ overview: 'Visão Geral', clients: 'Clientes', finance: 'Financeiro', plans: 'Planos' }[superTab] || 'Organizações') + ' · Super-admin')}
             </h2>
           </div>
-          <button 
-            onClick={() => setIsDarkMode(!isDarkMode)} 
-            className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
-            title="Alternar Tema"
-          >
-            {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-brand-600" />}
-          </button>
+          <div className="flex items-center gap-2 md:gap-3">
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
+              title="Alternar Tema"
+            >
+              {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-brand-600" />}
+            </button>
+            <PersonaMenu
+              appUser={appUser}
+              isAdmin={!appUser.superAdminOnly && isAdminUser(appUser)}
+              onProfile={() => changeTab('profile')}
+              onBilling={() => changeTab('billing')}
+              onLogout={handleLogout}
+            />
+          </div>
         </header>
 
         {!appUser.superAdminOnly && trialEndsAtMs && <TrialBanner endsAtMs={trialEndsAtMs} />}
@@ -1018,7 +1037,9 @@ useEffect(() => {
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
+              {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
             </div>
           )}

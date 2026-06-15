@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRightLeft, ChevronRight, CreditCard, Filter, Kanban, Search, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
+import { ArrowRightLeft, ChevronRight, Filter, Kanban, Search, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
 import { SettingsTabItem } from '../../components/ui/SettingsCard.jsx';
 import { Input } from '../../components/ui/input.jsx';
-import { PlanInvoicesTab } from './PlanInvoicesTab.jsx';
 import { ManageUsersTab } from './ManageUsersTab.jsx';
 import { ManageFunnelsTab } from './ManageFunnelsTab.jsx';
 import { ManageStatusesTab } from './ManageStatusesTab.jsx';
@@ -22,8 +21,8 @@ import { TransferLeadsTab } from './TransferLeadsTab.jsx';
 // Busca sem acento/caixa ("critico" acha "SLA crítico").
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, trialClassOptions, units, metaWeekdays }) {
-  const [activeTab, setActiveTab] = useState('users');
+function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, trialClassOptions, units, metaWeekdays }) {
+  const [activeTab, setActiveTab] = useState(initialTab || 'users');
   const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
   const [query, setQuery] = useState('');
   const searchRef = useRef(null);
@@ -58,11 +57,10 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
     {
       label: 'Operação',
       items: [
+        // Perfil da academia e Plano & faturas migraram para o menu de persona
+        // (canto superior direito) — ver PersonaMenu / App.jsx. Aqui fica só a
+        // configuração operacional.
         { id: 'general', label: 'Regras gerais', hint: 'Meta, SLA, aulas e modalidades', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount, keywords: 'sla atraso critico meta diaria dias semana aulas experimentais quantidade modalidades unidades cidade' },
-        // "Plano & faturas": LIBERADO p/ todo admin de academia (self-service de
-        // cobrança — assinatura, faturas, troca de plano via /api/asaas). Super-
-        // admin puro não vê (vai direto pro console, sem tenant próprio).
-        ...(!appUser?.superAdminOnly ? [{ id: 'billing', label: 'Plano & faturas', hint: 'Assinatura, faturas e renovação', icon: <CreditCard size={15} />, badge: null, keywords: 'plano fatura pagamento assinatura renovacao preco boleto pix cartao' }] : []),
       ],
     },
     {
@@ -74,7 +72,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         { id: 'lossReasons', label: 'Motivos de perda', hint: 'Justificativas padrão de perda', icon: <ThumbsDown size={15} />, badge: lossCount, keywords: 'perda descarte justificativa preco concorrencia' },
       ],
     },
-  ]), [usersCount, modalitiesCount, funnelsCount, tagsCount, sourcesCount, lossCount, appUser]);
+  ]), [usersCount, modalitiesCount, funnelsCount, tagsCount, sourcesCount, lossCount]);
 
   // Busca universal: filtra o próprio trilho; Enter abre o 1º resultado.
   const q = norm(query.trim());
@@ -194,7 +192,6 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
 
           {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
           {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} />}
-          {activeTab === 'billing' && <PlanInvoicesTab />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
           )}

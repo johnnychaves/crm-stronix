@@ -3,6 +3,7 @@ import { auth, db } from '../../lib/firebase.js';
 import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { planLabel, auditActionLabel, IMPERSONATION_KEY } from '../../lib/superadmin.js';
+import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete, isCpfComplete, isValidCpf } from '../../lib/brazilLookups.js';
 import { Icon } from './consoleIcons.jsx';
 import './console.css';
 
@@ -909,6 +910,107 @@ function ManagePanel({ tenant, plans, asaasConfigured, onClose, onDone }) {
   );
 }
 
+// ---------- Editar Perfil da academia (modal nativo do console) ----------
+// Grava em /api/tenant-status (PATCH super-admin): tenant.profile + cidade/UF
+// (settings) + WhatsApp (responsiblePhone) — mesmas fontes do self-service.
+function ProfilePanel({ tenant, onClose, onDone }) {
+  const p0 = tenant.profile || {};
+  const [f, setF] = useState({
+    cnpjCpf: p0.cnpjCpf || '', legalName: p0.legalName || '', tradeName: p0.tradeName || '',
+    cep: p0.cep || '', street: p0.street || '', number: p0.number || '', complement: p0.complement || '', neighborhood: p0.neighborhood || '',
+    city: tenant.settings?.city || '', state: tenant.settings?.state || '',
+    responsibleName: p0.responsibleName || '', whatsapp: tenant.responsiblePhone || '', email: p0.email || '', phone: p0.phone || '',
+    responsibleCpf: p0.responsibleCpf || '', responsibleBirth: p0.responsibleBirth || '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+  const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const [cnpjBusy, setCnpjBusy] = useState(false);
+  const [cepBusy, setCepBusy] = useState(false);
+  // CNPJ/CEP completos → busca automática (BrasilAPI/ViaCEP) e auto-preenche.
+  const lookupCnpjNow = async () => {
+    if (!isCnpjComplete(f.cnpjCpf)) return;
+    setCnpjBusy(true); const r = await lookupCnpj(f.cnpjCpf); setCnpjBusy(false);
+    if (r) { setF((s) => ({ ...s, legalName: r.legalName || s.legalName, tradeName: r.tradeName || s.tradeName })); setErr(''); }
+    else setErr('CNPJ não encontrado na Receita.');
+  };
+  const lookupCepNow = async () => {
+    if (!isCepComplete(f.cep)) return;
+    setCepBusy(true); const r = await lookupCep(f.cep); setCepBusy(false);
+    if (r) { setF((s) => ({ ...s, street: r.street || s.street, neighborhood: r.neighborhood || s.neighborhood, city: r.city || s.city, state: r.state || s.state })); setErr(''); }
+    else setErr('CEP não encontrado.');
+  };
+  const cpfErr = isCpfComplete(f.responsibleCpf) && !isValidCpf(f.responsibleCpf);
+  const save = async () => {
+    setSaving(true); setErr('');
+    const body = {
+      tenantId: tenant.id,
+      profile: {
+        cnpjCpf: f.cnpjCpf, legalName: f.legalName, tradeName: f.tradeName,
+        cep: f.cep, street: f.street, number: f.number, complement: f.complement, neighborhood: f.neighborhood,
+        responsibleName: f.responsibleName, email: f.email, phone: f.phone,
+        responsibleCpf: f.responsibleCpf, responsibleBirth: f.responsibleBirth,
+      },
+      settings: { city: f.city, state: f.state },
+      responsiblePhone: f.whatsapp,
+    };
+    try {
+      const token = await auth.currentUser.getIdToken();
+      const res = await fetch('/api/tenant-status', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(body) });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error || 'Erro ao salvar o perfil.'); setSaving(false); return; }
+      onDone();
+    } catch (e) { console.error('profile save', e); setErr('Erro ao salvar o perfil.'); setSaving(false); }
+  };
+  const grp = { fontSize: 11.5, fontWeight: 600, color: 'var(--muted)', borderTop: '1px solid var(--line)', paddingTop: 12 };
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 300, display: 'grid', placeItems: 'center', padding: 16 }}>
+      <div style={{ position: 'absolute', inset: 0, background: 'rgba(7,11,24,.6)', backdropFilter: 'blur(3px)' }} onClick={onClose} />
+      <div className="card" style={{ position: 'relative', width: '100%', maxWidth: 560, maxHeight: '92vh', overflowY: 'auto' }}>
+        <div className="card-h"><h3>Perfil — {tenant.displayName}</h3><button className="icon-btn" onClick={onClose}><Icon name="close" size={15} /></button></div>
+        <div className="card-pad" style={{ display: 'grid', gap: 14 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>Identidade &amp; fiscal</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CNPJ{cnpjBusy ? ' · buscando…' : ''}</span><input style={FLAG_INPUT} value={f.cnpjCpf} onChange={(e) => set('cnpjCpf', e.target.value)} onBlur={lookupCnpjNow} placeholder="00.000.000/0000-00" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Razão social</span><input style={FLAG_INPUT} value={f.legalName} onChange={(e) => set('legalName', e.target.value)} placeholder="Nome empresarial" /></label>
+          </div>
+          <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nome fantasia (opcional)</span><input style={FLAG_INPUT} value={f.tradeName} onChange={(e) => set('tradeName', e.target.value)} placeholder="Como a academia é conhecida" /></label>
+          <div style={grp}>Endereço</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 80px', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CEP{cepBusy ? ' · buscando…' : ''}</span><input style={FLAG_INPUT} value={f.cep} onChange={(e) => set('cep', e.target.value)} onBlur={lookupCepNow} placeholder="00000-000" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Rua</span><input style={FLAG_INPUT} value={f.street} onChange={(e) => set('street', e.target.value)} placeholder="Logradouro" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nº</span><input style={FLAG_INPUT} value={f.number} onChange={(e) => set('number', e.target.value)} placeholder="123" /></label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Complemento</span><input style={FLAG_INPUT} value={f.complement} onChange={(e) => set('complement', e.target.value)} placeholder="Sala, andar…" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Bairro</span><input style={FLAG_INPUT} value={f.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="Bairro" /></label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Cidade</span><input style={FLAG_INPUT} value={f.city} onChange={(e) => set('city', e.target.value)} placeholder="Cidade" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>UF</span><input style={FLAG_INPUT} maxLength={2} value={f.state} onChange={(e) => set('state', e.target.value.toUpperCase())} placeholder="UF" /></label>
+          </div>
+          <div style={grp}>Contato &amp; responsável</div>
+          <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nome do responsável</span><input style={FLAG_INPUT} value={f.responsibleName} onChange={(e) => set('responsibleName', e.target.value)} placeholder="Nome completo" /></label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12, color: cpfErr ? 'var(--danger)' : undefined }}>CPF{cpfErr ? ' · inválido' : ''}</span><input style={FLAG_INPUT} value={f.responsibleCpf} onChange={(e) => set('responsibleCpf', e.target.value)} placeholder="000.000.000-00" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Data de nascimento</span><input style={FLAG_INPUT} type="date" value={f.responsibleBirth} onChange={(e) => set('responsibleBirth', e.target.value)} /></label>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>WhatsApp</span><input style={FLAG_INPUT} value={f.whatsapp} onChange={(e) => set('whatsapp', e.target.value)} placeholder="55 51 99999-9999" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Telefone</span><input style={FLAG_INPUT} value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(51) 3333-3333" /></label>
+          </div>
+          <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>E-mail comercial</span><input style={FLAG_INPUT} type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="contato@academia.com" /></label>
+          {err && <div style={{ color: 'var(--danger)', fontSize: 12.5 }}>{err}</div>}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancelar</button>
+            <button className="btn btn-primary btn-sm" onClick={save} disabled={saving}>{saving ? 'Salvando…' : 'Salvar perfil'}</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ---------- Academia (detalhe, tela cheia) ----------
 function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go, reload }) {
   const t = (tenants || []).find((x) => x.id === tenantId);
@@ -916,6 +1018,7 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [manageOpen, setManageOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   // Reativação: regera o link de convite do gestor (convite expirado/perdido).
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteLink, setInviteLink] = useState(null);
@@ -967,6 +1070,14 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
   const [bg, fg] = tone(t.id);
   const pays = (overview?.recentPayments || []).filter((p) => p.tenantId === tenantId).slice(0, 6);
   const events = (audit || []).filter((l) => l.tenantId === tenantId).slice(0, 6);
+  // Perfil da academia: resumo read-only p/ o card; edição completa no ProfilePanel.
+  const pf = t.profile || {};
+  const pfAddress = [[pf.street, pf.number].filter(Boolean).join(', '), pf.neighborhood].filter(Boolean).join(' · ');
+  const profileRows = [
+    ['CNPJ', pf.cnpjCpf], ['Razão social', pf.legalName], ['Nome fantasia', pf.tradeName],
+    ['Endereço', pfAddress], ['Responsável', pf.responsibleName], ['CPF', pf.responsibleCpf],
+    ['WhatsApp', t.responsiblePhone], ['E-mail', pf.email],
+  ];
   const usage = [
     { n: 'Leads cadastrados', v: stats?.leadCount ?? null, max: Math.max(100, stats?.leadCount || 0) },
     { n: 'Gestores', v: stats?.managers ?? null, max: stats?.maxManagers || Math.max(1, stats?.managers || 0) },
@@ -995,10 +1106,12 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
         <div className="ph-actions">
           {err && <span style={{ color: 'var(--danger)', fontSize: 12, alignSelf: 'center', maxWidth: 220 }}>{err}</span>}
           <button className="btn btn-ghost" onClick={enterAs} disabled={busy}><Icon name="ext" size={16} /> {busy ? 'Entrando…' : 'Acessar como'}</button>
+          <button className="btn btn-ghost" onClick={() => setProfileOpen(true)}><Icon name="building" size={16} /> Editar perfil</button>
           <button className="btn btn-primary" onClick={() => setManageOpen(true)}><Icon name="plans" size={16} /> Gerenciar plano</button>
         </div>
       </div>
       {manageOpen && <ManagePanel tenant={t} plans={plans} asaasConfigured={asaasConfigured} onClose={() => setManageOpen(false)} onDone={() => { setManageOpen(false); reload?.(); }} />}
+      {profileOpen && <ProfilePanel tenant={t} onClose={() => setProfileOpen(false)} onDone={() => { setProfileOpen(false); reload?.(); }} />}
 
       {t.activationPending && (
         <div className="card card-pad" style={{ marginBottom: 16, display: 'grid', gap: 10, borderColor: 'rgba(255,176,32,.4)' }}>
@@ -1039,6 +1152,17 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
             {pays.length ? <table className="tbl"><tbody>{pays.map((p) => (
               <tr key={p.id}><td className="muted">{p.event}</td><td className="tnum" style={{ textAlign: 'right' }}>{p.value != null ? brl(p.value) : '—'}</td><td className="muted tnum" style={{ textAlign: 'right' }}>{p.at ? new Date(p.at).toLocaleDateString('pt-BR') : ''}</td></tr>
             ))}</tbody></table> : <div className="empty" style={{ padding: 24 }}>Sem pagamentos registrados.</div>}
+          </div>
+          <div className="card">
+            <div className="card-h"><h3>Perfil da academia</h3><a className="sub" style={{ color: 'var(--brand-300)', cursor: 'pointer' }} onClick={() => setProfileOpen(true)}>Editar →</a></div>
+            <div className="card-pad" style={{ display: 'grid', gap: 9, fontSize: 13 }}>
+              {profileRows.map(([label, val]) => (
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                  <span className="muted" style={{ whiteSpace: 'nowrap' }}>{label}</span>
+                  <span style={{ textAlign: 'right', color: val ? 'var(--text)' : 'var(--muted)' }}>{val || '—'}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
         <div className="card">
