@@ -177,7 +177,7 @@ async function handleSubscription(req, res, auth) {
       const planDoc = plansMap.get(tenant.plan);
       // Consultores EXTRAS (além dos inclusos) entram no valor da assinatura —
       // exceto com preço negociado (monthlyPrice), que é valor final fechado.
-      const negotiated = Number.isFinite(Number(tenant.monthlyPrice));
+      const negotiated = Number(tenant.monthlyPrice) > 0;
       const extraMonthly = negotiated ? 0 : extraConsultantsCharge(planDoc, seats.consultants);
       let value, cycleAsaas;
       if (cycle === 'annual') {
@@ -387,7 +387,7 @@ async function handleTenantSelf(req, res, auth) {
     }
 
     const seats = await getSeatUsage(auth.tenantId);
-    const negotiated = Number.isFinite(Number(tenant.monthlyPrice));
+    const negotiated = Number(tenant.monthlyPrice) > 0;
     const extraMonthly = negotiated ? 0 : extraConsultantsCharge(planDoc, seats.consultants);
     let value, cycleAsaas;
     if (cycle === 'annual') {

@@ -38,7 +38,10 @@ export function planPrice(plan) {
 // sem ele, extras não são computados (comportamento antigo).
 export function effectivePrice(tenant, plansMap) {
   const override = Number(tenant?.monthlyPrice);
-  if (Number.isFinite(override) && override >= 0) return override;
+  // Override só vale quando POSITIVO: monthlyPrice 0/ausente = "sem preço
+  // negociado" → usa o catálogo. (R$0 negociado não faz sentido — bloqueava a
+  // cobrança; cliente grátis = conta "interna".)
+  if (Number.isFinite(override) && override > 0) return override;
   const planDoc = plansMap?.get?.(tenant?.plan);
   const catalog = Number(planDoc?.priceMonthly);
   if (Number.isFinite(catalog) && catalog >= 0) {
