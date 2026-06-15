@@ -59,9 +59,10 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
       label: 'Operação',
       items: [
         { id: 'general', label: 'Regras gerais', hint: 'Meta, SLA, aulas e modalidades', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount, keywords: 'sla atraso critico meta diaria dias semana aulas experimentais quantidade modalidades unidades cidade' },
-        // "Plano & faturas": por ora só quando o DONO entra via "Acessar como"
-        // (impersonando). Para liberar geral, troque a condição por `true`.
-        ...(appUser?.impersonating ? [{ id: 'billing', label: 'Plano & faturas', hint: 'Assinatura, faturas e renovação', icon: <CreditCard size={15} />, badge: null, keywords: 'plano fatura pagamento assinatura renovacao preco boleto pix cartao' }] : []),
+        // "Plano & faturas": LIBERADO p/ todo admin de academia (self-service de
+        // cobrança — assinatura, faturas, troca de plano via /api/asaas). Super-
+        // admin puro não vê (vai direto pro console, sem tenant próprio).
+        ...(!appUser?.superAdminOnly ? [{ id: 'billing', label: 'Plano & faturas', hint: 'Assinatura, faturas e renovação', icon: <CreditCard size={15} />, badge: null, keywords: 'plano fatura pagamento assinatura renovacao preco boleto pix cartao' }] : []),
       ],
     },
     {
