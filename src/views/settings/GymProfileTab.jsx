@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Building2, Check, FileText, MapPin, User } from 'lucide-react';
 import { auth } from '../../lib/firebase.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
-import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete } from '../../lib/brazilLookups.js';
+import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete, isCpfComplete, isValidCpf } from '../../lib/brazilLookups.js';
 import { SettingsCard } from '../../components/ui/SettingsCard.jsx';
 import { Field, StyledInput } from '../../components/ui/Field.jsx';
 import { Btn } from '../../components/ui/Btn.jsx';
@@ -10,21 +10,22 @@ import { Btn } from '../../components/ui/Btn.jsx';
 // Página "Perfil da academia" (admin do tenant), aberta pelo menu de persona.
 // Lê/grava via /api/asaas (handleTenantSelf: GET + POST action:'updateProfile')
 // — sem função nova. Logo ADIADA. 3 blocos: identidade & fiscal, endereço,
-// contato & responsável. CNPJ e CEP fazem busca automática (BrasilAPI/ViaCEP)
-// e preenchem razão social / endereço. Direção visual "Carteira da academia".
+// contato & responsável. CNPJ (BrasilAPI) auto-preenche razão social + nome
+// fantasia; CEP (ViaCEP) auto-preenche o endereço; CPF é validado localmente.
 
 const EMPTY = {
-  cnpjCpf: '', legalName: '',
+  cnpjCpf: '', legalName: '', tradeName: '',
   cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '',
-  responsibleName: '', whatsapp: '', email: '', phone: '',
+  responsibleName: '', whatsapp: '', email: '', phone: '', responsibleCpf: '', responsibleBirth: '',
 };
 
-// Campos que contam para a completude (complemento é opcional, fica de fora).
+// Campos que contam para a completude (complemento e nome fantasia são opcionais).
 const SCORED = [
-  ['cnpjCpf', 'CNPJ/CPF'], ['legalName', 'razão social'],
+  ['cnpjCpf', 'CNPJ'], ['legalName', 'razão social'],
   ['cep', 'CEP'], ['street', 'rua'], ['number', 'número'], ['neighborhood', 'bairro'],
   ['city', 'cidade'], ['state', 'UF'],
-  ['responsibleName', 'responsável'], ['whatsapp', 'WhatsApp'], ['email', 'e-mail comercial'], ['phone', 'telefone'],
+  ['responsibleName', 'responsável'], ['responsibleCpf', 'CPF'], ['responsibleBirth', 'nascimento'],
+  ['whatsapp', 'WhatsApp'], ['email', 'e-mail comercial'], ['phone', 'telefone'],
 ];
 
 function Ring({ pct }) {
@@ -71,13 +72,13 @@ function GymProfileTab() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- carrega uma vez ao montar
   }, []);
 
-  // CNPJ completo → busca razão social na Receita (BrasilAPI). CPF (11 díg.) não busca.
+  // CNPJ completo → busca razão social + nome fantasia na Receita (BrasilAPI).
   const onCnpjBlur = async () => {
     if (!isCnpjComplete(form.cnpjCpf)) return;
     setCnpjBusy(true);
     const r = await lookupCnpj(form.cnpjCpf);
     setCnpjBusy(false);
-    if (r) { if (r.legalName) set('legalName', r.legalName); }
+    if (r) setForm((s) => ({ ...s, legalName: r.legalName || s.legalName, tradeName: r.tradeName || s.tradeName }));
     else toast.warning('CNPJ não encontrado na Receita — confira o número.');
   };
   // CEP completo → preenche rua/bairro/cidade/UF (ViaCEP). Não toca número/complemento.
@@ -90,6 +91,7 @@ function GymProfileTab() {
     else toast.warning('CEP não encontrado — confira o número.');
   };
 
+  const cpfInvalid = isCpfComplete(form.responsibleCpf) && !isValidCpf(form.responsibleCpf);
   const pct = useMemo(() => {
     const filled = SCORED.filter(([k]) => String(form[k] || '').trim()).length;
     return Math.round((filled / SCORED.length) * 100);
@@ -97,15 +99,17 @@ function GymProfileTab() {
   const missing = useMemo(() => SCORED.filter(([k]) => !String(form[k] || '').trim()).map(([, l]) => l), [form]);
 
   const save = async () => {
+    if (cpfInvalid) { toast.warning('O CPF do responsável é inválido. Corrija antes de salvar.'); return; }
     setSaving(true);
     try {
       const token = await auth.currentUser.getIdToken();
       const body = {
         action: 'updateProfile',
         profile: {
-          cnpjCpf: form.cnpjCpf, legalName: form.legalName,
+          cnpjCpf: form.cnpjCpf, legalName: form.legalName, tradeName: form.tradeName,
           cep: form.cep, street: form.street, number: form.number, complement: form.complement, neighborhood: form.neighborhood,
           responsibleName: form.responsibleName, email: form.email, phone: form.phone,
+          responsibleCpf: form.responsibleCpf, responsibleBirth: form.responsibleBirth,
         },
         settings: { city: form.city, state: form.state },
         responsiblePhone: form.whatsapp,
@@ -138,7 +142,7 @@ function GymProfileTab() {
             </span>
           </div>
           <div className="min-w-0 flex-1">
-            <h3 className="font-display text-[19px] font-bold tracking-tight truncate">{displayName || 'Sua academia'}</h3>
+            <h3 className="font-display text-[19px] font-bold tracking-tight truncate">{form.tradeName || displayName || 'Sua academia'}</h3>
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
               <span className="num">{form.cnpjCpf ? `CNPJ ${form.cnpjCpf}` : 'CNPJ não informado'}</span>{cityUf ? ` · ${cityUf}` : ''}
             </p>
@@ -156,10 +160,11 @@ function GymProfileTab() {
         {/* Identidade & fiscal */}
         <SettingsCard title="Identidade & fiscal" hint="Dados oficiais da empresa" icon={<FileText size={16} />}>
           <div className="space-y-4">
-            <Field label="CNPJ / CPF" hint={cnpjBusy ? 'Buscando na Receita…' : 'Informe o CNPJ para preencher a razão social'}>
+            <Field label="CNPJ" hint={cnpjBusy ? 'Buscando na Receita…' : 'Preenche razão social e nome fantasia'}>
               <StyledInput value={form.cnpjCpf} onChange={(e) => set('cnpjCpf', e.target.value)} onBlur={onCnpjBlur} placeholder="00.000.000/0000-00" />
             </Field>
             <Field label="Razão social"><StyledInput value={form.legalName} onChange={(e) => set('legalName', e.target.value)} placeholder="Nome empresarial" /></Field>
+            <Field label="Nome fantasia (opcional)"><StyledInput value={form.tradeName} onChange={(e) => set('tradeName', e.target.value)} placeholder="Como a academia é conhecida" /></Field>
           </div>
         </SettingsCard>
 
@@ -167,6 +172,10 @@ function GymProfileTab() {
         <SettingsCard title="Contato & responsável" hint="Quem responde pela academia" icon={<User size={16} />}>
           <div className="space-y-4">
             <Field label="Nome do responsável"><StyledInput value={form.responsibleName} onChange={(e) => set('responsibleName', e.target.value)} placeholder="Nome completo" /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="CPF" error={cpfInvalid ? 'CPF inválido' : undefined}><StyledInput value={form.responsibleCpf} onChange={(e) => set('responsibleCpf', e.target.value)} placeholder="000.000.000-00" /></Field>
+              <Field label="Data de nascimento"><StyledInput type="date" value={form.responsibleBirth} onChange={(e) => set('responsibleBirth', e.target.value)} /></Field>
+            </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="WhatsApp"><StyledInput value={form.whatsapp} onChange={(e) => set('whatsapp', e.target.value)} placeholder="55 51 99999-9999" /></Field>
               <Field label="Telefone"><StyledInput value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(51) 3333-3333" /></Field>

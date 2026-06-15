@@ -3,7 +3,7 @@ import { auth, db } from '../../lib/firebase.js';
 import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { planLabel, auditActionLabel, IMPERSONATION_KEY } from '../../lib/superadmin.js';
-import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete } from '../../lib/brazilLookups.js';
+import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete, isCpfComplete, isValidCpf } from '../../lib/brazilLookups.js';
 import { Icon } from './consoleIcons.jsx';
 import './console.css';
 
@@ -916,10 +916,11 @@ function ManagePanel({ tenant, plans, asaasConfigured, onClose, onDone }) {
 function ProfilePanel({ tenant, onClose, onDone }) {
   const p0 = tenant.profile || {};
   const [f, setF] = useState({
-    cnpjCpf: p0.cnpjCpf || '', legalName: p0.legalName || '',
+    cnpjCpf: p0.cnpjCpf || '', legalName: p0.legalName || '', tradeName: p0.tradeName || '',
     cep: p0.cep || '', street: p0.street || '', number: p0.number || '', complement: p0.complement || '', neighborhood: p0.neighborhood || '',
     city: tenant.settings?.city || '', state: tenant.settings?.state || '',
     responsibleName: p0.responsibleName || '', whatsapp: tenant.responsiblePhone || '', email: p0.email || '', phone: p0.phone || '',
+    responsibleCpf: p0.responsibleCpf || '', responsibleBirth: p0.responsibleBirth || '',
   });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
@@ -930,8 +931,8 @@ function ProfilePanel({ tenant, onClose, onDone }) {
   const lookupCnpjNow = async () => {
     if (!isCnpjComplete(f.cnpjCpf)) return;
     setCnpjBusy(true); const r = await lookupCnpj(f.cnpjCpf); setCnpjBusy(false);
-    if (r?.legalName) { set('legalName', r.legalName); setErr(''); }
-    else if (!r) setErr('CNPJ não encontrado na Receita.');
+    if (r) { setF((s) => ({ ...s, legalName: r.legalName || s.legalName, tradeName: r.tradeName || s.tradeName })); setErr(''); }
+    else setErr('CNPJ não encontrado na Receita.');
   };
   const lookupCepNow = async () => {
     if (!isCepComplete(f.cep)) return;
@@ -939,14 +940,16 @@ function ProfilePanel({ tenant, onClose, onDone }) {
     if (r) { setF((s) => ({ ...s, street: r.street || s.street, neighborhood: r.neighborhood || s.neighborhood, city: r.city || s.city, state: r.state || s.state })); setErr(''); }
     else setErr('CEP não encontrado.');
   };
+  const cpfErr = isCpfComplete(f.responsibleCpf) && !isValidCpf(f.responsibleCpf);
   const save = async () => {
     setSaving(true); setErr('');
     const body = {
       tenantId: tenant.id,
       profile: {
-        cnpjCpf: f.cnpjCpf, legalName: f.legalName,
+        cnpjCpf: f.cnpjCpf, legalName: f.legalName, tradeName: f.tradeName,
         cep: f.cep, street: f.street, number: f.number, complement: f.complement, neighborhood: f.neighborhood,
         responsibleName: f.responsibleName, email: f.email, phone: f.phone,
+        responsibleCpf: f.responsibleCpf, responsibleBirth: f.responsibleBirth,
       },
       settings: { city: f.city, state: f.state },
       responsiblePhone: f.whatsapp,
@@ -968,9 +971,10 @@ function ProfilePanel({ tenant, onClose, onDone }) {
         <div className="card-pad" style={{ display: 'grid', gap: 14 }}>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>Identidade &amp; fiscal</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CNPJ / CPF{cnpjBusy ? ' · buscando…' : ''}</span><input style={FLAG_INPUT} value={f.cnpjCpf} onChange={(e) => set('cnpjCpf', e.target.value)} onBlur={lookupCnpjNow} placeholder="00.000.000/0000-00" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CNPJ{cnpjBusy ? ' · buscando…' : ''}</span><input style={FLAG_INPUT} value={f.cnpjCpf} onChange={(e) => set('cnpjCpf', e.target.value)} onBlur={lookupCnpjNow} placeholder="00.000.000/0000-00" /></label>
             <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Razão social</span><input style={FLAG_INPUT} value={f.legalName} onChange={(e) => set('legalName', e.target.value)} placeholder="Nome empresarial" /></label>
           </div>
+          <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nome fantasia (opcional)</span><input style={FLAG_INPUT} value={f.tradeName} onChange={(e) => set('tradeName', e.target.value)} placeholder="Como a academia é conhecida" /></label>
           <div style={grp}>Endereço</div>
           <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 80px', gap: 12 }}>
             <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CEP{cepBusy ? ' · buscando…' : ''}</span><input style={FLAG_INPUT} value={f.cep} onChange={(e) => set('cep', e.target.value)} onBlur={lookupCepNow} placeholder="00000-000" /></label>
@@ -987,6 +991,10 @@ function ProfilePanel({ tenant, onClose, onDone }) {
           </div>
           <div style={grp}>Contato &amp; responsável</div>
           <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nome do responsável</span><input style={FLAG_INPUT} value={f.responsibleName} onChange={(e) => set('responsibleName', e.target.value)} placeholder="Nome completo" /></label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12, color: cpfErr ? 'var(--danger)' : undefined }}>CPF{cpfErr ? ' · inválido' : ''}</span><input style={FLAG_INPUT} value={f.responsibleCpf} onChange={(e) => set('responsibleCpf', e.target.value)} placeholder="000.000.000-00" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Data de nascimento</span><input style={FLAG_INPUT} type="date" value={f.responsibleBirth} onChange={(e) => set('responsibleBirth', e.target.value)} /></label>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
             <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>WhatsApp</span><input style={FLAG_INPUT} value={f.whatsapp} onChange={(e) => set('whatsapp', e.target.value)} placeholder="55 51 99999-9999" /></label>
             <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Telefone</span><input style={FLAG_INPUT} value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(51) 3333-3333" /></label>
@@ -1066,8 +1074,8 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
   const pf = t.profile || {};
   const pfAddress = [[pf.street, pf.number].filter(Boolean).join(', '), pf.neighborhood].filter(Boolean).join(' · ');
   const profileRows = [
-    ['CNPJ/CPF', pf.cnpjCpf], ['Razão social', pf.legalName],
-    ['Endereço', pfAddress], ['Responsável', pf.responsibleName],
+    ['CNPJ', pf.cnpjCpf], ['Razão social', pf.legalName], ['Nome fantasia', pf.tradeName],
+    ['Endereço', pfAddress], ['Responsável', pf.responsibleName], ['CPF', pf.responsibleCpf],
     ['WhatsApp', t.responsiblePhone], ['E-mail', pf.email],
   ];
   const usage = [

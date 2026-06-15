@@ -12,8 +12,9 @@
 
 // Limite de caracteres por campo (defesa contra payload abusivo).
 const PROFILE_MAX = {
-  cnpjCpf: 20,        // identidade & fiscal
-  legalName: 140,
+  cnpjCpf: 20,        // identidade & fiscal (CNPJ da empresa)
+  legalName: 140,     // razão social
+  tradeName: 140,     // nome fantasia (opcional)
   cep: 12,            // endereço (city/state ficam em settings)
   street: 140,
   number: 16,
@@ -22,6 +23,8 @@ const PROFILE_MAX = {
   responsibleName: 120, // contato & responsável (whatsapp = responsiblePhone)
   email: 140,
   phone: 30,
+  responsibleCpf: 20,   // CPF do responsável
+  responsibleBirth: 10, // data de nascimento (YYYY-MM-DD)
 };
 
 const clean = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
