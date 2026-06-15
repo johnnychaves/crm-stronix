@@ -206,21 +206,23 @@ function Placeholder({ route }) {
 }
 
 // ---------- Academias (lista, dados reais) ----------
-const CHIPS = [['todas', 'Todas'], ['ativa', 'Ativas'], ['trial', 'Trial'], ['inadimplente', 'Inadimplentes'], ['cancelada', 'Canceladas']];
+const CHIPS = [['todas', 'Todas'], ['ativa', 'Ativas'], ['trial', 'Trial'], ['inadimplente', 'Inadimplentes'], ['cancelada', 'Canceladas'], ['internas', 'Internas']];
 function Tenants({ tenants, plans, go, onReload }) {
   const [filter, setFilter] = useState('todas');
   const [q, setQ] = useState('');
   const [showNew, setShowNew] = useState(false);
-  const list = (tenants || []).filter((t) => !t.internal);
-  const counts = { todas: list.length, ativa: 0, trial: 0, inadimplente: 0, cancelada: 0 };
-  list.forEach((t) => { counts[statusKey(t)] += 1; });
+  // Mostra TODAS as academias, inclusive as internas (com selo) — internas só
+  // saem dos KPIs de negócio (MRR/Financeiro), não da lista de gestão.
+  const list = (tenants || []);
+  const counts = { todas: list.length, ativa: 0, trial: 0, inadimplente: 0, cancelada: 0, internas: 0 };
+  list.forEach((t) => { counts[statusKey(t)] += 1; if (t.internal) counts.internas += 1; });
   const shown = list
-    .filter((t) => filter === 'todas' || statusKey(t) === filter)
+    .filter((t) => filter === 'todas' ? true : filter === 'internas' ? t.internal : statusKey(t) === filter)
     .filter((t) => !q || (t.displayName || '').toLowerCase().includes(q.toLowerCase()));
   return (
     <>
       <div className="ph">
-        <div><h1>Academias</h1><p>{list.length} clientes na plataforma · {counts.ativa} ativas</p></div>
+        <div><h1>Academias</h1><p>{counts.todas - counts.internas} clientes · {counts.ativa} ativas{counts.internas ? ` · ${counts.internas} interna${counts.internas === 1 ? '' : 's'}` : ''}</p></div>
         <div className="ph-actions"><button className="btn btn-ghost"><Icon name="download" size={16} /> CSV</button><button className="btn btn-primary" onClick={() => setShowNew(true)}><Icon name="plus" size={16} /> Nova academia</button></div>
       </div>
       {showNew && <NewTenantPanel plans={plans} onClose={() => setShowNew(false)} onDone={() => { setShowNew(false); onReload?.(); }} />}
@@ -238,8 +240,8 @@ function Tenants({ tenants, plans, go, onReload }) {
               <tr key={t.id} onClick={() => go('tenant', t.id)}>
                 <td><GymCell t={t} sub={[t.settings?.city, t.settings?.state].filter(Boolean).join(' · ') || t.id} /></td>
                 <td>{planChip(t.plan)}</td>
-                <td>{statusBadge(t)}</td>
-                <td className="tnum" style={{ textAlign: 'right' }}>{t.price ? brl(t.price) : '—'}</td>
+                <td>{statusBadge(t)}{t.internal ? <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--muted)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 6px' }}>interna</span> : null}</td>
+                <td className="tnum" style={{ textAlign: 'right' }}>{t.internal ? <span className="muted">—</span> : (t.price ? brl(t.price) : '—')}</td>
                 <td>{payBadge(t.paymentStatus)}</td>
                 <td className="muted tnum">{t.createdAt ? new Date(t.createdAt).toLocaleDateString('pt-BR') : '—'}</td>
                 <td className="muted">{t.lastActivityAt ? new Date(t.lastActivityAt).toLocaleDateString('pt-BR') : '—'}</td>
