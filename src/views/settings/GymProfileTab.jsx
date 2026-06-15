@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Building2, Check, FileText, MapPin, User } from 'lucide-react';
 import { auth } from '../../lib/firebase.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
+import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete } from '../../lib/brazilLookups.js';
 import { SettingsCard } from '../../components/ui/SettingsCard.jsx';
 import { Field, StyledInput } from '../../components/ui/Field.jsx';
 import { Btn } from '../../components/ui/Btn.jsx';
@@ -9,8 +10,8 @@ import { Btn } from '../../components/ui/Btn.jsx';
 // Página "Perfil da academia" (admin do tenant), aberta pelo menu de persona.
 // Lê/grava via /api/asaas (handleTenantSelf: GET + POST action:'updateProfile')
 // — sem função nova. Logo ADIADA. 3 blocos: identidade & fiscal, endereço,
-// contato & responsável. Direção visual "Carteira da academia" (cartão-
-// identidade + anel de completude no topo).
+// contato & responsável. CNPJ e CEP fazem busca automática (BrasilAPI/ViaCEP)
+// e preenchem razão social / endereço. Direção visual "Carteira da academia".
 
 const EMPTY = {
   cnpjCpf: '', legalName: '',
@@ -45,6 +46,8 @@ function GymProfileTab() {
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [cnpjBusy, setCnpjBusy] = useState(false);
+  const [cepBusy, setCepBusy] = useState(false);
   const set = (k, v) => setForm((s) => ({ ...s, [k]: v }));
 
   useEffect(() => {
@@ -67,6 +70,25 @@ function GymProfileTab() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- carrega uma vez ao montar
   }, []);
+
+  // CNPJ completo → busca razão social na Receita (BrasilAPI). CPF (11 díg.) não busca.
+  const onCnpjBlur = async () => {
+    if (!isCnpjComplete(form.cnpjCpf)) return;
+    setCnpjBusy(true);
+    const r = await lookupCnpj(form.cnpjCpf);
+    setCnpjBusy(false);
+    if (r) { if (r.legalName) set('legalName', r.legalName); }
+    else toast.warning('CNPJ não encontrado na Receita — confira o número.');
+  };
+  // CEP completo → preenche rua/bairro/cidade/UF (ViaCEP). Não toca número/complemento.
+  const onCepBlur = async () => {
+    if (!isCepComplete(form.cep)) return;
+    setCepBusy(true);
+    const r = await lookupCep(form.cep);
+    setCepBusy(false);
+    if (r) setForm((s) => ({ ...s, street: r.street || s.street, neighborhood: r.neighborhood || s.neighborhood, city: r.city || s.city, state: r.state || s.state }));
+    else toast.warning('CEP não encontrado — confira o número.');
+  };
 
   const pct = useMemo(() => {
     const filled = SCORED.filter(([k]) => String(form[k] || '').trim()).length;
@@ -134,7 +156,9 @@ function GymProfileTab() {
         {/* Identidade & fiscal */}
         <SettingsCard title="Identidade & fiscal" hint="Dados oficiais da empresa" icon={<FileText size={16} />}>
           <div className="space-y-4">
-            <Field label="CNPJ / CPF"><StyledInput value={form.cnpjCpf} onChange={(e) => set('cnpjCpf', e.target.value)} placeholder="00.000.000/0000-00" /></Field>
+            <Field label="CNPJ / CPF" hint={cnpjBusy ? 'Buscando na Receita…' : 'Informe o CNPJ para preencher a razão social'}>
+              <StyledInput value={form.cnpjCpf} onChange={(e) => set('cnpjCpf', e.target.value)} onBlur={onCnpjBlur} placeholder="00.000.000/0000-00" />
+            </Field>
             <Field label="Razão social"><StyledInput value={form.legalName} onChange={(e) => set('legalName', e.target.value)} placeholder="Nome empresarial" /></Field>
           </div>
         </SettingsCard>
@@ -154,7 +178,11 @@ function GymProfileTab() {
         {/* Endereço — ocupa a largura toda (mais campos) e fica por último */}
         <SettingsCard className="order-last lg:col-span-2" title="Endereço" hint="Onde a academia funciona" icon={<MapPin size={16} />}>
           <div className="grid grid-cols-1 sm:grid-cols-12 gap-4">
-            <div className="sm:col-span-3"><Field label="CEP"><StyledInput value={form.cep} onChange={(e) => set('cep', e.target.value)} placeholder="00000-000" /></Field></div>
+            <div className="sm:col-span-3">
+              <Field label="CEP" hint={cepBusy ? 'Buscando endereço…' : undefined}>
+                <StyledInput value={form.cep} onChange={(e) => set('cep', e.target.value)} onBlur={onCepBlur} placeholder="00000-000" />
+              </Field>
+            </div>
             <div className="sm:col-span-7"><Field label="Rua / logradouro"><StyledInput value={form.street} onChange={(e) => set('street', e.target.value)} placeholder="Av. Exemplo" /></Field></div>
             <div className="sm:col-span-2"><Field label="Número"><StyledInput value={form.number} onChange={(e) => set('number', e.target.value)} placeholder="123" /></Field></div>
             <div className="sm:col-span-5"><Field label="Complemento"><StyledInput value={form.complement} onChange={(e) => set('complement', e.target.value)} placeholder="Sala, andar…" /></Field></div>

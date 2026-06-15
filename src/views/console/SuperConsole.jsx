@@ -3,6 +3,7 @@ import { auth, db } from '../../lib/firebase.js';
 import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
 import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { planLabel, auditActionLabel, IMPERSONATION_KEY } from '../../lib/superadmin.js';
+import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete } from '../../lib/brazilLookups.js';
 import { Icon } from './consoleIcons.jsx';
 import './console.css';
 
@@ -923,6 +924,21 @@ function ProfilePanel({ tenant, onClose, onDone }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  const [cnpjBusy, setCnpjBusy] = useState(false);
+  const [cepBusy, setCepBusy] = useState(false);
+  // CNPJ/CEP completos → busca automática (BrasilAPI/ViaCEP) e auto-preenche.
+  const lookupCnpjNow = async () => {
+    if (!isCnpjComplete(f.cnpjCpf)) return;
+    setCnpjBusy(true); const r = await lookupCnpj(f.cnpjCpf); setCnpjBusy(false);
+    if (r?.legalName) { set('legalName', r.legalName); setErr(''); }
+    else if (!r) setErr('CNPJ não encontrado na Receita.');
+  };
+  const lookupCepNow = async () => {
+    if (!isCepComplete(f.cep)) return;
+    setCepBusy(true); const r = await lookupCep(f.cep); setCepBusy(false);
+    if (r) { setF((s) => ({ ...s, street: r.street || s.street, neighborhood: r.neighborhood || s.neighborhood, city: r.city || s.city, state: r.state || s.state })); setErr(''); }
+    else setErr('CEP não encontrado.');
+  };
   const save = async () => {
     setSaving(true); setErr('');
     const body = {
@@ -952,12 +968,12 @@ function ProfilePanel({ tenant, onClose, onDone }) {
         <div className="card-pad" style={{ display: 'grid', gap: 14 }}>
           <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>Identidade &amp; fiscal</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CNPJ / CPF</span><input style={FLAG_INPUT} value={f.cnpjCpf} onChange={(e) => set('cnpjCpf', e.target.value)} placeholder="00.000.000/0000-00" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CNPJ / CPF{cnpjBusy ? ' · buscando…' : ''}</span><input style={FLAG_INPUT} value={f.cnpjCpf} onChange={(e) => set('cnpjCpf', e.target.value)} onBlur={lookupCnpjNow} placeholder="00.000.000/0000-00" /></label>
             <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Razão social</span><input style={FLAG_INPUT} value={f.legalName} onChange={(e) => set('legalName', e.target.value)} placeholder="Nome empresarial" /></label>
           </div>
           <div style={grp}>Endereço</div>
           <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 80px', gap: 12 }}>
-            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CEP</span><input style={FLAG_INPUT} value={f.cep} onChange={(e) => set('cep', e.target.value)} placeholder="00000-000" /></label>
+            <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CEP{cepBusy ? ' · buscando…' : ''}</span><input style={FLAG_INPUT} value={f.cep} onChange={(e) => set('cep', e.target.value)} onBlur={lookupCepNow} placeholder="00000-000" /></label>
             <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Rua</span><input style={FLAG_INPUT} value={f.street} onChange={(e) => set('street', e.target.value)} placeholder="Logradouro" /></label>
             <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nº</span><input style={FLAG_INPUT} value={f.number} onChange={(e) => set('number', e.target.value)} placeholder="123" /></label>
           </div>
