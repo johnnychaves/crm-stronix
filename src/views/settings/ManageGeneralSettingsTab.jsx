@@ -167,26 +167,10 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
   // SLA de atrasados (config da academia): a partir de quantos dias de atraso
   // o lead vira "crítico" (alerta no painel da Equipe + destaque na meta).
   // Lido do contexto (mesmo doc geral); grava direto no clique, como os dias.
-  const { slaOverdueDays, dailyVolumeTarget } = useGeneralConfig();
-
-  // Meta de PROSPECÇÃO: piso default de ações/dia (0 = desligado). Alvo
-  // individual por consultor (lista abaixo / aba Equipe) tem precedência.
-  const saveVolume = async (n) => {
-    if (!Number.isFinite(n) || n < 0 || n > 200) return;
-    try {
-      await setDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
-        { dailyVolumeTarget: n },
-        { merge: true }
-      );
-    } catch (err) {
-      console.error(err);
-      toast.error('Não foi possível salvar a meta de prospecção.');
-    }
-  };
+  const { slaOverdueDays } = useGeneralConfig();
 
   // Alvo INDIVIDUAL de prospecção (doc do consultor): vazio = remove o campo
-  // e vale o default da academia. Mesmo campo editado na aba Equipe.
+  // (sem meta de prospecção). Mesmo campo editado na aba Equipe.
   const saveUserTarget = async (u, raw) => {
     const cur = u.dailyVolumeTarget ?? null;
     const next = raw === '' ? null : Math.min(500, Math.max(1, Math.floor(Number(raw))));
@@ -308,36 +292,18 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
 
       <SettingsCard
         title="Meta de prospecção"
-        hint="Piso de ações por dia para cada consultor (0 = desligado)"
+        hint="Piso de ações por dia, definido por consultor"
         icon={<Zap size={16} />}
       >
         <div className="p-4 rounded-xl bg-muted/50 border border-border">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                onClick={() => saveVolume(Math.max(0, dailyVolumeTarget - 5))}
-                disabled={dailyVolumeTarget <= 0}
-                className="size-9 grid place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition"
-              ><Minus size={14} /></button>
-              <span className="num w-14 text-center text-[20px] font-bold text-slate-900 dark:text-white">{dailyVolumeTarget === 0 ? 'off' : dailyVolumeTarget}</span>
-              <button
-                type="button"
-                onClick={() => saveVolume(Math.min(200, dailyVolumeTarget + 5))}
-                disabled={dailyVolumeTarget >= 200}
-                className="size-9 grid place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition"
-              ><Plus size={14} /></button>
-            </div>
-            <span className="text-[13px] text-muted-foreground">ações por dia (agendamentos de visita/aula/mensagem/ligação + leads novos + tarefas concluídas + fechamentos)</span>
-          </div>
-          <p className="text-[11.5px] text-muted-foreground mt-3">
-            Vale para os consultores nos dias da meta (gestor fica fora da régua). Quem zera as pendências E bate a prospecção ganha o selo <b>dia perfeito ⚡</b> — a prospecção não trava o "dia batido".
+          <p className="text-[12.5px] text-muted-foreground leading-relaxed">
+            Piso de esforço diário por consultor. Conta como <b>ação</b>: agendar ou reagendar visita/aula, registrar ligação ou mensagem, e cadastrar lead novo. Só concluir uma tarefa da meta (sem uma dessas ações) <b>não</b> conta. Quem zera as pendências <b>e</b> bate a prospecção ganha o selo <b>dia perfeito ⚡</b> — a prospecção não trava o "dia batido". O gestor fica fora da régua.
           </p>
 
           {(usersList || []).filter(u => u.role !== 'admin').length > 0 && (
             <div className="mt-4 pt-4 border-t border-border">
               <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2.5">
-                Alvos individuais — vazio = padrão da academia ({dailyVolumeTarget > 0 ? `${dailyVolumeTarget}/dia` : 'desligado'})
+                Alvo por consultor — vazio = sem meta de prospecção
               </div>
               <div className="flex flex-col gap-2">
                 {(usersList || []).filter(u => u.role !== 'admin').map(u => (
@@ -346,7 +312,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
                     <input
                       type="number" min="1" max="500"
                       defaultValue={u.dailyVolumeTarget ?? ''}
-                      placeholder={dailyVolumeTarget > 0 ? String(dailyVolumeTarget) : 'off'}
+                      placeholder="off"
                       onBlur={(e) => saveUserTarget(u, e.target.value.trim())}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                       className="w-24 h-9 px-3 rounded-lg text-[12.5px] num text-center bg-card border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition"

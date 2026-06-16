@@ -59,21 +59,22 @@ export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 // Régua de PIPELINE (critérios v2 do Johnny, 2026-06-11) — cada ação vale 1:
 //   • AGENDAMENTO criado: visita, aula experimental, mensagem ou ligação
 //     (interações com volumeKind, gravadas pelo wizard/remarcação — cobre o
-//     "reaquecimento": reagendar lead parado É um agendamento)
+//     "reaquecimento": reagendar lead parado É um agendamento; conta mesmo
+//     quando o reagendamento também fecha a tarefa da Meta do dia)
 //   • lead NOVO cadastrado (prospecção)
-//   • tarefa da Meta concluída (daily_goal_done — a moeda Meta-only)
 //   • FECHAMENTO do dia: lead do consultor virou Venda ou Perda hoje
-// FORA da régua: anotações soltas (o registro relevante vive na observação do
-// agendamento), observação automática de cadastro, "adiar p/ amanhã" (snooze,
-// não recebe volumeKind) e mudanças de fase.
+// FORA da régua: concluir tarefa da Meta SEM uma ação acima — daily_goal_done
+// puro (marcar "concluído" ou registrar comparecimento) NÃO é prospecção
+// (decisão do Johnny, 2026-06-16); anotações soltas, observação automática de
+// cadastro, "adiar p/ amanhã" (snooze, não recebe volumeKind) e mudanças de fase.
 // Volume NÃO trava o "dia batido" — quem bate pendências E volume ganha o
 // selo "dia perfeito ⚡". Gestor (role admin) fica fora da régua.
-// Retorna { total, agendamentos, leadsNovos, tarefas, fechamentos }.
+// Retorna { total, agendamentos, leadsNovos, fechamentos }.
 
 // Contagem num INTERVALO [from, to) — base do "hoje" e do acumulado do mês.
 export function computeVolumeInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null) {
   const inRange = (d) => d instanceof Date && d >= from && (!to || d < to);
-  const r = { agendamentos: 0, leadsNovos: 0, tarefas: 0, fechamentos: 0 };
+  const r = { agendamentos: 0, leadsNovos: 0, fechamentos: 0 };
   (leads || []).forEach((l) => {
     if (l.consultantId !== consultantId) return;
     if (inRange(l.createdAt)) r.leadsNovos++;
@@ -82,10 +83,9 @@ export function computeVolumeInRange(leads, interactions, consultantId, consulta
   (interactions || []).forEach((i) => {
     if (i.consultantAuthUid !== consultantAuthUid) return;
     if (!inRange(i.createdAt)) return;
-    if (i.type === 'daily_goal_done') { r.tarefas++; return; }
     if (i.volumeKind) r.agendamentos++;
   });
-  return { total: r.agendamentos + r.leadsNovos + r.tarefas + r.fechamentos, ...r };
+  return { total: r.agendamentos + r.leadsNovos + r.fechamentos, ...r };
 }
 
 export function computeDailyVolume(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
@@ -131,23 +131,19 @@ export function listDailyVolumeActions(leads, interactions, consultantId, consul
   (interactions || []).forEach((i) => {
     if (i.consultantAuthUid !== consultantAuthUid) return;
     if (!(i.createdAt instanceof Date) || i.createdAt < todayStart) return;
-    if (i.type === 'daily_goal_done') {
-      const cat = DAILY_GOAL_CATEGORY_LABEL[i.dailyGoalCategory];
-      out.push({ at: i.createdAt, label: `Tarefa concluída${cat ? ` (${cat})` : ''}`, leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
-    } else if (i.volumeKind) {
+    if (i.volumeKind) {
       out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
     }
   });
   return out.sort((a, b) => b.at - a.at);
 }
 
-// Composição legível do volume ("2 agendamentos · 1 lead novo · 3 tarefas").
+// Composição legível do volume ("2 agendamentos · 1 lead novo · 1 fechamento").
 export function volumeBreakdownLabel(v) {
   if (!v) return '';
   const parts = [];
   if (v.agendamentos) parts.push(`${v.agendamentos} agendamento${v.agendamentos === 1 ? '' : 's'}`);
   if (v.leadsNovos) parts.push(`${v.leadsNovos} lead${v.leadsNovos === 1 ? '' : 's'} novo${v.leadsNovos === 1 ? '' : 's'}`);
-  if (v.tarefas) parts.push(`${v.tarefas} tarefa${v.tarefas === 1 ? '' : 's'} concluída${v.tarefas === 1 ? '' : 's'}`);
   if (v.fechamentos) parts.push(`${v.fechamentos} fechamento${v.fechamentos === 1 ? '' : 's'}`);
   return parts.join(' · ') || 'nenhuma ação ainda';
 }

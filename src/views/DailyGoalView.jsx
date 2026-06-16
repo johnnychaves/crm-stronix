@@ -4,7 +4,7 @@ import confetti from 'canvas-confetti';
 import { collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, isAdminUser } from '../lib/leads.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -257,7 +257,7 @@ const DG_WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'S
 
 // Ritmo do mês: dias batidos / sequência / 14 dias. 100% real — lê o
 // histórico persistido (não mais mockado). A config de dias é da academia.
-function StreakCard({ history14, monthHits, monthTarget, streak }) {
+function StreakCard({ history14, monthHits, monthTarget, streak, volumeMonth }) {
   return (
     <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
@@ -285,6 +285,13 @@ function StreakCard({ history14, monthHits, monthTarget, streak }) {
       <div className="mt-2 text-[11.5px] text-slate-500 dark:text-slate-400">
         Sequência atual: <span className="font-semibold text-slate-700 dark:text-slate-200 num">{streak} {streak === 1 ? 'dia' : 'dias'}</span>
       </div>
+      {volumeMonth && volumeMonth.target > 0 && (
+        <div className="mt-3 pt-3 border-t border-border flex items-center gap-1.5">
+          <Zap size={13} className={cn('shrink-0', volumeMonth.total >= volumeMonth.target ? 'text-emerald-500' : 'text-amber-500')} />
+          <span className="text-[11.5px] text-muted-foreground">Prospecção no mês</span>
+          <span className={cn('num text-[12px] font-semibold ml-auto', volumeMonth.total >= volumeMonth.target ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-700 dark:text-slate-200')}>{volumeMonth.total} de {volumeMonth.target}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -720,7 +727,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
   // definida pelo admin nas Configurações Gerais. A sequência pula os dias
   // inativos (não quebram nem contam). Default seg–sex.
-  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget: academyVolumeDefault = 0 } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS } = useGeneralConfig();
 
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
@@ -787,10 +794,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const progress = totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 100;
 
   // ── Meta por VOLUME (piso de esforço) ──────────────────────────────────
-  // Alvo: o do próprio consultor (doc do usuário) > default da academia;
-  // gestor fica fora da régua (target 0 = sem barra). Ações = tarefas
-  // concluídas + leads novos + contatos registrados (ver lib/dailyGoal.js).
-  const volumeTarget = volumeTargetFor(appUser, academyVolumeDefault);
+  // Alvo: definido por consultor (doc do usuário); sem alvo = sem régua.
+  // Gestor fica fora (target 0 = sem barra). Ações = agendamentos/reagendamentos,
+  // ligações/mensagens, leads novos e fechamentos (ver lib/dailyGoal.js).
+  const volumeTarget = volumeTargetFor(appUser);
   const volumeData = useMemo(() => {
     if (!volumeTarget) return null;
     void todayKey; // vira com o dia, como o resto da Meta
@@ -799,6 +806,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   const volumeCount = volumeData?.total || 0;
   // Dia perfeito ⚡ = pendências zeradas E volume batido (não trava o ritmo).
   const perfectDay = progress === 100 && total > 0 && volumeTarget > 0 && volumeCount >= volumeTarget;
+  // Acumulado do MÊS de prospecção (vs alvo do mês = alvo/dia × dias de meta) —
+  // exibido abaixo do "Ritmo do mês".
+  const volumeMonth = useMemo(() => {
+    if (!volumeTarget) return null;
+    void todayKey;
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    const { total: mTotal } = computeVolumeInRange(leads, interactions, appUser.id, appUser.authUid, monthStart);
+    return { total: mTotal, target: volumeTarget * countMetaDaysInMonth(metaWeekdays) };
+  }, [leads, interactions, appUser, volumeTarget, metaWeekdays, todayKey]);
 
   // Para a coluna "Feitos Hoje" — mostra leads que têm AO MENOS uma
   // categoria concluída. Lead pendente em qualquer categoria continua
@@ -1012,14 +1028,14 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
         rescheduledFor: newDate,
         createdAt: serverTimestamp()
       };
+      // O reagendamento É a ação de prospecção (reaquecimento): conta SEMPRE
+      // via volumeKind, inclusive quando também fecha a tarefa de hoje. O
+      // daily_goal_done apenas fecha a tarefa da Meta (não soma no volume), logo
+      // não há dupla contagem.
+      interactionPayload.volumeKind = finalApptType;
       if (shouldCloseToday) {
         interactionPayload.dailyGoalCategory = categorySlug;
         interactionPayload.appointmentOutcome = 'rescheduled';
-      } else {
-        // Reagendou sem fechar tarefa de hoje (mesmo dia / pós no-show):
-        // conta no VOLUME como agendamento (o cross-day já pontua via
-        // daily_goal_done — sem dupla contagem do mesmo gesto).
-        interactionPayload.volumeKind = finalApptType;
       }
 
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), interactionPayload);
@@ -1166,7 +1182,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           usersList={usersList}
           metaWeekdays={metaWeekdays}
           slaOverdueDays={slaOverdueDays}
-          academyVolumeDefault={academyVolumeDefault}
           db={db}
           appUser={appUser}
           onOpenLead={setSelectedLead}
@@ -1305,6 +1320,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             monthHits={ritmoMes.monthHits}
             monthTarget={ritmoMes.monthTarget}
             streak={ritmoMes.streak}
+            volumeMonth={volumeMonth}
           />
 
           <div className="rounded-2xl border border-border bg-card shadow-card flex-1 min-h-0 flex flex-col">

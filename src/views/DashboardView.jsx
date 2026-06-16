@@ -700,7 +700,7 @@ const teamMetrics = useMemo(() => {
   // Meta de HOJE + prospecção (dia e MÊS) por consultor — mesma régua da Meta
   // Diária e do painel da Equipe (lib compartilhada). Usa a base CRUA (não a
   // janela de período do dashboard): a leitura de cobrança é do dia/mês corrente.
-  const { dailyVolumeTarget: academyVolumeDefault = 0, metaWeekdays = [1, 2, 3, 4, 5] } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5] } = useGeneralConfig();
 
   // Histórico de metas batidas da equipe (admin lê todos — mesma regra usada
   // pelo painel da Equipe) p/ o "X de Y dias" do mês.
@@ -724,7 +724,7 @@ const teamMetrics = useMemo(() => {
     const map = {};
     (usersList || []).forEach((u) => {
       const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(leads, byLead, u.id));
-      const volTarget = volumeTargetFor(u, academyVolumeDefault);
+      const volTarget = volumeTargetFor(u);
       const vol = volTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : null;
       const monthVol = volTarget > 0 ? computeVolumeInRange(leads, interactions, u.id, u.authUid, monthStart) : null;
       const monthHits = teamHistory.filter((h) => h.consultantId === u.id && String(h.date || '').startsWith(monthPrefix)).length;
@@ -736,7 +736,7 @@ const teamMetrics = useMemo(() => {
       };
     });
     return map;
-  }, [appUser, usersList, leads, interactions, academyVolumeDefault, metaWeekdays, teamHistory]);
+  }, [appUser, usersList, leads, interactions, metaWeekdays, teamHistory]);
 
   const sourceMetrics = useMemo(() => {
     const metrics = {};

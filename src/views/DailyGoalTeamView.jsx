@@ -70,7 +70,7 @@ function statusBadge(row) {
   return <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300">Em andamento</span>;
 }
 
-function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, academyVolumeDefault = 0, db, appUser, onOpenLead }) {
+function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, db, appUser, onOpenLead }) {
   const [expandedId, setExpandedId] = useState(null);
   const [teamHistory, setTeamHistory] = useState([]);
 
@@ -110,7 +110,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
         ).length;
         // Meta por VOLUME: alvo próprio do consultor > default da academia
         // (gestor fica fora). Dia perfeito ⚡ = pendências zeradas + volume.
-        const volumeTarget = volumeTargetFor(u, academyVolumeDefault);
+        const volumeTarget = volumeTargetFor(u);
         const volume = volumeTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : null;
         const volTotal = volume?.total || 0;
         const perfect = totalSlots > 0 && progress === 100 && volumeTarget > 0 && volTotal >= volumeTarget;
@@ -125,7 +125,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
         if (a.progress !== b.progress) return a.progress - b.progress;
         return (b.totalSlots - b.doneSlots) - (a.totalSlots - a.doneSlots);
       });
-  }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays, academyVolumeDefault]);
+  }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays]);
 
   const team = useMemo(() => {
     const withTasks = rows.filter(r => r.totalSlots > 0);
