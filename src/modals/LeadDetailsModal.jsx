@@ -513,6 +513,13 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
 function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
   const toast = useToast();
   const isReadOnly = !canEditLead(appUser, lead);
+  // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
+  // notas/interações e agendar na timeline de QUALQUER lead (base compartilhada,
+  // PR #101) — mesmo não sendo o responsável. Edição dos dados do lead,
+  // Venda/Perda, reatribuição de responsável e exclusão seguem com dono/admin
+  // (isReadOnly / isAdminUser). As regras do Firestore já permitem interações
+  // por qualquer membro do tenant, então não há mudança de rules.
+  const canTimeline = Boolean(appUser?.authUid);
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
   const fallbackFunnelId = lead.funnelId || getDefaultFunnel(safeFunnels)?.id || null;
 
@@ -665,7 +672,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   // Anotação / Mudar fase / Mover funil. O agendamento é tratado pelo
   // ScheduleWizard via handleWizardConfirm.
   const saveInteraction = async () => {
-    if (isReadOnly) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
+    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
     const funnelChanged = Boolean(lead.funnelId) && funnelId && funnelId !== lead.funnelId;
     if (!note.trim() && status === lead.status && !funnelChanged) return;
     setLoading(true);
@@ -714,7 +721,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   // (nextFollowUp/nextFollowUpType/appointmentType/appointmentScheduledFor) e
   // grava os extras por tipo (modalidade+quantidade p/ aula; unidade p/ visita).
   const handleWizardConfirm = async ({ typeLabel, date, modalidade, quantidade, unidade, note: wizNote }) => {
-    if (isReadOnly) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
+    if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
     if (!(date instanceof Date) || isNaN(date.getTime())) { toast.warning('Selecione o dia e o horário.'); return; }
     setLoading(true);
     try {
@@ -768,7 +775,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
 
   // Composer tab handlers — each maps to the existing Firestore patterns.
   const handleSendWhatsAppMessage = async () => {
-    if (isReadOnly) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
+    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
     const msg = note.trim();
     if (!msg) { toast.warning('Escreva a mensagem antes de enviar.'); return; }
     setLoading(true);
@@ -795,7 +802,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   };
 
   const handleLogCall = async () => {
-    if (isReadOnly) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
+    if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
     const summary = note.trim();
     if (!summary) { toast.warning('Resuma o que rolou na ligação antes de salvar.'); return; }
     setLoading(true);
