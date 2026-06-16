@@ -311,35 +311,35 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
         hint="Piso de ações por dia para cada consultor (0 = desligado)"
         icon={<Zap size={16} />}
       >
-        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+        <div className="p-4 rounded-xl bg-muted/50 border border-border">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => saveVolume(Math.max(0, dailyVolumeTarget - 5))}
                 disabled={dailyVolumeTarget <= 0}
-                className="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition"
+                className="size-9 grid place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition"
               ><Minus size={14} /></button>
               <span className="num w-14 text-center text-[20px] font-bold text-slate-900 dark:text-white">{dailyVolumeTarget === 0 ? 'off' : dailyVolumeTarget}</span>
               <button
                 type="button"
                 onClick={() => saveVolume(Math.min(200, dailyVolumeTarget + 5))}
                 disabled={dailyVolumeTarget >= 200}
-                className="w-9 h-9 grid place-items-center rounded-lg border border-slate-200 dark:border-white/[0.07] bg-white dark:bg-white/[0.03] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/[0.06] disabled:opacity-40 disabled:cursor-not-allowed transition"
+                className="size-9 grid place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition"
               ><Plus size={14} /></button>
             </div>
-            <span className="text-[13px] text-slate-600 dark:text-slate-300">ações por dia (agendamentos de visita/aula/mensagem/ligação + leads novos + tarefas concluídas + fechamentos)</span>
+            <span className="text-[13px] text-muted-foreground">ações por dia (agendamentos de visita/aula/mensagem/ligação + leads novos + tarefas concluídas + fechamentos)</span>
           </div>
-          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-3">
+          <p className="text-[11.5px] text-muted-foreground mt-3">
             Vale para os consultores nos dias da meta (gestor fica fora da régua). Quem zera as pendências E bate a prospecção ganha o selo <b>dia perfeito ⚡</b> — a prospecção não trava o "dia batido".
           </p>
 
           {(usersList || []).filter(u => u.role !== 'admin').length > 0 && (
-            <div className="mt-4 pt-4 border-t border-slate-200/70 dark:border-white/[0.06]">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">
+            <div className="mt-4 pt-4 border-t border-border">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2.5">
                 Alvos individuais — vazio = padrão da academia ({dailyVolumeTarget > 0 ? `${dailyVolumeTarget}/dia` : 'desligado'})
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 {(usersList || []).filter(u => u.role !== 'admin').map(u => (
                   <div key={u.id} className="flex items-center gap-3">
                     <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 flex-1 truncate">{u.name}</span>
@@ -349,13 +349,13 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
                       placeholder={dailyVolumeTarget > 0 ? String(dailyVolumeTarget) : 'off'}
                       onBlur={(e) => saveUserTarget(u, e.target.value.trim())}
                       onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                      className="w-24 h-9 px-3 rounded-lg text-[12.5px] num text-center bg-white dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.08] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition"
+                      className="w-24 h-9 px-3 rounded-lg text-[12.5px] num text-center bg-card border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none transition"
                     />
-                    <span className="text-[11px] text-slate-400 w-16">ações/dia</span>
+                    <span className="text-[11px] text-muted-foreground w-16">ações/dia</span>
                   </div>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2.5">Salva ao sair do campo (Enter confirma). O mesmo alvo também pode ser editado na aba Equipe.</p>
+              <p className="text-[11px] text-muted-foreground mt-2.5">Salva ao sair do campo (Enter confirma). O mesmo alvo também pode ser editado na aba Equipe.</p>
             </div>
           )}
         </div>

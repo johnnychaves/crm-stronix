@@ -8,6 +8,7 @@ import { buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeDail
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel, isAllFunnels } from '../lib/funnels.js';
 import { formatHourLabel, humanizeAge } from '../lib/format.js';
+import { cn } from '../lib/utils.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { FunnelSelector } from '../components/ui/FunnelSelector.jsx';
 import { FunnelDetailModal } from '../modals/FunnelDetailModal.jsx';
@@ -295,27 +296,27 @@ function DashTeamRow({ row, maxLeads }) {
           Mesma régua da tela Meta/painel da Equipe. "—" = sem tarefas/régua off. */}
       <td className="py-3 px-3 text-center">
         {!row.today || row.today.goalTotal === 0 ? (
-          <span className="text-[12px] text-slate-400 dark:text-slate-500" title="Sem tarefas na meta de hoje">—</span>
+          <span className="text-[12px] text-muted-foreground" title="Sem tarefas na meta de hoje">—</span>
         ) : row.today.goalDone >= row.today.goalTotal ? (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><CheckCircle size={11} /> Batida</span>
         ) : (
           <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 num">{row.today.goalDone} de {row.today.goalTotal}</span>
         )}
         {row.today && row.today.monthDays > 0 && (
-          <div className={`mt-1 text-[10.5px] num ${row.today.monthHits >= row.today.monthDays ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`} title="Dias com a meta batida neste mês">
+          <div className={cn('mt-1 text-[10.5px] num', row.today.monthHits >= row.today.monthDays ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')} title="Dias com a meta batida neste mês">
             mês: {row.today.monthHits} de {row.today.monthDays} dias
           </div>
         )}
       </td>
       <td className="py-3 px-3 text-center">
         {!row.today || row.today.volTarget === 0 ? (
-          <span className="text-[12px] text-slate-400 dark:text-slate-500" title="Meta de prospecção desligada para este usuário">—</span>
+          <span className="text-[12px] text-muted-foreground" title="Meta de prospecção desligada para este usuário">—</span>
         ) : (
           <>
-            <span className={`inline-flex items-center gap-1 text-[11px] font-semibold num ${row.today.volTotal >= row.today.volTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`}>
+            <span className={cn('inline-flex items-center gap-1 text-[11px] font-semibold num', row.today.volTotal >= row.today.volTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
               <Zap size={11} /> {row.today.volTotal} de {row.today.volTarget}
             </span>
-            <div className={`mt-1 text-[10.5px] num ${row.today.monthVol >= row.today.monthVolTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400 dark:text-slate-500'}`} title="Ações de prospecção acumuladas no mês vs alvo (alvo diário × dias de meta)">
+            <div className={cn('mt-1 text-[10.5px] num', row.today.monthVol >= row.today.monthVolTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')} title="Ações de prospecção acumuladas no mês vs alvo (alvo diário × dias de meta)">
               mês: {row.today.monthVol} de {row.today.monthVolTarget}
             </div>
           </>

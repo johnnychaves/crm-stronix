@@ -6,6 +6,7 @@ import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '.
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, isAdminUser } from '../lib/leads.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
+import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
@@ -127,9 +128,10 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
             </div>
             {volume?.target > 0 && (
               <div
-                className={`mt-1.5 inline-flex items-center gap-1 text-[11.5px] num font-semibold ${
-                  volume.count >= volume.target ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
-                }`}
+                className={cn(
+                  'mt-1.5 inline-flex items-center gap-1 text-[11.5px] num font-semibold',
+                  volume.count >= volume.target ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground'
+                )}
                 title={`Prospecção do dia: ${volumeBreakdownLabel(volume.breakdown)}`}
               >
                 <Zap size={11} /> {volume.count} de {volume.target} ações
