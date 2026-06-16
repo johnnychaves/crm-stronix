@@ -5,6 +5,7 @@ import {
   isAsaasConfigured, findOrCreateCustomer, createSubscription, updateSubscription,
   cancelSubscription, listSubscriptionPayments,
 } from './_asaas.js';
+import { sanitizeProfile } from './_profile.js';
 
 // Endpoint ÚNICO do Asaas (gestão de assinatura + webhook no mesmo arquivo, para
 // caber no limite de 12 Serverless Functions do Vercel Hobby).
@@ -78,6 +79,12 @@ async function handleWebhook(req, res) {
       patch.paymentStatus = 'paid';
       patch.lastPaymentAt = toTs(payment.paymentDate || payment.confirmedDate);
       patch.paymentOverdueSince = admin.firestore.FieldValue.delete(); // pagou → libera acesso
+      // Pagou durante/após o trial → ENCERRA o trial (status 'active'). Sem isto
+      // o tenant fica 'trial' com trialEndsAt vencido e o app mantém o bloqueio
+      // 'trial_expired' apesar de pago. Só mexe quando ainda está em trial (não
+      // reativa academia suspensa manualmente).
+      const curSnap = await tenantsCol().doc(tenantId).get();
+      if (curSnap.data()?.status === 'trial') patch.status = 'active';
     } else if (event === 'PAYMENT_OVERDUE') {
       patch.paymentStatus = 'overdue';
       patch.paymentOverdueSince = admin.firestore.FieldValue.serverTimestamp(); // marca início da carência
@@ -170,7 +177,7 @@ async function handleSubscription(req, res, auth) {
       const planDoc = plansMap.get(tenant.plan);
       // Consultores EXTRAS (além dos inclusos) entram no valor da assinatura —
       // exceto com preço negociado (monthlyPrice), que é valor final fechado.
-      const negotiated = Number.isFinite(Number(tenant.monthlyPrice));
+      const negotiated = Number(tenant.monthlyPrice) > 0;
       const extraMonthly = negotiated ? 0 : extraConsultantsCharge(planDoc, seats.consultants);
       let value, cycleAsaas;
       if (cycle === 'annual') {
@@ -247,8 +254,9 @@ async function handleSubscription(req, res, auth) {
 }
 
 // ============== SELF-SERVICE (admin do tenant, sobre a PRÓPRIA assinatura) ==============
-//   GET                              → plano atual + faturas + renovação + planos disponíveis
-//   POST { action:'migrate', plan }  → troca o próprio plano (ajusta a assinatura no Asaas)
+//   GET                                   → plano + faturas + renovação + planos + Perfil da academia
+//   POST { action:'migrate', plan }       → troca o próprio plano (ajusta a assinatura no Asaas)
+//   POST { action:'updateProfile', ... }  → salva o Perfil da academia (sem função nova)
 async function handleTenantSelf(req, res, auth) {
   // Cobrança/plano é coisa de ADMIN da academia (não de consultor).
   const userSnap = await adminDb.collection('artifacts').doc(auth.tenantId).collection('public').doc('data').collection('stronix_users').doc(auth.uid).get();
@@ -288,6 +296,12 @@ async function handleTenantSelf(req, res, auth) {
     return res.status(200).json({
       plan: tenant.plan || null,
       planName: cur?.name || tenant.plan || '—',
+      // Perfil da academia (lido pela aba "Perfil da academia"): nome + campos de
+      // texto (profile) + cidade/UF (settings) + WhatsApp (responsiblePhone).
+      displayName: tenant.displayName || null,
+      profile: tenant.profile || null,
+      settings: { city: tenant.settings?.city || '', state: tenant.settings?.state || '' },
+      responsiblePhone: tenant.responsiblePhone || '',
       priceMonthly: cur?.priceMonthly ?? null,
       billingCycle: tenant.billingCycle || 'monthly',
       paymentStatus: tenant.paymentStatus || null,
@@ -303,6 +317,29 @@ async function handleTenantSelf(req, res, auth) {
       } : null,
       invoices, availablePlans,
     });
+  }
+
+  // Self-service: o admin salva o Perfil da academia (campos de texto; logo
+  // adiada). Grava em tenant.profile + cidade/UF (settings) + WhatsApp
+  // (responsiblePhone) — exatamente as mesmas fontes do caminho do super-admin.
+  if (req.method === 'POST' && req.body?.action === 'updateProfile') {
+    const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    const profilePatch = sanitizeProfile(req.body.profile);
+    if (profilePatch) patch.profile = profilePatch;
+    const s = req.body.settings;
+    if (s && typeof s === 'object') {
+      const setS = {};
+      if (s.city !== undefined) setS.city = String(s.city || '').trim().slice(0, 120);
+      if (s.state !== undefined) setS.state = String(s.state || '').trim().toUpperCase().slice(0, 2);
+      if (Object.keys(setS).length) patch.settings = setS;
+    }
+    if (req.body.responsiblePhone !== undefined) {
+      patch.responsiblePhone = String(req.body.responsiblePhone || '').trim().slice(0, 30);
+    }
+    if (Object.keys(patch).length === 1) return res.status(400).json({ error: 'Nada para atualizar.' });
+    await ref.set(patch, { merge: true });
+    await audit('tenant.profile.self', auth.tenantId, auth.uid, { changed: Object.keys(patch).filter((k) => k !== 'updatedAt') });
+    return res.status(200).json({ ok: true });
   }
 
   if (req.method === 'POST' && req.body?.action === 'migrate') {
@@ -329,6 +366,60 @@ async function handleTenantSelf(req, res, auth) {
     await ref.update({ plan: newPlan, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
     await audit('plan.migrate.self', auth.tenantId, auth.uid, { from: tenant.plan, to: newPlan });
     return res.status(200).json({ ok: true, plan: newPlan, priceMonthly: planDoc.priceMonthly ?? null });
+  }
+
+  // Self-service: ATIVA a 1ª assinatura ao fim do trial (tela de ativação). Cria
+  // cliente + assinatura no Asaas e devolve o link da 1ª fatura. Valor vem do
+  // catálogo dinâmico (priceMonthly/priceAnnual) + consultores extras; preço
+  // negociado (monthlyPrice) tem prioridade. Mesma base do caminho super-admin.
+  if (req.method === 'POST' && req.body?.action === 'activate') {
+    if (!isAsaasConfigured()) return res.status(503).json({ error: 'Cobrança indisponível no momento. Fale com o suporte.' });
+    const chosen = String(req.body.plan || tenant.plan || '');
+    const planDoc = plansMap.get(chosen);
+    if (!planDoc || planDoc.isActive === false) return res.status(400).json({ error: 'Plano inválido ou indisponível.' });
+    const cpfCnpj = String(req.body.cpfCnpj || '').replace(/\D/g, '');
+    if (cpfCnpj.length !== 11 && cpfCnpj.length !== 14) return res.status(400).json({ error: 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).' });
+    const cycle = req.body.cycle === 'annual' ? 'annual' : 'monthly';
+
+    // Já tem assinatura → não duplica; devolve a fatura atual.
+    if (tenant.asaasSubscriptionId) {
+      return res.status(200).json({ ok: true, alreadyActive: true, invoiceUrl: tenant.lastInvoiceUrl || null });
+    }
+
+    const seats = await getSeatUsage(auth.tenantId);
+    const negotiated = Number(tenant.monthlyPrice) > 0;
+    const extraMonthly = negotiated ? 0 : extraConsultantsCharge(planDoc, seats.consultants);
+    let value, cycleAsaas;
+    if (cycle === 'annual') {
+      value = Number(planDoc.priceAnnual); cycleAsaas = 'YEARLY';
+      if (!Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Este plano não tem preço anual — escolha mensal ou fale com o suporte.' });
+      value += extraMonthly * 12;
+    } else {
+      value = effectivePrice({ plan: chosen, monthlyPrice: tenant.monthlyPrice, consultantCount: seats.consultants }, plansMap);
+      cycleAsaas = 'MONTHLY';
+      if (!Number.isFinite(value) || value <= 0) return res.status(400).json({ error: 'Este plano é sob consulta — fale com o suporte para ativar.' });
+    }
+
+    try {
+      if (chosen !== tenant.plan) await ref.update({ plan: chosen, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
+      const customer = await findOrCreateCustomer({ tenantId: auth.tenantId, name: tenant.displayName, cpfCnpj, email: tenant.primaryAdminEmail, mobilePhone: tenant.responsiblePhone });
+      const nextDueDate = ymd(Date.now()); // trial encerrado → cobra a partir de hoje
+      const sub = await createSubscription({ customerId: customer.id, value, cycle: cycleAsaas, nextDueDate, description: `STRONILEAD — plano ${chosen}`, tenantId: auth.tenantId });
+      let invoiceUrl = null, nextBillingMs = null;
+      try { const pays = await listSubscriptionPayments(sub.id); const first = pays?.data?.[0]; if (first) { invoiceUrl = first.invoiceUrl || null; if (first.dueDate) nextBillingMs = new Date(first.dueDate + 'T12:00:00').getTime(); } } catch (e) { console.error('activate listPayments', e?.message || e); }
+      await ref.update({
+        asaasCustomerId: customer.id, asaasSubscriptionId: sub.id, billingProvider: 'asaas', billingCycle: cycle,
+        paymentStatus: 'pending',
+        ...(invoiceUrl ? { lastInvoiceUrl: invoiceUrl } : {}),
+        ...(nextBillingMs ? { nextBillingAt: admin.firestore.Timestamp.fromMillis(nextBillingMs) } : {}),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+      await audit('asaas.subscription.activate.self', auth.tenantId, auth.uid, { plan: chosen, cycle, value, subscriptionId: sub.id });
+      return res.status(200).json({ ok: true, invoiceUrl, plan: chosen, value, cycle });
+    } catch (e) {
+      console.error('self activate', e?.status, e?.message || e);
+      return res.status(e?.status === 400 ? 400 : 502).json({ error: `Asaas: ${e?.message || 'erro ao ativar a assinatura.'}` });
+    }
   }
 
   return res.status(405).json({ error: 'Método não permitido.' });

@@ -67,6 +67,7 @@ async function tenantMetrics(doc, plansMap) {
     monthlyPrice,
     internalNotes: data.internalNotes || '',
     settings: data.settings || null,
+    profile: data.profile || null, // Perfil da academia (editado no Detail do console)
     paymentStatus: data.paymentStatus || null,
     lastPaymentAt: toMillis(data.lastPaymentAt),
     nextBillingAt: toMillis(data.nextBillingAt),

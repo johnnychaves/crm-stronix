@@ -210,10 +210,10 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
         </div>
 
         {/* Tabela */}
-        <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden">
+        <div className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
           <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full text-left border-collapse">
-              <thead className="bg-white dark:bg-white/[0.02] border-b border-slate-100 dark:border-white/[0.05]">
+              <thead className="bg-card border-b border-slate-100 dark:border-white/[0.05]">
                 <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
                   <th className="py-3 pl-5 pr-3">Aluno</th>
                   <th className="py-3 px-3">Data marcada</th>

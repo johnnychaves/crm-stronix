@@ -59,6 +59,7 @@ import { Avatar } from './components/ui/Avatar.jsx';
 import { ViewSkeleton } from './components/ui/Skeleton.jsx';
 import { SidebarItem, SidebarGroup, SidebarSubItem } from './components/layout/Sidebar.jsx';
 import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
+import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
 import { LeadDetailsModal } from './modals/LeadDetailsModal.jsx';
@@ -69,6 +70,9 @@ import { LeadsView } from './views/LeadsView.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
+import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
+import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
+import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
 import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
 import { SuperConsole } from './views/console/SuperConsole.jsx';
 import { CreateTicketModal } from './modals/CreateTicketModal.jsx';
@@ -134,6 +138,9 @@ function AppInner() {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  // Aba-alvo ao abrir Configurações de fora (ex.: link "Regras gerais" do Perfil).
+  // SettingsView remonta ao entrar na view e aplica este initialTab no mount.
+  const [settingsTab, setSettingsTab] = useState('users');
   const [superTab, setSuperTab] = useState('overview'); // sub-seção do super-admin (no menu lateral)
   const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
   const [ticketModalOpen, setTicketModalOpen] = useState(false); // abrir chamado de suporte (cliente)
@@ -301,7 +308,10 @@ function AppInner() {
               block = 'suspended';
             } else if (tData.status === 'trial' && typeof tData.trialEndsAt?.toMillis === 'function') {
               const ms = tData.trialEndsAt.toMillis();
-              if (ms < Date.now()) block = 'trial_expired';
+              // Trial vencido só bloqueia se AINDA não pagou. Se o pagamento já
+              // entrou (webhook marcou 'paid'), libera mesmo que o status ainda
+              // esteja 'trial' — rede de segurança do fix do webhook.
+              if (ms < Date.now()) { if (tData.paymentStatus !== 'paid') block = 'trial_expired'; }
               else trialMs = ms; // trial ativo → alimenta o banner de contagem
             }
             // Inadimplência além da carência (3 dias) corta o acesso automaticamente,
@@ -800,6 +810,8 @@ useEffect(() => {
 };
 
   const changeTab = (tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); }
+  // Abre Configurações já numa aba específica (sidebar e link "Regras gerais" do Perfil).
+  const openSettingsTab = (tab) => { setSettingsTab(tab); changeTab('settings'); };
 
   // ── Badge de pendências da Meta Diária no menu lateral ──────────────────
   // dayKey vira na meia-noite (timeout re-armado a cada virada) para o badge
@@ -848,6 +860,11 @@ useEffect(() => {
   // Academia suspensa ou com trial expirado: bloqueia o acesso ao app (super-admin
   // sem tenant não é afetado). O usuário está autenticado, mas a organização não.
   if (!appUser.superAdminOnly && tenantBlock) {
+    // Trial expirado → tela de ativação (escolhe plano + paga e libera sozinho).
+    // Suspensa / inadimplente seguem na TenantBlockedScreen.
+    if (tenantBlock === 'trial_expired') {
+      return <TrialActivationScreen isAdmin={isAdminUser(appUser)} onLogout={handleLogout} />;
+    }
     return <TenantBlockedScreen reason={tenantBlock} onLogout={handleLogout} />;
   }
 
@@ -863,7 +880,7 @@ useEffect(() => {
     <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
       {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-white dark:bg-ink-900 border-r border-slate-200 dark:border-white/[0.06] flex flex-col transition-transform duration-300 ease-in-out transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-white dark:bg-ink-900 border-r border-border flex flex-col transition-transform duration-300 ease-in-out transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
         {/* Marca */}
         <div className="h-16 px-5 flex items-center justify-between gap-3 border-b border-slate-200/80 dark:border-white/[0.06] shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -905,7 +922,7 @@ useEffect(() => {
               <div className="px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500">Administração</div>
               <div className="space-y-1">
                 {!appUser.superAdminOnly && isAdminUser(appUser) && (
-                  <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" active={activeTab === 'settings'} onClick={() => changeTab('settings')} />
+                  <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" active={activeTab === 'settings'} onClick={() => openSettingsTab('users')} />
                 )}
                 {appUser?.superAdmin && (
                   <SidebarGroup
@@ -980,16 +997,27 @@ useEffect(() => {
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
               {activeTab === 'settings' && 'Configurações'}
+              {activeTab === 'profile' && 'Perfil da academia'}
+              {activeTab === 'billing' && 'Plano & faturas'}
               {activeTab === 'superadmin' && (({ overview: 'Visão Geral', clients: 'Clientes', finance: 'Financeiro', plans: 'Planos' }[superTab] || 'Organizações') + ' · Super-admin')}
             </h2>
           </div>
-          <button 
-            onClick={() => setIsDarkMode(!isDarkMode)} 
-            className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
-            title="Alternar Tema"
-          >
-            {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-brand-600" />}
-          </button>
+          <div className="flex items-center gap-2 md:gap-3">
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
+              title="Alternar Tema"
+            >
+              {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-brand-600" />}
+            </button>
+            <PersonaMenu
+              appUser={appUser}
+              isAdmin={!appUser.superAdminOnly && isAdminUser(appUser)}
+              onProfile={() => changeTab('profile')}
+              onBilling={() => changeTab('billing')}
+              onLogout={handleLogout}
+            />
+          </div>
         </header>
 
         {!appUser.superAdminOnly && trialEndsAtMs && <TrialBanner endsAtMs={trialEndsAtMs} />}
@@ -1019,7 +1047,9 @@ useEffect(() => {
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
+              {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
             </div>
           )}

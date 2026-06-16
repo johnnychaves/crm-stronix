@@ -1,6 +1,7 @@
 import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { logAudit } from './_audit.js';
 import { loadPlans, getSeatUsage } from './_plans.js';
+import { sanitizeProfile } from './_profile.js';
 
 // Atualiza status / plano / cobrança / perfil de uma organização — SUPERADMIN only.
 //
@@ -10,6 +11,9 @@ import { loadPlans, getSeatUsage } from './_plans.js';
 //   - trialDays: number  (>0 reinicia trial a partir de agora; 0/null encerra)
 //   - archived, internal, internalNotes, monthlyPrice  (já existiam)
 //   - displayName, settings { city, state, logoUrl }
+//   - profile { cnpjCpf, legalName, cep, street, number, complement, neighborhood,
+//               responsibleName, email, phone }  (Perfil da academia)
+//   - responsiblePhone: string  (WhatsApp do responsável)
 //   - paymentStatus: 'paid' | 'pending' | 'overdue' | null   (cobrança manual)
 //   - lastPaymentAt, nextBillingAt: millis (number) | null
 //   NUNCA altera tenantId (imutável).
@@ -103,6 +107,7 @@ export default async function handler(req, res) {
     const {
       tenantId, status, plan, trialDays, archived, internal, internalNotes, monthlyPrice,
       displayName, settings, paymentStatus, lastPaymentAt, nextBillingAt,
+      profile, responsiblePhone,
     } = req.body || {};
     const slug = String(tenantId || '').trim().toLowerCase();
     if (!slug) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
@@ -178,6 +183,14 @@ export default async function handler(req, res) {
       if (settings.state !== undefined) s.state = String(settings.state || '').slice(0, 60);
       if (settings.logoUrl !== undefined) s.logoUrl = String(settings.logoUrl || '').slice(0, 500);
       if (Object.keys(s).length) update.settings = s;
+    }
+    // Perfil da academia (campos de texto; logo adiada). Merge parcial em
+    // tenant.profile via set(merge:true); cidade/UF seguem em settings (acima).
+    const profilePatch = sanitizeProfile(profile);
+    if (profilePatch) update.profile = profilePatch;
+    // WhatsApp do responsável (top-level; reusado pelo link de ativação wa.me).
+    if (responsiblePhone !== undefined) {
+      update.responsiblePhone = String(responsiblePhone || '').trim().slice(0, 30);
     }
     // Cobrança manual (ainda sem gateway de pagamento).
     if (paymentStatus !== undefined) {

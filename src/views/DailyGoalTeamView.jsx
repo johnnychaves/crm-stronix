@@ -34,7 +34,7 @@ function TeamStat({ icon, label, value, tone = 'slate' }) {
     brand: 'bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300',
   };
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] px-4 py-3">
+    <div className="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3">
       <span className={`w-9 h-9 rounded-lg grid place-items-center ${tones[tone]}`}>{icon}</span>
       <div className="min-w-0">
         <div className="num text-[17px] font-bold text-slate-900 dark:text-white leading-tight">{value}</div>
@@ -145,7 +145,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
   return (
     <div className="flex flex-col gap-6">
       {/* Resumo do time */}
-      <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-5">
+      <div className="rounded-2xl border border-border bg-card shadow-card p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-[16px] font-semibold text-slate-900 dark:text-white inline-flex items-center gap-2">
@@ -209,7 +209,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           const doneSlotsList = r.processed
             .flatMap(l => l.categorySlugs.filter(s => l.categoryStatus?.[s]).map(s => ({ lead: l, slug: s })));
           return (
-            <div key={u.id} className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden">
+            <div key={u.id} className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
               <button
                 type="button"
                 onClick={() => setExpandedId(expanded ? null : u.id)}
@@ -388,7 +388,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           );
         })}
         {rows.length === 0 && (
-          <div className="py-14 grid place-items-center text-slate-400 rounded-2xl border border-slate-200 dark:border-white/[0.06]">
+          <div className="py-14 grid place-items-center text-slate-400 rounded-2xl border border-border">
             <p className="text-[13px]">Nenhum usuário na equipe ainda.</p>
           </div>
         )}

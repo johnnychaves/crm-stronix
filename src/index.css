@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "tw-animate-css";
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
@@ -45,6 +46,87 @@
   --shadow-inset-soft: inset 0 1px 0 rgba(255,255,255,.6), inset 0 -1px 0 rgba(15,23,42,.04);
 
   --radius-4xl: 2rem;
+}
+
+/* =========================================================================
+   TOKENS SEMÂNTICOS shadcn/ui — mapeados na paleta STRONILEAD.
+   Usados pelos componentes do registry (bg-background, text-muted-foreground,
+   bg-primary...). O @theme acima (brand/accent/ink/paper) segue intocado —
+   estas vars são uma CAMADA por cima, não uma substituição.
+   Obs.: os utilitários rounded-* padrão do Tailwind NÃO foram redefinidos
+   (--radius-sm/md/lg/xl) de propósito, para não alterar o visual atual.
+   ========================================================================= */
+:root {
+  --background: #F5F7FB;            /* paper-50 */
+  --foreground: #0E1A40;            /* ink-900 */
+  --card: #FFFFFF;
+  --card-foreground: #0E1A40;
+  --popover: #FFFFFF;
+  --popover-foreground: #0E1A40;
+  --primary: #2B59FF;               /* brand-600 */
+  --primary-foreground: #FFFFFF;
+  --secondary: #EAF0FF;             /* brand-50 */
+  --secondary-foreground: #1C3FC4;  /* brand-700 */
+  --muted: #eef0f5;                 /* paper-100 */
+  --muted-foreground: #64748b;      /* slate-500 (muted do app) */
+  --accent: #EAF0FF;                /* hover suave de itens (≠ laranja CTA) */
+  --accent-foreground: #0E1A40;
+  --destructive: #F43F5E;           /* --color-danger */
+  --destructive-foreground: #FFFFFF;
+  --border: #e2e8f0;                /* slate-200 = borda dos cards do app (pixel-exato) */
+  --input: #e2e8f0;
+  --ring: #2B59FF;
+}
+
+.dark {
+  /* O dark do app usa OVERLAYS TRANSLÚCIDOS de branco sobre o ink-950 (cards
+     `white/[0.02]`, bordas `white/[0.06]`, hovers `white/[0.04-0.06]`) — NÃO
+     tons sólidos de ink. Os tokens de superfície seguem esse tratamento p/
+     que bg-card/border-border/bg-muted batam pixel com as telas existentes.
+     Popover fica sólido (ink-800): menus flutuantes pedem fundo opaco. */
+  --background: #080D22;            /* ink-950 */
+  --foreground: #EAEEF9;
+  --card: rgba(255, 255, 255, 0.02);
+  --card-foreground: #EAEEF9;
+  --popover: #122142;               /* ink-800 (sólido p/ menus/diálogos) */
+  --popover-foreground: #EAEEF9;
+  --primary: #2B59FF;
+  --primary-foreground: #FFFFFF;
+  --secondary: rgba(255, 255, 255, 0.06);
+  --secondary-foreground: #D6E1FF;  /* brand-100 */
+  --muted: rgba(255, 255, 255, 0.04);
+  --muted-foreground: #8A93B0;
+  --accent: rgba(255, 255, 255, 0.06);
+  --accent-foreground: #EAEEF9;
+  --destructive: #F43F5E;
+  --destructive-foreground: #FFFFFF;
+  --border: rgba(255, 255, 255, 0.06);
+  --input: rgba(255, 255, 255, 0.06);
+  --ring: #5A7FFF;                  /* brand-500 */
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  /* `bg-accent` (semântico, hover de itens) coexiste com o ramp laranja
+     accent-50..600 do app, que sempre é usado com sufixo numérico. */
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 }
 
 @layer base {

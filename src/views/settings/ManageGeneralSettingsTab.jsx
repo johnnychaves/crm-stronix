@@ -249,7 +249,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
         hint="Dias da semana em que a Meta Diária vale para a equipe. A sequência do ritmo do mês pula os dias desligados."
         icon={<Target size={16} />}
       >
-        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border">
           <div className="flex flex-wrap items-center gap-2">
             {DG_WEEKDAY_NAMES.map((name, dow) => {
               const on = (metaWeekdays || []).includes(dow);
@@ -281,7 +281,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
         hint="A partir de quantos dias de atraso um lead vira crítico"
         icon={<AlertCircle size={16} />}
       >
-        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border">
           <div className="flex items-center gap-3 flex-wrap">
             <div className="flex items-center gap-1.5">
               <button
@@ -366,7 +366,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
         hint="Opções de quantidade que o consultor pode escolher ao agendar (ex: 1, 2, 5, 10, 15)"
         icon={<BookOpen size={16} />}
       >
-        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] space-y-4">
+        <div className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border space-y-4">
           <form onSubmit={addOption} className="flex flex-wrap items-end gap-3">
             <div className="min-w-[160px]">
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
@@ -414,7 +414,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
         hint="Modalidades da academia (ex: Musculação, Funcional, Cross)"
         icon={<Dumbbell size={16} />}
       >
-        <form onSubmit={saveModality} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+        <form onSubmit={saveModality} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border mb-5">
           <div className="flex-1 min-w-[220px]">
             <StyledInput
               icon={<Dumbbell size={14} />}
@@ -468,7 +468,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
         hint="Unidades/endereços da academia (usadas ao agendar uma visita)"
         icon={<Building2 size={16} />}
       >
-        <form onSubmit={saveUnit} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+        <form onSubmit={saveUnit} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border mb-5">
           <div className="flex-1 min-w-[180px]">
             <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">Nome</label>
             <StyledInput icon={<Building2 size={14} />} placeholder="Ex: Moinhos" value={unitName} onChange={e => setUnitName(e.target.value)} required />

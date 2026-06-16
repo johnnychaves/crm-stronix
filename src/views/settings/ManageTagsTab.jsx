@@ -55,7 +55,7 @@ function ManageTagsTab({ db, tags, leads }) {
       hint="Marcadores rápidos para segmentar e filtrar leads"
       icon={<Tag size={16} />}
     >
-      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] mb-5">
+      <form onSubmit={save} className="flex flex-wrap items-end gap-3 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border mb-5">
         <div className="flex-1 min-w-[220px]">
           <StyledInput
             icon={<Tag size={14} />}
@@ -89,7 +89,7 @@ function ManageTagsTab({ db, tags, leads }) {
           return (
             <div
               key={t.id}
-              className="group flex items-center gap-3 p-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] hover:border-slate-300 dark:hover:border-white/10 transition"
+              className="group flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:border-slate-300 dark:hover:border-white/10 transition"
             >
               <ColorBadge color={t.color || 'blue'} name={t.name} />
               <div className="flex-1"></div>

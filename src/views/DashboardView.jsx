@@ -33,7 +33,7 @@ const DASH_TONES = {
 
 function DashCard({ title, hint, icon, action, children, padded = true }) {
   return (
-    <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card">
+    <section className="rounded-2xl border border-border bg-card shadow-card">
       {title && (
         <header className="px-5 py-4 flex items-center justify-between gap-3 border-b border-slate-100 dark:border-white/[0.05]">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -120,7 +120,7 @@ function DashHelpTip({ text, label = 'O que isso significa?' }) {
 function DashKpiCard({ label, value, delta, accent = 'brand', series, sub, help }) {
   const up = delta == null ? null : delta >= 0;
   return (
-    <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-5 shadow-card">
+    <div className="rounded-2xl border border-border bg-card p-5 shadow-card">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">
           <span>{label}</span>
@@ -160,7 +160,7 @@ function DashPeriodTabs({ value, onChange }) {
     { id: 'custom',      label: 'Personalizado' }
   ];
   return (
-    <div className="inline-flex p-1 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.06]">
+    <div className="inline-flex p-1 rounded-xl bg-white dark:bg-white/[0.03] border border-border">
       {opts.map((o) => (
         <button
           key={o.id}
@@ -401,7 +401,7 @@ function DashTaskItem({ lead, onClick }) {
   return (
     <div
       onClick={() => onClick && onClick(lead)}
-      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/[0.05] hover:border-slate-300 dark:hover:border-white/10 transition cursor-pointer"
+      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-card border border-slate-200/70 dark:border-white/[0.05] hover:border-slate-300 dark:hover:border-white/10 transition cursor-pointer"
     >
       <Avatar name={lead.name} size={32} />
       <div className="min-w-0 flex-1">
@@ -1061,7 +1061,7 @@ const teamMetrics = useMemo(() => {
       </section>
 
       {periodPreset === 'custom' && (
-        <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-white dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06] shadow-card">
+        <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-card border border-border shadow-card">
           <span className="text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Período personalizado</span>
           <input
             type="date"
@@ -1274,7 +1274,7 @@ const teamMetrics = useMemo(() => {
                   </tbody>
                   {funnelComparisonTotals && funnelComparisonRows.length > 0 && (
                     <tfoot>
-                      <tr className="border-t-2 border-slate-200 dark:border-white/[0.06]">
+                      <tr className="border-t-2 border-border">
                         <td className="py-3 pl-5 pr-3 text-[12px] font-bold text-slate-900 dark:text-white uppercase tracking-wider">Total</td>
                         <td className="py-3 px-3 num text-[13px] text-center font-semibold text-slate-900 dark:text-white">{funnelComparisonTotals.captured}</td>
                         <td className="py-3 px-3 num text-[13px] text-center font-semibold text-slate-900 dark:text-white">{funnelComparisonTotals.visits}</td>

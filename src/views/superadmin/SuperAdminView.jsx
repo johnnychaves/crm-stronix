@@ -277,7 +277,7 @@ function SuperAdminView({ tab, onOpenConsole }) {
       {tab === 'clients' && (
         <div className="space-y-6">
       <SettingsCard title="Nova organização" hint="Provisiona o tenant + o primeiro admin" icon={<Plus size={16} />}>
-        <form onSubmit={submit} className="space-y-4 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-slate-200 dark:border-white/[0.06]">
+        <form onSubmit={submit} className="space-y-4 p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field label="Nome da organização">
               <StyledInput placeholder="Ex: Studio Corpo & Movimento" value={form.displayName} onChange={e => onNameChange(e.target.value)} required />

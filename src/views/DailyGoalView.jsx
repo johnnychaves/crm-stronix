@@ -92,7 +92,7 @@ function ProgressHero({ firstName, greeting, counts, totalSlots, doneSlots, prog
   const sum = segs.reduce((s, x) => s + x.n, 0) || 1;
 
   return (
-    <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-6 shadow-card">
+    <section className="rounded-2xl border border-border bg-card p-6 shadow-card">
       <div className="flex items-start justify-between gap-8 flex-wrap">
         <div className="max-w-xl min-w-0">
           <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -200,7 +200,7 @@ function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOu
   const modality = String(task.appointmentModality || '').trim();
   const qty = Number(task.trialClassesPlanned);
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">Próximo compromisso</div>
         {countdownLabel && <span className="num text-[11px] text-slate-400 whitespace-nowrap">{countdownLabel}</span>}
@@ -257,7 +257,7 @@ const DG_WEEKDAY_NAMES = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'S
 // histórico persistido (não mais mockado). A config de dias é da academia.
 function StreakCard({ history14, monthHits, monthTarget, streak }) {
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-4">
+    <div className="rounded-xl border border-border bg-card p-4">
       <div className="flex items-center justify-between">
         <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">Ritmo do mês</div>
         <Flame size={14} className="text-amber-500" />
@@ -1185,7 +1185,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       <div className="grid grid-cols-12 gap-6 flex-1 min-h-[400px]">
         {/* LEFT — A FAZER */}
         <section className="col-span-12 lg:col-span-8">
-          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden h-full flex flex-col">
+          <div className="rounded-2xl border border-border bg-card shadow-card overflow-hidden h-full flex flex-col">
             <div className="px-5 pt-5 pb-3 flex items-center gap-2.5 border-b border-slate-100 dark:border-white/[0.05]">
               <h2 className="text-[15px] font-semibold">{isTomorrowView ? 'Amanhã' : 'A fazer hoje'}</h2>
               <span className="num text-[11.5px] px-1.5 h-[20px] rounded-md grid place-items-center bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300">{visibleCount}</span>
@@ -1305,7 +1305,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             streak={ritmoMes.streak}
           />
 
-          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card flex-1 min-h-0 flex flex-col">
+          <div className="rounded-2xl border border-border bg-card shadow-card flex-1 min-h-0 flex flex-col">
             <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.05]">
               <div className="flex items-center gap-2">
                 <h3 className="text-[13.5px] font-semibold">Feitos hoje</h3>

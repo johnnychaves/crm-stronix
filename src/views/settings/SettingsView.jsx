@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRightLeft, ChevronRight, CreditCard, Filter, Kanban, Search, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
+import { ArrowRightLeft, ChevronRight, Filter, Kanban, Search, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
 import { SettingsTabItem } from '../../components/ui/SettingsCard.jsx';
-import { PlanInvoicesTab } from './PlanInvoicesTab.jsx';
+import { Input } from '../../components/ui/input.jsx';
 import { ManageUsersTab } from './ManageUsersTab.jsx';
 import { ManageFunnelsTab } from './ManageFunnelsTab.jsx';
 import { ManageStatusesTab } from './ManageStatusesTab.jsx';
@@ -21,8 +21,8 @@ import { TransferLeadsTab } from './TransferLeadsTab.jsx';
 // Busca sem acento/caixa ("critico" acha "SLA crítico").
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, trialClassOptions, units, metaWeekdays }) {
-  const [activeTab, setActiveTab] = useState('users');
+function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, trialClassOptions, units, metaWeekdays }) {
+  const [activeTab, setActiveTab] = useState(initialTab || 'users');
   const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
   const [query, setQuery] = useState('');
   const searchRef = useRef(null);
@@ -57,10 +57,10 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
     {
       label: 'Operação',
       items: [
+        // Perfil da academia e Plano & faturas migraram para o menu de persona
+        // (canto superior direito) — ver PersonaMenu / App.jsx. Aqui fica só a
+        // configuração operacional.
         { id: 'general', label: 'Regras gerais', hint: 'Meta, SLA, aulas e modalidades', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount, keywords: 'sla atraso critico meta diaria dias semana aulas experimentais quantidade modalidades unidades cidade prospeccao volume acoes piso' },
-        // "Plano & faturas": por ora só quando o DONO entra via "Acessar como"
-        // (impersonando). Para liberar geral, troque a condição por `true`.
-        ...(appUser?.impersonating ? [{ id: 'billing', label: 'Plano & faturas', hint: 'Assinatura, faturas e renovação', icon: <CreditCard size={15} />, badge: null, keywords: 'plano fatura pagamento assinatura renovacao preco boleto pix cartao' }] : []),
       ],
     },
     {
@@ -72,7 +72,7 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
         { id: 'lossReasons', label: 'Motivos de perda', hint: 'Justificativas padrão de perda', icon: <ThumbsDown size={15} />, badge: lossCount, keywords: 'perda descarte justificativa preco concorrencia' },
       ],
     },
-  ]), [usersCount, modalitiesCount, funnelsCount, tagsCount, sourcesCount, lossCount, appUser]);
+  ]), [usersCount, modalitiesCount, funnelsCount, tagsCount, sourcesCount, lossCount]);
 
   // Busca universal: filtra o próprio trilho; Enter abre o 1º resultado.
   const q = norm(query.trim());
@@ -129,17 +129,20 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
       <div className="grid grid-cols-12 gap-6">
         {/* Trilho de navegação */}
         <aside className="col-span-12 lg:col-span-3">
-          <div className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card p-2 lg:sticky lg:top-20">
+          {/* Trilho migrado p/ tokens shadcn: bg-card/border-border resolvem
+              o dark mode sozinhos (= dark:bg-white/[0.02] dark:border-white/
+              [0.06] de antes), sem override manual. */}
+          <div className="rounded-2xl border border-border bg-card shadow-card p-2 lg:sticky lg:top-20">
             {/* Busca universal */}
             <div className="relative mb-1">
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <input
+              <Input
                 ref={searchRef}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={onSearchKeyDown}
                 placeholder="Buscar ajuste…"
-                className="w-full h-10 pl-9 pr-12 rounded-xl text-[13px] bg-slate-50 dark:bg-white/[0.04] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none placeholder:text-slate-400 transition"
+                className="h-10 pl-9 pr-12 rounded-xl text-[13px] bg-slate-50 dark:bg-white/[0.04] border-slate-200 dark:border-white/[0.07] focus-visible:border-brand-500 focus-visible:ring-2 focus-visible:ring-brand-500/20 placeholder:text-slate-400"
               />
               <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 border border-slate-200 dark:border-white/[0.1] rounded px-1.5 py-0.5 pointer-events-none">⌘K</kbd>
             </div>
@@ -189,7 +192,6 @@ function SettingsView({ db, statuses, sources, usersList, appUser, tags, lossRea
 
           {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
           {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} usersList={usersList} />}
-          {activeTab === 'billing' && <PlanInvoicesTab />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
           )}
