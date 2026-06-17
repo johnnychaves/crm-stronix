@@ -234,12 +234,11 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
     const totalSlots = withTasks.reduce((s, r) => s + r.totalSlots, 0);
     const doneSlots = withTasks.reduce((s, r) => s + r.doneSlots, 0);
     const overdue = rows.reduce((s, r) => s + (r.pendingByCat[DAILY_GOAL_CATEGORIES.ATRASADO] || 0), 0);
-    const critical = rows.reduce((s, r) => s + r.critical, 0);
     const hit = withTasks.filter(r => r.progress === 100).length;
     const volumeTracked = rows.filter(r => r.volumeTarget > 0).length;
     const volumeOk = rows.filter(r => r.volumeTarget > 0 && r.volTotal >= r.volumeTarget).length;
     return {
-      totalSlots, doneSlots, overdue, critical, hit, volumeTracked, volumeOk,
+      totalSlots, doneSlots, overdue, hit, volumeTracked, volumeOk,
       withTasks: withTasks.length,
       progress: totalSlots > 0 ? Math.round((doneSlots / totalSlots) * 100) : 100,
     };
@@ -286,23 +285,6 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           )}
         </div>
       </div>
-
-      {/* Alerta de SLA: leads atrasados além do limiar da academia */}
-      {team.critical > 0 && (
-        <div className="rounded-2xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/[0.08] px-5 py-4 flex items-start gap-3">
-          <span className="size-9 rounded-lg grid place-items-center bg-rose-100 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300 shrink-0">
-            <AlertTriangle size={17} />
-          </span>
-          <div className="min-w-0">
-            <div className="text-[13.5px] font-semibold text-rose-800 dark:text-rose-200">
-              {team.critical} lead{team.critical === 1 ? '' : 's'} atrasado{team.critical === 1 ? '' : 's'} há {slaOverdueDays}+ dia{slaOverdueDays === 1 ? '' : 's'} — fora do SLA da academia
-            </div>
-            <div className="text-[12px] text-rose-600 dark:text-rose-300/90 mt-0.5">
-              {rows.filter(r => r.critical > 0).map(r => `${(r.user.name || '').split(' ')[0]} (${r.critical})`).join(' · ')} — expanda o card para cobrar pelo WhatsApp ou redistribuir.
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Ranking: um card por pessoa, líder do dia em destaque */}
       <div className="flex flex-col gap-3">
