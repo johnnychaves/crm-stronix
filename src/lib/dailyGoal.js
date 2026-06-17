@@ -111,6 +111,34 @@ export function countMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
   return n;
 }
 
+// Dias de META num intervalo [from, to) — denominador do "X de Y dias batidos"
+// quando o painel olha um período passado (ontem/semana/mês anterior/custom).
+export function countMetaDaysInRange(metaWeekdays, from, to) {
+  let n = 0;
+  const d = new Date(from); d.setHours(0, 0, 0, 0);
+  const end = new Date(to);
+  while (d < end) {
+    if ((metaWeekdays || []).includes(d.getDay())) n++;
+    d.setDate(d.getDate() + 1);
+  }
+  return n;
+}
+
+// Metas batidas (docs de histórico {date:'YYYY-MM-DD'}) dentro de [from, to),
+// só em dias programados — numerador do "X de Y dias batidos" do período.
+export function countHitsInRange(history, metaWeekdays, from, to) {
+  const fromKey = dgDateKey(from);
+  const toKey = dgDateKey(new Date(to.getTime() - 1));
+  let n = 0;
+  (history || []).forEach((h) => {
+    const key = h?.date;
+    if (!key || key < fromKey || key > toKey) return;
+    const [y, m, d] = key.split('-').map(Number);
+    if (y && m && d && (metaWeekdays || []).includes(new Date(y, m - 1, d).getDay())) n++;
+  });
+  return n;
+}
+
 // Extrato das ações de volume do dia — lista cronológica (mais recente
 // primeiro) para o gestor auditar COMO o consultor compôs o número:
 // [{ at: Date, label, leadId, leadName }]. Mesmos critérios do contador.
@@ -121,25 +149,32 @@ const VOLUME_KIND_LABEL = {
   ligacao: 'Ligação agendada',
 };
 
-export function listDailyVolumeActions(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
-  const todayStart = new Date(refDate);
-  todayStart.setHours(0, 0, 0, 0);
+// Extrato num INTERVALO [from, to) — base do "hoje" (sem teto) e dos períodos
+// passados (ontem/semana/mês anterior/personalizado). metaWeekdays opcional:
+// só ações em dias programados (mesma régua da contabilização).
+export function listVolumeActionsInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null, metaWeekdays = null) {
+  const onMetaDay = (d) => !metaWeekdays || metaWeekdays.includes(d.getDay());
+  const inRange = (d) => d instanceof Date && d >= from && (!to || d < to) && onMetaDay(d);
   const nameOf = new Map((leads || []).map((l) => [l.id, l.name || '—']));
   const out = [];
   (leads || []).forEach((l) => {
     if (l.consultantId !== consultantId) return;
-    if (l.createdAt instanceof Date && l.createdAt >= todayStart) out.push({ at: l.createdAt, label: 'Lead cadastrado', leadId: l.id, leadName: l.name || '—' });
-    if (l.convertedAt instanceof Date && l.convertedAt >= todayStart) out.push({ at: l.convertedAt, label: 'Venda fechada', leadId: l.id, leadName: l.name || '—' });
-    if (l.lostAt instanceof Date && l.lostAt >= todayStart) out.push({ at: l.lostAt, label: 'Perda registrada', leadId: l.id, leadName: l.name || '—' });
+    if (inRange(l.createdAt)) out.push({ at: l.createdAt, label: 'Lead cadastrado', leadId: l.id, leadName: l.name || '—' });
+    if (inRange(l.convertedAt)) out.push({ at: l.convertedAt, label: 'Venda fechada', leadId: l.id, leadName: l.name || '—' });
+    if (inRange(l.lostAt)) out.push({ at: l.lostAt, label: 'Perda registrada', leadId: l.id, leadName: l.name || '—' });
   });
   (interactions || []).forEach((i) => {
     if (i.consultantAuthUid !== consultantAuthUid) return;
-    if (!(i.createdAt instanceof Date) || i.createdAt < todayStart) return;
-    if (i.volumeKind) {
-      out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
-    }
+    if (!inRange(i.createdAt)) return;
+    if (i.volumeKind) out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
   });
   return out.sort((a, b) => b.at - a.at);
+}
+
+export function listDailyVolumeActions(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
+  const todayStart = new Date(refDate);
+  todayStart.setHours(0, 0, 0, 0);
+  return listVolumeActionsInRange(leads, interactions, consultantId, consultantAuthUid, todayStart);
 }
 
 // Composição legível do volume ("2 agendamentos · 1 lead novo · 1 fechamento").
