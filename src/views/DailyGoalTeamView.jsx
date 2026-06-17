@@ -257,7 +257,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
       <div className="rounded-2xl border border-border bg-card shadow-card p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-[16px] font-semibold text-slate-900 dark:text-white inline-flex items-center gap-2">
+            <h2 className="font-display tracking-tight text-[16px] font-semibold text-slate-900 dark:text-white inline-flex items-center gap-2">
               <Users size={17} className="text-brand-600" /> Ranking da equipe — hoje
             </h2>
             <p className="text-[12px] text-muted-foreground mt-0.5">
