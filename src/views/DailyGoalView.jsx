@@ -812,7 +812,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     if (!volumeTarget) return null;
     void todayKey;
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-    const { total: mTotal } = computeVolumeInRange(leads, interactions, appUser.id, appUser.authUid, monthStart);
+    const { total: mTotal } = computeVolumeInRange(leads, interactions, appUser.id, appUser.authUid, monthStart, null, metaWeekdays);
     return { total: mTotal, target: volumeTarget * countMetaDaysInMonth(metaWeekdays) };
   }, [leads, interactions, appUser, volumeTarget, metaWeekdays, todayKey]);
 

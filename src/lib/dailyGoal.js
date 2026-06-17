@@ -72,8 +72,12 @@ export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 // Retorna { total, agendamentos, leadsNovos, fechamentos }.
 
 // Contagem num INTERVALO [from, to) — base do "hoje" e do acumulado do mês.
-export function computeVolumeInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null) {
-  const inRange = (d) => d instanceof Date && d >= from && (!to || d < to);
+// metaWeekdays (opcional): quando passado, só conta ações em dias PROGRAMADOS
+// da meta (mesma régua do alvo mensal e do "ritmo do mês") — ação feita em dia
+// fora da meta (ex.: sábado) NÃO entra na contabilização. Sem ele = todo dia.
+export function computeVolumeInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null, metaWeekdays = null) {
+  const onMetaDay = (d) => !metaWeekdays || metaWeekdays.includes(d.getDay());
+  const inRange = (d) => d instanceof Date && d >= from && (!to || d < to) && onMetaDay(d);
   const r = { agendamentos: 0, leadsNovos: 0, fechamentos: 0 };
   (leads || []).forEach((l) => {
     if (l.consultantId !== consultantId) return;

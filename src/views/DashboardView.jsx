@@ -726,8 +726,16 @@ const teamMetrics = useMemo(() => {
       const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(leads, byLead, u.id));
       const volTarget = volumeTargetFor(u);
       const vol = volTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : null;
-      const monthVol = volTarget > 0 ? computeVolumeInRange(leads, interactions, u.id, u.authUid, monthStart) : null;
-      const monthHits = teamHistory.filter((h) => h.consultantId === u.id && String(h.date || '').startsWith(monthPrefix)).length;
+      const monthVol = volTarget > 0 ? computeVolumeInRange(leads, interactions, u.id, u.authUid, monthStart, null, metaWeekdays) : null;
+      // Só dias PROGRAMADOS da meta contam no "X de Y dias" do mês (mesma régua
+      // do alvo monthDays) — meta batida em dia fora da meta (ex.: sábado) não entra.
+      const monthHits = teamHistory.filter((h) => {
+        if (h.consultantId !== u.id) return false;
+        const ds = String(h.date || '');
+        if (!ds.startsWith(monthPrefix)) return false;
+        const [yy, mm, dd] = ds.split('-').map(Number);
+        return Boolean(yy && mm && dd) && (metaWeekdays || []).includes(new Date(yy, mm - 1, dd).getDay());
+      }).length;
       map[u.id] = {
         goalDone: doneSlots, goalTotal: totalSlots,
         volTotal: vol?.total || 0, volTarget,
