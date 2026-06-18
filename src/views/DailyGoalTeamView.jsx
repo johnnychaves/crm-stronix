@@ -95,25 +95,20 @@ function Rail({ history14 }) {
 // dia que zerou a meta; grava `date` + volumeCount/volumeTarget). CLICÁVEL: cada
 // coluna é um dia; clicar troca a tabela de baixo (selectedDay no pai).
 // ─────────────────────────────────────────────────────────────────────────────
-function MonthTrajectory({ teamHistory, selectedDay, todayNum, onPickDay }) {
+function MonthTrajectory({ teamHistory, prospByDay, selectedDay, todayNum, onPickDay }) {
   const data = useMemo(() => {
     const now = new Date();
     const year = now.getFullYear(), month = now.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const hitsByDay = {}, prospByDay = {};
-    (teamHistory || []).forEach(h => {
-      const key = h?.date;
-      if (!key) return;
-      hitsByDay[key] = (hitsByDay[key] || 0) + 1;
-      if (h.volumeTarget > 0 && (h.volumeCount || 0) >= h.volumeTarget) prospByDay[key] = (prospByDay[key] || 0) + 1;
-    });
+    const hitsByDay = {};
+    (teamHistory || []).forEach(h => { if (h?.date) hitsByDay[h.date] = (hitsByDay[h.date] || 0) + 1; });
     const arr = [];
     for (let d = 1; d <= daysInMonth; d++) {
       const key = dgDateKey(new Date(year, month, d));
-      arr.push({ d, hits: hitsByDay[key] || 0, prosp: prospByDay[key] || 0, isToday: d === todayNum, future: d > todayNum });
+      arr.push({ d, hits: hitsByDay[key] || 0, prosp: (prospByDay && prospByDay[key]) || 0, isToday: d === todayNum, future: d > todayNum });
     }
     return arr;
-  }, [teamHistory, todayNum]);
+  }, [teamHistory, prospByDay, todayNum]);
 
   const W = 620, H = 150, padL = 8, padR = 8, padT = 12, padB = 18;
   const innerW = W - padL - padR, innerH = H - padT - padB;
@@ -165,7 +160,7 @@ function MonthTrajectory({ teamHistory, selectedDay, todayNum, onPickDay }) {
   );
 }
 
-function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, db, appUser }) {
+function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0, db, appUser }) {
   const [teamHistory, setTeamHistory] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null); // null = hoje; senão dia-do-mês
 
@@ -205,7 +200,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
     const base = (usersList || []).map(u => {
       const isManager = u.role === 'admin';
       const ritmo = computeRitmo(historyByConsultant.get(u.id) || [], metaWeekdays);
-      const prospTarget = volumeTargetFor(u);
+      const prospTarget = volumeTargetFor(u, dailyVolumeTarget);
 
       if (sel.isToday) {
         const processed = computeDailyGoalSlots(leads, byLead, u.id);
@@ -242,7 +237,33 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
       }
       return (Number(b.hitMeta) - Number(a.hitMeta)) || (b.prospDone - a.prospDone) || (a.user.name || '').localeCompare(b.user.name || '');
     });
-  }, [sel, leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays]);
+  }, [sel, leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays, dailyVolumeTarget]);
+
+  // Linha de prospecção do gráfico = DADO BRUTO (não o volumeCount do histórico,
+  // que só grava se o consultor abrir a Meta): por dia do mês, quantos consultores
+  // fizeram >= alvo de ações (agendamentos volumeKind + lead novo).
+  const prospByDay = useMemo(() => {
+    const now = new Date(); const year = now.getFullYear(), month = now.getMonth();
+    const monthStart = new Date(year, month, 1);
+    const nextMonth = new Date(year, month + 1, 1);
+    const inMonth = (d) => d instanceof Date && d >= monthStart && d < nextMonth;
+    const byAuthDay = new Map();
+    (interactions || []).forEach(i => { if (i.volumeKind && inMonth(i.createdAt)) { const k = `${i.consultantAuthUid}|${dgDateKey(i.createdAt)}`; byAuthDay.set(k, (byAuthDay.get(k) || 0) + 1); } });
+    const byConsDay = new Map();
+    (leads || []).forEach(l => { if (inMonth(l.createdAt)) { const k = `${l.consultantId}|${dgDateKey(l.createdAt)}`; byConsDay.set(k, (byConsDay.get(k) || 0) + 1); } });
+    const counts = {};
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    (usersList || []).forEach(u => {
+      const t = volumeTargetFor(u, dailyVolumeTarget);
+      if (t <= 0) return;
+      for (let d = 1; d <= daysInMonth; d++) {
+        const dk = dgDateKey(new Date(year, month, d));
+        const actions = (byAuthDay.get(`${u.authUid}|${dk}`) || 0) + (byConsDay.get(`${u.id}|${dk}`) || 0);
+        if (actions >= t) counts[dk] = (counts[dk] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [interactions, leads, usersList, dailyVolumeTarget]);
 
   const measured = rows.filter(r => !r.isManager);
   const dailyHitCount = measured.filter(r => r.dailyHit).length;
@@ -267,7 +288,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
         )}
       </div>
 
-      <MonthTrajectory teamHistory={teamHistory} selectedDay={selectedDay} todayNum={todayNum} onPickDay={(d) => setSelectedDay(d === todayNum ? null : d)} />
+      <MonthTrajectory teamHistory={teamHistory} prospByDay={prospByDay} selectedDay={selectedDay} todayNum={todayNum} onPickDay={(d) => setSelectedDay(d === todayNum ? null : d)} />
 
       <div className="rounded-2xl border border-border bg-card shadow-card overflow-x-auto">
         <table className="w-full border-collapse min-w-[640px]">

@@ -727,7 +727,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
   // definida pelo admin nas Configurações Gerais. A sequência pula os dias
   // inativos (não quebram nem contam). Default seg–sex.
-  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0 } = useGeneralConfig();
 
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
@@ -797,7 +797,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // Alvo: definido por consultor (doc do usuário); sem alvo = sem régua.
   // Gestor fica fora (target 0 = sem barra). Ações = agendamentos/reagendamentos,
   // ligações/mensagens e leads novos (ver lib/dailyGoal.js).
-  const volumeTarget = volumeTargetFor(appUser);
+  const volumeTarget = volumeTargetFor(appUser, dailyVolumeTarget);
   const volumeData = useMemo(() => {
     if (!volumeTarget) return null;
     void todayKey; // vira com o dia, como o resto da Meta
@@ -1182,6 +1182,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           usersList={usersList}
           metaWeekdays={metaWeekdays}
           slaOverdueDays={slaOverdueDays}
+          dailyVolumeTarget={dailyVolumeTarget}
           db={db}
           appUser={appUser}
           onOpenLead={setSelectedLead}
