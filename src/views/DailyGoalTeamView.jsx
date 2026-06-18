@@ -15,7 +15,7 @@ import { ArrowLeft, Check, CheckCircle2, Flame, Shield, Target, TrendingUp, Zap 
 // PAINEL DA EQUIPE — "tabela executiva" com DUAS metas do dia + gráfico do mês.
 //   • META DIÁRIA → tarefas de hoje (computeDailyGoalSlots). "Batida" a 100%.
 //   • PROSPECÇÃO  → cota DIÁRIA de AÇÕES (modelo #111: computeDailyVolume =
-//       agendamentos volumeKind + lead novo + fechamento). Alvo por consultor
+//       agendamentos volumeKind + lead novo). Alvo por consultor
 //       (volumeTargetFor). Gestor → 0 → fora da régua.
 //   • "Dia perfeito" ⚡ = zerou a meta E bateu a prospecção.
 //   + GRÁFICO "Trajetória do mês" (dado real do histórico). CLICÁVEL: clicar num
@@ -256,7 +256,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           <h2 className="font-display tracking-tight text-[16px] font-semibold text-slate-900 dark:text-white inline-flex items-center gap-2"><Target size={17} className="text-brand-600" /> Meta da equipe — {sel.isToday ? 'diária & prospecção' : sel.label}</h2>
           <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
             {sel.isToday
-              ? <>Prospecção conta <b>ações</b> (agendar/reagendar, ligação, mensagem, lead novo, fechamento). {dailyHitCount}/{dailyWith} bateram a diária · {perfectCount} dia perfeito ⚡</>
+              ? <>Prospecção conta <b>ações</b> (agendar/reagendar, ligação, mensagem, lead novo). {dailyHitCount}/{dailyWith} bateram a diária · {perfectCount} dia perfeito ⚡</>
               : <>{dailyHitCount} de {dailyWith} bateram a meta · {perfectCount} dia perfeito ⚡ · prospecção recalculada do dia (carteira de tarefas só existe em &quot;Hoje&quot;)</>}
           </p>
         </div>
@@ -349,7 +349,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
 
       <div className="flex items-center gap-4 mt-1 text-[11px] text-slate-400 flex-wrap">
         <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-brand-600"></span> Meta diária (tarefas de hoje)</span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-accent-500"></span> Prospecção = ações (agendar/reagendar, ligação, mensagem, lead novo, fechamento)</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded bg-accent-500"></span> Prospecção = ações (agendar/reagendar, ligação, mensagem, lead novo)</span>
         <span className="inline-flex items-center gap-1.5"><Zap size={12} className="text-accent-500" /> Dia perfeito = zerou pendências + bateu prospecção</span>
       </div>
     </div>

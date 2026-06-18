@@ -796,7 +796,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // ── Meta por VOLUME (piso de esforço) ──────────────────────────────────
   // Alvo: definido por consultor (doc do usuário); sem alvo = sem régua.
   // Gestor fica fora (target 0 = sem barra). Ações = agendamentos/reagendamentos,
-  // ligações/mensagens, leads novos e fechamentos (ver lib/dailyGoal.js).
+  // ligações/mensagens e leads novos (ver lib/dailyGoal.js).
   const volumeTarget = volumeTargetFor(appUser);
   const volumeData = useMemo(() => {
     if (!volumeTarget) return null;

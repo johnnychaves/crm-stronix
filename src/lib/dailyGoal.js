@@ -62,14 +62,14 @@ export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 //     "reaquecimento": reagendar lead parado É um agendamento; conta mesmo
 //     quando o reagendamento também fecha a tarefa da Meta do dia)
 //   • lead NOVO cadastrado (prospecção)
-//   • FECHAMENTO do dia: lead do consultor virou Venda ou Perda hoje
+//   (Venda/Perda do dia NÃO entram — fechamento é resultado, não prospecção.)
 // FORA da régua: concluir tarefa da Meta SEM uma ação acima — daily_goal_done
 // puro (marcar "concluído" ou registrar comparecimento) NÃO é prospecção
 // (decisão do Johnny, 2026-06-16); anotações soltas, observação automática de
 // cadastro, "adiar p/ amanhã" (snooze, não recebe volumeKind) e mudanças de fase.
 // Volume NÃO trava o "dia batido" — quem bate pendências E volume ganha o
 // selo "dia perfeito ⚡". Gestor (role admin) fica fora da régua.
-// Retorna { total, agendamentos, leadsNovos, fechamentos }.
+// Retorna { total, agendamentos, leadsNovos }.
 
 // Contagem num INTERVALO [from, to) — base do "hoje" e do acumulado do mês.
 // metaWeekdays (opcional): quando passado, só conta ações em dias PROGRAMADOS
@@ -78,18 +78,17 @@ export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 export function computeVolumeInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null, metaWeekdays = null) {
   const onMetaDay = (d) => !metaWeekdays || metaWeekdays.includes(d.getDay());
   const inRange = (d) => d instanceof Date && d >= from && (!to || d < to) && onMetaDay(d);
-  const r = { agendamentos: 0, leadsNovos: 0, fechamentos: 0 };
+  const r = { agendamentos: 0, leadsNovos: 0 };
   (leads || []).forEach((l) => {
     if (l.consultantId !== consultantId) return;
     if (inRange(l.createdAt)) r.leadsNovos++;
-    if (inRange(l.convertedAt) || inRange(l.lostAt)) r.fechamentos++;
   });
   (interactions || []).forEach((i) => {
     if (i.consultantAuthUid !== consultantAuthUid) return;
     if (!inRange(i.createdAt)) return;
     if (i.volumeKind) r.agendamentos++;
   });
-  return { total: r.agendamentos + r.leadsNovos + r.fechamentos, ...r };
+  return { total: r.agendamentos + r.leadsNovos, ...r };
 }
 
 export function computeDailyVolume(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
@@ -160,8 +159,6 @@ export function listVolumeActionsInRange(leads, interactions, consultantId, cons
   (leads || []).forEach((l) => {
     if (l.consultantId !== consultantId) return;
     if (inRange(l.createdAt)) out.push({ at: l.createdAt, label: 'Lead cadastrado', leadId: l.id, leadName: l.name || '—' });
-    if (inRange(l.convertedAt)) out.push({ at: l.convertedAt, label: 'Venda fechada', leadId: l.id, leadName: l.name || '—' });
-    if (inRange(l.lostAt)) out.push({ at: l.lostAt, label: 'Perda registrada', leadId: l.id, leadName: l.name || '—' });
   });
   (interactions || []).forEach((i) => {
     if (i.consultantAuthUid !== consultantAuthUid) return;
@@ -177,13 +174,12 @@ export function listDailyVolumeActions(leads, interactions, consultantId, consul
   return listVolumeActionsInRange(leads, interactions, consultantId, consultantAuthUid, todayStart);
 }
 
-// Composição legível do volume ("2 agendamentos · 1 lead novo · 1 fechamento").
+// Composição legível do volume ("2 agendamentos · 1 lead novo").
 export function volumeBreakdownLabel(v) {
   if (!v) return '';
   const parts = [];
   if (v.agendamentos) parts.push(`${v.agendamentos} agendamento${v.agendamentos === 1 ? '' : 's'}`);
   if (v.leadsNovos) parts.push(`${v.leadsNovos} lead${v.leadsNovos === 1 ? '' : 's'} novo${v.leadsNovos === 1 ? '' : 's'}`);
-  if (v.fechamentos) parts.push(`${v.fechamentos} fechamento${v.fechamentos === 1 ? '' : 's'}`);
   return parts.join(' · ') || 'nenhuma ação ainda';
 }
 
