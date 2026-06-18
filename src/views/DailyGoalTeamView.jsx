@@ -38,7 +38,7 @@ function MetaDiariaCell({ row }) {
   return (
     <div className="flex items-center gap-2">
       <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden min-w-[54px]">
-        <div className={cn('h-full rounded-full', row.critical > 0 ? 'bg-rose-500' : 'bg-brand-600')} style={{ width: `${row.progress}%` }} />
+        <div className={cn('h-full rounded-full transition-[width] duration-500 ease-out', row.critical > 0 ? 'bg-rose-500' : 'bg-brand-600')} style={{ width: `${row.progress}%` }} />
       </div>
       <span className="num text-[11.5px] font-bold text-slate-600 dark:text-slate-300 w-9 text-right">{row.doneSlots}/{row.totalSlots}</span>
     </div>
@@ -59,7 +59,7 @@ function MetaProspCell({ done, target, breakdown }) {
   return (
     <div className="flex items-center gap-2" title={breakdown ? `Prospecção do dia: ${volumeBreakdownLabel(breakdown)}` : undefined}>
       <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden min-w-[54px]">
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: hit ? '#10b981' : '#FF6A2B' }} />
+        <div className="h-full rounded-full transition-[width] duration-500 ease-out" style={{ width: `${pct}%`, background: hit ? '#10b981' : '#FF6A2B' }} />
       </div>
       <span className={cn('num text-[11.5px] font-bold w-12 text-right', hit ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-600 dark:text-slate-300')}>{done}/{target}</span>
       {hit && <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />}
@@ -124,7 +124,7 @@ function MonthTrajectory({ teamHistory, prospByDay, selectedDay, todayNum, onPic
   const selIdx = selDay - 1;
 
   return (
-    <div className="rounded-2xl border border-border bg-card shadow-card p-4">
+    <div className="rounded-2xl border border-border bg-card shadow-card p-4 animate-in fade-in-0 duration-500 motion-reduce:animate-none">
       <div className="flex items-start justify-between gap-4 mb-3 flex-wrap">
         <div>
           <h3 className="font-display tracking-tight text-[13px] font-bold text-slate-800 dark:text-white inline-flex items-center gap-1.5"><Target size={14} className="text-brand-600" /> Trajetória do mês</h3>
@@ -151,7 +151,7 @@ function MonthTrajectory({ teamHistory, prospByDay, selectedDay, todayNum, onPic
         {past.map((x, i) => <circle key={i} cx={cx(i)} cy={cy(x.prosp)} r={x.d === selDay ? 4 : 2.5} fill="#FF6A2B" />)}
         {data.map((x, i) => (x.d % 5 === 0 || x.isToday) ? <text key={i} x={cx(i)} y={H - 5} textAnchor="middle" fontSize="9" fill={x.isToday ? '#FF6A2B' : '#8A93B0'} fontWeight={x.isToday ? 700 : 400}>{x.isToday ? 'hoje' : x.d}</text> : null)}
         {data.map((x, i) => x.future ? null : (
-          <rect key={`hit-${i}`} x={padL + i * bw} y={padT} width={bw} height={innerH} fill="transparent" style={{ cursor: 'pointer' }} onClick={() => onPickDay(x.d)}>
+          <rect key={`hit-${i}`} x={padL + i * bw} y={padT} width={bw} height={innerH} className="fill-transparent hover:fill-brand-500/[0.07] transition-colors duration-200" style={{ cursor: 'pointer' }} onClick={() => onPickDay(x.d)}>
             <title>{`dia ${x.d}${x.isToday ? ' (hoje)' : ''} — ${x.hits} meta(s), ${x.prosp} prospecção`}</title>
           </rect>
         ))}
@@ -290,7 +290,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
 
       <MonthTrajectory teamHistory={teamHistory} prospByDay={prospByDay} selectedDay={selectedDay} todayNum={todayNum} onPickDay={(d) => setSelectedDay(d === todayNum ? null : d)} />
 
-      <div className="rounded-2xl border border-border bg-card shadow-card overflow-x-auto">
+      <div key={sel.dateKey} className="rounded-2xl border border-border bg-card shadow-card overflow-x-auto animate-in fade-in-0 slide-in-from-top-2 duration-300 motion-reduce:animate-none">
         <table className="w-full border-collapse min-w-[640px]">
           <thead>
             <tr className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
@@ -332,7 +332,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
               }
 
               return (
-                <tr key={u.id} className={cn('border-t border-border', r.perfect ? 'bg-amber-50/40 dark:bg-amber-500/[0.05]' : 'hover:bg-slate-50/50 dark:hover:bg-white/[0.02]')}>
+                <tr key={u.id} className={cn('border-t border-border transition-colors', r.perfect ? 'bg-amber-50/40 dark:bg-amber-500/[0.05]' : 'hover:bg-slate-50/50 dark:hover:bg-white/[0.02]')}>
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2.5">
                       <Avatar name={u.name} size={30} />
