@@ -513,10 +513,10 @@ function ManageUsersTab({ db, appUser }) {
             </div>
           </div>
 
-          {editingUser && editingUser.role !== 'admin' && (
+          {editingUser && (
             <div className="space-y-2 pt-2">
               <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
-                Meta de prospecção (ações/dia) — vazio = padrão da academia
+                Meta de prospecção (ações/dia) — vazio = {editingUser.role === 'admin' ? 'sem meta (gestor é opt-in)' : 'padrão da academia'}
               </label>
               <input
                 type="number"

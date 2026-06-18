@@ -299,18 +299,18 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
       >
         <div className="p-4 rounded-xl bg-muted/50 border border-border">
           <p className="text-[12.5px] text-muted-foreground leading-relaxed">
-            Piso de esforço diário por consultor. Conta como <b>ação</b>: agendar ou reagendar visita/aula, registrar ligação ou mensagem, e cadastrar lead novo. Só concluir uma tarefa da meta (sem uma dessas ações) <b>não</b> conta. Quem zera as pendências <b>e</b> bate a prospecção ganha o selo <b>dia perfeito ⚡</b> — a prospecção não trava o "dia batido". O gestor fica fora da régua.
+            Piso de esforço diário por consultor. Conta como <b>ação</b>: agendar ou reagendar visita/aula, registrar ligação ou mensagem, e cadastrar lead novo. Só concluir uma tarefa da meta (sem uma dessas ações) <b>não</b> conta. Quem zera as pendências <b>e</b> bate a prospecção ganha o selo <b>dia perfeito ⚡</b> — a prospecção não trava o "dia batido". O gestor entra só se você definir um alvo pra ele (não herda o padrão da academia).
           </p>
 
-          {(usersList || []).filter(u => u.role !== 'admin').length > 0 && (
+          {(usersList || []).length > 0 && (
             <div className="mt-4 pt-4 border-t border-border">
               <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2.5">
                 Alvo por consultor — vazio = sem meta de prospecção
               </div>
               <div className="flex flex-col gap-2">
-                {(usersList || []).filter(u => u.role !== 'admin').map(u => (
+                {(usersList || []).map(u => (
                   <div key={u.id} className="flex items-center gap-3">
-                    <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 flex-1 truncate">{u.name}</span>
+                    <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 flex-1 truncate">{u.name}{u.role === 'admin' ? ' (gestor)' : ''}</span>
                     <input
                       type="number" min="1" max="500"
                       defaultValue={u.dailyVolumeTarget ?? ''}

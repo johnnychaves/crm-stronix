@@ -189,6 +189,9 @@ export function volumeTargetFor(user, academyDefault) {
   if (!user) return 0;
   const own = Math.floor(Number(user.dailyVolumeTarget));
   if (Number.isFinite(own) && own > 0) return Math.min(own, 500);
+  // Gestor (admin) é OPT-IN: só tem meta com alvo PRÓPRIO — não herda o default
+  // da academia (que vale só p/ consultores).
+  if (user.role === 'admin') return 0;
   const def = Math.floor(Number(academyDefault));
   return Number.isFinite(def) && def > 0 ? Math.min(def, 500) : 0;
 }
