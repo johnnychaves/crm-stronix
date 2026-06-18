@@ -16,7 +16,7 @@ import { ArrowLeft, Check, CheckCircle2, Flame, Shield, Target, TrendingUp, Zap 
 //   • META DIÁRIA → tarefas de hoje (computeDailyGoalSlots). "Batida" a 100%.
 //   • PROSPECÇÃO  → cota DIÁRIA de AÇÕES (modelo #111: computeDailyVolume =
 //       agendamentos volumeKind + lead novo). Alvo por consultor
-//       (volumeTargetFor). Gestor → 0 → fora da régua.
+//       (volumeTargetFor). O gestor (admin) TAMBÉM entra na régua de prospecção.
 //   • "Dia perfeito" ⚡ = zerou a meta E bateu a prospecção.
 //   + GRÁFICO "Trajetória do mês" (dado real do histórico). CLICÁVEL: clicar num
 //     dia troca a TABELA de baixo para os resultados daquele dia.
@@ -216,7 +216,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
         const prospDone = prospVol?.total || 0;
         const prospHit = prospTarget > 0 && prospDone >= prospTarget;
         const dailyHit = totalSlots > 0 && progress === 100;
-        return { user: u, isPast: false, totalSlots, doneSlots, progress, pendingByCat, critical, ritmo, prospDone, prospTarget, prospVol, prospHit, isManager, dailyHit, perfect: !isManager && dailyHit && prospHit };
+        return { user: u, isPast: false, totalSlots, doneSlots, progress, pendingByCat, critical, ritmo, prospDone, prospTarget, prospVol, prospHit, isManager, dailyHit, perfect: dailyHit && prospHit };
       }
 
       // Dia passado: meta vem do histórico (bateu = doc existe); prospecção
@@ -225,11 +225,10 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
       const prospVol = prospTarget > 0 ? computeVolumeInRange(leads, interactions, u.id, u.authUid, sel.from, sel.to) : null;
       const prospDone = prospVol?.total || 0;
       const prospHit = prospTarget > 0 && prospDone >= prospTarget;
-      return { user: u, isPast: true, hitMeta, ritmo, prospDone, prospTarget, prospVol, prospHit, isManager, dailyHit: hitMeta, perfect: !isManager && hitMeta && prospHit };
+      return { user: u, isPast: true, hitMeta, ritmo, prospDone, prospTarget, prospVol, prospHit, isManager, dailyHit: hitMeta, perfect: hitMeta && prospHit };
     });
 
     return base.sort((a, b) => {
-      if (a.isManager !== b.isManager) return a.isManager ? 1 : -1; // gestor ao fim
       if (sel.isToday) {
         const aEmpty = a.totalSlots === 0, bEmpty = b.totalSlots === 0;
         if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
@@ -265,7 +264,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
     return counts;
   }, [interactions, leads, usersList, dailyVolumeTarget]);
 
-  const measured = rows.filter(r => !r.isManager);
+  const measured = rows;
   const dailyHitCount = measured.filter(r => r.dailyHit).length;
   const dailyWith = sel.isToday ? measured.filter(r => r.totalSlots > 0).length : measured.length;
   const perfectCount = measured.filter(r => r.perfect).length;
@@ -314,23 +313,6 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
               const pendCount = r.isPast ? 0 : Object.values(r.pendingByCat).reduce((s, n) => s + n, 0);
               const pPct = r.prospTarget > 0 ? Math.min(100, Math.round((r.prospDone / r.prospTarget) * 100)) : 0;
 
-              if (r.isManager) {
-                return (
-                  <tr key={u.id} className="border-t border-border bg-slate-50/40 dark:bg-white/[0.02]">
-                    <td className="px-3 py-2.5">
-                      <div className="flex items-center gap-2.5 opacity-80">
-                        <Avatar name={u.name} size={30} />
-                        <div className="min-w-0"><div className="flex items-center gap-1"><span className="text-[12.5px] font-semibold whitespace-nowrap">{(u.name || '').split(' ')[0]}</span><Shield size={10} className="text-brand-600" /></div><div className="text-[10.5px] text-slate-400">Gestor</div></div>
-                      </div>
-                    </td>
-                    <td colSpan={4} className="px-3 py-2.5 border-l border-border text-center"><span className="inline-flex items-center text-[11px] font-medium text-slate-400 bg-slate-100 dark:bg-white/[0.06] px-2.5 py-1 rounded-md">Fora da régua — acompanha, não é medido</span></td>
-                    <td className="px-2 py-2.5 border-l border-border text-center text-slate-300">—</td>
-                    <td className="px-2 py-2.5 border-l border-border"><div className="opacity-50"><Rail history14={r.ritmo.history14} /></div></td>
-                    <td className="px-2 py-2.5 border-l border-border text-center text-slate-300">—</td>
-                  </tr>
-                );
-              }
-
               return (
                 <tr key={u.id} className={cn('border-t border-border transition-colors', r.perfect ? 'bg-amber-50/40 dark:bg-amber-500/[0.05]' : 'hover:bg-slate-50/50 dark:hover:bg-white/[0.02]')}>
                   <td className="px-3 py-2.5">
@@ -339,6 +321,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
                       <div className="min-w-0">
                         <div className="flex items-center gap-1">
                           <span className="text-[12.5px] font-semibold whitespace-nowrap">{(u.name || '').split(' ')[0]}{u.id === appUser?.id ? ' (você)' : ''}</span>
+                          {r.isManager && <Shield size={10} className="text-brand-600 shrink-0" />}
                           {r.ritmo.streak > 0 && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-600"><Flame size={9} />{r.ritmo.streak}</span>}
                         </div>
                         <div className="num text-[10.5px] text-slate-400">{r.ritmo.monthHits}/{r.ritmo.monthTarget} metas no mês</div>

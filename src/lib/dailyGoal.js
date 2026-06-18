@@ -184,9 +184,9 @@ export function volumeBreakdownLabel(v) {
 }
 
 // Alvo de volume de um usuário: o próprio (doc do consultor) > default da
-// academia. 0 = sem régua. Gestor sempre 0 (fora da régua, decisão de produto).
+// academia. 0 = sem régua. Inclui o GESTOR (admin) — prospecção vale p/ todos.
 export function volumeTargetFor(user, academyDefault) {
-  if (!user || user.role === 'admin') return 0;
+  if (!user) return 0;
   const own = Math.floor(Number(user.dailyVolumeTarget));
   if (Number.isFinite(own) && own > 0) return Math.min(own, 500);
   const def = Math.floor(Number(academyDefault));
