@@ -13,7 +13,7 @@ function ManageUsersTab({ db, appUser }) {
   const [users, setUsers] = useState([]);
   const [showAdd, setShowAdd] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
-  const [form, setForm] = useState({ name: '', email: '', authUid: '', password: '', shiftStart: '', shiftEnd: '' });
+  const [form, setForm] = useState({ name: '', email: '', authUid: '', password: '', shiftStart: '', shiftEnd: '', dailyVolumeTarget: '' });
   const [loadingSubmit, setLoadingSubmit] = useState(false);
   // Convite por e-mail (alternativa ao cadastro direto: o convidado define a
   // própria senha via link /?invite=token&t=tenant).
@@ -86,7 +86,7 @@ function ManageUsersTab({ db, appUser }) {
   }, [db]);
 
   const resetForm = () => {
-    setForm({ name: '', email: '', authUid: '', password: '', shiftStart: '', shiftEnd: '' });
+    setForm({ name: '', email: '', authUid: '', password: '', shiftStart: '', shiftEnd: '', dailyVolumeTarget: '' });
   };
 
   const generatePassword = () => {
@@ -131,7 +131,8 @@ function ManageUsersTab({ db, appUser }) {
       authUid: user.authUid || '',
       password: '',
       shiftStart: user.shiftStart || '',
-      shiftEnd: user.shiftEnd || ''
+      shiftEnd: user.shiftEnd || '',
+      dailyVolumeTarget: user.dailyVolumeTarget != null ? String(user.dailyVolumeTarget) : ''
     });
     setShowAdd(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -203,6 +204,11 @@ function ManageUsersTab({ db, appUser }) {
           authUid: normalizeUid(form.authUid) || null,
           shiftStart: form.shiftStart || null,
           shiftEnd: form.shiftEnd || null,
+          // Alvo individual da meta por volume: vazio = remove (vale o default
+          // da academia das Regras gerais); 1..500 = piso próprio do consultor.
+          dailyVolumeTarget: form.dailyVolumeTarget !== '' && Number(form.dailyVolumeTarget) > 0
+            ? Math.min(500, Math.floor(Number(form.dailyVolumeTarget)))
+            : deleteField(),
           password: deleteField()
         }
       );
@@ -506,6 +512,23 @@ function ManageUsersTab({ db, appUser }) {
               />
             </div>
           </div>
+
+          {editingUser && (
+            <div className="space-y-2 pt-2">
+              <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
+                Meta de prospecção (ações/dia) — vazio = {editingUser.role === 'admin' ? 'sem meta (gestor é opt-in)' : 'padrão da academia'}
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="500"
+                placeholder="ex.: 20 (padrão da academia se vazio)"
+                value={form.dailyVolumeTarget}
+                onChange={e => setForm({ ...form, dailyVolumeTarget: e.target.value })}
+                className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
+              />
+            </div>
+          )}
 
           <div className="bg-brand-50/50 dark:bg-brand-800/10 border border-brand-100 dark:border-brand-800/30 rounded-2xl p-5 mt-4">
             <p className="text-[10px] font-bold text-brand-500 dark:text-brand-400 uppercase tracking-widest mb-1.5 flex items-center gap-2">

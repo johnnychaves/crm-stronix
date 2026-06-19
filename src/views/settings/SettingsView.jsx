@@ -60,7 +60,7 @@ function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, t
         // Perfil da academia e Plano & faturas migraram para o menu de persona
         // (canto superior direito) — ver PersonaMenu / App.jsx. Aqui fica só a
         // configuração operacional.
-        { id: 'general', label: 'Regras gerais', hint: 'Meta, SLA, aulas e modalidades', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount, keywords: 'sla atraso critico meta diaria dias semana aulas experimentais quantidade modalidades unidades cidade' },
+        { id: 'general', label: 'Regras gerais', hint: 'Meta, SLA, aulas e modalidades', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount, keywords: 'sla atraso critico meta diaria dias semana aulas experimentais quantidade modalidades unidades cidade prospeccao volume acoes piso' },
       ],
     },
     {
@@ -169,7 +169,7 @@ function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, t
 
             {q && !firstMatch && (
               <div className="px-3 py-6 text-center text-[12px] text-slate-400">
-                Nenhum ajuste encontrado para “{query.trim()}”.
+                Nenhum ajuste encontrado para "{query.trim()}".
               </div>
             )}
           </div>
@@ -191,7 +191,7 @@ function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, t
           </div>
 
           {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
-          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} />}
+          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} usersList={usersList} />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
           )}

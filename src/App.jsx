@@ -51,7 +51,7 @@ import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey }
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
-import { normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays } from './lib/leadStatus.js';
+import { normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget } from './lib/leadStatus.js';
 import { IMPERSONATION_KEY, readImpersonation } from './lib/superadmin.js';
 import { SurgeMark, StronileadWordmark } from './components/brand/SurgeMark.jsx';
 import { TrialBanner, ImpersonationBanner } from './components/layout/Banners.jsx';
@@ -70,6 +70,7 @@ import { LeadsView } from './views/LeadsView.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
+import { WhatsNewModal } from './components/WhatsNewModal.jsx';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
@@ -210,11 +211,14 @@ function AppInner() {
   // SLA de atrasados: dias de atraso a partir dos quais o lead vira "crítico"
   // (alerta no painel da Equipe + destaque na meta). Política da academia.
   const [slaOverdueDays, setSlaOverdueDays] = useState(3);
+  // Meta por VOLUME: piso default de ações/dia da academia (0 = desligado);
+  // alvo individual do consultor (doc do usuário) tem precedência.
+  const [dailyVolumeTarget, setDailyVolumeTarget] = useState(0);
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays }),
-    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays]
+    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget }),
+    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget]
   );
   // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
   // tenant ainda não foi resolvido (appId = default), o que é correto para o
@@ -566,8 +570,9 @@ useEffect(() => {
       setTrialClassOptions(normalizeTrialClassOptions(data?.trialClassOptions, data?.maxTrialClasses));
       setMetaWeekdays(normalizeMetaWeekdays(data?.metaWeekdays));
       setSlaOverdueDays(normalizeSlaOverdueDays(data?.slaOverdueDays));
+      setDailyVolumeTarget(normalizeDailyVolumeTarget(data?.dailyVolumeTarget));
     },
-    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); }
+    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); }
   );
 
   let unsubUsers = () => {};
@@ -1086,6 +1091,7 @@ useEffect(() => {
         <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
       )}
       {ticketModalOpen && <CreateTicketModal appUser={appUser} onClose={() => setTicketModalOpen(false)} />}
+      <WhatsNewModal appUser={appUser} onConfigure={() => openSettingsTab('general')} />
     </div>
     </GeneralConfigContext.Provider>
   );

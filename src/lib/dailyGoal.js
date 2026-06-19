@@ -55,6 +55,147 @@ export function dgDateKey(date) {
 // em Configurações Gerais (campo slaOverdueDays do config geral).
 export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 
+// ── Meta por VOLUME (piso de esforço diário) ───────────────────────────────
+// Régua de PIPELINE (critérios v2 do Johnny, 2026-06-11) — cada ação vale 1:
+//   • AGENDAMENTO criado: visita, aula experimental, mensagem ou ligação
+//     (interações com volumeKind, gravadas pelo wizard/remarcação — cobre o
+//     "reaquecimento": reagendar lead parado É um agendamento; conta mesmo
+//     quando o reagendamento também fecha a tarefa da Meta do dia)
+//   • lead NOVO cadastrado (prospecção)
+//   (Venda/Perda do dia NÃO entram — fechamento é resultado, não prospecção.)
+// FORA da régua: concluir tarefa da Meta SEM uma ação acima — daily_goal_done
+// puro (marcar "concluído" ou registrar comparecimento) NÃO é prospecção
+// (decisão do Johnny, 2026-06-16); anotações soltas, observação automática de
+// cadastro, "adiar p/ amanhã" (snooze, não recebe volumeKind) e mudanças de fase.
+// Volume NÃO trava o "dia batido" — quem bate pendências E volume ganha o
+// selo "dia perfeito ⚡". Gestor (role admin) fica fora da régua.
+// Retorna { total, agendamentos, leadsNovos }.
+
+// Contagem num INTERVALO [from, to) — base do "hoje" e do acumulado do mês.
+// metaWeekdays (opcional): quando passado, só conta ações em dias PROGRAMADOS
+// da meta (mesma régua do alvo mensal e do "ritmo do mês") — ação feita em dia
+// fora da meta (ex.: sábado) NÃO entra na contabilização. Sem ele = todo dia.
+export function computeVolumeInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null, metaWeekdays = null) {
+  const onMetaDay = (d) => !metaWeekdays || metaWeekdays.includes(d.getDay());
+  const inRange = (d) => d instanceof Date && d >= from && (!to || d < to) && onMetaDay(d);
+  const r = { agendamentos: 0, leadsNovos: 0 };
+  (leads || []).forEach((l) => {
+    if (l.consultantId !== consultantId) return;
+    if (inRange(l.createdAt)) r.leadsNovos++;
+  });
+  (interactions || []).forEach((i) => {
+    if (i.consultantAuthUid !== consultantAuthUid) return;
+    if (!inRange(i.createdAt)) return;
+    if (i.volumeKind) r.agendamentos++;
+  });
+  return { total: r.agendamentos + r.leadsNovos, ...r };
+}
+
+export function computeDailyVolume(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
+  const todayStart = new Date(refDate);
+  todayStart.setHours(0, 0, 0, 0);
+  return computeVolumeInRange(leads, interactions, consultantId, consultantAuthUid, todayStart);
+}
+
+// Dias de META decorridos no mês (1..hoje, respeitando metaWeekdays) — régua
+// p/ alvo MENSAL de prospecção (alvo/dia × dias) e p/ "X de Y dias batidos".
+export function countMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
+  const today = new Date(refDate);
+  today.setHours(0, 0, 0, 0);
+  let n = 0;
+  for (let day = 1; day <= today.getDate(); day++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), day);
+    if ((metaWeekdays || []).includes(d.getDay())) n++;
+  }
+  return n;
+}
+
+// Dias de META num intervalo [from, to) — denominador do "X de Y dias batidos"
+// quando o painel olha um período passado (ontem/semana/mês anterior/custom).
+export function countMetaDaysInRange(metaWeekdays, from, to) {
+  let n = 0;
+  const d = new Date(from); d.setHours(0, 0, 0, 0);
+  const end = new Date(to);
+  while (d < end) {
+    if ((metaWeekdays || []).includes(d.getDay())) n++;
+    d.setDate(d.getDate() + 1);
+  }
+  return n;
+}
+
+// Metas batidas (docs de histórico {date:'YYYY-MM-DD'}) dentro de [from, to),
+// só em dias programados — numerador do "X de Y dias batidos" do período.
+export function countHitsInRange(history, metaWeekdays, from, to) {
+  const fromKey = dgDateKey(from);
+  const toKey = dgDateKey(new Date(to.getTime() - 1));
+  let n = 0;
+  (history || []).forEach((h) => {
+    const key = h?.date;
+    if (!key || key < fromKey || key > toKey) return;
+    const [y, m, d] = key.split('-').map(Number);
+    if (y && m && d && (metaWeekdays || []).includes(new Date(y, m - 1, d).getDay())) n++;
+  });
+  return n;
+}
+
+// Extrato das ações de volume do dia — lista cronológica (mais recente
+// primeiro) para o gestor auditar COMO o consultor compôs o número:
+// [{ at: Date, label, leadId, leadName }]. Mesmos critérios do contador.
+const VOLUME_KIND_LABEL = {
+  visita: 'Visita agendada',
+  aula_experimental: 'Aula experimental agendada',
+  mensagem: 'Mensagem agendada',
+  ligacao: 'Ligação agendada',
+};
+
+// Extrato num INTERVALO [from, to) — base do "hoje" (sem teto) e dos períodos
+// passados (ontem/semana/mês anterior/personalizado). metaWeekdays opcional:
+// só ações em dias programados (mesma régua da contabilização).
+export function listVolumeActionsInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null, metaWeekdays = null) {
+  const onMetaDay = (d) => !metaWeekdays || metaWeekdays.includes(d.getDay());
+  const inRange = (d) => d instanceof Date && d >= from && (!to || d < to) && onMetaDay(d);
+  const nameOf = new Map((leads || []).map((l) => [l.id, l.name || '—']));
+  const out = [];
+  (leads || []).forEach((l) => {
+    if (l.consultantId !== consultantId) return;
+    if (inRange(l.createdAt)) out.push({ at: l.createdAt, label: 'Lead cadastrado', leadId: l.id, leadName: l.name || '—' });
+  });
+  (interactions || []).forEach((i) => {
+    if (i.consultantAuthUid !== consultantAuthUid) return;
+    if (!inRange(i.createdAt)) return;
+    if (i.volumeKind) out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
+  });
+  return out.sort((a, b) => b.at - a.at);
+}
+
+export function listDailyVolumeActions(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
+  const todayStart = new Date(refDate);
+  todayStart.setHours(0, 0, 0, 0);
+  return listVolumeActionsInRange(leads, interactions, consultantId, consultantAuthUid, todayStart);
+}
+
+// Composição legível do volume ("2 agendamentos · 1 lead novo").
+export function volumeBreakdownLabel(v) {
+  if (!v) return '';
+  const parts = [];
+  if (v.agendamentos) parts.push(`${v.agendamentos} agendamento${v.agendamentos === 1 ? '' : 's'}`);
+  if (v.leadsNovos) parts.push(`${v.leadsNovos} lead${v.leadsNovos === 1 ? '' : 's'} novo${v.leadsNovos === 1 ? '' : 's'}`);
+  return parts.join(' · ') || 'nenhuma ação ainda';
+}
+
+// Alvo de volume de um usuário: o próprio (doc do consultor) > default da
+// academia. 0 = sem régua. Inclui o GESTOR (admin) — prospecção vale p/ todos.
+export function volumeTargetFor(user, academyDefault) {
+  if (!user) return 0;
+  const own = Math.floor(Number(user.dailyVolumeTarget));
+  if (Number.isFinite(own) && own > 0) return Math.min(own, 500);
+  // Gestor (admin) é OPT-IN: só tem meta com alvo PRÓPRIO — não herda o default
+  // da academia (que vale só p/ consultores).
+  if (user.role === 'admin') return 0;
+  const def = Math.floor(Number(academyDefault));
+  return Number.isFinite(def) && def > 0 ? Math.min(def, 500) : 0;
+}
+
 // Dias de atraso de um lead (follow-up vencido antes de hoje). 0 = em dia.
 // Mesma régua do card da Meta: dia parcial não conta, mínimo 1.
 export function overdueDaysOf(lead, refDate = new Date()) {

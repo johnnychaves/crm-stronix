@@ -568,7 +568,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   
 
   const handleDelete = async () => {
-    if (!window.confirm("⚠️ AÇÃO IRREVERSÍVEL: Deseja EXCLUIR este lead permanentemente?")) return;
+    if (!window.confirm("Excluir este lead permanentemente? Não dá pra desfazer.")) return;
     setLoading(true);
     try {
       // Apaga as interações ligadas ao lead (senão ficam órfãs na coleção).
@@ -746,6 +746,9 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
         ...getInteractionSecurityFields(lead, appUser),
         text,
         type: 'note',
+        // Meta por VOLUME: todo agendamento criado pelo wizard conta como ação
+        // de pipeline (visita/aula/mensagem/ligação) — ver lib/dailyGoal.js.
+        volumeKind: appointmentType || (/liga/i.test(typeLabel) ? 'ligacao' : 'mensagem'),
         createdAt: serverTimestamp()
       });
 

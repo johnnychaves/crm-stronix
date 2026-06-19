@@ -151,7 +151,7 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
             <div>
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white capitalize">{typeLabelPlural}</h3>
               <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-0.5">
-                Controle de {typeLabelPlural} agendadas — somente leitura
+                Controle de {typeLabelPlural} agendadas (somente leitura)
               </p>
             </div>
           </div>

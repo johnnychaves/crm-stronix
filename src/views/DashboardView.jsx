@@ -1,9 +1,14 @@
-import { useState, useMemo } from 'react';
-import { Activity, BarChart3, Bell, Calendar, Clock, Dumbbell, Filter, HelpCircle, Kanban, LayoutDashboard, Phone, Zap } from 'lucide-react';
+import { useState, useMemo, useEffect } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { Activity, BarChart3, Bell, Calendar, CheckCircle, Clock, Dumbbell, Filter, HelpCircle, Kanban, LayoutDashboard, Phone, Zap } from 'lucide-react';
+import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { getLeadAppointmentType, getLeadAppointmentDate, getLeadConversionDate, isLeadAttended, isLeadConverted, isAdminUser, isRegistrationNote } from '../lib/leads.js';
+import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
+import { buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, dgDateKey } from '../lib/dailyGoal.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel, isAllFunnels } from '../lib/funnels.js';
 import { formatHourLabel, humanizeAge } from '../lib/format.js';
+import { cn } from '../lib/utils.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { FunnelSelector } from '../components/ui/FunnelSelector.jsx';
 import { FunnelDetailModal } from '../modals/FunnelDetailModal.jsx';
@@ -287,6 +292,36 @@ function DashTeamRow({ row, maxLeads }) {
       <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosVisita}</td>
       <td className="py-3 px-3 num text-[13px] text-center text-slate-700 dark:text-slate-200">{row.agendadosAula}</td>
       <td className="py-3 px-3 num text-[13px] text-center font-semibold text-emerald-600 dark:text-emerald-400">{row.convertidos}</td>
+      {/* Execução: Meta Diária e prospecção — HOJE em cima, MÊS embaixo.
+          Mesma régua da tela Meta/painel da Equipe. "—" = sem tarefas/régua off. */}
+      <td className="py-3 px-3 text-center">
+        {!row.today || row.today.goalTotal === 0 ? (
+          <span className="text-[12px] text-muted-foreground" title="Sem tarefas na meta de hoje">—</span>
+        ) : row.today.goalDone >= row.today.goalTotal ? (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"><CheckCircle size={11} /> Batida</span>
+        ) : (
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-md bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300 num">{row.today.goalDone} de {row.today.goalTotal}</span>
+        )}
+        {row.today && row.today.monthDays > 0 && (
+          <div className={cn('mt-1 text-[10.5px] num', row.today.monthHits >= row.today.monthDays ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')} title="Dias com a meta batida neste mês">
+            mês: {row.today.monthHits} de {row.today.monthDays} dias
+          </div>
+        )}
+      </td>
+      <td className="py-3 px-3 text-center">
+        {!row.today || row.today.volTarget === 0 ? (
+          <span className="text-[12px] text-muted-foreground" title="Meta de prospecção desligada para este usuário">—</span>
+        ) : (
+          <>
+            <span className={cn('inline-flex items-center gap-1 text-[11px] font-semibold num', row.today.volTotal >= row.today.volTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400')}>
+              <Zap size={11} /> {row.today.volTotal} de {row.today.volTarget}
+            </span>
+            <div className={cn('mt-1 text-[10.5px] num', row.today.monthVol >= row.today.monthVolTarget ? 'text-emerald-600 dark:text-emerald-400' : 'text-muted-foreground')} title="Ações de prospecção acumuladas no mês vs alvo (alvo diário × dias de meta)">
+              mês: {row.today.monthVol} de {row.today.monthVolTarget}
+            </div>
+          </>
+        )}
+      </td>
       <td className="py-3 pr-5 pl-3 num text-[13px] text-right font-semibold text-slate-900 dark:text-white">
         {row.txConversaoGlobal == null ? (
           <span className="text-slate-400 dark:text-slate-500" title="Sem leads captados no período">—</span>
@@ -296,11 +331,11 @@ function DashTeamRow({ row, maxLeads }) {
   );
 }
 
-function DashTeamTable({ rows, appUser }) {
+function DashTeamTable({ rows, appUser, goals }) {
   const maxLeads = Math.max(...rows.map((r) => r.total), 1);
   return (
     <div className="overflow-x-auto thin-scroll">
-      <table className="w-full text-left min-w-[640px]">
+      <table className="w-full text-left min-w-[780px]">
         <thead>
           <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
             <th className="py-2.5 pl-5 pr-3 font-semibold">Consultor</th>
@@ -308,12 +343,14 @@ function DashTeamTable({ rows, appUser }) {
             <th className="py-2.5 px-3 font-semibold text-center">Visitas</th>
             <th className="py-2.5 px-3 font-semibold text-center">Aulas</th>
             <th className="py-2.5 px-3 font-semibold text-center">Matr.</th>
+            <th className="py-2.5 px-3 font-semibold text-center" title="Meta Diária: hoje e dias batidos no mês">Meta diária</th>
+            <th className="py-2.5 px-3 font-semibold text-center" title="Meta de prospecção: ações de hoje e acumulado do mês">Prospecção</th>
             <th className="py-2.5 pr-5 pl-3 font-semibold text-right">Conv. global</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <DashTeamRow key={r.name + i} row={{ ...r, isYou: r.name === appUser?.name }} maxLeads={maxLeads} />
+            <DashTeamRow key={r.name + i} row={{ ...r, isYou: r.name === appUser?.name, today: goals?.[r.consultantId] || null }} maxLeads={maxLeads} />
           ))}
         </tbody>
       </table>
@@ -602,6 +639,7 @@ const teamMetrics = useMemo(() => {
 
     if (!metrics[cId]) {
       metrics[cId] = {
+        consultantId: cId, // p/ cruzar com a meta/volume de HOJE no card
         name: lead.consultantName || 'Desconhecido',
         total: 0,
         agendadosVisita: 0,
@@ -659,6 +697,55 @@ const teamMetrics = useMemo(() => {
     (a, b) => b.convertidos - a.convertidos || b.total - a.total
   );
 }, [capturedLeads, scheduledLeads, convertedLeads]);
+  // Meta de HOJE + prospecção (dia e MÊS) por consultor — mesma régua da Meta
+  // Diária e do painel da Equipe (lib compartilhada). Usa a base CRUA (não a
+  // janela de período do dashboard): a leitura de cobrança é do dia/mês corrente.
+  const { metaWeekdays = [1, 2, 3, 4, 5], dailyVolumeTarget = 0 } = useGeneralConfig();
+
+  // Histórico de metas batidas da equipe (admin lê todos — mesma regra usada
+  // pelo painel da Equipe) p/ o "X de Y dias" do mês.
+  const [teamHistory, setTeamHistory] = useState([]);
+  useEffect(() => {
+    if (!isAdminUser(appUser)) return undefined;
+    const unsub = onSnapshot(
+      collection(db, 'artifacts', appId, 'public', 'data', DAILY_GOAL_HISTORY_PATH),
+      (snap) => setTeamHistory(snap.docs.map((d) => d.data())),
+      (e) => console.error('dash team history', e)
+    );
+    return () => unsub();
+  }, [db, appUser]);
+
+  const goalByConsultant = useMemo(() => {
+    if (!isAdminUser(appUser)) return {};
+    const byLead = buildInteractionsByLead(interactions);
+    const monthDays = countMetaDaysInMonth(metaWeekdays);
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    const monthPrefix = dgDateKey(new Date()).slice(0, 7); // 'YYYY-MM'
+    const map = {};
+    (usersList || []).forEach((u) => {
+      const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(leads, byLead, u.id));
+      const volTarget = volumeTargetFor(u, dailyVolumeTarget);
+      const vol = volTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : null;
+      const monthVol = volTarget > 0 ? computeVolumeInRange(leads, interactions, u.id, u.authUid, monthStart, null, metaWeekdays) : null;
+      // Só dias PROGRAMADOS da meta contam no "X de Y dias" do mês (mesma régua
+      // do alvo monthDays) — meta batida em dia fora da meta (ex.: sábado) não entra.
+      const monthHits = teamHistory.filter((h) => {
+        if (h.consultantId !== u.id) return false;
+        const ds = String(h.date || '');
+        if (!ds.startsWith(monthPrefix)) return false;
+        const [yy, mm, dd] = ds.split('-').map(Number);
+        return Boolean(yy && mm && dd) && (metaWeekdays || []).includes(new Date(yy, mm - 1, dd).getDay());
+      }).length;
+      map[u.id] = {
+        goalDone: doneSlots, goalTotal: totalSlots,
+        volTotal: vol?.total || 0, volTarget,
+        monthHits, monthDays,
+        monthVol: monthVol?.total || 0, monthVolTarget: volTarget * monthDays,
+      };
+    });
+    return map;
+  }, [appUser, usersList, leads, interactions, metaWeekdays, dailyVolumeTarget, teamHistory]);
+
   const sourceMetrics = useMemo(() => {
     const metrics = {};
     capturedLeads.forEach(l => {
@@ -1023,7 +1110,7 @@ const teamMetrics = useMemo(() => {
           accent="amber"
           series={sparklines.visitas}
           sub={`${stats.txAgVisita}% dos leads · ${stats.txConvVisita}% conv.`}
-          help="Visitas marcadas para o período — inclui leads que chegaram antes. Abaixo: de cada 100 leads que chegaram no período, quantos marcaram visita e, desses, quantos viraram matrícula."
+          help="Visitas marcadas para o período (inclui leads que chegaram antes). De cada 100 leads que chegaram no período, quantos marcaram visita e, desses, quantos viraram matrícula."
         />
         <DashKpiCard
           label="Aulas experimentais"
@@ -1032,7 +1119,7 @@ const teamMetrics = useMemo(() => {
           accent="violet"
           series={sparklines.aulas}
           sub={`${stats.txAgAula}% dos leads · ${stats.txConvAula}% conv.`}
-          help="Aulas experimentais marcadas para o período — inclui leads que chegaram antes. Abaixo: de cada 100 leads que chegaram no período, quantos marcaram aula e, desses, quantos viraram matrícula."
+          help="Aulas experimentais marcadas para o período (inclui leads que chegaram antes). De cada 100 leads que chegaram no período, quantos marcaram aula e, desses, quantos viraram matrícula."
         />
         <DashKpiCard
           label="Matrículas"
@@ -1041,7 +1128,7 @@ const teamMetrics = useMemo(() => {
           accent="emerald"
           series={sparklines.matriculas}
           sub={`${stats.txConv}% fechamento geral`}
-          help="Leads que fecharam matrícula no período — inclui quem chegou em meses anteriores e fechou agora. Abaixo: dos leads que chegaram neste período, quantos por cento já se matricularam."
+          help="Leads que fecharam matrícula no período (inclui quem chegou em meses anteriores e fechou agora). Dos leads que chegaram neste período, quantos por cento já se matricularam."
         />
       </div>
 
@@ -1054,7 +1141,7 @@ const teamMetrics = useMemo(() => {
                 <span>Taxa de comparecimento</span>
                 <DashHelpTip
                   label="O que é Taxa de comparecimento?"
-                  text="Das visitas e aulas cuja data já passou, em quantas o lead realmente apareceu. Os agendamentos que ainda vão acontecer aparecem como 'futuros' e não entram na conta — assim a taxa não fica baixa à toa no começo do período."
+                  text="Das visitas e aulas cuja data já passou, em quantas o lead realmente apareceu. Os agendamentos que ainda vão acontecer aparecem como 'futuros' e não entram na conta. Assim a taxa não fica baixa à toa no começo do período."
                 />
               </div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{taxaComp}%</div>
@@ -1214,12 +1301,12 @@ const teamMetrics = useMemo(() => {
           {isAdminUser(appUser) && (
             <DashCard
               title="Desempenho da equipe"
-              hint="Consultores ranqueados por matrículas"
+              hint="Resultados do período · meta e volume de hoje"
               icon={<BarChart3 size={14} />}
               padded={false}
             >
               {teamMetrics.length > 0 ? (
-                <DashTeamTable rows={teamMetrics} appUser={appUser} />
+                <DashTeamTable rows={teamMetrics} appUser={appUser} goals={goalByConsultant} />
               ) : (
                 <div className="px-5 py-8 text-center text-[12px] text-slate-400 italic">Sem dados no período</div>
               )}
