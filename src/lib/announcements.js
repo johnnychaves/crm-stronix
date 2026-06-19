@@ -14,10 +14,10 @@ export const ANNOUNCEMENTS = [
     eyebrow: 'Novidade',
     title: 'Meta de Prospecção + novo Painel da Equipe',
     summary:
-      'Além da meta diária de tarefas, agora cada consultor tem um piso de PROSPECÇÃO: uma cota de ações por dia — agendar visita ou aula, registrar ligação ou mensagem, e cadastrar lead novo. Quem zera as tarefas E bate a prospecção ganha o selo Dia perfeito ⚡.',
+      'Agora, além da meta diária de tarefas, cada consultor tem um piso de prospecção: um mínimo de ações por dia. Conta agendar visita ou aula, registrar ligação ou mensagem, e cadastrar lead novo. Quem zera as tarefas e ainda bate a prospecção ganha o selo Dia perfeito ⚡.',
     points: [
       'O Painel da Equipe virou uma tabela executiva com as duas metas (diária e prospecção) lado a lado.',
-      'Gráfico “Trajetória do mês” clicável: clique num dia para ver os resultados daquele dia.',
+      'Gráfico "Trajetória do mês" clicável: clique num dia para ver os resultados daquele dia.',
       'O gestor também pode entrar na meta de prospecção (opcional).',
     ],
     adminSteps: [

@@ -152,7 +152,7 @@ function MonthTrajectory({ teamHistory, prospByDay, selectedDay, todayNum, onPic
         {data.map((x, i) => (x.d % 5 === 0 || x.isToday) ? <text key={i} x={cx(i)} y={H - 5} textAnchor="middle" fontSize="9" fill={x.isToday ? '#FF6A2B' : '#8A93B0'} fontWeight={x.isToday ? 700 : 400}>{x.isToday ? 'hoje' : x.d}</text> : null)}
         {data.map((x, i) => x.future ? null : (
           <rect key={`hit-${i}`} x={padL + i * bw} y={padT} width={bw} height={innerH} className="fill-transparent hover:fill-brand-500/[0.07] transition-colors duration-200" style={{ cursor: 'pointer' }} onClick={() => onPickDay(x.d)}>
-            <title>{`dia ${x.d}${x.isToday ? ' (hoje)' : ''} — ${x.hits} meta(s), ${x.prosp} prospecção`}</title>
+            <title>{`dia ${x.d}${x.isToday ? ' (hoje)' : ''}: ${x.hits} meta(s), ${x.prosp} prospecção`}</title>
           </rect>
         ))}
       </svg>
@@ -273,7 +273,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-1">
         <div>
-          <h2 className="font-display tracking-tight text-[16px] font-semibold text-slate-900 dark:text-white inline-flex items-center gap-2"><Target size={17} className="text-brand-600" /> Meta da equipe — {sel.isToday ? 'diária & prospecção' : sel.label}</h2>
+          <h2 className="font-display tracking-tight text-[16px] font-semibold text-slate-900 dark:text-white inline-flex items-center gap-2"><Target size={17} className="text-brand-600" /> Meta da equipe · {sel.isToday ? 'diária e prospecção' : sel.label}</h2>
           <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
             {sel.isToday
               ? <>Prospecção conta <b>ações</b> (agendar/reagendar, ligação, mensagem, lead novo). {dailyHitCount}/{dailyWith} bateram a diária · {perfectCount} dia perfeito ⚡</>
