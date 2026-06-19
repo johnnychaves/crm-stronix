@@ -70,6 +70,7 @@ import { LeadsView } from './views/LeadsView.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
+import { WhatsNewModal } from './components/WhatsNewModal.jsx';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
@@ -1090,6 +1091,7 @@ useEffect(() => {
         <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
       )}
       {ticketModalOpen && <CreateTicketModal appUser={appUser} onClose={() => setTicketModalOpen(false)} />}
+      <WhatsNewModal appUser={appUser} onConfigure={() => openSettingsTab('general')} />
     </div>
     </GeneralConfigContext.Provider>
   );
