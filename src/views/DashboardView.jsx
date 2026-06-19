@@ -1110,7 +1110,7 @@ const teamMetrics = useMemo(() => {
           accent="amber"
           series={sparklines.visitas}
           sub={`${stats.txAgVisita}% dos leads · ${stats.txConvVisita}% conv.`}
-          help="Visitas marcadas para o período — inclui leads que chegaram antes. Abaixo: de cada 100 leads que chegaram no período, quantos marcaram visita e, desses, quantos viraram matrícula."
+          help="Visitas marcadas para o período (inclui leads que chegaram antes). De cada 100 leads que chegaram no período, quantos marcaram visita e, desses, quantos viraram matrícula."
         />
         <DashKpiCard
           label="Aulas experimentais"
@@ -1119,7 +1119,7 @@ const teamMetrics = useMemo(() => {
           accent="violet"
           series={sparklines.aulas}
           sub={`${stats.txAgAula}% dos leads · ${stats.txConvAula}% conv.`}
-          help="Aulas experimentais marcadas para o período — inclui leads que chegaram antes. Abaixo: de cada 100 leads que chegaram no período, quantos marcaram aula e, desses, quantos viraram matrícula."
+          help="Aulas experimentais marcadas para o período (inclui leads que chegaram antes). De cada 100 leads que chegaram no período, quantos marcaram aula e, desses, quantos viraram matrícula."
         />
         <DashKpiCard
           label="Matrículas"
@@ -1128,7 +1128,7 @@ const teamMetrics = useMemo(() => {
           accent="emerald"
           series={sparklines.matriculas}
           sub={`${stats.txConv}% fechamento geral`}
-          help="Leads que fecharam matrícula no período — inclui quem chegou em meses anteriores e fechou agora. Abaixo: dos leads que chegaram neste período, quantos por cento já se matricularam."
+          help="Leads que fecharam matrícula no período (inclui quem chegou em meses anteriores e fechou agora). Dos leads que chegaram neste período, quantos por cento já se matricularam."
         />
       </div>
 
@@ -1141,7 +1141,7 @@ const teamMetrics = useMemo(() => {
                 <span>Taxa de comparecimento</span>
                 <DashHelpTip
                   label="O que é Taxa de comparecimento?"
-                  text="Das visitas e aulas cuja data já passou, em quantas o lead realmente apareceu. Os agendamentos que ainda vão acontecer aparecem como 'futuros' e não entram na conta — assim a taxa não fica baixa à toa no começo do período."
+                  text="Das visitas e aulas cuja data já passou, em quantas o lead realmente apareceu. Os agendamentos que ainda vão acontecer aparecem como 'futuros' e não entram na conta. Assim a taxa não fica baixa à toa no começo do período."
                 />
               </div>
               <div className="num text-[32px] font-semibold tracking-tight leading-none mt-1.5">{taxaComp}%</div>

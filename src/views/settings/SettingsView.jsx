@@ -169,7 +169,7 @@ function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, t
 
             {q && !firstMatch && (
               <div className="px-3 py-6 text-center text-[12px] text-slate-400">
-                Nenhum ajuste encontrado para “{query.trim()}”.
+                Nenhum ajuste encontrado para "{query.trim()}".
               </div>
             )}
           </div>

@@ -409,7 +409,7 @@ function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, 
               )
             )}
             {task.hasOtherActivityToday && (
-              <TimePill icon={<Check size={11} />} tone="amber">Já interagido — feche pela Meta</TimePill>
+              <TimePill icon={<Check size={11} />} tone="amber">Já interagido. Feche pela Meta</TimePill>
             )}
           </div>
 
@@ -1245,7 +1245,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                 ) : (
                   <>
                     <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                      Prévia do dia seguinte — <span className="font-medium text-slate-600 dark:text-slate-300">não conta na meta de hoje</span>.
+                      Prévia do dia seguinte. <span className="font-medium text-slate-600 dark:text-slate-300">Não conta na meta de hoje</span>.
                     </p>
                     {tomorrowAppts.map(({ lead, when }) => {
                       const { Icon, label } = dgApptTypeMeta(lead);
@@ -1334,7 +1334,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
             <div className="p-3 space-y-2 flex-1 overflow-y-auto thin-scroll">
               {done.length === 0 ? (
                 <div className="py-8 text-center text-slate-400 text-[12.5px]">
-                  Nenhuma tarefa concluída ainda — a primeira virá em breve.
+                  Nenhuma tarefa concluída ainda.
                 </div>
               ) : (
                 done.map(lead => (

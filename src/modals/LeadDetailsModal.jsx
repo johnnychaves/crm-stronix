@@ -568,7 +568,7 @@ function LeadDetailsModal({ lead, interactions, onClose, appUser, statuses, tags
   
 
   const handleDelete = async () => {
-    if (!window.confirm("⚠️ AÇÃO IRREVERSÍVEL: Deseja EXCLUIR este lead permanentemente?")) return;
+    if (!window.confirm("Excluir este lead permanentemente? Não dá pra desfazer.")) return;
     setLoading(true);
     try {
       // Apaga as interações ligadas ao lead (senão ficam órfãs na coleção).
