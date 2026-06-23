@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRightLeft, ChevronRight, Filter, Kanban, Search, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
+import { ArrowRightLeft, ChevronRight, DollarSign, Filter, Kanban, Search, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
 import { SettingsTabItem } from '../../components/ui/SettingsCard.jsx';
 import { Input } from '../../components/ui/input.jsx';
 import { ManageUsersTab } from './ManageUsersTab.jsx';
 import { ManageFunnelsTab } from './ManageFunnelsTab.jsx';
 import { ManageStatusesTab } from './ManageStatusesTab.jsx';
 import { ManageSourcesTab } from './ManageSourcesTab.jsx';
+import { ManagePlansTab } from './ManagePlansTab.jsx';
 import { ManageTagsTab } from './ManageTagsTab.jsx';
 import { ManageLossReasonsTab } from './ManageLossReasonsTab.jsx';
 import { ManageGeneralSettingsTab } from './ManageGeneralSettingsTab.jsx';
@@ -21,7 +22,7 @@ import { TransferLeadsTab } from './TransferLeadsTab.jsx';
 // Busca sem acento/caixa ("critico" acha "SLA crítico").
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, trialClassOptions, units, metaWeekdays }) {
+function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons, leads, funnels, modalities, planos, trialClassOptions, units, metaWeekdays }) {
   const [activeTab, setActiveTab] = useState(initialTab || 'users');
   const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
   const [query, setQuery] = useState('');
@@ -33,6 +34,7 @@ function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, t
   const sourcesCount = (sources || []).length;
   const lossCount = (lossReasons || []).length;
   const modalitiesCount = (modalities || []).length;
+  const planosCount = (planos || []).length;
 
   // Pontos de atenção: condições REAIS que pedem ação (tooltip no dot âmbar
   // + aviso no cabeçalho da seção). Nada de heurística decorativa.
@@ -69,10 +71,11 @@ function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, t
         { id: 'statuses', label: 'Funis', hint: 'Etapas do processo comercial', icon: <Kanban size={15} />, badge: funnelsCount, keywords: 'funil pipeline etapas fases kanban negociacao' },
         { id: 'tags', label: 'Etiquetas', hint: 'Marcadores para segmentar leads', icon: <Tag size={15} />, badge: tagsCount, keywords: 'tags marcadores segmentar rotulos' },
         { id: 'sources', label: 'Origens', hint: 'De onde os leads chegam', icon: <Filter size={15} />, badge: sourcesCount, keywords: 'fontes canais instagram facebook indicacao google whatsapp' },
+        { id: 'plans', label: 'Planos', hint: 'Catálogo de planos e serviços', icon: <DollarSign size={15} />, badge: planosCount, keywords: 'plano planos servico servicos mensalidade matricula contrato valor preco mensal trimestral anual modalidade cliente' },
         { id: 'lossReasons', label: 'Motivos de perda', hint: 'Justificativas padrão de perda', icon: <ThumbsDown size={15} />, badge: lossCount, keywords: 'perda descarte justificativa preco concorrencia' },
       ],
     },
-  ]), [usersCount, modalitiesCount, funnelsCount, tagsCount, sourcesCount, lossCount]);
+  ]), [usersCount, modalitiesCount, planosCount, funnelsCount, tagsCount, sourcesCount, lossCount]);
 
   // Busca universal: filtra o próprio trilho; Enter abre o 1º resultado.
   const q = norm(query.trim());
@@ -208,6 +211,7 @@ function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, t
             </div>
           )}
           {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} leads={leads} />}
+          {activeTab === 'plans' && <ManagePlansTab db={db} planos={planos} leads={leads} modalities={modalities} />}
           {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
           {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} leads={leads} />}
           {activeTab === 'lossReasons' && <ManageLossReasonsTab db={db} lossReasons={lossReasons} leads={leads} />}

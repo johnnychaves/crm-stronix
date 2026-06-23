@@ -9,7 +9,7 @@ import { Btn } from '../components/ui/Btn.jsx';
 import { FunnelSelector } from '../components/ui/FunnelSelector.jsx';
 import { StatPill } from '../components/ui/StatPill.jsx';
 import { StatusBadge, LeadTemperatureBadge, DaysSinceContactBadge, FollowUpIcon } from '../components/ui/Badges.jsx';
-import { LeadDetailsModal } from '../modals/LeadDetailsModal.jsx';
+import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 
 function ActiveFilterChip({ label, onRemove, accent = 'slate' }) {
   const tones = {
@@ -34,15 +34,15 @@ function ActiveFilterChip({ label, onRemove, accent = 'slate' }) {
   );
 }
 
-function LeadsView({ leads, interactions, appUser, sources, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId, onAddLeadClick }) {
+function LeadsView({ leads, interactions, appUser, statuses, usersList, funnels, selectedFunnelId, setSelectedFunnelId, onAddLeadClick }) {
   const toast = useToast();
+  const { openProfile } = useLeadProfile();
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [statusFilters, setStatusFilters] = useState([]);
   const [consultantFilters, setConsultantFilters] = useState([]);
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [hotOnly, setHotOnly] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedLead, setSelectedLead] = useState(null);
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
   // O AddLeadModal mora no App-level. O botão local apenas dispara o
   // callback `onAddLeadClick` recebido por prop.
@@ -247,7 +247,7 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
                 return (
                   <tr
                     key={l.id}
-                    onClick={() => setSelectedLead(l)}
+                    onClick={() => openProfile(l.id)}
                     className="border-t border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/60 dark:hover:bg-white/[0.02] cursor-pointer transition"
                   >
                     <td className="py-3.5 pl-5 pr-3">
@@ -380,8 +380,6 @@ function LeadsView({ leads, interactions, appUser, sources, statuses, usersList,
           </div>
         </div>
       )}
-
-      {selectedLead && <LeadDetailsModal lead={selectedLead} interactions={interactions.filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))} onClose={() => setSelectedLead(null)} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertCircle, BookOpen, Building2, Check, Dumbbell, Minus, Pencil, Plus, Target, Trash2, X, Zap } from 'lucide-react';
+import { AlertCircle, BookOpen, Building2, Check, Dumbbell, Minus, Pencil, Plus, RefreshCw, Target, Trash2, X, Zap } from 'lucide-react';
 import { collection, doc, addDoc, setDoc, deleteDoc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { appId, CONFIG_PATH, CONFIG_GENERAL_ID, LEADS_PATH, MODALITIES_PATH, UNITS_PATH, USERS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
@@ -168,7 +168,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
   // Alerta de lead crítico (config da academia): a partir de quantos dias de atraso
   // o lead vira "crítico" (alerta no painel da Equipe + destaque na meta).
   // Lido do contexto (mesmo doc geral); grava direto no clique, como os dias.
-  const { slaOverdueDays } = useGeneralConfig();
+  const { slaOverdueDays, contractThresholdDays = 30 } = useGeneralConfig();
 
   // Alvo INDIVIDUAL de prospecção (doc do consultor): vazio = remove o campo
   // (sem meta de prospecção). Mesmo campo editado na aba Equipe.
@@ -199,6 +199,22 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível salvar o alerta de lead crítico.');
+    }
+  };
+
+  // Janela (dias) para um contrato entrar em "a vencer" — alimenta os alertas
+  // de Clientes e a tarefa de Renovação na Meta Diária (feature lead→cliente).
+  const saveThreshold = async (n) => {
+    if (!Number.isFinite(n) || n < 5 || n > 180) return;
+    try {
+      await setDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+        { contractThresholdDays: n },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar a janela de vencimento.');
     }
   };
 
@@ -288,6 +304,36 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
           </div>
           <p className="text-[11.5px] text-muted-foreground mt-3">
             Leads atrasados há {slaOverdueDays}+ {slaOverdueDays === 1 ? 'dia' : 'dias'} ganham alerta no painel da Equipe (gestor) e destaque vermelho na Meta Diária do consultor.
+          </p>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Renovação de contrato"
+        hint="Com quantos dias de antecedência um contrato entra em alerta de vencimento"
+        icon={<RefreshCw size={16} />}
+      >
+        <div className="p-4 rounded-xl bg-muted/50 border border-border">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => saveThreshold(contractThresholdDays - 5)}
+                disabled={contractThresholdDays <= 5}
+                className="size-9 grid place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition"
+              ><Minus size={14} /></button>
+              <span className="num w-12 text-center text-[20px] font-bold text-slate-900 dark:text-white">{contractThresholdDays}</span>
+              <button
+                type="button"
+                onClick={() => saveThreshold(contractThresholdDays + 5)}
+                disabled={contractThresholdDays >= 180}
+                className="size-9 grid place-items-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed transition"
+              ><Plus size={14} /></button>
+            </div>
+            <span className="text-[13px] text-muted-foreground">dias antes do vencimento → contrato <b className="text-amber-600 dark:text-amber-400">a vencer</b></span>
+          </div>
+          <p className="text-[11.5px] text-muted-foreground mt-3">
+            Clientes com contrato vencendo em até {contractThresholdDays} dias entram nos alertas da aba Clientes e geram a tarefa de <b>Renovação</b> na Meta Diária do consultor responsável.
           </p>
         </div>
       </SettingsCard>

@@ -34,3 +34,44 @@ export const normalizeAppointmentType = (value) => {
   if (raw.includes('visita')) return 'visita';
   return null;
 };
+
+// Converte uma data (Date/Timestamp/string) para o valor 'yyyy-mm-dd' usado
+// em <input type="date">, no fuso LOCAL. Evita o shift de 1 dia que ocorre
+// ao serializar via toISOString em fusos negativos (Brasil = UTC-3).
+export const toDateInputValue = (date) => {
+  const d = getSafeDateOrNull(date);
+  if (!d) return '';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+// Interpreta 'yyyy-mm-dd' de um <input type="date"> como meia-noite LOCAL
+// (não UTC) — assim a data não "volta" um dia em fusos negativos. Retorna
+// null para string vazia/ inválida.
+export const fromDateInputValue = (str) => {
+  if (!str || typeof str !== 'string') return null;
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return getSafeDateOrNull(str);
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  return isNaN(d.getTime()) ? null : d;
+};
+
+// Soma `months` meses a uma data, preservando a hora e tratando o
+// "estouro" de fim de mês: 31/jan + 1 mês → 28/29 fev (último dia),
+// nunca 02/mar. Aceita Date, Timestamp do Firestore ou string; retorna
+// null se a data ou a quantidade de meses forem inválidas. Usado para
+// calcular o fim da vigência de um contrato (endsAt = início + duração).
+export const addMonths = (date, months) => {
+  const base = getSafeDateOrNull(date);
+  const n = Number(months);
+  if (!base || !Number.isFinite(n)) return null;
+  const result = new Date(base.getTime());
+  const targetDay = result.getDate();
+  result.setMonth(result.getMonth() + n);
+  // Se o dia mudou, houve overflow (ex.: 31 → 02): volta pro último dia
+  // do mês pretendido.
+  if (result.getDate() !== targetDay) result.setDate(0);
+  return result;
+};

@@ -2,10 +2,10 @@ import { useState, useMemo } from 'react';
 import { Ban, BookOpen, Building2, Calendar, Clock, Dumbbell, Phone, Search, TrendingUp } from 'lucide-react';
 import { getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
+import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
 import { StatPill } from '../components/ui/StatPill.jsx';
-import { LeadDetailsModal } from '../modals/LeadDetailsModal.jsx';
 
 // ==========================================
 // APPOINTMENT TRACKING VIEW (AULAS EXPERIMENTAIS / VISITAS)
@@ -47,8 +47,8 @@ function isApptSameDay(d, ref = new Date()) {
   return d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth() && d.getDate() === ref.getDate();
 }
 
-function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags, lossReasons, db, funnels, usersList, appointmentType }) {
-  const [selectedLead, setSelectedLead] = useState(null);
+function AppointmentTrackingView({ leads, appUser, usersList, appointmentType }) {
+  const { openProfile } = useLeadProfile();
   const [searchTerm, setSearchTerm] = useState('');
   const [consultantFilter, setConsultantFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // all | today | waiting | attended | finished
@@ -232,7 +232,7 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
                   return (
                     <tr
                       key={l.id}
-                      onClick={() => setSelectedLead(l)}
+                      onClick={() => openProfile(l.id)}
                       className="border-t border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/60 dark:hover:bg-white/[0.02] cursor-pointer transition"
                     >
                       <td className="py-3.5 pl-5 pr-3">
@@ -313,20 +313,6 @@ function AppointmentTrackingView({ leads, interactions, appUser, statuses, tags,
           </div>
         )}
       </div>
-
-      {selectedLead && (
-        <LeadDetailsModal
-          lead={selectedLead}
-          interactions={(interactions || []).filter(i => i.leadId === selectedLead.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))}
-          onClose={() => setSelectedLead(null)}
-          appUser={appUser}
-          statuses={statuses}
-          tags={tags}
-          lossReasons={lossReasons}
-          db={db}
-          funnels={funnels}
-        />
-      )}
     </>
   );
 }

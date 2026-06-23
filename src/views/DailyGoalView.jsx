@@ -9,9 +9,9 @@ import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
+import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
-import { LeadDetailsModal } from '../modals/LeadDetailsModal.jsx';
 import { DailyGoalTeamView } from './DailyGoalTeamView.jsx';
 import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, Users, X, Zap } from 'lucide-react';
 
@@ -704,9 +704,9 @@ function ViewTab({ active, icon, label, onClick }) {
   );
 }
 
-function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossReasons, usersList, funnels }) {
+function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }) {
   const toast = useToast();
-  const [selectedLead, setSelectedLead] = useState(null);
+  const { openProfile } = useLeadProfile();
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('mine'); // 'mine' | 'team' (team = só gestor)
   const [now, setNow] = useState(() => new Date());
@@ -727,7 +727,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
   // definida pelo admin nas Configurações Gerais. A sequência pula os dias
   // inativos (não quebram nem contam). Default seg–sex.
-  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0 } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0, contractThresholdDays = 30 } = useGeneralConfig();
 
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
@@ -774,8 +774,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
   // o painel da equipe do gestor.
   const processedLeads = useMemo(() => {
     void todayKey; // recategoriza na virada do dia (A5)
-    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id);
-  }, [leads, appUser, interactions, todayKey]);
+    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, contractThresholdDays);
+  }, [leads, appUser, interactions, todayKey, contractThresholdDays]);
 
   // Helper para filtragem por categoria. Lead com 2 categorias pode
   // estar "feito" em uma e "pendente" na outra.
@@ -1066,13 +1066,11 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
 
   // Per-slug pending tasks. A lead with two pending categories renders TWICE — once per slug — preserving main's per-category status model.
   const pendingBySlug = useMemo(() => {
-    const groups = {
-      [DAILY_GOAL_CATEGORIES.NOVO_24H]: [],
-      [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: [],
-      [DAILY_GOAL_CATEGORIES.AULA_HOJE]: [],
-      [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: [],
-      [DAILY_GOAL_CATEGORIES.ATRASADO]: []
-    };
+    // Dinâmico a partir de DG_CATEGORY_ORDER — assim categorias novas (ex.:
+    // 'renovacao') entram automaticamente. Hardcodar a lista aqui já fez a
+    // tarefa de Renovação ser descartada silenciosamente (groups[slug]
+    // undefined no push abaixo).
+    const groups = Object.fromEntries(DG_CATEGORY_ORDER.map(slug => [slug, []]));
     processedLeads.forEach(lead => {
       (lead.categorySlugs || []).forEach(slug => {
         if (!isLeadDoneForCategory(lead, slug) && groups[slug]) groups[slug].push(lead);
@@ -1084,13 +1082,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
     return groups;
   }, [processedLeads]);
 
-  const counts = {
-    [DAILY_GOAL_CATEGORIES.NOVO_24H]: pendingBySlug[DAILY_GOAL_CATEGORIES.NOVO_24H].length,
-    [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: pendingBySlug[DAILY_GOAL_CATEGORIES.VISITA_HOJE].length,
-    [DAILY_GOAL_CATEGORIES.AULA_HOJE]: pendingBySlug[DAILY_GOAL_CATEGORIES.AULA_HOJE].length,
-    [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: pendingBySlug[DAILY_GOAL_CATEGORIES.CONTATO_HOJE].length,
-    [DAILY_GOAL_CATEGORIES.ATRASADO]: pendingBySlug[DAILY_GOAL_CATEGORIES.ATRASADO].length
-  };
+  const counts = Object.fromEntries(
+    DG_CATEGORY_ORDER.map(slug => [slug, (pendingBySlug[slug] || []).length])
+  );
   const totalPendingSlots = Object.values(counts).reduce((a, b) => a + b, 0);
 
   const nextAppt = useMemo(() => {
@@ -1146,7 +1140,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
       slug={slug}
       now={now}
       slaOverdueDays={slaOverdueDays}
-      onOpen={setSelectedLead}
+      onOpen={(t) => openProfile(t.id)}
       onSnooze={handleSnooze}
       onOutcome={handleOutcome}
       onReschedule={(t, s) => setRescheduleTarget({ lead: t, categorySlug: s })}
@@ -1185,7 +1179,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           dailyVolumeTarget={dailyVolumeTarget}
           db={db}
           appUser={appUser}
-          onOpenLead={setSelectedLead}
+          onOpenLead={(l) => openProfile(l.id)}
         />
       ) : (
       <>
@@ -1253,7 +1247,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                         <button
                           key={lead.id}
                           type="button"
-                          onClick={() => setSelectedLead(lead)}
+                          onClick={() => openProfile(lead.id)}
                           className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition text-left"
                         >
                           <Avatar name={lead.name} size={38} />
@@ -1341,7 +1335,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
                   <DoneCard
                     key={lead.id}
                     lead={lead}
-                    onOpen={setSelectedLead}
+                    onOpen={(l) => openProfile(l.id)}
                     onReschedule={(l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
                   />
                 ))
@@ -1366,21 +1360,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, tags, lossR
           flow={rescheduleTarget.flow || 'manual'}
           onConfirm={handleReschedule}
           onClose={() => setRescheduleTarget(null)}
-        />
-      )}
-
-      {selectedLead && (
-        <LeadDetailsModal
-          lead={selectedLead}
-          interactions={(interactions || []).filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))}
-          onClose={() => setSelectedLead(null)}
-          appUser={appUser}
-          statuses={statuses}
-          tags={tags}
-          lossReasons={lossReasons}
-          usersList={usersList}
-          db={db}
-          funnels={funnels}
         />
       )}
     </div>

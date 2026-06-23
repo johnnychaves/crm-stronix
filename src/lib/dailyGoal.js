@@ -1,4 +1,4 @@
-import { AlertCircle, BookOpen, Building2, MessageSquare, Zap } from 'lucide-react';
+import { AlertCircle, BookOpen, Building2, MessageSquare, RefreshCw, Zap } from 'lucide-react';
 import {
   DAILY_GOAL_CATEGORIES,
   DAILY_GOAL_CATEGORY_LABEL,
@@ -8,6 +8,7 @@ import {
   isLeadResolvedToday,
   hasActiveInteractionToday,
 } from './leads.js';
+import { deriveLeadContractStatus, CONTRACT_STATUS, DEFAULT_CONTRACT_THRESHOLD_DAYS } from './contracts.js';
 
 // ============================================================================
 // Lógica compartilhada da META DIÁRIA — usada pela tela do consultor
@@ -23,7 +24,8 @@ export const DG_CATEGORY_META = {
   [DAILY_GOAL_CATEGORIES.VISITA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.visita_hoje, short: 'Visitas', color: 'violet', Icon: Building2 },
   [DAILY_GOAL_CATEGORIES.AULA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.aula_hoje, short: 'Aulas exp.', color: 'amber', Icon: BookOpen },
   [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.contato_hoje, short: 'Contatos', color: 'teal', Icon: MessageSquare },
-  [DAILY_GOAL_CATEGORIES.ATRASADO]: { label: DAILY_GOAL_CATEGORY_LABEL.atrasado, short: 'Atrasados', color: 'rose', Icon: AlertCircle }
+  [DAILY_GOAL_CATEGORIES.ATRASADO]: { label: DAILY_GOAL_CATEGORY_LABEL.atrasado, short: 'Atrasados', color: 'rose', Icon: AlertCircle },
+  [DAILY_GOAL_CATEGORIES.RENOVACAO]: { label: DAILY_GOAL_CATEGORY_LABEL.renovacao, short: 'Renovações', color: 'emerald', Icon: RefreshCw }
 };
 
 export const DG_CATEGORY_ORDER = [
@@ -31,7 +33,8 @@ export const DG_CATEGORY_ORDER = [
   DAILY_GOAL_CATEGORIES.VISITA_HOJE,
   DAILY_GOAL_CATEGORIES.AULA_HOJE,
   DAILY_GOAL_CATEGORIES.CONTATO_HOJE,
-  DAILY_GOAL_CATEGORIES.ATRASADO
+  DAILY_GOAL_CATEGORIES.ATRASADO,
+  DAILY_GOAL_CATEGORIES.RENOVACAO
 ];
 
 export const COLOR_TONES = {
@@ -39,7 +42,8 @@ export const COLOR_TONES = {
   violet: { dot: 'bg-violet-500', text: 'text-violet-700', soft: 'bg-violet-50', strong: 'bg-violet-600', border: 'border-violet-200', darkText: 'dark:text-violet-300', darkSoft: 'dark:bg-violet-500/10' },
   amber: { dot: 'bg-amber-500', text: 'text-amber-700', soft: 'bg-amber-50', strong: 'bg-amber-600', border: 'border-amber-200', darkText: 'dark:text-amber-300', darkSoft: 'dark:bg-amber-500/10' },
   teal: { dot: 'bg-teal-500', text: 'text-teal-700', soft: 'bg-teal-50', strong: 'bg-teal-600', border: 'border-teal-200', darkText: 'dark:text-teal-300', darkSoft: 'dark:bg-teal-500/10' },
-  rose: { dot: 'bg-rose-500', text: 'text-rose-700', soft: 'bg-rose-50', strong: 'bg-rose-600', border: 'border-rose-200', darkText: 'dark:text-rose-300', darkSoft: 'dark:bg-rose-500/10' }
+  rose: { dot: 'bg-rose-500', text: 'text-rose-700', soft: 'bg-rose-50', strong: 'bg-rose-600', border: 'border-rose-200', darkText: 'dark:text-rose-300', darkSoft: 'dark:bg-rose-500/10' },
+  emerald: { dot: 'bg-emerald-500', text: 'text-emerald-700', soft: 'bg-emerald-50', strong: 'bg-emerald-600', border: 'border-emerald-200', darkText: 'dark:text-emerald-300', darkSoft: 'dark:bg-emerald-500/10' }
 };
 
 // Chave de dia em hora LOCAL ('YYYY-MM-DD'), usada como ID do histórico de
@@ -222,7 +226,7 @@ export function buildInteractionsByLead(interactions) {
 // Monta os "slots" da meta de UM consultor: cada lead alvo sai com
 // categorySlugs[] e categoryStatus{slug:bool} (par lead×categoria = 1 slot;
 // um lead pode estar feito numa categoria e pendente noutra).
-export function computeDailyGoalSlots(leads, interactionsByLead, consultantId) {
+export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, thresholdDays = DEFAULT_CONTRACT_THRESHOLD_DAYS) {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date();
@@ -315,6 +319,19 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId) {
       if (apptType !== 'visita' && apptType !== 'aula_experimental') {
         addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.contato_hoje, DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
       }
+    }
+
+    // 6. Renovação — CLIENTE com contrato "a vencer". É a ÚNICA categoria que
+    // NÃO carrega o guard status!=='Venda' (clientes SÃO 'Venda'). Gate: o lead
+    // virou cliente E o contrato está dentro da janela (deriveLeadContractStatus
+    // === 'a_vencer'). Legados sem endsAt → status null → nunca entram aqui.
+    // A tarefa fecha por daily_goal_done (isCategoryDone) OU some quando a
+    // renovação empurra o endsAt para fora da janela (deixa de ser 'a_vencer').
+    if (
+      lead.lifecycleStage === 'cliente' &&
+      deriveLeadContractStatus(lead, todayStart, thresholdDays) === CONTRACT_STATUS.A_VENCER
+    ) {
+      addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.renovacao, DAILY_GOAL_CATEGORIES.RENOVACAO);
     }
   });
 

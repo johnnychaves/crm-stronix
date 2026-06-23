@@ -11,8 +11,8 @@ import { formatHourLabel, humanizeAge } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { FunnelSelector } from '../components/ui/FunnelSelector.jsx';
+import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { FunnelDetailModal } from '../modals/FunnelDetailModal.jsx';
-import { LeadDetailsModal } from '../modals/LeadDetailsModal.jsx';
 
 // ==========================================
 // VISÃO GERAL (DASHBOARD) - PATCH 1 (AULA E VISITA)
@@ -442,12 +442,12 @@ function DashActivityRow({ item }) {
 // ==========================================
 // DASHBOARD VIEW
 // ==========================================
-function DashboardView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
+function DashboardView({ leads, interactions, appUser, usersList, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const [periodPreset, setPeriodPreset] = useState('monthly');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [funnelDetail, setFunnelDetail] = useState(null);
-  const [selectedLead, setSelectedLead] = useState(null);
+  const { openProfile } = useLeadProfile();
 
   const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
   const hasFunnels = (funnels || []).length > 0;
@@ -1339,7 +1339,7 @@ const teamMetrics = useMemo(() => {
                 <div className="py-8 text-center text-[12.5px] text-slate-400 italic">Tudo em dia.</div>
               ) : (
                 pendingFollowUps.map((lead) => (
-                  <DashTaskItem key={lead.id} lead={lead} onClick={setSelectedLead} />
+                  <DashTaskItem key={lead.id} lead={lead} onClick={(l) => openProfile(l.id)} />
                 ))
               )}
             </div>
@@ -1365,22 +1365,7 @@ const teamMetrics = useMemo(() => {
         Atualizado agora · Período: {periodLabel}
       </footer>
 
-      {funnelDetail && <FunnelDetailModal detail={funnelDetail} onClose={() => setFunnelDetail(null)} onLeadClick={(lead) => { setSelectedLead(lead); setFunnelDetail(null); }} />}
-
-      {selectedLead && (
-        <LeadDetailsModal
-          lead={selectedLead}
-          interactions={interactions.filter(i => i.leadId === selectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))}
-          onClose={() => setSelectedLead(null)}
-          appUser={appUser}
-          statuses={statuses}
-          tags={tags}
-          lossReasons={lossReasons}
-          usersList={usersList}
-          db={db}
-          funnels={funnels}
-        />
-      )}
+      {funnelDetail && <FunnelDetailModal detail={funnelDetail} onClose={() => setFunnelDetail(null)} onLeadClick={(lead) => { openProfile(lead.id); setFunnelDetail(null); }} />}
 
     </div>
   );
