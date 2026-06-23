@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { AlertTriangle, Calendar, Check, ChevronDown, IdCard, Phone, Tag, User, UserPlus, Users, Zap } from 'lucide-react';
+import { AlertTriangle, Calendar, Check, ChevronDown, IdCard, Mail, Phone, Tag, User, UserPlus, Users, Zap } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
 import { getInteractionSecurityFields, getLeadOwnershipFields } from '../lib/leads.js';
@@ -53,7 +53,7 @@ function FormSection({ label, children, last }) {
   );
 }
 
-function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId, leads, onCreated }) {
+function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId, leads, onCreated, dores = [] }) {
   const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [showMore, setShowMore] = useState(false);
@@ -77,8 +77,13 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
     observation: '',
     tags: [],
     // Campos opcionais (revelados pela disclosure). Gravados no doc do lead.
+    // No cadastro de CLIENTE, nascimento/CPF/sexo/e-mail são obrigatórios.
     birthDate: '',
-    cpf: ''
+    cpf: '',
+    sexo: '',
+    email: '',
+    // "Dor"/necessidade do lead (o que quer resolver). Obrigatório no LEAD.
+    dor: ''
   });
 
   const statusesForFunnel = useMemo(
@@ -104,9 +109,9 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const duplicate = phoneDigits.length >= 8
     ? (leads || []).find(l => normalizePhone(l.whatsapp) === phoneDigits)
     : null;
-  // Habilita o "Criar lead" só com nome preenchido + WhatsApp com ≥10 dígitos
-  // (design seção 5) e sem duplicata e com funil selecionado.
-  const canSubmit = Boolean(formData.name.trim()) && phoneDigits.length >= 10 && !duplicate && Boolean(formData.funnelId);
+  // Habilita o "Criar lead" com nome + WhatsApp (≥10 díg.) + sem duplicata +
+  // funil + a "dor"/necessidade preenchida.
+  const canSubmit = Boolean(formData.name.trim()) && phoneDigits.length >= 10 && !duplicate && Boolean(formData.funnelId) && Boolean(formData.dor.trim());
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -133,6 +138,12 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
       return;
     }
 
+    // "Dor"/necessidade obrigatória (defesa em profundidade além do canSubmit).
+    if (!formData.dor.trim()) {
+      toast.warning('Descreva a dor/necessidade do lead.');
+      return;
+    }
+
     // Guarda contra duplo-submit (o `loading`/`disabled` não atualiza a tempo de um
     // clique duplo rápido; a ref é síncrona e impede o 2º addDoc → evita duplicata).
     if (submittingRef.current) return;
@@ -142,13 +153,16 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
     try {
       // Separa os campos só-de-UI (observation entra como interação) e converte
       // os opcionais: birthDate → Date (ou null), cpf → string mascarada (ou null).
-      const { observation, birthDate, cpf, ...leadFields } = formData;
+      const { observation, birthDate, cpf, email, sexo, dor, ...leadFields } = formData;
       const leadRef = await addDoc(
         collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH),
         {
           ...leadFields,
           birthDate: fromDateInputValue(birthDate),
           cpf: (cpf || '').trim() || null,
+          email: (email || '').trim() || null,
+          sexo: sexo || null,
+          dor: (dor || '').trim() || null,
           ...getLeadOwnershipFields(appUser),
           createdAt: serverTimestamp(),
           nextFollowUp: null,
@@ -293,6 +307,29 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
             )}
           </FormSection>
 
+          {/* ── Dor / necessidade (obrigatória) ── */}
+          <FormSection label="Dor / necessidade">
+            <FieldLabel required>O que o lead quer resolver?</FieldLabel>
+            {dores.length > 0 ? (
+              <StyledSelect value={formData.dor} onChange={e => setFormData({ ...formData, dor: e.target.value })}>
+                <option value="">Selecione…</option>
+                {dores.map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+              </StyledSelect>
+            ) : (
+              <textarea
+                value={formData.dor}
+                onChange={e => setFormData({ ...formData, dor: e.target.value })}
+                autoComplete="off"
+                rows={2}
+                placeholder="Ex.: emagrecer, voltar a treinar, dor nas costas, condicionamento…"
+                className="w-full rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] focus:border-brand-400 dark:focus:border-brand-500/60 focus:ring-4 focus:ring-brand-500/10 outline-none text-[13.5px] p-3.5 placeholder:text-slate-400 transition resize-none"
+              />
+            )}
+            {dores.length > 0 && (
+              <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">Cadastre/edite as opções em Configurações → Catálogos → Dores.</p>
+            )}
+          </FormSection>
+
           {/* ── Disclosure: dados adicionais ── */}
           <div className="px-5 sm:px-6 pt-4">
             <button
@@ -301,7 +338,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
               className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 dark:text-brand-300 hover:underline"
             >
               <ChevronDown size={14} className={cn('transition', showMore && 'rotate-180')} />
-              {showMore ? 'Ocultar dados adicionais' : 'Adicionar nascimento, CPF e etiquetas'}
+              {showMore ? 'Ocultar dados adicionais' : 'Adicionar nascimento, CPF, sexo, e-mail e etiquetas'}
             </button>
           </div>
 
@@ -311,25 +348,29 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <FieldLabel>Data de nascimento</FieldLabel>
-                    <StyledInput
-                      type="date"
-                      icon={<Calendar size={15} />}
-                      value={formData.birthDate}
-                      onChange={e => setFormData({ ...formData, birthDate: e.target.value })}
-                    />
+                    <StyledInput type="date" icon={<Calendar size={15} />} value={formData.birthDate} onChange={e => setFormData({ ...formData, birthDate: e.target.value })} />
                   </div>
                   <div>
                     <FieldLabel>CPF</FieldLabel>
-                    <StyledInput
-                      icon={<IdCard size={15} />}
-                      inputMode="numeric"
-                      placeholder="000.000.000-00"
-                      value={formData.cpf}
-                      onChange={e => setFormData({ ...formData, cpf: fmtCPF(e.target.value) })}
-                    />
+                    <StyledInput icon={<IdCard size={15} />} inputMode="numeric" placeholder="000.000.000-00" value={formData.cpf} onChange={e => setFormData({ ...formData, cpf: fmtCPF(e.target.value) })} />
+                  </div>
+                  <div>
+                    <FieldLabel>Sexo</FieldLabel>
+                    <StyledSelect value={formData.sexo} onChange={e => setFormData({ ...formData, sexo: e.target.value })}>
+                      <option value="">Selecione…</option>
+                      <option value="Feminino">Feminino</option>
+                      <option value="Masculino">Masculino</option>
+                      <option value="Outro">Outro</option>
+                    </StyledSelect>
+                  </div>
+                  <div>
+                    <FieldLabel>E-mail</FieldLabel>
+                    <StyledInput type="email" icon={<Mail size={15} />} autoComplete="off" placeholder="email@exemplo.com" value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
                   </div>
                 </div>
-                <div className="mt-4">
+              </FormSection>
+              <FormSection label="Etiquetas e observação" last>
+                <div>
                   <div className="text-[11.5px] font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Etiquetas</div>
                   {(tags || []).length === 0 ? (
                     <p className="text-[12px] text-slate-400 dark:text-slate-500 italic">Nenhuma etiqueta cadastrada.</p>
@@ -356,16 +397,17 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                     </div>
                   )}
                 </div>
-              </FormSection>
-              <FormSection label="Observação" last>
-                <textarea
-                  value={formData.observation}
-                  onChange={e => setFormData({ ...formData, observation: e.target.value })}
-                  autoComplete="off"
-                  rows={2}
-                  placeholder="Algo importante sobre esse lead?"
-                  className="w-full rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] focus:border-brand-400 dark:focus:border-brand-500/60 focus:ring-4 focus:ring-brand-500/10 outline-none text-[13.5px] p-3.5 placeholder:text-slate-400 transition resize-none"
-                />
+                <div className="mt-4">
+                  <div className="text-[11.5px] font-semibold text-slate-600 dark:text-slate-300 mb-1.5">Observação</div>
+                  <textarea
+                    value={formData.observation}
+                    onChange={e => setFormData({ ...formData, observation: e.target.value })}
+                    autoComplete="off"
+                    rows={2}
+                    placeholder="Algo importante sobre esse cadastro?"
+                    className="w-full rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] focus:border-brand-400 dark:focus:border-brand-500/60 focus:ring-4 focus:ring-brand-500/10 outline-none text-[13.5px] p-3.5 placeholder:text-slate-400 transition resize-none"
+                  />
+                </div>
               </FormSection>
             </>
           )}

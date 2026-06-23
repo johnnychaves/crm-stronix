@@ -116,6 +116,11 @@ service cloud.firestore {
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
+    match /artifacts/{appId}/public/data/stronix_dores/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
+    }
+
     match /artifacts/{appId}/public/data/stronix_funnels/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);

@@ -1,24 +1,37 @@
 import { Tag, Phone, Users, Calendar, MessageCircle } from 'lucide-react';
-import { statusGradientMap } from '../../lib/constants.js';
+import { getTone } from '../../lib/leadState.js';
 import { isLeadActive, isHotLeadFromDate, isColdLeadFromDate, getDaysSinceFromDate } from '../../lib/leadStatus.js';
 
+// Cor configurada da etiqueta/status (blue/green/…) → tom semântico (TONES em
+// leadState). Modelo "soft": fundo claro + texto na MESMA cor porém mais forte +
+// ponto — espelha o StatusBadge do protótipo (design_handoff_perfil_cadastro).
+const COLOR_TONE = {
+  blue: 'brand', sky: 'brand', indigo: 'violet',
+  green: 'emerald', lime: 'emerald', emerald: 'emerald', teal: 'teal',
+  yellow: 'amber', amber: 'amber', orange: 'amber',
+  red: 'rose', rose: 'rose', pink: 'pink',
+  purple: 'violet', violet: 'violet',
+  gray: 'slate', grey: 'slate', slate: 'slate', neutral: 'slate'
+};
+const toneForColor = (color) => getTone(COLOR_TONE[color] || color);
+
 function StatusBadge({ statusName, statusesArray }) {
-  if (statusName === 'Venda') return <span className="px-3 py-1 rounded-full text-[9px] font-bold text-white uppercase tracking-widest bg-gradient-to-r shadow-lg from-green-600 to-emerald-400">VENDA</span>;
-  if (statusName === 'Perda') return <span className="px-3 py-1 rounded-full text-[9px] font-bold text-white uppercase tracking-widest bg-gradient-to-r shadow-lg from-red-600 to-pink-500">PERDA</span>;
-  const statusObj = (statusesArray || []).find(s => s.name === statusName);
-  const color = statusObj?.color || 'gray';
+  const t = statusName === 'Venda'
+    ? getTone('emerald')
+    : statusName === 'Perda'
+      ? getTone('slate')
+      : toneForColor((statusesArray || []).find(s => s.name === statusName)?.color || 'gray');
   return (
-    <span className={`px-3 py-1 rounded-full text-[9px] font-bold uppercase tracking-widest bg-gradient-to-r shadow-lg ${statusGradientMap[color] || statusGradientMap.gray}`}>
-      {statusName}
+    <span className={`inline-flex items-center gap-1.5 font-semibold rounded-md whitespace-nowrap text-[11.5px] px-2 py-1 ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${t.dot}`}></span>{statusName}
     </span>
   );
 }
 
 function TagBadge({ tagName, tagsArray }) {
-  const tagObj = (tagsArray || []).find(t => t.name === tagName);
-  const color = tagObj?.color || 'gray';
+  const t = toneForColor((tagsArray || []).find(x => x.name === tagName)?.color || 'gray');
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-tighter bg-gradient-to-br shadow-sm ${statusGradientMap[color] || statusGradientMap.gray}`}>
+    <span className={`inline-flex items-center gap-1 font-semibold rounded-md whitespace-nowrap text-[11.5px] px-2 py-1 ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
       <Tag className="w-2.5 h-2.5" /> {tagName}
     </span>
   );

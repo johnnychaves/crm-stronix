@@ -37,6 +37,7 @@ import {
   STATUSES_PATH,
   TAGS_PATH,
   LOSS_REASONS_PATH,
+  DORES_PATH,
   FUNNELS_PATH,
   MODALITIES_PATH,
   UNITS_PATH,
@@ -209,6 +210,7 @@ function AppInner() {
   const [tags, setTags] = useState([]);
   const [usersList, setUsersList] = useState([]);
   const [lossReasons, setLossReasons] = useState([]); // NOVO ESTADO
+  const [dores, setDores] = useState([]); // catálogo de dores (necessidades do lead)
   const [funnels, setFunnels] = useState([]);
   // Catálogo de planos/serviços oferecidos na matrícula (feature lead→cliente).
   const [planos, setPlanos] = useState([]);
@@ -547,6 +549,14 @@ useEffect(() => {
     onSnapErr('lossReasons')
   );
 
+  const unsubDores = onSnapshot(
+    collection(db, 'artifacts', appId, 'public', 'data', DORES_PATH),
+    (snapshot) => {
+      setDores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    },
+    onSnapErr('dores')
+  );
+
   const unsubFunnels = onSnapshot(
     collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
     (snapshot) => {
@@ -628,6 +638,7 @@ useEffect(() => {
     unsubStatuses();
     unsubTags();
     unsubLossReasons();
+    unsubDores();
     unsubFunnels();
     unsubModalities();
     unsubPlanos();
@@ -1010,20 +1021,6 @@ useEffect(() => {
           )}
         </nav>
 
-        {/* Cadastrar lead — só pra quem opera dentro de um tenant. */}
-        {!appUser.superAdminOnly && (
-          <div className="px-3 pb-2 shrink-0">
-            <button
-              onClick={() => { setIsAddLeadModalOpen(true); setIsMobileMenuOpen(false); }}
-              title="Cadastrar Lead"
-              aria-label="Cadastrar Lead"
-              className="w-full h-10 rounded-xl inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 active:scale-[.99] text-white text-[13px] font-semibold shadow-[0_6px_16px_-6px_rgba(43,89,255,.65)] transition"
-            >
-              <Plus className="w-4 h-4" /> Cadastrar lead
-            </button>
-          </div>
-        )}
-
         {/* Usuário + sair */}
         <div className="p-3 border-t border-slate-200/80 dark:border-white/[0.06] shrink-0 pb-6 md:pb-3">
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-white/[0.04] transition">
@@ -1071,6 +1068,16 @@ useEffect(() => {
             </h2>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
+            {!appUser.superAdminOnly && (
+              <div className="hidden sm:flex items-center mr-1">
+                <button
+                  onClick={() => setIsAddLeadModalOpen(true)}
+                  className="text-[13px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition whitespace-nowrap"
+                >
+                  Cadastrar lead
+                </button>
+              </div>
+            )}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
@@ -1131,7 +1138,7 @@ useEffect(() => {
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} leads={leads} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
               {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
@@ -1146,6 +1153,7 @@ useEffect(() => {
           perfil do lead recém-criado (via justCreatedLeadId → useEffect). */}
       {isAddLeadModalOpen && (
         <AddLeadModal
+          dores={dores}
           onClose={() => setIsAddLeadModalOpen(false)}
           appUser={appUser}
           sources={sources}

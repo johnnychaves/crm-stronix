@@ -29,7 +29,7 @@ import {
   extractStageNameFromInteractionText,
   TIMELINE_FILTERS
 } from '../lib/timeline.js';
-import { AlertTriangle, ArrowLeft, Ban, BookOpen, Building2, Calendar, Check, Clock, CreditCard, FileText, GraduationCap, MessageCircle, Pause, Pencil, Phone, Plus, RefreshCw, Search, Shield, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users, Zap } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, Clock, CreditCard, FileText, GraduationCap, MessageCircle, Pause, Pencil, Phone, Plus, RefreshCw, Search, Shield, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users, Zap } from 'lucide-react';
 
 // Tom semântico (TONES) + ícone por status do contrato — espelha o
 // CONTRACT_STATUS do protótipo (contracts.jsx) p/ o tile/chip do contrato vigente.
@@ -486,6 +486,27 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
   // Classificação + filtro da timeline (helpers compartilhados em lib/timeline.js).
   const interactionsWithClass = (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }));
 
+  // Origem de cada mudança de fase, reconstruída da transição anterior: a origem
+  // de uma transição é o destino da transição imediatamente anterior (em ordem
+  // cronológica). Permite exibir "[origem] → [destino]" na timeline como no
+  // protótipo, mesmo gravando só o destino. Best-effort: a 1ª transição fica sem
+  // origem (mostra só o destino); eventos sem etapa entre [colchetes] (ex.: Perda
+  // "Lead perdido…", reabertura) não entram na cadeia.
+  const statusFromMap = (() => {
+    const chrono = interactionsWithClass
+      .filter(i => i._kind === 'status')
+      .slice()
+      .sort((a, b) => (a.createdAt?.getTime?.() || 0) - (b.createdAt?.getTime?.() || 0));
+    const map = {};
+    let prevDest = null;
+    chrono.forEach(i => {
+      map[i.id] = prevDest;
+      const dest = extractStageNameFromInteractionText(i.text);
+      if (dest) prevDest = dest;
+    });
+    return map;
+  })();
+
   const timelineCounts = (() => {
     const counts = { all: interactionsWithClass.length, conversation: 0, status: 0, appointment: 0, note: 0, contract: 0, system: 0 };
     interactionsWithClass.forEach(i => { counts[i._kind] = (counts[i._kind] || 0) + 1; });
@@ -627,6 +648,36 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
     </section>
   );
 
+  // Link "Adicionar à agenda" do card de agendamento: monta uma URL de criação
+  // de evento no Google Agenda (1h de duração) a partir do agendamento, sem
+  // backend — abre em nova aba. Espelha o botão do appointment_scheduled do
+  // protótipo (timeline.jsx).
+  const gcalLink = (when, title) => {
+    const pad = (n) => String(n).padStart(2, '0');
+    const stamp = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+    const end = new Date(when.getTime() + 60 * 60 * 1000);
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: `${title} — ${lead.name}`,
+      dates: `${stamp(when)}/${stamp(end)}`
+    });
+    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  };
+
+  // Badge de fase no estilo do protótipo (PhaseBadge do status_change): ponto +
+  // nome na cor da etapa sobre fundo suave, rounded-md, compacto (size sm). NÃO
+  // usar o StatusBadge do app aqui — ele é uma pílula sólida em maiúsculas e
+  // destoa do protótipo.
+  const phaseTag = (name) => {
+    const t = getTone(phaseToneName(name, statuses));
+    return (
+      <span className={cn('inline-flex items-center gap-1.5 font-semibold rounded-md whitespace-nowrap text-[10.5px] px-1.5 py-0.5', t.soft, t.text, t.darkSoft, t.darkText)}>
+        <span className={cn('w-1.5 h-1.5 rounded-full', t.dot)}></span>
+        {name}
+      </span>
+    );
+  };
+
   // Renderiza UM evento da trilha (nó + card por tipo). Usa _kind +
   // getInteractionVisual (ícone) + eventToneName (tom). Só apresentação.
   // Port fiel, classe por classe, dos corpos de evento de prototype/timeline.jsx,
@@ -733,6 +784,12 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
                 <span className="text-[10.5px] font-semibold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 whitespace-nowrap">Confirmado</span>
               )}
             </div>
+            {/* Ações do card de agendamento — port do appointment_scheduled do
+                protótipo: exportar p/ Google Agenda + remarcar (abre o wizard). */}
+            <div className="mt-3 flex items-center gap-1.5">
+              <Btn kind="secondary" size="sm" icon={<Calendar size={12} />} onClick={() => window.open(gcalLink(appt.when, appt.label), '_blank', 'noopener,noreferrer')}>Adicionar à agenda</Btn>
+              <Btn kind="soft" size="sm" icon={<RefreshCw size={12} />} onClick={() => { setActiveProfileTab('crm'); setComposerTab('schedule'); }}>Remarcar</Btn>
+            </div>
           </div>
         ) : isContract && i.text ? (
           // Matrícula/renovação (emerald) ou cancelamento (rose) — card destacado
@@ -762,19 +819,28 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
             </div>
           </div>
         ) : i._kind === 'status' && stageName ? (
-          // Mudança de fase: no protótipo é "[badge origem] → [badge destino]",
-          // mas só gravamos a fase de DESTINO. Em vez de uma seta solta (sem
-          // origem), usamos o rótulo "Movido para" + o badge de destino.
+          // Mudança de fase: "[origem] → [destino]" espelhando o status_change do
+          // protótipo. A origem vem de statusFromMap (destino da transição
+          // anterior). Sem origem conhecida (1ª transição) cai no "Movido para".
           <div className="mt-2 inline-flex items-center gap-2 flex-wrap">
-            <span className="text-[12px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Movido para</span>
-            <StatusBadge statusName={stageName} statusesArray={statuses} />
+            {statusFromMap[i.id] ? (
+              <>
+                {phaseTag(statusFromMap[i.id])}
+                <ArrowRight size={13} className="text-slate-400" />
+                {phaseTag(stageName)}
+              </>
+            ) : (
+              <>
+                <span className="text-[12px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Movido para</span>
+                {phaseTag(stageName)}
+              </>
+            )}
           </div>
         ) : isMessage ? (
           // Mensagem enviada: balão estilo chat (espelha message_out), com a
           // "rabicho" da bolha. Sem o ✓✓ — não temos status de leitura.
           <div className="mt-2 flex">
-            <div className="relative max-w-[440px] rounded-xl px-3 py-2 text-[13px] leading-relaxed bg-emerald-100/70 dark:bg-emerald-500/10 text-emerald-900 dark:text-emerald-50">
-              <span className="absolute -left-1 top-3 w-2 h-2 rotate-45 bg-emerald-100/70 dark:bg-emerald-500/10"></span>
+            <div className="relative max-w-[440px] rounded-xl px-3 py-2 text-[13px] leading-relaxed bg-emerald-100/70 dark:bg-emerald-500/10 text-emerald-900 dark:text-emerald-50 bubble-out">
               <p className="whitespace-pre-wrap">{cleanBody || i.text}</p>
               <div className="text-[10.5px] num mt-1 opacity-60 text-right">{time}</div>
             </div>
@@ -791,6 +857,7 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
                 <div className="text-[13px] font-semibold text-slate-900 dark:text-white">Ligação registrada</div>
                 {cleanBody && <p className="text-[12.5px] text-slate-600 dark:text-slate-300 mt-0.5 leading-snug whitespace-pre-wrap">{cleanBody}</p>}
               </div>
+              <Btn kind="soft" size="sm" icon={<Phone size={12} />} onClick={() => { const num = String(lead.whatsapp || '').replace(/\D/g, ''); if (num) window.location.href = `tel:${num}`; }}>Retornar</Btn>
             </div>
           </div>
         ) : isSimpleSystem ? (
@@ -974,18 +1041,6 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
 
         {/* ----- Aba: Linha do tempo ----- */}
         <TabsContent value="timeline" className="space-y-4 pt-2">
-          <div>
-            <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
-              <Clock size={13} className="text-brand-600" /> Linha do tempo
-            </div>
-            <h2 className="mt-1.5 font-display text-[22px] font-semibold tracking-tight leading-tight">
-              Jornada de {firstName}
-            </h2>
-            <p className="mt-0.5 text-[13px] text-slate-500 dark:text-slate-400">
-              Todas as interações, agendamentos e mudanças de fase em ordem cronológica.
-            </p>
-          </div>
-
           {/* Timeline filters + search */}
           {(interactions || []).length > 0 && (
             <div className="flex items-center gap-2 flex-wrap">

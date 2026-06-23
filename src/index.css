@@ -252,6 +252,38 @@
   overflow: hidden;
 }
 
+/* Rabicho das bolhas de mensagem da linha do tempo (port fiel do protótipo —
+   timeline.jsx message_out/message_in). Triângulo apontando p/ a esquerda,
+   colado na bolha; a cor acompanha o fundo da bolha (emerald p/ enviada). */
+.bubble-out::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 14px;
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-right-color: rgb(209 250 229 / 0.7);
+  border-left: 0;
+}
+.dark .bubble-out::before {
+  border-right-color: rgb(16 78 41 / 0.35);
+}
+.bubble-in::before {
+  content: "";
+  position: absolute;
+  left: -6px;
+  top: 14px;
+  width: 0;
+  height: 0;
+  border: 6px solid transparent;
+  border-right-color: white;
+  border-left: 0;
+}
+.dark .bubble-in::before {
+  border-right-color: rgb(255 255 255 / 0.04);
+}
+
 /* Note: only opacity is animated — adding `transform` here would create a
    containing block for descendant `position: fixed` elements, breaking
    the LeadDetailsModal that lives inside DailyGoalView. */

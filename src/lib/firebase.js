@@ -49,6 +49,8 @@ export const SOURCES_PATH = 'stronix_sources';
 export const STATUSES_PATH = 'stronix_statuses';
 export const TAGS_PATH = 'stronix_tags';
 export const LOSS_REASONS_PATH = 'stronix_loss_reasons';
+// Catálogo de DORES (necessidades/objetivos do lead). 1 doc por dor.
+export const DORES_PATH = 'stronix_dores';
 export const FUNNELS_PATH = 'stronix_funnels';
 export const MODALITIES_PATH = 'stronix_modalities';
 export const UNITS_PATH = 'stronix_units';
