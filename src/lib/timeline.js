@@ -219,5 +219,8 @@ export const parseAppointment = (i) => {
       if (isNaN(when.getTime())) when = null;
     }
   }
-  return { kind, label, when, location };
+  // Observação digitada no agendamento ("… Obs: <texto>") — exibida na timeline.
+  const noteMatch = t.match(/\bobs:\s*(.+)$/i);
+  const note = noteMatch ? noteMatch[1].trim() : null;
+  return { kind, label, when, location, note };
 };

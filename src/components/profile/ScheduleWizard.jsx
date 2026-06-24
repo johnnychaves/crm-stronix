@@ -43,12 +43,17 @@ const WZ_STEP_INFO = {
 // Dias sugeridos: DISTINTOS e consecutivos (não repete "Amanhã"). Começa em
 // HOJE quando ainda dá tempo no dia (antes das 18h); à noite começa direto em
 // AMANHÃ. Rótulos: Hoje / Amanhã / dia da semana (Terça-feira, Quarta-feira…).
-function wzDayOptions(count = 5) {
+function wzDayOptions(count = 5, metaWeekdays = null) {
+  // metaWeekdays = dias da semana programados na Meta Diária (getDay(): 0=dom..6=sáb).
+  // Definido → os cards rápidos só sugerem dias PROGRAMADOS (ex.: seg–sex). Limite de
+  // 90 dias de busca p/ evitar laço infinito caso a lista venha vazia/estranha.
+  const onMeta = (d) => !metaWeekdays || metaWeekdays.length === 0 || metaWeekdays.includes(d.getDay());
   const startOff = new Date().getHours() >= 18 ? 1 : 0;
   const out = [];
-  for (let k = 0; k < count; k++) {
+  for (let k = 0; out.length < count && k < 90; k++) {
     const off = startOff + k;
     const d = new Date(); d.setDate(d.getDate() + off); d.setHours(0, 0, 0, 0);
+    if (!onMeta(d)) continue;
     let label;
     if (off === 0) label = 'Hoje';
     else if (off === 1) label = 'Amanhã';
@@ -132,6 +137,8 @@ const WzStepDot = ({ state, n, color = 'brand' }) => {
 };
 
 const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions }) => {
+  // Dias da Meta Diária (ex.: [1,2,3,4,5] = seg–sex) filtram os cards rápidos de dia.
+  const { metaWeekdays } = useGeneralConfig();
   // Horário por-card do passo "Dia e horário" (off → 'HH:MM'); fallback no default.
   const [slotTimes, setSlotTimes] = useState({});
   // Qual card está com a edição rápida de horário aberta (off do dia ou null).
@@ -173,7 +180,7 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions 
     case 'datahora': {
       const cur = values.datahora;
       const t = WZ_TONES[color] || WZ_TONES.brand;
-      const days = wzDayOptions();
+      const days = wzDayOptions(5, metaWeekdays);
       // Horário por-card (off → 'HH:MM'); fallback no default do card.
       const slotFor = (off) => slotTimes[off] || wzDefaultSlot(off);
       const selectedISO = wzLocalInput(cur);

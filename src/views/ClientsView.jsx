@@ -3,6 +3,7 @@ import { GraduationCap, Phone, Search, Layers } from 'lucide-react';
 import { isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
+import { ContractAVencerBadge } from '../components/ui/ContractAVencerBadge.jsx';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -27,6 +28,8 @@ const STATUS_TONE = {
 const STATUS_LABEL = { ...CONTRACT_STATUS_LABEL, [SEM_CONTRATO]: 'Sem contrato' };
 
 function ContractStatusBadge({ status }) {
+  // "A vencer" mostra ambas as tags (Ativo + A vencer) — ver ContractAVencerBadge.
+  if (status === CONTRACT_STATUS.A_VENCER) return <ContractAVencerBadge variant="tag" />;
   return (
     <span className={`inline-flex items-center px-2 h-6 rounded-md text-[11px] font-semibold ${STATUS_TONE[status] || STATUS_TONE[SEM_CONTRATO]}`}>
       {STATUS_LABEL[status] || status}

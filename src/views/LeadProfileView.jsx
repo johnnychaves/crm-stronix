@@ -6,16 +6,16 @@ import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
-import { deriveLeadState, deriveContextAlert, getTone, phaseToneName } from '../lib/leadState.js';
+import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
+import { ContractAVencerBadge } from '../components/ui/ContractAVencerBadge.jsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
-import { ContextAlert } from '../components/profile/ContextAlert.jsx';
 import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
@@ -29,7 +29,7 @@ import {
   extractStageNameFromInteractionText,
   TIMELINE_FILTERS
 } from '../lib/timeline.js';
-import { AlertTriangle, ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, Clock, CreditCard, FileText, GraduationCap, MessageCircle, Pause, Pencil, Phone, Plus, RefreshCw, Search, Shield, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users, Zap } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, Clock, CreditCard, FileText, GraduationCap, MessageCircle, Pause, Pencil, Phone, Plus, RefreshCw, Search, Shield, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Tom semântico (TONES) + ícone por status do contrato — espelha o
 // CONTRACT_STATUS do protótipo (contracts.jsx) p/ o tile/chip do contrato vigente.
@@ -779,6 +779,7 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
                 </div>
                 <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white mt-0.5">{appt.when.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</div>
                 {appt.location && <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate">{appt.location}</div>}
+                {appt.note && <div className="text-[12px] text-slate-600 dark:text-slate-300 mt-1 whitespace-pre-wrap">{appt.note}</div>}
               </div>
               {i.confirmed && (
                 <span className="text-[10.5px] font-semibold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 whitespace-nowrap">Confirmado</span>
@@ -911,11 +912,16 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden mb-5">
         <div className="p-5 sm:p-6">
           <div className="flex items-start gap-4 sm:gap-5 flex-wrap">
-            <RingAvatar name={lead.name} size={64} toneName={profileState.tone} />
+            <RingAvatar name={lead.name} size={64} toneName={profileState.tone} splitHex={profileState.key === 'a_vencer' ? '#10B981' : null} />
 
             <div className="min-w-[240px] flex-1">
               {/* lifecycle label */}
               <div className="flex items-center gap-2 mb-1.5 whitespace-nowrap overflow-hidden">
+                {profileState.key === 'a_vencer' && (
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0 text-emerald-700 dark:text-emerald-300">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500"></span>Ativo
+                  </span>
+                )}
                 <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0', profileTone.text, profileTone.darkText)}>
                   <span className={cn('w-2 h-2 rounded-full', profileTone.strong)}></span>{profileState.label}
                 </span>
@@ -930,12 +936,7 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
               </div>
               {/* status + tags */}
               <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                {isClient ? (
-                  <span className={cn('inline-flex items-center gap-1.5 font-semibold rounded-full whitespace-nowrap text-[12px] px-2.5 py-1 h-[26px]', profileTone.soft, profileTone.text, profileTone.darkSoft, profileTone.darkText)}>
-                    <span className={cn('w-1.5 h-1.5 rounded-full', profileTone.strong)}></span>
-                    {clientContractStatus ? (CONTRACT_STATUS_LABEL[clientContractStatus] || clientContractStatus) : 'Sem contrato'}
-                  </span>
-                ) : (
+                {!isClient && (
                   <StatusBadge statusName={lead.status} statusesArray={statuses} />
                 )}
                 {(lead.tags || []).length === 0 && !isReadOnly && (
@@ -963,27 +964,33 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
               >
                 Ligar
               </Btn>
-              <div className="w-px h-6 bg-slate-200 dark:bg-white/[0.08] mx-0.5 hidden sm:block"></div>
-              <Btn
-                kind="success"
-                size="md"
-                icon={<TrendingUp size={14} />}
-                onClick={handleWin}
-                disabled={lead.status === 'Venda' || loading}
-                title={lead.status === 'Venda' ? 'Lead já marcado como venda' : 'Marcar venda'}
-              >
-                Marcar venda
-              </Btn>
-              <Btn
-                kind="danger"
-                size="md"
-                icon={<Ban size={14} />}
-                onClick={() => setLossModalOpen(true)}
-                disabled={lead.status === 'Perda' || loading}
-                title={lead.status === 'Perda' ? 'Lead já marcado como perda' : 'Marcar perda'}
-              >
-                Marcar perda
-              </Btn>
+              {/* Venda/Perda só fazem sentido p/ LEAD: cliente já converteu e gere
+                  o contrato pela aba Contratos (Renovar / Cancelar). */}
+              {!isClient && (
+                <>
+                  <div className="w-px h-6 bg-slate-200 dark:bg-white/[0.08] mx-0.5 hidden sm:block"></div>
+                  <Btn
+                    kind="success"
+                    size="md"
+                    icon={<TrendingUp size={14} />}
+                    onClick={handleWin}
+                    disabled={lead.status === 'Venda' || loading}
+                    title={lead.status === 'Venda' ? 'Lead já marcado como venda' : 'Marcar venda'}
+                  >
+                    Marcar venda
+                  </Btn>
+                  <Btn
+                    kind="danger"
+                    size="md"
+                    icon={<Ban size={14} />}
+                    onClick={() => setLossModalOpen(true)}
+                    disabled={lead.status === 'Perda' || loading}
+                    title={lead.status === 'Perda' ? 'Lead já marcado como perda' : 'Marcar perda'}
+                  >
+                    Marcar perda
+                  </Btn>
+                </>
+              )}
               {isAdminUser(appUser) && (
                 <IconBtn icon={<Trash size={15} />} kind="danger" title="Excluir lead" onClick={handleDelete} />
               )}
@@ -993,7 +1000,6 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
           {/* meta strip */}
           <div className="mt-5 pt-4 border-t border-slate-100 dark:border-white/[0.05] flex items-center gap-x-5 gap-y-2 flex-wrap">
             <MetaItem icon={<MessageCircle size={13} />}><span className="num">{lead.whatsapp}</span></MetaItem>
-            {lead.source && <MetaItem icon={<Zap size={13} />}>{lead.source}</MetaItem>}
             {lead.consultantName && <MetaItem icon={<Users size={13} />}>{lead.consultantName}</MetaItem>}
             <MetaItem icon={<Clock size={13} />}>
               {lead.nextFollowUp
@@ -1003,13 +1009,6 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
           </div>
         </div>
       </section>
-
-      {/* ===== Alerta contextual ===== */}
-      {!isReadOnly && (
-        <div className="mb-5">
-          <ContextAlert alert={deriveContextAlert(profileState)} onAction={handleAlertAction} />
-        </div>
-      )}
 
       {/* ===== Abas ===== */}
       <Tabs value={activeProfileTab} onValueChange={setActiveProfileTab}>
@@ -1251,9 +1250,13 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
                     <div className="min-w-[200px] flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-display text-[18px] font-bold tracking-tight leading-tight whitespace-nowrap">{lead.currentPlanName || 'Plano'}</h3>
-                        <span className={cn('inline-flex items-center gap-1.5 font-semibold rounded-full whitespace-nowrap text-[12px] px-2.5 py-1 h-[26px]', t.soft, t.text, t.darkSoft, t.darkText)}>
-                          <StIcon size={12} />{CONTRACT_STATUS_LABEL[cStatus] || cStatus}
-                        </span>
+                        {cStatus === CONTRACT_STATUS.A_VENCER ? (
+                          <ContractAVencerBadge variant="pill" />
+                        ) : (
+                          <span className={cn('inline-flex items-center gap-1.5 font-semibold rounded-full whitespace-nowrap text-[12px] px-2.5 py-1 h-[26px]', t.soft, t.text, t.darkSoft, t.darkText)}>
+                            <StIcon size={12} />{CONTRACT_STATUS_LABEL[cStatus] || cStatus}
+                          </span>
+                        )}
                       </div>
                       <div className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
                         contrato <span className="num">#{String(lead.currentContractId).slice(0, 8).toUpperCase()}</span>
