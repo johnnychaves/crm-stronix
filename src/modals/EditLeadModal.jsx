@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { Calendar, Check, IdCard, Pencil, Phone, Plus, User, X } from 'lucide-react';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
+import { isAdminUser } from '../lib/leads.js';
 import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -111,11 +112,15 @@ function TagsInput({ tags, setTags, suggestions }) {
  * Extrai a lógica de gravação que vivia inline em LeadProfileView.renderEditDialog.
  *
  * Props: { open, onClose, lead, appUser, db, usersList, tags }
- * (appUser faz parte do contrato de props mas a gravação não depende dele —
- * consultantName é resolvido via usersList — então não é desestruturado aqui.)
+ * (appUser é usado para liberar a reatribuição de consultor apenas a admins —
+ * a gravação resolve consultantName/consultantAuthUid via usersList.)
  */
-function EditLeadModal({ open, onClose, lead, db, usersList, tags }) {
+function EditLeadModal({ open, onClose, lead, appUser, db, usersList, tags }) {
   const toast = useToast();
+  // Só admin pode reatribuir o consultor responsável — a regra do Firestore só
+  // permite trocar o dono (consultantAuthUid) sendo admin. Para os demais o
+  // seletor vira leitura.
+  const isAdmin = isAdminUser(appUser);
   // Estado inicializado DIRETO do lead (sem useEffect de re-sync: o modal é
   // remontado quando o lead muda, pois `lead` é prop e o modal só renderiza
   // quando aberto).
@@ -143,9 +148,20 @@ function EditLeadModal({ open, onClose, lead, db, usersList, tags }) {
     setLoading(true);
     try {
       const finalData = { ...editData };
-      if (finalData.consultantId) {
+      // Reatribuição de consultor (só admin): grava os TRÊS campos juntos.
+      // consultantAuthUid é a chave de permissão/atribuição (regras do Firestore,
+      // ranking, contrato da matrícula) — gravar só consultantId/consultantName
+      // deixaria o lead "split-brain" (dono visível ≠ dono real).
+      if (isAdmin && finalData.consultantId) {
         const c = (usersList || []).find(u => u.id === finalData.consultantId);
-        if (c) finalData.consultantName = c.name;
+        if (c) {
+          finalData.consultantName = c.name;
+          finalData.consultantAuthUid = c.authUid || null;
+        }
+      } else {
+        // Não-admin não reatribui: descarta o consultantId do form para não
+        // gravar um valor divergente do consultantAuthUid (que ele não pode trocar).
+        delete finalData.consultantId;
       }
       finalData.birthDate = fromDateInputValue(editData.birthDate);
       finalData.cpf = (editData.cpf || '').trim() || null;
@@ -232,10 +248,14 @@ function EditLeadModal({ open, onClose, lead, db, usersList, tags }) {
             </div>
             <div>
               <FieldLabel>Consultor responsável</FieldLabel>
-              <StyledSelect value={editData.consultantId} onChange={e => set('consultantId', e.target.value)}>
-                <option value="">Selecione um consultor...</option>
-                {(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </StyledSelect>
+              {isAdmin ? (
+                <StyledSelect value={editData.consultantId} onChange={e => set('consultantId', e.target.value)}>
+                  <option value="">Selecione um consultor...</option>
+                  {(usersList || []).map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </StyledSelect>
+              ) : (
+                <StyledInput value={lead.consultantName || '—'} disabled readOnly />
+              )}
             </div>
           </div>
         </FormSection>
