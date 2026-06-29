@@ -6,7 +6,7 @@ import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
-import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
+import { deriveLeadState, deriveContextAlert, getTone, phaseToneName } from '../lib/leadState.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -16,6 +16,7 @@ import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
 import { ContractAVencerBadge } from '../components/ui/ContractAVencerBadge.jsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
+import { ContextAlert } from '../components/profile/ContextAlert.jsx';
 import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
@@ -273,6 +274,9 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       if (lead.status === 'Venda' && targetStatus !== 'Venda') {
         up.isConverted = false;
         up.convertedAt = null;
+        // Desfaz o "cliente": senão lifecycleStage='cliente' segue tratando a
+        // pessoa como cliente (some do Kanban, header de cliente) numa fase de lead.
+        up.lifecycleStage = null;
       }
       if (lead.status === 'Perda' && targetStatus !== 'Perda') {
         up.lossReason = null;
@@ -330,6 +334,8 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       if (lead.status === 'Venda' && status !== 'Venda') {
         up.isConverted = false;
         up.convertedAt = null;
+        // Desfaz o "cliente" (ver handlePhaseConfirm): some do Kanban se não limpar.
+        up.lifecycleStage = null;
       }
       if (lead.status === 'Perda' && status !== 'Perda') {
         up.lossReason = null;
@@ -482,6 +488,7 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
   // tom/rótulo/hint do cabeçalho, o anel do RingAvatar e o alerta contextual.
   const profileState = deriveLeadState(lead, new Date(), contractThresholdDays);
   const profileTone = getTone(profileState.tone);
+  const contextAlert = deriveContextAlert(profileState);
 
   // Classificação + filtro da timeline (helpers compartilhados em lib/timeline.js).
   const interactionsWithClass = (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }));
@@ -1009,6 +1016,13 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
           </div>
         </div>
       </section>
+
+      {/* Alerta contextual (a_vencer/inativo/cancelado/perdido) — CTA → handleAlertAction */}
+      {contextAlert && (
+        <div className="mb-5">
+          <ContextAlert alert={contextAlert} onAction={handleAlertAction} />
+        </div>
+      )}
 
       {/* ===== Abas ===== */}
       <Tabs value={activeProfileTab} onValueChange={setActiveProfileTab}>
