@@ -683,6 +683,125 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
   );
 }
 
+// Botão de preset do NextContactModal — fora do pai para não recriar a cada
+// render (mesmo motivo do RescheduleTypeBtn).
+function NextContactPresetBtn({ icon, label, onClick, disabled }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="h-[38px] inline-flex items-center justify-center gap-1.5 px-3 rounded-lg text-[13px] font-semibold border bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition dark:bg-white/[0.03] dark:text-slate-200 dark:border-white/[0.07] dark:hover:bg-white/[0.06]"
+    >
+      {icon}{label}
+    </button>
+  );
+}
+
+// Popover "Próximo contato?" — abre ao CONCLUIR uma tarefa de Contato/Atrasado
+// (e após Compareceu/Cancelou em visita/aula). Garante que o lead sempre saia
+// com uma data futura OU sem data — nunca com o nextFollowUp parado no passado,
+// que era o que o trazia de volta como "Atrasado" no dia seguinte.
+function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onPick, onSkip, onClose }) {
+  const [note, setNote] = useState('');
+  const [customMode, setCustomMode] = useState(false);
+  const [customValue, setCustomValue] = useState(() => {
+    const base = new Date();
+    base.setDate(base.getDate() + 1);
+    base.setHours(9, 0, 0, 0);
+    return toDatetimeLocalValue(base);
+  });
+  const [submitting, setSubmitting] = useState(false);
+
+  const run = async (fn) => {
+    if (submitting) return;
+    setSubmitting(true);
+    try { await fn(); } finally { setSubmitting(false); }
+  };
+  const pickIn = (days) => run(async () => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    await onPick(d, note);
+  });
+  const pickCustom = () => run(async () => {
+    if (!customValue) return;
+    const d = new Date(customValue);
+    if (isNaN(d.getTime())) return;
+    await onPick(d, note);
+  });
+  const skip = () => run(async () => { await onSkip(note); });
+
+  return createPortal(
+    <>
+      <div onClick={onClose} className="fixed inset-0 z-[110] bg-slate-900/40 dark:bg-black/60 backdrop-blur-md animate-fade-in" />
+      <div className="fixed inset-0 z-[111] grid place-items-center p-4 animate-fade-in pointer-events-none">
+        <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-2xl max-w-md w-full p-6 pointer-events-auto">
+          <div className="flex items-start gap-3 mb-5">
+            <div className="w-10 h-10 rounded-xl grid place-items-center shrink-0 bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+              <Calendar size={18} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">Próximo contato?</h3>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{contextLabel} · {lead.name}</p>
+            </div>
+          </div>
+
+          <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+            Quando voltar a falar
+          </label>
+          {!customMode ? (
+            <div className="grid grid-cols-2 gap-2">
+              <NextContactPresetBtn disabled={submitting} onClick={() => pickIn(1)} icon={<Calendar size={15} />} label="Amanhã" />
+              <NextContactPresetBtn disabled={submitting} onClick={() => pickIn(3)} icon={<Calendar size={15} />} label="Em 3 dias" />
+              <NextContactPresetBtn disabled={submitting} onClick={() => pickIn(7)} icon={<Calendar size={15} />} label="Em 7 dias" />
+              <NextContactPresetBtn disabled={submitting} onClick={() => setCustomMode(true)} icon={<Calendar size={15} />} label="Escolher data…" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <input
+                type="datetime-local"
+                value={customValue}
+                onChange={(e) => setCustomValue(e.target.value)}
+                autoFocus
+                className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
+              />
+              <Btn kind="primary" size="md" icon={<Check size={14} />} onClick={pickCustom} disabled={submitting || !customValue}>OK</Btn>
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={skip}
+            disabled={submitting}
+            className="w-full mt-2 h-[38px] inline-flex items-center justify-center gap-1.5 rounded-lg text-[13px] font-medium text-slate-500 border border-dashed border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:opacity-50 disabled:cursor-not-allowed transition dark:border-white/10 dark:text-slate-400 dark:hover:bg-white/[0.04]"
+          >
+            <X size={14} /> Sem próximo contato
+          </button>
+
+          <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-4 mb-1.5">
+            Observação (opcional)
+          </label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            placeholder="Ex: respondeu no WhatsApp, retornar a proposta"
+            className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 resize-none"
+          />
+
+          <div className="mt-5 flex items-center justify-between gap-2">
+            <span className="text-[11.5px] text-slate-400 dark:text-slate-500 inline-flex items-center gap-1">
+              <RefreshCw size={12} /> Agendar conta como reaquecimento
+            </span>
+            <Btn kind="secondary" onClick={onClose} disabled={submitting}>Cancelar</Btn>
+          </div>
+        </div>
+      </div>
+    </>,
+    document.body
+  );
+}
+
 // ==========================================
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
@@ -711,6 +830,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   const [view, setView] = useState('mine'); // 'mine' | 'team' (team = só gestor)
   const [now, setNow] = useState(() => new Date());
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
+  const [nextContactTarget, setNextContactTarget] = useState(null);
   const prevProgress = useRef(null); // null = ainda sem cálculo nesta montagem
 
   useEffect(() => {
@@ -898,6 +1018,14 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
       if (shouldPromoteToNegociacao) {
         leadUpdate.status = negStatus.name; // 'Negociação'
       }
+      // Compareceu/Cancelou consomem o agendamento → limpar a data para o lead
+      // não cair em "Atrasado" no dia seguinte. ("Não veio" segue para
+      // remarcação, que define uma nova data.)
+      if (outcome === 'attended' || outcome === 'cancelled') {
+        leadUpdate.appointmentScheduledFor = null;
+        leadUpdate.appointmentType = null;
+        leadUpdate.nextFollowUp = null;
+      }
       await updateDoc(
         doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
         leadUpdate
@@ -931,11 +1059,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
       } else {
         toast.success(`${meta.label} registrado para ${lead.name}.`);
       }
-      // After 'no_show', immediately offer to reschedule. Today's task is
-      // already closed; the modal in 'after_no_show' flow only updates the
-      // appointment date without writing another daily_goal_done.
+      // Após o desfecho, oferecer o próximo toque. 'no_show' remarca a
+      // visita/aula; 'attended'/'cancelled' abrem o "Próximo contato?" (a data
+      // antiga foi consumida e já foi limpa acima, então sem isto o lead
+      // ficaria sem follow-up futuro). A tarefa de hoje já está fechada.
       if (outcome === 'no_show') {
         setRescheduleTarget({ lead, categorySlug, flow: 'after_no_show' });
+      } else if (outcome === 'attended' || outcome === 'cancelled') {
+        const ctx = outcome === 'attended' ? 'Comparecimento registrado' : 'Agendamento cancelado';
+        setNextContactTarget({ lead, categorySlug, flow: 'after_outcome', contextLabel: ctx });
       }
     } catch (err) {
       console.error(err);
@@ -946,6 +1078,17 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   const handleGoalDone = async (lead, categorySlug, note, e) => {
     if (e) e.stopPropagation();
     if (!Object.values(DAILY_GOAL_CATEGORIES).includes(categorySlug)) return;
+    // Contato Hoje / Atrasado: concluir abre o "Próximo contato?" para agendar
+    // o próximo toque. Sem isso o nextFollowUp ficaria parado no passado e o
+    // lead voltaria como "Atrasado" amanhã (a marca daily_goal_done vale só no
+    // dia em que foi criada).
+    if (
+      categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE ||
+      categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO
+    ) {
+      setNextContactTarget({ lead, categorySlug, flow: 'complete', contextLabel: 'Tarefa concluída' });
+      return;
+    }
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
     if (!window.confirm(`Concluir a tarefa "${categoryLabel}" deste lead?`)) return;
     const noteText = (note || '').trim();
@@ -962,6 +1105,101 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         createdAt: serverTimestamp()
       });
       toast.success(`Tarefa "${categoryLabel}" concluída.`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível concluir a tarefa. Tente novamente.');
+    }
+  };
+
+  // "Próximo contato?" — escolheu uma data. Agenda o próximo toque (contato:
+  // Mensagem/Ligação) e, no fluxo 'complete' (Contato/Atrasado), fecha a tarefa
+  // de hoje. volumeKind faz o agendamento contar como reaquecimento.
+  const commitNextContact = async (newDate, note) => {
+    if (!nextContactTarget) return;
+    const { lead, categorySlug, flow = 'complete' } = nextContactTarget;
+    const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
+    const noteText = (note || '').trim();
+    const formattedDate = newDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    const formattedTime = newDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    // Preserva o tipo de contato do lead (Ligação/Mensagem); default Mensagem.
+    const isLigacao = String(lead.nextFollowUpType || '').toLowerCase().includes('liga');
+    const followUpTypeLabel = isLigacao ? 'Ligação' : 'Mensagem';
+    const volumeKind = isLigacao ? 'ligacao' : 'mensagem';
+    const closeTask = flow === 'complete';
+    try {
+      const leadUpdate = {
+        nextFollowUp: newDate,
+        nextFollowUpType: followUpTypeLabel,
+        appointmentScheduledFor: null,
+        appointmentType: null
+      };
+      // No fluxo 'complete' não há desfecho a preservar; em 'after_outcome' o
+      // appointmentOutcome ('Compareceu'/'Cancelou') é mantido para o card.
+      if (closeTask) {
+        leadUpdate.appointmentOutcome = null;
+        leadUpdate.appointmentOutcomeAt = null;
+        leadUpdate.appointmentOutcomeBy = null;
+      }
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), leadUpdate);
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+        leadId: lead.id,
+        consultantName: appUser.name,
+        ...getInteractionSecurityFields(lead, appUser),
+        text: noteText
+          ? `✅ ${categoryLabel} concluída — próximo contato (${followUpTypeLabel.toLowerCase()}) em ${formattedDate} às ${formattedTime}. Obs: ${noteText}`
+          : `✅ ${categoryLabel} concluída — próximo contato (${followUpTypeLabel.toLowerCase()}) em ${formattedDate} às ${formattedTime}.`,
+        type: closeTask ? 'daily_goal_done' : 'note',
+        ...(closeTask ? { dailyGoalCategory: categorySlug } : {}),
+        volumeKind,
+        rescheduledFor: newDate,
+        createdAt: serverTimestamp()
+      });
+      toast.success(`Próximo contato em ${formattedDate} às ${formattedTime}.`);
+      setNextContactTarget(null);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível agendar o próximo contato. Tente novamente.');
+    }
+  };
+
+  // "Próximo contato?" — "Sem próximo contato". No fluxo 'complete' fecha a
+  // tarefa e LIMPA só o nextFollowUp (não toca appointmentScheduledFor, para
+  // nunca apagar uma visita/aula futura legítima). Em 'after_outcome' a tarefa
+  // já foi fechada e a data já foi limpa no desfecho — só registra a obs.
+  const commitNoNextContact = async (note) => {
+    if (!nextContactTarget) return;
+    const { lead, categorySlug, flow = 'complete' } = nextContactTarget;
+    const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
+    const noteText = (note || '').trim();
+    try {
+      if (flow === 'complete') {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+          nextFollowUp: null,
+          nextFollowUpType: null
+        });
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+          leadId: lead.id,
+          consultantName: appUser.name,
+          ...getInteractionSecurityFields(lead, appUser),
+          text: noteText
+            ? `✅ ${categoryLabel} concluída — sem próximo contato agendado. Obs: ${noteText}`
+            : `✅ ${categoryLabel} concluída — sem próximo contato agendado.`,
+          type: 'daily_goal_done',
+          dailyGoalCategory: categorySlug,
+          createdAt: serverTimestamp()
+        });
+        toast.success(`Tarefa "${categoryLabel}" concluída.`);
+      } else if (noteText) {
+        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
+          leadId: lead.id,
+          consultantName: appUser.name,
+          ...getInteractionSecurityFields(lead, appUser),
+          text: `Sem próximo contato agendado. Obs: ${noteText}`,
+          type: 'note',
+          createdAt: serverTimestamp()
+        });
+      }
+      setNextContactTarget(null);
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível concluir a tarefa. Tente novamente.');
@@ -1360,6 +1598,16 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
           flow={rescheduleTarget.flow || 'manual'}
           onConfirm={handleReschedule}
           onClose={() => setRescheduleTarget(null)}
+        />
+      )}
+
+      {nextContactTarget && (
+        <NextContactModal
+          lead={nextContactTarget.lead}
+          contextLabel={nextContactTarget.contextLabel}
+          onPick={commitNextContact}
+          onSkip={commitNoNextContact}
+          onClose={() => setNextContactTarget(null)}
         />
       )}
     </div>
