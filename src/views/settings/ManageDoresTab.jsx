@@ -18,23 +18,28 @@ function ManageDoresTab({ db, dores, leads }) {
 
   const save = async (e) => {
     e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) { toast.warning('Informe o nome da dor.'); return; }
+    // Anti-duplicado por nome (case-insensitive), igual a Modalidades/Unidades.
+    const dup = (dores || []).find(d => d.id !== editingId && (d.name || '').trim().toLowerCase() === trimmed.toLowerCase());
+    if (dup) { toast.warning(`Já existe uma dor chamada "${dup.name}".`); return; }
     if (editingId) {
       const old = (dores || []).find(d => d.id === editingId);
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', DORES_PATH, editingId), { name }, { merge: true });
+      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', DORES_PATH, editingId), { name: trimmed }, { merge: true });
 
-      if (old && old.name !== name) {
+      if (old && old.name !== trimmed) {
         const leadsToUpdate = (leads || []).filter(l => l.dor === old.name);
         if (leadsToUpdate.length > 0) {
           const ops = leadsToUpdate.map(lead => ({
             ref: doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
-            data: { dor: name }
+            data: { dor: trimmed }
           }));
           await commitOpsInChunks(db, ops, 400);
         }
       }
       setEditingId(null);
     } else {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', DORES_PATH), { name, createdAt: serverTimestamp() });
+      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', DORES_PATH), { name: trimmed, createdAt: serverTimestamp() });
     }
     setName('');
   };

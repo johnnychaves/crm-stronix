@@ -8,6 +8,7 @@ import { fmtBRL } from '../../lib/format.js';
 import { Btn, IconBtn } from '../../components/ui/Btn.jsx';
 import { SettingsCard } from '../../components/ui/SettingsCard.jsx';
 import { Field, StyledInput, StyledSelect } from '../../components/ui/Field.jsx';
+import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 
 // Catálogo de planos/serviços que a academia oferece. O consultor escolhe
 // um plano na matrícula (e pode ajustar o valor). Planos inativos somem do
@@ -19,6 +20,7 @@ const durationLabel = (m) => {
 
 function ManagePlansTab({ db, planos, leads, modalities }) {
   const toast = useToast();
+  const { contratos } = useGeneralConfig();
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
   const [durationMonths, setDurationMonths] = useState('1');
@@ -41,13 +43,21 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
 
   const save = async (e) => {
     e.preventDefault();
+    const trimmedName = name.trim();
+    if (!trimmedName) { toast.warning('Informe o nome do plano.'); return; }
+    // Aceita vírgula decimal (hábito BRL) e barra valor inválido/negativo em vez
+    // de gravar R$0 silencioso.
+    const parsedValue = Number(String(value).replace(',', '.'));
+    if (!Number.isFinite(parsedValue) || parsedValue < 0) { toast.warning('Informe um valor válido para o plano.'); return; }
+    // Anti-duplicado por nome (case-insensitive), igual a Modalidades/Unidades.
+    const dup = (planos || []).find(p => p.id !== editingId && (p.name || '').trim().toLowerCase() === trimmedName.toLowerCase());
+    if (dup) { toast.warning(`Já existe um plano chamado "${dup.name}".`); return; }
     const payload = {
-      name: name.trim(),
-      value: Number(value) || 0,
+      name: trimmedName,
+      value: parsedValue,
       durationMonths: Math.max(1, Number(durationMonths) || 1),
       modalityId: modalityId || null
     };
-    if (!payload.name) { toast.warning('Informe o nome do plano.'); return; }
 
     if (editingId) {
       const old = (planos || []).find(p => p.id === editingId);
@@ -78,6 +88,13 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
     const inUse = (leads || []).filter(l => l.currentPlanName === p.name).length;
     if (inUse > 0) {
       toast.warning(`Plano "${p.name}" está em uso por ${inUse} cliente(s). Desative-o em vez de excluir.`);
+      return;
+    }
+    // Contratos no histórico referenciam o plano por planId — excluir deixaria a
+    // referência órfã. Desativar preserva o vínculo.
+    const inHistory = (contratos || []).filter(c => c.planId === p.id).length;
+    if (inHistory > 0) {
+      toast.warning(`Plano "${p.name}" tem ${inHistory} contrato(s) no histórico. Desative-o em vez de excluir.`);
       return;
     }
     if (window.confirm(`Excluir o plano "${p.name}"?`)) {

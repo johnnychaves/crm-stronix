@@ -99,9 +99,10 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
   const [timelineQuery, setTimelineQuery] = useState('');
 
   const handleWhatsApp = () => {
-    let n = lead.whatsapp.replace(/\D/g, '');
+    let n = String(lead.whatsapp || '').replace(/\D/g, '');
+    if (!n) { toast.warning('Lead sem WhatsApp cadastrado.'); return; }
     if(n.length <= 11) n='55'+n;
-    window.open(`https://wa.me/${n}?text=Ol%C3%A1%20${encodeURIComponent(lead.name)}`);
+    window.open(`https://wa.me/${n}?text=Ol%C3%A1%20${encodeURIComponent(lead.name || '')}`);
   };
 
 
@@ -371,7 +372,9 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       } else if (isVisita && unidade) {
         extra = ` (Unidade ${unidade})`;
       }
-      const dateStr = date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+      // Inclui o ANO: sem ele, parseAppointment assume o ano corrente e um
+      // agendamento dez→jan aparece na data errada até virar o ano.
+      const dateStr = date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       const noteStr = (wizNote || '').trim();
       const text = `🔔 ${typeLabel} agendada${extra} p/ ${dateStr}.` + (noteStr ? ` Obs: ${noteStr}` : '');
 

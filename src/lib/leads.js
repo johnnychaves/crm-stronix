@@ -84,8 +84,13 @@ export const hasGoalDoneToday = (lead, categorySlug, interactions, todayStart) =
 // Meta).
 export const isLeadResolvedToday = (lead, todayStart) => {
   if (!lead || !todayStart) return false;
-  if (lead.status === 'Venda' && lead.convertedAt instanceof Date && lead.convertedAt >= todayStart) return true;
-  if (lead.status === 'Perda' && lead.lostAt instanceof Date && lead.lostAt >= todayStart) return true;
+  // convertedAt/lostAt chegam como Timestamp do Firestore (não normalizados no
+  // snapshot) — getSafeDateOrNull cobre Timestamp/Date/null sem o bug do
+  // `instanceof Date` (que dava sempre false p/ Timestamp).
+  const conv = getSafeDateOrNull(lead.convertedAt);
+  if (lead.status === 'Venda' && conv && conv >= todayStart) return true;
+  const lost = getSafeDateOrNull(lead.lostAt);
+  if (lead.status === 'Perda' && lost && lost >= todayStart) return true;
   return false;
 };
 

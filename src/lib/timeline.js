@@ -121,7 +121,9 @@ export const getInteractionVisual = (interaction, statusesArray = []) => {
 // mês-ano). Retorna [ [label, eventos[]], ... ] preservando a ordem de entrada.
 export const groupTimeline = (events) => {
   const now = new Date();
-  const dayKey = (d) => d.toISOString().slice(0, 10);
+  // Chave de dia em horário LOCAL (não UTC): senão eventos da noite em fusos
+  // negativos (Brasil UTC-3) caem no dia seguinte e "Hoje/Ontem" erram.
+  const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   const todayKey = dayKey(now);
   const yKey = (() => { const y = new Date(now); y.setDate(y.getDate() - 1); return dayKey(y); })();
   const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0, 0, 0, 0);
