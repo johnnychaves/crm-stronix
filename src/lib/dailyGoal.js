@@ -318,6 +318,21 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId) {
     }
   });
 
+  // Tarefas CONCLUÍDAS hoje continuam visíveis (como FEITAS) mesmo que a ação de
+  // conclusão tenha tirado o lead da condição viva da categoria. Ex.: concluir um
+  // Contato/Atrasado agenda o próximo toque (nextFollowUp futuro), o que remove o
+  // lead da categoria — sem isto a marca daily_goal_done ficaria órfã e a tarefa
+  // sumiria em vez de contar como feita. addTarget deduplica, então não recria
+  // slots já adicionados pela condição viva acima.
+  myLeads.forEach(lead => {
+    if (lead.status === 'Venda' || lead.status === 'Perda') return;
+    Object.values(DAILY_GOAL_CATEGORIES).forEach(slug => {
+      if (hasGoalDoneToday(lead, slug, leadInteractions(lead.id), todayStart)) {
+        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL[slug] || slug, slug);
+      }
+    });
+  });
+
   return Array.from(allTargetLeadsMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
