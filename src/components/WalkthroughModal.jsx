@@ -155,7 +155,7 @@ function WalkthroughModal({ appUser }) {
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) close(); }}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[560px]" overlayClassName="z-[200]">
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[560px]">
         {/* Cabeçalho: eyebrow + contador */}
         <div className="flex items-center justify-between px-6 pt-6">
           <span className="inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.12em] text-accent-600 dark:text-accent-400">

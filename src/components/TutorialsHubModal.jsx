@@ -7,7 +7,7 @@ function TutorialsHubModal({ open, onClose }) {
   if (!open) return null;
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose?.(); }}>
-      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[440px]" overlayClassName="z-[200]">
+      <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-[440px]">
         <div className="flex flex-col items-center px-8 py-10 text-center">
           <span className="flex size-16 items-center justify-center rounded-2xl bg-accent-50 text-accent-600 dark:bg-accent-500/10 dark:text-accent-400">
             <GraduationCap size={30} />
