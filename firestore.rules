@@ -116,6 +116,11 @@ service cloud.firestore {
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
+    match /artifacts/{appId}/public/data/stronix_dores/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
+    }
+
     match /artifacts/{appId}/public/data/stronix_funnels/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
@@ -127,6 +132,13 @@ service cloud.firestore {
     }
 
     match /artifacts/{appId}/public/data/stronix_units/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
+    }
+
+    // Catálogo de planos/serviços oferecidos na matrícula (feature lead→cliente).
+    // Mesmo padrão dos demais catálogos: lê quem é do tenant, escreve só admin.
+    match /artifacts/{appId}/public/data/stronix_planos/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
@@ -145,6 +157,19 @@ service cloud.firestore {
         && (isAdmin(appId) || resource.data.consultantAuthUid == request.auth.uid);
       allow create, update: if inTenant(appId) && tenantActive(appId)
         && request.resource.data.consultantAuthUid == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Contratos de matrícula (feature lead→cliente). Histórico imutável: 1 doc
+    // por matrícula e por renovação, ligado ao lead por leadId. Qualquer membro
+    // do tenant lê; cria/edita o DONO do lead (consultantAuthUid) ou admin.
+    // Sem delete pelo cliente — o histórico não se apaga (igual ao daily_goal_history).
+    match /artifacts/{appId}/public/data/stronix_contratos/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow create: if inTenant(appId) && tenantActive(appId)
+        && (isAdmin(appId) || request.resource.data.consultantAuthUid == request.auth.uid);
+      allow update: if inTenant(appId) && tenantActive(appId)
+        && (isAdmin(appId) || resource.data.consultantAuthUid == request.auth.uid);
       allow delete: if false;
     }
 

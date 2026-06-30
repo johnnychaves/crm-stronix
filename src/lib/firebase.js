@@ -49,9 +49,17 @@ export const SOURCES_PATH = 'stronix_sources';
 export const STATUSES_PATH = 'stronix_statuses';
 export const TAGS_PATH = 'stronix_tags';
 export const LOSS_REASONS_PATH = 'stronix_loss_reasons';
+// Catálogo de DORES (necessidades/objetivos do lead). 1 doc por dor.
+export const DORES_PATH = 'stronix_dores';
 export const FUNNELS_PATH = 'stronix_funnels';
 export const MODALITIES_PATH = 'stronix_modalities';
 export const UNITS_PATH = 'stronix_units';
+// Catálogo de planos/serviços que a academia oferece (escolhidos na
+// matrícula). 1 doc por plano.
+export const PLANS_PATH = 'stronix_planos';
+// Contratos de matrícula — 1 doc por matrícula e por renovação (histórico
+// imutável), ligado ao lead/cliente por leadId.
+export const CONTRACTS_PATH = 'stronix_contratos';
 // Config "geral" da academia — doc único (singleton) sob este path.
 export const CONFIG_PATH = 'stronix_config';
 export const CONFIG_GENERAL_ID = 'general';

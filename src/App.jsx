@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { LayoutDashboard, Users, Plus, AlertTriangle, LogOut, Activity, User, X, Shield, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { LayoutDashboard, Users, Plus, AlertTriangle, LogOut, Activity, User, X, Shield, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap } from 'lucide-react';
 
 import {
   onAuthStateChanged,
@@ -37,9 +37,12 @@ import {
   STATUSES_PATH,
   TAGS_PATH,
   LOSS_REASONS_PATH,
+  DORES_PATH,
   FUNNELS_PATH,
   MODALITIES_PATH,
   UNITS_PATH,
+  PLANS_PATH,
+  CONTRACTS_PATH,
   CONFIG_PATH,
   CONFIG_GENERAL_ID,
   DAILY_GOAL_HISTORY_PATH
@@ -48,9 +51,11 @@ import {
 import { getSafeDate, getSafeDateOrNull } from './lib/dates.js';
 import { isAdminUser } from './lib/leads.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
+import { deriveLeadContractStatus, CONTRACT_STATUS } from './lib/contracts.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
+import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
 import { normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget } from './lib/leadStatus.js';
 import { IMPERSONATION_KEY, readImpersonation } from './lib/superadmin.js';
 import { SurgeMark, StronileadWordmark } from './components/brand/SurgeMark.jsx';
@@ -62,11 +67,12 @@ import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
 import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
-import { LeadDetailsModal } from './modals/LeadDetailsModal.jsx';
 import { DashboardView } from './views/DashboardView.jsx';
 import { KanbanView } from './views/KanbanView.jsx';
 import { AppointmentTrackingView } from './views/AppointmentTrackingView.jsx';
 import { LeadsView } from './views/LeadsView.jsx';
+import { ClientsView } from './views/ClientsView.jsx';
+import { LeadProfileView } from './views/LeadProfileView.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
@@ -139,6 +145,10 @@ function AppInner() {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  // Ficha-página (lead/cliente): id em foco. A ficha SOBREPÕE o conteúdo da
+  // aba ativa (não troca activeTab), então o "Voltar" só limpa este id e a
+  // aba reaparece sozinha.
+  const [profileLeadId, setProfileLeadId] = useState(null);
   // Aba-alvo ao abrir Configurações de fora (ex.: link "Regras gerais" do Perfil).
   // SettingsView remonta ao entrar na view e aplica este initialTab no mount.
   const [settingsTab, setSettingsTab] = useState('users');
@@ -200,7 +210,13 @@ function AppInner() {
   const [tags, setTags] = useState([]);
   const [usersList, setUsersList] = useState([]);
   const [lossReasons, setLossReasons] = useState([]); // NOVO ESTADO
+  const [dores, setDores] = useState([]); // catálogo de dores (necessidades do lead)
   const [funnels, setFunnels] = useState([]);
+  // Catálogo de planos/serviços oferecidos na matrícula (feature lead→cliente).
+  const [planos, setPlanos] = useState([]);
+  // Contratos de matrícula/renovação (feature lead→cliente). 1 doc por
+  // matrícula e por renovação — histórico imutável, ligado ao lead por leadId.
+  const [contratos, setContratos] = useState([]);
   // Configurações Gerais da academia: modalidades + opções de quantidade de aulas + unidades.
   const [modalities, setModalities] = useState([]);
   const [trialClassOptions, setTrialClassOptions] = useState([1, 2, 3]);
@@ -214,11 +230,14 @@ function AppInner() {
   // Meta por VOLUME: piso default de ações/dia da academia (0 = desligado);
   // alvo individual do consultor (doc do usuário) tem precedência.
   const [dailyVolumeTarget, setDailyVolumeTarget] = useState(0);
+  // Janela (dias) p/ contrato ser "a vencer" — política da academia (feature
+  // lead→cliente). Default 30 (= DEFAULT_CONTRACT_THRESHOLD_DAYS em contracts.js).
+  const [contractThresholdDays, setContractThresholdDays] = useState(30);
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget }),
-    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget]
+    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays }),
+    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays]
   );
   // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
   // tenant ainda não foi resolvido (appId = default), o que é correto para o
@@ -237,12 +256,11 @@ function AppInner() {
   // O modal mora aqui em App pra ficar acessível de qualquer aba.
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
 
-  // Após criar o lead, abrimos o perfil dele automaticamente. Como o
+  // Após criar o lead, abrimos a ficha-página dele automaticamente. Como o
   // `addDoc` retorna só o ref, esperamos o lead aparecer em `leads` via
-  // onSnapshot (geralmente <100ms). justCreatedLeadId é o ID alvo;
-  // appLevelSelectedLead é o doc completo já hidratado.
+  // onSnapshot (geralmente <100ms). justCreatedLeadId é o ID alvo; ao chegar,
+  // viramos profileLeadId (abre a LeadProfileView).
   const [justCreatedLeadId, setJustCreatedLeadId] = useState(null);
-  const [appLevelSelectedLead, setAppLevelSelectedLead] = useState(null);
 
   // 1. Inicialização Auth e Persistência de Sessão
   useEffect(() => {
@@ -531,6 +549,14 @@ useEffect(() => {
     onSnapErr('lossReasons')
   );
 
+  const unsubDores = onSnapshot(
+    collection(db, 'artifacts', appId, 'public', 'data', DORES_PATH),
+    (snapshot) => {
+      setDores(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    },
+    onSnapErr('dores')
+  );
+
   const unsubFunnels = onSnapshot(
     collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
     (snapshot) => {
@@ -549,6 +575,25 @@ useEffect(() => {
       setModalities(data);
     },
     onSnapErr('modalities')
+  );
+
+  const unsubPlanos = onSnapshot(
+    collection(db, 'artifacts', appId, 'public', 'data', PLANS_PATH),
+    (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      data.sort((a, b) => (a.order || 0) - (b.order || 0));
+      setPlanos(data);
+    },
+    onSnapErr('planos')
+  );
+
+  const unsubContratos = onSnapshot(
+    collection(db, 'artifacts', appId, 'public', 'data', CONTRACTS_PATH),
+    (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setContratos(data);
+    },
+    onSnapErr('contratos')
   );
 
   const unsubUnits = onSnapshot(
@@ -571,8 +616,10 @@ useEffect(() => {
       setMetaWeekdays(normalizeMetaWeekdays(data?.metaWeekdays));
       setSlaOverdueDays(normalizeSlaOverdueDays(data?.slaOverdueDays));
       setDailyVolumeTarget(normalizeDailyVolumeTarget(data?.dailyVolumeTarget));
+      const t = Math.floor(Number(data?.contractThresholdDays));
+      setContractThresholdDays(Number.isFinite(t) && t > 0 ? Math.min(t, 365) : 30);
     },
-    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); }
+    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); }
   );
 
   let unsubUsers = () => {};
@@ -591,8 +638,11 @@ useEffect(() => {
     unsubStatuses();
     unsubTags();
     unsubLossReasons();
+    unsubDores();
     unsubFunnels();
     unsubModalities();
+    unsubPlanos();
+    unsubContratos();
     unsubUnits();
     unsubConfig();
     unsubUsers();
@@ -615,7 +665,7 @@ useEffect(() => {
     if (!justCreatedLeadId) return;
     const lead = (leads || []).find(l => l.id === justCreatedLeadId);
     if (lead) {
-      setAppLevelSelectedLead(lead);
+      setProfileLeadId(lead.id);
       setJustCreatedLeadId(null);
     }
   }, [justCreatedLeadId, leads]);
@@ -810,7 +860,19 @@ useEffect(() => {
   setActiveTab('dashboard');
 };
 
-  const changeTab = (tab) => { setActiveTab(tab); setIsMobileMenuOpen(false); }
+  // Trocar de aba SEMPRE fecha a ficha-página aberta (senão o gate profileLead
+  // continuaria sobrepondo o conteúdo e a navegação parecia "travada").
+  const changeTab = (tab) => { setActiveTab(tab); setProfileLeadId(null); setIsMobileMenuOpen(false); }
+  // Abre a ficha-página de um lead/cliente (sobrepõe o conteúdo da aba ativa);
+  // lembra a aba de origem para o "Voltar". closeProfile volta para ela.
+  const openProfile = useCallback((leadId) => {
+    if (leadId) setProfileLeadId(leadId);
+  }, []);
+  const closeProfile = useCallback(() => { setProfileLeadId(null); }, []);
+  const leadProfileValue = useMemo(() => ({ openProfile }), [openProfile]);
+  // Lead/cliente em foco na ficha-página (derivado de `leads` p/ refletir o
+  // onSnapshot ao vivo). null = nenhuma ficha aberta (mostra a aba ativa).
+  const profileLead = profileLeadId ? (leads || []).find(l => l.id === profileLeadId) || null : null;
   // Abre Configurações já numa aba específica (sidebar e link "Regras gerais" do Perfil).
   const openSettingsTab = (tab) => { setSettingsTab(tab); changeTab('settings'); };
 
@@ -831,10 +893,23 @@ useEffect(() => {
   const dailyGoalPending = useMemo(() => {
     if (!appUser?.id) return 0;
     void dayKey; // recalcula na virada do dia
-    const slots = computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id);
+    const slots = computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, contractThresholdDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
     return totalSlots - doneSlots;
-  }, [leads, interactions, appUser, dayKey]);
+  }, [leads, interactions, appUser, dayKey, contractThresholdDays]);
+
+  // Clientes com contrato "a vencer" no escopo do usuário (admin vê todos;
+  // consultor vê os seus) — badge âmbar no item Clientes da sidebar.
+  const clientsAVencer = useMemo(() => {
+    if (!appUser) return 0;
+    void dayKey; // reavalia na virada do dia
+    const scope = isAdminUser(appUser) ? (leads || []) : (leads || []).filter(l => l.consultantId === appUser.id);
+    const now = new Date();
+    return scope.filter(l =>
+      l.lifecycleStage === 'cliente' &&
+      deriveLeadContractStatus(l, now, contractThresholdDays) === CONTRACT_STATUS.A_VENCER
+    ).length;
+  }, [leads, appUser, dayKey, contractThresholdDays]);
 
   // Mantém o grupo "Leads" aberto quando uma de suas sub-abas está ativa.
   const isLeadsTab = activeTab === 'leads' || activeTab === 'aulas' || activeTab === 'visitas';
@@ -878,6 +953,7 @@ useEffect(() => {
 
   return (
     <GeneralConfigContext.Provider value={generalConfigValue}>
+    <LeadProfileContext.Provider value={leadProfileValue}>
     <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
       {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />}
 
@@ -901,6 +977,7 @@ useEffect(() => {
               <div className="space-y-1">
                 <SidebarItem icon={<LayoutDashboard className="w-[18px] h-[18px]" />} label="Visão geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
                 <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
+                <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} active={activeTab === 'clientes'} onClick={() => changeTab('clientes')} />
                 <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
                 <SidebarGroup
                   icon={<Users className="w-[18px] h-[18px]" />}
@@ -944,20 +1021,6 @@ useEffect(() => {
           )}
         </nav>
 
-        {/* Cadastrar lead — só pra quem opera dentro de um tenant. */}
-        {!appUser.superAdminOnly && (
-          <div className="px-3 pb-2 shrink-0">
-            <button
-              onClick={() => { setIsAddLeadModalOpen(true); setIsMobileMenuOpen(false); }}
-              title="Cadastrar Lead"
-              aria-label="Cadastrar Lead"
-              className="w-full h-10 rounded-xl inline-flex items-center justify-center gap-2 bg-brand-600 hover:bg-brand-700 active:scale-[.99] text-white text-[13px] font-semibold shadow-[0_6px_16px_-6px_rgba(43,89,255,.65)] transition"
-            >
-              <Plus className="w-4 h-4" /> Cadastrar lead
-            </button>
-          </div>
-        )}
-
         {/* Usuário + sair */}
         <div className="p-3 border-t border-slate-200/80 dark:border-white/[0.06] shrink-0 pb-6 md:pb-3">
           <div className="flex items-center gap-2.5 px-2 py-2 rounded-xl hover:bg-slate-50 dark:hover:bg-white/[0.04] transition">
@@ -993,6 +1056,7 @@ useEffect(() => {
             <h2 className="font-display text-xl font-bold text-gray-900 dark:text-white capitalize truncate tracking-tight">
               {activeTab === 'dashboard' && 'Visão Geral'}
               {activeTab === 'kanban' && 'Pipeline de Vendas'}
+              {activeTab === 'clientes' && 'Clientes'}
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
               {activeTab === 'leads' && 'Gestão de Leads'}
               {activeTab === 'aulas' && 'Aulas Experimentais'}
@@ -1004,6 +1068,16 @@ useEffect(() => {
             </h2>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
+            {!appUser.superAdminOnly && (
+              <div className="hidden sm:flex items-center mr-1">
+                <button
+                  onClick={() => setIsAddLeadModalOpen(true)}
+                  className="text-[13px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition whitespace-nowrap"
+                >
+                  Cadastrar lead
+                </button>
+              </div>
+            )}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
@@ -1042,16 +1116,33 @@ useEffect(() => {
             </div>
           ) : (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full transition-all duration-300">
+              {profileLead ? (
+                <LeadProfileView
+                  key={profileLead.id}
+                  lead={profileLead}
+                  interactions={(interactions || []).filter(i => i.leadId === profileLead.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))}
+                  onBack={closeProfile}
+                  appUser={appUser}
+                  statuses={statuses}
+                  tags={tags}
+                  lossReasons={lossReasons}
+                  usersList={usersList}
+                  db={db}
+                  funnels={funnels}
+                />
+              ) : (<>
               {activeTab === 'dashboard' && <DashboardView leads={isAdminUser(appUser) ? leads : (leads || []).filter(l => l.consultantId === appUser.id)} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
+              {activeTab === 'clientes' && <ClientsView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
               {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
               {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} leads={leads} funnels={funnels} modalities={modalities} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} leads={leads} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
               {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
+              </>)}
             </div>
           )}
         </div>
@@ -1062,6 +1153,7 @@ useEffect(() => {
           perfil do lead recém-criado (via justCreatedLeadId → useEffect). */}
       {isAddLeadModalOpen && (
         <AddLeadModal
+          dores={dores}
           onClose={() => setIsAddLeadModalOpen(false)}
           appUser={appUser}
           sources={sources}
@@ -1074,25 +1166,13 @@ useEffect(() => {
           onCreated={(newLeadId) => setJustCreatedLeadId(newLeadId)}
         />
       )}
-      {appLevelSelectedLead && (
-        <LeadDetailsModal
-          lead={appLevelSelectedLead}
-          interactions={(interactions || []).filter(i => i.leadId === appLevelSelectedLead.id).sort((a,b) => (b.createdAt || 0) - (a.createdAt || 0))}
-          onClose={() => setAppLevelSelectedLead(null)}
-          appUser={appUser}
-          statuses={statuses}
-          tags={tags}
-          lossReasons={lossReasons}
-          db={db}
-          funnels={funnels}
-        />
-      )}
       {consoleOpen && appUser?.superAdmin && (
         <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
       )}
       {ticketModalOpen && <CreateTicketModal appUser={appUser} onClose={() => setTicketModalOpen(false)} />}
       <WhatsNewModal appUser={appUser} onConfigure={() => openSettingsTab('general')} />
     </div>
+    </LeadProfileContext.Provider>
     </GeneralConfigContext.Provider>
   );
 }

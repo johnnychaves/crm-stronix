@@ -48,7 +48,10 @@ export const DAILY_GOAL_CATEGORIES = {
   ATRASADO: 'atrasado',
   VISITA_HOJE: 'visita_hoje',
   AULA_HOJE: 'aula_hoje',
-  CONTATO_HOJE: 'contato_hoje'
+  CONTATO_HOJE: 'contato_hoje',
+  // Cliente com contrato 'a vencer' (feature lead→cliente). Única categoria
+  // cujo alvo é um CLIENTE (status 'Venda'), não um lead em prospecção.
+  RENOVACAO: 'renovacao'
 };
 
 // Label legível por categoria (usado na UI).
@@ -57,7 +60,8 @@ export const DAILY_GOAL_CATEGORY_LABEL = {
   atrasado: 'Atrasado',
   visita_hoje: 'Visita Hoje',
   aula_hoje: 'Aula Experimental Hoje',
-  contato_hoje: 'Contato Hoje'
+  contato_hoje: 'Contato Hoje',
+  renovacao: 'Renovação'
 };
 
 // Retorna true se há ao menos uma interaction `daily_goal_done`
@@ -80,8 +84,13 @@ export const hasGoalDoneToday = (lead, categorySlug, interactions, todayStart) =
 // Meta).
 export const isLeadResolvedToday = (lead, todayStart) => {
   if (!lead || !todayStart) return false;
-  if (lead.status === 'Venda' && lead.convertedAt instanceof Date && lead.convertedAt >= todayStart) return true;
-  if (lead.status === 'Perda' && lead.lostAt instanceof Date && lead.lostAt >= todayStart) return true;
+  // convertedAt/lostAt chegam como Timestamp do Firestore (não normalizados no
+  // snapshot) — getSafeDateOrNull cobre Timestamp/Date/null sem o bug do
+  // `instanceof Date` (que dava sempre false p/ Timestamp).
+  const conv = getSafeDateOrNull(lead.convertedAt);
+  if (lead.status === 'Venda' && conv && conv >= todayStart) return true;
+  const lost = getSafeDateOrNull(lead.lostAt);
+  if (lead.status === 'Perda' && lost && lost >= todayStart) return true;
   return false;
 };
 

@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react';
 import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
-import { isAdminUser, canEditLead, getInteractionSecurityFields } from '../lib/leads.js';
+import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted } from '../lib/leads.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex } from '../lib/leadStatus.js';
@@ -10,16 +10,19 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { KanbanAvatar } from '../components/ui/Avatar.jsx';
 import { FunnelSelector } from '../components/ui/FunnelSelector.jsx';
 import { TagBadge, LeadTemperatureBadge, DaysSinceContactBadge, FollowUpIcon } from '../components/ui/Badges.jsx';
-import { LeadDetailsModal } from '../modals/LeadDetailsModal.jsx';
+import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
+import { MatriculaModal } from '../modals/MatriculaModal.jsx';
 import { Activity, AlertCircle, ArrowRightLeft, Ban, CheckCircle, Kanban, MessageCircle, Search, TrendingUp, Users } from 'lucide-react';
 
 function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const toast = useToast();
-  const [selectedLead, setSelectedLead] = useState(null);
+  const { openProfile } = useLeadProfile();
   const [moveLead, setMoveLead] = useState(null); // lead com o menu "Mover" aberto (toque/teclado)
   const [consultantFilter, setConsultantFilter] = useState('');
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
+  // Lead aguardando matrícula no MatriculaModal (caminho de Venda do Kanban).
+  const [matriculaLead, setMatriculaLead] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [draggingLeadId, setDraggingLeadId] = useState(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState(null);
@@ -55,7 +58,12 @@ const [isPanning, setIsPanning] = useState(false);
   }, [funnelLeads, consultantFilter]);
 
   const kanbanLeads = useMemo(() => {
-    let filtered = kpiScopeLeads;
+    // Clientes (matriculados) saem do Kanban — vivem na aba Clientes. Opção 1:
+    // leads 'Venda' legados (isLeadConverted) TAMBÉM saem, mesmo sem contrato
+    // registrado. A coluna "Venda" segue existindo só como alvo de conversão
+    // (arrastar/mover p/ lá abre o MatriculaModal). Os KPIs de Vendas usam
+    // kpiScopeLeads, então continuam contando os matriculados.
+    let filtered = kpiScopeLeads.filter(l => l.lifecycleStage !== 'cliente' && !isLeadConverted(l));
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
       const searchDigits = searchTerm.replace(/\D/g, '');
@@ -166,29 +174,10 @@ const handleKanbanMouseMove = (e) => {
     }
   };
 
-  const applyWin = async (lead) => {
-    try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-        status: 'Venda',
-        nextFollowUp: null,
-        isConverted: true,
-        convertedAt: serverTimestamp(),
-        lossReason: null,
-        lostAt: null
-      });
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: `Matrícula realizada com sucesso! (Venda)`,
-        type: 'status_change',
-        createdAt: serverTimestamp()
-      });
-    } catch (err) {
-      console.error("Erro Venda:", err);
-      toast.error('Não foi possível registrar a matrícula. Tente novamente.');
-    }
-  };
+  // A Venda no Kanban agora abre o MatriculaModal (plano/valor/vigência) em vez
+  // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
+  // lead + timeline acontece dentro do modal (lib/contracts.js).
+  const openMatricula = (lead) => setMatriculaLead(lead);
 
   // Despacha um destino (etapa / Venda / Perda) com checagem de permissão.
   // Usada pelo menu "Mover" — funciona em toque, mouse e teclado, sem
@@ -199,7 +188,7 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
-    if (statusName === 'Venda') return applyWin(lead);
+    if (statusName === 'Venda') return openMatricula(lead);
     if (statusName === 'Perda') { setLossModalLeadId(lead.id); return; }
     return applyMoveToStage(lead, statusName);
   };
@@ -226,7 +215,7 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
-    applyWin(lead);
+    openMatricula(lead);
   };
 
   const handleLossDrop = (e) => {
@@ -346,7 +335,7 @@ if (!lead) return;
         draggable
         onDragStart={(e) => handleDragStart(e, lead.id)}
         onDragEnd={handleDragEnd}
-        onClick={() => setSelectedLead(lead)}
+        onClick={() => openProfile(lead.id)}
         style={{ borderTopColor: accent.border, borderTopWidth: 2 }}
         className={`group relative rounded-xl border bg-white dark:bg-neutral-900 cursor-grab active:cursor-grabbing shadow-sm transition-all ${
           isDraggingThis
@@ -765,27 +754,21 @@ if (!lead) return;
         </div>
       </div>
 
-      {selectedLead && (
-        <LeadDetailsModal
-          lead={selectedLead}
-          interactions={(interactions || [])
-            .filter(i => i.leadId === selectedLead.id)
-            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))}
-          onClose={() => setSelectedLead(null)}
-          appUser={appUser}
-          statuses={statuses}
-          tags={tags}
-          lossReasons={lossReasons}
-          db={db}
-          funnels={funnels}
-        />
-      )}
-
       {lossModalLeadId && (
         <LossReasonModal
           lossReasons={lossReasons}
           onClose={() => setLossModalLeadId(null)}
           onConfirm={confirmKanbanLoss}
+        />
+      )}
+
+      {matriculaLead && (
+        <MatriculaModal
+          lead={matriculaLead}
+          appUser={appUser}
+          db={db}
+          onClose={() => setMatriculaLead(null)}
+          onDone={() => setMatriculaLead(null)}
         />
       )}
 
