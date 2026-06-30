@@ -77,6 +77,8 @@ import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
+import { WalkthroughModal } from './components/WalkthroughModal.jsx';
+import { TutorialsHubModal } from './components/TutorialsHubModal.jsx';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
@@ -155,6 +157,7 @@ function AppInner() {
   const [superTab, setSuperTab] = useState('overview'); // sub-seção do super-admin (no menu lateral)
   const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
   const [ticketModalOpen, setTicketModalOpen] = useState(false); // abrir chamado de suporte (cliente)
+  const [tutorialsOpen, setTutorialsOpen] = useState(false); // central de tutoriais (ícone 🎓 do topo) — hoje "em breve"
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
@@ -1078,6 +1081,16 @@ useEffect(() => {
                 </button>
               </div>
             )}
+            {!appUser.superAdminOnly && (
+              <button
+                onClick={() => setTutorialsOpen(true)}
+                className="p-2 rounded-xl text-brand-600 dark:text-brand-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
+                title="Tutoriais"
+                aria-label="Tutoriais"
+              >
+                <GraduationCap className="w-5 h-5" />
+              </button>
+            )}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
@@ -1171,6 +1184,8 @@ useEffect(() => {
       )}
       {ticketModalOpen && <CreateTicketModal appUser={appUser} onClose={() => setTicketModalOpen(false)} />}
       <WhatsNewModal appUser={appUser} onConfigure={() => openSettingsTab('general')} />
+      <WalkthroughModal appUser={appUser} />
+      <TutorialsHubModal open={tutorialsOpen} onClose={() => setTutorialsOpen(false)} />
     </div>
     </LeadProfileContext.Provider>
     </GeneralConfigContext.Provider>
