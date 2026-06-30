@@ -1084,7 +1084,7 @@ useEffect(() => {
             {!appUser.superAdminOnly && (
               <button
                 onClick={() => setTutorialsOpen(true)}
-                className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
+                className="p-2 rounded-xl text-brand-600 dark:text-brand-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
                 title="Tutoriais"
                 aria-label="Tutoriais"
               >
