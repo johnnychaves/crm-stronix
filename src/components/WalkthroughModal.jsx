@@ -126,11 +126,10 @@ function StepIllustration({ stepKey }) {
   );
 }
 
-// Pop-up de TUTORIAL — carrossel da jornada lead → cliente. Mostrado uma vez por
-// usuário (localStorage) e reabrível pelo ícone de ajuda no topo (forceOpen).
-// O reabrir é resetado por REMONTAGEM via `key` no App.jsx (estado fresco, sem
-// effect de re-sync — evita o lint set-state-in-effect).
-function WalkthroughModal({ appUser, forceOpen = false, onClose }) {
+// Pop-up de TUTORIAL — carrossel da jornada lead → cliente. Auto-exibido UMA vez
+// por usuário (rastreado no localStorage), igual ao "Novidades" (WhatsNewModal).
+// Não é reabrível: o ícone do topo abre a central de Tutoriais (TutorialsHubModal).
+function WalkthroughModal({ appUser }) {
   const [step, setStep] = useState(0);
   const [dismissed, setDismissed] = useState(false);
 
@@ -139,7 +138,7 @@ function WalkthroughModal({ appUser, forceOpen = false, onClose }) {
     return !walkthroughSeen(appUser);
   }, [appUser]);
 
-  const open = forceOpen || (autoShow && !dismissed);
+  const open = autoShow && !dismissed;
   if (!open) return null;
 
   const total = WALKTHROUGH_STEPS.length;
@@ -150,7 +149,6 @@ function WalkthroughModal({ appUser, forceOpen = false, onClose }) {
     markWalkthroughSeen(appUser);
     setDismissed(true);
     setStep(0);
-    onClose?.();
   };
   const next = () => (last ? close() : setStep((v) => v + 1));
   const back = () => setStep((v) => Math.max(0, v - 1));
