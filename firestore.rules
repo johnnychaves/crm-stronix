@@ -218,7 +218,16 @@ service cloud.firestore {
     match /tickets/{ticketId} {
       allow read: if isSuperAdmin() || (isSignedIn() && resource.data.tenantId == request.auth.token.tenantId);
       allow create: if isSuperAdmin() || (isSignedIn() && request.resource.data.tenantId == request.auth.token.tenantId);
-      allow update, delete: if isSuperAdmin();
+      // Cliente conversa no próprio ticket: só campos da thread/leitura,
+      // sem trocar tenantId (reabrir ticket resolvido muda `status`).
+      allow update: if isSuperAdmin() || (
+        isSignedIn()
+        && resource.data.tenantId == request.auth.token.tenantId
+        && request.resource.data.tenantId == resource.data.tenantId
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['mensagens', 'lastMsgAt', 'lastMsgBy', 'clienteLeuEmMs', 'status', 'updatedAt'])
+      );
+      allow delete: if isSuperAdmin();
     }
   }
 }
