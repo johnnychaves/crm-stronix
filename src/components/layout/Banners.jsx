@@ -1,4 +1,4 @@
-import { Clock, Eye, LogOut } from 'lucide-react';
+import { Clock, CreditCard, Eye, LogOut } from 'lucide-react';
 
 // Banner de contagem regressiva do período de teste (mostrado ao cliente quando
 // a academia está em trial ATIVO). Fica âmbar (urgência) quando faltam <= 3 dias.
@@ -22,6 +22,42 @@ function TrialBanner({ endsAtMs }) {
   );
 }
 
+// Aviso de vencimento da mensalidade (mostrado só ao ADMIN da academia quando a
+// próxima cobrança vence em <= 7 dias, ou já venceu). Brand (7–4 dias) →
+// âmbar (<= 3 dias) → rose (vencida; o acesso é cortado após 3 dias de carência).
+function PaymentDueBanner({ dueAtMs, overdue, invoiceUrl, onOpenBilling }) {
+  const DAY = 24 * 60 * 60 * 1000;
+  const daysLeft = dueAtMs != null ? Math.ceil((dueAtMs - Date.now()) / DAY) : null;
+  const dateLabel = dueAtMs != null
+    ? new Date(dueAtMs).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+    : null;
+
+  let msg;
+  if (overdue) msg = dateLabel ? `Mensalidade vencida desde ${dateLabel} — pague para manter o acesso` : 'Mensalidade vencida — pague para manter o acesso';
+  else if (daysLeft == null) return null;
+  else if (daysLeft <= 0) msg = `Sua mensalidade vence hoje · ${dateLabel}`;
+  else if (daysLeft === 1) msg = `Sua mensalidade vence amanhã · ${dateLabel}`;
+  else msg = `Sua mensalidade vence em ${daysLeft} dias · ${dateLabel}`;
+
+  const tone = overdue
+    ? 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20'
+    : (daysLeft <= 3
+      ? 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/20'
+      : 'bg-brand-50 text-brand-700 border-brand-100 dark:bg-brand-500/10 dark:text-brand-300 dark:border-white/[0.06]');
+
+  return (
+    <div className={`shrink-0 px-4 md:px-8 py-2 flex items-center justify-center gap-2 text-[12.5px] font-medium border-b ${tone}`}>
+      <CreditCard className="w-3.5 h-3.5 shrink-0" />
+      <span>{msg}</span>
+      {invoiceUrl ? (
+        <a href={invoiceUrl} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2 hover:opacity-80">Pagar fatura</a>
+      ) : (
+        <button onClick={onOpenBilling} className="font-semibold underline underline-offset-2 hover:opacity-80">Ver faturas</button>
+      )}
+    </div>
+  );
+}
+
 function ImpersonationBanner({ viewing, onExit, busy }) {
   return (
     <div className="shrink-0 flex items-center justify-center gap-3 px-4 py-2 bg-amber-500 text-amber-950 text-[12.5px] font-semibold">
@@ -34,4 +70,4 @@ function ImpersonationBanner({ viewing, onExit, busy }) {
     </div>
   );
 }
-export { TrialBanner, ImpersonationBanner };
+export { TrialBanner, PaymentDueBanner, ImpersonationBanner };

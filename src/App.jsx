@@ -59,7 +59,7 @@ import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
 import { normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget } from './lib/leadStatus.js';
 import { IMPERSONATION_KEY, readImpersonation } from './lib/superadmin.js';
 import { SurgeMark, StronileadWordmark } from './components/brand/SurgeMark.jsx';
-import { TrialBanner, ImpersonationBanner } from './components/layout/Banners.jsx';
+import { TrialBanner, PaymentDueBanner, ImpersonationBanner } from './components/layout/Banners.jsx';
 import { Avatar } from './components/ui/Avatar.jsx';
 import { ViewSkeleton } from './components/ui/Skeleton.jsx';
 import { SidebarItem, SidebarGroup, SidebarSubItem } from './components/layout/Sidebar.jsx';
@@ -138,6 +138,7 @@ function AppInner() {
   // Fim do trial (ms) quando a academia está em teste ATIVO — alimenta o
   // banner de contagem regressiva. null quando não há trial ativo.
   const [trialEndsAtMs, setTrialEndsAtMs] = useState(null);
+  const [billingDue, setBillingDue] = useState(null); // { dueAtMs, overdue, invoiceUrl } | null
   // Academia identificada pela URL (#<slug>) — só para exibir a MARCA no login.
   // NÃO controla acesso (isso continua sendo o claim tenantId + as rules).
   // Formato: { slug, loading? , found?, displayName? }. Init lazy a partir do hash.
@@ -325,6 +326,7 @@ function AppInner() {
           const tData = tenantSnap.exists() ? tenantSnap.data() : null;
           let block = null;
           let trialMs = null;
+          let billingWarn = null;
           if (tData) {
             if (tData.status === 'suspended') {
               block = 'suspended';
@@ -342,17 +344,34 @@ function AppInner() {
                 && Date.now() - tData.paymentOverdueSince.toMillis() > 3 * 24 * 60 * 60 * 1000) {
               block = 'payment_overdue';
             }
+            // Aviso de vencimento da mensalidade (banner p/ o admin): cobrança
+            // vencendo em <= 7 dias ou já vencida (dentro da carência). A janela
+            // inferior de -1 dia evita banner permanente em tenant de cobrança
+            // manual com nextBillingAt antigo e nunca marcado como 'overdue'.
+            if (!block) {
+              const DAY = 24 * 60 * 60 * 1000;
+              const dueAtMs = typeof tData.nextBillingAt?.toMillis === 'function' ? tData.nextBillingAt.toMillis() : null;
+              const invoiceUrl = tData.lastInvoiceUrl || null;
+              if (tData.paymentStatus === 'overdue') {
+                billingWarn = { dueAtMs, overdue: true, invoiceUrl };
+              } else if (dueAtMs != null && dueAtMs - Date.now() <= 7 * DAY && dueAtMs - Date.now() > -DAY) {
+                billingWarn = { dueAtMs, overdue: false, invoiceUrl };
+              }
+            }
           }
           setTenantBlock(block);
           setTrialEndsAtMs(trialMs);
+          setBillingDue(billingWarn);
         } catch (statusErr) {
           console.warn('Falha ao ler status do tenant; liberando acesso.', statusErr);
           setTenantBlock(null);
           setTrialEndsAtMs(null);
+          setBillingDue(null);
         }
       } else {
         setTenantBlock(null);
         setTrialEndsAtMs(null);
+        setBillingDue(null);
       }
 
       // Super-admin SEM tenant: não tem claim de tenant, então NÃO pode (nem
@@ -1109,6 +1128,17 @@ useEffect(() => {
         </header>
 
         {!appUser.superAdminOnly && trialEndsAtMs && <TrialBanner endsAtMs={trialEndsAtMs} />}
+
+        {/* Aviso de mensalidade: só p/ o admin (consultor não gerencia cobrança).
+            Com o banner de trial visível, só aparece se já estiver VENCIDA. */}
+        {!appUser.superAdminOnly && isAdminUser(appUser) && billingDue && (billingDue.overdue || !trialEndsAtMs) && (
+          <PaymentDueBanner
+            dueAtMs={billingDue.dueAtMs}
+            overdue={billingDue.overdue}
+            invoiceUrl={billingDue.invoiceUrl}
+            onOpenBilling={() => changeTab('billing')}
+          />
+        )}
 
         {loadError && (
           <div className="shrink-0 px-4 md:px-8 py-2 flex items-center justify-center gap-3 text-[12.5px] font-medium border-b bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-500/10 dark:text-rose-300 dark:border-rose-500/20">
