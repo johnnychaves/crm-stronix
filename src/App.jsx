@@ -62,7 +62,7 @@ import { SurgeMark, StronileadWordmark } from './components/brand/SurgeMark.jsx'
 import { TrialBanner, PaymentDueBanner, ImpersonationBanner } from './components/layout/Banners.jsx';
 import { Avatar } from './components/ui/Avatar.jsx';
 import { ViewSkeleton } from './components/ui/Skeleton.jsx';
-import { SidebarItem, SidebarGroup, SidebarSubItem } from './components/layout/Sidebar.jsx';
+import { SidebarItem, SidebarGroup, SidebarSubItem, SIDEBAR_EXPANDED_ONLY } from './components/layout/Sidebar.jsx';
 import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
 import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
@@ -996,14 +996,18 @@ useEffect(() => {
     <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
       {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />}
 
-      <aside className={`fixed inset-y-0 left-0 z-50 w-72 md:w-64 bg-white dark:bg-ink-900 border-r border-border flex flex-col transition-transform duration-300 ease-in-out transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:relative md:translate-x-0`}>
+      {/* Desktop: trilho recolhido (só ícones) que expande por cima do
+          conteúdo no hover ou foco de teclado. Mobile: drawer como antes. */}
+      <aside className={`group/sidebar fixed inset-y-0 left-0 z-50 w-72 bg-white dark:bg-ink-900 border-r border-border flex flex-col overflow-hidden transition-[transform,width,box-shadow] duration-300 ease-in-out transform ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:w-18 md:hover:w-64 md:has-[:focus-visible]:w-64 md:hover:shadow-[0_12px_40px_-12px_rgba(14,26,64,.35)] md:has-[:focus-visible]:shadow-[0_12px_40px_-12px_rgba(14,26,64,.35)]`}>
         {/* Marca */}
         <div className="h-16 px-5 flex items-center justify-between gap-3 border-b border-slate-200/80 dark:border-white/[0.06] shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-9 h-9 rounded-xl grid place-items-center bg-brand-50 dark:bg-white/[0.06] ring-1 ring-brand-100 dark:ring-white/[0.08] shrink-0">
               <SurgeMark size={22} />
             </div>
-            <StronileadWordmark className="text-[16px] text-gray-900 dark:text-white" />
+            <span className={`min-w-0 ${SIDEBAR_EXPANDED_ONLY}`}>
+              <StronileadWordmark className="text-[16px] text-gray-900 dark:text-white" />
+            </span>
           </div>
           <button className="md:hidden text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white p-1 shrink-0" onClick={() => setIsMobileMenuOpen(false)}><X className="w-5 h-5" /></button>
         </div>
@@ -1012,7 +1016,7 @@ useEffect(() => {
         <nav className="flex-1 px-3 pt-5 overflow-y-auto custom-scrollbar">
           {!appUser.superAdminOnly && (
             <>
-              <div className="px-2.5 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500">Workspace</div>
+              <div className={`px-2.5 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Workspace</div>
               <div className="space-y-1">
                 <SidebarItem icon={<LayoutDashboard className="w-[18px] h-[18px]" />} label="Visão geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
                 <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
@@ -1036,7 +1040,7 @@ useEffect(() => {
 
           {(appUser?.superAdmin || (!appUser.superAdminOnly && isAdminUser(appUser))) && (
             <>
-              <div className="px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500">Administração</div>
+              <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
                 {!appUser.superAdminOnly && isAdminUser(appUser) && (
                   <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" active={activeTab === 'settings'} onClick={() => openSettingsTab('users')} />
@@ -1068,7 +1072,7 @@ useEffect(() => {
             ) : (
               <Avatar name={appUser?.name} size={34} />
             )}
-            <div className="min-w-0 flex-1">
+            <div className={`min-w-0 flex-1 ${SIDEBAR_EXPANDED_ONLY}`}>
               <div className="text-[13px] font-semibold truncate text-gray-900 dark:text-white">{appUser?.name}</div>
               <div className="text-[10.5px] text-brand-600 dark:text-brand-400 font-semibold whitespace-nowrap flex items-center gap-1">
                 {appUser.superAdminOnly ? <Globe className="w-3 h-3" /> : isAdminUser(appUser) ? <Shield className="w-3 h-3" /> : <User className="w-3 h-3" />}
@@ -1076,12 +1080,16 @@ useEffect(() => {
               </div>
             </div>
             <button onClick={handleLogout} title="Sair do sistema"
-              className="w-8 h-8 grid place-items-center rounded-lg text-gray-500 hover:text-rose-600 hover:bg-rose-50 dark:text-neutral-400 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 transition shrink-0">
+              className={`w-8 h-8 grid place-items-center rounded-lg text-gray-500 hover:text-rose-600 hover:bg-rose-50 dark:text-neutral-400 dark:hover:text-rose-400 dark:hover:bg-rose-500/10 transition shrink-0 ${SIDEBAR_EXPANDED_ONLY}`}>
               <LogOut className="w-4 h-4" />
             </button>
           </div>
         </div>
       </aside>
+
+      {/* Reserva a largura do trilho recolhido no layout (a sidebar é fixed
+          e expande por cima do conteúdo sem empurrá-lo). */}
+      <div aria-hidden="true" className="hidden md:block w-18 shrink-0" />
 
       <main className="flex-1 flex flex-col min-w-0 relative">
         {(impersonation || appUser.impersonating) && (
