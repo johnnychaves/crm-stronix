@@ -28,6 +28,10 @@ function StatusChip({ ticket, className }) {
   return <span className={cn('inline-flex items-center px-2 h-[20px] rounded-md text-[10.5px] font-bold uppercase tracking-wide', stOf(ticket).cls, className)}>{stOf(ticket).t}</span>;
 }
 
+// Fora do componente: Date.now() em módulo não dispara react-hooks/purity.
+const markReadByClient = (ticketId) =>
+  updateDoc(doc(db, 'tickets', ticketId), { clienteLeuEmMs: Date.now() });
+
 function SupportCenterModal({ appUser, tickets, onClose }) {
   const toast = useToast();
   // sel: null = lista (mobile) / empty-state (desktop) · 'new' = novo chamado · senão id do ticket
@@ -45,8 +49,7 @@ function SupportCenterModal({ appUser, tickets, onClose }) {
   // Conversa aberta = lida (converge: depois do write, isUnreadForClient vira false).
   useEffect(() => {
     if (selTicket && isUnreadForClient(selTicket)) {
-      updateDoc(doc(db, 'tickets', selTicket.id), { clienteLeuEmMs: Date.now() })
-        .catch((e) => console.error('ticket read', e));
+      markReadByClient(selTicket.id).catch((e) => console.error('ticket read', e));
     }
   }, [selTicket]);
 

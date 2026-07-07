@@ -84,7 +84,8 @@ import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
 import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
 import { SuperConsole } from './views/console/SuperConsole.jsx';
-import { CreateTicketModal } from './modals/CreateTicketModal.jsx';
+import { SupportCenterModal } from './modals/SupportCenterModal.jsx';
+import { countUnreadForClient } from './lib/ticketThread.js';
 
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
@@ -157,6 +158,22 @@ function AppInner() {
   const [superTab, setSuperTab] = useState('overview'); // sub-seção do super-admin (no menu lateral)
   const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
   const [ticketModalOpen, setTicketModalOpen] = useState(false); // abrir chamado de suporte (cliente)
+  // Tickets de suporte do tenant (badge da sidebar + Central de Suporte).
+  // Não-crítico: erro aqui não bloqueia o app (sem loadError). Fora do gate
+  // (superadmin puro / academia bloqueada) o estado antigo fica ignorado via
+  // `ticketsOn` em vez de reset síncrono no effect (react-hooks/set-state-in-effect).
+  const [rawTickets, setRawTickets] = useState([]);
+  const ticketsOn = !!appUser?.tenantId && !appUser?.superAdminOnly && !tenantBlock;
+  useEffect(() => {
+    if (!ticketsOn) return;
+    const q = query(collection(db, 'tickets'), where('tenantId', '==', appUser.tenantId));
+    const unsub = onSnapshot(q,
+      (snap) => setRawTickets(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
+      (e) => console.error('onSnapshot tickets falhou', e));
+    return () => unsub();
+  }, [ticketsOn, appUser?.tenantId]);
+  const tickets = useMemo(() => (ticketsOn ? rawTickets : []), [ticketsOn, rawTickets]);
+  const ticketsUnread = useMemo(() => countUnreadForClient(tickets), [tickets]);
   const [tutorialsOpen, setTutorialsOpen] = useState(false); // central de tutoriais (ícone 🎓 do topo) — hoje "em breve"
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
@@ -993,7 +1010,7 @@ useEffect(() => {
                   <SidebarSubItem label="Aulas experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
                   <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
                 </SidebarGroup>
-                <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" active={false} onClick={() => setTicketModalOpen(true)} />
+                <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" badge={ticketsUnread > 0 ? ticketsUnread : null} active={false} onClick={() => setTicketModalOpen(true)} />
               </div>
             </>
           )}
@@ -1182,7 +1199,7 @@ useEffect(() => {
       {consoleOpen && appUser?.superAdmin && (
         <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
       )}
-      {ticketModalOpen && <CreateTicketModal appUser={appUser} onClose={() => setTicketModalOpen(false)} />}
+      {ticketModalOpen && <SupportCenterModal appUser={appUser} tickets={tickets} onClose={() => setTicketModalOpen(false)} />}
       <WhatsNewModal appUser={appUser} onConfigure={() => openSettingsTab('general')} />
       <WalkthroughModal appUser={appUser} />
       <TutorialsHubModal open={tutorialsOpen} onClose={() => setTutorialsOpen(false)} />
