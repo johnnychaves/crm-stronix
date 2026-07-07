@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { auth, db } from '../../lib/firebase.js';
-import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { planLabel, auditActionLabel, IMPERSONATION_KEY } from '../../lib/superadmin.js';
 import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete, isCpfComplete, isValidCpf } from '../../lib/brazilLookups.js';
+import { ticketMessages, isUnreadForSupport, nextMessageState } from '../../lib/ticketThread.js';
 import { Icon } from './consoleIcons.jsx';
 import './console.css';
 
@@ -1255,6 +1256,24 @@ function SupportScreen({ tenants }) {
   const [tickets, setTickets] = useState(null);
   const [showNew, setShowNew] = useState(false);
   const [form, setForm] = useState({ tenantId: '', assunto: '', prioridade: 'media' });
+  const [sel, setSel] = useState(null); // id do ticket com conversa aberta
+  const [reply, setReply] = useState('');
+  const selTicket = (tickets || []).find((t) => t.id === sel) || null;
+  // Abrir a conversa (ou chegar mensagem nova com ela aberta) marca como lida.
+  useEffect(() => {
+    if (!sel) return;
+    setDoc(doc(db, 'tickets', sel), { suporteLeuEmMs: Date.now() }, { merge: true })
+      .catch((e) => console.error('ticket read', e));
+  }, [sel, selTicket?.lastMsgAt]);
+  const sendReply = () => {
+    const texto = reply.trim();
+    if (!texto || !selTicket) return;
+    const { msg, status } = nextMessageState(selTicket, { de: 'suporte', autor: 'Suporte STRONILEAD', texto, emMs: Date.now() });
+    setDoc(doc(db, 'tickets', selTicket.id), {
+      mensagens: arrayUnion(msg), lastMsgAt: msg.emMs, lastMsgBy: 'suporte',
+      suporteLeuEmMs: msg.emMs, ...(status ? { status } : {}), updatedAt: serverTimestamp(),
+    }, { merge: true }).then(() => setReply('')).catch((e) => console.error('ticket reply', e));
+  };
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'tickets'),
       (snap) => setTickets(snap.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0))),
@@ -1299,18 +1318,58 @@ function SupportScreen({ tenants }) {
             {tickets === null ? <tr><td colSpan={6} className="empty">Carregando…</td></tr>
               : tickets.length === 0 ? <tr><td colSpan={6} className="empty">Nenhum ticket ainda. Abra o primeiro em “Novo ticket”.</td></tr>
                 : tickets.map((t) => (
-                  <tr key={t.id}>
-                    <td className="tnum" style={{ fontWeight: 600 }}>#{String(t.id).slice(0, 5)}</td>
+                  <tr key={t.id} onClick={() => setSel(t.id)}
+                    style={{ cursor: 'pointer', background: isUnreadForSupport(t) ? 'rgba(59,109,245,.07)' : undefined }}>
+                    <td className="tnum" style={{ fontWeight: 600 }}>
+                      {isUnreadForSupport(t) && <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: 99, background: 'var(--accent)', marginRight: 7 }} />}
+                      #{String(t.id).slice(0, 5)}
+                    </td>
                     <td style={{ fontWeight: 600 }}>{nameOf[t.tenantId] || t.academia || t.tenantId}</td>
-                    <td style={{ maxWidth: 280 }}>{t.assunto}</td>
+                    <td style={{ maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.assunto}</td>
                     <td><span className={`badge ${(PRI[t.prioridade] || PRI.media).c}`}>{(PRI[t.prioridade] || PRI.media).t}</span></td>
-                    <td><button className={`badge ${(TST[t.status] || TST.aberto).c}`} style={{ cursor: 'pointer', border: 0 }} title="Clique p/ avançar o status" onClick={() => cycleStatus(t)}>{(TST[t.status] || TST.aberto).t}</button></td>
+                    <td><button className={`badge ${(TST[t.status] || TST.aberto).c}`} style={{ cursor: 'pointer', border: 0 }} title="Clique p/ avançar o status" onClick={(e) => { e.stopPropagation(); cycleStatus(t); }}>{(TST[t.status] || TST.aberto).t}</button></td>
                     <td className="muted tnum">{t.createdAt?.toMillis ? new Date(t.createdAt.toMillis()).toLocaleDateString('pt-BR') : '—'}</td>
                   </tr>
                 ))}
           </tbody>
         </table>
       </div>
+      {selTicket && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 80, display: 'flex', justifyContent: 'flex-end', background: 'rgba(4,7,18,.55)' }} onClick={() => setSel(null)}>
+          <div style={{ width: 'min(460px, 100vw)', height: '100%', background: 'var(--bg-2)', borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column' }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ padding: '16px 18px', borderBottom: '1px solid var(--line)', display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14 }}>#{String(selTicket.id).slice(0, 5)} · {nameOf[selTicket.tenantId] || selTicket.academia || selTicket.tenantId}</div>
+                <div className="muted" style={{ fontSize: 12, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selTicket.assunto}</div>
+              </div>
+              <span className={`badge ${(PRI[selTicket.prioridade] || PRI.media).c}`}>{(PRI[selTicket.prioridade] || PRI.media).t}</span>
+              <button className={`badge ${(TST[selTicket.status] || TST.aberto).c}`} style={{ cursor: 'pointer', border: 0 }} title="Clique p/ avançar o status" onClick={() => cycleStatus(selTicket)}>{(TST[selTicket.status] || TST.aberto).t}</button>
+              <button className="btn btn-ghost btn-sm" onClick={() => setSel(null)} aria-label="Fechar">✕</button>
+            </div>
+            <div style={{ flex: 1, overflowY: 'auto', padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {ticketMessages(selTicket).map((m, i) => (
+                <div key={i} style={{ alignSelf: m.de === 'suporte' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
+                  <div style={{
+                    padding: '9px 12px', borderRadius: 12, fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+                    background: m.de === 'suporte' ? 'var(--brand-600)' : 'var(--surface)',
+                    color: m.de === 'suporte' ? '#fff' : 'var(--text)',
+                    border: m.de === 'suporte' ? 'none' : '1px solid var(--line)',
+                  }}>{m.texto}</div>
+                  <div className="muted" style={{ fontSize: 10.5, marginTop: 3, textAlign: m.de === 'suporte' ? 'right' : 'left' }}>
+                    {m.de === 'suporte' ? 'Suporte' : (m.autor || 'Cliente')}{m.emMs ? ` · ${new Date(m.emMs).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}` : ''}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ padding: 14, borderTop: '1px solid var(--line)', display: 'flex', gap: 8 }}>
+              <textarea rows={2} placeholder="Escreva a resposta…" value={reply} onChange={(e) => setReply(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(); } }}
+                style={{ ...FLAG_INPUT, height: 'auto', flex: 1, padding: '9px 12px', resize: 'none', lineHeight: 1.5 }} />
+              <button className="btn btn-primary" style={{ alignSelf: 'flex-end' }} onClick={sendReply} disabled={!reply.trim()}>Responder</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
