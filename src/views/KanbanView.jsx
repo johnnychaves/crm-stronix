@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect, useLayoutEffect } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
 import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted } from '../lib/leads.js';
@@ -12,11 +12,8 @@ import { FollowUpIcon } from '../components/ui/Badges.jsx';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { MatriculaModal } from '../modals/MatriculaModal.jsx';
-import { AlertCircle, ArrowRightLeft, Ban, Check, CheckCircle, ChevronDown, SlidersHorizontal, TrendingUp, Users } from 'lucide-react';
-
-// Espaço (px) entre as abas de funil — precisa bater com o gap-1 do container
-// real E da linha fantasma de medição, senão o cálculo de overflow erra.
-const TAB_GAP = 4;
+import { AlertCircle, ArrowRightLeft, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp, Users } from 'lucide-react';
+import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
 
 // Avatar de iniciais compacto (card 22px / bubble 24px). O KanbanAvatar
 // derivaria a fonte do tamanho; o protótipo fixa 9px/9.5px weight 700.
@@ -29,37 +26,6 @@ function InitialsAvatar({ name = '', size = 22, textSize = 9 }) {
     >
       {getKanbanInitials(name)}
     </span>
-  );
-}
-
-// Aba de funil do header. Usada na linha visível e na linha fantasma de
-// medição (mesmas classes ⇒ mesma largura medida).
-function FunnelTab({ funnel, count, active, onClick, tabIndex }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      tabIndex={tabIndex}
-      aria-current={active ? 'true' : undefined}
-      className={cn(
-        'h-full px-3 inline-flex items-center gap-2 text-[13.5px] font-semibold whitespace-nowrap transition-colors',
-        active
-          ? 'text-brand-700 dark:text-brand-300 shadow-[inset_0_-2px_0_var(--color-brand-600)]'
-          : 'text-gray-500 hover:text-gray-700 dark:text-neutral-400 dark:hover:text-neutral-200'
-      )}
-    >
-      {funnel.name}
-      <span
-        className={cn(
-          'text-[11px] font-bold px-1.5 py-px rounded-md tabular-nums',
-          active
-            ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
-            : 'bg-slate-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400'
-        )}
-      >
-        {count}
-      </span>
-    </button>
   );
 }
 
@@ -76,7 +42,6 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, l
   const [draggingLeadId, setDraggingLeadId] = useState(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState(null);
   const [filterOpen, setFilterOpen] = useState(false);
-  const [overflowOpen, setOverflowOpen] = useState(false);
 
   const kanbanScrollRef = useRef(null);
 const dragScrollRef = useRef({
@@ -127,108 +92,20 @@ const [isPanning, setIsPanning] = useState(false);
     return map;
   }, [funnels, leads, defaultFunnelId]);
 
-  // Ordem de exibição das abas. Começa na ordem cadastrada; quando um funil
-  // escondido no menu "+N" é selecionado, ele troca de lugar com a última
-  // aba visível (o funil ativo nunca fica escondido).
-  const [tabOrder, setTabOrder] = useState(() => (funnels || []).map(f => f.id));
-  useEffect(() => {
-    const ids = (funnels || []).map(f => f.id);
-    setTabOrder(prev => {
-      const kept = prev.filter(id => ids.includes(id));
-      const added = ids.filter(id => !kept.includes(id));
-      const next = [...kept, ...added];
-      return next.length === prev.length && next.every((id, i) => id === prev[i]) ? prev : next;
-    });
-  }, [funnels]);
-
-  const orderedFunnels = useMemo(
-    () => tabOrder.map(id => (funnels || []).find(f => f.id === id)).filter(Boolean),
-    [tabOrder, funnels]
-  );
-
-  // ── Overflow das abas (opção 2b): mede a linha fantasma e decide quantas
-  //    abas cabem; o excedente vira o botão "+N". ──────────────────────────
-  const tabsAreaRef = useRef(null);
-  const ghostRef = useRef(null);
-  const [tabsAreaW, setTabsAreaW] = useState(0);
-  const [visibleTabCount, setVisibleTabCount] = useState(Number.MAX_SAFE_INTEGER);
-
-  useEffect(() => {
-    const el = tabsAreaRef.current;
-    if (!el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(entries => {
-      setTabsAreaW(entries[0]?.contentRect?.width || 0);
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  const tabsSig = orderedFunnels.map(f => `${f.id}:${f.name}:${funnelCounts.get(f.id) || 0}`).join('|');
-
-  useLayoutEffect(() => {
-    const ghost = ghostRef.current;
-    const area = tabsAreaRef.current;
-    if (!ghost || !area) return;
-    const width = area.clientWidth;
-    const kids = Array.from(ghost.children);
-    if (kids.length < 2) return; // sem funis: nada a medir
-    const moreW = kids[kids.length - 1].offsetWidth; // fantasma do "+N"
-    const tabWidths = kids.slice(0, -1).map(el => el.offsetWidth);
-    const totalAll = tabWidths.reduce((sum, w, i) => sum + w + (i > 0 ? TAB_GAP : 0), 0);
-    let count = tabWidths.length;
-    if (totalAll > width) {
-      count = 0;
-      let acc = 0;
-      for (let i = 0; i < tabWidths.length; i++) {
-        const next = acc + (i > 0 ? TAB_GAP : 0) + tabWidths[i];
-        if (next + TAB_GAP + moreW <= width) { acc = next; count = i + 1; } else break;
-      }
-      count = Math.max(1, count);
-    }
-    setVisibleTabCount(prev => (prev === count ? prev : count));
-  }, [tabsAreaW, tabsSig]);
-
-  // Garante que o funil ativo está sempre entre as abas visíveis.
-  useEffect(() => {
-    if (!selectedFunnelId) return;
-    const idx = tabOrder.indexOf(selectedFunnelId);
-    if (idx === -1 || idx < visibleTabCount || visibleTabCount >= tabOrder.length) return;
-    setTabOrder(prev => {
-      const next = [...prev];
-      const last = Math.min(visibleTabCount, prev.length) - 1;
-      if (last < 0 || last === idx) return prev;
-      [next[last], next[idx]] = [next[idx], next[last]];
-      return next;
-    });
-  }, [selectedFunnelId, visibleTabCount, tabOrder]);
-
-  const visibleFunnels = orderedFunnels.slice(0, visibleTabCount);
-  const hiddenFunnels = orderedFunnels.slice(visibleTabCount);
-
-  // ── Popovers (bubble de filtros e menu "+N"): fecham em clique fora / Esc ──
+  // Bubble de filtros fecha em clique fora / Esc (o overflow "+N" das abas
+  // é tratado internamente pelo FunnelTabs).
   const filterWrapRef = useRef(null);
-  const overflowWrapRef = useRef(null);
   useEffect(() => {
-    if (!filterOpen && !overflowOpen) return;
-    const onPointerDown = (e) => {
-      if (filterWrapRef.current?.contains(e.target)) return;
-      if (overflowWrapRef.current?.contains(e.target)) return;
-      setFilterOpen(false);
-      setOverflowOpen(false);
-    };
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setFilterOpen(false);
-        setOverflowOpen(false);
-      }
-    };
+    if (!filterOpen) return;
+    const onPointerDown = (e) => { if (!filterWrapRef.current?.contains(e.target)) setFilterOpen(false); };
+    const onKeyDown = (e) => { if (e.key === 'Escape') setFilterOpen(false); };
     document.addEventListener('mousedown', onPointerDown);
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('mousedown', onPointerDown);
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [filterOpen, overflowOpen]);
+  }, [filterOpen]);
 
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
@@ -663,78 +540,12 @@ if (!lead) return;
       <div className="-m-4 md:-m-8 h-[calc(100vh-4rem)] flex flex-col animate-fade-in">
         {/* Linha de header da página: abas de funil + resumo + filtro único */}
         <div className="h-16 shrink-0 relative z-20 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 flex items-center gap-3 md:gap-5 px-4 md:px-7">
-          {/* Sem overflow-hidden: o menu do "+N" (absolute) precisa escapar da
-              linha de 64px; abas excedentes nunca chegam a renderizar. */}
-          <div ref={tabsAreaRef} className="relative flex-1 min-w-0 h-full flex items-stretch gap-1">
-            {visibleFunnels.map(f => (
-              <FunnelTab
-                key={f.id}
-                funnel={f}
-                count={funnelCounts.get(f.id) || 0}
-                active={f.id === selectedFunnelId}
-                onClick={() => setSelectedFunnelId(f.id)}
-              />
-            ))}
-
-            {hiddenFunnels.length > 0 && (
-              <div ref={overflowWrapRef} className="relative flex items-center">
-                <button
-                  type="button"
-                  onClick={() => setOverflowOpen(o => !o)}
-                  aria-haspopup="menu"
-                  aria-expanded={overflowOpen}
-                  className="h-[34px] px-3 rounded-[9px] border border-dashed border-brand-200 dark:border-brand-500/40 bg-brand-50 dark:bg-brand-500/15 text-[12.5px] font-bold text-brand-700 dark:text-brand-300 inline-flex items-center gap-[5px] whitespace-nowrap transition-colors hover:border-brand-300"
-                >
-                  +{hiddenFunnels.length}
-                  <ChevronDown className="size-[13px]" strokeWidth={2.2} />
-                </button>
-
-                {overflowOpen && (
-                  <div
-                    role="menu"
-                    className="absolute left-0 top-[54px] w-[224px] rounded-[14px] bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-700 shadow-[0_16px_40px_-8px_rgba(14,26,64,.22)] overflow-hidden z-30"
-                  >
-                    <div className="px-3.5 pt-2.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
-                      Outros funis
-                    </div>
-                    <div className="px-2 pb-2 flex flex-col gap-0.5">
-                      {hiddenFunnels.map(f => (
-                        <button
-                          key={f.id}
-                          type="button"
-                          role="menuitem"
-                          onClick={() => { setSelectedFunnelId(f.id); setOverflowOpen(false); }}
-                          className="flex items-center gap-2 px-2.5 py-2 rounded-[9px] text-left text-[13px] font-semibold text-gray-900 dark:text-white hover:bg-paper-50 dark:hover:bg-white/5 transition-colors"
-                        >
-                          <span className="truncate">{f.name}</span>
-                          <span className="ml-auto text-[11px] font-bold px-1.5 py-px rounded-md bg-slate-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400 tabular-nums shrink-0">
-                            {funnelCounts.get(f.id) || 0}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Linha fantasma p/ medir a largura das abas e do "+N" (invisível) */}
-            <div
-              ref={ghostRef}
-              aria-hidden="true"
-              className="absolute left-0 top-0 h-0 overflow-hidden invisible pointer-events-none flex items-stretch gap-1"
-            >
-              {orderedFunnels.map(f => (
-                <FunnelTab key={f.id} funnel={f} count={funnelCounts.get(f.id) || 0} active={false} tabIndex={-1} />
-              ))}
-              <div className="flex items-center">
-                <span className="h-[34px] px-3 rounded-[9px] border border-dashed text-[12.5px] font-bold inline-flex items-center gap-[5px] whitespace-nowrap">
-                  +{Math.max(orderedFunnels.length - 1, 1)}
-                  <ChevronDown className="size-[13px]" />
-                </span>
-              </div>
-            </div>
-          </div>
+          <FunnelTabs
+            funnels={funnels}
+            counts={funnelCounts}
+            selectedId={selectedFunnelId}
+            onSelect={setSelectedFunnelId}
+          />
 
           <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
             <span className="font-semibold text-gray-700 dark:text-neutral-200">{filterSummary}</span>
