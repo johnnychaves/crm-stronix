@@ -4,7 +4,6 @@ import { isLeadConverted, isAdminUser } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
-import { fmtBRL } from '../lib/format.js';
 import { cn } from '@/lib/utils';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
@@ -16,6 +15,10 @@ import { Btn } from '../components/ui/Btn.jsx';
 const SEM_CONTRATO = 'sem_contrato';
 const clientStatus = (lead, now, threshold) =>
   deriveLeadContractStatus(lead, now, threshold) || SEM_CONTRATO;
+
+// Valor do contrato SEMPRE em BRL com centavos (R$ 199,00). O fmtBRL global é
+// inteiro de propósito (painel usa valores redondos), então formatamos aqui.
+const fmtBRLValor = (n) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const STATUS_TONE = {
   [CONTRACT_STATUS.ATIVO]:    'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -343,7 +346,7 @@ function ClientsView({ leads, appUser, usersList }) {
 
                   {/* Valor */}
                   <div className="md:text-right text-[12.5px] tabular-nums text-slate-700 dark:text-neutral-200">
-                    {hasValue ? fmtBRL(c.currentContractValue) : '—'}
+                    {hasValue ? fmtBRLValor(c.currentContractValue) : '—'}
                   </div>
 
                   {/* Vencimento */}
