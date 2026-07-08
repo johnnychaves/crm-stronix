@@ -46,6 +46,31 @@ function ContractStatusBadge({ status }) {
   );
 }
 
+// Anel de situação do contrato em volta do avatar — mesmo padrão do perfil do
+// aluno (RingAvatar): 100% verde = Ativo · metade âmbar / metade verde = A
+// vencer · cinza = Inativo (vencido/cancelado/sem contrato). Hexes de getTone.
+const RING_GREEN = '#10B981'; // emerald
+const RING_AMBER = '#F59E0B'; // amber
+const RING_GRAY = '#64748B';  // slate
+const contractRing = (status) =>
+  status === CONTRACT_STATUS.ATIVO
+    ? RING_GREEN
+    : status === CONTRACT_STATUS.A_VENCER
+      ? `conic-gradient(${RING_AMBER} 0deg 180deg, ${RING_GREEN} 180deg 360deg)`
+      : RING_GRAY;
+
+// Avatar com o anel, dimensão constante (32 + gap 2 + anel 2.5) para não
+// desalinhar as linhas entre situações.
+function ContractRingAvatar({ name, status }) {
+  return (
+    <span className="relative shrink-0 rounded-full" style={{ background: contractRing(status), padding: 2.5 }}>
+      <span className="block rounded-full bg-white dark:bg-neutral-900" style={{ padding: 2 }}>
+        <Avatar name={name} size={32} />
+      </span>
+    </span>
+  );
+}
+
 function ClientsView({ leads, appUser, usersList }) {
   const { contractThresholdDays } = useGeneralConfig();
   const { openProfile } = useLeadProfile();
@@ -301,7 +326,7 @@ function ClientsView({ leads, appUser, usersList }) {
                 >
                   {/* Cliente */}
                   <div className="flex items-center gap-[11px] min-w-0">
-                    <Avatar name={c.name} size={32} />
+                    <ContractRingAvatar name={c.name} status={st} />
                     <div className="min-w-0">
                       <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{c.name}</div>
                       <div className="mt-px flex items-center gap-1.5 text-[11.5px] text-slate-500 dark:text-neutral-400 tabular-nums">
