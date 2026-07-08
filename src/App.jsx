@@ -1013,7 +1013,7 @@ useEffect(() => {
         </div>
 
         {/* Navegação */}
-        <nav className="flex-1 px-3 pt-5 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 px-3 pt-5 pb-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
           {!appUser.superAdminOnly && (
             <>
               <div className={`px-2.5 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Workspace</div>
