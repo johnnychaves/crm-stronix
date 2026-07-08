@@ -82,6 +82,7 @@ import { TutorialsHubModal } from './components/TutorialsHubModal.jsx';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
+import { GlobalSearch } from './components/layout/GlobalSearch.jsx';
 import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
 import { SuperConsole } from './views/console/SuperConsole.jsx';
 import { SupportCenterModal } from './modals/SupportCenterModal.jsx';
@@ -1098,7 +1099,7 @@ useEffect(() => {
             onExit={stopImpersonation} busy={exitingImpersonation} />
         )}
         <header className="h-16 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10 shrink-0">
-          <div className="flex items-center">
+          <div className="flex items-center min-w-0">
             <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setIsMobileMenuOpen(true)}><Menu className="w-6 h-6" /></button>
             <h2 className="font-display text-xl font-bold text-gray-900 dark:text-white capitalize truncate tracking-tight">
               {activeTab === 'dashboard' && 'Visão Geral'}
@@ -1114,6 +1115,9 @@ useEffect(() => {
               {activeTab === 'superadmin' && (({ overview: 'Visão Geral', clients: 'Clientes', finance: 'Financeiro', plans: 'Planos' }[superTab] || 'Organizações') + ' · Super-admin')}
             </h2>
           </div>
+          {!appUser.superAdminOnly && (
+            <GlobalSearch leads={leads} onAddLead={() => setIsAddLeadModalOpen(true)} />
+          )}
           <div className="flex items-center gap-2 md:gap-3">
             {!appUser.superAdminOnly && (
               <div className="hidden sm:flex items-center mr-1">
