@@ -1105,7 +1105,7 @@ useEffect(() => {
               {activeTab === 'kanban' && 'Pipeline de Vendas'}
               {activeTab === 'clientes' && 'Clientes'}
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
-              {activeTab === 'leads' && 'Gestão de Leads'}
+              {activeTab === 'leads' && 'Todos os Leads'}
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
               {activeTab === 'settings' && 'Configurações'}
