@@ -63,12 +63,6 @@ function AppointmentTrackingView(props) {
 
 const DAY_MS = 86400000;
 
-// O schema só guarda a QUANTIDADE do passe (trialClassesPlanned) e o
-// desfecho da aula marcada. Regra derivada p/ a nota do passe: a validade
-// é de 7 dias a partir da aula marcada, e "aula usada" = desfecho
-// 'compareceu'. Ajustar aqui se a regra de negócio mudar.
-const TRIAL_PASS_VALIDITY_DAYS = 7;
-
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 
 // "Hoje · 17:00" / "Amanhã · 08:00" / "Ontem · 10:00" / "10/07 · 15:00"
@@ -81,29 +75,23 @@ function fmtAulaDateLine(d) {
   return `${day} · ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-// Nota do passe livre ("3 aulas · expira em 7 dias" / "resta 1 · ..." /
-// "passe concluído" / "passe expirado"). Retorna null quando o agendamento
-// não registrou quantidade.
+// Nota do passe livre: usa só o CONTADOR de aulas configurado em Opções →
+// Regras gerais (trialClassOptions, ex.: 1/2/7/15), gravado por aula em
+// trialClassesPlanned. Sem validade por tempo — o schema não guarda isso e,
+// por decisão de produto, o passe é medido só pela quantidade de aulas.
+// Retorna null quando o agendamento não registrou quantidade.
 function getTrialPassNote(lead, attKey) {
   const qty = Number(lead.trialClassesPlanned);
   if (!Number.isFinite(qty) || qty <= 0) return null;
-  const d = getLeadAppointmentDate(lead);
-  if (!d) return null;
   const used = attKey === 'attended' ? 1 : 0;
   const remaining = qty - used;
   if (remaining <= 0) {
     return { text: 'passe concluído', cls: 'text-emerald-700 dark:text-emerald-400' };
   }
-  const endDay = startOfDay(new Date(d.getTime() + TRIAL_PASS_VALIDITY_DAYS * DAY_MS));
-  const daysLeft = Math.round((endDay.getTime() - startOfDay(new Date()).getTime()) / DAY_MS);
-  if (daysLeft < 0) {
-    return { text: 'passe expirado', cls: 'text-rose-700 dark:text-rose-400' };
-  }
-  const expira = daysLeft === 0 ? 'expira hoje' : daysLeft === 1 ? 'expira em 1 dia' : `expira em ${daysLeft} dias`;
-  const head = used > 0 ? `resta ${remaining}` : `${qty} ${qty === 1 ? 'aula' : 'aulas'}`;
+  const total = `${qty} ${qty === 1 ? 'aula' : 'aulas'}`;
   return {
-    text: `${head} · ${expira}`,
-    cls: daysLeft <= 2 ? 'text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-neutral-400'
+    text: used > 0 ? `resta ${remaining} de ${total}` : total,
+    cls: 'text-slate-500 dark:text-neutral-400'
   };
 }
 
