@@ -3,7 +3,6 @@ import { GraduationCap, Layers, Phone, SlidersHorizontal, Check, X } from 'lucid
 import { isLeadConverted, isAdminUser } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
-import { ContractAVencerBadge } from '../components/ui/ContractAVencerBadge.jsx';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { cn } from '@/lib/utils';
@@ -35,16 +34,6 @@ const STATUS_OPTIONS = [
   CONTRACT_STATUS.CANCELADO,
   SEM_CONTRATO
 ];
-
-function ContractStatusBadge({ status }) {
-  // "A vencer" mostra ambas as tags (Ativo + A vencer) — ver ContractAVencerBadge.
-  if (status === CONTRACT_STATUS.A_VENCER) return <ContractAVencerBadge variant="tag" />;
-  return (
-    <span className={`inline-flex items-center px-2 h-6 rounded-md text-[11px] font-semibold ${STATUS_TONE[status] || STATUS_TONE[SEM_CONTRATO]}`}>
-      {STATUS_LABEL[status] || status}
-    </span>
-  );
-}
 
 // Anel de situação do contrato em volta do avatar — mesmo padrão do perfil do
 // aluno (RingAvatar): 100% verde = Ativo · metade âmbar / metade verde = A
@@ -302,8 +291,8 @@ function ClientsView({ leads, appUser, usersList }) {
       {/* Tabela em card */}
       <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 md:px-7 pt-4 pb-7">
         <div className="bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,.06)]">
-          <div className="hidden md:grid grid-cols-[1.7fr_1.1fr_0.8fr_0.9fr_0.9fr] px-5 py-3 border-b border-slate-100 dark:border-neutral-800 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
-            <span>Cliente</span><span>Plano</span><span className="text-right">Valor</span><span className="text-right">Vencimento</span><span>Contrato</span>
+          <div className="hidden md:grid grid-cols-[1.8fr_1.2fr_0.9fr_0.9fr] px-5 py-3 border-b border-slate-100 dark:border-neutral-800 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
+            <span>Cliente</span><span>Plano</span><span className="text-right">Valor</span><span className="text-right">Vencimento</span>
           </div>
 
           {filtered.length === 0 ? (
@@ -322,7 +311,7 @@ function ClientsView({ leads, appUser, usersList }) {
                 <div
                   key={c.id}
                   onClick={() => openProfile(c.id)}
-                  className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.7fr_1.1fr_0.8fr_0.9fr_0.9fr] md:items-center px-5 py-[11px] border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
+                  className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.8fr_1.2fr_0.9fr_0.9fr] md:items-center px-5 py-[11px] border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
                 >
                   {/* Cliente */}
                   <div className="flex items-center gap-[11px] min-w-0">
@@ -360,11 +349,6 @@ function ClientsView({ leads, appUser, usersList }) {
                   {/* Vencimento */}
                   <div className="md:text-right text-[12px] tabular-nums text-slate-500 dark:text-neutral-400 whitespace-nowrap">
                     {endsAt ? endsAt.toLocaleDateString('pt-BR') : '—'}
-                  </div>
-
-                  {/* Contrato */}
-                  <div>
-                    <ContractStatusBadge status={st} />
                   </div>
                 </div>
               );
