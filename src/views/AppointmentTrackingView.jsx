@@ -75,23 +75,25 @@ function fmtAulaDateLine(d) {
   return `${day} · ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-// Nota do passe livre: usa só o CONTADOR de aulas configurado em Opções →
-// Regras gerais (trialClassOptions, ex.: 1/2/7/15), gravado por aula em
-// trialClassesPlanned. Sem validade por tempo — o schema não guarda isso e,
-// por decisão de produto, o passe é medido só pela quantidade de aulas.
-// Retorna null quando o agendamento não registrou quantidade.
-function getTrialPassNote(lead, attKey) {
-  const qty = Number(lead.trialClassesPlanned);
-  if (!Number.isFinite(qty) || qty <= 0) return null;
-  const used = attKey === 'attended' ? 1 : 0;
-  const remaining = qty - used;
-  if (remaining <= 0) {
-    return { text: 'passe concluído', cls: 'text-emerald-700 dark:text-emerald-400' };
-  }
-  const total = `${qty} ${qty === 1 ? 'aula' : 'aulas'}`;
+// Nota do passe livre: a quantidade configurada em Opções → Regras gerais
+// (trialClassOptions, ex.: 1/2/7/15) é a VALIDADE do passe em DIAS, gravada
+// por agendamento em trialClassesPlanned. Último dia válido = data da aula
+// marcada + (N-1) dias; a nota mostra o término e um contador regressivo pra
+// dar controle. Retorna null quando o agendamento não registrou a quantidade.
+function getTrialPassNote(lead) {
+  const days = Number(lead.trialClassesPlanned);
+  if (!Number.isFinite(days) || days <= 0) return null;
+  const d = getLeadAppointmentDate(lead);
+  if (!d) return null;
+  const endDay = new Date(startOfDay(d).getTime() + (days - 1) * DAY_MS);
+  const fmt = endDay.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+  const daysLeft = Math.round((endDay.getTime() - startOfDay(new Date()).getTime()) / DAY_MS);
+  if (daysLeft < 0) return { text: `passe expirou ${fmt}`, cls: 'text-rose-700 dark:text-rose-400' };
+  if (daysLeft === 0) return { text: 'passe termina hoje', cls: 'text-amber-700 dark:text-amber-400' };
+  const conta = daysLeft === 1 ? 'falta 1 dia' : `faltam ${daysLeft} dias`;
   return {
-    text: used > 0 ? `resta ${remaining} de ${total}` : total,
-    cls: 'text-slate-500 dark:text-neutral-400'
+    text: `até ${fmt} · ${conta}`,
+    cls: daysLeft <= 2 ? 'text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-neutral-400'
   };
 }
 
@@ -476,7 +478,7 @@ function AulasExperimentaisView({ leads, appUser, usersList }) {
                 const d = getLeadAppointmentDate(l);
                 const att = getApptAttendanceState(l);
                 const fin = getApptFinalState(l);
-                const pass = getTrialPassNote(l, att.key);
+                const pass = getTrialPassNote(l);
                 const isToday = isApptSameDay(d);
                 const isPending = att.key === 'pending';
                 const consultantFirst = (l.consultantName || '').trim().split(/\s+/)[0] || '';
