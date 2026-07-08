@@ -1,32 +1,47 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
 import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted } from '../lib/leads.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
-import { buildInteractionIndex } from '../lib/leadStatus.js';
-import { getKanbanColumnAccent, fmtKanbanRelDate, fmtKanbanRelDateTime } from '../lib/kanban.js';
+import { buildInteractionIndex, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
+import { getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from '../lib/kanban.js';
+import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
-import { KanbanAvatar } from '../components/ui/Avatar.jsx';
-import { FunnelSelector } from '../components/ui/FunnelSelector.jsx';
-import { TagBadge, LeadTemperatureBadge, DaysSinceContactBadge, FollowUpIcon } from '../components/ui/Badges.jsx';
+import { FollowUpIcon } from '../components/ui/Badges.jsx';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { MatriculaModal } from '../modals/MatriculaModal.jsx';
-import { Activity, AlertCircle, ArrowRightLeft, Ban, CheckCircle, Kanban, MessageCircle, Search, TrendingUp, Users } from 'lucide-react';
+import { AlertCircle, ArrowRightLeft, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp, Users } from 'lucide-react';
+import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
+
+// Avatar de iniciais compacto (card 22px / bubble 24px). O KanbanAvatar
+// derivaria a fonte do tamanho; o protótipo fixa 9px/9.5px weight 700.
+function InitialsAvatar({ name = '', size = 22, textSize = 9 }) {
+  const [bg, fg] = getKanbanAvatarPalette(name);
+  return (
+    <span
+      className="rounded-full grid place-items-center font-bold shrink-0"
+      style={{ width: size, height: size, background: bg, color: fg, fontSize: textSize }}
+    >
+      {getKanbanInitials(name)}
+    </span>
+  );
+}
 
 function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const toast = useToast();
   const { openProfile } = useLeadProfile();
   const [moveLead, setMoveLead] = useState(null); // lead com o menu "Mover" aberto (toque/teclado)
-  const [consultantFilter, setConsultantFilter] = useState('');
+  // Filtro de responsáveis multi-seleção: conjunto vazio = toda a equipe.
+  const [respFilter, setRespFilter] = useState([]);
+  const [onlyOverdue, setOnlyOverdue] = useState(false);
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
   // Lead aguardando matrícula no MatriculaModal (caminho de Venda do Kanban).
   const [matriculaLead, setMatriculaLead] = useState(null);
-  const [searchTerm, setSearchTerm] = useState('');
   const [draggingLeadId, setDraggingLeadId] = useState(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState(null);
-  const [onlyOverdue, setOnlyOverdue] = useState(false);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const kanbanScrollRef = useRef(null);
 const dragScrollRef = useRef({
@@ -37,42 +52,20 @@ const dragScrollRef = useRef({
 const [isPanning, setIsPanning] = useState(false);
 
   const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
-  const currentFunnel = useMemo(
-    () => (funnels || []).find(f => f.id === selectedFunnelId) || null,
-    [funnels, selectedFunnelId]
-  );
 
   const funnelLeads = useMemo(
     () => (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId)),
     [leads, selectedFunnelId, defaultFunnelId]
   );
 
-  // Escopo dos KPIs: aplica apenas o recorte "de quem" (filtro de
-  // consultor), NÃO os filtros de visualização do board (busca, "Em
-  // atraso"). Sem isso, ligar "Em atraso" — que exclui Venda/Perda —
-  // zerava os KPIs de Vendas/Perdas/Taxa, e buscar um nome distorcia
-  // os totais. Os KPIs refletem o pipeline (do consultor) inteiro.
-  const kpiScopeLeads = useMemo(() => {
-    if (!consultantFilter) return funnelLeads;
-    return funnelLeads.filter(l => l.consultantId === consultantFilter);
-  }, [funnelLeads, consultantFilter]);
-
   const kanbanLeads = useMemo(() => {
-    // Clientes (matriculados) saem do Kanban — vivem na aba Clientes. Opção 1:
-    // leads 'Venda' legados (isLeadConverted) TAMBÉM saem, mesmo sem contrato
+    // Clientes (matriculados) saem do Kanban — vivem na aba Clientes. Leads
+    // 'Venda' legados (isLeadConverted) TAMBÉM saem, mesmo sem contrato
     // registrado. A coluna "Venda" segue existindo só como alvo de conversão
-    // (arrastar/mover p/ lá abre o MatriculaModal). Os KPIs de Vendas usam
-    // kpiScopeLeads, então continuam contando os matriculados.
-    let filtered = kpiScopeLeads.filter(l => l.lifecycleStage !== 'cliente' && !isLeadConverted(l));
-    if (searchTerm) {
-      const lowerSearch = searchTerm.toLowerCase();
-      const searchDigits = searchTerm.replace(/\D/g, '');
-      filtered = filtered.filter(l =>
-        (l.name && l.name.toLowerCase().includes(lowerSearch)) ||
-        (l.whatsapp && (l.whatsapp.includes(searchTerm) ||
-          (searchDigits && String(l.whatsapp).replace(/\D/g, '').includes(searchDigits)))) ||
-        (l.observation && l.observation.toLowerCase().includes(lowerSearch))
-      );
+    // (arrastar/mover p/ lá abre o MatriculaModal).
+    let filtered = funnelLeads.filter(l => l.lifecycleStage !== 'cliente' && !isLeadConverted(l));
+    if (respFilter.length > 0) {
+      filtered = filtered.filter(l => respFilter.includes(l.consultantId));
     }
     if (onlyOverdue) {
       const now = new Date();
@@ -83,32 +76,36 @@ const [isPanning, setIsPanning] = useState(false);
       );
     }
     return filtered;
-  }, [kpiScopeLeads, searchTerm, onlyOverdue]);
-
-  const kanbanKpis = useMemo(() => {
-    const now = new Date();
-    const active = kpiScopeLeads.filter(l => l.status !== 'Venda' && l.status !== 'Perda');
-    const won = kpiScopeLeads.filter(l => l.status === 'Venda');
-    const lost = kpiScopeLeads.filter(l => l.status === 'Perda');
-    const overdue = active.filter(l =>
-      l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) && l.nextFollowUp < now
-    );
-    const winRate = (won.length + lost.length) > 0
-      ? Math.round((won.length / (won.length + lost.length)) * 100)
-      : 0;
-    return {
-      active: active.length,
-      won: won.length,
-      lost: lost.length,
-      overdue: overdue.length,
-      winRate
-    };
-  }, [kpiScopeLeads]);
+  }, [funnelLeads, respFilter, onlyOverdue]);
 
   // Índice leadId → { count, lastDate }. Percorre interactions UMA vez,
   // evitando que cada card refaça interactions.filter()/getLastInteraction
   // (era O(cards × interações) a cada render/drag).
   const interactionIndex = useMemo(() => buildInteractionIndex(interactions), [interactions]);
+
+  // ── Abas de funil: contagem por funil (mesmo recorte de funnelLeads) ──
+  const funnelCounts = useMemo(() => {
+    const map = new Map();
+    (funnels || []).forEach(f => {
+      map.set(f.id, (leads || []).filter(l => isItemInFunnel(l, f.id, defaultFunnelId)).length);
+    });
+    return map;
+  }, [funnels, leads, defaultFunnelId]);
+
+  // Bubble de filtros fecha em clique fora / Esc (o overflow "+N" das abas
+  // é tratado internamente pelo FunnelTabs).
+  const filterWrapRef = useRef(null);
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onPointerDown = (e) => { if (!filterWrapRef.current?.contains(e.target)) setFilterOpen(false); };
+    const onKeyDown = (e) => { if (e.key === 'Escape') setFilterOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [filterOpen]);
 
   const stopKanbanPan = () => {
   dragScrollRef.current.isDown = false;
@@ -307,6 +304,8 @@ if (!lead) return;
       });
   };
 
+  // Card compacto (uma linha): barra de accent da etapa à esquerda, nome +
+  // temperatura, estado do follow-up e avatar do consultor à direita.
   const renderLeadCard = (lead, columnColor = 'gray') => {
     const isWon = lead.status === 'Venda';
     const isLost = lead.status === 'Perda';
@@ -318,15 +317,13 @@ if (!lead) return;
     const isDraggingThis = draggingLeadId === lead.id;
     const accent = getKanbanColumnAccent(columnColor);
     const idxEntry = interactionIndex.get(lead.id);
-    const interactionCount = idxEntry?.count || 0;
+    const lastDate = idxEntry?.lastDate;
+    // Mesma lógica do LeadTemperatureBadge, em emoji compacto.
+    const isActiveLead = isLeadActive(lead);
+    const isHot = isActiveLead && isHotLeadFromDate(lead, lastDate);
+    const isCold = isActiveLead && !isHot && isColdLeadFromDate(lead, lastDate);
     const convertedAt = getSafeDateOrNull(lead.convertedAt);
-    let daysSince = null;
-    if (!isWon && !isLost) {
-      const last = idxEntry?.lastDate || lead.createdAt;
-      if (last instanceof Date && !isNaN(last.getTime())) {
-        daysSince = Math.max(0, Math.floor((Date.now() - last.getTime()) / 86400000));
-      }
-    }
+    const hasFollowUp = lead.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime());
 
     return (
       <article
@@ -336,131 +333,91 @@ if (!lead) return;
         onDragStart={(e) => handleDragStart(e, lead.id)}
         onDragEnd={handleDragEnd}
         onClick={() => openProfile(lead.id)}
-        style={{ borderTopColor: accent.border, borderTopWidth: 2 }}
-        className={`group relative rounded-xl border bg-white dark:bg-neutral-900 cursor-grab active:cursor-grabbing shadow-sm transition-all ${
+        className={cn(
+          'group relative flex items-center gap-2.5 rounded-[10px] bg-white dark:bg-neutral-900 border py-2.5 pr-2.5 pl-3 overflow-hidden cursor-grab active:cursor-grabbing transition-all',
           isDraggingThis
             ? 'opacity-80 z-50 shadow-xl border-brand-500'
-            : isOverdue
-              ? 'border-rose-200 dark:border-rose-500/20 hover:border-rose-300 dark:hover:border-rose-500/40 hover:shadow-md'
-              : 'border-gray-200 dark:border-neutral-800 hover:border-gray-300 dark:hover:border-neutral-700 hover:shadow-md'
-        }`}
+            : 'border-[#e8ecf3] dark:border-neutral-800 hover:border-brand-200 dark:hover:border-brand-500/40 hover:shadow-[0_3px_10px_-2px_rgba(15,23,42,.10)]'
+        )}
       >
-        <div className="absolute top-2 right-2 z-10">
-          <LeadTemperatureBadge lead={lead} lastInteractionDate={idxEntry?.lastDate} compact />
-        </div>
+        <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: accent.border }} />
 
-        <div className="p-3 pb-2.5">
-          <div className="flex items-start gap-2.5">
-            <KanbanAvatar name={lead.name || ''} size={32} />
-            <div className="min-w-0 flex-1 pr-14">
-              <div
-                className={`font-semibold text-[13.5px] leading-tight truncate ${
-                  isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white'
-                }`}
-                title={lead.name}
-              >
-                {lead.name}
-              </div>
-              <div
-                className="text-[11.5px] text-gray-500 dark:text-neutral-400 truncate"
-                style={{ fontVariantNumeric: 'tabular-nums' }}
-              >
-                {lead.whatsapp}
-              </div>
-            </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span
+              className={cn(
+                'text-[13px] font-semibold leading-[1.3] truncate',
+                isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white'
+              )}
+              title={lead.name}
+            >
+              {lead.name}
+            </span>
+            {isHot && (
+              <span className="text-[10px] shrink-0" title="Lead com atividade recente ou agendamento próximo" aria-label="Lead quente">🔥</span>
+            )}
+            {isCold && (
+              <span className="text-[10px] shrink-0" title="Lead sem interação há 7 dias ou mais" aria-label="Lead esfriando">❄️</span>
+            )}
           </div>
-
-          {(lead.tags || []).length > 0 && (
-            <div className="mt-2.5 flex flex-wrap gap-1">
-              {lead.tags.slice(0, 2).map(tagName => (
-                <TagBadge key={tagName} tagName={tagName} tagsArray={tags} />
-              ))}
-              {lead.tags.length > 2 && (
-                <span
-                  className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded-md bg-gray-100 text-gray-500 dark:bg-neutral-800 dark:text-neutral-400"
-                  title={lead.tags.slice(2).join(', ')}
-                >
-                  +{lead.tags.length - 2}
-                </span>
-              )}
-            </div>
-          )}
-
-          {(lead.source || interactionCount > 0) && (
-            <div className="mt-2.5 flex items-center gap-2 text-[11px] text-gray-500 dark:text-neutral-400 min-w-0">
-              {lead.source && (
-                <span className="inline-flex items-center gap-1 truncate" title={lead.source}>
-                  {lead.source}
-                </span>
-              )}
-              {lead.source && interactionCount > 0 && (
-                <span className="w-1 h-1 rounded-full bg-gray-300 dark:bg-neutral-700 shrink-0" />
-              )}
-              {interactionCount > 0 && (
-                <span
-                  className="inline-flex items-center gap-1 whitespace-nowrap shrink-0"
-                  style={{ fontVariantNumeric: 'tabular-nums' }}
-                >
-                  <MessageCircle className="w-3 h-3" /> {interactionCount}
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
-        <footer className="px-3 py-2 border-t border-gray-100 dark:border-neutral-800 flex items-center justify-between gap-2">
-          {isWon ? (
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 whitespace-nowrap min-w-0 truncate">
-              <CheckCircle className="w-3 h-3 shrink-0" />
-              Matriculado{convertedAt ? ` ${fmtKanbanRelDate(convertedAt)}` : ''}
-            </span>
-          ) : isLost ? (
-            <span
-              className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 dark:text-neutral-400 min-w-0 truncate"
-              title={lead.lossReason || 'Perdido'}
-            >
-              <Ban className="w-3 h-3 shrink-0" />
-              <span className="truncate">{lead.lossReason || 'Perdido'}</span>
-            </span>
-          ) : lead.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime()) ? (
-            <span
-              className={`inline-flex items-center gap-1.5 text-[11px] font-semibold whitespace-nowrap ${
-                isOverdue ? 'text-rose-600 dark:text-rose-300' : 'text-gray-600 dark:text-neutral-300'
-              }`}
-              style={{ fontVariantNumeric: 'tabular-nums' }}
-            >
-              <FollowUpIcon type={lead.nextFollowUpType} className="w-3 h-3" />
-              {fmtKanbanRelDateTime(lead.nextFollowUp)}
-            </span>
-          ) : daysSince !== null && daysSince >= 1 ? (
-            <DaysSinceContactBadge lead={lead} lastInteractionDate={idxEntry?.lastDate} />
-          ) : (
-            <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-amber-700 dark:text-amber-300 whitespace-nowrap">
-              <AlertCircle className="w-3 h-3" /> Sem agendamento
-            </span>
-          )}
-          <div className="flex items-center gap-1.5 shrink-0">
-            {lead.consultantName && (
-              <span title={`Consultor: ${lead.consultantName}`} className="shrink-0">
-                <KanbanAvatar name={lead.consultantName} size={20} />
+          <div className="mt-0.5 flex items-center text-[11px] whitespace-nowrap overflow-hidden">
+            {isWon ? (
+              <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">
+                <CheckCircle className="size-[11px] shrink-0" />
+                Matriculado{convertedAt ? ` ${fmtKanbanRelDate(convertedAt)}` : ''}
+              </span>
+            ) : isLost ? (
+              <span
+                className="inline-flex items-center gap-1 font-semibold text-slate-500 dark:text-neutral-400 min-w-0"
+                title={lead.lossReason || 'Perdido'}
+              >
+                <Ban className="size-[11px] shrink-0" />
+                <span className="truncate">{lead.lossReason || 'Perdido'}</span>
+              </span>
+            ) : hasFollowUp ? (
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 font-semibold tabular-nums',
+                  isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-neutral-300'
+                )}
+              >
+                <FollowUpIcon type={lead.nextFollowUpType} className="size-[11px] shrink-0" />
+                {fmtKanbanRelDateTime(lead.nextFollowUp)}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300">
+                <AlertCircle className="size-[11px] shrink-0" />
+                Sem agendamento
               </span>
             )}
-            <button
-              type="button"
-              data-no-pan="true"
-              onClick={(e) => { e.stopPropagation(); setMoveLead(lead); }}
-              title="Mover para outra etapa"
-              aria-label="Mover lead para outra etapa"
-              className="w-6 h-6 rounded-md grid place-items-center text-gray-400 hover:text-brand-600 hover:bg-brand-50 dark:text-neutral-500 dark:hover:text-brand-300 dark:hover:bg-brand-500/10 transition shrink-0"
-            >
-              <ArrowRightLeft className="w-3.5 h-3.5" />
-            </button>
           </div>
-        </footer>
+        </div>
+
+        {/* O protótipo omite o botão "Mover"; preservamos a função para
+            toque/teclado — aparece no hover (desktop) e sempre em telas
+            de toque (pointer-coarse). */}
+        <button
+          type="button"
+          data-no-pan="true"
+          onClick={(e) => { e.stopPropagation(); setMoveLead(lead); }}
+          title="Mover para outra etapa"
+          aria-label="Mover lead para outra etapa"
+          className="absolute right-9 top-1/2 -translate-y-1/2 size-6 rounded-md grid place-items-center bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 shadow-sm text-gray-400 hover:text-brand-600 hover:border-brand-200 dark:text-neutral-500 dark:hover:text-brand-300 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-opacity"
+        >
+          <ArrowRightLeft className="size-3" />
+        </button>
+
+        {lead.consultantName && (
+          <span title={`Consultor: ${lead.consultantName}`} className="shrink-0">
+            <InitialsAvatar name={lead.consultantName} size={22} textSize={9} />
+          </span>
+        )}
       </article>
     );
   };
 
+  // Coluna densa: sem card de fundo — header com régua na cor da etapa,
+  // cards em lista compacta com scroll interno.
   const renderKanbanColumn = ({ key, name, color, special, columnLeads, onDropHandler, renderLimit = 0 }) => {
     const accent = getKanbanColumnAccent(color);
     const isHovered = draggedOverColumn === name;
@@ -468,7 +425,7 @@ if (!lead) return;
     const isLossCol = special === 'loss';
     // Colunas terminais (Venda/Perda) acumulam histórico; renderizar
     // todos os cards trava o board. Mostra os mais recentes e indica
-    // quantos restam (acessíveis pela busca ou pelo Dashboard).
+    // quantos restam (acessíveis pela busca da tela de Leads).
     const shownLeads = renderLimit > 0 && columnLeads.length > renderLimit
       ? columnLeads.slice(0, renderLimit)
       : columnLeads;
@@ -497,47 +454,36 @@ if (!lead) return;
           setDraggingLeadId(null);
           onDropHandler(e);
         }}
-        className={`w-[300px] shrink-0 rounded-2xl flex flex-col transition-colors border ${
-          isHovered
-            ? 'bg-brand-50/60 dark:bg-brand-500/[0.06] ring-2 ring-brand-100 dark:ring-brand-500/30 border-brand-100 dark:border-brand-500/30'
-            : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800'
-        }`}
+        className={cn(
+          'w-[264px] shrink-0 flex flex-col max-h-full rounded-xl transition-colors',
+          isHovered && 'bg-brand-50/60 dark:bg-brand-500/[0.06] ring-2 ring-brand-100 dark:ring-brand-500/30'
+        )}
       >
-        <header className="px-3 pt-3 pb-2 border-b border-gray-100 dark:border-neutral-800 flex items-center gap-2">
-          {isWinCol ? (
-            <span className="w-5 h-5 rounded-md grid place-items-center bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 shrink-0">
-              <TrendingUp className="w-3 h-3" />
-            </span>
-          ) : isLossCol ? (
-            <span className="w-5 h-5 rounded-md grid place-items-center bg-gray-100 text-gray-500 dark:bg-neutral-800 dark:text-neutral-400 shrink-0">
-              <Ban className="w-3 h-3" />
-            </span>
-          ) : (
-            <span className={`w-2 h-2 rounded-full shrink-0 ${accent.dot}`} />
-          )}
-          <h3 className="text-[13px] font-semibold whitespace-nowrap text-gray-900 dark:text-white truncate" title={name}>
+        <header
+          className="px-0.5 pb-3 mb-3 flex items-center gap-2 border-b-2 shrink-0"
+          style={{ borderBottomColor: accent.border }}
+        >
+          <h3
+            className="text-[12px] font-bold uppercase tracking-[.05em] text-gray-700 dark:text-neutral-200 whitespace-nowrap truncate"
+            title={name}
+          >
             {name}
           </h3>
-          <span
-            className="text-[11px] font-semibold px-1.5 h-[18px] rounded-md grid place-items-center min-w-[20px] bg-gray-100 text-gray-600 dark:bg-neutral-800 dark:text-neutral-300 shrink-0"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-          >
+          <span className="text-[11px] font-semibold text-slate-400 dark:text-neutral-500 tabular-nums shrink-0">
             {columnLeads.length}
           </span>
+          {isWinCol && <TrendingUp className="ml-auto size-[13px] shrink-0 text-emerald-700 dark:text-emerald-400" />}
         </header>
 
-        <div className="flex-1 overflow-y-auto px-2 py-2 space-y-2 custom-scrollbar">
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5 pb-2 custom-scrollbar">
           {columnLeads.length === 0 ? (
             <div
-              className={`min-h-[120px] rounded-xl border-2 border-dashed grid place-items-center text-[11px] font-semibold uppercase tracking-wider transition text-center px-3 ${
+              className={cn(
+                'min-h-24 rounded-[10px] border-2 border-dashed grid place-items-center text-[10.5px] font-semibold uppercase tracking-[.06em] text-center px-3 transition-colors',
                 isHovered
                   ? 'border-brand-300 text-brand-600 dark:border-brand-500/40 dark:text-brand-300'
-                  : isWinCol
-                    ? 'border-emerald-200 text-emerald-600/70 dark:border-emerald-500/20 dark:text-emerald-300/60'
-                    : isLossCol
-                      ? 'border-rose-200 text-rose-600/70 dark:border-rose-500/20 dark:text-rose-300/60'
-                      : 'border-gray-200 text-gray-400 dark:border-neutral-800 dark:text-neutral-500'
-              }`}
+                  : 'border-slate-300 text-slate-400 dark:border-neutral-700 dark:text-neutral-500'
+              )}
             >
               {emptyText}
             </div>
@@ -545,8 +491,8 @@ if (!lead) return;
             <>
               {shownLeads.map(lead => renderLeadCard(lead, color))}
               {hiddenCount > 0 && (
-                <div className="py-2 text-center text-[11px] font-medium text-gray-400 dark:text-neutral-500">
-                  + {hiddenCount} {hiddenCount === 1 ? 'lead mais antigo' : 'leads mais antigos'} · use a busca para encontrar
+                <div className="py-1.5 text-center text-[11px] font-medium text-slate-400 dark:text-neutral-500">
+                  + {hiddenCount} {hiddenCount === 1 ? 'lead mais antigo' : 'leads mais antigos'} · use a busca
                 </div>
               )}
             </>
@@ -557,169 +503,181 @@ if (!lead) return;
   };
 
   const pipelineColumns = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
-  const kanbanTitle = currentFunnel?.name || 'Quadro Kanban';
-  const hasFunnels = (funnels || []).length > 0;
   const totalFunnelLeads = funnelLeads.length;
   const isAdmin = isAdminUser(appUser);
-  const isMineActive = !!(consultantFilter && appUser?.id && consultantFilter === appUser.id);
 
-  const kpiCards = [
-    { key: 'active',  icon: Users,       label: 'Leads ativos',         value: kanbanKpis.active,        sub: 'no pipeline',              tone: 'slate' },
-    { key: 'won',     icon: TrendingUp,  label: 'Vendas',               value: kanbanKpis.won,           sub: 'matrículas',               tone: 'emerald' },
-    { key: 'lost',    icon: Ban,         label: 'Perdas',               value: kanbanKpis.lost,          sub: 'motivos em relatórios',    tone: 'slate' },
-    { key: 'overdue', icon: AlertCircle, label: 'Em atraso',            value: kanbanKpis.overdue,       sub: 'follow-ups vencidos',      tone: kanbanKpis.overdue > 0 ? 'rose' : 'slate' },
-    { key: 'rate',    icon: Activity,    label: 'Taxa de fechamento',   value: `${kanbanKpis.winRate}%`, sub: 'vendas / (vendas + perdas)', tone: 'blue' }
-  ];
+  const hasActiveFilters = respFilter.length > 0 || onlyOverdue;
+  const activeFilterCount = respFilter.length + (onlyOverdue ? 1 : 0);
 
-  const kpiToneStyles = {
-    slate:   'bg-gray-100 text-gray-600 dark:bg-neutral-800 dark:text-neutral-300',
-    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
-    blue:    'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300',
-    rose:    'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300'
+  // Resumo à esquerda do botão de filtro: sem filtros mostra "X de Y leads";
+  // com filtros, o recorte ativo ("Ana · Em atraso", "2 responsáveis"...).
+  const filterSummary = useMemo(() => {
+    if (!hasActiveFilters) return `${kanbanLeads.length} de ${totalFunnelLeads} leads`;
+    const parts = [];
+    if (respFilter.length === 1) {
+      const user = (usersList || []).find(u => u.id === respFilter[0]);
+      parts.push(user?.name || '1 responsável');
+    } else if (respFilter.length > 1) {
+      parts.push(`${respFilter.length} responsáveis`);
+    }
+    if (onlyOverdue) parts.push('Em atraso');
+    return parts.join(' · ');
+  }, [hasActiveFilters, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
+
+  const toggleResp = (id) => {
+    setRespFilter(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+  };
+
+  const clearFilters = () => {
+    setRespFilter([]);
+    setOnlyOverdue(false);
   };
 
   return (
     <>
-      <div className="h-[calc(100vh-10rem)] flex flex-col animate-fade-in">
-        {/* Title + funnel selector */}
-        <div className="flex items-center gap-4 flex-wrap mb-4">
-          <div>
-            <h3 className="font-display text-lg font-semibold text-gray-900 dark:text-white tracking-tight">
-              {kanbanTitle}
-            </h3>
-            <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-1">
-              Arraste os leads entre as etapas. Use as colunas{' '}
-              <span className="font-semibold text-emerald-700 dark:text-emerald-300">Venda</span> e{' '}
-              <span className="font-semibold text-gray-700 dark:text-neutral-200">Perda</span> para concluir.
-            </p>
-          </div>
-          {hasFunnels && (
-            <FunnelSelector
-              funnels={funnels}
-              value={selectedFunnelId}
-              onChange={setSelectedFunnelId}
-              className="w-full md:w-[280px]"
-            />
-          )}
-        </div>
+      {/* Full-bleed: cancela o padding do container p/ o header da página
+          colar no header global e o board correr de borda a borda. */}
+      <div className="-m-4 md:-m-8 h-[calc(100vh-4rem)] flex flex-col animate-fade-in">
+        {/* Linha de header da página: abas de funil + resumo + filtro único */}
+        <div className="h-16 shrink-0 relative z-20 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 flex items-center gap-3 md:gap-5 px-4 md:px-7">
+          <FunnelTabs
+            funnels={funnels}
+            counts={funnelCounts}
+            selectedId={selectedFunnelId}
+            onSelect={setSelectedFunnelId}
+          />
 
-        {/* KPI strip */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-5 gap-3 mb-4">
-          {kpiCards.map((card) => {
-            const KpiIcon = card.icon;
-            return (
-              <div
-                key={card.key}
-                className="rounded-xl border border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-3.5 flex items-center gap-3"
-              >
-                <span className={`w-9 h-9 rounded-lg grid place-items-center shrink-0 ${kpiToneStyles[card.tone]}`}>
-                  <KpiIcon className="w-4 h-4" />
+          <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
+            <span className="font-semibold text-gray-700 dark:text-neutral-200">{filterSummary}</span>
+          </div>
+
+          <div ref={filterWrapRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setFilterOpen(o => !o)}
+              title="Filtros"
+              aria-haspopup="dialog"
+              aria-expanded={filterOpen}
+              className={cn(
+                'relative size-[38px] rounded-[11px] border grid place-items-center transition-colors',
+                hasActiveFilters
+                  ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-300'
+                  : 'bg-paper-50 border-slate-200 text-gray-600 hover:border-brand-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-brand-500/40'
+              )}
+            >
+              <SlidersHorizontal className="size-[17px]" />
+              {hasActiveFilters && (
+                <span className="absolute -top-[5px] -right-[5px] min-w-4 h-4 px-1 rounded-full bg-accent-500 text-white text-[9.5px] font-bold grid place-items-center ring-2 ring-white dark:ring-neutral-900 tabular-nums">
+                  {activeFilterCount}
                 </span>
-                <div className="min-w-0">
-                  <div className="text-[11px] font-medium text-gray-500 dark:text-neutral-400 whitespace-nowrap truncate">
-                    {card.label}
-                  </div>
-                  <div
-                    className="text-[18px] font-semibold tracking-tight leading-none mt-0.5 text-gray-900 dark:text-white"
-                    style={{ fontVariantNumeric: 'tabular-nums' }}
+              )}
+            </button>
+
+            {filterOpen && (
+              <div className="absolute right-0 top-[46px] w-[264px] rounded-[14px] bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-700 shadow-[0_16px_40px_-8px_rgba(14,26,64,.22)] overflow-hidden z-30">
+                <div className="px-3.5 pt-3 pb-2.5 flex items-center justify-between border-b border-slate-100 dark:border-white/10">
+                  <span className="text-[12.5px] font-bold text-gray-900 dark:text-white">Filtros</span>
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="text-[11.5px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
                   >
-                    {card.value}
+                    Limpar
+                  </button>
+                </div>
+
+                {/* Consultor (não-admin) só vê os próprios leads — sem seção Responsável. */}
+                {isAdmin && (
+                  <div className="pt-2.5 px-2 pb-1">
+                    <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
+                      Responsável
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setRespFilter([])}
+                      className={cn(
+                        'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
+                        respFilter.length === 0 ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
+                      )}
+                    >
+                      <span className="size-6 rounded-full grid place-items-center bg-paper-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400 shrink-0">
+                        <Users className="size-[13px]" />
+                      </span>
+                      <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', respFilter.length === 0 ? 'font-bold' : 'font-medium')}>
+                        Toda a equipe
+                      </span>
+                      {respFilter.length === 0 && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                    </button>
+                    {(usersList || []).map(u => {
+                      const selected = respFilter.includes(u.id);
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => toggleResp(u.id)}
+                          className={cn(
+                            'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
+                            selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
+                          )}
+                        >
+                          <InitialsAvatar name={u.name} size={24} textSize={9.5} />
+                          <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', selected ? 'font-bold' : 'font-medium')}>
+                            {u.name}
+                          </span>
+                          {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="text-[11px] text-gray-500 dark:text-neutral-400 mt-0.5 truncate">
-                    {card.sub}
-                  </div>
+                )}
+
+                {isAdmin && <div className="mx-3.5 mt-1.5 border-t border-slate-100 dark:border-white/10" />}
+
+                <div className="px-3.5 pt-2.5 pb-3.5">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={onlyOverdue}
+                    onClick={() => setOnlyOverdue(o => !o)}
+                    className="w-full flex items-center justify-between gap-2.5"
+                  >
+                    <span className="inline-flex items-center gap-2 text-[12.5px] font-semibold text-gray-900 dark:text-white">
+                      <AlertCircle className={cn('size-3.5', onlyOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-400 dark:text-neutral-500')} />
+                      Somente em atraso
+                    </span>
+                    <span
+                      className={cn(
+                        'relative w-[34px] h-5 rounded-full transition-colors duration-150 shrink-0',
+                        onlyOverdue ? 'bg-brand-600' : 'bg-slate-300 dark:bg-neutral-700'
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          'absolute top-0.5 size-4 rounded-full bg-white shadow-[0_1px_3px_rgba(15,23,42,.3)] transition-[left] duration-150',
+                          onlyOverdue ? 'left-4' : 'left-0.5'
+                        )}
+                      />
+                    </span>
+                  </button>
                 </div>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Toolbar */}
-        <div className="flex items-center gap-2 flex-wrap mb-4">
-          <div className="relative flex-1 min-w-[240px] max-w-md">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-neutral-500 pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Buscar lead, telefone ou observação..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full h-10 rounded-lg bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 focus:border-brand-500 dark:focus:border-brand-500 outline-none text-sm pl-9 pr-3 placeholder:text-gray-400 dark:placeholder:text-neutral-500 text-gray-900 dark:text-white shadow-sm transition-all"
-            />
-          </div>
-
-          {isAdmin && (
-            <select
-              value={consultantFilter}
-              onChange={(e) => setConsultantFilter(e.target.value)}
-              className="h-10 rounded-lg bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 outline-none text-sm pl-3 pr-8 text-gray-900 dark:text-white shadow-sm cursor-pointer font-medium"
-            >
-              <option value="">Todos os consultores</option>
-              {(usersList || []).map(u => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
-            </select>
-          )}
-
-          {isAdmin && appUser?.id && (
-            <div className="inline-flex p-1 rounded-lg bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-800 shadow-sm">
-              <button
-                type="button"
-                onClick={() => setConsultantFilter('')}
-                className={`h-7 px-3 rounded-md text-[12px] font-semibold whitespace-nowrap transition ${
-                  !isMineActive
-                    ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
-                    : 'text-gray-500 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-white'
-                }`}
-              >
-                Toda equipe
-              </button>
-              <button
-                type="button"
-                onClick={() => setConsultantFilter(appUser.id)}
-                className={`h-7 px-3 rounded-md text-[12px] font-semibold whitespace-nowrap transition ${
-                  isMineActive
-                    ? 'bg-gray-900 text-white dark:bg-white dark:text-gray-900'
-                    : 'text-gray-500 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-white'
-                }`}
-              >
-                Apenas meus
-              </button>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setOnlyOverdue(o => !o)}
-            className={`h-10 px-3 rounded-lg text-[12.5px] font-semibold whitespace-nowrap transition inline-flex items-center gap-1.5 shadow-sm ${
-              onlyOverdue
-                ? 'bg-rose-600 text-white border border-rose-600'
-                : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200 dark:bg-neutral-900 dark:text-neutral-200 dark:border-neutral-800 dark:hover:bg-neutral-800'
-            }`}
-          >
-            <AlertCircle className="w-3.5 h-3.5" /> Em atraso
-          </button>
-
-          <div className="flex-1" />
-
-          <div
-            className="text-[11.5px] text-gray-500 dark:text-neutral-400 whitespace-nowrap"
-            style={{ fontVariantNumeric: 'tabular-nums' }}
-          >
-            <span className="font-semibold text-gray-700 dark:text-neutral-200">{kanbanLeads.length}</span>{' '}
-            de {totalFunnelLeads} leads
+            )}
           </div>
         </div>
 
-        {/* Board */}
+        {/* Board denso */}
         <div
           ref={kanbanScrollRef}
           onMouseDown={handleKanbanMouseDown}
           onMouseMove={handleKanbanMouseMove}
           onMouseUp={stopKanbanPan}
           onMouseLeave={stopKanbanPan}
-          className={`flex-1 overflow-x-auto overflow-y-hidden custom-scrollbar select-none ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+          className={cn(
+            'flex-1 min-h-0 overflow-x-auto overflow-y-hidden custom-scrollbar select-none px-4 md:px-7 pt-5 pb-6',
+            isPanning ? 'cursor-grabbing' : 'cursor-grab'
+          )}
         >
-          <div className="flex gap-3 min-w-max h-full pb-2">
+          <div className="flex gap-6 min-w-max h-full">
             {pipelineColumns.map((column) =>
               renderKanbanColumn({
                 key: column.id,

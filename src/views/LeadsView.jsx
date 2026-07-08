@@ -1,119 +1,114 @@
-import { useState, useEffect, useMemo, useDeferredValue } from 'react';
-import { AlertCircle, Check, Clock, Download, Filter, Phone, Plus, Search, Tag, Users, X } from 'lucide-react';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { AlertCircle, Calendar, Check, Download, Phone, SlidersHorizontal, Users, X } from 'lucide-react';
 import { isAdminUser } from '../lib/leads.js';
 import { LIST_PAGE_SIZE, buildInteractionIndex, isHotLeadFromDate } from '../lib/leadStatus.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
+import { getKanbanColumnAccent } from '../lib/kanban.js';
+import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
-import { FunnelSelector } from '../components/ui/FunnelSelector.jsx';
-import { StatPill } from '../components/ui/StatPill.jsx';
-import { StatusBadge, LeadTemperatureBadge, DaysSinceContactBadge, FollowUpIcon } from '../components/ui/Badges.jsx';
+import { StatusBadge } from '../components/ui/Badges.jsx';
+import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 
-function ActiveFilterChip({ label, onRemove, accent = 'slate' }) {
-  const tones = {
-    brand:   'bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300',
-    amber:   'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
-    rose:    'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
-    emerald: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
-    slate:   'bg-slate-100 text-slate-700 dark:bg-white/[0.06] dark:text-slate-200'
-  };
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2 h-7 rounded-md text-[11.5px] font-medium ${tones[accent] || tones.slate}`}>
-      {label}
-      <button
-        type="button"
-        onClick={onRemove}
-        className="opacity-60 hover:opacity-100 transition"
-        title="Remover filtro"
-      >
-        <X size={11} />
-      </button>
-    </span>
-  );
-}
+// Cor da etapa (para chip de fase e dot). Venda/Perda mapeiam para os mesmos
+// tokens usados no Kanban; as demais vêm da cor configurada da etapa.
+const statusColorOf = (name, statuses) =>
+  name === 'Venda' ? 'green'
+    : name === 'Perda' ? 'gray'
+      : (statuses || []).find(s => s.name === name)?.color || 'gray';
 
-function LeadsView({ leads, interactions, appUser, statuses, usersList, funnels, selectedFunnelId, setSelectedFunnelId, onAddLeadClick }) {
+function LeadsView({ leads, interactions, appUser, statuses, usersList, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const toast = useToast();
   const { openProfile } = useLeadProfile();
-  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const isAdmin = isAdminUser(appUser);
+
+  const [filterOpen, setFilterOpen] = useState(false);
   const [statusFilters, setStatusFilters] = useState([]);
   const [consultantFilters, setConsultantFilters] = useState([]);
   const [overdueOnly, setOverdueOnly] = useState(false);
   const [hotOnly, setHotOnly] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
-  // O AddLeadModal mora no App-level. O botão local apenas dispara o
-  // callback `onAddLeadClick` recebido por prop.
 
   const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
-  const hasFunnels = (funnels || []).length > 0;
 
-  // Quando o funil ativo muda, limpamos filtros de status para evitar listar etapas inexistentes
+  // Ao trocar de funil, limpa o filtro de fase (as etapas mudam).
   useEffect(() => {
     setStatusFilters([]);
   }, [selectedFunnelId]);
 
-  // Índice leadId -> última interação, construído uma vez (O(interações)).
-  // Alimenta o filtro "Apenas Hot" e os badges da tabela sem recomputar
-  // interactions.filter() por linha (era O(leads × interações) a cada tecla).
+  // Bubble de filtros fecha em clique fora / Esc (mesmo padrão das outras telas).
+  const filterWrapRef = useRef(null);
+  useEffect(() => {
+    if (!filterOpen) return;
+    const onPointerDown = (e) => { if (!filterWrapRef.current?.contains(e.target)) setFilterOpen(false); };
+    const onKeyDown = (e) => { if (e.key === 'Escape') setFilterOpen(false); };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [filterOpen]);
+
+  // Índice leadId → última interação (O(interações)); alimenta o filtro "hot"
+  // e o 🔥 da tabela sem recomputar interactions.filter() por linha.
   const interactionIndex = useMemo(() => buildInteractionIndex(interactions), [interactions]);
 
-  // Busca deferida: o input atualiza na hora (searchTerm), mas a filtragem
-  // pesada da base roda sobre o valor deferido — o React mantém a digitação
-  // fluida e refiltra quando sobra tempo, sem debounce manual/timeout.
-  const deferredSearch = useDeferredValue(searchTerm);
-
+  // Filtragem 100% pela bubble (sem busca textual — removida no redesign 6a).
   const filteredLeads = useMemo(() => {
-    const lowerSearch = deferredSearch.toLowerCase();
-    const searchDigits = deferredSearch.replace(/\D/g, '');
     return (leads || []).filter(l => {
       const matchFunnel = isItemInFunnel(l, selectedFunnelId, defaultFunnelId);
-      const matchSearch =
-        (l.name || '').toLowerCase().includes(lowerSearch) ||
-        (l.whatsapp || '').includes(deferredSearch) ||
-        (searchDigits && String(l.whatsapp || '').replace(/\D/g, '').includes(searchDigits));
       const matchStatus = statusFilters.length === 0 || statusFilters.includes(l.status);
       const matchConsultant = consultantFilters.length === 0 || consultantFilters.includes(l.consultantId);
       const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
       const matchOverdue = !overdueOnly || isOverdue;
       const matchHot = !hotOnly || isHotLeadFromDate(l, interactionIndex.get(l.id)?.lastDate);
-      return matchFunnel && matchSearch && matchStatus && matchOverdue && matchConsultant && matchHot;
-    }).sort((a,b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
-  }, [leads, interactionIndex, deferredSearch, statusFilters, overdueOnly, hotOnly, consultantFilters, selectedFunnelId, defaultFunnelId]);
+      return matchFunnel && matchStatus && matchOverdue && matchConsultant && matchHot;
+    }).sort((a, b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
+  }, [leads, interactionIndex, statusFilters, overdueOnly, hotOnly, consultantFilters, selectedFunnelId, defaultFunnelId]);
 
-  // Paginação "carregar mais": renderiza só os primeiros visibleCount leads.
-  // O usuário expande sob demanda; ao estreitar a busca/filtros a lista
-  // encolhe sozinha (slice de um conjunto menor), mantendo o DOM leve sem
-  // precisar resetar estado num efeito.
   const visibleLeads = filteredLeads.slice(0, visibleCount);
+
+  // Contagem por funil (pill das abas).
+  const funnelCounts = useMemo(() => {
+    const map = new Map();
+    (funnels || []).forEach(f => map.set(f.id, (leads || []).filter(l => isItemInFunnel(l, f.id, defaultFunnelId)).length));
+    return map;
+  }, [funnels, leads, defaultFunnelId]);
+
+  const baseLeads = useMemo(
+    () => (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId)),
+    [leads, selectedFunnelId, defaultFunnelId]
+  );
 
   const toggleStatus = (s) => setStatusFilters(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
   const toggleConsultant = (id) => setConsultantFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const statusesForFunnel = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
-  const allStatuses = [...statusesForFunnel.map(s=>s.name), 'Venda', 'Perda'];
+  const phaseOptions = [...statusesForFunnel.map(s => s.name), 'Venda', 'Perda'];
 
-  // EXPORTAÇÃO CSV
+  const filterCount = statusFilters.length + consultantFilters.length + (overdueOnly ? 1 : 0) + (hotOnly ? 1 : 0);
+  const hasActiveFilters = filterCount > 0;
+  const clearAllFilters = () => { setStatusFilters([]); setConsultantFilters([]); setOverdueOnly(false); setHotOnly(false); };
+
+  // EXPORTAÇÃO CSV — respeita os filtros aplicados.
   const exportToCSV = () => {
     if (!filteredLeads || filteredLeads.length === 0) {
-      toast.warning("Não há leads para exportar com os filtros atuais.");
+      toast.warning('Não há leads para exportar com os filtros atuais.');
       return;
     }
-    
-    // Sanitiza cada célula: escapa aspas (em TODOS os campos) e neutraliza
-    // fórmulas (CSV injection) — um valor começando com = + - @ tab/CR seria
-    // executado pelo Excel/Sheets ao abrir o arquivo. Tudo entre aspas.
+    // Sanitiza cada célula: escapa aspas e neutraliza fórmulas (CSV injection) —
+    // um valor começando com = + - @ tab/CR seria executado pelo Excel/Sheets.
     const csvCell = (value) => {
       let s = String(value ?? '');
       if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
       return `"${s.replace(/"/g, '""')}"`;
     };
-    // Separador ';' — o Excel em pt-BR usa ponto-e-vírgula como separador de
-    // lista; com vírgula o arquivo abriria tudo numa coluna só.
+    // Separador ';' — o Excel pt-BR usa ponto-e-vírgula como separador de lista.
     const SEP = ';';
-    const headers = ["Nome", "WhatsApp", "Origem", "Fase do Funil", "Consultor", "Data Cadastro", "Observação", "Motivo Perda"];
+    const headers = ['Nome', 'WhatsApp', 'Origem', 'Fase do Funil', 'Consultor', 'Data Cadastro', 'Observação', 'Motivo Perda'];
     const csvRows = filteredLeads.map(l => [
       l.name, l.whatsapp, l.source, l.status, l.consultantName,
       l.createdAt ? l.createdAt.toLocaleDateString('pt-BR') : '',
@@ -121,265 +116,263 @@ function LeadsView({ leads, interactions, appUser, statuses, usersList, funnels,
     ].map(csvCell).join(SEP));
 
     const csvContent = [headers.map(csvCell).join(SEP), ...csvRows].join('\r\n');
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }); // \uFEFF força o Excel a ler UTF-8
-    const link = document.createElement("a");
+    const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM força o Excel a ler UTF-8
+    const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `leads_stronix_${new Date().toISOString().slice(0,10)}.csv`);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `leads_stronix_${new Date().toISOString().slice(0, 10)}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Counts for hero stat pills.
-  const baseLeads = (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId));
-  const totalLeads = baseLeads.length;
-  const ativos = baseLeads.filter(l => l.status !== 'Venda' && l.status !== 'Perda').length;
-  const overdueCount = baseLeads.filter(l => l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date()).length;
-  const vendas = baseLeads.filter(l => l.status === 'Venda').length;
-
-  const filterCount = statusFilters.length + consultantFilters.length + (overdueOnly ? 1 : 0) + (hotOnly ? 1 : 0);
-  const clearAllFilters = () => { setStatusFilters([]); setConsultantFilters([]); setOverdueOnly(false); setHotOnly(false); };
+  // Chips de filtros ativos (removem individualmente).
+  const activeChips = [];
+  if (hotOnly) activeChips.push({ key: 'hot', label: '🔥 Hot leads', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', remove: () => setHotOnly(false) });
+  if (overdueOnly) activeChips.push({ key: 'overdue', label: 'Em atraso', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300', remove: () => setOverdueOnly(false) });
+  statusFilters.forEach(s => activeChips.push({ key: `st:${s}`, label: s, cls: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300', remove: () => toggleStatus(s) }));
+  consultantFilters.forEach(id => {
+    const u = (usersList || []).find(x => x.id === id);
+    activeChips.push({ key: `co:${id}`, label: u?.name || id, cls: 'bg-slate-100 text-gray-700 dark:bg-white/[0.06] dark:text-neutral-200', remove: () => toggleConsultant(id) });
+  });
 
   return (
-    <div className="h-full flex flex-col space-y-4 animate-fade-in relative font-sans">
-      {/* Page hero */}
-      <section className="flex items-end justify-between gap-4 flex-wrap">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
-            <Users size={13} className="text-brand-600" /> Base de leads
-          </div>
-          <h2 className="mt-1.5 font-display text-[24px] font-semibold tracking-tight leading-tight">
-            Todos os leads
-          </h2>
-          <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
-            Pesquise, filtre e gerencie toda a sua base em um só lugar.
-          </p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <StatPill label="Total" value={totalLeads} accent="brand" />
-          <StatPill label="Ativos" value={ativos} accent="amber" />
-          <StatPill label="Em atraso" value={overdueCount} accent="rose" />
-          <StatPill label="Vendas" value={vendas} accent="emerald" />
-        </div>
-      </section>
+    <div className="-m-4 md:-m-8 h-[calc(100vh-4rem)] flex flex-col animate-fade-in">
+      {/* Header da página: abas de funil + resumo + exportar + filtro */}
+      <div className="h-16 shrink-0 relative z-20 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 flex items-center gap-3 md:gap-5 px-4 md:px-7">
+        <FunnelTabs funnels={funnels} counts={funnelCounts} selectedId={selectedFunnelId} onSelect={setSelectedFunnelId} />
 
-      {/* Toolbar */}
-      <div className="rounded-2xl border border-border bg-card shadow-card p-3 flex flex-col md:flex-row gap-2 items-stretch md:items-center">
-        {hasFunnels && (
-          <FunnelSelector
-            funnels={funnels}
-            value={selectedFunnelId}
-            onChange={setSelectedFunnelId}
-            variant="soft"
-            className="w-full md:w-[220px]"
-          />
-        )}
-        <div className="relative flex-1 group">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 group-focus-within:text-brand-600 transition pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Buscar por nome ou telefone..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full h-10 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] pl-9 pr-3 placeholder:text-slate-400 transition"
-          />
+        <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
+          <span className="font-semibold text-gray-700 dark:text-neutral-200">{filteredLeads.length}</span> de {baseLeads.length} leads
         </div>
-        <div className="flex items-center gap-2">
-          <Btn kind="secondary" icon={<Download size={13} />} onClick={exportToCSV}>Exportar</Btn>
-          <Btn
-            kind={filterCount > 0 ? 'primary' : 'soft'}
-            icon={<Filter size={13} />}
-            onClick={() => setIsFilterOpen(true)}
+
+        <button
+          type="button"
+          onClick={exportToCSV}
+          title="Exportar CSV"
+          aria-label="Exportar CSV"
+          className="size-[38px] rounded-[11px] border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-gray-600 dark:text-neutral-300 grid place-items-center shrink-0 transition-colors hover:border-brand-200 hover:text-brand-700 dark:hover:border-brand-500/40 dark:hover:text-brand-300"
+        >
+          <Download className="size-4" />
+        </button>
+
+        <div ref={filterWrapRef} className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => setFilterOpen(o => !o)}
+            title="Filtros"
+            aria-haspopup="dialog"
+            aria-expanded={filterOpen}
+            className={cn(
+              'relative size-[38px] rounded-[11px] border grid place-items-center transition-colors',
+              hasActiveFilters
+                ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-300'
+                : 'bg-paper-50 border-slate-200 text-gray-600 hover:border-brand-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-brand-500/40'
+            )}
           >
-            Filtros{filterCount > 0 ? ` (${filterCount})` : ''}
-          </Btn>
-          <Btn kind="brand" icon={<Plus size={13} />} onClick={() => onAddLeadClick && onAddLeadClick()}>Novo lead</Btn>
+            <SlidersHorizontal className="size-[17px]" />
+            {hasActiveFilters && (
+              <span className="absolute -top-[5px] -right-[5px] min-w-4 h-4 px-1 rounded-full bg-accent-500 text-white text-[9.5px] font-bold grid place-items-center ring-2 ring-white dark:ring-neutral-900 tabular-nums">
+                {filterCount}
+              </span>
+            )}
+          </button>
+
+          {filterOpen && (
+            <div className="absolute right-0 top-[46px] w-[280px] rounded-[14px] bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-700 shadow-[0_16px_40px_-8px_rgba(14,26,64,.22)] overflow-hidden z-30">
+              <div className="px-3.5 pt-3 pb-2.5 flex items-center justify-between border-b border-slate-100 dark:border-white/10">
+                <span className="text-[12.5px] font-bold text-gray-900 dark:text-white">Filtros</span>
+                <button
+                  type="button"
+                  onClick={clearAllFilters}
+                  className="text-[11.5px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
+                >
+                  Limpar
+                </button>
+              </div>
+
+              <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
+                {/* Situação */}
+                <div className="pt-2.5 px-2 pb-1">
+                  <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">Situação</div>
+                  <button
+                    type="button"
+                    onClick={() => setHotOnly(v => !v)}
+                    className={cn('w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors', hotOnly ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5')}
+                  >
+                    <span className="size-6 rounded-full grid place-items-center bg-accent-50 dark:bg-accent-500/15 text-[12px] shrink-0">🔥</span>
+                    <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white', hotOnly ? 'font-bold' : 'font-medium')}>Apenas hot leads</span>
+                    {hotOnly && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setOverdueOnly(v => !v)}
+                    className={cn('w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors', overdueOnly ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5')}
+                  >
+                    <span className="size-6 rounded-full grid place-items-center bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 shrink-0"><AlertCircle className="size-[13px]" /></span>
+                    <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white', overdueOnly ? 'font-bold' : 'font-medium')}>Somente em atraso</span>
+                    {overdueOnly && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                  </button>
+                </div>
+
+                <div className="mx-3.5 my-1.5 border-t border-slate-100 dark:border-white/10" />
+
+                {/* Fase do funil */}
+                <div className="px-2 pb-1">
+                  <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">Fase do funil</div>
+                  <div className="flex flex-wrap gap-[5px] px-1.5 pb-2">
+                    {phaseOptions.map(s => {
+                      const selected = statusFilters.includes(s);
+                      const hex = getKanbanColumnAccent(statusColorOf(s, statuses)).border;
+                      return (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => toggleStatus(s)}
+                          style={selected ? { backgroundColor: `${hex}22`, color: hex, borderColor: 'transparent' } : undefined}
+                          className={cn(
+                            'h-[26px] px-2.5 rounded-full border text-[11.5px] font-semibold whitespace-nowrap transition-colors',
+                            !selected && 'bg-white dark:bg-neutral-900 border-slate-200 dark:border-neutral-700 text-slate-500 dark:text-neutral-400 hover:border-brand-200'
+                          )}
+                        >
+                          {s}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Responsável (admin) */}
+                {isAdmin && (usersList || []).length > 0 && (
+                  <>
+                    <div className="mx-3.5 my-1 border-t border-slate-100 dark:border-white/10" />
+                    <div className="px-2 pt-1.5 pb-3">
+                      <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">Responsável</div>
+                      {(usersList || []).map(u => {
+                        const selected = consultantFilters.includes(u.id);
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => toggleConsultant(u.id)}
+                            className={cn('w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors', selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5')}
+                          >
+                            <Avatar name={u.name} size={24} />
+                            <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', selected ? 'font-bold' : 'font-medium')}>{u.name}</span>
+                            {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Active filter chips */}
-      {filterCount > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mr-1">Filtros ativos</span>
-          {hotOnly && <ActiveFilterChip label="🔥 Hot leads" onRemove={() => setHotOnly(false)} accent="amber" />}
-          {overdueOnly && <ActiveFilterChip label="Em atraso" onRemove={() => setOverdueOnly(false)} accent="rose" />}
-          {statusFilters.map(s => (
-            <ActiveFilterChip key={s} label={s} onRemove={() => toggleStatus(s)} accent="brand" />
+      {/* Chips de filtros ativos */}
+      {hasActiveFilters && (
+        <div className="shrink-0 px-4 md:px-7 pt-3 flex flex-wrap items-center gap-1.5">
+          {activeChips.map(c => (
+            <span key={c.key} className={cn('inline-flex items-center gap-1.5 h-[26px] pl-2.5 pr-2 rounded-full text-[11.5px] font-semibold', c.cls)}>
+              {c.label}
+              <button type="button" onClick={c.remove} title="Remover filtro" className="opacity-60 hover:opacity-100 transition-opacity grid place-items-center">
+                <X className="size-[11px]" strokeWidth={2.6} />
+              </button>
+            </span>
           ))}
-          {consultantFilters.map(id => {
-            const u = (usersList || []).find(x => x.id === id);
-            return (
-              <ActiveFilterChip key={id} label={u?.name || id} onRemove={() => toggleConsultant(id)} />
-            );
-          })}
           <button
             type="button"
             onClick={clearAllFilters}
-            className="text-[11.5px] font-medium text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white ml-1 whitespace-nowrap"
+            className="text-[11.5px] font-semibold text-slate-500 hover:text-gray-900 dark:text-neutral-400 dark:hover:text-white px-1 whitespace-nowrap"
           >
             Limpar tudo
           </button>
         </div>
       )}
 
-      {/* Results count */}
-      <div className="text-[12.5px] text-slate-500 dark:text-slate-400">
-        Exibindo <span className="num font-semibold text-slate-700 dark:text-slate-200">{visibleLeads.length}</span> de <span className="num">{filteredLeads.length}</span> leads
-      </div>
-
-      {/* Table */}
-      <div className="rounded-2xl border border-border bg-card shadow-card overflow-hidden flex-1">
-        <div className="overflow-x-auto h-full thin-scroll">
-          <table className="w-full text-left min-w-[950px]">
-            <thead className="sticky top-0 bg-card z-10 border-b border-slate-100 dark:border-white/[0.05]">
-              <tr className="text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                <th className="py-3 pl-5 pr-3">Informações do aluno</th>
-                <th className="py-3 px-3 text-center">Status no funil</th>
-                <th className="py-3 px-3">Ação agendada</th>
-                <th className="py-3 pr-5 pl-3 text-right">Data de cadastro</th>
-              </tr>
-            </thead>
-            <tbody>
-              {visibleLeads.map(l => {
-                const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
-                return (
-                  <tr
-                    key={l.id}
-                    onClick={() => openProfile(l.id)}
-                    className="border-t border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/60 dark:hover:bg-white/[0.02] cursor-pointer transition"
-                  >
-                    <td className="py-3.5 pl-5 pr-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={l.name} size={32} />
-                        <div className="min-w-0">
-                          <div className={`text-[13.5px] font-semibold tracking-tight ${isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white'}`}>{l.name}</div>
-                          <div className="flex items-center gap-2 mt-0.5 text-[11.5px] text-slate-500 dark:text-slate-400 num flex-wrap">
-                            <span className="inline-flex items-center gap-1"><Phone size={11} /> {l.whatsapp}</span>
-                            {l.consultantName && (
-                              <>
-                                <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/20"></span>
-                                <span className="text-[11px] text-brand-600 dark:text-brand-300">@{l.consultantName}</span>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-3 text-center">
-                      <div className="inline-flex items-center gap-1.5 flex-wrap justify-center">
-                        <StatusBadge statusName={l.status} statusesArray={statuses} />
-                        <LeadTemperatureBadge lead={l} lastInteractionDate={interactionIndex.get(l.id)?.lastDate} compact />
-                      </div>
-                    </td>
-                    <td className="py-3.5 px-3">
-                      {l.nextFollowUp ? (
-                        <div className={`inline-flex items-center gap-1.5 text-[12px] font-medium num whitespace-nowrap ${isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-amber-600 dark:text-amber-400'}`}>
-                          {isOverdue ? <AlertCircle size={13} /> : <FollowUpIcon type={l.nextFollowUpType} className="w-3.5 h-3.5" />}
-                          <span>
-                            {l.nextFollowUp.toLocaleDateString('pt-BR')} às {l.nextFollowUp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col gap-1">
-                          <span className="text-[11.5px] text-slate-400 dark:text-slate-500 italic">Sem agendamento</span>
-                          <DaysSinceContactBadge lead={l} lastInteractionDate={interactionIndex.get(l.id)?.lastDate} />
-                        </div>
-                      )}
-                    </td>
-                    <td className="py-3.5 pr-5 pl-3 text-right num text-[12px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      {l.createdAt?.toLocaleDateString('pt-BR') || ''}
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredLeads.length === 0 && (
-                <tr>
-                  <td colSpan="4" className="py-16 text-center text-slate-400">
-                    <div className="grid place-items-center gap-2">
-                      <Search size={22} className="opacity-40" />
-                      <p className="text-[14px] font-semibold text-slate-700 dark:text-slate-200">Nenhum lead encontrado</p>
-                      <p className="text-[12.5px]">Ajuste a busca ou limpe os filtros.</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {filteredLeads.length > visibleCount && (
-        <div className="flex justify-center">
-          <Btn kind="soft" onClick={() => setVisibleCount(c => c + LIST_PAGE_SIZE)}>
-            Carregar mais ({visibleLeads.length} de {filteredLeads.length})
-          </Btn>
-        </div>
-      )}
-
-      {isFilterOpen && (
-        <div className="fixed inset-0 z-[120] overflow-hidden flex justify-end animate-fade-in">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={()=>setIsFilterOpen(false)} />
-          <div className="relative w-full max-w-sm bg-paper-50 dark:bg-neutral-950 shadow-[0_0_50px_rgba(0,0,0,0.5)] border-l border-gray-200 dark:border-neutral-800 p-8 flex flex-col h-full animate-slide-in-right">
-            
-            <div className="flex justify-between items-center mb-8">
-              <div>
-                <h3 className="text-xl font-bold text-gray-900 dark:text-white uppercase tracking-wider">Filtros</h3>
-                <p className="text-xs font-medium text-gray-500 dark:text-neutral-400 mt-1">Otimize sua visão</p>
-              </div>
-              <button onClick={()=>setIsFilterOpen(false)} className="p-2 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white bg-white dark:bg-neutral-900 rounded-xl transition-all shadow-xl active:scale-90"><X className="w-5 h-5" /></button>
-            </div>
-
-            <div className="flex-1 space-y-8 overflow-y-auto pr-2 custom-scrollbar">
-              <section>
-                <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-600 mb-4 flex items-center gap-2"><Clock className="w-3 h-3" /> Situação Operacional</p>
-                <div className="grid grid-cols-1 gap-2">
-                  <button onClick={()=>setHotOnly(!hotOnly)} className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${hotOnly ? 'bg-accent-500/10 border-accent-500/50 text-accent-500' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
-                    <span className="font-bold text-xs uppercase tracking-widest flex items-center gap-2">🔥 Apenas Hot Leads</span>
-                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${hotOnly ? 'bg-accent-500 border-accent-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{hotOnly && <Check className="w-3 h-3 font-bold" />}</div>
-                  </button>
-                  <button onClick={()=>setOverdueOnly(!overdueOnly)} className={`w-full flex items-center justify-between p-4 rounded-xl border transition-all ${overdueOnly ? 'bg-red-500/10 border-red-500/50 text-red-400' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
-                    <span className="font-bold text-xs uppercase tracking-widest">Em Atraso</span>
-                    <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${overdueOnly ? 'bg-red-500 border-red-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{overdueOnly && <Check className="w-3 h-3 font-bold" />}</div>
-                  </button>
-                </div>
-              </section>
-
-              {isAdminUser(appUser) && (
-                <section>
-                  <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-600 mb-4 flex items-center gap-2"><Users className="w-3 h-3" /> Consultores</p>
-                  <div className="grid grid-cols-1 gap-2">
-                    {(usersList || []).map(u => (
-                      <button key={u.id} onClick={()=>toggleConsultant(u.id)} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${consultantFilters.includes(u.id) ? 'bg-brand-500/10 border-brand-500/50 text-brand-400' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
-                        <span className="text-xs font-semibold">{u.name}</span>
-                        <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${consultantFilters.includes(u.id) ? 'bg-brand-500 border-brand-500 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{consultantFilters.includes(u.id) && <Check className="w-3 h-3" />}</div>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
-
-              <section>
-                <p className="text-[10px] uppercase tracking-[0.2em] font-bold text-brand-600 mb-4 flex items-center gap-2"><Tag className="w-3 h-3" /> Fase do Funil</p>
-                <div className="grid grid-cols-1 gap-2">
-                  {allStatuses.map(s => (
-                    <button key={s} onClick={()=>toggleStatus(s)} className={`flex items-center justify-between p-4 rounded-xl border transition-all ${statusFilters.includes(s) ? 'bg-brand-600/10 border-brand-600/50 text-brand-500' : 'bg-white dark:bg-neutral-900 border-gray-200 dark:border-neutral-800 text-gray-400 dark:text-neutral-500 hover:bg-gray-100 dark:hover:bg-neutral-800 dark:bg-neutral-800'}`}>
-                      <span className="text-xs font-semibold">{s}</span>
-                      <div className={`w-5 h-5 rounded-md flex items-center justify-center border-2 ${statusFilters.includes(s) ? 'bg-brand-600 border-brand-600 text-white' : 'border-gray-300 dark:border-neutral-700'}`}>{statusFilters.includes(s) && <Check className="w-3 h-3" />}</div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            </div>
-
-            <div className="pt-6 mt-4 border-t border-gray-200 dark:border-neutral-800 grid grid-cols-2 gap-3">
-              <button onClick={()=>{setStatusFilters([]); setOverdueOnly(false); setHotOnly(false); setConsultantFilters([]);}} className="py-3 rounded-xl text-gray-400 dark:text-neutral-500 font-bold hover:bg-white dark:bg-neutral-900 transition-all text-[10px] uppercase tracking-[0.2em]">Limpar</button>
-              <button onClick={()=>setIsFilterOpen(false)} className="py-3 rounded-xl bg-brand-600 text-gray-900 dark:text-white font-bold shadow-xl text-[10px] uppercase tracking-[0.2em] active:scale-95 transition-all">Aplicar</button>
-            </div>
+      {/* Tabela em card */}
+      <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 md:px-7 pt-4 pb-7">
+        <div className="bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,.06)]">
+          <div className="hidden md:grid grid-cols-[1.7fr_1.15fr_1.25fr_0.75fr] px-5 py-3 border-b border-slate-100 dark:border-neutral-800 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
+            <span>Lead</span><span>Status no funil</span><span>Ação agendada</span><span className="text-right">Cadastro</span>
           </div>
+
+          {filteredLeads.length === 0 ? (
+            <div className="py-16 text-center grid place-items-center gap-2">
+              <Users className="size-[22px] opacity-40 text-slate-400" />
+              <p className="text-[14px] font-semibold text-gray-700 dark:text-neutral-200">Nenhum lead encontrado</p>
+              <p className="text-[12.5px] text-slate-400 dark:text-neutral-500">Limpe os filtros.</p>
+            </div>
+          ) : (
+            visibleLeads.map(l => {
+              const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
+              const isHot = isHotLeadFromDate(l, interactionIndex.get(l.id)?.lastDate);
+              const consultantFirst = (l.consultantName || '').trim().split(/\s+/)[0] || '';
+              return (
+                <div
+                  key={l.id}
+                  onClick={() => openProfile(l.id)}
+                  className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.7fr_1.15fr_1.25fr_0.75fr] md:items-center px-5 py-[11px] border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
+                >
+                  {/* Lead */}
+                  <div className="flex items-center gap-[11px] min-w-0">
+                    <Avatar name={l.name} size={32} />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn('text-[13.5px] font-semibold truncate', isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-900 dark:text-white')}>{l.name}</span>
+                        {isHot && <span className="text-[10px] shrink-0" title="Lead com atividade recente ou agendamento próximo" aria-label="Lead quente">🔥</span>}
+                      </div>
+                      <div className="mt-px flex items-center gap-1.5 text-[11.5px] text-slate-500 dark:text-neutral-400 tabular-nums">
+                        <span className="inline-flex items-center gap-1"><Phone className="size-[11px]" /> {l.whatsapp}</span>
+                        {consultantFirst && (
+                          <>
+                            <span className="size-1 rounded-full bg-slate-300 dark:bg-white/20" />
+                            <span className="text-[11px] text-brand-600 dark:text-brand-300">@{consultantFirst}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Status no funil */}
+                  <div>
+                    <StatusBadge statusName={l.status} statusesArray={statuses} />
+                  </div>
+
+                  {/* Ação agendada */}
+                  <div>
+                    {l.nextFollowUp ? (
+                      <div className={cn('inline-flex items-center gap-1.5 text-[12px] font-semibold tabular-nums whitespace-nowrap', isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400')}>
+                        {isOverdue ? <AlertCircle className="size-[13px] shrink-0" /> : <Calendar className="size-[13px] shrink-0" />}
+                        {l.nextFollowUp.toLocaleDateString('pt-BR')} às {l.nextFollowUp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    ) : (
+                      <span className="text-[11.5px] italic text-slate-400 dark:text-neutral-500">Sem agendamento</span>
+                    )}
+                  </div>
+
+                  {/* Cadastro */}
+                  <div className="md:text-right text-[12px] text-slate-500 dark:text-neutral-400 tabular-nums whitespace-nowrap">
+                    {l.createdAt?.toLocaleDateString('pt-BR') || ''}
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
-      )}
+
+        {filteredLeads.length > visibleCount && (
+          <div className="flex justify-center pt-4">
+            <Btn kind="soft" onClick={() => setVisibleCount(c => c + LIST_PAGE_SIZE)}>
+              Carregar mais ({visibleLeads.length} de {filteredLeads.length})
+            </Btn>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
