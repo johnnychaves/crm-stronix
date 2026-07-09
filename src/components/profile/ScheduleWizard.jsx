@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { BookOpen, Building2, Calendar, Check, Clock, Dumbbell, GraduationCap, MessageCircle, Phone, RefreshCw } from 'lucide-react';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
-import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality } from '../../lib/professores.js';
+import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../../lib/professores.js';
 import { Btn } from '../ui/Btn.jsx';
 import { cn } from '@/lib/utils';
 
@@ -279,11 +279,12 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
   }
 };
 
-function wzSummary(stepId, values) {
+function wzSummary(stepId, values, professores) {
   switch (stepId) {
     case 'modalidade': return values.modalidade || null;
     case 'professor':
-      return values.professor === SOLO_TRAINING ? SOLO_TRAINING_LABEL : (values.professor ? 'Professor selecionado' : null);
+      if (values.professor === SOLO_TRAINING) return SOLO_TRAINING_LABEL;
+      return values.professor ? (professorNameById(professores, values.professor) || 'Professor selecionado') : null;
     case 'quantidade': return values.quantidade ? `${values.quantidade} ${values.quantidade === 1 ? 'aula' : 'aulas'}` : null;
     case 'unidade':    return values.unidade ? `Unidade ${values.unidade}` : null;
     case 'datahora':   return values.datahora ? wzFmtDateTime(values.datahora) : null;
@@ -292,7 +293,7 @@ function wzSummary(stepId, values) {
 }
 
 const WzStepRow = ({ stepId, n, state, color, values, set, onEdit, isLast, modalities, units, qtyOptions, professores }) => {
-  const info = WZ_STEP_INFO[stepId]; const t = WZ_TONES[color] || WZ_TONES.brand; const summary = wzSummary(stepId, values);
+  const info = WZ_STEP_INFO[stepId]; const t = WZ_TONES[color] || WZ_TONES.brand; const summary = wzSummary(stepId, values, professores);
   // 'datahora' é o último passo e nunca colapsa: o resumo já vive no rail lateral,
   // então mantemos o corpo (cards de dia + calendário) sempre aberto p/ o usuário
   // revisar/ajustar o horário. A finalização é só pelo botão "Confirmar".
