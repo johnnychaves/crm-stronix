@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { BookOpen, Building2, Calendar, Check, Clock, Dumbbell, MessageCircle, Phone, RefreshCw } from 'lucide-react';
+import { BookOpen, Building2, Calendar, Check, Clock, Dumbbell, GraduationCap, MessageCircle, Phone, RefreshCw } from 'lucide-react';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
+import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../../lib/professores.js';
 import { Btn } from '../ui/Btn.jsx';
 import { cn } from '@/lib/utils';
 
@@ -14,8 +15,9 @@ import { cn } from '@/lib/utils';
 // da aula é "quantidade" (trialClassOptions) renderizado igual ao freepass do
 // protótipo; token azul brand-500 do protótipo → brand-600 no app.
 //
-// CONTRATO: onConfirm devolve { typeId, typeLabel, date, modalidade, quantidade,
-// unidade, note } — consumido por handleWizardConfirm na LeadProfileView.
+// CONTRATO: onConfirm devolve { typeId, typeLabel, date, modalidade, professorId,
+// soloTraining, quantidade, unidade, note } — consumido por handleWizardConfirm
+// na LeadProfileView.
 
 const WZ_TONES = {
   brand:   { text:'text-brand-700',   soft:'bg-brand-50',   strong:'bg-brand-600',   ring:'ring-brand-300',   darkText:'dark:text-brand-300',   darkSoft:'dark:bg-brand-500/10',   darkRing:'dark:ring-brand-500/40' },
@@ -30,11 +32,12 @@ const WZ_TYPES = [
   { id:'mensagem', label:'Mensagem',          followUpLabel:'Mensagem',          desc:'Follow-up por WhatsApp', Icon: MessageCircle, color:'emerald', flow:['datahora'] },
   { id:'ligacao',  label:'Ligação',           followUpLabel:'Ligação',           desc:'Retorno por telefone',   Icon: Phone,         color:'amber',   flow:['datahora'] },
   { id:'visita',   label:'Visita',            followUpLabel:'Visita',            desc:'Conhecer a unidade',     Icon: Building2,     color:'violet',  flow:['unidade','datahora'] },
-  { id:'aula',     label:'Aula experimental', followUpLabel:'Aula Experimental', desc:'Treino de experiência',  Icon: BookOpen,      color:'teal',    flow:['modalidade','quantidade','datahora'] },
+  { id:'aula',     label:'Aula experimental', followUpLabel:'Aula Experimental', desc:'Treino de experiência',  Icon: BookOpen,      color:'teal',    flow:['modalidade','professor','quantidade','datahora'] },
 ];
 
 const WZ_STEP_INFO = {
   modalidade: { title:'Modalidade',       hint:'Qual treino o lead vai experimentar?' },
+  professor:  { title:'Professor',        hint:'Quem vai acompanhar a aula?' },
   quantidade: { title:'Quantas aulas',    hint:'O que foi combinado com o aluno.' },
   unidade:    { title:'Unidade',          hint:'Onde a visita vai acontecer?' },
   datahora:   { title:'Dia e horário',    hint:'Quando vai ser?' },
@@ -136,7 +139,7 @@ const WzStepDot = ({ state, n, color = 'brand' }) => {
   return <span className="w-7 h-7 rounded-full grid place-items-center bg-slate-100 dark:bg-white/[0.05] text-slate-400 dark:text-slate-500 text-[12px] font-bold num shrink-0">{n}</span>;
 };
 
-const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions }) => {
+const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions, professores }) => {
   // Dias da Meta Diária (ex.: [1,2,3,4,5] = seg–sex) filtram os cards rápidos de dia.
   const { metaWeekdays } = useGeneralConfig();
   // Horário por-card do passo "Dia e horário" (off → 'HH:MM'); fallback no default.
@@ -156,6 +159,34 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions 
           ))}
         </div>
       );
+    case 'professor': {
+      const matches = professorsForModality(professores, modalities, values.modalidade);
+      const list = matches.length ? matches : (professores || []).filter((p) => p.ativo !== false);
+      const usingFallback = matches.length === 0 && list.length > 0;
+      return (
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {list.map((p, i) => (
+              <WzOptionCard key={p.id} index={i} Icon={GraduationCap} label={p.nome}
+                color={color} selected={values.professor === p.id} onClick={() => set('professor', p.id)} />
+            ))}
+            <WzOptionCard index={list.length} Icon={GraduationCap} label={SOLO_TRAINING_LABEL}
+              hint="Sem professor responsável" color={color}
+              selected={values.professor === SOLO_TRAINING} onClick={() => set('professor', SOLO_TRAINING)} />
+          </div>
+          {usingFallback && (
+            <p className="text-[11.5px] text-slate-500 dark:text-slate-400">
+              Nenhum professor cadastrado para <span className="font-semibold">{values.modalidade}</span>. Mostrando todos.
+            </p>
+          )}
+          {list.length === 0 && (
+            <p className="text-[11.5px] text-slate-500 dark:text-slate-400">
+              Nenhum professor cadastrado. Adicione em <span className="font-semibold">Configurações → Equipe</span>, ou marque "Treina sozinho".
+            </p>
+          )}
+        </div>
+      );
+    }
     case 'quantidade':
       return (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
@@ -248,9 +279,12 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions 
   }
 };
 
-function wzSummary(stepId, values) {
+function wzSummary(stepId, values, professores) {
   switch (stepId) {
     case 'modalidade': return values.modalidade || null;
+    case 'professor':
+      if (values.professor === SOLO_TRAINING) return SOLO_TRAINING_LABEL;
+      return values.professor ? (professorNameById(professores, values.professor) || 'Professor selecionado') : null;
     case 'quantidade': return values.quantidade ? `${values.quantidade} ${values.quantidade === 1 ? 'aula' : 'aulas'}` : null;
     case 'unidade':    return values.unidade ? `Unidade ${values.unidade}` : null;
     case 'datahora':   return values.datahora ? wzFmtDateTime(values.datahora) : null;
@@ -258,8 +292,8 @@ function wzSummary(stepId, values) {
   }
 }
 
-const WzStepRow = ({ stepId, n, state, color, values, set, onEdit, isLast, modalities, units, qtyOptions }) => {
-  const info = WZ_STEP_INFO[stepId]; const t = WZ_TONES[color] || WZ_TONES.brand; const summary = wzSummary(stepId, values);
+const WzStepRow = ({ stepId, n, state, color, values, set, onEdit, isLast, modalities, units, qtyOptions, professores }) => {
+  const info = WZ_STEP_INFO[stepId]; const t = WZ_TONES[color] || WZ_TONES.brand; const summary = wzSummary(stepId, values, professores);
   // 'datahora' é o último passo e nunca colapsa: o resumo já vive no rail lateral,
   // então mantemos o corpo (cards de dia + calendário) sempre aberto p/ o usuário
   // revisar/ajustar o horário. A finalização é só pelo botão "Confirmar".
@@ -290,7 +324,7 @@ const WzStepRow = ({ stepId, n, state, color, values, set, onEdit, isLast, modal
               <div className="text-[14px] font-semibold text-slate-900 dark:text-white">{info.title}</div>
               {info.hint && <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">{info.hint}</div>}
             </div>
-            <WzStepBody stepId={stepId} values={values} set={set} color={color} modalities={modalities} units={units} qtyOptions={qtyOptions}/>
+            <WzStepBody stepId={stepId} values={values} set={set} color={color} modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}/>
           </div>
         )}
       </div>
@@ -298,11 +332,16 @@ const WzStepRow = ({ stepId, n, state, color, values, set, onEdit, isLast, modal
   );
 };
 
-const WzSummaryCard = ({ type, values, complete }) => {
+const WzSummaryCard = ({ type, values, complete, professores }) => {
   if (!type) return null;
   const t = WZ_TONES[type.color] || WZ_TONES.brand; const Icon = type.Icon;
   const parts = [];
   if (values.modalidade) parts.push(values.modalidade);
+  if (values.professor === SOLO_TRAINING) parts.push(SOLO_TRAINING_LABEL);
+  else if (values.professor) {
+    const p = (professores || []).find((x) => x.id === values.professor);
+    if (p) parts.push(p.nome);
+  }
   if (values.quantidade) parts.push(`${values.quantidade} ${values.quantidade === 1 ? 'aula' : 'aulas'}`);
   if (values.unidade) parts.push(`Unidade ${values.unidade}`);
   return (
@@ -325,7 +364,7 @@ const WzSummaryCard = ({ type, values, complete }) => {
 };
 
 function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
-  const { modalities, trialClassOptions, units } = useGeneralConfig();
+  const { modalities, trialClassOptions, units, professores } = useGeneralConfig();
   const [typeId, setTypeId] = useState(null);
   const [values, setValues] = useState({});
   const [editing, setEditing] = useState(null);
@@ -376,6 +415,8 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
       typeLabel: type.followUpLabel,
       date: values.datahora,
       modalidade: type.id === 'aula' ? (values.modalidade || null) : null,
+      professorId: type.id === 'aula' && values.professor !== SOLO_TRAINING ? (values.professor || null) : null,
+      soloTraining: type.id === 'aula' && values.professor === SOLO_TRAINING,
       quantidade: type.id === 'aula' ? (values.quantidade || null) : null,
       unidade: type.id === 'visita' ? (values.unidade || null) : null,
       note: note.trim(),
@@ -423,7 +464,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
         {flow.map((stepId, i) => (
           <WzStepRow key={stepId} stepId={stepId} n={i+2} state={stepState(stepId)} color={color}
             values={values} set={setVal} onEdit={()=>setEditing(stepId)} isLast={i === flow.length - 1}
-            modalities={modalities} units={units} qtyOptions={qtyOptions}/>
+            modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}/>
         ))}
 
         {type && (
@@ -438,7 +479,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
 
       {/* summary rail */}
       <aside className="self-start space-y-3">
-        {type ? <WzSummaryCard type={type} values={values} complete={complete}/> : (
+        {type ? <WzSummaryCard type={type} values={values} complete={complete} professores={professores}/> : (
           <div className="rounded-xl border border-dashed border-slate-300 dark:border-white/[0.1] p-5 text-center">
             <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-white/[0.05] grid place-items-center mx-auto mb-2 text-slate-400"><Calendar size={18}/></div>
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400">Escolha o tipo de agendamento para começar.</p>
