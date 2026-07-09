@@ -11,6 +11,7 @@ import { ManageTagsTab } from './ManageTagsTab.jsx';
 import { ManageLossReasonsTab } from './ManageLossReasonsTab.jsx';
 import { ManageDoresTab } from './ManageDoresTab.jsx';
 import { ManageGeneralSettingsTab } from './ManageGeneralSettingsTab.jsx';
+import { ManageProfessorsCard } from './ManageProfessorsCard.jsx';
 import { TransferLeadsTab } from './TransferLeadsTab.jsx';
 
 // ==========================================
@@ -196,7 +197,12 @@ function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, t
             )}
           </div>
 
-          {activeTab === 'users' && <ManageUsersTab db={db} appUser={appUser} />}
+          {activeTab === 'users' && (
+            <>
+              <ManageUsersTab db={db} appUser={appUser} />
+              <ManageProfessorsCard db={db} leads={leads} />
+            </>
+          )}
           {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} usersList={usersList} />}
           {activeTab === 'statuses' && !selectedFunnelInTab && (
             <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
