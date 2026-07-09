@@ -7,6 +7,7 @@ import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
 import { deriveLeadState, deriveContextAlert, getTone, phaseToneName } from '../lib/leadState.js';
+import { professorNameById } from '../lib/professores.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -86,7 +87,7 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
   // 'matricula' (nova/retroativa) | 'renovacao' — controla o modo do MatriculaModal.
   const [matriculaMode, setMatriculaMode] = useState('matricula');
   // Threshold de vencimento do contexto (sem prop-drilling) p/ a seção Contrato.
-  const { contractThresholdDays, contratos } = useGeneralConfig();
+  const { contractThresholdDays, contratos, professores } = useGeneralConfig();
 
   // Composer tab — drives which form is shown in the activity Composer card.
   const [composerTab, setComposerTab] = useState('note');
@@ -355,8 +356,8 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
 
   // Grava o agendamento montado no ScheduleWizard. Mantém os campos canônicos
   // (nextFollowUp/nextFollowUpType/appointmentType/appointmentScheduledFor) e
-  // grava os extras por tipo (modalidade+quantidade p/ aula; unidade p/ visita).
-  const handleWizardConfirm = async ({ typeLabel, date, modalidade, quantidade, unidade, note: wizNote }) => {
+  // grava os extras por tipo (modalidade+professor+quantidade p/ aula; unidade p/ visita).
+  const handleWizardConfirm = async ({ typeLabel, date, modalidade, professorId, soloTraining, quantidade, unidade, note: wizNote }) => {
     if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
     if (!(date instanceof Date) || isNaN(date.getTime())) { toast.warning('Selecione o dia e o horário.'); return; }
     setLoading(true);
@@ -369,6 +370,8 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       if (isAula) {
         const q = quantidade || 1;
         extra = ` (${modalidade ? modalidade + ' · ' : ''}${q} ${q === 1 ? 'aula' : 'aulas'})`;
+        if (professorId) extra += ` · ${professorNameById(professores, professorId)}`;
+        else if (soloTraining) extra += ' · Treina sozinho';
       } else if (isVisita && unidade) {
         extra = ` (Unidade ${unidade})`;
       }
@@ -397,6 +400,9 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
         nextFollowUpNote: noteStr || null,
         // Limpa extras de agendamentos anteriores e grava só os do tipo atual.
         appointmentModality: isAula ? (modalidade || null) : null,
+        appointmentProfessorId: isAula ? (professorId || null) : null,
+        appointmentProfessorName: isAula ? (professorId ? professorNameById(professores, professorId) : null) : null,
+        appointmentSoloTraining: isAula ? Boolean(soloTraining) : false,
         trialClassesPlanned: isAula ? (quantidade || null) : null,
         appointmentUnit: isVisita ? (unidade || null) : null,
         appointmentType: appointmentType || null,
