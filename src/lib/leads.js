@@ -15,18 +15,28 @@ export const getLeadAppointmentDate = (lead) => {
   );
 };
 
+// Nomes de status que significam matrícula: o sentinel 'Venda' e etapas
+// customizadas cujo nome contém "convertid"/"matricul". Compartilhado entre
+// a leitura (isLeadConverted) e a escrita (carimbo de convertedAt ao mover
+// um lead para uma etapa dessas).
+export const isConvertedStatusName = (statusName) => {
+  if (statusName === 'Venda') return true;
+  const name = String(statusName || '').toLowerCase();
+  return name.includes('convertid') || name.includes('matricul');
+};
+
 export const isLeadConverted = (lead) => {
-  return Boolean(
-    lead?.isConverted ||
-    lead?.status === 'Venda' ||
-    String(lead?.status || '').toLowerCase().includes('convertid') ||
-    String(lead?.status || '').toLowerCase().includes('matricul')
-  );
+  return Boolean(lead?.isConverted || isConvertedStatusName(lead?.status));
 };
 
 export const getLeadConversionDate = (lead) => {
   return getSafeDateOrNull(lead?.convertedAt) || getSafeDateOrNull(lead?.createdAt);
 };
+
+// Só o carimbo real da matrícula, SEM cair no createdAt. Use quando a data
+// precisa ser confiável por si (métricas por período, financeiro futuro);
+// getLeadConversionDate segue existindo para quem quer o fallback.
+export const getLeadConversionDateStrict = (lead) => getSafeDateOrNull(lead?.convertedAt);
 
 export const getLeadSatisfactionDate = (lead) => {
   return getSafeDateOrNull(lead?.satisfactionAt);

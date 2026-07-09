@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
-import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted } from '../lib/leads.js';
+import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted, isConvertedStatusName } from '../lib/leads.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
@@ -153,8 +153,15 @@ const handleKanbanMouseMove = (e) => {
     try {
       const payload = { status: newStatus };
       if (selectedFunnelId && !lead.funnelId) payload.funnelId = selectedFunnelId;
-      if (lead.status === 'Venda') { payload.isConverted = false; payload.convertedAt = null; }
+      // Etapa customizada com nome de matrícula ("Matriculado", "Convertido"...)
+      // conta como conversão nas métricas — então precisa do carimbo de data.
+      // Sem ele, a matrícula caía no mês do CADASTRO do lead, não no do
+      // fechamento. Destino convertido também não limpa os campos ao sair
+      // de Venda (continuaria matrícula, só que sem data).
+      const destinoConvertido = isConvertedStatusName(newStatus);
+      if (lead.status === 'Venda' && !destinoConvertido) { payload.isConverted = false; payload.convertedAt = null; }
       if (lead.status === 'Perda') { payload.lossReason = null; payload.lostAt = null; }
+      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) payload.convertedAt = serverTimestamp();
 
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), payload);
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
