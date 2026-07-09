@@ -41,6 +41,7 @@ import {
   FUNNELS_PATH,
   MODALITIES_PATH,
   UNITS_PATH,
+  PROFESSORS_PATH,
   PLANS_PATH,
   CONTRACTS_PATH,
   CONFIG_PATH,
@@ -242,6 +243,7 @@ function AppInner() {
   const [modalities, setModalities] = useState([]);
   const [trialClassOptions, setTrialClassOptions] = useState([1, 2, 3]);
   const [units, setUnits] = useState([]);
+  const [professores, setProfessores] = useState([]);
   // Dias da semana em que a Meta Diária vale para a equipe (0=dom..6=sáb).
   // Política da ACADEMIA — definida pelo admin nas Configurações Gerais.
   const [metaWeekdays, setMetaWeekdays] = useState([1, 2, 3, 4, 5]);
@@ -257,8 +259,8 @@ function AppInner() {
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays }),
-    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays]
+    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, professores }),
+    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, professores]
   );
   // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
   // tenant ainda não foi resolvido (appId = default), o que é correto para o
@@ -616,6 +618,16 @@ useEffect(() => {
     onSnapErr('modalities')
   );
 
+  const unsubProfessores = onSnapshot(
+    collection(db, 'artifacts', appId, 'public', 'data', PROFESSORS_PATH),
+    (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      data.sort((a, b) => (a.order || 0) - (b.order || 0));
+      setProfessores(data);
+    },
+    onSnapErr('professores')
+  );
+
   const unsubPlanos = onSnapshot(
     collection(db, 'artifacts', appId, 'public', 'data', PLANS_PATH),
     (snapshot) => {
@@ -680,6 +692,7 @@ useEffect(() => {
     unsubDores();
     unsubFunnels();
     unsubModalities();
+    unsubProfessores();
     unsubPlanos();
     unsubContratos();
     unsubUnits();
