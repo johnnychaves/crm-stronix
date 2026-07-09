@@ -2,8 +2,10 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
 import { getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
+import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
 import { cn } from '@/lib/utils';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
+import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
 
@@ -107,6 +109,7 @@ const fromDateInput = (s) => {
 
 function AppointmentTrackingView({ leads, appUser, usersList, appointmentType }) {
   const { openProfile } = useLeadProfile();
+  const { professores } = useGeneralConfig();
   const isAdmin = isAdminUser(appUser);
   const isAula = appointmentType === 'aula_experimental';
 
@@ -128,6 +131,7 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
   const [draftEnd, setDraftEnd] = useState('');
   const [rangeErr, setRangeErr] = useState('');
   const [respFilter, setRespFilter] = useState([]); // vazio = toda a equipe
+  const [profFilter, setProfFilter] = useState([]); // ids de professor + SOLO_TRAINING (só Aulas)
   const [filterOpen, setFilterOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
 
@@ -162,11 +166,17 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
     [leads, appointmentType]
   );
 
-  // 2) Escopo por responsável (multi-seleção da bubble).
-  const scopedLeads = useMemo(
-    () => (respFilter.length > 0 ? typeLeads.filter(l => respFilter.includes(l.consultantId)) : typeLeads),
-    [typeLeads, respFilter]
-  );
+  // 2) Escopo por responsável (multi-seleção da bubble) + professor (só Aulas).
+  const scopedLeads = useMemo(() => {
+    let list = respFilter.length > 0 ? typeLeads.filter(l => respFilter.includes(l.consultantId)) : typeLeads;
+    if (isAula && profFilter.length > 0) {
+      list = list.filter(l => {
+        if (l.appointmentSoloTraining) return profFilter.includes(SOLO_TRAINING);
+        return l.appointmentProfessorId && profFilter.includes(l.appointmentProfessorId);
+      });
+    }
+    return list;
+  }, [typeLeads, respFilter, profFilter, isAula]);
 
   // 3) Contagem das tabs Hoje/Ontem/Amanhã (sobre o escopo de responsável).
   const dayWindows = useMemo(() => {
@@ -219,19 +229,25 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
     { id: 'tomorrow', label: 'Amanhã', count: dayCounts.tomorrow }
   ];
 
-  const hasActiveFilters = respFilter.length > 0;
+  const hasActiveFilters = respFilter.length > 0 || (isAula && profFilter.length > 0);
   const fmtShort = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   const rangeLabel = range ? `${fmtShort(range.start)} – ${fmtShort(range.end)}` : 'Período';
 
   // Resumo ao lado do filtro: recorte ativo ou "X de Y aulas/visitas".
   const filterSummary = useMemo(() => {
     if (!hasActiveFilters) return `${filtered.length} de ${typeLeads.length} ${pluralLabel}`;
+    const parts = [];
     if (respFilter.length === 1) {
       const user = (usersList || []).find(u => u.id === respFilter[0]);
-      return user?.name || '1 responsável';
+      parts.push(user?.name || '1 responsável');
+    } else if (respFilter.length > 1) {
+      parts.push(`${respFilter.length} responsáveis`);
     }
-    return `${respFilter.length} responsáveis`;
-  }, [hasActiveFilters, filtered.length, typeLeads.length, respFilter, usersList, pluralLabel]);
+    if (isAula && profFilter.length > 0) {
+      parts.push(`${profFilter.length} professor${profFilter.length > 1 ? 'es' : ''}`);
+    }
+    return parts.join(' · ') || `${filtered.length} de ${typeLeads.length} ${pluralLabel}`;
+  }, [hasActiveFilters, filtered.length, typeLeads.length, respFilter, profFilter, isAula, usersList, pluralLabel]);
 
   const pickDayTab = (id) => {
     setDayTab(id);
@@ -403,7 +419,7 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
                 <SlidersHorizontal className="size-[17px]" />
                 {hasActiveFilters && (
                   <span className="absolute -top-[5px] -right-[5px] min-w-4 h-4 px-1 rounded-full bg-accent-500 text-white text-[9.5px] font-bold grid place-items-center ring-2 ring-white dark:ring-neutral-900 tabular-nums">
-                    {respFilter.length}
+                    {respFilter.length + (isAula ? profFilter.length : 0)}
                   </span>
                 )}
               </button>
@@ -414,7 +430,7 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
                     <span className="text-[12.5px] font-bold text-gray-900 dark:text-white">Filtros</span>
                     <button
                       type="button"
-                      onClick={() => setRespFilter([])}
+                      onClick={() => { setRespFilter([]); setProfFilter([]); }}
                       className="text-[11.5px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
                     >
                       Limpar
@@ -461,6 +477,42 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
                       );
                     })}
                   </div>
+
+                  {isAula && (
+                    <div className="pt-2.5 px-2 pb-1 border-t border-slate-100 dark:border-white/10 mt-1">
+                      <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
+                        Professor
+                      </div>
+                      {(professores || []).map((p) => {
+                        const selected = profFilter.includes(p.id);
+                        return (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setProfFilter(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                            className={cn(
+                              'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
+                              selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
+                            )}
+                          >
+                            <span className="flex-1 text-[12.5px] text-gray-900 dark:text-white truncate">{p.nome}</span>
+                            {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                          </button>
+                        );
+                      })}
+                      <button
+                        type="button"
+                        onClick={() => setProfFilter(prev => prev.includes(SOLO_TRAINING) ? prev.filter(x => x !== SOLO_TRAINING) : [...prev, SOLO_TRAINING])}
+                        className={cn(
+                          'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
+                          profFilter.includes(SOLO_TRAINING) ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
+                        )}
+                      >
+                        <span className="flex-1 text-[12.5px] text-gray-900 dark:text-white truncate">{SOLO_TRAINING_LABEL}</span>
+                        {profFilter.includes(SOLO_TRAINING) && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -470,8 +522,8 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
         {/* Conteúdo: tabela em card + legenda */}
         <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-4 md:px-7 pt-5 pb-7">
           <div className="bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 rounded-2xl overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,.06)]">
-            <div className="hidden md:grid grid-cols-[1.5fr_0.95fr_1fr_1.3fr_0.85fr] px-5 py-3 border-b border-slate-100 dark:border-neutral-800 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
-              <span>{col1Label}</span><span>Objetivo</span><span>Data marcada</span><span>{col4Label}</span><span className="text-center">Finalizou</span>
+            <div className={cn('hidden md:grid px-5 py-3 border-b border-slate-100 dark:border-neutral-800 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500', isAula ? 'md:grid-cols-[1.5fr_0.95fr_1fr_1fr_1.3fr_0.85fr]' : 'md:grid-cols-[1.5fr_0.95fr_1fr_1.3fr_0.85fr]')}>
+              <span>{col1Label}</span><span>Objetivo</span><span>Data marcada</span>{isAula && <span>Professor</span>}<span>{col4Label}</span><span className="text-center">Finalizou</span>
             </div>
 
             {filtered.length === 0 ? (
@@ -495,7 +547,10 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
                   <div
                     key={l.id}
                     onClick={() => openProfile(l.id)}
-                    className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.5fr_0.95fr_1fr_1.3fr_0.85fr] md:items-center px-5 py-3 border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
+                    className={cn(
+                      'grid grid-cols-1 gap-2 md:gap-0 md:items-center px-5 py-3 border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors',
+                      isAula ? 'md:grid-cols-[1.5fr_0.95fr_1fr_1fr_1.3fr_0.85fr]' : 'md:grid-cols-[1.5fr_0.95fr_1fr_1.3fr_0.85fr]'
+                    )}
                   >
                     {/* Aluno / Visitante */}
                     <div className="flex items-center gap-[11px] min-w-0">
@@ -535,6 +590,13 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
                       <Calendar className="size-[13px] shrink-0" />
                       {fmtApptDateLine(d)}
                     </div>
+
+                    {/* Professor (só Aulas) */}
+                    {isAula && (
+                      <div className="min-w-0 text-[12.5px] font-medium text-gray-700 dark:text-neutral-300 truncate">
+                        {l.appointmentSoloTraining ? SOLO_TRAINING_LABEL : (l.appointmentProfessorName || '—')}
+                      </div>
+                    )}
 
                     {/* 4ª coluna: Passe livre (Aulas) ou Situação (Visitas) */}
                     {isAula ? (
