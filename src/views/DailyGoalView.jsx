@@ -10,6 +10,7 @@ import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
+import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../lib/professores.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { DailyGoalTeamView } from './DailyGoalTeamView.jsx';
@@ -524,7 +525,7 @@ function RescheduleTypeBtn({ active, label, onClick }) {
 
 function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 'manual', onConfirm, onClose }) {
   const isAfterNoShow = flow === 'after_no_show';
-  const { modalities, trialClassOptions } = useGeneralConfig();
+  const { modalities, trialClassOptions, professores } = useGeneralConfig();
 
   const defaultValue = useMemo(() => {
     const base = currentDate ? new Date(currentDate) : new Date();
@@ -546,6 +547,10 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
     const n = Number(lead?.trialClassesPlanned);
     return Number.isFinite(n) && n > 0 ? n : ((trialClassOptions && trialClassOptions[0]) || 1);
   });
+  // Professor responsável (ou "Treina sozinho"), semeado do lead se houver.
+  const [professorSel, setProfessorSel] = useState(
+    lead?.appointmentSoloTraining ? SOLO_TRAINING : (lead?.appointmentProfessorId || '')
+  );
 
   // Garante que a opção semeada do lead apareça no select mesmo que não esteja
   // mais na lista configurada (ex.: opção removida depois do agendamento).
@@ -561,8 +566,12 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
     if (isNaN(newDate.getTime())) return;
     const isAula = apptType === 'aula_experimental';
     const finalQty = Number(qty) > 0 ? Math.floor(Number(qty)) : ((trialClassOptions && trialClassOptions[0]) || 1);
+    const isSolo = professorSel === SOLO_TRAINING;
+    const professorId = isAula && !isSolo ? (professorSel || null) : null;
+    const soloTraining = isAula && isSolo;
+    const professorName = professorId ? professorNameById(professores, professorId) : null;
     setSubmitting(true);
-    await onConfirm(newDate, note, apptType, isAula ? (modality || '').trim() : null, isAula ? finalQty : null);
+    await onConfirm(newDate, note, apptType, isAula ? (modality || '').trim() : null, isAula ? finalQty : null, professorId, professorName, soloTraining);
     setSubmitting(false);
   };
 
@@ -617,35 +626,53 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
               />
             </div>
             {apptType === 'aula_experimental' && (
-              <div className="grid grid-cols-2 gap-3">
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                      Modalidade
+                    </label>
+                    <select
+                      value={modality}
+                      onChange={(e) => setModality(e.target.value)}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
+                    >
+                      <option value="">{(modalities || []).length ? 'Selecione...' : 'Cadastre em Config. Gerais'}</option>
+                      {(modalities || []).map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+                      Aulas previstas
+                    </label>
+                    <select
+                      value={qty}
+                      onChange={(e) => setQty(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
+                    >
+                      {qtyOptions.map(n => (
+                        <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
                 <div>
                   <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Modalidade
+                    Professor
                   </label>
                   <select
-                    value={modality}
-                    onChange={(e) => setModality(e.target.value)}
+                    value={professorSel}
+                    onChange={(e) => setProfessorSel(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
                   >
-                    <option value="">{(modalities || []).length ? 'Selecione...' : 'Cadastre em Config. Gerais'}</option>
-                    {(modalities || []).map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-                    Aulas previstas
-                  </label>
-                  <select
-                    value={qty}
-                    onChange={(e) => setQty(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
-                  >
-                    {qtyOptions.map(n => (
-                      <option key={n} value={n}>{n} {n === 1 ? 'aula' : 'aulas'}</option>
+                    <option value="">Selecione...</option>
+                    {professorsForModality(professores, modalities, modality).map((p) => (
+                      <option key={p.id} value={p.id}>{p.nome}</option>
                     ))}
+                    <option value={SOLO_TRAINING}>{SOLO_TRAINING_LABEL}</option>
                   </select>
                 </div>
-              </div>
+              </>
             )}
             <div>
               <label className="block text-[11.5px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
@@ -1213,7 +1240,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   //   - flow='after_no_show'      → writes plain 'note' (task already closed via no_show)
   // Always updates appointment fields and clears appointmentOutcome so the
   // new appointment is fresh.
-  const handleReschedule = async (newDate, note, newApptType, newModality, newQty) => {
+  const handleReschedule = async (newDate, note, newApptType, newModality, newQty, newProfessorId, newProfessorName, newSoloTraining) => {
     if (!rescheduleTarget) return;
     const { lead, categorySlug, flow = 'manual' } = rescheduleTarget;
     const formattedDate = newDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -1233,6 +1260,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
     const isAula = finalApptType === 'aula_experimental';
     const finalModality = isAula ? ((newModality || '').trim() || null) : null;
     const finalQty = isAula ? (Number(newQty) > 0 ? Number(newQty) : null) : null;
+    const finalProfessorId = isAula ? (newProfessorId || null) : null;
+    const finalProfessorName = isAula ? (newProfessorName || null) : null;
+    const finalSoloTraining = isAula ? Boolean(newSoloTraining) : false;
 
     try {
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
@@ -1242,6 +1272,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         nextFollowUpType: finalApptTypeLabel,
         nextFollowUpNote: noteText || null,
         appointmentModality: finalModality,
+        appointmentProfessorId: finalProfessorId,
+        appointmentProfessorName: finalProfessorName,
+        appointmentSoloTraining: finalSoloTraining,
         trialClassesPlanned: finalQty,
         appointmentOutcome: null,
         appointmentOutcomeAt: null,
