@@ -136,6 +136,11 @@ service cloud.firestore {
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
     }
 
+    match /artifacts/{appId}/public/data/stronix_professores/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
+    }
+
     // Catálogo de planos/serviços oferecidos na matrícula (feature lead→cliente).
     // Mesmo padrão dos demais catálogos: lê quem é do tenant, escreve só admin.
     match /artifacts/{appId}/public/data/stronix_planos/{id} {

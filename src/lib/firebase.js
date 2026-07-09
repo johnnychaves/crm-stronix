@@ -54,6 +54,9 @@ export const DORES_PATH = 'stronix_dores';
 export const FUNNELS_PATH = 'stronix_funnels';
 export const MODALITIES_PATH = 'stronix_modalities';
 export const UNITS_PATH = 'stronix_units';
+// Catálogo de professores da academia (nome + modalidades em que atua). Não são
+// usuários do sistema (sem login/authUid) e não entram no limite de assentos.
+export const PROFESSORS_PATH = 'stronix_professores';
 // Catálogo de planos/serviços que a academia oferece (escolhidos na
 // matrícula). 1 doc por plano.
 export const PLANS_PATH = 'stronix_planos';
