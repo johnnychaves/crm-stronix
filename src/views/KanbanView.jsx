@@ -1,11 +1,11 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
-import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted, isConvertedStatusName } from '../lib/leads.js';
+import { isAdminUser, canEditLead, getInteractionSecurityFields, isConvertedStatusName } from '../lib/leads.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
-import { getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from '../lib/kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from '../lib/kanban.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { FollowUpIcon } from '../components/ui/Badges.jsx';
@@ -58,25 +58,12 @@ const [isPanning, setIsPanning] = useState(false);
     [leads, selectedFunnelId, defaultFunnelId]
   );
 
-  const kanbanLeads = useMemo(() => {
-    // Clientes (matriculados) saem do Kanban — vivem na aba Clientes. Leads
-    // 'Venda' legados (isLeadConverted) TAMBÉM saem, mesmo sem contrato
-    // registrado. A coluna "Venda" segue existindo só como alvo de conversão
-    // (arrastar/mover p/ lá abre o MatriculaModal).
-    let filtered = funnelLeads.filter(l => l.lifecycleStage !== 'cliente' && !isLeadConverted(l));
-    if (respFilter.length > 0) {
-      filtered = filtered.filter(l => respFilter.includes(l.consultantId));
-    }
-    if (onlyOverdue) {
-      const now = new Date();
-      filtered = filtered.filter(l =>
-        l.status !== 'Venda' && l.status !== 'Perda' &&
-        l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) &&
-        l.nextFollowUp < now
-      );
-    }
-    return filtered;
-  }, [funnelLeads, respFilter, onlyOverdue]);
+  // Recorte do board extraído p/ lib/kanban.js (clientes/convertidos saem;
+  // filtros de responsável e atraso) — coberto por teste de caracterização.
+  const kanbanLeads = useMemo(
+    () => filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue }),
+    [funnelLeads, respFilter, onlyOverdue]
+  );
 
   // Índice leadId → { count, lastDate }. Percorre interactions UMA vez,
   // evitando que cada card refaça interactions.filter()/getLastInteraction
@@ -283,33 +270,11 @@ if (!lead) return;
     setDraggedOverColumn(null);
   };
 
-  const getLeadsByStatus = (statusName) => {
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startOfTomorrow = startOfToday + 86400000;
-
-    const getPriority = (lead) => {
-      if (!lead.nextFollowUp || !(lead.nextFollowUp instanceof Date) || isNaN(lead.nextFollowUp.getTime())) {
-        return 4; // Lowest priority
-      }
-      const time = lead.nextFollowUp.getTime();
-      if (time < now.getTime()) return 1; // Overdue
-      if (time >= startOfToday && time < startOfTomorrow) return 2; // Today
-      return 3; // Future
-    };
-
-    return (kanbanLeads || [])
-      .filter(l => l.status === statusName)
-      .sort((a, b) => {
-        const pA = getPriority(a);
-        const pB = getPriority(b);
-        if (pA !== pB) return pA - pB;
-        if (pA !== 4 && a.nextFollowUp && b.nextFollowUp) {
-          return a.nextFollowUp.getTime() - b.nextFollowUp.getTime();
-        }
-        return (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0);
-      });
-  };
+  // Particiona o board inteiro numa passada (extraído p/ lib/kanban.js,
+  // coberto por teste). Ainda roda a cada render — a memoização com
+  // React.memo dos cards/colunas fica para a PR B (quick wins).
+  const leadsByStatus = partitionLeadsByStatus(kanbanLeads);
+  const getLeadsByStatus = (statusName) => leadsByStatus.get(statusName) || [];
 
   // Card compacto (uma linha): barra de accent da etapa à esquerda, nome +
   // temperatura, estado do follow-up e avatar do consultor à direita.
