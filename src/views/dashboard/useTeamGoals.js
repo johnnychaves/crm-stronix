@@ -42,16 +42,36 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
     const monthDays = countMetaDaysInMonth(metaWeekdays);
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
     const monthPrefix = dgDateKey(new Date()).slice(0, 7); // 'YYYY-MM'
+    // Fatias por dono calculadas UMA vez (O(N+M+H)) em vez de re-varrer tudo
+    // POR usuário (era O(U×(N+M))). Mesmo resultado: as funções de meta/volume
+    // filtram por dono internamente (caracterizado em __tests__/dailyGoal.test.js).
+    const leadsByConsultant = new Map();
+    (leads || []).forEach((l) => {
+      const arr = leadsByConsultant.get(l.consultantId);
+      if (arr) arr.push(l); else leadsByConsultant.set(l.consultantId, [l]);
+    });
+    const interactionsByAuth = new Map();
+    (interactions || []).forEach((i) => {
+      const arr = interactionsByAuth.get(i.consultantAuthUid);
+      if (arr) arr.push(i); else interactionsByAuth.set(i.consultantAuthUid, [i]);
+    });
+    const historyByConsultant = new Map();
+    (teamHistory || []).forEach((h) => {
+      if (!h?.consultantId) return;
+      const arr = historyByConsultant.get(h.consultantId);
+      if (arr) arr.push(h); else historyByConsultant.set(h.consultantId, [h]);
+    });
     const map = {};
     (usersList || []).forEach((u) => {
-      const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(leads, byLead, u.id));
+      const myLeads = leadsByConsultant.get(u.id) || [];
+      const myInteractions = interactionsByAuth.get(u.authUid) || [];
+      const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(myLeads, byLead, u.id));
       const volTarget = volumeTargetFor(u, dailyVolumeTarget);
-      const vol = volTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : null;
-      const monthVol = volTarget > 0 ? computeVolumeInRange(leads, interactions, u.id, u.authUid, monthStart, null, metaWeekdays) : null;
+      const vol = volTarget > 0 ? computeDailyVolume(myLeads, myInteractions, u.id, u.authUid) : null;
+      const monthVol = volTarget > 0 ? computeVolumeInRange(myLeads, myInteractions, u.id, u.authUid, monthStart, null, metaWeekdays) : null;
       // Só dias PROGRAMADOS da meta contam no "X de Y dias" do mês (mesma régua
       // do alvo monthDays) — meta batida em dia fora da meta (ex.: sábado) não entra.
-      const monthHits = teamHistory.filter((h) => {
-        if (h.consultantId !== u.id) return false;
+      const monthHits = (historyByConsultant.get(u.id) || []).filter((h) => {
         const ds = String(h.date || '');
         if (!ds.startsWith(monthPrefix)) return false;
         const [yy, mm, dd] = ds.split('-').map(Number);

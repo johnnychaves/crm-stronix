@@ -3,6 +3,7 @@
 // no Firestore SDK imports needed at this layer.
 
 import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
+import { onlyDigits } from './globalSearch.js';
 
 export const getLeadAppointmentType = (lead) => {
   return lead?.appointmentType || normalizeAppointmentType(lead?.nextFollowUpType);
@@ -28,6 +29,17 @@ export const isConvertedStatusName = (statusName) => {
 export const isLeadConverted = (lead) => {
   return Boolean(lead?.isConverted || isConvertedStatusName(lead?.status));
 };
+
+// Cliente = matriculado (lifecycleStage) OU lead 'Venda' legado sem contrato
+// registrado. É o recorte da aba Clientes; a negação é o recorte do Kanban
+// (clientes saem do board). Base do futuro lifecycleBucket.
+export const isClientLead = (lead) =>
+  lead?.lifecycleStage === 'cliente' || isLeadConverted(lead);
+
+// Duplicado por WhatsApp: compara só os dígitos. Guardas de tamanho mínimo
+// ficam no caller (o cadastro só checa com >= 10 dígitos).
+export const findLeadByPhoneDigits = (leads, phoneDigits) =>
+  (leads || []).find((l) => onlyDigits(l.whatsapp) === phoneDigits);
 
 export const getLeadConversionDate = (lead) => {
   return getSafeDateOrNull(lead?.convertedAt) || getSafeDateOrNull(lead?.createdAt);

@@ -197,13 +197,32 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
       if (arr) arr.push(h); else historyByConsultant.set(h.consultantId, [h]);
     });
 
+    // Fatias por dono calculadas UMA vez (O(N+M)) em vez de re-varrer leads e
+    // interações inteiros POR usuário (era O(U×(N+M)) por snapshot). As funções
+    // de meta/volume filtram por dono internamente, então receber só a fatia
+    // produz o MESMO resultado — caracterizado em __tests__/dailyGoal.test.js.
+    // Agrupar por i.consultantAuthUid (inclusive undefined) preserva o critério
+    // atual do volume; o alinhamento de campo é decisão da PR C.
+    const leadsByConsultant = new Map();
+    (leads || []).forEach(l => {
+      const arr = leadsByConsultant.get(l.consultantId);
+      if (arr) arr.push(l); else leadsByConsultant.set(l.consultantId, [l]);
+    });
+    const interactionsByAuth = new Map();
+    (interactions || []).forEach(i => {
+      const arr = interactionsByAuth.get(i.consultantAuthUid);
+      if (arr) arr.push(i); else interactionsByAuth.set(i.consultantAuthUid, [i]);
+    });
+
     const base = (usersList || []).map(u => {
       const isManager = u.role === 'admin';
       const ritmo = computeRitmo(historyByConsultant.get(u.id) || [], metaWeekdays);
       const prospTarget = volumeTargetFor(u, dailyVolumeTarget);
+      const myLeads = leadsByConsultant.get(u.id) || [];
+      const myInteractions = interactionsByAuth.get(u.authUid) || [];
 
       if (sel.isToday) {
-        const processed = computeDailyGoalSlots(leads, byLead, u.id);
+        const processed = computeDailyGoalSlots(myLeads, byLead, u.id);
         const { totalSlots, doneSlots, progress } = slotTotals(processed);
         const pendingByCat = {};
         processed.forEach(l => l.categorySlugs.forEach(s => { if (!l.categoryStatus?.[s]) pendingByCat[s] = (pendingByCat[s] || 0) + 1; }));
@@ -212,7 +231,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
           !l.categoryStatus?.[DAILY_GOAL_CATEGORIES.ATRASADO] &&
           overdueDaysOf(l) >= slaOverdueDays
         ).length;
-        const prospVol = prospTarget > 0 ? computeDailyVolume(leads, interactions, u.id, u.authUid) : null;
+        const prospVol = prospTarget > 0 ? computeDailyVolume(myLeads, myInteractions, u.id, u.authUid) : null;
         const prospDone = prospVol?.total || 0;
         const prospHit = prospTarget > 0 && prospDone >= prospTarget;
         const dailyHit = totalSlots > 0 && progress === 100;
@@ -222,7 +241,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
       // Dia passado: meta vem do histórico (bateu = doc existe); prospecção
       // recalculada do dia. Carteira de tarefas NÃO é reconstruível.
       const hitMeta = (historyByConsultant.get(u.id) || []).some(h => h.date === sel.dateKey);
-      const prospVol = prospTarget > 0 ? computeVolumeInRange(leads, interactions, u.id, u.authUid, sel.from, sel.to) : null;
+      const prospVol = prospTarget > 0 ? computeVolumeInRange(myLeads, myInteractions, u.id, u.authUid, sel.from, sel.to) : null;
       const prospDone = prospVol?.total || 0;
       const prospHit = prospTarget > 0 && prospDone >= prospTarget;
       return { user: u, isPast: true, hitMeta, ritmo, prospDone, prospTarget, prospVol, prospHit, isManager, dailyHit: hitMeta, perfect: hitMeta && prospHit };

@@ -5,7 +5,7 @@
 
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 
 // Config do Firebase Web. Os valores são PÚBLICOS (embarcam no bundle do
 // cliente — apiKey de Firebase Web não é segredo). Lê de import.meta.env
@@ -25,7 +25,25 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// Cache local persistente (IndexedDB): reload/nova sessão sincroniza só os
+// DELTAS em vez de rebaixar as coleções inteiras — corte direto de custo de
+// leitura e de tempo de boot. Multi-tab p/ várias abas compartilharem o cache.
+// IndexedDB indisponível (Safari private, storage cheio) é tratado PELO SDK,
+// de forma assíncrona na 1ª operação: ele mesmo cai p/ cache em memória e
+// loga "Falling back to memory cache". O try/catch abaixo cobre apenas erro
+// SÍNCRONO de configuração inválida — não é a rede de proteção do IndexedDB.
+function initDb() {
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch (e) {
+    console.warn('Firestore: configuração de cache rejeitada, usando padrão.', e);
+    return initializeFirestore(app, {});
+  }
+}
+export const db = initDb();
 
 // Tenant / namespace
 // Multi-tenant: `appId` é o segmento de path que isola cada academia

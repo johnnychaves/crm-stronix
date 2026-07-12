@@ -1,3 +1,64 @@
+import { isClientLead } from './leads.js';
+
+// --- KANBAN: recorte do board ---
+// Clientes (matriculados) e leads 'Venda' legados saem do Kanban — vivem na
+// aba Clientes. A coluna "Venda" segue existindo só como alvo de conversão.
+// `now` é injetável para teste; o default preserva o comportamento da tela.
+export function filterKanbanLeads(funnelLeads, { respFilter = [], onlyOverdue = false, now = new Date() } = {}) {
+  let filtered = (funnelLeads || []).filter(l => !isClientLead(l));
+  if (respFilter.length > 0) {
+    filtered = filtered.filter(l => respFilter.includes(l.consultantId));
+  }
+  if (onlyOverdue) {
+    filtered = filtered.filter(l =>
+      l.status !== 'Venda' && l.status !== 'Perda' &&
+      l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) &&
+      l.nextFollowUp < now
+    );
+  }
+  return filtered;
+}
+
+// --- KANBAN: particionamento por coluna, UMA passada p/ o board inteiro ---
+// Ordena cada coluna por prioridade de follow-up: 1 atrasado · 2 hoje ·
+// 3 futuro · 4 sem follow-up; empate por follow-up mais próximo, depois
+// createdAt desc. Retorna Map<statusName, lead[]> (colunas de statusNames
+// sempre presentes, mesmo vazias).
+export function partitionLeadsByStatus(kanbanLeads, statusNames = [], now = new Date()) {
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfTomorrow = startOfToday + 86400000;
+
+  const getPriority = (lead) => {
+    if (!lead.nextFollowUp || !(lead.nextFollowUp instanceof Date) || isNaN(lead.nextFollowUp.getTime())) {
+      return 4; // Lowest priority
+    }
+    const time = lead.nextFollowUp.getTime();
+    if (time < now.getTime()) return 1; // Overdue
+    if (time >= startOfToday && time < startOfTomorrow) return 2; // Today
+    return 3; // Future
+  };
+
+  const map = new Map(statusNames.map((name) => [name, []]));
+  (kanbanLeads || []).forEach((lead) => {
+    if (!map.has(lead.status)) map.set(lead.status, []);
+    map.get(lead.status).push(lead);
+  });
+
+  map.forEach((columnLeads) => {
+    columnLeads.sort((a, b) => {
+      const pA = getPriority(a);
+      const pB = getPriority(b);
+      if (pA !== pB) return pA - pB;
+      if (pA !== 4 && a.nextFollowUp && b.nextFollowUp) {
+        return a.nextFollowUp.getTime() - b.nextFollowUp.getTime();
+      }
+      return (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0);
+    });
+  });
+
+  return map;
+}
+
 // --- KANBAN: cor de destaque por coluna (faixa do card + bolinha do header) ---
 const KANBAN_COLUMN_ACCENT = {
   blue:   { dot: 'bg-blue-500',    border: '#3b82f6' },

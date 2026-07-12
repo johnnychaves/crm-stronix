@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { GraduationCap, Layers, Phone, SlidersHorizontal, Check, X } from 'lucide-react';
-import { isLeadConverted, isAdminUser } from '../lib/leads.js';
+import { isClientLead, isAdminUser } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
@@ -93,7 +93,7 @@ function ClientsView({ leads, appUser, usersList }) {
   // Clientes = matriculados. Opção 1: leads 'Venda' legados também entram
   // (aparecem como "Sem contrato"). A timeline é preservada (mesmo doc).
   const clientes = useMemo(
-    () => (leads || []).filter(l => l.lifecycleStage === 'cliente' || isLeadConverted(l)),
+    () => (leads || []).filter(l => isClientLead(l)),
     [leads]
   );
 

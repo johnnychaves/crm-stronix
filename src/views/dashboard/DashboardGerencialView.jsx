@@ -194,9 +194,11 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
   const aulasPorModalidade = useMemo(() => computeAulasPorModalidade(scheduledLeads), [scheduledLeads]);
   const lossReasons = useMemo(() => computeLossReasons(funnelLeads, periodRange), [funnelLeads, periodRange]);
 
-  // Conversão por professor: janela móvel própria (90 dias), independente do
-  // seletor de período — o card declara a janela no pill.
-  const professorConv = useMemo(() => computeProfessorConversion(funnelLeads), [funnelLeads]);
+  // Conversão por professor: janela móvel própria (90 dias) pela DATA DA AULA,
+  // independente do seletor de período E do funil selecionado (decisão do
+  // Johnny, 2026-07-12: o card olha todas as aulas experimentais da academia
+  // — professor não é recorte de funil). O pill declara a janela.
+  const professorConv = useMemo(() => computeProfessorConversion(leads), [leads]);
 
   // --- TABELA "MÉTRICAS POR FUNIL" (modo Todos os funis) ---
   const funnelComparisonRows = useMemo(() => {
@@ -439,7 +441,7 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
           rows={professorRows}
           reference={professorReference}
           referenceLabel="Sem professor · referência"
-          footnote="Atribuição pelo professor do último agendamento de cada lead, então é aproximada. Conversão = matrículas ÷ quem compareceu."
+          footnote="Todas as aulas experimentais da academia, independente do funil selecionado — só entram aulas cuja data já passou. Atribuição pelo professor do último agendamento de cada lead, então é aproximada. Conversão = matrículas ÷ quem compareceu."
           emptyText="Nenhuma aula experimental realizada nos últimos 90 dias."
         />
 
