@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
-import { getInteractionSecurityFields, getLeadOwnershipFields } from '../lib/leads.js';
+import { getInteractionSecurityFields, getLeadOwnershipFields, findLeadByPhoneDigits } from '../lib/leads.js';
 import { fromDateInputValue } from '../lib/dates.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
 import { cn } from '../lib/utils.js';
@@ -347,7 +347,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const phoneDigits = onlyDigits(form.whatsapp);
   const phoneTooShort = phoneDigits.length > 0 && phoneDigits.length < 10;
   const duplicate = phoneDigits.length >= 10
-    ? (leads || []).find((l) => onlyDigits(l.whatsapp) === phoneDigits)
+    ? findLeadByPhoneDigits(leads, phoneDigits)
     : null;
   const nameOk = form.name.trim().length > 1;
   const dorOk = form.dor.trim().length > 0;
@@ -373,7 +373,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
       toast.warning('Selecione um funil para o lead. Crie um em Configurações → Funil Pipeline se não houver opções.');
       return;
     }
-    const dup = (leads || []).find((l) => onlyDigits(l.whatsapp) === phoneDigits);
+    const dup = findLeadByPhoneDigits(leads, phoneDigits);
     if (dup) {
       const ownerLabel = dup.consultantName ? ` (consultor: ${dup.consultantName})` : '';
       const statusLabel = dup.status ? ` · etapa "${dup.status}"` : '';
