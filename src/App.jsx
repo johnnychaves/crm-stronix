@@ -67,7 +67,8 @@ import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
 import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
-import { DashboardView } from './views/DashboardView.jsx';
+import { DashboardOperacionalView } from './views/dashboard/DashboardOperacionalView.jsx';
+import { DashboardGerencialView } from './views/dashboard/DashboardGerencialView.jsx';
 import { KanbanView } from './views/KanbanView.jsx';
 import { AppointmentTrackingView } from './views/AppointmentTrackingView.jsx';
 import { LeadsView } from './views/LeadsView.jsx';
@@ -150,6 +151,12 @@ function AppInner() {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  // 'dashboard' é um SENTINEL (estado inicial e pós-logout): a Visão geral
+  // virou duas abas e a inicial depende do papel — consultor abre no
+  // Operacional (o dia dele), admin abre no Gerencial (análise do período).
+  const resolvedTab = activeTab === 'dashboard'
+    ? (isAdminUser(appUser) ? 'dashGerencial' : 'dashOperacional')
+    : activeTab;
   // Ficha-página (lead/cliente): id em foco. A ficha SOBREPÕE o conteúdo da
   // aba ativa (não troca activeTab), então o "Voltar" só limpa este id e a
   // aba reaparece sozinha.
@@ -180,6 +187,8 @@ function AppInner() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
+  // Accordion "Visão geral" (Operacional / Gerencial) — split do dashboard.
+  const [overviewMenuOpen, setOverviewMenuOpen] = useState(false);
   
   const [isDarkMode, setIsDarkMode] = useState(() => {
     return localStorage.getItem('theme') === 'dark';
@@ -736,14 +745,16 @@ useEffect(() => {
     }
   }, [funnels, selectedFunnelId]);
 
-  // Cross-tab reset: o modo "Todos os funis" só existe no Dashboard.
-  // Ao trocar para Kanban/Leads/Meta, voltar para o funil default.
+  // Cross-tab reset: o modo "Todos os funis" só existe no Gerencial (a
+  // Operacional é fixa em hoje, sem filtro de funil — mas alternar entre as
+  // duas abas do dashboard NÃO derruba a seleção). Ao trocar para
+  // Kanban/Leads/Meta, voltar para o funil default.
   useEffect(() => {
     if (!isAllFunnels(selectedFunnelId)) return;
-    if (activeTab === 'dashboard') return;
+    if (resolvedTab === 'dashGerencial' || resolvedTab === 'dashOperacional') return;
     const fallback = getDefaultFunnel(funnels)?.id;
     if (fallback) setSelectedFunnelId(fallback);
-  }, [activeTab, selectedFunnelId, funnels]);
+  }, [resolvedTab, selectedFunnelId, funnels]);
 
   // Migração idempotente: cria funil "Comercial" default e backfill de funnelId em leads/statuses
   useEffect(() => {
@@ -972,6 +983,10 @@ useEffect(() => {
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
 
+  // Grupo "Visão geral": derivado (sem effect) — fica aberto enquanto uma das
+  // duas abas do dashboard está ativa; fora delas, vale o toggle do usuário.
+  const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashGerencial';
+
   // Super-admin sem tenant entra direto na tela "Organizações" (única que vê).
   useEffect(() => {
     if (appUser?.superAdminOnly) setActiveTab('superadmin');
@@ -1034,7 +1049,16 @@ useEffect(() => {
             <>
               <div className={`px-2.5 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Workspace</div>
               <div className="space-y-1">
-                <SidebarItem icon={<LayoutDashboard className="w-[18px] h-[18px]" />} label="Visão geral" active={activeTab === 'dashboard'} onClick={() => changeTab('dashboard')} />
+                <SidebarGroup
+                  icon={<LayoutDashboard className="w-[18px] h-[18px]" />}
+                  label="Visão geral"
+                  active={isDashTab}
+                  open={overviewMenuOpen || isDashTab}
+                  onToggle={() => setOverviewMenuOpen(o => !o)}
+                >
+                  <SidebarSubItem label="Operacional" active={resolvedTab === 'dashOperacional'} onClick={() => changeTab('dashOperacional')} />
+                  <SidebarSubItem label="Gerencial" active={resolvedTab === 'dashGerencial'} onClick={() => changeTab('dashGerencial')} />
+                </SidebarGroup>
                 <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
                 <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} active={activeTab === 'clientes'} onClick={() => changeTab('clientes')} />
                 <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
@@ -1095,7 +1119,8 @@ useEffect(() => {
           <div className="flex items-center min-w-0">
             <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setIsMobileMenuOpen(true)}><Menu className="w-6 h-6" /></button>
             <h2 className="font-display text-xl font-bold text-gray-900 dark:text-white capitalize truncate tracking-tight">
-              {activeTab === 'dashboard' && 'Visão Geral'}
+              {resolvedTab === 'dashOperacional' && 'Operacional'}
+              {resolvedTab === 'dashGerencial' && 'Gerencial'}
               {activeTab === 'kanban' && 'Pipeline de Vendas'}
               {activeTab === 'clientes' && 'Clientes'}
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
@@ -1196,7 +1221,8 @@ useEffect(() => {
                   funnels={funnels}
                 />
               ) : (<>
-              {activeTab === 'dashboard' && <DashboardView leads={isAdminUser(appUser) ? leads : (leads || []).filter(l => l.consultantId === appUser.id)} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
+              {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : (leads || []).filter(l => l.consultantId === appUser.id)} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} />}
+              {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={isAdminUser(appUser) ? leads : (leads || []).filter(l => l.consultantId === appUser.id)} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
               {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
