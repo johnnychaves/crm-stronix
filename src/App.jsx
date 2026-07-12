@@ -534,6 +534,9 @@ useEffect(() => {
         id: docSnap.id,
         ...data,
         createdAt: getSafeDate(data.createdAt),
+        // Doc sem createdAt real: getSafeDate devolve "agora", o que faria o
+        // lead contar como captado hoje nas métricas — a flag permite excluí-lo.
+        createdAtMissing: !data.createdAt,
         nextFollowUp: getSafeDateOrNull(data.nextFollowUp),
         appointmentOutcomeAt: getSafeDateOrNull(data.appointmentOutcomeAt)
       };

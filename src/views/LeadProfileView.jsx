@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDocs, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH } from '../lib/firebase.js';
-import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted } from '../lib/leads.js';
+import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted, isConvertedStatusName } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
@@ -272,8 +272,13 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
     try {
       const up = { status: targetStatus };
       if (targetFunnelId && targetFunnelId !== lead.funnelId) up.funnelId = targetFunnelId;
+      // Etapa customizada com nome de matrícula conta como conversão nas
+      // métricas — carimba a data do fechamento se faltar (senão a matrícula
+      // cai no mês do cadastro). Destino convertido também não limpa a
+      // resolução ao sair de Venda: a pessoa continua matriculada/cliente.
+      const destinoConvertido = isConvertedStatusName(targetStatus);
       // Saindo de Venda/Perda para outra fase: limpa os campos de resolução.
-      if (lead.status === 'Venda' && targetStatus !== 'Venda') {
+      if (lead.status === 'Venda' && targetStatus !== 'Venda' && !destinoConvertido) {
         up.isConverted = false;
         up.convertedAt = null;
         // Desfaz o "cliente": senão lifecycleStage='cliente' segue tratando a
@@ -284,6 +289,7 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
         up.lossReason = null;
         up.lostAt = null;
       }
+      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) up.convertedAt = serverTimestamp();
       await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), up, { merge: true });
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
         leadId: lead.id,
