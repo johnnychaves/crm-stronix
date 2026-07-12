@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
 import { isAdminUser, canEditLead, getInteractionSecurityFields, isConvertedStatusName } from '../lib/leads.js';
@@ -29,7 +29,218 @@ function InitialsAvatar({ name = '', size = 22, textSize = 9 }) {
   );
 }
 
-function KanbanView({ leads, interactions, appUser, statuses, usersList, tags, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
+// Prop estável para colunas sem leads (ver getLeadsByStatus).
+const EMPTY_LEADS = [];
+
+// Card compacto (uma linha): barra de accent da etapa à esquerda, nome +
+// temperatura, estado do follow-up e avatar do consultor à direita.
+// React.memo: durante o drag só o card arrastado muda de prop (isDragging);
+// os demais não re-renderizam. Handlers vêm estáveis (useCallback) do pai.
+const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, lastDate, onDragStart, onDragEnd, onOpenProfile, onMoveRequest }) {
+  const isWon = lead.status === 'Venda';
+  const isLost = lead.status === 'Perda';
+  const isOverdue =
+    !isWon && !isLost &&
+    lead.nextFollowUp instanceof Date &&
+    !isNaN(lead.nextFollowUp.getTime()) &&
+    lead.nextFollowUp < new Date();
+  const accent = getKanbanColumnAccent(columnColor);
+  // Mesma lógica do LeadTemperatureBadge, em emoji compacto.
+  const isActiveLead = isLeadActive(lead);
+  const isHot = isActiveLead && isHotLeadFromDate(lead, lastDate);
+  const isCold = isActiveLead && !isHot && isColdLeadFromDate(lead, lastDate);
+  const convertedAt = getSafeDateOrNull(lead.convertedAt);
+  const hasFollowUp = lead.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime());
+
+  return (
+    <article
+      data-no-pan="true"
+      draggable
+      onDragStart={(e) => onDragStart(e, lead.id)}
+      onDragEnd={onDragEnd}
+      onClick={() => onOpenProfile(lead.id)}
+      className={cn(
+        'group relative flex items-center gap-2.5 rounded-[10px] bg-white dark:bg-neutral-900 border py-2.5 pr-2.5 pl-3 overflow-hidden cursor-grab active:cursor-grabbing transition-all',
+        isDragging
+          ? 'opacity-80 z-50 shadow-xl border-brand-500'
+          : 'border-[#e8ecf3] dark:border-neutral-800 hover:border-brand-200 dark:hover:border-brand-500/40 hover:shadow-[0_3px_10px_-2px_rgba(15,23,42,.10)]'
+      )}
+    >
+      <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: accent.border }} />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              'text-[13px] font-semibold leading-[1.3] truncate',
+              isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white'
+            )}
+            title={lead.name}
+          >
+            {lead.name}
+          </span>
+          {isHot && (
+            <span className="text-[10px] shrink-0" title="Lead com atividade recente ou agendamento próximo" aria-label="Lead quente">🔥</span>
+          )}
+          {isCold && (
+            <span className="text-[10px] shrink-0" title="Lead sem interação há 7 dias ou mais" aria-label="Lead esfriando">❄️</span>
+          )}
+        </div>
+        <div className="mt-0.5 flex items-center text-[11px] whitespace-nowrap overflow-hidden">
+          {isWon ? (
+            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">
+              <CheckCircle className="size-[11px] shrink-0" />
+              Matriculado{convertedAt ? ` ${fmtKanbanRelDate(convertedAt)}` : ''}
+            </span>
+          ) : isLost ? (
+            <span
+              className="inline-flex items-center gap-1 font-semibold text-slate-500 dark:text-neutral-400 min-w-0"
+              title={lead.lossReason || 'Perdido'}
+            >
+              <Ban className="size-[11px] shrink-0" />
+              <span className="truncate">{lead.lossReason || 'Perdido'}</span>
+            </span>
+          ) : hasFollowUp ? (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1 font-semibold tabular-nums',
+                isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-neutral-300'
+              )}
+            >
+              <FollowUpIcon type={lead.nextFollowUpType} className="size-[11px] shrink-0" />
+              {fmtKanbanRelDateTime(lead.nextFollowUp)}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300">
+              <AlertCircle className="size-[11px] shrink-0" />
+              Sem agendamento
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* O protótipo omite o botão "Mover"; preservamos a função para
+          toque/teclado — aparece no hover (desktop) e sempre em telas
+          de toque (pointer-coarse). */}
+      <button
+        type="button"
+        data-no-pan="true"
+        onClick={(e) => { e.stopPropagation(); onMoveRequest(lead); }}
+        title="Mover para outra etapa"
+        aria-label="Mover lead para outra etapa"
+        className="absolute right-9 top-1/2 -translate-y-1/2 size-6 rounded-md grid place-items-center bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 shadow-sm text-gray-400 hover:text-brand-600 hover:border-brand-200 dark:text-neutral-500 dark:hover:text-brand-300 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-opacity"
+      >
+        <ArrowRightLeft className="size-3" />
+      </button>
+
+      {lead.consultantName && (
+        <span title={`Consultor: ${lead.consultantName}`} className="shrink-0">
+          <InitialsAvatar name={lead.consultantName} size={22} textSize={9} />
+        </span>
+      )}
+    </article>
+  );
+});
+
+// Coluna densa: sem card de fundo — header com régua na cor da etapa,
+// cards em lista compacta com scroll interno. React.memo: o hover do drag
+// (draggedOverColumn) re-renderiza SÓ as 2 colunas afetadas via isHovered.
+const KanbanColumn = memo(function KanbanColumn({
+  name, color, special, columnLeads, renderLimit = 0, isHovered,
+  draggingLeadId, interactionIndex,
+  onColumnDragOver, onColumnDragLeave, onDropLead,
+  onDragStart, onDragEnd, onOpenProfile, onMoveRequest,
+}) {
+  const accent = getKanbanColumnAccent(color);
+  const isWinCol = special === 'win';
+  const isLossCol = special === 'loss';
+  // Colunas terminais (Venda/Perda) acumulam histórico; renderizar
+  // todos os cards trava o board. Mostra os mais recentes e indica
+  // quantos restam (acessíveis pela busca da tela de Leads).
+  const shownLeads = renderLimit > 0 && columnLeads.length > renderLimit
+    ? columnLeads.slice(0, renderLimit)
+    : columnLeads;
+  const hiddenCount = columnLeads.length - shownLeads.length;
+  const emptyText = isWinCol
+    ? 'Arraste para fechar venda'
+    : isLossCol
+      ? 'Arraste para marcar perda'
+      : isHovered
+        ? 'Soltar aqui'
+        : 'Sem leads';
+
+  return (
+    <section
+      onDragOver={(e) => {
+        e.preventDefault();
+        onColumnDragOver(name);
+      }}
+      onDragLeave={(e) => {
+        if (e.currentTarget.contains(e.relatedTarget)) return;
+        onColumnDragLeave(name);
+      }}
+      onDrop={(e) => onDropLead(e, name, special)}
+      className={cn(
+        'w-[264px] shrink-0 flex flex-col max-h-full rounded-xl transition-colors',
+        isHovered && 'bg-brand-50/60 dark:bg-brand-500/[0.06] ring-2 ring-brand-100 dark:ring-brand-500/30'
+      )}
+    >
+      <header
+        className="px-0.5 pb-3 mb-3 flex items-center gap-2 border-b-2 shrink-0"
+        style={{ borderBottomColor: accent.border }}
+      >
+        <h3
+          className="text-[12px] font-bold uppercase tracking-[.05em] text-gray-700 dark:text-neutral-200 whitespace-nowrap truncate"
+          title={name}
+        >
+          {name}
+        </h3>
+        <span className="text-[11px] font-semibold text-slate-400 dark:text-neutral-500 tabular-nums shrink-0">
+          {columnLeads.length}
+        </span>
+        {isWinCol && <TrendingUp className="ml-auto size-[13px] shrink-0 text-emerald-700 dark:text-emerald-400" />}
+      </header>
+
+      <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5 pb-2 custom-scrollbar">
+        {columnLeads.length === 0 ? (
+          <div
+            className={cn(
+              'min-h-24 rounded-[10px] border-2 border-dashed grid place-items-center text-[10.5px] font-semibold uppercase tracking-[.06em] text-center px-3 transition-colors',
+              isHovered
+                ? 'border-brand-300 text-brand-600 dark:border-brand-500/40 dark:text-brand-300'
+                : 'border-slate-300 text-slate-400 dark:border-neutral-700 dark:text-neutral-500'
+            )}
+          >
+            {emptyText}
+          </div>
+        ) : (
+          <>
+            {shownLeads.map(lead => (
+              <KanbanCard
+                key={lead.id}
+                lead={lead}
+                columnColor={color}
+                isDragging={draggingLeadId === lead.id}
+                lastDate={interactionIndex.get(lead.id)?.lastDate}
+                onDragStart={onDragStart}
+                onDragEnd={onDragEnd}
+                onOpenProfile={onOpenProfile}
+                onMoveRequest={onMoveRequest}
+              />
+            ))}
+            {hiddenCount > 0 && (
+              <div className="py-1.5 text-center text-[11px] font-medium text-slate-400 dark:text-neutral-500">
+                + {hiddenCount} {hiddenCount === 1 ? 'lead mais antigo' : 'leads mais antigos'} · use a busca
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  );
+});
+
+function KanbanView({ leads, interactions, appUser, statuses, usersList, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const toast = useToast();
   const { openProfile } = useLeadProfile();
   const [moveLead, setMoveLead] = useState(null); // lead com o menu "Mover" aberto (toque/teclado)
@@ -136,7 +347,7 @@ const handleKanbanMouseMove = (e) => {
   // não inventa agendamento (ver P4). Ao sair de Venda/Perda, limpa os
   // campos de resolução da origem para o lead não seguir contando como
   // matrícula/perda nas métricas.
-  const applyMoveToStage = async (lead, newStatus) => {
+  const applyMoveToStage = useCallback(async (lead, newStatus) => {
     try {
       const payload = { status: newStatus };
       if (selectedFunnelId && !lead.funnelId) payload.funnelId = selectedFunnelId;
@@ -163,12 +374,12 @@ const handleKanbanMouseMove = (e) => {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
     }
-  };
+  }, [db, appUser, selectedFunnelId, toast]);
 
   // A Venda no Kanban agora abre o MatriculaModal (plano/valor/vigência) em vez
   // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
   // lead + timeline acontece dentro do modal (lib/contracts.js).
-  const openMatricula = (lead) => setMatriculaLead(lead);
+  const openMatricula = useCallback((lead) => setMatriculaLead(lead), []);
 
   // Despacha um destino (etapa / Venda / Perda) com checagem de permissão.
   // Usada pelo menu "Mover" — funciona em toque, mouse e teclado, sem
@@ -185,7 +396,7 @@ const handleKanbanMouseMove = (e) => {
   };
 
   // ── Handlers de drag (desktop): extraem o leadId e delegam ao core ──
-  const handleDrop = (e, newStatus) => {
+  const handleDrop = useCallback((e, newStatus) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
     const lead = leadId && leads.find(l => l.id === leadId);
@@ -195,9 +406,9 @@ const handleKanbanMouseMove = (e) => {
       return;
     }
     applyMoveToStage(lead, newStatus);
-  };
+  }, [leads, appUser, toast, applyMoveToStage]);
 
-  const handleWinDrop = (e) => {
+  const handleWinDrop = useCallback((e) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
     const lead = leadId && leads.find(l => l.id === leadId);
@@ -207,9 +418,9 @@ const handleKanbanMouseMove = (e) => {
       return;
     }
     openMatricula(lead);
-  };
+  }, [leads, appUser, toast, openMatricula]);
 
-  const handleLossDrop = (e) => {
+  const handleLossDrop = useCallback((e) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
     const lead = leadId && leads.find(l => l.id === leadId);
@@ -219,7 +430,7 @@ const handleKanbanMouseMove = (e) => {
       return;
     }
     setLossModalLeadId(lead.id);
-  };
+  }, [leads, appUser, toast]);
 
   const confirmKanbanLoss = async (reason) => {
     if (!lossModalLeadId) return;
@@ -258,221 +469,45 @@ if (!lead) return;
     }
   };
 
-  const handleDragStart = (e, leadId) => {
+  const handleDragStart = useCallback((e, leadId) => {
     e.dataTransfer.setData('leadId', leadId);
     e.dataTransfer.effectAllowed = 'move';
     // Timeout to prevent the browser from capturing the modified styles in the drag ghost
     setTimeout(() => setDraggingLeadId(leadId), 0);
-  };
+  }, []);
 
-  const handleDragEnd = () => {
+  const handleDragEnd = useCallback(() => {
     setDraggingLeadId(null);
     setDraggedOverColumn(null);
-  };
+  }, []);
 
-  // Particiona o board inteiro numa passada (extraído p/ lib/kanban.js,
-  // coberto por teste). Ainda roda a cada render — a memoização com
-  // React.memo dos cards/colunas fica para a PR B (quick wins).
-  const leadsByStatus = partitionLeadsByStatus(kanbanLeads);
-  const getLeadsByStatus = (statusName) => leadsByStatus.get(statusName) || [];
+  // Callbacks estáveis p/ colunas/cards memoizados. O set funcional com
+  // bail-out (prev === name) reproduz o guard antigo "if (draggedOverColumn
+  // !== name)" sem depender do valor no closure.
+  const onColumnDragOver = useCallback((name) => {
+    setDraggedOverColumn(prev => (prev === name ? prev : name));
+  }, []);
+  const onColumnDragLeave = useCallback((name) => {
+    setDraggedOverColumn(prev => (prev === name ? null : prev));
+  }, []);
+  // Despacho único de drop: limpa o estado de drag (mesma ordem do código
+  // antigo) e roteia por tipo de coluna.
+  const onDropLead = useCallback((e, name, special) => {
+    setDraggedOverColumn(null);
+    setDraggingLeadId(null);
+    if (special === 'win') return handleWinDrop(e);
+    if (special === 'loss') return handleLossDrop(e);
+    return handleDrop(e, name);
+  }, [handleDrop, handleWinDrop, handleLossDrop]);
+  const onMoveRequest = useCallback((lead) => setMoveLead(lead), []);
 
-  // Card compacto (uma linha): barra de accent da etapa à esquerda, nome +
-  // temperatura, estado do follow-up e avatar do consultor à direita.
-  const renderLeadCard = (lead, columnColor = 'gray') => {
-    const isWon = lead.status === 'Venda';
-    const isLost = lead.status === 'Perda';
-    const isOverdue =
-      !isWon && !isLost &&
-      lead.nextFollowUp instanceof Date &&
-      !isNaN(lead.nextFollowUp.getTime()) &&
-      lead.nextFollowUp < new Date();
-    const isDraggingThis = draggingLeadId === lead.id;
-    const accent = getKanbanColumnAccent(columnColor);
-    const idxEntry = interactionIndex.get(lead.id);
-    const lastDate = idxEntry?.lastDate;
-    // Mesma lógica do LeadTemperatureBadge, em emoji compacto.
-    const isActiveLead = isLeadActive(lead);
-    const isHot = isActiveLead && isHotLeadFromDate(lead, lastDate);
-    const isCold = isActiveLead && !isHot && isColdLeadFromDate(lead, lastDate);
-    const convertedAt = getSafeDateOrNull(lead.convertedAt);
-    const hasFollowUp = lead.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime());
-
-    return (
-      <article
-        key={lead.id}
-        data-no-pan="true"
-        draggable
-        onDragStart={(e) => handleDragStart(e, lead.id)}
-        onDragEnd={handleDragEnd}
-        onClick={() => openProfile(lead.id)}
-        className={cn(
-          'group relative flex items-center gap-2.5 rounded-[10px] bg-white dark:bg-neutral-900 border py-2.5 pr-2.5 pl-3 overflow-hidden cursor-grab active:cursor-grabbing transition-all',
-          isDraggingThis
-            ? 'opacity-80 z-50 shadow-xl border-brand-500'
-            : 'border-[#e8ecf3] dark:border-neutral-800 hover:border-brand-200 dark:hover:border-brand-500/40 hover:shadow-[0_3px_10px_-2px_rgba(15,23,42,.10)]'
-        )}
-      >
-        <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: accent.border }} />
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span
-              className={cn(
-                'text-[13px] font-semibold leading-[1.3] truncate',
-                isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white'
-              )}
-              title={lead.name}
-            >
-              {lead.name}
-            </span>
-            {isHot && (
-              <span className="text-[10px] shrink-0" title="Lead com atividade recente ou agendamento próximo" aria-label="Lead quente">🔥</span>
-            )}
-            {isCold && (
-              <span className="text-[10px] shrink-0" title="Lead sem interação há 7 dias ou mais" aria-label="Lead esfriando">❄️</span>
-            )}
-          </div>
-          <div className="mt-0.5 flex items-center text-[11px] whitespace-nowrap overflow-hidden">
-            {isWon ? (
-              <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">
-                <CheckCircle className="size-[11px] shrink-0" />
-                Matriculado{convertedAt ? ` ${fmtKanbanRelDate(convertedAt)}` : ''}
-              </span>
-            ) : isLost ? (
-              <span
-                className="inline-flex items-center gap-1 font-semibold text-slate-500 dark:text-neutral-400 min-w-0"
-                title={lead.lossReason || 'Perdido'}
-              >
-                <Ban className="size-[11px] shrink-0" />
-                <span className="truncate">{lead.lossReason || 'Perdido'}</span>
-              </span>
-            ) : hasFollowUp ? (
-              <span
-                className={cn(
-                  'inline-flex items-center gap-1 font-semibold tabular-nums',
-                  isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-neutral-300'
-                )}
-              >
-                <FollowUpIcon type={lead.nextFollowUpType} className="size-[11px] shrink-0" />
-                {fmtKanbanRelDateTime(lead.nextFollowUp)}
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300">
-                <AlertCircle className="size-[11px] shrink-0" />
-                Sem agendamento
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* O protótipo omite o botão "Mover"; preservamos a função para
-            toque/teclado — aparece no hover (desktop) e sempre em telas
-            de toque (pointer-coarse). */}
-        <button
-          type="button"
-          data-no-pan="true"
-          onClick={(e) => { e.stopPropagation(); setMoveLead(lead); }}
-          title="Mover para outra etapa"
-          aria-label="Mover lead para outra etapa"
-          className="absolute right-9 top-1/2 -translate-y-1/2 size-6 rounded-md grid place-items-center bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 shadow-sm text-gray-400 hover:text-brand-600 hover:border-brand-200 dark:text-neutral-500 dark:hover:text-brand-300 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-opacity"
-        >
-          <ArrowRightLeft className="size-3" />
-        </button>
-
-        {lead.consultantName && (
-          <span title={`Consultor: ${lead.consultantName}`} className="shrink-0">
-            <InitialsAvatar name={lead.consultantName} size={22} textSize={9} />
-          </span>
-        )}
-      </article>
-    );
-  };
-
-  // Coluna densa: sem card de fundo — header com régua na cor da etapa,
-  // cards em lista compacta com scroll interno.
-  const renderKanbanColumn = ({ key, name, color, special, columnLeads, onDropHandler, renderLimit = 0 }) => {
-    const accent = getKanbanColumnAccent(color);
-    const isHovered = draggedOverColumn === name;
-    const isWinCol = special === 'win';
-    const isLossCol = special === 'loss';
-    // Colunas terminais (Venda/Perda) acumulam histórico; renderizar
-    // todos os cards trava o board. Mostra os mais recentes e indica
-    // quantos restam (acessíveis pela busca da tela de Leads).
-    const shownLeads = renderLimit > 0 && columnLeads.length > renderLimit
-      ? columnLeads.slice(0, renderLimit)
-      : columnLeads;
-    const hiddenCount = columnLeads.length - shownLeads.length;
-    const emptyText = isWinCol
-      ? 'Arraste para fechar venda'
-      : isLossCol
-        ? 'Arraste para marcar perda'
-        : isHovered
-          ? 'Soltar aqui'
-          : 'Sem leads';
-
-    return (
-      <section
-        key={key}
-        onDragOver={(e) => {
-          e.preventDefault();
-          if (draggedOverColumn !== name) setDraggedOverColumn(name);
-        }}
-        onDragLeave={(e) => {
-          if (e.currentTarget.contains(e.relatedTarget)) return;
-          if (draggedOverColumn === name) setDraggedOverColumn(null);
-        }}
-        onDrop={(e) => {
-          setDraggedOverColumn(null);
-          setDraggingLeadId(null);
-          onDropHandler(e);
-        }}
-        className={cn(
-          'w-[264px] shrink-0 flex flex-col max-h-full rounded-xl transition-colors',
-          isHovered && 'bg-brand-50/60 dark:bg-brand-500/[0.06] ring-2 ring-brand-100 dark:ring-brand-500/30'
-        )}
-      >
-        <header
-          className="px-0.5 pb-3 mb-3 flex items-center gap-2 border-b-2 shrink-0"
-          style={{ borderBottomColor: accent.border }}
-        >
-          <h3
-            className="text-[12px] font-bold uppercase tracking-[.05em] text-gray-700 dark:text-neutral-200 whitespace-nowrap truncate"
-            title={name}
-          >
-            {name}
-          </h3>
-          <span className="text-[11px] font-semibold text-slate-400 dark:text-neutral-500 tabular-nums shrink-0">
-            {columnLeads.length}
-          </span>
-          {isWinCol && <TrendingUp className="ml-auto size-[13px] shrink-0 text-emerald-700 dark:text-emerald-400" />}
-        </header>
-
-        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-1.5 pb-2 custom-scrollbar">
-          {columnLeads.length === 0 ? (
-            <div
-              className={cn(
-                'min-h-24 rounded-[10px] border-2 border-dashed grid place-items-center text-[10.5px] font-semibold uppercase tracking-[.06em] text-center px-3 transition-colors',
-                isHovered
-                  ? 'border-brand-300 text-brand-600 dark:border-brand-500/40 dark:text-brand-300'
-                  : 'border-slate-300 text-slate-400 dark:border-neutral-700 dark:text-neutral-500'
-              )}
-            >
-              {emptyText}
-            </div>
-          ) : (
-            <>
-              {shownLeads.map(lead => renderLeadCard(lead, color))}
-              {hiddenCount > 0 && (
-                <div className="py-1.5 text-center text-[11px] font-medium text-slate-400 dark:text-neutral-500">
-                  + {hiddenCount} {hiddenCount === 1 ? 'lead mais antigo' : 'leads mais antigos'} · use a busca
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </section>
-    );
-  };
+  // Particiona o board inteiro numa passada (lib/kanban.js, coberto por
+  // teste), memoizado: só recalcula quando o recorte de leads muda — não
+  // em cada mudança de estado de drag/filtro/modal. O fallback EMPTY_LEADS
+  // (constante de módulo) mantém a prop columnLeads estável em colunas
+  // vazias — um [] literal novo por render anularia o React.memo delas.
+  const leadsByStatus = useMemo(() => partitionLeadsByStatus(kanbanLeads), [kanbanLeads]);
+  const getLeadsByStatus = (statusName) => leadsByStatus.get(statusName) || EMPTY_LEADS;
 
   const pipelineColumns = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
   const totalFunnelLeads = funnelLeads.length;
@@ -650,36 +685,63 @@ if (!lead) return;
           )}
         >
           <div className="flex gap-6 min-w-max h-full">
-            {pipelineColumns.map((column) =>
-              renderKanbanColumn({
-                key: column.id,
-                name: column.name,
-                color: column.color,
-                special: null,
-                columnLeads: getLeadsByStatus(column.name),
-                onDropHandler: (e) => handleDrop(e, column.name)
-              })
-            )}
+            {pipelineColumns.map((column) => (
+              <KanbanColumn
+                key={column.id}
+                name={column.name}
+                color={column.color}
+                special={null}
+                columnLeads={getLeadsByStatus(column.name)}
+                isHovered={draggedOverColumn === column.name}
+                draggingLeadId={draggingLeadId}
+                interactionIndex={interactionIndex}
+                onColumnDragOver={onColumnDragOver}
+                onColumnDragLeave={onColumnDragLeave}
+                onDropLead={onDropLead}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onOpenProfile={openProfile}
+                onMoveRequest={onMoveRequest}
+              />
+            ))}
 
-            {renderKanbanColumn({
-              key: '__venda',
-              name: 'Venda',
-              color: 'green',
-              special: 'win',
-              columnLeads: getLeadsByStatus('Venda'),
-              onDropHandler: handleWinDrop,
-              renderLimit: 50
-            })}
+            <KanbanColumn
+              key="__venda"
+              name="Venda"
+              color="green"
+              special="win"
+              columnLeads={getLeadsByStatus('Venda')}
+              renderLimit={50}
+              isHovered={draggedOverColumn === 'Venda'}
+              draggingLeadId={draggingLeadId}
+              interactionIndex={interactionIndex}
+              onColumnDragOver={onColumnDragOver}
+              onColumnDragLeave={onColumnDragLeave}
+              onDropLead={onDropLead}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onOpenProfile={openProfile}
+              onMoveRequest={onMoveRequest}
+            />
 
-            {renderKanbanColumn({
-              key: '__perda',
-              name: 'Perda',
-              color: 'gray',
-              special: 'loss',
-              columnLeads: getLeadsByStatus('Perda'),
-              onDropHandler: handleLossDrop,
-              renderLimit: 50
-            })}
+            <KanbanColumn
+              key="__perda"
+              name="Perda"
+              color="gray"
+              special="loss"
+              columnLeads={getLeadsByStatus('Perda')}
+              renderLimit={50}
+              isHovered={draggedOverColumn === 'Perda'}
+              draggingLeadId={draggingLeadId}
+              interactionIndex={interactionIndex}
+              onColumnDragOver={onColumnDragOver}
+              onColumnDragLeave={onColumnDragLeave}
+              onDropLead={onDropLead}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onOpenProfile={openProfile}
+              onMoveRequest={onMoveRequest}
+            />
           </div>
         </div>
       </div>
