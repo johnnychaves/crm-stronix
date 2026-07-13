@@ -3,7 +3,7 @@ import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Phone, S
 import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, hasGoalDoneToday, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
-import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { cn } from '@/lib/utils';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -139,21 +139,29 @@ function AppointmentTrackingView({ leads, interactions, appUser, usersList, stat
   const markPresence = async (lead, outcome, e) => {
     if (e) e.stopPropagation();
     if (savingId) return;
-    const apptDate = getLeadAppointmentDate(lead);
-    const isToday = apptDate && isApptSameDay(apptDate);
-    const already = hasGoalDoneToday(lead, categorySlug, interactionsByLead.get(lead.id) || [], todayStartMs);
+    // Clicar no lado JÁ ativo desmarca (volta pro neutro) — reverter um clique
+    // errado. Clicar no outro lado alterna direto. Sempre editável.
+    const clearing = lead.appointmentOutcome === outcome;
     setSavingId(lead.id);
     try {
-      await writeAppointmentOutcome({
-        db, lead, outcome, categorySlug, appUser, statuses,
-        consumeAppointment: false,
-        promote: false,
-        writeGoalDone: Boolean(isToday) && !already,
-        sourceLabel: isAula ? 'Aulas experimentais' : 'Visitas'
-      });
-      toast.success(outcome === 'attended'
-        ? `Presença de ${lead.name} confirmada.`
-        : `${lead.name} marcado como não veio.`);
+      if (clearing) {
+        await clearAppointmentOutcome({ db, lead });
+        toast.success(`Presença de ${lead.name} desmarcada.`);
+      } else {
+        const apptDate = getLeadAppointmentDate(lead);
+        const isToday = apptDate && isApptSameDay(apptDate);
+        const already = hasGoalDoneToday(lead, categorySlug, interactionsByLead.get(lead.id) || [], todayStartMs);
+        await writeAppointmentOutcome({
+          db, lead, outcome, categorySlug, appUser, statuses,
+          consumeAppointment: false,
+          promote: false,
+          writeGoalDone: Boolean(isToday) && !already,
+          sourceLabel: isAula ? 'Aulas experimentais' : 'Visitas'
+        });
+        toast.success(outcome === 'attended'
+          ? `Presença de ${lead.name} confirmada.`
+          : `${lead.name} marcado como não veio.`);
+      }
     } catch (err) {
       console.error('markPresence', err);
       toast.error('Não foi possível salvar a presença. Tente novamente.');
