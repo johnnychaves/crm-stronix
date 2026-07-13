@@ -64,11 +64,17 @@ async function handleWebhook(req, res) {
   if (!event || !payment) return res.status(200).json({ ignored: 'payload sem event/payment' });
 
   try {
-    if (eventId) {
-      const evRef = adminDb.collection('asaas_events').doc(String(eventId));
-      const seen = await evRef.get();
+    // Chave de idempotência estável: id do evento quando existe; senão derivada
+    // do pagamento + tipo (cobre webhooks sem body.id, que antes duplicavam
+    // tenant_payments a cada reentrega). O MARCADOR é gravado só no FIM, depois
+    // dos efeitos (ver abaixo), então "já visto" aqui significa "já processado
+    // por completo" — seguro pular. Antes o marcador era gravado ANTES dos
+    // efeitos: uma falha transitória no meio marcava o evento como visto e a
+    // reentrega do Asaas era descartada, deixando o cliente pago porém bloqueado.
+    const idemKey = eventId ? String(eventId) : (payment.id ? `${payment.id}:${event}` : null);
+    if (idemKey) {
+      const seen = await adminDb.collection('asaas_events').doc(idemKey).get();
       if (seen.exists) return res.status(200).json({ duplicate: true });
-      await evRef.set({ event, paymentId: payment.id || null, at: admin.firestore.FieldValue.serverTimestamp() });
     }
 
     const tenantId = await findTenantId(payment);
@@ -96,7 +102,10 @@ async function handleWebhook(req, res) {
     }
     if (Object.keys(patch).length > 1) await tenantsCol().doc(tenantId).update(patch);
 
-    await adminDb.collection('tenant_payments').add({
+    // Registro de pagamento IDEMPOTENTE: id de doc determinístico (idemKey) p/
+    // que uma reentrega SOBRESCREVA em vez de criar duplicata. Sem idemKey (caso
+    // patológico sem nenhum id), cai no add() best-effort de antes.
+    const paymentRecord = {
       tenantId,
       paymentId: payment.id || null,
       subscriptionId: payment.subscription || null,
@@ -109,7 +118,19 @@ async function handleWebhook(req, res) {
       paidAt: payment.paymentDate || payment.confirmedDate || null,
       invoiceUrl: payment.invoiceUrl || null,
       at: admin.firestore.FieldValue.serverTimestamp(),
-    });
+    };
+    if (idemKey) await adminDb.collection('tenant_payments').doc(idemKey).set(paymentRecord);
+    else await adminDb.collection('tenant_payments').add(paymentRecord);
+
+    // MARCADOR DE PROCESSADO gravado só AGORA, no fim, depois de TODOS os efeitos.
+    // Se qualquer passo acima falhar, o catch devolve 500 e, como o marcador não
+    // existe, a reentrega do Asaas reprocessa — o update do tenant é idempotente e
+    // o payment usa id determinístico, então nada duplica.
+    if (idemKey) {
+      await adminDb.collection('asaas_events').doc(idemKey).set({
+        event, paymentId: payment.id || null, at: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
 
     return res.status(200).json({ ok: true, tenantId, event });
   } catch (err) {
