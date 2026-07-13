@@ -1,0 +1,87 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lifecycleBucket", "order": "ASCENDING" },
+        { "fieldPath": "funnelId", "order": "ASCENDING" },
+        { "fieldPath": "lostAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lifecycleBucket", "order": "ASCENDING" },
+        { "fieldPath": "funnelId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lifecycleBucket", "order": "ASCENDING" },
+        { "fieldPath": "convertedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "lifecycleBucket", "order": "ASCENDING" },
+        { "fieldPath": "currentContractEndsAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "appointmentType", "order": "ASCENDING" },
+        { "fieldPath": "appointmentScheduledFor", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "consultantId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "consultantId", "order": "ASCENDING" },
+        { "fieldPath": "convertedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "consultantId", "order": "ASCENDING" },
+        { "fieldPath": "appointmentScheduledFor", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stronix_interactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "leadConsultantAuthUid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "stronix_interactions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "leadId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}
