@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { loadPlans } from './_plans.js';
 import { logAudit } from './_audit.js';
+import { sanitizeProfile } from './_profile.js';
 
 const USERS_PATH = 'stronix_users';
 const SOURCES_PATH = 'stronix_sources';
@@ -122,7 +123,7 @@ export default async function handler(req, res) {
     try {
       const {
         tenantId, displayName, adminEmail, adminPassword, adminName, plan, trialDays,
-        city, state, responsiblePhone, internal, monthlyPrice, resendInvite,
+        city, state, responsiblePhone, internal, monthlyPrice, resendInvite, profile,
       } = req.body || {};
 
       const slug = String(tenantId || '').trim().toLowerCase();
@@ -249,6 +250,7 @@ export default async function handler(req, res) {
       // .create() é ATÔMICO: falha se o slug já existir, fechando a corrida
       // (TOCTOU) entre o get() acima e este write quando dois provisionamentos
       // simultâneos usam o mesmo slug.
+      const profilePatch = sanitizeProfile(profile);
       try {
         await tenantsCol().doc(slug).create({
           displayName: String(displayName).trim(),
@@ -260,6 +262,7 @@ export default async function handler(req, res) {
             city: String(city || '').trim(),
             state: String(state || '').trim().toUpperCase().slice(0, 2),
           },
+          ...(profilePatch ? { profile: profilePatch } : {}),
           ...(String(responsiblePhone || '').trim() ? { responsiblePhone: String(responsiblePhone).trim() } : {}),
           ...(internal === true ? { internal: true } : {}),
           ...(negotiated !== null ? { monthlyPrice: negotiated } : {}),
