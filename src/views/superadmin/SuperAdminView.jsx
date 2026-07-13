@@ -11,7 +11,9 @@ import { SuperOverviewCards } from './SuperOverviewCards.jsx';
 import { SuperPlansTab } from './SuperPlansTab.jsx';
 import { SuperFinanceTab } from './SuperFinanceTab.jsx';
 import { TenantManageModal } from './TenantManageModal.jsx';
-import { Activity, AlertCircle, Ban, Check, Eye, FileText, Globe, Plus, Search, Settings } from 'lucide-react';
+import { GymProfileFields } from '../../components/profile/GymProfileFields.jsx';
+import { EMPTY_PROFILE, buildTenantProfilePayload } from '../../lib/gymProfile.js';
+import { Activity, AlertCircle, Ban, Building2, Check, Eye, FileText, Globe, Plus, Search, Settings } from 'lucide-react';
 
 function SuperAdminView({ tab, onOpenConsole }) {
   const toast = useToast();
@@ -21,8 +23,10 @@ function SuperAdminView({ tab, onOpenConsole }) {
   const [asaasConfigured, setAsaasConfigured] = useState(false); // gateway Asaas tem chaves?
   const [loadingList, setLoadingList] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [form, setForm] = useState({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '' });
+  const [form, setForm] = useState({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '', ...EMPTY_PROFILE });
   const [slugTouched, setSlugTouched] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [cpfInvalid, setCpfInvalid] = useState(false);
   const [manage, setManage] = useState(null);          // org aberta no painel de detalhe
   const [stats, setStats] = useState(null);            // { loading, data }
   const [manageBusy, setManageBusy] = useState(null);  // ação em andamento no detalhe
@@ -171,6 +175,7 @@ function SuperAdminView({ tab, onOpenConsole }) {
       return;
     }
     if (form.adminPassword.length < 6) { toast.warning('Senha precisa ter ao menos 6 caracteres.'); return; }
+    if (cpfInvalid) { toast.warning('O CPF do responsável é inválido. Corrija antes de criar.'); return; }
     setSubmitting(true);
     try {
       const res = await fetch('/api/provision-tenant', {
@@ -183,14 +188,16 @@ function SuperAdminView({ tab, onOpenConsole }) {
           adminEmail: form.adminEmail.trim(),
           adminPassword: form.adminPassword,
           plan: form.plan,
-          trialDays: form.trialDays ? Number(form.trialDays) : 0
+          trialDays: form.trialDays ? Number(form.trialDays) : 0,
+          ...buildTenantProfilePayload(form),
         })
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || 'Erro ao criar organização.'); setSubmitting(false); return; }
       toast.success(`Organização "${form.displayName.trim()}" criada. Admin: ${form.adminEmail.trim()}`, { duration: 8000, title: 'Organização provisionada' });
-      setForm({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '' });
+      setForm({ displayName: '', tenantId: '', adminName: '', adminEmail: '', adminPassword: '', plan: 'starter', trialDays: '', ...EMPTY_PROFILE });
       setSlugTouched(false);
+      setProfileOpen(false);
       loadTenants();
     } catch (e2) {
       console.error(e2);
@@ -310,6 +317,22 @@ function SuperAdminView({ tab, onOpenConsole }) {
               <StyledInput type="number" min="0" placeholder="0" value={form.trialDays} onChange={e => setField('trialDays', e.target.value)} />
             </Field>
           </div>
+          <details open={profileOpen} onToggle={(e) => setProfileOpen(e.currentTarget.open)}
+            className="rounded-xl border border-border bg-white/60 dark:bg-white/[0.02]">
+            <summary className="flex items-center gap-2 cursor-pointer select-none px-3.5 py-2.5 text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">
+              <Building2 size={15} className="text-brand-600" />
+              Dados da empresa
+              <span className="font-normal text-slate-400">(opcional — CNPJ, endereço, responsável)</span>
+            </summary>
+            <div className="px-3.5 pb-4 pt-1">
+              <GymProfileFields
+                value={form}
+                onChange={(patch) => setForm((f) => ({ ...f, ...patch }))}
+                wrapInCards={false}
+                onValidityChange={setCpfInvalid}
+              />
+            </div>
+          </details>
           <div className="flex justify-end">
             <Btn kind="brand" type="submit" icon={<Check size={13} />} disabled={submitting}>
               {submitting ? 'Criando...' : 'Criar organização'}
