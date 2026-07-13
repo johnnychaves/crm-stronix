@@ -433,6 +433,15 @@ describe('computeProfessorConversion (Gerencial)', () => {
     expect(totals.aulas).toBe(0);
   });
 
+  it('quando recebe range, usa o PERÍODO (não os 90 dias) e capa o fim em agora', () => {
+    const dentro = aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 6, 2, 9, 0), appointmentOutcome: 'attended' });
+    const junho = aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 5, 20, 9, 0), appointmentOutcome: 'attended' }); // dentro dos 90d, fora de julho
+    const futuraNoMes = aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 6, 20, 9, 0) }); // julho mas depois de NOW (9/jul)
+    const { totals } = computeProfessorConversion([dentro, junho, futuraNoMes], { range: JULY, now: NOW });
+    expect(totals.aulas).toBe(1); // só a de 2/jul; junho e a futura ficam de fora
+    expect(totals.compareceram).toBe(1);
+  });
+
   it('sem professor (solo ou sem id) vira a referência "Treina sozinho" e alimenta o delta', () => {
     const leads = [
       aula({ appointmentSoloTraining: true, appointmentScheduledFor: new Date(2026, 6, 1, 9, 0), status: 'Venda', isConverted: true, convertedAt: new Date(2026, 6, 1) }),

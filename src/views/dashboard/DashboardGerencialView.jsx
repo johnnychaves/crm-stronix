@@ -194,11 +194,12 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
   const aulasPorModalidade = useMemo(() => computeAulasPorModalidade(scheduledLeads), [scheduledLeads]);
   const lossReasons = useMemo(() => computeLossReasons(funnelLeads, periodRange), [funnelLeads, periodRange]);
 
-  // Conversão por professor: janela móvel própria (90 dias) pela DATA DA AULA,
-  // independente do seletor de período E do funil selecionado (decisão do
-  // Johnny, 2026-07-12: o card olha todas as aulas experimentais da academia
-  // — professor não é recorte de funil). O pill declara a janela.
-  const professorConv = useMemo(() => computeProfessorConversion(leads), [leads]);
+  // Conversão por professor: respeita o PERÍODO selecionado (as datas do
+  // Gerencial mexem em todos os resultados), mas NÃO o funil — olha todas as
+  // aulas experimentais da academia (decisão do Johnny, 2026-07-12: professor
+  // não é recorte de funil). Filtra pela data da aula dentro do período, só
+  // aulas já realizadas.
+  const professorConv = useMemo(() => computeProfessorConversion(leads, { range: periodRange }), [leads, periodRange]);
 
   // --- TABELA "MÉTRICAS POR FUNIL" (modo Todos os funis) ---
   const funnelComparisonRows = useMemo(() => {
@@ -427,7 +428,7 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
         <ConversionCard
           title="Conversão por professor"
           subtitle="Aula experimental que virou matrícula"
-          windowLabel={`Últimos ${professorConv.windowDays} dias`}
+          windowLabel="No período"
           general={[
             { label: 'Conversão geral', value: professorConv.totals.convPct == null ? '—' : `${professorConv.totals.convPct}%`, accent: true, den: `${professorConv.totals.matriculas} de ${professorConv.totals.compareceram} que compareceram` },
             { label: 'Comparecimento das aulas', value: professorConv.totals.attendancePct == null ? '—' : `${professorConv.totals.attendancePct}%`, den: `${professorConv.totals.compareceram} de ${professorConv.totals.aulas} aulas marcadas` }
@@ -441,8 +442,8 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
           rows={professorRows}
           reference={professorReference}
           referenceLabel="Sem professor · referência"
-          footnote="Todas as aulas experimentais da academia, independente do funil selecionado — só entram aulas cuja data já passou. Atribuição pelo professor do último agendamento de cada lead, então é aproximada. Conversão = matrículas ÷ quem compareceu."
-          emptyText="Nenhuma aula experimental realizada nos últimos 90 dias."
+          footnote="Todas as aulas experimentais da academia no período, independente do funil selecionado — só entram aulas cuja data já passou. Atribuição pelo professor do último agendamento de cada lead, então é aproximada. Conversão = matrículas ÷ quem compareceu."
+          emptyText="Nenhuma aula experimental realizada no período."
         />
 
         {/* ---- Desempenho da equipe (admin) ---- */}

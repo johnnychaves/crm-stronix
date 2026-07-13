@@ -473,16 +473,21 @@ function buildDayRange(now) {
   return { start, end };
 }
 
-// Conversão por PROFESSOR nas aulas experimentais — janela móvel (default 90
-// dias), só aulas cuja data JÁ PASSOU (aula futura não é comparecimento nem
-// falta). Atribuição pelo professor do agendamento ATUAL do lead (o modelo
-// guarda um agendamento por lead — histórico multi-agendamento está fora de
-// escopo). Aula sem professor (appointmentSoloTraining ou sem
-// appointmentProfessorId) cai na linha de REFERÊNCIA "Treina sozinho", fora
-// do ranking. Conversão = matrículas ÷ compareceram (isLeadAttended já trata
-// convertido como presente).
-export function computeProfessorConversion(leads, { now = new Date(), days = 90 } = {}) {
-  const start = new Date(now.getTime() - days * DAY_MS);
+// Conversão por PROFESSOR nas aulas experimentais. A janela é o PERÍODO
+// selecionado no Gerencial (decisão do Johnny, 2026-07-12: as datas do
+// Gerencial mexem em todos os resultados, inclusive este card). Só entram
+// aulas cuja data JÁ PASSOU — aula futura não é comparecimento nem falta —,
+// então o fim efetivo é min(range.end, agora). Sem range, cai numa janela
+// móvel de 90 dias (fallback dos consumidores que não passam período).
+// Atribuição pelo professor do agendamento ATUAL do lead (o modelo guarda um
+// agendamento por lead — histórico multi-agendamento está fora de escopo).
+// Aula sem professor (appointmentSoloTraining ou sem appointmentProfessorId)
+// cai na linha de REFERÊNCIA "Treina sozinho", fora do ranking. Conversão =
+// matrículas ÷ compareceram (isLeadAttended já trata convertido como presente).
+export function computeProfessorConversion(leads, { range = null, now = new Date(), days = 90 } = {}) {
+  const start = range ? range.start : new Date(now.getTime() - days * DAY_MS);
+  const rawEnd = range ? range.end : now;
+  const end = rawEnd < now ? rawEnd : now;
   const byProf = new Map();
   let solo = null;
 
@@ -501,7 +506,7 @@ export function computeProfessorConversion(leads, { now = new Date(), days = 90 
   (leads || []).forEach(l => {
     if (getLeadAppointmentType(l) !== 'aula_experimental') return;
     const d = getLeadAppointmentDate(l);
-    if (!d || d < start || d > now) return;
+    if (!d || d < start || d > end) return;
 
     let bucket;
     if (l.appointmentSoloTraining || !l.appointmentProfessorId) {
@@ -553,7 +558,7 @@ export function computeProfessorConversion(leads, { now = new Date(), days = 90 
   totals.convPct = totals.compareceram > 0 ? Math.round((totals.matriculas / totals.compareceram) * 100) : null;
   totals.attendancePct = totals.aulas > 0 ? Math.round((totals.compareceram / totals.aulas) * 100) : null;
 
-  return { windowStart: start, windowDays: days, totals, rows, solo };
+  return { windowStart: start, windowEnd: end, totals, rows, solo };
 }
 
 // EVENTO: perdas com lostAt dentro do período, agrupadas pelo motivo
