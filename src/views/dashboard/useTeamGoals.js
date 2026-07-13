@@ -17,7 +17,8 @@ import {
   computeVolumeInRange,
   countMetaDaysInMonth,
   volumeTargetFor,
-  dgDateKey
+  dgDateKey,
+  interactionOwnerAuthUid
 } from '../../lib/dailyGoal.js';
 
 export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
@@ -50,10 +51,14 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
       const arr = leadsByConsultant.get(l.consultantId);
       if (arr) arr.push(l); else leadsByConsultant.set(l.consultantId, [l]);
     });
+    // Chave = dono do VOLUME (interactionOwnerAuthUid), a MESMA que
+    // computeVolumeInRange usa para filtrar — senão a fatia não bate. As
+    // interações da PR C gravam actorAuthUid; as antigas caem no dono do lead.
     const interactionsByAuth = new Map();
     (interactions || []).forEach((i) => {
-      const arr = interactionsByAuth.get(i.consultantAuthUid);
-      if (arr) arr.push(i); else interactionsByAuth.set(i.consultantAuthUid, [i]);
+      const owner = interactionOwnerAuthUid(i);
+      const arr = interactionsByAuth.get(owner);
+      if (arr) arr.push(i); else interactionsByAuth.set(owner, [i]);
     });
     const historyByConsultant = new Map();
     (teamHistory || []).forEach((h) => {

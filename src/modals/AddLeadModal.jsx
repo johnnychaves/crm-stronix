@@ -5,7 +5,9 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
-import { getInteractionSecurityFields, getLeadOwnershipFields, findLeadByPhoneDigits } from '../lib/leads.js';
+import { getLeadOwnershipFields, findLeadByPhoneDigits } from '../lib/leads.js';
+import { logInteraction } from '../lib/interactions.js';
+import { buildLeadSearchFields, deriveLeadBucket } from '../lib/leadDerived.js';
 import { fromDateInputValue } from '../lib/dates.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
 import { cn } from '../lib/utils.js';
@@ -406,6 +408,10 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
           dor: (form.dor || '').trim() || null,
           modalidade: form.modalidade || null,
           ...getLeadOwnershipFields(appUser),
+          ...buildLeadSearchFields({ name: form.name, whatsapp: form.whatsapp, cpf: form.cpf }),
+          lifecycleBucket: deriveLeadBucket({ status: form.status }),
+          lastInteractionAt: null,
+          interactionsCount: 0,
           createdAt: serverTimestamp(),
           nextFollowUp: null,
           nextFollowUpType: null,
@@ -415,18 +421,13 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
       );
 
       if (form.observation.trim()) {
-        await addDoc(
-          collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH),
+        await logInteraction(
+          db,
+          { id: leadRef.id, consultantId: appUser.id, consultantAuthUid: appUser.authUid },
+          appUser,
           {
-            leadId: leadRef.id,
-            consultantName: appUser.name,
-            ...getInteractionSecurityFields(
-              { consultantId: appUser.id, consultantAuthUid: appUser.authUid },
-              appUser
-            ),
             text: `OBSERVAÇÃO DO CADASTRO: ${form.observation}`,
             type: 'note',
-            createdAt: serverTimestamp(),
           }
         );
       }

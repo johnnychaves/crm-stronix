@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
-import { collection, doc, serverTimestamp, writeBatch } from 'firebase/firestore';
+import { collection, doc, increment, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH } from '../lib/firebase.js';
 import { getInteractionSecurityFields } from '../lib/leads.js';
 import { buildMatriculaWrites, computeEndsAt } from '../lib/contracts.js';
+import { withBucket } from '../lib/leadDerived.js';
 import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -97,7 +98,12 @@ function MatriculaModal({ lead, appUser, db, onClose, onDone, mode = 'matricula'
       //     (serverTimestamp / status de venda) são injetados aqui conforme
       //     os sinais retornados por buildMatriculaWrites.
       const leadRef = doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id);
-      const leadUpdate = { ...leadPatch, currentContractId: contractRef.id };
+      const leadUpdate = {
+        ...leadPatch,
+        currentContractId: contractRef.id,
+        lastInteractionAt: serverTimestamp(),
+        interactionsCount: increment(1)
+      };
       if (setStatusVenda) {
         leadUpdate.status = 'Venda';
         leadUpdate.isConverted = true;
@@ -107,7 +113,9 @@ function MatriculaModal({ lead, appUser, db, onClose, onDone, mode = 'matricula'
       }
       if (stampConvertedAt) leadUpdate.convertedAt = serverTimestamp();
       if (stampClienteSince) leadUpdate.clienteSince = serverTimestamp();
-      batch.set(leadRef, leadUpdate, { merge: true });
+      // lifecycleBucket derivado do estado RESULTANTE (o patch muda
+      // lifecycleStage/status/isConverted) — sempre 'cliente' aqui.
+      batch.set(leadRef, withBucket(leadUpdate, lead), { merge: true });
 
       // (3) Timeline — mantém o histórico e (na matrícula) o auto-fechar da Meta.
       const interactionRef = doc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH));
@@ -115,6 +123,8 @@ function MatriculaModal({ lead, appUser, db, onClose, onDone, mode = 'matricula'
         leadId: lead.id,
         consultantName: appUser?.name || null,
         ...getInteractionSecurityFields(lead, appUser),
+        actorId: appUser?.id || null,
+        actorAuthUid: appUser?.authUid || null,
         text: interactionText,
         type: 'status_change',
         createdAt: serverTimestamp()

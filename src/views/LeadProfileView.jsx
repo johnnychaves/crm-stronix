@@ -1,6 +1,8 @@
 import { useState } from 'react';
-import { collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDocs, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, deleteDoc, getDocs, writeBatch, query, where, serverTimestamp, increment } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH } from '../lib/firebase.js';
+import { logInteraction } from '../lib/interactions.js';
+import { withBucket } from '../lib/leadDerived.js';
 import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted, isConvertedStatusName } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
@@ -167,7 +169,7 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       );
       batch.set(
         doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
-        { currentContractStatus: CONTRACT_STATUS.CANCELADO },
+        { currentContractStatus: CONTRACT_STATUS.CANCELADO, lastInteractionAt: serverTimestamp(), interactionsCount: increment(1) },
         { merge: true }
       );
       batch.set(
@@ -176,6 +178,8 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
           leadId: lead.id,
           consultantName: appUser?.name || null,
           ...getInteractionSecurityFields(lead, appUser),
+          actorId: appUser?.id || null,
+          actorAuthUid: appUser?.authUid || null,
           text: `Contrato cancelado${lead.currentPlanName ? ` — Plano ${lead.currentPlanName}` : ''}.`,
           type: 'status_change',
           createdAt: serverTimestamp()
@@ -195,23 +199,18 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-        status: 'Perda',
-        lossReason: reason,
-        nextFollowUp: null,
-        lostAt: serverTimestamp(),
-        // Limpa resquício caso o lead viesse de Venda.
-        isConverted: false,
-        convertedAt: null
-      });
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: `Lead perdido. Motivo: ${reason}`,
-        type: 'status_change',
-        createdAt: serverTimestamp()
-      });
+      await logInteraction(db, lead, appUser,
+        { text: `Lead perdido. Motivo: ${reason}`, type: 'status_change' },
+        withBucket({
+          status: 'Perda',
+          lossReason: reason,
+          nextFollowUp: null,
+          lostAt: serverTimestamp(),
+          // Limpa resquício caso o lead viesse de Venda.
+          isConverted: false,
+          convertedAt: null
+        }, lead)
+      );
       setLossModalOpen(false);
       setStatus('Perda');
     } catch (e) {
@@ -232,19 +231,14 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       .sort((a, b) => (a.order || 0) - (b.order || 0))[0]?.name || 'Novo';
     setLoading(true);
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-        status: firstStage,
-        lossReason: null,
-        lostAt: null
-      });
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: 'Lead reaberto.',
-        type: 'status_change',
-        createdAt: serverTimestamp()
-      });
+      await logInteraction(db, lead, appUser,
+        { text: 'Lead reaberto.', type: 'status_change' },
+        withBucket({
+          status: firstStage,
+          lossReason: null,
+          lostAt: null
+        }, lead)
+      );
       setStatus(firstStage);
     } catch (e) {
       console.error(e);
@@ -290,15 +284,10 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
         up.lostAt = null;
       }
       if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) up.convertedAt = serverTimestamp();
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), up, { merge: true });
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: `Fase alterada para [${targetStatus}]${phaseNote ? ' — ' + phaseNote : ''}.`,
-        type: 'status_change',
-        createdAt: serverTimestamp()
-      });
+      await logInteraction(db, lead, appUser,
+        { text: `Fase alterada para [${targetStatus}]${phaseNote ? ' — ' + phaseNote : ''}.`, type: 'status_change' },
+        withBucket(up, lead)
+      );
       setStatus(targetStatus);
       if (up.funnelId) setFunnelId(up.funnelId);
       setComposerTab('note');
@@ -326,15 +315,6 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       if (status !== lead.status) actionText += `Fase alterada para [${status}]. `;
       if (note) actionText += `Obs: ${note}. `;
 
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: actionText || 'Atualização registrada.',
-        type: (status !== lead.status || funnelChanged) ? 'status_change' : 'note',
-        createdAt: serverTimestamp()
-      });
-
       const up = { status };
       if (funnelChanged) up.funnelId = funnelId;
       // Saindo de Venda/Perda para outra fase: limpa os campos de
@@ -349,7 +329,14 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
         up.lossReason = null;
         up.lostAt = null;
       }
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), up, { merge: true });
+
+      await logInteraction(db, lead, appUser,
+        {
+          text: actionText || 'Atualização registrada.',
+          type: (status !== lead.status || funnelChanged) ? 'status_change' : 'note'
+        },
+        withBucket(up, lead)
+      );
 
       setNote('');
       setLoading(false);
@@ -387,18 +374,6 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       const noteStr = (wizNote || '').trim();
       const text = `🔔 ${typeLabel} agendada${extra} p/ ${dateStr}.` + (noteStr ? ` Obs: ${noteStr}` : '');
 
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text,
-        type: 'note',
-        // Meta por VOLUME: todo agendamento criado pelo wizard conta como ação
-        // de pipeline (visita/aula/mensagem/ligação) — ver lib/dailyGoal.js.
-        volumeKind: appointmentType || (/liga/i.test(typeLabel) ? 'ligacao' : 'mensagem'),
-        createdAt: serverTimestamp()
-      });
-
       const up = {
         nextFollowUp: date,
         nextFollowUpType: typeLabel,
@@ -414,7 +389,17 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
         appointmentType: appointmentType || null,
         appointmentScheduledFor: appointmentType ? date : null
       };
-      await setDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), up, { merge: true });
+
+      await logInteraction(db, lead, appUser,
+        {
+          text,
+          type: 'note',
+          // Meta por VOLUME: todo agendamento criado pelo wizard conta como ação
+          // de pipeline (visita/aula/mensagem/ligação) — ver lib/dailyGoal.js.
+          volumeKind: appointmentType || (/liga/i.test(typeLabel) ? 'ligacao' : 'mensagem')
+        },
+        up
+      );
 
       toast.success(`Agendamento criado para ${dateStr}.`);
       setComposerTab('note');
@@ -438,13 +423,9 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
       const phone = num.length <= 11 ? '55' + num : num;
       window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener,noreferrer');
       // Log the outbound message in the timeline
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
+      await logInteraction(db, lead, appUser, {
         text: `📲 Mensagem WhatsApp enviada: ${msg}`,
-        type: 'note',
-        createdAt: serverTimestamp()
+        type: 'note'
       });
       setNote('');
     } catch (e) {
@@ -460,13 +441,9 @@ function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, 
     if (!summary) { toast.warning('Resuma o que rolou na ligação antes de salvar.'); return; }
     setLoading(true);
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
+      await logInteraction(db, lead, appUser, {
         text: `📞 Ligação: ${summary}`,
-        type: 'note',
-        createdAt: serverTimestamp()
+        type: 'note'
       });
       setNote('');
     } catch (e) {

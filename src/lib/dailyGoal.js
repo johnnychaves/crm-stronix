@@ -79,6 +79,18 @@ export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 // metaWeekdays (opcional): quando passado, só conta ações em dias PROGRAMADOS
 // da meta (mesma régua do alvo mensal e do "ritmo do mês") — ação feita em dia
 // fora da meta (ex.: sábado) NÃO entra na contabilização. Sem ele = todo dia.
+// Dono de uma interação para efeito de VOLUME/prospecção: quem FEZ a ação.
+// A partir da PR C toda interação grava actorAuthUid (o autor da ação); as
+// antigas caem no dono do LEAD (leadConsultantAuthUid). consultantAuthUid fica
+// só como camada defensiva — NUNCA foi gravado em interação.
+// IMPORTANTE (mudança de comportamento): antes o volume filtrava direto por
+// i.consultantAuthUid, sempre ausente, então "agendamentos" NUNCA contava
+// (volume = só leads novos). Com este resolvedor os agendamentos passam a
+// contar. Quem agrupa interações por dono (useTeamGoals/DailyGoalTeamView)
+// DEVE usar a MESMA função, senão a fatia não bate com o filtro.
+export const interactionOwnerAuthUid = (i) =>
+  i?.actorAuthUid ?? i?.consultantAuthUid ?? i?.leadConsultantAuthUid ?? null;
+
 export function computeVolumeInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null, metaWeekdays = null) {
   const onMetaDay = (d) => !metaWeekdays || metaWeekdays.includes(d.getDay());
   const inRange = (d) => d instanceof Date && d >= from && (!to || d < to) && onMetaDay(d);
@@ -88,7 +100,7 @@ export function computeVolumeInRange(leads, interactions, consultantId, consulta
     if (inRange(l.createdAt)) r.leadsNovos++;
   });
   (interactions || []).forEach((i) => {
-    if (i.consultantAuthUid !== consultantAuthUid) return;
+    if (interactionOwnerAuthUid(i) !== consultantAuthUid) return;
     if (!inRange(i.createdAt)) return;
     if (i.volumeKind) r.agendamentos++;
   });
@@ -165,7 +177,7 @@ export function listVolumeActionsInRange(leads, interactions, consultantId, cons
     if (inRange(l.createdAt)) out.push({ at: l.createdAt, label: 'Lead cadastrado', leadId: l.id, leadName: l.name || '—' });
   });
   (interactions || []).forEach((i) => {
-    if (i.consultantAuthUid !== consultantAuthUid) return;
+    if (interactionOwnerAuthUid(i) !== consultantAuthUid) return;
     if (!inRange(i.createdAt)) return;
     if (i.volumeKind) out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
   });
