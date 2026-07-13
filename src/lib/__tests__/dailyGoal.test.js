@@ -392,26 +392,26 @@ describe('countMetaDaysInMonth / countMetaDaysInRange / countHitsInRange', () =>
   });
 });
 
-describe('volumeTargetFor', () => {
+describe('volumeTargetFor (100% individual, sem padrão de academia)', () => {
   it('sem usuário → 0; alvo próprio vence e é capado em 500 (com floor)', () => {
-    expect(volumeTargetFor(null, 10)).toBe(0);
-    expect(volumeTargetFor({ dailyVolumeTarget: 7 }, 10)).toBe(7);
-    expect(volumeTargetFor({ dailyVolumeTarget: 7.9 }, 10)).toBe(7);
-    expect(volumeTargetFor({ dailyVolumeTarget: 900 }, 10)).toBe(500);
+    expect(volumeTargetFor(null)).toBe(0);
+    expect(volumeTargetFor({ dailyVolumeTarget: 7 })).toBe(7);
+    expect(volumeTargetFor({ dailyVolumeTarget: 7.9 })).toBe(7);
+    expect(volumeTargetFor({ dailyVolumeTarget: 900 })).toBe(500);
   });
 
-  it('gestor (admin) é opt-in: não herda o default da academia', () => {
-    expect(volumeTargetFor({ role: 'admin' }, 10)).toBe(0);
-    expect(volumeTargetFor({ role: 'admin', dailyVolumeTarget: 12 }, 10)).toBe(12);
+  it('0, vazio ou inválido = prospecção DESABILITADA', () => {
+    expect(volumeTargetFor({ dailyVolumeTarget: 0 })).toBe(0);
+    expect(volumeTargetFor({ dailyVolumeTarget: '' })).toBe(0);
+    expect(volumeTargetFor({ dailyVolumeTarget: 'abc' })).toBe(0);
+    expect(volumeTargetFor({ role: 'consultant' })).toBe(0); // sem alvo → sem meta
   });
 
-  it('consultor sem alvo próprio herda o default da academia (também capado)', () => {
-    expect(volumeTargetFor({ role: 'consultant' }, 10)).toBe(10);
-    expect(volumeTargetFor({ role: 'consultant' }, 900)).toBe(500);
-    expect(volumeTargetFor({ role: 'consultant' }, undefined)).toBe(0);
-    // Alvo próprio 0 ou inválido não é "sem meta": cai no default da academia.
-    expect(volumeTargetFor({ role: 'consultant', dailyVolumeTarget: 0 }, 10)).toBe(10);
-    expect(volumeTargetFor({ role: 'consultant', dailyVolumeTarget: 'abc' }, 10)).toBe(10);
+  it('vale igual para consultor e gestor: só o alvo individual conta', () => {
+    expect(volumeTargetFor({ role: 'admin', dailyVolumeTarget: 12 })).toBe(12);
+    expect(volumeTargetFor({ role: 'consultant', dailyVolumeTarget: 10 })).toBe(10);
+    // 2º argumento antigo (academyDefault) é ignorado — não existe mais padrão.
+    expect(volumeTargetFor({ role: 'consultant' }, 10)).toBe(0);
   });
 });
 

@@ -189,15 +189,16 @@ export function volumeBreakdownLabel(v) {
 
 // Alvo de volume de um usuário: o próprio (doc do consultor) > default da
 // academia. 0 = sem régua. Inclui o GESTOR (admin) — prospecção vale p/ todos.
-export function volumeTargetFor(user, academyDefault) {
+// Alvo de prospecção do usuário — 100% INDIVIDUAL. Não existe padrão de
+// academia: cada consultor (e o gestor, se for o caso) define o próprio alvo
+// de ações/dia no seu doc. 0 (ou vazio) significa prospecção DESABILITADA —
+// quem não tem alvo, não tem meta de prospecção. (O 2º argumento antigo,
+// academyDefault, foi removido; os callers podem seguir passando qualquer
+// coisa, é ignorado.)
+export function volumeTargetFor(user) {
   if (!user) return 0;
   const own = Math.floor(Number(user.dailyVolumeTarget));
-  if (Number.isFinite(own) && own > 0) return Math.min(own, 500);
-  // Gestor (admin) é OPT-IN: só tem meta com alvo PRÓPRIO — não herda o default
-  // da academia (que vale só p/ consultores).
-  if (user.role === 'admin') return 0;
-  const def = Math.floor(Number(academyDefault));
-  return Number.isFinite(def) && def > 0 ? Math.min(def, 500) : 0;
+  return Number.isFinite(own) && own > 0 ? Math.min(own, 500) : 0;
 }
 
 // Dias de atraso de um lead (follow-up vencido antes de hoje). 0 = em dia.
