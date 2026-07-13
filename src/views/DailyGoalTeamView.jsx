@@ -6,6 +6,7 @@ import {
   buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo,
   overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, dgDateKey,
   computeDailyVolume, computeVolumeInRange, volumeTargetFor, volumeBreakdownLabel,
+  interactionOwnerAuthUid,
 } from '../lib/dailyGoal.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { cn } from '../lib/utils.js';
@@ -208,10 +209,12 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
       const arr = leadsByConsultant.get(l.consultantId);
       if (arr) arr.push(l); else leadsByConsultant.set(l.consultantId, [l]);
     });
+    // Chave = dono do VOLUME (mesma função que computeVolumeInRange usa).
     const interactionsByAuth = new Map();
     (interactions || []).forEach(i => {
-      const arr = interactionsByAuth.get(i.consultantAuthUid);
-      if (arr) arr.push(i); else interactionsByAuth.set(i.consultantAuthUid, [i]);
+      const owner = interactionOwnerAuthUid(i);
+      const arr = interactionsByAuth.get(owner);
+      if (arr) arr.push(i); else interactionsByAuth.set(owner, [i]);
     });
 
     const base = (usersList || []).map(u => {
@@ -266,7 +269,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
     const nextMonth = new Date(year, month + 1, 1);
     const inMonth = (d) => d instanceof Date && d >= monthStart && d < nextMonth;
     const byAuthDay = new Map();
-    (interactions || []).forEach(i => { if (i.volumeKind && inMonth(i.createdAt)) { const k = `${i.consultantAuthUid}|${dgDateKey(i.createdAt)}`; byAuthDay.set(k, (byAuthDay.get(k) || 0) + 1); } });
+    (interactions || []).forEach(i => { if (i.volumeKind && inMonth(i.createdAt)) { const k = `${interactionOwnerAuthUid(i)}|${dgDateKey(i.createdAt)}`; byAuthDay.set(k, (byAuthDay.get(k) || 0) + 1); } });
     const byConsDay = new Map();
     (leads || []).forEach(l => { if (inMonth(l.createdAt)) { const k = `${l.consultantId}|${dgDateKey(l.createdAt)}`; byConsDay.set(k, (byConsDay.get(k) || 0) + 1); } });
     const counts = {};

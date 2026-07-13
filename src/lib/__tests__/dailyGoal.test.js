@@ -9,6 +9,8 @@ import {
   computeDailyGoalSlots,
   computeVolumeInRange,
   computeDailyVolume,
+  listVolumeActionsInRange,
+  interactionOwnerAuthUid,
   buildInteractionsByLead,
   countMetaDaysInMonth,
   countMetaDaysInRange,
@@ -272,27 +274,41 @@ describe('computeVolumeInRange', () => {
     expect(v).toEqual({ total: 2, agendamentos: 0, leadsNovos: 2 });
   });
 
-  it('agendamentos: só interações com volumeKind e consultantAuthUid do consultor', () => {
+  it('agendamentos: interações com volumeKind cujo actorAuthUid é o consultor', () => {
     const interactions = [
-      { consultantAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 10, 0) },
-      { consultantAuthUid: 'a1', volumeKind: 'mensagem', createdAt: new Date(2026, 6, 14, 11, 0) },
-      { consultantAuthUid: 'a1', type: 'note', createdAt: new Date(2026, 6, 14, 12, 0) }, // sem volumeKind → não
-      { consultantAuthUid: 'a2', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 13, 0) } // outro auth → não
+      { actorAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 10, 0) },
+      { actorAuthUid: 'a1', volumeKind: 'mensagem', createdAt: new Date(2026, 6, 14, 11, 0) },
+      { actorAuthUid: 'a1', type: 'note', createdAt: new Date(2026, 6, 14, 12, 0) }, // sem volumeKind → não
+      { actorAuthUid: 'a2', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 13, 0) } // outro autor → não
     ];
     const v = computeVolumeInRange([], interactions, 'u1', 'a1', FROM, TO);
     expect(v).toEqual({ total: 2, agendamentos: 2, leadsNovos: 0 });
   });
 
-  it('CASO CRÍTICO: interação só com leadConsultantAuthUid (sem consultantAuthUid) NÃO conta', () => {
-    // Caracterização INTENCIONAL do bug latente de subcontagem: interações
-    // antigas/importadas que só carregam leadConsultantAuthUid são ignoradas
-    // pelo filtro `i.consultantAuthUid !== consultantAuthUid`. A PR C muda
-    // esse critério; este teste congela o comportamento de HOJE.
+  it('PR C: interação só com leadConsultantAuthUid (sem actor/consultant) AGORA conta (fallback)', () => {
+    // Antes da PR C o filtro olhava direto i.consultantAuthUid (sempre ausente),
+    // então interações antigas/importadas que só carregam leadConsultantAuthUid
+    // eram ignoradas e "agendamentos" ficava subcontado. Com interactionOwnerAuthUid
+    // o dono cai no dono do LEAD quando não há autor da ação — passa a contar.
     const interactions = [
       { leadConsultantAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 10, 0) }
     ];
     const v = computeVolumeInRange([], interactions, 'u1', 'a1', FROM, TO);
+    expect(v).toEqual({ total: 1, agendamentos: 1, leadsNovos: 0 });
+  });
+
+  it('precedência do autor: actorAuthUid de OUTRO usuário não conta, mesmo com leadConsultantAuthUid do consultor', () => {
+    // A ação foi FEITA por a2 (actor) sobre um lead cujo dono é a1. Volume é
+    // esforço de quem AGIU: actorAuthUid tem precedência, então não entra no
+    // volume de a1 (nem seria contado como se a1 tivesse trabalhado).
+    const interactions = [
+      { actorAuthUid: 'a2', leadConsultantAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 10, 0) }
+    ];
+    const v = computeVolumeInRange([], interactions, 'u1', 'a1', FROM, TO);
     expect(v).toEqual({ total: 0, agendamentos: 0, leadsNovos: 0 });
+    // ...e conta pro autor real (a2), pela mesma régua.
+    const vAutor = computeVolumeInRange([], interactions, 'u1', 'a2', FROM, TO);
+    expect(vAutor.agendamentos).toBe(1);
   });
 
   it('metaWeekdays: ação em dia fora da meta não entra (lead nem interação)', () => {
@@ -302,8 +318,8 @@ describe('computeVolumeInRange', () => {
       lead({ createdAt: new Date(2026, 6, 18, 8, 0) }) // sábado → não
     ];
     const interactions = [
-      { consultantAuthUid: 'a1', volumeKind: 'ligacao', createdAt: new Date(2026, 6, 14, 10, 0) }, // terça → conta
-      { consultantAuthUid: 'a1', volumeKind: 'ligacao', createdAt: new Date(2026, 6, 18, 10, 0) } // sábado → não
+      { actorAuthUid: 'a1', volumeKind: 'ligacao', createdAt: new Date(2026, 6, 14, 10, 0) }, // terça → conta
+      { actorAuthUid: 'a1', volumeKind: 'ligacao', createdAt: new Date(2026, 6, 18, 10, 0) } // sábado → não
     ];
     const v = computeVolumeInRange(leads, interactions, 'u1', 'a1', FROM, new Date(2026, 6, 20), segASex);
     expect(v).toEqual({ total: 2, agendamentos: 1, leadsNovos: 1 });
@@ -323,8 +339,8 @@ describe('computeDailyVolume (janela = hoje, relógio falso)', () => {
       lead({ createdAt: new Date(2026, 6, 14, 23, 0) })
     ];
     const interactions = [
-      { consultantAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 15, 9, 0) },
-      { consultantAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 9, 0) }
+      { actorAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 15, 9, 0) },
+      { actorAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 9, 0) }
     ];
     const v = computeDailyVolume(leads, interactions, 'u1', 'a1');
     expect(v).toEqual({ total: 2, agendamentos: 1, leadsNovos: 1 });
@@ -338,6 +354,37 @@ describe('computeDailyVolume (janela = hoje, relógio falso)', () => {
     ];
     const v = computeDailyVolume([], interactions, 'u1', 'a1');
     expect(v.agendamentos).toBe(1);
+  });
+});
+
+describe('interactionOwnerAuthUid (dono da ação p/ volume — PR C)', () => {
+  it('precedência: actorAuthUid > consultantAuthUid > leadConsultantAuthUid', () => {
+    expect(interactionOwnerAuthUid({ actorAuthUid: 'a', consultantAuthUid: 'b', leadConsultantAuthUid: 'c' })).toBe('a');
+    expect(interactionOwnerAuthUid({ consultantAuthUid: 'b', leadConsultantAuthUid: 'c' })).toBe('b');
+    expect(interactionOwnerAuthUid({ leadConsultantAuthUid: 'c' })).toBe('c');
+  });
+  it('sem nenhum dono → null; usa ?? (string vazia é valor válido, não cai)', () => {
+    expect(interactionOwnerAuthUid({})).toBe(null);
+    expect(interactionOwnerAuthUid(null)).toBe(null);
+    expect(interactionOwnerAuthUid({ actorAuthUid: '' })).toBe('');
+  });
+});
+
+describe('listVolumeActionsInRange (extrato do volume — mesma régua do contador)', () => {
+  const FROM = new Date(2026, 6, 13, 0, 0, 0, 0);
+  const TO = new Date(2026, 6, 15, 0, 0, 0, 0);
+  it('lista leads novos + agendamentos do dono resolvido, mais recente primeiro', () => {
+    const leads = [lead({ id: 'l1', name: 'Ana', createdAt: new Date(2026, 6, 14, 8, 0) })];
+    const interactions = [
+      { leadId: 'l1', actorAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 10, 0) },
+      { leadId: 'l1', leadConsultantAuthUid: 'a1', volumeKind: 'ligacao', createdAt: new Date(2026, 6, 14, 12, 0) }, // fallback conta
+      { leadId: 'l1', actorAuthUid: 'a2', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 13, 0) }, // outro autor → fora
+      { leadId: 'l1', actorAuthUid: 'a1', type: 'note', createdAt: new Date(2026, 6, 14, 14, 0) } // sem volumeKind → fora
+    ];
+    const out = listVolumeActionsInRange(leads, interactions, 'u1', 'a1', FROM, TO);
+    expect(out).toHaveLength(3); // 1 lead novo + 2 agendamentos (visita + ligacao via fallback)
+    expect(out[0].at.getTime()).toBeGreaterThanOrEqual(out[1].at.getTime()); // ordem desc
+    expect(out.map(o => o.label)).toContain('Lead cadastrado');
   });
 });
 
