@@ -1,13 +1,69 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
-import { getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isAdminUser, isLeadConverted } from '../lib/leads.js';
+import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Phone, SlidersHorizontal, Timer, TrendingUp, Users, X } from 'lucide-react';
+import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, hasGoalDoneToday, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
+import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { cn } from '@/lib/utils';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
+import { useToast } from '../contexts/ToastContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
+
+// Janela de confirmação rápida: da hora marcada até 15min depois. Fora dela o
+// atalho continua clicável (sempre editável — decisão do Johnny), só perde o
+// destaque de "confirmar agora".
+const CONFIRM_WINDOW_MS = 15 * 60 * 1000;
+
+// Atalho Veio/Faltou de presença (item 2). on/off sempre editável: grava o
+// desfecho na hora e credita a Meta do responsável + o card de professor. O
+// destaque laranja aparece na janela de 15min pós-horário, quando ainda está
+// pendente, para lembrar de confirmar no calor da aula.
+function PresenceToggle({ attKey, highlight, saving, onMark }) {
+  const isVeio = attKey === 'attended';
+  const isFaltou = attKey === 'no_show';
+  return (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      className={cn(
+        'inline-flex items-center gap-0.5 rounded-full p-0.5 border transition-shadow',
+        highlight
+          ? 'border-accent-400 ring-2 ring-accent-500/25 dark:border-accent-500/50'
+          : 'border-slate-200 dark:border-neutral-700'
+      )}
+    >
+      <button
+        type="button"
+        disabled={saving}
+        onClick={(e) => onMark('attended', e)}
+        aria-pressed={isVeio}
+        className={cn(
+          'px-2 py-[3px] rounded-full text-[11px] font-bold transition-colors disabled:opacity-50',
+          isVeio
+            ? 'bg-emerald-600 text-white shadow-[0_1px_2px_rgba(5,150,105,.35)]'
+            : 'text-slate-500 hover:text-emerald-700 dark:text-neutral-400 dark:hover:text-emerald-400'
+        )}
+      >
+        <Check className="size-3 inline -mt-px" strokeWidth={2.6} /> Veio
+      </button>
+      <button
+        type="button"
+        disabled={saving}
+        onClick={(e) => onMark('no_show', e)}
+        aria-pressed={isFaltou}
+        className={cn(
+          'px-2 py-[3px] rounded-full text-[11px] font-bold transition-colors disabled:opacity-50',
+          isFaltou
+            ? 'bg-rose-600 text-white shadow-[0_1px_2px_rgba(225,29,72,.35)]'
+            : 'text-slate-500 hover:text-rose-700 dark:text-neutral-400 dark:hover:text-rose-400'
+        )}
+      >
+        <X className="size-3 inline -mt-px" strokeWidth={2.6} /> Faltou
+      </button>
+    </div>
+  );
+}
 
 // ==========================================
 // APPOINTMENT TRACKING VIEW (AULAS EXPERIMENTAIS / VISITAS)
@@ -107,11 +163,52 @@ const fromDateInput = (s) => {
   return y && m && d ? new Date(y, m - 1, d) : null;
 };
 
-function AppointmentTrackingView({ leads, appUser, usersList, appointmentType }) {
+function AppointmentTrackingView({ leads, interactions, appUser, usersList, statuses, db, appointmentType }) {
   const { openProfile } = useLeadProfile();
   const { professores } = useGeneralConfig();
+  const toast = useToast();
   const isAdmin = isAdminUser(appUser);
   const isAula = appointmentType === 'aula_experimental';
+  const categorySlug = isAula ? DAILY_GOAL_CATEGORIES.AULA_HOJE : DAILY_GOAL_CATEGORIES.VISITA_HOJE;
+
+  // Atalho de presença (Veio/Faltou). Grava o desfecho na hora; credita a Meta
+  // do responsável só quando a aula é HOJE (a Meta é de hoje) e ainda não foi
+  // concluída — o card de professor e o dashboard leem o appointmentOutcome
+  // direto, então valem pra qualquer data. Sempre editável, sem consumir o
+  // agendamento (a linha continua na lista) nem promover fase.
+  const [savingId, setSavingId] = useState(null);
+  const todayStartMs = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  const interactionsByLead = useMemo(() => {
+    const m = new Map();
+    (interactions || []).forEach(i => { const a = m.get(i.leadId); if (a) a.push(i); else m.set(i.leadId, [i]); });
+    return m;
+  }, [interactions]);
+
+  const markPresence = async (lead, outcome, e) => {
+    if (e) e.stopPropagation();
+    if (savingId) return;
+    const apptDate = getLeadAppointmentDate(lead);
+    const isToday = apptDate && isApptSameDay(apptDate);
+    const already = hasGoalDoneToday(lead, categorySlug, interactionsByLead.get(lead.id) || [], todayStartMs);
+    setSavingId(lead.id);
+    try {
+      await writeAppointmentOutcome({
+        db, lead, outcome, categorySlug, appUser, statuses,
+        consumeAppointment: false,
+        promote: false,
+        writeGoalDone: Boolean(isToday) && !already,
+        sourceLabel: isAula ? 'Aulas experimentais' : 'Visitas'
+      });
+      toast.success(outcome === 'attended'
+        ? `Presença de ${lead.name} confirmada.`
+        : `${lead.name} marcado como não veio.`);
+    } catch (err) {
+      console.error('markPresence', err);
+      toast.error('Não foi possível salvar a presença. Tente novamente.');
+    } finally {
+      setSavingId(null);
+    }
+  };
 
   // Rótulos que mudam entre Aulas (4a) e Visitas (5a).
   const pluralLabel = isAula ? 'aulas' : 'visitas';
@@ -543,6 +640,12 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
                 const consultantFirst = (l.consultantName || '').trim().split(/\s+/)[0] || '';
                 const sitLabel = getSituacaoLabel(att.key);
                 const sitTitle = att.key === 'pending' ? 'Agendado · aguardando desfecho' : sitLabel;
+                // Atalho de presença só p/ leads em andamento (não matriculado/perdido).
+                const canMark = fin.tone === 'slate';
+                const nowMs = Date.now();
+                const inConfirmWindow = Boolean(d) && nowMs >= d.getTime() && nowMs <= d.getTime() + CONFIRM_WINDOW_MS;
+                const pendingPresence = att.key !== 'attended' && att.key !== 'no_show';
+                const savingRow = savingId === l.id;
                 return (
                   <div
                     key={l.id}
@@ -613,11 +716,22 @@ function AppointmentTrackingView({ leads, appUser, usersList, appointmentType })
                             {pass.text}
                           </div>
                         )}
+                        {canMark && (
+                          <div className="mt-1.5">
+                            <PresenceToggle attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
+                          </div>
+                        )}
                       </div>
                     ) : (
-                      <div className="min-w-0 flex items-center gap-2">
-                        <span title={sitTitle} className={cn('size-3 rounded shrink-0', attSquareClass(att.key))} />
-                        <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-200 truncate">{sitLabel}</span>
+                      <div className="min-w-0">
+                        {canMark ? (
+                          <PresenceToggle attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span title={sitTitle} className={cn('size-3 rounded shrink-0', attSquareClass(att.key))} />
+                            <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-200 truncate">{sitLabel}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 
