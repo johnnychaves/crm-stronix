@@ -17,7 +17,9 @@ import {
   overdueDaysOf,
   computeRitmo,
   slotTotals,
-  dgDateKey
+  dgDateKey,
+  isTimeWithinShift,
+  computeDelegatedPresenceSlots
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 
@@ -390,26 +392,26 @@ describe('countMetaDaysInMonth / countMetaDaysInRange / countHitsInRange', () =>
   });
 });
 
-describe('volumeTargetFor', () => {
+describe('volumeTargetFor (100% individual, sem padrão de academia)', () => {
   it('sem usuário → 0; alvo próprio vence e é capado em 500 (com floor)', () => {
-    expect(volumeTargetFor(null, 10)).toBe(0);
-    expect(volumeTargetFor({ dailyVolumeTarget: 7 }, 10)).toBe(7);
-    expect(volumeTargetFor({ dailyVolumeTarget: 7.9 }, 10)).toBe(7);
-    expect(volumeTargetFor({ dailyVolumeTarget: 900 }, 10)).toBe(500);
+    expect(volumeTargetFor(null)).toBe(0);
+    expect(volumeTargetFor({ dailyVolumeTarget: 7 })).toBe(7);
+    expect(volumeTargetFor({ dailyVolumeTarget: 7.9 })).toBe(7);
+    expect(volumeTargetFor({ dailyVolumeTarget: 900 })).toBe(500);
   });
 
-  it('gestor (admin) é opt-in: não herda o default da academia', () => {
-    expect(volumeTargetFor({ role: 'admin' }, 10)).toBe(0);
-    expect(volumeTargetFor({ role: 'admin', dailyVolumeTarget: 12 }, 10)).toBe(12);
+  it('0, vazio ou inválido = prospecção DESABILITADA', () => {
+    expect(volumeTargetFor({ dailyVolumeTarget: 0 })).toBe(0);
+    expect(volumeTargetFor({ dailyVolumeTarget: '' })).toBe(0);
+    expect(volumeTargetFor({ dailyVolumeTarget: 'abc' })).toBe(0);
+    expect(volumeTargetFor({ role: 'consultant' })).toBe(0); // sem alvo → sem meta
   });
 
-  it('consultor sem alvo próprio herda o default da academia (também capado)', () => {
-    expect(volumeTargetFor({ role: 'consultant' }, 10)).toBe(10);
-    expect(volumeTargetFor({ role: 'consultant' }, 900)).toBe(500);
-    expect(volumeTargetFor({ role: 'consultant' }, undefined)).toBe(0);
-    // Alvo próprio 0 ou inválido não é "sem meta": cai no default da academia.
-    expect(volumeTargetFor({ role: 'consultant', dailyVolumeTarget: 0 }, 10)).toBe(10);
-    expect(volumeTargetFor({ role: 'consultant', dailyVolumeTarget: 'abc' }, 10)).toBe(10);
+  it('vale igual para consultor e gestor: só o alvo individual conta', () => {
+    expect(volumeTargetFor({ role: 'admin', dailyVolumeTarget: 12 })).toBe(12);
+    expect(volumeTargetFor({ role: 'consultant', dailyVolumeTarget: 10 })).toBe(10);
+    // 2º argumento antigo (academyDefault) é ignorado — não existe mais padrão.
+    expect(volumeTargetFor({ role: 'consultant' }, 10)).toBe(0);
   });
 });
 
@@ -475,5 +477,75 @@ describe('computeRitmo (só com metaWeekdays válido — array)', () => {
     expect(r.history14[13].active).toBe(true); // quarta
     expect(r.history14[12].hit).toBe(true); // ontem (14/07) tem hit
     expect(r.history14[9].active).toBe(false); // 11/07, sábado
+  });
+});
+
+describe('isTimeWithinShift', () => {
+  it('turno normal: bordas inclusivas', () => {
+    expect(isTimeWithinShift(8 * 60, '08:00', '16:00')).toBe(true);
+    expect(isTimeWithinShift(16 * 60, '08:00', '16:00')).toBe(true);
+    expect(isTimeWithinShift(7 * 60 + 59, '08:00', '16:00')).toBe(false);
+    expect(isTimeWithinShift(20 * 60, '08:00', '16:00')).toBe(false);
+  });
+  it('turno que vira a meia-noite (22:00–06:00)', () => {
+    expect(isTimeWithinShift(23 * 60, '22:00', '06:00')).toBe(true);
+    expect(isTimeWithinShift(2 * 60, '22:00', '06:00')).toBe(true);
+    expect(isTimeWithinShift(12 * 60, '22:00', '06:00')).toBe(false);
+  });
+  it('sem turno completo → false', () => {
+    expect(isTimeWithinShift(10 * 60, null, '16:00')).toBe(false);
+    expect(isTimeWithinShift(10 * 60, '08:00', '')).toBe(false);
+    expect(isTimeWithinShift(10 * 60, '10:00', '10:00')).toBe(false); // degenerado
+  });
+});
+
+describe('computeDelegatedPresenceSlots (presença cruzada por turno)', () => {
+  // viewer = consultor 2 (u2), turno 08:00–16:00. dono = consultor 1 (u1), 14:00–22:00.
+  const viewer = { id: 'u2', shiftStart: '08:00', shiftEnd: '16:00' };
+  const usersById = new Map([
+    ['u1', { shiftStart: '14:00', shiftEnd: '22:00', name: 'Consultor 1' }],
+    ['u2', { shiftStart: '08:00', shiftEnd: '16:00', name: 'Consultor 2' }]
+  ]);
+  const byLead = (arr) => buildInteractionsByLead(arr);
+
+  it('aula do u1 às 08:00 (u1 fora, u2 de plantão) entra p/ u2', () => {
+    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 8, 0) });
+    const rows = computeDelegatedPresenceSlots([aula], byLead([]), viewer, usersById, NOW);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: aula.id, ownerName: 'Consultor 1', categorySlug: DAILY_GOAL_CATEGORIES.AULA_HOJE, done: false });
+  });
+
+  it('aula do u1 às 15:00 (u1 DE plantão) não delega', () => {
+    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 15, 0) });
+    expect(computeDelegatedPresenceSlots([aula], byLead([]), viewer, usersById, NOW)).toHaveLength(0);
+  });
+
+  it('aula às 20:00 (fora do turno do u2) não entra p/ u2', () => {
+    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 20, 0) });
+    expect(computeDelegatedPresenceSlots([aula], byLead([]), viewer, usersById, NOW)).toHaveLength(0);
+  });
+
+  it('lead próprio (do u2) não aparece como delegado', () => {
+    const aula = lead({ consultantId: 'u2', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 9, 0) });
+    expect(computeDelegatedPresenceSlots([aula], byLead([]), viewer, usersById, NOW)).toHaveLength(0);
+  });
+
+  it('viewer sem turno → nada é delegado', () => {
+    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 8, 0) });
+    const semTurno = { id: 'u2', shiftStart: null, shiftEnd: null };
+    expect(computeDelegatedPresenceSlots([aula], byLead([]), semTurno, usersById, NOW)).toHaveLength(0);
+  });
+
+  it('dono sem turno → não delega (não dá pra afirmar ausência)', () => {
+    const aula = lead({ consultantId: 'u3', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 8, 0) });
+    const users = new Map([['u3', { shiftStart: null, shiftEnd: null, name: 'Sem turno' }]]);
+    expect(computeDelegatedPresenceSlots([aula], byLead([]), viewer, users, NOW)).toHaveLength(0);
+  });
+
+  it('marca como done quando há daily_goal_done da categoria hoje', () => {
+    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 8, 0) });
+    const done = goalDone(aula.id, DAILY_GOAL_CATEGORIES.AULA_HOJE);
+    const rows = computeDelegatedPresenceSlots([aula], byLead([done]), viewer, usersById, NOW);
+    expect(rows[0].done).toBe(true);
   });
 });

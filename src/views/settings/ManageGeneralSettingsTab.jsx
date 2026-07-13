@@ -170,19 +170,20 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
   // Lido do contexto (mesmo doc geral); grava direto no clique, como os dias.
   const { slaOverdueDays, contractThresholdDays = 30 } = useGeneralConfig();
 
-  // Alvo INDIVIDUAL de prospecção (doc do consultor): vazio = remove o campo
+  // Alvo INDIVIDUAL de prospecção (doc do consultor): vazio OU 0 = desabilitado
   // (sem meta de prospecção). Mesmo campo editado na aba Equipe.
   const saveUserTarget = async (u, raw) => {
     const cur = u.dailyVolumeTarget ?? null;
-    const next = raw === '' ? null : Math.min(500, Math.max(1, Math.floor(Number(raw))));
-    if (raw !== '' && !Number.isFinite(next)) return;
+    const parsed = raw === '' ? 0 : Math.floor(Number(raw));
+    if (raw !== '' && !Number.isFinite(parsed)) return;
+    const next = parsed > 0 ? Math.min(500, parsed) : null; // 0/vazio/negativo → desabilitado
     if (next === cur) return;
     try {
       await updateDoc(
         doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, u.id),
         { dailyVolumeTarget: next === null ? deleteField() : next }
       );
-      toast.success(`Prospecção de ${u.name}: ${next === null ? 'padrão da academia' : `${next} ações/dia`}.`);
+      toast.success(`Prospecção de ${u.name}: ${next === null ? 'desabilitada' : `${next} ações/dia`}.`);
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível salvar o alvo individual.');
@@ -345,20 +346,20 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
       >
         <div className="p-4 rounded-xl bg-muted/50 border border-border">
           <p className="text-[12.5px] text-muted-foreground leading-relaxed">
-            Piso de esforço diário por consultor. Conta como <b>ação</b>: agendar ou reagendar visita/aula, registrar ligação ou mensagem, e cadastrar lead novo. Só concluir uma tarefa da meta (sem uma dessas ações) <b>não</b> conta. Quem zera as pendências <b>e</b> bate a prospecção ganha o selo <b>dia perfeito ⚡</b> — a prospecção não trava o "dia batido". O gestor entra só se você definir um alvo pra ele (não herda o padrão da academia).
+            Piso de esforço diário por consultor. Conta como <b>ação</b>: agendar ou reagendar visita/aula, registrar ligação ou mensagem, e cadastrar lead novo. Só concluir uma tarefa da meta (sem uma dessas ações) <b>não</b> conta. Quem zera as pendências <b>e</b> bate a prospecção ganha o selo <b>dia perfeito ⚡</b> — a prospecção não trava o "dia batido". O alvo é 100% individual: cada consultor (e o gestor, se você quiser) tem o seu — <b>0 ou vazio desabilita</b> a prospecção da pessoa.
           </p>
 
           {(usersList || []).length > 0 && (
             <div className="mt-4 pt-4 border-t border-border">
               <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2.5">
-                Alvo por consultor — vazio = sem meta de prospecção
+                Alvo por consultor — 0 ou vazio = sem meta de prospecção
               </div>
               <div className="flex flex-col gap-2">
                 {(usersList || []).map(u => (
                   <div key={u.id} className="flex items-center gap-3">
                     <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200 flex-1 truncate">{u.name}{u.role === 'admin' ? ' (gestor)' : ''}</span>
                     <input
-                      type="number" min="1" max="500"
+                      type="number" min="0" max="500"
                       defaultValue={u.dailyVolumeTarget ?? ''}
                       placeholder="off"
                       onBlur={(e) => saveUserTarget(u, e.target.value.trim())}

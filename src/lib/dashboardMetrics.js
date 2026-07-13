@@ -265,6 +265,7 @@ export function computeTeamMetrics({ capturedLeads, scheduledLeads, convertedLea
         agendadosAula: 0,
         convertidos: 0,
         coorteConvertidos: 0,
+        coortePerdidos: 0,
         txConversaoGlobal: null
       };
     }
@@ -277,6 +278,7 @@ export function computeTeamMetrics({ capturedLeads, scheduledLeads, convertedLea
     const cId = ensureConsultant(l);
     metrics[cId].total += 1;
     if (isLeadConverted(l)) metrics[cId].coorteConvertidos += 1;
+    else if (l.status === 'Perda') metrics[cId].coortePerdidos += 1;
   });
 
   scheduledLeads.forEach(l => {
@@ -421,6 +423,34 @@ export function computeAulasPorModalidade(scheduledLeads) {
     .sort((a, b) => b.count - a.count);
 }
 
+// EVENTO (hoje): visitas e aulas com data marcada para HOJE, em ordem de
+// horário — a "linha do dia" da tela Operacional.
+export function computeTodayAgenda(leads, now = new Date()) {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  return computeScheduledLeads(leads, { start, end }).sort(
+    (a, b) => getLeadAppointmentDate(a).getTime() - getLeadAppointmentDate(b).getTime()
+  );
+}
+
+// Não-comparecimentos recentes de leads AINDA EM JOGO (nem matrícula nem
+// perda), do mais novo para o mais antigo — a fila de retrabalho da tela
+// Operacional. Sem appointmentOutcomeAt não há como saber se é recente,
+// então fica de fora.
+export function computeNoShowsToRework(leads, { now = new Date(), days = 14 } = {}) {
+  const cutoff = new Date(now.getTime() - days * DAY_MS);
+  return (leads || [])
+    .filter(l => {
+      if (l.appointmentOutcome !== 'no_show') return false;
+      if (l.status === 'Perda' || isLeadConverted(l)) return false;
+      const outcomeAt = getSafeDateOrNull(l.appointmentOutcomeAt);
+      return Boolean(outcomeAt && outcomeAt >= cutoff && outcomeAt <= now);
+    })
+    .sort((a, b) => getSafeDateOrNull(b.appointmentOutcomeAt) - getSafeDateOrNull(a.appointmentOutcomeAt));
+}
+
 // Sem período (por design): pendências futuras/atrasadas de leads ainda em
 // jogo, ordenadas da mais próxima para a mais distante. nextFollowUp chega
 // como Date normalizado do snapshot do App.
@@ -433,4 +463,181 @@ export function computePendingFollowUps(leads) {
       !isNaN(l.nextFollowUp.getTime())
     )
     .sort((a, b) => a.nextFollowUp.getTime() - b.nextFollowUp.getTime());
+}
+
+function buildDayRange(now) {
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+// Conversão por PROFESSOR nas aulas experimentais. A janela é o PERÍODO
+// selecionado no Gerencial (decisão do Johnny, 2026-07-12: as datas do
+// Gerencial mexem em todos os resultados, inclusive este card). Só entram
+// aulas cuja data JÁ PASSOU — aula futura não é comparecimento nem falta —,
+// então o fim efetivo é min(range.end, agora). Sem range, cai numa janela
+// móvel de 90 dias (fallback dos consumidores que não passam período).
+// Atribuição pelo professor do agendamento ATUAL do lead (o modelo guarda um
+// agendamento por lead — histórico multi-agendamento está fora de escopo).
+// Aula sem professor (appointmentSoloTraining ou sem appointmentProfessorId)
+// cai na linha de REFERÊNCIA "Treina sozinho", fora do ranking. Conversão =
+// matrículas ÷ compareceram (isLeadAttended já trata convertido como presente).
+export function computeProfessorConversion(leads, { range = null, now = new Date(), days = 90 } = {}) {
+  const start = range ? range.start : new Date(now.getTime() - days * DAY_MS);
+  const rawEnd = range ? range.end : now;
+  const end = rawEnd < now ? rawEnd : now;
+  const byProf = new Map();
+  let solo = null;
+
+  const makeBucket = (professorId, name, isSolo) => ({
+    professorId,
+    name,
+    isSolo,
+    aulas: 0,
+    compareceram: 0,
+    matriculas: 0,
+    convPct: null,
+    basePequena: false,
+    deltaVsSolo: null
+  });
+
+  (leads || []).forEach(l => {
+    if (getLeadAppointmentType(l) !== 'aula_experimental') return;
+    const d = getLeadAppointmentDate(l);
+    if (!d || d < start || d > end) return;
+
+    let bucket;
+    if (l.appointmentSoloTraining || !l.appointmentProfessorId) {
+      if (!solo) solo = makeBucket(null, 'Treina sozinho', true);
+      bucket = solo;
+    } else {
+      const key = l.appointmentProfessorId;
+      if (!byProf.has(key)) {
+        byProf.set(key, makeBucket(key, l.appointmentProfessorName || 'Professor', false));
+      }
+      bucket = byProf.get(key);
+    }
+
+    bucket.aulas += 1;
+    if (isLeadAttended(l)) {
+      bucket.compareceram += 1;
+      if (isLeadConverted(l)) bucket.matriculas += 1;
+    }
+  });
+
+  const finalize = (b) => {
+    b.convPct = b.compareceram > 0 ? Math.round((b.matriculas / b.compareceram) * 100) : null;
+    b.basePequena = b.compareceram > 0 && b.compareceram < 3;
+  };
+  byProf.forEach(finalize);
+  if (solo) finalize(solo);
+
+  const rows = Array.from(byProf.values()).sort((a, b) => {
+    const ca = a.convPct == null ? -1 : a.convPct;
+    const cb = b.convPct == null ? -1 : b.convPct;
+    return cb - ca || b.compareceram - a.compareceram || a.name.localeCompare(b.name);
+  });
+
+  if (solo && solo.convPct != null) {
+    rows.forEach(r => {
+      if (r.convPct != null) r.deltaVsSolo = r.convPct - solo.convPct;
+    });
+  }
+
+  const all = solo ? [...rows, solo] : rows;
+  const totals = all.reduce(
+    (acc, b) => ({
+      aulas: acc.aulas + b.aulas,
+      compareceram: acc.compareceram + b.compareceram,
+      matriculas: acc.matriculas + b.matriculas
+    }),
+    { aulas: 0, compareceram: 0, matriculas: 0 }
+  );
+  totals.convPct = totals.compareceram > 0 ? Math.round((totals.matriculas / totals.compareceram) * 100) : null;
+  totals.attendancePct = totals.aulas > 0 ? Math.round((totals.compareceram / totals.aulas) * 100) : null;
+
+  return { windowStart: start, windowEnd: end, totals, rows, solo };
+}
+
+// EVENTO: perdas com lostAt dentro do período, agrupadas pelo motivo
+// registrado. Perda sem lostAt fica de fora (sem data não há como saber o
+// período); perda sem motivo entra em "Sem motivo".
+export function computeLossReasons(leads, range) {
+  const map = new Map();
+  let total = 0;
+  (leads || []).forEach(l => {
+    if (l.status !== 'Perda') return;
+    if (!isWithinRange(l.lostAt, range)) return;
+    const key = String(l.lossReason || '').trim() || 'Sem motivo';
+    map.set(key, (map.get(key) || 0) + 1);
+    total += 1;
+  });
+  const rows = Array.from(map.entries())
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  return { total, rows };
+}
+
+// EVENTO (hoje): o funil do dia da barra de progresso do Operacional —
+// Novos → Agendados → Compareceram → Matrículas, mais o andamento da agenda
+// (quantos agendamentos de hoje já ficaram para trás no relógio). Sem índice
+// composto: só contagens diretas.
+export function computeDayFunnel(leads, now = new Date()) {
+  const dayRange = buildDayRange(now);
+  const agenda = computeTodayAgenda(leads, now);
+  const realizados = agenda.filter(l => getLeadAppointmentDate(l) <= now);
+  return {
+    novos: computeCapturedLeads(leads, dayRange).length,
+    agendados: agenda.length,
+    compareceram: realizados.filter(isLeadAttended).length,
+    matriculas: computeConvertedLeads(leads, dayRange).length,
+    agendaRealizados: realizados.length,
+    agendaTotal: agenda.length
+  };
+}
+
+// Contadores por consultor para os cards "Time agora" do Operacional:
+// funil de HOJE (agendou/compareceu/matrículas) + backlog acumulado
+// (follow-ups atrasados e no-shows recentes a reagendar). Meta/prospecção e
+// "última ação" ficam na view (dependem de interactions e da lib da Meta).
+export function computeConsultantDayBoard(leads, { now = new Date(), noShowDays = 14 } = {}) {
+  const board = {};
+  const ensure = (lead) => {
+    const id = lead.consultantId || 'unassigned';
+    if (!board[id]) {
+      board[id] = {
+        consultantId: id,
+        name: lead.consultantName || 'Desconhecido',
+        agendou: 0,
+        compareceu: 0,
+        matriculas: 0,
+        followUpsAtrasados: 0,
+        noShows: 0
+      };
+    }
+    return board[id];
+  };
+
+  computeTodayAgenda(leads, now).forEach(l => {
+    const b = ensure(l);
+    b.agendou += 1;
+    const d = getLeadAppointmentDate(l);
+    if (d <= now && isLeadAttended(l)) b.compareceu += 1;
+  });
+
+  computeConvertedLeads(leads, buildDayRange(now)).forEach(l => {
+    ensure(l).matriculas += 1;
+  });
+
+  computePendingFollowUps(leads).forEach(l => {
+    if (l.nextFollowUp < now) ensure(l).followUpsAtrasados += 1;
+  });
+
+  computeNoShowsToRework(leads, { now, days: noShowDays }).forEach(l => {
+    ensure(l).noShows += 1;
+  });
+
+  return board;
 }

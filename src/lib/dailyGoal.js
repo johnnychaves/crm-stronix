@@ -189,15 +189,16 @@ export function volumeBreakdownLabel(v) {
 
 // Alvo de volume de um usuário: o próprio (doc do consultor) > default da
 // academia. 0 = sem régua. Inclui o GESTOR (admin) — prospecção vale p/ todos.
-export function volumeTargetFor(user, academyDefault) {
+// Alvo de prospecção do usuário — 100% INDIVIDUAL. Não existe padrão de
+// academia: cada consultor (e o gestor, se for o caso) define o próprio alvo
+// de ações/dia no seu doc. 0 (ou vazio) significa prospecção DESABILITADA —
+// quem não tem alvo, não tem meta de prospecção. (O 2º argumento antigo,
+// academyDefault, foi removido; os callers podem seguir passando qualquer
+// coisa, é ignorado.)
+export function volumeTargetFor(user) {
   if (!user) return 0;
   const own = Math.floor(Number(user.dailyVolumeTarget));
-  if (Number.isFinite(own) && own > 0) return Math.min(own, 500);
-  // Gestor (admin) é OPT-IN: só tem meta com alvo PRÓPRIO — não herda o default
-  // da academia (que vale só p/ consultores).
-  if (user.role === 'admin') return 0;
-  const def = Math.floor(Number(academyDefault));
-  return Number.isFinite(def) && def > 0 ? Math.min(def, 500) : 0;
+  return Number.isFinite(own) && own > 0 ? Math.min(own, 500) : 0;
 }
 
 // Dias de atraso de um lead (follow-up vencido antes de hoje). 0 = em dia.
@@ -412,4 +413,79 @@ export function computeRitmo(history, metaWeekdays) {
   }
 
   return { history14, monthHits, monthTarget, streak };
+}
+
+// ============================================================================
+// PRESENÇA CRUZADA (turno) — uma aula/visita marcada por um consultor para um
+// horário em que ELE não está, mas OUTRO está de plantão, aparece na Meta do
+// consultor de plantão para ele confirmar presença. Essa marcação NÃO conta
+// para a meta de quem confirma; ela credita o DONO do lead (a interaction
+// daily_goal_done é lida por leadId+categoria, então cai na Meta do dono).
+// Turno vem de shiftStart/shiftEnd no doc do usuário ("HH:MM", pode faltar).
+// ============================================================================
+
+// Minutos do dia de um "HH:MM". null/ inválido → null.
+function shiftMinutes(hhmm) {
+  const [h, m] = String(hhmm || '').split(':').map(Number);
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  return h * 60 + m;
+}
+
+// O minuto-do-dia `mins` cai dentro do turno [start, end]? Bordas inclusivas.
+// Suporta turno que vira a meia-noite (end < start, ex.: 22:00–06:00). Sem
+// turno completo → false (não dá pra afirmar presença).
+export function isTimeWithinShift(mins, shiftStart, shiftEnd) {
+  const s = shiftMinutes(shiftStart);
+  const e = shiftMinutes(shiftEnd);
+  if (s == null || e == null || !Number.isFinite(mins)) return false;
+  if (s === e) return false; // turno degenerado
+  if (s < e) return mins >= s && mins <= e;
+  return mins >= s || mins <= e; // vira a meia-noite
+}
+
+// Leads de OUTROS consultores cuja visita/aula é HOJE, no horário em que o
+// `viewer` está de plantão e o DONO não está — a fila de "confirmar presença
+// por outro". usersById: mapa id → { shiftStart, shiftEnd, name }. Retorna
+// entradas enriquecidas (ownerName, categorySlug, done) ordenadas por horário.
+// NÃO entra na contagem da meta do viewer (é computada à parte da tela).
+export function computeDelegatedPresenceSlots(leads, interactionsByLead, viewer, usersById, now = new Date()) {
+  if (!viewer || (!viewer.shiftStart && !viewer.shiftEnd)) return [];
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const todayEnd = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+  const getById = (id) => (usersById instanceof Map ? usersById.get(id) : (usersById || {})[id]);
+  const leadInteractions = (id) => (interactionsByLead instanceof Map ? interactionsByLead.get(id) : (interactionsByLead || {})[id]) || [];
+
+  const out = [];
+  (leads || []).forEach(lead => {
+    if (lead.consultantId === viewer.id) return;              // meta própria já cobre
+    if (lead.status === 'Venda' || lead.status === 'Perda') return;
+    const type = getLeadAppointmentType(lead);
+    if (type !== 'visita' && type !== 'aula_experimental') return;
+    const apptDate = getLeadAppointmentDate(lead);
+    if (!apptDate || apptDate < todayStart || apptDate > todayEnd) return;
+
+    const mins = apptDate.getHours() * 60 + apptDate.getMinutes();
+    if (!isTimeWithinShift(mins, viewer.shiftStart, viewer.shiftEnd)) return; // viewer fora de plantão
+
+    const owner = getById(lead.consultantId);
+    // Dono precisa ter turno E estar FORA dele no horário (se estivesse, ele
+    // mesmo confirma). Sem turno do dono, não delega (evita espalhar demais).
+    if (!owner || (!owner.shiftStart && !owner.shiftEnd)) return;
+    if (isTimeWithinShift(mins, owner.shiftStart, owner.shiftEnd)) return;
+
+    const categorySlug = type === 'visita' ? DAILY_GOAL_CATEGORIES.VISITA_HOJE : DAILY_GOAL_CATEGORIES.AULA_HOJE;
+    const done =
+      isLeadResolvedToday(lead, todayStart) ||
+      hasGoalDoneToday(lead, categorySlug, leadInteractions(lead.id), todayStart);
+
+    out.push({
+      ...lead,
+      categorySlug,
+      categoryLabel: DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug,
+      ownerName: owner.name || lead.consultantName || 'outro consultor',
+      done
+    });
+  });
+
+  return out.sort((a, b) => (getLeadAppointmentDate(a)?.getTime() || 0) - (getLeadAppointmentDate(b)?.getTime() || 0));
 }

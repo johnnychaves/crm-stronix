@@ -204,8 +204,9 @@ function ManageUsersTab({ db, appUser }) {
           authUid: normalizeUid(form.authUid) || null,
           shiftStart: form.shiftStart || null,
           shiftEnd: form.shiftEnd || null,
-          // Alvo individual da meta por volume: vazio = remove (vale o default
-          // da academia das Regras gerais); 1..500 = piso próprio do consultor.
+          // Alvo individual da meta por volume: vazio ou 0 = desabilitado (sem
+          // meta de prospecção); 1..500 = piso próprio. Não existe padrão de
+          // academia — cada um tem o seu.
           dailyVolumeTarget: form.dailyVolumeTarget !== '' && Number(form.dailyVolumeTarget) > 0
             ? Math.min(500, Math.floor(Number(form.dailyVolumeTarget)))
             : deleteField(),
@@ -516,13 +517,13 @@ function ManageUsersTab({ db, appUser }) {
           {editingUser && (
             <div className="space-y-2 pt-2">
               <label className="text-[9px] font-bold text-gray-400 dark:text-neutral-500 uppercase tracking-widest block">
-                Meta de prospecção (ações/dia) — vazio = {editingUser.role === 'admin' ? 'sem meta (gestor é opt-in)' : 'padrão da academia'}
+                Meta de prospecção (ações/dia) — 0 ou vazio = sem meta
               </label>
               <input
                 type="number"
-                min="1"
+                min="0"
                 max="500"
-                placeholder="ex.: 20 (padrão da academia se vazio)"
+                placeholder="ex.: 20 · 0 desabilita"
                 value={form.dailyVolumeTarget}
                 onChange={e => setForm({ ...form, dailyVolumeTarget: e.target.value })}
                 className="w-full bg-gray-50 dark:bg-neutral-950 px-5 py-4 rounded-2xl text-gray-900 dark:text-white outline-none border border-transparent focus:border-brand-500 focus:bg-white dark:focus:bg-neutral-900 transition-all text-xs font-bold shadow-sm"
