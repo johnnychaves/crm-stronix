@@ -92,6 +92,7 @@ function TransferLeadsTab({ db, usersList, appUser, leads }) {
 
     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
       text: noteText, consultantName: appUser.name, type: 'note', createdAt: serverTimestamp(),
+      actorId: appUser?.id || null, actorAuthUid: appUser?.authUid || null,
     });
   };
 

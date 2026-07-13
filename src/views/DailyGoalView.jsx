@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
-import { collection, doc, addDoc, setDoc, updateDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, isAdminUser } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, isAdminUser } from '../lib/leads.js';
+import { logInteraction } from '../lib/interactions.js';
+import { withBucket } from '../lib/leadDerived.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeDelegatedPresenceSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
@@ -1071,23 +1073,18 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
     try {
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-        nextFollowUp: tomorrow,
-        // A3: limpa o agendamento formal antigo (visita/aula que já passou e
-        // virou "Atrasado") para o lead não ficar preso com a data velha em
-        // getLeadAppointmentDate — assim ele aparece corretamente em "Amanhã".
-        // O tipo de contato (nextFollowUpType: Ligação/Mensagem) é preservado.
-        appointmentScheduledFor: null,
-        appointmentType: null
-      });
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: `Contato adiado para amanhã via Meta Diária.`,
-        type: 'note',
-        createdAt: serverTimestamp()
-      });
+      await logInteraction(db, lead, appUser,
+        { text: `Contato adiado para amanhã via Meta Diária.`, type: 'note' },
+        {
+          nextFollowUp: tomorrow,
+          // A3: limpa o agendamento formal antigo (visita/aula que já passou e
+          // virou "Atrasado") para o lead não ficar preso com a data velha em
+          // getLeadAppointmentDate — assim ele aparece corretamente em "Amanhã".
+          // O tipo de contato (nextFollowUpType: Ligação/Mensagem) é preservado.
+          appointmentScheduledFor: null,
+          appointmentType: null
+        }
+      );
     } catch(err) { console.error(err); toast.error('Não foi possível adiar o lead. Tente novamente.'); }
   };
 
@@ -1131,32 +1128,25 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         leadUpdate.appointmentType = null;
         leadUpdate.nextFollowUp = null;
       }
-      await updateDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
-        leadUpdate
-      );
       // Marca a tarefa da Meta como concluída para essa categoria
       // específica. Type='daily_goal_done' é a fonte ÚNICA de verdade
-      // para "tarefa cumprida" no fluxo da Meta Diária.
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: `${meta.icon} ${meta.label} — Meta Diária (${DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug})`,
-        type: 'daily_goal_done',
-        dailyGoalCategory: categorySlug,
-        appointmentOutcome: outcome,
-        createdAt: serverTimestamp()
-      });
+      // para "tarefa cumprida" no fluxo da Meta Diária. O leadUpdate acompanha
+      // a interação no mesmo batch (withBucket porque pode promover para
+      // Negociação, mudando o status resultante).
+      await logInteraction(db, lead, appUser,
+        {
+          text: `${meta.icon} ${meta.label} — Meta Diária (${DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug})`,
+          type: 'daily_goal_done',
+          dailyGoalCategory: categorySlug,
+          appointmentOutcome: outcome
+        },
+        withBucket(leadUpdate, lead)
+      );
       // Log adicional da mudança de fase para o feed do lead.
       if (shouldPromoteToNegociacao) {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-          leadId: lead.id,
-          consultantName: appUser.name,
-          ...getInteractionSecurityFields(lead, appUser),
+        await logInteraction(db, lead, appUser, {
           text: `Fase alterada para [${negStatus.name}] após comparecimento em ${DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug}.`,
-          type: 'status_change',
-          createdAt: serverTimestamp()
+          type: 'status_change'
         });
       }
       if (shouldPromoteToNegociacao) {
@@ -1198,16 +1188,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
     if (!window.confirm(`Concluir a tarefa "${categoryLabel}" deste lead?`)) return;
     const noteText = (note || '').trim();
     try {
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
+      await logInteraction(db, lead, appUser, {
         text: noteText
           ? `✅ ${categoryLabel} — Meta Diária. Obs: ${noteText}`
           : `✅ ${categoryLabel} — Meta Diária concluída.`,
         type: 'daily_goal_done',
-        dailyGoalCategory: categorySlug,
-        createdAt: serverTimestamp()
+        dailyGoalCategory: categorySlug
       });
       toast.success(`Tarefa "${categoryLabel}" concluída.`);
     } catch (err) {
@@ -1245,20 +1231,18 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         leadUpdate.appointmentOutcomeAt = null;
         leadUpdate.appointmentOutcomeBy = null;
       }
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), leadUpdate);
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: noteText
-          ? `✅ ${categoryLabel} concluída — próximo contato (${followUpTypeLabel.toLowerCase()}) em ${formattedDate} às ${formattedTime}. Obs: ${noteText}`
-          : `✅ ${categoryLabel} concluída — próximo contato (${followUpTypeLabel.toLowerCase()}) em ${formattedDate} às ${formattedTime}.`,
-        type: closeTask ? 'daily_goal_done' : 'note',
-        ...(closeTask ? { dailyGoalCategory: categorySlug } : {}),
-        volumeKind,
-        rescheduledFor: newDate,
-        createdAt: serverTimestamp()
-      });
+      await logInteraction(db, lead, appUser,
+        {
+          text: noteText
+            ? `✅ ${categoryLabel} concluída — próximo contato (${followUpTypeLabel.toLowerCase()}) em ${formattedDate} às ${formattedTime}. Obs: ${noteText}`
+            : `✅ ${categoryLabel} concluída — próximo contato (${followUpTypeLabel.toLowerCase()}) em ${formattedDate} às ${formattedTime}.`,
+          type: closeTask ? 'daily_goal_done' : 'note',
+          ...(closeTask ? { dailyGoalCategory: categorySlug } : {}),
+          volumeKind,
+          rescheduledFor: newDate
+        },
+        leadUpdate
+      );
       toast.success(`Próximo contato em ${formattedDate} às ${formattedTime}.`);
       setNextContactTarget(null);
     } catch (err) {
@@ -1278,30 +1262,24 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
     const noteText = (note || '').trim();
     try {
       if (flow === 'complete') {
-        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-          nextFollowUp: null,
-          nextFollowUpType: null
-        });
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-          leadId: lead.id,
-          consultantName: appUser.name,
-          ...getInteractionSecurityFields(lead, appUser),
-          text: noteText
-            ? `✅ ${categoryLabel} concluída — sem próximo contato agendado. Obs: ${noteText}`
-            : `✅ ${categoryLabel} concluída — sem próximo contato agendado.`,
-          type: 'daily_goal_done',
-          dailyGoalCategory: categorySlug,
-          createdAt: serverTimestamp()
-        });
+        await logInteraction(db, lead, appUser,
+          {
+            text: noteText
+              ? `✅ ${categoryLabel} concluída — sem próximo contato agendado. Obs: ${noteText}`
+              : `✅ ${categoryLabel} concluída — sem próximo contato agendado.`,
+            type: 'daily_goal_done',
+            dailyGoalCategory: categorySlug
+          },
+          {
+            nextFollowUp: null,
+            nextFollowUpType: null
+          }
+        );
         toast.success(`Tarefa "${categoryLabel}" concluída.`);
       } else if (noteText) {
-        await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-          leadId: lead.id,
-          consultantName: appUser.name,
-          ...getInteractionSecurityFields(lead, appUser),
+        await logInteraction(db, lead, appUser, {
           text: `Sem próximo contato agendado. Obs: ${noteText}`,
-          type: 'note',
-          createdAt: serverTimestamp()
+          type: 'note'
         });
       }
       setNextContactTarget(null);
@@ -1343,7 +1321,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
     const finalSoloTraining = isAula ? Boolean(newSoloTraining) : false;
 
     try {
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+      const leadUpdate = {
         appointmentScheduledFor: newDate,
         nextFollowUp: newDate, // keep legacy field in sync so the lead doesn't show up as "Atrasado" after rescheduling
         appointmentType: finalApptType,
@@ -1357,7 +1335,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         appointmentOutcome: null,
         appointmentOutcomeAt: null,
         appointmentOutcomeBy: null
-      });
+      };
 
       let baseText;
       if (isAfterNoShow) {
@@ -1369,13 +1347,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
       }
 
       const interactionPayload = {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
         text: noteText ? `${baseText} Obs: ${noteText}` : baseText,
         type: shouldCloseToday ? 'daily_goal_done' : 'note',
-        rescheduledFor: newDate,
-        createdAt: serverTimestamp()
+        rescheduledFor: newDate
       };
       // O reagendamento É a ação de prospecção (reaquecimento): conta SEMPRE
       // via volumeKind, inclusive quando também fecha a tarefa de hoje. O
@@ -1387,7 +1361,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         interactionPayload.appointmentOutcome = 'rescheduled';
       }
 
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), interactionPayload);
+      await logInteraction(db, lead, appUser, interactionPayload, leadUpdate);
 
       if (isAfterNoShow) {
         toast.success(`Próxima tentativa em ${formattedDate} às ${formattedTime}.`);

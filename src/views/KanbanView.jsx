@@ -1,7 +1,8 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
-import { collection, doc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
-import { isAdminUser, canEditLead, getInteractionSecurityFields, isConvertedStatusName } from '../lib/leads.js';
+import { serverTimestamp } from 'firebase/firestore';
+import { isAdminUser, canEditLead, isConvertedStatusName } from '../lib/leads.js';
+import { logInteraction } from '../lib/interactions.js';
+import { withBucket } from '../lib/leadDerived.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
@@ -349,27 +350,23 @@ const handleKanbanMouseMove = (e) => {
   // matrícula/perda nas métricas.
   const applyMoveToStage = useCallback(async (lead, newStatus) => {
     try {
-      const payload = { status: newStatus };
-      if (selectedFunnelId && !lead.funnelId) payload.funnelId = selectedFunnelId;
+      const leadPatch = { status: newStatus };
+      if (selectedFunnelId && !lead.funnelId) leadPatch.funnelId = selectedFunnelId;
       // Etapa customizada com nome de matrícula ("Matriculado", "Convertido"...)
       // conta como conversão nas métricas — então precisa do carimbo de data.
       // Sem ele, a matrícula caía no mês do CADASTRO do lead, não no do
       // fechamento. Destino convertido também não limpa os campos ao sair
       // de Venda (continuaria matrícula, só que sem data).
       const destinoConvertido = isConvertedStatusName(newStatus);
-      if (lead.status === 'Venda' && !destinoConvertido) { payload.isConverted = false; payload.convertedAt = null; }
-      if (lead.status === 'Perda') { payload.lossReason = null; payload.lostAt = null; }
-      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) payload.convertedAt = serverTimestamp();
+      if (lead.status === 'Venda' && !destinoConvertido) { leadPatch.isConverted = false; leadPatch.convertedAt = null; }
+      if (lead.status === 'Perda') { leadPatch.lossReason = null; leadPatch.lostAt = null; }
+      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) leadPatch.convertedAt = serverTimestamp();
 
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), payload);
-      await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
-        leadId: lead.id,
-        consultantName: appUser.name,
-        ...getInteractionSecurityFields(lead, appUser),
-        text: `Movido para a etapa [${newStatus}] via Kanban.`,
-        type: 'status_change',
-        createdAt: serverTimestamp()
-      });
+      await logInteraction(
+        db, lead, appUser,
+        { text: `Movido para a etapa [${newStatus}] via Kanban.`, type: 'status_change' },
+        withBucket(leadPatch, lead)
+      );
     } catch (err) {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
@@ -437,29 +434,21 @@ const handleKanbanMouseMove = (e) => {
 const lead = leads.find(l => l.id === lossModalLeadId);
 if (!lead) return;
     try {
-      await updateDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lossModalLeadId),
-        {
-          status: 'Perda',
-          lossReason: reason,
-          nextFollowUp: null,
-          lostAt: serverTimestamp(),
-          // Limpa resquício caso o lead viesse da coluna Venda.
-          isConverted: false,
-          convertedAt: null
-        }
-      );
-
-      await addDoc(
-        collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH),
-        {
-          leadId: lossModalLeadId,
-          consultantName: appUser.name,
-          ...getInteractionSecurityFields(lead, appUser),
-          text: `Lead perdido. Motivo: ${reason}`,
-          type: 'status_change',
-          createdAt: serverTimestamp()
-        }
+      await logInteraction(
+        db, lead, appUser,
+        { text: `Lead perdido. Motivo: ${reason}`, type: 'status_change' },
+        withBucket(
+          {
+            status: 'Perda',
+            lossReason: reason,
+            nextFollowUp: null,
+            lostAt: serverTimestamp(),
+            // Limpa resquício caso o lead viesse da coluna Venda.
+            isConverted: false,
+            convertedAt: null
+          },
+          lead
+        )
       );
 
       setLossModalLeadId(null);

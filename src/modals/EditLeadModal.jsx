@@ -3,6 +3,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { Calendar, Check, IdCard, Pencil, Phone, Plus, User, X } from 'lucide-react';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { isAdminUser } from '../lib/leads.js';
+import { buildLeadSearchFields } from '../lib/leadDerived.js';
 import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -165,7 +166,22 @@ function EditLeadModal({ open, onClose, lead, appUser, db, usersList, tags }) {
       }
       finalData.birthDate = fromDateInputValue(editData.birthDate);
       finalData.cpf = (editData.cpf || '').trim() || null;
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), finalData);
+      // Dual-write: recomputa os campos de busca a partir dos valores que serão
+      // efetivamente gravados (a edição pode ter mudado name/whatsapp/cpf).
+      // finalData sempre carrega os três campos, então usamos seus valores
+      // diretos — inclusive cpf: null quando o usuário limpou o CPF (um
+      // `?? lead.cpf` restauraria os dígitos antigos e deixaria cpf/cpfDigits
+      // inconsistentes). Sem withBucket: este patch não toca
+      // status/lifecycleStage/isConverted, logo o lifecycleBucket não muda.
+      const searchFields = buildLeadSearchFields({
+        name: finalData.name,
+        whatsapp: finalData.whatsapp,
+        cpf: finalData.cpf,
+      });
+      await updateDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+        { ...finalData, ...searchFields }
+      );
       onClose();
     } catch (e) {
       console.error(e);
