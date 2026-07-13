@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Phone, SlidersHorizontal, Timer, TrendingUp, Users, X } from 'lucide-react';
+import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
 import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, hasGoalDoneToday, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
@@ -10,60 +10,12 @@ import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
+import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
 
 // Janela de confirmação rápida: da hora marcada até 15min depois. Fora dela o
 // atalho continua clicável (sempre editável — decisão do Johnny), só perde o
 // destaque de "confirmar agora".
 const CONFIRM_WINDOW_MS = 15 * 60 * 1000;
-
-// Atalho Veio/Faltou de presença (item 2). on/off sempre editável: grava o
-// desfecho na hora e credita a Meta do responsável + o card de professor. O
-// destaque laranja aparece na janela de 15min pós-horário, quando ainda está
-// pendente, para lembrar de confirmar no calor da aula.
-function PresenceToggle({ attKey, highlight, saving, onMark }) {
-  const isVeio = attKey === 'attended';
-  const isFaltou = attKey === 'no_show';
-  return (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      className={cn(
-        'inline-flex items-center gap-0.5 rounded-full p-0.5 border transition-shadow',
-        highlight
-          ? 'border-accent-400 ring-2 ring-accent-500/25 dark:border-accent-500/50'
-          : 'border-slate-200 dark:border-neutral-700'
-      )}
-    >
-      <button
-        type="button"
-        disabled={saving}
-        onClick={(e) => onMark('attended', e)}
-        aria-pressed={isVeio}
-        className={cn(
-          'px-2 py-[3px] rounded-full text-[11px] font-bold transition-colors disabled:opacity-50',
-          isVeio
-            ? 'bg-emerald-600 text-white shadow-[0_1px_2px_rgba(5,150,105,.35)]'
-            : 'text-slate-500 hover:text-emerald-700 dark:text-neutral-400 dark:hover:text-emerald-400'
-        )}
-      >
-        <Check className="size-3 inline -mt-px" strokeWidth={2.6} /> Veio
-      </button>
-      <button
-        type="button"
-        disabled={saving}
-        onClick={(e) => onMark('no_show', e)}
-        aria-pressed={isFaltou}
-        className={cn(
-          'px-2 py-[3px] rounded-full text-[11px] font-bold transition-colors disabled:opacity-50',
-          isFaltou
-            ? 'bg-rose-600 text-white shadow-[0_1px_2px_rgba(225,29,72,.35)]'
-            : 'text-slate-500 hover:text-rose-700 dark:text-neutral-400 dark:hover:text-rose-400'
-        )}
-      >
-        <X className="size-3 inline -mt-px" strokeWidth={2.6} /> Faltou
-      </button>
-    </div>
-  );
-}
 
 // ==========================================
 // APPOINTMENT TRACKING VIEW (AULAS EXPERIMENTAIS / VISITAS)
@@ -718,14 +670,14 @@ function AppointmentTrackingView({ leads, interactions, appUser, usersList, stat
                         )}
                         {canMark && (
                           <div className="mt-1.5">
-                            <PresenceToggle attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
+                            <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
                           </div>
                         )}
                       </div>
                     ) : (
                       <div className="min-w-0">
                         {canMark ? (
-                          <PresenceToggle attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
+                          <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
                         ) : (
                           <div className="flex items-center gap-2">
                             <span title={sitTitle} className={cn('size-3 rounded shrink-0', attSquareClass(att.key))} />

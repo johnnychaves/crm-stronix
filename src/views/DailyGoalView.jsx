@@ -6,6 +6,7 @@ import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '.
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, isAdminUser } from '../lib/leads.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeDelegatedPresenceSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -874,9 +875,6 @@ function DelegatedPresenceCard({ items, savingId, onMark }) {
       <div className="p-2.5 space-y-1.5">
         {items.map((lead) => {
           const when = getLeadAppointmentDate(lead);
-          const outcome = lead.appointmentOutcome;
-          const isVeio = outcome === 'attended';
-          const isFaltou = outcome === 'no_show';
           const saving = savingId === lead.id;
           return (
             <div key={lead.id} className="flex items-center gap-2.5 p-2 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.06]">
@@ -887,28 +885,7 @@ function DelegatedPresenceCard({ items, savingId, onMark }) {
                   {lead.categoryLabel} · {when ? formatHourLabel(when) : ''} · de {lead.ownerName}
                 </div>
               </div>
-              <div onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-0.5 rounded-full p-0.5 border border-slate-200 dark:border-neutral-700 shrink-0">
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => onMark(lead, 'attended')}
-                  aria-pressed={isVeio}
-                  className={cn('px-1.5 py-[3px] rounded-full text-[10.5px] font-bold transition-colors disabled:opacity-50',
-                    isVeio ? 'bg-emerald-600 text-white' : 'text-slate-500 hover:text-emerald-700 dark:text-neutral-400 dark:hover:text-emerald-400')}
-                >
-                  <Check className="size-3 inline -mt-px" strokeWidth={2.6} /> Veio
-                </button>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => onMark(lead, 'no_show')}
-                  aria-pressed={isFaltou}
-                  className={cn('px-1.5 py-[3px] rounded-full text-[10.5px] font-bold transition-colors disabled:opacity-50',
-                    isFaltou ? 'bg-rose-600 text-white' : 'text-slate-500 hover:text-rose-700 dark:text-neutral-400 dark:hover:text-rose-400')}
-                >
-                  <X className="size-3 inline -mt-px" strokeWidth={2.6} /> Faltou
-                </button>
-              </div>
+              <PresenceSwitch attKey={lead.appointmentOutcome} saving={saving} onMark={(o) => onMark(lead, o)} />
             </div>
           );
         })}
