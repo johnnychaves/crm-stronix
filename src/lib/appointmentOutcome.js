@@ -30,6 +30,20 @@ import {
   DAILY_GOAL_CATEGORY_LABEL
 } from './leads.js';
 
+// Desmarca o desfecho (volta para "aguardando"): usado pelo atalho das Aulas
+// para reverter um Veio/Faltou clicado por engano. Só zera os campos de
+// desfecho no lead — o professor/dashboard voltam a não contar a presença. A
+// marca daily_goal_done do dia (se houver) não é apagada aqui (delete de
+// interaction é restrito ao dono/admin pela rule); some sozinha na virada do
+// dia. Preserva o DONO, então funciona para qualquer membro do tenant.
+export async function clearAppointmentOutcome({ db, lead }) {
+  await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+    appointmentOutcome: null,
+    appointmentOutcomeAt: null,
+    appointmentOutcomeBy: null
+  });
+}
+
 export async function writeAppointmentOutcome({
   db,
   lead,
