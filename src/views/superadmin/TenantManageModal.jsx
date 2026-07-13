@@ -4,8 +4,6 @@ import { planLabel, slugify } from '../../lib/superadmin.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { Btn } from '../../components/ui/Btn.jsx';
 import { Field, StyledInput, StyledSelect } from '../../components/ui/Field.jsx';
-import { GymProfileFields } from '../../components/profile/GymProfileFields.jsx';
-import { buildTenantProfilePayload, readTenantProfile } from '../../lib/gymProfile.js';
 
 function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, onExtendTrial, onSetActive, onEnterAs, onArchive, authHeader, asaasConfigured, onReload }) {
   const toast = useToast();
@@ -25,8 +23,6 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
     notes: t.internalNotes || '',
     price: t.monthlyPrice != null ? String(t.monthlyPrice) : '',
   });
-  const [profileForm, setProfileForm] = useState(() => readTenantProfile(t));
-  const [profileCpfInvalid, setProfileCpfInvalid] = useState(false);
   const set = (k, v) => setF(s => ({ ...s, [k]: v }));
   const d = stats?.data;
   const seatLabel = d ? (d.maxUsers == null ? `${d.userCount} (ilimitado)` : `${d.userCount}/${d.maxUsers}`) : '—';
@@ -59,12 +55,7 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
   };
   const saveConfig = () => {
     if (!f.displayName.trim()) return;
-    onPatch({ displayName: f.displayName.trim(), settings: { logoUrl: f.logoUrl.trim() } }, 'Configurações salvas.');
-  };
-  const saveProfile = () => {
-    if (profileCpfInvalid) { toast.warning('O CPF do responsável é inválido. Corrija antes de salvar.'); return; }
-    const { profile, settings, responsiblePhone } = buildTenantProfilePayload(profileForm);
-    onPatch({ profile, settings, responsiblePhone }, 'Perfil salvo.');
+    onPatch({ displayName: f.displayName.trim(), settings: { city: f.city.trim(), state: f.state.trim(), logoUrl: f.logoUrl.trim() } }, 'Configurações salvas.');
   };
 
   const statBox = (label, value) => (
@@ -88,7 +79,7 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
 
         {/* sub-abas */}
         <div className="px-5 pt-3 flex gap-1 flex-wrap border-b border-slate-200/80 dark:border-white/[0.07]">
-          {[{ id: 'visao', label: 'Visão Geral' }, { id: 'plano', label: 'Plano & Cobrança' }, { id: 'config', label: 'Configurações' }, { id: 'perfil', label: 'Perfil' }, { id: 'acoes', label: 'Ações' }].map(s => (
+          {[{ id: 'visao', label: 'Visão Geral' }, { id: 'plano', label: 'Plano & Cobrança' }, { id: 'config', label: 'Configurações' }, { id: 'acoes', label: 'Ações' }].map(s => (
             <button key={s.id} type="button" onClick={() => setSub(s.id)}
               className={`px-3 h-8 text-[12px] font-semibold transition -mb-px border-b-2 ${sub === s.id ? 'border-brand-600 text-brand-700 dark:text-brand-300' : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white'}`}>
               {s.label}
@@ -204,17 +195,13 @@ function TenantManageModal({ t, stats, busy, plans, onClose, onCopy, onPatch, on
           {sub === 'config' && (
             <div className="space-y-3">
               <Field label="Nome da organização"><StyledInput value={f.displayName} onChange={e => set('displayName', e.target.value)} /></Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Cidade"><StyledInput value={f.city} onChange={e => set('city', e.target.value)} placeholder="Ex: Porto Alegre" /></Field>
+                <Field label="Estado"><StyledInput value={f.state} onChange={e => set('state', e.target.value)} placeholder="Ex: RS" /></Field>
+              </div>
               <Field label="Logo (URL)" hint="opcional"><StyledInput value={f.logoUrl} onChange={e => set('logoUrl', e.target.value)} placeholder="https://..." /></Field>
-              <p className="text-[11px] text-slate-400">Cidade e UF agora ficam na aba <span className="font-semibold">Perfil</span>.</p>
               <div className="flex justify-end"><Btn kind="brand" icon={<Check size={13} />} onClick={saveConfig} disabled={!!busy}>Salvar configurações</Btn></div>
               <p className="text-[11px] text-slate-400">O identificador (slug <span className="num">{t.id}</span>) é imutável.</p>
-            </div>
-          )}
-
-          {sub === 'perfil' && (
-            <div className="space-y-4">
-              <GymProfileFields value={profileForm} onChange={(patch) => setProfileForm((p) => ({ ...p, ...patch }))} wrapInCards={false} onValidityChange={setProfileCpfInvalid} />
-              <div className="flex justify-end"><Btn kind="brand" icon={<Check size={13} />} onClick={saveProfile} disabled={!!busy}>Salvar perfil</Btn></div>
             </div>
           )}
 
