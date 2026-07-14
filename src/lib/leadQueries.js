@@ -54,6 +54,24 @@ export const bucketByFunnelQuerySpec = (bucket, funnelId, pageSize = LIST_PAGE_S
   limit: pageSize,
 });
 
+// AppointmentTrackingView (E2b) — agendamentos de UM tipo numa JANELA de datas,
+// pra alimentar as tabs Hoje/Ontem/Amanhã e o range custom (≤30d) sem carregar
+// todo o histórico (agendamentos crescem sem limite). Casa com o índice #5
+// (appointmentType ASC, appointmentScheduledFor ASC): igualdade no tipo + range
+// e orderBy no MESMO campo do agendamento (Firestore permite range no campo do
+// orderBy). start/end em ms (a view calcula as janelas) viram Date pro Firestore
+// comparar Timestamp. pageSize null = carrega a janela inteira (as contagens de
+// dia precisam de tudo; a janela por data já limita o tamanho).
+export const appointmentsInWindowQuerySpec = (appointmentType, startMs, endMs, pageSize = null) => ({
+  wheres: [
+    { field: 'appointmentType', op: '==', value: appointmentType },
+    { field: 'appointmentScheduledFor', op: '>=', value: new Date(startMs) },
+    { field: 'appointmentScheduledFor', op: '<', value: new Date(endMs) },
+  ],
+  orderBy: { field: 'appointmentScheduledFor', dir: 'asc' },
+  ...(pageSize ? { limit: pageSize } : {}),
+});
+
 // Contagem por funil (getCountFromServer) — só as igualdades, sem orderBy/limit.
 // Usa o mesmo prefixo dos índices #1/#2, então não exige índice novo.
 export const bucketByFunnelCountSpec = (bucket, funnelId) => ({

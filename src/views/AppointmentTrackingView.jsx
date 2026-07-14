@@ -2,6 +2,10 @@ import { useState, useMemo, useRef, useEffect } from 'react';
 import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
 import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, hasGoalDoneToday, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
+import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { appointmentsInWindowQuerySpec } from '../lib/leadQueries.js';
+import { appId, LEADS_PATH } from '../lib/firebase.js';
+import { collection, query, where, getCountFromServer } from 'firebase/firestore';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
 import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { cn } from '@/lib/utils';
@@ -115,7 +119,7 @@ const fromDateInput = (s) => {
   return y && m && d ? new Date(y, m - 1, d) : null;
 };
 
-function AppointmentTrackingView({ leads, interactions, appUser, usersList, statuses, db, appointmentType }) {
+function AppointmentTrackingView({ interactions, appUser, usersList, statuses, db, appointmentType }) {
   const { openProfile } = useLeadProfile();
   const { professores } = useGeneralConfig();
   const toast = useToast();
@@ -217,11 +221,52 @@ function AppointmentTrackingView({ leads, interactions, appUser, usersList, stat
     };
   }, [rangeOpen, filterOpen]);
 
-  // 1) Leads do tipo de compromisso (com data marcada).
-  const typeLeads = useMemo(
-    () => (leads || []).filter(l => getLeadAppointmentType(l) === appointmentType && getLeadAppointmentDate(l)),
-    [leads, appointmentType]
+  // 1) Leads do tipo de compromisso (com data marcada). FONTE (E2b): em vez de
+  //    filtrar o prop global, busca por JANELA de datas via query (índice #5) — a
+  //    janela sempre cobre [ontem, amanhã] (as tabs de dia mostram contagem
+  //    sempre) e estende pra cobrir o range custom (≤30d). Contagens/filtro/
+  //    ordenação seguem client-side sobre a janela. Não é ao vivo (getDocs);
+  //    remonta ao trocar de aba/tipo. Agendamentos crescem sem limite no tempo,
+  //    então NÃO trazer o histórico todo — só a janela vista.
+  const loadWindow = useMemo(() => {
+    const todayStart = startOfDay(new Date()).getTime();
+    let start = todayStart - DAY_MS;    // ontem 00:00
+    let end = todayStart + 2 * DAY_MS;  // depois de amanhã 00:00
+    if (range) {
+      start = Math.min(start, startOfDay(range.start).getTime());
+      end = Math.max(end, startOfDay(range.end).getTime() + DAY_MS);
+    }
+    return { start, end };
+  }, [range]);
+  const apptSpec = useMemo(
+    () => appointmentsInWindowQuerySpec(appointmentType, loadWindow.start, loadWindow.end),
+    [appointmentType, loadWindow.start, loadWindow.end]
   );
+  const { items: windowDocs } = usePagedLeads({
+    db, path: LEADS_PATH, spec: apptSpec,
+    specKey: `appt:${appointmentType}:${loadWindow.start}:${loadWindow.end}`,
+    enabled: !!db,
+  });
+  // Refiltro D4: a query casa pelo CAMPO appointmentType; refiltra client-side
+  // pelo getLeadAppointmentType (cobre o fallback nextFollowUpType) e exige data,
+  // como antes. Só remove.
+  const typeLeads = useMemo(
+    () => (windowDocs || []).filter(l => getLeadAppointmentType(l) === appointmentType && getLeadAppointmentDate(l)),
+    [windowDocs, appointmentType]
+  );
+  // Total do tipo (todos os agendamentos, não só a janela) p/ o resumo "X de Y",
+  // via getCountFromServer — sem baixar tudo. Enquanto carrega, cai no tamanho da
+  // janela. Conta pelo campo appointmentType (índice automático).
+  const [typeTotal, setTypeTotal] = useState(null);
+  useEffect(() => {
+    if (!db) return;
+    let cancelled = false;
+    const col = collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH);
+    getCountFromServer(query(col, where('appointmentType', '==', appointmentType)))
+      .then(s => { if (!cancelled) setTypeTotal(s.data().count); })
+      .catch(e => { if (!cancelled) { console.error('appt type count', e); setTypeTotal(null); } });
+    return () => { cancelled = true; };
+  }, [db, appointmentType]);
 
   // 2) Escopo por responsável (multi-seleção da bubble) + professor (só Aulas).
   const scopedLeads = useMemo(() => {
@@ -292,7 +337,7 @@ function AppointmentTrackingView({ leads, interactions, appUser, usersList, stat
 
   // Resumo ao lado do filtro: recorte ativo ou "X de Y aulas/visitas".
   const filterSummary = useMemo(() => {
-    if (!hasActiveFilters) return `${filtered.length} de ${typeLeads.length} ${pluralLabel}`;
+    if (!hasActiveFilters) return `${filtered.length} de ${typeTotal ?? typeLeads.length} ${pluralLabel}`;
     const parts = [];
     if (respFilter.length === 1) {
       const user = (usersList || []).find(u => u.id === respFilter[0]);
@@ -303,8 +348,8 @@ function AppointmentTrackingView({ leads, interactions, appUser, usersList, stat
     if (isAula && profFilter.length > 0) {
       parts.push(`${profFilter.length} professor${profFilter.length > 1 ? 'es' : ''}`);
     }
-    return parts.join(' · ') || `${filtered.length} de ${typeLeads.length} ${pluralLabel}`;
-  }, [hasActiveFilters, filtered.length, typeLeads.length, respFilter, profFilter, isAula, usersList, pluralLabel]);
+    return parts.join(' · ') || `${filtered.length} de ${typeTotal ?? typeLeads.length} ${pluralLabel}`;
+  }, [hasActiveFilters, filtered.length, typeLeads.length, typeTotal, respFilter, profFilter, isAula, usersList, pluralLabel]);
 
   const pickDayTab = (id) => {
     setDayTab(id);

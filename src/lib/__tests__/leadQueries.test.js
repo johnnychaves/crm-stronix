@@ -7,6 +7,7 @@ import {
   lostByFunnelQuerySpec,
   bucketByFunnelQuerySpec,
   bucketByFunnelCountSpec,
+  appointmentsInWindowQuerySpec,
 } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
@@ -14,7 +15,13 @@ import {
 // o campo seguinte do índice casa campo+direção. Mesma regra que o Firestore usa
 // para escolher índice; é o que evita o erro "query requires an index" em prod.
 function indexCovers(index, spec) {
-  const eq = spec.wheres.map((w) => w.field);
+  // Igualdades formam o prefixo; um range (>=,<,>,<=) tem que ser no MESMO campo
+  // do orderBy (regra do Firestore: range e orderBy no mesmo campo, logo após as
+  // igualdades). Assim a spec de janela (appointmentType== + appointmentScheduledFor
+  // range/orderBy) casa com um índice [tipo, campoDeData].
+  const eq = spec.wheres.filter((w) => w.op === '==').map((w) => w.field);
+  const ranges = spec.wheres.filter((w) => w.op !== '==');
+  if (ranges.length && (!spec.orderBy || ranges.some((w) => w.field !== spec.orderBy.field))) return false;
   const n = eq.length;
   if (index.fields.length < n) return false;
   const prefix = index.fields.slice(0, n);
@@ -70,6 +77,26 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     expect(spec.limit).toBe(25);
   });
 
+  it('appointmentsInWindowQuerySpec: tipo + janela [ini,fim) em appointmentScheduledFor, orderBy asc (E2b)', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 6, 17).getTime();
+    expect(appointmentsInWindowQuerySpec('visita', ini, fim)).toEqual({
+      wheres: [
+        { field: 'appointmentType', op: '==', value: 'visita' },
+        { field: 'appointmentScheduledFor', op: '>=', value: new Date(ini) },
+        { field: 'appointmentScheduledFor', op: '<', value: new Date(fim) },
+      ],
+      orderBy: { field: 'appointmentScheduledFor', dir: 'asc' },
+    });
+  });
+
+  it('appointmentsInWindowQuerySpec: sem limit por default (carrega a janela toda); com pageSize, limita', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 6, 17).getTime();
+    expect(appointmentsInWindowQuerySpec('aula_experimental', ini, fim).limit).toBeUndefined();
+    expect(appointmentsInWindowQuerySpec('aula_experimental', ini, fim, 30).limit).toBe(30);
+  });
+
   it('usa LIST_PAGE_SIZE (30) como default de paginação', () => {
     expect(clientsQuerySpec().limit).toBe(30);
     expect(lostByFunnelQuerySpec('f1').limit).toBe(30);
@@ -94,6 +121,12 @@ describe('leadQueries — toda spec é coberta por um índice de firestore.index
   });
   it('bucketByFunnelCountSpec (só igualdades) usa o prefixo dos índices #1/#2', () => {
     expect(coveredByLeadsIndex(bucketByFunnelCountSpec(LIFECYCLE_BUCKETS.PERDA, 'f1'))).toBe(true);
+  });
+  it('appointmentsInWindowQuerySpec ↔ índice #5 (tipo + range/orderBy na data)', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 6, 17).getTime();
+    expect(coveredByLeadsIndex(appointmentsInWindowQuerySpec('visita', ini, fim))).toBe(true);
+    expect(coveredByLeadsIndex(appointmentsInWindowQuerySpec('aula_experimental', ini, fim))).toBe(true);
   });
 
   it('guarda-de-sanidade: uma spec com orderBy sem índice NÃO é coberta', () => {
