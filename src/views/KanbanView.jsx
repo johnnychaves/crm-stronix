@@ -40,6 +40,12 @@ const EMPTY_LEADS = [];
 // Buckets contados pelo useFunnelCounts (identidade estável entre renders).
 const PERDA_BUCKETS = [LIFECYCLE_BUCKETS.PERDA];
 
+// Tamanho de página da coluna Perda (query paginada do E1c) — menor que o
+// LIST_PAGE_SIZE das listas longas: a coluna é estreita, então carrega 30 e o
+// "Carregar mais" traz o resto sob demanda. O total real segue no header via
+// getCountFromServer (E1d), independente da página.
+const PERDA_PAGE_SIZE = 30;
+
 // Card compacto (uma linha): barra de accent da etapa à esquerda, nome +
 // temperatura, estado do follow-up e avatar do consultor à direita.
 // React.memo: durante o drag só o card arrastado muda de prop (isDragging);
@@ -306,7 +312,7 @@ const [isPanning, setIsPanning] = useState(false);
   // sem o campo. Não é ao vivo — recarrega (lostReload) ao marcar/desfazer perda.
   const lostFunnelId = selectedFunnelId || defaultFunnelId;
   const lostSpec = useMemo(
-    () => bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId),
+    () => bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId, PERDA_PAGE_SIZE),
     [lostFunnelId]
   );
   const {
