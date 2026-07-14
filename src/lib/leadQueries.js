@@ -32,6 +32,24 @@ export const clientsAllQuerySpec = () => ({
   wheres: [{ field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE }],
 });
 
+// Clientes "a vencer" (E2c) — clientes cujo contrato vence numa JANELA de datas,
+// pro badge clientsAVencer. Casa com o índice #4 (lifecycleBucket ASC,
+// currentContractEndsAt ASC): igualdade no balde + range/orderBy no vencimento.
+// A janela é um SUPERCONJUNTO de A_VENCER; o caller refina com
+// deriveLeadContractStatus client-side (exclui CANCELADO/VENCIDO na borda).
+// Cliente sem currentContractEndsAt não é A_VENCER (deriveContractStatus dá
+// null), então já é ignorado hoje E some do range — a contagem casa mesmo sem
+// backfill do campo. start/end em ms viram Date pro Firestore.
+export const renewalClientsQuerySpec = (startMs, endMs, pageSize = null) => ({
+  wheres: [
+    { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },
+    { field: 'currentContractEndsAt', op: '>=', value: new Date(startMs) },
+    { field: 'currentContractEndsAt', op: '<', value: new Date(endMs) },
+  ],
+  orderBy: { field: 'currentContractEndsAt', dir: 'asc' },
+  ...(pageSize ? { limit: pageSize } : {}),
+});
+
 // Coluna Perda do Kanban por funil — casa com o índice #1
 // (lifecycleBucket ASC, funnelId ASC, lostAt DESC).
 export const lostByFunnelQuerySpec = (funnelId, pageSize = LIST_PAGE_SIZE) => ({

@@ -52,7 +52,7 @@ import {
 import { getSafeDate, getSafeDateOrNull } from './lib/dates.js';
 import { isAdminUser } from './lib/leads.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
-import { deriveLeadContractStatus, CONTRACT_STATUS } from './lib/contracts.js';
+import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
@@ -966,16 +966,16 @@ useEffect(() => {
 
   // Clientes com contrato "a vencer" no escopo do usuário (admin vê todos;
   // consultor vê os seus) — badge âmbar no item Clientes da sidebar.
+  // Fonte (E2c): query própria (índice #4) via useRenewalClients em vez de
+  // varrer o prop global. renewalClients já vêm filtrados como A_VENCER; aqui
+  // só escopa por consultor e mantém o filtro lifecycleStage==='cliente' pra
+  // casar exatamente o badge anterior. dayKey força o refetch na virada do dia.
+  const { clients: renewalClients } = useRenewalClients({ db, contractThresholdDays, reloadKey: dayKey });
   const clientsAVencer = useMemo(() => {
     if (!appUser) return 0;
-    void dayKey; // reavalia na virada do dia
-    const scope = isAdminUser(appUser) ? (leads || []) : (leads || []).filter(l => l.consultantId === appUser.id);
-    const now = new Date();
-    return scope.filter(l =>
-      l.lifecycleStage === 'cliente' &&
-      deriveLeadContractStatus(l, now, contractThresholdDays) === CONTRACT_STATUS.A_VENCER
-    ).length;
-  }, [leads, appUser, dayKey, contractThresholdDays]);
+    const scope = isAdminUser(appUser) ? renewalClients : renewalClients.filter(l => l.consultantId === appUser.id);
+    return scope.filter(l => l.lifecycleStage === 'cliente').length;
+  }, [renewalClients, appUser]);
 
   // Mantém o grupo "Leads" aberto quando uma de suas sub-abas está ativa.
   const isLeadsTab = activeTab === 'leads' || activeTab === 'aulas' || activeTab === 'visitas';

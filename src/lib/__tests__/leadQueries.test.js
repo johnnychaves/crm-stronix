@@ -8,6 +8,7 @@ import {
   bucketByFunnelQuerySpec,
   bucketByFunnelCountSpec,
   appointmentsInWindowQuerySpec,
+  renewalClientsQuerySpec,
 } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
@@ -97,6 +98,19 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     expect(appointmentsInWindowQuerySpec('aula_experimental', ini, fim, 30).limit).toBe(30);
   });
 
+  it('renewalClientsQuerySpec: clientes com vencimento na janela [ini,fim), orderBy asc (E2c)', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 7, 14).getTime();
+    expect(renewalClientsQuerySpec(ini, fim)).toEqual({
+      wheres: [
+        { field: 'lifecycleBucket', op: '==', value: 'cliente' },
+        { field: 'currentContractEndsAt', op: '>=', value: new Date(ini) },
+        { field: 'currentContractEndsAt', op: '<', value: new Date(fim) },
+      ],
+      orderBy: { field: 'currentContractEndsAt', dir: 'asc' },
+    });
+  });
+
   it('usa LIST_PAGE_SIZE (30) como default de paginação', () => {
     expect(clientsQuerySpec().limit).toBe(30);
     expect(lostByFunnelQuerySpec('f1').limit).toBe(30);
@@ -127,6 +141,11 @@ describe('leadQueries — toda spec é coberta por um índice de firestore.index
     const fim = new Date(2026, 6, 17).getTime();
     expect(coveredByLeadsIndex(appointmentsInWindowQuerySpec('visita', ini, fim))).toBe(true);
     expect(coveredByLeadsIndex(appointmentsInWindowQuerySpec('aula_experimental', ini, fim))).toBe(true);
+  });
+  it('renewalClientsQuerySpec ↔ índice #4 (bucket + range/orderBy no vencimento)', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 7, 14).getTime();
+    expect(coveredByLeadsIndex(renewalClientsQuerySpec(ini, fim))).toBe(true);
   });
 
   it('guarda-de-sanidade: uma spec com orderBy sem índice NÃO é coberta', () => {
