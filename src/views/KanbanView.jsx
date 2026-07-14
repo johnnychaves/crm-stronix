@@ -347,6 +347,16 @@ const [isPanning, setIsPanning] = useState(false);
   // Total no header da Perda: a contagem do servidor vale quando NÃO há refino
   // client-side (respFilter/onlyOverdue). Com refino, cai no tamanho da página
   // refinada (undefined → a coluna usa columnLeads.length), como era antes.
+  //
+  // LIMITAÇÕES CONHECIDAS E ACEITAS (revisão do E1, revisitar na PR H de
+  // paginação real):
+  //  A) respFilter na Perda filtra só a página carregada — num funil com mais
+  //     perdas que a página, um responsável com perdas antigas aparece
+  //     subcontado até "Carregar mais". Caminho comum (sem filtro) é exato.
+  //  B) perdas sem createdAt (legado/importado, ver App.createdAtMissing) somem
+  //     do orderBy. É AUTO-DETECTÁVEL: se este total do servidor (que conta tudo)
+  //     passar do total de cards carregáveis, é esse caso — aí rodar backfill de
+  //     createdAt. Empiricamente 0 nos funis testados.
   const perdaHeaderCount = (respFilter.length === 0 && !onlyOverdue)
     ? funnelBucketCounts[LIFECYCLE_BUCKETS.PERDA]
     : undefined;
