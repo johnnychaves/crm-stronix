@@ -602,7 +602,7 @@ function NewTenantPanel({ plans, onClose, onDone }) {
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [created, setCreated] = useState(null); // resposta do POST → tela de sucesso
-  const [companyOpen, setCompanyOpen] = useState(false); // seção "Dados da empresa"
+  const [companyOpen, setCompanyOpen] = useState(true); // seção "Dados da empresa" — aberta por padrão (cadastro completo visível)
   const [cnpjBusy, setCnpjBusy] = useState(false);
   const [cepBusy, setCepBusy] = useState(false);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
