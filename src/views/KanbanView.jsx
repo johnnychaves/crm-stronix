@@ -824,7 +824,14 @@ if (!lead) return;
           appUser={appUser}
           db={db}
           onClose={() => setMatriculaLead(null)}
-          onDone={() => setMatriculaLead(null)}
+          onDone={() => {
+            // Matricular um lead que estava na Perda tira ele do bucket 'perda':
+            // como a coluna Perda não é ao vivo, refaz a query+contagem senão
+            // fica card fantasma / total inflado. Só quando veio da Perda.
+            const wasPerda = matriculaLead?.status === 'Perda';
+            setMatriculaLead(null);
+            if (wasPerda) refreshLost();
+          }}
         />
       )}
 

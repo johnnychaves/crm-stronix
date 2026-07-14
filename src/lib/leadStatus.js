@@ -69,14 +69,22 @@ const buildInteractionIndex = (interactions) => {
 };
 
 // Fonte da última interação do lead para os badges de temperatura (E1a).
-// Prefere o campo denormalizado lead.lastInteractionAt (preenchido pelo backfill
-// da PR D e mantido pelo dual-write de logInteraction — espelha o max(createdAt)
-// de TODAS as interações). Cai no índice em memória enquanto a assinatura global
-// da coleção existe (fallback do E; será removido na PR G, quando a assinatura
-// for cortada). getSafeDateOrNull cobre Timestamp/Date/ausente sem devolver
-// Invalid Date. `index` = Map de buildInteractionIndex (opcional).
-const lastInteractionDateOf = (lead, index = null) =>
-  getSafeDateOrNull(lead?.lastInteractionAt) || index?.get(lead?.id)?.lastDate || null;
+// Usa o MÁXIMO entre o campo denormalizado lead.lastInteractionAt e o índice em
+// memória. O denorm (backfill da PR D + dual-write de logInteraction) NÃO é
+// atualizado por writeAppointmentOutcome (marcar presença em Aulas/Visitas/Meta
+// cria interação daily_goal_done mas não toca lastInteractionAt), então enquanto
+// a assinatura global existir o índice ao vivo pode estar mais fresco — pegar o
+// maior evita que um denorm defasado rebaixe o índice e mude a temperatura vs o
+// comportamento anterior. Na PR G (sem índice) sobra só o denorm. getSafeDateOrNull
+// cobre Timestamp/Date/ausente; o índice pode ter Invalid Date (caso conhecido),
+// então só entra na comparação se for Date válida. `index` = Map opcional.
+const lastInteractionDateOf = (lead, index = null) => {
+  const denorm = getSafeDateOrNull(lead?.lastInteractionAt);
+  const fromIndex = index?.get(lead?.id)?.lastDate || null;
+  const indexValid = fromIndex instanceof Date && !isNaN(fromIndex.getTime());
+  if (denorm && indexValid) return fromIndex > denorm ? fromIndex : denorm;
+  return denorm || fromIndex || null;
+};
 
 const isLeadActive = (lead) => {
   return lead && lead.status !== 'Venda' && lead.status !== 'Perda';

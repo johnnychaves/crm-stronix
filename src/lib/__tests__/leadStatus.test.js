@@ -116,11 +116,32 @@ describe('buildInteractionIndex', () => {
 });
 
 describe('lastInteractionDateOf (fonte do badge de temperatura — E1a)', () => {
-  it('prefere lead.lastInteractionAt (Date) e ignora o índice', () => {
+  it('MÁXIMO das duas fontes: denorm mais recente que o índice vence', () => {
     const idx = buildInteractionIndex([
       { leadId: 'l1', type: 'note', createdAt: ago(30 * DAY_MS) }, // índice bem mais antigo
     ]);
     const d = ago(2 * HOUR_MS);
+    const got = lastInteractionDateOf(lead({ id: 'l1', lastInteractionAt: d }), idx);
+    expect(got.getTime()).toBe(d.getTime()); // devolve o denorm (mais novo)
+  });
+
+  it('MÁXIMO das duas fontes: índice mais fresco que o denorm vence (fix do stale lastInteractionAt)', () => {
+    // writeAppointmentOutcome cria interação nova (índice = agora) SEM atualizar
+    // lastInteractionAt (denorm defasado) — o índice ao vivo tem que ganhar,
+    // senão o badge muda de temperatura vs o comportamento anterior ao E1a.
+    const fresh = ago(1 * HOUR_MS);
+    const idx = buildInteractionIndex([
+      { leadId: 'l1', type: 'daily_goal_done', createdAt: fresh },
+    ]);
+    const got = lastInteractionDateOf(lead({ id: 'l1', lastInteractionAt: ago(3 * DAY_MS) }), idx);
+    expect(got.getTime()).toBe(fresh.getTime()); // devolve o índice (mais novo)
+  });
+
+  it('índice com Invalid Date não rebaixa o denorm (guarda de validade)', () => {
+    const idx = buildInteractionIndex([
+      { leadId: 'l1', type: 'note', createdAt: new Date('nao-e-data') }, // Invalid Date
+    ]);
+    const d = ago(5 * HOUR_MS);
     const got = lastInteractionDateOf(lead({ id: 'l1', lastInteractionAt: d }), idx);
     expect(got.getTime()).toBe(d.getTime());
   });
