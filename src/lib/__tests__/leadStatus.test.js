@@ -10,6 +10,7 @@ import {
   DAY_MS,
   LIST_PAGE_SIZE,
   buildInteractionIndex,
+  lastInteractionDateOf,
   isLeadActive,
   getDaysSinceFromDate,
   isHotLeadFromDate,
@@ -111,6 +112,61 @@ describe('buildInteractionIndex', () => {
       { leadId: 'l1', type: 'note', createdAt: new Date('data-invalida') }
     ]);
     expect(idx2.get('l1').lastDate.getTime()).toBe(new Date(2026, 6, 12).getTime());
+  });
+});
+
+describe('lastInteractionDateOf (fonte do badge de temperatura — E1a)', () => {
+  it('prefere lead.lastInteractionAt (Date) e ignora o índice', () => {
+    const idx = buildInteractionIndex([
+      { leadId: 'l1', type: 'note', createdAt: ago(30 * DAY_MS) }, // índice bem mais antigo
+    ]);
+    const d = ago(2 * HOUR_MS);
+    const got = lastInteractionDateOf(lead({ id: 'l1', lastInteractionAt: d }), idx);
+    expect(got.getTime()).toBe(d.getTime());
+  });
+
+  it('aceita Timestamp do Firestore em lastInteractionAt (via getSafeDateOrNull)', () => {
+    const secs = Math.floor(ago(3 * HOUR_MS).getTime() / 1000);
+    const got = lastInteractionDateOf(lead({ id: 'l1', lastInteractionAt: { seconds: secs } }), null);
+    expect(got).toBeInstanceOf(Date);
+    expect(got.getTime()).toBe(secs * 1000);
+  });
+
+  it('cai no índice quando lastInteractionAt está ausente', () => {
+    const last = ago(5 * DAY_MS);
+    const idx = buildInteractionIndex([{ leadId: 'l1', type: 'note', createdAt: last }]);
+    expect(lastInteractionDateOf(lead({ id: 'l1' }), idx).getTime()).toBe(last.getTime());
+  });
+
+  it('retorna null sem lastInteractionAt e sem entrada no índice', () => {
+    expect(lastInteractionDateOf(lead({ id: 'l1' }), null)).toBeNull();
+    const idx = buildInteractionIndex([{ leadId: 'outro', type: 'note', createdAt: ago(1 * DAY_MS) }]);
+    expect(lastInteractionDateOf(lead({ id: 'l1' }), idx)).toBeNull();
+  });
+
+  it('índice é opcional (chamada sem 2º argumento)', () => {
+    const d = ago(1 * HOUR_MS);
+    expect(lastInteractionDateOf(lead({ id: 'l1', lastInteractionAt: d })).getTime()).toBe(d.getTime());
+    expect(lastInteractionDateOf(lead({ id: 'l1' }))).toBeNull();
+  });
+
+  it('hot/cold idêntico ao trocar a fonte: lastInteractionAt espelha o índice', () => {
+    // Interação há 2h → hot pelo critério 2, tanto pela fonte antiga (índice)
+    // quanto pela nova (lastInteractionAt espelhando o max createdAt).
+    const recent = ago(2 * HOUR_MS);
+    const idx = buildInteractionIndex([{ leadId: 'l1', type: 'call', createdAt: recent }]);
+    const l = lead({ id: 'l1', lastInteractionAt: recent });
+    expect(isHotLeadFromDate(l, lastInteractionDateOf(l, idx)))
+      .toBe(isHotLeadFromDate(l, idx.get('l1')?.lastDate));
+    expect(isHotLeadFromDate(l, lastInteractionDateOf(l, idx))).toBe(true);
+
+    // Interação há 10 dias → cold pelos dois caminhos.
+    const old = ago(10 * DAY_MS);
+    const idx2 = buildInteractionIndex([{ leadId: 'l2', type: 'note', createdAt: old }]);
+    const l2 = lead({ id: 'l2', lastInteractionAt: old });
+    expect(isColdLeadFromDate(l2, lastInteractionDateOf(l2, idx2)))
+      .toBe(isColdLeadFromDate(l2, idx2.get('l2')?.lastDate));
+    expect(isColdLeadFromDate(l2, lastInteractionDateOf(l2, idx2))).toBe(true);
   });
 });
 

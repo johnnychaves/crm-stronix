@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { AlertCircle, Calendar, Check, Download, Phone, SlidersHorizontal, Users, X } from 'lucide-react';
 import { isAdminUser } from '../lib/leads.js';
-import { LIST_PAGE_SIZE, buildInteractionIndex, isHotLeadFromDate } from '../lib/leadStatus.js';
+import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isHotLeadFromDate } from '../lib/leadStatus.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { getKanbanColumnAccent } from '../lib/kanban.js';
 import { cn } from '@/lib/utils';
@@ -64,7 +64,7 @@ function LeadsView({ leads, interactions, appUser, statuses, usersList, funnels,
       const matchConsultant = consultantFilters.length === 0 || consultantFilters.includes(l.consultantId);
       const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
       const matchOverdue = !overdueOnly || isOverdue;
-      const matchHot = !hotOnly || isHotLeadFromDate(l, interactionIndex.get(l.id)?.lastDate);
+      const matchHot = !hotOnly || isHotLeadFromDate(l, lastInteractionDateOf(l, interactionIndex));
       return matchFunnel && matchStatus && matchOverdue && matchConsultant && matchHot;
     }).sort((a, b) => (b.createdAt?.getTime?.() || 0) - (a.createdAt?.getTime?.() || 0));
   }, [leads, interactionIndex, statusFilters, overdueOnly, hotOnly, consultantFilters, selectedFunnelId, defaultFunnelId]);
@@ -310,7 +310,7 @@ function LeadsView({ leads, interactions, appUser, statuses, usersList, funnels,
           ) : (
             visibleLeads.map(l => {
               const isOverdue = l.status !== 'Venda' && l.status !== 'Perda' && l.nextFollowUp && l.nextFollowUp < new Date();
-              const isHot = isHotLeadFromDate(l, interactionIndex.get(l.id)?.lastDate);
+              const isHot = isHotLeadFromDate(l, lastInteractionDateOf(l, interactionIndex));
               const consultantFirst = (l.consultantName || '').trim().split(/\s+/)[0] || '';
               return (
                 <div

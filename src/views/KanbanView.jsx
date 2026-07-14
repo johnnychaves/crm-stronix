@@ -5,7 +5,7 @@ import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
-import { buildInteractionIndex, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
+import { buildInteractionIndex, lastInteractionDateOf, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from '../lib/kanban.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -222,7 +222,7 @@ const KanbanColumn = memo(function KanbanColumn({
                 lead={lead}
                 columnColor={color}
                 isDragging={draggingLeadId === lead.id}
-                lastDate={interactionIndex.get(lead.id)?.lastDate}
+                lastDate={lastInteractionDateOf(lead, interactionIndex)}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onOpenProfile={onOpenProfile}

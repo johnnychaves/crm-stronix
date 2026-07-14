@@ -1,4 +1,5 @@
 import { getLeadAppointmentType, getLeadAppointmentDate } from './leads.js';
+import { getSafeDateOrNull } from './dates.js';
 
 // --- HELPERS DE TEMPERATURA DO LEAD ---
 const HOUR_MS = 60 * 60 * 1000;
@@ -67,6 +68,16 @@ const buildInteractionIndex = (interactions) => {
   return idx;
 };
 
+// Fonte da última interação do lead para os badges de temperatura (E1a).
+// Prefere o campo denormalizado lead.lastInteractionAt (preenchido pelo backfill
+// da PR D e mantido pelo dual-write de logInteraction — espelha o max(createdAt)
+// de TODAS as interações). Cai no índice em memória enquanto a assinatura global
+// da coleção existe (fallback do E; será removido na PR G, quando a assinatura
+// for cortada). getSafeDateOrNull cobre Timestamp/Date/ausente sem devolver
+// Invalid Date. `index` = Map de buildInteractionIndex (opcional).
+const lastInteractionDateOf = (lead, index = null) =>
+  getSafeDateOrNull(lead?.lastInteractionAt) || index?.get(lead?.id)?.lastDate || null;
+
 const isLeadActive = (lead) => {
   return lead && lead.status !== 'Venda' && lead.status !== 'Perda';
 };
@@ -115,4 +126,4 @@ const isColdLeadFromDate = (lead, lastInteractionDate) => {
   const days = getDaysSinceFromDate(lead, lastInteractionDate);
   return days !== null && days >= 7;
 };
-export { HOUR_MS, DAY_MS, LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget, buildInteractionIndex, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate };
+export { HOUR_MS, DAY_MS, LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget, buildInteractionIndex, lastInteractionDateOf, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate };
