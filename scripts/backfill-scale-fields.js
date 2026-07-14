@@ -11,7 +11,13 @@
 // inteira. Roda UMA vez por tenant, fora do app, DEPOIS da PR C em produção e
 // com os índices já ENABLED. Idempotente: rodar de novo dá o mesmo resultado.
 //
-// Uso (mesmas credenciais Admin das funções api/):
+// Uso — credenciais Admin, escolha UMA:
+//   A) RECOMENDADO (sem colar a private key): baixe o serviceAccount.json
+//      (Firebase Console → Config. do projeto → Contas de serviço → Gerar nova
+//      chave privada) e aponte:
+//        GOOGLE_APPLICATION_CREDENTIALS=/caminho/serviceAccount.json \
+//        node scripts/backfill-scale-fields.js --tenant=stronix-crm-app --dry-run --only=converted
+//   B) as 3 vars (mesmas das funções api/):
 //   FIREBASE_ADMIN_PROJECT_ID=... \
 //   FIREBASE_ADMIN_CLIENT_EMAIL=... \
 //   FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n" \
@@ -120,14 +126,24 @@ const { tenant, dryRun, targets } = parseArgs(process.argv.slice(2));
 const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
 const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n');
+const hasCertVars = Boolean(projectId && clientEmail && privateKey);
+const hasAdc = Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS);
 
-if (!projectId || !clientEmail || !privateKey) {
-  console.error('Faltam env vars: FIREBASE_ADMIN_PROJECT_ID / FIREBASE_ADMIN_CLIENT_EMAIL / FIREBASE_ADMIN_PRIVATE_KEY');
+if (!hasCertVars && !hasAdc) {
+  console.error(
+    'Faltam credenciais Admin. Escolha UMA:\n' +
+    '  A) GOOGLE_APPLICATION_CREDENTIALS=<caminho do serviceAccount.json>  (recomendado — sem colar a chave)\n' +
+    '  B) as 3 vars FIREBASE_ADMIN_PROJECT_ID / _CLIENT_EMAIL / _PRIVATE_KEY'
+  );
   process.exit(1);
 }
 
 if (!admin.apps.length) {
-  admin.initializeApp({ credential: admin.credential.cert({ projectId, clientEmail, privateKey }) });
+  // Preferir o arquivo JSON (ADC) quando disponível: evita o inferno de aspas/\n
+  // da private key colada no shell, causa nº 1 de "16 UNAUTHENTICATED".
+  admin.initializeApp(hasAdc
+    ? { credential: admin.credential.applicationDefault() }
+    : { credential: admin.credential.cert({ projectId, clientEmail, privateKey }) });
 }
 
 const db = admin.firestore();
