@@ -7,6 +7,7 @@ import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, LIFECYCLE_BUCKETS } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from '../lib/kanban.js';
@@ -35,6 +36,9 @@ function InitialsAvatar({ name = '', size = 22, textSize = 9 }) {
 
 // Prop estável para colunas sem leads (ver getLeadsByStatus).
 const EMPTY_LEADS = [];
+
+// Buckets contados pelo useFunnelCounts (identidade estável entre renders).
+const PERDA_BUCKETS = [LIFECYCLE_BUCKETS.PERDA];
 
 // Card compacto (uma linha): barra de accent da etapa à esquerda, nome +
 // temperatura, estado do follow-up e avatar do consultor à direita.
@@ -150,7 +154,7 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
 // cards em lista compacta com scroll interno. React.memo: o hover do drag
 // (draggedOverColumn) re-renderiza SÓ as 2 colunas afetadas via isHovered.
 const KanbanColumn = memo(function KanbanColumn({
-  name, color, special, columnLeads, renderLimit = 0, isHovered,
+  name, color, special, columnLeads, renderLimit = 0, isHovered, totalCount = null,
   draggingLeadId, interactionIndex, hasMore = false, onLoadMore = null, loadingMore = false,
   onColumnDragOver, onColumnDragLeave, onDropLead,
   onDragStart, onDragEnd, onOpenProfile, onMoveRequest,
@@ -200,7 +204,7 @@ const KanbanColumn = memo(function KanbanColumn({
           {name}
         </h3>
         <span className="text-[11px] font-semibold text-slate-400 dark:text-neutral-500 tabular-nums shrink-0">
-          {columnLeads.length}
+          {totalCount != null ? totalCount : columnLeads.length}
         </span>
         {isWinCol && <TrendingUp className="ml-auto size-[13px] shrink-0 text-emerald-700 dark:text-emerald-400" />}
       </header>
@@ -321,6 +325,26 @@ const [isPanning, setIsPanning] = useState(false);
     return respFilter.length === 0 ? base : base.filter(l => respFilter.includes(l.consultantId));
   }, [lostDocs, respFilter, onlyOverdue]);
 
+  // E1d: total REAL de perdas do funil via getCountFromServer (o header da
+  // coluna, depois do E1c, mostraria só a página carregada). Recontado quando
+  // uma perda é marcada/desfeita (countEpoch).
+  const [countEpoch, setCountEpoch] = useState(0);
+  const { counts: funnelBucketCounts } = useFunnelCounts({
+    db, path: LEADS_PATH, funnelId: lostFunnelId, buckets: PERDA_BUCKETS,
+    enabled: !!db && !!lostFunnelId, reloadKey: countEpoch,
+  });
+  // Recarrega a página E reconta a coluna Perda juntas.
+  const refreshLost = useCallback(() => {
+    lostReload();
+    setCountEpoch((e) => e + 1);
+  }, [lostReload]);
+  // Total no header da Perda: a contagem do servidor vale quando NÃO há refino
+  // client-side (respFilter/onlyOverdue). Com refino, cai no tamanho da página
+  // refinada (undefined → a coluna usa columnLeads.length), como era antes.
+  const perdaHeaderCount = (respFilter.length === 0 && !onlyOverdue)
+    ? funnelBucketCounts[LIFECYCLE_BUCKETS.PERDA]
+    : undefined;
+
   // ── Abas de funil: contagem por funil (mesmo recorte de funnelLeads) ──
   const funnelCounts = useMemo(() => {
     const map = new Map();
@@ -406,12 +430,12 @@ const handleKanbanMouseMove = (e) => {
         { text: `Movido para a etapa [${newStatus}] via Kanban.`, type: 'status_change' },
         withBucket(leadPatch, lead)
       );
-      if (lead.status === 'Perda') lostReload(); // saiu da Perda: refaz a query
+      if (lead.status === 'Perda') refreshLost(); // saiu da Perda: refaz query+contagem
     } catch (err) {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
     }
-  }, [db, appUser, selectedFunnelId, toast, lostReload]);
+  }, [db, appUser, selectedFunnelId, toast, refreshLost]);
 
   // A Venda no Kanban agora abre o MatriculaModal (plano/valor/vigência) em vez
   // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
@@ -492,7 +516,7 @@ if (!lead) return;
       );
 
       setLossModalLeadId(null);
-      lostReload(); // query da coluna Perda não é ao vivo — refaz o fetch
+      refreshLost(); // query da coluna Perda não é ao vivo — refaz fetch+contagem
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível registrar a perda. Tente novamente.');
@@ -761,6 +785,7 @@ if (!lead) return;
               special="loss"
               columnLeads={lostLeads}
               renderLimit={0}
+              totalCount={perdaHeaderCount}
               hasMore={lostHasMore}
               onLoadMore={lostLoadMore}
               loadingMore={lostLoading}
