@@ -957,7 +957,11 @@ useEffect(() => {
   // Renovação da Meta e do badge âmbar de Clientes. Definido AQUI (antes da Meta)
   // porque dailyGoalPending, metaLeads e clientsAVencer dependem dele. dayKey
   // força o refetch na virada do dia.
-  const { clients: renewalClients } = useRenewalClients({ db, contractThresholdDays, reloadKey: dayKey });
+  // enabled só com appUser pronto: sem isso o getDocs dispara antes do claim de
+  // tenant estar no token (a assinatura onSnapshot já espera appUser) e toma
+  // permission-denied na carga fria — e, pós-flip, renewalClients é a ÚNICA fonte
+  // dos clientes a vencer da Meta, então a falha derrubaria a Renovação.
+  const { clients: renewalClients } = useRenewalClients({ db, contractThresholdDays, reloadKey: dayKey, enabled: !!appUser });
   // Base da META (G1d): ativo (prop) ∪ clientes a vencer (renewalClients), dedupe
   // por id (global primeiro). PRÉ-flip o prop já contém os clientes → no-op →
   // números idênticos; PÓS-flip o prop vira só 'ativo' e os renewalClients repõem
