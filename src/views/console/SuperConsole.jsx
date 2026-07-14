@@ -593,12 +593,33 @@ function NewTenantPanel({ plans, onClose, onDone }) {
     displayName: '', tenantId: '', plan: defaultPlan, trialDays: '14',
     city: '', state: '', responsiblePhone: '', monthlyPrice: '', internal: false,
     mode: 'invite', adminName: '', adminEmail: '', adminPassword: '',
+    // Dados da empresa (perfil da academia) — opcionais na criação.
+    cnpjCpf: '', legalName: '', tradeName: '',
+    cep: '', street: '', number: '', complement: '', neighborhood: '',
+    responsibleName: '', responsibleCpf: '', responsibleBirth: '', email: '', phone: '',
   });
   const [slugTouched, setSlugTouched] = useState(false);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [created, setCreated] = useState(null); // resposta do POST → tela de sucesso
+  const [companyOpen, setCompanyOpen] = useState(true); // seção "Dados da empresa" — aberta por padrão (cadastro completo visível)
+  const [cnpjBusy, setCnpjBusy] = useState(false);
+  const [cepBusy, setCepBusy] = useState(false);
   const set = (k, v) => setF((s) => ({ ...s, [k]: v }));
+  // CNPJ/CEP completos → autofill (BrasilAPI/ViaCEP), igual ao ProfilePanel.
+  const lookupCnpjNow = async () => {
+    if (!isCnpjComplete(f.cnpjCpf)) return;
+    setCnpjBusy(true); const r = await lookupCnpj(f.cnpjCpf); setCnpjBusy(false);
+    if (r) { setF((s) => ({ ...s, legalName: r.legalName || s.legalName, tradeName: r.tradeName || s.tradeName })); setErr(''); }
+    else setErr('CNPJ não encontrado na Receita.');
+  };
+  const lookupCepNow = async () => {
+    if (!isCepComplete(f.cep)) return;
+    setCepBusy(true); const r = await lookupCep(f.cep); setCepBusy(false);
+    if (r) { setF((s) => ({ ...s, street: r.street || s.street, neighborhood: r.neighborhood || s.neighborhood, city: r.city || s.city, state: r.state || s.state })); setErr(''); }
+    else setErr('CEP não encontrado.');
+  };
+  const cpfErr = isCpfComplete(f.responsibleCpf) && !isValidCpf(f.responsibleCpf);
   const onName = (v) => setF((s) => ({ ...s, displayName: v, tenantId: slugTouched ? s.tenantId : slugify(v) }));
 
   const save = async () => {
@@ -609,6 +630,7 @@ function NewTenantPanel({ plans, onClose, onDone }) {
       if (!f.adminName.trim()) { setErr('Informe o nome do gestor.'); return; }
       if (String(f.adminPassword).length < 6) { setErr('A senha temporária precisa de ao menos 6 caracteres.'); return; }
     }
+    if (cpfErr) { setErr('O CPF do responsável é inválido. Corrija antes de criar.'); return; }
     setSaving(true); setErr('');
     const body = {
       tenantId: f.tenantId, displayName: f.displayName.trim(),
@@ -618,6 +640,14 @@ function NewTenantPanel({ plans, onClose, onDone }) {
       city: f.city.trim(), state: f.state.trim(),
       responsiblePhone: f.responsiblePhone.trim(),
       internal: f.internal,
+      // Perfil completo da academia (opcional). Mesmos campos/fontes do ProfilePanel;
+      // provision-tenant saneia e grava em tenant.profile.
+      profile: {
+        cnpjCpf: f.cnpjCpf, legalName: f.legalName, tradeName: f.tradeName,
+        cep: f.cep, street: f.street, number: f.number, complement: f.complement, neighborhood: f.neighborhood,
+        responsibleName: f.responsibleName, email: f.email, phone: f.phone,
+        responsibleCpf: f.responsibleCpf, responsibleBirth: f.responsibleBirth,
+      },
       ...(f.monthlyPrice !== '' ? { monthlyPrice: Number(f.monthlyPrice) } : {}),
       ...(f.adminName.trim() ? { adminName: f.adminName.trim() } : {}),
       ...(f.mode === 'password' ? { adminPassword: f.adminPassword } : {}),
@@ -726,6 +756,48 @@ function NewTenantPanel({ plans, onClose, onDone }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               <div className={`sw${f.internal ? ' on' : ''}`} onClick={() => set('internal', !f.internal)} />
               <div><div style={{ fontSize: 13, fontWeight: 600 }}>Conta interna (teste)</div><div className="muted" style={{ fontSize: 11 }}>fica fora do MRR e dos KPIs de negócio</div></div>
+            </div>
+
+            <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'grid', gap: 12 }}>
+              <button type="button" onClick={() => setCompanyOpen((o) => !o)}
+                style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'var(--text)', textAlign: 'left' }}>
+                <span style={{ display: 'inline-block', transition: 'transform .15s', transform: companyOpen ? 'rotate(90deg)' : 'none', color: 'var(--muted)' }}>▸</span>
+                <span style={{ fontSize: 13, fontWeight: 600 }}>Dados da empresa</span>
+                <span className="muted" style={{ fontSize: 11.5, fontWeight: 400 }}>opcional — CNPJ, endereço, responsável</span>
+              </button>
+              {companyOpen && (
+                <div style={{ display: 'grid', gap: 12 }}>
+                  <div className="muted" style={{ fontSize: 11.5, fontWeight: 600 }}>Identidade &amp; fiscal</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CNPJ{cnpjBusy ? ' · buscando…' : ''}</span><input style={FLAG_INPUT} value={f.cnpjCpf} onChange={(e) => set('cnpjCpf', e.target.value)} onBlur={lookupCnpjNow} placeholder="00.000.000/0000-00" /></label>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Razão social</span><input style={FLAG_INPUT} value={f.legalName} onChange={(e) => set('legalName', e.target.value)} placeholder="Nome empresarial" /></label>
+                  </div>
+                  <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nome fantasia (opcional)</span><input style={FLAG_INPUT} value={f.tradeName} onChange={(e) => set('tradeName', e.target.value)} placeholder="Como a academia é conhecida" /></label>
+
+                  <div className="muted" style={{ fontSize: 11.5, fontWeight: 600, borderTop: '1px solid var(--line)', paddingTop: 12 }}>Endereço</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr 80px', gap: 12 }}>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CEP{cepBusy ? ' · buscando…' : ''}</span><input style={FLAG_INPUT} value={f.cep} onChange={(e) => set('cep', e.target.value)} onBlur={lookupCepNow} placeholder="00000-000" /></label>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Rua</span><input style={FLAG_INPUT} value={f.street} onChange={(e) => set('street', e.target.value)} placeholder="Logradouro" /></label>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nº</span><input style={FLAG_INPUT} value={f.number} onChange={(e) => set('number', e.target.value)} placeholder="123" /></label>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Complemento</span><input style={FLAG_INPUT} value={f.complement} onChange={(e) => set('complement', e.target.value)} placeholder="Sala, andar…" /></label>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Bairro</span><input style={FLAG_INPUT} value={f.neighborhood} onChange={(e) => set('neighborhood', e.target.value)} placeholder="Bairro" /></label>
+                  </div>
+                  <div className="muted" style={{ fontSize: 11 }}>Cidade e UF ficam nos campos acima — o CEP preenche automaticamente.</div>
+
+                  <div className="muted" style={{ fontSize: 11.5, fontWeight: 600, borderTop: '1px solid var(--line)', paddingTop: 12 }}>Contato &amp; responsável</div>
+                  <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Nome do responsável</span><input style={FLAG_INPUT} value={f.responsibleName} onChange={(e) => set('responsibleName', e.target.value)} placeholder="Nome completo" /></label>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>CPF{cpfErr ? ' · inválido' : ''}</span><input style={{ ...FLAG_INPUT, ...(cpfErr ? { borderColor: 'var(--danger)' } : {}) }} value={f.responsibleCpf} onChange={(e) => set('responsibleCpf', e.target.value)} placeholder="000.000.000-00" /></label>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Data de nascimento</span><input style={FLAG_INPUT} type="date" value={f.responsibleBirth} onChange={(e) => set('responsibleBirth', e.target.value)} /></label>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>E-mail comercial</span><input style={FLAG_INPUT} type="email" value={f.email} onChange={(e) => set('email', e.target.value)} placeholder="contato@academia.com" /></label>
+                    <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Telefone</span><input style={FLAG_INPUT} value={f.phone} onChange={(e) => set('phone', e.target.value)} placeholder="(51) 3333-3333" /></label>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, display: 'grid', gap: 12 }}>
