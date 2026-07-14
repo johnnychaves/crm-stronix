@@ -9,10 +9,13 @@
 import { useState, useMemo } from 'react';
 import { Dumbbell, Kanban, Megaphone, TrendingDown } from 'lucide-react';
 import { isAdminUser } from '../../lib/leads.js';
+import { LEADS_PATH } from '../../lib/firebase.js';
+import { useAdminDashboardLeads } from '../../hooks/useAdminDashboardLeads.js';
 import { getDefaultFunnel, isItemInFunnel, isAllFunnels } from '../../lib/funnels.js';
 import {
   buildPeriodRange,
   buildPreviousRange,
+  computeAdminDashboardSpan,
   computeCapturedLeads,
   computeScheduledLeads,
   computeConvertedLeads,
@@ -136,17 +139,48 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
 
   const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
   const hasFunnels = (funnels || []).length > 0;
-  const funnelLeads = useMemo(() => {
-    if (isAllFunnels(selectedFunnelId)) return leads || [];
-    return (leads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId));
-  }, [leads, selectedFunnelId, defaultFunnelId]);
 
   // Toda a matemática vive em lib/dashboardMetrics.js (fonte única, testada).
-  // Aqui só orquestração de memos + UI.
+  // Aqui só orquestração de memos + UI. Período + período anterior (deltas)
+  // vêm ANTES da fonte de leads porque o span da query admin depende deles.
   const periodRange = useMemo(
     () => buildPeriodRange(periodPreset, { customStart: customStartDate, customEnd: customEndDate }),
     [periodPreset, customStartDate, customEndDate]
   );
+  const previousRange = useMemo(
+    () => buildPreviousRange(periodPreset, periodRange),
+    [periodPreset, periodRange]
+  );
+
+  // Fonte das MÉTRICAS DE PERÍODO:
+  //   • admin    → união de janelas de campo (createdAt/convertedAt/
+  //                appointmentScheduledFor/lostAt) sobre o span período+anterior+
+  //                sparkline, por query própria (G1c) — não agrega mais o prop
+  //                global. Não é ao vivo: rebusca ao trocar o período.
+  //   • consultor → o prop `leads` (o E2a já entrega os PRÓPRIOS leads por query).
+  // A Meta diária por consultor (useTeamGoals) NÃO usa a janela de período: segue
+  // lendo a base CRUA `leads` (categorias sem janela, ex.: follow-up atrasado) —
+  // migra no G1d.
+  const dashSpan = useMemo(
+    () => computeAdminDashboardSpan(periodRange, previousRange),
+    [periodRange, previousRange]
+  );
+  const { leads: adminWindowLeads } = useAdminDashboardLeads({
+    db,
+    path: LEADS_PATH,
+    startMs: isAdmin && dashSpan ? dashSpan.startMs : null,
+    endMs: isAdmin && dashSpan ? dashSpan.endMs : null,
+    enabled: isAdmin,
+  });
+  const periodMetricsLeads = useMemo(
+    () => (isAdmin ? adminWindowLeads : (leads || [])),
+    [isAdmin, adminWindowLeads, leads]
+  );
+
+  const funnelLeads = useMemo(() => {
+    if (isAllFunnels(selectedFunnelId)) return periodMetricsLeads || [];
+    return (periodMetricsLeads || []).filter(l => isItemInFunnel(l, selectedFunnelId, defaultFunnelId));
+  }, [periodMetricsLeads, selectedFunnelId, defaultFunnelId]);
 
   const capturedLeads = useMemo(() => computeCapturedLeads(funnelLeads, periodRange), [funnelLeads, periodRange]);
   const scheduledLeads = useMemo(() => computeScheduledLeads(funnelLeads, periodRange), [funnelLeads, periodRange]);
@@ -162,6 +196,9 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
     [capturedLeads, scheduledLeads, convertedLeads]
   );
 
+  // Meta de HOJE por consultor: usa a base CRUA `leads` (não a janela de
+  // período) de propósito — categorias sem janela (follow-up atrasado, etc.).
+  // Segue no prop global até o G1d migrar a fonte da Meta.
   const goalByConsultant = useTeamGoals({ db, appUser, usersList, leads, interactions });
 
   // Taxa de comparecimento (módulo): só agendamentos cuja data já passou.
@@ -174,11 +211,6 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
   const sparklines = useMemo(
     () => computeSparklines({ leads: funnelLeads, range: periodRange }),
     [funnelLeads, periodRange]
-  );
-
-  const previousRange = useMemo(
-    () => buildPreviousRange(periodPreset, periodRange),
-    [periodPreset, periodRange]
   );
 
   const deltas = useMemo(
@@ -199,14 +231,14 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
   // aulas experimentais da academia (decisão do Johnny, 2026-07-12: professor
   // não é recorte de funil). Filtra pela data da aula dentro do período, só
   // aulas já realizadas.
-  const professorConv = useMemo(() => computeProfessorConversion(leads, { range: periodRange }), [leads, periodRange]);
+  const professorConv = useMemo(() => computeProfessorConversion(periodMetricsLeads, { range: periodRange }), [periodMetricsLeads, periodRange]);
 
   // --- TABELA "MÉTRICAS POR FUNIL" (modo Todos os funis) ---
   const funnelComparisonRows = useMemo(() => {
     if (!isAllFunnels(selectedFunnelId)) return [];
     if (!Array.isArray(funnels) || funnels.length === 0) return [];
     const rows = funnels.map(funnel => {
-      const scope = (leads || []).filter(l => isItemInFunnel(l, funnel.id, defaultFunnelId));
+      const scope = (periodMetricsLeads || []).filter(l => isItemInFunnel(l, funnel.id, defaultFunnelId));
       return { funnel, ...computeFunnelRowMetrics(scope, periodRange) };
     });
     rows.sort((a, b) => {
@@ -215,7 +247,7 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
       return (a.funnel.order || 0) - (b.funnel.order || 0);
     });
     return rows;
-  }, [selectedFunnelId, leads, funnels, defaultFunnelId, periodRange]);
+  }, [selectedFunnelId, periodMetricsLeads, funnels, defaultFunnelId, periodRange]);
 
   const funnelComparisonTotals = useMemo(
     () => computeFunnelComparisonTotals(funnelComparisonRows),

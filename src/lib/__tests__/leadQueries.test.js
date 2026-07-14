@@ -11,6 +11,8 @@ import {
   appointmentsInWindowQuerySpec,
   renewalClientsQuerySpec,
   consultantLeadsQuerySpec,
+  adminDashboardWindowSpecs,
+  ADMIN_DASHBOARD_WINDOW_FIELDS,
 } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
@@ -129,6 +131,29 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     });
     expect(consultantLeadsQuerySpec('u1').orderBy).toBeUndefined();
     expect(consultantLeadsQuerySpec('u1').limit).toBeUndefined();
+  });
+
+  it('adminDashboardWindowSpecs: 4 janelas de campo único [>=start,<=end] orderBy asc (G1c)', () => {
+    const start = new Date(2026, 5, 1).getTime();
+    const end = new Date(2026, 6, 31, 23, 59, 59, 999).getTime();
+    const specs = adminDashboardWindowSpecs(start, end);
+    // ordem/campos fixos (createdAt, convertedAt, appointmentScheduledFor, lostAt)
+    expect(ADMIN_DASHBOARD_WINDOW_FIELDS).toEqual([
+      'createdAt', 'convertedAt', 'appointmentScheduledFor', 'lostAt',
+    ]);
+    expect(specs).toHaveLength(4);
+    expect(specs.map((s) => s.orderBy.field)).toEqual(ADMIN_DASHBOARD_WINDOW_FIELDS);
+    specs.forEach((s) => {
+      const field = s.orderBy.field;
+      expect(s.wheres).toEqual([
+        { field, op: '>=', value: new Date(start) },
+        { field, op: '<=', value: new Date(end) },
+      ]);
+      expect(s.orderBy.dir).toBe('asc');
+      // range/orderBy no MESMO campo, SEM igualdade → índice de campo único
+      // AUTOMÁTICO do Firestore, sem índice composto (não passa por indexCovers).
+      expect(s.wheres.every((w) => w.op !== '==')).toBe(true);
+    });
   });
 
   it('usa LIST_PAGE_SIZE (30) como default de paginação', () => {

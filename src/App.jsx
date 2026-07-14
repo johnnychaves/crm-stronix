@@ -1229,7 +1229,12 @@ useEffect(() => {
                   funnels={funnels}
                 />
               ) : (<>
-              {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : (leads || []).filter(l => l.consultantId === appUser.id)} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} />}
+              {/* Operacional CONSULTOR: PRÓPRIOS leads por query (E2a consultantLeads,
+                  where consultantId== — mesmo conjunto do filtro antigo, já normalizado)
+                  em vez de varrer o prop global. ADMIN segue no prop global: o painel
+                  admin agrega board/última-ação/Meta que precisam da base crua (categorias
+                  sem janela) — migra no G1d. interactions segue global (G2). */}
+              {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : consultantLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} />}
               {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={gerencialLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
