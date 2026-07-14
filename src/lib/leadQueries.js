@@ -50,6 +50,18 @@ export const renewalClientsQuerySpec = (startMs, endMs, pageSize = null) => ({
   ...(pageSize ? { limit: pageSize } : {}),
 });
 
+// Dashboard do CONSULTOR (E2a) — todos os leads do próprio consultor, pra as
+// funções de dashboardMetrics fatiarem por janela em memória como já fazem (não
+// reescrever a matemática, só a fonte). Sem orderBy DE PROPÓSITO: as métricas
+// usam createdAt/convertedAt/appointmentScheduledFor com fallbacks — um orderBy
+// num desses derrubaria leads legados sem o campo. Igualdade num só campo usa o
+// índice automático (os índices #6/#7/#8 por janela ficam pra quando/se a
+// visão paginar por período; hoje o consultor tem conjunto limitado). Admin NÃO
+// usa esta spec (agrega todos + não-atribuídos — fica no prop global no E).
+export const consultantLeadsQuerySpec = (consultantId) => ({
+  wheres: [{ field: 'consultantId', op: '==', value: consultantId }],
+});
+
 // Coluna Perda do Kanban por funil — casa com o índice #1
 // (lifecycleBucket ASC, funnelId ASC, lostAt DESC).
 export const lostByFunnelQuerySpec = (funnelId, pageSize = LIST_PAGE_SIZE) => ({

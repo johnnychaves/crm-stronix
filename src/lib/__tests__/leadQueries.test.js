@@ -9,6 +9,7 @@ import {
   bucketByFunnelCountSpec,
   appointmentsInWindowQuerySpec,
   renewalClientsQuerySpec,
+  consultantLeadsQuerySpec,
 } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
@@ -109,6 +110,16 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
       ],
       orderBy: { field: 'currentContractEndsAt', dir: 'asc' },
     });
+  });
+
+  it('consultantLeadsQuerySpec: só a igualdade em consultantId, sem orderBy/limit (E2a)', () => {
+    // Sem orderBy de propósito (as métricas usam createdAt/convertedAt/appt com
+    // fallback; orderBy num deles derrubaria legados sem o campo).
+    expect(consultantLeadsQuerySpec('u1')).toEqual({
+      wheres: [{ field: 'consultantId', op: '==', value: 'u1' }],
+    });
+    expect(consultantLeadsQuerySpec('u1').orderBy).toBeUndefined();
+    expect(consultantLeadsQuerySpec('u1').limit).toBeUndefined();
   });
 
   it('usa LIST_PAGE_SIZE (30) como default de paginação', () => {

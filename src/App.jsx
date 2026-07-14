@@ -49,8 +49,10 @@ import {
   DAILY_GOAL_HISTORY_PATH
 } from './lib/firebase.js';
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
-import { getSafeDate, getSafeDateOrNull } from './lib/dates.js';
-import { isAdminUser } from './lib/leads.js';
+import { getSafeDate } from './lib/dates.js';
+import { isAdminUser, normalizeLeadDoc } from './lib/leads.js';
+import { usePagedLeads } from './hooks/usePagedLeads.js';
+import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
@@ -537,21 +539,9 @@ useEffect(() => {
   const interactionsSource = interactionsRef;
 
   const unsubLeads = onSnapshot(leadsSource, (snapshot) => {
-    const leadsData = snapshot.docs.map((docSnap) => {
-      const data = docSnap.data();
-      return {
-        id: docSnap.id,
-        ...data,
-        createdAt: getSafeDate(data.createdAt),
-        // Doc sem createdAt real: getSafeDate devolve "agora", o que faria o
-        // lead contar como captado hoje nas métricas — a flag permite excluí-lo.
-        createdAtMissing: !data.createdAt,
-        nextFollowUp: getSafeDateOrNull(data.nextFollowUp),
-        appointmentOutcomeAt: getSafeDateOrNull(data.appointmentOutcomeAt)
-      };
-    });
-
-    setLeads(leadsData);
+    // Normalização única (normalizeLeadDoc em lib/leads) — a MESMA que a query
+    // do dashboard do consultor (E2a) usa, pra os shapes não divergirem.
+    setLeads(snapshot.docs.map(normalizeLeadDoc));
     setLoadingData(false);
   }, onSnapErr('leads'));
 
@@ -971,6 +961,24 @@ useEffect(() => {
   // só escopa por consultor e mantém o filtro lifecycleStage==='cliente' pra
   // casar exatamente o badge anterior. dayKey força o refetch na virada do dia.
   const { clients: renewalClients } = useRenewalClients({ db, contractThresholdDays, reloadKey: dayKey });
+
+  // Dashboard Gerencial do CONSULTOR (E2a): busca os PRÓPRIOS leads por query
+  // (where consultantId==id, sem orderBy → índice automático, sem armadilha de
+  // campo ausente) normalizados igual à assinatura, em vez de filtrar o prop
+  // global. Admin fica no prop global (agrega todos + não-atribuídos — migra no
+  // G); a query fica gated fora do admin. A matemática (dashboardMetrics) não
+  // muda: só troca a fonte. Não é ao vivo (getDocs) — remonta ao trocar de aba.
+  const dashIsAdmin = isAdminUser(appUser);
+  const consultantLeadsSpec = useMemo(
+    () => (appUser?.id ? consultantLeadsQuerySpec(appUser.id) : null),
+    [appUser]
+  );
+  const { items: consultantLeads } = usePagedLeads({
+    db, path: LEADS_PATH, spec: consultantLeadsSpec, specKey: `consultant:${appUser?.id || ''}`,
+    mapDoc: normalizeLeadDoc,
+    enabled: !!db && !dashIsAdmin && !!appUser?.id,
+  });
+  const gerencialLeads = dashIsAdmin ? leads : consultantLeads;
   const clientsAVencer = useMemo(() => {
     if (!appUser) return 0;
     const scope = isAdminUser(appUser) ? renewalClients : renewalClients.filter(l => l.consultantId === appUser.id);
@@ -1222,7 +1230,7 @@ useEffect(() => {
                 />
               ) : (<>
               {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : (leads || []).filter(l => l.consultantId === appUser.id)} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} />}
-              {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={isAdminUser(appUser) ? leads : (leads || []).filter(l => l.consultantId === appUser.id)} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
+              {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={gerencialLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
               {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
