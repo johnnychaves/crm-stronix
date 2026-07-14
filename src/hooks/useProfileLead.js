@@ -41,5 +41,11 @@ export function useProfileLead({ db, leadId }) {
     return () => unsub();
   }, [db, leadId]);
 
-  return { lead, loading };
+  // Só devolve o lead quando ele corresponde AO id pedido: com leadId nulo (ficha
+  // fechada) ou durante a troca A→B (lead ainda é o antigo), devolve null. Isso
+  // faz o gate do render (`profileLead ? ficha : ...`) liberar a navegação ao
+  // fechar — sem isso o `lead` obsoleto travava a tela na ficha — e evita piscar
+  // o lead anterior ao reabrir. (Substitui o reset síncrono no efeito, que a
+  // regra set-state-in-effect barrava.)
+  return { lead: lead && lead.id === leadId ? lead : null, loading };
 }

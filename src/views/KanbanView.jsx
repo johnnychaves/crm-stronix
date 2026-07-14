@@ -326,6 +326,17 @@ const [isPanning, setIsPanning] = useState(false);
     return respFilter.length === 0 ? base : base.filter(l => respFilter.includes(l.consultantId));
   }, [lostDocs, respFilter, onlyOverdue]);
 
+  // Lookup dos leads ARRASTÁVEIS por id: ativos (prop) + a página da coluna Perda
+  // (E1c, lostDocs). Pós-flip o prop é só 'ativo', então sem incluir lostDocs os
+  // handlers de drag não achavam um card da Perda pelo id — quebrava DESFAZER a
+  // perda (arrastar o card de volta pra uma etapa). Ativo tem prioridade no id.
+  const draggableById = useMemo(() => {
+    const m = new Map();
+    (leads || []).forEach((l) => m.set(l.id, l));
+    (lostDocs || []).forEach((l) => { if (!m.has(l.id)) m.set(l.id, l); });
+    return m;
+  }, [leads, lostDocs]);
+
   // E1d: total REAL de perdas do funil via getCountFromServer (o header da
   // coluna, depois do E1c, mostraria só a página carregada). Recontado quando
   // uma perda é marcada/desfeita (countEpoch).
@@ -471,38 +482,38 @@ const handleKanbanMouseMove = (e) => {
   const handleDrop = useCallback((e, newStatus) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
-    const lead = leadId && leads.find(l => l.id === leadId);
+    const lead = leadId && draggableById.get(leadId);
     if (!lead || lead.status === newStatus) return;
     if (!canEditLead(appUser, lead)) {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
     applyMoveToStage(lead, newStatus);
-  }, [leads, appUser, toast, applyMoveToStage]);
+  }, [draggableById, appUser, toast, applyMoveToStage]);
 
   const handleWinDrop = useCallback((e) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
-    const lead = leadId && leads.find(l => l.id === leadId);
+    const lead = leadId && draggableById.get(leadId);
     if (!lead || lead.status === 'Venda') return;
     if (!canEditLead(appUser, lead)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
     openMatricula(lead);
-  }, [leads, appUser, toast, openMatricula]);
+  }, [draggableById, appUser, toast, openMatricula]);
 
   const handleLossDrop = useCallback((e) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
-    const lead = leadId && leads.find(l => l.id === leadId);
+    const lead = leadId && draggableById.get(leadId);
     if (!lead || lead.status === 'Perda') return;
     if (!canEditLead(appUser, lead)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
     setLossModalLeadId(lead.id);
-  }, [leads, appUser, toast]);
+  }, [draggableById, appUser, toast]);
 
   const confirmKanbanLoss = async (reason) => {
     if (!lossModalLeadId) return;
