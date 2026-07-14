@@ -3,6 +3,7 @@ import indexesConfig from '../../../firestore.indexes.json';
 import {
   LIFECYCLE_BUCKETS,
   clientsQuerySpec,
+  clientsAllQuerySpec,
   lostByFunnelQuerySpec,
   bucketByFunnelQuerySpec,
   bucketByFunnelCountSpec,
@@ -38,6 +39,16 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     });
   });
 
+  it('clientsAllQuerySpec: TODOS os clientes, só a igualdade (sem orderBy/limit — Opção A do E1b)', () => {
+    // orderBy no servidor excluiria clientes 'Venda' legados sem o campo
+    // ordenado (Firestore filtra por existência) — por isso a spec não ordena.
+    expect(clientsAllQuerySpec()).toEqual({
+      wheres: [{ field: 'lifecycleBucket', op: '==', value: 'cliente' }],
+    });
+    expect(clientsAllQuerySpec().orderBy).toBeUndefined();
+    expect(clientsAllQuerySpec().limit).toBeUndefined();
+  });
+
   it('lostByFunnelQuerySpec: perdas do funil por lostAt desc', () => {
     expect(lostByFunnelQuerySpec('f1', 50)).toEqual({
       wheres: [
@@ -68,6 +79,11 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
 describe('leadQueries — toda spec é coberta por um índice de firestore.indexes.json', () => {
   it('clientsQuerySpec ↔ índice #3', () => {
     expect(coveredByLeadsIndex(clientsQuerySpec())).toBe(true);
+  });
+  it('clientsAllQuerySpec (só igualdade, sem orderBy) é runnable — prefixo do #3 cobre', () => {
+    // Uma igualdade num só campo roda com o índice automático do Firestore; o
+    // prefixo do #3 também cobre. Ou seja: sem "requires an index" em prod.
+    expect(coveredByLeadsIndex(clientsAllQuerySpec())).toBe(true);
   });
   it('lostByFunnelQuerySpec ↔ índice #1', () => {
     expect(coveredByLeadsIndex(lostByFunnelQuerySpec('f1'))).toBe(true);

@@ -21,6 +21,17 @@ export const clientsQuerySpec = (pageSize = LIST_PAGE_SIZE) => ({
   limit: pageSize,
 });
 
+// Aba Clientes (E1b, Opção A) — TODOS os clientes de uma vez, para os filtros
+// (situação do contrato é DERIVADA, não é campo do Firestore) e a ordenação
+// seguirem client-side na tela. NÃO ordena no servidor de propósito: um orderBy
+// (ex.: convertedAt) excluiria os clientes 'Venda' legados que não têm o campo
+// ordenado — Firestore filtra por existência do campo do orderBy — e eles
+// precisam aparecer. Uma igualdade num só campo roda com o índice automático
+// (sem índice composto). Paginação real e ordenada fica pro H (clientsQuerySpec).
+export const clientsAllQuerySpec = () => ({
+  wheres: [{ field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE }],
+});
+
 // Coluna Perda do Kanban por funil — casa com o índice #1
 // (lifecycleBucket ASC, funnelId ASC, lostAt DESC).
 export const lostByFunnelQuerySpec = (funnelId, pageSize = LIST_PAGE_SIZE) => ({
