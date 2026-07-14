@@ -70,9 +70,9 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     expect(spec.limit).toBe(25);
   });
 
-  it('usa LIST_PAGE_SIZE (50) como default de paginação', () => {
-    expect(clientsQuerySpec().limit).toBe(50);
-    expect(lostByFunnelQuerySpec('f1').limit).toBe(50);
+  it('usa LIST_PAGE_SIZE (30) como default de paginação', () => {
+    expect(clientsQuerySpec().limit).toBe(30);
+    expect(lostByFunnelQuerySpec('f1').limit).toBe(30);
   });
 });
 

@@ -43,8 +43,8 @@ afterEach(() => {
 });
 
 describe('LIST_PAGE_SIZE (guarda de regressão do "Carregar mais")', () => {
-  it('vale 50', () => {
-    expect(LIST_PAGE_SIZE).toBe(50);
+  it('vale 30 (página padrão de todas as listas e specs)', () => {
+    expect(LIST_PAGE_SIZE).toBe(30);
   });
 });
 

@@ -5,10 +5,11 @@ import { getSafeDateOrNull } from './dates.js';
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-// Tamanho de página das listas longas (Leads, Agendamentos): renderiza só os
-// primeiros N e revela mais sob demanda — evita pintar centenas de linhas no
-// DOM de uma vez.
-const LIST_PAGE_SIZE = 50;
+// Tamanho de página PADRÃO de todas as listas longas (Leads, Agendamentos,
+// Clientes) e default dos specs de query paginada (coluna Perda etc.): renderiza
+// só os primeiros N e revela mais sob demanda — evita pintar centenas de linhas
+// no DOM de uma vez.
+const LIST_PAGE_SIZE = 30;
 
 // Normaliza a lista de opções de quantidade de aulas experimentais:
 // inteiros positivos, sem repetição, ordenados. Aceita também um número

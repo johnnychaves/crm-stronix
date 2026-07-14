@@ -5,7 +5,7 @@ import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
-import { buildInteractionIndex, lastInteractionDateOf, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
+import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, LIFECYCLE_BUCKETS } from '../lib/leadQueries.js';
@@ -39,12 +39,6 @@ const EMPTY_LEADS = [];
 
 // Buckets contados pelo useFunnelCounts (identidade estável entre renders).
 const PERDA_BUCKETS = [LIFECYCLE_BUCKETS.PERDA];
-
-// Tamanho de página da coluna Perda (query paginada do E1c) — menor que o
-// LIST_PAGE_SIZE das listas longas: a coluna é estreita, então carrega 30 e o
-// "Carregar mais" traz o resto sob demanda. O total real segue no header via
-// getCountFromServer (E1d), independente da página.
-const PERDA_PAGE_SIZE = 30;
 
 // Card compacto (uma linha): barra de accent da etapa à esquerda, nome +
 // temperatura, estado do follow-up e avatar do consultor à direita.
@@ -306,13 +300,14 @@ const [isPanning, setIsPanning] = useState(false);
   const interactionIndex = useMemo(() => buildInteractionIndex(interactions), [interactions]);
 
   // Coluna Perda (E1c): em vez de fatiar TODAS as perdas do prop global, busca
-  // as 50 mais recentes do funil por query (getDocs) + "Carregar mais". Ordena
+  // uma página (LIST_PAGE_SIZE) das mais recentes do funil por query (getDocs) +
+  // "Carregar mais". Ordena
   // por createdAt (índice #2 via bucketByFunnelQuerySpec) e NÃO por lostAt: o
   // backfill não materializou lostAt, e orderBy lostAt derrubaria perdas legadas
   // sem o campo. Não é ao vivo — recarrega (lostReload) ao marcar/desfazer perda.
   const lostFunnelId = selectedFunnelId || defaultFunnelId;
   const lostSpec = useMemo(
-    () => bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId, PERDA_PAGE_SIZE),
+    () => bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId),
     [lostFunnelId]
   );
   const {
@@ -781,7 +776,7 @@ if (!lead) return;
               color="green"
               special="win"
               columnLeads={getLeadsByStatus('Venda')}
-              renderLimit={50}
+              renderLimit={LIST_PAGE_SIZE}
               isHovered={draggedOverColumn === 'Venda'}
               draggingLeadId={draggingLeadId}
               interactionIndex={interactionIndex}
