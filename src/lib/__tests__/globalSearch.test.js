@@ -6,7 +6,7 @@
 // A PR F (searchPeopleRemote) precisa reproduzir exatamente este ranking.
 
 import { describe, it, expect } from 'vitest';
-import { onlyDigits, normalize, searchPeople } from '../globalSearch.js';
+import { onlyDigits, normalize, searchPeople, searchCandidateSpecs } from '../globalSearch.js';
 
 // Helper de lead: objeto simples só com os campos que a busca lê.
 let seq = 0;
@@ -305,5 +305,53 @@ describe('searchPeople — robustez do shape e entradas ruins', () => {
   it('entrada null na lista não quebra', () => {
     const leads = [null, lead({ id: 'ok', name: 'Ana Silva' })];
     expect(searchPeople(leads, 'ana').total).toBe(1);
+  });
+});
+
+describe('searchCandidateSpecs — candidatos da busca remota (G1b)', () => {
+  const HIGH = 0xF8FF; // sentinela de prefixo (mesma de globalSearch.js)
+
+  it('query curta (nome <2 E dígitos <3) não gera specs', () => {
+    // Mesmos limiares de searchPeople: só some tudo se o nome normalizado tem <2
+    // chars E os dígitos <3. '12' normaliza pra len 2 → já dispara o bloco de nome
+    // (igual searchPeople), então não é "curto".
+    expect(searchCandidateSpecs('j')).toEqual([]);
+    expect(searchCandidateSpecs('1')).toEqual([]);
+    expect(searchCandidateSpecs('')).toEqual([]);
+  });
+
+  it('nome (≥2): range em nameLower (prefixo, normalizado) + array-contains em nameTokens', () => {
+    const specs = searchCandidateSpecs('José', 20);
+    expect(specs).toHaveLength(2);
+    const [nameRange, tokenSpec] = specs;
+    expect(nameRange.wheres[0]).toEqual({ field: 'nameLower', op: '>=', value: 'jose' });
+    expect(nameRange.wheres[1].field).toBe('nameLower');
+    expect(nameRange.wheres[1].op).toBe('<');
+    expect(nameRange.wheres[1].value.startsWith('jose')).toBe(true);
+    expect(nameRange.wheres[1].value.codePointAt(4)).toBe(HIGH); // 'jose' + sentinela
+    expect(nameRange.orderBy).toEqual({ field: 'nameLower', dir: 'asc' });
+    expect(nameRange.limit).toBe(20);
+    expect(tokenSpec).toEqual({
+      wheres: [{ field: 'nameTokens', op: 'array-contains', value: 'jose' }],
+      limit: 20,
+    });
+  });
+
+  it('dígitos (≥3): inclui whatsappDigits (prefixo), whatsappDigitsRev (sufixo, invertido) e cpfDigits', () => {
+    // '(11) 9' → dígitos '119'; o nome normalizado '(11) 9' (len 6) também dispara
+    // os specs de nome (igual searchPeople roda os dois tiers) — por isso buscamos
+    // os specs de dígito por campo em vez de assumir a posição.
+    const specs = searchCandidateSpecs('(11) 9', 20);
+    const wa = specs.find((s) => s.wheres[0].field === 'whatsappDigits');
+    const waRev = specs.find((s) => s.wheres[0].field === 'whatsappDigitsRev');
+    const cpf = specs.find((s) => s.wheres[0].field === 'cpfDigits');
+    expect(wa.wheres[0]).toEqual({ field: 'whatsappDigits', op: '>=', value: '119' });
+    expect(wa.wheres[1].value.startsWith('119')).toBe(true);
+    expect(waRev.wheres[0]).toEqual({ field: 'whatsappDigitsRev', op: '>=', value: '911' }); // invertido
+    expect(cpf.wheres[0]).toEqual({ field: 'cpfDigits', op: '>=', value: '119' });
+  });
+
+  it('nome E dígitos juntos geram os dois conjuntos (2 + 3 = 5 specs)', () => {
+    expect(searchCandidateSpecs('ana 123')).toHaveLength(5);
   });
 });

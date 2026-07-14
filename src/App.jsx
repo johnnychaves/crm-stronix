@@ -1142,7 +1142,7 @@ useEffect(() => {
             </h2>
           </div>
           {!appUser.superAdminOnly && (
-            <GlobalSearch leads={leads} onAddLead={() => setIsAddLeadModalOpen(true)} />
+            <GlobalSearch onAddLead={() => setIsAddLeadModalOpen(true)} db={db} />
           )}
           <div className="flex items-center gap-2 md:gap-3">
             {!appUser.superAdminOnly && (

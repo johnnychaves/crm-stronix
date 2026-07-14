@@ -71,3 +71,65 @@ export function searchPeople(leads, query, { limit = 8 } = {}) {
     results: matched.slice(0, limit).map(({ lead, matchKind, matchRange }) => ({ lead, matchKind, matchRange }))
   };
 }
+
+// Specs de CANDIDATOS pra busca remota (G1b) — o Firestore não faz substring,
+// então usamos os search fields materializados (leadDerived.buildLeadSearchFields)
+// pra puxar um conjunto PEQUENO de candidatos por PREFIXO/TOKEN; o chamador roda
+// searchPeople() sobre esses candidatos pra reproduzir EXATAMENTE o ranking/tier/
+// destaque de hoje. Cada spec é single-field (índice automático, sem composto):
+//   - nome:     range em nameLower (prefixo do nome completo)
+//               + array-contains qNorm em nameTokens (TOKEN exato — acha o
+//                 primeiro nome OU o sobrenome INTEIRO; sobrenome parcial não).
+//   - telefone: range em whatsappDigits (prefixo) + range em whatsappDigitsRev
+//                 (sufixo = últimos dígitos digitados).
+//   - cpf:      range em cpfDigits (prefixo).
+// '' é um code point alto da BMP: [q, q+'') captura todo prefixo de q.
+// Mesmos limiares de searchPeople (nome ≥2, dígitos ≥3). Sem query aplicável → [].
+const SEARCH_HIGH = '';
+export const searchCandidateSpecs = (query, pageSize = 20) => {
+  const qNorm = normalize(String(query || '').trim());
+  const qDigits = onlyDigits(query);
+  const specs = [];
+  if (qNorm.length >= 2) {
+    specs.push({
+      wheres: [
+        { field: 'nameLower', op: '>=', value: qNorm },
+        { field: 'nameLower', op: '<', value: qNorm + SEARCH_HIGH },
+      ],
+      orderBy: { field: 'nameLower', dir: 'asc' },
+      limit: pageSize,
+    });
+    specs.push({
+      wheres: [{ field: 'nameTokens', op: 'array-contains', value: qNorm }],
+      limit: pageSize,
+    });
+  }
+  if (qDigits.length >= 3) {
+    specs.push({
+      wheres: [
+        { field: 'whatsappDigits', op: '>=', value: qDigits },
+        { field: 'whatsappDigits', op: '<', value: qDigits + SEARCH_HIGH },
+      ],
+      orderBy: { field: 'whatsappDigits', dir: 'asc' },
+      limit: pageSize,
+    });
+    const rev = qDigits.split('').reverse().join('');
+    specs.push({
+      wheres: [
+        { field: 'whatsappDigitsRev', op: '>=', value: rev },
+        { field: 'whatsappDigitsRev', op: '<', value: rev + SEARCH_HIGH },
+      ],
+      orderBy: { field: 'whatsappDigitsRev', dir: 'asc' },
+      limit: pageSize,
+    });
+    specs.push({
+      wheres: [
+        { field: 'cpfDigits', op: '>=', value: qDigits },
+        { field: 'cpfDigits', op: '<', value: qDigits + SEARCH_HIGH },
+      ],
+      orderBy: { field: 'cpfDigits', dir: 'asc' },
+      limit: pageSize,
+    });
+  }
+  return specs;
+};
