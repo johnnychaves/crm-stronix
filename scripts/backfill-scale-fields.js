@@ -3,23 +3,31 @@
 // Preenche, nos leads JÁ existentes, os campos que a PR C passou a dual-write
 // só nas escritas NOVAS (ficam "adormecidos" até este backfill): campos de
 // busca, lifecycleBucket, funnelId (quando ausente), o par de agendamento
-// (appointmentType/appointmentScheduledFor) e os denormalizados de interação
-// (lastInteractionAt/interactionsCount). Depois disto as PRs E/F/G podem
+// (appointmentType/appointmentScheduledFor), os denormalizados de interação
+// (lastInteractionAt/interactionsCount) e convertedAt=createdAt nos clientes
+// legados sem ele (alvo `converted`, p/ o dashboard por query do E2a). Depois
+// disto as PRs E/F/G podem
 // assinar fatias (where lifecycleBucket / campos de busca) em vez da coleção
 // inteira. Roda UMA vez por tenant, fora do app, DEPOIS da PR C em produção e
 // com os índices já ENABLED. Idempotente: rodar de novo dá o mesmo resultado.
 //
-// Uso (mesmas credenciais Admin das funções api/):
+// Uso — credenciais Admin, escolha UMA:
+//   A) RECOMENDADO (sem colar a private key): baixe o serviceAccount.json
+//      (Firebase Console → Config. do projeto → Contas de serviço → Gerar nova
+//      chave privada) e aponte:
+//        GOOGLE_APPLICATION_CREDENTIALS=/caminho/serviceAccount.json \
+//        node scripts/backfill-scale-fields.js --tenant=stronix-crm-app --dry-run --only=converted
+//   B) as 3 vars (mesmas das funções api/):
 //   FIREBASE_ADMIN_PROJECT_ID=... \
 //   FIREBASE_ADMIN_CLIENT_EMAIL=... \
 //   FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n" \
-//   node scripts/backfill-scale-fields.js [--tenant=stronix-crm-app] [--dry-run] [--only=search,bucket,funnel,appointment,denorm]
+//   node scripts/backfill-scale-fields.js [--tenant=stronix-crm-app] [--dry-run] [--only=search,bucket,funnel,appointment,denorm,converted]
 //
 // Flags:
 //   --tenant=<id>   tenant a migrar (default "stronix-crm-app", dados do Johnny)
 //   --dry-run       calcula e reporta o que MUDARIA, sem gravar nada
 //   --only=a,b,c    roda só os alvos listados (default: todos)
-//                   alvos: search | bucket | funnel | appointment | denorm
+//                   alvos: search | bucket | funnel | appointment | denorm | converted
 //
 // Ver runbook completo em docs/scale-migration.md.
 
@@ -93,7 +101,7 @@ const LEADS_PATH = 'stronix_leads';
 const INTERACTIONS_PATH = 'stronix_interactions';
 const FUNNELS_PATH = 'stronix_funnels';
 
-const ALL_TARGETS = ['search', 'bucket', 'funnel', 'appointment', 'denorm'];
+const ALL_TARGETS = ['search', 'bucket', 'funnel', 'appointment', 'denorm', 'converted'];
 
 function parseArgs(argv) {
   let tenant = 'stronix-crm-app';
@@ -118,14 +126,24 @@ const { tenant, dryRun, targets } = parseArgs(process.argv.slice(2));
 const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
 const privateKey = process.env.FIREBASE_ADMIN_PRIVATE_KEY?.replace(/\\n/g, '\n');
+const hasCertVars = Boolean(projectId && clientEmail && privateKey);
+const hasAdc = Boolean(process.env.GOOGLE_APPLICATION_CREDENTIALS);
 
-if (!projectId || !clientEmail || !privateKey) {
-  console.error('Faltam env vars: FIREBASE_ADMIN_PROJECT_ID / FIREBASE_ADMIN_CLIENT_EMAIL / FIREBASE_ADMIN_PRIVATE_KEY');
+if (!hasCertVars && !hasAdc) {
+  console.error(
+    'Faltam credenciais Admin. Escolha UMA:\n' +
+    '  A) GOOGLE_APPLICATION_CREDENTIALS=<caminho do serviceAccount.json>  (recomendado — sem colar a chave)\n' +
+    '  B) as 3 vars FIREBASE_ADMIN_PROJECT_ID / _CLIENT_EMAIL / _PRIVATE_KEY'
+  );
   process.exit(1);
 }
 
 if (!admin.apps.length) {
-  admin.initializeApp({ credential: admin.credential.cert({ projectId, clientEmail, privateKey }) });
+  // Preferir o arquivo JSON (ADC) quando disponível: evita o inferno de aspas/\n
+  // da private key colada no shell, causa nº 1 de "16 UNAUTHENTICATED".
+  admin.initializeApp(hasAdc
+    ? { credential: admin.credential.applicationDefault() }
+    : { credential: admin.credential.cert({ projectId, clientEmail, privateKey }) });
 }
 
 const db = admin.firestore();
@@ -195,6 +213,19 @@ function buildLeadPatch(id, data, defaultFunnelId, interAgg) {
     const agg = interAgg.get(id) || { count: 0, lastMs: 0 };
     patch.interactionsCount = agg.count;
     patch.lastInteractionAt = agg.lastMs ? admin.firestore.Timestamp.fromMillis(agg.lastMs) : null;
+  }
+
+  if (targets.has('converted')) {
+    // convertedAt = createdAt onde o lead É convertido/matriculado mas está SEM
+    // o campo (legado 'Venda' anterior ao rastreio de convertedAt). Espelha o
+    // fallback getLeadConversionDate (convertedAt || createdAt) do app, pra que
+    // a query do dashboard por janela de convertedAt (índice #7, E2a) não sumir
+    // silenciosamente com essas matrículas. Sem createdAt o lead não é datável
+    // de qualquer jeito (getLeadConversionDate devolveria null hoje) → pula.
+    if (isLeadConverted(data) && !getSafeDateOrNull(data.convertedAt)) {
+      const created = getSafeDateOrNull(data.createdAt);
+      if (created) patch.convertedAt = admin.firestore.Timestamp.fromDate(created);
+    }
   }
 
   return patch;

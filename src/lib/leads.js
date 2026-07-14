@@ -2,8 +2,27 @@
 // permission checks, security field builders. Pure functions — no React,
 // no Firestore SDK imports needed at this layer.
 
-import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
+import { getSafeDate, getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
 import { onlyDigits } from './globalSearch.js';
+
+// Normalização de UM doc de lead (fonte ÚNICA). A assinatura global do App e as
+// queries paginadas (ex.: dashboard do consultor no E2a) precisam produzir
+// EXATAMENTE o mesmo shape, senão as funções de dashboardMetrics divergem — em
+// especial createdAtMissing, que NÃO é campo do Firestore e é derivado aqui.
+// Recebe um DocumentSnapshot (usa .id/.data()); sem importar o SDK.
+export const normalizeLeadDoc = (docSnap) => {
+  const data = docSnap.data();
+  return {
+    id: docSnap.id,
+    ...data,
+    createdAt: getSafeDate(data.createdAt),
+    // Doc sem createdAt real: getSafeDate devolve "agora", o que faria o lead
+    // contar como captado hoje — a flag permite excluí-lo (dashboardMetrics).
+    createdAtMissing: !data.createdAt,
+    nextFollowUp: getSafeDateOrNull(data.nextFollowUp),
+    appointmentOutcomeAt: getSafeDateOrNull(data.appointmentOutcomeAt),
+  };
+};
 
 export const getLeadAppointmentType = (lead) => {
   return lead?.appointmentType || normalizeAppointmentType(lead?.nextFollowUpType);

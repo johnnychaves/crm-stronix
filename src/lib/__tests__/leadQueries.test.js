@@ -3,9 +3,13 @@ import indexesConfig from '../../../firestore.indexes.json';
 import {
   LIFECYCLE_BUCKETS,
   clientsQuerySpec,
+  clientsAllQuerySpec,
   lostByFunnelQuerySpec,
   bucketByFunnelQuerySpec,
   bucketByFunnelCountSpec,
+  appointmentsInWindowQuerySpec,
+  renewalClientsQuerySpec,
+  consultantLeadsQuerySpec,
 } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
@@ -13,7 +17,13 @@ import {
 // o campo seguinte do índice casa campo+direção. Mesma regra que o Firestore usa
 // para escolher índice; é o que evita o erro "query requires an index" em prod.
 function indexCovers(index, spec) {
-  const eq = spec.wheres.map((w) => w.field);
+  // Igualdades formam o prefixo; um range (>=,<,>,<=) tem que ser no MESMO campo
+  // do orderBy (regra do Firestore: range e orderBy no mesmo campo, logo após as
+  // igualdades). Assim a spec de janela (appointmentType== + appointmentScheduledFor
+  // range/orderBy) casa com um índice [tipo, campoDeData].
+  const eq = spec.wheres.filter((w) => w.op === '==').map((w) => w.field);
+  const ranges = spec.wheres.filter((w) => w.op !== '==');
+  if (ranges.length && (!spec.orderBy || ranges.some((w) => w.field !== spec.orderBy.field))) return false;
   const n = eq.length;
   if (index.fields.length < n) return false;
   const prefix = index.fields.slice(0, n);
@@ -38,6 +48,16 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     });
   });
 
+  it('clientsAllQuerySpec: TODOS os clientes, só a igualdade (sem orderBy/limit — Opção A do E1b)', () => {
+    // orderBy no servidor excluiria clientes 'Venda' legados sem o campo
+    // ordenado (Firestore filtra por existência) — por isso a spec não ordena.
+    expect(clientsAllQuerySpec()).toEqual({
+      wheres: [{ field: 'lifecycleBucket', op: '==', value: 'cliente' }],
+    });
+    expect(clientsAllQuerySpec().orderBy).toBeUndefined();
+    expect(clientsAllQuerySpec().limit).toBeUndefined();
+  });
+
   it('lostByFunnelQuerySpec: perdas do funil por lostAt desc', () => {
     expect(lostByFunnelQuerySpec('f1', 50)).toEqual({
       wheres: [
@@ -59,15 +79,63 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     expect(spec.limit).toBe(25);
   });
 
-  it('usa LIST_PAGE_SIZE (50) como default de paginação', () => {
-    expect(clientsQuerySpec().limit).toBe(50);
-    expect(lostByFunnelQuerySpec('f1').limit).toBe(50);
+  it('appointmentsInWindowQuerySpec: tipo + janela [ini,fim) em appointmentScheduledFor, orderBy asc (E2b)', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 6, 17).getTime();
+    expect(appointmentsInWindowQuerySpec('visita', ini, fim)).toEqual({
+      wheres: [
+        { field: 'appointmentType', op: '==', value: 'visita' },
+        { field: 'appointmentScheduledFor', op: '>=', value: new Date(ini) },
+        { field: 'appointmentScheduledFor', op: '<', value: new Date(fim) },
+      ],
+      orderBy: { field: 'appointmentScheduledFor', dir: 'asc' },
+    });
+  });
+
+  it('appointmentsInWindowQuerySpec: sem limit por default (carrega a janela toda); com pageSize, limita', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 6, 17).getTime();
+    expect(appointmentsInWindowQuerySpec('aula_experimental', ini, fim).limit).toBeUndefined();
+    expect(appointmentsInWindowQuerySpec('aula_experimental', ini, fim, 30).limit).toBe(30);
+  });
+
+  it('renewalClientsQuerySpec: clientes com vencimento na janela [ini,fim), orderBy asc (E2c)', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 7, 14).getTime();
+    expect(renewalClientsQuerySpec(ini, fim)).toEqual({
+      wheres: [
+        { field: 'lifecycleBucket', op: '==', value: 'cliente' },
+        { field: 'currentContractEndsAt', op: '>=', value: new Date(ini) },
+        { field: 'currentContractEndsAt', op: '<', value: new Date(fim) },
+      ],
+      orderBy: { field: 'currentContractEndsAt', dir: 'asc' },
+    });
+  });
+
+  it('consultantLeadsQuerySpec: só a igualdade em consultantId, sem orderBy/limit (E2a)', () => {
+    // Sem orderBy de propósito (as métricas usam createdAt/convertedAt/appt com
+    // fallback; orderBy num deles derrubaria legados sem o campo).
+    expect(consultantLeadsQuerySpec('u1')).toEqual({
+      wheres: [{ field: 'consultantId', op: '==', value: 'u1' }],
+    });
+    expect(consultantLeadsQuerySpec('u1').orderBy).toBeUndefined();
+    expect(consultantLeadsQuerySpec('u1').limit).toBeUndefined();
+  });
+
+  it('usa LIST_PAGE_SIZE (30) como default de paginação', () => {
+    expect(clientsQuerySpec().limit).toBe(30);
+    expect(lostByFunnelQuerySpec('f1').limit).toBe(30);
   });
 });
 
 describe('leadQueries — toda spec é coberta por um índice de firestore.indexes.json', () => {
   it('clientsQuerySpec ↔ índice #3', () => {
     expect(coveredByLeadsIndex(clientsQuerySpec())).toBe(true);
+  });
+  it('clientsAllQuerySpec (só igualdade, sem orderBy) é runnable — prefixo do #3 cobre', () => {
+    // Uma igualdade num só campo roda com o índice automático do Firestore; o
+    // prefixo do #3 também cobre. Ou seja: sem "requires an index" em prod.
+    expect(coveredByLeadsIndex(clientsAllQuerySpec())).toBe(true);
   });
   it('lostByFunnelQuerySpec ↔ índice #1', () => {
     expect(coveredByLeadsIndex(lostByFunnelQuerySpec('f1'))).toBe(true);
@@ -78,6 +146,17 @@ describe('leadQueries — toda spec é coberta por um índice de firestore.index
   });
   it('bucketByFunnelCountSpec (só igualdades) usa o prefixo dos índices #1/#2', () => {
     expect(coveredByLeadsIndex(bucketByFunnelCountSpec(LIFECYCLE_BUCKETS.PERDA, 'f1'))).toBe(true);
+  });
+  it('appointmentsInWindowQuerySpec ↔ índice #5 (tipo + range/orderBy na data)', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 6, 17).getTime();
+    expect(coveredByLeadsIndex(appointmentsInWindowQuerySpec('visita', ini, fim))).toBe(true);
+    expect(coveredByLeadsIndex(appointmentsInWindowQuerySpec('aula_experimental', ini, fim))).toBe(true);
+  });
+  it('renewalClientsQuerySpec ↔ índice #4 (bucket + range/orderBy no vencimento)', () => {
+    const ini = new Date(2026, 6, 14).getTime();
+    const fim = new Date(2026, 7, 14).getTime();
+    expect(coveredByLeadsIndex(renewalClientsQuerySpec(ini, fim))).toBe(true);
   });
 
   it('guarda-de-sanidade: uma spec com orderBy sem índice NÃO é coberta', () => {

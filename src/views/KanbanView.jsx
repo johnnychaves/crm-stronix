@@ -5,7 +5,11 @@ import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
-import { buildInteractionIndex, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
+import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
+import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
+import { bucketByFunnelQuerySpec, LIFECYCLE_BUCKETS } from '../lib/leadQueries.js';
+import { LEADS_PATH } from '../lib/firebase.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from '../lib/kanban.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -32,6 +36,9 @@ function InitialsAvatar({ name = '', size = 22, textSize = 9 }) {
 
 // Prop estável para colunas sem leads (ver getLeadsByStatus).
 const EMPTY_LEADS = [];
+
+// Buckets contados pelo useFunnelCounts (identidade estável entre renders).
+const PERDA_BUCKETS = [LIFECYCLE_BUCKETS.PERDA];
 
 // Card compacto (uma linha): barra de accent da etapa à esquerda, nome +
 // temperatura, estado do follow-up e avatar do consultor à direita.
@@ -147,8 +154,8 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
 // cards em lista compacta com scroll interno. React.memo: o hover do drag
 // (draggedOverColumn) re-renderiza SÓ as 2 colunas afetadas via isHovered.
 const KanbanColumn = memo(function KanbanColumn({
-  name, color, special, columnLeads, renderLimit = 0, isHovered,
-  draggingLeadId, interactionIndex,
+  name, color, special, columnLeads, renderLimit = 0, isHovered, totalCount = null,
+  draggingLeadId, interactionIndex, hasMore = false, onLoadMore = null, loadingMore = false,
   onColumnDragOver, onColumnDragLeave, onDropLead,
   onDragStart, onDragEnd, onOpenProfile, onMoveRequest,
 }) {
@@ -197,7 +204,7 @@ const KanbanColumn = memo(function KanbanColumn({
           {name}
         </h3>
         <span className="text-[11px] font-semibold text-slate-400 dark:text-neutral-500 tabular-nums shrink-0">
-          {columnLeads.length}
+          {totalCount != null ? totalCount : columnLeads.length}
         </span>
         {isWinCol && <TrendingUp className="ml-auto size-[13px] shrink-0 text-emerald-700 dark:text-emerald-400" />}
       </header>
@@ -222,7 +229,7 @@ const KanbanColumn = memo(function KanbanColumn({
                 lead={lead}
                 columnColor={color}
                 isDragging={draggingLeadId === lead.id}
-                lastDate={interactionIndex.get(lead.id)?.lastDate}
+                lastDate={lastInteractionDateOf(lead, interactionIndex)}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
                 onOpenProfile={onOpenProfile}
@@ -233,6 +240,16 @@ const KanbanColumn = memo(function KanbanColumn({
               <div className="py-1.5 text-center text-[11px] font-medium text-slate-400 dark:text-neutral-500">
                 + {hiddenCount} {hiddenCount === 1 ? 'lead mais antigo' : 'leads mais antigos'} · use a busca
               </div>
+            )}
+            {onLoadMore && hasMore && (
+              <button
+                type="button"
+                onClick={onLoadMore}
+                disabled={loadingMore}
+                className="mt-0.5 py-2 text-center text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 disabled:opacity-50 transition-colors"
+              >
+                {loadingMore ? 'Carregando…' : 'Carregar mais'}
+              </button>
             )}
           </>
         )}
@@ -281,6 +298,63 @@ const [isPanning, setIsPanning] = useState(false);
   // evitando que cada card refaça interactions.filter()/getLastInteraction
   // (era O(cards × interações) a cada render/drag).
   const interactionIndex = useMemo(() => buildInteractionIndex(interactions), [interactions]);
+
+  // Coluna Perda (E1c): em vez de fatiar TODAS as perdas do prop global, busca
+  // uma página (LIST_PAGE_SIZE) das mais recentes do funil por query (getDocs) +
+  // "Carregar mais". Ordena
+  // por createdAt (índice #2 via bucketByFunnelQuerySpec) e NÃO por lostAt: o
+  // backfill não materializou lostAt, e orderBy lostAt derrubaria perdas legadas
+  // sem o campo. Não é ao vivo — recarrega (lostReload) ao marcar/desfazer perda.
+  const lostFunnelId = selectedFunnelId || defaultFunnelId;
+  const lostSpec = useMemo(
+    () => bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId),
+    [lostFunnelId]
+  );
+  const {
+    items: lostDocs, loading: lostLoading, hasMore: lostHasMore,
+    loadMore: lostLoadMore, reload: lostReload,
+  } = usePagedLeads({
+    db, path: LEADS_PATH, spec: lostSpec, specKey: `perda:${lostFunnelId || ''}`,
+    enabled: !!db && !!lostFunnelId,
+  });
+  // Refino client-side sobre a página carregada, espelhando filterKanbanLeads
+  // para perdas: respFilter por consultantId; onlyOverdue exclui perdas (elas
+  // não têm follow-up ativo), então a coluna fica vazia com o filtro ligado.
+  const lostLeads = useMemo(() => {
+    if (onlyOverdue) return [];
+    const base = lostDocs || [];
+    return respFilter.length === 0 ? base : base.filter(l => respFilter.includes(l.consultantId));
+  }, [lostDocs, respFilter, onlyOverdue]);
+
+  // E1d: total REAL de perdas do funil via getCountFromServer (o header da
+  // coluna, depois do E1c, mostraria só a página carregada). Recontado quando
+  // uma perda é marcada/desfeita (countEpoch).
+  const [countEpoch, setCountEpoch] = useState(0);
+  const { counts: funnelBucketCounts } = useFunnelCounts({
+    db, path: LEADS_PATH, funnelId: lostFunnelId, buckets: PERDA_BUCKETS,
+    enabled: !!db && !!lostFunnelId, reloadKey: countEpoch,
+  });
+  // Recarrega a página E reconta a coluna Perda juntas.
+  const refreshLost = useCallback(() => {
+    lostReload();
+    setCountEpoch((e) => e + 1);
+  }, [lostReload]);
+  // Total no header da Perda: a contagem do servidor vale quando NÃO há refino
+  // client-side (respFilter/onlyOverdue). Com refino, cai no tamanho da página
+  // refinada (undefined → a coluna usa columnLeads.length), como era antes.
+  //
+  // LIMITAÇÕES CONHECIDAS E ACEITAS (revisão do E1, revisitar na PR H de
+  // paginação real):
+  //  A) respFilter na Perda filtra só a página carregada — num funil com mais
+  //     perdas que a página, um responsável com perdas antigas aparece
+  //     subcontado até "Carregar mais". Caminho comum (sem filtro) é exato.
+  //  B) perdas sem createdAt (legado/importado, ver App.createdAtMissing) somem
+  //     do orderBy. É AUTO-DETECTÁVEL: se este total do servidor (que conta tudo)
+  //     passar do total de cards carregáveis, é esse caso — aí rodar backfill de
+  //     createdAt. Empiricamente 0 nos funis testados.
+  const perdaHeaderCount = (respFilter.length === 0 && !onlyOverdue)
+    ? funnelBucketCounts[LIFECYCLE_BUCKETS.PERDA]
+    : undefined;
 
   // ── Abas de funil: contagem por funil (mesmo recorte de funnelLeads) ──
   const funnelCounts = useMemo(() => {
@@ -367,11 +441,12 @@ const handleKanbanMouseMove = (e) => {
         { text: `Movido para a etapa [${newStatus}] via Kanban.`, type: 'status_change' },
         withBucket(leadPatch, lead)
       );
+      if (lead.status === 'Perda') refreshLost(); // saiu da Perda: refaz query+contagem
     } catch (err) {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
     }
-  }, [db, appUser, selectedFunnelId, toast]);
+  }, [db, appUser, selectedFunnelId, toast, refreshLost]);
 
   // A Venda no Kanban agora abre o MatriculaModal (plano/valor/vigência) em vez
   // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
@@ -452,6 +527,7 @@ if (!lead) return;
       );
 
       setLossModalLeadId(null);
+      refreshLost(); // query da coluna Perda não é ao vivo — refaz fetch+contagem
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível registrar a perda. Tente novamente.');
@@ -700,7 +776,7 @@ if (!lead) return;
               color="green"
               special="win"
               columnLeads={getLeadsByStatus('Venda')}
-              renderLimit={50}
+              renderLimit={LIST_PAGE_SIZE}
               isHovered={draggedOverColumn === 'Venda'}
               draggingLeadId={draggingLeadId}
               interactionIndex={interactionIndex}
@@ -718,8 +794,12 @@ if (!lead) return;
               name="Perda"
               color="gray"
               special="loss"
-              columnLeads={getLeadsByStatus('Perda')}
-              renderLimit={50}
+              columnLeads={lostLeads}
+              renderLimit={0}
+              totalCount={perdaHeaderCount}
+              hasMore={lostHasMore}
+              onLoadMore={lostLoadMore}
+              loadingMore={lostLoading}
               isHovered={draggedOverColumn === 'Perda'}
               draggingLeadId={draggingLeadId}
               interactionIndex={interactionIndex}
@@ -749,7 +829,14 @@ if (!lead) return;
           appUser={appUser}
           db={db}
           onClose={() => setMatriculaLead(null)}
-          onDone={() => setMatriculaLead(null)}
+          onDone={() => {
+            // Matricular um lead que estava na Perda tira ele do bucket 'perda':
+            // como a coluna Perda não é ao vivo, refaz a query+contagem senão
+            // fica card fantasma / total inflado. Só quando veio da Perda.
+            const wasPerda = matriculaLead?.status === 'Perda';
+            setMatriculaLead(null);
+            if (wasPerda) refreshLost();
+          }}
         />
       )}
 

@@ -2,6 +2,9 @@ import { useMemo, useState, useEffect, useRef } from 'react';
 import { GraduationCap, Layers, Phone, SlidersHorizontal, Check, X } from 'lucide-react';
 import { isClientLead, isAdminUser } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
+import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { clientsAllQuerySpec } from '../lib/leadQueries.js';
+import { LEADS_PATH } from '../lib/firebase.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { cn } from '@/lib/utils';
@@ -63,7 +66,7 @@ function ContractRingAvatar({ name, status }) {
   );
 }
 
-function ClientsView({ leads, appUser, usersList }) {
+function ClientsView({ appUser, usersList, db }) {
   const { contractThresholdDays } = useGeneralConfig();
   const { openProfile } = useLeadProfile();
   const isAdmin = isAdminUser(appUser);
@@ -90,11 +93,22 @@ function ClientsView({ leads, appUser, usersList }) {
     };
   }, [filterOpen]);
 
-  // Clientes = matriculados. Opção 1: leads 'Venda' legados também entram
-  // (aparecem como "Sem contrato"). A timeline é preservada (mesmo doc).
+  // Fonte dos clientes (E1b): query própria em vez do prop global de leads.
+  // clientsAllQuerySpec traz TODOS os leads com lifecycleBucket=='cliente' de
+  // uma vez (getDocs, SEM orderBy — ver leadQueries). Não é ao vivo: ao trocar
+  // de aba a tela remonta e refaz o fetch. Paginação real fica pro H.
+  const spec = useMemo(() => clientsAllQuerySpec(), []);
+  const { items: clientDocs, loading: clientsLoading } = usePagedLeads({
+    db, path: LEADS_PATH, spec, specKey: 'clientes-all', enabled: !!db,
+  });
+  // Clientes = matriculados. Leads 'Venda' legados também entram (aparecem como
+  // "Sem contrato"); a timeline é preservada (mesmo doc). Rede de segurança
+  // (D4): lifecycleBucket=='cliente' é, por construção, exatamente isClientLead
+  // (ver deriveLeadBucket) — refiltra client-side pra casar a semântica da aba
+  // mesmo se algum doc vier com bucket divergente. Refiltro sai na PR G.
   const clientes = useMemo(
-    () => (leads || []).filter(l => isClientLead(l)),
-    [leads]
+    () => (clientDocs || []).filter(l => isClientLead(l)),
+    [clientDocs]
   );
 
   // Planos distintos presentes nos clientes (para o filtro de plano).
@@ -298,7 +312,12 @@ function ClientsView({ leads, appUser, usersList }) {
             <span>Cliente</span><span>Plano</span><span className="text-right">Valor</span><span className="text-right">Vencimento</span>
           </div>
 
-          {filtered.length === 0 ? (
+          {clientsLoading && clientes.length === 0 ? (
+            <div className="py-16 text-center grid place-items-center gap-2">
+              <GraduationCap className="size-[22px] opacity-40 text-slate-400 animate-pulse" />
+              <p className="text-[13px] text-slate-400 dark:text-neutral-500">Carregando clientes…</p>
+            </div>
+          ) : filtered.length === 0 ? (
             <div className="py-16 text-center grid place-items-center gap-2">
               <GraduationCap className="size-[22px] opacity-40 text-slate-400" />
               <p className="text-[14px] font-semibold text-gray-700 dark:text-neutral-200">Nenhum cliente encontrado</p>

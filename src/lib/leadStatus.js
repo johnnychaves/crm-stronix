@@ -1,13 +1,15 @@
 import { getLeadAppointmentType, getLeadAppointmentDate } from './leads.js';
+import { getSafeDateOrNull } from './dates.js';
 
 // --- HELPERS DE TEMPERATURA DO LEAD ---
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 
-// Tamanho de página das listas longas (Leads, Agendamentos): renderiza só os
-// primeiros N e revela mais sob demanda — evita pintar centenas de linhas no
-// DOM de uma vez.
-const LIST_PAGE_SIZE = 50;
+// Tamanho de página PADRÃO de todas as listas longas (Leads, Agendamentos,
+// Clientes) e default dos specs de query paginada (coluna Perda etc.): renderiza
+// só os primeiros N e revela mais sob demanda — evita pintar centenas de linhas
+// no DOM de uma vez.
+const LIST_PAGE_SIZE = 30;
 
 // Normaliza a lista de opções de quantidade de aulas experimentais:
 // inteiros positivos, sem repetição, ordenados. Aceita também um número
@@ -67,6 +69,24 @@ const buildInteractionIndex = (interactions) => {
   return idx;
 };
 
+// Fonte da última interação do lead para os badges de temperatura (E1a).
+// Usa o MÁXIMO entre o campo denormalizado lead.lastInteractionAt e o índice em
+// memória. O denorm (backfill da PR D + dual-write de logInteraction) NÃO é
+// atualizado por writeAppointmentOutcome (marcar presença em Aulas/Visitas/Meta
+// cria interação daily_goal_done mas não toca lastInteractionAt), então enquanto
+// a assinatura global existir o índice ao vivo pode estar mais fresco — pegar o
+// maior evita que um denorm defasado rebaixe o índice e mude a temperatura vs o
+// comportamento anterior. Na PR G (sem índice) sobra só o denorm. getSafeDateOrNull
+// cobre Timestamp/Date/ausente; o índice pode ter Invalid Date (caso conhecido),
+// então só entra na comparação se for Date válida. `index` = Map opcional.
+const lastInteractionDateOf = (lead, index = null) => {
+  const denorm = getSafeDateOrNull(lead?.lastInteractionAt);
+  const fromIndex = index?.get(lead?.id)?.lastDate || null;
+  const indexValid = fromIndex instanceof Date && !isNaN(fromIndex.getTime());
+  if (denorm && indexValid) return fromIndex > denorm ? fromIndex : denorm;
+  return denorm || fromIndex || null;
+};
+
 const isLeadActive = (lead) => {
   return lead && lead.status !== 'Venda' && lead.status !== 'Perda';
 };
@@ -115,4 +135,4 @@ const isColdLeadFromDate = (lead, lastInteractionDate) => {
   const days = getDaysSinceFromDate(lead, lastInteractionDate);
   return days !== null && days >= 7;
 };
-export { HOUR_MS, DAY_MS, LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget, buildInteractionIndex, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate };
+export { HOUR_MS, DAY_MS, LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget, buildInteractionIndex, lastInteractionDateOf, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate };
