@@ -5,7 +5,8 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
-import { getLeadOwnershipFields, findLeadByPhoneDigits } from '../lib/leads.js';
+import { getLeadOwnershipFields } from '../lib/leads.js';
+import { useDuplicateLead, findDuplicateLeadRemote } from '../hooks/useDuplicateLead.js';
 import { logInteraction } from '../lib/interactions.js';
 import { buildLeadSearchFields, deriveLeadBucket } from '../lib/leadDerived.js';
 import { fromDateInputValue } from '../lib/dates.js';
@@ -303,7 +304,7 @@ function PreviewCard({ form, statusObj, sources, tags }) {
 }
 
 // ==========================================================================
-function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId, leads, onCreated, dores = [] }) {
+function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, selectedFunnelId, onCreated, dores = [] }) {
   const toast = useToast();
   const { modalities = [] } = useGeneralConfig();
   const [loading, setLoading] = useState(false);
@@ -348,9 +349,9 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
 
   const phoneDigits = onlyDigits(form.whatsapp);
   const phoneTooShort = phoneDigits.length > 0 && phoneDigits.length < 10;
-  const duplicate = phoneDigits.length >= 10
-    ? findLeadByPhoneDigits(leads, phoneDigits)
-    : null;
+  // Dup-check remoto (G1-flip / PR F): query em whatsappDigits, cobre todos os
+  // buckets (cliente/perda também) em vez de varrer o prop global 'ativo'.
+  const { duplicate } = useDuplicateLead({ db, phoneDigits });
   const nameOk = form.name.trim().length > 1;
   const dorOk = form.dor.trim().length > 0;
   const canSubmit = nameOk && phoneDigits.length >= 10 && !duplicate && !!form.funnelId && dorOk;
@@ -375,7 +376,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
       toast.warning('Selecione um funil para o lead. Crie um em Configurações → Funil Pipeline se não houver opções.');
       return;
     }
-    const dup = findLeadByPhoneDigits(leads, phoneDigits);
+    const dup = await findDuplicateLeadRemote({ db, phoneDigits });
     if (dup) {
       const ownerLabel = dup.consultantName ? ` (consultor: ${dup.consultantName})` : '';
       const statusLabel = dup.status ? ` · etapa "${dup.status}"` : '';

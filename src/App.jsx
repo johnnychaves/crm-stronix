@@ -55,6 +55,7 @@ import { usePagedLeads } from './hooks/usePagedLeads.js';
 import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
+import { useProfileLead } from './hooks/useProfileLead.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
@@ -532,10 +533,15 @@ useEffect(() => {
   const interactionsRef = collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH);
   const usersRef = collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH);
 
-  // Base COMPARTILHADA: todos os consultores carregam todos os leads/interações da
-  // academia (o DONO fica em consultantAuthUid p/ atribuição/ranking/meta). As telas
-  // pessoais (Dashboard/Meta Diária) filtram pelo dono na própria tela.
-  const leadsSource = leadsRef;
+  // FLIP (G1-flip): a assinatura ao vivo carrega SÓ os leads ATIVOS (pipeline
+  // vivo). É onde a leitura cai — clientes e perdas não entram mais na coleção
+  // inteira em memória. Os consumidores que precisam de não-ativos já têm fonte
+  // própria: aba Clientes (E1b), coluna Perda do Kanban (E1c), LeadsView (G1a),
+  // Busca (G1b), dashboards admin (G1c), Meta (G1d, via renewalClients), ficha
+  // (useProfileLead por id) e dup-check (query remota). O dono fica em
+  // consultantAuthUid p/ atribuição/ranking; telas pessoais filtram pelo dono.
+  // interactionsSource segue na coleção inteira até o G2.
+  const leadsSource = query(leadsRef, where('lifecycleBucket', '==', 'ativo'));
   const interactionsSource = interactionsRef;
 
   const unsubLeads = onSnapshot(leadsSource, (snapshot) => {
@@ -926,9 +932,11 @@ useEffect(() => {
   }, []);
   const closeProfile = useCallback(() => { setProfileLeadId(null); }, []);
   const leadProfileValue = useMemo(() => ({ openProfile }), [openProfile]);
-  // Lead/cliente em foco na ficha-página (derivado de `leads` p/ refletir o
-  // onSnapshot ao vivo). null = nenhuma ficha aberta (mostra a aba ativa).
-  const profileLead = profileLeadId ? (leads || []).find(l => l.id === profileLeadId) || null : null;
+  // Lead/cliente em foco na ficha-página (G1-flip): assina o DOC ÚNICO por id
+  // (useProfileLead, onSnapshot ao vivo) em vez de achar no prop global — assim a
+  // ficha de cliente/perda abre mesmo com o prop reduzido a 'ativo' no flip.
+  // profileLoading cobre o instante da 1ª leitura (evita piscar a aba por baixo).
+  const { lead: profileLead, loading: profileLoading } = useProfileLead({ db, leadId: profileLeadId });
   // Abre Configurações já numa aba específica (sidebar e link "Regras gerais" do Perfil).
   const openSettingsTab = (tab) => { setSettingsTab(tab); changeTab('settings'); };
 
@@ -945,22 +953,31 @@ useEffect(() => {
     return () => clearTimeout(t);
   }, [dayKey]);
 
+  // Clientes com contrato "a vencer" por query (E2c) — fonte da categoria
+  // Renovação da Meta e do badge âmbar de Clientes. Definido AQUI (antes da Meta)
+  // porque dailyGoalPending, metaLeads e clientsAVencer dependem dele. dayKey
+  // força o refetch na virada do dia.
+  const { clients: renewalClients } = useRenewalClients({ db, contractThresholdDays, reloadKey: dayKey });
+  // Base da META (G1d): ativo (prop) ∪ clientes a vencer (renewalClients), dedupe
+  // por id (global primeiro). PRÉ-flip o prop já contém os clientes → no-op →
+  // números idênticos; PÓS-flip o prop vira só 'ativo' e os renewalClients repõem
+  // os a-vencer. Alimenta a Meta pessoal (DailyGoalView), a badge de pendências
+  // (dailyGoalPending) e a Meta da equipe (useTeamGoals via gerencialLeads).
+  const metaLeads = useMemo(() => {
+    const byId = new Map();
+    (leads || []).forEach((l) => byId.set(l.id, l));
+    (renewalClients || []).forEach((c) => { if (!byId.has(c.id)) byId.set(c.id, c); });
+    return Array.from(byId.values());
+  }, [leads, renewalClients]);
+
   // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
   const dailyGoalPending = useMemo(() => {
     if (!appUser?.id) return 0;
     void dayKey; // recalcula na virada do dia
-    const slots = computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, contractThresholdDays);
+    const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, contractThresholdDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
     return totalSlots - doneSlots;
-  }, [leads, interactions, appUser, dayKey, contractThresholdDays]);
-
-  // Clientes com contrato "a vencer" no escopo do usuário (admin vê todos;
-  // consultor vê os seus) — badge âmbar no item Clientes da sidebar.
-  // Fonte (E2c): query própria (índice #4) via useRenewalClients em vez de
-  // varrer o prop global. renewalClients já vêm filtrados como A_VENCER; aqui
-  // só escopa por consultor e mantém o filtro lifecycleStage==='cliente' pra
-  // casar exatamente o badge anterior. dayKey força o refetch na virada do dia.
-  const { clients: renewalClients } = useRenewalClients({ db, contractThresholdDays, reloadKey: dayKey });
+  }, [metaLeads, interactions, appUser, dayKey, contractThresholdDays]);
 
   // Dashboard Gerencial do CONSULTOR (E2a): busca os PRÓPRIOS leads por query
   // (where consultantId==id, sem orderBy → índice automático, sem armadilha de
@@ -978,23 +995,8 @@ useEffect(() => {
     mapDoc: normalizeLeadDoc,
     enabled: !!db && !dashIsAdmin && !!appUser?.id,
   });
-  // Base da META DIÁRIA (G1d): ativo + clientes a vencer. As 5 categorias de
-  // prospecção da Meta são de leads ATIVOS (guard status!=Venda/Perda); a 6ª
-  // (Renovação) é cliente A_VENCER — exatamente o que renewalClients traz. Une o
-  // prop global aos renewalClients (dedupe por id, global primeiro): PRÉ-flip o
-  // prop já contém os clientes → dedupe é no-op → números idênticos; PÓS-flip o
-  // prop vira só 'ativo' e os renewalClients repõem os a-vencer. Flip-safe e sem
-  // mudar comportamento. Alimenta a Meta pessoal (DailyGoalView) e a da equipe
-  // (useTeamGoals no Gerencial admin). O board do Operacional admin segue no prop
-  // global (é ativo por construção — cavalga a fatia 'ativo' no flip).
-  const metaLeads = useMemo(() => {
-    const byId = new Map();
-    (leads || []).forEach((l) => byId.set(l.id, l));
-    (renewalClients || []).forEach((c) => { if (!byId.has(c.id)) byId.set(c.id, c); });
-    return Array.from(byId.values());
-  }, [leads, renewalClients]);
-  // Gerencial admin usa metaLeads só p/ o useTeamGoals (Meta da equipe); as
-  // métricas de PERÍODO do admin já vêm da união de janelas (G1c) dentro da view.
+  // Gerencial admin usa metaLeads (definido acima) só p/ o useTeamGoals (Meta da
+  // equipe); as métricas de PERÍODO do admin vêm da união de janelas (G1c) na view.
   const gerencialLeads = dashIsAdmin ? metaLeads : consultantLeads;
   const clientsAVencer = useMemo(() => {
     if (!appUser) return 0;
@@ -1245,6 +1247,8 @@ useEffect(() => {
                   db={db}
                   funnels={funnels}
                 />
+              ) : (profileLeadId && profileLoading) ? (
+                <div className="grid place-items-center h-full py-24 text-[13px] text-slate-400 dark:text-neutral-500 animate-pulse">Carregando ficha…</div>
               ) : (<>
               {/* Operacional CONSULTOR: PRÓPRIOS leads por query (E2a consultantLeads,
                   where consultantId== — mesmo conjunto do filtro antigo, já normalizado)
@@ -1286,7 +1290,6 @@ useEffect(() => {
           db={db}
           funnels={funnels}
           selectedFunnelId={selectedFunnelId}
-          leads={leads}
           onCreated={(newLeadId) => setJustCreatedLeadId(newLeadId)}
         />
       )}
