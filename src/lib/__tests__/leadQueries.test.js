@@ -4,6 +4,7 @@ import {
   LIFECYCLE_BUCKETS,
   clientsQuerySpec,
   clientsAllQuerySpec,
+  allLeadsQuerySpec,
   lostByFunnelQuerySpec,
   bucketByFunnelQuerySpec,
   bucketByFunnelCountSpec,
@@ -56,6 +57,14 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     });
     expect(clientsAllQuerySpec().orderBy).toBeUndefined();
     expect(clientsAllQuerySpec().limit).toBeUndefined();
+  });
+
+  it('allLeadsQuerySpec: TODOS os leads, sem where/orderBy/limit (G1a — todos os buckets)', () => {
+    // Sem where (a tela mostra todos os status, inclui Venda/Perda) e sem
+    // orderBy (derrubaria legados sem o campo) — filtra/ordena/pagina client-side.
+    expect(allLeadsQuerySpec()).toEqual({ wheres: [] });
+    expect(allLeadsQuerySpec().orderBy).toBeUndefined();
+    expect(allLeadsQuerySpec().limit).toBeUndefined();
   });
 
   it('lostByFunnelQuerySpec: perdas do funil por lostAt desc', () => {
@@ -136,6 +145,11 @@ describe('leadQueries — toda spec é coberta por um índice de firestore.index
     // Uma igualdade num só campo roda com o índice automático do Firestore; o
     // prefixo do #3 também cobre. Ou seja: sem "requires an index" em prod.
     expect(coveredByLeadsIndex(clientsAllQuerySpec())).toBe(true);
+  });
+  it('allLeadsQuerySpec (sem constraint) é sempre runnable — não exige índice', () => {
+    // Coleção inteira sem where/orderBy roda sempre; o helper trata wheres:[] como
+    // prefixo vazio (casa qualquer índice), refletindo que nenhum índice é exigido.
+    expect(coveredByLeadsIndex(allLeadsQuerySpec())).toBe(true);
   });
   it('lostByFunnelQuerySpec ↔ índice #1', () => {
     expect(coveredByLeadsIndex(lostByFunnelQuerySpec('f1'))).toBe(true);

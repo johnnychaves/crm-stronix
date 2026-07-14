@@ -32,6 +32,17 @@ export const clientsAllQuerySpec = () => ({
   wheres: [{ field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE }],
 });
 
+// LeadsView "Todos os leads" (G1a) — TODOS os leads de TODOS os buckets de uma
+// vez. SEM where e SEM orderBy DE PROPÓSITO: a tela mostra todos os status
+// (inclui Venda/Perda), então um where cortaria buckets que ela exibe; e um
+// orderBy derrubaria legados sem o campo (Firestore filtra por existência).
+// A tela filtra/ordena/pagina client-side EXATAMENTE como hoje — só troca a
+// fonte (query própria em vez do prop global). Coleção inteira sem constraint é
+// sempre runnable (não exige índice composto). A leitura desta tela só cai com a
+// paginação real (server-side), que fica pro H; aqui getDocs carrega tudo uma
+// vez, ON-DEMAND (ao abrir a aba), já melhor que a assinatura global ao vivo.
+export const allLeadsQuerySpec = () => ({ wheres: [] });
+
 // Clientes "a vencer" (E2c) — clientes cujo contrato vence numa JANELA de datas,
 // pro badge clientsAVencer. Casa com o índice #4 (lifecycleBucket ASC,
 // currentContractEndsAt ASC): igualdade no balde + range/orderBy no vencimento.

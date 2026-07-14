@@ -1,7 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { AlertCircle, Calendar, Check, Download, Phone, SlidersHorizontal, Users, X } from 'lucide-react';
-import { isAdminUser } from '../lib/leads.js';
+import { isAdminUser, normalizeLeadDoc } from '../lib/leads.js';
 import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isHotLeadFromDate } from '../lib/leadStatus.js';
+import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { allLeadsQuerySpec } from '../lib/leadQueries.js';
+import { LEADS_PATH } from '../lib/firebase.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { getKanbanColumnAccent } from '../lib/kanban.js';
 import { cn } from '@/lib/utils';
@@ -19,10 +22,21 @@ const statusColorOf = (name, statuses) =>
     : name === 'Perda' ? 'gray'
       : (statuses || []).find(s => s.name === name)?.color || 'gray';
 
-function LeadsView({ leads, interactions, appUser, statuses, usersList, funnels, selectedFunnelId, setSelectedFunnelId }) {
+function LeadsView({ interactions, appUser, statuses, usersList, funnels, selectedFunnelId, setSelectedFunnelId, db }) {
   const toast = useToast();
   const { openProfile } = useLeadProfile();
   const isAdmin = isAdminUser(appUser);
+
+  // Fonte dos leads (G1a): query própria em vez do prop global. allLeadsQuerySpec
+  // traz TODOS os leads de TODOS os buckets (Venda/Perda inclusive) de uma vez;
+  // a tela segue filtrando/ordenando/paginando client-side EXATAMENTE como antes
+  // — só muda a fonte. getDocs (não ao vivo): ao trocar de aba, remonta e refaz o
+  // fetch. mapDoc = normalizeLeadDoc pro shape bater com o que o App entregava
+  // (mesma normalização de App.jsx). Paginação real (server-side) fica pro H.
+  const leadsSpec = useMemo(() => allLeadsQuerySpec(), []);
+  const { items: leads, loading: leadsLoading } = usePagedLeads({
+    db, path: LEADS_PATH, spec: leadsSpec, specKey: 'leads-all', mapDoc: normalizeLeadDoc, enabled: !!db,
+  });
 
   const [filterOpen, setFilterOpen] = useState(false);
   const [statusFilters, setStatusFilters] = useState([]);
@@ -301,7 +315,12 @@ function LeadsView({ leads, interactions, appUser, statuses, usersList, funnels,
             <span>Lead</span><span>Status no funil</span><span>Ação agendada</span><span className="text-right">Cadastro</span>
           </div>
 
-          {filteredLeads.length === 0 ? (
+          {leadsLoading && (leads || []).length === 0 ? (
+            <div className="py-16 text-center grid place-items-center gap-2">
+              <Users className="size-[22px] opacity-40 text-slate-400 animate-pulse" />
+              <p className="text-[13px] text-slate-400 dark:text-neutral-500">Carregando leads…</p>
+            </div>
+          ) : filteredLeads.length === 0 ? (
             <div className="py-16 text-center grid place-items-center gap-2">
               <Users className="size-[22px] opacity-40 text-slate-400" />
               <p className="text-[14px] font-semibold text-gray-700 dark:text-neutral-200">Nenhum lead encontrado</p>
