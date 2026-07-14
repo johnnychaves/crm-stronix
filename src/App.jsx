@@ -978,7 +978,24 @@ useEffect(() => {
     mapDoc: normalizeLeadDoc,
     enabled: !!db && !dashIsAdmin && !!appUser?.id,
   });
-  const gerencialLeads = dashIsAdmin ? leads : consultantLeads;
+  // Base da META DIÁRIA (G1d): ativo + clientes a vencer. As 5 categorias de
+  // prospecção da Meta são de leads ATIVOS (guard status!=Venda/Perda); a 6ª
+  // (Renovação) é cliente A_VENCER — exatamente o que renewalClients traz. Une o
+  // prop global aos renewalClients (dedupe por id, global primeiro): PRÉ-flip o
+  // prop já contém os clientes → dedupe é no-op → números idênticos; PÓS-flip o
+  // prop vira só 'ativo' e os renewalClients repõem os a-vencer. Flip-safe e sem
+  // mudar comportamento. Alimenta a Meta pessoal (DailyGoalView) e a da equipe
+  // (useTeamGoals no Gerencial admin). O board do Operacional admin segue no prop
+  // global (é ativo por construção — cavalga a fatia 'ativo' no flip).
+  const metaLeads = useMemo(() => {
+    const byId = new Map();
+    (leads || []).forEach((l) => byId.set(l.id, l));
+    (renewalClients || []).forEach((c) => { if (!byId.has(c.id)) byId.set(c.id, c); });
+    return Array.from(byId.values());
+  }, [leads, renewalClients]);
+  // Gerencial admin usa metaLeads só p/ o useTeamGoals (Meta da equipe); as
+  // métricas de PERÍODO do admin já vêm da união de janelas (G1c) dentro da view.
+  const gerencialLeads = dashIsAdmin ? metaLeads : consultantLeads;
   const clientsAVencer = useMemo(() => {
     if (!appUser) return 0;
     const scope = isAdminUser(appUser) ? renewalClients : renewalClients.filter(l => l.consultantId === appUser.id);
@@ -1238,7 +1255,10 @@ useEffect(() => {
               {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={gerencialLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
-              {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
+              {/* Meta Diária (G1d): base = ativo ∪ clientes a vencer (metaLeads),
+                  flip-safe. computeDailyGoalSlots filtra por consultor e categoria
+                  internamente. interactions segue global (G2). */}
+              {activeTab === 'dailyGoal' && <DailyGoalView leads={metaLeads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
               {activeTab === 'leads' && <LeadsView interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {activeTab === 'aulas' && <AppointmentTrackingView interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
