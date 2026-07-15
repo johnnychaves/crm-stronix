@@ -10,10 +10,11 @@
 // (o autor não importa), então cai na Meta do DONO do lead automaticamente.
 //
 // Flags:
-//   consumeAppointment — em attended/cancelled, zera o agendamento (o lead sai
-//     de "hoje"/"atrasado"). Ligado no fluxo completo da Meta; DESLIGADO no
-//     atalho das Aulas, que é um marcador reversível (a linha continua na lista
-//     e dá pra corrigir).
+//   consumeAppointment — tira o lead de "Atrasado"/"Contato Hoje" limpando o
+//     nextFollowUp. Comparecimento PRESERVA appointmentScheduledFor+appointmentType
+//     (a pessoa nunca some da tela Visitas/Aulas — o desfecho reflete lá e na
+//     Meta); só o cancelamento zera o agendamento de vez. Ligado no fluxo da
+//     Meta; DESLIGADO no atalho das Aulas, marcador reversível puro.
 //   promote — em comparecimento de visita/aula, empurra o lead para a etapa
 //     "Negociação" do funil. Ligado na Meta; desligado no atalho leve.
 //   writeGoalDone — grava a interaction daily_goal_done (crédito da Meta).
@@ -80,10 +81,16 @@ export async function writeAppointmentOutcome({
     appointmentOutcomeBy: appUser.authUid || appUser.id || null
   };
   if (shouldPromote) leadUpdate.status = negStatus.name;
+  // Comparecimento PRESERVA o agendamento (appointmentScheduledFor+appointmentType)
+  // para a pessoa NUNCA sumir da tela Visitas/Aulas e o desfecho refletir lá e na
+  // Meta (regra do Johnny). Limpa só o nextFollowUp — o que já tira de "Atrasado"/
+  // "Contato Hoje". Cancelamento remove o compromisso de vez.
   if (consumeAppointment && (outcome === 'attended' || outcome === 'cancelled')) {
-    leadUpdate.appointmentScheduledFor = null;
-    leadUpdate.appointmentType = null;
     leadUpdate.nextFollowUp = null;
+    if (outcome === 'cancelled') {
+      leadUpdate.appointmentScheduledFor = null;
+      leadUpdate.appointmentType = null;
+    }
   }
   await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), leadUpdate);
 

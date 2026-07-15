@@ -1120,13 +1120,16 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
       if (shouldPromoteToNegociacao) {
         leadUpdate.status = negStatus.name; // 'Negociação'
       }
-      // Compareceu/Cancelou consomem o agendamento → limpar a data para o lead
-      // não cair em "Atrasado" no dia seguinte. ("Não veio" segue para
-      // remarcação, que define uma nova data.)
+      // Comparecimento PRESERVA o agendamento (appointmentScheduledFor+
+      // appointmentType) → a pessoa nunca some da tela Visitas/Aulas e o desfecho
+      // reflete lá e na Meta. Limpa só o nextFollowUp (tira de "Atrasado" no dia
+      // seguinte). Cancelou remove o compromisso; "Não veio" segue p/ remarcação.
       if (outcome === 'attended' || outcome === 'cancelled') {
-        leadUpdate.appointmentScheduledFor = null;
-        leadUpdate.appointmentType = null;
         leadUpdate.nextFollowUp = null;
+        if (outcome === 'cancelled') {
+          leadUpdate.appointmentScheduledFor = null;
+          leadUpdate.appointmentType = null;
+        }
       }
       // Marca a tarefa da Meta como concluída para essa categoria
       // específica. Type='daily_goal_done' é a fonte ÚNICA de verdade
