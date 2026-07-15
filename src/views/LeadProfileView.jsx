@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { collection, doc, deleteDoc, getDocs, writeBatch, query, where, serverTimestamp, increment } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH } from '../lib/firebase.js';
 import { logInteraction } from '../lib/interactions.js';
+import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { isAdminUser, canEditLead, getInteractionSecurityFields, isLeadConverted, isConvertedStatusName } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
@@ -63,7 +64,11 @@ function TabCount({ n, active }) {
   );
 }
 
-function LeadProfileView({ lead, interactions, onBack, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
+function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
+  // Timeline por query própria (G2): histórico COMPLETO do lead (índice #10),
+  // ao vivo. Antes vinha do prop global filtrado por leadId — que pós-G2 é só o
+  // mês corrente. A ficha remonta por lead (key), então o hook não reseta.
+  const interactions = useLeadTimeline({ db, leadId: lead?.id });
   const toast = useToast();
   const isReadOnly = !canEditLead(appUser, lead);
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever

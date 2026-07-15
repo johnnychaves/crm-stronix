@@ -4,12 +4,15 @@ import {
   LIFECYCLE_BUCKETS,
   clientsQuerySpec,
   clientsAllQuerySpec,
+  allLeadsQuerySpec,
   lostByFunnelQuerySpec,
   bucketByFunnelQuerySpec,
   bucketByFunnelCountSpec,
   appointmentsInWindowQuerySpec,
   renewalClientsQuerySpec,
   consultantLeadsQuerySpec,
+  adminDashboardWindowSpecs,
+  ADMIN_DASHBOARD_WINDOW_FIELDS,
 } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
@@ -56,6 +59,14 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     });
     expect(clientsAllQuerySpec().orderBy).toBeUndefined();
     expect(clientsAllQuerySpec().limit).toBeUndefined();
+  });
+
+  it('allLeadsQuerySpec: TODOS os leads, sem where/orderBy/limit (G1a — todos os buckets)', () => {
+    // Sem where (a tela mostra todos os status, inclui Venda/Perda) e sem
+    // orderBy (derrubaria legados sem o campo) — filtra/ordena/pagina client-side.
+    expect(allLeadsQuerySpec()).toEqual({ wheres: [] });
+    expect(allLeadsQuerySpec().orderBy).toBeUndefined();
+    expect(allLeadsQuerySpec().limit).toBeUndefined();
   });
 
   it('lostByFunnelQuerySpec: perdas do funil por lostAt desc', () => {
@@ -122,6 +133,29 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
     expect(consultantLeadsQuerySpec('u1').limit).toBeUndefined();
   });
 
+  it('adminDashboardWindowSpecs: 4 janelas de campo único [>=start,<=end] orderBy asc (G1c)', () => {
+    const start = new Date(2026, 5, 1).getTime();
+    const end = new Date(2026, 6, 31, 23, 59, 59, 999).getTime();
+    const specs = adminDashboardWindowSpecs(start, end);
+    // ordem/campos fixos (createdAt, convertedAt, appointmentScheduledFor, lostAt)
+    expect(ADMIN_DASHBOARD_WINDOW_FIELDS).toEqual([
+      'createdAt', 'convertedAt', 'appointmentScheduledFor', 'lostAt',
+    ]);
+    expect(specs).toHaveLength(4);
+    expect(specs.map((s) => s.orderBy.field)).toEqual(ADMIN_DASHBOARD_WINDOW_FIELDS);
+    specs.forEach((s) => {
+      const field = s.orderBy.field;
+      expect(s.wheres).toEqual([
+        { field, op: '>=', value: new Date(start) },
+        { field, op: '<=', value: new Date(end) },
+      ]);
+      expect(s.orderBy.dir).toBe('asc');
+      // range/orderBy no MESMO campo, SEM igualdade → índice de campo único
+      // AUTOMÁTICO do Firestore, sem índice composto (não passa por indexCovers).
+      expect(s.wheres.every((w) => w.op !== '==')).toBe(true);
+    });
+  });
+
   it('usa LIST_PAGE_SIZE (30) como default de paginação', () => {
     expect(clientsQuerySpec().limit).toBe(30);
     expect(lostByFunnelQuerySpec('f1').limit).toBe(30);
@@ -136,6 +170,11 @@ describe('leadQueries — toda spec é coberta por um índice de firestore.index
     // Uma igualdade num só campo roda com o índice automático do Firestore; o
     // prefixo do #3 também cobre. Ou seja: sem "requires an index" em prod.
     expect(coveredByLeadsIndex(clientsAllQuerySpec())).toBe(true);
+  });
+  it('allLeadsQuerySpec (sem constraint) é sempre runnable — não exige índice', () => {
+    // Coleção inteira sem where/orderBy roda sempre; o helper trata wheres:[] como
+    // prefixo vazio (casa qualquer índice), refletindo que nenhum índice é exigido.
+    expect(coveredByLeadsIndex(allLeadsQuerySpec())).toBe(true);
   });
   it('lostByFunnelQuerySpec ↔ índice #1', () => {
     expect(coveredByLeadsIndex(lostByFunnelQuerySpec('f1'))).toBe(true);

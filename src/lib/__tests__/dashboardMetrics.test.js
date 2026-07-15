@@ -7,6 +7,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildPeriodRange,
   buildPreviousRange,
+  computeAdminDashboardSpan,
   computeCapturedLeads,
   computeScheduledLeads,
   computeConvertedLeads,
@@ -540,5 +541,50 @@ describe('helpers novos em leads.js', () => {
     expect(isLeadConverted(lead({ isConverted: true }))).toBe(true);
     expect(isLeadConverted(lead({ status: 'Matriculado' }))).toBe(true);
     expect(isLeadConverted(lead({ status: 'Novo' }))).toBe(false);
+  });
+});
+
+// Span da união de janelas do dashboard ADMIN (G1c): tem que ser um
+// SUPERCONJUNTO de todas as datas que as métricas de período leem (atual +
+// anterior + sparkline), senão a query admin subconta.
+describe('computeAdminDashboardSpan', () => {
+  it('null quando não há período (custom incompleto)', () => {
+    expect(computeAdminDashboardSpan(null, null)).toBeNull();
+  });
+
+  it('período ENCERRADO: começa no início do período anterior e vai até o fim do período', () => {
+    const now = new Date(2026, 6, 15); // 15 jul
+    const range = { start: new Date(2026, 4, 1), end: new Date(2026, 4, 31, 23, 59, 59, 999) }; // maio (passado)
+    const prev = { start: new Date(2026, 3, 1), end: new Date(2026, 3, 30, 23, 59, 59, 999), partial: false }; // abril
+    const span = computeAdminDashboardSpan(range, prev, now);
+    expect(span.startMs).toBe(prev.start.getTime());
+    expect(span.endMs).toBe(range.end.getTime());
+  });
+
+  it('período EM CURSO (hoje): estende pra trás pra cobrir os 14 dias do sparkline', () => {
+    const now = new Date(2026, 6, 15, 10, 0, 0);
+    const dayStart = new Date(2026, 6, 15); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(2026, 6, 15); dayEnd.setHours(23, 59, 59, 999);
+    const range = { start: dayStart, end: dayEnd };
+    const yStart = new Date(2026, 6, 14); yStart.setHours(0, 0, 0, 0);
+    const prev = { start: yStart, end: new Date(2026, 6, 14, 10, 0, 0), partial: true }; // ontem (pró-rata)
+    const span = computeAdminDashboardSpan(range, prev, now);
+    const sparkStart = new Date(now); sparkStart.setHours(0, 0, 0, 0); sparkStart.setDate(sparkStart.getDate() - 13);
+    // A janela do sparkline (hoje-13 = 2 jul) manda: começa antes do período anterior (ontem).
+    expect(span.startMs).toBe(sparkStart.getTime());
+    expect(span.startMs).toBeLessThan(prev.start.getTime());
+    expect(span.endMs).toBe(dayEnd.getTime());
+  });
+
+  it('mês EM CURSO: cobre tanto o mês anterior (deltas) quanto os 14 dias do sparkline', () => {
+    const now = new Date(2026, 6, 20, 9, 0, 0); // 20 jul
+    const range = { start: new Date(2026, 6, 1), end: new Date(2026, 6, 31, 23, 59, 59, 999) }; // julho corrente
+    const prev = { start: new Date(2026, 5, 1), end: new Date(2026, 5, 20, 9, 0, 0), partial: true }; // junho (pró-rata)
+    const span = computeAdminDashboardSpan(range, prev, now);
+    const sparkStart = new Date(now); sparkStart.setHours(0, 0, 0, 0); sparkStart.setDate(sparkStart.getDate() - 13); // 7 jul
+    // 1 jun < 7 jul → o menor início (mês anterior) manda; ambos ficam cobertos.
+    expect(span.startMs).toBe(prev.start.getTime());
+    expect(span.startMs).toBeLessThanOrEqual(sparkStart.getTime());
+    expect(span.endMs).toBe(range.end.getTime());
   });
 });

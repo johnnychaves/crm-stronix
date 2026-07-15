@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Search, X, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { searchPeople, onlyDigits } from '../../lib/globalSearch.js';
+import { useLeadSearch } from '../../hooks/useLeadSearch.js';
 import { deriveLeadState, getTone } from '../../lib/leadState.js';
 import { useLeadProfile } from '../../contexts/LeadProfileContext.jsx';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
@@ -39,7 +40,7 @@ function HighlightedName({ name, range }) {
 // Barra de busca global fixa no header. Acha leads e clientes por nome,
 // sobrenome, CPF ou telefone e abre a ficha. Desktop = barra inline; mobile =
 // lupa que expande uma barra sobre o header.
-export function GlobalSearch({ leads, onAddLead }) {
+export function GlobalSearch({ onAddLead, db }) {
   const { openProfile } = useLeadProfile();
   const { contractThresholdDays } = useGeneralConfig();
 
@@ -52,9 +53,13 @@ export function GlobalSearch({ leads, onAddLead }) {
   const deskInputRef = useRef(null);
   const mobInputRef = useRef(null);
 
+  // Fonte (G1b): candidatos por query própria (prefixo/token nos search fields)
+  // em vez do prop global. searchPeople roda sobre os candidatos e reproduz o
+  // MESMO ranking/tier/destaque de antes — o render abaixo não muda.
+  const { candidates, loading: searchLoading } = useLeadSearch({ db, query });
   const { results, total } = useMemo(
-    () => searchPeople(leads, query, { limit: 8 }),
-    [leads, query]
+    () => searchPeople(candidates, query, { limit: 8 }),
+    [candidates, query]
   );
 
   // Enriquece cada resultado com o estado (tom do anel + rótulo do chip).
@@ -156,7 +161,11 @@ export function GlobalSearch({ leads, onAddLead }) {
         <span>Nome, sobrenome, CPF ou telefone</span>
         {rows.length > 0 && <span className="tabular-nums shrink-0">{rows.length} de {total}</span>}
       </div>
-      {rows.length === 0 ? (
+      {searchLoading && rows.length === 0 ? (
+        <div className="px-3.5 py-6 text-center">
+          <p className="text-[13px] text-slate-500 dark:text-neutral-400">Buscando…</p>
+        </div>
+      ) : rows.length === 0 ? (
         <div className="px-3.5 py-6 text-center">
           <p className="text-[13px] text-slate-500 dark:text-neutral-400">Nenhum lead ou cliente encontrado</p>
           {onAddLead && (

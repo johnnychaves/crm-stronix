@@ -32,6 +32,17 @@ export const clientsAllQuerySpec = () => ({
   wheres: [{ field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE }],
 });
 
+// LeadsView "Todos os leads" (G1a) — TODOS os leads de TODOS os buckets de uma
+// vez. SEM where e SEM orderBy DE PROPÓSITO: a tela mostra todos os status
+// (inclui Venda/Perda), então um where cortaria buckets que ela exibe; e um
+// orderBy derrubaria legados sem o campo (Firestore filtra por existência).
+// A tela filtra/ordena/pagina client-side EXATAMENTE como hoje — só troca a
+// fonte (query própria em vez do prop global). Coleção inteira sem constraint é
+// sempre runnable (não exige índice composto). A leitura desta tela só cai com a
+// paginação real (server-side), que fica pro H; aqui getDocs carrega tudo uma
+// vez, ON-DEMAND (ao abrir a aba), já melhor que a assinatura global ao vivo.
+export const allLeadsQuerySpec = () => ({ wheres: [] });
+
 // Clientes "a vencer" (E2c) — clientes cujo contrato vence numa JANELA de datas,
 // pro badge clientsAVencer. Casa com o índice #4 (lifecycleBucket ASC,
 // currentContractEndsAt ASC): igualdade no balde + range/orderBy no vencimento.
@@ -61,6 +72,36 @@ export const renewalClientsQuerySpec = (startMs, endMs, pageSize = null) => ({
 export const consultantLeadsQuerySpec = (consultantId) => ({
   wheres: [{ field: 'consultantId', op: '==', value: consultantId }],
 });
+
+// Dashboards ADMIN (G1c) — o admin agrega TODOS os leads da academia (mais os
+// não-atribuídos) num PERÍODO, então não dá pra escopar por consultantId como o
+// E2a fez pro consultor. dashboardMetrics.js fatia os leads por QUATRO campos de
+// data diferentes dentro do período: createdAt (captação), convertedAt via
+// getLeadConversionDate (matrícula), appointmentScheduledFor (agendamento) e
+// lostAt (perda) — além do período ANTERIOR (deltas) e das sub-janelas do
+// sparkline. Uma única query de janela não cobre as quatro datas, então buscamos
+// a UNIÃO de quatro janelas de campo único abrangendo [startMs, endMs]
+// (superconjunto do período atual + anterior + sparkline; ver
+// computeAdminDashboardSpan em dashboardMetrics.js) e deduplicamos por id no hook.
+//
+// Cada janela é um range num só campo (>= start, <= end, orderBy nesse campo) →
+// usa o índice de campo único AUTOMÁTICO do Firestore (fieldOverrides vazio em
+// firestore.indexes.json), SEM índice composto novo nem publicação manual.
+//
+// Faithfulness: leads legados sem convertedAt/lostAt só entram pela janela de
+// createdAt (se criados no span) — exatamente o comportamento em memória de hoje
+// (getLeadConversionDate cai no createdAt; isWithinRange(undefined) é false).
+// start/end em ms viram Date pro Firestore comparar Timestamp.
+export const ADMIN_DASHBOARD_WINDOW_FIELDS = ['createdAt', 'convertedAt', 'appointmentScheduledFor', 'lostAt'];
+
+export const adminDashboardWindowSpecs = (startMs, endMs) =>
+  ADMIN_DASHBOARD_WINDOW_FIELDS.map((field) => ({
+    wheres: [
+      { field, op: '>=', value: new Date(startMs) },
+      { field, op: '<=', value: new Date(endMs) },
+    ],
+    orderBy: { field, dir: 'asc' },
+  }));
 
 // Coluna Perda do Kanban por funil — casa com o índice #1
 // (lifecycleBucket ASC, funnelId ASC, lostAt DESC).

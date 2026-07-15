@@ -118,6 +118,33 @@ export function buildPreviousRange(preset, range, now = new Date()) {
   return { start: prevStart, end: new Date(proRataEnd), partial: true };
 }
 
+// Span [startMs, endMs] que cobre TODAS as datas que as métricas de período
+// leem, para o dashboard ADMIN buscar a UNIÃO de janelas de campo
+// (leadQueries.adminDashboardWindowSpecs) em vez do prop global (G1c):
+//   • período ATUAL — captação/agendamento/matrícula/perda;
+//   • período ANTERIOR — deltas (buildPreviousRange começa no início do período
+//     anterior completo, mesmo em curso/pró-rata);
+//   • janela do SPARKLINE — período encerrado acompanha o próprio período; em
+//     curso são os últimos 14 dias até hoje (pode começar ANTES do período).
+// Pega o menor início entre esses três e o fim do período. Puro/testável;
+// retorna null se não há período (custom incompleto).
+export function computeAdminDashboardSpan(range, previousRange, now = new Date()) {
+  if (!range) return null;
+  const inProgress = range.end >= now;
+  let sparkStart;
+  if (inProgress) {
+    sparkStart = new Date(now);
+    sparkStart.setHours(0, 0, 0, 0);
+    sparkStart.setDate(sparkStart.getDate() - 13); // mesma janela de computeSparklines
+  } else {
+    sparkStart = range.start;
+  }
+  const starts = [range.start, sparkStart];
+  if (previousRange) starts.push(previousRange.start);
+  const startMs = Math.min(...starts.map((d) => d.getTime()));
+  return { startMs, endMs: range.end.getTime() };
+}
+
 // Inclusivo nas duas pontas; aceita Date, Timestamp do Firestore ou string.
 export function isWithinRange(dateLike, range) {
   const d = getSafeDateOrNull(dateLike);

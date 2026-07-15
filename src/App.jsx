@@ -55,6 +55,7 @@ import { usePagedLeads } from './hooks/usePagedLeads.js';
 import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
+import { useProfileLead } from './hooks/useProfileLead.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
@@ -532,11 +533,24 @@ useEffect(() => {
   const interactionsRef = collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH);
   const usersRef = collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH);
 
-  // Base COMPARTILHADA: todos os consultores carregam todos os leads/interações da
-  // academia (o DONO fica em consultantAuthUid p/ atribuição/ranking/meta). As telas
-  // pessoais (Dashboard/Meta Diária) filtram pelo dono na própria tela.
-  const leadsSource = leadsRef;
-  const interactionsSource = interactionsRef;
+  // FLIP (G1-flip): a assinatura ao vivo carrega SÓ os leads ATIVOS (pipeline
+  // vivo). É onde a leitura cai — clientes e perdas não entram mais na coleção
+  // inteira em memória. Os consumidores que precisam de não-ativos já têm fonte
+  // própria: aba Clientes (E1b), coluna Perda do Kanban (E1c), LeadsView (G1a),
+  // Busca (G1b), dashboards admin (G1c), Meta (G1d, via renewalClients), ficha
+  // (useProfileLead por id) e dup-check (query remota). O dono fica em
+  // consultantAuthUid p/ atribuição/ranking; telas pessoais filtram pelo dono.
+  const leadsSource = query(leadsRef, where('lifecycleBucket', '==', 'ativo'));
+  // G2: interações ao vivo só do MÊS CORRENTE pra cá (limite inferior em
+  // createdAt) — é onde a leitura de interações CAI (antes: coleção inteira, que
+  // cresce sem limite). É `>=` (não range): novas interações seguem aparecendo ao
+  // vivo e a janela se renova a cada abertura do app. Os consumidores precisam só
+  // do mês corrente (volume, feito-hoje, badge quente via denorm lead.lastInteractionAt);
+  // a timeline da ficha tem query própria (useLeadTimeline). Range de 1 campo →
+  // índice automático. O filtro por consultor segue client-side, como antes.
+  const _now = new Date();
+  const monthStart = new Date(_now.getFullYear(), _now.getMonth(), 1);
+  const interactionsSource = query(interactionsRef, where('createdAt', '>=', monthStart));
 
   const unsubLeads = onSnapshot(leadsSource, (snapshot) => {
     // Normalização única (normalizeLeadDoc em lib/leads) — a MESMA que a query
@@ -926,9 +940,11 @@ useEffect(() => {
   }, []);
   const closeProfile = useCallback(() => { setProfileLeadId(null); }, []);
   const leadProfileValue = useMemo(() => ({ openProfile }), [openProfile]);
-  // Lead/cliente em foco na ficha-página (derivado de `leads` p/ refletir o
-  // onSnapshot ao vivo). null = nenhuma ficha aberta (mostra a aba ativa).
-  const profileLead = profileLeadId ? (leads || []).find(l => l.id === profileLeadId) || null : null;
+  // Lead/cliente em foco na ficha-página (G1-flip): assina o DOC ÚNICO por id
+  // (useProfileLead, onSnapshot ao vivo) em vez de achar no prop global — assim a
+  // ficha de cliente/perda abre mesmo com o prop reduzido a 'ativo' no flip.
+  // profileLoading cobre o instante da 1ª leitura (evita piscar a aba por baixo).
+  const { lead: profileLead, loading: profileLoading } = useProfileLead({ db, leadId: profileLeadId });
   // Abre Configurações já numa aba específica (sidebar e link "Regras gerais" do Perfil).
   const openSettingsTab = (tab) => { setSettingsTab(tab); changeTab('settings'); };
 
@@ -945,22 +961,35 @@ useEffect(() => {
     return () => clearTimeout(t);
   }, [dayKey]);
 
+  // Clientes com contrato "a vencer" por query (E2c) — fonte da categoria
+  // Renovação da Meta e do badge âmbar de Clientes. Definido AQUI (antes da Meta)
+  // porque dailyGoalPending, metaLeads e clientsAVencer dependem dele. dayKey
+  // força o refetch na virada do dia.
+  // enabled só com appUser pronto: sem isso o getDocs dispara antes do claim de
+  // tenant estar no token (a assinatura onSnapshot já espera appUser) e toma
+  // permission-denied na carga fria — e, pós-flip, renewalClients é a ÚNICA fonte
+  // dos clientes a vencer da Meta, então a falha derrubaria a Renovação.
+  const { clients: renewalClients } = useRenewalClients({ db, contractThresholdDays, reloadKey: dayKey, enabled: !!appUser });
+  // Base da META (G1d): ativo (prop) ∪ clientes a vencer (renewalClients), dedupe
+  // por id (global primeiro). PRÉ-flip o prop já contém os clientes → no-op →
+  // números idênticos; PÓS-flip o prop vira só 'ativo' e os renewalClients repõem
+  // os a-vencer. Alimenta a Meta pessoal (DailyGoalView), a badge de pendências
+  // (dailyGoalPending) e a Meta da equipe (useTeamGoals via gerencialLeads).
+  const metaLeads = useMemo(() => {
+    const byId = new Map();
+    (leads || []).forEach((l) => byId.set(l.id, l));
+    (renewalClients || []).forEach((c) => { if (!byId.has(c.id)) byId.set(c.id, c); });
+    return Array.from(byId.values());
+  }, [leads, renewalClients]);
+
   // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
   const dailyGoalPending = useMemo(() => {
     if (!appUser?.id) return 0;
     void dayKey; // recalcula na virada do dia
-    const slots = computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, contractThresholdDays);
+    const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, contractThresholdDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
     return totalSlots - doneSlots;
-  }, [leads, interactions, appUser, dayKey, contractThresholdDays]);
-
-  // Clientes com contrato "a vencer" no escopo do usuário (admin vê todos;
-  // consultor vê os seus) — badge âmbar no item Clientes da sidebar.
-  // Fonte (E2c): query própria (índice #4) via useRenewalClients em vez de
-  // varrer o prop global. renewalClients já vêm filtrados como A_VENCER; aqui
-  // só escopa por consultor e mantém o filtro lifecycleStage==='cliente' pra
-  // casar exatamente o badge anterior. dayKey força o refetch na virada do dia.
-  const { clients: renewalClients } = useRenewalClients({ db, contractThresholdDays, reloadKey: dayKey });
+  }, [metaLeads, interactions, appUser, dayKey, contractThresholdDays]);
 
   // Dashboard Gerencial do CONSULTOR (E2a): busca os PRÓPRIOS leads por query
   // (where consultantId==id, sem orderBy → índice automático, sem armadilha de
@@ -978,7 +1007,9 @@ useEffect(() => {
     mapDoc: normalizeLeadDoc,
     enabled: !!db && !dashIsAdmin && !!appUser?.id,
   });
-  const gerencialLeads = dashIsAdmin ? leads : consultantLeads;
+  // Gerencial admin usa metaLeads (definido acima) só p/ o useTeamGoals (Meta da
+  // equipe); as métricas de PERÍODO do admin vêm da união de janelas (G1c) na view.
+  const gerencialLeads = dashIsAdmin ? metaLeads : consultantLeads;
   const clientsAVencer = useMemo(() => {
     if (!appUser) return 0;
     const scope = isAdminUser(appUser) ? renewalClients : renewalClients.filter(l => l.consultantId === appUser.id);
@@ -1142,7 +1173,7 @@ useEffect(() => {
             </h2>
           </div>
           {!appUser.superAdminOnly && (
-            <GlobalSearch leads={leads} onAddLead={() => setIsAddLeadModalOpen(true)} />
+            <GlobalSearch onAddLead={() => setIsAddLeadModalOpen(true)} db={db} />
           )}
           <div className="flex items-center gap-2 md:gap-3">
             {!appUser.superAdminOnly && (
@@ -1218,7 +1249,6 @@ useEffect(() => {
                 <LeadProfileView
                   key={profileLead.id}
                   lead={profileLead}
-                  interactions={(interactions || []).filter(i => i.leadId === profileLead.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))}
                   onBack={closeProfile}
                   appUser={appUser}
                   statuses={statuses}
@@ -1228,16 +1258,26 @@ useEffect(() => {
                   db={db}
                   funnels={funnels}
                 />
+              ) : (profileLeadId && profileLoading) ? (
+                <div className="grid place-items-center h-full py-24 text-[13px] text-slate-400 dark:text-neutral-500 animate-pulse">Carregando ficha…</div>
               ) : (<>
-              {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : (leads || []).filter(l => l.consultantId === appUser.id)} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} />}
+              {/* Operacional CONSULTOR: PRÓPRIOS leads por query (E2a consultantLeads,
+                  where consultantId== — mesmo conjunto do filtro antigo, já normalizado)
+                  em vez de varrer o prop global. ADMIN segue no prop global: o painel
+                  admin agrega board/última-ação/Meta que precisam da base crua (categorias
+                  sem janela) — migra no G1d. interactions segue global (G2). */}
+              {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : consultantLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} />}
               {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={gerencialLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
-              {activeTab === 'clientes' && <ClientsView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
-              {activeTab === 'dailyGoal' && <DailyGoalView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
-              {activeTab === 'leads' && <LeadsView leads={leads} interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
-              {activeTab === 'aulas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
-              {activeTab === 'visitas' && <AppointmentTrackingView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} leads={leads} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'clientes' && <ClientsView appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
+              {/* Meta Diária (G1d): base = ativo ∪ clientes a vencer (metaLeads),
+                  flip-safe. computeDailyGoalSlots filtra por consultor e categoria
+                  internamente. interactions segue global (G2). */}
+              {activeTab === 'dailyGoal' && <DailyGoalView leads={metaLeads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} />}
+              {activeTab === 'leads' && <LeadsView interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
+              {activeTab === 'aulas' && <AppointmentTrackingView interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
+              {activeTab === 'visitas' && <AppointmentTrackingView interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
               {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
@@ -1261,7 +1301,6 @@ useEffect(() => {
           db={db}
           funnels={funnels}
           selectedFunnelId={selectedFunnelId}
-          leads={leads}
           onCreated={(newLeadId) => setJustCreatedLeadId(newLeadId)}
         />
       )}

@@ -16,6 +16,7 @@ import { usePagedLeads } from './usePagedLeads.js';
 import { renewalClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
 import { DAY_MS } from '../lib/leadStatus.js';
+import { normalizeLeadDoc } from '../lib/leads.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS } from '../lib/contracts.js';
 
 export function useRenewalClients({ db, contractThresholdDays, enabled = true, reloadKey = 0 }) {
@@ -31,6 +32,11 @@ export function useRenewalClients({ db, contractThresholdDays, enabled = true, r
   const { items, loading } = usePagedLeads({
     db, path: LEADS_PATH, spec,
     specKey: `renewal:${contractThresholdDays}:${reloadKey}`,
+    // Mesmo shape do prop global (a Meta Diária no G1d injeta estes clientes na
+    // base e computeDailyGoalSlots/volume esperam createdAt/nextFollowUp já como
+    // Date). Não muda a contagem do badge — deriveLeadContractStatus lê só
+    // currentContractEndsAt (que normalizeLeadDoc não toca).
+    mapDoc: normalizeLeadDoc,
     enabled: enabled && !!db,
   });
 

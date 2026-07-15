@@ -13,6 +13,10 @@ import { ManageDoresTab } from './ManageDoresTab.jsx';
 import { ManageGeneralSettingsTab } from './ManageGeneralSettingsTab.jsx';
 import { ManageProfessorsCard } from './ManageProfessorsCard.jsx';
 import { TransferLeadsTab } from './TransferLeadsTab.jsx';
+import { usePagedLeads } from '../../hooks/usePagedLeads.js';
+import { allLeadsQuerySpec } from '../../lib/leadQueries.js';
+import { LEADS_PATH } from '../../lib/firebase.js';
+import { normalizeLeadDoc } from '../../lib/leads.js';
 
 // ==========================================
 // SETTINGS — trilho agrupado + busca universal (⌘K)
@@ -24,7 +28,18 @@ import { TransferLeadsTab } from './TransferLeadsTab.jsx';
 // Busca sem acento/caixa ("critico" acha "SLA crítico").
 const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
-function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons, dores, leads, funnels, modalities, planos, trialClassOptions, units, metaWeekdays }) {
+function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons, dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays }) {
+  // Fonte de leads das Configurações (G1-flip): TODOS os buckets por query própria
+  // em vez do prop global (que virou só 'ativo' no flip). As abas contam uso e
+  // fazem cascata de renomear/excluir sobre clientes e perdas também, então
+  // precisam da base COMPLETA — senão contagens (motivo de perda, plano por
+  // cliente) zeram e a cascata deixa clientes/perdas com valor antigo. getDocs
+  // on-demand (a tela abre pontualmente). mapDoc=normalizeLeadDoc = mesmo shape.
+  const settingsLeadsSpec = useMemo(() => allLeadsQuerySpec(), []);
+  const { items: leads } = usePagedLeads({
+    db, path: LEADS_PATH, spec: settingsLeadsSpec, specKey: 'settings-all-leads',
+    mapDoc: normalizeLeadDoc, enabled: !!db,
+  });
   const [activeTab, setActiveTab] = useState(initialTab || 'users');
   const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
   const [query, setQuery] = useState('');
