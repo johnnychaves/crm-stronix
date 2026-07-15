@@ -26,6 +26,25 @@ export function specToConstraints(spec, cursor = null) {
   return cs;
 }
 
+// getDocs com retry curto SÓ em permission-denied: logo após o login, a query pode
+// disparar antes do token anexar o claim de tenant (corrida da carga fria) e tomar
+// permission-denied — que se cura sozinho em ~centenas de ms. Retenta com backoff
+// (limitado); outros erros, ou permission-denied persistente (ex.: tenant
+// bloqueado), sobem depois das tentativas. Sem loop infinito.
+async function getDocsWithAuthRetry(q, retries = 3, baseDelayMs = 300) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await getDocs(q);
+    } catch (e) {
+      if (e?.code === 'permission-denied' && attempt < retries) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * 2 ** attempt));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 // usePagedLeads({ db, path, spec, specKey, mapDoc, enabled })
 //   path    : coleção sob artifacts/{appId}/public/data/ (ex.: LEADS_PATH)
 //   spec    : descritor de leadQueries.js
@@ -46,7 +65,7 @@ export function usePagedLeads({ db, path, spec, specKey, mapDoc, enabled = true 
     try {
       const colRef = collection(db, 'artifacts', appId, 'public', 'data', path);
       const cursor = reset ? null : lastDocRef.current;
-      const snap = await getDocs(query(colRef, ...specToConstraints(spec, cursor)));
+      const snap = await getDocsWithAuthRetry(query(colRef, ...specToConstraints(spec, cursor)));
       const page = snap.docs.map((d) => (mapDoc ? mapDoc(d) : { id: d.id, ...d.data() }));
       lastDocRef.current = snap.docs[snap.docs.length - 1] || lastDocRef.current;
       // Página cheia ⇒ pode haver mais; menos que o limite ⇒ acabou.
