@@ -51,6 +51,7 @@ function FunnelTabs({ funnels, counts, selectedId, onSelect }) {
   const [tabOrder, setTabOrder] = useState(() => (funnels || []).map(f => f.id));
   useEffect(() => {
     const ids = (funnels || []).map(f => f.id);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reconcilia a ordem das abas (estado de drag) com a lista de funis vinda por prop.
     setTabOrder(prev => {
       const kept = prev.filter(id => ids.includes(id));
       const added = ids.filter(id => !kept.includes(id));
@@ -109,6 +110,7 @@ function FunnelTabs({ funnels, counts, selectedId, onSelect }) {
     if (!selectedId) return;
     const idx = tabOrder.indexOf(selectedId);
     if (idx === -1 || idx < visibleTabCount || visibleTabCount >= tabOrder.length) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- traz a aba selecionada para a faixa visível (reordenação dependente de layout medido).
     setTabOrder(prev => {
       const next = [...prev];
       const last = Math.min(visibleTabCount, prev.length) - 1;

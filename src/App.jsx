@@ -513,6 +513,7 @@ function AppInner() {
 useEffect(() => {
   if (!firebaseUser || !appUser) return;
   // Super-admin sem tenant não carrega dados de organização (só usa a tela Organizações).
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- effect que assina o Firestore (sistema externo); encerrar o loading no guard é o padrão correto de effect.
   if (appUser.superAdminOnly) { setLoadingData(false); return; }
   // Academia bloqueada (suspensa / trial expirado): não tenta carregar dados —
   // a tela de bloqueio é exibida e as rules também negam no servidor. Evita
@@ -733,6 +734,7 @@ useEffect(() => {
     if (!justCreatedLeadId) return;
     const lead = (leads || []).find(l => l.id === justCreatedLeadId);
     if (lead) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reage à chegada assíncrona do lead via onSnapshot; abrir a ficha só quando o doc aparece exige effect.
       setProfileLeadId(lead.id);
       setJustCreatedLeadId(null);
     }
@@ -745,6 +747,7 @@ useEffect(() => {
     if (isAllFunnels(selectedFunnelId)) return;
     if (!selectedFunnelId || !funnels.find(f => f.id === selectedFunnelId)) {
       const fallback = getDefaultFunnel(funnels);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- corrige seleção de funil inválida quando a lista de funis muda; roda raramente.
       if (fallback) setSelectedFunnelId(fallback.id);
     }
   }, [funnels, selectedFunnelId]);
@@ -757,6 +760,7 @@ useEffect(() => {
     if (!isAllFunnels(selectedFunnelId)) return;
     if (resolvedTab === 'dashGerencial' || resolvedTab === 'dashOperacional') return;
     const fallback = getDefaultFunnel(funnels)?.id;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- corrige seleção de funil ao sair das abas de dashboard; roda raramente.
     if (fallback) setSelectedFunnelId(fallback);
   }, [resolvedTab, selectedFunnelId, funnels]);
 
@@ -766,6 +770,7 @@ useEffect(() => {
     if (loadingData) return;
     if (funnelsMigrationStatus !== 'idle') return;
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- gatilho one-shot de migração idempotente (guardado por status !== 'idle').
     setFunnelsMigrationStatus('running');
 
     (async () => {
@@ -890,6 +895,7 @@ useEffect(() => {
   // Firebase, então o effect reflete o estado no banner.
   const [impersonation, setImpersonation] = useState(readImpersonation);
   const [exitingImpersonation, setExitingImpersonation] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza a partir do sessionStorage (fonte externa) ao trocar de usuário.
   useEffect(() => { setImpersonation(readImpersonation()); }, [appUser]);
   const stopImpersonation = async () => {
     setExitingImpersonation(true);
@@ -1019,6 +1025,7 @@ useEffect(() => {
   // Mantém o grupo "Leads" aberto quando uma de suas sub-abas está ativa.
   const isLeadsTab = activeTab === 'leads' || activeTab === 'aulas' || activeTab === 'visitas';
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- abre o grupo do menu ao navegar para uma aba de leads (efeito de navegação; o usuário ainda pode recolher).
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
 
@@ -1028,6 +1035,7 @@ useEffect(() => {
 
   // Super-admin sem tenant entra direto na tela "Organizações" (única que vê).
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- redireciona o superadmin-only para sua única aba ao montar/resolver o appUser.
     if (appUser?.superAdminOnly) setActiveTab('superadmin');
   }, [appUser]);
 
