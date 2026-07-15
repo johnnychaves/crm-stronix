@@ -78,7 +78,14 @@ export function GlobalSearch({ onAddLead, db }) {
 
   const showDropdown = open && query.trim().length >= 2;
 
-  useEffect(() => { setActiveIndex(0); }, [query]);
+  // Reset do item destacado quando a busca muda: ajuste de estado durante o
+  // render (padrão oficial do React p/ "resetar estado ao mudar um valor"), no
+  // lugar de um effect com setState.
+  const [prevQuery, setPrevQuery] = useState(query);
+  if (query !== prevQuery) {
+    setPrevQuery(query);
+    setActiveIndex(0);
+  }
 
   // Fecha ao clicar fora (mesmo padrão da bubble de filtros das telas).
   useEffect(() => {
