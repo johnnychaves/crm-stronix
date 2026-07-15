@@ -723,7 +723,7 @@ useEffect(() => {
       if (selectedFunnelId) {
         localStorage.setItem(`crm-selected-funnel:${appId}`, selectedFunnelId);
       }
-    } catch (e) { /* ignore */ }
+    } catch { /* ignore */ }
   }, [selectedFunnelId, appUser]);
 
   // Quando um lead é criado pelo AddLeadModal global, ele guarda o ID em
