@@ -65,6 +65,7 @@ function SuperAdminView({ tab, onOpenConsole }) {
         // Só metadados de exibição (sem token) — o retorno é emitido on-demand.
         sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({
           viewing: { id: tenant.id, name: data.tenantName || tenant.displayName },
+          // eslint-disable-next-line react-hooks/purity -- Date.now aqui roda no handler de impersonação (evento após fetch), não no render: falso positivo da regra do React Compiler.
           at: Date.now()
         }));
       } catch { /* ignore */ }
