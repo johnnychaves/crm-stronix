@@ -4,7 +4,7 @@ import { auth } from '../../lib/firebase.js';
 import { AlertTriangle, ArrowRight, Building2, Calendar, Check, CheckCircle, Eye, EyeOff, Lock, Mail, Shield, TrendingUp, Zap } from 'lucide-react';
 import { SurgeMark, StronileadWordmark } from '../../components/brand/SurgeMark.jsx';
 
-function LoginScreen({ setAppUser, firebaseUser, db, authSetupError, urlTenant }) {
+function LoginScreen({ authSetupError, urlTenant }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);

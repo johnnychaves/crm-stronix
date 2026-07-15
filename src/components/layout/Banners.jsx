@@ -1,10 +1,13 @@
+import { useState } from 'react';
 import { Clock, CreditCard, Eye, LogOut } from 'lucide-react';
 
 // Banner de contagem regressiva do período de teste (mostrado ao cliente quando
 // a academia está em trial ATIVO). Fica âmbar (urgência) quando faltam <= 3 dias.
 function TrialBanner({ endsAtMs }) {
   const DAY = 24 * 60 * 60 * 1000;
-  const daysLeft = Math.max(0, Math.ceil((endsAtMs - Date.now()) / DAY));
+  // Snapshot do "agora" no mount (render puro; o banner remonta a cada navegação).
+  const [nowMs] = useState(Date.now);
+  const daysLeft = Math.max(0, Math.ceil((endsAtMs - nowMs) / DAY));
   const dateLabel = new Date(endsAtMs).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
   const urgent = daysLeft <= 3;
   const msg = daysLeft <= 0
@@ -27,7 +30,9 @@ function TrialBanner({ endsAtMs }) {
 // âmbar (<= 3 dias) → rose (vencida; o acesso é cortado após 3 dias de carência).
 function PaymentDueBanner({ dueAtMs, overdue, invoiceUrl, onOpenBilling }) {
   const DAY = 24 * 60 * 60 * 1000;
-  const daysLeft = dueAtMs != null ? Math.ceil((dueAtMs - Date.now()) / DAY) : null;
+  // Snapshot do "agora" no mount (render puro; o banner remonta a cada navegação).
+  const [nowMs] = useState(Date.now);
+  const daysLeft = dueAtMs != null ? Math.ceil((dueAtMs - nowMs) / DAY) : null;
   const dateLabel = dueAtMs != null
     ? new Date(dueAtMs).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
     : null;

@@ -47,10 +47,13 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
 
   const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
 
-  // Ao trocar de funil, limpa o filtro de fase (as etapas mudam).
-  useEffect(() => {
+  // Ao trocar de funil, limpa o filtro de fase (as etapas mudam): ajuste de
+  // estado durante o render (padrão oficial do React), no lugar de um effect.
+  const [prevFunnelId, setPrevFunnelId] = useState(selectedFunnelId);
+  if (selectedFunnelId !== prevFunnelId) {
+    setPrevFunnelId(selectedFunnelId);
     setStatusFilters([]);
-  }, [selectedFunnelId]);
+  }
 
   // Bubble de filtros fecha em clique fora / Esc (mesmo padrão das outras telas).
   const filterWrapRef = useRef(null);
