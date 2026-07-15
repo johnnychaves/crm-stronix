@@ -540,9 +540,17 @@ useEffect(() => {
   // Busca (G1b), dashboards admin (G1c), Meta (G1d, via renewalClients), ficha
   // (useProfileLead por id) e dup-check (query remota). O dono fica em
   // consultantAuthUid p/ atribuição/ranking; telas pessoais filtram pelo dono.
-  // interactionsSource segue na coleção inteira até o G2.
   const leadsSource = query(leadsRef, where('lifecycleBucket', '==', 'ativo'));
-  const interactionsSource = interactionsRef;
+  // G2: interações ao vivo só do MÊS CORRENTE pra cá (limite inferior em
+  // createdAt) — é onde a leitura de interações CAI (antes: coleção inteira, que
+  // cresce sem limite). É `>=` (não range): novas interações seguem aparecendo ao
+  // vivo e a janela se renova a cada abertura do app. Os consumidores precisam só
+  // do mês corrente (volume, feito-hoje, badge quente via denorm lead.lastInteractionAt);
+  // a timeline da ficha tem query própria (useLeadTimeline). Range de 1 campo →
+  // índice automático. O filtro por consultor segue client-side, como antes.
+  const _now = new Date();
+  const monthStart = new Date(_now.getFullYear(), _now.getMonth(), 1);
+  const interactionsSource = query(interactionsRef, where('createdAt', '>=', monthStart));
 
   const unsubLeads = onSnapshot(leadsSource, (snapshot) => {
     // Normalização única (normalizeLeadDoc em lib/leads) — a MESMA que a query
@@ -1241,7 +1249,6 @@ useEffect(() => {
                 <LeadProfileView
                   key={profileLead.id}
                   lead={profileLead}
-                  interactions={(interactions || []).filter(i => i.leadId === profileLead.id).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))}
                   onBack={closeProfile}
                   appUser={appUser}
                   statuses={statuses}
