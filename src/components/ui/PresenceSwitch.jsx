@@ -6,9 +6,12 @@ import { cn } from '@/lib/utils';
 //   knob no CENTRO  + trilho cinza    = ainda não confirmado (pending)
 // A metade esquerda do trilho confirma "veio", a direita "faltou". `highlight`
 // acende um anel laranja (janela de 15min pós-horário, na tela de Aulas).
-export function PresenceSwitch({ attKey, saving = false, highlight = false, onMark }) {
+// `disabled` trava a marcação (ex.: fora da janela de horário permitida); nesse
+// caso `disabledTitle` explica o motivo no hover.
+export function PresenceSwitch({ attKey, saving = false, highlight = false, disabled = false, disabledTitle = '', onMark }) {
   const isVeio = attKey === 'attended';
   const isFaltou = attKey === 'no_show';
+  const off = saving || disabled;
 
   const track = isVeio
     ? 'bg-emerald-500'
@@ -32,7 +35,7 @@ export function PresenceSwitch({ attKey, saving = false, highlight = false, onMa
         highlight && 'ring-2 ring-accent-500/35'
       )}
     >
-      <div className={cn('relative w-[46px] h-[26px] rounded-full transition-colors', track, saving && 'opacity-60')}>
+      <div className={cn('relative w-[46px] h-[26px] rounded-full transition-colors', track, off && 'opacity-60')}>
         <span
           className={cn(
             'absolute top-[3px] size-5 rounded-full bg-white shadow-[0_1px_3px_rgba(15,23,42,.35)] transition-[left,transform] duration-200',
@@ -43,21 +46,21 @@ export function PresenceSwitch({ attKey, saving = false, highlight = false, onMa
       {/* Zonas clicáveis invisíveis: esquerda = veio, direita = faltou. */}
       <button
         type="button"
-        disabled={saving}
+        disabled={off}
         onClick={(e) => onMark('attended', e)}
         aria-label="Marcar que veio"
         aria-pressed={isVeio}
-        title="Veio"
-        className="absolute inset-y-0 left-0 w-1/2 rounded-l-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-default"
+        title={disabled ? disabledTitle : 'Veio'}
+        className="absolute inset-y-0 left-0 w-1/2 rounded-l-full focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 disabled:cursor-not-allowed"
       />
       <button
         type="button"
-        disabled={saving}
+        disabled={off}
         onClick={(e) => onMark('no_show', e)}
         aria-label="Marcar que faltou"
         aria-pressed={isFaltou}
-        title="Faltou"
-        className="absolute inset-y-0 right-0 w-1/2 rounded-r-full focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50 disabled:cursor-default"
+        title={disabled ? disabledTitle : 'Faltou'}
+        className="absolute inset-y-0 right-0 w-1/2 rounded-r-full focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/50 disabled:cursor-not-allowed"
       />
     </div>
   );

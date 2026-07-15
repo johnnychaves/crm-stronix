@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { canMarkPresenceNow } from '../lib/presenceWindow.js';
 import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
 import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, hasGoalDoneToday, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
@@ -133,6 +134,13 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
   // direto, então valem pra qualquer data. Sempre editável, sem consumir o
   // agendamento (a linha continua na lista) nem promover fase.
   const [savingId, setSavingId] = useState(null);
+  // Relógio vivo (tica a cada 30s) para o atalho de presença travar/destravar
+  // sozinho conforme a janela de ±15 min do horário agendado abre e fecha.
+  const [nowMs, setNowMs] = useState(Date.now);
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, []);
   const todayStartMs = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const interactionsByLead = useMemo(() => {
     const m = new Map();
@@ -143,6 +151,8 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
   const markPresence = async (lead, outcome, e) => {
     if (e) e.stopPropagation();
     if (savingId) return;
+    // Trava de horário: só marca/desmarca dentro de ±15 min do horário agendado.
+    if (!canMarkPresenceNow(getLeadAppointmentDate(lead), Date.now())) return;
     // Clicar no lado JÁ ativo desmarca (volta pro neutro) — reverter um clique
     // errado. Clicar no outro lado alterna direto. Sempre editável.
     const clearing = lead.appointmentOutcome === outcome;
@@ -647,8 +657,8 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
                 const sitTitle = att.key === 'pending' ? 'Agendado · aguardando desfecho' : sitLabel;
                 // Atalho de presença só p/ leads em andamento (não matriculado/perdido).
                 const canMark = fin.tone === 'slate';
-                const nowMs = Date.now();
                 const inConfirmWindow = Boolean(d) && nowMs >= d.getTime() && nowMs <= d.getTime() + CONFIRM_WINDOW_MS;
+                const canMarkNow = canMarkPresenceNow(d, nowMs);
                 const pendingPresence = att.key !== 'attended' && att.key !== 'no_show';
                 const savingRow = savingId === l.id;
                 return (
@@ -723,14 +733,14 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
                         )}
                         {canMark && (
                           <div className="mt-1.5">
-                            <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
+                            <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} disabled={!canMarkNow} disabledTitle="Só dá para marcar de 15 min antes até 15 min depois do horário agendado." onMark={(o, e) => markPresence(l, o, e)} />
                           </div>
                         )}
                       </div>
                     ) : (
                       <div className="min-w-0">
                         {canMark ? (
-                          <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
+                          <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} disabled={!canMarkNow} disabledTitle="Só dá para marcar de 15 min antes até 15 min depois do horário agendado." onMark={(o, e) => markPresence(l, o, e)} />
                         ) : (
                           <div className="flex items-center gap-2">
                             <span title={sitTitle} className={cn('size-3 rounded shrink-0', attSquareClass(att.key))} />
