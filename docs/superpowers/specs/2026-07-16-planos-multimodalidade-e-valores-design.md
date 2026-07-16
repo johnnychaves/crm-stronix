@@ -1,8 +1,10 @@
 # Planos multi-modalidade, filtro de professor por modalidade e valores em R$ com centavos
 
-status: revisão
+status: ativo
 data: 2026-07-16
 branch: claude/multiple-modalities-teachers-plans-25829d
+
+> Entrega 1 de 2. O histórico de aulas por professor foi separado num projeto próprio (ver "Próxima entrega" no fim). Aqui vão só plano multi-modalidade, filtro de professor e valores em centavos.
 
 ## Problema
 
@@ -72,3 +74,13 @@ Arquivo: `src/views/settings/ManagePlansTab.jsx`. Coleção: `stronix_planos`.
 - Mudar `fmtBRL` para 2 casas é uma mudança visual em todo o app. Decisão do Johnny: é o que ele quer (padrão de moeda).
 - Contratos passam a poder carregar centavos no valor. É só mais precisão, não muda cálculo.
 - Publicação das regras do Firestore é manual, mas aqui não há mudança de regra.
+
+## Próxima entrega (projeto separado): histórico de aulas por professor
+
+Decisão do Johnny: o modelo ideal guarda o histórico de **todas** as aulas experimentais, não só a última. Hoje o lead guarda um único agendamento e a aula nova sobrescreve a anterior, então o professor da aula antiga some das estatísticas. O objetivo é que cada aula vire um registro próprio e o resultado de um professor não apague o do outro.
+
+Exemplo: lead faz aula com B, comparece, não fecha → conta pro B (aula + compareceu, sem conversão). Depois faz aula com C, comparece, fecha → conta pro C (aula + compareceu + conversão), sem mexer no B.
+
+**Regra de atribuição da conversão (definida com o Johnny):** quando o lead fecha o plano, o crédito da conversão vai pra **última aula em que ele compareceu antes de fechar**. As aulas anteriores atendidas ficam como "compareceu, sem conversão" para os respectivos professores.
+
+Por que é um projeto à parte: é mudança de modelo de dados (coleção/subcoleção de aulas por lead), mexe no agendar (cria registro em vez de sobrescrever), no marcar presença, na conversão (precisa saber qual aula converteu), na agregação do dashboard (`computeProfessorConversion` passa a ler registros de aula), em regras/índices do Firestore, na retro-compatibilidade com leads existentes, e tem peso de escala (mais leituras) num sistema que acabou de reduzir leitura (ver trabalho de escala E1–G). Merece spec e PR próprios.
