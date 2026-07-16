@@ -4,10 +4,12 @@ import { collection, doc, addDoc, setDoc, deleteDoc, serverTimestamp } from 'fir
 import { appId, LEADS_PATH, PLANS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
-import { fmtBRL } from '../../lib/format.js';
+import { fmtBRL, parseValorBRL, valorToInput } from '../../lib/format.js';
+import { planModalityIds, planModalityNames } from '../../lib/planos.js';
+import { cn } from '../../lib/utils.js';
 import { Btn, IconBtn } from '../../components/ui/Btn.jsx';
 import { SettingsCard } from '../../components/ui/SettingsCard.jsx';
-import { Field, StyledInput, StyledSelect } from '../../components/ui/Field.jsx';
+import { Field, StyledInput } from '../../components/ui/Field.jsx';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 
 // Catálogo de planos/serviços que a academia oferece. O consultor escolhe
@@ -24,31 +26,33 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
   const [name, setName] = useState('');
   const [value, setValue] = useState('');
   const [durationMonths, setDurationMonths] = useState('1');
-  const [modalityId, setModalityId] = useState('');
+  const [modIds, setModIds] = useState([]);
   const [editingId, setEditingId] = useState(null);
 
   const plansRef = collection(db, 'artifacts', appId, 'public', 'data', PLANS_PATH);
 
+  const toggleMod = (id) => setModIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
   const resetForm = () => {
-    setName(''); setValue(''); setDurationMonths('1'); setModalityId(''); setEditingId(null);
+    setName(''); setValue(''); setDurationMonths('1'); setModIds([]); setEditingId(null);
   };
 
   const startEdit = (p) => {
     setEditingId(p.id);
     setName(p.name || '');
-    setValue(String(p.value ?? ''));
+    setValue(valorToInput(p.value));
     setDurationMonths(String(p.durationMonths ?? '1'));
-    setModalityId(p.modalityId || '');
+    setModIds(planModalityIds(p));
   };
 
   const save = async (e) => {
     e.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName) { toast.warning('Informe o nome do plano.'); return; }
-    // Aceita vírgula decimal (hábito BRL) e barra valor inválido/negativo em vez
-    // de gravar R$0 silencioso.
-    const parsedValue = Number(String(value).replace(',', '.'));
-    if (!Number.isFinite(parsedValue) || parsedValue < 0) { toast.warning('Informe um valor válido para o plano.'); return; }
+    // Aceita vírgula/ponto decimal e centavos (parseValorBRL); barra inválido/
+    // negativo em vez de gravar R$0 silencioso.
+    const parsedValue = parseValorBRL(value);
+    if (parsedValue == null || parsedValue < 0) { toast.warning('Informe um valor válido para o plano.'); return; }
     // Anti-duplicado por nome (case-insensitive), igual a Modalidades/Unidades.
     const dup = (planos || []).find(p => p.id !== editingId && (p.name || '').trim().toLowerCase() === trimmedName.toLowerCase());
     if (dup) { toast.warning(`Já existe um plano chamado "${dup.name}".`); return; }
@@ -56,7 +60,7 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
       name: trimmedName,
       value: parsedValue,
       durationMonths: Math.max(1, Number(durationMonths) || 1),
-      modalityId: modalityId || null
+      modalityIds: modIds
     };
 
     if (editingId) {
@@ -103,8 +107,6 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
     }
   };
 
-  const modalityName = (id) => (modalities || []).find(m => m.id === id)?.name || null;
-
   return (
     <SettingsCard
       title="Planos"
@@ -112,7 +114,7 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
       icon={<DollarSign size={16} />}
     >
       <form onSubmit={save} className="p-4 rounded-xl bg-slate-50/70 dark:bg-white/[0.02] border border-border mb-5">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <Field label="Nome do plano">
             <StyledInput
               icon={<Layers size={14} />}
@@ -124,9 +126,9 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
           </Field>
           <Field label="Valor (R$)">
             <StyledInput
-              type="number" min="0" step="1"
+              type="text" inputMode="decimal"
               icon={<DollarSign size={14} />}
-              placeholder="99"
+              placeholder="197,90"
               value={value}
               onChange={e => setValue(e.target.value)}
               required
@@ -142,12 +144,32 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
               required
             />
           </Field>
-          <Field label="Modalidade (opcional)">
-            <StyledSelect value={modalityId} onChange={e => setModalityId(e.target.value)}>
-              <option value="">Sem modalidade</option>
-              {(modalities || []).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
-            </StyledSelect>
-          </Field>
+        </div>
+        <div className="mt-3">
+          <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Modalidades (opcional)</label>
+          {(modalities || []).length === 0 ? (
+            <p className="text-[12px] text-muted-foreground">Nenhuma modalidade cadastrada. Adicione em Regras gerais → Modalidades.</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {(modalities || []).map((m) => {
+                const on = modIds.includes(m.id);
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => toggleMod(m.id)}
+                    aria-pressed={on}
+                    className={cn(
+                      'px-3 h-9 rounded-lg text-[12.5px] font-semibold transition border',
+                      on ? 'bg-brand-600 text-white border-brand-600' : 'bg-card text-muted-foreground border-border hover:bg-accent'
+                    )}
+                  >
+                    {m.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         <div className="flex gap-2 mt-3">
           {editingId ? (
@@ -170,7 +192,7 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
           {(planos || []).map(p => {
             const inactive = p.active === false;
             const clientes = (leads || []).filter(l => l.currentPlanName === p.name).length;
-            const mod = modalityName(p.modalityId);
+            const mods = planModalityNames(p, modalities);
             return (
               <div
                 key={p.id}
@@ -191,7 +213,7 @@ function ManagePlansTab({ db, planos, leads, modalities }) {
                       {inactive && <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-slate-200 text-slate-600 dark:bg-white/[0.08] dark:text-slate-300">Inativo</span>}
                     </div>
                     <div className="text-[11.5px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      {fmtBRL(p.value)} · {durationLabel(p.durationMonths)}{mod ? ` · ${mod}` : ''}
+                      {fmtBRL(p.value)} · {durationLabel(p.durationMonths)}{mods.length ? ` · ${mods.join(' · ')}` : ''}
                     </div>
                   </div>
                 </div>

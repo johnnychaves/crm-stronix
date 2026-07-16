@@ -1,6 +1,28 @@
-// Formatação dos números do painel (BRL inteiro — os preços são redondos).
-const fmtBRL = (n) => `R$ ${Number(n || 0).toLocaleString('pt-BR')}`;
+// Formatação de moeda BRL — sempre 2 casas (padrão de moeda, aceita centavos).
+const fmtBRL = (n) => `R$ ${Number(n || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const fmtNum = (n) => Number(n || 0).toLocaleString('pt-BR');
+
+// Lê o valor digitado no campo de preço (plano/matrícula) e devolve número ou
+// null. Aceita vírgula ou ponto decimal, ponto de milhar e prefixo R$. Regra:
+// com vírgula, ela é o decimal e os pontos são milhar; sem vírgula, o ponto é
+// o decimal.
+const parseValorBRL = (input) => {
+  if (typeof input === 'number') return Number.isFinite(input) ? input : null;
+  if (input == null) return null;
+  let s = String(input).trim().replace(/R\$/gi, '').replace(/\s/g, '');
+  if (!s) return null;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+};
+
+// Formata um número para pré-preencher o campo de valor na edição: "197,90".
+// Faz round-trip com parseValorBRL. Vazio/nulo/ inválido vira ''.
+const valorToInput = (n) => {
+  if (n == null || n === '') return '';
+  const num = Number(n);
+  return Number.isFinite(num) ? num.toFixed(2).replace('.', ',') : '';
+};
 
 // Tempo relativo curto para o feed de auditoria.
 const timeAgo = (ms) => {
@@ -41,4 +63,4 @@ function formatHourLabel(date) {
   if (!date) return '';
   return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
-export { fmtBRL, fmtNum, timeAgo, humanizeAge, humanizeUntil, formatHourLabel };
+export { fmtBRL, parseValorBRL, valorToInput, fmtNum, timeAgo, humanizeAge, humanizeUntil, formatHourLabel };
