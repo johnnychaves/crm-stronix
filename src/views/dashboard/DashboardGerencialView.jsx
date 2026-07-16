@@ -499,7 +499,7 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
           rows={professorRows}
           reference={professorReference}
           referenceLabel="Sem professor · referência"
-          footnote="Todas as aulas experimentais da academia no período, independente do funil selecionado — só entram aulas cuja data já passou. Atribuição pelo professor do último agendamento de cada lead, então é aproximada. Conversão = matrículas ÷ quem compareceu."
+          footnote="Todas as aulas experimentais da academia no período, independente do funil selecionado — só entram aulas cuja data já passou. Cada aula conta para o professor que a deu; a conversão vai para a última aula em que o lead compareceu antes de fechar. Conversão = matrículas ÷ quem compareceu."
           emptyText="Nenhuma aula experimental realizada no período."
         />
 
