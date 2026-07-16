@@ -133,6 +133,9 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
   // direto, então valem pra qualquer data. Sempre editável, sem consumir o
   // agendamento (a linha continua na lista) nem promover fase.
   const [savingId, setSavingId] = useState(null);
+  // Sobreposição otimista do desfecho por lead: usePagedLeads é getDocs (não ao
+  // vivo), então sem isto o switch não refletiria a marcação até um refetch.
+  const [outcomeOverride, setOutcomeOverride] = useState({});
   const todayStartMs = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
   const interactionsByLead = useMemo(() => {
     const m = new Map();
@@ -150,6 +153,7 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
     try {
       if (clearing) {
         await clearAppointmentOutcome({ db, lead });
+        setOutcomeOverride(o => ({ ...o, [lead.id]: null }));
         toast.success(`Presença de ${lead.name} desmarcada.`);
       } else {
         const apptDate = getLeadAppointmentDate(lead);
@@ -162,6 +166,7 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
           writeGoalDone: Boolean(isToday) && !already,
           sourceLabel: isAula ? 'Aulas experimentais' : 'Visitas'
         });
+        setOutcomeOverride(o => ({ ...o, [lead.id]: outcome }));
         toast.success(outcome === 'attended'
           ? `Presença de ${lead.name} confirmada.`
           : `${lead.name} marcado como não veio.`);
@@ -635,7 +640,8 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
                 <p className="text-[12.5px] text-slate-400 dark:text-neutral-500">{emptySub}</p>
               </div>
             ) : (
-              visibleRows.map(l => {
+              visibleRows.map(rawL => {
+                const l = rawL.id in outcomeOverride ? { ...rawL, appointmentOutcome: outcomeOverride[rawL.id] } : rawL;
                 const d = getLeadAppointmentDate(l);
                 const att = getApptAttendanceState(l);
                 const fin = getApptFinalState(l);

@@ -403,21 +403,27 @@ describe('computeNoShowsToRework (tela Operacional)', () => {
 });
 
 describe('computeProfessorConversion (Gerencial)', () => {
-  const aula = (over = {}) => lead({ appointmentType: 'aula_experimental', ...over });
+  let aulaSeq = 0;
+  const aula = (over = {}) => ({
+    id: over.id || `a${++aulaSeq}`,
+    leadId: `l${aulaSeq}`,
+    status: 'agendada',
+    ...over
+  });
 
   it('agrupa por professor, conversão = matrículas ÷ compareceram, ordenado por conversão', () => {
-    const leads = [
+    const aulas = [
       // Diego (p1): 3 aulas passadas — 2 compareceram, 1 matrícula → 50%, base pequena
-      aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 6, 1, 9, 0), status: 'Venda', isConverted: true, convertedAt: new Date(2026, 6, 2) }),
-      aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 6, 2, 9, 0), appointmentOutcome: 'attended' }),
-      aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 6, 3, 9, 0), appointmentOutcome: 'no_show' }),
+      aula({ professorId: 'p1', professorName: 'Diego', scheduledFor: new Date(2026, 6, 1, 9, 0), status: 'attended', converted: true }),
+      aula({ professorId: 'p1', professorName: 'Diego', scheduledFor: new Date(2026, 6, 2, 9, 0), status: 'attended' }),
+      aula({ professorId: 'p1', professorName: 'Diego', scheduledFor: new Date(2026, 6, 3, 9, 0), status: 'no_show' }),
       // Marina (p2): 4 aulas passadas — 3 compareceram, 3 matrículas → 100%
-      aula({ appointmentProfessorId: 'p2', appointmentProfessorName: 'Marina', appointmentScheduledFor: new Date(2026, 6, 1, 10, 0), status: 'Venda', isConverted: true, convertedAt: new Date(2026, 6, 1) }),
-      aula({ appointmentProfessorId: 'p2', appointmentProfessorName: 'Marina', appointmentScheduledFor: new Date(2026, 6, 2, 10, 0), status: 'Venda', isConverted: true, convertedAt: new Date(2026, 6, 2) }),
-      aula({ appointmentProfessorId: 'p2', appointmentProfessorName: 'Marina', appointmentScheduledFor: new Date(2026, 6, 3, 10, 0), status: 'Venda', isConverted: true, convertedAt: new Date(2026, 6, 3) }),
-      aula({ appointmentProfessorId: 'p2', appointmentProfessorName: 'Marina', appointmentScheduledFor: new Date(2026, 6, 4, 10, 0), appointmentOutcome: 'no_show' })
+      aula({ professorId: 'p2', professorName: 'Marina', scheduledFor: new Date(2026, 6, 1, 10, 0), status: 'attended', converted: true }),
+      aula({ professorId: 'p2', professorName: 'Marina', scheduledFor: new Date(2026, 6, 2, 10, 0), status: 'attended', converted: true }),
+      aula({ professorId: 'p2', professorName: 'Marina', scheduledFor: new Date(2026, 6, 3, 10, 0), status: 'attended', converted: true }),
+      aula({ professorId: 'p2', professorName: 'Marina', scheduledFor: new Date(2026, 6, 4, 10, 0), status: 'no_show' })
     ];
-    const { rows, totals } = computeProfessorConversion(leads, { now: NOW });
+    const { rows, totals } = computeProfessorConversion(aulas, { now: NOW });
 
     expect(rows.map(r => r.name)).toEqual(['Marina', 'Diego']);
     expect(rows[0]).toMatchObject({ aulas: 4, compareceram: 3, matriculas: 3, convPct: 100, basePequena: false });
@@ -426,30 +432,29 @@ describe('computeProfessorConversion (Gerencial)', () => {
   });
 
   it('aula futura e aula fora da janela de 90 dias ficam de fora', () => {
-    const futura = aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 6, 10, 9, 0) });
-    const antiga = aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 2, 1, 9, 0), appointmentOutcome: 'attended' });
-    const visita = lead({ appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 2, 9, 0), appointmentOutcome: 'attended' });
-    const { rows, totals } = computeProfessorConversion([futura, antiga, visita], { now: NOW });
+    const futura = aula({ professorId: 'p1', professorName: 'Diego', scheduledFor: new Date(2026, 6, 10, 9, 0) });
+    const antiga = aula({ professorId: 'p1', professorName: 'Diego', scheduledFor: new Date(2026, 2, 1, 9, 0), status: 'attended' });
+    const { rows, totals } = computeProfessorConversion([futura, antiga], { now: NOW });
     expect(rows).toEqual([]);
     expect(totals.aulas).toBe(0);
   });
 
   it('quando recebe range, usa o PERÍODO (não os 90 dias) e capa o fim em agora', () => {
-    const dentro = aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 6, 2, 9, 0), appointmentOutcome: 'attended' });
-    const junho = aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 5, 20, 9, 0), appointmentOutcome: 'attended' }); // dentro dos 90d, fora de julho
-    const futuraNoMes = aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 6, 20, 9, 0) }); // julho mas depois de NOW (9/jul)
+    const dentro = aula({ professorId: 'p1', professorName: 'Diego', scheduledFor: new Date(2026, 6, 2, 9, 0), status: 'attended' });
+    const junho = aula({ professorId: 'p1', professorName: 'Diego', scheduledFor: new Date(2026, 5, 20, 9, 0), status: 'attended' }); // dentro dos 90d, fora de julho
+    const futuraNoMes = aula({ professorId: 'p1', professorName: 'Diego', scheduledFor: new Date(2026, 6, 20, 9, 0) }); // julho mas depois de NOW (9/jul)
     const { totals } = computeProfessorConversion([dentro, junho, futuraNoMes], { range: JULY, now: NOW });
     expect(totals.aulas).toBe(1); // só a de 2/jul; junho e a futura ficam de fora
     expect(totals.compareceram).toBe(1);
   });
 
   it('sem professor (solo ou sem id) vira a referência "Treina sozinho" e alimenta o delta', () => {
-    const leads = [
-      aula({ appointmentSoloTraining: true, appointmentScheduledFor: new Date(2026, 6, 1, 9, 0), status: 'Venda', isConverted: true, convertedAt: new Date(2026, 6, 1) }),
-      aula({ appointmentScheduledFor: new Date(2026, 6, 2, 9, 0), appointmentOutcome: 'attended' }), // legado sem professorId
-      aula({ appointmentProfessorId: 'p1', appointmentProfessorName: 'Diego', appointmentScheduledFor: new Date(2026, 6, 3, 9, 0), status: 'Venda', isConverted: true, convertedAt: new Date(2026, 6, 3) })
+    const aulas = [
+      aula({ soloTraining: true, scheduledFor: new Date(2026, 6, 1, 9, 0), status: 'attended', converted: true }),
+      aula({ scheduledFor: new Date(2026, 6, 2, 9, 0), status: 'attended' }), // legado sem professorId
+      aula({ professorId: 'p1', professorName: 'Diego', scheduledFor: new Date(2026, 6, 3, 9, 0), status: 'attended', converted: true })
     ];
-    const { rows, solo } = computeProfessorConversion(leads, { now: NOW });
+    const { rows, solo } = computeProfessorConversion(aulas, { now: NOW });
     expect(solo).toMatchObject({ name: 'Treina sozinho', isSolo: true, aulas: 2, compareceram: 2, matriculas: 1, convPct: 50 });
     expect(rows).toHaveLength(1);
     expect(rows[0].deltaVsSolo).toBe(50); // 100% do Diego − 50% da referência
