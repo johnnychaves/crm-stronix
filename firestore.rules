@@ -178,6 +178,17 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Histórico de aulas experimentais (stronix_aulas). Leitura por membro do
+    // tenant; create/update por qualquer membro preservando consultantAuthUid
+    // (presença cruzada / conversão por qualquer consultor). Sem delete pelo cliente.
+    match /artifacts/{appId}/public/data/stronix_aulas/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow create: if inTenant(appId) && tenantActive(appId);
+      allow update: if inTenant(appId) && tenantActive(appId)
+        && request.resource.data.consultantAuthUid == resource.data.consultantAuthUid;
+      allow delete: if false;
+    }
+
     // Registro de tenants (raiz). Escrita SEMPRE via Admin SDK (provisionamento,
     // status, convites) — nunca pelo cliente. Leitura liberada para os membros
     // do próprio tenant (o app lê status/trial no login para bloquear academias
