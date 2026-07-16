@@ -160,9 +160,10 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
         </div>
       );
     case 'professor': {
-      const matches = professorsForModality(professores, modalities, values.modalidade);
-      const list = matches.length ? matches : (professores || []).filter((p) => p.ativo !== false);
-      const usingFallback = matches.length === 0 && list.length > 0;
+      // Só os professores que atuam na modalidade escolhida (sem fallback de
+      // "mostrar todos"): evita escalar professor de outra modalidade. "Treina
+      // sozinho" aparece sempre.
+      const list = professorsForModality(professores, modalities, values.modalidade);
       return (
         <div className="space-y-2">
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -174,14 +175,9 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
               hint="Sem professor responsável" color={color}
               selected={values.professor === SOLO_TRAINING} onClick={() => set('professor', SOLO_TRAINING)} />
           </div>
-          {usingFallback && (
-            <p className="text-[11.5px] text-slate-500 dark:text-slate-400">
-              Nenhum professor cadastrado para <span className="font-semibold">{values.modalidade}</span>. Mostrando todos.
-            </p>
-          )}
           {list.length === 0 && (
             <p className="text-[11.5px] text-slate-500 dark:text-slate-400">
-              Nenhum professor cadastrado. Adicione em <span className="font-semibold">Configurações → Equipe</span>, ou marque "Treina sozinho".
+              Nenhum professor cadastrado para <span className="font-semibold">{values.modalidade}</span>. Cadastre um em <span className="font-semibold">Configurações → Equipe</span>, ou marque "Treina sozinho".
             </p>
           )}
         </div>

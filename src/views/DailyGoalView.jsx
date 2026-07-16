@@ -638,7 +638,7 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
                     </label>
                     <select
                       value={modality}
-                      onChange={(e) => setModality(e.target.value)}
+                      onChange={(e) => { setModality(e.target.value); setProfessorSel(''); }}
                       className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500 appearance-none cursor-pointer"
                     >
                       <option value="">{(modalities || []).length ? 'Selecione...' : 'Cadastre em Config. Gerais'}</option>

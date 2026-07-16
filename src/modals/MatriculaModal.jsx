@@ -5,7 +5,7 @@ import { getInteractionSecurityFields } from '../lib/leads.js';
 import { buildMatriculaWrites, computeEndsAt } from '../lib/contracts.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
-import { fmtBRL } from '../lib/format.js';
+import { fmtBRL, parseValorBRL, valorToInput } from '../lib/format.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Field, StyledInput, StyledSelect } from '../components/ui/Field.jsx';
@@ -40,7 +40,7 @@ function MatriculaModal({ lead, appUser, db, onClose, onDone, mode = 'matricula'
   );
 
   const [planId, setPlanId] = useState(activePlans[0]?.id || '');
-  const [value, setValue] = useState(activePlans[0] ? String(activePlans[0].value ?? '') : '');
+  const [value, setValue] = useState(activePlans[0] ? valorToInput(activePlans[0].value) : '');
   const [startStr, setStartStr] = useState(toDateInputValue(new Date()));
   const [submitting, setSubmitting] = useState(false);
 
@@ -50,12 +50,12 @@ function MatriculaModal({ lead, appUser, db, onClose, onDone, mode = 'matricula'
   const onChangePlan = (id) => {
     setPlanId(id);
     const p = activePlans.find(x => x.id === id);
-    if (p) setValue(String(p.value ?? ''));
+    if (p) setValue(valorToInput(p.value));
   };
 
   const startsAt = fromDateInputValue(startStr);
   const endsAt = selectedPlan ? computeEndsAt(startsAt, selectedPlan.durationMonths) : null;
-  const numericValue = Number(value);
+  const numericValue = parseValorBRL(value);
   const listValue = Number(selectedPlan?.value) || 0;
   const hasDiscount = selectedPlan && Number.isFinite(numericValue) && numericValue < listValue;
 
@@ -180,8 +180,9 @@ function MatriculaModal({ lead, appUser, db, onClose, onDone, mode = 'matricula'
             <div className="grid grid-cols-2 gap-3">
               <Field label="Valor (R$)" hint={hasDiscount ? `Tabela: ${fmtBRL(listValue)}` : undefined}>
                 <StyledInput
-                  type="number" min="0" step="1"
+                  type="text" inputMode="decimal"
                   icon={<DollarSign size={14} />}
+                  placeholder="197,90"
                   value={value}
                   onChange={e => setValue(e.target.value)}
                 />
