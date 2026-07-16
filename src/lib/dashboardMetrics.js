@@ -145,6 +145,19 @@ export function computeAdminDashboardSpan(range, previousRange, now = new Date()
   return { startMs, endMs: range.end.getTime() };
 }
 
+// Janela (em ms) para a query de aulas por trás da conversão por professor:
+// início do período selecionado até min(fim do período, agora) — aula futura
+// não é comparecimento nem falta. Mesmo corte que computeProfessorConversion
+// aplica internamente; feito aqui (função pura, `now` como parâmetro) porque
+// chamar `new Date()`/`Date.now()` direto dentro de um componente/hook viola
+// a regra de pureza (react-hooks v7). Retorna null sem período selecionado.
+export function computeAulasWindowMs(range, now = new Date()) {
+  if (!range) return null;
+  const startMs = range.start.getTime();
+  const endMs = Math.min(range.end.getTime(), now.getTime());
+  return { startMs, endMs };
+}
+
 // Inclusivo nas duas pontas; aceita Date, Timestamp do Firestore ou string.
 export function isWithinRange(dateLike, range) {
   const d = getSafeDateOrNull(dateLike);

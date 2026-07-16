@@ -11,6 +11,7 @@ import { Dumbbell, Kanban, Megaphone, TrendingDown } from 'lucide-react';
 import { isAdminUser } from '../../lib/leads.js';
 import { LEADS_PATH } from '../../lib/firebase.js';
 import { useAdminDashboardLeads } from '../../hooks/useAdminDashboardLeads.js';
+import { useAulasInWindow } from '../../hooks/useAulasInWindow.js';
 import { getDefaultFunnel, isItemInFunnel, isAllFunnels } from '../../lib/funnels.js';
 import {
   buildPeriodRange,
@@ -29,6 +30,7 @@ import {
   computeSourceMetrics,
   computeAulasPorModalidade,
   computeProfessorConversion,
+  computeAulasWindowMs,
   computeLossReasons
 } from '../../lib/dashboardMetrics.js';
 import { cn } from '../../lib/utils.js';
@@ -229,9 +231,32 @@ function DashboardGerencialView({ leads, interactions, appUser, usersList, db, f
   // Conversão por professor: respeita o PERÍODO selecionado (as datas do
   // Gerencial mexem em todos os resultados), mas NÃO o funil — olha todas as
   // aulas experimentais da academia (decisão do Johnny, 2026-07-12: professor
-  // não é recorte de funil). Filtra pela data da aula dentro do período, só
-  // aulas já realizadas.
-  const professorConv = useMemo(() => computeProfessorConversion(periodMetricsLeads, { range: periodRange }), [periodMetricsLeads, periodRange]);
+  // não é recorte de funil). Fonte é a coleção stronix_aulas (histórico
+  // multi-aula por lead, PR-B) — não mais o agendamento único do lead. Janela
+  // da query = período selecionado, com o fim limitado a "agora" (aula futura
+  // não é comparecimento nem falta; computeProfessorConversion também aplica
+  // esse mesmo corte internamente).
+  const aulasWindow = useMemo(() => computeAulasWindowMs(periodRange), [periodRange]);
+
+  const { aulas: windowAulas } = useAulasInWindow({
+    db,
+    startMs: aulasWindow ? aulasWindow.startMs : null,
+    endMs: aulasWindow ? aulasWindow.endMs : null,
+    enabled: Boolean(periodRange),
+  });
+
+  // Consultor só vê as aulas dos PRÓPRIOS leads (mesmo recorte do resto da
+  // tela no caminho consultor); admin vê a janela inteira da academia.
+  const myConsultantIds = useMemo(
+    () => new Set((leads || []).map((l) => l.consultantId).filter(Boolean)),
+    [leads]
+  );
+  const aulasForProf = useMemo(() => {
+    if (isAdmin) return windowAulas;
+    return (windowAulas || []).filter((a) => myConsultantIds.has(a.consultantId));
+  }, [isAdmin, windowAulas, myConsultantIds]);
+
+  const professorConv = useMemo(() => computeProfessorConversion(aulasForProf, { range: periodRange }), [aulasForProf, periodRange]);
 
   // --- TABELA "MÉTRICAS POR FUNIL" (modo Todos os funis) ---
   const funnelComparisonRows = useMemo(() => {
