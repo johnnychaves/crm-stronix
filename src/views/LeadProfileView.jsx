@@ -11,7 +11,7 @@ import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRA
 import { getDefaultFunnel } from '../lib/funnels.js';
 import { deriveLeadState, deriveContextAlert, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
-import { upsertScheduledAula } from '../lib/aulasWrites.js';
+import { upsertScheduledAula, markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -217,6 +217,8 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           convertedAt: null
         }, lead)
       );
+      // Histórico de aulas: perda desfaz a conversão (best-effort).
+      try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
       setLossModalOpen(false);
       setStatus('Perda');
     } catch (e) {
@@ -294,6 +296,14 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         { text: `Fase alterada para [${targetStatus}]${phaseNote ? ' — ' + phaseNote : ''}.`, type: 'status_change' },
         withBucket(up, lead)
       );
+      // Histórico de aulas (dual-write best-effort): atribui/retira a
+      // conversão da última aula atendida do lead.
+      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) {
+        try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
+      }
+      if (lead.status === 'Venda' && targetStatus !== 'Venda' && !destinoConvertido) {
+        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
+      }
       setStatus(targetStatus);
       if (up.funnelId) setFunnelId(up.funnelId);
       setComposerTab('note');
@@ -343,6 +353,10 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         },
         withBucket(up, lead)
       );
+      // Histórico de aulas: saindo de Venda desfaz a conversão (best-effort).
+      if (lead.status === 'Venda' && status !== 'Venda') {
+        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
+      }
 
       setNote('');
       setLoading(false);

@@ -3,6 +3,7 @@ import { collection, doc, increment, serverTimestamp, writeBatch } from 'firebas
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH } from '../lib/firebase.js';
 import { getInteractionSecurityFields } from '../lib/leads.js';
 import { buildMatriculaWrites, computeEndsAt } from '../lib/contracts.js';
+import { markConvertingAula } from '../lib/aulasWrites.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
 import { fmtBRL, parseValorBRL, valorToInput } from '../lib/format.js';
@@ -131,6 +132,11 @@ function MatriculaModal({ lead, appUser, db, onClose, onDone, mode = 'matricula'
       });
 
       await batch.commit();
+      // Histórico de aulas (dual-write best-effort): só na matrícula (não
+      // renovação) — atribui a conversão à última aula atendida do lead.
+      if (setStatusVenda) {
+        try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
+      }
       toast.success(isRenewal ? 'Renovação registrada!' : 'Matrícula realizada!');
       onDone && onDone();
     } catch (e) {
