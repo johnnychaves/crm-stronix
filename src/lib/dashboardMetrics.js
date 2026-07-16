@@ -500,18 +500,19 @@ function buildDayRange(now) {
   return { start, end };
 }
 
-// Conversão por PROFESSOR nas aulas experimentais. A janela é o PERÍODO
-// selecionado no Gerencial (decisão do Johnny, 2026-07-12: as datas do
-// Gerencial mexem em todos os resultados, inclusive este card). Só entram
-// aulas cuja data JÁ PASSOU — aula futura não é comparecimento nem falta —,
-// então o fim efetivo é min(range.end, agora). Sem range, cai numa janela
-// móvel de 90 dias (fallback dos consumidores que não passam período).
-// Atribuição pelo professor do agendamento ATUAL do lead (o modelo guarda um
-// agendamento por lead — histórico multi-agendamento está fora de escopo).
-// Aula sem professor (appointmentSoloTraining ou sem appointmentProfessorId)
-// cai na linha de REFERÊNCIA "Treina sozinho", fora do ranking. Conversão =
-// matrículas ÷ compareceram (isLeadAttended já trata convertido como presente).
-export function computeProfessorConversion(leads, { range = null, now = new Date(), days = 90 } = {}) {
+// Conversão por PROFESSOR nas aulas experimentais. Lê registros da coleção
+// stronix_aulas (um documento por aula realizada/agendada), não mais o
+// agendamento único do lead — permite histórico multi-aula por lead. A janela
+// é o PERÍODO selecionado no Gerencial (decisão do Johnny, 2026-07-12: as
+// datas do Gerencial mexem em todos os resultados, inclusive este card). Só
+// entram aulas cuja data JÁ PASSOU — aula futura não é comparecimento nem
+// falta —, então o fim efetivo é min(range.end, agora). Sem range, cai numa
+// janela móvel de 90 dias (fallback dos consumidores que não passam período).
+// Aula sem professor (soloTraining ou sem professorId) cai na linha de
+// REFERÊNCIA "Treina sozinho", fora do ranking. Conversão = matrículas ÷
+// compareceram (só aula com status 'attended' conta como comparecimento; o
+// campo `converted` do próprio registro marca a matrícula).
+export function computeProfessorConversion(aulas, { range = null, now = new Date(), days = 90 } = {}) {
   const start = range ? range.start : new Date(now.getTime() - days * DAY_MS);
   const rawEnd = range ? range.end : now;
   const end = rawEnd < now ? rawEnd : now;
@@ -530,27 +531,26 @@ export function computeProfessorConversion(leads, { range = null, now = new Date
     deltaVsSolo: null
   });
 
-  (leads || []).forEach(l => {
-    if (getLeadAppointmentType(l) !== 'aula_experimental') return;
-    const d = getLeadAppointmentDate(l);
+  (aulas || []).forEach(aula => {
+    const d = getSafeDateOrNull(aula.scheduledFor);
     if (!d || d < start || d > end) return;
 
     let bucket;
-    if (l.appointmentSoloTraining || !l.appointmentProfessorId) {
+    if (aula.soloTraining || !aula.professorId) {
       if (!solo) solo = makeBucket(null, 'Treina sozinho', true);
       bucket = solo;
     } else {
-      const key = l.appointmentProfessorId;
+      const key = aula.professorId;
       if (!byProf.has(key)) {
-        byProf.set(key, makeBucket(key, l.appointmentProfessorName || 'Professor', false));
+        byProf.set(key, makeBucket(key, aula.professorName || 'Professor', false));
       }
       bucket = byProf.get(key);
     }
 
     bucket.aulas += 1;
-    if (isLeadAttended(l)) {
+    if (aula.status === 'attended') {
       bucket.compareceram += 1;
-      if (isLeadConverted(l)) bucket.matriculas += 1;
+      if (aula.converted === true) bucket.matriculas += 1;
     }
   });
 
