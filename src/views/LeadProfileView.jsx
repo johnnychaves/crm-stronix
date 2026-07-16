@@ -11,6 +11,7 @@ import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRA
 import { getDefaultFunnel } from '../lib/funnels.js';
 import { deriveLeadState, deriveContextAlert, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
+import { upsertScheduledAula, markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -216,6 +217,8 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           convertedAt: null
         }, lead)
       );
+      // Histórico de aulas: perda desfaz a conversão (best-effort).
+      try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
       setLossModalOpen(false);
       setStatus('Perda');
     } catch (e) {
@@ -293,6 +296,14 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         { text: `Fase alterada para [${targetStatus}]${phaseNote ? ' — ' + phaseNote : ''}.`, type: 'status_change' },
         withBucket(up, lead)
       );
+      // Histórico de aulas (dual-write best-effort): atribui/retira a
+      // conversão da última aula atendida do lead.
+      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) {
+        try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
+      }
+      if (lead.status === 'Venda' && targetStatus !== 'Venda' && !destinoConvertido) {
+        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
+      }
       setStatus(targetStatus);
       if (up.funnelId) setFunnelId(up.funnelId);
       setComposerTab('note');
@@ -342,6 +353,10 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         },
         withBucket(up, lead)
       );
+      // Histórico de aulas: saindo de Venda desfaz a conversão (best-effort).
+      if (lead.status === 'Venda' && status !== 'Venda') {
+        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
+      }
 
       setNote('');
       setLoading(false);
@@ -379,6 +394,27 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       const noteStr = (wizNote || '').trim();
       const text = `🔔 ${typeLabel} agendada${extra} p/ ${dateStr}.` + (noteStr ? ` Obs: ${noteStr}` : '');
 
+      // Dual-write best-effort no histórico de aulas (stronix_aulas): a regra
+      // do Firestore pode ainda não estar publicada, então falha aqui NÃO
+      // pode quebrar o agendamento do lead — por isso o try/catch isolado.
+      let currentAulaId = lead.currentAulaId || null;
+      if (isAula) {
+        try {
+          currentAulaId = await upsertScheduledAula({
+            db, lead,
+            fields: {
+              professorId: professorId || null,
+              professorName: professorId ? professorNameById(professores, professorId) : null,
+              soloTraining: Boolean(soloTraining),
+              modality: modalidade || null,
+              scheduledFor: date,
+            },
+          });
+        } catch (e) {
+          console.error('upsertScheduledAula falhou', e);
+        }
+      }
+
       const up = {
         nextFollowUp: date,
         nextFollowUpType: typeLabel,
@@ -392,7 +428,8 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         trialClassesPlanned: isAula ? (quantidade || null) : null,
         appointmentUnit: isVisita ? (unidade || null) : null,
         appointmentType: appointmentType || null,
-        appointmentScheduledFor: appointmentType ? date : null
+        appointmentScheduledFor: appointmentType ? date : null,
+        currentAulaId
       };
 
       await logInteraction(db, lead, appUser,

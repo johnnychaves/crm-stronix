@@ -8,6 +8,7 @@ import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeDelegatedPresenceSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { applyOutcomeToAula, upsertScheduledAula } from '../lib/aulasWrites.js';
 import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
@@ -1142,6 +1143,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         },
         withBucket(leadUpdate, lead)
       );
+      // Dual-write best-effort: não deixar uma falha na aula (ex.: regra ainda
+      // não publicada) quebrar o toque da Meta Diária.
+      try { await applyOutcomeToAula({ db, lead, outcome }); } catch (err) { console.error('applyOutcomeToAula falhou', err); }
       // Log adicional da mudança de fase para o feed do lead.
       if (shouldPromoteToNegociacao) {
         await logInteraction(db, lead, appUser, {
@@ -1321,6 +1325,27 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
     const finalSoloTraining = isAula ? Boolean(newSoloTraining) : false;
 
     try {
+      // Dual-write best-effort no histórico de aulas (stronix_aulas): a regra
+      // do Firestore pode ainda não estar publicada, então falha aqui NÃO
+      // pode quebrar o reagendamento do lead — por isso o try/catch isolado.
+      let currentAulaId = lead.currentAulaId || null;
+      if (isAula) {
+        try {
+          currentAulaId = await upsertScheduledAula({
+            db, lead,
+            fields: {
+              professorId: finalProfessorId,
+              professorName: finalProfessorName,
+              soloTraining: finalSoloTraining,
+              modality: finalModality,
+              scheduledFor: newDate,
+            },
+          });
+        } catch (e) {
+          console.error('upsertScheduledAula falhou', e);
+        }
+      }
+
       const leadUpdate = {
         appointmentScheduledFor: newDate,
         nextFollowUp: newDate, // keep legacy field in sync so the lead doesn't show up as "Atrasado" after rescheduling
@@ -1334,7 +1359,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         trialClassesPlanned: finalQty,
         appointmentOutcome: null,
         appointmentOutcomeAt: null,
-        appointmentOutcomeBy: null
+        appointmentOutcomeBy: null,
+        currentAulaId
       };
 
       let baseText;

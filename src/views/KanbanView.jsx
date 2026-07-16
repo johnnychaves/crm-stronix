@@ -11,6 +11,7 @@ import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, LIFECYCLE_BUCKETS } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from '../lib/kanban.js';
+import { markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { FollowUpIcon } from '../components/ui/Badges.jsx';
@@ -452,6 +453,14 @@ const handleKanbanMouseMove = (e) => {
         { text: `Movido para a etapa [${newStatus}] via Kanban.`, type: 'status_change' },
         withBucket(leadPatch, lead)
       );
+      // Histórico de aulas (dual-write best-effort): atribui/retira a
+      // conversão da última aula atendida do lead.
+      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) {
+        try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
+      }
+      if (lead.status === 'Venda' && !destinoConvertido) {
+        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
+      }
       if (lead.status === 'Perda') refreshLost(); // saiu da Perda: refaz query+contagem
     } catch (err) {
       console.error("Erro Kanban:", err);
@@ -536,6 +545,8 @@ if (!lead) return;
           lead
         )
       );
+      // Histórico de aulas: perda desfaz a conversão (best-effort).
+      try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
 
       setLossModalLeadId(null);
       refreshLost(); // query da coluna Perda não é ao vivo — refaz fetch+contagem

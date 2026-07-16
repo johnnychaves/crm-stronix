@@ -29,6 +29,7 @@ import {
   DAILY_GOAL_CATEGORIES,
   DAILY_GOAL_CATEGORY_LABEL
 } from './leads.js';
+import { applyOutcomeToAula, clearAulaOutcome } from './aulasWrites.js';
 
 // Desmarca o desfecho (volta para "aguardando"): usado pelo atalho das Aulas
 // para reverter um Veio/Faltou clicado por engano. Só zera os campos de
@@ -42,6 +43,9 @@ export async function clearAppointmentOutcome({ db, lead }) {
     appointmentOutcomeAt: null,
     appointmentOutcomeBy: null
   });
+  // Dual-write best-effort: não deixar uma falha na aula (ex.: regra ainda não
+  // publicada) quebrar o desfazer do desfecho no lead.
+  try { await clearAulaOutcome({ db, lead }); } catch (e) { console.error('clearAulaOutcome falhou', e); }
 }
 
 export async function writeAppointmentOutcome({
@@ -86,6 +90,9 @@ export async function writeAppointmentOutcome({
     leadUpdate.nextFollowUp = null;
   }
   await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), leadUpdate);
+  // Dual-write best-effort: não deixar uma falha na aula (ex.: regra ainda não
+  // publicada) quebrar o fluxo de desfecho do lead.
+  try { await applyOutcomeToAula({ db, lead, outcome }); } catch (e) { console.error('applyOutcomeToAula falhou', e); }
 
   if (writeGoalDone) {
     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
