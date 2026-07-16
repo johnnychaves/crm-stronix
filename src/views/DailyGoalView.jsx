@@ -8,7 +8,7 @@ import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeDelegatedPresenceSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
-import { upsertScheduledAula } from '../lib/aulasWrites.js';
+import { applyOutcomeToAula, upsertScheduledAula } from '../lib/aulasWrites.js';
 import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
@@ -1143,6 +1143,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         },
         withBucket(leadUpdate, lead)
       );
+      // Dual-write best-effort: não deixar uma falha na aula (ex.: regra ainda
+      // não publicada) quebrar o toque da Meta Diária.
+      try { await applyOutcomeToAula({ db, lead, outcome }); } catch (err) { console.error('applyOutcomeToAula falhou', err); }
       // Log adicional da mudança de fase para o feed do lead.
       if (shouldPromoteToNegociacao) {
         await logInteraction(db, lead, appUser, {
