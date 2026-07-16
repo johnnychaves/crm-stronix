@@ -81,6 +81,7 @@ export const PLANS_PATH = 'stronix_planos';
 // Contratos de matrícula — 1 doc por matrícula e por renovação (histórico
 // imutável), ligado ao lead/cliente por leadId.
 export const CONTRACTS_PATH = 'stronix_contratos';
+export const AULAS_PATH = 'stronix_aulas';
 // Config "geral" da academia — doc único (singleton) sob este path.
 export const CONFIG_PATH = 'stronix_config';
 export const CONFIG_GENERAL_ID = 'general';
