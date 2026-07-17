@@ -19,7 +19,9 @@ import {
   getLeadOwnershipFields,
   getInteractionSecurityFields,
   getLeadConversionDate,
-  getLeadConversionDateStrict
+  getLeadConversionDateStrict,
+  outcomeAppliesToAula,
+  DAILY_GOAL_CATEGORIES
 } from '../leads.js';
 
 // 15 de julho de 2026 — dia de referência dos testes.
@@ -382,5 +384,21 @@ describe('getLeadConversionDate vs getLeadConversionDateStrict', () => {
     expect(getLeadConversionDate({})).toBeNull();
     expect(getLeadConversionDate(null)).toBeNull();
     expect(getLeadConversionDateStrict(null)).toBeNull();
+  });
+});
+
+describe('outcomeAppliesToAula', () => {
+  it('só a categoria Aula Hoje propaga para o histórico de aulas', () => {
+    expect(outcomeAppliesToAula(DAILY_GOAL_CATEGORIES.AULA_HOJE)).toBe(true);
+  });
+  it('visita, contato e demais categorias NÃO propagam', () => {
+    expect(outcomeAppliesToAula(DAILY_GOAL_CATEGORIES.VISITA_HOJE)).toBe(false);
+    expect(outcomeAppliesToAula(DAILY_GOAL_CATEGORIES.CONTATO_HOJE)).toBe(false);
+    expect(outcomeAppliesToAula(DAILY_GOAL_CATEGORIES.ATRASADO)).toBe(false);
+  });
+  it('null/undefined/desconhecido não propaga', () => {
+    expect(outcomeAppliesToAula(null)).toBe(false);
+    expect(outcomeAppliesToAula(undefined)).toBe(false);
+    expect(outcomeAppliesToAula('qualquer_coisa')).toBe(false);
   });
 });
