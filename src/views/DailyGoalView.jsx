@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { collection, doc, setDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, isAdminUser } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, isAdminUser, outcomeAppliesToAula } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeDelegatedPresenceSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
@@ -1143,9 +1143,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
         },
         withBucket(leadUpdate, lead)
       );
-      // Dual-write best-effort: não deixar uma falha na aula (ex.: regra ainda
-      // não publicada) quebrar o toque da Meta Diária.
-      try { await applyOutcomeToAula({ db, lead, outcome }); } catch (err) { console.error('applyOutcomeToAula falhou', err); }
+      // Dual-write best-effort: só desfecho de AULA toca o histórico (guarda #1).
+      // handleOutcome atende visita_hoje E aula_hoje; sem isto, o desfecho de
+      // uma visita corromperia a aula antiga apontada por currentAulaId.
+      if (outcomeAppliesToAula(categorySlug)) {
+        try { await applyOutcomeToAula({ db, lead, outcome }); } catch (err) { console.error('applyOutcomeToAula falhou', err); }
+      }
       // Log adicional da mudança de fase para o feed do lead.
       if (shouldPromoteToNegociacao) {
         await logInteraction(db, lead, appUser, {

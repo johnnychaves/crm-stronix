@@ -215,6 +215,13 @@ export const getLeadAttendanceDate = (lead) => {
   );
 };
 
+// Guarda do dual-write de histórico de aulas: só o desfecho de uma AULA
+// experimental propaga para stronix_aulas. Sem isto, marcar o desfecho de uma
+// VISITA num lead que ainda tem currentAulaId de uma aula antiga sobrescrevia
+// o status daquela aula (bug de fidelidade #1).
+export const outcomeAppliesToAula = (categorySlug) =>
+  categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE;
+
 // --- Permissions ---
 
 export const isAdminUser = (user) => user?.role === 'admin';

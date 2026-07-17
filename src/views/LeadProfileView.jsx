@@ -217,8 +217,10 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           convertedAt: null
         }, lead)
       );
-      // Histórico de aulas: perda desfaz a conversão (best-effort).
-      try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
+      // #8: Perda é CHURN, então NÃO desfaz a conversão histórica da aula. A
+      // matrícula aconteceu; o churn é medido pela taxa de renovação, não
+      // reescrevendo a conversão passada do professor. (Sair de Venda p/ fase de
+      // lead ainda desfaz, ver handlePhaseConfirm/saveInteraction: venda por engano.)
       setLossModalOpen(false);
       setStatus('Perda');
     } catch (e) {

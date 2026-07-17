@@ -152,7 +152,7 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
     setSavingId(lead.id);
     try {
       if (clearing) {
-        await clearAppointmentOutcome({ db, lead });
+        await clearAppointmentOutcome({ db, lead, categorySlug });
         setOutcomeOverride(o => ({ ...o, [lead.id]: null }));
         toast.success(`Presença de ${lead.name} desmarcada.`);
       } else {

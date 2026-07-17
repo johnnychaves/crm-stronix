@@ -27,7 +27,8 @@ import {
   getAppointmentOutcomeMeta,
   getInteractionSecurityFields,
   DAILY_GOAL_CATEGORIES,
-  DAILY_GOAL_CATEGORY_LABEL
+  DAILY_GOAL_CATEGORY_LABEL,
+  outcomeAppliesToAula
 } from './leads.js';
 import { applyOutcomeToAula, clearAulaOutcome } from './aulasWrites.js';
 
@@ -37,15 +38,16 @@ import { applyOutcomeToAula, clearAulaOutcome } from './aulasWrites.js';
 // marca daily_goal_done do dia (se houver) não é apagada aqui (delete de
 // interaction é restrito ao dono/admin pela rule); some sozinha na virada do
 // dia. Preserva o DONO, então funciona para qualquer membro do tenant.
-export async function clearAppointmentOutcome({ db, lead }) {
+export async function clearAppointmentOutcome({ db, lead, categorySlug = null }) {
   await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
     appointmentOutcome: null,
     appointmentOutcomeAt: null,
     appointmentOutcomeBy: null
   });
-  // Dual-write best-effort: não deixar uma falha na aula (ex.: regra ainda não
-  // publicada) quebrar o desfazer do desfecho no lead.
-  try { await clearAulaOutcome({ db, lead }); } catch (e) { console.error('clearAulaOutcome falhou', e); }
+  // Dual-write best-effort: só desfecho de aula toca o histórico (guarda #1).
+  if (outcomeAppliesToAula(categorySlug)) {
+    try { await clearAulaOutcome({ db, lead }); } catch (e) { console.error('clearAulaOutcome falhou', e); }
+  }
 }
 
 export async function writeAppointmentOutcome({
@@ -90,9 +92,11 @@ export async function writeAppointmentOutcome({
     leadUpdate.nextFollowUp = null;
   }
   await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), leadUpdate);
-  // Dual-write best-effort: não deixar uma falha na aula (ex.: regra ainda não
-  // publicada) quebrar o fluxo de desfecho do lead.
-  try { await applyOutcomeToAula({ db, lead, outcome }); } catch (e) { console.error('applyOutcomeToAula falhou', e); }
+  // Dual-write best-effort: SÓ desfecho de aula toca o histórico de aulas
+  // (guarda #1 — desfecho de visita não pode mexer numa aula antiga do lead).
+  if (outcomeAppliesToAula(categorySlug)) {
+    try { await applyOutcomeToAula({ db, lead, outcome }); } catch (e) { console.error('applyOutcomeToAula falhou', e); }
+  }
 
   if (writeGoalDone) {
     await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
