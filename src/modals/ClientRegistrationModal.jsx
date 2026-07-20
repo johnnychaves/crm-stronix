@@ -68,9 +68,9 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="z-[210] max-w-2xl p-0 gap-0 overflow-hidden flex flex-col max-h-[90vh]" overlayClassName="z-[210]">
+      <DialogContent className="z-[210] w-full sm:max-w-3xl p-0 gap-0 overflow-hidden flex flex-col max-h-[92vh]" overlayClassName="z-[210]">
         {/* Cabeçalho */}
-        <DialogHeader className="shrink-0 flex items-center gap-3 px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-white/[0.06]">
+        <DialogHeader className="shrink-0 flex flex-row items-center gap-3 text-left px-6 py-4 border-b border-slate-100 dark:border-white/[0.06]">
           <span className="w-10 h-10 rounded-xl grid place-items-center shrink-0 bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
             <Pencil size={18} />
           </span>
@@ -81,7 +81,7 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
         </DialogHeader>
 
         {/* Medidor de completude */}
-        <div className="shrink-0 px-5 sm:px-6 py-3 border-b border-slate-100 dark:border-white/[0.05] flex items-center gap-3">
+        <div className="shrink-0 px-6 py-3 border-b border-slate-100 dark:border-white/[0.05] flex items-center gap-3">
           <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
             <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-emerald-500 transition-all" style={{ width: `${Math.max(4, pct)}%` }} />
           </div>
@@ -89,7 +89,7 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
         </div>
 
         {/* Abas */}
-        <div className="shrink-0 flex gap-1 px-3 sm:px-4 py-2.5 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto thin-scroll">
+        <div className="shrink-0 flex gap-1 px-4 py-2.5 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto thin-scroll">
           {TABS.map((t) => {
             const active = t.id === tab;
             const done = t.done(form);
@@ -105,7 +105,7 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
         </div>
 
         {/* Corpo da aba ativa */}
-        <div className="flex-1 min-h-0 px-5 sm:px-6 py-5 overflow-y-auto thin-scroll">
+        <div className="h-[min(440px,56vh)] px-6 py-5 overflow-y-auto thin-scroll">
           {tab === 'identidade' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2"><Field label="Nome completo" required><StyledInput icon={<User size={15} />} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nome e sobrenome" /></Field></div>
@@ -168,7 +168,7 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
         </div>
 
         {/* Rodapé */}
-        <div className="shrink-0 px-5 sm:px-6 py-4 flex items-center gap-2 border-t border-slate-100 dark:border-white/[0.05]">
+        <div className="shrink-0 px-6 py-4 flex items-center gap-2 border-t border-slate-100 dark:border-white/[0.05]">
           <span className="text-[12px] text-slate-400 dark:text-slate-500 font-medium">Aba {tabIdx + 1} de {TABS.length}</span>
           <div className="ml-auto flex items-center gap-2">
             <Btn kind="soft" size="md" onClick={onClose} disabled={loading}>Cancelar</Btn>
