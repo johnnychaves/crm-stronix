@@ -10,6 +10,7 @@ import {
 } from '../lib/clientRegistration.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
+import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog.jsx';
 import { Field, StyledInput, StyledSelect } from '../components/ui/Field.jsx';
 import { TagsInput } from '../components/ui/TagsInput.jsx';
@@ -28,6 +29,7 @@ const TABS = [
 
 function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, tags }) {
   const toast = useToast();
+  const { professores } = useGeneralConfig();
   const isAdmin = isAdminUser(appUser);
   const [form, setForm] = useState(() => readClientRegistration(lead));
   const [tab, setTab] = useState('identidade');
@@ -52,7 +54,7 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
     if (!form.name.trim()) { toast.warning('Informe o nome.'); return; }
     setLoading(true);
     try {
-      const patch = buildClientRegistrationPatch(form, { isAdmin, usersList });
+      const patch = buildClientRegistrationPatch(form, { isAdmin, usersList, professores });
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch);
       toast.success('Cadastro salvo!');
       onClose();
@@ -148,13 +150,22 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
           {tab === 'relacionamento' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Field label="Origem"><StyledSelect value={form.source} onChange={(e) => set('source', e.target.value)}>{!SOURCES.includes(form.source) && form.source && <option value={form.source}>{form.source}</option>}{SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}</StyledSelect></Field>
+                <div className="sm:col-span-2"><Field label="Origem"><StyledSelect value={form.source} onChange={(e) => set('source', e.target.value)}>{!SOURCES.includes(form.source) && form.source && <option value={form.source}>{form.source}</option>}{SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}</StyledSelect></Field></div>
                 <Field label="Consultor responsável">
                   {isAdmin ? (
                     <StyledSelect value={form.consultantId} onChange={(e) => set('consultantId', e.target.value)}><option value="">Selecione…</option>{(usersList || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</StyledSelect>
                   ) : (
                     <StyledInput value={lead.consultantName || '—'} disabled readOnly />
                   )}
+                </Field>
+                <Field label="Professor responsável">
+                  <StyledSelect value={form.professorId} onChange={(e) => set('professorId', e.target.value)}>
+                    <option value="">Sem professor</option>
+                    {form.professorId && !(professores || []).some((p) => p.id === form.professorId) && (
+                      <option value={form.professorId}>{lead.professorName || 'Professor atual'}</option>
+                    )}
+                    {(professores || []).map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </StyledSelect>
                 </Field>
               </div>
               <Field label="Etiquetas"><TagsInput tags={form.tags} setTags={(t) => set('tags', t)} suggestions={tagSuggestions} /></Field>

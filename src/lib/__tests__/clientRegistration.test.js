@@ -118,3 +118,19 @@ describe('computeCompleteness', () => {
     expect(computeCompleteness(empty)).toBeLessThan(20);
   });
 });
+
+describe('professor responsável', () => {
+  it('resolve professorName pela lista de professores', () => {
+    const patch = buildClientRegistrationPatch({ ...baseForm(), professorId: 'p1' }, { professores: [{ id: 'p1', nome: 'Prof. Léo' }] });
+    expect(patch.professorId).toBe('p1');
+    expect(patch.professorName).toBe('Prof. Léo');
+  });
+  it('sem professor -> professorId e professorName null', () => {
+    const patch = buildClientRegistrationPatch(baseForm(), { professores: [] });
+    expect(patch.professorId).toBeNull();
+    expect(patch.professorName).toBeNull();
+  });
+  it('lê professorId do lead', () => {
+    expect(readClientRegistration({ professorId: 'p9' }).professorId).toBe('p9');
+  });
+});

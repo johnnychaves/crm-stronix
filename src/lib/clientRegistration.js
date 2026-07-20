@@ -4,6 +4,7 @@
 import { fromDateInputValue, toDateInputValue } from './dates.js';
 import { buildLeadSearchFields } from './leadDerived.js';
 import { formatCPF, formatPhone } from './masks.js';
+import { professorNameById } from './professores.js';
 
 export const MARITAL_STATUS_OPTIONS = [
   'Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Viúvo(a)', 'Outro',
@@ -35,13 +36,14 @@ export function readClientRegistration(lead = {}) {
     profession: lead.profession || '',
     source: lead.source || '',
     consultantId: lead.consultantId || '',
+    professorId: lead.professorId || '',
     observation: lead.observation || '',
     tags: lead.tags || [],
   };
 }
 
 // form do modal -> patch para updateDoc no documento do lead.
-export function buildClientRegistrationPatch(form, { isAdmin, usersList } = {}) {
+export function buildClientRegistrationPatch(form, { isAdmin, usersList, professores } = {}) {
   const patch = {
     name: str(form.name),
     whatsapp: str(form.whatsapp),
@@ -53,6 +55,9 @@ export function buildClientRegistrationPatch(form, { isAdmin, usersList } = {}) 
     maritalStatus: nullify(form.maritalStatus),
     profession: nullify(form.profession),
     source: str(form.source),
+    // Professor responsável (catálogo). Sem trava de admin: é referência, não permissão.
+    professorId: form.professorId || null,
+    professorName: form.professorId ? professorNameById(professores, form.professorId) : null,
     observation: str(form.observation),
     tags: Array.isArray(form.tags) ? form.tags : [],
     address: mapOrNull({
