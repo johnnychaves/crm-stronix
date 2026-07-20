@@ -29,7 +29,7 @@ function Block({ icon, title, children, empty, onEdit }) {
       <div className="flex items-center gap-2 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2.5">{icon}{title}</div>
       {empty ? (
         <button onClick={onEdit} className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-brand-600 dark:text-brand-300 bg-brand-50 dark:bg-brand-500/10 border border-dashed border-brand-300 dark:border-brand-500/30 rounded-lg px-3 py-1.5 transition hover:bg-brand-100/70">
-          <Pencil size={12} /> {title === 'Endereço' ? 'Adicionar endereço' : title === 'Contato de emergência' ? 'Adicionar contato' : 'Adicionar'}
+          <Pencil size={12} /> {title === 'Endereço' ? 'Adicionar endereço' : title === 'Contato de emergência' ? 'Adicionar contato' : title === 'Identidade' || title === 'Dados pessoais' ? 'Adicionar dados' : 'Adicionar'}
         </button>
       ) : children}
     </div>
@@ -42,8 +42,10 @@ function ClientRegistrationCard({ lead, onEdit, readOnly = false }) {
   const f = readClientRegistration(lead);
   const pct = computeCompleteness(f);
   const age = yearsFrom(lead.birthDate);
+  const hasIdentity = !!(f.cpf || f.rg || f.birthDate || f.sexo || f.email);
   const hasAddress = !!(f.street || f.city || f.cep);
   const hasEmg = !!(f.emgName || f.emgPhone);
+  const hasPersonal = !!(f.maritalStatus || f.profession);
   const addressLine1 = [f.street, f.number].filter(Boolean).join(', ') + (f.complement ? ` · ${f.complement}` : '');
   const addressLine2 = [[f.neighborhood, f.city].filter(Boolean).join(' · '), f.state, f.cep].filter(Boolean).join(' · ');
 
@@ -61,7 +63,7 @@ function ClientRegistrationCard({ lead, onEdit, readOnly = false }) {
         )}
       </div>
       <div className="px-5 pb-4">
-        <Block icon={<User size={13} />} title="Identidade">
+        <Block icon={<User size={13} />} title="Identidade" empty={!hasIdentity} onEdit={onEdit}>
           <div className="grid grid-cols-2 gap-x-5 gap-y-3">
             <KV k="CPF" v={f.cpf} />
             <KV k="RG" v={f.rg} />
@@ -81,14 +83,12 @@ function ClientRegistrationCard({ lead, onEdit, readOnly = false }) {
             <KV k="Parentesco" v={f.emgRelation} />
           </div>
         </Block>
-        {(f.maritalStatus || f.profession) && (
-          <Block icon={<Briefcase size={13} />} title="Dados pessoais">
-            <div className="grid grid-cols-2 gap-x-5 gap-y-3">
-              <KV k="Estado civil" v={f.maritalStatus} />
-              <KV k="Profissão" v={f.profession} />
-            </div>
-          </Block>
-        )}
+        <Block icon={<Briefcase size={13} />} title="Dados pessoais" empty={!hasPersonal} onEdit={onEdit}>
+          <div className="grid grid-cols-2 gap-x-5 gap-y-3">
+            <KV k="Estado civil" v={f.maritalStatus} />
+            <KV k="Profissão" v={f.profession} />
+          </div>
+        </Block>
       </div>
     </section>
   );
