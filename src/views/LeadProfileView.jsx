@@ -22,7 +22,6 @@ import { ContractAVencerBadge } from '../components/ui/ContractAVencerBadge.jsx'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
 import { ContextAlert } from '../components/profile/ContextAlert.jsx';
-import { ClientRegistrationCard } from '../components/profile/ClientRegistrationCard.jsx';
 import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
@@ -1059,13 +1058,6 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       {contextAlert && (
         <div className="mb-5">
           <ContextAlert alert={contextAlert} onAction={handleAlertAction} />
-        </div>
-      )}
-
-      {/* Card de leitura do cadastro completo — só cliente (lead mantém o EditLeadModal enxuto) */}
-      {isClient && (
-        <div className="mb-5">
-          <ClientRegistrationCard lead={lead} onEdit={() => setIsEditing(true)} readOnly={isReadOnly} />
         </div>
       )}
 
