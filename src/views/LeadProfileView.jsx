@@ -9,7 +9,7 @@ import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
-import { deriveLeadState, deriveContextAlert, getTone, phaseToneName } from '../lib/leadState.js';
+import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
 import { upsertScheduledAula, markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '../lib/utils.js';
@@ -21,7 +21,6 @@ import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
 import { ContractAVencerBadge } from '../components/ui/ContractAVencerBadge.jsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
-import { ContextAlert } from '../components/profile/ContextAlert.jsx';
 import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
@@ -230,40 +229,6 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
     } finally {
       setLoading(false);
     }
-  };
-
-  // Reabre um lead em Perda: tira de "Perda", volta ao primeiro estágio do
-  // funil do lead (fallback 'Novo'), limpa os campos de resolução de perda e
-  // registra na timeline. Disparado pelo ContextAlert (action 'reopen').
-  const handleReopen = async () => {
-    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
-    const firstStage = (statuses || [])
-      .filter(s => s.funnelId === (lead.funnelId || fallbackFunnelId))
-      .sort((a, b) => (a.order || 0) - (b.order || 0))[0]?.name || 'Novo';
-    setLoading(true);
-    try {
-      await logInteraction(db, lead, appUser,
-        { text: 'Lead reaberto.', type: 'status_change' },
-        withBucket({
-          status: firstStage,
-          lossReason: null,
-          lostAt: null
-        }, lead)
-      );
-      setStatus(firstStage);
-    } catch (e) {
-      console.error(e);
-      toast.error('Não foi possível reabrir o lead. Tente novamente.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Liga o CTA do alerta contextual (deriveContextAlert) ao handler real.
-  const handleAlertAction = (action) => {
-    if (action === 'renew') return handleRenew();
-    if (action === 'matricular') return handleWin();
-    if (action === 'reopen') return handleReopen();
   };
 
   // Confirmação do PhaseChanger (composer → "Mudar fase"). Venda/Perda caem nos
@@ -525,7 +490,6 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // tom/rótulo/hint do cabeçalho, o anel do RingAvatar e o alerta contextual.
   const profileState = deriveLeadState(lead, new Date(), contractThresholdDays);
   const profileTone = getTone(profileState.tone);
-  const contextAlert = deriveContextAlert(profileState);
 
   // Classificação + filtro da timeline (helpers compartilhados em lib/timeline.js).
   const interactionsWithClass = (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }));
@@ -1053,13 +1017,6 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           </div>
         </div>
       </section>
-
-      {/* Alerta contextual (a_vencer/inativo/cancelado/perdido) — CTA → handleAlertAction */}
-      {contextAlert && (
-        <div className="mb-5">
-          <ContextAlert alert={contextAlert} onAction={handleAlertAction} />
-        </div>
-      )}
 
       {/* ===== Abas ===== */}
       <Tabs value={activeProfileTab} onValueChange={setActiveProfileTab}>
