@@ -115,20 +115,26 @@ um com uma responsabilidade só.
 
 ## Estrutura do modal (cliente)
 
-Seis seções, no layout de `FormSection` do `EditLeadModal`:
+**Direção visual escolhida (mockup B): modal em abas.** Cabeçalho fixo com nome
+do cliente + medidor de completude, uma barra de abas, o corpo da aba ativa, e
+rodapé fixo com Cancelar/Salvar. A bolinha na aba indica seção com dados
+preenchidos (verde) ou vazia. "Salvar cadastro" vale para o cadastro inteiro, de
+qualquer aba.
+
+Cinco abas:
 
 1. **Identidade** — Nome*, WhatsApp*, CPF (validação inline), RG, Nascimento,
    Sexo (select), E-mail.
 2. **Endereço** — CEP (autopreenche rua/bairro/cidade/UF via ViaCEP no blur),
    Rua, Número, Complemento, Bairro, Cidade, UF.
-3. **Contato de emergência** — Nome, Telefone (máscara), Parentesco.
-4. **Dados pessoais** — Estado civil (select: Solteiro(a), Casado(a), União
-   estável, Divorciado(a), Viúvo(a), Outro), Profissão.
-5. **Relacionamento** — Origem, Consultor (só admin reatribui), Etiquetas.
-6. **Observação** — texto livre.
+3. **Emergência** — Nome, Telefone (máscara), Parentesco.
+4. **Pessoais** — Estado civil (select: Solteiro(a), Casado(a), União estável,
+   Divorciado(a), Viúvo(a), Outro), Profissão.
+5. **Relacionamento** — Origem, Consultor (só admin reatribui), Etiquetas,
+   Observação.
 
-No topo, um medidor de completude ("cadastro X% completo") calculado sobre o
-conjunto de campos do cliente. Só o Nome trava o salvar.
+Medidor de completude ("cadastro X% completo") calculado sobre o conjunto de
+campos do cliente. Só o Nome trava o salvar.
 
 ## Card de leitura na ficha (cliente)
 
