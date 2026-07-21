@@ -138,9 +138,17 @@ export default async function handler(req, res) {
     }
     if (trialDays !== undefined) {
       const days = Number(trialDays);
-      update.trialEndsAt = Number.isFinite(days) && days > 0
+      const useTrial = Number.isFinite(days) && days > 0;
+      update.trialEndsAt = useTrial
         ? admin.firestore.Timestamp.fromMillis(Date.now() + days * 24 * 60 * 60 * 1000)
         : null;
+      // "0 = encerra" de verdade: se a academia estava em 'trial', sai do trial
+      // → 'active' (senão zerava só a data e o status/badge continuava 'trial').
+      // Não sobrepõe um status definido explicitamente na mesma requisição.
+      if (!useTrial && status === undefined && existing.data()?.status === 'trial') {
+        update.status = 'active';
+        statusChanged = true;
+      }
     }
     // Desativar/arquivar (soft-delete): arquivar bloqueia o acesso (status
     // 'suspended' é negado pelas rules) e sai da lista de ativas; restaurar reativa.
