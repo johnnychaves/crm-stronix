@@ -25,7 +25,6 @@ import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { MatriculaModal } from '../modals/MatriculaModal.jsx';
-import { EditLeadModal } from '../modals/EditLeadModal.jsx';
 import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
 import {
   getInteractionVisual,
@@ -1400,27 +1399,15 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       </Tabs>
 
       {/* Overlays */}
-      {isClient ? (
-        <ClientRegistrationModal
-          open={isEditing}
-          onClose={() => setIsEditing(false)}
-          lead={lead}
-          appUser={appUser}
-          db={db}
-          usersList={usersList}
-          tags={tags}
-        />
-      ) : (
-        <EditLeadModal
-          open={isEditing}
-          onClose={() => setIsEditing(false)}
-          lead={lead}
-          appUser={appUser}
-          db={db}
-          usersList={usersList}
-          tags={tags}
-        />
-      )}
+      <ClientRegistrationModal
+        open={isEditing}
+        onClose={() => setIsEditing(false)}
+        lead={lead}
+        appUser={appUser}
+        db={db}
+        usersList={usersList}
+        tags={tags}
+      />
       {lossModalOpen && <LossReasonModal lossReasons={lossReasons} onClose={() => setLossModalOpen(false)} onConfirm={confirmLoss} />}
       {matriculaOpen && (
         <MatriculaModal

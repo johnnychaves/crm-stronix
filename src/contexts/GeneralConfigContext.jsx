@@ -5,9 +5,9 @@ import { createContext, useContext } from 'react';
 // Context para evitar threading por todos os componentes que renderizam o
 // LeadDetailsModal / RescheduleModal. Funciona através de portais (createPortal
 // mantém a posição na árvore React).
-const GeneralConfigContext = createContext({ modalities: [], trialClassOptions: [1, 2, 3], units: [], metaWeekdays: [1, 2, 3, 4, 5], slaOverdueDays: 3, dailyVolumeTarget: 0, planos: [], contratos: [], contractThresholdDays: 30, professores: [] });
+const GeneralConfigContext = createContext({ modalities: [], trialClassOptions: [1, 2, 3], units: [], metaWeekdays: [1, 2, 3, 4, 5], slaOverdueDays: 3, dailyVolumeTarget: 0, planos: [], contratos: [], contractThresholdDays: 30, professores: [], dores: [] });
 function useGeneralConfig() {
-  return useContext(GeneralConfigContext) || { modalities: [], trialClassOptions: [1, 2, 3], units: [], metaWeekdays: [1, 2, 3, 4, 5], slaOverdueDays: 3, dailyVolumeTarget: 0, planos: [], contratos: [], contractThresholdDays: 30, professores: [] };
+  return useContext(GeneralConfigContext) || { modalities: [], trialClassOptions: [1, 2, 3], units: [], metaWeekdays: [1, 2, 3, 4, 5], slaOverdueDays: 3, dailyVolumeTarget: 0, planos: [], contratos: [], contractThresholdDays: 30, professores: [], dores: [] };
 }
 
 export { GeneralConfigContext, useGeneralConfig };

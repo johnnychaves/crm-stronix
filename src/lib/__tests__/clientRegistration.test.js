@@ -15,6 +15,7 @@ const baseForm = () => ({
   birthDate: '1994-03-12',
   sexo: 'Feminino',
   email: 'marina@email.com',
+  dor: 'Emagrecer', modalidade: 'Musculação',
   cep: '90035-190', street: 'Rua Ramiro Barcelos', number: '1200',
   complement: 'Apto 502', neighborhood: 'Santana', city: 'Porto Alegre', state: 'RS',
   emgName: 'Rafael Ribeiro', emgPhone: '(51) 9 8811-2200', emgRelation: 'Cônjuge',
@@ -132,5 +133,25 @@ describe('professor responsável', () => {
   });
   it('lê professorId do lead', () => {
     expect(readClientRegistration({ professorId: 'p9' }).professorId).toBe('p9');
+  });
+});
+
+describe('dor e modalidade', () => {
+  it('patch mapeia dor e modalidade do form', () => {
+    const patch = buildClientRegistrationPatch({ ...baseForm() }, {});
+    expect(patch.dor).toBe('Emagrecer');
+    expect(patch.modalidade).toBe('Musculação');
+  });
+
+  it('vazio vira null', () => {
+    const patch = buildClientRegistrationPatch({ ...baseForm(), dor: '', modalidade: '' }, {});
+    expect(patch.dor).toBeNull();
+    expect(patch.modalidade).toBeNull();
+  });
+
+  it('readClientRegistration lê dor e modalidade do lead', () => {
+    const form = readClientRegistration({ dor: 'X', modalidade: 'Y' });
+    expect(form.dor).toBe('X');
+    expect(form.modalidade).toBe('Y');
   });
 });
