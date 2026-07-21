@@ -271,8 +271,8 @@ function AppInner() {
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, professores }),
-    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, professores]
+    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, professores, dores }),
+    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, professores, dores]
   );
   // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
   // tenant ainda não foi resolvido (appId = default), o que é correto para o

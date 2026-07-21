@@ -29,7 +29,7 @@ const TABS = [
 
 function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, tags }) {
   const toast = useToast();
-  const { professores } = useGeneralConfig();
+  const { professores, dores, modalities } = useGeneralConfig();
   const isAdmin = isAdminUser(appUser);
   const [form, setForm] = useState(() => readClientRegistration(lead));
   const [tab, setTab] = useState('identidade');
@@ -150,6 +150,20 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
           {tab === 'relacionamento' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Field label="Dor / necessidade">
+                  <StyledSelect value={form.dor} onChange={(e) => set('dor', e.target.value)}>
+                    <option value="">Selecione…</option>
+                    {form.dor && !(dores || []).some((d) => d.name === form.dor) && <option value={form.dor}>{form.dor}</option>}
+                    {(dores || []).map((d) => <option key={d.id} value={d.name}>{d.name}</option>)}
+                  </StyledSelect>
+                </Field>
+                <Field label="Modalidade de interesse">
+                  <StyledSelect value={form.modalidade} onChange={(e) => set('modalidade', e.target.value)}>
+                    <option value="">Selecione…</option>
+                    {form.modalidade && !(modalities || []).some((m) => m.name === form.modalidade) && <option value={form.modalidade}>{form.modalidade}</option>}
+                    {(modalities || []).map((m) => <option key={m.id} value={m.name}>{m.name}</option>)}
+                  </StyledSelect>
+                </Field>
                 <div className="sm:col-span-2"><Field label="Origem"><StyledSelect value={form.source} onChange={(e) => set('source', e.target.value)}>{!SOURCES.includes(form.source) && form.source && <option value={form.source}>{form.source}</option>}{SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}</StyledSelect></Field></div>
                 <Field label="Consultor responsável">
                   {isAdmin ? (

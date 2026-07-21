@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { Calendar, Check, IdCard, Pencil, Phone, User } from 'lucide-react';
+import { Calendar, Check, Dumbbell, HeartPulse, IdCard, Mail, Pencil, Phone, User } from 'lucide-react';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { isAdminUser } from '../lib/leads.js';
 import { buildLeadSearchFields } from '../lib/leadDerived.js';
@@ -8,6 +8,7 @@ import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
 import { formatCPF, formatPhone } from '../lib/masks.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
+import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog.jsx';
 import { StyledInput, StyledSelect } from '../components/ui/Field.jsx';
 import { TagsInput } from '../components/ui/TagsInput.jsx';
@@ -47,6 +48,7 @@ function FormSection({ label, children, last }) {
  */
 function EditLeadModal({ open, onClose, lead, appUser, db, usersList, tags }) {
   const toast = useToast();
+  const { dores, modalities } = useGeneralConfig();
   // Só admin pode reatribuir o consultor responsável — a regra do Firestore só
   // permite trocar o dono (consultantAuthUid) sendo admin. Para os demais o
   // seletor vira leitura.
@@ -62,7 +64,11 @@ function EditLeadModal({ open, onClose, lead, appUser, db, usersList, tags }) {
     tags: lead.tags || [],
     consultantId: lead.consultantId || '',
     birthDate: toDateInputValue(lead.birthDate),
-    cpf: lead.cpf ? formatCPF(lead.cpf) : ''
+    cpf: lead.cpf ? formatCPF(lead.cpf) : '',
+    dor: lead.dor || '',
+    modalidade: lead.modalidade || '',
+    sexo: lead.sexo || '',
+    email: lead.email || ''
   });
   const [loading, setLoading] = useState(false);
 
@@ -95,6 +101,10 @@ function EditLeadModal({ open, onClose, lead, appUser, db, usersList, tags }) {
       }
       finalData.birthDate = fromDateInputValue(editData.birthDate);
       finalData.cpf = (editData.cpf || '').trim() || null;
+      finalData.dor = (editData.dor || '').trim() || null;
+      finalData.modalidade = editData.modalidade || null;
+      finalData.sexo = editData.sexo || null;
+      finalData.email = (editData.email || '').trim() || null;
       // Dual-write: recomputa os campos de busca a partir dos valores que serão
       // efetivamente gravados (a edição pode ter mudado name/whatsapp/cpf).
       // finalData sempre carrega os três campos, então usamos seus valores
@@ -168,6 +178,25 @@ function EditLeadModal({ open, onClose, lead, appUser, db, usersList, tags }) {
                 onChange={e => set('cpf', formatCPF(e.target.value))}
               />
             </div>
+            <div>
+              <FieldLabel>Sexo</FieldLabel>
+              <StyledSelect value={editData.sexo} onChange={e => set('sexo', e.target.value)}>
+                <option value="">Selecione…</option>
+                <option value="Feminino">Feminino</option>
+                <option value="Masculino">Masculino</option>
+                <option value="Outro">Outro</option>
+              </StyledSelect>
+            </div>
+            <div>
+              <FieldLabel>E-mail</FieldLabel>
+              <StyledInput
+                type="email"
+                icon={<Mail size={15} />}
+                placeholder="email@exemplo.com"
+                value={editData.email}
+                onChange={e => set('email', e.target.value)}
+              />
+            </div>
             <div className="sm:col-span-2">
               <FieldLabel required>WhatsApp</FieldLabel>
               <StyledInput
@@ -201,6 +230,26 @@ function EditLeadModal({ open, onClose, lead, appUser, db, usersList, tags }) {
               ) : (
                 <StyledInput value={lead.consultantName || '—'} disabled readOnly />
               )}
+            </div>
+            <div>
+              <FieldLabel>Dor / necessidade</FieldLabel>
+              <StyledSelect value={editData.dor} onChange={e => set('dor', e.target.value)}>
+                <option value="">Selecione…</option>
+                {editData.dor && !(dores || []).some(d => d.name === editData.dor) && (
+                  <option value={editData.dor}>{editData.dor}</option>
+                )}
+                {(dores || []).map(d => <option key={d.id} value={d.name}>{d.name}</option>)}
+              </StyledSelect>
+            </div>
+            <div>
+              <FieldLabel>Modalidade de interesse</FieldLabel>
+              <StyledSelect value={editData.modalidade} onChange={e => set('modalidade', e.target.value)}>
+                <option value="">Selecione…</option>
+                {editData.modalidade && !(modalities || []).some(m => m.name === editData.modalidade) && (
+                  <option value={editData.modalidade}>{editData.modalidade}</option>
+                )}
+                {(modalities || []).map(m => <option key={m.id} value={m.name}>{m.name}</option>)}
+              </StyledSelect>
             </div>
           </div>
         </FormSection>
