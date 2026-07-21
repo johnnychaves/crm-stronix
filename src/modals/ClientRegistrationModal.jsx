@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { User, MapPin, Phone, Briefcase, Users, Calendar, IdCard, Mail, Check, Pencil } from 'lucide-react';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
-import { isAdminUser } from '../lib/leads.js';
+import { isAdminUser, isClientLead } from '../lib/leads.js';
 import { lookupCep, isCepComplete, isValidCpf, isCpfComplete } from '../lib/brazilLookups.js';
 import { formatCPF, formatPhone } from '../lib/masks.js';
 import {
@@ -31,6 +31,7 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
   const toast = useToast();
   const { professores, dores, modalities } = useGeneralConfig();
   const isAdmin = isAdminUser(appUser);
+  const isClient = isClientLead(lead);
   const [form, setForm] = useState(() => readClientRegistration(lead));
   const [tab, setTab] = useState('identidade');
   const [cepBusy, setCepBusy] = useState(false);
@@ -77,7 +78,7 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
             <Pencil size={18} />
           </span>
           <div className="min-w-0 flex-1">
-            <DialogTitle className="text-[17px] font-bold tracking-tight leading-tight font-display">Cadastro do cliente</DialogTitle>
+            <DialogTitle className="text-[17px] font-bold tracking-tight leading-tight font-display">{isClient ? 'Cadastro do cliente' : 'Cadastro do lead'}</DialogTitle>
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400 truncate">{lead.name}</p>
           </div>
         </DialogHeader>
