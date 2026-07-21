@@ -1,7 +1,7 @@
 // Escrita no histórico de aulas (stronix_aulas). Dual-write: chamado ao lado
 // das escritas existentes do lead. Consultas por campo único (índice automático).
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, query, where, serverTimestamp } from 'firebase/firestore';
-import { appId, AULAS_PATH } from './firebase.js';
+import { appId, AULAS_PATH, LEADS_PATH } from './firebase.js';
 import { AULA_STATUS, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields } from './aulas.js';
 
 const aulasCol = (db) => collection(db, 'artifacts', appId, 'public', 'data', AULAS_PATH);
@@ -60,6 +60,15 @@ export async function markConvertingAula({ db, leadId }) {
   const chosen = pickConvertingAula(aulas);
   if (!chosen) return;
   await updateDoc(aulaDoc(db, chosen.id), { converted: true, convertedAt: serverTimestamp() });
+  // Carteira do professor: ao converter, carimba no lead o professor da aula que
+  // fechou a venda (a menos que seja treino solo / sem professor). Cobre os três
+  // caminhos de conversão (ficha, MatriculaModal, Kanban) num lugar só.
+  if (chosen.professorId && !chosen.soloTraining) {
+    await updateDoc(
+      doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, leadId),
+      { professorId: chosen.professorId, professorName: chosen.professorName || null }
+    );
+  }
 }
 
 // Ao desfazer a venda: desmarca a(s) aula(s) convertida(s) do lead. Filtro de

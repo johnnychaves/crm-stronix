@@ -1,11 +1,12 @@
 import React from 'react';
 
-function Field({ label, hint, children, error }) {
+function Field({ label, hint, children, error, required }) {
   return (
     <div className="space-y-1.5">
       {label && (
-        <label className="block text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
+        <label className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">
           {label}
+          {required && <span className="text-accent-500 normal-case text-[12px] leading-none">*</span>}
         </label>
       )}
       {children}

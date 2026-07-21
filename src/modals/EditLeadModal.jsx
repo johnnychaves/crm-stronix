@@ -1,35 +1,20 @@
 import { useState } from 'react';
 import { doc, updateDoc } from 'firebase/firestore';
-import { Calendar, Check, IdCard, Pencil, Phone, Plus, User, X } from 'lucide-react';
+import { Calendar, Check, IdCard, Pencil, Phone, User } from 'lucide-react';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { isAdminUser } from '../lib/leads.js';
 import { buildLeadSearchFields } from '../lib/leadDerived.js';
 import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
+import { formatCPF, formatPhone } from '../lib/masks.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog.jsx';
 import { StyledInput, StyledSelect } from '../components/ui/Field.jsx';
+import { TagsInput } from '../components/ui/TagsInput.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
 
 // Origens fixas do design (README seção 4). Mantém ordem do protótipo.
 const SOURCES = ['Instagram', 'Indicação', 'Site', 'WhatsApp', 'Facebook', 'Google', 'Passou na porta', 'Outro'];
-
-// ── Máscaras (dígitos internamente, formatação progressiva na UI) ──
-// CPF: 000.000.000-00 (máx. 11 dígitos).
-const formatCPF = (v) => {
-  const d = String(v || '').replace(/\D/g, '').slice(0, 11);
-  if (d.length > 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
-  if (d.length > 6) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
-  if (d.length > 3) return `${d.slice(0, 3)}.${d.slice(3)}`;
-  return d;
-};
-// Telefone: (51) 9 0000-0000 (máx. 11 dígitos).
-const formatPhone = (v) => {
-  const d = String(v || '').replace(/\D/g, '').slice(0, 11);
-  if (d.length <= 2) return d.length ? `(${d}` : '';
-  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3, 7)}-${d.slice(7)}`;
-};
 
 // Label de campo do protótipo (atoms.jsx → Field): sentence-case + asterisco
 // laranja para obrigatório. Espelha o markup do handoff fielmente.
@@ -48,62 +33,6 @@ function FormSection({ label, children, last }) {
     <div className={cn('px-5 sm:px-6 py-5', !last && 'border-b border-slate-100 dark:border-white/[0.05]')}>
       <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3.5">{label}</div>
       {children}
-    </div>
-  );
-}
-
-// Chip de etiqueta selecionável (protótipo: TagChip).
-function TagChip({ children, onRemove }) {
-  return (
-    <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold px-2 py-1 rounded-md bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-200 whitespace-nowrap">
-      {children}
-      {onRemove && (
-        <button type="button" onClick={onRemove} className="text-slate-400 hover:text-slate-700 dark:hover:text-white -mr-0.5">
-          <X size={11} />
-        </button>
-      )}
-    </span>
-  );
-}
-
-// Input de etiquetas (protótipo: TagsInput) — chips digitáveis + sugestões.
-// Trabalha sobre um array de nomes (string[]), igual ao protótipo.
-function TagsInput({ tags, setTags, suggestions }) {
-  const [val, setVal] = useState('');
-  const add = () => {
-    const v = val.trim();
-    if (v && !tags.includes(v)) setTags([...tags, v]);
-    setVal('');
-  };
-  return (
-    <div>
-      <div className="flex flex-wrap items-center gap-1.5 min-h-11 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.08] px-2.5 py-2 focus-within:border-brand-400 focus-within:ring-4 focus-within:ring-brand-500/10 transition">
-        {tags.map(t => <TagChip key={t} onRemove={() => setTags(tags.filter(x => x !== t))}>{t}</TagChip>)}
-        <input
-          value={val}
-          onChange={e => setVal(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === 'Enter') { e.preventDefault(); add(); }
-            if (e.key === 'Backspace' && !val && tags.length) setTags(tags.slice(0, -1));
-          }}
-          placeholder={tags.length ? '' : 'Digite e pressione Enter…'}
-          className="flex-1 min-w-[120px] bg-transparent outline-none text-[13px] h-7 placeholder:text-slate-400"
-        />
-      </div>
-      {suggestions.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {suggestions.filter(s => !tags.includes(s)).slice(0, 5).map(s => (
-            <button
-              key={s}
-              type="button"
-              onClick={() => setTags([...tags, s])}
-              className="text-[11px] font-medium px-2 py-1 rounded-md border border-slate-200 dark:border-white/10 text-slate-500 hover:text-brand-600 hover:border-brand-300 dark:text-slate-400 dark:hover:text-brand-300 transition inline-flex items-center gap-1"
-            >
-              <Plus size={10} />{s}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
