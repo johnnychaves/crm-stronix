@@ -46,12 +46,12 @@ function visita(overrides = {}) {
 describe('getReportColumns', () => {
   it('Aulas: inclui Professor, Modalidade e Passe', () => {
     const cols = getReportColumns(true).map((c) => c.key);
-    expect(cols).toEqual(['nome', 'objetivo', 'dataMarcada', 'professor', 'modalidade', 'passe', 'desfecho', 'responsavel']);
+    expect(cols).toEqual(['nome', 'telefone', 'objetivo', 'dataMarcada', 'professor', 'modalidade', 'passe', 'desfecho', 'responsavel']);
   });
 
   it('Visitas: sem Professor/Modalidade/Passe', () => {
     const cols = getReportColumns(false).map((c) => c.key);
-    expect(cols).toEqual(['nome', 'objetivo', 'dataMarcada', 'desfecho', 'responsavel']);
+    expect(cols).toEqual(['nome', 'telefone', 'objetivo', 'dataMarcada', 'desfecho', 'responsavel']);
   });
 });
 
@@ -159,9 +159,10 @@ describe('buildReportRows', () => {
   });
 
   it('Visitas: linhas não têm professor/modalidade/passe', () => {
-    const rows = buildReportRows([visita()], { isAula: false, now: NOW });
+    const rows = buildReportRows([{ ...visita(), whatsapp: '(51) 9 1234-5678' }], { isAula: false, now: NOW });
     expect(rows[0]).toEqual({
       nome: 'Carlos Lima',
+      telefone: '(51) 9 1234-5678',
       objetivo: 'Condicionamento',
       dataMarcada: expect.any(String),
       desfecho: 'Compareceu',

@@ -37,6 +37,7 @@ const outcomeLabel = (lead) => {
 export function getReportColumns(isAula) {
   const cols = [
     { key: 'nome', label: 'Nome' },
+    { key: 'telefone', label: 'Telefone' },
     { key: 'objetivo', label: 'Objetivo/Dor' },
     { key: 'dataMarcada', label: 'Data marcada' },
   ];
@@ -88,6 +89,7 @@ export function buildReportRows(leads, { isAula = false, filters = {}, now = new
     .map(({ lead, d }) => {
       const row = {
         nome: lead.name || '',
+        telefone: lead.whatsapp || '—',
         objetivo: lead.dor || '—',
         dataMarcada: fmtDataMarcada(d),
       };
