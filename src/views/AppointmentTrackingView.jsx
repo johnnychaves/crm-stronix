@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
-import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
+import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Download, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
 import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, hasGoalDoneToday, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
@@ -8,6 +8,7 @@ import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { collection, query, where, getCountFromServer } from 'firebase/firestore';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
 import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { getTrialPassNote, isPassActive } from '../lib/freePass.js';
 import { cn } from '@/lib/utils';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -15,6 +16,7 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
 import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
+import { AppointmentExportModal } from '../modals/AppointmentExportModal.jsx';
 
 // Janela de confirmação rápida: da hora marcada até 15min depois. Fora dela o
 // atalho continua clicável (sempre editável — decisão do Johnny), só perde o
@@ -79,27 +81,9 @@ function fmtApptDateLine(d) {
   return `${day} · ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
-// Nota do passe livre (só Aulas): a quantidade configurada em Opções → Regras
-// gerais (trialClassOptions, ex.: 1/2/7/15) é a VALIDADE do passe em DIAS,
-// gravada por agendamento em trialClassesPlanned. Último dia válido = data da
-// aula marcada + (N-1) dias; a nota mostra o término e um contador regressivo
-// pra dar controle. Retorna null quando o agendamento não registrou a quantidade.
-function getTrialPassNote(lead) {
-  const days = Number(lead.trialClassesPlanned);
-  if (!Number.isFinite(days) || days <= 0) return null;
-  const d = getLeadAppointmentDate(lead);
-  if (!d) return null;
-  const endDay = new Date(startOfDay(d).getTime() + (days - 1) * DAY_MS);
-  const fmt = endDay.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
-  const daysLeft = Math.round((endDay.getTime() - startOfDay(new Date()).getTime()) / DAY_MS);
-  if (daysLeft < 0) return { text: `passe expirou ${fmt}`, cls: 'text-rose-700 dark:text-rose-400' };
-  if (daysLeft === 0) return { text: 'passe termina hoje', cls: 'text-amber-700 dark:text-amber-400' };
-  const conta = daysLeft === 1 ? 'falta 1 dia' : `faltam ${daysLeft} dias`;
-  return {
-    text: `até ${fmt} · ${conta}`,
-    cls: daysLeft <= 2 ? 'text-amber-700 dark:text-amber-400' : 'text-slate-500 dark:text-neutral-400'
-  };
-}
+// Nota do passe livre (só Aulas): getTrialPassNote/isPassActive vivem em
+// lib/freePass.js (extraído daqui — reusado pela aba "Em andamento" e pelo
+// relatório exportável, sem duplicar a conta de dias).
 
 // Quadrado de situação (12×12): verde compareceu · vermelho no-show ·
 // amarelo agendado/aguardando (inclui remarcou/cancelou — o tooltip detalha).
@@ -200,6 +184,7 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
   const [profFilter, setProfFilter] = useState([]); // ids de professor + SOLO_TRAINING (só Aulas)
   const [filterOpen, setFilterOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
+  const [exportOpen, setExportOpen] = useState(false);
 
   // Popovers fecham em clique fora / Esc (mesmo padrão do Kanban).
   const rangeWrapRef = useRef(null);
@@ -226,13 +211,26 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
     };
   }, [rangeOpen, filterOpen]);
 
+  // Mês corrente (só Aulas) — janela da aba "Em andamento" (feature 2): mostra
+  // as aulas cujo passe livre ainda está ativo dentro do mês. Calculado uma vez
+  // (o componente remonta por dia, não fica horas aberto).
+  const monthWindow = useMemo(() => {
+    const now = new Date();
+    return {
+      start: new Date(now.getFullYear(), now.getMonth(), 1).getTime(),
+      end: new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime()
+    };
+  }, []);
+
   // 1) Leads do tipo de compromisso (com data marcada). FONTE (E2b): em vez de
   //    filtrar o prop global, busca por JANELA de datas via query (índice #5) — a
   //    janela sempre cobre [ontem, amanhã] (as tabs de dia mostram contagem
-  //    sempre) e estende pra cobrir o range custom (≤30d). Contagens/filtro/
-  //    ordenação seguem client-side sobre a janela. Não é ao vivo (getDocs);
-  //    remonta ao trocar de aba/tipo. Agendamentos crescem sem limite no tempo,
-  //    então NÃO trazer o histórico todo — só a janela vista.
+  //    sempre) e estende pra cobrir o range custom (≤30d) OU, na aba "Em
+  //    andamento" (só Aulas), o mês corrente — mesmo mecanismo do range custom,
+  //    só amplia quando a aba está de fato ativa. Contagens/filtro/ordenação
+  //    seguem client-side sobre a janela. Não é ao vivo (getDocs); remonta ao
+  //    trocar de aba/tipo. Agendamentos crescem sem limite no tempo, então NÃO
+  //    trazer o histórico todo — só a janela vista.
   const loadWindow = useMemo(() => {
     const todayStart = startOfDay(new Date()).getTime();
     let start = todayStart - DAY_MS;    // ontem 00:00
@@ -241,8 +239,15 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
       start = Math.min(start, startOfDay(range.start).getTime());
       end = Math.max(end, startOfDay(range.end).getTime() + DAY_MS);
     }
+    // Aulas: a janela cobre SEMPRE o mês (não só na aba "Em andamento"), pra o
+    // contador de "Em andamento" e os das outras abas nascerem corretos já na
+    // abertura da página — o mês já contém ontem/hoje/amanhã.
+    if (isAula) {
+      start = Math.min(start, monthWindow.start);
+      end = Math.max(end, monthWindow.end);
+    }
     return { start, end };
-  }, [range]);
+  }, [range, isAula, monthWindow]);
   const apptSpec = useMemo(
     () => appointmentsInWindowQuerySpec(appointmentType, loadWindow.start, loadWindow.end),
     [appointmentType, loadWindow.start, loadWindow.end]
@@ -294,26 +299,40 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
       tomorrow: [today + DAY_MS, today + 2 * DAY_MS]
     };
   }, []);
+  // "Em andamento" (só Aulas): aula com data marcada dentro do mês corrente E
+  // passe livre ainda ativo (isPassActive — mesma regra da coluna "Passe
+  // livre"). A contagem só fica exata enquanto a aba está ativa (é quando a
+  // janela de dados acima cobre o mês inteiro); fora dela reflete só o que já
+  // está carregado, igual ao resumo do range custom.
   const dayCounts = useMemo(() => {
-    const counts = { today: 0, yesterday: 0, tomorrow: 0 };
+    const counts = { today: 0, yesterday: 0, tomorrow: 0, ongoing: 0 };
+    const now = new Date();
     scopedLeads.forEach(l => {
       const t = getLeadAppointmentDate(l).getTime();
-      for (const key of Object.keys(counts)) {
+      for (const key of ['today', 'yesterday', 'tomorrow']) {
         const [ini, fim] = dayWindows[key];
         if (t >= ini && t < fim) counts[key]++;
       }
+      if (isAula && t >= monthWindow.start && t < monthWindow.end && isPassActive(l, now)) counts.ongoing++;
     });
     return counts;
-  }, [scopedLeads, dayWindows]);
+  }, [scopedLeads, dayWindows, isAula, monthWindow]);
 
-  // 4) Recorte do período (tab de dia OU range personalizado) + ordenação
-  //    (futuros mais próximos no topo; depois passados mais recentes).
+  // 4) Recorte do período (tab de dia OU range personalizado OU "Em
+  //    andamento") + ordenação (futuros mais próximos no topo; depois
+  //    passados mais recentes).
   const filtered = useMemo(() => {
     let list = scopedLeads;
     if (range) {
       const ini = startOfDay(range.start).getTime();
       const fim = startOfDay(range.end).getTime() + DAY_MS;
       list = list.filter(l => { const t = getLeadAppointmentDate(l).getTime(); return t >= ini && t < fim; });
+    } else if (isAula && dayTab === 'ongoing') {
+      const passNow = new Date();
+      list = list.filter(l => {
+        const t = getLeadAppointmentDate(l).getTime();
+        return t >= monthWindow.start && t < monthWindow.end && isPassActive(l, passNow);
+      });
     } else if (dayTab) {
       const [ini, fim] = dayWindows[dayTab];
       list = list.filter(l => { const t = getLeadAppointmentDate(l).getTime(); return t >= ini && t < fim; });
@@ -326,14 +345,15 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
       if (aF !== bF) return aF ? -1 : 1;
       return aF ? (da - db2) : (db2 - da);
     });
-  }, [scopedLeads, range, dayTab, dayWindows]);
+  }, [scopedLeads, range, dayTab, dayWindows, monthWindow, isAula]);
 
   const visibleRows = filtered.slice(0, visibleCount);
 
   const dayTabs = [
     { id: 'today', label: 'Hoje', count: dayCounts.today },
     { id: 'yesterday', label: 'Ontem', count: dayCounts.yesterday },
-    { id: 'tomorrow', label: 'Amanhã', count: dayCounts.tomorrow }
+    { id: 'tomorrow', label: 'Amanhã', count: dayCounts.tomorrow },
+    ...(isAula ? [{ id: 'ongoing', label: 'Em andamento', count: dayCounts.ongoing }] : [])
   ];
 
   const hasActiveFilters = respFilter.length > 0 || (isAula && profFilter.length > 0);
@@ -624,6 +644,17 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
               )}
             </div>
           )}
+
+          {/* Exportar (PDF + CSV) — filtros próprios no modal, não usa o
+              recorte da tela (aba de dia / range / filtro de responsável). */}
+          <button
+            type="button"
+            onClick={() => setExportOpen(true)}
+            title="Exportar relatório"
+            className="size-[38px] rounded-[11px] border grid place-items-center transition-colors bg-paper-50 border-slate-200 text-gray-600 hover:border-brand-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-brand-500/40 shrink-0"
+          >
+            <Download className="size-[17px]" />
+          </button>
         </div>
 
         {/* Conteúdo: tabela em card + legenda */}
@@ -790,6 +821,18 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
           )}
         </div>
       </div>
+
+      {exportOpen && (
+        <AppointmentExportModal
+          open={exportOpen}
+          onClose={() => setExportOpen(false)}
+          db={db}
+          appointmentType={appointmentType}
+          isAula={isAula}
+          isAdmin={isAdmin}
+          usersList={usersList}
+        />
+      )}
     </>
   );
 }
