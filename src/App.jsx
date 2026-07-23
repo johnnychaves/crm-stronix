@@ -689,8 +689,7 @@ useEffect(() => {
       setMetaWeekdays(normalizeMetaWeekdays(data?.metaWeekdays));
       setSlaOverdueDays(normalizeSlaOverdueDays(data?.slaOverdueDays));
       setDailyVolumeTarget(normalizeDailyVolumeTarget(data?.dailyVolumeTarget));
-      const t = Math.floor(Number(data?.contractThresholdDays));
-      setContractThresholdDays(Number.isFinite(t) && t > 0 ? Math.min(t, 365) : 30);
+      // "A vencer" é padrão FIXO do sistema (30 dias) — não configurável.
       setRenewalCheckpoints(normalizeRenewalCheckpoints(data?.renewalCheckpoints));
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
