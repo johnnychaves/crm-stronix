@@ -239,12 +239,15 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
       start = Math.min(start, startOfDay(range.start).getTime());
       end = Math.max(end, startOfDay(range.end).getTime() + DAY_MS);
     }
-    if (isAula && dayTab === 'ongoing') {
+    // Aulas: a janela cobre SEMPRE o mês (não só na aba "Em andamento"), pra o
+    // contador de "Em andamento" e os das outras abas nascerem corretos já na
+    // abertura da página — o mês já contém ontem/hoje/amanhã.
+    if (isAula) {
       start = Math.min(start, monthWindow.start);
       end = Math.max(end, monthWindow.end);
     }
     return { start, end };
-  }, [range, isAula, dayTab, monthWindow]);
+  }, [range, isAula, monthWindow]);
   const apptSpec = useMemo(
     () => appointmentsInWindowQuerySpec(appointmentType, loadWindow.start, loadWindow.end),
     [appointmentType, loadWindow.start, loadWindow.end]
