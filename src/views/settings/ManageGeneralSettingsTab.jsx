@@ -4,7 +4,7 @@ import { collection, doc, addDoc, setDoc, deleteDoc, updateDoc, deleteField, ser
 import { appId, CONFIG_PATH, CONFIG_GENERAL_ID, LEADS_PATH, MODALITIES_PATH, UNITS_PATH, USERS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
 import { cn } from '../../lib/utils.js';
-import { normalizeTrialClassOptions } from '../../lib/leadStatus.js';
+import { normalizeTrialClassOptions, normalizeRenewalCheckpoints } from '../../lib/leadStatus.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { Btn, IconBtn } from '../../components/ui/Btn.jsx';
@@ -21,6 +21,9 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
 
   const [optionInput, setOptionInput] = useState('');
   const [savingOpts, setSavingOpts] = useState(false);
+
+  const [checkpointInput, setCheckpointInput] = useState('');
+  const [savingCheckpoints, setSavingCheckpoints] = useState(false);
 
   // Unidades (academia) — nome + endereço opcional.
   const [unitName, setUnitName] = useState('');
@@ -168,7 +171,7 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
   // Alerta de lead crítico (config da academia): a partir de quantos dias de atraso
   // o lead vira "crítico" (alerta no painel da Equipe + destaque na meta).
   // Lido do contexto (mesmo doc geral); grava direto no clique, como os dias.
-  const { slaOverdueDays, contractThresholdDays = 30 } = useGeneralConfig();
+  const { slaOverdueDays, contractThresholdDays = 30, renewalCheckpoints = [90, 60, 30] } = useGeneralConfig();
 
   // Alvo INDIVIDUAL de prospecção (doc do consultor): vazio OU 0 = desabilitado
   // (sem meta de prospecção). Mesmo campo editado na aba Equipe.
@@ -217,6 +220,54 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
       console.error(err);
       toast.error('Não foi possível salvar a janela de vencimento.');
     }
+  };
+
+  // Marcos (dias antes do vencimento) que disparam a categoria Renovação da
+  // Meta Diária — SUBSTITUEM o threshold único acima como gatilho da Meta (o
+  // threshold continua valendo só pro status "A vencer" do sistema, sem
+  // relação com isto). Persiste no MESMO doc de config geral. Regra em
+  // src/lib/renewalGoal.js.
+  const persistCheckpoints = async (next) => {
+    const clean = normalizeRenewalCheckpoints(next);
+    setSavingCheckpoints(true);
+    try {
+      await setDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+        { renewalCheckpoints: clean },
+        { merge: true }
+      );
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar os marcos de renovação.');
+    }
+    setSavingCheckpoints(false);
+  };
+
+  const addCheckpoint = async (e) => {
+    if (e) e.preventDefault();
+    const n = Math.floor(Number(checkpointInput));
+    if (!Number.isFinite(n) || n < 1 || n > 365) {
+      toast.warning('Informe um número de dias entre 1 e 365.');
+      return;
+    }
+    if ((renewalCheckpoints || []).includes(n)) {
+      toast.warning(`O marco de ${n} dias já existe.`);
+      setCheckpointInput('');
+      return;
+    }
+    await persistCheckpoints([...(renewalCheckpoints || []), n]);
+    setCheckpointInput('');
+  };
+
+  // "Editar" um marco = trocar o valor: remove o antigo e adiciona o novo
+  // (mesmo padrão de add/remove usado nas Aulas experimentais abaixo).
+  const removeCheckpoint = async (n) => {
+    const next = (renewalCheckpoints || []).filter(x => x !== n);
+    if (next.length === 0) {
+      toast.warning('Mantenha ao menos um marco de renovação.');
+      return;
+    }
+    await persistCheckpoints(next);
   };
 
   const addOption = async (e) => {
@@ -334,8 +385,56 @@ function ManageGeneralSettingsTab({ db, modalities, trialClassOptions, units, le
             <span className="text-[13px] text-muted-foreground">dias antes do vencimento → contrato <b className="text-amber-600 dark:text-amber-400">a vencer</b></span>
           </div>
           <p className="text-[11.5px] text-muted-foreground mt-3">
-            Clientes com contrato vencendo em até {contractThresholdDays} dias entram nos alertas da aba Clientes e geram a tarefa de <b>Renovação</b> na Meta Diária do consultor responsável.
+            Clientes com contrato vencendo em até {contractThresholdDays} dias entram nos alertas da aba Clientes. O gatilho da <b>Renovação</b> na Meta Diária agora são os marcos abaixo, não este número.
           </p>
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Marcos de renovação (Meta Diária)"
+        hint="Dias antes do vencimento em que o cliente entra na tarefa de Renovação"
+        icon={<RefreshCw size={16} />}
+      >
+        <div className="p-4 rounded-xl bg-muted/50 border border-border flex flex-col gap-4">
+          <form onSubmit={addCheckpoint} className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[160px]">
+              <label className="block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Dias antes do vencimento
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                value={checkpointInput}
+                onChange={e => setCheckpointInput(e.target.value)}
+                placeholder="ex: 90"
+                className="w-full h-10 rounded-lg bg-card border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[14px] num px-3 transition placeholder:text-muted-foreground"
+              />
+            </div>
+            <Btn kind="primary" type="submit" icon={<Plus size={13} />} disabled={savingCheckpoints}>Adicionar marco</Btn>
+            <p className="text-[11.5px] text-muted-foreground flex-1 min-w-[200px]">
+              O cliente aparece UMA vez em cada marco (ex.: 90, depois 60, depois 30 dias antes de vencer) — não todo dia. Para editar um marco, remova e adicione o novo valor.
+            </p>
+          </form>
+
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Marcos ativos</div>
+            <div className="flex flex-wrap gap-2">
+              {(renewalCheckpoints || []).map(n => (
+                <span key={n} className="inline-flex items-center gap-1.5 h-8 pl-3 pr-1.5 rounded-lg bg-card border border-border text-[13px] font-semibold text-slate-700 dark:text-slate-200">
+                  <span className="num">{n} {n === 1 ? 'dia' : 'dias'}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeCheckpoint(n)}
+                    title="Remover marco"
+                    className="size-5 grid place-items-center rounded-md text-muted-foreground hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition"
+                  >
+                    <X size={12} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       </SettingsCard>
 

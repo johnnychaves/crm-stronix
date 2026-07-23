@@ -8,7 +8,7 @@ import {
   isLeadResolvedToday,
   hasActiveInteractionToday,
 } from './leads.js';
-import { deriveLeadContractStatus, CONTRACT_STATUS, DEFAULT_CONTRACT_THRESHOLD_DAYS } from './contracts.js';
+import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS } from './renewalGoal.js';
 
 // ============================================================================
 // Lógica compartilhada da META DIÁRIA — usada pela tela do consultor
@@ -239,7 +239,7 @@ export function buildInteractionsByLead(interactions) {
 // Monta os "slots" da meta de UM consultor: cada lead alvo sai com
 // categorySlugs[] e categoryStatus{slug:bool} (par lead×categoria = 1 slot;
 // um lead pode estar feito numa categoria e pendente noutra).
-export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, thresholdDays = DEFAULT_CONTRACT_THRESHOLD_DAYS) {
+export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, renewalCheckpoints = DEFAULT_RENEWAL_CHECKPOINTS) {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date();
@@ -321,8 +321,14 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, t
     // 5. Contato Hoje — follow-up via Mensagem/Ligação agendado para hoje
     // (qualquer tipo que NÃO seja visita/aula). Pega WhatsApp + ligações sem
     // duplicar quem já está nas seções de visita/aula.
+    // CLIENTE (status 'Venda') também entra aqui quando tem um nextFollowUp
+    // de hoje: é o contato de renovação REAGENDADO (o desfecho "Reagendar" da
+    // tarefa de Renovação grava nextFollowUp + marca o marco como tratado, ver
+    // src/lib/renewalGoal.js). Sem esta exceção, o contato reagendado sumiria
+    // (as categorias 1-5 excluem 'Venda'); é a MESMA lógica da Renovação, que
+    // já é a única categoria a surfar clientes.
     if (
-      lead.status !== 'Venda' &&
+      (lead.status !== 'Venda' || lead.lifecycleStage === 'cliente') &&
       lead.status !== 'Perda' &&
       lead.nextFollowUp &&
       lead.nextFollowUp >= todayStart &&
@@ -334,15 +340,19 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, t
       }
     }
 
-    // 6. Renovação — CLIENTE com contrato "a vencer". É a ÚNICA categoria que
-    // NÃO carrega o guard status!=='Venda' (clientes SÃO 'Venda'). Gate: o lead
-    // virou cliente E o contrato está dentro da janela (deriveLeadContractStatus
-    // === 'a_vencer'). Legados sem endsAt → status null → nunca entram aqui.
-    // A tarefa fecha por daily_goal_done (isCategoryDone) OU some quando a
-    // renovação empurra o endsAt para fora da janela (deixa de ser 'a_vencer').
+    // 6. Renovação — CLIENTE com um MARCO configurável ativo (ex.: 90/60/30
+    // dias antes de vencer) ainda não tratado neste ciclo, OU com um
+    // reagendamento de contato vencido. É a ÚNICA categoria que NÃO carrega o
+    // guard status!=='Venda' (clientes SÃO 'Venda'). Os marcos SUBSTITUEM o
+    // threshold único como gatilho da Meta — o status "A vencer" do sistema
+    // (badge/anel em ClientsView, ficha) continua em deriveLeadContractStatus
+    // com contractThresholdDays, sem relação com isto (regra em
+    // src/lib/renewalGoal.js). Legados sem endsAt nunca entram aqui.
+    // A tarefa fecha por daily_goal_done (isCategoryDone) OU some quando o
+    // marco é tratado / o cliente renova (shouldPromptRenewal volta a false).
     if (
       lead.lifecycleStage === 'cliente' &&
-      deriveLeadContractStatus(lead, todayStart, thresholdDays) === CONTRACT_STATUS.A_VENCER
+      shouldPromptRenewal(lead, todayStart, renewalCheckpoints)
     ) {
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.renovacao, DAILY_GOAL_CATEGORIES.RENOVACAO);
     }

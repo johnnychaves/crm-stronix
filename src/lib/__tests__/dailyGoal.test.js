@@ -48,8 +48,10 @@ const goalDone = (leadId, category, createdAt = new Date(2026, 6, 15, 9, 0)) => 
 });
 
 // computeDailyGoalSlots exige o Map de interações por lead (não aceita array).
-const slots = (leads, interactions = [], thresholdDays = undefined) =>
-  computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), 'u1', thresholdDays);
+// O 4º argumento agora são os MARCOS de renovação (renewalCheckpoints), não
+// mais um threshold único — ver src/lib/renewalGoal.js.
+const slots = (leads, interactions = [], renewalCheckpoints = undefined) =>
+  computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), 'u1', renewalCheckpoints);
 
 const byId = (arr, id) => arr.find((l) => l.id === id);
 
@@ -136,35 +138,80 @@ describe('computeDailyGoalSlots — categorias', () => {
   });
 });
 
-describe('computeDailyGoalSlots — renovação (thresholdDays e contrato)', () => {
+describe('computeDailyGoalSlots — renovação (marcos configuráveis, renewalGoal.js)', () => {
   const cliente = (over = {}) =>
     lead({
       lifecycleStage: 'cliente',
       status: 'Venda',
       convertedAt: new Date(2026, 5, 1),
       currentContractStatus: 'ativo',
+      renewalHandledCheckpoints: [],
+      renewalDeclined: false,
       ...over
     });
 
-  it('cliente com contrato a vencer (default 30 dias) entra em renovacao mesmo sendo status Venda', () => {
-    const c = cliente({ currentContractEndsAt: new Date(2026, 6, 30) }); // vence em 15 dias
+  it('cliente com marco ativo (default [90,60,30]) entra em renovacao mesmo sendo status Venda', () => {
+    const c = cliente({ currentContractEndsAt: new Date(2026, 6, 30) }); // vence em 15 dias → marco 30
     const result = slots([c]);
     expect(byId(result, c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
     expect(byId(result, c.id).categoryStatus[DAILY_GOAL_CATEGORIES.RENOVACAO]).toBe(false);
   });
 
-  it('thresholdDays muda a janela: 40 dias fora com default, dentro com 45', () => {
+  it('os marcos SUBSTITUEM o threshold único: 40 dias fora já entra no marco 60 (default), sem marco nenhum com [30] só', () => {
     const c = cliente({ currentContractEndsAt: new Date(2026, 7, 24) }); // +40 dias
-    expect(slots([c])).toEqual([]); // default 30 → contrato ainda "ativo"
-    const comJanelaMaior = slots([c], [], 45);
-    expect(byId(comJanelaMaior, c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
+    // Default [90,60,30]: 40 dias cai no marco 60 (menor marco >= 40).
+    expect(byId(slots([c]), c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
+    // Com um único marco de 30, 40 dias ainda não alcançou nenhum marco.
+    expect(slots([c], [], [30])).toEqual([]);
   });
 
-  it('contrato vencido ou sem endsAt não entram; lifecycleStage é obrigatório', () => {
+  it('marco já tratado (renewalHandledCheckpoints) some da meta; outro marco ainda não tratado volta a entrar', () => {
+    const tratado = cliente({ currentContractEndsAt: new Date(2026, 6, 30), renewalHandledCheckpoints: [30] }); // marco ativo = 30, já tratado
+    expect(slots([tratado])).toEqual([]);
+    const outroMarco = cliente({ currentContractEndsAt: new Date(2026, 7, 9), renewalHandledCheckpoints: [90] }); // +25 dias → marco 30, 90 é outro marco
+    expect(byId(slots([outroMarco]), outroMarco.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
+  });
+
+  it('renewalDeclined=true nunca entra, mesmo com marco ativo não tratado', () => {
+    const c = cliente({ currentContractEndsAt: new Date(2026, 6, 30), renewalDeclined: true });
+    expect(slots([c])).toEqual([]);
+  });
+
+  it('cliente REAGENDADO (marco em handled + nextFollowUp hoje) sai de Renovações e vira Contato', () => {
+    // Efeito do desfecho "Reagendar": marca o marco atual como tratado e grava
+    // um nextFollowUp de contato. O cliente (status Venda) passa a aparecer em
+    // Contatos — não mais em Renovações (regra em src/lib/renewalGoal.js +
+    // exceção de cliente na categoria Contato).
+    const c = cliente({
+      currentContractEndsAt: new Date(2026, 6, 30), // marco ativo era 30
+      renewalHandledCheckpoints: [30],
+      nextFollowUp: new Date(2026, 6, 15, 14, 0),   // hoje
+      nextFollowUpType: 'Mensagem'
+    });
+    expect(byId(slots([c]), c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+  });
+
+  it('cliente REAGENDADO volta a Renovações quando chega o PRÓXIMO marco', () => {
+    // handled=[90] (reagendou no marco 90). Quando o prazo cai pra faixa do 60,
+    // o marco ativo (60) não está em handled → reaparece em Renovações. Sem
+    // nextFollowUp de hoje aqui (a data do contato anterior já passou).
+    const c = cliente({ currentContractEndsAt: new Date(2026, 7, 29), renewalHandledCheckpoints: [90] }); // +45 dias → marco 60
+    expect(byId(slots([c]), c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
+  });
+
+  it('contrato vencido sem nenhum marco tratado ainda entra (corrige o bug: não sumia mais)', () => {
+    // Mudança de comportamento INTENCIONAL vs. o threshold único antigo: um
+    // contrato vencido que nunca foi decidido (nem renovado, nem declinado)
+    // continua pedindo desfecho — é exatamente o bug que esta feature corrige.
     const vencido = cliente({ currentContractEndsAt: new Date(2026, 6, 14) }); // ontem
-    const semVigencia = cliente({ currentContractEndsAt: null }); // legado → status null
+    expect(byId(slots([vencido]), vencido.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
+  });
+
+  it('contrato cancelado, sem endsAt ou sem lifecycleStage cliente não entram', () => {
+    const cancelado = cliente({ currentContractEndsAt: new Date(2026, 6, 30), currentContractStatus: 'cancelado' });
+    const semVigencia = cliente({ currentContractEndsAt: null }); // legado
     const semStage = lead({ status: 'Venda', currentContractStatus: 'ativo', currentContractEndsAt: new Date(2026, 6, 20) });
-    expect(slots([vencido, semVigencia, semStage])).toEqual([]);
+    expect(slots([cancelado, semVigencia, semStage])).toEqual([]);
   });
 
   it('renovacao fecha por daily_goal_done da categoria', () => {
@@ -173,7 +220,7 @@ describe('computeDailyGoalSlots — renovação (thresholdDays e contrato)', () 
     expect(byId(result, c.id).categoryStatus[DAILY_GOAL_CATEGORIES.RENOVACAO]).toBe(true);
   });
 
-  it('cliente convertido HOJE com contrato a vencer nasce com renovacao já concluída (isLeadResolvedToday)', () => {
+  it('cliente convertido HOJE com marco ativo nasce com renovacao já concluída (isLeadResolvedToday)', () => {
     // Caracterização: convertedAt >= 00:00 de hoje + status Venda auto-conclui
     // a categoria — única categoria em que esse auto-done é observável, porque
     // as demais excluem status Venda antes de olhar a conclusão.

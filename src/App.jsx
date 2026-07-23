@@ -60,7 +60,7 @@ import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } fro
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
-import { normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget } from './lib/leadStatus.js';
+import { normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget, normalizeRenewalCheckpoints } from './lib/leadStatus.js';
 import { IMPERSONATION_KEY, readImpersonation } from './lib/superadmin.js';
 import { SurgeMark, StronileadWordmark } from './components/brand/SurgeMark.jsx';
 import { TrialBanner, PaymentDueBanner, ImpersonationBanner } from './components/layout/Banners.jsx';
@@ -268,11 +268,16 @@ function AppInner() {
   // Janela (dias) p/ contrato ser "a vencer" — política da academia (feature
   // lead→cliente). Default 30 (= DEFAULT_CONTRACT_THRESHOLD_DAYS em contracts.js).
   const [contractThresholdDays, setContractThresholdDays] = useState(30);
+  // Marcos (dias antes do vencimento) que disparam a categoria Renovação da
+  // Meta Diária — SUBSTITUEM o threshold único como gatilho da Meta (o
+  // threshold acima continua valendo só pro status "A vencer" do sistema).
+  // Default [90, 60, 30] — ver src/lib/renewalGoal.js.
+  const [renewalCheckpoints, setRenewalCheckpoints] = useState([90, 60, 30]);
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, professores, dores }),
-    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, professores, dores]
+    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, professores, dores }),
+    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, professores, dores]
   );
   // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
   // tenant ainda não foi resolvido (appId = default), o que é correto para o
@@ -686,8 +691,9 @@ useEffect(() => {
       setDailyVolumeTarget(normalizeDailyVolumeTarget(data?.dailyVolumeTarget));
       const t = Math.floor(Number(data?.contractThresholdDays));
       setContractThresholdDays(Number.isFinite(t) && t > 0 ? Math.min(t, 365) : 30);
+      setRenewalCheckpoints(normalizeRenewalCheckpoints(data?.renewalCheckpoints));
     },
-    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); }
+    () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
 
   let unsubUsers = () => {};
@@ -973,29 +979,33 @@ useEffect(() => {
   // força o refetch na virada do dia.
   // enabled só com appUser pronto: sem isso o getDocs dispara antes do claim de
   // tenant estar no token (a assinatura onSnapshot já espera appUser) e toma
-  // permission-denied na carga fria — e, pós-flip, renewalClients é a ÚNICA fonte
-  // dos clientes a vencer da Meta, então a falha derrubaria a Renovação.
-  const { clients: renewalClients } = useRenewalClients({ db, contractThresholdDays, reloadKey: dayKey, enabled: !!appUser });
-  // Base da META (G1d): ativo (prop) ∪ clientes a vencer (renewalClients), dedupe
-  // por id (global primeiro). PRÉ-flip o prop já contém os clientes → no-op →
-  // números idênticos; PÓS-flip o prop vira só 'ativo' e os renewalClients repõem
-  // os a-vencer. Alimenta a Meta pessoal (DailyGoalView), a badge de pendências
-  // (dailyGoalPending) e a Meta da equipe (useTeamGoals via gerencialLeads).
+  // permission-denied na carga fria — e, pós-flip, renewalCandidates é a ÚNICA
+  // fonte dos clientes a vencer/em marco da Meta, então a falha derrubaria a
+  // Renovação. `clients` (o filtro A_VENCER exato) segue só pro badge âmbar de
+  // Clientes; `candidates` é o pool cru (janela mais larga, até o maior marco)
+  // que a Meta usa pra avaliar os marcos configuráveis (ver useRenewalClients.js).
+  const { clients: renewalClients, candidates: renewalCandidates } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, reloadKey: dayKey, enabled: !!appUser });
+  // Base da META (G1d): ativo (prop) ∪ candidatos a renovação (renewalCandidates),
+  // dedupe por id (global primeiro). PRÉ-flip o prop já contém os clientes →
+  // no-op → números idênticos; PÓS-flip o prop vira só 'ativo' e os
+  // renewalCandidates repõem os clientes em qualquer marco. Alimenta a Meta
+  // pessoal (DailyGoalView), a badge de pendências (dailyGoalPending) e a Meta
+  // da equipe (useTeamGoals via gerencialLeads).
   const metaLeads = useMemo(() => {
     const byId = new Map();
     (leads || []).forEach((l) => byId.set(l.id, l));
-    (renewalClients || []).forEach((c) => { if (!byId.has(c.id)) byId.set(c.id, c); });
+    (renewalCandidates || []).forEach((c) => { if (!byId.has(c.id)) byId.set(c.id, c); });
     return Array.from(byId.values());
-  }, [leads, renewalClients]);
+  }, [leads, renewalCandidates]);
 
   // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
   const dailyGoalPending = useMemo(() => {
     if (!appUser?.id) return 0;
     void dayKey; // recalcula na virada do dia
-    const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, contractThresholdDays);
+    const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints);
     const { totalSlots, doneSlots } = slotTotals(slots);
     return totalSlots - doneSlots;
-  }, [metaLeads, interactions, appUser, dayKey, contractThresholdDays]);
+  }, [metaLeads, interactions, appUser, dayKey, renewalCheckpoints]);
 
   // Dashboard Gerencial do CONSULTOR (E2a): busca os PRÓPRIOS leads por query
   // (where consultantId==id, sem orderBy → índice automático, sem armadilha de

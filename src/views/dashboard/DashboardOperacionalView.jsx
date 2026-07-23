@@ -230,7 +230,7 @@ function SegStrip({ done, total, tone }) {
 }
 
 function PlacarDoDia({ leads, interactions, appUser, db, onNavigate, now }) {
-  const { metaWeekdays = [1, 2, 3, 4, 5], dailyVolumeTarget = 0, contractThresholdDays = 30 } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], dailyVolumeTarget = 0, renewalCheckpoints = [90, 60, 30] } = useGeneralConfig();
 
   // Histórico PRÓPRIO de metas batidas (1 doc por dia batido) — mesma leitura
   // da tela Meta Diária.
@@ -248,7 +248,7 @@ function PlacarDoDia({ leads, interactions, appUser, db, onNavigate, now }) {
 
   const { goalDone, goalTotal, volDone, volTarget, monthVol, monthVolTarget, monthDots, monthHits } = useMemo(() => {
     const byLead = buildInteractionsByLead(interactions);
-    const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(leads, byLead, appUser.id, contractThresholdDays));
+    const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(leads, byLead, appUser.id, renewalCheckpoints));
     const target = volumeTargetFor(appUser, dailyVolumeTarget);
     const vol = target > 0 ? computeDailyVolume(leads, interactions, appUser.id, appUser.authUid) : null;
     const monthStart = new Date(now); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
@@ -273,7 +273,7 @@ function PlacarDoDia({ leads, interactions, appUser, db, onNavigate, now }) {
       monthDots: dots,
       monthHits: dots.filter(d => d.hit).length
     };
-  }, [leads, interactions, appUser, contractThresholdDays, dailyVolumeTarget, metaWeekdays, ownHistory, now]);
+  }, [leads, interactions, appUser, renewalCheckpoints, dailyVolumeTarget, metaWeekdays, ownHistory, now]);
 
   const goalOk = goalTotal > 0 && goalDone >= goalTotal;
   const volOk = volTarget === 0 || volDone >= volTarget;

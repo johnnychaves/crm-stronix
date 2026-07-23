@@ -9,6 +9,7 @@ import { withBucket } from '../lib/leadDerived.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeDelegatedPresenceSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { applyOutcomeToAula, upsertScheduledAula } from '../lib/aulasWrites.js';
+import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
 import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
@@ -19,6 +20,9 @@ import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNam
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { DailyGoalTeamView } from './DailyGoalTeamView.jsx';
+import { RenewalOutcomeModal } from '../modals/RenewalOutcomeModal.jsx';
+import { ContactOutcomeModal } from '../modals/ContactOutcomeModal.jsx';
+import { MatriculaModal } from '../modals/MatriculaModal.jsx';
 import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, Users, X, Zap } from 'lucide-react';
 
 // DAILY GOAL VIEW — DESIGN PRIMITIVES
@@ -921,7 +925,16 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
   // definida pelo admin nas Configurações Gerais. A sequência pula os dias
   // inativos (não quebram nem contam). Default seg–sex.
-  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0, contractThresholdDays = 30 } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0, renewalCheckpoints = [90, 60, 30] } = useGeneralConfig();
+
+  // Renovação: popup de desfecho (8b) ao concluir a tarefa + fluxo de
+  // matrícula/renovação existente quando o desfecho é "Renovou".
+  const [renewalTarget, setRenewalTarget] = useState(null); // { lead, activeCheckpoint } | null
+  const [matriculaTarget, setMatriculaTarget] = useState(null); // lead | null
+  // Contato: popup de desfecho (8b) ao concluir a tarefa de Contato Hoje
+  // (feito / reagendar). Só para a categoria Contato — atrasado segue no
+  // NextContactModal antigo.
+  const [contactTarget, setContactTarget] = useState(null); // { lead, categorySlug } | null
 
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
@@ -968,8 +981,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   // o painel da equipe do gestor.
   const processedLeads = useMemo(() => {
     void todayKey; // recategoriza na virada do dia (A5)
-    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, contractThresholdDays);
-  }, [leads, appUser, interactions, todayKey, contractThresholdDays]);
+    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints);
+  }, [leads, appUser, interactions, todayKey, renewalCheckpoints]);
 
   // Presença cruzada (item 3): aulas/visitas de OUTROS consultores que caem no
   // MEU turno com o dono fora de plantão. Calculada à parte — NÃO entra em
@@ -1183,14 +1196,30 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   const handleGoalDone = async (lead, categorySlug, note, e) => {
     if (e) e.stopPropagation();
     if (!Object.values(DAILY_GOAL_CATEGORIES).includes(categorySlug)) return;
-    // Contato Hoje / Atrasado: concluir abre o "Próximo contato?" para agendar
-    // o próximo toque. Sem isso o nextFollowUp ficaria parado no passado e o
-    // lead voltaria como "Atrasado" amanhã (a marca daily_goal_done vale só no
-    // dia em que foi criada).
-    if (
-      categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE ||
-      categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO
-    ) {
+    // Renovação: concluir abre o popup de desfecho (Renovou/Não vai
+    // renovar/Reagendar) em vez do window.confirm genérico — a gravação
+    // (patch + timeline + daily_goal_done) acontece dentro do próprio modal
+    // (src/modals/RenewalOutcomeModal.jsx), que usa a regra pura de
+    // src/lib/renewalGoal.js.
+    if (categorySlug === DAILY_GOAL_CATEGORIES.RENOVACAO) {
+      const daysToExpiry = daysToExpiryOf(lead.currentContractEndsAt, now);
+      const checkpoint = activeRenewalCheckpoint(daysToExpiry, renewalCheckpoints);
+      setRenewalTarget({ lead, activeCheckpoint: checkpoint });
+      return;
+    }
+    // Contato Hoje: concluir abre o popup de desfecho (Contato feito /
+    // Reagendar) — mesmo visual da renovação. A gravação (patch + timeline +
+    // daily_goal_done) acontece dentro do ContactOutcomeModal (regra pura em
+    // src/lib/contactGoal.js). Substitui o "Próximo contato?" só nesta categoria.
+    if (categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE) {
+      setContactTarget({ lead, categorySlug });
+      return;
+    }
+    // Atrasado: segue no "Próximo contato?" antigo (não faz parte desta
+    // entrega). Sem isso o nextFollowUp ficaria parado no passado e o lead
+    // voltaria como "Atrasado" amanhã (a marca daily_goal_done vale só no dia
+    // em que foi criada).
+    if (categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO) {
       setNextContactTarget({ lead, categorySlug, flow: 'complete', contextLabel: 'Tarefa concluída' });
       return;
     }
@@ -1406,6 +1435,18 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível salvar a remarcação. Tente novamente.');
+    }
+  };
+
+  // Fecha o popup de desfecho da renovação. "Renovou" encadeia o fluxo de
+  // matrícula/renovação existente (MatriculaModal mode='renovacao'), que
+  // grava o contrato e reseta os campos de renovação. Os outros desfechos já
+  // gravaram tudo dentro do próprio RenewalOutcomeModal — só fecha.
+  const handleRenewalOutcomeDone = (outcome) => {
+    const renewedLead = renewalTarget?.lead || null;
+    setRenewalTarget(null);
+    if (outcome === 'renovou' && renewedLead) {
+      setMatriculaTarget(renewedLead);
     }
   };
 
@@ -1727,6 +1768,42 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
           onPick={commitNextContact}
           onSkip={commitNoNextContact}
           onClose={() => setNextContactTarget(null)}
+        />
+      )}
+
+      {renewalTarget && (
+        <RenewalOutcomeModal
+          open
+          lead={renewalTarget.lead}
+          appUser={appUser}
+          db={db}
+          activeCheckpoint={renewalTarget.activeCheckpoint}
+          onDone={handleRenewalOutcomeDone}
+          onClose={() => setRenewalTarget(null)}
+        />
+      )}
+
+      {matriculaTarget && (
+        <MatriculaModal
+          lead={matriculaTarget}
+          appUser={appUser}
+          db={db}
+          mode="renovacao"
+          renewedFromId={matriculaTarget.currentContractId || null}
+          onClose={() => setMatriculaTarget(null)}
+          onDone={() => setMatriculaTarget(null)}
+        />
+      )}
+
+      {contactTarget && (
+        <ContactOutcomeModal
+          open
+          lead={contactTarget.lead}
+          categorySlug={contactTarget.categorySlug}
+          appUser={appUser}
+          db={db}
+          onDone={() => setContactTarget(null)}
+          onClose={() => setContactTarget(null)}
         />
       )}
     </div>
