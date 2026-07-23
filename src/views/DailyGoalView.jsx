@@ -21,6 +21,7 @@ import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { DailyGoalTeamView } from './DailyGoalTeamView.jsx';
 import { RenewalOutcomeModal } from '../modals/RenewalOutcomeModal.jsx';
+import { ContactOutcomeModal } from '../modals/ContactOutcomeModal.jsx';
 import { MatriculaModal } from '../modals/MatriculaModal.jsx';
 import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, Users, X, Zap } from 'lucide-react';
 
@@ -930,6 +931,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   // matrícula/renovação existente quando o desfecho é "Renovou".
   const [renewalTarget, setRenewalTarget] = useState(null); // { lead, activeCheckpoint } | null
   const [matriculaTarget, setMatriculaTarget] = useState(null); // lead | null
+  // Contato: popup de desfecho (8b) ao concluir a tarefa de Contato Hoje
+  // (feito / reagendar). Só para a categoria Contato — atrasado segue no
+  // NextContactModal antigo.
+  const [contactTarget, setContactTarget] = useState(null); // { lead, categorySlug } | null
 
   // Histórico persistido: 1 doc por dia que o consultor zerou a meta.
   const [dailyHistory, setDailyHistory] = useState([]);
@@ -1202,14 +1207,19 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
       setRenewalTarget({ lead, activeCheckpoint: checkpoint });
       return;
     }
-    // Contato Hoje / Atrasado: concluir abre o "Próximo contato?" para agendar
-    // o próximo toque. Sem isso o nextFollowUp ficaria parado no passado e o
-    // lead voltaria como "Atrasado" amanhã (a marca daily_goal_done vale só no
-    // dia em que foi criada).
-    if (
-      categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE ||
-      categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO
-    ) {
+    // Contato Hoje: concluir abre o popup de desfecho (Contato feito /
+    // Reagendar) — mesmo visual da renovação. A gravação (patch + timeline +
+    // daily_goal_done) acontece dentro do ContactOutcomeModal (regra pura em
+    // src/lib/contactGoal.js). Substitui o "Próximo contato?" só nesta categoria.
+    if (categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE) {
+      setContactTarget({ lead, categorySlug });
+      return;
+    }
+    // Atrasado: segue no "Próximo contato?" antigo (não faz parte desta
+    // entrega). Sem isso o nextFollowUp ficaria parado no passado e o lead
+    // voltaria como "Atrasado" amanhã (a marca daily_goal_done vale só no dia
+    // em que foi criada).
+    if (categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO) {
       setNextContactTarget({ lead, categorySlug, flow: 'complete', contextLabel: 'Tarefa concluída' });
       return;
     }
@@ -1782,6 +1792,18 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
           renewedFromId={matriculaTarget.currentContractId || null}
           onClose={() => setMatriculaTarget(null)}
           onDone={() => setMatriculaTarget(null)}
+        />
+      )}
+
+      {contactTarget && (
+        <ContactOutcomeModal
+          open
+          lead={contactTarget.lead}
+          categorySlug={contactTarget.categorySlug}
+          appUser={appUser}
+          db={db}
+          onDone={() => setContactTarget(null)}
+          onClose={() => setContactTarget(null)}
         />
       )}
     </div>

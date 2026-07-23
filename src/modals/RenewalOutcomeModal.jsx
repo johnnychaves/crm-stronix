@@ -7,6 +7,7 @@ import { renewalDecline, renewalReschedule } from '../lib/renewalGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { cn } from '../lib/utils.js';
+import { OUTCOME_TONE, outcomeButtonClass, SegmentedOutcome } from '../components/ui/SegmentedOutcome.jsx';
 import {
   Dialog,
   DialogContent,
@@ -36,24 +37,6 @@ const SEGMENTS = [
   { key: OUTCOMES.NAO_RENOVA, label: 'Não vai renovar', Icon: Ban, tone: 'rose' },
   { key: OUTCOMES.REAGENDAR, label: 'Reagendar contato', Icon: Calendar, tone: 'amber' }
 ];
-
-const TONE = {
-  emerald: {
-    segmentActive: 'bg-emerald-100 text-emerald-700 ring-1 ring-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400',
-    panel: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400',
-    button: 'bg-[#059669] hover:bg-emerald-700 text-white shadow-[0_4px_14px_-4px_rgba(5,150,105,0.6)]'
-  },
-  rose: {
-    segmentActive: 'bg-rose-100 text-rose-700 ring-1 ring-rose-600 dark:bg-rose-500/15 dark:text-rose-400',
-    panel: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400',
-    button: 'bg-[#e11d48] hover:bg-rose-700 text-white shadow-[0_4px_14px_-4px_rgba(225,29,72,0.6)]'
-  },
-  amber: {
-    segmentActive: 'bg-amber-100 text-amber-700 ring-1 ring-amber-600 dark:bg-amber-500/15 dark:text-amber-400',
-    panel: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-400',
-    button: 'bg-[#d97706] hover:bg-amber-700 text-white shadow-[0_4px_14px_-4px_rgba(217,119,6,0.6)]'
-  }
-};
 
 const FOOTER_LABEL = {
   [OUTCOMES.RENOVOU]: 'Renovar',
@@ -179,36 +162,17 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
           </div>
         </div>
 
-        <div className="px-5 pt-4">
-          <label className="flex items-center gap-1 text-[13.5px] font-semibold text-foreground">
-            Qual o desfecho desta renovação?
-            <span className="text-accent-500 text-[12px] leading-none">*</span>
-          </label>
-
-          <div className="mt-2.5 flex items-center gap-1 p-1 rounded-xl bg-slate-50 dark:bg-white/5 border border-border">
-            {SEGMENTS.map(({ key, label, Icon, tone }) => {
-              const active = outcome === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setOutcome(key)}
-                  className={cn(
-                    'flex-1 h-9 rounded-lg text-[12.5px] font-medium inline-flex items-center justify-center gap-1.5 transition',
-                    active ? TONE[tone].segmentActive : 'text-muted-foreground hover:bg-white/60 dark:hover:bg-white/[0.04]'
-                  )}
-                >
-                  <Icon size={13} />
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <SegmentedOutcome
+          className="px-5 pt-4"
+          question="Qual o desfecho desta renovação?"
+          segments={SEGMENTS}
+          value={outcome}
+          onChange={setOutcome}
+        />
 
         <div className="px-5 py-4">
           {outcome === OUTCOMES.RENOVOU && (
-            <div className={cn('rounded-xl px-3.5 py-3 flex items-start gap-2 text-[12.5px] leading-relaxed', TONE.emerald.panel)}>
+            <div className={cn('rounded-xl px-3.5 py-3 flex items-start gap-2 text-[12.5px] leading-relaxed', OUTCOME_TONE.emerald.panel)}>
               <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
               <span>Ao confirmar, abrimos o fluxo de nova matrícula com os dados do cliente.</span>
             </div>
@@ -285,7 +249,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
             disabled={!canSubmit}
             className={cn(
               'h-[38px] px-4 rounded-xl text-[13px] font-bold transition disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none',
-              TONE[SEGMENTS.find(s => s.key === outcome).tone].button
+              outcomeButtonClass(SEGMENTS.find(s => s.key === outcome).tone)
             )}
           >
             {submitting ? 'Salvando...' : FOOTER_LABEL[outcome]}
