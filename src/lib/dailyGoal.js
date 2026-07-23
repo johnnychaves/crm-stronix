@@ -321,8 +321,14 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     // 5. Contato Hoje — follow-up via Mensagem/Ligação agendado para hoje
     // (qualquer tipo que NÃO seja visita/aula). Pega WhatsApp + ligações sem
     // duplicar quem já está nas seções de visita/aula.
+    // CLIENTE (status 'Venda') também entra aqui quando tem um nextFollowUp
+    // de hoje: é o contato de renovação REAGENDADO (o desfecho "Reagendar" da
+    // tarefa de Renovação grava nextFollowUp + marca o marco como tratado, ver
+    // src/lib/renewalGoal.js). Sem esta exceção, o contato reagendado sumiria
+    // (as categorias 1-5 excluem 'Venda'); é a MESMA lógica da Renovação, que
+    // já é a única categoria a surfar clientes.
     if (
-      lead.status !== 'Venda' &&
+      (lead.status !== 'Venda' || lead.lifecycleStage === 'cliente') &&
       lead.status !== 'Perda' &&
       lead.nextFollowUp &&
       lead.nextFollowUp >= todayStart &&

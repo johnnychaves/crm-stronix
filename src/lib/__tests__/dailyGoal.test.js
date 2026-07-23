@@ -146,7 +146,6 @@ describe('computeDailyGoalSlots — renovação (marcos configuráveis, renewalG
       convertedAt: new Date(2026, 5, 1),
       currentContractStatus: 'ativo',
       renewalHandledCheckpoints: [],
-      renewalRescheduleAt: null,
       renewalDeclined: false,
       ...over
     });
@@ -178,11 +177,26 @@ describe('computeDailyGoalSlots — renovação (marcos configuráveis, renewalG
     expect(slots([c])).toEqual([]);
   });
 
-  it('reagendamento (renewalRescheduleAt) futuro suprime; hoje/passado entra mesmo sem marco alcançado', () => {
-    const futuro = cliente({ currentContractEndsAt: new Date(2026, 9, 1), renewalRescheduleAt: new Date(2026, 6, 20) });
-    expect(slots([futuro])).toEqual([]);
-    const devido = cliente({ currentContractEndsAt: new Date(2026, 9, 1), renewalRescheduleAt: new Date(2026, 6, 15) }); // hoje
-    expect(byId(slots([devido]), devido.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
+  it('cliente REAGENDADO (marco em handled + nextFollowUp hoje) sai de Renovações e vira Contato', () => {
+    // Efeito do desfecho "Reagendar": marca o marco atual como tratado e grava
+    // um nextFollowUp de contato. O cliente (status Venda) passa a aparecer em
+    // Contatos — não mais em Renovações (regra em src/lib/renewalGoal.js +
+    // exceção de cliente na categoria Contato).
+    const c = cliente({
+      currentContractEndsAt: new Date(2026, 6, 30), // marco ativo era 30
+      renewalHandledCheckpoints: [30],
+      nextFollowUp: new Date(2026, 6, 15, 14, 0),   // hoje
+      nextFollowUpType: 'Mensagem'
+    });
+    expect(byId(slots([c]), c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+  });
+
+  it('cliente REAGENDADO volta a Renovações quando chega o PRÓXIMO marco', () => {
+    // handled=[90] (reagendou no marco 90). Quando o prazo cai pra faixa do 60,
+    // o marco ativo (60) não está em handled → reaparece em Renovações. Sem
+    // nextFollowUp de hoje aqui (a data do contato anterior já passou).
+    const c = cliente({ currentContractEndsAt: new Date(2026, 7, 29), renewalHandledCheckpoints: [90] }); // +45 dias → marco 60
+    expect(byId(slots([c]), c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
   });
 
   it('contrato vencido sem nenhum marco tratado ainda entra (corrige o bug: não sumia mais)', () => {

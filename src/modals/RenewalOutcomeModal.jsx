@@ -116,18 +116,21 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
         });
         toast.success('Perda de renovação registrada. O cliente continua ativo — só sai desta cobrança.');
       } else if (outcome === OUTCOMES.REAGENDAR) {
-        const patch = renewalReschedule(parsedReschedule);
+        // Reagendar: o marco atual conta como resolvido (handled) e o contato
+        // vira um follow-up na categoria Contatos na data escolhida (nextFollowUp).
+        // Volta a Renovações só no próximo marco — ver src/lib/renewalGoal.js.
+        const patch = renewalReschedule(lead, parsedReschedule, activeCheckpoint);
         const dateFmt = parsedReschedule.toLocaleDateString('pt-BR');
         await logInteraction(db, lead, appUser, {
           text: `Motivo do reagendamento: ${motivoTrimmed} — próximo contato em ${dateFmt}.`,
           type: 'note'
         }, patch);
         await logInteraction(db, lead, appUser, {
-          text: `✅ Renovação — Meta Diária concluída (reagendado para ${dateFmt}).`,
+          text: `✅ Renovação — Meta Diária concluída (contato reagendado para ${dateFmt}).`,
           type: 'daily_goal_done',
           dailyGoalCategory: DAILY_GOAL_CATEGORIES.RENOVACAO
         });
-        toast.success(`Reagendado para ${dateFmt}.`);
+        toast.success(`Contato reagendado para ${dateFmt} — agora aparece em Contatos.`);
       }
       onDone && onDone(outcome);
     } catch (err) {

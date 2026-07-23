@@ -140,10 +140,9 @@ export const buildMatriculaWrites = ({
     currentContractStatus: CONTRACT_STATUS.ATIVO,
     // Novo ciclo de contrato = marcos de renovação zerados. Vale tanto para
     // matrícula (lead novo, campos já nascem assim) quanto para renovação
-    // (o ciclo anterior pode ter deixado marcos tratados/reagendamento/
-    // declínio gravados — ver src/lib/renewalGoal.js).
+    // (o ciclo anterior pode ter deixado marcos tratados/declínio gravados —
+    // ver src/lib/renewalGoal.js).
     renewalHandledCheckpoints: [],
-    renewalRescheduleAt: null,
     renewalDeclined: false
   };
 

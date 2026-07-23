@@ -20,7 +20,6 @@ const cliente = (over = {}) => ({
   currentContractStatus: 'ativo',
   currentContractEndsAt: null,
   renewalHandledCheckpoints: [],
-  renewalRescheduleAt: null,
   renewalDeclined: false,
   ...over
 });
@@ -110,16 +109,15 @@ describe('shouldPromptRenewal', () => {
     expect(shouldPromptRenewal(l, NOW, [90, 60, 30])).toBe(false);
   });
 
-  it('renewalRescheduleAt no futuro suprime, mesmo com marco ativo não tratado', () => {
-    const l = cliente({ currentContractEndsAt: endsInDays(15), renewalRescheduleAt: endsInDays(3) });
-    expect(shouldPromptRenewal(l, NOW, [90, 60, 30])).toBe(false);
-  });
-
-  it('renewalRescheduleAt hoje ou no passado entra (tarefa devida), independente do checkpoint', () => {
-    const hoje = cliente({ currentContractEndsAt: endsInDays(120), renewalRescheduleAt: NOW });
-    expect(shouldPromptRenewal(hoje, NOW, [90, 60, 30])).toBe(true);
-    const passado = cliente({ currentContractEndsAt: endsInDays(120), renewalRescheduleAt: endsInDays(-2) });
-    expect(shouldPromptRenewal(passado, NOW, [90, 60, 30])).toBe(true);
+  it('reagendar (marco atual em handled) tira do marco atual mas VOLTA no próximo marco', () => {
+    // Ciclo do reagendamento: reagendou no marco 90 → handled=[90]. Enquanto o
+    // prazo restante estiver na faixa do 90 (>60), NÃO reaparece em Renovações.
+    const noMarco90 = cliente({ currentContractEndsAt: endsInDays(75), renewalHandledCheckpoints: [90] });
+    expect(shouldPromptRenewal(noMarco90, NOW, [90, 60, 30])).toBe(false);
+    // Quando o prazo cai pra faixa do 60 (marco ativo = 60, ainda não tratado),
+    // volta a pedir renovação.
+    const noMarco60 = cliente({ currentContractEndsAt: endsInDays(45), renewalHandledCheckpoints: [90] });
+    expect(shouldPromptRenewal(noMarco60, NOW, [90, 60, 30])).toBe(true);
   });
 
   it('sem currentContractEndsAt não entra', () => {
@@ -127,7 +125,7 @@ describe('shouldPromptRenewal', () => {
     expect(shouldPromptRenewal(l, NOW, [90, 60, 30])).toBe(false);
   });
 
-  it('checkpoints vazios nunca entra (sem reagendamento devido)', () => {
+  it('checkpoints vazios nunca entra', () => {
     const l = cliente({ currentContractEndsAt: endsInDays(15) });
     expect(shouldPromptRenewal(l, NOW, [])).toBe(false);
   });
@@ -169,19 +167,37 @@ describe('renewalDecline', () => {
 });
 
 describe('renewalReschedule', () => {
-  it('aceita um Date direto', () => {
+  it('grava nextFollowUp (Date) + tipo genérico de contato + marca o marco como tratado', () => {
+    const l = cliente({ renewalHandledCheckpoints: [] });
     const d = endsInDays(3);
-    expect(renewalReschedule(d)).toEqual({ renewalRescheduleAt: d });
+    const patch = renewalReschedule(l, d, 90);
+    expect(patch).toEqual({
+      nextFollowUp: d,
+      nextFollowUpType: 'Mensagem',
+      renewalHandledCheckpoints: [90]
+    });
   });
 
   it('aceita string yyyy-mm-dd (formato de <input type="date">) como meia-noite LOCAL', () => {
-    const patch = renewalReschedule('2026-08-01');
-    expect(patch.renewalRescheduleAt).toEqual(new Date(2026, 7, 1));
+    const patch = renewalReschedule(cliente(), '2026-08-01', 60);
+    expect(patch.nextFollowUp).toEqual(new Date(2026, 7, 1));
   });
 
-  it('NÃO mexe em renewalHandledCheckpoints — mesmo marco, só adiado', () => {
-    const patch = renewalReschedule('2026-08-01');
-    expect(patch).not.toHaveProperty('renewalHandledCheckpoints');
+  it('NÃO seta renewalRescheduleAt (campo removido) nem toca status/declined', () => {
+    const patch = renewalReschedule(cliente(), '2026-08-01', 30);
+    expect(patch).not.toHaveProperty('renewalRescheduleAt');
     expect(patch).not.toHaveProperty('renewalDeclined');
+    expect(patch).not.toHaveProperty('status');
+  });
+
+  it('acumula o marco atual sem duplicar marcos já tratados', () => {
+    const l = cliente({ renewalHandledCheckpoints: [90] });
+    expect(renewalReschedule(l, endsInDays(3), 60).renewalHandledCheckpoints).toEqual([90, 60]);
+    expect(renewalReschedule(l, endsInDays(3), 90).renewalHandledCheckpoints).toEqual([90]);
+  });
+
+  it('permite sobrescrever o tipo de follow-up (ex.: Ligação)', () => {
+    const patch = renewalReschedule(cliente(), endsInDays(3), 30, 'Ligação');
+    expect(patch.nextFollowUpType).toBe('Ligação');
   });
 });

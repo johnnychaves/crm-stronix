@@ -34,27 +34,29 @@ conclui** e o cliente **reaparece todo dia**. Bug.
 ## Modelo de dados (no doc do lead, resetam quando renova)
 
 - `renewalHandledCheckpoints: number[]` — marcos já tratados no ciclo atual.
-- `renewalRescheduleAt: Timestamp | null` — data do próximo contato reagendado.
 - `renewalDeclined: boolean` — "não renova neste ciclo".
-- Reset (para `[]` / `null` / `false`) quando um novo contrato é criado —
-  fazer em `buildMatriculaWrites` (lib/contracts.js) no caminho matrícula E
-  renovação (novo ciclo = marcos zerados).
+- Reset (para `[]` / `false`) quando um novo contrato é criado — fazer em
+  `buildMatriculaWrites` (lib/contracts.js) no caminho matrícula E renovação
+  (novo ciclo = marcos zerados).
+
+> **Revisão 2026-07-23 (Johnny):** o campo `renewalRescheduleAt` e o modelo de
+> "suprime e reaparece em Renovações na data" foram DESCARTADOS. Reagendar
+> agora manda o contato para a categoria **Contatos** (via `nextFollowUp`) e
+> marca o marco atual como tratado — ver a seção Reagendar abaixo.
 
 ## Lógica da Meta (dailyGoal.js — categoria RENOVACAO)
 
 Para cada cliente com `currentContractEndsAt`:
 - `daysToExpiry = ceil((endsAt - now) / dia)`.
 - Se `renewalDeclined` → não entra.
-- Se `renewalRescheduleAt` no futuro → não entra (suprimido até a data); se já
-  passou/hoje → entra (é a tarefa reagendada devida).
 - `activeCheckpoint = min{ C ∈ renewalCheckpoints : C >= daysToExpiry }`. Se não
   existir (ainda antes do maior marco) → não entra.
 - Entra na Meta se `activeCheckpoint` existe **e não está** em
-  `renewalHandledCheckpoints` (e não suprimido por reschedule).
+  `renewalHandledCheckpoints`.
 - Rótulo do marco exibido no popup = `activeCheckpoint` ("Marco de N dias").
 
 Isso corrige o bug: concluir a tarefa muda o estado (abaixo) e ela sai da Meta,
-sem reaparecer no dia seguinte; só volta no próximo marco (ou na data reagendada).
+sem reaparecer no dia seguinte; só volta no próximo marco.
 
 ## Popup (RenewalOutcomeModal) — visual = handoff 8b
 
@@ -68,9 +70,14 @@ hoje"):
 - **Não vai renovar** → `renewalDeclined = true` + registra o **motivo** (texto
   livre) na timeline; **não** toca status/funil. Some dos próximos marcos.
   Adiciona `activeCheckpoint` a `renewalHandledCheckpoints`.
-- **Reagendar** → `renewalRescheduleAt = data escolhida` + registra o **motivo**
-  (texto livre) na timeline. Reaparece só na data. NÃO adiciona ao handled — é
-  o mesmo marco adiado.
+- **Reagendar** → grava `nextFollowUp = data escolhida` + `nextFollowUpType`
+  genérico de contato (Mensagem) → o contato passa a aparecer em **Contatos**
+  na Meta (não em Renovações). Marca o marco atual como tratado
+  (`renewalHandledCheckpoints += activeCheckpoint`) + registra o **motivo**
+  (texto livre) na timeline. **NÃO** toca status/funil. Volta a Renovações só
+  no PRÓXIMO marco (ex.: 90 → 60). Como Contatos exclui `status === 'Venda'`,
+  a categoria Contato passou a abrir exceção para `lifecycleStage === 'cliente'`
+  (dailyGoal.js) — senão o contato reagendado do cliente sumiria.
 
 ## Arquitetura
 
