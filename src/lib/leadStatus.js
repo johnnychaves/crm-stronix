@@ -51,6 +51,18 @@ const normalizeDailyVolumeTarget = (raw) => {
   return Number.isFinite(n) && n >= 0 && n <= 500 ? n : 0;
 };
 
+// Marcos (dias antes do vencimento) que disparam a categoria Renovação da
+// Meta Diária — ver src/lib/renewalGoal.js. Inteiros positivos, sem
+// repetição, ordenados DESC (maior marco primeiro — mais cedo no ciclo).
+// Nunca retorna vazio: cai para o default [90, 60, 30].
+const normalizeRenewalCheckpoints = (raw) => {
+  const list = Array.isArray(raw) ? raw : [];
+  const clean = Array.from(new Set(
+    list.map(n => Math.floor(Number(n))).filter(n => Number.isFinite(n) && n >= 1 && n <= 365)
+  )).sort((a, b) => b - a);
+  return clean.length ? clean : [90, 60, 30];
+};
+
 // Índice leadId -> { count, lastDate } construído UMA vez em O(interações).
 // Antes, cada card/linha recomputava interactions.filter() por lead — dava
 // O(leads × interações) a cada render/tecla. Monte num useMemo([interactions])
@@ -135,4 +147,4 @@ const isColdLeadFromDate = (lead, lastInteractionDate) => {
   const days = getDaysSinceFromDate(lead, lastInteractionDate);
   return days !== null && days >= 7;
 };
-export { HOUR_MS, DAY_MS, LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget, buildInteractionIndex, lastInteractionDateOf, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate };
+export { HOUR_MS, DAY_MS, LIST_PAGE_SIZE, normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget, normalizeRenewalCheckpoints, buildInteractionIndex, lastInteractionDateOf, isLeadActive, getDaysSinceFromDate, isHotLeadFromDate, isColdLeadFromDate };
