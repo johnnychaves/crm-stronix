@@ -762,7 +762,11 @@ function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onPick, on
   const pickCustom = () => run(async () => {
     if (!customValue) return;
     const d = new Date(customValue);
-    if (isNaN(d.getTime())) return;
+    // Trava de data futura (mesma garantia do ContactOutcomeModal): nunca
+    // agenda o próximo contato no passado/agora, senão o lead cairia em
+    // Atrasados. Cobre o fluxo pós-desfecho (Compareceu/Cancelou), único que
+    // ainda usa este popup depois de Atrasados migrar pro ContactOutcomeModal.
+    if (isNaN(d.getTime()) || d.getTime() <= Date.now()) return;
     await onPick(d, note);
   });
   const skip = () => run(async () => { await onSkip(note); });
@@ -797,6 +801,7 @@ function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onPick, on
               <input
                 type="datetime-local"
                 value={customValue}
+                min={toDatetimeLocalValue(new Date())}
                 onChange={(e) => setCustomValue(e.target.value)}
                 autoFocus
                 className="flex-1 px-3 py-2 rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-white/[0.03] text-[14px] num focus:outline-none focus:ring-2 focus:ring-brand-500/30 focus:border-brand-500"
@@ -1215,12 +1220,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
       setContactTarget({ lead, categorySlug });
       return;
     }
-    // Atrasado: segue no "Próximo contato?" antigo (não faz parte desta
-    // entrega). Sem isso o nextFollowUp ficaria parado no passado e o lead
-    // voltaria como "Atrasado" amanhã (a marca daily_goal_done vale só no dia
-    // em que foi criada).
+    // Atrasado: usa o MESMO popup de desfecho do Contato (ContactOutcomeModal),
+    // que OBRIGA data futura ao reagendar. Antes abria o "Próximo contato?"
+    // antigo (NextContactModal) SEM essa trava, então dava para gravar um
+    // nextFollowUp no passado/hoje — o lead voltava para Atrasados no mesmo dia
+    // com a tarefa pendente (a marca daily_goal_done era carimbada 'atrasado',
+    // não casava com a nova categoria). A regra pura de conclusão/reagendamento
+    // (contactDone/contactReschedule) é a mesma; muda só o popup.
     if (categorySlug === DAILY_GOAL_CATEGORIES.ATRASADO) {
-      setNextContactTarget({ lead, categorySlug, flow: 'complete', contextLabel: 'Tarefa concluída' });
+      setContactTarget({ lead, categorySlug });
       return;
     }
     const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
