@@ -69,7 +69,10 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
       onDragEnd={onDragEnd}
       onClick={() => onOpenProfile(lead.id)}
       className={cn(
-        'group relative flex items-center gap-2.5 rounded-[10px] bg-white dark:bg-neutral-900 border py-2.5 pr-2.5 pl-3 overflow-hidden cursor-grab active:cursor-grabbing transition-all',
+        // shrink-0: sem isto o card (filho flex do container flex-col da coluna)
+        // encolhe verticalmente pra caber quando a lista cresce, em vez de a
+        // coluna rolar — é o bug dos cards "espremidos".
+        'group relative shrink-0 flex items-center gap-2.5 rounded-[10px] bg-white dark:bg-neutral-900 border py-2.5 pr-2.5 pl-3 overflow-hidden cursor-grab active:cursor-grabbing transition-all',
         isDragging
           ? 'opacity-80 z-50 shadow-xl border-brand-500'
           : 'border-[#e8ecf3] dark:border-neutral-800 hover:border-brand-200 dark:hover:border-brand-500/40 hover:shadow-[0_3px_10px_-2px_rgba(15,23,42,.10)]'
