@@ -1,120 +1,10 @@
 // Helpers puros da LINHA DO TEMPO da ficha (lead/cliente). Extraídos do
 // LeadDetailsModal para serem compartilhados pela nova LeadProfileView.
 // Sem React state — só apresentação/classificação/parse de interactions.
-import { Calendar, CheckCircle, MessageCircle, Phone, RefreshCw, ThumbsDown, Trophy, Users } from 'lucide-react';
-
-export const interactionToneMap = {
-  blue: {
-    dot: 'bg-blue-500 text-white',
-    card: 'border-blue-500/20 bg-blue-500/5',
-    pill: 'bg-blue-500/10 text-blue-700 dark:text-blue-300',
-    text: 'text-gray-900 dark:text-white',
-    meta: 'text-blue-600 dark:text-blue-200/70'
-  },
-  green: {
-    dot: 'bg-green-500 text-white',
-    card: 'border-green-500/20 bg-green-500/5',
-    pill: 'bg-green-500/10 text-green-700 dark:text-green-300',
-    text: 'text-gray-900 dark:text-white',
-    meta: 'text-green-600 dark:text-green-200/70'
-  },
-  yellow: {
-    dot: 'bg-yellow-400 text-yellow-900',
-    card: 'border-yellow-500/30 bg-yellow-500/10',
-    pill: 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400',
-    text: 'text-gray-900 dark:text-white',
-    meta: 'text-yellow-600 dark:text-yellow-400/80'
-  },
-  purple: {
-    dot: 'bg-purple-500 text-white',
-    card: 'border-purple-500/20 bg-purple-500/5',
-    pill: 'bg-purple-500/10 text-purple-700 dark:text-purple-300',
-    text: 'text-gray-900 dark:text-white',
-    meta: 'text-purple-600 dark:text-purple-200/70'
-  },
-  red: {
-    dot: 'bg-red-500 text-white',
-    card: 'border-red-500/20 bg-red-500/5',
-    pill: 'bg-red-500/10 text-red-700 dark:text-red-300',
-    text: 'text-gray-900 dark:text-white',
-    meta: 'text-red-600 dark:text-red-200/70'
-  },
-  orange: {
-    dot: 'bg-blue-600 text-white',
-    card: 'border-blue-600/20 bg-blue-600/5',
-    pill: 'bg-blue-600/10 text-blue-700 dark:text-blue-400',
-    text: 'text-gray-900 dark:text-white',
-    meta: 'text-blue-600 dark:text-blue-400/70'
-  },
-  gray: {
-    dot: 'bg-gray-200 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300',
-    card: 'border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/60',
-    pill: 'bg-gray-100 dark:bg-neutral-800 text-gray-700 dark:text-neutral-300',
-    text: 'text-gray-800 dark:text-neutral-200',
-    meta: 'text-gray-500 dark:text-neutral-500'
-  }
-};
 
 export const extractStageNameFromInteractionText = (text = '') => {
   const match = String(text).match(/\[([^\]]+)\]/);
   return match ? match[1].trim() : '';
-};
-
-export const getStageTone = (statusName, statusesArray = []) => {
-  if (statusName === 'Venda') return interactionToneMap.green;
-  if (statusName === 'Perda') return interactionToneMap.red;
-
-  const statusObj = (statusesArray || []).find(s => s.name === statusName);
-  const color = statusObj?.color || 'orange';
-
-  return interactionToneMap[color] || interactionToneMap.orange;
-};
-
-export const getInteractionVisual = (interaction, statusesArray = []) => {
-  const text = String(interaction?.text || '');
-  const lower = text.toLowerCase();
-  const stageName = extractStageNameFromInteractionText(text);
-
-  if (stageName) {
-    return {
-      stageName,
-      label: 'Mudança de etapa',
-      icon: RefreshCw,
-      ...getStageTone(stageName, statusesArray)
-    };
-  }
-
-  if (lower.includes('matrícula') || lower.includes('venda')) {
-    return { label: 'Venda', icon: Trophy, ...interactionToneMap.green };
-  }
-
-  if (lower.includes('perda') || lower.includes('perdido')) {
-    return { label: 'Perda', icon: ThumbsDown, ...interactionToneMap.red };
-  }
-
-  if (lower.includes('aula')) {
-    return { label: 'Aula experimental', icon: Calendar, ...interactionToneMap.purple };
-  }
-
-  if (lower.includes('visita')) {
-    return { label: 'Visita', icon: Users, ...interactionToneMap.yellow };
-  }
-
-  if (lower.includes('csat')) {
-    return { label: 'CSAT', icon: CheckCircle, ...interactionToneMap.blue };
-  }
-
-  if (lower.includes('ligação')) {
-    return { label: 'Ligação', icon: Phone, ...interactionToneMap.orange };
-  }
-
-  if (lower.includes('mensagem')) {
-    return { label: 'Mensagem', icon: MessageCircle, ...interactionToneMap.gray };
-  }
-
-  return interaction?.type === 'status_change'
-    ? { label: 'Atualização', icon: RefreshCw, ...interactionToneMap.orange }
-    : { label: 'Observação', icon: MessageCircle, ...interactionToneMap.gray };
 };
 
 // Agrupa eventos por janela temporal (Hoje / Ontem / Esta semana / Este mês /
@@ -155,6 +45,11 @@ export const classifyInteraction = (i) => {
   // Contrato vem ANTES das demais regras: matrícula/renovação são gravadas como
   // status_change, mas pertencem ao bucket de contrato.
   if (CONTRACT_RE.test(t)) return 'contract';
+  // Desfecho de agendamento (compareceu/faltou) é gravado com
+  // type='daily_goal_done', mas carrega o campo appointmentOutcome. É evento de
+  // AGENDAMENTO: sem esta regra ele cai no balde 'system' e some do feed padrão,
+  // que é justamente onde o desfecho da aula precisa aparecer.
+  if (i.appointmentOutcome) return 'appointment';
   if (i.type === 'status_change') return 'status';
   if (/^📲|whatsapp enviada/i.test(t) || /^📞/.test(t)) return 'conversation';
   if (/retorno agendado|🔔/i.test(t)) return 'appointment';
@@ -167,15 +62,92 @@ export const classifyInteraction = (i) => {
   return 'system';
 };
 
+// Cinco filtros + um interruptor. "Marcos" funde as antigas "Mudanças" e
+// "Contrato" (as duas respondem "o que mudou de estado"); "Sistema" saiu da
+// lista e virou interruptor, desligado por padrão — Meta Diária, etiquetas e
+// "lead criado" não têm o peso de uma conversa.
 export const TIMELINE_FILTERS = [
-  { id: 'all',          label: 'Tudo' },
-  { id: 'conversation', label: 'Conversas' },
-  { id: 'status',       label: 'Mudanças' },
-  { id: 'appointment',  label: 'Agendamentos' },
-  { id: 'note',         label: 'Anotações' },
-  { id: 'contract',     label: 'Contrato' },
-  { id: 'system',       label: 'Sistema' }
+  { id: 'all',          label: 'Tudo',         kinds: null },
+  { id: 'conversation', label: 'Conversas',    kinds: ['conversation'] },
+  { id: 'appointment',  label: 'Agendamentos', kinds: ['appointment'] },
+  { id: 'note',         label: 'Anotações',    kinds: ['note'] },
+  { id: 'milestone',    label: 'Marcos',       kinds: ['status', 'contract'] }
 ];
+
+export const TIMELINE_SYSTEM_KIND = 'system';
+
+// Um evento passa no filtro quando o bucket dele está na lista do filtro
+// ('all' aceita qualquer um). O interruptor de sistema é decidido pelo caller,
+// ANTES daqui — assim as contagens saem da mesma lista que a tela mostra.
+export const matchesTimelineFilter = (kind, filterId) => {
+  const f = TIMELINE_FILTERS.find(x => x.id === filterId);
+  if (!f || !f.kinds) return true;
+  return f.kinds.includes(kind);
+};
+
+// Rótulo da coluna de TIPO (versalete). O corpo do evento já vem limpo dos
+// prefixos, então é esta coluna que diz o que a linha é.
+export const timelineTypeLabel = (i) => {
+  const t = String(i?.text || '');
+  switch (i?._kind) {
+    case 'contract': return 'Contrato';
+    case 'status': return 'Fase';
+    case 'conversation': return /^📞|ligaç/i.test(t) ? 'Ligação' : 'WhatsApp';
+    case 'note': return i?.pinned ? 'Nota fixa' : 'Nota';
+    case 'appointment': return /aula/i.test(t) ? 'Aula' : 'Agenda';
+    default: return 'Sistema';
+  }
+};
+
+// Sub-régua de DIA dentro de uma janela. Retorna [[dayKey, Date, eventos[]]...]
+// preservando a ordem de entrada (o feed já vem do mais recente pro mais antigo).
+export const groupTimelineByDay = (events) => {
+  const map = new Map();
+  (events || []).forEach((e) => {
+    const d = e.createdAt instanceof Date ? e.createdAt : null;
+    if (!d) return;
+    const k = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (!map.has(k)) map.set(k, { date: d, events: [] });
+    map.get(k).events.push(e);
+  });
+  return Array.from(map.entries()).map(([k, v]) => [k, v.date, v.events]);
+};
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Para cada mudança de fase: de ONDE veio e há quanto tempo o lead estava lá.
+ *
+ * Não existe campo gravado — a origem é o destino da transição anterior e a
+ * duração é a diferença entre as duas. Na primeira transição não há anterior;
+ * aí a régua é o cadastro do lead (`leadCreatedAt`), que é dado real. Sem
+ * cadastro conhecido devolve `days: null` e a tela omite o "após", em vez de
+ * inventar um zero.
+ *
+ * @returns {Object} id → { from: string|null, days: number|null, fromCreation: boolean }
+ */
+export const buildStageTransitions = (statusInteractions, leadCreatedAt = null) => {
+  const chrono = (statusInteractions || [])
+    .filter(i => i.createdAt instanceof Date && !isNaN(i.createdAt.getTime()))
+    .slice()
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+  const created = leadCreatedAt instanceof Date && !isNaN(leadCreatedAt.getTime()) ? leadCreatedAt : null;
+  const out = {};
+  let prevDest = null;
+  let prevAt = created;
+
+  chrono.forEach((i) => {
+    const days = prevAt ? Math.max(0, Math.floor((i.createdAt.getTime() - prevAt.getTime()) / DAY_MS)) : null;
+    out[i.id] = { from: prevDest, days, fromCreation: !prevDest && Boolean(created) };
+    const dest = extractStageNameFromInteractionText(i.text);
+    // Evento sem etapa entre [colchetes] (reabertura, "Lead perdido…") não
+    // quebra a cadeia: segue valendo a última etapa conhecida.
+    if (dest) { prevDest = dest; prevAt = i.createdAt; }
+  });
+
+  return out;
+};
 
 // Detecta metadados de agendamento embutidos no texto de uma interaction.
 // O composer atual grava "🔔 {Tipo} agendada (extra) p/ DD/MM, HH:MM. Obs: ..."
