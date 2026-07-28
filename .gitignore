@@ -30,6 +30,7 @@ dist-ssr
 
 # Pacote de referência do redesign (handoff) e tooling local de preview
 design_redesign/
+design_handoff_meta_equipe/
 .claude/launch.json
 
 # Mockups do companion visual de brainstorm (local, não versionado)
