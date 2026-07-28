@@ -174,10 +174,20 @@ mas dobra o trabalho. Sai um.
 cadastrado no dia 3 que já virou cliente ou foi perdido não entra na conta. Os
 agendamentos não têm o problema, porque as interações do mês vêm todas.
 
-Assumido nesta PR: a barra sai como está e o rótulo diz "ações do mês" sem promessa de
-exatidão histórica. Contar lead novo pela interação de cadastro em vez do lead resolve,
-mas é trabalho a mais e precisa de verificação própria. Fica registrado pra decidir na
-revisão.
+Decidido com o Johnny em 2026-07-28: aceitar por ora. A barra sai como está e o rótulo
+diz "ações do mês" sem promessa de exatidão histórica. O erro é sempre pra baixo, então
+ninguém aparece melhor do que é.
+
+Duas saídas foram descartadas. Contar lead novo pela interação de cadastro não serve:
+`isRegistrationNote` casa texto que começa com "OBSERVAÇÃO DO CADASTRO:"
+([leads.js:142](../../../src/lib/leads.js)), e lead cadastrado sem observação não gera
+interação nenhuma, então erraria mais que o jeito atual. Consultar a coleção de leads
+do mês também não: adiciona query numa tela de uso diário, que é o tipo de leitura que
+a PR #144 cortou.
+
+O conserto de verdade, se um dia fizer falta, é gravar `volumeKind: 'lead_novo'` na
+criação do lead, do mesmo jeito que agendar já faz. Vale só daí pra frente, o mês
+corrente e o passado seguem tortos de qualquer forma.
 
 **Dia passado não reconstrói tarefas.** Limitação de gravação, não de tela. A tela
 declara.
