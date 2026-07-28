@@ -159,9 +159,18 @@ então a Meta que o gestor vê ignora a categoria Renovação e diverge da tela 
 consultor. Fica mais grave com a tela nova, que renderiza Renovações como uma das 6
 categorias.
 
-**Denominador do mês.** `computeRitmo` e `countMetaDaysInMonth` contam hoje. Passam a
-contar só dias programados encerrados. Muda também o número na tela do consultor, e as
-duas telas precisam mudar juntas pra não divergirem.
+**Denominador do mês.** As duas asas medem só dias programados **encerrados**, dos dois
+lados da fração. Se o denominador excluir hoje e o numerador não, quem bate a meta de
+manhã aparece 14/13. Hoje vive na régua e na tabela, não nas asas.
+
+Na prática: `computeRitmo` passa a excluir hoje em `monthHits` e `monthTarget` (o
+`streak` e a régua de 14 dias continuam incluindo hoje, que é o comportamento certo pra
+sequência). Nasce `countClosedMetaDaysInMonth` pro denominador da prospecção, e o
+numerador vira `computeVolumeInRange(..., monthStart, todayStart, metaWeekdays)`.
+
+`countMetaDaysInMonth` fica como está. A tela do consultor usa ela com hoje incluído
+nos dois lados da conta de prospecção do mês, e mexer ali criaria a mesma
+inconsistência ao contrário.
 
 **Laço duplicado.** `computeDailyGoalSlots` tem o mesmo bloco de reconciliação escrito
 duas vezes (linhas 367 a 374 e 382 a 389). É idempotente, então não altera resultado,
