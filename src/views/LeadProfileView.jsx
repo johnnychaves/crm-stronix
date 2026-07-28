@@ -1447,11 +1447,15 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
                           <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[5px]">
                             {value != null && months > 0 ? `${fmtBRL(Number(value) / months)}/mês` : '—'}
                           </div>
+                          {/* Só o desconto e o motivo: a célula não comporta o
+                              valor de tabela junto sem truncar. Ele fica no title. */}
                           {discount > 0.005 && listValue > 0 && (
-                            <div className="text-[11.5px] text-emerald-700 dark:text-emerald-400 mt-[3px] truncate">
-                              <span className="num line-through text-slate-400 dark:text-slate-500">{fmtBRL(listValue)}</span>
-                              <span className="num"> · −{fmtBRL(discount)}</span>
-                              {discountReason ? ` · ${discountReason.toLowerCase()}` : ''}
+                            <div
+                              className="text-[11.5px] text-emerald-700 dark:text-emerald-400 mt-[3px] truncate"
+                              title={`Tabela ${fmtBRL(listValue)} · desconto de ${fmtBRL(discount)}`}
+                            >
+                              <span className="num">−{fmtBRL(discount)}</span>
+                              {discountReason ? ` · ${discountReason.toLowerCase()}` : ' de desconto'}
                             </div>
                           )}
                         </div>
