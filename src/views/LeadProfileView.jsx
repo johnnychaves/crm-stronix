@@ -27,14 +27,18 @@ import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { MatriculaModal } from '../modals/MatriculaModal.jsx';
 import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
 import {
-  getInteractionVisual,
   groupTimeline,
+  groupTimelineByDay,
   classifyInteraction,
   parseAppointment,
   extractStageNameFromInteractionText,
-  TIMELINE_FILTERS
+  buildStageTransitions,
+  matchesTimelineFilter,
+  timelineTypeLabel,
+  TIMELINE_FILTERS,
+  TIMELINE_SYSTEM_KIND
 } from '../lib/timeline.js';
-import { AlertTriangle, ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, Clock, CreditCard, FileText, GraduationCap, MessageCircle, Pause, Pencil, Phone, Plus, RefreshCw, Search, Shield, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, MessageCircle, Pause, Pencil, Phone, Plus, RefreshCw, Search, Shield, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Tom semântico (TONES) + ícone por status do contrato — espelha o
 // CONTRACT_STATUS do protótipo (contracts.jsx) p/ o tile/chip do contrato vigente.
@@ -45,11 +49,18 @@ const CONTRACT_STATUS_META = {
   [CONTRACT_STATUS.CANCELADO]: { tone: 'rose', icon: Ban }
 };
 
-// Item da faixa de meta do cabeçalho (ícone + texto), espelha o MetaItem do protótipo.
-const MetaItem = ({ icon, children }) => (
-  <span className="inline-flex items-center gap-1.5 text-[12.5px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
-    <span className="text-slate-400 dark:text-slate-500">{icon}</span>{children}
-  </span>
+// Célula da faixa de metadados do cabeçalho: rótulo em versalete sobre o valor.
+// Substituiu a fila de ícones — sem rótulo, "(51) 99184-2270" e "Ana Duarte"
+// pareciam a mesma categoria de informação.
+const MetaCell = ({ label, children }) => (
+  <div className="min-w-0 px-5 first:pl-0 py-0.5">
+    <div className="text-[9.5px] font-bold uppercase tracking-[.07em] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+      {label}
+    </div>
+    <div className="mt-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 min-w-0">
+      {children}
+    </div>
+  </div>
 );
 
 // Chip de contagem ao lado do label da aba (Linha do tempo / Contratos).
@@ -104,6 +115,9 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
   // Timeline filter + search
   const [timelineFilter, setTimelineFilter] = useState('all');
+  // Eventos de sistema (Meta Diária, etiquetas, "lead criado") entram só sob
+  // demanda: não têm o mesmo peso de uma conversa.
+  const [showSystem, setShowSystem] = useState(false);
   const [timelineQuery, setTimelineQuery] = useState('');
 
   const handleWhatsApp = () => {
@@ -499,55 +513,56 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // protótipo, mesmo gravando só o destino. Best-effort: a 1ª transição fica sem
   // origem (mostra só o destino); eventos sem etapa entre [colchetes] (ex.: Perda
   // "Lead perdido…", reabertura) não entram na cadeia.
-  const statusFromMap = (() => {
+  // Origem de cada mudança de fase + quanto tempo o lead ficou na anterior.
+  // A origem é o destino da transição anterior (só o destino é gravado); a
+  // duração sai da diferença entre transições, com o cadastro do lead como
+  // régua da primeira. Ver buildStageTransitions em lib/timeline.js.
+  const stageTransitions = buildStageTransitions(
+    interactionsWithClass.filter(i => i._kind === 'status'),
+    lead.createdAt
+  );
+
+  // O desfecho aponta de volta para o agendamento que o originou: o
+  // agendamento mais recente ANTES dele. Dado real — não há campo ligando os
+  // dois, mas a ordem cronológica resolve.
+  const outcomeOrigin = (() => {
     const chrono = interactionsWithClass
-      .filter(i => i._kind === 'status')
+      .filter(i => i.createdAt instanceof Date)
       .slice()
-      .sort((a, b) => (a.createdAt?.getTime?.() || 0) - (b.createdAt?.getTime?.() || 0));
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
     const map = {};
-    let prevDest = null;
+    let lastScheduled = null;
     chrono.forEach(i => {
-      map[i.id] = prevDest;
-      const dest = extractStageNameFromInteractionText(i.text);
-      if (dest) prevDest = dest;
+      if (i.appointmentOutcome) {
+        if (lastScheduled) map[i.id] = { at: lastScheduled.createdAt, by: lastScheduled.consultantName };
+      } else if (i._kind === 'appointment') {
+        lastScheduled = i;
+      }
     });
     return map;
   })();
 
-  const timelineCounts = (() => {
-    const counts = { all: interactionsWithClass.length, conversation: 0, status: 0, appointment: 0, note: 0, contract: 0, system: 0 };
-    interactionsWithClass.forEach(i => { counts[i._kind] = (counts[i._kind] || 0) + 1; });
-    return counts;
+  // O interruptor de Sistema é aplicado ANTES do filtro e da busca — assim os
+  // cinco contadores saem da MESMA lista que o clique realmente exibe (o mockup
+  // errava isso: mostrava o total bruto em "Tudo").
+  const timelineVisible = showSystem
+    ? interactionsWithClass
+    : interactionsWithClass.filter(i => i._kind !== TIMELINE_SYSTEM_KIND);
+  const systemHiddenCount = interactionsWithClass.length - timelineVisible.length;
+
+  const timelineSearched = (() => {
+    const q = timelineQuery.trim().toLowerCase();
+    if (!q) return timelineVisible;
+    return timelineVisible.filter(i => `${i.text || ''} ${i.consultantName || ''}`.toLowerCase().includes(q));
   })();
 
-  const filteredInteractions = (() => {
-    let list = timelineFilter === 'all' ? interactionsWithClass : interactionsWithClass.filter(i => i._kind === timelineFilter);
-    const q = timelineQuery.trim().toLowerCase();
-    if (q) {
-      list = list.filter(i => `${i.text || ''} ${i.consultantName || ''}`.toLowerCase().includes(q));
-    }
-    return list;
-  })();
+  const timelineCounts = Object.fromEntries(
+    TIMELINE_FILTERS.map(f => [f.id, timelineSearched.filter(i => matchesTimelineFilter(i._kind, f.id)).length])
+  );
+
+  const filteredInteractions = timelineSearched.filter(i => matchesTimelineFilter(i._kind, timelineFilter));
 
   const groupedEvents = groupTimeline(filteredInteractions);
-
-  // Resolve o tom semântico (TONES) de um evento da timeline pelo seu _kind +
-  // texto. Usado p/ o nó (círculo) da trilha e o realce do card.
-  const eventToneName = (i) => {
-    const lower = String(i.text || '').toLowerCase();
-    if (i._kind === 'contract') {
-      // Cancelamento = rose; matrícula/renovação = emerald.
-      return /cancel/.test(lower) ? 'rose' : 'emerald';
-    }
-    if (i._kind === 'appointment') return 'brand';
-    if (i._kind === 'conversation') return /^📞|ligaç/i.test(i.text || '') ? 'amber' : 'emerald';
-    if (i._kind === 'status') {
-      const stage = extractStageNameFromInteractionText(i.text);
-      return stage ? phaseToneName(stage, statuses) : 'violet';
-    }
-    if (i._kind === 'note') return 'slate';
-    return 'slate';
-  };
 
   // Próximos agendamentos (aba CRM): agendamentos futuros, em ordem ascendente.
   const upcomingAppointments = interactionsWithClass
@@ -655,31 +670,32 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
     </section>
   );
 
-  // Link "Adicionar à agenda" do card de agendamento: monta uma URL de criação
-  // de evento no Google Agenda (1h de duração) a partir do agendamento, sem
-  // backend — abre em nova aba. Espelha o botão do appointment_scheduled do
-  // protótipo (timeline.jsx).
-  const gcalLink = (when, title) => {
-    const pad = (n) => String(n).padStart(2, '0');
-    const stamp = (d) => `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
-    const end = new Date(when.getTime() + 60 * 60 * 1000);
-    const params = new URLSearchParams({
-      action: 'TEMPLATE',
-      text: `${title} — ${lead.name}`,
-      dates: `${stamp(when)}/${stamp(end)}`
-    });
-    return `https://calendar.google.com/calendar/render?${params.toString()}`;
+  // Chip de etapa da linha do tempo. A tinta sai do `hex` do tom (12% no fundo,
+  // 30% na borda do destino) e o TEXTO nunca usa o passo 500 — só o 700/300,
+  // senão 11px sobre fundo claro reprova AA (âmbar dá 2.15:1).
+  const copyPhone = async () => {
+    try {
+      await navigator.clipboard.writeText(String(lead.whatsapp || ''));
+      toast.success('Número copiado.');
+    } catch {
+      toast.info('Copie o número manualmente.');
+    }
   };
 
-  // Badge de fase no estilo do protótipo (PhaseBadge do status_change): ponto +
-  // nome na cor da etapa sobre fundo suave, rounded-md, compacto (size sm). NÃO
-  // usar o StatusBadge do app aqui — ele é uma pílula sólida em maiúsculas e
-  // destoa do protótipo.
-  const phaseTag = (name) => {
+  const phaseChip = (name, isDestination) => {
     const t = getTone(phaseToneName(name, statuses));
     return (
-      <span className={cn('inline-flex items-center gap-1.5 font-semibold rounded-md whitespace-nowrap text-[10.5px] px-1.5 py-0.5', t.soft, t.text, t.darkSoft, t.darkText)}>
-        <span className={cn('w-1.5 h-1.5 rounded-full', t.dot)}></span>
+      <span
+        className={cn(
+          'inline-flex items-center gap-1.5 h-[22px] px-2 rounded-md whitespace-nowrap text-[11px] font-semibold shrink-0',
+          isDestination ? cn('border', t.text, t.darkText) : 'text-slate-500 dark:text-slate-400'
+        )}
+        style={{
+          background: `${t.hex}1f`,
+          ...(isDestination ? { borderColor: `${t.hex}4d` } : null)
+        }}
+      >
+        <span className="size-1.5 rounded-full shrink-0" style={{ background: t.hex }} />
         {name}
       </span>
     );
@@ -691,30 +707,27 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // adaptado às nossas interactions reais — sem fabricar dados que não temos
   // (✓✓ de leitura, duração/resultado de ligação): a FORMA do card é mantida,
   // o subelemento ausente é omitido.
+  // Uma linha do REGISTRO. Quatro colunas alinhadas em todas as variantes:
+  // hora (38px) · tipo em versalete (74px) · corpo (resto) · autor (110px).
+  // Cor no feed só aparece em chip de fase, selo de aula e faixa de marco —
+  // todo o resto é neutro, senão vinte eventos viram um arco-íris.
   const renderTimelineEvent = (i) => {
-    const visual = getInteractionVisual(i, statuses);
-    const toneName = eventToneName(i);
-    const tone = getTone(toneName);
     const time = i.createdAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    const typeLabel = timelineTypeLabel(i);
+    const author = i.consultantName || 'Sistema';
     const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
     const stageName = i._kind === 'status' ? extractStageNameFromInteractionText(i.text) : '';
     const isContract = i._kind === 'contract';
     const contractCancel = isContract && /cancel/i.test(i.text || '');
-    // Conversa: distingue mensagem (bolha) de ligação (card próprio), espelhando
-    // os corpos message_out/call_out do protótipo.
-    const isCall = i._kind === 'conversation' && /^📞|ligaç/i.test(i.text || '');
-    const isMessage = i._kind === 'conversation' && !isCall;
-    // Eventos "de sistema" que viram LINHA SIMPLES no protótipo (created/etiqueta).
     const lowerText = String(i.text || '').toLowerCase();
-    const isCreated = i._kind === 'system' && /lead criado|cadastro do lead|criou o lead|via /i.test(i.text || '');
-    const isTag = i._kind === 'system' && /etiqueta|tag\b/i.test(lowerText);
-    // Anotação fixada (selo âmbar do protótipo). NÃO fabricamos: só aparece se a
-    // interaction realmente trouxer i.pinned. Sem o campo, cai no card slate.
-    const isPinned = i._kind === 'note' && Boolean(i.pinned);
-    // Corpo limpo: tira os prefixos emoji/rótulo que o composer injeta no texto
-    // (📲/📞 das conversas, "Obs:" das notas, emoji ✅/🔄 dos eventos da Meta,
-    // o literal "OBSERVAÇÃO DO CADASTRO:"). O TIPO do card já comunica o que é,
-    // então o corpo fica como no protótipo.
+    // Perda: o status_change que encerra a oportunidade não traz etapa entre
+    // colchetes — vem como "Lead perdido. Motivo: ...".
+    const isLoss = i._kind === 'status' && !stageName && /perdid|perda/i.test(lowerText);
+    const isWin = i._kind === 'status' && /^venda$/i.test(stageName);
+
+    // Corpo limpo: tira os prefixos que o composer injeta (📲/📞 das conversas,
+    // "Obs:" das notas, ✅/🔄/🔔 dos eventos de sistema). A coluna de TIPO já
+    // diz o que a linha é.
     const cleanBody = String(i.text || '')
       .replace(/^📲\s*Mensagem WhatsApp enviada:\s*/i, '')
       .replace(/^📞\s*Ligação:\s*/i, '')
@@ -722,191 +735,175 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       .replace(/^Obs:\s*/i, '')
       .replace(/^[✅🔄🔔]\s*/u, '')
       .trim();
-    // Evento de sistema da Meta Diária ("✅ … — Meta Diária …" / "🔄 Remarcou …"
-    // / legado "✅ … Meta Diária concluída."): linha discreta, sem o emoji cru.
-    const isDailyGoal = i.type === 'daily_goal_done' || /meta diária/i.test(lowerText);
-    const isSimpleSystem = isCreated || isTag || isDailyGoal;
-    // Ícone do nó: agendamento/contrato têm ícone fixo; demais usam o visual.
-    const NodeIcon = i._kind === 'appointment' ? Calendar : isContract ? GraduationCap : visual.icon;
 
-    // Cabeçalho comum (avatar + autor + ação + canal + horário), como o
-    // EventHeader do protótipo.
-    const header = (
-      <div className="flex items-center gap-2 flex-wrap">
-        <Avatar name={i.consultantName || 'Sistema'} size={20} />
-        <span className="text-[13px] font-semibold text-slate-900 dark:text-white whitespace-nowrap">{i.consultantName || 'Sistema'}</span>
-        <span className={cn('text-[12px] whitespace-nowrap', tone.text, tone.darkText)}>
-          {i._kind === 'appointment' ? 'criou um agendamento'
-            : isContract ? (contractCancel ? 'cancelou o contrato' : 'registrou matrícula')
-            : i._kind === 'status' && stageName ? 'alterou a fase'
-            : isMessage ? 'enviou uma mensagem'
-            : isCall ? 'registrou uma ligação'
-            : isPinned ? 'fixou uma anotação'
-            : i._kind === 'note' ? 'adicionou uma anotação'
-            : isCreated ? 'cadastrou o lead'
-            : isTag ? 'editou as etiquetas'
-            : isDailyGoal ? 'concluiu a Meta Diária'
-            : visual.label}
-        </span>
-        <span className="flex-1"></span>
-        <span className="text-[11.5px] num text-slate-400 dark:text-slate-500 whitespace-nowrap" title={i.createdAt?.toLocaleString('pt-BR')}>
-          {time}
-        </span>
-      </div>
-    );
+    // ---- Variante 4: marco (matrícula, venda, perda) ----------------------
+    // Quebra o padrão tabular numa faixa full-width com régua no topo.
+    if (isContract || isWin || isLoss) {
+      const lossReason = isLoss
+        ? (String(i.text || '').match(/motivo:\s*([^.·\n]+)/i)?.[1] || '').trim()
+        : '';
+      const band = contractCancel || isLoss
+        ? { ring: 'border-rose-500', bg: 'bg-rose-50 dark:bg-rose-500/10', dot: 'bg-rose-500', Icon: Ban }
+        : isWin
+          ? { ring: 'border-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', dot: 'bg-emerald-500', Icon: CheckCircle }
+          : { ring: 'border-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', dot: 'bg-emerald-500', Icon: GraduationCap };
+
+      const title = isLoss
+        ? `Oportunidade encerrada${lossReason ? ` · ${lossReason}` : ''}`
+        : isWin
+          ? 'Virou cliente — etapa Venda'
+          : contractCancel ? 'Contrato cancelado'
+            : /renova/i.test(i.text || '') ? 'Contrato renovado'
+              : (lead.currentPlanName || 'Matrícula fechada');
+
+      const subtitle = isWin ? `Fase alterada por ${author}` : cleanBody;
+
+      // Valor só na matrícula, e só se o contrato realmente tiver valor.
+      const showValue = isContract && !contractCancel && lead.currentContractValue != null
+        && Number.isFinite(Number(lead.currentContractValue));
+
+      return (
+        <div key={i.id} className={cn('flex items-center gap-3 border-t-2 px-3.5 py-2.5 my-1', band.ring, band.bg)}>
+          <span className={cn('size-[26px] rounded-full grid place-items-center shrink-0 text-white', band.dot)}>
+            <band.Icon className="size-[13px]" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate" title={title}>{title}</div>
+            {subtitle && <div className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate" title={subtitle}>{subtitle}</div>}
+          </div>
+          {showValue && (
+            <span className="font-display text-[17px] font-bold text-emerald-700 dark:text-emerald-300 num shrink-0">
+              {fmtBRL(lead.currentContractValue)}
+            </span>
+          )}
+          <span className="text-[11px] num text-slate-400 dark:text-slate-500 shrink-0" title={i.createdAt?.toLocaleString('pt-BR')}>{time}</span>
+        </div>
+      );
+    }
+
+    // ---- Corpo das variantes tabulares ------------------------------------
+    let body = null;
+    let typeToneClass = 'text-slate-400 dark:text-slate-500';
+
+    if (i._kind === 'status' && stageName) {
+      // Variante 2: mudança de fase — dois chips e a duração na etapa anterior.
+      const t = stageTransitions[i.id] || {};
+      const destTone = getTone(phaseToneName(stageName, statuses));
+      typeToneClass = cn(destTone.text, destTone.darkText);
+      const durationText = t.days == null
+        ? null
+        : t.fromCreation
+          ? `após ${t.days}d desde o cadastro`
+          : t.from ? `após ${t.days}d em ${t.from}` : null;
+
+      body = (
+        <div className="flex items-center gap-2 flex-wrap">
+          {t.from && (
+            <>
+              {phaseChip(t.from, false)}
+              <ArrowRight size={13} className="text-slate-400 dark:text-slate-500 shrink-0" />
+            </>
+          )}
+          {phaseChip(stageName, true)}
+          {durationText && (
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">{durationText}</span>
+          )}
+        </div>
+      );
+    } else if ((appt && appt.when) || i.appointmentOutcome) {
+      // Variante 3: agendamento e desfecho compartilham o bloco.
+      // O selo sai do campo REAL appointmentOutcome quando existe; o
+      // agendamento em si (ainda sem desfecho) fica em "Agendado".
+      const OUTCOME_SEALS = {
+        attended: { label: 'Compareceu', className: 'bg-emerald-500/[0.12] text-emerald-700 dark:text-emerald-300' },
+        no_show: { label: 'Faltou', className: 'bg-rose-500/[0.12] text-rose-700 dark:text-rose-300' },
+        rescheduled: { label: 'Reagendado', className: 'bg-amber-500/[0.12] text-amber-700 dark:text-amber-300' },
+        cancelled: { label: 'Cancelado', className: 'bg-slate-500/[0.12] text-slate-600 dark:text-slate-300' }
+      };
+      const outcome = OUTCOME_SEALS[i.appointmentOutcome]
+        || { label: 'Agendado', className: 'bg-brand-500/[0.12] text-brand-700 dark:text-brand-300' };
+      const isDone = Boolean(i.appointmentOutcome);
+      // No desfecho não há data no texto: a régua é o próprio evento.
+      const when = (appt && appt.when) || i.createdAt;
+      const title = appt?.label || cleanBody || 'Agendamento';
+      const detail = appt
+        ? [appt.location, appt.note, when.toLocaleDateString('pt-BR', { weekday: 'long' })].filter(Boolean).join(' · ')
+        : when.toLocaleDateString('pt-BR', { weekday: 'long' });
+      const origin = outcomeOrigin[i.id];
+
+      body = (
+        <div className="rounded-lg border border-slate-200 dark:border-white/[0.07] bg-slate-50 dark:bg-white/[0.02] px-2.5 py-[7px]">
+          <div className="flex items-center gap-2.5">
+            <div className="w-[34px] shrink-0 text-center">
+              <div className={cn(
+                'font-display text-[16px] font-bold leading-none num',
+                isDone ? 'text-emerald-700 dark:text-emerald-400' : 'text-brand-700 dark:text-brand-300'
+              )}>
+                {String(when.getDate()).padStart(2, '0')}
+              </div>
+              <div className="text-[9px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-0.5">
+                {when.toLocaleString('pt-BR', { month: 'short' }).replace('.', '')}
+              </div>
+            </div>
+            <div className="w-px h-[26px] bg-slate-200 dark:bg-white/[0.08] shrink-0" />
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-[12.5px] font-semibold text-slate-900 dark:text-white truncate">{title}</span>
+                <span className="text-[11px] num text-slate-500 dark:text-slate-400 shrink-0">
+                  {when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+              <div className="text-[11px] text-slate-400 dark:text-slate-500 truncate">{detail}</div>
+            </div>
+            <span className={cn(
+              'shrink-0 h-[17px] px-1.5 rounded inline-flex items-center text-[9.5px] font-bold uppercase tracking-[.05em]',
+              outcome.className
+            )}>
+              {outcome.label}
+            </span>
+          </div>
+
+          {/* O desfecho aponta de volta pro agendamento que o originou. */}
+          {origin && (
+            <div className="mt-[7px] pt-[7px] border-t border-slate-200 dark:border-white/[0.07] text-[11px] text-slate-400 dark:text-slate-500">
+              Agendada em {origin.at.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+              {origin.by ? ` por ${origin.by}` : ''}
+            </div>
+          )}
+        </div>
+      );
+    } else if (cleanBody) {
+      // Variante 1: linha simples (nota, conversa, sistema).
+      const meta = i.pinned ? 'Anotação fixada' : null;
+      body = (
+        <div>
+          <p className="text-[12.5px] leading-[1.5] text-slate-700 dark:text-slate-200 text-pretty whitespace-pre-wrap">{cleanBody}</p>
+          {meta && <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{meta}</div>}
+        </div>
+      );
+    }
+
+    if (!body) return null;
 
     return (
-      <article key={i.id} className="relative pl-12 pr-2 py-2.5 fade-in group">
-        {/* Nó da trilha — círculo de 36px no tom do tipo, com ring na cor do
-            fundo (paper-50/ink-950), espelhando o EventDot do protótipo. */}
-        <div className={cn(
-          'absolute left-0 top-2.5 z-10 w-9 h-9 rounded-full grid place-items-center shrink-0 ring-4 ring-paper-50 dark:ring-ink-950',
-          tone.soft, tone.text, tone.darkSoft, tone.darkText
-        )}>
-          <NodeIcon className="w-3.5 h-3.5" />
-        </div>
-
-        {header}
-
-        {/* Corpo do card por tipo */}
-        {i._kind === 'appointment' && appt && appt.when ? (
-          // Agendamento: bloco de data (mês/dia/hora) + tipo + local, espelhando
-          // appointment_scheduled. "Confirmado" só se o dado existir (i.confirmed).
-          <div className="mt-2 max-w-[480px] rounded-xl border border-brand-200/70 dark:border-brand-500/20 bg-gradient-to-br from-brand-50 to-white dark:from-brand-500/10 dark:to-transparent p-4">
-            <div className="flex items-center gap-3">
-              <div className="text-center shrink-0">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-300">{appt.when.toLocaleString('pt-BR', { month: 'short' }).replace('.', '')}</div>
-                <div className="num text-[24px] font-semibold tracking-tight leading-none text-brand-700 dark:text-brand-300">{String(appt.when.getDate()).padStart(2, '0')}</div>
-                <div className="text-[10.5px] text-brand-600 dark:text-brand-300 num mt-0.5">{appt.when.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
-              </div>
-              <div className="w-px h-12 bg-brand-200/70 dark:bg-brand-500/20"></div>
-              <div className="flex-1 min-w-0">
-                <div className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand-700 dark:text-brand-300">
-                  {appt.kind === 'class' ? <BookOpen size={11} /> : appt.kind === 'visit' ? <Building2 size={11} /> : appt.kind === 'call' ? <Phone size={11} /> : <MessageCircle size={11} />} {appt.label}
-                </div>
-                <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white mt-0.5">{appt.when.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}</div>
-                {appt.location && <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate">{appt.location}</div>}
-                {appt.note && <div className="text-[12px] text-slate-600 dark:text-slate-300 mt-1 whitespace-pre-wrap">{appt.note}</div>}
-              </div>
-              {i.confirmed && (
-                <span className="text-[10.5px] font-semibold px-2 py-1 rounded-md bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 whitespace-nowrap">Confirmado</span>
-              )}
-            </div>
-            {/* Ações do card de agendamento — port do appointment_scheduled do
-                protótipo: exportar p/ Google Agenda + remarcar (abre o wizard). */}
-            <div className="mt-3 flex items-center gap-1.5">
-              <Btn kind="secondary" size="sm" icon={<Calendar size={12} />} onClick={() => window.open(gcalLink(appt.when, appt.label), '_blank', 'noopener,noreferrer')}>Adicionar à agenda</Btn>
-              <Btn kind="soft" size="sm" icon={<RefreshCw size={12} />} onClick={() => { setActiveProfileTab('crm'); setComposerTab('schedule'); }}>Remarcar</Btn>
-            </div>
-          </div>
-        ) : isContract && i.text ? (
-          // Matrícula/renovação (emerald) ou cancelamento (rose) — card destacado
-          // com ícone no tom forte, espelhando enrollment/renewal.
-          <div className={cn(
-            'mt-2 max-w-[480px] rounded-xl p-4 ring-1 ring-inset',
-            contractCancel
-              ? 'bg-rose-50 dark:bg-rose-500/10 ring-rose-500/25'
-              : 'bg-emerald-50 dark:bg-emerald-500/10 ring-emerald-500/25'
-          )}>
-            <div className="flex items-center gap-3">
-              <span className={cn(
-                'w-10 h-10 rounded-xl grid place-items-center shrink-0 text-white',
-                contractCancel ? 'bg-rose-500' : 'bg-emerald-500'
-              )}>
-                {contractCancel ? <Ban size={18} /> : <GraduationCap size={18} />}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className={cn(
-                  'text-[11px] font-bold uppercase tracking-wider',
-                  contractCancel ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'
-                )}>
-                  {contractCancel ? 'Contrato cancelado' : /renova/i.test(i.text) ? 'Contrato renovado' : 'Matrícula fechada'}
-                </div>
-                <p className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-200 num mt-0.5 whitespace-pre-wrap">{i.text}</p>
-              </div>
-            </div>
-          </div>
-        ) : i._kind === 'status' && stageName ? (
-          // Mudança de fase: "[origem] → [destino]" espelhando o status_change do
-          // protótipo. A origem vem de statusFromMap (destino da transição
-          // anterior). Sem origem conhecida (1ª transição) cai no "Movido para".
-          <div className="mt-2 inline-flex items-center gap-2 flex-wrap">
-            {statusFromMap[i.id] ? (
-              <>
-                {phaseTag(statusFromMap[i.id])}
-                <ArrowRight size={13} className="text-slate-400" />
-                {phaseTag(stageName)}
-              </>
-            ) : (
-              <>
-                <span className="text-[12px] text-slate-500 dark:text-slate-400 whitespace-nowrap">Movido para</span>
-                {phaseTag(stageName)}
-              </>
-            )}
-          </div>
-        ) : isMessage ? (
-          // Mensagem enviada: balão estilo chat (espelha message_out), com a
-          // "rabicho" da bolha. Sem o ✓✓ — não temos status de leitura.
-          <div className="mt-2 flex">
-            <div className="relative max-w-[440px] rounded-xl px-3 py-2 text-[13px] leading-relaxed bg-emerald-100/70 dark:bg-emerald-500/10 text-emerald-900 dark:text-emerald-50 bubble-out">
-              <p className="whitespace-pre-wrap">{cleanBody || i.text}</p>
-              <div className="text-[10.5px] num mt-1 opacity-60 text-right">{time}</div>
-            </div>
-          </div>
-        ) : isCall ? (
-          // Ligação: card com ícone/tom próprios (espelha call_out), sem inventar
-          // resultado/duração — exibe só o resumo escrito pelo consultor.
-          <div className="mt-2 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] p-3 max-w-[440px]">
-            <div className="flex items-center gap-3">
-              <span className="w-9 h-9 rounded-lg grid place-items-center shrink-0 bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
-                <Phone size={14} />
-              </span>
-              <div className="flex-1 min-w-0">
-                <div className="text-[13px] font-semibold text-slate-900 dark:text-white">Ligação registrada</div>
-                {cleanBody && <p className="text-[12.5px] text-slate-600 dark:text-slate-300 mt-0.5 leading-snug whitespace-pre-wrap">{cleanBody}</p>}
-              </div>
-              <Btn kind="soft" size="sm" icon={<Phone size={12} />} onClick={() => { const num = String(lead.whatsapp || '').replace(/\D/g, ''); if (num) window.location.href = `tel:${num}`; }}>Retornar</Btn>
-            </div>
-          </div>
-        ) : isSimpleSystem ? (
-          // Criado / etiqueta / Meta Diária: LINHA SIMPLES (sem card), como
-          // created/tag_change. Corpo já vem sem o emoji cru (cleanBody).
-          (cleanBody ? (
-            <div className="mt-1 text-[12.5px] text-slate-500 dark:text-slate-400 whitespace-pre-wrap">{cleanBody}</div>
-          ) : null)
-        ) : i._kind === 'note' && cleanBody ? (
-          // Anotação: card slate, ou variante FIXADO (amber + selo) se i.pinned —
-          // espelha o corpo note do protótipo.
-          <div className={cn(
-            'mt-2 rounded-xl p-3 max-w-[520px] border',
-            isPinned
-              ? 'bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/20'
-              : 'bg-slate-50 border-slate-200 dark:bg-white/[0.03] dark:border-white/[0.06]'
-          )}>
-            {isPinned && (
-              <div className="inline-flex items-center gap-1 text-[10.5px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-300 mb-1">
-                <Target size={10} /> Fixado
-              </div>
-            )}
-            <p className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-200 whitespace-pre-wrap">{cleanBody}</p>
-          </div>
-        ) : cleanBody ? (
-          // Fallback (system genérico, ou agendamento legado cuja data não
-          // parseou): card no tom do evento, com o corpo já limpo de prefixos.
-          <div className={cn(
-            'mt-2 rounded-xl p-3 max-w-[640px] ring-1 ring-inset',
-            tone.soft, tone.darkSoft,
-            toneName === 'slate' ? 'ring-slate-200 dark:ring-white/[0.06]' : `${tone.ring}/20`
-          )}>
-            <p className="text-[13px] leading-relaxed whitespace-pre-wrap text-slate-700 dark:text-slate-200">{cleanBody}</p>
-          </div>
-        ) : null}
-      </article>
+      <div
+        key={i.id}
+        className="grid grid-cols-[38px_74px_1fr_110px] gap-3 items-start py-1.5 border-b border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="text-[11px] num text-slate-400 dark:text-slate-500 text-right pt-0.5" title={i.createdAt?.toLocaleString('pt-BR')}>{time}</div>
+        <div className={cn('text-[9.5px] font-bold uppercase tracking-[.07em] pt-1', typeToneClass)}>{typeLabel}</div>
+        <div className="min-w-0">{body}</div>
+        <div className="text-[11px] text-slate-500 dark:text-slate-400 text-right truncate pt-0.5" title={author}>{author}</div>
+      </div>
     );
   };
 
   return (
-    <div className="animate-fade-in font-sans">
+    // 1160px centralizado (medida do handoff). O shell do app libera até
+    // 1400/1600px, e nessa largura a linha do tempo vira uma linha de texto
+    // longa demais entre a hora e o autor — a leitura do registro depende da
+    // coluna curta.
+    <div className="animate-fade-in font-sans max-w-[1160px] mx-auto w-full">
       {/* ===== Voltar (a topbar é o shell do app; mantemos o Voltar acima do card) ===== */}
       <button
         onClick={onBack}
@@ -919,7 +916,9 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       <section className="rounded-2xl border border-slate-200 dark:border-white/[0.06] bg-white dark:bg-white/[0.02] shadow-card overflow-hidden mb-5">
         <div className="p-5 sm:p-6">
           <div className="flex items-start gap-4 sm:gap-5 flex-wrap">
-            <RingAvatar name={lead.name} size={64} toneName={profileState.tone} splitHex={profileState.key === 'a_vencer' ? '#10B981' : null} />
+            {/* Sem o ponto: o anel, o ponto e o texto "CLIENTE ATIVO" diziam a
+                mesma coisa três vezes. Fica o anel. */}
+            <RingAvatar name={lead.name} size={64} toneName={profileState.tone} showDot={false} splitHex={profileState.key === 'a_vencer' ? '#10B981' : null} />
 
             <div className="min-w-[240px] flex-1">
               {/* lifecycle label */}
@@ -1004,87 +1003,165 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
             </div>
           </div>
 
-          {/* meta strip */}
-          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-white/[0.05] flex items-center gap-x-5 gap-y-2 flex-wrap">
-            <MetaItem icon={<MessageCircle size={13} />}><span className="num">{lead.whatsapp}</span></MetaItem>
-            {lead.consultantName && <MetaItem icon={<Users size={13} />}>{lead.consultantName}</MetaItem>}
-            <MetaItem icon={<Clock size={13} />}>
-              {lead.nextFollowUp
-                ? <span className="num">Próx. contato {lead.nextFollowUp.toLocaleDateString('pt-BR')} · {lead.nextFollowUp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
-                : <span className="italic text-slate-400 dark:text-slate-500">Sem próximo contato</span>}
-            </MetaItem>
+          {/* Faixa de metadados: quatro células rotuladas, separadas por régua. */}
+          <div className="mt-5 pt-4 border-t border-slate-100 dark:border-white/[0.05] grid grid-cols-2 lg:grid-cols-4 gap-y-3 divide-x divide-slate-100 dark:divide-white/[0.06]">
+            <MetaCell label="Contato">
+              <span className="num truncate">{lead.whatsapp || '—'}</span>
+              {lead.whatsapp && (
+                <button
+                  type="button"
+                  onClick={copyPhone}
+                  title="Copiar número"
+                  aria-label="Copiar número"
+                  className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                >
+                  <Copy size={12} />
+                </button>
+              )}
+            </MetaCell>
+
+            <MetaCell label="Consultor resp.">
+              {lead.consultantName ? (
+                <>
+                  <Avatar name={lead.consultantName} size={19} />
+                  <span className="truncate">{lead.consultantName}</span>
+                </>
+              ) : <span className="text-slate-400 dark:text-slate-500 font-normal">Sem responsável</span>}
+            </MetaCell>
+
+            <MetaCell label="Professor resp.">
+              {lead.appointmentProfessorName ? (
+                <>
+                  <Avatar name={lead.appointmentProfessorName} size={19} />
+                  <span className="truncate">{lead.appointmentProfessorName}</span>
+                  {lead.appointmentModality && (
+                    <span className="text-slate-400 dark:text-slate-500 font-normal truncate">· {lead.appointmentModality}</span>
+                  )}
+                </>
+              ) : <span className="text-slate-400 dark:text-slate-500 font-normal">—</span>}
+            </MetaCell>
+
+            <MetaCell label="Próximo passo">
+              {lead.nextFollowUp ? (
+                <>
+                  <Calendar size={13} className="shrink-0 text-slate-400 dark:text-slate-500" />
+                  <span className="text-brand-700 dark:text-brand-300 truncate">
+                    {lead.nextFollowUpType || 'Próximo contato'}
+                  </span>
+                  {/* A data cede espaço antes do rótulo: em coluna estreita ela
+                      trunca, mas o compromisso (o que importa) continua legível. */}
+                  <span className="num font-normal text-slate-500 dark:text-slate-400 truncate">
+                    {/* "seg 03/08" — o pt-BR devolve "seg., 03/08". */}
+                    {lead.nextFollowUp.toLocaleDateString('pt-BR', { weekday: 'short', day: '2-digit', month: '2-digit' }).replace('.,', '').replace(',', '')} · {lead.nextFollowUp.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Calendar size={13} className="shrink-0 text-slate-400 dark:text-slate-500" />
+                  <span className="text-slate-400 dark:text-slate-500 font-normal">Sem próximo contato</span>
+                </>
+              )}
+            </MetaCell>
           </div>
         </div>
       </section>
 
       {/* ===== Abas ===== */}
       <Tabs value={activeProfileTab} onValueChange={setActiveProfileTab}>
-        <TabsList variant="line" className="gap-1 border-b border-slate-200 dark:border-white/[0.08] w-full justify-start rounded-none p-0">
+        <TabsList variant="line" className="gap-1 border-b border-slate-200 dark:border-white/[0.08] w-full justify-start rounded-none p-0 h-11">
           <TabsTrigger
             value="timeline"
-            className="flex-none px-4 pb-2.5 text-[13px] data-[state=active]:text-slate-900 dark:data-[state=active]:text-white [&_svg]:data-[state=active]:text-brand-600 after:bg-brand-600"
+            className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
           >
-            <Clock />
+            <Clock className="size-[15px]" />
             Linha do tempo
             <TabCount n={(interactions || []).length} active={activeProfileTab === 'timeline'} />
           </TabsTrigger>
           <TabsTrigger
             value="crm"
-            className="flex-none px-4 pb-2.5 text-[13px] data-[state=active]:text-slate-900 dark:data-[state=active]:text-white [&_svg]:data-[state=active]:text-brand-600 after:bg-brand-600"
+            className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
           >
-            <Target />
+            <Target className="size-[15px]" />
             CRM
           </TabsTrigger>
           <TabsTrigger
             value="contratos"
-            className="flex-none px-4 pb-2.5 text-[13px] data-[state=active]:text-slate-900 dark:data-[state=active]:text-white [&_svg]:data-[state=active]:text-brand-600 after:bg-brand-600"
+            className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
           >
-            <FileText />
+            <FileText className="size-[15px]" />
             Contratos
             <TabCount n={leadContracts.length} active={activeProfileTab === 'contratos'} />
           </TabsTrigger>
         </TabsList>
 
         {/* ----- Aba: Linha do tempo ----- */}
-        <TabsContent value="timeline" className="space-y-4 pt-2">
-          {/* Timeline filters + search */}
+        <TabsContent value="timeline" className="pt-2">
+         {/* O registro vive dentro de um card branco: a barra de controles fica
+             no topo, separada por uma régua que atravessa o card inteiro. */}
+         <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
+          {/* Barra de controles */}
           {(interactions || []).length > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              <div className="inline-flex flex-wrap gap-1 p-1 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07]">
-                {TIMELINE_FILTERS.map(f => {
-                  const active = timelineFilter === f.id;
-                  const c = timelineCounts[f.id] || 0;
-                  return (
-                    <button
-                      key={f.id}
-                      type="button"
-                      onClick={() => setTimelineFilter(f.id)}
-                      className={cn(
-                        'h-7 px-2.5 rounded-md text-[12px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition',
-                        active
-                          ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
-                          : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
-                      )}
-                    >
-                      {f.label}
-                      <span className={cn(
-                        'num text-[10.5px] px-1 h-[15px] rounded grid place-items-center min-w-[15px]',
-                        active
-                          ? 'bg-white/20 text-white dark:bg-slate-900/15 dark:text-slate-900'
-                          : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400'
-                      )}>{c}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="flex-1"></div>
-              <div className="relative">
+            <div className="flex items-center gap-2 flex-wrap px-8 py-3 border-b border-border">
+              {TIMELINE_FILTERS.map(f => {
+                const active = timelineFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setTimelineFilter(f.id)}
+                    className={cn(
+                      'h-[29px] px-2.5 rounded-lg text-[12px] font-semibold inline-flex items-center gap-1.5 whitespace-nowrap transition',
+                      'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                      active
+                        ? 'bg-[#0E1A40] text-white dark:bg-white dark:text-[#0E1A40]'
+                        : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                    )}
+                  >
+                    {f.label}
+                    <span className="num opacity-65">{timelineCounts[f.id] || 0}</span>
+                  </button>
+                );
+              })}
+
+              <div className="flex-1" />
+
+              {/* Interruptor de Sistema: quando desligado, anuncia o que esconde. */}
+              {(systemHiddenCount > 0 || showSystem) && (
+                <button
+                  type="button"
+                  onClick={() => setShowSystem(v => !v)}
+                  aria-pressed={showSystem}
+                  className={cn(
+                    'h-[29px] px-2 rounded-lg text-[12px] font-semibold inline-flex items-center gap-2 whitespace-nowrap border transition',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                    showSystem
+                      ? 'border-brand-500/40 text-brand-700 dark:text-brand-300'
+                      : 'border-slate-200 dark:border-white/[0.07] text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                  )}
+                >
+                  {/* Chave de verdade (trilho + botão), não um ponto. */}
+                  <span className={cn(
+                    'w-[26px] h-[15px] rounded-full shrink-0 relative transition-colors',
+                    showSystem ? 'bg-brand-600' : 'bg-slate-200 dark:bg-white/[0.14]'
+                  )}>
+                    <span className={cn(
+                      'absolute top-[2px] size-[11px] rounded-full bg-white shadow-sm transition-[left]',
+                      showSystem ? 'left-[13px]' : 'left-[2px]'
+                    )} />
+                  </span>
+                  <span className="whitespace-nowrap">
+                    Sistema{!showSystem && systemHiddenCount > 0 ? ` +${systemHiddenCount}` : ''}
+                  </span>
+                </button>
+              )}
+
+              <div className="relative basis-[220px] shrink min-w-0">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 <input
                   value={timelineQuery}
                   onChange={e => setTimelineQuery(e.target.value)}
-                  placeholder="Buscar na linha do tempo..."
-                  className="h-9 w-64 rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[12.5px] pl-8 pr-3 placeholder:text-slate-400 transition"
+                  placeholder="Buscar no histórico"
+                  className="h-[30px] w-full rounded-lg bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[12.5px] pl-8 pr-3 placeholder:text-slate-400 transition"
                 />
               </div>
             </div>
@@ -1092,7 +1169,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
           {/* Timeline */}
           {(interactions || []).length === 0 ? (
-            <div className="py-16 grid place-items-center text-center text-slate-400">
+            <div className="px-8 py-16 grid place-items-center text-center text-slate-400">
               <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-white/[0.05] grid place-items-center mb-3">
                 <Clock size={20} className="opacity-50" />
               </div>
@@ -1100,7 +1177,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
               <p className="text-[12.5px] max-w-[280px] mt-0.5">Registre uma nota, mensagem ou ligação na aba CRM para começar a história desta pessoa.</p>
             </div>
           ) : filteredInteractions.length === 0 ? (
-            <div className="py-16 grid place-items-center text-center text-slate-400">
+            <div className="px-8 py-16 grid place-items-center text-center text-slate-400">
               <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-white/[0.05] grid place-items-center mb-3">
                 <Search size={20} className="opacity-50" />
               </div>
@@ -1108,53 +1185,53 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
               <p className="text-[12.5px]">Tente ajustar o filtro ou a busca.</p>
             </div>
           ) : (
-            <div className="space-y-6 pb-8">
+            <div className="px-8 pt-1 pb-7">
               {groupedEvents.map(([label, events]) => {
-                // dateLabel: só em Hoje/Ontem mostra a data absoluta ao lado do
-                // rótulo, como o DateGroup do protótipo (demais grupos já trazem
-                // mês/ano no próprio label).
-                const dateLabel = (label === 'Hoje' || label === 'Ontem') && events[0]?.createdAt
-                  ? events[0].createdAt.toLocaleDateString('pt-BR')
-                  : null;
+                const days = groupTimelineByDay(events);
+                // Grupos de um dia só (Hoje, Ontem) não repetem a sub-régua —
+                // o cabeçalho da janela já diz qual dia é.
+                const showDayRule = days.length > 1;
                 return (
-                  <section key={label} className="relative">
-                    {/* Cabeçalho de grupo sticky (label + data + nº de eventos).
-                        Usa utilitários sticky do Tailwind (a classe .sticky-date
-                        do protótipo não existe no nosso index.css). */}
-                    <header className="sticky top-0 z-10 -mx-1 mb-2 px-1 py-2 bg-paper-50/95 dark:bg-ink-950/95 backdrop-blur">
-                      <div className="flex items-center gap-2 pl-1">
-                        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</span>
-                        {dateLabel && (
-                          <span className="text-[11.5px] text-slate-400 dark:text-slate-500 num whitespace-nowrap">· {dateLabel}</span>
-                        )}
-                        <div className="flex-1 h-px bg-slate-200/80 dark:bg-white/[0.06] ml-1"></div>
-                        <span className="text-[11px] num text-slate-400 dark:text-slate-500 whitespace-nowrap">{events.length} {events.length === 1 ? 'evento' : 'eventos'}</span>
-                      </div>
+                  <section key={label} className="mb-5">
+                    <header className="sticky top-0 z-10 flex items-center gap-2 py-2 bg-card/95 backdrop-blur">
+                      <span className="text-[11px] font-semibold uppercase tracking-[.07em] text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</span>
+                      <div className="flex-1 h-px bg-slate-200/80 dark:bg-white/[0.06]" />
+                      <span className="text-[11px] num text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                        {events.length} {events.length === 1 ? 'evento' : 'eventos'}
+                      </span>
                     </header>
-                    <div className="relative">
-                      {/* Trilha vertical */}
-                      <div className="absolute left-[18px] top-0 bottom-0 w-px bg-slate-200 dark:bg-white/[0.08]"></div>
-                      <div className="space-y-1">
-                        {events.map(renderTimelineEvent)}
+
+                    {days.map(([dayKey, date, dayEvents]) => (
+                      <div key={dayKey}>
+                        {showDayRule && (
+                          <div className="flex items-center gap-2 pl-[38px] py-1.5">
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap num">
+                              {(() => {
+                                // "Qui 23/07" — o pt-BR devolve "qui." minúsculo.
+                                const wd = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+                                return `${wd.charAt(0).toUpperCase()}${wd.slice(1)}`;
+                              })()} {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
+                            </span>
+                            <div className="flex-1 h-px bg-slate-100 dark:bg-white/[0.04]" />
+                            <span className="text-[11px] num text-slate-400 dark:text-slate-500">{dayEvents.length}</span>
+                          </div>
+                        )}
+                        {dayEvents.map(renderTimelineEvent)}
                       </div>
-                    </div>
+                    ))}
                   </section>
                 );
               })}
 
-              {/* Origin marker */}
+              {/* Marco de origem: fecha o registro com a data de cadastro. */}
               {timelineFilter === 'all' && !timelineQuery && (
-                <div className="relative pl-12">
-                  <div className="absolute left-[15px] top-0">
-                    <div className="w-3 h-3 rounded-full bg-slate-200 dark:bg-white/[0.1] ring-4 ring-paper-50 dark:ring-ink-950"></div>
-                  </div>
-                  <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 whitespace-nowrap">
-                    Início da jornada · {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
-                  </p>
-                </div>
+                <p className="pl-[38px] pt-1 text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                  Início da jornada · {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
+                </p>
               )}
             </div>
           )}
+         </section>
         </TabsContent>
 
         {/* ----- Aba: CRM ----- */}

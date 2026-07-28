@@ -1,246 +1,180 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRightLeft, ChevronRight, DollarSign, Filter, HeartPulse, Kanban, Search, Settings, SlidersHorizontal, Tag, ThumbsDown, Users } from 'lucide-react';
-import { SettingsTabItem } from '../../components/ui/SettingsCard.jsx';
-import { Input } from '../../components/ui/input.jsx';
-import { ManageUsersTab } from './ManageUsersTab.jsx';
-import { ManageFunnelsTab } from './ManageFunnelsTab.jsx';
-import { ManageStatusesTab } from './ManageStatusesTab.jsx';
-import { ManageSourcesTab } from './ManageSourcesTab.jsx';
-import { ManagePlansTab } from './ManagePlansTab.jsx';
-import { ManageTagsTab } from './ManageTagsTab.jsx';
-import { ManageLossReasonsTab } from './ManageLossReasonsTab.jsx';
-import { ManageDoresTab } from './ManageDoresTab.jsx';
-import { ManageGeneralSettingsTab } from './ManageGeneralSettingsTab.jsx';
-import { ManageProfessorsCard } from './ManageProfessorsCard.jsx';
-import { TransferLeadsTab } from './TransferLeadsTab.jsx';
+import { useCallback, useMemo, useState } from 'react';
+import { ArrowRightLeft, CalendarClock, Gauge, Kanban, Library, Target, Users } from 'lucide-react';
+import { SettingsRailGroup, SettingsRailItem } from '../../components/ui/SettingsCard.jsx';
+import { buildSetupState } from '../../lib/settingsSetup.js';
 import { usePagedLeads } from '../../hooks/usePagedLeads.js';
 import { allLeadsQuerySpec } from '../../lib/leadQueries.js';
 import { LEADS_PATH } from '../../lib/firebase.js';
 import { normalizeLeadDoc } from '../../lib/leads.js';
+import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
+import { OverviewSection } from './OverviewSection.jsx';
+import { TeamAccessSection } from './TeamAccessSection.jsx';
+import { TransferSection } from './TransferLeadsTab.jsx';
+import { PaceSection } from './PaceSection.jsx';
+import { SchedulingSection } from './SchedulingSection.jsx';
+import { FunnelsSection } from './FunnelsSection.jsx';
+import { CatalogsSection } from './CatalogsSection.jsx';
 
 // ==========================================
-// SETTINGS — trilho agrupado + busca universal (⌘K)
-// Navegação por GRUPOS (Equipe / Operação / Catálogos), busca que filtra o
-// trilho por nome/descrição/sinônimos, e pontos de atenção quando uma seção
-// pede ação do gestor. O conteúdo de cada aba segue nos componentes ManageX.
+// CONFIGURAÇÕES — sete destinos agrupados por intenção
+//
+// Redesign 2026-07: as dez seções do trilho plano viraram sete, agrupadas em
+// PESSOAS / COMO A OPERAÇÃO RODA / VOCABULÁRIO DO FUNIL, com uma Visão geral na
+// frente respondendo "o que falta configurar e o que pede atenção". A busca ⌘K
+// saiu — com sete destinos, a hierarquia resolve.
+//
+// Cada seção renderiza o próprio cabeçalho e as próprias ações; aqui ficam só o
+// trilho, o roteamento e os dados compartilhados.
 // ==========================================
 
-// Busca sem acento/caixa ("critico" acha "SLA crítico").
-const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+// Mapa do tab antigo (App.jsx ainda navega por ele) para o destino novo.
+const LEGACY_TABS = {
+  users: 'team',
+  transfer: 'transfer',
+  general: 'pace',
+  statuses: 'funnels',
+  tags: 'catalogs',
+  sources: 'catalogs',
+  plans: 'catalogs',
+  lossReasons: 'catalogs',
+  dores: 'catalogs'
+};
 
-function SettingsView({ initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons, dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays }) {
-  // Fonte de leads das Configurações (G1-flip): TODOS os buckets por query própria
-  // em vez do prop global (que virou só 'ativo' no flip). As abas contam uso e
-  // fazem cascata de renomear/excluir sobre clientes e perdas também, então
-  // precisam da base COMPLETA — senão contagens (motivo de perda, plano por
-  // cliente) zeram e a cascata deixa clientes/perdas com valor antigo. getDocs
-  // on-demand (a tela abre pontualmente). mapDoc=normalizeLeadDoc = mesmo shape.
+const LEGACY_FOCUS = { tags: 'tags', sources: 'sources', plans: 'plans', lossReasons: 'loss', dores: 'dores' };
+
+function SettingsView({
+  initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons,
+  dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays
+}) {
+  // Fonte de leads das Configurações (G1-flip): TODOS os buckets por query
+  // própria em vez do prop global (que virou só 'ativo' no flip). As seções
+  // contam uso e fazem cascata de renomear/excluir sobre clientes e perdas
+  // também, então precisam da base COMPLETA — senão contagens (motivo de perda,
+  // plano por cliente) zeram e a cascata deixa clientes/perdas com valor antigo.
   const settingsLeadsSpec = useMemo(() => allLeadsQuerySpec(), []);
   const { items: leads } = usePagedLeads({
     db, path: LEADS_PATH, spec: settingsLeadsSpec, specKey: 'settings-all-leads',
     mapDoc: normalizeLeadDoc, enabled: !!db,
   });
-  const [activeTab, setActiveTab] = useState(initialTab || 'users');
-  const [selectedFunnelInTab, setSelectedFunnelInTab] = useState(null);
-  const [query, setQuery] = useState('');
-  const searchRef = useRef(null);
 
-  const usersCount = (usersList || []).length;
-  const funnelsCount = (funnels || []).length;
-  const tagsCount = (tags || []).length;
-  const sourcesCount = (sources || []).length;
-  const lossCount = (lossReasons || []).length;
-  const doresCount = (dores || []).length;
-  const modalitiesCount = (modalities || []).length;
-  const planosCount = (planos || []).length;
+  const { slaOverdueDays } = useGeneralConfig();
 
-  // Pontos de atenção: condições REAIS que pedem ação (tooltip no dot âmbar
-  // + aviso no cabeçalho da seção). Nada de heurística decorativa.
-  const usersNoAuth = (usersList || []).filter(u => !u.authUid).length;
-  const attention = useMemo(() => ({
-    users: usersNoAuth > 0 ? `${usersNoAuth} membro${usersNoAuth === 1 ? '' : 's'} da equipe sem acesso vinculado` : null,
-    statuses: funnelsCount === 0 ? 'Nenhum funil configurado — o Kanban precisa de um' : null,
-    sources: sourcesCount === 0 ? 'Nenhuma origem cadastrada — os leads chegam sem canal' : null,
-    lossReasons: lossCount === 0 ? 'Nenhum motivo de perda — descartes ficam sem justificativa' : null,
-  }), [usersNoAuth, funnelsCount, sourcesCount, lossCount]);
+  const [section, setSection] = useState(() => LEGACY_TABS[initialTab] || 'overview');
+  const [focus, setFocus] = useState(() => LEGACY_FOCUS[initialTab] || null);
 
-  // Trilho agrupado. `keywords` alimenta a busca com os sinônimos que o gestor
-  // realmente digita ("sla", "tags", "senha", "transferir"...).
-  const groups = useMemo(() => ([
-    {
-      label: 'Equipe',
-      items: [
-        { id: 'users', label: 'Equipe', hint: 'Time, papéis e turnos', icon: <Users size={15} />, badge: usersCount, keywords: 'consultores gestor admin vagas extra convite senha acesso turno membros' },
-        { id: 'transfer', label: 'Migrar leads', hint: 'Transferir base entre consultores', icon: <ArrowRightLeft size={15} />, badge: null, keywords: 'transferir carteira redistribuir mover base' },
-      ],
-    },
-    {
-      label: 'Operação',
-      items: [
-        // Perfil da academia e Plano & faturas migraram para o menu de persona
-        // (canto superior direito) — ver PersonaMenu / App.jsx. Aqui fica só a
-        // configuração operacional.
-        { id: 'general', label: 'Regras gerais', hint: 'Meta, SLA, aulas e modalidades', icon: <SlidersHorizontal size={15} />, badge: modalitiesCount, keywords: 'sla atraso critico meta diaria dias semana aulas experimentais quantidade modalidades unidades cidade prospeccao volume acoes piso' },
-      ],
-    },
-    {
-      label: 'Catálogos',
-      items: [
-        { id: 'statuses', label: 'Funis', hint: 'Etapas do processo comercial', icon: <Kanban size={15} />, badge: funnelsCount, keywords: 'funil pipeline etapas fases kanban negociacao' },
-        { id: 'tags', label: 'Etiquetas', hint: 'Marcadores para segmentar leads', icon: <Tag size={15} />, badge: tagsCount, keywords: 'tags marcadores segmentar rotulos' },
-        { id: 'sources', label: 'Origens', hint: 'De onde os leads chegam', icon: <Filter size={15} />, badge: sourcesCount, keywords: 'fontes canais instagram facebook indicacao google whatsapp' },
-        { id: 'plans', label: 'Planos', hint: 'Catálogo de planos e serviços', icon: <DollarSign size={15} />, badge: planosCount, keywords: 'plano planos servico servicos mensalidade matricula contrato valor preco mensal trimestral anual modalidade cliente' },
-        { id: 'lossReasons', label: 'Motivos de perda', hint: 'Justificativas padrão de perda', icon: <ThumbsDown size={15} />, badge: lossCount, keywords: 'perda descarte justificativa preco concorrencia' },
-        { id: 'dores', label: 'Dores', hint: 'Necessidades/objetivos do lead', icon: <HeartPulse size={15} />, badge: doresCount, keywords: 'dor dores necessidade objetivo emagrecer saude condicionamento procura' },
-      ],
-    },
-  ]), [usersCount, modalitiesCount, planosCount, funnelsCount, tagsCount, sourcesCount, lossCount, doresCount]);
+  const setup = useMemo(() => buildSetupState({
+    funnels, statuses, sources, modalities, planos, lossReasons,
+    metaWeekdays, slaOverdueDays, usersList,
+  }), [funnels, statuses, sources, modalities, planos, lossReasons, metaWeekdays, slaOverdueDays, usersList]);
 
-  // Busca universal: filtra o próprio trilho; Enter abre o 1º resultado.
-  const q = norm(query.trim());
-  const visibleGroups = useMemo(() => {
-    if (!q) return groups;
-    return groups
-      .map(g => ({ ...g, items: g.items.filter(it => norm(`${it.label} ${it.hint} ${it.keywords}`).includes(q)) }))
-      .filter(g => g.items.length > 0);
-  }, [groups, q]);
-  const firstMatch = visibleGroups[0]?.items[0] || null;
-
-  // ⌘K / Ctrl+K foca a busca de qualquer lugar da tela.
-  useEffect(() => {
-    const onKey = (e) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        searchRef.current?.focus();
-      }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+  // Atalhos da Visão geral: trocam a seção e, quando dá, apontam o item citado.
+  const goTo = useCallback((next, focusId = null) => {
+    setSection(next);
+    setFocus(focusId);
   }, []);
+  const clearFocus = useCallback(() => setFocus(null), []);
 
-  const goToTab = (tab) => {
-    setActiveTab(tab);
-    setQuery('');
-    if (tab !== 'statuses') setSelectedFunnelInTab(null);
-  };
+  const catalogTotal = (tags || []).length + (sources || []).length + (planos || []).length
+    + (lossReasons || []).length + (dores || []).length;
 
-  const onSearchKeyDown = (e) => {
-    if (e.key === 'Enter' && firstMatch) goToTab(firstMatch.id);
-    if (e.key === 'Escape') setQuery('');
-  };
+  const groups = [
+    {
+      label: null,
+      items: [{ id: 'overview', label: 'Visão geral', icon: <Gauge size={15} /> }]
+    },
+    {
+      label: 'Pessoas',
+      items: [
+        { id: 'team', label: 'Equipe & acessos', icon: <Users size={15} />, count: (usersList || []).length },
+        { id: 'transfer', label: 'Migrar leads', icon: <ArrowRightLeft size={15} /> }
+      ]
+    },
+    {
+      label: 'Como a operação roda',
+      items: [
+        { id: 'pace', label: 'Metas & ritmo', icon: <Target size={15} /> },
+        { id: 'sched', label: 'Agendamento', icon: <CalendarClock size={15} />, count: (modalities || []).length },
+        { id: 'funnels', label: 'Funis & etapas', icon: <Kanban size={15} />, count: (funnels || []).length }
+      ]
+    },
+    {
+      label: 'Vocabulário do funil',
+      items: [{ id: 'catalogs', label: 'Catálogos', icon: <Library size={15} />, count: catalogTotal }]
+    }
+  ];
 
-  const allItems = groups.flatMap(g => g.items);
-  const activeItem = allItems.find(i => i.id === activeTab) || allItems[0];
-  const funnelInTab = (funnels || []).find(f => f.id === selectedFunnelInTab);
+  const renderRailItem = (item) => (
+    <SettingsRailItem
+      key={item.id}
+      icon={item.icon}
+      label={item.label}
+      count={item.count}
+      attention={setup.attention[item.id]}
+      active={section === item.id}
+      onClick={() => goTo(item.id)}
+    />
+  );
 
   return (
-    <div className="animate-fade-in font-sans space-y-6">
-      {/* Page hero */}
-      <section>
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          <Settings size={13} className="text-brand-600" /> Configurações
+    <div className="animate-fade-in font-sans flex flex-col gap-8 lg:flex-row lg:items-start">
+      <aside className="lg:w-[262px] shrink-0 lg:sticky lg:top-20">
+        <div className="px-3 pb-1">
+          <h1 className="font-display text-[17px] font-bold tracking-tight">Ajustes da operação</h1>
+          <p className="text-[12px] text-muted-foreground mt-1">Equipe, ritmo e catálogos do funil.</p>
         </div>
-        <h2 className="mt-1.5 font-display text-[24px] font-semibold tracking-tight leading-tight">
-          Ajustes da operação
-        </h2>
-        <p className="mt-1 text-[13px] text-slate-500 dark:text-slate-400">
-          Equipe, regras do jogo e catálogos do funil — tudo num lugar só.
-        </p>
-      </section>
+        <nav className="mt-3 flex flex-col">
+          {groups.map(g => (
+            g.label
+              ? <SettingsRailGroup key={g.label} label={g.label}>{g.items.map(renderRailItem)}</SettingsRailGroup>
+              : <div key="root" className="flex flex-col gap-0.5">{g.items.map(renderRailItem)}</div>
+          ))}
+        </nav>
+      </aside>
 
-      <div className="grid grid-cols-12 gap-6">
-        {/* Trilho de navegação */}
-        <aside className="col-span-12 lg:col-span-3">
-          {/* Trilho migrado p/ tokens shadcn: bg-card/border-border resolvem
-              o dark mode sozinhos (= dark:bg-white/[0.02] dark:border-white/
-              [0.06] de antes), sem override manual. */}
-          <div className="rounded-2xl border border-border bg-card shadow-card p-2 lg:sticky lg:top-20">
-            {/* Busca universal */}
-            <div className="relative mb-1">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-              <Input
-                ref={searchRef}
-                value={query}
-                onChange={e => setQuery(e.target.value)}
-                onKeyDown={onSearchKeyDown}
-                placeholder="Buscar ajuste…"
-                className="h-10 pl-9 pr-12 rounded-xl text-[13px] bg-slate-50 dark:bg-white/[0.04] border-slate-200 dark:border-white/[0.07] focus-visible:border-brand-500 focus-visible:ring-2 focus-visible:ring-brand-500/20 placeholder:text-slate-400"
-              />
-              <kbd className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-semibold text-slate-400 border border-slate-200 dark:border-white/[0.1] rounded px-1.5 py-0.5 pointer-events-none">⌘K</kbd>
-            </div>
-
-            {visibleGroups.map(g => (
-              <div key={g.label}>
-                <div className="px-3 pt-3 pb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{g.label}</div>
-                <div className="space-y-0.5">
-                  {g.items.map(t => (
-                    <SettingsTabItem
-                      key={t.id}
-                      icon={t.icon}
-                      label={t.label}
-                      hint={t.hint}
-                      badge={t.badge}
-                      attention={attention[t.id]}
-                      active={activeTab === t.id}
-                      onClick={() => goToTab(t.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-
-            {q && !firstMatch && (
-              <div className="px-3 py-6 text-center text-[12px] text-slate-400">
-                Nenhum ajuste encontrado para "{query.trim()}".
-              </div>
-            )}
-          </div>
-        </aside>
-
-        {/* Conteúdo da seção */}
-        <div className="col-span-12 lg:col-span-9 space-y-5" key={activeTab}>
-          {/* Cabeçalho da seção ativa */}
-          <div className="flex items-end justify-between gap-3 flex-wrap pb-4 border-b border-slate-200/70 dark:border-white/[0.06]">
-            <div>
-              <h3 className="font-display text-[19px] font-bold tracking-tight leading-tight">{activeItem?.label}</h3>
-              <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">{activeItem?.hint}</p>
-            </div>
-            {attention[activeTab] && (
-              <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-500/12 dark:text-amber-300">
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" /> {attention[activeTab]}
-              </span>
-            )}
-          </div>
-
-          {activeTab === 'users' && (
-            <>
-              <ManageUsersTab db={db} appUser={appUser} />
-              <ManageProfessorsCard db={db} leads={leads} />
-            </>
-          )}
-          {activeTab === 'general' && <ManageGeneralSettingsTab db={db} modalities={modalities} trialClassOptions={trialClassOptions} units={units} leads={leads} metaWeekdays={metaWeekdays} usersList={usersList} />}
-          {activeTab === 'statuses' && !selectedFunnelInTab && (
-            <ManageFunnelsTab db={db} funnels={funnels} statuses={statuses} leads={leads} onSelectFunnel={setSelectedFunnelInTab} />
-          )}
-          {activeTab === 'statuses' && selectedFunnelInTab && (
-            <div className="space-y-3">
-              <button
-                onClick={() => setSelectedFunnelInTab(null)}
-                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-700 dark:text-brand-300 hover:text-brand-800 dark:hover:text-brand-200 bg-brand-50 hover:bg-brand-100 dark:bg-brand-500/10 dark:hover:bg-brand-500/15 px-3 py-2 rounded-lg transition active:scale-95"
-              >
-                <ChevronRight size={14} className="rotate-180" />
-                Voltar para funis
-              </button>
-              <ManageStatusesTab db={db} statuses={statuses} leads={leads} funnelId={selectedFunnelInTab} funnelName={funnelInTab?.name} />
-            </div>
-          )}
-          {activeTab === 'sources' && <ManageSourcesTab db={db} sources={sources} leads={leads} />}
-          {activeTab === 'plans' && <ManagePlansTab db={db} planos={planos} leads={leads} modalities={modalities} />}
-          {activeTab === 'transfer' && <TransferLeadsTab db={db} usersList={usersList} appUser={appUser} leads={leads} />}
-          {activeTab === 'tags' && <ManageTagsTab db={db} tags={tags} leads={leads} />}
-          {activeTab === 'lossReasons' && <ManageLossReasonsTab db={db} lossReasons={lossReasons} leads={leads} />}
-          {activeTab === 'dores' && <ManageDoresTab db={db} dores={dores} leads={leads} />}
-        </div>
+      <div className="flex-1 min-w-0">
+        {section === 'overview' && (
+          <OverviewSection
+            setup={setup}
+            leads={leads}
+            usersList={usersList}
+            funnels={funnels}
+            tags={tags}
+            sources={sources}
+            slaOverdueDays={slaOverdueDays}
+            onNavigate={goTo}
+          />
+        )}
+        {section === 'team' && (
+          <TeamAccessSection
+            db={db} appUser={appUser} usersList={usersList} leads={leads}
+            focusId={focus} onFocusHandled={clearFocus}
+          />
+        )}
+        {section === 'transfer' && (
+          <TransferSection db={db} usersList={usersList} appUser={appUser} leads={leads} />
+        )}
+        {section === 'pace' && (
+          <PaceSection db={db} usersList={usersList} metaWeekdays={metaWeekdays} />
+        )}
+        {section === 'sched' && (
+          <SchedulingSection
+            db={db} modalities={modalities} units={units}
+            trialClassOptions={trialClassOptions} leads={leads}
+          />
+        )}
+        {section === 'funnels' && (
+          <FunnelsSection
+            db={db} funnels={funnels} statuses={statuses} leads={leads}
+            focusId={focus} onFocusHandled={clearFocus}
+          />
+        )}
+        {section === 'catalogs' && (
+          <CatalogsSection
+            db={db} tags={tags} sources={sources} planos={planos}
+            lossReasons={lossReasons} dores={dores} modalities={modalities} leads={leads}
+            focusId={focus} onFocusHandled={clearFocus}
+          />
+        )}
       </div>
     </div>
   );

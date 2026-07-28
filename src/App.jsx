@@ -859,7 +859,7 @@ useEffect(() => {
         if (leadOps.length) await commitOpsInChunks(db, leadOps, 400);
 
         // Passo 4: garantir que TODO funil tem a etapa de sistema "Negociação"
-        // (criada como protegida; ManageStatusesTab bloqueia edit/delete por nome).
+        // (criada como protegida; FunnelsSection bloqueia edit/delete por nome).
         const statusesAfter = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH));
         const statusesByFunnel = new Map();
         statusesAfter.forEach(d => {

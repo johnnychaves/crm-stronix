@@ -76,10 +76,15 @@ const KANBAN_COLUMN_ACCENT = {
 const getKanbanColumnAccent = (color) => KANBAN_COLUMN_ACCENT[color] || KANBAN_COLUMN_ACCENT.gray;
 
 // --- KANBAN: avatar com iniciais (cor estável por hash do nome) ---
+// Cores de categoria do app a ~15%, texto no tom 700 — mesma mecânica de hash
+// da paleta pastel anterior, sem o confete. [fundo, texto claro, texto dark].
 const KANBAN_AVATAR_PALETTES = [
-  ['#fde68a','#92400e'], ['#bbf7d0','#065f46'], ['#bae6fd','#075985'],
-  ['#fbcfe8','#9d174d'], ['#ddd6fe','#5b21b6'], ['#fecaca','#9f1212'],
-  ['#a7f3d0','#065f46'], ['#fef08a','#854d0e'],
+  ['rgba(43,89,255,.14)',  '#1C3FC4', '#9FBCFF'],
+  ['rgba(139,92,246,.16)', '#6D28D9', '#C4B5FD'],
+  ['rgba(255,106,43,.16)', '#C2410C', '#FDBA74'],
+  ['rgba(16,185,129,.16)', '#047857', '#6EE7B7'],
+  ['rgba(6,182,212,.16)',  '#0E7490', '#67E8F9'],
+  ['rgba(236,72,153,.16)', '#BE185D', '#F9A8D4'],
 ];
 const getKanbanAvatarPalette = (seed = '') => {
   let h = 0;
@@ -109,4 +114,37 @@ const fmtKanbanRelDateTime = (d) => {
   if (!(d instanceof Date) || isNaN(d.getTime())) return '';
   return `${fmtKanbanRelDate(d)} · ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
 };
-export { KANBAN_COLUMN_ACCENT, getKanbanColumnAccent, KANBAN_AVATAR_PALETTES, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime };
+// Página do Kanban: 10 por vez. É menor que a LIST_PAGE_SIZE (30) das listas
+// longas de propósito — a coluna tem 264px e rola sozinha, então 30 cards de
+// uma vez enchem a coluna sem ninguém ler o fim.
+const KANBAN_PAGE_SIZE = 10;
+
+// Rodapé do card: quanto tempo o lead está em SILÊNCIO (dias desde a última
+// interação). Substitui o emoji 🔥/❄️ pelo número que existia atrás dele — os
+// cortes espelham isHotLeadFromDate/isColdLeadFromDate (lib/leadStatus.js).
+const kanbanSilence = (lastDate, now = new Date()) => {
+  if (!(lastDate instanceof Date) || isNaN(lastDate.getTime())) {
+    return { text: 'sem contato', tone: 'muted' };
+  }
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startThat = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate()).getTime();
+  const days = Math.max(0, Math.round((startToday - startThat) / 86400000));
+  if (days === 0) return { text: 'contato hoje', tone: 'muted' };
+  if (days <= 3) return { text: `${days}d sem contato`, tone: 'muted' };
+  if (days <= 6) return { text: `${days}d sem contato`, tone: 'warn' };
+  return { text: `${days}d sem contato`, tone: 'cold' };
+};
+
+// Janela do mês corrente em horário LOCAL, para a coluna Venda. Vira à meia-noite
+// do dia 1: no mês novo a coluna nasce vazia, sem ninguém precisar limpar nada.
+const monthWindow = (ref = new Date()) => {
+  const start = new Date(ref.getFullYear(), ref.getMonth(), 1);
+  const end = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);
+  return {
+    startMs: start.getTime(),
+    endMs: end.getTime(),
+    label: start.toLocaleDateString('pt-BR', { month: 'long' }),
+  };
+};
+
+export { KANBAN_COLUMN_ACCENT, getKanbanColumnAccent, KANBAN_AVATAR_PALETTES, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow };
