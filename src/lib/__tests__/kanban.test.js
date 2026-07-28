@@ -9,7 +9,9 @@ import {
   filterKanbanLeads,
   partitionLeadsByStatus,
   getKanbanInitials,
-  fmtKanbanRelDate
+  fmtKanbanRelDate,
+  kanbanSilence,
+  monthWindow
 } from '../kanban.js';
 
 // 15 de julho de 2026, 10:00 local — "agora" de referência dos testes.
@@ -211,5 +213,66 @@ describe('fmtKanbanRelDate (lê o relógio → fake timers)', () => {
     expect(fmtKanbanRelDate(new Date(NaN))).toBe('');
     expect(fmtKanbanRelDate('2026-07-15')).toBe('');
     expect(fmtKanbanRelDate(null)).toBe('');
+  });
+});
+
+// --- Rodapé do card: silêncio (dias sem contato) --------------------------
+// Substitui o emoji 🔥/❄️ pelo número que existia atrás dele. Os cortes
+// espelham isHotLeadFromDate/isColdLeadFromDate.
+describe('kanbanSilence', () => {
+  const NOW = new Date(2026, 6, 15, 10, 0, 0); // 15/07/2026 10:00 local
+  const daysAgo = (n, h = 9) => new Date(2026, 6, 15 - n, h, 0, 0);
+
+  it('mesmo dia vira "contato hoje", mesmo com horas de diferença', () => {
+    expect(kanbanSilence(daysAgo(0, 1), NOW)).toEqual({ text: 'contato hoje', tone: 'muted' });
+    expect(kanbanSilence(daysAgo(0, 23), NOW)).toEqual({ text: 'contato hoje', tone: 'muted' });
+  });
+
+  it('1 a 3 dias fica discreto', () => {
+    expect(kanbanSilence(daysAgo(1), NOW)).toEqual({ text: '1d sem contato', tone: 'muted' });
+    expect(kanbanSilence(daysAgo(3), NOW)).toEqual({ text: '3d sem contato', tone: 'muted' });
+  });
+
+  it('4 a 6 dias acende o âmbar', () => {
+    expect(kanbanSilence(daysAgo(4), NOW)).toEqual({ text: '4d sem contato', tone: 'warn' });
+    expect(kanbanSilence(daysAgo(6), NOW)).toEqual({ text: '6d sem contato', tone: 'warn' });
+  });
+
+  it('7 dias ou mais é o antigo ❄️', () => {
+    expect(kanbanSilence(daysAgo(7), NOW)).toEqual({ text: '7d sem contato', tone: 'cold' });
+    expect(kanbanSilence(daysAgo(30), NOW)).toEqual({ text: '30d sem contato', tone: 'cold' });
+  });
+
+  it('sem data de interação não inventa número', () => {
+    expect(kanbanSilence(null, NOW)).toEqual({ text: 'sem contato', tone: 'muted' });
+    expect(kanbanSilence(new Date(NaN), NOW)).toEqual({ text: 'sem contato', tone: 'muted' });
+  });
+
+  it('data futura não vira contagem negativa', () => {
+    expect(kanbanSilence(new Date(2026, 6, 20), NOW)).toEqual({ text: 'contato hoje', tone: 'muted' });
+  });
+});
+
+// --- Coluna Venda: janela do mês corrente ---------------------------------
+describe('monthWindow', () => {
+  it('vai da meia-noite do dia 1 à meia-noite do dia 1 do mês seguinte', () => {
+    const w = monthWindow(new Date(2026, 6, 15, 13, 45));
+    expect(new Date(w.startMs)).toEqual(new Date(2026, 6, 1, 0, 0, 0, 0));
+    expect(new Date(w.endMs)).toEqual(new Date(2026, 7, 1, 0, 0, 0, 0));
+  });
+
+  it('fecha o ano corretamente (dezembro → janeiro seguinte)', () => {
+    const w = monthWindow(new Date(2026, 11, 31, 23, 59));
+    expect(new Date(w.endMs)).toEqual(new Date(2027, 0, 1, 0, 0, 0, 0));
+  });
+
+  it('a janela de um mês encosta na do seguinte, sem buraco nem sobreposição', () => {
+    const jul = monthWindow(new Date(2026, 6, 10));
+    const ago = monthWindow(new Date(2026, 7, 10));
+    expect(jul.endMs).toBe(ago.startMs);
+  });
+
+  it('rotula o mês em português para o header da coluna', () => {
+    expect(monthWindow(new Date(2026, 6, 15)).label).toBe('julho');
   });
 });

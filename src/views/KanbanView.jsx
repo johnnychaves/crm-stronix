@@ -5,12 +5,13 @@ import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
-import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isLeadActive, isHotLeadFromDate, isColdLeadFromDate } from '../lib/leadStatus.js';
+import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
-import { bucketByFunnelQuerySpec, LIFECYCLE_BUCKETS } from '../lib/leadQueries.js';
+import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
-import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime } from '../lib/kanban.js';
+import { fmtBRL } from '../lib/format.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow } from '../lib/kanban.js';
 import { markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -18,22 +19,69 @@ import { FollowUpIcon } from '../components/ui/Badges.jsx';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { MatriculaModal } from '../modals/MatriculaModal.jsx';
-import { AlertCircle, ArrowRightLeft, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp, Users } from 'lucide-react';
+import { AlertCircle, ArrowRightLeft, ArrowUpRight, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp, Users } from 'lucide-react';
 import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
 
 // Avatar de iniciais compacto (card 22px / bubble 24px). O KanbanAvatar
 // derivaria a fonte do tamanho; o protótipo fixa 9px/9.5px weight 700.
 function InitialsAvatar({ name = '', size = 22, textSize = 9 }) {
-  const [bg, fg] = getKanbanAvatarPalette(name);
+  const [bg, fg, fgDark] = getKanbanAvatarPalette(name);
   return (
     <span
-      className="rounded-full grid place-items-center font-bold shrink-0"
-      style={{ width: size, height: size, background: bg, color: fg, fontSize: textSize }}
+      className="rounded-full grid place-items-center font-bold shrink-0 [color:var(--ka-fg)] dark:[color:var(--ka-fg-dark)]"
+      style={{ width: size, height: size, background: bg, fontSize: textSize, '--ka-fg': fg, '--ka-fg-dark': fgDark || fg }}
     >
       {getKanbanInitials(name)}
     </span>
   );
 }
+
+// --- Card do Kanban: leitura do lead → o que a ficha mostra -----------------
+
+// Etiqueta da linha 1. Só aparece quando informa algo: agendado para amanhã ou
+// semana que vem não é notícia, então não leva selo.
+function cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp }) {
+  if (isWon) return { label: 'Matriculado', className: 'bg-emerald-500/[0.08] text-[#0F9D6E] dark:text-emerald-300' };
+  if (isLost) return { label: 'Perdido', className: 'bg-[#eef0f5] text-slate-500 dark:bg-white/[0.06] dark:text-neutral-400' };
+  if (isOverdue) return { label: 'Atrasado', className: 'bg-rose-500/[0.07] text-[#E11D48] dark:text-rose-400' };
+  if (isToday) return { label: 'Hoje', className: 'bg-[#EAF0FF] text-[#1C3FC4] dark:bg-brand-500/15 dark:text-brand-300' };
+  if (!hasFollowUp) return { label: 'Sem agenda', className: 'bg-amber-500/10 text-[#B45309] dark:text-amber-300' };
+  return null;
+}
+
+// "ontem 15:30" — o "·" da linha de compromisso separa o TIPO da data, então a
+// data em si não leva outro (fmtKanbanRelDateTime traria um no meio).
+const relWhen = (dt) =>
+  `${fmtKanbanRelDate(dt).toLowerCase()} ${dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+
+// Rótulo curto do tipo de follow-up, casando com os ícones de FollowUpIcon.
+const followUpLabel = (type) => {
+  if (type === 'Ligação') return 'Ligação';
+  if (type === 'Presencial' || type === 'Visita') return 'Visita';
+  if (type === 'Aula Experimental' || type === 'Aula experimental') return 'Aula';
+  return 'Mensagem';
+};
+
+// Cor do bloco de compromisso e do rodapé — é o que faz uma coluna cheia de
+// atrasados aparecer como bloco, em vez de card a card.
+const COMMITMENT_TONE = {
+  overdue: 'text-[#E11D48] dark:text-rose-400',
+  none: 'text-[#B45309] dark:text-amber-400',
+  today: 'text-[#1C3FC4] dark:text-brand-300',
+  won: 'text-[#0F9D6E] dark:text-emerald-300',
+  normal: 'text-slate-700 dark:text-neutral-300'
+};
+const FOOTER_TONE = {
+  overdue: 'bg-rose-500/[0.07]',
+  none: 'bg-amber-500/10',
+  won: 'bg-emerald-500/[0.08]',
+  normal: 'bg-slate-50 dark:bg-white/[0.03]'
+};
+const SILENCE_TONE = {
+  muted: 'text-slate-400 dark:text-neutral-500',
+  warn: 'text-[#B45309] dark:text-amber-400',
+  cold: 'text-slate-500 dark:text-neutral-400'
+};
 
 // Prop estável para colunas sem leads (ver getLeadsByStatus).
 const EMPTY_LEADS = [];
@@ -41,25 +89,33 @@ const EMPTY_LEADS = [];
 // Buckets contados pelo useFunnelCounts (identidade estável entre renders).
 const PERDA_BUCKETS = [LIFECYCLE_BUCKETS.PERDA];
 
-// Card compacto (uma linha): barra de accent da etapa à esquerda, nome +
-// temperatura, estado do follow-up e avatar do consultor à direita.
+// Ficha de 115px: nome + etiqueta, compromisso, chips de contexto e um rodapé
+// que mede SILÊNCIO (dias sem contato). Anatomia uniforme — todo card tem as
+// mesmas linhas, o que muda é a cor.
 // React.memo: durante o drag só o card arrastado muda de prop (isDragging);
 // os demais não re-renderizam. Handlers vêm estáveis (useCallback) do pai.
 const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, lastDate, onDragStart, onDragEnd, onOpenProfile, onMoveRequest }) {
   const isWon = lead.status === 'Venda';
   const isLost = lead.status === 'Perda';
-  const isOverdue =
-    !isWon && !isLost &&
-    lead.nextFollowUp instanceof Date &&
-    !isNaN(lead.nextFollowUp.getTime()) &&
-    lead.nextFollowUp < new Date();
-  const accent = getKanbanColumnAccent(columnColor);
-  // Mesma lógica do LeadTemperatureBadge, em emoji compacto.
-  const isActiveLead = isLeadActive(lead);
-  const isHot = isActiveLead && isHotLeadFromDate(lead, lastDate);
-  const isCold = isActiveLead && !isHot && isColdLeadFromDate(lead, lastDate);
-  const convertedAt = getSafeDateOrNull(lead.convertedAt);
   const hasFollowUp = lead.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime());
+  const now = new Date();
+  const isOverdue = !isWon && !isLost && hasFollowUp && lead.nextFollowUp < now;
+  const isToday = !isWon && !isLost && hasFollowUp && !isOverdue &&
+    lead.nextFollowUp.toDateString() === now.toDateString();
+  const accent = getKanbanColumnAccent(columnColor);
+  const convertedAt = getSafeDateOrNull(lead.convertedAt);
+
+  const badge = cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp });
+  const tone = isWon ? 'won' : isLost ? 'normal' : isOverdue ? 'overdue' : !hasFollowUp ? 'none' : isToday ? 'today' : 'normal';
+  const footerTone = isWon ? 'won' : isLost ? 'normal' : isOverdue ? 'overdue' : !hasFollowUp ? 'none' : 'normal';
+  const silence = kanbanSilence(lastDate, now);
+
+  // Chips de contexto: contorno e não preenchimento — são contexto, não status.
+  const chips = [lead.source, lead.modalidade || lead.appointmentModality || lead.dor].filter(Boolean);
+  // Valor do plano fechado; sem valor, o rodapé cai no silêncio como os demais.
+  const wonValue = isWon && lead.currentContractValue != null && Number.isFinite(Number(lead.currentContractValue))
+    ? fmtBRL(lead.currentContractValue)
+    : null;
 
   return (
     <article
@@ -72,84 +128,119 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
         // shrink-0: sem isto o card (filho flex do container flex-col da coluna)
         // encolhe verticalmente pra caber quando a lista cresce, em vez de a
         // coluna rolar — é o bug dos cards "espremidos".
-        'group relative shrink-0 flex items-center gap-2.5 rounded-[10px] bg-white dark:bg-neutral-900 border py-2.5 pr-2.5 pl-3 overflow-hidden cursor-grab active:cursor-grabbing transition-all',
+        'group relative shrink-0 rounded-[10px] bg-white dark:bg-neutral-900 border overflow-hidden cursor-grab active:cursor-grabbing transition-[border-color,box-shadow]',
         isDragging
-          ? 'opacity-80 z-50 shadow-xl border-brand-500'
-          : 'border-[#e8ecf3] dark:border-neutral-800 hover:border-brand-200 dark:hover:border-brand-500/40 hover:shadow-[0_3px_10px_-2px_rgba(15,23,42,.10)]'
+          ? 'border-2 border-brand-600 shadow-[0_14px_30px_-12px_rgba(15,23,42,.35)] z-50'
+          : 'border-[#e8ecf3] dark:border-neutral-800 hover:border-[#C9D6FF] dark:hover:border-brand-500/45 hover:shadow-[0_10px_24px_-10px_rgba(15,23,42,.22)]',
+        isLost && !isDragging && 'opacity-[.72]'
       )}
     >
-      <span aria-hidden="true" className="absolute left-0 top-0 bottom-0 w-[3px]" style={{ background: accent.border }} />
-
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
+      <div className="px-[11px] pt-2.5 pb-[9px]">
+        <div className="flex items-center gap-2">
+          <span aria-hidden="true" className="size-1.5 rounded-full shrink-0" style={{ background: accent.border }} />
+          {/* O nome NUNCA muda de cor: é identidade. Urgência é trabalho da
+              etiqueta e do rodapé. */}
           <span
-            className={cn(
-              'text-[13px] font-semibold leading-[1.3] truncate',
-              isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-gray-900 dark:text-white'
-            )}
+            className={cn('flex-1 min-w-0 truncate text-[13.5px] font-semibold leading-[1.3]',
+              isLost ? 'text-slate-700 dark:text-neutral-300' : 'text-gray-900 dark:text-white')}
             title={lead.name}
           >
             {lead.name}
           </span>
-          {isHot && (
-            <span className="text-[10px] shrink-0" title="Lead com atividade recente ou agendamento próximo" aria-label="Lead quente">🔥</span>
-          )}
-          {isCold && (
-            <span className="text-[10px] shrink-0" title="Lead sem interação há 7 dias ou mais" aria-label="Lead esfriando">❄️</span>
+          {badge && (
+            <span className={cn(
+              'shrink-0 h-[17px] px-1.5 rounded-[5px] inline-flex items-center text-[9.5px] font-bold uppercase tracking-[.05em] whitespace-nowrap',
+              badge.className
+            )}>
+              {badge.label}
+            </span>
           )}
         </div>
-        <div className="mt-0.5 flex items-center text-[11px] whitespace-nowrap overflow-hidden">
+
+        <div className={cn('mt-1 flex items-center gap-[5px] text-[11.5px] font-semibold', COMMITMENT_TONE[tone])}>
           {isWon ? (
-            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 dark:text-emerald-300 tabular-nums">
-              <CheckCircle className="size-[11px] shrink-0" />
-              Matriculado{convertedAt ? ` ${fmtKanbanRelDate(convertedAt)}` : ''}
-            </span>
+            <>
+              <CheckCircle className="size-[11px] shrink-0" strokeWidth={2.2} />
+              <span className="truncate tabular-nums">
+                {convertedAt ? `Fechou ${fmtKanbanRelDateTime(convertedAt).toLowerCase()}` : 'Matriculado'}
+              </span>
+            </>
           ) : isLost ? (
-            <span
-              className="inline-flex items-center gap-1 font-semibold text-slate-500 dark:text-neutral-400 min-w-0"
-              title={lead.lossReason || 'Perdido'}
-            >
-              <Ban className="size-[11px] shrink-0" />
-              <span className="truncate">{lead.lossReason || 'Perdido'}</span>
-            </span>
+            <>
+              <Ban className="size-[11px] shrink-0" strokeWidth={2.2} />
+              <span className="truncate" title={lead.lossReason || 'Perdido'}>{lead.lossReason || 'Perdido'}</span>
+            </>
           ) : hasFollowUp ? (
-            <span
-              className={cn(
-                'inline-flex items-center gap-1 font-semibold tabular-nums',
-                isOverdue ? 'text-rose-600 dark:text-rose-400' : 'text-slate-600 dark:text-neutral-300'
-              )}
-            >
+            <>
               <FollowUpIcon type={lead.nextFollowUpType} className="size-[11px] shrink-0" />
-              {fmtKanbanRelDateTime(lead.nextFollowUp)}
-            </span>
+              <span className="truncate tabular-nums">
+                {followUpLabel(lead.nextFollowUpType)} · {relWhen(lead.nextFollowUp)}
+              </span>
+            </>
           ) : (
-            <span className="inline-flex items-center gap-1 font-semibold text-amber-700 dark:text-amber-300">
-              <AlertCircle className="size-[11px] shrink-0" />
-              Sem agendamento
-            </span>
+            <>
+              <AlertCircle className="size-[11px] shrink-0" strokeWidth={2.2} />
+              <span className="truncate">Sem agendamento</span>
+            </>
           )}
         </div>
+
+        {chips.length > 0 && (
+          <div className="mt-2 flex items-center gap-1">
+            {chips.map((c) => (
+              <span
+                key={c}
+                title={c}
+                className="h-[19px] px-[7px] inline-flex items-center rounded-md border border-[#e8ecf3] dark:border-neutral-800 text-[10.5px] text-slate-700 dark:text-neutral-300 max-w-[112px] truncate"
+              >
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* O protótipo omite o botão "Mover"; preservamos a função para
-          toque/teclado — aparece no hover (desktop) e sempre em telas
-          de toque (pointer-coarse). */}
-      <button
-        type="button"
-        data-no-pan="true"
-        onClick={(e) => { e.stopPropagation(); onMoveRequest(lead); }}
-        title="Mover para outra etapa"
-        aria-label="Mover lead para outra etapa"
-        className="absolute right-9 top-1/2 -translate-y-1/2 size-6 rounded-md grid place-items-center bg-white dark:bg-neutral-900 border border-gray-200 dark:border-neutral-700 shadow-sm text-gray-400 hover:text-brand-600 hover:border-brand-200 dark:text-neutral-500 dark:hover:text-brand-300 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-opacity"
-      >
-        <ArrowRightLeft className="size-3" />
-      </button>
-
-      {lead.consultantName && (
-        <span title={`Consultor: ${lead.consultantName}`} className="shrink-0">
-          <InitialsAvatar name={lead.consultantName} size={22} textSize={9} />
+      <div className={cn(
+        'flex items-center gap-1.5 border-t border-[#e8ecf3] dark:border-neutral-800 px-[11px] py-1.5 text-[11px]',
+        FOOTER_TONE[footerTone]
+      )}>
+        {lead.consultantName && <InitialsAvatar name={lead.consultantName} size={17} textSize={8} />}
+        <span className="flex-1 min-w-0 truncate text-slate-500 dark:text-neutral-400" title={lead.consultantName ? `Consultor: ${lead.consultantName}` : undefined}>
+          {lead.consultantName || 'Sem responsável'}
         </span>
-      )}
+
+        {/* Ações no rodapé — nunca sobrepostas ao conteúdo. No hover cedem o
+            espaço do nome; em telas de toque ficam sempre visíveis. */}
+        <span className="shrink-0 hidden group-hover:flex group-focus-within:flex pointer-coarse:flex items-center gap-0.5">
+          <button
+            type="button"
+            data-no-pan="true"
+            onClick={(e) => { e.stopPropagation(); onMoveRequest(lead); }}
+            title="Mover para outra etapa"
+            aria-label="Mover lead para outra etapa"
+            className="size-[25px] grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition-colors"
+          >
+            <ArrowRightLeft className="size-3" />
+          </button>
+          <button
+            type="button"
+            data-no-pan="true"
+            onClick={(e) => { e.stopPropagation(); onOpenProfile(lead.id); }}
+            title="Abrir perfil"
+            aria-label="Abrir perfil do lead"
+            className="size-[25px] grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition-colors"
+          >
+            <ArrowUpRight className="size-3" />
+          </button>
+        </span>
+
+        <span className={cn(
+          'shrink-0 font-semibold tabular-nums group-hover:hidden group-focus-within:hidden pointer-coarse:hidden',
+          wonValue ? 'text-[#0F9D6E] dark:text-emerald-300' : SILENCE_TONE[silence.tone]
+        )}>
+          {wonValue || silence.text}
+        </span>
+      </div>
     </article>
   );
 });
@@ -158,7 +249,7 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
 // cards em lista compacta com scroll interno. React.memo: o hover do drag
 // (draggedOverColumn) re-renderiza SÓ as 2 colunas afetadas via isHovered.
 const KanbanColumn = memo(function KanbanColumn({
-  name, color, special, columnLeads, renderLimit = 0, isHovered, totalCount = null,
+  name, color, special, columnLeads, note = null, isHovered, totalCount = null,
   draggingLeadId, interactionIndex, hasMore = false, onLoadMore = null, loadingMore = false,
   onColumnDragOver, onColumnDragLeave, onDropLead,
   onDragStart, onDragEnd, onOpenProfile, onMoveRequest,
@@ -166,15 +257,16 @@ const KanbanColumn = memo(function KanbanColumn({
   const accent = getKanbanColumnAccent(color);
   const isWinCol = special === 'win';
   const isLossCol = special === 'loss';
-  // Colunas terminais (Venda/Perda) acumulam histórico; renderizar
-  // todos os cards trava o board. Mostra os mais recentes e indica
-  // quantos restam (acessíveis pela busca da tela de Leads).
-  const shownLeads = renderLimit > 0 && columnLeads.length > renderLimit
-    ? columnLeads.slice(0, renderLimit)
-    : columnLeads;
-  const hiddenCount = columnLeads.length - shownLeads.length;
+  // Paginação da coluna: 10 por vez. Renderizar a lista inteira enche uma
+  // coluna de 264px que ninguém rola até o fim — e, nas terminais, trava o
+  // board. "Carregar mais" revela os próximos 10 do que já está em memória;
+  // quando acaba, cede a vez ao onLoadMore (que busca a próxima página no
+  // Firestore, hoje só na coluna Perda).
+  const [visibleCount, setVisibleCount] = useState(KANBAN_PAGE_SIZE);
+  const shownLeads = columnLeads.length > visibleCount ? columnLeads.slice(0, visibleCount) : columnLeads;
+  const localHasMore = columnLeads.length > shownLeads.length;
   const emptyText = isWinCol
-    ? 'Arraste para fechar venda'
+    ? (isHovered ? 'Soltar aqui' : 'Nenhuma venda no mês')
     : isLossCol
       ? 'Arraste para marcar perda'
       : isHovered
@@ -210,6 +302,11 @@ const KanbanColumn = memo(function KanbanColumn({
         <span className="text-[11px] font-semibold text-slate-400 dark:text-neutral-500 tabular-nums shrink-0">
           {totalCount != null ? totalCount : columnLeads.length}
         </span>
+        {note && (
+          <span className="text-[10.5px] font-medium text-slate-400 dark:text-neutral-500 truncate normal-case" title={note}>
+            {note}
+          </span>
+        )}
         {isWinCol && <TrendingUp className="ml-auto size-[13px] shrink-0 text-emerald-700 dark:text-emerald-400" />}
       </header>
 
@@ -217,7 +314,8 @@ const KanbanColumn = memo(function KanbanColumn({
         {columnLeads.length === 0 ? (
           <div
             className={cn(
-              'min-h-24 rounded-[10px] border-2 border-dashed grid place-items-center text-[10.5px] font-semibold uppercase tracking-[.06em] text-center px-3 transition-colors',
+              // 115px = a altura do card, pra não haver salto ao soltar.
+              'min-h-[115px] rounded-[10px] border-2 border-dashed grid place-items-center text-[10.5px] font-semibold uppercase tracking-[.06em] text-center px-3 transition-colors',
               isHovered
                 ? 'border-brand-300 text-brand-600 dark:border-brand-500/40 dark:text-brand-300'
                 : 'border-slate-300 text-slate-400 dark:border-neutral-700 dark:text-neutral-500'
@@ -240,12 +338,15 @@ const KanbanColumn = memo(function KanbanColumn({
                 onMoveRequest={onMoveRequest}
               />
             ))}
-            {hiddenCount > 0 && (
-              <div className="py-1.5 text-center text-[11px] font-medium text-slate-400 dark:text-neutral-500">
-                + {hiddenCount} {hiddenCount === 1 ? 'lead mais antigo' : 'leads mais antigos'} · use a busca
-              </div>
-            )}
-            {onLoadMore && hasMore && (
+            {localHasMore ? (
+              <button
+                type="button"
+                onClick={() => setVisibleCount(v => v + KANBAN_PAGE_SIZE)}
+                className="mt-0.5 py-2 text-center text-[11px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
+              >
+                Carregar mais <span className="tabular-nums font-normal text-slate-400 dark:text-neutral-500">({columnLeads.length - shownLeads.length})</span>
+              </button>
+            ) : onLoadMore && hasMore ? (
               <button
                 type="button"
                 onClick={onLoadMore}
@@ -254,7 +355,7 @@ const KanbanColumn = memo(function KanbanColumn({
               >
                 {loadingMore ? 'Carregando…' : 'Carregar mais'}
               </button>
-            )}
+            ) : null}
           </>
         )}
       </div>
@@ -311,7 +412,7 @@ const [isPanning, setIsPanning] = useState(false);
   // sem o campo. Não é ao vivo — recarrega (lostReload) ao marcar/desfazer perda.
   const lostFunnelId = selectedFunnelId || defaultFunnelId;
   const lostSpec = useMemo(
-    () => bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId),
+    () => bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.PERDA, lostFunnelId, KANBAN_PAGE_SIZE),
     [lostFunnelId]
   );
   const {
@@ -330,16 +431,40 @@ const [isPanning, setIsPanning] = useState(false);
     return respFilter.length === 0 ? base : base.filter(l => respFilter.includes(l.consultantId));
   }, [lostDocs, respFilter, onlyOverdue]);
 
-  // Lookup dos leads ARRASTÁVEIS por id: ativos (prop) + a página da coluna Perda
-  // (E1c, lostDocs). Pós-flip o prop é só 'ativo', então sem incluir lostDocs os
-  // handlers de drag não achavam um card da Perda pelo id — quebrava DESFAZER a
-  // perda (arrastar o card de volta pra uma etapa). Ativo tem prioridade no id.
+  // Coluna Venda: matrículas fechadas no MÊS CORRENTE, com fonte própria.
+  // Pós-flip o prop `leads` é só o balde 'ativo', então o card sumia no instante
+  // em que a venda fechava e a coluna vivia vazia. Agora ela mostra o mês —
+  // e vira sozinha na virada, porque a janela é recalculada a cada render
+  // (monthKey muda no dia 1 e refaz a spec).
+  const monthRef = new Date();
+  const monthYear = monthRef.getFullYear();
+  const monthIndex = monthRef.getMonth();
+  const month = useMemo(() => monthWindow(new Date(monthYear, monthIndex, 1)), [monthYear, monthIndex]);
+  const wonSpec = useMemo(() => wonInMonthQuerySpec(month.startMs, month.endMs), [month]);
+  const {
+    items: wonDocs, loading: wonLoading, reload: wonReload,
+  } = usePagedLeads({
+    db, path: LEADS_PATH, spec: wonSpec, specKey: `venda:${monthYear}-${monthIndex}`, enabled: !!db,
+  });
+  // A query não escopa por funil (evita índice novo) — o refino acontece aqui,
+  // sobre o MÊS INTEIRO, então a contagem da coluna é exata.
+  const wonLeads = useMemo(() => {
+    if (onlyOverdue) return [];
+    const base = (wonDocs || []).filter(l => !lostFunnelId || l.funnelId === lostFunnelId);
+    return respFilter.length === 0 ? base : base.filter(l => respFilter.includes(l.consultantId));
+  }, [wonDocs, respFilter, onlyOverdue, lostFunnelId]);
+
+  // Lookup dos leads ARRASTÁVEIS por id: ativos (prop) + as páginas das colunas
+  // terminais (Perda e Venda). Pós-flip o prop é só 'ativo', então sem incluir
+  // esses docs os handlers de drag não achavam o card pelo id — quebrava
+  // DESFAZER (arrastar de volta pra uma etapa). Ativo tem prioridade no id.
   const draggableById = useMemo(() => {
     const m = new Map();
     (leads || []).forEach((l) => m.set(l.id, l));
     (lostDocs || []).forEach((l) => { if (!m.has(l.id)) m.set(l.id, l); });
+    (wonDocs || []).forEach((l) => { if (!m.has(l.id)) m.set(l.id, l); });
     return m;
-  }, [leads, lostDocs]);
+  }, [leads, lostDocs, wonDocs]);
 
   // E1d: total REAL de perdas do funil via getCountFromServer (o header da
   // coluna, depois do E1c, mostraria só a página carregada). Recontado quando
@@ -465,11 +590,14 @@ const handleKanbanMouseMove = (e) => {
         try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
       }
       if (lead.status === 'Perda') refreshLost(); // saiu da Perda: refaz query+contagem
+      // Saiu da Venda (desfez a matrícula): a coluna do mês tem fonte própria e
+      // não é ao vivo — recarrega pra o card sumir de lá.
+      if (lead.status === 'Venda' && !destinoConvertido) wonReload();
     } catch (err) {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
     }
-  }, [db, appUser, selectedFunnelId, toast, refreshLost]);
+  }, [db, appUser, selectedFunnelId, toast, refreshLost, wonReload]);
 
   // A Venda no Kanban agora abre o MatriculaModal (plano/valor/vigência) em vez
   // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
@@ -802,8 +930,9 @@ if (!lead) return;
               name="Venda"
               color="green"
               special="win"
-              columnLeads={getLeadsByStatus('Venda')}
-              renderLimit={LIST_PAGE_SIZE}
+              columnLeads={wonLeads}
+              loadingMore={wonLoading}
+              note={month.label}
               isHovered={draggedOverColumn === 'Venda'}
               draggingLeadId={draggingLeadId}
               interactionIndex={interactionIndex}
@@ -822,7 +951,7 @@ if (!lead) return;
               color="gray"
               special="loss"
               columnLeads={lostLeads}
-              renderLimit={0}
+
               totalCount={perdaHeaderCount}
               hasMore={lostHasMore}
               onLoadMore={lostLoadMore}
@@ -863,6 +992,9 @@ if (!lead) return;
             const wasPerda = matriculaLead?.status === 'Perda';
             setMatriculaLead(null);
             if (wasPerda) refreshLost();
+            // A venda recém-fechada precisa aparecer na coluna do mês, que
+            // também não é ao vivo.
+            wonReload();
           }}
         />
       )}

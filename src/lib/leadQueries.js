@@ -114,6 +114,28 @@ export const lostByFunnelQuerySpec = (funnelId, pageSize = LIST_PAGE_SIZE) => ({
   limit: pageSize,
 });
 
+// Coluna Venda do Kanban — matrículas fechadas DENTRO de uma janela (o mês
+// corrente). Casa com o índice #3 já existente (lifecycleBucket ASC,
+// convertedAt DESC): igualdade no balde + range/orderBy no MESMO campo, então
+// não exige índice novo nem publicação manual.
+//
+// Sem funnelId de propósito: metê-lo aqui pediria um índice novo
+// (lifecycleBucket, funnelId, convertedAt) e um mês de vendas é pequeno — o
+// caller refina por funil em memória sobre a janela INTEIRA, o que dá contagem
+// exata (diferente da coluna Perda, que refina sobre uma página).
+//
+// Sem limit: carrega o mês inteiro. Cliente sem convertedAt (legado, anterior ao
+// carimbo) fica fora do range — a coluna mostra o que foi fechado no mês, e quem
+// não tem data não tem mês.
+export const wonInMonthQuerySpec = (startMs, endMs) => ({
+  wheres: [
+    { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },
+    { field: 'convertedAt', op: '>=', value: new Date(startMs) },
+    { field: 'convertedAt', op: '<', value: new Date(endMs) },
+  ],
+  orderBy: { field: 'convertedAt', dir: 'desc' },
+});
+
 // Paginação genérica de perda/cliente por funil (Carregar mais em coluna cheia)
 // — casa com o índice #2 (lifecycleBucket ASC, funnelId ASC, createdAt DESC).
 export const bucketByFunnelQuerySpec = (bucket, funnelId, pageSize = LIST_PAGE_SIZE) => ({

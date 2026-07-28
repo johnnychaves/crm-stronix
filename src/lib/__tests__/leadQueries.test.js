@@ -13,6 +13,7 @@ import {
   consultantLeadsQuerySpec,
   adminDashboardWindowSpecs,
   ADMIN_DASHBOARD_WINDOW_FIELDS,
+  wonInMonthQuerySpec,
 } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
@@ -159,6 +160,38 @@ describe('leadQueries — specs puras dos consumidores da PR E', () => {
   it('usa LIST_PAGE_SIZE (30) como default de paginação', () => {
     expect(clientsQuerySpec().limit).toBe(30);
     expect(lostByFunnelQuerySpec('f1').limit).toBe(30);
+  });
+});
+
+describe('wonInMonthQuerySpec — coluna Venda do Kanban (mês corrente)', () => {
+  const JUL = new Date(2026, 6, 1).getTime();       // 01/07/2026 00:00 local
+  const AGO = new Date(2026, 7, 1).getTime();       // 01/08/2026 00:00 local
+
+  it('filtra o balde cliente numa janela semiaberta de convertedAt', () => {
+    const spec = wonInMonthQuerySpec(JUL, AGO);
+    expect(spec.wheres).toEqual([
+      { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },
+      { field: 'convertedAt', op: '>=', value: new Date(JUL) },
+      { field: 'convertedAt', op: '<', value: new Date(AGO) },
+    ]);
+    expect(spec.orderBy).toEqual({ field: 'convertedAt', dir: 'desc' });
+  });
+
+  it('não limita: o mês inteiro vem numa página, então o refino por funil é exato', () => {
+    expect(wonInMonthQuerySpec(JUL, AGO).limit).toBeUndefined();
+  });
+
+  it('a janela é semiaberta — a virada do mês zera a coluna sem sobreposição', () => {
+    // 31/07 23:59 entra em julho; 01/08 00:00 já é agosto.
+    const spec = wonInMonthQuerySpec(JUL, AGO);
+    const fim = spec.wheres.find(w => w.op === '<').value.getTime();
+    const inicioAgosto = wonInMonthQuerySpec(AGO, new Date(2026, 8, 1).getTime())
+      .wheres.find(w => w.op === '>=').value.getTime();
+    expect(fim).toBe(inicioAgosto);
+  });
+
+  it('é servida pelo índice que já existe (nenhuma publicação manual)', () => {
+    expect(coveredByLeadsIndex(wonInMonthQuerySpec(JUL, AGO))).toBe(true);
   });
 });
 
