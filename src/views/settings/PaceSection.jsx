@@ -3,6 +3,7 @@ import { AlertCircle, CalendarDays, Minus, Plus, RefreshCw, X, Zap } from 'lucid
 import { doc, setDoc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { appId, CONFIG_PATH, CONFIG_GENERAL_ID, USERS_PATH } from '../../lib/firebase.js';
 import { normalizeRenewalCheckpoints } from '../../lib/leadStatus.js';
+import { normalizeRenewalGraceDays, DEFAULT_RENEWAL_GRACE_DAYS } from '../../lib/renewalGoal.js';
 import { cn } from '../../lib/utils.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
@@ -73,7 +74,7 @@ function CycleRuler({ checkpoints }) {
 
 function PaceSection({ db, usersList, metaWeekdays }) {
   const toast = useToast();
-  const { slaOverdueDays, renewalCheckpoints = [90, 60, 30] } = useGeneralConfig();
+  const { slaOverdueDays, renewalCheckpoints = [90, 60, 30], renewalGraceDays } = useGeneralConfig();
   const [checkpointOpen, setCheckpointOpen] = useState(false);
   const [checkpointInput, setCheckpointInput] = useState('');
   const [savingCheckpoints, setSavingCheckpoints] = useState(false);
@@ -132,6 +133,16 @@ function PaceSection({ db, usersList, metaWeekdays }) {
     }
   };
 
+  const persistGraceDays = async (n) => {
+    try {
+      await saveConfig({ renewalGraceDays: normalizeRenewalGraceDays(n) });
+      toast.success(`Vencido continua em Renovações por ${n} dias.`);
+    } catch (err) {
+      console.error(err);
+      toast.error('Não foi possível salvar a tolerância.');
+    }
+  };
+
   const persistCheckpoints = async (next) => {
     setSavingCheckpoints(true);
     try {
@@ -164,6 +175,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
 
   const activeDays = Array.isArray(metaWeekdays) ? metaWeekdays : [];
   const checkpoints = normalizeRenewalCheckpoints(renewalCheckpoints || []);
+  const graceDays = renewalGraceDays == null ? DEFAULT_RENEWAL_GRACE_DAYS : normalizeRenewalGraceDays(renewalGraceDays);
 
   return (
     <div className="flex flex-col gap-5">
@@ -306,6 +318,37 @@ function PaceSection({ db, usersList, metaWeekdays }) {
             ))}
           </div>
           <p className="text-[11.5px] text-muted-foreground">Para editar um marco, remova e adicione o novo valor.</p>
+        </div>
+
+        {/* Depois do vencimento a conversa muda: não é mais renovação, é
+            reativação. Sem esse corte, o cliente que saiu há meses seguia
+            aparecendo na Meta Diária. */}
+        <div className="flex items-center justify-between gap-4 flex-wrap px-6 py-5 border-t border-border">
+          <div className="min-w-0">
+            <div className="text-[13px] font-semibold">Tolerância depois do vencimento</div>
+            <p className="text-[11.5px] text-muted-foreground mt-0.5 max-w-[420px] text-pretty">
+              Por quantos dias o contrato vencido continua sendo cobrado como renovação. Passando disso o cliente conta como inativo e sai da Meta.
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {[7, 15, 30].map(n => (
+              <button
+                key={n}
+                type="button"
+                onClick={() => persistGraceDays(n)}
+                aria-pressed={graceDays === n}
+                className={cn(
+                  'num h-9 px-3.5 rounded-[10px] text-[13px] font-semibold transition border',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                  graceDays === n
+                    ? 'bg-brand-600 text-white border-brand-600'
+                    : 'bg-card text-muted-foreground border-border hover:bg-muted'
+                )}
+              >
+                {n} dias
+              </button>
+            ))}
+          </div>
         </div>
       </SettingsPanel>
 

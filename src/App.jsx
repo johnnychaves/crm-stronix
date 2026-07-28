@@ -61,6 +61,7 @@ import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
 import { normalizeTrialClassOptions, normalizeMetaWeekdays, normalizeSlaOverdueDays, normalizeDailyVolumeTarget, normalizeRenewalCheckpoints } from './lib/leadStatus.js';
+import { normalizeRenewalGraceDays } from './lib/renewalGoal.js';
 import { IMPERSONATION_KEY, readImpersonation } from './lib/superadmin.js';
 import { SurgeMark, StronileadWordmark } from './components/brand/SurgeMark.jsx';
 import { TrialBanner, PaymentDueBanner, ImpersonationBanner } from './components/layout/Banners.jsx';
@@ -273,11 +274,12 @@ function AppInner() {
   // threshold acima continua valendo só pro status "A vencer" do sistema).
   // Default [90, 60, 30] — ver src/lib/renewalGoal.js.
   const [renewalCheckpoints, setRenewalCheckpoints] = useState([90, 60, 30]);
+  const [renewalGraceDays, setRenewalGraceDays] = useState(15);
   // Valor do GeneralConfigContext (declarado aqui, antes de qualquer early return,
   // para respeitar as regras dos hooks).
   const generalConfigValue = useMemo(
-    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, professores, dores }),
-    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, professores, dores]
+    () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores }),
+    [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores]
   );
   // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
   // tenant ainda não foi resolvido (appId = default), o que é correto para o
@@ -691,6 +693,7 @@ useEffect(() => {
       setDailyVolumeTarget(normalizeDailyVolumeTarget(data?.dailyVolumeTarget));
       // "A vencer" é padrão FIXO do sistema (30 dias) — não configurável.
       setRenewalCheckpoints(normalizeRenewalCheckpoints(data?.renewalCheckpoints));
+      setRenewalGraceDays(normalizeRenewalGraceDays(data?.renewalGraceDays));
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
@@ -1001,10 +1004,10 @@ useEffect(() => {
   const dailyGoalPending = useMemo(() => {
     if (!appUser?.id) return 0;
     void dayKey; // recalcula na virada do dia
-    const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints);
+    const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
     return totalSlots - doneSlots;
-  }, [metaLeads, interactions, appUser, dayKey, renewalCheckpoints]);
+  }, [metaLeads, interactions, appUser, dayKey, renewalCheckpoints, renewalGraceDays]);
 
   // Dashboard Gerencial do CONSULTOR (E2a): busca os PRÓPRIOS leads por query
   // (where consultantId==id, sem orderBy → índice automático, sem armadilha de

@@ -8,7 +8,7 @@ import {
   isLeadResolvedToday,
   hasActiveInteractionToday,
 } from './leads.js';
-import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS } from './renewalGoal.js';
+import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
 
 // ============================================================================
 // Lógica compartilhada da META DIÁRIA — usada pela tela do consultor
@@ -239,7 +239,7 @@ export function buildInteractionsByLead(interactions) {
 // Monta os "slots" da meta de UM consultor: cada lead alvo sai com
 // categorySlugs[] e categoryStatus{slug:bool} (par lead×categoria = 1 slot;
 // um lead pode estar feito numa categoria e pendente noutra).
-export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, renewalCheckpoints = DEFAULT_RENEWAL_CHECKPOINTS) {
+export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, renewalCheckpoints = DEFAULT_RENEWAL_CHECKPOINTS, renewalGraceDays = DEFAULT_RENEWAL_GRACE_DAYS) {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date();
@@ -352,7 +352,7 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     // marco é tratado / o cliente renova (shouldPromptRenewal volta a false).
     if (
       lead.lifecycleStage === 'cliente' &&
-      shouldPromptRenewal(lead, todayStart, renewalCheckpoints)
+      shouldPromptRenewal(lead, todayStart, renewalCheckpoints, renewalGraceDays)
     ) {
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.renovacao, DAILY_GOAL_CATEGORIES.RENOVACAO);
     }

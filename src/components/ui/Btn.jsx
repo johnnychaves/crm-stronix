@@ -4,6 +4,9 @@ function Btn({ kind = 'secondary', icon, children, onClick, type = 'button', dis
     brand:     'bg-brand-600 text-white hover:bg-brand-700 shadow-sm',
     secondary: 'bg-white text-slate-700 hover:bg-slate-50 border border-slate-200 dark:bg-white/[0.04] dark:text-slate-200 dark:border-white/10 dark:hover:bg-white/[0.08]',
     success:   'bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm',
+    // CTA de matrícula. O laranja da marca (#FF6A2B) dá 2.86:1 com texto
+    // branco — não passa. Preenchimento com rótulo usa este tom mais fechado.
+    enroll:    'bg-[#C2410C] text-white hover:bg-[#9A3412] shadow-sm',
     soft:      'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-white/[0.06] dark:text-slate-200 dark:hover:bg-white/[0.12]',
     danger:    'bg-white text-rose-600 hover:bg-rose-50 border border-slate-200 dark:bg-white/[0.04] dark:border-white/10 dark:hover:bg-rose-500/10',
     ghost:     'text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06]'
