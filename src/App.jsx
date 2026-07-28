@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap } from 'lucide-react';
 
 import {
@@ -56,6 +56,7 @@ import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useProfileLead } from './hooks/useProfileLead.js';
+import { useActivityGate } from './hooks/useActivityGate.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
@@ -175,15 +176,20 @@ function AppInner() {
   // (superadmin puro / academia bloqueada) o estado antigo fica ignorado via
   // `ticketsOn` em vez de reset síncrono no effect (react-hooks/set-state-in-effect).
   const [rawTickets, setRawTickets] = useState([]);
+  // Portão de atividade (auditoria de 28/07/2026): sem ninguém mexer por 15 min,
+  // TODA assinatura ao vivo é derrubada. Não desloga nem limpa a tela — só corta
+  // o plantão com o Firestore, que é o que a recobrança dos 30 min tarifava a
+  // noite inteira numa máquina esquecida ligada. Volta ao 1º sinal de vida.
+  const listenersActive = useActivityGate();
   const ticketsOn = !!appUser?.tenantId && !appUser?.superAdminOnly && !tenantBlock;
   useEffect(() => {
-    if (!ticketsOn) return;
+    if (!ticketsOn || !listenersActive) return;
     const q = query(collection(db, 'tickets'), where('tenantId', '==', appUser.tenantId));
     const unsub = onSnapshot(q,
       (snap) => setRawTickets(snap.docs.map((d) => ({ id: d.id, ...d.data() }))),
       (e) => console.error('onSnapshot tickets falhou', e));
     return () => unsub();
-  }, [ticketsOn, appUser?.tenantId]);
+  }, [ticketsOn, appUser?.tenantId, listenersActive]);
   const tickets = useMemo(() => (ticketsOn ? rawTickets : []), [ticketsOn, rawTickets]);
   const ticketsUnread = useMemo(() => countUnreadForClient(tickets), [tickets]);
   const [tutorialsOpen, setTutorialsOpen] = useState(false); // central de tutoriais (ícone 🎓 do topo) — hoje "em breve"
@@ -287,7 +293,17 @@ function AppInner() {
     try { return localStorage.getItem(`crm-selected-funnel:${appId}`) || null; } catch { return null; }
   });
   const [funnelsMigrationStatus, setFunnelsMigrationStatus] = useState('idle');
+  // Marcador de que a semeadura/backfill de funis já rodou nesta academia.
+  // Vem do doc de config (que já é assinado — custo zero de leitura). null =
+  // config ainda não chegou. Sem ele, a migração relia a coleção INTEIRA de
+  // leads em toda carga de admin só pra concluir que não havia nada a fazer
+  // (auditoria de 28/07/2026: ~400 leituras por carga, jogadas fora).
+  const [funnelsSetupDone, setFunnelsSetupDone] = useState(null);
   const [loadingData, setLoadingData] = useState(true);
+  // Já baixamos os dados ao menos uma vez nesta sessão? Serve pra reassinar
+  // (volta da ociosidade) sem piscar a tela de carregando por cima de um dado
+  // que já está na mão.
+  const hasLoadedOnceRef = useRef(false);
   // Erro de leitura em algum onSnapshot (permissão/rede) — evita falha silenciosa.
   const [loadError, setLoadError] = useState(false);
 
@@ -524,7 +540,15 @@ useEffect(() => {
   // a tela de bloqueio é exibida e as rules também negam no servidor. Evita
   // permission-denied silencioso nos onSnapshot.
   if (tenantBlock) { setLoadingData(false); return; }
-  setLoadingData(true);
+  // Ociosidade (auditoria de 28/07/2026): o cleanup deste effect já derrubou as
+  // assinaturas quando listenersActive virou false. Aqui é só NÃO reassinar.
+  // De propósito não mexe em loadingData nem zera leads/interactions: a tela
+  // segue mostrando o último estado, e quem voltar não vê nada piscar.
+  // O `hasLoadedOnceRef` na condição é trava de segurança: o portão só pode
+  // SUSPENDER uma sessão que já carregou. Sem ele, ficar ocioso durante a carga
+  // fria deixaria a tela presa no "carregando" até alguém mexer no mouse.
+  if (!listenersActive && hasLoadedOnceRef.current) return;
+  if (!hasLoadedOnceRef.current) setLoadingData(true);
   setLoadError(false);
 
   // Falha em qualquer listener (permissão negada por corrida de suspensão, rede,
@@ -562,6 +586,7 @@ useEffect(() => {
     // Normalização única (normalizeLeadDoc em lib/leads) — a MESMA que a query
     // do dashboard do consultor (E2a) usa, pra os shapes não divergirem.
     setLeads(snapshot.docs.map(normalizeLeadDoc));
+    hasLoadedOnceRef.current = true;
     setLoadingData(false);
   }, onSnapErr('leads'));
 
@@ -691,6 +716,9 @@ useEffect(() => {
       setDailyVolumeTarget(normalizeDailyVolumeTarget(data?.dailyVolumeTarget));
       // "A vencer" é padrão FIXO do sistema (30 dias) — não configurável.
       setRenewalCheckpoints(normalizeRenewalCheckpoints(data?.renewalCheckpoints));
+      // Doc inexistente (academia nova, antes do provision gravar) conta como
+      // "não semeado" — a migração roda e carimba.
+      setFunnelsSetupDone(!!data?.funnelsSetupDoneAt);
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
@@ -721,7 +749,7 @@ useEffect(() => {
     unsubConfig();
     unsubUsers();
   };
-}, [firebaseUser, appUser, tenantBlock]);
+}, [firebaseUser, appUser, tenantBlock, listenersActive]);
 
   // Persiste a seleção de funil no localStorage, com chave por tenant.
   useEffect(() => {
@@ -774,8 +802,17 @@ useEffect(() => {
     if (!appUser || !isAdminUser(appUser)) return;
     if (loadingData) return;
     if (funnelsMigrationStatus !== 'idle') return;
+    // Config ainda não chegou: espera. Sem ela não dá pra saber se já semeou.
+    if (funnelsSetupDone === null) return;
+    // Já semeado: sai sem NENHUMA leitura. A seleção de funil não depende daqui
+    // — o effect de fallback logo acima já resolve pelo `funnels` em memória.
+    if (funnelsSetupDone) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
+      setFunnelsMigrationStatus('done');
+      return;
+    }
 
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- gatilho one-shot de migração idempotente (guardado por status !== 'idle').
+    // Gatilho one-shot da migração idempotente (guardado por status !== 'idle').
     setFunnelsMigrationStatus('running');
 
     (async () => {
@@ -886,13 +923,22 @@ useEffect(() => {
         // Define seleção inicial se ainda não houver
         setSelectedFunnelId(prev => prev || defaultId);
 
+        // Carimba no doc de config que esta academia já foi semeada. É o que
+        // impede a varredura completa de leads em toda carga futura. merge:true
+        // pra não encostar nos demais campos da config.
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          { funnelsSetupDoneAt: serverTimestamp() },
+          { merge: true }
+        );
+
         setFunnelsMigrationStatus('done');
       } catch (err) {
         console.error('Erro na migração de funis', err);
         setFunnelsMigrationStatus('error');
       }
     })();
-  }, [appUser, funnels, loadingData, funnelsMigrationStatus]);
+  }, [appUser, funnels, loadingData, funnelsMigrationStatus, funnelsSetupDone]);
 
   // Impersonação ("entrar como"): o banner e o "sair" vivem aqui (nível do app);
   // o "entrar" é feito no SuperAdminView. Ressincroniza com o sessionStorage
