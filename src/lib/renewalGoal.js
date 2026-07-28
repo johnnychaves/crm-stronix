@@ -20,6 +20,19 @@ import { CONTRACT_STATUS } from './contracts.js';
 // Default da academia (Regras gerais → Renovação de contrato → marcos).
 export const DEFAULT_RENEWAL_CHECKPOINTS = [90, 60, 30];
 
+// Por quantos dias DEPOIS do vencimento o cliente continua sendo cobrado como
+// renovação. Passado isso ele é um inativo: a conversa deixa de ser "renove" e
+// vira reativação, e a Meta Diária para de empurrar.
+// 15 é o meio-termo: cobre quem atrasou o pagamento ou viajou, sem encher a
+// meta de quem já saiu há meses. Ajustável em Configurações → Metas & ritmo.
+export const DEFAULT_RENEWAL_GRACE_DAYS = 15;
+
+export const normalizeRenewalGraceDays = (raw) => {
+  const n = Math.round(Number(raw));
+  if (!Number.isFinite(n)) return DEFAULT_RENEWAL_GRACE_DAYS;
+  return Math.min(Math.max(n, 0), 90);
+};
+
 // Tipo de follow-up gravado ao REAGENDAR um contato de renovação. O contato
 // passa a viver na categoria Contatos da Meta Diária (dirigida por
 // nextFollowUp), como um follow-up comum. 'Mensagem' é o canal-padrão que o
@@ -65,14 +78,21 @@ export function activeRenewalCheckpoint(daysToExpiry, checkpoints) {
 // tratado (handled) e joga o contato pra categoria Contatos (via nextFollowUp)
 // — ver renewalReschedule. Assim o cliente sai de Renovações no marco atual e
 // só volta no PRÓXIMO marco (que ainda não está em handled).
-export function shouldPromptRenewal(lead, now, checkpoints) {
+export function shouldPromptRenewal(lead, now, checkpoints, graceDays = DEFAULT_RENEWAL_GRACE_DAYS) {
   if (!lead) return false;
   if (lead.renewalDeclined) return false;
   if (lead.currentContractStatus === CONTRACT_STATUS.CANCELADO) return false;
+  // Contrato trancado não se renova: a vigência está congelada e volta a
+  // correr na reativação.
+  if (lead.currentContractStatus === CONTRACT_STATUS.TRANCADO) return false;
 
   const ref = getSafeDateOrNull(now) || new Date();
 
   const daysToExpiry = daysToExpiryOf(lead.currentContractEndsAt, ref);
+  // Vencido há mais tempo que a tolerância: virou inativo. Sem isto o cliente
+  // que saiu há meses continuava aparecendo na Meta como renovação pendente.
+  if (Number.isFinite(daysToExpiry) && daysToExpiry < -normalizeRenewalGraceDays(graceDays)) return false;
+
   const activeCheckpoint = activeRenewalCheckpoint(daysToExpiry, checkpoints);
   if (activeCheckpoint == null) return false;
 
@@ -105,7 +125,7 @@ export function renewalDecline(lead, activeCheckpoint) {
 // Aceita Date ou string 'yyyy-mm-dd' (formato de <input type="date">).
 //
 // Nota: "Renovou" não tem builder aqui — fecha o RenewalOutcomeModal e abre
-// o MatriculaModal (mode='renovacao') existente, que já reseta os campos
+// o ContractModal (mode='renovacao') existente, que já reseta os campos
 // de renovação ao gravar o novo contrato (buildMatriculaWrites).
 export function renewalReschedule(lead, dateStr, activeCheckpoint, followUpType = RENEWAL_RESCHEDULE_FOLLOWUP_TYPE) {
   const date = dateStr instanceof Date ? dateStr : fromDateInputValue(dateStr);
