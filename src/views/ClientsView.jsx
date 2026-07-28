@@ -24,6 +24,7 @@ const clientStatus = (lead, now, threshold) =>
 const fmtBRLValor = (n) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 const STATUS_TONE = {
+  [CONTRACT_STATUS.AGENDADO]: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
   [CONTRACT_STATUS.ATIVO]:    'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
   [CONTRACT_STATUS.A_VENCER]: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
   [CONTRACT_STATUS.VENCIDO]:  'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
@@ -34,6 +35,7 @@ const STATUS_LABEL = { ...CONTRACT_STATUS_LABEL, [SEM_CONTRATO]: 'Sem contrato' 
 
 // Ordem das situações na bubble/chips.
 const STATUS_OPTIONS = [
+  CONTRACT_STATUS.AGENDADO,
   CONTRACT_STATUS.ATIVO,
   CONTRACT_STATUS.A_VENCER,
   CONTRACT_STATUS.VENCIDO,
@@ -47,12 +49,15 @@ const STATUS_OPTIONS = [
 const RING_GREEN = '#10B981'; // emerald
 const RING_AMBER = '#F59E0B'; // amber
 const RING_GRAY = '#64748B';  // slate
+const RING_VIOLET = '#8B5CF6'; // violet — matrícula agendada, vigência à frente
 const contractRing = (status) =>
   status === CONTRACT_STATUS.ATIVO
     ? RING_GREEN
-    : status === CONTRACT_STATUS.A_VENCER
-      ? `conic-gradient(${RING_AMBER} 0deg 180deg, ${RING_GREEN} 180deg 360deg)`
-      : RING_GRAY;
+    : status === CONTRACT_STATUS.AGENDADO
+      ? RING_VIOLET
+      : status === CONTRACT_STATUS.A_VENCER
+        ? `conic-gradient(${RING_AMBER} 0deg 180deg, ${RING_GREEN} 180deg 360deg)`
+        : RING_GRAY;
 
 // Avatar com o anel, dimensão constante (32 + gap 2 + anel 2.5) para não
 // desalinhar as linhas entre situações.

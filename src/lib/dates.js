@@ -58,6 +58,24 @@ export const fromDateInputValue = (str) => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+// Dias inteiros entre duas datas (b - a). Arredonda para absorver o pulo de
+// 1h do horário de verão. null se qualquer uma for inválida.
+export const daysBetween = (a, b) => {
+  const from = getSafeDateOrNull(a);
+  const to = getSafeDateOrNull(b);
+  if (!from || !to) return null;
+  return Math.round((to.getTime() - from.getTime()) / 86400000);
+};
+
+// Soma `n` dias a uma data. Aceita negativo. null se a data for inválida.
+export const addDays = (date, n) => {
+  const base = getSafeDateOrNull(date);
+  if (!base || !Number.isFinite(Number(n))) return null;
+  const out = new Date(base.getTime());
+  out.setDate(out.getDate() + Number(n));
+  return out;
+};
+
 // Soma `months` meses a uma data, preservando a hora e tratando o
 // "estouro" de fim de mês: 31/jan + 1 mês → 28/29 fev (último dia),
 // nunca 02/mar. Aceita Date, Timestamp do Firestore ou string; retorna

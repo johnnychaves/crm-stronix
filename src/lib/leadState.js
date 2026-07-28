@@ -49,6 +49,7 @@ export function deriveLeadState(lead, refDate = new Date(), thresholdDays) {
   const isClient = lead.lifecycleStage === 'cliente' || isLeadConverted(lead);
   if (isClient) {
     const cs = deriveLeadContractStatus(lead, refDate, thresholdDays);
+    if (cs === CONTRACT_STATUS.AGENDADO) return { key: 'agendado', tone: 'violet', label: 'MATRÍCULA AGENDADA', hint: 'A vigência ainda não começou' };
     if (cs === CONTRACT_STATUS.A_VENCER) return { key: 'a_vencer', tone: 'amber', label: 'A VENCER', hint: 'Contrato perto do fim' };
     if (cs === CONTRACT_STATUS.VENCIDO) return { key: 'inativo', tone: 'slate', label: 'INATIVO', hint: 'Contrato vencido' };
     if (cs === CONTRACT_STATUS.CANCELADO) return { key: 'cancelado', tone: 'rose', label: 'CANCELADO', hint: 'Contrato cancelado' };

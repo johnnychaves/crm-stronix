@@ -62,7 +62,7 @@ export async function markConvertingAula({ db, leadId }) {
   await updateDoc(aulaDoc(db, chosen.id), { converted: true, convertedAt: serverTimestamp() });
   // Carteira do professor: ao converter, carimba no lead o professor da aula que
   // fechou a venda (a menos que seja treino solo / sem professor). Cobre os três
-  // caminhos de conversão (ficha, MatriculaModal, Kanban) num lugar só.
+  // caminhos de conversão (ficha, ContractModal, Kanban) num lugar só.
   if (chosen.professorId && !chosen.soloTraining) {
     await updateDoc(
       doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, leadId),

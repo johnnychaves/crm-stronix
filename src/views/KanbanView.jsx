@@ -18,7 +18,7 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { FollowUpIcon } from '../components/ui/Badges.jsx';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
-import { MatriculaModal } from '../modals/MatriculaModal.jsx';
+import { ContractModal } from '../modals/ContractModal.jsx';
 import { AlertCircle, ArrowRightLeft, ArrowUpRight, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp, Users } from 'lucide-react';
 import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
 
@@ -371,7 +371,7 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, lossRea
   const [respFilter, setRespFilter] = useState([]);
   const [onlyOverdue, setOnlyOverdue] = useState(false);
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
-  // Lead aguardando matrícula no MatriculaModal (caminho de Venda do Kanban).
+  // Lead aguardando matrícula no ContractModal (caminho de Venda do Kanban).
   const [matriculaLead, setMatriculaLead] = useState(null);
   const [draggingLeadId, setDraggingLeadId] = useState(null);
   const [draggedOverColumn, setDraggedOverColumn] = useState(null);
@@ -599,7 +599,7 @@ const handleKanbanMouseMove = (e) => {
     }
   }, [db, appUser, selectedFunnelId, toast, refreshLost, wonReload]);
 
-  // A Venda no Kanban agora abre o MatriculaModal (plano/valor/vigência) em vez
+  // A Venda no Kanban agora abre o ContractModal (plano/valor/vigência) em vez
   // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
   // lead + timeline acontece dentro do modal (lib/contracts.js).
   const openMatricula = useCallback((lead) => setMatriculaLead(lead), []);
@@ -980,7 +980,8 @@ if (!lead) return;
       )}
 
       {matriculaLead && (
-        <MatriculaModal
+        <ContractModal
+          mode="matricula"
           lead={matriculaLead}
           appUser={appUser}
           db={db}

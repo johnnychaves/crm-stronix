@@ -22,7 +22,7 @@ import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { DailyGoalTeamView } from './DailyGoalTeamView.jsx';
 import { RenewalOutcomeModal } from '../modals/RenewalOutcomeModal.jsx';
 import { ContactOutcomeModal } from '../modals/ContactOutcomeModal.jsx';
-import { MatriculaModal } from '../modals/MatriculaModal.jsx';
+import { ContractModal } from '../modals/ContractModal.jsx';
 import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, Users, X, Zap } from 'lucide-react';
 
 // DAILY GOAL VIEW — DESIGN PRIMITIVES
@@ -1447,7 +1447,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   };
 
   // Fecha o popup de desfecho da renovação. "Renovou" encadeia o fluxo de
-  // matrícula/renovação existente (MatriculaModal mode='renovacao'), que
+  // matrícula/renovação existente (ContractModal), que
   // grava o contrato e reseta os campos de renovação. Os outros desfechos já
   // gravaram tudo dentro do próprio RenewalOutcomeModal — só fecha.
   const handleRenewalOutcomeDone = (outcome) => {
@@ -1792,7 +1792,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
       )}
 
       {matriculaTarget && (
-        <MatriculaModal
+        <ContractModal
           lead={matriculaTarget}
           appUser={appUser}
           db={db}

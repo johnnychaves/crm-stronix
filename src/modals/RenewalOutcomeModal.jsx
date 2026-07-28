@@ -23,7 +23,7 @@ import {
 // de venda (não renova) é diferente de perda de funil.
 //
 // onDone(outcome) — outcome ∈ 'renovou' | 'nao_renova' | 'reagendar'. Pra
-// 'renovou' o modal não grava nada (fecha e o caller abre o MatriculaModal
+// 'renovou' o modal não grava nada (fecha e o caller abre o ContractModal
 // existente em mode='renovacao', que já reseta os campos de renovação).
 
 const OUTCOMES = {
@@ -78,7 +78,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
     if (!canSubmit) return;
 
     if (outcome === OUTCOMES.RENOVOU) {
-      // Não grava nada aqui — o caller abre o MatriculaModal (mode='renovacao'),
+      // Não grava nada aqui — o caller abre o ContractModal (mode='renovacao'),
       // que grava o contrato E reseta os campos de renovação num único batch.
       onDone && onDone(OUTCOMES.RENOVOU);
       return;
