@@ -1581,6 +1581,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
           metaWeekdays={metaWeekdays}
           slaOverdueDays={slaOverdueDays}
           dailyVolumeTarget={dailyVolumeTarget}
+          renewalCheckpoints={renewalCheckpoints}
           db={db}
           appUser={appUser}
           onOpenLead={(l) => openProfile(l.id)}

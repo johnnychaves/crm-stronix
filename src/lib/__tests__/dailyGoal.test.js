@@ -674,6 +674,33 @@ describe('computeRitmo — hoje fica fora do mês', () => {
   });
 });
 
+// ── A configuração de marcos precisa CHEGAR até computeDailyGoalSlots ───────
+// A função respeita o 4º argumento; quem chamava sem ele (a Meta do gestor)
+// caía no padrão e divergia da tela do consultor.
+describe('computeDailyGoalSlots — marcos de renovação vêm da configuração', () => {
+  const cliente = (endsAt) => lead({
+    id: 'c1',
+    status: 'Venda',
+    lifecycleStage: 'cliente',
+    createdAt: new Date(2026, 0, 10),
+    currentContractEndsAt: endsAt,
+  });
+
+  it('não surfa o cliente quando o marco configurado ainda não chegou', () => {
+    // Vence em 13/09/2026, 60 dias depois de hoje (15/07). Só o marco de 30
+    // está configurado, então ainda não é hora de falar com ele.
+    const leads = [cliente(new Date(2026, 8, 13))];
+    expect(computeDailyGoalSlots(leads, new Map(), 'u1', [30])).toHaveLength(0);
+  });
+
+  it('surfa o cliente quando o marco configurado é o de 60 dias', () => {
+    const leads = [cliente(new Date(2026, 8, 13))];
+    const slots = computeDailyGoalSlots(leads, new Map(), 'u1', [60]);
+    expect(slots).toHaveLength(1);
+    expect(slots[0].categorySlugs).toContain(DAILY_GOAL_CATEGORIES.RENOVACAO);
+  });
+});
+
 describe('countClosedMetaDaysInMonth', () => {
   it('conta só dias programados anteriores a hoje', () => {
     expect(countClosedMetaDaysInMonth([1, 2, 3, 4, 5])).toBe(10);
