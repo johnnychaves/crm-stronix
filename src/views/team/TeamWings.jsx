@@ -31,7 +31,15 @@ function Wing({ pct, label, tone, side, hasCota = true }) {
 
 function TeamWings({ rows, closedDays }) {
   return (
-    <section className="px-5 pt-4 pb-3">
+    <section className="px-5 pt-4 pb-4">
+      {/* Dizer a escala em voz alta: este cartão é do MÊS e não reage ao dia
+          escolhido na régua. Sem isso, quem clica num dia e vê o cartão de
+          cima parado conclui que tem número errado. */}
+      <div className="flex items-baseline gap-2 mb-3 flex-wrap">
+        <h3 className="font-display text-[13px] font-bold tracking-tight">Acumulado do mês</h3>
+        <span className="text-[11px] text-slate-400 dark:text-slate-500">não muda com o dia selecionado</span>
+      </div>
+
       {/* No celular as linhas empilham e os rótulos das colunas perdem
           sentido — mantê-los estoura a largura e corta "Prospecção". */}
       <div className="hidden sm:grid grid-cols-[1fr_150px_1fr] gap-3 pb-3 border-b border-slate-100 dark:border-white/[0.05]">

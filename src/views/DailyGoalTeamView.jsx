@@ -5,7 +5,6 @@ import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DEFAULT_SLA_OVERDUE_DAYS } from '../lib/dailyGoal.js';
 import { useTeamBoard } from './team/useTeamBoard.js';
 import { TeamWings } from './team/TeamWings.jsx';
-import { DayRail } from './team/DayRail.jsx';
 import { TeamDayTable } from './team/TeamDayTable.jsx';
 
 // ============================================================================
@@ -119,15 +118,13 @@ function DailyGoalTeamView({
 
       <div className="rounded-[22px] border border-border bg-card shadow-card">
         <TeamWings rows={board.rows} closedDays={board.closedDays} />
-        <div className="px-5 pb-4">
-          <DayRail rail={board.rail} teamSize={board.teamSize} onPick={pickDay} />
-        </div>
       </div>
 
       <TeamDayTable
         board={board}
         openId={openId}
         onToggle={setOpenId}
+        onPickDay={pickDay}
         slaOverdueDays={slaOverdueDays}
         appUser={appUser}
       />

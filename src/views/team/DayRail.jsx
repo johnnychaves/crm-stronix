@@ -1,12 +1,14 @@
 import { cn } from '../../lib/utils.js';
 
-// A dobradiça: fecha o gráfico e abre a tabela. Um botão por dia PROGRAMADO —
-// folga não é célula vazia, é ausência, senão aparece um vão falso no meio de
-// toda semana. O rótulo da esquerda é obrigatório: sem ele a régua não se
-// explica (foi a primeira coisa que o cliente não entendeu no mockup).
+// O seletor de dia da TABELA. Vive DENTRO do cartão da tabela, não no rodapé
+// das asas: as asas são do mês e não reagem a ele, e a régua colada nelas dava
+// a entender que filtrava as duas coisas.
+// Um botão por dia PROGRAMADO — folga não é célula vazia, é ausência, senão
+// aparece um vão falso no meio de toda semana. O rótulo da esquerda é
+// obrigatório: sem ele a régua não se explica.
 function DayRail({ rail, teamSize, onPick }) {
   return (
-    <div className="flex items-stretch gap-3 pt-3 mt-1 border-t border-slate-100 dark:border-white/[0.05]">
+    <div className="flex items-stretch gap-3 px-5 py-3 border-b border-border">
       <div className="shrink-0 self-center">
         <div className="text-[9.5px] font-bold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400 whitespace-nowrap">Dia do mês</div>
         <div className="text-[10.5px] text-slate-400 dark:text-slate-500 whitespace-nowrap num">quantos bateram, de {teamSize}</div>

@@ -1,16 +1,20 @@
 import { ChevronDown } from 'lucide-react';
 import { Avatar } from '../../components/ui/Avatar.jsx';
 import { ConsultantDayDetail } from './ConsultantDayDetail.jsx';
+import { DayRail } from './DayRail.jsx';
 import { cn } from '../../lib/utils.js';
 
 // Cartão 2 do handoff. A coluna Situação é a que o olho procura, por isso ela
 // carrega a cor. Em dia PASSADO a tela degrada e anuncia: o sistema guarda o
 // resultado, não as tarefas que existiam naquele dia.
-function TeamDayTable({ board, openId, onToggle, slaOverdueDays, appUser }) {
+function TeamDayTable({ board, openId, onToggle, onPickDay, slaOverdueDays, appUser }) {
   const { sel, rows } = board;
 
   return (
     <section className="rounded-[20px] border border-border bg-card shadow-card overflow-hidden">
+      {/* A régua vive aqui, no cartão que ela realmente filtra. */}
+      <DayRail rail={board.rail} teamSize={board.teamSize} onPick={onPickDay} />
+
       <header className="flex items-center gap-2 px-5 py-3.5 border-b border-border">
         <h3 className="font-display text-[15px] font-bold tracking-tight">Resultados do dia {sel.dayNum}</h3>
         {sel.isToday && (
