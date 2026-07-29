@@ -126,6 +126,22 @@ export function countMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
   return n;
 }
 
+// Dias de META já ENCERRADOS no mês (1..ontem). Denominador das asas do painel
+// da equipe: hoje ainda está em curso, então não entra nem no numerador nem no
+// denominador — contá-lo faria o time começar toda manhã devendo um dia que nem
+// começou. Diferente de countMetaDaysInMonth, que INCLUI hoje e é usada onde o
+// numerador também inclui (prospecção do mês na tela do consultor).
+export function countClosedMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
+  const today = new Date(refDate);
+  today.setHours(0, 0, 0, 0);
+  let n = 0;
+  for (let day = 1; day < today.getDate(); day++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), day);
+    if ((metaWeekdays || []).includes(d.getDay())) n++;
+  }
+  return n;
+}
+
 // Dias de META num intervalo [from, to) — denominador do "X de Y dias batidos"
 // quando o painel olha um período passado (ontem/semana/mês anterior/custom).
 export function countMetaDaysInRange(metaWeekdays, from, to) {
@@ -415,8 +431,10 @@ export function computeRitmo(history, metaWeekdays) {
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
+  // Hoje fica fora dos DOIS lados da fração: o dia ainda está em curso. Excluir
+  // só do denominador faria quem bate a meta de manhã aparecer 14/13.
   let monthHits = 0, monthTarget = 0;
-  for (let day = 1; day <= today.getDate(); day++) {
+  for (let day = 1; day < today.getDate(); day++) {
     const d = new Date(today.getFullYear(), today.getMonth(), day);
     if (!isActive(d)) continue;
     monthTarget++;

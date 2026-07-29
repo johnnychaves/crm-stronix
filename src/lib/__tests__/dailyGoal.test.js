@@ -13,6 +13,7 @@ import {
   interactionOwnerAuthUid,
   buildInteractionsByLead,
   countMetaDaysInMonth,
+  countClosedMetaDaysInMonth,
   countMetaDaysInRange,
   countHitsInRange,
   volumeTargetFor,
@@ -537,14 +538,17 @@ describe('computeRitmo (só com metaWeekdays válido — array)', () => {
   // (crash conhecido/latente, fora do escopo desta caracterização).
   const SEG_A_SEX = [1, 2, 3, 4, 5];
 
-  it('monthTarget conta os dias ativos do mês até hoje; hits fora de dia ativo não pontuam', () => {
+  it('monthTarget conta os dias ativos ENCERRADOS do mês; hits fora de dia ativo não pontuam', () => {
     const history = [
       { date: '2026-07-13' },
       { date: '2026-07-14' },
       { date: '2026-07-11' } // sábado: dia inativo, não entra em monthHits
     ];
     const r = computeRitmo(history, SEG_A_SEX);
-    expect(r.monthTarget).toBe(11);
+    // Era 11 quando hoje entrava no denominador. Hoje (qua 15) saiu da conta:
+    // o dia ainda está em curso e contá-lo faria o time começar devendo.
+    expect(r.monthTarget).toBe(10);
+    // Os dois hits são de 13 e 14, anteriores a hoje, então seguem contando.
     expect(r.monthHits).toBe(2);
   });
 
@@ -641,5 +645,46 @@ describe('computeDelegatedPresenceSlots (presença cruzada por turno)', () => {
     const done = goalDone(aula.id, DAILY_GOAL_CATEGORIES.AULA_HOJE);
     const rows = computeDelegatedPresenceSlots([aula], byLead([done]), viewer, usersById, NOW);
     expect(rows[0].done).toBe(true);
+  });
+});
+
+// ── Asas do painel da equipe: hoje fica FORA da conta do mês ────────────────
+// Julho de 2026 começa numa quarta, então com metaWeekdays=[1..5] os dias úteis
+// até 15/07 são 1,2,3,6,7,8,9,10,13,14,15 — onze, sendo dez encerrados.
+describe('computeRitmo — hoje fica fora do mês', () => {
+  const WEEKDAYS = [1, 2, 3, 4, 5];
+
+  it('não conta hoje no denominador', () => {
+    const { monthTarget } = computeRitmo([], WEEKDAYS);
+    expect(monthTarget).toBe(10);
+  });
+
+  it('não conta a meta batida hoje no numerador', () => {
+    const history = [{ date: '2026-07-14' }, { date: '2026-07-15' }];
+    const { monthHits, monthTarget } = computeRitmo(history, WEEKDAYS);
+    expect(monthHits).toBe(1);
+    expect(monthTarget).toBe(10);
+  });
+
+  it('mantém hoje na sequência e na régua de 14 dias', () => {
+    const history = [{ date: '2026-07-14' }, { date: '2026-07-15' }];
+    const { streak, history14 } = computeRitmo(history, WEEKDAYS);
+    expect(streak).toBe(2);
+    expect(history14[13]).toMatchObject({ isToday: true, hit: true });
+  });
+});
+
+describe('countClosedMetaDaysInMonth', () => {
+  it('conta só dias programados anteriores a hoje', () => {
+    expect(countClosedMetaDaysInMonth([1, 2, 3, 4, 5])).toBe(10);
+  });
+
+  it('ignora hoje mesmo quando hoje é dia programado', () => {
+    // Só quarta é dia de meta; 1 e 8 encerraram, 15 é hoje.
+    expect(countClosedMetaDaysInMonth([3])).toBe(2);
+  });
+
+  it('devolve 0 quando a lista de dias está vazia', () => {
+    expect(countClosedMetaDaysInMonth([])).toBe(0);
   });
 });
