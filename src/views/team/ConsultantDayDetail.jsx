@@ -148,14 +148,17 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                       className="w-full flex items-center gap-2 text-left group disabled:cursor-default"
                     >
                       <i className="size-[7px] rounded-full bg-accent-500 shrink-0" aria-hidden="true" />
-                      <span className="flex-1 min-w-0 truncate text-[12px] transition group-enabled:group-hover:text-brand-600 dark:group-enabled:group-hover:text-brand-400">
+                      <span className={cn(
+                        'flex-1 min-w-0 truncate text-[12px] transition group-enabled:group-hover:text-brand-600 dark:group-enabled:group-hover:text-brand-400',
+                        !temNome && 'text-slate-500 dark:text-slate-400'
+                      )}>
                         {temNome ? a.leadName : a.label}
                       </span>
                       <span className="shrink-0 text-[10.5px] num text-slate-400 dark:text-slate-500">{fmtHora(a.at)}</span>
                     </button>
-                    {temNome && (
-                      <span className="block pl-[15px] text-[10.5px] text-slate-400 dark:text-slate-500">{a.label}</span>
-                    )}
+                    <span className="block pl-[15px] text-[10.5px] text-slate-400 dark:text-slate-500">
+                      {temNome ? a.label : 'lead fora da base ativa'}
+                    </span>
                   </li>
                 );
               })}

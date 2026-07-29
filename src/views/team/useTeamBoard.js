@@ -104,8 +104,12 @@ export function useTeamBoard({
         }));
         const prospVol = hasCota ? computeDailyVolume(myLeads, myInteractions, u.id, u.authUid, ref) : null;
         const prospDone = prospVol?.total || 0;
+        // `leads` INTEIRO, não a fatia: a ação é atribuída a quem a FEZ, e o
+        // lead pode ser de outro consultor. A função filtra por consultantId
+        // internamente antes de contar lead novo, então a contagem é a mesma —
+        // o que a fatia quebrava era só o mapa de nomes.
         const prospAcoes = hasCota
-          ? listVolumeActionsInRange(myLeads, myInteractions, u.id, u.authUid, sel.from, sel.to)
+          ? listVolumeActionsInRange(leads, myInteractions, u.id, u.authUid, sel.from, sel.to)
           : [];
         const prospHit = hasCota && prospDone >= cota;
         // metaOk = sem pendência (quem não tem tarefa hoje está em dia).
@@ -130,8 +134,10 @@ export function useTeamBoard({
         ? computeVolumeInRange(myLeads, myInteractions, u.id, u.authUid, sel.from, sel.to)
         : null;
       const prospDone = prospVol?.total || 0;
+      // `leads` inteiro pelo mesmo motivo do caminho de hoje: o nome vem do
+      // mapa, e o lead da ação pode não ser deste consultor.
       const prospAcoes = hasCota
-        ? listVolumeActionsInRange(myLeads, myInteractions, u.id, u.authUid, sel.from, sel.to)
+        ? listVolumeActionsInRange(leads, myInteractions, u.id, u.authUid, sel.from, sel.to)
         : [];
       const prospHit = hasCota && prospDone >= cota;
       return {
