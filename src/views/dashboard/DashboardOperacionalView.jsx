@@ -10,7 +10,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { ArrowRight, Check, Flame, Zap } from 'lucide-react';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../../lib/firebase.js';
-import { isAdminUser, isRegistrationNote } from '../../lib/leads.js';
+import { isAdminUser, isRegistrationNote, getLeadAppointmentDate } from '../../lib/leads.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useLeadProfile } from '../../contexts/LeadProfileContext.jsx';
 import {
@@ -21,8 +21,10 @@ import {
   computeVolumeInRange,
   countMetaDaysInMonth,
   volumeTargetFor,
+  overdueDaysOf,
   dgDateKey
 } from '../../lib/dailyGoal.js';
+import { LeadListPanel } from '../../components/ui/LeadListPanel.jsx';
 import {
   computeDayFunnel,
   computeTodayAgenda,
@@ -123,7 +125,7 @@ function WorkRow({ label, done, target, tone }) {
   );
 }
 
-function ConsultantCard({ card }) {
+function ConsultantCard({ card, onOpen }) {
   const stopped = card.status === 'parada';
   const chipClass = stopped
     ? 'bg-rose-50 border-rose-200 text-rose-600 dark:bg-rose-500/10 dark:border-rose-500/25 dark:text-rose-300'
@@ -162,11 +164,25 @@ function ConsultantCard({ card }) {
 
       <div className="flex mt-3.5 rounded-[11px] overflow-hidden bg-paper-50 border border-slate-100 dark:bg-white/[0.03] dark:border-white/[0.06]">
         {[
-          { value: card.funnel.agendou, label: 'Agendou' },
-          { value: card.funnel.compareceu, label: 'Compareceu' },
-          { value: card.funnel.matriculas, label: 'Matrículas', win: true }
+          { value: card.funnel.agendou, label: 'Agendou', leads: card.leadsBy.agendou },
+          { value: card.funnel.compareceu, label: 'Compareceu', leads: card.leadsBy.compareceu },
+          { value: card.funnel.matriculas, label: 'Matrículas', win: true, leads: card.leadsBy.matriculas }
         ].map((t, i) => (
-          <div key={t.label} className={cn('flex-1 py-2 text-center', i > 0 && 'border-l border-slate-200/70 dark:border-white/[0.06]')}>
+          <button
+            key={t.label}
+            type="button"
+            disabled={t.value === 0}
+            onClick={() => onOpen({
+              title: `${t.label} · ${card.name}`,
+              subtitle: `${t.value} ${t.value === 1 ? 'lead' : 'leads'} hoje`,
+              leads: t.leads
+            })}
+            className={cn(
+              'flex-1 py-2 text-center transition',
+              i > 0 && 'border-l border-slate-200/70 dark:border-white/[0.06]',
+              t.value > 0 && 'hover:bg-slate-100/70 dark:hover:bg-white/[0.05] cursor-pointer'
+            )}
+          >
             <b className={cn(
               'block font-display text-[19px] font-bold leading-none num',
               t.value === 0 ? 'text-slate-300 dark:text-slate-600' : t.win ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'
@@ -174,19 +190,53 @@ function ConsultantCard({ card }) {
               {t.value}
             </b>
             <span className="block text-[9.5px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mt-1">{t.label}</span>
-          </div>
+          </button>
         ))}
       </div>
 
       <div className="flex gap-2 mt-3">
-        <span className={cn('flex-1 flex items-center gap-2 px-2.5 py-2 rounded-[10px] border text-[11.5px]', chipClass)}>
+        <button
+          type="button"
+          disabled={card.backlog.followUps === 0}
+          onClick={() => onOpen({
+            title: `Follow-ups atrasados · ${card.name}`,
+            subtitle: `${card.backlog.followUps} ${card.backlog.followUps === 1 ? 'lead parado' : 'leads parados'} · ordenados por dias de atraso`,
+            // Mais parado primeiro: é por onde o gestor começa a cobrança.
+            leads: [...card.leadsBy.followUpsAtrasados].sort((a, b) => a.nextFollowUp - b.nextFollowUp),
+            // O board conta como atrasado o follow-up vencido em relação a
+            // AGORA; overdueDaysOf conta dias inteiros e devolve 0 pro toque
+            // marcado mais cedo hoje. "0d" não diz nada, então vira "hoje".
+            renderMeta: (lead) => {
+              const dias = overdueDaysOf(lead);
+              return (
+                <span className="text-rose-600 dark:text-rose-300 font-semibold">
+                  {dias > 0 ? `${dias}d` : 'hoje'}
+                </span>
+              );
+            }
+          })}
+          className={cn('flex-1 flex items-center gap-2 px-2.5 py-2 rounded-[10px] border text-[11.5px] text-left transition', chipClass, card.backlog.followUps > 0 && 'hover:brightness-95')}
+        >
           <b className={cn('font-display text-[16px] font-bold num', stopped ? 'text-rose-600 dark:text-rose-300' : 'text-foreground')}>{card.backlog.followUps}</b>
           follow-ups atrasados
-        </span>
-        <span className={cn('flex-1 flex items-center gap-2 px-2.5 py-2 rounded-[10px] border text-[11.5px]', chipClass)}>
+        </button>
+        <button
+          type="button"
+          disabled={card.backlog.noShows === 0}
+          onClick={() => onOpen({
+            title: `No-shows a reagendar · ${card.name}`,
+            subtitle: `${card.backlog.noShows} ${card.backlog.noShows === 1 ? 'lead faltou' : 'leads faltaram'}`,
+            leads: card.leadsBy.noShows,
+            renderMeta: (lead) => {
+              const d = getLeadAppointmentDate(lead);
+              return <span className="text-muted-foreground">{d ? d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—'}</span>;
+            }
+          })}
+          className={cn('flex-1 flex items-center gap-2 px-2.5 py-2 rounded-[10px] border text-[11.5px] text-left transition', chipClass, card.backlog.noShows > 0 && 'hover:brightness-95')}
+        >
           <b className={cn('font-display text-[16px] font-bold num', stopped ? 'text-rose-600 dark:text-rose-300' : 'text-foreground')}>{card.backlog.noShows}</b>
           {card.backlog.noShows === 1 ? 'no-show a reagendar' : 'no-shows a reagendar'}
-        </span>
+        </button>
       </div>
 
       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-white/[0.06] text-[11.5px] text-muted-foreground">
@@ -408,6 +458,10 @@ function DashboardOperacionalView({ leads, interactions, appUser, usersList, db,
   const { openProfile } = useLeadProfile();
   const isAdmin = isAdminUser(appUser);
 
+  // Qual número está aberto no painel lateral: { title, subtitle, leads,
+  // renderMeta } ou null. Um por vez.
+  const [panel, setPanel] = useState(null);
+
   // Relógio da tela (tempo real): atualiza por minuto — move o marcador
   // "agora", o funil do dia e os cards sem depender de reload.
   const [now, setNow] = useState(() => new Date());
@@ -477,6 +531,9 @@ function DashboardOperacionalView({ leads, interactions, appUser, usersList, db,
             followUps: b?.followUpsAtrasados || 0,
             noShows: b?.noShows || 0
           },
+          // Os leads por trás de cada número, pro painel lateral não precisar
+          // recalcular nada nem ler de novo.
+          leadsBy: b?.leads || { agendou: [], compareceu: [], matriculas: [], followUpsAtrasados: [], noShows: [] },
           last: lastActionByUser[u.id] || null
         };
       })
@@ -563,7 +620,7 @@ function DashboardOperacionalView({ leads, interactions, appUser, usersList, db,
           </div>
           {consultantCards.length > 0 ? (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-              {consultantCards.map((card) => <ConsultantCard key={card.key} card={card} />)}
+              {consultantCards.map((card) => <ConsultantCard key={card.key} card={card} onOpen={setPanel} />)}
             </div>
           ) : (
             <div className="rounded-2xl border border-border bg-card shadow-card py-8 text-center text-[12.5px] text-slate-400 italic">
@@ -572,6 +629,16 @@ function DashboardOperacionalView({ leads, interactions, appUser, usersList, db,
           )}
         </section>
       )}
+
+      <LeadListPanel
+        open={Boolean(panel)}
+        onClose={() => setPanel(null)}
+        title={panel?.title}
+        subtitle={panel?.subtitle}
+        leads={panel?.leads || []}
+        renderMeta={panel?.renderMeta}
+        emptyText="Nenhum lead neste grupo."
+      />
 
       <footer className="pt-1 pb-2 text-center text-[11.5px] text-slate-400 whitespace-nowrap">
         Atualizado agora · fixo em hoje
