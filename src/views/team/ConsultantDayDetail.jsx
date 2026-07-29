@@ -26,7 +26,11 @@ function metaDoLead(lead, slug, slaOverdueDays) {
     };
   }
   if (slug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE) {
-    return { text: fmtHora(lead.nextFollowUp), critical: false };
+    // Follow-up marcado só com data cai à meia-noite. "00:00" não informa
+    // nada e ainda parece hora de verdade, então some.
+    const d = lead.nextFollowUp;
+    const semHora = d instanceof Date && d.getHours() === 0 && d.getMinutes() === 0;
+    return { text: semHora ? 'sem hora' : fmtHora(d), critical: false };
   }
   return { text: '', critical: false };
 }
