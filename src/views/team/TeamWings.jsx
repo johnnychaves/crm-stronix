@@ -32,7 +32,9 @@ function Wing({ pct, label, tone, side, hasCota = true }) {
 function TeamWings({ rows, closedDays }) {
   return (
     <section className="px-5 pt-4 pb-3">
-      <div className="grid grid-cols-[1fr_150px_1fr] gap-3 pb-3 border-b border-slate-100 dark:border-white/[0.05]">
+      {/* No celular as linhas empilham e os rótulos das colunas perdem
+          sentido — mantê-los estoura a largura e corta "Prospecção". */}
+      <div className="hidden sm:grid grid-cols-[1fr_150px_1fr] gap-3 pb-3 border-b border-slate-100 dark:border-white/[0.05]">
         <div className="text-right">
           <div className="text-[9.5px] font-bold uppercase tracking-[0.06em] text-brand-700 dark:text-brand-300 whitespace-nowrap">Meta diária</div>
           <div className="text-[10.5px] text-slate-400 dark:text-slate-500 whitespace-nowrap num">dias batidos de {closedDays} encerrados</div>

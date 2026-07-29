@@ -82,7 +82,9 @@ function TeamDayTable({ board, openId, onToggle, slaOverdueDays, appUser }) {
                       ? 'text-slate-400 dark:text-slate-500'
                       : r.prospHit ? 'text-emerald-700 dark:text-emerald-400' : 'text-accent-600 dark:text-accent-400'
                   )}>
-                    {r.hasCota ? (r.isPast ? `${r.prospDone} ações` : `${r.prospDone}/${r.cota}`) : 'sem cota'}
+                    {r.hasCota
+                      ? (r.isPast ? `${r.prospDone} ${r.prospDone === 1 ? 'ação' : 'ações'}` : `${r.prospDone}/${r.cota}`)
+                      : 'sem cota'}
                   </span>
                 </div>
 
