@@ -701,6 +701,42 @@ describe('computeDailyGoalSlots — marcos de renovação vêm da configuração
   });
 });
 
+// ── Nome do lead no extrato de prospecção ───────────────────────────────────
+// A base em memória só traz os leads ATIVOS, então ação em cliente (mensagem
+// de renovação, p.ex.) não resolvia nome. A interação passou a gravar leadName.
+describe('listVolumeActionsInRange — nome do lead fora da base ativa', () => {
+  const from = new Date(2026, 6, 15);
+  const acao = (over = {}) => ({
+    leadId: 'x1',
+    actorAuthUid: 'auth1',
+    volumeKind: 'mensagem',
+    createdAt: new Date(2026, 6, 15, 9, 0),
+    ...over
+  });
+
+  it('usa o nome em memória quando o lead está carregado', () => {
+    const leads = [lead({ id: 'x1', name: 'Ana Ativa' })];
+    const [a] = listVolumeActionsInRange(leads, [acao()], 'u1', 'auth1', from);
+    expect(a.leadName).toBe('Ana Ativa');
+  });
+
+  it('cai pro nome gravado na interação quando o lead saiu da base', () => {
+    const [a] = listVolumeActionsInRange([], [acao({ leadName: 'Cliente Renovando' })], 'u1', 'auth1', from);
+    expect(a.leadName).toBe('Cliente Renovando');
+  });
+
+  it('prefere o nome em memória ao gravado, que pode estar desatualizado', () => {
+    const leads = [lead({ id: 'x1', name: 'Nome Corrigido' })];
+    const [a] = listVolumeActionsInRange(leads, [acao({ leadName: 'Nome Antigo' })], 'u1', 'auth1', from);
+    expect(a.leadName).toBe('Nome Corrigido');
+  });
+
+  it('devolve o travessão quando não há nome em lugar nenhum', () => {
+    const [a] = listVolumeActionsInRange([], [acao()], 'u1', 'auth1', from);
+    expect(a.leadName).toBe('—');
+  });
+});
+
 describe('countClosedMetaDaysInMonth', () => {
   it('conta só dias programados anteriores a hoje', () => {
     expect(countClosedMetaDaysInMonth([1, 2, 3, 4, 5])).toBe(10);

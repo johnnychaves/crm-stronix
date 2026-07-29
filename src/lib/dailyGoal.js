@@ -195,7 +195,10 @@ export function listVolumeActionsInRange(leads, interactions, consultantId, cons
   (interactions || []).forEach((i) => {
     if (interactionOwnerAuthUid(i) !== consultantAuthUid) return;
     if (!inRange(i.createdAt)) return;
-    if (i.volumeKind) out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
+    // Nome: primeiro o lead em memória (é o nome ATUAL, se foi corrigido
+    // depois), senão o que ficou gravado na interação. O segundo cobre lead
+    // que saiu da base ativa — cliente em renovação, por exemplo.
+    if (i.volumeKind) out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || i.leadName || '—' });
   });
   return out.sort((a, b) => b.at - a.at);
 }
