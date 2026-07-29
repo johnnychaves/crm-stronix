@@ -55,9 +55,19 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
     <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_314px] gap-6 bg-paper-50 dark:bg-white/[0.02] px-5 py-4 border-t border-border">
       <div>
         <div className="text-[9.5px] font-bold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400 mb-3">
-          Meta diária · carteira do dia
+          Meta diária · {row.isPast ? 'sem detalhe em dia passado' : 'carteira do dia'}
         </div>
-        {porCategoria.length === 0 ? (
+        {row.isPast ? (
+          // Limitação de GRAVAÇÃO, não de tela: só o resultado foi escrito.
+          <p className="text-[12px] leading-relaxed">
+            <span className={row.hitMeta ? 'text-emerald-700 dark:text-emerald-400 font-semibold' : 'text-slate-600 dark:text-slate-300 font-semibold'}>
+              {row.hitMeta ? 'A meta foi batida neste dia.' : 'A meta não foi batida neste dia.'}
+            </span>{' '}
+            <span className="text-slate-400 dark:text-slate-500">
+              O sistema guarda o resultado, não quais tarefas existiam, então a carteira não pode ser reconstruída. A prospecção ao lado é recalculada e está completa.
+            </span>
+          </p>
+        ) : porCategoria.length === 0 ? (
           <p className="text-[12px] text-slate-400 italic">Nenhuma tarefa na meta de hoje.</p>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-[22px] gap-y-[14px]">
@@ -116,7 +126,9 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
               <span className="text-[12px] text-slate-400 num">de {row.cota}</span>
             </div>
             <div className={cn('text-[11.5px] font-semibold mt-1', faltam > 0 ? 'text-accent-600 dark:text-accent-400' : 'text-emerald-700 dark:text-emerald-400')}>
-              {faltam > 0 ? `faltam ${faltam} ${faltam === 1 ? 'ação' : 'ações'}` : 'cota do dia cumprida'}
+              {faltam > 0
+                ? `${row.isPast ? 'faltaram' : 'faltam'} ${faltam} ${faltam === 1 ? 'ação' : 'ações'}`
+                : `cota do dia ${row.isPast ? 'foi cumprida' : 'cumprida'}`}
             </div>
             <div className="h-2 rounded-full bg-slate-200/70 dark:bg-white/[0.08] overflow-hidden mt-2">
               <div className="h-full rounded-full bg-accent-500" style={{ width: `${Math.min(100, Math.round((row.prospDone / row.cota) * 100))}%` }} />

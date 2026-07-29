@@ -132,7 +132,8 @@ function DailyGoalTeamView({
       {!board.sel.isToday && (
         <p className="text-[11.5px] text-slate-500 dark:text-slate-400 px-1">
           Dia {board.sel.dayNum} selecionado: {selecionado?.n ?? 0} de {board.teamSize} bateram.
-          A tabela mostra só bateu ou não bateu e a prospecção do dia — o sistema não guarda quais tarefas existiam.
+          A coluna da meta mostra só bateu ou não bateu, porque o sistema não guarda quais tarefas existiam.
+          Abra a linha para ver a prospecção do dia, que é recalculada e sai completa.
         </p>
       )}
     </div>

@@ -121,16 +121,22 @@ export function useTeamBoard({
         };
       }
 
-      // ── Dia PASSADO: só o resultado. A carteira não é reconstruível.
+      // ── Dia PASSADO: a CARTEIRA não é reconstruível (o histórico guarda só
+      // "bateu", não quais tarefas existiam). A PROSPECÇÃO é: sai das
+      // interações com volumeKind e dos leads criados no dia, que têm data e
+      // hora — então o extrato nominal do dia 22 existe igual ao de hoje.
       const hitMeta = history.some((h) => h.date === sel.dateKey);
       const prospVol = hasCota
         ? computeVolumeInRange(myLeads, myInteractions, u.id, u.authUid, sel.from, sel.to)
         : null;
       const prospDone = prospVol?.total || 0;
+      const prospAcoes = hasCota
+        ? listVolumeActionsInRange(myLeads, myInteractions, u.id, u.authUid, sel.from, sel.to)
+        : [];
       const prospHit = hasCota && prospDone >= cota;
       return {
         user: u, isPast: true, hasCota, cota, ritmo, ...asas,
-        hitMeta, prospDone, prospVol, prospHit,
+        hitMeta, prospDone, prospVol, prospAcoes, prospHit,
         metaOk: hitMeta, dailyHit: hitMeta, perfect: hitMeta && prospHit,
       };
     });

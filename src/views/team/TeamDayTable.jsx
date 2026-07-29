@@ -35,16 +35,19 @@ function TeamDayTable({ board, openId, onToggle, onPickDay, slaOverdueDays, appU
                 ? { text: `${r.critCount} ${r.critCount === 1 ? 'crítica' : 'críticas'}`, cls: 'text-rose-700 dark:text-rose-300' }
                 : { text: `${r.pendCount} ${r.pendCount === 1 ? 'pendente' : 'pendentes'}`, cls: 'text-slate-600 dark:text-slate-300' };
           const barTone = r.metaOk ? 'bg-success' : r.critCount > 0 ? 'bg-danger' : 'bg-brand-200 dark:bg-brand-500/50';
+          // Em dia passado ainda dá pra auditar a PROSPECÇÃO (recalculada das
+          // interações). Sem cota não sobra nada pra mostrar, aí não expande.
+          const podeExpandir = !r.isPast || r.hasCota;
 
           return (
             <li key={r.user.id} className="border-t border-slate-100 dark:border-white/[0.05] first:border-0">
               <button
                 type="button"
-                disabled={r.isPast}
+                disabled={!podeExpandir}
                 onClick={() => onToggle(aberto ? null : r.user.id)}
                 className={cn(
                   'w-full flex items-center gap-4 px-5 py-3 text-left transition',
-                  !r.isPast && 'hover:bg-slate-50/70 dark:hover:bg-white/[0.02]',
+                  podeExpandir && 'hover:bg-slate-50/70 dark:hover:bg-white/[0.02]',
                   r.perfect && 'bg-emerald-50/50 dark:bg-emerald-500/[0.05]'
                 )}
               >
@@ -93,13 +96,13 @@ function TeamDayTable({ board, openId, onToggle, onPickDay, slaOverdueDays, appU
                 </div>
 
                 <span className="shrink-0 w-5 grid place-items-center">
-                  {!r.isPast && (
+                  {podeExpandir && (
                     <ChevronDown size={16} className={cn('text-slate-400 transition-transform duration-150', aberto && 'rotate-180')} />
                   )}
                 </span>
               </button>
 
-              {aberto && !r.isPast && <ConsultantDayDetail row={r} slaOverdueDays={slaOverdueDays} />}
+              {aberto && podeExpandir && <ConsultantDayDetail row={r} slaOverdueDays={slaOverdueDays} />}
             </li>
           );
         })}
