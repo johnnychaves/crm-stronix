@@ -593,3 +593,36 @@ describe('computeAdminDashboardSpan', () => {
     expect(span.endMs).toBe(range.end.getTime());
   });
 });
+
+// ── O board devolve QUEM está por trás de cada número ───────────────────────
+// O gestor clica no "7 follow-ups atrasados" e precisa da lista. Os leads já
+// são conhecidos dentro da função; antes eram descartados depois de contados.
+describe('computeConsultantDayBoard — listas junto das contagens', () => {
+  const now = new Date(2026, 6, 15, 10, 0, 0);
+  const atrasado = (id, name, dia) => ({
+    id, name, consultantId: 'u1', consultantName: 'Marta',
+    status: 'Contato', nextFollowUp: new Date(2026, 6, dia)
+  });
+
+  it('devolve os leads de follow-up atrasado, não só o total', () => {
+    const board = computeConsultantDayBoard(
+      [atrasado('l1', 'Ana', 10), atrasado('l2', 'Bruno', 12)],
+      { now }
+    );
+    expect(board.u1.followUpsAtrasados).toBe(2);
+    expect(board.u1.leads.followUpsAtrasados.map(l => l.id).sort()).toEqual(['l1', 'l2']);
+  });
+
+  it('não cria entrada de consultor quando não há lead', () => {
+    expect(computeConsultantDayBoard([], { now })).toEqual({});
+  });
+
+  it('cada lista tem exatamente o tamanho da contagem correspondente', () => {
+    const b = computeConsultantDayBoard([atrasado('l1', 'Ana', 10)], { now }).u1;
+    expect(b.leads.followUpsAtrasados).toHaveLength(b.followUpsAtrasados);
+    expect(b.leads.agendou).toHaveLength(b.agendou);
+    expect(b.leads.compareceu).toHaveLength(b.compareceu);
+    expect(b.leads.matriculas).toHaveLength(b.matriculas);
+    expect(b.leads.noShows).toHaveLength(b.noShows);
+  });
+});

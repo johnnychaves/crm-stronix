@@ -126,6 +126,38 @@ export function countMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
   return n;
 }
 
+// Dias de META já ENCERRADOS no mês (1..ontem). Denominador das asas do painel
+// da equipe: hoje ainda está em curso, então não entra nem no numerador nem no
+// denominador — contá-lo faria o time começar toda manhã devendo um dia que nem
+// começou. Diferente de countMetaDaysInMonth, que INCLUI hoje e é usada onde o
+// numerador também inclui (prospecção do mês na tela do consultor).
+export function countClosedMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
+  const today = new Date(refDate);
+  today.setHours(0, 0, 0, 0);
+  let n = 0;
+  for (let day = 1; day < today.getDate(); day++) {
+    const d = new Date(today.getFullYear(), today.getMonth(), day);
+    if ((metaWeekdays || []).includes(d.getDay())) n++;
+  }
+  return n;
+}
+
+// TODOS os dias de META do mês, do dia 1 ao último — inclusive os que ainda não
+// chegaram. É o denominador das réguas do painel da equipe: a barra enche até o
+// alvo do mês inteiro, então "45%" significa "cumpriu 45% da meta do mês", não
+// "45% do que devia ter feito até agora". A leitura de ritmo vem da marca de
+// posição esperada na barra, não do denominador.
+export function countMetaDaysInMonthAll(metaWeekdays, refDate = new Date()) {
+  const d = new Date(refDate);
+  const year = d.getFullYear(), month = d.getMonth();
+  const last = new Date(year, month + 1, 0).getDate();
+  let n = 0;
+  for (let day = 1; day <= last; day++) {
+    if ((metaWeekdays || []).includes(new Date(year, month, day).getDay())) n++;
+  }
+  return n;
+}
+
 // Dias de META num intervalo [from, to) — denominador do "X de Y dias batidos"
 // quando o painel olha um período passado (ontem/semana/mês anterior/custom).
 export function countMetaDaysInRange(metaWeekdays, from, to) {
@@ -179,7 +211,10 @@ export function listVolumeActionsInRange(leads, interactions, consultantId, cons
   (interactions || []).forEach((i) => {
     if (interactionOwnerAuthUid(i) !== consultantAuthUid) return;
     if (!inRange(i.createdAt)) return;
-    if (i.volumeKind) out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || '—' });
+    // Nome: primeiro o lead em memória (é o nome ATUAL, se foi corrigido
+    // depois), senão o que ficou gravado na interação. O segundo cobre lead
+    // que saiu da base ativa — cliente em renovação, por exemplo.
+    if (i.volumeKind) out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || i.leadName || '—' });
   });
   return out.sort((a, b) => b.at - a.at);
 }
@@ -373,21 +408,6 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     });
   });
 
-  // Tarefas CONCLUÍDAS hoje continuam visíveis (como FEITAS) mesmo que a ação de
-  // conclusão tenha tirado o lead da condição viva da categoria. Ex.: concluir um
-  // Contato/Atrasado agenda o próximo toque (nextFollowUp futuro), o que remove o
-  // lead da categoria — sem isto a marca daily_goal_done ficaria órfã e a tarefa
-  // sumiria em vez de contar como feita. addTarget deduplica, então não recria
-  // slots já adicionados pela condição viva acima.
-  myLeads.forEach(lead => {
-    if (lead.status === 'Venda' || lead.status === 'Perda') return;
-    Object.values(DAILY_GOAL_CATEGORIES).forEach(slug => {
-      if (hasGoalDoneToday(lead, slug, leadInteractions(lead.id), todayStart)) {
-        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL[slug] || slug, slug);
-      }
-    });
-  });
-
   return Array.from(allTargetLeadsMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 }
 
@@ -415,8 +435,14 @@ export function computeRitmo(history, metaWeekdays) {
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
+  // Denominador = o mês INTEIRO de dias programados, e hoje entra no numerador.
+  // A régua enche até o alvo do mês, então "45%" é "cumpriu 45% da meta do mês".
+  // A leitura de ritmo vem da marca de posição esperada na barra, não de
+  // encurtar o denominador — encurtar fazia quem batia a meta de manhã aparecer
+  // acima de 100%.
+  const ultimoDia = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   let monthHits = 0, monthTarget = 0;
-  for (let day = 1; day <= today.getDate(); day++) {
+  for (let day = 1; day <= ultimoDia; day++) {
     const d = new Date(today.getFullYear(), today.getMonth(), day);
     if (!isActive(d)) continue;
     monthTarget++;
