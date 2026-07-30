@@ -401,6 +401,12 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         appointmentUnit: isVisita ? (unidade || null) : null,
         appointmentType: appointmentType || null,
         appointmentScheduledFor: appointmentType ? date : null,
+        // Compromisso NOVO nasce sem desfecho. Sem isto, o "não veio" do
+        // agendamento anterior ficava colado no lead e a tela de Aulas/Visitas
+        // mostrava o compromisso novo como já resolvido antes da data chegar.
+        appointmentOutcome: null,
+        appointmentOutcomeAt: null,
+        appointmentOutcomeBy: null,
         currentAulaId
       };
 

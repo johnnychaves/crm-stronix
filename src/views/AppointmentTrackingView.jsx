@@ -41,7 +41,18 @@ const CONFIRM_WINDOW_MS = 15 * 60 * 1000;
 // Estado de comparecimento derivado do appointmentOutcome persistido no lead
 // (ou de conversão legada). Helpers puros, fora do componente.
 function getApptAttendanceState(lead) {
-  const outcome = lead.appointmentOutcome;
+  // BLINDAGEM: o desfecho persistido só vale para o compromisso ATUAL. Quando o
+  // lead é remarcado, o desfecho antigo continua gravado no doc, e sem esta
+  // checagem a tela mostrava "não veio" num compromisso que ainda nem
+  // aconteceu. Só confia no desfecho registrado a partir do dia do compromisso
+  // atual. Registro legado sem appointmentOutcomeAt segue valendo (não dá pra
+  // datar, e mudar isso apagaria histórico verdadeiro da tela).
+  const apptDate = getLeadAppointmentDate(lead);
+  const outcomeAtMs = lead.appointmentOutcomeAt instanceof Date ? lead.appointmentOutcomeAt.getTime() : null;
+  const outcomeIsCurrent =
+    !apptDate || outcomeAtMs === null ||
+    outcomeAtMs >= new Date(apptDate.getFullYear(), apptDate.getMonth(), apptDate.getDate()).getTime();
+  const outcome = outcomeIsCurrent ? lead.appointmentOutcome : null;
   const meta = outcome ? getAppointmentOutcomeMeta(outcome) : null;
   if (meta) return { key: outcome, label: meta.label, icon: meta.icon, badgeClass: meta.badgeClass };
   // Sem desfecho explícito: se converteu, obviamente compareceu (legado).
