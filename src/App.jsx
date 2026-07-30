@@ -1341,8 +1341,11 @@ useEffect(() => {
                   internamente. interactions segue global (G2). */}
               {activeTab === 'dailyGoal' && <DailyGoalView leads={metaLeads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} listenersActive={listenersActive} />}
               {activeTab === 'leads' && <LeadsView interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
-              {activeTab === 'aulas' && <AppointmentTrackingView interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
-              {activeTab === 'visitas' && <AppointmentTrackingView interactions={interactions} appUser={appUser} statuses={statuses} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
+              {/* Aulas e Visitas são SOMENTE CONSULTA: não gravam desfecho, então
+                  não precisam mais de interactions/statuses (que serviam ao antigo
+                  atalho de presença, hoje exclusividade da Meta Diária). */}
+              {activeTab === 'aulas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
+              {activeTab === 'visitas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
               {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
               {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}

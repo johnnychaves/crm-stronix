@@ -1,21 +1,18 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Download, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
-import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, hasGoalDoneToday, isAdminUser, isLeadConverted } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { appointmentsInWindowQuerySpec } from '../lib/leadQueries.js';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { collection, query, where, getCountFromServer } from 'firebase/firestore';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
-import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { getTrialPassNote, isPassActive } from '../lib/freePass.js';
 import { cn } from '@/lib/utils';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
-import { useToast } from '../contexts/ToastContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
-import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
 import { AppointmentExportModal } from '../modals/AppointmentExportModal.jsx';
 
 // Janela de confirmação rápida: da hora marcada até 15min depois. Fora dela o
@@ -114,65 +111,22 @@ const fromDateInput = (s) => {
   return y && m && d ? new Date(y, m - 1, d) : null;
 };
 
-function AppointmentTrackingView({ interactions, appUser, usersList, statuses, db, appointmentType }) {
+function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
   const { openProfile } = useLeadProfile();
   const { professores } = useGeneralConfig();
-  const toast = useToast();
   const isAdmin = isAdminUser(appUser);
   const isAula = appointmentType === 'aula_experimental';
-  const categorySlug = isAula ? DAILY_GOAL_CATEGORIES.AULA_HOJE : DAILY_GOAL_CATEGORIES.VISITA_HOJE;
+  // Relógio do render, congelado na montagem. Só serve para ordenar
+  // futuro-primeiro, então não precisa ticar — e chamar Date.now() solto no
+  // render é impuro (react-hooks/purity barra).
+  const [nowMs] = useState(() => Date.now());
 
-  // Atalho de presença (Veio/Faltou). Grava o desfecho na hora; credita a Meta
-  // do responsável só quando a aula é HOJE (a Meta é de hoje) e ainda não foi
-  // concluída — o card de professor e o dashboard leem o appointmentOutcome
-  // direto, então valem pra qualquer data. Sempre editável, sem consumir o
-  // agendamento (a linha continua na lista) nem promover fase.
-  const [savingId, setSavingId] = useState(null);
-  // Sobreposição otimista do desfecho por lead: usePagedLeads é getDocs (não ao
-  // vivo), então sem isto o switch não refletiria a marcação até um refetch.
-  const [outcomeOverride, setOutcomeOverride] = useState({});
-  const todayStartMs = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
-  const interactionsByLead = useMemo(() => {
-    const m = new Map();
-    (interactions || []).forEach(i => { const a = m.get(i.leadId); if (a) a.push(i); else m.set(i.leadId, [i]); });
-    return m;
-  }, [interactions]);
-
-  const markPresence = async (lead, outcome, e) => {
-    if (e) e.stopPropagation();
-    if (savingId) return;
-    // O botão decide o próximo estado: clique ALTERNA veio/faltou e segurar
-    // manda `null`, que é o desmarcar (volta pro neutro). Ver PresenceSwitch.
-    const clearing = outcome === null;
-    setSavingId(lead.id);
-    try {
-      if (clearing) {
-        await clearAppointmentOutcome({ db, lead, categorySlug });
-        setOutcomeOverride(o => ({ ...o, [lead.id]: null }));
-        toast.success(`Presença de ${lead.name} desmarcada.`);
-      } else {
-        const apptDate = getLeadAppointmentDate(lead);
-        const isToday = apptDate && isApptSameDay(apptDate);
-        const already = hasGoalDoneToday(lead, categorySlug, interactionsByLead.get(lead.id) || [], todayStartMs);
-        await writeAppointmentOutcome({
-          db, lead, outcome, categorySlug, appUser, statuses,
-          consumeAppointment: false,
-          promote: false,
-          writeGoalDone: Boolean(isToday) && !already,
-          sourceLabel: isAula ? 'Aulas experimentais' : 'Visitas'
-        });
-        setOutcomeOverride(o => ({ ...o, [lead.id]: outcome }));
-        toast.success(outcome === 'attended'
-          ? `Presença de ${lead.name} confirmada.`
-          : `${lead.name} marcado como não veio.`);
-      }
-    } catch (err) {
-      console.error('markPresence', err);
-      toast.error('Não foi possível salvar a presença. Tente novamente.');
-    } finally {
-      setSavingId(null);
-    }
-  };
+  // SOMENTE CONSULTA (decisão do Johnny, 2026-07-30). O atalho de presença que
+  // existia aqui saiu: marcar comparecimento passou a ser exclusividade da Meta
+  // Diária, onde ficam as regras (promoção de fase, exceção de cliente, pergunta
+  // de remarcar quem não veio). Ter dois lugares gravando o mesmo desfecho com
+  // regras diferentes era a fonte de incoerência entre as telas. Esta lista
+  // continua mostrando a situação de cada compromisso, só não deixa mudá-la.
 
   // Rótulos que mudam entre Aulas (4a) e Visitas (5a).
   const pluralLabel = isAula ? 'aulas' : 'visitas';
@@ -339,7 +293,7 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
       const fim = startOfDay(range.end).getTime() + DAY_MS;
       list = list.filter(l => { const t = getLeadAppointmentDate(l).getTime(); return t >= ini && t < fim; });
     } else if (isAula && dayTab === 'ongoing') {
-      const passNow = new Date();
+      const passNow = new Date(nowMs);
       list = list.filter(l => {
         const t = getLeadAppointmentDate(l).getTime();
         return t >= monthWindow.start && t < monthWindow.end && isPassActive(l, passNow);
@@ -348,15 +302,14 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
       const [ini, fim] = dayWindows[dayTab];
       list = list.filter(l => { const t = getLeadAppointmentDate(l).getTime(); return t >= ini && t < fim; });
     }
-    const now = Date.now();
     return [...list].sort((a, b) => {
       const da = getLeadAppointmentDate(a)?.getTime() ?? 0;
       const db2 = getLeadAppointmentDate(b)?.getTime() ?? 0;
-      const aF = da >= now, bF = db2 >= now;
+      const aF = da >= nowMs, bF = db2 >= nowMs;
       if (aF !== bF) return aF ? -1 : 1;
       return aF ? (da - db2) : (db2 - da);
     });
-  }, [scopedLeads, range, dayTab, dayWindows, monthWindow, isAula]);
+  }, [scopedLeads, range, dayTab, dayWindows, monthWindow, isAula, nowMs]);
 
   const visibleRows = filtered.slice(0, visibleCount);
 
@@ -682,8 +635,7 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
                 <p className="text-[12.5px] text-slate-400 dark:text-neutral-500">{emptySub}</p>
               </div>
             ) : (
-              visibleRows.map(rawL => {
-                const l = rawL.id in outcomeOverride ? { ...rawL, appointmentOutcome: outcomeOverride[rawL.id] } : rawL;
+              visibleRows.map(l => {
                 const d = getLeadAppointmentDate(l);
                 const att = getApptAttendanceState(l);
                 const fin = getApptFinalState(l);
@@ -693,12 +645,6 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
                 const consultantFirst = (l.consultantName || '').trim().split(/\s+/)[0] || '';
                 const sitLabel = getSituacaoLabel(att.key);
                 const sitTitle = att.key === 'pending' ? 'Agendado · aguardando desfecho' : sitLabel;
-                // Atalho de presença só p/ leads em andamento (não matriculado/perdido).
-                const canMark = fin.tone === 'slate';
-                const nowMs = Date.now();
-                const inConfirmWindow = Boolean(d) && nowMs >= d.getTime() && nowMs <= d.getTime() + CONFIRM_WINDOW_MS;
-                const pendingPresence = att.key !== 'attended' && att.key !== 'no_show';
-                const savingRow = savingId === l.id;
                 return (
                   <div
                     key={l.id}
@@ -769,22 +715,13 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
                             {pass.text}
                           </div>
                         )}
-                        {canMark && (
-                          <div className="mt-1.5">
-                            <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
-                          </div>
-                        )}
                       </div>
                     ) : (
                       <div className="min-w-0">
-                        {canMark ? (
-                          <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span title={sitTitle} className={cn('size-3 rounded shrink-0', attSquareClass(att.key))} />
-                            <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-200 truncate">{sitLabel}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span title={sitTitle} className={cn('size-3 rounded shrink-0', attSquareClass(att.key))} />
+                          <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-200 truncate">{sitLabel}</span>
+                        </div>
                       </div>
                     )}
 
