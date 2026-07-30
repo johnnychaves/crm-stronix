@@ -30,6 +30,7 @@ import {
 } from '../../lib/dashboardMetrics.js';
 import { formatHourLabel, humanizeAge } from '../../lib/format.js';
 import { cn } from '../../lib/utils.js';
+import { useDayAgenda } from '../../hooks/useDayAgenda.js';
 import { DashCard, DashTimeline } from './DashPrimitives.jsx';
 import { dashInitials } from './dashTokens.js';
 import { useTeamGoals } from './useTeamGoals.js';
@@ -404,7 +405,7 @@ function PlacarDoDia({ leads, interactions, appUser, db, onNavigate, now }) {
 }
 
 // ---- View -------------------------------------------------------------------
-function DashboardOperacionalView({ leads, interactions, appUser, usersList, db, onNavigate }) {
+function DashboardOperacionalView({ leads, interactions, appUser, usersList, db, onNavigate, listenersActive = true }) {
   const { openProfile } = useLeadProfile();
   const isAdmin = isAdminUser(appUser);
 
@@ -417,7 +418,21 @@ function DashboardOperacionalView({ leads, interactions, appUser, usersList, db,
   }, []);
 
   const dayFunnel = useMemo(() => computeDayFunnel(leads, now), [leads, now]);
-  const agenda = useMemo(() => computeTodayAgenda(leads, now), [leads, now]);
+  // Linha do tempo do dia: a assinatura global do gestor carrega SÓ o balde
+  // 'ativo' (flip da PR #144), então quem foi matriculado ou perdido hoje saía
+  // da lista e o compromisso dele sumia da linha do tempo — justamente depois
+  // de acontecer, que é quando ele é resolvido. A consulta do dia traz a janela
+  // inteira sem filtrar balde; a união recompõe a agenda real.
+  // Fora do admin, recorta pelo dono: o texto da tela promete "suas visitas e
+  // aulas de hoje", e a consulta não filtra consultor.
+  const { items: dayLeads } = useDayAgenda({ db, enabled: listenersActive, dayKey: dgDateKey(now) });
+  const agenda = useMemo(() => {
+    const extra = isAdmin ? (dayLeads || []) : (dayLeads || []).filter((l) => l.consultantId === appUser.id);
+    const byId = new Map();
+    extra.forEach((l) => { if (l?.id) byId.set(l.id, l); });
+    (leads || []).forEach((l) => { if (l?.id) byId.set(l.id, l); });
+    return computeTodayAgenda(Array.from(byId.values()), now);
+  }, [leads, dayLeads, isAdmin, appUser, now]);
   const board = useMemo(() => computeConsultantDayBoard(leads, { now }), [leads, now]);
   const goals = useTeamGoals({ db, appUser, usersList, leads, interactions });
 
