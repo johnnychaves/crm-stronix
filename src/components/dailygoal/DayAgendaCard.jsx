@@ -49,7 +49,7 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
           </p>
         </div>
         {pending > 0 && (
-          <span className="num text-[11px] px-1.5 h-[18px] rounded-md grid place-items-center bg-accent-500/15 text-accent-700 dark:text-accent-300 shrink-0">
+          <span className="num text-[11px] px-1.5 h-[18px] rounded-md grid place-items-center bg-accent-500/15 text-accent-600 dark:text-accent-400 shrink-0">
             {pending}
           </span>
         )}
@@ -105,7 +105,7 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
                 <div
                   className={cn(
                     'flex-1 min-w-0 mb-1.5 flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-white/[0.03] border',
-                    isNext ? 'border-accent-300 dark:border-accent-500/40' : 'border-slate-200/70 dark:border-white/[0.06]',
+                    isNext ? 'border-accent-400 dark:border-accent-500/40' : 'border-slate-200/70 dark:border-white/[0.06]',
                     row.isMine && 'border-l-2 border-l-accent-500 rounded-l-none'
                   )}
                 >
