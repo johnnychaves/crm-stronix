@@ -8,7 +8,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { ArrowRight, Check, Flame, Zap } from 'lucide-react';
+import { ArrowRight, Check, ChevronDown, Flame, Zap } from 'lucide-react';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../../lib/firebase.js';
 import { isAdminUser, isRegistrationNote } from '../../lib/leads.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
@@ -26,7 +26,9 @@ import {
 import {
   computeDayFunnel,
   computeTodayAgenda,
-  computeConsultantDayBoard
+  computeConsultantDayBoard,
+  computePendingFollowUps,
+  computeNoShowsToRework
 } from '../../lib/dashboardMetrics.js';
 import { formatHourLabel, humanizeAge } from '../../lib/format.js';
 import { cn } from '../../lib/utils.js';
@@ -124,8 +126,32 @@ function WorkRow({ label, done, target, tone }) {
   );
 }
 
-function ConsultantCard({ card }) {
+// Contador de atraso do card. Com gente por trás, vira botão que abre a lista;
+// zerado, continua sendo só um número (não há o que abrir).
+function BacklogChip({ count, label, leads, open, onToggle, stopped, chipClass }) {
+  const numClass = cn('font-display text-[16px] font-bold num', stopped ? 'text-rose-600 dark:text-rose-300' : 'text-foreground');
+  const base = cn('flex-1 flex items-center gap-2 px-2.5 py-2 rounded-[10px] border text-[11.5px] text-left', chipClass);
+  if (!leads || leads.length === 0) {
+    return <span className={base}><b className={numClass}>{count}</b>{label}</span>;
+  }
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      className={cn(base, 'transition-colors hover:brightness-95 dark:hover:brightness-125 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40')}
+    >
+      <b className={numClass}>{count}</b>
+      <span className="truncate">{label}</span>
+      <ChevronDown className={cn('size-3.5 shrink-0 ml-auto transition-transform', open && 'rotate-180')} aria-hidden="true" />
+    </button>
+  );
+}
+
+function ConsultantCard({ card, onOpenLead }) {
   const stopped = card.status === 'parada';
+  const [openBucket, setOpenBucket] = useState(null);
+  const openList = (openBucket && card.backlogLeads?.[openBucket]) || [];
   const chipClass = stopped
     ? 'bg-rose-50 border-rose-200 text-rose-600 dark:bg-rose-500/10 dark:border-rose-500/25 dark:text-rose-300'
     : 'bg-slate-50 border-slate-100 text-slate-500 dark:bg-white/[0.03] dark:border-white/[0.06] dark:text-slate-400';
@@ -180,15 +206,41 @@ function ConsultantCard({ card }) {
       </div>
 
       <div className="flex gap-2 mt-3">
-        <span className={cn('flex-1 flex items-center gap-2 px-2.5 py-2 rounded-[10px] border text-[11.5px]', chipClass)}>
-          <b className={cn('font-display text-[16px] font-bold num', stopped ? 'text-rose-600 dark:text-rose-300' : 'text-foreground')}>{card.backlog.followUps}</b>
-          follow-ups atrasados
-        </span>
-        <span className={cn('flex-1 flex items-center gap-2 px-2.5 py-2 rounded-[10px] border text-[11.5px]', chipClass)}>
-          <b className={cn('font-display text-[16px] font-bold num', stopped ? 'text-rose-600 dark:text-rose-300' : 'text-foreground')}>{card.backlog.noShows}</b>
-          {card.backlog.noShows === 1 ? 'no-show a reagendar' : 'no-shows a reagendar'}
-        </span>
+        <BacklogChip
+          count={card.backlog.followUps}
+          label="follow-ups atrasados"
+          leads={card.backlogLeads?.followUps}
+          open={openBucket === 'followUps'}
+          onToggle={() => setOpenBucket(openBucket === 'followUps' ? null : 'followUps')}
+          stopped={stopped}
+          chipClass={chipClass}
+        />
+        <BacklogChip
+          count={card.backlog.noShows}
+          label={card.backlog.noShows === 1 ? 'no-show a reagendar' : 'no-shows a reagendar'}
+          leads={card.backlogLeads?.noShows}
+          open={openBucket === 'noShows'}
+          onToggle={() => setOpenBucket(openBucket === 'noShows' ? null : 'noShows')}
+          stopped={stopped}
+          chipClass={chipClass}
+        />
       </div>
+
+      {openList.length > 0 && (
+        <ul className="mt-2 rounded-[10px] border border-slate-200/70 dark:border-white/[0.06] divide-y divide-slate-100 dark:divide-white/[0.05] overflow-hidden">
+          {openList.map((l) => (
+            <li key={l.id}>
+              <button
+                type="button"
+                onClick={() => onOpenLead && onOpenLead(l.id)}
+                className="w-full text-left px-2.5 py-1.5 text-[11.5px] hover:bg-paper-50 dark:hover:bg-white/[0.04] focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-600/40"
+              >
+                <span className="font-semibold text-foreground truncate">{l.name || '—'}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-white/[0.06] text-[11.5px] text-muted-foreground">
         <i className="size-1.5 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" aria-hidden="true" />
@@ -434,6 +486,21 @@ function DashboardOperacionalView({ leads, interactions, appUser, usersList, db,
     return computeTodayAgenda(Array.from(byId.values()), now);
   }, [leads, dayLeads, isAdmin, appUser, now]);
   const board = useMemo(() => computeConsultantDayBoard(leads, { now }), [leads, now]);
+  // Os leads por trás dos contadores de atraso do card, agrupados por dono.
+  // computeConsultantDayBoard só devolve o número; aqui guardamos QUEM são,
+  // para o clique no contador abrir a lista e dar para ir direto na ficha.
+  // Mesmos critérios do contador, senão a lista abriria divergindo do número.
+  const backlogLeads = useMemo(() => {
+    const map = {};
+    const push = (bucket, lead) => {
+      const id = lead.consultantId || '—';
+      if (!map[id]) map[id] = { followUps: [], noShows: [] };
+      map[id][bucket].push(lead);
+    };
+    computePendingFollowUps(leads).forEach((l) => { if (l.nextFollowUp < now) push('followUps', l); });
+    computeNoShowsToRework(leads, { now }).forEach((l) => push('noShows', l));
+    return map;
+  }, [leads, now]);
   const goals = useTeamGoals({ db, appUser, usersList, leads, interactions });
 
   // Última ação de cada consultor (autoria pela interaction, como no antigo
@@ -492,6 +559,9 @@ function DashboardOperacionalView({ leads, interactions, appUser, usersList, db,
             followUps: b?.followUpsAtrasados || 0,
             noShows: b?.noShows || 0
           },
+          // Os leads por trás dos dois contadores, para o clique abrir a lista
+          // em vez de o número ser um beco sem saída.
+          backlogLeads: backlogLeads[u.id] || { followUps: [], noShows: [] },
           last: lastActionByUser[u.id] || null
         };
       })
@@ -502,7 +572,7 @@ function DashboardOperacionalView({ leads, interactions, appUser, usersList, db,
         const backlogB = b.backlog.followUps + b.backlog.noShows;
         return backlogB - backlogA || a.name.localeCompare(b.name);
       });
-  }, [isAdmin, usersList, goals, board, lastActionByUser]);
+  }, [isAdmin, usersList, goals, board, lastActionByUser, backlogLeads]);
 
   const eyebrowDate = now
     .toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
@@ -578,7 +648,7 @@ function DashboardOperacionalView({ leads, interactions, appUser, usersList, db,
           </div>
           {consultantCards.length > 0 ? (
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-              {consultantCards.map((card) => <ConsultantCard key={card.key} card={card} />)}
+              {consultantCards.map((card) => <ConsultantCard key={card.key} card={card} onOpenLead={openProfile} />)}
             </div>
           ) : (
             <div className="rounded-2xl border border-border bg-card shadow-card py-8 text-center text-[12.5px] text-slate-400 italic">
