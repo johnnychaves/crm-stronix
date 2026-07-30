@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- padrão do registry shadcn: componente + variants no mesmo arquivo */
 import * as React from "react"
 import { cva } from "class-variance-authority";
 import { Toggle as TogglePrimitive } from "radix-ui"
