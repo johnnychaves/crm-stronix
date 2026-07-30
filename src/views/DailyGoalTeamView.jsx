@@ -78,31 +78,15 @@ function DailyGoalTeamView({
           </p>
         </div>
 
-        {/* Os dois números que resolvem os três segundos: se os dois estiverem
-            bem, o gestor fecha a tela sem olhar o resto. */}
-        <div className="flex items-center gap-2.5">
-          {!board.sel.isToday && (
-            <button
-              type="button"
-              onClick={() => pickDay(now.getDate())}
-              className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border bg-card text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/10 transition"
-            >
-              <ArrowLeft size={13} /> Voltar pra hoje
-            </button>
-          )}
-          <div className="rounded-xl bg-paper-50 dark:bg-white/[0.03] border border-slate-100 dark:border-white/[0.06] px-3.5 py-2 text-right">
-            <div className="font-display text-[19px] font-bold leading-none num">{board.okNow}</div>
-            <div className="text-[11.5px] font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">em dia agora</div>
-            <div className="text-[10.5px] text-slate-400 dark:text-slate-500 whitespace-nowrap num">de {board.teamSize}</div>
-          </div>
-          <div className="rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-500/20 px-3.5 py-2 text-right">
-            <div className="font-display text-[19px] font-bold leading-none num text-rose-700 dark:text-rose-300">{board.critTotal}</div>
-            <div className="text-[11.5px] font-semibold text-rose-700 dark:text-rose-300 whitespace-nowrap">
-              {board.critTotal === 1 ? 'crítica' : 'críticas'}
-            </div>
-            <div className="text-[10.5px] text-slate-400 dark:text-slate-500 whitespace-nowrap num">atrasadas {slaOverdueDays}d+</div>
-          </div>
-        </div>
+        {!board.sel.isToday && (
+          <button
+            type="button"
+            onClick={() => pickDay(now.getDate())}
+            className="inline-flex items-center gap-1.5 text-[12px] font-medium px-3 py-1.5 rounded-lg border border-border bg-card text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/10 transition"
+          >
+            <ArrowLeft size={13} /> Voltar pra hoje
+          </button>
+        )}
       </div>
 
       <div className="rounded-[22px] border border-border bg-card shadow-card">
