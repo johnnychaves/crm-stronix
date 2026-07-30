@@ -8,7 +8,7 @@ import {
   buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo,
   overdueDaysOf, dgDateKey, computeDailyVolume, computeVolumeInRange,
   listVolumeActionsInRange, volumeTargetFor, countClosedMetaDaysInMonth,
-  interactionOwnerAuthUid,
+  countMetaDaysInMonthAll, interactionOwnerAuthUid,
 } from '../../lib/dailyGoal.js';
 
 // Fatiar leads e interações por dono UMA vez, em vez de re-varrer tudo por
@@ -37,9 +37,12 @@ export function useTeamBoard({
     const ref = now || new Date();
     const todayNum = ref.getDate();
     const year = ref.getFullYear(), month = ref.getMonth();
-    const todayStart = new Date(year, month, todayNum);
     const monthStart = new Date(year, month, 1);
+    // closedDays = dias programados que já fecharam. monthDays = o mês inteiro.
+    // O primeiro posiciona a MARCA de ritmo na barra; o segundo é o denominador.
     const closedDays = countClosedMetaDaysInMonth(metaWeekdays, ref);
+    const monthDays = countMetaDaysInMonthAll(metaWeekdays, ref);
+    const pacePct = monthDays > 0 ? Math.round((closedDays / monthDays) * 100) : 0;
 
     const byLead = buildInteractionsByLead(interactions);
     const { leadsByConsultant, interactionsByAuth } = sliceByOwner(leads, interactions);
@@ -82,15 +85,19 @@ export function useTeamBoard({
       const cota = volumeTargetFor(u);
       const hasCota = cota > 0;
 
-      // ── Asas: só dias ENCERRADOS, dos dois lados da fração. Contar hoje num
-      // lado só faria quem bate a meta de manhã aparecer 14/13.
-      const metaPct = closedDays > 0 ? Math.round((ritmo.monthHits / closedDays) * 100) : null;
+      // ── Asas: alvo CHEIO do mês nos dois lados, e hoje conta. A barra enche
+      // até o fim do mês, então o número é "quanto da meta do mês já foi".
+      // Quem diz se está no ritmo é `pacePct`, a marca de posição esperada.
+      const metaPct = monthDays > 0 ? Math.round((ritmo.monthHits / monthDays) * 100) : null;
       const prospMes = hasCota
-        ? computeVolumeInRange(myLeads, myInteractions, u.id, u.authUid, monthStart, todayStart, metaWeekdays).total
+        ? computeVolumeInRange(myLeads, myInteractions, u.id, u.authUid, monthStart, null, metaWeekdays).total
         : 0;
-      const prospAlvoMes = cota * closedDays;
+      const prospAlvoMes = cota * monthDays;
       const prospPct = hasCota && prospAlvoMes > 0 ? Math.round((prospMes / prospAlvoMes) * 100) : null;
-      const asas = { metaPct, metaHits: ritmo.monthHits, closedDays, prospMes, prospAlvoMes, prospPct };
+      const asas = {
+        metaPct, metaHits: ritmo.monthHits, monthDays,
+        prospMes, prospAlvoMes, prospPct, pacePct,
+      };
 
       // ── HOJE: a carteira completa existe.
       if (sel.isToday) {
@@ -170,7 +177,7 @@ export function useTeamBoard({
     });
 
     return {
-      sel, rail, rows: sorted, teamSize, closedDays,
+      sel, rail, rows: sorted, teamSize, closedDays, monthDays, pacePct,
       okNow: rows.filter((r) => r.metaOk).length,
       critTotal: rows.reduce((acc, r) => acc + (r.critCount || 0), 0),
       perfectCount: rows.filter((r) => r.perfect).length,

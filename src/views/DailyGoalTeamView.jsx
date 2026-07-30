@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, Target } from 'lucide-react';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
@@ -58,17 +58,6 @@ function DailyGoalTeamView({
     metaWeekdays, slaOverdueDays, renewalCheckpoints, selectedDay, now,
   });
 
-  // Total de dias programados do mês inteiro — o "de 22" do cabeçalho.
-  const totalProgramados = useMemo(() => {
-    const y = now.getFullYear(), m = now.getMonth();
-    const last = new Date(y, m + 1, 0).getDate();
-    let n = 0;
-    for (let d = 1; d <= last; d++) {
-      if ((metaWeekdays || []).includes(new Date(y, m, d).getDay())) n++;
-    }
-    return n;
-  }, [now, metaWeekdays]);
-
   // Trocar de dia fecha a linha aberta: o detalhe só existe pra hoje.
   const pickDay = (d) => {
     setSelectedDay(d === now.getDate() ? null : d);
@@ -85,7 +74,7 @@ function DailyGoalTeamView({
             <Target size={18} className="text-brand-600" /> Meta da equipe
           </h2>
           <p className="text-[11.5px] text-muted-foreground mt-0.5 num">
-            {MESES[now.getMonth()]} · {board.closedDays} {board.closedDays === 1 ? 'dia programado encerrado' : 'dias programados encerrados'} de {totalProgramados} · hoje em curso
+            {MESES[now.getMonth()]} · {board.monthDays} dias programados · {board.closedDays} {board.closedDays === 1 ? 'encerrado' : 'encerrados'} · hoje em curso
           </p>
         </div>
 
@@ -117,7 +106,7 @@ function DailyGoalTeamView({
       </div>
 
       <div className="rounded-[22px] border border-border bg-card shadow-card">
-        <TeamWings rows={board.rows} closedDays={board.closedDays} />
+        <TeamWings rows={board.rows} monthDays={board.monthDays} pacePct={board.pacePct} />
       </div>
 
       <TeamDayTable

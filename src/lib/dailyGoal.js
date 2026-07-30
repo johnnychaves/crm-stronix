@@ -142,6 +142,22 @@ export function countClosedMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
   return n;
 }
 
+// TODOS os dias de META do mês, do dia 1 ao último — inclusive os que ainda não
+// chegaram. É o denominador das réguas do painel da equipe: a barra enche até o
+// alvo do mês inteiro, então "45%" significa "cumpriu 45% da meta do mês", não
+// "45% do que devia ter feito até agora". A leitura de ritmo vem da marca de
+// posição esperada na barra, não do denominador.
+export function countMetaDaysInMonthAll(metaWeekdays, refDate = new Date()) {
+  const d = new Date(refDate);
+  const year = d.getFullYear(), month = d.getMonth();
+  const last = new Date(year, month + 1, 0).getDate();
+  let n = 0;
+  for (let day = 1; day <= last; day++) {
+    if ((metaWeekdays || []).includes(new Date(year, month, day).getDay())) n++;
+  }
+  return n;
+}
+
 // Dias de META num intervalo [from, to) — denominador do "X de Y dias batidos"
 // quando o painel olha um período passado (ontem/semana/mês anterior/custom).
 export function countMetaDaysInRange(metaWeekdays, from, to) {
@@ -419,10 +435,14 @@ export function computeRitmo(history, metaWeekdays) {
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  // Hoje fica fora dos DOIS lados da fração: o dia ainda está em curso. Excluir
-  // só do denominador faria quem bate a meta de manhã aparecer 14/13.
+  // Denominador = o mês INTEIRO de dias programados, e hoje entra no numerador.
+  // A régua enche até o alvo do mês, então "45%" é "cumpriu 45% da meta do mês".
+  // A leitura de ritmo vem da marca de posição esperada na barra, não de
+  // encurtar o denominador — encurtar fazia quem batia a meta de manhã aparecer
+  // acima de 100%.
+  const ultimoDia = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
   let monthHits = 0, monthTarget = 0;
-  for (let day = 1; day < today.getDate(); day++) {
+  for (let day = 1; day <= ultimoDia; day++) {
     const d = new Date(today.getFullYear(), today.getMonth(), day);
     if (!isActive(d)) continue;
     monthTarget++;

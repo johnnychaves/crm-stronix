@@ -14,6 +14,7 @@ import {
   buildInteractionsByLead,
   countMetaDaysInMonth,
   countClosedMetaDaysInMonth,
+  countMetaDaysInMonthAll,
   countMetaDaysInRange,
   countHitsInRange,
   volumeTargetFor,
@@ -538,17 +539,16 @@ describe('computeRitmo (só com metaWeekdays válido — array)', () => {
   // (crash conhecido/latente, fora do escopo desta caracterização).
   const SEG_A_SEX = [1, 2, 3, 4, 5];
 
-  it('monthTarget conta os dias ativos ENCERRADOS do mês; hits fora de dia ativo não pontuam', () => {
+  it('monthTarget conta TODOS os dias ativos do mês; hits fora de dia ativo não pontuam', () => {
     const history = [
       { date: '2026-07-13' },
       { date: '2026-07-14' },
       { date: '2026-07-11' } // sábado: dia inativo, não entra em monthHits
     ];
     const r = computeRitmo(history, SEG_A_SEX);
-    // Era 11 quando hoje entrava no denominador. Hoje (qua 15) saiu da conta:
-    // o dia ainda está em curso e contá-lo faria o time começar devendo.
-    expect(r.monthTarget).toBe(10);
-    // Os dois hits são de 13 e 14, anteriores a hoje, então seguem contando.
+    // O mês INTEIRO: julho/2026 tem 23 dias úteis. A régua enche até o alvo do
+    // mês, e a leitura de ritmo vem da marca de posição esperada na barra.
+    expect(r.monthTarget).toBe(23);
     expect(r.monthHits).toBe(2);
   });
 
@@ -651,19 +651,33 @@ describe('computeDelegatedPresenceSlots (presença cruzada por turno)', () => {
 // ── Asas do painel da equipe: hoje fica FORA da conta do mês ────────────────
 // Julho de 2026 começa numa quarta, então com metaWeekdays=[1..5] os dias úteis
 // até 15/07 são 1,2,3,6,7,8,9,10,13,14,15 — onze, sendo dez encerrados.
-describe('computeRitmo — hoje fica fora do mês', () => {
+// As réguas do painel enchem até o alvo do MÊS INTEIRO, então o denominador é
+// todos os dias programados e hoje conta no numerador. Quem diz se está no
+// ritmo é a marca de posição esperada na barra, não o denominador.
+describe('computeRitmo — o mês inteiro é o denominador', () => {
   const WEEKDAYS = [1, 2, 3, 4, 5];
 
-  it('não conta hoje no denominador', () => {
+  it('conta todos os dias programados do mês, inclusive os que não chegaram', () => {
     const { monthTarget } = computeRitmo([], WEEKDAYS);
-    expect(monthTarget).toBe(10);
+    expect(monthTarget).toBe(23);
   });
 
-  it('não conta a meta batida hoje no numerador', () => {
+  it('conta a meta batida hoje no numerador', () => {
     const history = [{ date: '2026-07-14' }, { date: '2026-07-15' }];
     const { monthHits, monthTarget } = computeRitmo(history, WEEKDAYS);
-    expect(monthHits).toBe(1);
-    expect(monthTarget).toBe(10);
+    expect(monthHits).toBe(2);
+    expect(monthTarget).toBe(23);
+  });
+
+  it('nunca passa de 100%: numerador e denominador são da mesma escala', () => {
+    // Todos os dias úteis de julho batidos.
+    const todos = [];
+    for (let d = 1; d <= 31; d++) {
+      const dia = new Date(2026, 6, d);
+      if (WEEKDAYS.includes(dia.getDay())) todos.push({ date: dgDateKey(dia) });
+    }
+    const { monthHits, monthTarget } = computeRitmo(todos, WEEKDAYS);
+    expect(monthHits).toBe(monthTarget);
   });
 
   it('mantém hoje na sequência e na régua de 14 dias', () => {
@@ -671,6 +685,26 @@ describe('computeRitmo — hoje fica fora do mês', () => {
     const { streak, history14 } = computeRitmo(history, WEEKDAYS);
     expect(streak).toBe(2);
     expect(history14[13]).toMatchObject({ isToday: true, hit: true });
+  });
+});
+
+describe('countMetaDaysInMonthAll', () => {
+  it('conta o mês inteiro, não só os dias decorridos', () => {
+    expect(countMetaDaysInMonthAll([1, 2, 3, 4, 5])).toBe(23);
+  });
+
+  it('respeita a política de dias da academia', () => {
+    // Só quarta: 1, 8, 15, 22, 29 em julho/2026.
+    expect(countMetaDaysInMonthAll([3])).toBe(5);
+  });
+
+  it('devolve 0 quando nenhum dia da semana vale', () => {
+    expect(countMetaDaysInMonthAll([])).toBe(0);
+  });
+
+  it('é sempre maior ou igual ao total de dias já encerrados', () => {
+    expect(countMetaDaysInMonthAll([1, 2, 3, 4, 5]))
+      .toBeGreaterThanOrEqual(countClosedMetaDaysInMonth([1, 2, 3, 4, 5]));
   });
 });
 

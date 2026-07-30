@@ -6,30 +6,45 @@ import { cn } from '../../lib/utils.js';
 // partir do nome. Barra curta de um lado só diz o assunto da conversa — quem
 // falha na carteira e quem falha na cota são dois problemas diferentes e duas
 // conversas diferentes. Mede só dias ENCERRADOS: hoje vive na régua e na tabela.
-function Wing({ pct, label, tone, side, hasCota = true }) {
-  const low = pct != null && pct < 60;
-  const barTone = low ? 'bg-danger' : tone === 'brand' ? 'bg-brand-600' : 'bg-accent-500';
+function Wing({ pct, label, tone, side, pacePct, hasCota = true }) {
+  // "Atrasado" é em relação ao RITMO, não a um corte fixo: a barra enche até o
+  // fim do mês, então com corte de 60% todo mundo ficaria vermelho no dia 3.
+  // A folga de 10 pontos (~2 dias de meta) evita acusar atraso de quem está a
+  // um dia da marca — nesse caso a própria marca já conta a história.
+  const FOLGA = 10;
+  const atrasado = pct != null && pacePct != null && pct < pacePct - FOLGA;
+  const barTone = atrasado ? 'bg-danger' : tone === 'brand' ? 'bg-brand-600' : 'bg-accent-500';
   const labelTone = !hasCota
     ? 'text-slate-400 dark:text-slate-500'
-    : low ? 'text-rose-700 dark:text-rose-300' : 'text-slate-600 dark:text-slate-300';
+    : atrasado ? 'text-rose-700 dark:text-rose-300' : 'text-slate-600 dark:text-slate-300';
   return (
     <div className={cn('flex items-center gap-2.5 min-w-0', side === 'right' && 'flex-row-reverse')}>
       <span className={cn('shrink-0 text-[11px] font-semibold num whitespace-nowrap', labelTone)}>{label}</span>
       {/* Alvo 0 não é 0%: a trilha some em vez de mostrar barra vazia. */}
       <div className={cn(
-        'flex-1 h-[18px] rounded-md overflow-hidden flex',
+        'relative flex-1 h-[18px] rounded-md overflow-hidden flex',
         hasCota ? 'bg-slate-100 dark:bg-white/[0.06]' : 'bg-transparent',
         side === 'left' && 'justify-end'
       )}>
         {hasCota && pct != null && (
           <span className={cn('h-full rounded-md', barTone)} style={{ width: `${Math.min(100, pct)}%` }} />
         )}
+        {/* Onde a barra deveria estar hoje. Ancorada no lado de onde ela cresce:
+            a régua da esquerda cresce da direita pra esquerda. */}
+        {hasCota && pacePct != null && (
+          <span
+            aria-hidden="true"
+            title="posição esperada para hoje"
+            className="absolute top-0 bottom-0 w-[2px] bg-slate-400/70 dark:bg-white/40"
+            style={side === 'left' ? { right: `${Math.min(100, pacePct)}%` } : { left: `${Math.min(100, pacePct)}%` }}
+          />
+        )}
       </div>
     </div>
   );
 }
 
-function TeamWings({ rows, closedDays }) {
+function TeamWings({ rows, monthDays, pacePct }) {
   return (
     <section className="px-5 pt-4 pb-4">
       {/* Dizer a escala em voz alta: este cartão é do MÊS e não reage ao dia
@@ -38,6 +53,10 @@ function TeamWings({ rows, closedDays }) {
       <div className="flex items-baseline gap-2 mb-3 flex-wrap">
         <h3 className="font-display text-[13px] font-bold tracking-tight">Acumulado do mês</h3>
         <span className="text-[11px] text-slate-400 dark:text-slate-500">não muda com o dia selecionado</span>
+        <span className="text-[11px] text-slate-400 dark:text-slate-500 inline-flex items-center gap-1.5 ml-auto">
+          <i className="w-[2px] h-3 bg-slate-400/70 dark:bg-white/40 inline-block" aria-hidden="true" />
+          onde deveria estar hoje
+        </span>
       </div>
 
       {/* No celular as linhas empilham e os rótulos das colunas perdem
@@ -45,7 +64,7 @@ function TeamWings({ rows, closedDays }) {
       <div className="hidden sm:grid grid-cols-[1fr_150px_1fr] gap-3 pb-3 border-b border-slate-100 dark:border-white/[0.05]">
         <div className="text-right">
           <div className="text-[9.5px] font-bold uppercase tracking-[0.06em] text-brand-700 dark:text-brand-300 whitespace-nowrap">Meta diária</div>
-          <div className="text-[10.5px] text-slate-400 dark:text-slate-500 whitespace-nowrap num">dias batidos de {closedDays} encerrados</div>
+          <div className="text-[10.5px] text-slate-400 dark:text-slate-500 whitespace-nowrap num">dias batidos de {monthDays} no mês</div>
         </div>
         <div className="text-center">
           <div className="text-[9.5px] font-bold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400">Consultor</div>
@@ -75,7 +94,8 @@ function TeamWings({ rows, closedDays }) {
                 side="left"
                 tone="brand"
                 pct={r.metaPct}
-                label={`${r.metaHits}/${r.closedDays} · ${r.metaPct == null ? '—' : `${r.metaPct}%`}`}
+                pacePct={pacePct}
+                label={`${r.metaHits}/${r.monthDays} · ${r.metaPct == null ? '—' : `${r.metaPct}%`}`}
               />
             </div>
 
@@ -98,6 +118,7 @@ function TeamWings({ rows, closedDays }) {
                 side="right"
                 tone="accent"
                 hasCota={r.hasCota}
+                pacePct={pacePct}
                 pct={r.prospPct}
                 label={r.hasCota ? `${r.prospMes}/${r.prospAlvoMes} · ${r.prospPct == null ? '—' : `${r.prospPct}%`}` : 'sem cota'}
               />
