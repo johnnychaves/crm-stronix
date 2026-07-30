@@ -155,10 +155,31 @@ export function useTeamBoard({
     });
 
     const teamSize = rows.length;
+
+    // O cabeçalho ("em dia agora", "críticas") e a célula HOJE da régua falam de
+    // AGORA, não do dia selecionado. Não podem sair de `rows`: quando o gestor
+    // abre o dia 13, as linhas viram do dia 13 e "em dia agora" passaria a
+    // contar quem bateu no dia 13, e as críticas desapareceriam. Em "hoje" as
+    // linhas já servem; em dia passado precisa de um passe próprio.
+    const statsHoje = sel.isToday
+      ? {
+        emDia: rows.filter((r) => r.metaOk).length,
+        criticas: rows.reduce((acc, r) => acc + (r.critCount || 0), 0),
+      }
+      : (usersList || []).reduce((acc, u) => {
+        const processed = computeDailyGoalSlots(leadsByConsultant.get(u.id) || [], byLead, u.id, renewalCheckpoints);
+        if (slotTotals(processed).progress === 100) acc.emDia++;
+        processed.forEach((l) => l.categorySlugs.forEach((slug) => {
+          if (l.categoryStatus?.[slug]) return;
+          if (slug === DAILY_GOAL_CATEGORIES.ATRASADO && overdueDaysOf(l, ref) >= slaOverdueDays) acc.criticas++;
+        }));
+        return acc;
+      }, { emDia: 0, criticas: 0 });
+
     const rail = scheduled.map((d) => {
       const key = dgDateKey(new Date(year, month, d));
       const isTodayCell = d === todayNum;
-      const n = isTodayCell ? rows.filter((r) => r.metaOk).length : (hitsByDate.get(key) || 0);
+      const n = isTodayCell ? statsHoje.emDia : (hitsByDate.get(key) || 0);
       return {
         day: d, key, n, isToday: isTodayCell,
         selected: d === sel.dayNum,
@@ -178,9 +199,9 @@ export function useTeamBoard({
 
     return {
       sel, rail, rows: sorted, teamSize, closedDays, monthDays, pacePct,
-      okNow: rows.filter((r) => r.metaOk).length,
-      critTotal: rows.reduce((acc, r) => acc + (r.critCount || 0), 0),
-      perfectCount: rows.filter((r) => r.perfect).length,
+      // Sempre de HOJE, mesmo com dia passado selecionado.
+      okNow: statsHoje.emDia,
+      critTotal: statsHoje.criticas,
     };
   }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays, renewalCheckpoints, selectedDay, now]);
 }

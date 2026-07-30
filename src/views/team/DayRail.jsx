@@ -15,7 +15,11 @@ function DayRail({ rail, teamSize, onPick }) {
       </div>
       <div className="flex-1 flex gap-1 overflow-x-auto thin-scroll snap-x">
         {rail.map((d) => {
-          const fill = d.n <= 2 ? 'bg-danger' : d.n >= 4 ? 'bg-success' : 'bg-brand-200 dark:bg-brand-500/50';
+          // Cor PROPORCIONAL ao time, não por contagem fixa: com corte em 4, uma
+          // academia de 10 consultores pintaria de verde um dia em que só 4
+          // bateram.
+          const frac = teamSize > 0 ? d.n / teamSize : 0;
+          const fill = frac >= 0.8 ? 'bg-success' : frac <= 0.34 ? 'bg-danger' : 'bg-brand-200 dark:bg-brand-500/50';
           return (
             <button
               key={d.day}
