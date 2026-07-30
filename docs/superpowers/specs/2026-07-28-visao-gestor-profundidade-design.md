@@ -67,13 +67,15 @@ O componente `MonthTrajectory` atual sai inteiro.
 
 #### Cabeçalho
 
-Título, mês, o total de dias programados e quantos já encerraram. À direita os dois números
-que resolvem a leitura de três segundos:
+Título, mês, o total de dias programados e quantos já encerraram. À direita, o botão
+"Voltar pra hoje", que só aparece com um dia passado selecionado.
 
-- **em dia agora**: quantos consultores estão com a meta de hoje zerada, ou seja
-  `progress === 100`. Quem não tem tarefa hoje conta como em dia.
-- **críticas**: a soma, no time inteiro, de tarefas pendentes com
-  `overdueDaysOf(lead) >= slaOverdueDays`.
+**Os dois números agregados saíram** (decisão do Johnny em 2026-07-30, depois de usar a
+tela). O handoff os chamava de critério da tela — "em dia agora" e "críticas", a leitura
+de três segundos. Na prática a tabela logo abaixo dá a mesma informação por consultor e
+com nome, que é o que permite agir; o agregado só repetia.
+
+O `critCount` por linha continua, alimentando a coluna Situação.
 
 #### Cartão 1: as duas réguas
 
