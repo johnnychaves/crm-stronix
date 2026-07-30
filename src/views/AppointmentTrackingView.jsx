@@ -766,6 +766,7 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
           <div className="mt-3 flex items-center gap-4 px-1 text-[11px] text-slate-400 dark:text-neutral-500">
             <span className="inline-flex items-center gap-[5px]"><span className="size-3 rounded bg-emerald-600" /> compareceu</span>
             <span className="inline-flex items-center gap-[5px]"><span className="size-3 rounded bg-rose-600" /> não compareceu</span>
+            <span className="inline-flex items-center gap-[5px]"><span className="size-3 rounded bg-brand-600" /> remarcado</span>
             <span className="inline-flex items-center gap-[5px]"><span className="size-3 rounded bg-amber-500" /> agendado</span>
           </div>
 
