@@ -1,7 +1,5 @@
-import { useState } from 'react';
 import { BookOpen, Building2, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { PresenceSwitch } from '../ui/PresenceSwitch.jsx';
 import { DAILY_GOAL_CATEGORIES } from '../../lib/leads.js';
 
@@ -30,10 +28,11 @@ const subtitleOf = (row) => {
 };
 
 export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
-  const [filter, setFilter] = useState('pending');
+  // Sem filtro: a agenda mostra o dia INTEIRO, resolvidos junto com pendentes.
+  // Quem olha quer o movimento do dia, não só a fila de tarefa; o contador do
+  // cabeçalho já diz quantas faltam.
   if (!rows || rows.length === 0) return null;
 
-  const visible = filter === 'pending' ? rows.filter((r) => !r.outcome) : rows;
   const nextId = rows[nextIndex]?.id;
 
   return (
@@ -55,29 +54,8 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
         )}
       </div>
 
-      <div className="px-2.5 pt-2.5">
-        <ToggleGroup
-          type="single"
-          value={filter}
-          onValueChange={(v) => v && setFilter(v)}
-          className="w-full gap-1"
-        >
-          <ToggleGroupItem value="pending" className="flex-1 h-7 text-[11.5px]">
-            Pendentes
-          </ToggleGroupItem>
-          <ToggleGroupItem value="all" className="flex-1 h-7 text-[11.5px]">
-            Todos
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </div>
-
       <div className="p-2.5 max-h-[280px] overflow-y-auto thin-scroll">
-        {visible.length === 0 ? (
-          <div className="py-6 text-center text-[12px] text-muted-foreground">
-            Tudo com presença registrada.
-          </div>
-        ) : (
-          visible.map((row) => {
+        {rows.map((row) => {
             const isNext = row.id === nextId;
             const Icon = row.categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE ? Building2 : BookOpen;
             return (
@@ -131,8 +109,7 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
                 </div>
               </div>
             );
-          })
-        )}
+        })}
       </div>
     </div>
   );
