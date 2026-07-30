@@ -2,6 +2,7 @@ import { BookOpen, Building2, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { PresenceSwitch } from '../ui/PresenceSwitch.jsx';
 import { DAILY_GOAL_CATEGORIES } from '../../lib/leads.js';
+import { SOLO_TRAINING_LABEL } from '../../lib/professores.js';
 
 // Agenda do dia compartilhada (painel da Meta Diária). Só apresenta: as linhas
 // chegam prontas de computeDayAgenda e o clique sobe para o pai. NÃO conta na
@@ -21,6 +22,7 @@ const subtitleOf = (row) => {
   } else {
     parts.push(row.appointmentModality || 'Aula exp.');
     if (row.appointmentProfessorName) parts.push(row.appointmentProfessorName);
+    else if (row.appointmentSoloTraining) parts.push(SOLO_TRAINING_LABEL);
   }
   parts.push(row.isMine ? 'sua' : `de ${row.ownerName}`);
   if (row.outcomeByName) parts.push(`conf. ${row.outcomeByName}`);

@@ -99,6 +99,30 @@ describe('computeDayAgenda — cliente, perda e desfecho', () => {
     expect(rows[0].isClient).toBe(true);
   });
 
+  // isClient é o que decide se a escrita mexe no funil do registro: linha de
+  // cliente NÃO promove etapa nem consome o compromisso (é upsell de modalidade,
+  // não prospecção). Por isso o critério tem que ser o mesmo do resto do app
+  // (isClientLead), que reconhece matrícula feita por etapa customizada.
+  it('matriculado por etapa customizada também conta como cliente', () => {
+    const porEtapa = lead({ id: 'c2', name: 'Renata Alves', status: 'Matriculado' });
+    const convertido = lead({ id: 'c3', name: 'Igor Souza', status: 'Convertido' });
+
+    const { rows } = computeDayAgenda({
+      liveLeads: [porEtapa, convertido], agendaLeads: [], usersById: users, viewerId: 'u2', now: NOW,
+    });
+
+    expect(rows.find((r) => r.id === 'c2').isClient).toBe(true);
+    expect(rows.find((r) => r.id === 'c3').isClient).toBe(true);
+  });
+
+  it('lead em prospecção não é marcado como cliente', () => {
+    const { rows } = computeDayAgenda({
+      liveLeads: [lead({ id: 'n9', status: 'Negociação' })], agendaLeads: [], usersById: users, viewerId: 'u2', now: NOW,
+    });
+
+    expect(rows[0].isClient).toBe(false);
+  });
+
   it('lead perdido fica de fora', () => {
     const perdido = lead({ id: 'p1', status: 'Perda' });
 

@@ -979,8 +979,17 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     if (savingAgendaId) return;
     setSavingAgendaId(row.id);
     try {
+      // CLIENTE é caso à parte: ele está na agenda só para upsell de modalidade,
+      // não para prospecção. A presença dele registra o desfecho e a timeline e
+      // para por aí — não mexe em etapa do funil (promote) e não consome o
+      // compromisso (consumeAppointment), que zeraria o próximo contato dele.
+      // Sem isso, confirmar a presença de um aluno apagava um contato agendado
+      // e podia empurrá-lo de volta para o funil de vendas.
+      const isCliente = row.isClient;
       await writeAppointmentOutcome({
         db, lead: row, outcome, categorySlug: row.categorySlug, appUser, statuses,
+        promote: !isCliente,
+        consumeAppointment: !isCliente,
         sourceLabel: 'Agenda do dia',
       });
       const quem = row.isMine ? '' : ` (meta de ${row.ownerName})`;

@@ -14,6 +14,7 @@ import {
   DAILY_GOAL_CATEGORIES,
   getLeadAppointmentDate,
   getLeadAppointmentType,
+  isClientLead,
 } from './leads.js';
 
 // Mesmo dia em horário LOCAL (nunca UTC — o dia tem que bater com o fuso de quem
@@ -74,7 +75,11 @@ export function computeDayAgenda({
         : DAILY_GOAL_CATEGORIES.AULA_HOJE,
       ownerName: owner?.name || lead.consultantName || 'sem consultor',
       isMine: Boolean(viewerId) && lead.consultantId === viewerId,
-      isClient: lead.lifecycleStage === 'cliente' || lead.status === 'Venda',
+      // Mesmo critério do resto do app (isClientLead): pega também quem foi
+      // matriculado por etapa customizada do funil ("Matriculado", "Convertido"),
+      // não só o status literal 'Venda'. É o que decide se a linha é upsell de
+      // aluno — e o que impede a escrita de mexer no funil dele.
+      isClient: isClientLead(lead),
       outcome,
       outcomeByName: outcomeBy?.name || null,
     });
