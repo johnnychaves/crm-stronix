@@ -654,7 +654,10 @@ export function computeConsultantDayBoard(leads, { now = new Date(), noShowDays 
         compareceu: 0,
         matriculas: 0,
         followUpsAtrasados: 0,
-        noShows: 0
+        noShows: 0,
+        // Os mesmos leads que produziram cada contagem acima. O gestor clica no
+        // número e vê quem está por trás — sem leitura nova, já estão em memória.
+        leads: { agendou: [], compareceu: [], matriculas: [], followUpsAtrasados: [], noShows: [] }
       };
     }
     return board[id];
@@ -663,20 +666,32 @@ export function computeConsultantDayBoard(leads, { now = new Date(), noShowDays 
   computeTodayAgenda(leads, now).forEach(l => {
     const b = ensure(l);
     b.agendou += 1;
+    b.leads.agendou.push(l);
     const d = getLeadAppointmentDate(l);
-    if (d <= now && isLeadAttended(l)) b.compareceu += 1;
+    if (d <= now && isLeadAttended(l)) {
+      b.compareceu += 1;
+      b.leads.compareceu.push(l);
+    }
   });
 
   computeConvertedLeads(leads, buildDayRange(now)).forEach(l => {
-    ensure(l).matriculas += 1;
+    const b = ensure(l);
+    b.matriculas += 1;
+    b.leads.matriculas.push(l);
   });
 
   computePendingFollowUps(leads).forEach(l => {
-    if (l.nextFollowUp < now) ensure(l).followUpsAtrasados += 1;
+    if (l.nextFollowUp < now) {
+      const b = ensure(l);
+      b.followUpsAtrasados += 1;
+      b.leads.followUpsAtrasados.push(l);
+    }
   });
 
   computeNoShowsToRework(leads, { now, days: noShowDays }).forEach(l => {
-    ensure(l).noShows += 1;
+    const b = ensure(l);
+    b.noShows += 1;
+    b.leads.noShows.push(l);
   });
 
   return board;

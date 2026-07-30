@@ -894,7 +894,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // computeDailyGoalSlots cair no próprio default, e evita o número mágico
   // repetido em cada tela. O que NÃO pode é deixar de repassar — era isso que
   // fazia a Meta do gestor divergir da do consultor.
-  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0, renewalCheckpoints = [90, 60, 30], renewalGraceDays } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, renewalCheckpoints = [90, 60, 30], renewalGraceDays } = useGeneralConfig();
 
   // Renovação: popup de desfecho (8b) ao concluir a tarefa + fluxo de
   // matrícula/renovação existente quando o desfecho é "Renovou".
@@ -1053,7 +1053,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // Alvo: definido por consultor (doc do usuário); sem alvo = sem régua.
   // Gestor fica fora (target 0 = sem barra). Ações = agendamentos/reagendamentos,
   // ligações/mensagens e leads novos (ver lib/dailyGoal.js).
-  const volumeTarget = volumeTargetFor(appUser, dailyVolumeTarget);
+  // Cota de prospecção é 100% individual: vem do doc do usuário, não do
+  // config da academia. volumeTargetFor ignora qualquer 2º argumento.
+  const volumeTarget = volumeTargetFor(appUser);
   const volumeData = useMemo(() => {
     if (!volumeTarget) return null;
     void todayKey; // vira com o dia, como o resto da Meta
@@ -1590,12 +1592,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           usersList={usersList}
           metaWeekdays={metaWeekdays}
           slaOverdueDays={slaOverdueDays}
-          dailyVolumeTarget={dailyVolumeTarget}
           renewalCheckpoints={renewalCheckpoints}
           renewalGraceDays={renewalGraceDays}
           db={db}
           appUser={appUser}
-          onOpenLead={(l) => openProfile(l.id)}
         />
       ) : (
       <>

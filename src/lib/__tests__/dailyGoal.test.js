@@ -13,6 +13,8 @@ import {
   interactionOwnerAuthUid,
   buildInteractionsByLead,
   countMetaDaysInMonth,
+  countClosedMetaDaysInMonth,
+  countMetaDaysInMonthAll,
   countMetaDaysInRange,
   countHitsInRange,
   volumeTargetFor,
@@ -535,14 +537,16 @@ describe('computeRitmo (só com metaWeekdays válido — array)', () => {
   // (crash conhecido/latente, fora do escopo desta caracterização).
   const SEG_A_SEX = [1, 2, 3, 4, 5];
 
-  it('monthTarget conta os dias ativos do mês até hoje; hits fora de dia ativo não pontuam', () => {
+  it('monthTarget conta TODOS os dias ativos do mês; hits fora de dia ativo não pontuam', () => {
     const history = [
       { date: '2026-07-13' },
       { date: '2026-07-14' },
       { date: '2026-07-11' } // sábado: dia inativo, não entra em monthHits
     ];
     const r = computeRitmo(history, SEG_A_SEX);
-    expect(r.monthTarget).toBe(11);
+    // O mês INTEIRO: julho/2026 tem 23 dias úteis. A régua enche até o alvo do
+    // mês, e a leitura de ritmo vem da marca de posição esperada na barra.
+    expect(r.monthTarget).toBe(23);
     expect(r.monthHits).toBe(2);
   });
 
@@ -569,5 +573,137 @@ describe('computeRitmo (só com metaWeekdays válido — array)', () => {
     expect(r.history14[13].active).toBe(true); // quarta
     expect(r.history14[12].hit).toBe(true); // ontem (14/07) tem hit
     expect(r.history14[9].active).toBe(false); // 11/07, sábado
+  });
+});
+
+describe('computeRitmo — o mês inteiro é o denominador', () => {
+  const WEEKDAYS = [1, 2, 3, 4, 5];
+
+  it('conta todos os dias programados do mês, inclusive os que não chegaram', () => {
+    const { monthTarget } = computeRitmo([], WEEKDAYS);
+    expect(monthTarget).toBe(23);
+  });
+
+  it('conta a meta batida hoje no numerador', () => {
+    const history = [{ date: '2026-07-14' }, { date: '2026-07-15' }];
+    const { monthHits, monthTarget } = computeRitmo(history, WEEKDAYS);
+    expect(monthHits).toBe(2);
+    expect(monthTarget).toBe(23);
+  });
+
+  it('nunca passa de 100%: numerador e denominador são da mesma escala', () => {
+    // Todos os dias úteis de julho batidos.
+    const todos = [];
+    for (let d = 1; d <= 31; d++) {
+      const dia = new Date(2026, 6, d);
+      if (WEEKDAYS.includes(dia.getDay())) todos.push({ date: dgDateKey(dia) });
+    }
+    const { monthHits, monthTarget } = computeRitmo(todos, WEEKDAYS);
+    expect(monthHits).toBe(monthTarget);
+  });
+
+  it('mantém hoje na sequência e na régua de 14 dias', () => {
+    const history = [{ date: '2026-07-14' }, { date: '2026-07-15' }];
+    const { streak, history14 } = computeRitmo(history, WEEKDAYS);
+    expect(streak).toBe(2);
+    expect(history14[13]).toMatchObject({ isToday: true, hit: true });
+  });
+});
+
+describe('countMetaDaysInMonthAll', () => {
+  it('conta o mês inteiro, não só os dias decorridos', () => {
+    expect(countMetaDaysInMonthAll([1, 2, 3, 4, 5])).toBe(23);
+  });
+
+  it('respeita a política de dias da academia', () => {
+    // Só quarta: 1, 8, 15, 22, 29 em julho/2026.
+    expect(countMetaDaysInMonthAll([3])).toBe(5);
+  });
+
+  it('devolve 0 quando nenhum dia da semana vale', () => {
+    expect(countMetaDaysInMonthAll([])).toBe(0);
+  });
+
+  it('é sempre maior ou igual ao total de dias já encerrados', () => {
+    expect(countMetaDaysInMonthAll([1, 2, 3, 4, 5]))
+      .toBeGreaterThanOrEqual(countClosedMetaDaysInMonth([1, 2, 3, 4, 5]));
+  });
+});
+
+// ── A configuração de marcos precisa CHEGAR até computeDailyGoalSlots ───────
+// A função respeita o 4º argumento; quem chamava sem ele (a Meta do gestor)
+// caía no padrão e divergia da tela do consultor.
+describe('computeDailyGoalSlots — marcos de renovação vêm da configuração', () => {
+  const cliente = (endsAt) => lead({
+    id: 'c1',
+    status: 'Venda',
+    lifecycleStage: 'cliente',
+    createdAt: new Date(2026, 0, 10),
+    currentContractEndsAt: endsAt,
+  });
+
+  it('não surfa o cliente quando o marco configurado ainda não chegou', () => {
+    // Vence em 13/09/2026, 60 dias depois de hoje (15/07). Só o marco de 30
+    // está configurado, então ainda não é hora de falar com ele.
+    const leads = [cliente(new Date(2026, 8, 13))];
+    expect(computeDailyGoalSlots(leads, new Map(), 'u1', [30])).toHaveLength(0);
+  });
+
+  it('surfa o cliente quando o marco configurado é o de 60 dias', () => {
+    const leads = [cliente(new Date(2026, 8, 13))];
+    const slots = computeDailyGoalSlots(leads, new Map(), 'u1', [60]);
+    expect(slots).toHaveLength(1);
+    expect(slots[0].categorySlugs).toContain(DAILY_GOAL_CATEGORIES.RENOVACAO);
+  });
+});
+
+// ── Nome do lead no extrato de prospecção ───────────────────────────────────
+// A base em memória só traz os leads ATIVOS, então ação em cliente (mensagem
+// de renovação, p.ex.) não resolvia nome. A interação passou a gravar leadName.
+describe('listVolumeActionsInRange — nome do lead fora da base ativa', () => {
+  const from = new Date(2026, 6, 15);
+  const acao = (over = {}) => ({
+    leadId: 'x1',
+    actorAuthUid: 'auth1',
+    volumeKind: 'mensagem',
+    createdAt: new Date(2026, 6, 15, 9, 0),
+    ...over
+  });
+
+  it('usa o nome em memória quando o lead está carregado', () => {
+    const leads = [lead({ id: 'x1', name: 'Ana Ativa' })];
+    const [a] = listVolumeActionsInRange(leads, [acao()], 'u1', 'auth1', from);
+    expect(a.leadName).toBe('Ana Ativa');
+  });
+
+  it('cai pro nome gravado na interação quando o lead saiu da base', () => {
+    const [a] = listVolumeActionsInRange([], [acao({ leadName: 'Cliente Renovando' })], 'u1', 'auth1', from);
+    expect(a.leadName).toBe('Cliente Renovando');
+  });
+
+  it('prefere o nome em memória ao gravado, que pode estar desatualizado', () => {
+    const leads = [lead({ id: 'x1', name: 'Nome Corrigido' })];
+    const [a] = listVolumeActionsInRange(leads, [acao({ leadName: 'Nome Antigo' })], 'u1', 'auth1', from);
+    expect(a.leadName).toBe('Nome Corrigido');
+  });
+
+  it('devolve o travessão quando não há nome em lugar nenhum', () => {
+    const [a] = listVolumeActionsInRange([], [acao()], 'u1', 'auth1', from);
+    expect(a.leadName).toBe('—');
+  });
+});
+
+describe('countClosedMetaDaysInMonth', () => {
+  it('conta só dias programados anteriores a hoje', () => {
+    expect(countClosedMetaDaysInMonth([1, 2, 3, 4, 5])).toBe(10);
+  });
+
+  it('ignora hoje mesmo quando hoje é dia programado', () => {
+    // Só quarta é dia de meta; 1 e 8 encerraram, 15 é hoje.
+    expect(countClosedMetaDaysInMonth([3])).toBe(2);
+  });
+
+  it('devolve 0 quando a lista de dias está vazia', () => {
+    expect(countClosedMetaDaysInMonth([])).toBe(0);
   });
 });
