@@ -86,3 +86,100 @@ describe('computeDayAgenda — união das fontes e recorte do dia', () => {
     expect(rows.map((r) => r.id)).toEqual(['l9', 'l8']);
   });
 });
+
+describe('computeDayAgenda — cliente, perda e desfecho', () => {
+  it('cliente matriculado entra e vem marcado', () => {
+    const cliente = lead({ id: 'c1', name: 'Thiago Melo', status: 'Venda', lifecycleStage: 'cliente' });
+
+    const { rows } = computeDayAgenda({
+      liveLeads: [], agendaLeads: [cliente], usersById: users, viewerId: 'u2', now: NOW,
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].isClient).toBe(true);
+  });
+
+  it('lead perdido fica de fora', () => {
+    const perdido = lead({ id: 'p1', status: 'Perda' });
+
+    const { rows } = computeDayAgenda({
+      liveLeads: [perdido], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
+    });
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it('desfecho de HOJE marca a linha como resolvida e nomeia quem registrou', () => {
+    const veio = lead({
+      id: 'd1',
+      appointmentOutcome: 'attended',
+      appointmentOutcomeAt: at(19, 12),
+      appointmentOutcomeBy: 'auth-u2',
+    });
+
+    const { rows, pending } = computeDayAgenda({
+      liveLeads: [veio], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
+    });
+
+    expect(rows[0].outcome).toBe('attended');
+    expect(rows[0].outcomeByName).toBe('Carla');
+    expect(pending).toBe(0);
+  });
+
+  it('desfecho de OUTRO dia não resolve a linha de hoje (caso da remarcação)', () => {
+    // Veio numa aula da semana passada; o agendamento foi remarcado para hoje e o
+    // wizard não limpa appointmentOutcome. A linha de hoje tem que estar PENDENTE.
+    const remarcado = lead({
+      id: 'd2',
+      appointmentOutcome: 'attended',
+      appointmentOutcomeAt: new Date(2026, 6, 23, 19, 10),
+    });
+
+    const { rows, pending } = computeDayAgenda({
+      liveLeads: [remarcado], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
+    });
+
+    expect(rows[0].outcome).toBeNull();
+    expect(rows[0].outcomeByName).toBeNull();
+    expect(pending).toBe(1);
+  });
+
+  it('isMine marca só as linhas do viewer, e o dono é nomeado pelo índice', () => {
+    const meu = lead({ id: 'm1', consultantId: 'u2' });
+    const dele = lead({ id: 'm2', consultantId: 'u1' });
+
+    const { rows } = computeDayAgenda({
+      liveLeads: [meu, dele], agendaLeads: [], usersById: users, viewerId: 'u2', now: NOW,
+    });
+
+    expect(rows.find((r) => r.id === 'm1').isMine).toBe(true);
+    expect(rows.find((r) => r.id === 'm2').isMine).toBe(false);
+    expect(rows.find((r) => r.id === 'm2').ownerName).toBe('Rafael');
+  });
+
+  it('lead sem consultor não quebra e recebe rótulo neutro', () => {
+    const orfao = lead({ id: 'o1', consultantId: null });
+
+    const { rows } = computeDayAgenda({
+      liveLeads: [orfao], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
+    });
+
+    expect(rows[0].ownerName).toBe('sem consultor');
+    expect(rows[0].isMine).toBe(false);
+  });
+
+  it('nextIndex aponta a primeira linha a partir de agora, e -1 se o dia acabou', () => {
+    const passou = lead({ id: 'n1', appointmentScheduledFor: at(14, 30) });
+    const vem = lead({ id: 'n2', appointmentScheduledFor: at(19) });
+
+    const agora = computeDayAgenda({
+      liveLeads: [passou, vem], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
+    });
+    expect(agora.rows[agora.nextIndex].id).toBe('n2');
+
+    const fimDoDia = computeDayAgenda({
+      liveLeads: [passou, vem], agendaLeads: [], usersById: users, viewerId: 'u1', now: at(22),
+    });
+    expect(fimDoDia.nextIndex).toBe(-1);
+  });
+});
