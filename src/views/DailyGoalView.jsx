@@ -3,14 +3,14 @@ import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { collection, doc, setDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, isAdminUser, outcomeAppliesToAula } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isAdminUser, outcomeAppliesToAula } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
-import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { applyOutcomeToAula, upsertScheduledAula } from '../lib/aulasWrites.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
@@ -985,14 +985,32 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       // compromisso (consumeAppointment), que zeraria o próximo contato dele.
       // Sem isso, confirmar a presença de um aluno apagava um contato agendado
       // e podia empurrá-lo de volta para o funil de vendas.
+      const quem = row.isMine ? '' : ` (meta de ${row.ownerName})`;
+
+      // Segurar o botão manda `null` = desmarcar, volta a linha para o neutro.
+      if (outcome === null) {
+        await clearAppointmentOutcome({ db, lead: row, categorySlug: row.categorySlug });
+        toast.success(`Presença de ${row.name} desmarcada${quem}.`);
+        return;
+      }
+
       const isCliente = row.isClient;
+      // Não regrava a marca da Meta se já existe uma de hoje nesta categoria.
+      // Sem isso, dois consultores confirmando a mesma linha (que é o cenário
+      // normal de uma agenda compartilhada) empilham registros na timeline.
+      const jaTemMarcaHoje = hasGoalDoneToday(
+        row,
+        row.categorySlug,
+        (interactions || []).filter((i) => i.leadId === row.id),
+        new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      );
       await writeAppointmentOutcome({
         db, lead: row, outcome, categorySlug: row.categorySlug, appUser, statuses,
         promote: !isCliente,
         consumeAppointment: !isCliente,
+        writeGoalDone: !jaTemMarcaHoje,
         sourceLabel: 'Agenda do dia',
       });
-      const quem = row.isMine ? '' : ` (meta de ${row.ownerName})`;
       toast.success(outcome === 'attended'
         ? `Presença de ${row.name} confirmada${quem}.`
         : `${row.name} marcado como não veio${quem}.`);

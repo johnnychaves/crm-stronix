@@ -130,9 +130,9 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
   const markPresence = async (lead, outcome, e) => {
     if (e) e.stopPropagation();
     if (savingId) return;
-    // Clicar no lado JÁ ativo desmarca (volta pro neutro) — reverter um clique
-    // errado. Clicar no outro lado alterna direto. Sempre editável.
-    const clearing = lead.appointmentOutcome === outcome;
+    // O botão decide o próximo estado: clique ALTERNA veio/faltou e segurar
+    // manda `null`, que é o desmarcar (volta pro neutro). Ver PresenceSwitch.
+    const clearing = outcome === null;
     setSavingId(lead.id);
     try {
       if (clearing) {
