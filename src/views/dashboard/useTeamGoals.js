@@ -22,7 +22,10 @@ import {
 } from '../../lib/dailyGoal.js';
 
 export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
-  const { metaWeekdays = [1, 2, 3, 4, 5], dailyVolumeTarget = 0 } = useGeneralConfig();
+  // Os marcos de renovação e a tolerância são política da academia e precisam
+  // chegar aqui: sem eles este painel calculava a Meta da equipe com 90/60/30
+  // fixo e divergia da Meta que o próprio consultor vê na tela dele.
+  const { metaWeekdays = [1, 2, 3, 4, 5], dailyVolumeTarget = 0, renewalCheckpoints, renewalGraceDays } = useGeneralConfig();
 
   // Histórico de metas batidas da equipe (admin lê todos — mesma regra usada
   // pelo painel da Equipe) p/ o "X de Y dias" do mês.
@@ -70,7 +73,7 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
     (usersList || []).forEach((u) => {
       const myLeads = leadsByConsultant.get(u.id) || [];
       const myInteractions = interactionsByAuth.get(u.authUid) || [];
-      const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(myLeads, byLead, u.id));
+      const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(myLeads, byLead, u.id, renewalCheckpoints, renewalGraceDays));
       const volTarget = volumeTargetFor(u, dailyVolumeTarget);
       const vol = volTarget > 0 ? computeDailyVolume(myLeads, myInteractions, u.id, u.authUid) : null;
       const monthVol = volTarget > 0 ? computeVolumeInRange(myLeads, myInteractions, u.id, u.authUid, monthStart, null, metaWeekdays) : null;
@@ -90,7 +93,7 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
       };
     });
     return map;
-  }, [appUser, usersList, leads, interactions, metaWeekdays, dailyVolumeTarget, teamHistory]);
+  }, [appUser, usersList, leads, interactions, metaWeekdays, dailyVolumeTarget, teamHistory, renewalCheckpoints, renewalGraceDays]);
 
   return goalByConsultant;
 }

@@ -890,7 +890,11 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
   // definida pelo admin nas Configurações Gerais. A sequência pula os dias
   // inativos (não quebram nem contam). Default seg–sex.
-  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0, renewalCheckpoints = [90, 60, 30] } = useGeneralConfig();
+  // renewalGraceDays sem default aqui de propósito: undefined deixa
+  // computeDailyGoalSlots cair no próprio default, e evita o número mágico
+  // repetido em cada tela. O que NÃO pode é deixar de repassar — era isso que
+  // fazia a Meta do gestor divergir da do consultor.
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0, renewalCheckpoints = [90, 60, 30], renewalGraceDays } = useGeneralConfig();
 
   // Renovação: popup de desfecho (8b) ao concluir a tarefa + fluxo de
   // matrícula/renovação existente quando o desfecho é "Renovou".
@@ -946,8 +950,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // o painel da equipe do gestor.
   const processedLeads = useMemo(() => {
     void todayKey; // recategoriza na virada do dia (A5)
-    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints);
-  }, [leads, appUser, interactions, todayKey, renewalCheckpoints]);
+    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
+  }, [leads, appUser, interactions, todayKey, renewalCheckpoints, renewalGraceDays]);
 
   // Agenda do dia (painel compartilhado): todas as visitas e aulas de HOJE na
   // academia, de qualquer consultor. Calculada à parte — NÃO entra em
@@ -1587,6 +1591,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           metaWeekdays={metaWeekdays}
           slaOverdueDays={slaOverdueDays}
           dailyVolumeTarget={dailyVolumeTarget}
+          renewalCheckpoints={renewalCheckpoints}
+          renewalGraceDays={renewalGraceDays}
           db={db}
           appUser={appUser}
           onOpenLead={(l) => openProfile(l.id)}

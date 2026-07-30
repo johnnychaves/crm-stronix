@@ -161,7 +161,7 @@ function MonthTrajectory({ teamHistory, prospByDay, selectedDay, todayNum, onPic
   );
 }
 
-function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0, db, appUser }) {
+function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, dailyVolumeTarget = 0, renewalCheckpoints, renewalGraceDays, db, appUser }) {
   const [teamHistory, setTeamHistory] = useState([]);
   const [selectedDay, setSelectedDay] = useState(null); // null = hoje; senão dia-do-mês
 
@@ -225,7 +225,10 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
       const myInteractions = interactionsByAuth.get(u.authUid) || [];
 
       if (sel.isToday) {
-        const processed = computeDailyGoalSlots(myLeads, byLead, u.id);
+        // Os marcos e a tolerância vêm da configuração da academia (via props).
+        // Sem repassar, este painel usava sempre 90/60/30 e divergia da Meta do
+        // próprio consultor sempre que o Johnny mexia nos marcos.
+        const processed = computeDailyGoalSlots(myLeads, byLead, u.id, renewalCheckpoints, renewalGraceDays);
         const { totalSlots, doneSlots, progress } = slotTotals(processed);
         const pendingByCat = {};
         processed.forEach(l => l.categorySlugs.forEach(s => { if (!l.categoryStatus?.[s]) pendingByCat[s] = (pendingByCat[s] || 0) + 1; }));
@@ -258,7 +261,7 @@ function DailyGoalTeamView({ leads, interactions, usersList, metaWeekdays, slaOv
       }
       return (Number(b.hitMeta) - Number(a.hitMeta)) || (b.prospDone - a.prospDone) || (a.user.name || '').localeCompare(b.user.name || '');
     });
-  }, [sel, leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays, dailyVolumeTarget]);
+  }, [sel, leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays, dailyVolumeTarget, renewalCheckpoints, renewalGraceDays]);
 
   // Linha de prospecção do gráfico = DADO BRUTO (não o volumeCount do histórico,
   // que só grava se o consultor abrir a Meta): por dia do mês, quantos consultores
