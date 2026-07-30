@@ -38,9 +38,19 @@ Todas com o Johnny, em 2026-07-28.
 | Nome do lead | Clicável, abre a ficha via `openProfile` | Mesmo caminho que Kanban, Leads, Clientes e busca global já usam. |
 | Volta da ficha | Tela volta fechada | `openProfile` troca o `<main>` inteiro e a view desmonta. Guardar o estado exige subir pra fora da view, e navegação já gerou regressão na PR #144. Se incomodar na prática, é aditivo depois. |
 | Dia perfeito com alvo 0 | Mantém a regra atual: exige cota | O mockup dá o selo a quem não tem cota. Mantido como está pra não mudar regra visível em produção nesta PR. |
-| Denominador do mês | Só dias programados encerrados, hoje fora | Contar hoje faz todo mundo começar a manhã devendo um dia que nem começou. Muda nas duas telas juntas. |
+| Denominador do mês | Alvo cheio do mês, hoje conta | **Revisto em 2026-07-30**, ver "Escala das réguas" abaixo. |
 | Nomes na prospecção | Mostrar | O handoff diz que não existem. Existem: `listVolumeActionsInRange` já devolve `leadId` e `leadName`. |
 | Cobrança | Camada leve, não central de notificação | A Meta do consultor já é o canal. O que falta é registro e desfecho, não mais um aviso. |
+
+Estas quatro saíram de achados do Johnny em cima da tela já rodando, em 2026-07-30.
+Cada uma tem seção própria mais abaixo.
+
+| Decisão | Escolha | Por quê |
+| --- | --- | --- |
+| Escala das réguas | Alvo cheio do mês, com marca de ritmo | Ver "Escala das réguas". |
+| Onde fica a régua de dias | No cartão da tabela, não no das asas | Ver "Onde fica a régua de dias". |
+| Dia passado expande? | Sim, com a prospecção | Ver "Degradação por dia selecionado". |
+| Nome do lead na prospecção | Gravado na interação | Ver "Nome do lead no extrato". |
 
 ## PR 1
 
@@ -57,7 +67,7 @@ O componente `MonthTrajectory` atual sai inteiro.
 
 #### Cabeçalho
 
-Título, mês e a contagem de dias programados encerrados. À direita os dois números
+Título, mês, o total de dias programados e quantos já encerraram. À direita os dois números
 que resolvem a leitura de três segundos:
 
 - **em dia agora**: quantos consultores estão com a meta de hoje zerada, ou seja
@@ -70,17 +80,20 @@ que resolvem a leitura de três segundos:
 Uma linha por consultor, nome no centro em coluna de 150px, duas barras crescendo em
 direções opostas.
 
-Esquerda, meta diária: dias batidos sobre dias programados encerrados no mês. Azul
-`brand-600`, vermelho abaixo de 60%.
+Esquerda, meta diária: dias batidos sobre **todos** os dias programados do mês. Azul
+`brand-600`.
 
-Direita, prospecção: ações do mês sobre alvo acumulado. Laranja `accent-500`,
-vermelho abaixo de 60%. Consultor com alvo 0 fica com a trilha transparente e o
-rótulo "sem cota", nunca 0%.
+Direita, prospecção: ações do mês sobre a cota acumulada do mês inteiro. Laranja
+`accent-500`. Consultor com alvo 0 fica com a trilha transparente e o rótulo
+"sem cota", nunca 0%.
+
+As duas trazem a marca da posição esperada para hoje, e ficam vermelhas quando a barra
+está mais de 10 pontos atrás dela. Detalhe em "Escala das réguas".
 
 #### A régua de dias
 
-Fica na costura entre os dois cartões: fecha o gráfico e abre a tabela. Um botão por
-dia **programado**, sem célula de folga. O medidor embaixo do número mostra quantos
+Fica no cabeçalho do cartão da tabela, que é o que ela filtra (ver "Onde fica a régua
+de dias"). Um botão por dia **programado**, sem célula de folga. O medidor embaixo do número mostra quantos
 bateram sobre o tamanho do time. O rótulo à esquerda ("DIA DO MÊS" e "quantos
 bateram, de N") é obrigatório: sem ele a régua não se explica.
 
@@ -116,17 +129,30 @@ esconder.
 
 | | hoje | dia passado |
 | --- | --- | --- |
-| Meta diária | barra e "6/11 tarefas" | "bateu" / "não bateu" |
+| Meta diária | barra e "6/11 tarefas" | "bateu" / "não bateu" / "folga" |
 | Situação | críticas e pendentes | vazio |
 | Prospecção | "5 de 7" | total do dia |
-| Linha expansível | sim | não |
+| Linha expansível | sim, carteira + prospecção | **sim, só prospecção** |
+
+A carteira de um dia passado não é reconstruível: o fechamento grava que a meta foi
+batida, não quais tarefas existiam. A **prospecção é**, e o handoff errou aqui — ela não
+vem de histórico, sai das interações com `volumeKind` e dos leads criados no dia, que
+têm data e hora. Então o extrato nominal de qualquer dia do mês existe igual ao de hoje.
+
+Em dia passado a linha expande com a prospecção, e no lugar da carteira vai um aviso que
+diz se a meta foi batida e por que o detalhe não existe. Consultor sem cota não expande
+em dia passado: sem carteira e sem cota, sobrariam dois avisos e nada mais.
+
+Alcance: as interações carregadas são só as do mês corrente (PR #164). Como a tela é
+sempre do mês atual, cobre todos os dias da régua.
 
 #### De onde vem cada número
 
 | Elemento | Fonte |
 | --- | --- |
-| Asa esquerda | `computeRitmo(history, metaWeekdays)`, com o denominador ajustado pra excluir hoje |
-| Asa direita | `computeVolumeInRange(..., monthStart, null, metaWeekdays)` sobre `volumeTargetFor(u) × dias programados encerrados` |
+| Asa esquerda | `computeRitmo(history, metaWeekdays)` — mês inteiro no denominador |
+| Asa direita | `computeVolumeInRange(..., monthStart, null, metaWeekdays)` sobre `volumeTargetFor(u) × countMetaDaysInMonthAll(...)` |
+| Marca de ritmo | `countClosedMetaDaysInMonth(...) ÷ countMetaDaysInMonthAll(...)` |
 | Régua de dias | `teamHistory` agrupado por `date`, filtrado por `metaWeekdays` |
 | Tabela, coluna Meta | `slotTotals(computeDailyGoalSlots(...))` |
 | Coluna Situação | pendentes por categoria e `overdueDaysOf(lead) >= slaOverdueDays` |
@@ -159,18 +185,70 @@ então a Meta que o gestor vê ignora a categoria Renovação e diverge da tela 
 consultor. Fica mais grave com a tela nova, que renderiza Renovações como uma das 6
 categorias.
 
-**Denominador do mês.** As duas asas medem só dias programados **encerrados**, dos dois
-lados da fração. Se o denominador excluir hoje e o numerador não, quem bate a meta de
-manhã aparece 14/13. Hoje vive na régua e na tabela, não nas asas.
+### Escala das réguas
 
-Na prática: `computeRitmo` passa a excluir hoje em `monthHits` e `monthTarget` (o
-`streak` e a régua de 14 dias continuam incluindo hoje, que é o comportamento certo pra
-sequência). Nasce `countClosedMetaDaysInMonth` pro denominador da prospecção, e o
-numerador vira `computeVolumeInRange(..., monthStart, todayStart, metaWeekdays)`.
+Duas leituras possíveis, e elas não convivem no mesmo número.
 
-`countMetaDaysInMonth` fica como está. A tela do consultor usa ela com hoje incluído
-nos dois lados da conta de prospecção do mês, e mexer ali criaria a mesma
-inconsistência ao contrário.
+*Alvo até agora* (primeira versão, descartada): denominador = dias encerrados × cota.
+"50%" significa "fez metade do que já devia". É comparável em qualquer ponto do mês,
+mas não diz quanto falta pro fechamento, e o denominador muda todo dia.
+
+*Alvo cheio do mês* (escolhido): denominador = todos os dias programados do mês × cota,
+e hoje conta no numerador. "45%" significa "cumpriu 45% da meta do mês". A barra enche
+até o fechamento, que é o modelo mental que o Johnny descreveu.
+
+O preço é perder a leitura de ritmo, que o denominador curto dava de graça: no dia 2
+todo mundo aparece com 8%. Isso volta como uma **marca** na barra, na posição esperada
+para hoje (dias encerrados ÷ dias do mês). Barra à frente da marca, adiantado; atrás,
+devendo.
+
+Consequências:
+
+- `computeRitmo` conta o mês inteiro em `monthHits` e `monthTarget`, com hoje incluído.
+  `streak` e `history14` não mudam.
+- Nasce `countMetaDaysInMonthAll`. `countClosedMetaDaysInMonth` continua, agora só para
+  posicionar a marca.
+- O numerador da prospecção vira `computeVolumeInRange(..., monthStart, null, metaWeekdays)`.
+- A cor de alerta deixa de ser um corte fixo de 60% e passa a ser relativa à marca, com
+  folga de 10 pontos (~2 dias). Sem a folga, quem está um dia atrás no fim do mês
+  aparece em vermelho; sem o corte relativo, todo mundo aparece em vermelho no dia 3.
+- Muda o "X/Y metas no mês" na tela do consultor, que usa a mesma função. As duas telas
+  mudam juntas, senão divergem.
+
+`countMetaDaysInMonth` fica como está: a tela do consultor usa ela na conta de
+prospecção do mês com hoje incluído nos dois lados.
+
+### Onde fica a régua de dias
+
+O handoff pôs a régua no rodapé do cartão das asas, chamando de "dobradiça". Mas as
+asas são do mês e não reagem a ela: clicar num dia e ver o cartão de cima parado parece
+número errado. A régua passa a ser o cabeçalho do cartão da tabela, que é o que ela
+filtra, e o cartão das asas ganha o título "Acumulado do mês · não muda com o dia
+selecionado".
+
+Não se fez as asas seguirem o dia porque a régua da esquerda mede "dias batidos sobre
+dias do mês", que só existe sobre um intervalo. Num dia isolado ela viraria um sim ou
+não, duplicando a coluna Meta da tabela.
+
+### Nome do lead no extrato
+
+O extrato resolvia o nome pelo lead em memória, e a base carregada só tem os ativos
+desde a PR #144. Então ação em cliente (mensagem de renovação, o caso mais comum)
+aparecia como "Mensagem agendada" no lugar do nome.
+
+Dois consertos. O primeiro: `listVolumeActionsInRange` recebia a fatia de leads do
+consultor, mas a ação é atribuída a quem a **fez**, então ação em lead de outro
+consultor também perdia o nome; passa a receber a lista inteira, e a contagem não muda
+porque a função filtra por `consultantId` internamente. O segundo: `logInteraction`
+grava `leadName` no documento da interação, e o extrato usa esse nome quando o lead não
+está em memória. `logInteraction` é o ponto único de escrita, então cobre os quatro
+caminhos que geram `volumeKind` de uma vez.
+
+Vale só daqui pra frente. Ação antiga segue sem nome, e a linha diz "lead fora da base
+ativa" em vez de exibir o tipo da ação como se fosse nome.
+
+É o primeiro write-path que esta PR toca; até aqui era tudo leitura. Sem regra nova de
+Firestore (a criação de interação não restringe campos) e sem índice novo.
 
 **Laço duplicado.** `computeDailyGoalSlots` tem o mesmo bloco de reconciliação escrito
 duas vezes (linhas 367 a 374 e 382 a 389). É idempotente, então não altera resultado,
@@ -206,10 +284,13 @@ declara.
 A matemática nova entra em `src/lib/__tests__/dailyGoal.test.js`, junto do que já
 existe:
 
-- denominador do mês exclui hoje, em dia programado e em folga
+- `computeRitmo` conta o mês inteiro no denominador e hoje no numerador, e nunca passa
+  de 100%
+- `countMetaDaysInMonthAll` respeita a política de dias e é sempre maior ou igual ao
+  total de dias encerrados
 - `computeDailyGoalSlots` com `renewalCheckpoints` traz a categoria Renovação
-- `listVolumeActionsInRange` devolve nome quando o lead está na base e degrada pro
-  tipo quando não está
+- `listVolumeActionsInRange` resolve o nome em três degraus: lead em memória, `leadName`
+  gravado na interação, travessão
 - régua de dias ignora folga e conta acertos só em dia programado
 - consultor com alvo 0 não recebe dia perfeito
 
@@ -235,5 +316,8 @@ Sem sino no header, sem inbox, sem coleção nova.
 
 - Gerencial: fica pra depois, mas o painel lateral da PR 1 já nasce pronto pra ele
 - Central de notificação (camada 3)
-- Guardar tarefas de dias passados
+- Guardar tarefas de dias passados: é o que faltaria pra carteira de dia passado
+  existir. Vale só do dia da implantação em diante e não recupera nada. Fica pra PR 2.
+- Recuperar o nome de ação antiga em lead fora da base ativa: exigiria ler os leads
+  faltantes por id, que é a leitura que a PR #164 cortou.
 - Gravar `leadId` em ações de prospecção: já é gravado, não precisa
