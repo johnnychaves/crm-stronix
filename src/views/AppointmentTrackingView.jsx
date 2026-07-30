@@ -52,6 +52,13 @@ function getApptAttendanceState(lead) {
   const outcome = outcomeIsCurrent ? lead.appointmentOutcome : null;
   const meta = outcome ? getAppointmentOutcomeMeta(outcome) : null;
   if (meta) return { key: outcome, label: meta.label, icon: meta.icon, badgeClass: meta.badgeClass };
+  // REMARCADO: existe desfecho, mas ele é anterior ao compromisso atual — ou
+  // seja, a pessoa teve um resultado e o compromisso foi movido depois disso.
+  // Antes isso caía em "Agendado" e a informação se perdia; dizer que foi
+  // remarcado explica por que a linha voltou a ficar em aberto.
+  if (!outcomeIsCurrent && lead.appointmentOutcome) {
+    return { key: 'rescheduled', label: 'Remarcado', icon: '🔁', badgeClass: 'bg-brand-500/10 text-brand-700 dark:text-brand-300' };
+  }
   // Sem desfecho explícito: se converteu, obviamente compareceu (legado).
   if (isLeadConverted(lead)) {
     const a = getAppointmentOutcomeMeta('attended');
@@ -98,13 +105,15 @@ function fmtApptDateLine(d) {
 const attSquareClass = (attKey) =>
   attKey === 'attended' ? 'bg-emerald-600'
     : attKey === 'no_show' ? 'bg-rose-600'
-      : 'bg-amber-500';
+      : attKey === 'rescheduled' ? 'bg-brand-600'
+        : 'bg-amber-500';
 
 // Rótulo da coluna Situação (Visitas) — texto exato do handoff, na cor do quadrado.
 const getSituacaoLabel = (attKey) =>
   attKey === 'attended' ? 'Compareceu'
     : attKey === 'no_show' ? 'Não compareceu'
-      : 'Agendado';
+      : attKey === 'rescheduled' ? 'Remarcado'
+        : 'Agendado';
 
 const fromDateInput = (s) => {
   const [y, m, d] = String(s || '').split('-').map(Number);
