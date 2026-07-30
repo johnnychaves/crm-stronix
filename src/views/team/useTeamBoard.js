@@ -31,7 +31,7 @@ function sliceByOwner(leads, interactions) {
 
 export function useTeamBoard({
   leads, interactions, usersList, teamHistory,
-  metaWeekdays, slaOverdueDays, renewalCheckpoints, selectedDay, now,
+  metaWeekdays, slaOverdueDays, renewalCheckpoints, renewalGraceDays, selectedDay, now,
 }) {
   return useMemo(() => {
     const ref = now || new Date();
@@ -101,7 +101,9 @@ export function useTeamBoard({
 
       // ── HOJE: a carteira completa existe.
       if (sel.isToday) {
-        const processed = computeDailyGoalSlots(myLeads, byLead, u.id, renewalCheckpoints);
+        // Marcos E tolerância vêm da configuração: sem os dois, este painel
+        // calcula a Renovação com o padrão e diverge da tela do consultor.
+        const processed = computeDailyGoalSlots(myLeads, byLead, u.id, renewalCheckpoints, renewalGraceDays);
         const { totalSlots, doneSlots, progress } = slotTotals(processed);
         let pendCount = 0, critCount = 0;
         processed.forEach((l) => l.categorySlugs.forEach((slug) => {
@@ -163,7 +165,7 @@ export function useTeamBoard({
     const emDiaHoje = sel.isToday
       ? rows.filter((r) => r.metaOk).length
       : (usersList || []).filter((u) => slotTotals(
-        computeDailyGoalSlots(leadsByConsultant.get(u.id) || [], byLead, u.id, renewalCheckpoints)
+        computeDailyGoalSlots(leadsByConsultant.get(u.id) || [], byLead, u.id, renewalCheckpoints, renewalGraceDays)
       ).progress === 100).length;
 
     const rail = scheduled.map((d) => {
@@ -190,5 +192,5 @@ export function useTeamBoard({
     return {
       sel, rail, rows: sorted, teamSize, closedDays, monthDays, pacePct,
     };
-  }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays, renewalCheckpoints, selectedDay, now]);
+  }, [leads, interactions, usersList, teamHistory, metaWeekdays, slaOverdueDays, renewalCheckpoints, renewalGraceDays, selectedDay, now]);
 }

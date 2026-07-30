@@ -40,9 +40,37 @@ export async function upsertScheduledAula({ db, lead, fields }) {
 }
 
 // Ao marcar presença: aplica attended/no_show/cancelled no registro atual.
+//
+// GUARDA (auditoria de 30/07/2026): só carimba a aula que corresponde ao
+// compromisso ATUAL do lead. O dual-write da remarcação é best-effort — quando
+// ele falha, o caller mantém o currentAulaId antigo, que aponta para uma aula
+// já resolvida. Sem esta checagem, o desfecho de hoje sobrescrevia um registro
+// histórico verdadeiro e bagunçava a carteira do professor em silêncio.
+// Divergiu, não grava e avisa no console: deixar de carimbar é perda pequena,
+// reescrever histórico é perda grande.
+const millisOf = (v) => {
+  if (!v) return null;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  const t = new Date(v).getTime();
+  return Number.isFinite(t) ? t : null;
+};
+
 export async function applyOutcomeToAula({ db, lead, outcome }) {
   const status = outcomeToAulaStatus(outcome);
   if (!status || !lead?.currentAulaId) return;
+
+  const snap = await getDoc(aulaDoc(db, lead.currentAulaId));
+  if (!snap.exists()) return;
+
+  const aulaMs = millisOf(snap.data().scheduledFor);
+  const compromissoMs = millisOf(lead.appointmentScheduledFor);
+  if (aulaMs !== null && compromissoMs !== null && aulaMs !== compromissoMs) {
+    console.warn('applyOutcomeToAula: currentAulaId aponta para outra data; desfecho não aplicado ao histórico', {
+      leadId: lead.id, aulaId: lead.currentAulaId
+    });
+    return;
+  }
+
   await updateDoc(aulaDoc(db, lead.currentAulaId), { status, outcomeAt: serverTimestamp() });
 }
 

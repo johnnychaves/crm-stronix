@@ -29,6 +29,7 @@ function DailyGoalTeamView({
   leads, interactions, usersList, metaWeekdays,
   slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS,
   renewalCheckpoints = [90, 60, 30],
+  renewalGraceDays,
   db, appUser,
 }) {
   const [teamHistory, setTeamHistory] = useState([]);
@@ -55,7 +56,7 @@ function DailyGoalTeamView({
 
   const board = useTeamBoard({
     leads, interactions, usersList, teamHistory,
-    metaWeekdays, slaOverdueDays, renewalCheckpoints, selectedDay, now,
+    metaWeekdays, slaOverdueDays, renewalCheckpoints, renewalGraceDays, selectedDay, now,
   });
 
   // Trocar de dia fecha a linha aberta: o detalhe só existe pra hoje.

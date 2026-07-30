@@ -21,9 +21,7 @@ import {
   overdueDaysOf,
   computeRitmo,
   slotTotals,
-  dgDateKey,
-  isTimeWithinShift,
-  computeDelegatedPresenceSlots
+  dgDateKey
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 
@@ -578,82 +576,6 @@ describe('computeRitmo (só com metaWeekdays válido — array)', () => {
   });
 });
 
-describe('isTimeWithinShift', () => {
-  it('turno normal: bordas inclusivas', () => {
-    expect(isTimeWithinShift(8 * 60, '08:00', '16:00')).toBe(true);
-    expect(isTimeWithinShift(16 * 60, '08:00', '16:00')).toBe(true);
-    expect(isTimeWithinShift(7 * 60 + 59, '08:00', '16:00')).toBe(false);
-    expect(isTimeWithinShift(20 * 60, '08:00', '16:00')).toBe(false);
-  });
-  it('turno que vira a meia-noite (22:00–06:00)', () => {
-    expect(isTimeWithinShift(23 * 60, '22:00', '06:00')).toBe(true);
-    expect(isTimeWithinShift(2 * 60, '22:00', '06:00')).toBe(true);
-    expect(isTimeWithinShift(12 * 60, '22:00', '06:00')).toBe(false);
-  });
-  it('sem turno completo → false', () => {
-    expect(isTimeWithinShift(10 * 60, null, '16:00')).toBe(false);
-    expect(isTimeWithinShift(10 * 60, '08:00', '')).toBe(false);
-    expect(isTimeWithinShift(10 * 60, '10:00', '10:00')).toBe(false); // degenerado
-  });
-});
-
-describe('computeDelegatedPresenceSlots (presença cruzada por turno)', () => {
-  // viewer = consultor 2 (u2), turno 08:00–16:00. dono = consultor 1 (u1), 14:00–22:00.
-  const viewer = { id: 'u2', shiftStart: '08:00', shiftEnd: '16:00' };
-  const usersById = new Map([
-    ['u1', { shiftStart: '14:00', shiftEnd: '22:00', name: 'Consultor 1' }],
-    ['u2', { shiftStart: '08:00', shiftEnd: '16:00', name: 'Consultor 2' }]
-  ]);
-  const byLead = (arr) => buildInteractionsByLead(arr);
-
-  it('aula do u1 às 08:00 (u1 fora, u2 de plantão) entra p/ u2', () => {
-    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 8, 0) });
-    const rows = computeDelegatedPresenceSlots([aula], byLead([]), viewer, usersById, NOW);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ id: aula.id, ownerName: 'Consultor 1', categorySlug: DAILY_GOAL_CATEGORIES.AULA_HOJE, done: false });
-  });
-
-  it('aula do u1 às 15:00 (u1 DE plantão) não delega', () => {
-    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 15, 0) });
-    expect(computeDelegatedPresenceSlots([aula], byLead([]), viewer, usersById, NOW)).toHaveLength(0);
-  });
-
-  it('aula às 20:00 (fora do turno do u2) não entra p/ u2', () => {
-    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 20, 0) });
-    expect(computeDelegatedPresenceSlots([aula], byLead([]), viewer, usersById, NOW)).toHaveLength(0);
-  });
-
-  it('lead próprio (do u2) não aparece como delegado', () => {
-    const aula = lead({ consultantId: 'u2', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 9, 0) });
-    expect(computeDelegatedPresenceSlots([aula], byLead([]), viewer, usersById, NOW)).toHaveLength(0);
-  });
-
-  it('viewer sem turno → nada é delegado', () => {
-    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 8, 0) });
-    const semTurno = { id: 'u2', shiftStart: null, shiftEnd: null };
-    expect(computeDelegatedPresenceSlots([aula], byLead([]), semTurno, usersById, NOW)).toHaveLength(0);
-  });
-
-  it('dono sem turno → não delega (não dá pra afirmar ausência)', () => {
-    const aula = lead({ consultantId: 'u3', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 8, 0) });
-    const users = new Map([['u3', { shiftStart: null, shiftEnd: null, name: 'Sem turno' }]]);
-    expect(computeDelegatedPresenceSlots([aula], byLead([]), viewer, users, NOW)).toHaveLength(0);
-  });
-
-  it('marca como done quando há daily_goal_done da categoria hoje', () => {
-    const aula = lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 8, 0) });
-    const done = goalDone(aula.id, DAILY_GOAL_CATEGORIES.AULA_HOJE);
-    const rows = computeDelegatedPresenceSlots([aula], byLead([done]), viewer, usersById, NOW);
-    expect(rows[0].done).toBe(true);
-  });
-});
-
-// ── Asas do painel da equipe: hoje fica FORA da conta do mês ────────────────
-// Julho de 2026 começa numa quarta, então com metaWeekdays=[1..5] os dias úteis
-// até 15/07 são 1,2,3,6,7,8,9,10,13,14,15 — onze, sendo dez encerrados.
-// As réguas do painel enchem até o alvo do MÊS INTEIRO, então o denominador é
-// todos os dias programados e hoje conta no numerador. Quem diz se está no
-// ritmo é a marca de posição esperada na barra, não o denominador.
 describe('computeRitmo — o mês inteiro é o denominador', () => {
   const WEEKDAYS = [1, 2, 3, 4, 5];
 

@@ -3,14 +3,16 @@ import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
 import { collection, doc, setDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, isAdminUser, outcomeAppliesToAula } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isAdminUser, outcomeAppliesToAula } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeDelegatedPresenceSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
-import { writeAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
+import { computeDayAgenda } from '../lib/dayAgenda.js';
+import { useDayAgenda } from '../hooks/useDayAgenda.js';
+import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
+import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { applyOutcomeToAula, upsertScheduledAula } from '../lib/aulasWrites.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
-import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -864,49 +866,7 @@ function ViewTab({ active, icon, label, onClick }) {
   );
 }
 
-// Presença cruzada (item 3): aulas/visitas de OUTROS consultores que caem no
-// turno de quem está vendo, com o dono fora de plantão. Não conta na meta;
-// confirmar credita o dono. Fica no rodapé da sidebar, separada da meta.
-function DelegatedPresenceCard({ items, savingId, onMark }) {
-  if (!items || items.length === 0) return null;
-  const pending = items.filter(i => !i.done).length;
-  return (
-    <div className="rounded-2xl border border-accent-200 dark:border-accent-500/25 bg-accent-50/50 dark:bg-accent-500/[0.06] shadow-card">
-      <div className="px-4 py-3 flex items-center gap-2 border-b border-accent-100 dark:border-accent-500/15">
-        <span className="size-6 rounded-md grid place-items-center bg-accent-500/15 text-accent-600 dark:text-accent-400 shrink-0">
-          <Users size={13} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3 className="text-[13.5px] font-semibold text-ink-900 dark:text-white">Presença por você</h3>
-          <p className="text-[11px] text-slate-500 dark:text-neutral-400 truncate">Aulas/visitas de colegas no seu turno · não conta na sua meta</p>
-        </div>
-        {pending > 0 && (
-          <span className="num text-[11px] px-1.5 h-[18px] rounded-md grid place-items-center bg-accent-500/15 text-accent-700 dark:text-accent-300 shrink-0">{pending}</span>
-        )}
-      </div>
-      <div className="p-2.5 space-y-1.5">
-        {items.map((lead) => {
-          const when = getLeadAppointmentDate(lead);
-          const saving = savingId === lead.id;
-          return (
-            <div key={lead.id} className="flex items-center gap-2.5 p-2 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.06]">
-              <Avatar name={lead.name} size={30} />
-              <div className="min-w-0 flex-1">
-                <div className="text-[12.5px] font-semibold text-slate-900 dark:text-white truncate">{lead.name}</div>
-                <div className="text-[10.5px] text-slate-500 dark:text-neutral-400 truncate num">
-                  {lead.categoryLabel} · {when ? formatHourLabel(when) : ''} · de {lead.ownerName}
-                </div>
-              </div>
-              <PresenceSwitch attKey={lead.appointmentOutcome} saving={saving} onMark={(o) => onMark(lead, o)} />
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }) {
+function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, listenersActive = true }) {
   const toast = useToast();
   const { openProfile } = useLeadProfile();
   const [filter, setFilter] = useState('all');
@@ -930,7 +890,11 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   // Dias da semana em que a meta vale (0=dom..6=sáb) — política da ACADEMIA,
   // definida pelo admin nas Configurações Gerais. A sequência pula os dias
   // inativos (não quebram nem contam). Default seg–sex.
-  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, renewalCheckpoints = [90, 60, 30] } = useGeneralConfig();
+  // renewalGraceDays sem default aqui de propósito: undefined deixa
+  // computeDailyGoalSlots cair no próprio default, e evita o número mágico
+  // repetido em cada tela. O que NÃO pode é deixar de repassar — era isso que
+  // fazia a Meta do gestor divergir da do consultor.
+  const { metaWeekdays = [1, 2, 3, 4, 5], slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, renewalCheckpoints = [90, 60, 30], renewalGraceDays } = useGeneralConfig();
 
   // Renovação: popup de desfecho (8b) ao concluir a tarefa + fluxo de
   // matrícula/renovação existente quando o desfecho é "Renovou".
@@ -986,40 +950,86 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
   // o painel da equipe do gestor.
   const processedLeads = useMemo(() => {
     void todayKey; // recategoriza na virada do dia (A5)
-    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints);
-  }, [leads, appUser, interactions, todayKey, renewalCheckpoints]);
+    return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
+  }, [leads, appUser, interactions, todayKey, renewalCheckpoints, renewalGraceDays]);
 
-  // Presença cruzada (item 3): aulas/visitas de OUTROS consultores que caem no
-  // MEU turno com o dono fora de plantão. Calculada à parte — NÃO entra em
-  // processedLeads/totalSlots (não conta na minha meta). Turno vem de
-  // shiftStart/shiftEnd no doc do usuário.
-  const [savingDelegatedId, setSavingDelegatedId] = useState(null);
+  // Agenda do dia (painel compartilhado): todas as visitas e aulas de HOJE na
+  // academia, de qualquer consultor. Calculada à parte — NÃO entra em
+  // processedLeads/totalSlots, não conta na minha meta. Quem confirma credita o
+  // DONO do lead (writeAppointmentOutcome).
+  const [savingAgendaId, setSavingAgendaId] = useState(null);
+
+  // Índice de usuários por doc id E por authUid: consultantId guarda o id do
+  // doc, appointmentOutcomeBy guarda o authUid. Uma entrada por chave, mesmo
+  // objeto, para a regra pura resolver os dois nomes com um lookup só.
   const usersById = useMemo(() => {
     const m = new Map();
-    (usersList || []).forEach(u => m.set(u.id, { shiftStart: u.shiftStart || null, shiftEnd: u.shiftEnd || null, name: u.name }));
+    (usersList || []).forEach((u) => {
+      const entry = { name: u.name };
+      m.set(u.id, entry);
+      if (u.authUid) m.set(u.authUid, entry);
+    });
     return m;
   }, [usersList]);
-  const delegatedPresence = useMemo(() => {
-    void todayKey;
-    const viewer = { id: appUser.id, shiftStart: appUser.shiftStart || null, shiftEnd: appUser.shiftEnd || null };
-    return computeDelegatedPresenceSlots(leads, buildInteractionsByLead(interactions), viewer, usersById, now);
-  }, [leads, interactions, appUser, usersById, now, todayKey]);
 
-  const markDelegated = async (lead, outcome) => {
-    if (savingDelegatedId) return;
-    setSavingDelegatedId(lead.id);
+  const { items: agendaLeads } = useDayAgenda({ db, enabled: listenersActive, dayKey: todayKey });
+
+  const dayAgenda = useMemo(
+    () => computeDayAgenda({ liveLeads: leads, agendaLeads, usersById, viewerId: appUser.id, now }),
+    [leads, agendaLeads, usersById, appUser, now]
+  );
+
+  const markAgendaPresence = async (row, outcome) => {
+    if (savingAgendaId) return;
+    setSavingAgendaId(row.id);
     try {
-      // Fluxo completo (consome o agendamento + promove), igual a confirmar a
-      // própria aula: credita a Meta do DONO via daily_goal_done no lead dele.
-      await writeAppointmentOutcome({ db, lead, outcome, categorySlug: lead.categorySlug, appUser, statuses });
+      // CLIENTE é caso à parte: ele está na agenda só para upsell de modalidade,
+      // não para prospecção. A presença dele registra o desfecho e a timeline e
+      // para por aí — não mexe em etapa do funil (promote) e não consome o
+      // compromisso (consumeAppointment), que zeraria o próximo contato dele.
+      // Sem isso, confirmar a presença de um aluno apagava um contato agendado
+      // e podia empurrá-lo de volta para o funil de vendas.
+      const quem = row.isMine ? '' : ` (meta de ${row.ownerName})`;
+
+      // Segurar o botão manda `null` = desmarcar, volta a linha para o neutro.
+      if (outcome === null) {
+        await clearAppointmentOutcome({ db, lead: row, categorySlug: row.categorySlug });
+        toast.success(`Presença de ${row.name} desmarcada${quem}.`);
+        return;
+      }
+
+      const isCliente = row.isClient;
+      // Não regrava a marca da Meta se já existe uma de hoje nesta categoria.
+      // Sem isso, dois consultores confirmando a mesma linha (que é o cenário
+      // normal de uma agenda compartilhada) empilham registros na timeline.
+      const jaTemMarcaHoje = hasGoalDoneToday(
+        row,
+        row.categorySlug,
+        (interactions || []).filter((i) => i.leadId === row.id),
+        new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      );
+      await writeAppointmentOutcome({
+        db, lead: row, outcome, categorySlug: row.categorySlug, appUser, statuses,
+        promote: !isCliente,
+        consumeAppointment: !isCliente,
+        writeGoalDone: !jaTemMarcaHoje,
+        sourceLabel: 'Agenda do dia',
+      });
       toast.success(outcome === 'attended'
-        ? `Presença de ${lead.name} confirmada para ${lead.ownerName}.`
-        : `${lead.name} marcado como não veio (meta de ${lead.ownerName}).`);
+        ? `Presença de ${row.name} confirmada${quem}.`
+        : `${row.name} marcado como não veio${quem}.`);
+      // Quem não veio precisa de nova data, senão o lead fica parado sem
+      // próximo passo. Abre a remarcação na hora — fechar a janela é o
+      // "deixo pra marcar depois". Mesmo comportamento do handleOutcome da
+      // Meta; comparecimento não pergunta nada, só aplica o que já é regra.
+      if (outcome === 'no_show') {
+        setRescheduleTarget({ lead: row, categorySlug: row.categorySlug, flow: 'after_no_show' });
+      }
     } catch (err) {
-      console.error('markDelegated', err);
+      console.error('markAgendaPresence', err);
       toast.error('Não foi possível salvar a presença. Tente novamente.');
     } finally {
-      setSavingDelegatedId(null);
+      setSavingAgendaId(null);
     }
   };
 
@@ -1583,6 +1593,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
           metaWeekdays={metaWeekdays}
           slaOverdueDays={slaOverdueDays}
           renewalCheckpoints={renewalCheckpoints}
+          renewalGraceDays={renewalGraceDays}
           db={db}
           appUser={appUser}
         />
@@ -1715,6 +1726,14 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
             onOutcome={handleOutcome}
           />
 
+          <DayAgendaCard
+            rows={dayAgenda.rows}
+            pending={dayAgenda.pending}
+            nextIndex={dayAgenda.nextIndex}
+            savingId={savingAgendaId}
+            onMark={markAgendaPresence}
+          />
+
           <StreakCard
             history14={ritmoMes.history14}
             monthHits={ritmoMes.monthHits}
@@ -1722,8 +1741,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList }
             streak={ritmoMes.streak}
             volumeMonth={volumeMonth}
           />
-
-          <DelegatedPresenceCard items={delegatedPresence} savingId={savingDelegatedId} onMark={markDelegated} />
 
           <div className="rounded-2xl border border-border bg-card shadow-card flex-1 min-h-0 flex flex-col">
             <div className="px-4 py-3 flex items-center justify-between border-b border-slate-100 dark:border-white/[0.05]">

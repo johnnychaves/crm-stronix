@@ -1,21 +1,18 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Download, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
-import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, hasGoalDoneToday, isAdminUser, isLeadConverted } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { appointmentsInWindowQuerySpec } from '../lib/leadQueries.js';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { collection, query, where, getCountFromServer } from 'firebase/firestore';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
-import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { getTrialPassNote, isPassActive } from '../lib/freePass.js';
 import { cn } from '@/lib/utils';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
-import { useToast } from '../contexts/ToastContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
-import { PresenceSwitch } from '../components/ui/PresenceSwitch.jsx';
 import { AppointmentExportModal } from '../modals/AppointmentExportModal.jsx';
 
 // Janela de confirmação rápida: da hora marcada até 15min depois. Fora dela o
@@ -41,9 +38,27 @@ const CONFIRM_WINDOW_MS = 15 * 60 * 1000;
 // Estado de comparecimento derivado do appointmentOutcome persistido no lead
 // (ou de conversão legada). Helpers puros, fora do componente.
 function getApptAttendanceState(lead) {
-  const outcome = lead.appointmentOutcome;
+  // BLINDAGEM: o desfecho persistido só vale para o compromisso ATUAL. Quando o
+  // lead é remarcado, o desfecho antigo continua gravado no doc, e sem esta
+  // checagem a tela mostrava "não veio" num compromisso que ainda nem
+  // aconteceu. Só confia no desfecho registrado a partir do dia do compromisso
+  // atual. Registro legado sem appointmentOutcomeAt segue valendo (não dá pra
+  // datar, e mudar isso apagaria histórico verdadeiro da tela).
+  const apptDate = getLeadAppointmentDate(lead);
+  const outcomeAtMs = lead.appointmentOutcomeAt instanceof Date ? lead.appointmentOutcomeAt.getTime() : null;
+  const outcomeIsCurrent =
+    !apptDate || outcomeAtMs === null ||
+    outcomeAtMs >= new Date(apptDate.getFullYear(), apptDate.getMonth(), apptDate.getDate()).getTime();
+  const outcome = outcomeIsCurrent ? lead.appointmentOutcome : null;
   const meta = outcome ? getAppointmentOutcomeMeta(outcome) : null;
   if (meta) return { key: outcome, label: meta.label, icon: meta.icon, badgeClass: meta.badgeClass };
+  // REMARCADO: existe desfecho, mas ele é anterior ao compromisso atual — ou
+  // seja, a pessoa teve um resultado e o compromisso foi movido depois disso.
+  // Antes isso caía em "Agendado" e a informação se perdia; dizer que foi
+  // remarcado explica por que a linha voltou a ficar em aberto.
+  if (!outcomeIsCurrent && lead.appointmentOutcome) {
+    return { key: 'rescheduled', label: 'Remarcado', icon: '🔁', badgeClass: 'bg-brand-500/10 text-brand-700 dark:text-brand-300' };
+  }
   // Sem desfecho explícito: se converteu, obviamente compareceu (legado).
   if (isLeadConverted(lead)) {
     const a = getAppointmentOutcomeMeta('attended');
@@ -90,78 +105,37 @@ function fmtApptDateLine(d) {
 const attSquareClass = (attKey) =>
   attKey === 'attended' ? 'bg-emerald-600'
     : attKey === 'no_show' ? 'bg-rose-600'
-      : 'bg-amber-500';
+      : attKey === 'rescheduled' ? 'bg-brand-600'
+        : 'bg-amber-500';
 
 // Rótulo da coluna Situação (Visitas) — texto exato do handoff, na cor do quadrado.
 const getSituacaoLabel = (attKey) =>
   attKey === 'attended' ? 'Compareceu'
     : attKey === 'no_show' ? 'Não compareceu'
-      : 'Agendado';
+      : attKey === 'rescheduled' ? 'Remarcado'
+        : 'Agendado';
 
 const fromDateInput = (s) => {
   const [y, m, d] = String(s || '').split('-').map(Number);
   return y && m && d ? new Date(y, m - 1, d) : null;
 };
 
-function AppointmentTrackingView({ interactions, appUser, usersList, statuses, db, appointmentType }) {
+function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
   const { openProfile } = useLeadProfile();
   const { professores } = useGeneralConfig();
-  const toast = useToast();
   const isAdmin = isAdminUser(appUser);
   const isAula = appointmentType === 'aula_experimental';
-  const categorySlug = isAula ? DAILY_GOAL_CATEGORIES.AULA_HOJE : DAILY_GOAL_CATEGORIES.VISITA_HOJE;
+  // Relógio do render, congelado na montagem. Só serve para ordenar
+  // futuro-primeiro, então não precisa ticar — e chamar Date.now() solto no
+  // render é impuro (react-hooks/purity barra).
+  const [nowMs] = useState(() => Date.now());
 
-  // Atalho de presença (Veio/Faltou). Grava o desfecho na hora; credita a Meta
-  // do responsável só quando a aula é HOJE (a Meta é de hoje) e ainda não foi
-  // concluída — o card de professor e o dashboard leem o appointmentOutcome
-  // direto, então valem pra qualquer data. Sempre editável, sem consumir o
-  // agendamento (a linha continua na lista) nem promover fase.
-  const [savingId, setSavingId] = useState(null);
-  // Sobreposição otimista do desfecho por lead: usePagedLeads é getDocs (não ao
-  // vivo), então sem isto o switch não refletiria a marcação até um refetch.
-  const [outcomeOverride, setOutcomeOverride] = useState({});
-  const todayStartMs = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
-  const interactionsByLead = useMemo(() => {
-    const m = new Map();
-    (interactions || []).forEach(i => { const a = m.get(i.leadId); if (a) a.push(i); else m.set(i.leadId, [i]); });
-    return m;
-  }, [interactions]);
-
-  const markPresence = async (lead, outcome, e) => {
-    if (e) e.stopPropagation();
-    if (savingId) return;
-    // Clicar no lado JÁ ativo desmarca (volta pro neutro) — reverter um clique
-    // errado. Clicar no outro lado alterna direto. Sempre editável.
-    const clearing = lead.appointmentOutcome === outcome;
-    setSavingId(lead.id);
-    try {
-      if (clearing) {
-        await clearAppointmentOutcome({ db, lead, categorySlug });
-        setOutcomeOverride(o => ({ ...o, [lead.id]: null }));
-        toast.success(`Presença de ${lead.name} desmarcada.`);
-      } else {
-        const apptDate = getLeadAppointmentDate(lead);
-        const isToday = apptDate && isApptSameDay(apptDate);
-        const already = hasGoalDoneToday(lead, categorySlug, interactionsByLead.get(lead.id) || [], todayStartMs);
-        await writeAppointmentOutcome({
-          db, lead, outcome, categorySlug, appUser, statuses,
-          consumeAppointment: false,
-          promote: false,
-          writeGoalDone: Boolean(isToday) && !already,
-          sourceLabel: isAula ? 'Aulas experimentais' : 'Visitas'
-        });
-        setOutcomeOverride(o => ({ ...o, [lead.id]: outcome }));
-        toast.success(outcome === 'attended'
-          ? `Presença de ${lead.name} confirmada.`
-          : `${lead.name} marcado como não veio.`);
-      }
-    } catch (err) {
-      console.error('markPresence', err);
-      toast.error('Não foi possível salvar a presença. Tente novamente.');
-    } finally {
-      setSavingId(null);
-    }
-  };
+  // SOMENTE CONSULTA (decisão do Johnny, 2026-07-30). O atalho de presença que
+  // existia aqui saiu: marcar comparecimento passou a ser exclusividade da Meta
+  // Diária, onde ficam as regras (promoção de fase, exceção de cliente, pergunta
+  // de remarcar quem não veio). Ter dois lugares gravando o mesmo desfecho com
+  // regras diferentes era a fonte de incoerência entre as telas. Esta lista
+  // continua mostrando a situação de cada compromisso, só não deixa mudá-la.
 
   // Rótulos que mudam entre Aulas (4a) e Visitas (5a).
   const pluralLabel = isAula ? 'aulas' : 'visitas';
@@ -328,7 +302,7 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
       const fim = startOfDay(range.end).getTime() + DAY_MS;
       list = list.filter(l => { const t = getLeadAppointmentDate(l).getTime(); return t >= ini && t < fim; });
     } else if (isAula && dayTab === 'ongoing') {
-      const passNow = new Date();
+      const passNow = new Date(nowMs);
       list = list.filter(l => {
         const t = getLeadAppointmentDate(l).getTime();
         return t >= monthWindow.start && t < monthWindow.end && isPassActive(l, passNow);
@@ -337,15 +311,14 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
       const [ini, fim] = dayWindows[dayTab];
       list = list.filter(l => { const t = getLeadAppointmentDate(l).getTime(); return t >= ini && t < fim; });
     }
-    const now = Date.now();
     return [...list].sort((a, b) => {
       const da = getLeadAppointmentDate(a)?.getTime() ?? 0;
       const db2 = getLeadAppointmentDate(b)?.getTime() ?? 0;
-      const aF = da >= now, bF = db2 >= now;
+      const aF = da >= nowMs, bF = db2 >= nowMs;
       if (aF !== bF) return aF ? -1 : 1;
       return aF ? (da - db2) : (db2 - da);
     });
-  }, [scopedLeads, range, dayTab, dayWindows, monthWindow, isAula]);
+  }, [scopedLeads, range, dayTab, dayWindows, monthWindow, isAula, nowMs]);
 
   const visibleRows = filtered.slice(0, visibleCount);
 
@@ -671,8 +644,7 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
                 <p className="text-[12.5px] text-slate-400 dark:text-neutral-500">{emptySub}</p>
               </div>
             ) : (
-              visibleRows.map(rawL => {
-                const l = rawL.id in outcomeOverride ? { ...rawL, appointmentOutcome: outcomeOverride[rawL.id] } : rawL;
+              visibleRows.map(l => {
                 const d = getLeadAppointmentDate(l);
                 const att = getApptAttendanceState(l);
                 const fin = getApptFinalState(l);
@@ -682,12 +654,6 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
                 const consultantFirst = (l.consultantName || '').trim().split(/\s+/)[0] || '';
                 const sitLabel = getSituacaoLabel(att.key);
                 const sitTitle = att.key === 'pending' ? 'Agendado · aguardando desfecho' : sitLabel;
-                // Atalho de presença só p/ leads em andamento (não matriculado/perdido).
-                const canMark = fin.tone === 'slate';
-                const nowMs = Date.now();
-                const inConfirmWindow = Boolean(d) && nowMs >= d.getTime() && nowMs <= d.getTime() + CONFIRM_WINDOW_MS;
-                const pendingPresence = att.key !== 'attended' && att.key !== 'no_show';
-                const savingRow = savingId === l.id;
                 return (
                   <div
                     key={l.id}
@@ -758,22 +724,13 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
                             {pass.text}
                           </div>
                         )}
-                        {canMark && (
-                          <div className="mt-1.5">
-                            <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
-                          </div>
-                        )}
                       </div>
                     ) : (
                       <div className="min-w-0">
-                        {canMark ? (
-                          <PresenceSwitch attKey={att.key} highlight={inConfirmWindow && pendingPresence} saving={savingRow} onMark={(o, e) => markPresence(l, o, e)} />
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <span title={sitTitle} className={cn('size-3 rounded shrink-0', attSquareClass(att.key))} />
-                            <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-200 truncate">{sitLabel}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span title={sitTitle} className={cn('size-3 rounded shrink-0', attSquareClass(att.key))} />
+                          <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-200 truncate">{sitLabel}</span>
+                        </div>
                       </div>
                     )}
 
@@ -809,6 +766,7 @@ function AppointmentTrackingView({ interactions, appUser, usersList, statuses, d
           <div className="mt-3 flex items-center gap-4 px-1 text-[11px] text-slate-400 dark:text-neutral-500">
             <span className="inline-flex items-center gap-[5px]"><span className="size-3 rounded bg-emerald-600" /> compareceu</span>
             <span className="inline-flex items-center gap-[5px]"><span className="size-3 rounded bg-rose-600" /> não compareceu</span>
+            <span className="inline-flex items-center gap-[5px]"><span className="size-3 rounded bg-brand-600" /> remarcado</span>
             <span className="inline-flex items-center gap-[5px]"><span className="size-3 rounded bg-amber-500" /> agendado</span>
           </div>
 

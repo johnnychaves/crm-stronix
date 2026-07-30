@@ -23,7 +23,7 @@ import {
 import { DEFAULT_RENEWAL_CHECKPOINTS } from '../../lib/renewalGoal.js';
 
 export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
-  const { metaWeekdays = [1, 2, 3, 4, 5], dailyVolumeTarget = 0, renewalCheckpoints = DEFAULT_RENEWAL_CHECKPOINTS } = useGeneralConfig();
+  const { metaWeekdays = [1, 2, 3, 4, 5], dailyVolumeTarget = 0, renewalCheckpoints = DEFAULT_RENEWAL_CHECKPOINTS, renewalGraceDays } = useGeneralConfig();
 
   // Histórico de metas batidas da equipe (admin lê todos — mesma regra usada
   // pelo painel da Equipe) p/ o "X de Y dias" do mês.
@@ -71,9 +71,9 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
     (usersList || []).forEach((u) => {
       const myLeads = leadsByConsultant.get(u.id) || [];
       const myInteractions = interactionsByAuth.get(u.authUid) || [];
-      // renewalCheckpoints vem da configuração da academia — sem ele a Meta do
-      // gestor caía no padrão e divergia da tela do consultor.
-      const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(myLeads, byLead, u.id, renewalCheckpoints));
+      // renewalCheckpoints E renewalGraceDays vêm da configuração da academia —
+      // sem eles a Meta do gestor caía no padrão e divergia da tela do consultor.
+      const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(myLeads, byLead, u.id, renewalCheckpoints, renewalGraceDays));
       const volTarget = volumeTargetFor(u, dailyVolumeTarget);
       const vol = volTarget > 0 ? computeDailyVolume(myLeads, myInteractions, u.id, u.authUid) : null;
       const monthVol = volTarget > 0 ? computeVolumeInRange(myLeads, myInteractions, u.id, u.authUid, monthStart, null, metaWeekdays) : null;
@@ -93,7 +93,7 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
       };
     });
     return map;
-  }, [appUser, usersList, leads, interactions, metaWeekdays, dailyVolumeTarget, renewalCheckpoints, teamHistory]);
+  }, [appUser, usersList, leads, interactions, metaWeekdays, dailyVolumeTarget, renewalCheckpoints, renewalGraceDays, teamHistory]);
 
   return goalByConsultant;
 }
