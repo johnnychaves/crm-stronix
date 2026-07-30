@@ -1014,6 +1014,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       toast.success(outcome === 'attended'
         ? `Presença de ${row.name} confirmada${quem}.`
         : `${row.name} marcado como não veio${quem}.`);
+      // Quem não veio precisa de nova data, senão o lead fica parado sem
+      // próximo passo. Abre a remarcação na hora — fechar a janela é o
+      // "deixo pra marcar depois". Mesmo comportamento do handleOutcome da
+      // Meta; comparecimento não pergunta nada, só aplica o que já é regra.
+      if (outcome === 'no_show') {
+        setRescheduleTarget({ lead: row, categorySlug: row.categorySlug, flow: 'after_no_show' });
+      }
     } catch (err) {
       console.error('markAgendaPresence', err);
       toast.error('Não foi possível salvar a presença. Tente novamente.');
