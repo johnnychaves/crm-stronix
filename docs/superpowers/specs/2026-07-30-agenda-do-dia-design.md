@@ -132,9 +132,12 @@ do dia (variante 3 dos mockups).
 - Conteúdo: nome em 12,5px, e abaixo tipo, modalidade, professor e dono em
   10,5px truncado. Cliente ganha um chip discreto.
 - Suas linhas ganham um acento laranja na borda esquerda.
-- Cabeçalho com contador de pendentes e alternador de duas posições,
-  **Pendentes** e **Todos**, abrindo em Pendentes. O alternador entra via shadcn
-  (`toggle-group`), que é primitivo novo.
+- Cabeçalho com contador de quantas linhas ainda não têm desfecho. **Sem
+  filtro**: a agenda mostra o dia inteiro, resolvidos junto com pendentes
+  (decisão do Johnny, 2026-07-30). Quem abre a agenda quer o movimento do dia,
+  não a fila de tarefa, que já é a lista da Meta ao lado. Isso dispensa o
+  `toggle-group` do shadcn, que chegou a ser adicionado e saiu junto com o
+  filtro.
 - Lista com altura máxima e scroll fino, mesmo padrão do "Feitos hoje".
 - Dia sem agendamento não renderiza o card.
 
