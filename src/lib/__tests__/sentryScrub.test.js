@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { maskSensitive, scrubDeep } from '../sentryScrub.js';
+import { maskSensitive, scrubDeep, isNoise, scrubEvent } from '../sentryScrub.js';
 
 describe('maskSensitive', () => {
   it('mascara CPF formatado', () => {
@@ -58,5 +58,71 @@ describe('scrubDeep', () => {
   it('para na profundidade maxima sem estourar a pilha', () => {
     const deep = { a: { b: { c: { d: { e: { f: { g: 'x@y.com' } } } } } } };
     expect(() => scrubDeep(deep)).not.toThrow();
+  });
+});
+
+describe('isNoise', () => {
+  it('descarta ResizeObserver loop', () => {
+    expect(isNoise({ exception: { values: [{ value: 'ResizeObserver loop limit exceeded' }] } })).toBe(true);
+  });
+
+  it('descarta erro vindo de extensao do navegador', () => {
+    const event = {
+      exception: {
+        values: [{
+          value: 'boom',
+          stacktrace: { frames: [{ filename: 'chrome-extension://abc/inject.js' }] },
+        }],
+      },
+    };
+    expect(isNoise(event)).toBe(true);
+  });
+
+  it('mantem erro normal do app', () => {
+    const event = {
+      exception: {
+        values: [{
+          value: 'TypeError: x is undefined',
+          stacktrace: { frames: [{ filename: 'https://app.stronilead.com.br/assets/index.js' }] },
+        }],
+      },
+    };
+    expect(isNoise(event)).toBe(false);
+  });
+
+  it('mantem evento sem excecao', () => {
+    expect(isNoise({ message: 'log qualquer' })).toBe(false);
+  });
+});
+
+describe('scrubEvent', () => {
+  it('mascara a mensagem da excecao', () => {
+    const event = { exception: { values: [{ value: 'lead ana@x.com falhou' }] } };
+    expect(scrubEvent(event).exception.values[0].value).toBe('lead [email] falhou');
+  });
+
+  it('mascara a mensagem solta', () => {
+    expect(scrubEvent({ message: 'tel 11987654321' }).message).toBe('tel [telefone]');
+  });
+
+  it('remove o corpo da requisicao', () => {
+    const event = { request: { url: '/api/plans', data: { cpf: '123.456.789-01' } } };
+    const out = scrubEvent(event);
+    expect(out.request.data).toBeUndefined();
+    expect(out.request.url).toBe('/api/plans');
+  });
+
+  it('mascara breadcrumbs', () => {
+    const event = { breadcrumbs: [{ message: 'buscou joao@x.com' }] };
+    expect(scrubEvent(event).breadcrumbs[0].message).toBe('buscou [email]');
+  });
+
+  it('mascara o bloco extra', () => {
+    const event = { extra: { payload: { email: 'a@b.com' } } };
+    expect(scrubEvent(event).extra.payload.email).toBe('[email]');
+  });
+
+  it('devolve null para evento de ruido', () => {
+    expect(scrubEvent({ exception: { values: [{ value: 'ResizeObserver loop' }] } })).toBe(null);
   });
 });

@@ -44,3 +44,70 @@ export function scrubDeep(value, depth = 0) {
   }
   return value;
 }
+
+// Ruído conhecido: erro que não é bug nosso e só queima cota do plano gratuito.
+const NOISE_MESSAGES = [
+  /ResizeObserver loop/i,
+  /Non-Error promise rejection captured/i,
+  /Extension context invalidated/i,
+];
+
+const NOISE_FILES = [
+  /^chrome-extension:\/\//,
+  /^moz-extension:\/\//,
+  /^safari-web-extension:\/\//,
+];
+
+export function isNoise(event) {
+  const values = event?.exception?.values;
+  if (!Array.isArray(values) || values.length === 0) return false;
+
+  for (const entry of values) {
+    const message = String(entry?.value || '');
+    if (NOISE_MESSAGES.some((re) => re.test(message))) return true;
+
+    // O último frame é onde o erro nasceu. Se veio de extensão, não é nosso.
+    const frames = entry?.stacktrace?.frames;
+    if (Array.isArray(frames) && frames.length > 0) {
+      const origin = String(frames[frames.length - 1]?.filename || '');
+      if (NOISE_FILES.some((re) => re.test(origin))) return true;
+    }
+  }
+  return false;
+}
+
+// beforeSend do Sentry: devolver null descarta o evento.
+export function scrubEvent(event) {
+  if (!event) return event;
+  if (isNoise(event)) return null;
+
+  if (typeof event.message === 'string') event.message = maskSensitive(event.message);
+
+  if (Array.isArray(event.exception?.values)) {
+    for (const entry of event.exception.values) {
+      if (typeof entry.value === 'string') entry.value = maskSensitive(entry.value);
+    }
+  }
+
+  if (Array.isArray(event.breadcrumbs)) {
+    for (const crumb of event.breadcrumbs) {
+      if (typeof crumb.message === 'string') crumb.message = maskSensitive(crumb.message);
+      if (crumb.data) crumb.data = scrubDeep(crumb.data);
+    }
+  }
+
+  if (event.extra) event.extra = scrubDeep(event.extra);
+
+  // O corpo da requisição é onde dado de lead trafega no backend. Ele não tem
+  // valor de diagnóstico que justifique o risco, então sai inteiro.
+  if (event.request) {
+    delete event.request.data;
+    delete event.request.cookies;
+    if (event.request.headers) {
+      delete event.request.headers.authorization;
+      delete event.request.headers.cookie;
+    }
+  }
+
+  return event;
+}
