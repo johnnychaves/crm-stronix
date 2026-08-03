@@ -35,7 +35,13 @@ export const groupTimeline = (events) => {
 };
 
 // Detecta eventos de CONTRATO (matrícula/renovação/cancelamento/troca de plano)
-// pelo texto da interaction. Usado como bucket próprio na timeline.
+// pelo texto da interaction. Usado como bucket próprio na timeline. Só é
+// consultado para type='status_change' (ver classifyInteraction) — contrato
+// real é sempre gravado com esse type (contractsWrites.js); sem esse gate o
+// regex também capturava notas/conclusões de sistema que só por coincidência
+// mencionavam "renovação"/"plano" (ex: reagendamento de renovação na Meta
+// Diária, RenewalOutcomeModal.jsx), fazendo a timeline mostrar a anotação do
+// consultor como se fosse uma matrícula fechada.
 const CONTRACT_RE = /matrícula|matricula|renova(ç|c)ão|contrato cancelado|plano /i;
 
 // Classifica uma interaction num dos buckets de filtro da timeline.
@@ -43,8 +49,10 @@ const CONTRACT_RE = /matrícula|matricula|renova(ç|c)ão|contrato cancelado|pla
 export const classifyInteraction = (i) => {
   const t = String(i.text || '');
   // Contrato vem ANTES das demais regras: matrícula/renovação são gravadas como
-  // status_change, mas pertencem ao bucket de contrato.
-  if (CONTRACT_RE.test(t)) return 'contract';
+  // status_change, mas pertencem ao bucket de contrato. O gate por type evita
+  // que o regex capture outros types cujo texto livre só por coincidência
+  // bate com essas palavras.
+  if (i.type === 'status_change' && CONTRACT_RE.test(t)) return 'contract';
   // Desfecho de agendamento (compareceu/faltou) é gravado com
   // type='daily_goal_done', mas carrega o campo appointmentOutcome. É evento de
   // AGENDAMENTO: sem esta regra ele cai no balde 'system' e some do feed padrão,
