@@ -109,7 +109,7 @@ buffer. O wrapper faz o flush com timeout curto para não segurar a resposta.
 | Erros | 100% | Volume baixo, todo erro interessa |
 | `tracesSampleRate` | 0.1 | Performance não é o objetivo; 10% já mostra tendência sem queimar cota |
 | Session Replay | **Desligado** | Grava a tela, e a tela tem ficha de lead aberta |
-| `sendDefaultPii` | `false` | Não anexa IP nem dados de usuário automaticamente |
+| `dataCollection` | `{ userInfo: false, httpBodies: [] }` | Não coleta e-mail, usuário, IP nem corpo de requisição. Substitui o `sendDefaultPii`, obsoleto desde a v10.57 do SDK e removido na v11 |
 | `release` | SHA do commit da Vercel | Permite saber qual deploy quebrou |
 | `environment` | `production` / `preview` | Separa ruído de preview do que é real |
 
