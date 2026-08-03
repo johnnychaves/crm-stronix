@@ -93,6 +93,8 @@ import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
 import { SuperConsole } from './views/console/SuperConsole.jsx';
 import { SupportCenterModal } from './modals/SupportCenterModal.jsx';
 import { countUnreadForClient } from './lib/ticketThread.js';
+import { AppErrorBoundary } from './components/ErrorBoundary.jsx';
+import { setSentryUser, clearSentryUser } from './lib/sentry.js';
 
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
@@ -319,6 +321,22 @@ function AppInner() {
   // onSnapshot (geralmente <100ms). justCreatedLeadId é o ID alvo; ao chegar,
   // viramos profileLeadId (abre a LeadProfileView).
   const [justCreatedLeadId, setJustCreatedLeadId] = useState(null);
+
+  // Contexto do Sentry: qual academia e qual papel, para saber quem está
+  // sofrendo sem mandar nome nem e-mail para fora. Um effect só, em vez de
+  // instrumentar os oito pontos que mexem em appUser.
+  useEffect(() => {
+    if (appUser) {
+      setSentryUser({
+        uid: firebaseUser?.uid,
+        tenantId: appUser.tenantId,
+        role: appUser.role,
+        impersonating: !!appUser.impersonating,
+      });
+    } else {
+      clearSentryUser();
+    }
+  }, [appUser, firebaseUser?.uid]);
 
   // 1. Inicialização Auth e Persistência de Sessão
   useEffect(() => {
@@ -1301,6 +1319,9 @@ useEffect(() => {
         )}
 
         <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
+          {/* Envolve só o conteúdo, não o shell: view que quebra não leva
+              junto a barra lateral nem o cabeçalho. */}
+          <AppErrorBoundary>
           {appUser.superAdminOnly ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
               <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />
@@ -1353,6 +1374,7 @@ useEffect(() => {
               </>)}
             </div>
           )}
+          </AppErrorBoundary>
         </div>
       </main>
 
