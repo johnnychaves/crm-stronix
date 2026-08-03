@@ -1,6 +1,7 @@
 import { adminDb, verifyRequest } from './_firebaseAdmin.js';
 import { effectivePrice, loadPlans } from './_plans.js';
 import { isAsaasConfigured } from './_asaas.js';
+import { withSentry } from './_sentry.js';
 
 // Visão agregada da plataforma para o painel super-admin — SUPER-ADMIN only.
 // Usa o Admin SDK (o super-admin não lê /artifacts de outro tenant pelas rules).
@@ -87,7 +88,7 @@ async function tenantMetrics(doc, plansMap) {
   };
 }
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
@@ -242,4 +243,4 @@ export default async function handler(req, res) {
     console.error('super-overview', error);
     return res.status(500).json({ error: 'Erro ao montar a visão geral.' });
   }
-}
+});

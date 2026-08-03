@@ -1,5 +1,6 @@
 import { adminDb } from './_firebaseAdmin.js';
 import { checkRateLimit, clientIp } from './_rateLimit.js';
+import { withSentry } from './_sentry.js';
 
 // Resolve PÚBLICO de organização por slug (?slug=ironfit).
 // Usado pela tela de login (pré-autenticação) para mostrar a MARCA da academia
@@ -12,7 +13,7 @@ import { checkRateLimit, clientIp } from './_rateLimit.js';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
@@ -44,4 +45,4 @@ export default async function handler(req, res) {
     console.error('tenant-resolve:', err?.message || err);
     return res.status(500).json({ error: 'Erro ao resolver organização.' });
   }
-}
+});

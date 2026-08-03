@@ -1,6 +1,7 @@
 import { adminAuth, adminDb, verifyRequest } from './_firebaseAdmin.js';
 import { usersCollection } from './_auth.js';
 import { logAudit } from './_audit.js';
+import { withSentry } from './_sentry.js';
 
 // "Entrar como" — duas ações num só endpoint (o plano Hobby do Vercel limita o
 // nº de Serverless Functions, então start+return moram aqui):
@@ -69,7 +70,7 @@ async function handleStart(auth, tenantId, res) {
   return res.status(200).json({ ok: true, token, tenantName: tenant?.displayName || tenantId, adminUid });
 }
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
 
   const auth = await verifyRequest(req);
@@ -84,4 +85,4 @@ export default async function handler(req, res) {
     console.error('impersonate', error);
     return res.status(500).json({ error: 'Erro na operação de visualização.' });
   }
-}
+});

@@ -1,7 +1,8 @@
 import { adminAuth, verifyRequest } from './_firebaseAdmin.js';
 import { usersCollection, isTenantAdmin } from './_auth.js';
+import { withSentry } from './_sentry.js';
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
@@ -47,4 +48,4 @@ export default async function handler(req, res) {
     }
     return res.status(500).json({ error: 'Erro interno ao redefinir senha.' });
   }
-}
+});

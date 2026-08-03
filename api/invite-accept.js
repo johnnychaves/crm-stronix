@@ -2,6 +2,7 @@ import { adminAuth, adminDb, admin } from './_firebaseAdmin.js';
 import { checkRateLimit, clientIp } from './_rateLimit.js';
 import { getSeatUsage, canAddSeat } from './_plans.js';
 import { syncSubscriptionValue } from './_asaas.js';
+import { withSentry } from './_sentry.js';
 
 // Aceita um convite e cria a conta do usuário no tenant. PÚBLICO (o token UUID
 // é o segredo). Vercel serverless function.
@@ -19,7 +20,7 @@ const usersCollection = (tenantId) =>
 const invitesCollection = (tenantId) =>
   adminDb.collection('tenants').doc(tenantId).collection('invites');
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
@@ -145,4 +146,4 @@ export default async function handler(req, res) {
     console.error('invite-accept', error);
     return res.status(500).json({ error: 'Erro interno ao aceitar convite.' });
   }
-}
+});
