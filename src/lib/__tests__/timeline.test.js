@@ -36,10 +36,60 @@ describe('classifyInteraction — desfecho de agendamento', () => {
     })).toBe('system');
   });
 
-  it('matrícula continua ganhando do desfecho (contrato vem primeiro)', () => {
+  it('type continua sendo a fonte da verdade pro bucket de contrato — texto parecido não basta', () => {
+    // Contrato real é SEMPRE gravado com type='status_change' (ver
+    // contractsWrites.js). Um desfecho de agendamento cujo texto por
+    // coincidência lembra uma matrícula não pode roubar o bucket — isso é
+    // exatamente o bug do reagendamento de renovação (ver describe abaixo).
     expect(classifyInteraction({
       type: 'daily_goal_done', appointmentOutcome: 'attended', text: 'Matrícula fechada — Plano Anual'
+    })).toBe('appointment');
+  });
+
+  it('matrícula/renovação real (status_change) continua indo para contrato', () => {
+    expect(classifyInteraction({
+      type: 'status_change', text: 'Matrícula realizada — Plano Anual (R$ 199,90). Vigência até 10/08/2027.'
     })).toBe('contract');
+    expect(classifyInteraction({
+      type: 'status_change', text: 'Renovação registrada — Plano Anual (R$ 199,90). Vigência até 10/08/2027.'
+    })).toBe('contract');
+  });
+});
+
+describe('classifyInteraction — reagendamento/perda de renovação (Meta Diária) não é contrato', () => {
+  // Bug real: RenewalOutcomeModal grava a nota do consultor (type='note') e a
+  // conclusão de sistema (type='daily_goal_done') com texto livre que
+  // menciona "renovação"/"plano" — sem o gate por type, CONTRACT_RE roubava
+  // essas interactions pro bucket de contrato e a timeline renderizava a
+  // anotação do consultor como se fosse uma matrícula fechada.
+  it('nota de reagendamento vai para nota, não para contrato', () => {
+    expect(classifyInteraction({
+      type: 'note',
+      text: 'Motivo do reagendamento: cliente quer decidir entre os planos — próximo contato em 10/08/2026.'
+    })).toBe('note');
+  });
+
+  it('conclusão de sistema do reagendamento vai para sistema, não para contrato', () => {
+    expect(classifyInteraction({
+      type: 'daily_goal_done',
+      dailyGoalCategory: 'renovacao',
+      text: '✅ Renovação — Meta Diária concluída (contato reagendado para 10/08/2026).'
+    })).toBe('system');
+  });
+
+  it('nota de perda de renovação (não vai renovar) vai para nota, não para contrato', () => {
+    expect(classifyInteraction({
+      type: 'note',
+      text: 'Motivo da perda de renovação: prefere academia mais perto de casa.'
+    })).toBe('note');
+  });
+
+  it('conclusão de sistema de "não vai renovar" vai para sistema, não para contrato', () => {
+    expect(classifyInteraction({
+      type: 'daily_goal_done',
+      dailyGoalCategory: 'renovacao',
+      text: '✅ Renovação — Meta Diária concluída (não vai renovar).'
+    })).toBe('system');
   });
 });
 
