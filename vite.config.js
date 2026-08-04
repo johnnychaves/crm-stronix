@@ -43,9 +43,14 @@ export default defineConfig({
     alias: { '@': path.resolve(__dirname, './src') },
   },
   build: {
-    // Necessário para o stack trace chegar legível no Sentry. O plugin acima
-    // sobe os mapas e depois os apaga do dist.
-    sourcemap: true,
+    // Mapa de código só é gerado quando o plugin do Sentry vai rodar, ou seja,
+    // quando há token. Sem token não se gera nada, então não há o que vazar.
+    // 'hidden' gera o arquivo mas não deixa o comentário sourceMappingURL no
+    // bundle: o Sentry usa o mapa que recebeu no build, o navegador não vai
+    // atrás dele. A remoção do dist acontece no script de build, ver
+    // package.json — não confiamos no filesToDeleteAfterUpload do plugin,
+    // que falhou em silêncio no primeiro deploy e deixou o mapa publicado.
+    sourcemap: process.env.SENTRY_AUTH_TOKEN ? 'hidden' : false,
     rollupOptions: {
       output: {
         // Separa as libs grandes em chunks próprios: melhora o cache (ao publicar
