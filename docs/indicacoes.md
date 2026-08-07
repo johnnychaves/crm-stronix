@@ -77,5 +77,13 @@ caindo na etapa de entrada do funil. Requisitos quando for construir:
 2. **Página pública** com marca da academia (padrão `api/tenant-resolve.js`).
 3. **Código do cliente**: o próprio id do doc serve; um slug curto denormalizado
    fica melhor pra URL.
-4. **Anti-abuso**: rate limit (`api/_rateLimit.js`) + dedupe por WhatsApp
-   (`findDuplicateLeadRemote`).
+4. **Anti-abuso**: rate limit (`api/_rateLimit.js`) + honeypot + dedupe por
+   WhatsApp (`findDuplicateLeadRemote`).
+5. **Cadastro já existente (decidido 2026-08-07)**: a API nunca cria duplicata,
+   e o visitante vê SEMPRE a mesma tela de sucesso — responder "esse número já
+   existe" num endpoint público vaza quem é aluno. Por dentro: grava um evento
+   na timeline do cadastro existente ("tentou se cadastrar pelo link de
+   indicação de {Nome}") e NÃO auto-vincula nem move de funil — o time decide
+   (contenção contra farmar indicação com telefone alheio quando houver
+   recompensa). No fluxo manual isso já é resolvido pelo dup-check do modal:
+   bloqueia, mostra quem é, e o vínculo retroativo sai pelo PhaseChanger.
