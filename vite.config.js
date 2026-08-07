@@ -44,12 +44,15 @@ export default defineConfig({
   },
   build: {
     // Mapa de código só é gerado quando o plugin do Sentry vai rodar, ou seja,
-    // quando há token. Sem token não se gera nada, então não há o que vazar.
-    // 'hidden' gera o arquivo mas não deixa o comentário sourceMappingURL no
-    // bundle: o Sentry usa o mapa que recebeu no build, o navegador não vai
-    // atrás dele. A remoção do dist acontece no script de build, ver
-    // package.json — não confiamos no filesToDeleteAfterUpload do plugin,
-    // que falhou em silêncio no primeiro deploy e deixou o mapa publicado.
+    // quando há token. Sem token não adianta gerar: ninguém sobe e o arquivo
+    // só ocuparia espaço no deploy. 'hidden' gera sem deixar o comentário
+    // sourceMappingURL no bundle, já que o Sentry usa o mapa que recebeu no
+    // build e o navegador não precisa ir atrás. O script de build ainda apaga
+    // dist/assets/*.map no fim, como segunda trava.
+    //
+    // ATENÇÃO ao testar se um mapa está publicado: o vercel.json manda tudo
+    // que não é /api/ para o index.html, então requisição a arquivo inexistente
+    // responde 200 com HTML, nunca 404. Conferir o CONTEÚDO, não o status.
     sourcemap: process.env.SENTRY_AUTH_TOKEN ? 'hidden' : false,
     rollupOptions: {
       output: {
