@@ -238,6 +238,13 @@ describe('hasActiveInteractionToday', () => {
     expect(hasActiveInteractionToday(lead, interactions, TODAY_START)).toBe(false);
   });
 
+  it("exclui eventos de indicação (type 'referral'): o 🎉 no indicador não é contato real", () => {
+    const interactions = [
+      { leadId: 'l1', type: 'referral', text: '🎉 João que você indicou fechou matrícula', createdAt: TODAY_10H }
+    ];
+    expect(hasActiveInteractionToday(lead, interactions, TODAY_START)).toBe(false);
+  });
+
   it('false para interaction de ontem ou de outro lead', () => {
     expect(hasActiveInteractionToday(lead, [{ leadId: 'l1', type: 'note', createdAt: YESTERDAY_10H }], TODAY_START)).toBe(false);
     expect(hasActiveInteractionToday(lead, [{ leadId: 'l2', type: 'note', createdAt: TODAY_10H }], TODAY_START)).toBe(false);

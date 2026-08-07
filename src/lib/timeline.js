@@ -48,6 +48,10 @@ const CONTRACT_RE = /matrícula|matricula|renova(ç|c)ão|contrato cancelado|pla
 // Usa o campo `type` e prefixos injetados pelo composer.
 export const classifyInteraction = (i) => {
   const t = String(i.text || '');
+  // Eventos de indicação têm bucket próprio, decidido pelo type ANTES de
+  // qualquer regex de texto: o 🎉 de conversão menciona "matrícula" e sem este
+  // gate cairia em 'contract' (ou, pior, no 'system' oculto por padrão).
+  if (i.type === 'referral') return 'referral';
   // Contrato vem ANTES das demais regras: matrícula/renovação são gravadas como
   // status_change, mas pertencem ao bucket de contrato. O gate por type evita
   // que o regex capture outros types cujo texto livre só por coincidência
@@ -79,7 +83,7 @@ export const TIMELINE_FILTERS = [
   { id: 'conversation', label: 'Conversas',    kinds: ['conversation'] },
   { id: 'appointment',  label: 'Agendamentos', kinds: ['appointment'] },
   { id: 'note',         label: 'Anotações',    kinds: ['note'] },
-  { id: 'milestone',    label: 'Marcos',       kinds: ['status', 'contract'] }
+  { id: 'milestone',    label: 'Marcos',       kinds: ['status', 'contract', 'referral'] }
 ];
 
 export const TIMELINE_SYSTEM_KIND = 'system';
@@ -100,6 +104,7 @@ export const timelineTypeLabel = (i) => {
   switch (i?._kind) {
     case 'contract': return 'Contrato';
     case 'status': return 'Fase';
+    case 'referral': return 'Indicação';
     case 'conversation': return /^📞|ligaç/i.test(t) ? 'Ligação' : 'WhatsApp';
     case 'note': return i?.pinned ? 'Nota fixa' : 'Nota';
     case 'appointment': return /aula/i.test(t) ? 'Aula' : 'Agenda';

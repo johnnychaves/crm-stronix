@@ -152,6 +152,22 @@ describe('timelineTypeLabel — a coluna de versalete', () => {
   });
 });
 
+describe('eventos de indicação (type referral)', () => {
+  it("bucket próprio, mesmo com 'matrícula' no texto (gate por type, não por regex)", () => {
+    expect(classifyInteraction({ type: 'referral', text: '🎉 João que você indicou fechou matrícula' })).toBe('referral');
+    expect(classifyInteraction({ type: 'referral', text: '🤝 Indicado por Maria' })).toBe('referral');
+  });
+
+  it('entra no filtro Marcos e não é sistema (não pode sumir do feed padrão)', () => {
+    expect(matchesTimelineFilter('referral', 'milestone')).toBe(true);
+    expect(matchesTimelineFilter('referral', 'note')).toBe(false);
+  });
+
+  it("rótulo da coluna: 'Indicação'", () => {
+    expect(timelineTypeLabel({ _kind: 'referral', text: '🤝 Indicou João' })).toBe('Indicação');
+  });
+});
+
 describe('groupTimelineByDay — a sub-régua', () => {
   const ev = (id, y, m, d, h) => ({ id, createdAt: new Date(y, m, d, h, 0) });
 
