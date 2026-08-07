@@ -1,5 +1,6 @@
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { ensurePlansSeeded, PLANS_COLLECTION } from './_plans.js';
+import { withSentry } from './_sentry.js';
 
 // CRUD de planos (coleção raiz `plans/`) — SUPER-ADMIN only.
 // GET semeia os 3 planos atuais na 1ª abertura (idempotente). DELETE/edição de
@@ -70,7 +71,7 @@ async function clearOtherDefaults(col, exceptId) {
   if (touched) await batch.commit();
 }
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   const auth = await verifyRequest(req);
   if (!auth) return res.status(401).json({ error: 'Não autenticado.' });
   if (!auth.superAdmin) {
@@ -165,4 +166,4 @@ export default async function handler(req, res) {
     console.error('plans', error);
     return res.status(500).json({ error: 'Erro ao processar planos.' });
   }
-}
+});

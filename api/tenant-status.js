@@ -2,6 +2,7 @@ import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { logAudit } from './_audit.js';
 import { loadPlans, getSeatUsage } from './_plans.js';
 import { sanitizeProfile } from './_profile.js';
+import { withSentry } from './_sentry.js';
 
 // Atualiza status / plano / cobrança / perfil de uma organização — SUPERADMIN only.
 //
@@ -61,7 +62,7 @@ function toTimestampOrNull(v) {
   return admin.firestore.Timestamp.fromMillis(n);
 }
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   const auth = await verifyRequest(req);
   if (!auth) return res.status(401).json({ error: 'Não autenticado.' });
   if (!auth.superAdmin) {
@@ -253,4 +254,4 @@ export default async function handler(req, res) {
     console.error('tenant-status', error);
     return res.status(500).json({ error: 'Erro interno ao atualizar organização.' });
   }
-}
+});

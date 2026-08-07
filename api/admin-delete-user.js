@@ -2,12 +2,13 @@ import { adminAuth, verifyRequest } from './_firebaseAdmin.js';
 import { usersCollection, isTenantAdmin } from './_auth.js';
 import { getSeatUsage } from './_plans.js';
 import { syncSubscriptionValue } from './_asaas.js';
+import { withSentry } from './_sentry.js';
 
 // Exclui um consultor do tenant do admin. ADMIN do tenant only.
 // SEGURANÇA: o authUid a deletar vem SEMPRE do doc validado dentro do tenant —
 // nunca do body — para evitar IDOR (admin de A apagando conta de usuário de B).
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
@@ -65,4 +66,4 @@ export default async function handler(req, res) {
     console.error('admin-delete-user', error);
     return res.status(500).json({ error: 'Erro interno ao excluir consultor.' });
   }
-}
+});
