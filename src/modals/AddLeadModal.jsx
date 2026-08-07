@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import {
   UserPlus, MessageCircle, Megaphone, Globe, DoorOpen, Camera, Calendar, IdCard, Mail,
   ChevronDown, Check, Plus, Zap, AlertTriangle, CheckCircle2, Users, X, Kanban, HeartPulse, Dumbbell,
+  Handshake, LockKeyhole,
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
@@ -11,6 +12,10 @@ import { logInteraction } from '../lib/interactions.js';
 import { buildLeadSearchFields, deriveLeadBucket } from '../lib/leadDerived.js';
 import { fromDateInputValue } from '../lib/dates.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
+import { getReferralFunnel, getReferralEntryStage, isReferralFunnel, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
+import { commitReferralLink } from '../lib/referralsWrites.js';
+import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
+import { Switch } from '../components/ui/switch.jsx';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -318,12 +323,23 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const initialFunnelId = selectedFunnelId || getDefaultFunnel(safeFunnels)?.id || null;
   const initialStatuses = (statuses || []).filter((s) => s.funnelId === initialFunnelId).sort((a, b) => (a.order || 0) - (b.order || 0));
 
+  // Indicação: funil de sistema + etapa de entrada fixa. Sem eles (o admin
+  // ainda não logou para a migração rodar), o switch some e o cadastro segue
+  // idêntico ao normal.
+  const referralFunnel = getReferralFunnel(safeFunnels);
+  const referralEntry = getReferralEntryStage(statuses, referralFunnel?.id);
+  const canReferral = Boolean(referralFunnel && referralEntry);
+  // O funil de indicações não aparece no select do modo normal — só via switch.
+  const pickerFunnels = safeFunnels.filter((f) => !isReferralFunnel(f));
+  // Modal aberto já na aba do funil de indicações → switch nasce ligado.
+  const initialIsReferral = canReferral && initialFunnelId === referralFunnel.id;
+
   const blankForm = () => ({
     name: '',
     whatsapp: '',
-    source: sources?.[0]?.name || '',
+    source: initialIsReferral ? 'Indicação' : (sources?.[0]?.name || ''),
     funnelId: initialFunnelId,
-    status: initialStatuses?.[0]?.name || '',
+    status: initialIsReferral ? referralEntry.name : (initialStatuses?.[0]?.name || ''),
     tags: [],
     dor: '',
     modalidade: '',
@@ -334,6 +350,8 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
     observation: '',
   });
   const [form, setForm] = useState(blankForm);
+  const [isReferral, setIsReferral] = useState(initialIsReferral);
+  const [referrer, setReferrer] = useState(null);
 
   useEffect(() => { nameRef.current?.focus(); }, []);
 
@@ -347,6 +365,23 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const toggleTag = (name) =>
     setForm((f) => ({ ...f, tags: f.tags.includes(name) ? f.tags.filter((x) => x !== name) : [...f.tags, name] }));
 
+  // Liga/desliga o modo indicação. Ligado trava funil (Indicações), etapa
+  // (entrada fixa) e origem ('Indicação' — mantém as métricas por origem
+  // funcionando de graça). Desligado volta pro funil da tela (ou default).
+  const setReferralMode = (on) => {
+    setIsReferral(on);
+    if (on) {
+      setForm((f) => ({ ...f, funnelId: referralFunnel.id, status: referralEntry.name, source: 'Indicação' }));
+      return;
+    }
+    setReferrer(null);
+    const backId =
+      (selectedFunnelId && selectedFunnelId !== referralFunnel?.id ? selectedFunnelId : null) ||
+      getDefaultFunnel(pickerFunnels)?.id || null;
+    const next = (statuses || []).filter((s) => s.funnelId === backId).sort((a, b) => (a.order || 0) - (b.order || 0));
+    setForm((f) => ({ ...f, funnelId: backId, status: next[0]?.name || '', source: sources?.[0]?.name || '' }));
+  };
+
   const phoneDigits = onlyDigits(form.whatsapp);
   const phoneTooShort = phoneDigits.length > 0 && phoneDigits.length < 10;
   // Dup-check remoto (G1-flip / PR F): query em whatsappDigits, cobre todos os
@@ -354,7 +389,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const { duplicate } = useDuplicateLead({ db, phoneDigits });
   const nameOk = form.name.trim().length > 1;
   const dorOk = form.dor.trim().length > 0;
-  const canSubmit = nameOk && phoneDigits.length >= 10 && !duplicate && !!form.funnelId && dorOk;
+  const canSubmit = nameOk && phoneDigits.length >= 10 && !duplicate && !!form.funnelId && dorOk && (!isReferral || !!referrer);
 
   // barra de progresso — 6 sinais
   const filled = [nameOk, phoneDigits.length >= 10, !!form.source, !!form.status, dorOk].filter(Boolean).length
@@ -364,6 +399,8 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const reset = () => {
     setForm(blankForm());
     setMore(false);
+    setIsReferral(initialIsReferral);
+    setReferrer(null);
     setDone(false);
     setCreatedId(null);
     setTimeout(() => nameRef.current?.focus(), 0);
@@ -408,6 +445,10 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
           sexo: form.sexo || null,
           dor: (form.dor || '').trim() || null,
           modalidade: form.modalidade || null,
+          // Vínculo de indicação no PRÓPRIO doc: a feature funciona mesmo se o
+          // batch de eventos (commitReferralLink) falhar depois.
+          referredById: isReferral && referrer ? referrer.id : null,
+          referredByName: isReferral && referrer ? (referrer.name || null) : null,
           ...getLeadOwnershipFields(appUser),
           ...buildLeadSearchFields({ name: form.name, whatsapp: form.whatsapp, cpf: form.cpf }),
           lifecycleBucket: deriveLeadBucket({ status: form.status }),
@@ -420,6 +461,22 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
           appointmentScheduledFor: null,
         }
       );
+
+      // Eventos 🤝 dos dois lados + referredAt no indicado. Best-effort fora
+      // do caminho crítico (padrão markConvertingAula): o vínculo em si já
+      // está no doc criado acima.
+      if (isReferral && referrer) {
+        try {
+          await commitReferralLink({
+            db,
+            lead: { id: leadRef.id, name: form.name.trim(), consultantId: appUser.id, consultantAuthUid: appUser.authUid },
+            appUser,
+            referrer
+          });
+        } catch (err) {
+          console.error('commitReferralLink falhou', err);
+        }
+      }
 
       if (form.observation.trim()) {
         await logInteraction(
@@ -551,16 +608,57 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                     </div>
                   </section>
 
-                  {/* 2 — origem */}
+                  {/* 2 — origem (ou indicação) */}
                   <section>
-                    <SectionTitle n="2" title="Como chegou" desc="De onde veio esse contato?" />
-                    <SourceTiles sources={sources} value={form.source} onChange={(v) => set({ source: v })} />
+                    <SectionTitle n="2" title="Como chegou" desc={isReferral ? 'Indicação de um cliente da academia' : 'De onde veio esse contato?'} />
+                    {canReferral && (
+                      <label className={cn(
+                        'flex items-center justify-between gap-3 rounded-xl border p-3 mb-3 cursor-pointer transition',
+                        isReferral
+                          ? 'border-emerald-300 bg-emerald-50/70 dark:border-emerald-500/30 dark:bg-emerald-500/[0.07]'
+                          : 'border-slate-200 bg-white hover:border-slate-300 dark:border-white/[0.08] dark:bg-white/[0.03] dark:hover:border-white/15'
+                      )}>
+                        <span className="flex items-center gap-2.5 min-w-0">
+                          <span className={cn(
+                            'size-9 rounded-lg grid place-items-center shrink-0 transition',
+                            isReferral ? 'bg-emerald-500 text-white' : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/12 dark:text-emerald-400'
+                          )}>
+                            <Handshake size={17} />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-[13px] font-semibold text-slate-900 dark:text-white leading-tight">É uma indicação?</span>
+                            <span className="block text-[11.5px] text-slate-400 dark:text-slate-500 truncate">Um cliente indicou este lead</span>
+                          </span>
+                        </span>
+                        <Switch checked={isReferral} onCheckedChange={setReferralMode} />
+                      </label>
+                    )}
+                    {isReferral ? (
+                      <div>
+                        <Label required>Quem indicou?</Label>
+                        <ReferrerPicker db={db} value={referrer} onSelect={setReferrer} autoFocus />
+                      </div>
+                    ) : (
+                      <SourceTiles sources={sources} value={form.source} onChange={(v) => set({ source: v })} />
+                    )}
                   </section>
 
                   {/* 3 — funil + fase */}
                   <section>
                     <SectionTitle n="3" title="Onde entra" desc="Funil e fase inicial no pipeline" />
-                    <PhasePicker funnels={safeFunnels} funnelId={form.funnelId} onFunnel={handleFunnel} statuses={statuses} status={form.status} onStatus={(v) => set({ status: v })} />
+                    {isReferral ? (
+                      <div className="flex items-start gap-3 rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4">
+                        <span className="size-9 rounded-lg grid place-items-center shrink-0 bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-300">
+                          <LockKeyhole size={16} />
+                        </span>
+                        <div className="text-[12.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Entra no funil <strong className="text-slate-700 dark:text-slate-200 font-semibold">{REFERRAL_FUNNEL_NAME}</strong>, na etapa{' '}
+                          <strong className="text-slate-700 dark:text-slate-200 font-semibold">{referralEntry?.name}</strong>. As indicações ficam juntas para o time trabalhar.
+                        </div>
+                      </div>
+                    ) : (
+                      <PhasePicker funnels={pickerFunnels} funnelId={form.funnelId} onFunnel={handleFunnel} statuses={statuses} status={form.status} onStatus={(v) => set({ status: v })} />
+                    )}
                   </section>
 
                   {/* 4 — o que busca: dor (obrigatória) + modalidade de interesse */}
