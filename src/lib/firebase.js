@@ -6,6 +6,7 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { initAppCheck } from './appCheck.js';
 
 // Config do Firebase Web. Os valores são PÚBLICOS (embarcam no bundle do
 // cliente — apiKey de Firebase Web não é segredo). Lê de import.meta.env
@@ -23,6 +24,12 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// ANTES do getAuth e do Firestore, de propósito. Requisição que sai antes do
+// App Check subir vai para a métrica como NÃO verificada, e é justamente essa
+// métrica que decide se dá para ligar o bloqueio. Ordem errada aqui produz um
+// número falso na decisão mais perigosa do projeto.
+initAppCheck(app);
 
 export const auth = getAuth(app);
 
