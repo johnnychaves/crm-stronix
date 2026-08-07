@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ChevronRight, GripVertical, Pencil, Plus, Trophy } from 'lucide-react';
 import { collection, doc, addDoc, setDoc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { appId, FUNNELS_PATH, LEADS_PATH, STATUSES_PATH } from '../../lib/firebase.js';
-import { commitOpsInChunks } from '../../lib/funnels.js';
+import { commitOpsInChunks, isSystemStage } from '../../lib/funnels.js';
+import { isReferralFunnel, pinEntryFirst, REFERRAL_ENTRY_NAME } from '../../lib/referrals.js';
 import { cn } from '../../lib/utils.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { ColorDot, SETTINGS_COLOR_OPTIONS, settingsColorTone } from '../../components/ui/ColorPicker.jsx';
@@ -15,10 +16,10 @@ import {
 // funil selecionado à direita.
 //
 // Negociação, Venda e Perda são fases fixas do sistema: aparecem com o selo
-// SISTEMA e não podem ser renomeadas, reordenadas nem excluídas.
-
-const isSystemStage = (s) =>
-  Boolean(s?.isSystem) || (s?.name || '').trim().toLowerCase() === 'negociação';
+// SISTEMA e não podem ser renomeadas, reordenadas nem excluídas. O funil de
+// INDICAÇÕES é um funil de sistema inteiro: rename/excluir/tornar-padrão
+// bloqueados e a etapa de entrada pinada no topo — só o meio é configurável.
+// (isSystemStage foi promovida para lib/funnels.js quando esse funil nasceu.)
 
 function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled }) {
   const toast = useToast();
@@ -61,6 +62,11 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
     setSaving(true);
     try {
       if (funnelDialog?.funnel) {
+        if (isReferralFunnel(funnelDialog.funnel)) {
+          toast.warning('O funil de Indicações é do sistema e não pode ser renomeado.');
+          setFunnelDialog(null);
+          return;
+        }
         await setDoc(
           doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, funnelDialog.funnel.id),
           { name: trimmed, updatedAt: serverTimestamp() },
@@ -92,6 +98,12 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
 
   const setDefaultFunnel = async (f) => {
     if (f.isDefault) return;
+    // O fallback legado de isItemInFunnel joga leads sem funnelId no funil
+    // default — o funil de Indicações nunca pode assumir esse papel.
+    if (isReferralFunnel(f)) {
+      toast.warning('O funil de Indicações não pode ser o padrão.');
+      return;
+    }
     const batch = writeBatch(db);
     safeFunnels.forEach(item => {
       if (item.isDefault) batch.update(doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, item.id), { isDefault: false });
@@ -103,6 +115,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
   };
 
   const deleteFunnel = async (f) => {
+    if (isReferralFunnel(f)) { toast.warning('O funil de Indicações é do sistema e não pode ser excluído.'); return; }
     if (f.isDefault) { toast.warning('Não é possível excluir o funil padrão. Marque outro como padrão antes.'); return; }
     const inFunnel = leadsOf(f.id);
     if (inFunnel > 0) {
@@ -211,7 +224,11 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
     const arr = [...selectedStages];
     const [item] = arr.splice(dragIdx, 1);
     arr.splice(dropIdx, 0, item);
-    await Promise.all(arr.map((s, i) =>
+    // Etapa de entrada (funil de Indicações) fica pinada na posição 0: soltar
+    // outra etapa "acima" dela reordena só o meio. Sem isso, o drop no topo
+    // empurrava a etapa de sistema para order 1 mesmo com o drag dela travado.
+    const pinned = pinEntryFirst(arr);
+    await Promise.all(pinned.map((s, i) =>
       setDoc(doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, s.id), { order: i }, { merge: true })
     ));
   };
@@ -264,6 +281,14 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
                       Padrão
                     </span>
                   )}
+                  {isReferralFunnel(f) && (
+                    <span
+                      title="Funil do sistema para indicações — só as etapas do meio são configuráveis"
+                      className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 shrink-0"
+                    >
+                      Sistema
+                    </span>
+                  )}
                   {stages.length < 2 && (
                     <span
                       title="Funil com menos de duas etapas — o Kanban vira uma coluna só"
@@ -292,7 +317,9 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
         {selected && (
           <SettingsPanel
             title={<>Etapas de <b>{selected.name}</b></>}
-            hint="Arraste para reordenar. Negociação, Venda e Perda são etapas do sistema."
+            hint={isReferralFunnel(selected)
+              ? `${REFERRAL_ENTRY_NAME} é a porta de entrada das indicações; Negociação, Venda e Perda também são do sistema. Configure as etapas do meio.`
+              : 'Arraste para reordenar. Negociação, Venda e Perda são etapas do sistema.'}
             action={<SettingsBtn size={34} icon={<Plus size={13} />} onClick={() => openStage(null)}>Nova etapa</SettingsBtn>}
           >
             <div className="border-t border-border">
@@ -350,12 +377,14 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
         onOpenChange={(v) => !v && setFunnelDialog(null)}
         title={funnelDialog?.funnel ? `Editar ${funnelDialog.funnel.name}` : 'Novo funil'}
         description={funnelDialog?.funnel
-          ? 'Renomear o funil não muda as etapas nem os leads dentro dele.'
+          ? (isReferralFunnel(funnelDialog.funnel)
+            ? 'Funil do sistema para indicações — o nome é fixo; você configura as etapas do meio na lista ao lado.'
+            : 'Renomear o funil não muda as etapas nem os leads dentro dele.')
           : 'O funil nasce com a etapa Negociação — as demais você desenha depois.'}
         submitLabel={funnelDialog?.funnel ? 'Salvar' : 'Criar funil'}
         submitting={saving}
         onSubmit={saveFunnel}
-        footerLeft={funnelDialog?.funnel && (
+        footerLeft={funnelDialog?.funnel && !isReferralFunnel(funnelDialog.funnel) && (
           <div className="flex items-center gap-3">
             {!funnelDialog.funnel.isDefault && (
               <button
@@ -377,7 +406,15 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
         )}
       >
         <DialogField label="Nome do funil">
-          <input className={FIELD_INPUT} value={funnelName} onChange={e => setFunnelName(e.target.value)} placeholder="Ex: Indicação" autoFocus required />
+          <input
+            className={FIELD_INPUT}
+            value={funnelName}
+            onChange={e => setFunnelName(e.target.value)}
+            placeholder="Ex: Corporativo"
+            disabled={Boolean(funnelDialog?.funnel && isReferralFunnel(funnelDialog.funnel))}
+            autoFocus
+            required
+          />
         </DialogField>
       </FormDialog>
 

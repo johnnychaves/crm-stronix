@@ -125,9 +125,9 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
     };
     // Separador ';' — o Excel pt-BR usa ponto-e-vírgula como separador de lista.
     const SEP = ';';
-    const headers = ['Nome', 'WhatsApp', 'Origem', 'Fase do Funil', 'Consultor', 'Data Cadastro', 'Observação', 'Motivo Perda'];
+    const headers = ['Nome', 'WhatsApp', 'Origem', 'Indicado por', 'Fase do Funil', 'Consultor', 'Data Cadastro', 'Observação', 'Motivo Perda'];
     const csvRows = filteredLeads.map(l => [
-      l.name, l.whatsapp, l.source, l.status, l.consultantName,
+      l.name, l.whatsapp, l.source, l.referredByName, l.status, l.consultantName,
       l.createdAt ? l.createdAt.toLocaleDateString('pt-BR') : '',
       l.observation, l.lossReason
     ].map(csvCell).join(SEP));
