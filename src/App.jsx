@@ -58,6 +58,7 @@ import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useProfileLead } from './hooks/useProfileLead.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
+import { planReferralSetupOps } from './lib/referrals.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
@@ -301,6 +302,11 @@ function AppInner() {
   // leads em toda carga de admin só pra concluir que não havia nada a fazer
   // (auditoria de 28/07/2026: ~400 leituras por carga, jogadas fora).
   const [funnelsSetupDone, setFunnelsSetupDone] = useState(null);
+  // Semeadura do funil de INDICAÇÕES (sistema). Flag própria porque
+  // funnelsSetupDoneAt já está carimbado nos tenants antigos — este passo
+  // precisa rodar uma vez em todos, novos e existentes.
+  const [referralMigrationStatus, setReferralMigrationStatus] = useState('idle');
+  const [referralSetupDone, setReferralSetupDone] = useState(null);
   const [loadingData, setLoadingData] = useState(true);
   // Já baixamos os dados ao menos uma vez nesta sessão? Serve pra reassinar
   // (volta da ociosidade) sem piscar a tela de carregando por cima de um dado
@@ -722,6 +728,7 @@ useEffect(() => {
       // Doc inexistente (academia nova, antes do provision gravar) conta como
       // "não semeado" — a migração roda e carimba.
       setFunnelsSetupDone(!!data?.funnelsSetupDoneAt);
+      setReferralSetupDone(!!data?.referralSetupDoneAt);
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
@@ -942,6 +949,83 @@ useEffect(() => {
       }
     })();
   }, [appUser, funnels, loadingData, funnelsMigrationStatus, funnelsSetupDone]);
+
+  // Migração idempotente do funil de INDICAÇÕES: cria o funil de sistema com a
+  // etapa de entrada fixa ("Aguardando ação") + Negociação, e semeia a origem
+  // 'Indicação' se o catálogo não tiver nenhuma. A decisão do que falta é pura
+  // (planReferralSetupOps, testada); aqui só se executam as ops. Serializada
+  // DEPOIS da migração de funis: garante que existe um default antes — o funil
+  // de indicações nunca pode virar o default de facto (fallback legado de
+  // isItemInFunnel despejaria os leads sem funnelId nele).
+  useEffect(() => {
+    if (!appUser || !isAdminUser(appUser)) return;
+    if (loadingData) return;
+    if (funnelsMigrationStatus !== 'done') return;
+    if (referralMigrationStatus !== 'idle') return;
+    // Config ainda não chegou: espera (mesma guarda da migração de funis).
+    if (referralSetupDone === null) return;
+    if (referralSetupDone) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
+      setReferralMigrationStatus('done');
+      return;
+    }
+
+    // Gatilho one-shot (guardado por status !== 'idle').
+    setReferralMigrationStatus('running');
+
+    (async () => {
+      try {
+        // Snapshots frescos por getDocs (não os props): elimina a corrida com
+        // as assinaturas ao vivo ainda vazias no boot. Três leituras pequenas,
+        // uma única vez por tenant na vida.
+        const [funnelsSnap, statusesSnap, sourcesSnap] = await Promise.all([
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)),
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH)),
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH))
+        ]);
+        const plan = planReferralSetupOps({
+          funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          statuses: statusesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          sources: sourcesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        });
+
+        let newFunnelId = null;
+        if (plan.createFunnel) {
+          const ref = await addDoc(
+            collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
+            { ...plan.createFunnel, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+          );
+          newFunnelId = ref.id;
+        }
+        for (const stage of plan.createStages) {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
+            ...stage,
+            // Etapas planejadas junto com o funil novo vêm sem funnelId — o id
+            // só existe depois do addDoc acima.
+            funnelId: stage.funnelId || newFunnelId
+          });
+        }
+        if (plan.createSource) {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH), {
+            ...plan.createSource,
+            createdAt: serverTimestamp()
+          });
+        }
+
+        // Carimba a flag própria — impede qualquer leitura nas cargas futuras.
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          { referralSetupDoneAt: serverTimestamp() },
+          { merge: true }
+        );
+
+        setReferralMigrationStatus('done');
+      } catch (err) {
+        console.error('Erro na migração do funil de indicações', err);
+        setReferralMigrationStatus('error');
+      }
+    })();
+  }, [appUser, loadingData, funnelsMigrationStatus, referralMigrationStatus, referralSetupDone]);
 
   // Impersonação ("entrar como"): o banner e o "sair" vivem aqui (nível do app);
   // o "entrar" é feito no SuperAdminView. Ressincroniza com o sessionStorage
