@@ -77,8 +77,15 @@ caindo na etapa de entrada do funil. Requisitos quando for construir:
 2. **Página pública** com marca da academia (padrão `api/tenant-resolve.js`).
 3. **Código do cliente**: o próprio id do doc serve; um slug curto denormalizado
    fica melhor pra URL.
-4. **Anti-abuso**: rate limit (`api/_rateLimit.js`) + honeypot + dedupe por
-   WhatsApp (`findDuplicateLeadRemote`).
+4. **Anti-abuso e dedupe (decidido 2026-08-07)**: rate limit
+   (`api/_rateLimit.js`) + honeypot + dedupe em DUAS chaves — telefone sempre
+   (`findDuplicateLeadRemote`) e CPF quando preenchido (igualdade em
+   `cpfDigits`, já materializado em todo lead — índice automático). O CPF no
+   formulário é **opcional** com incentivo ("agiliza sua matrícula"):
+   obrigatório derrubaria a conversão e não se sustenta na LGPD nesse estágio
+   (coleta mínima pra finalidade de agendar visita). O match por CPF é mais
+   forte justamente contra CLIENTES/ex-alunos — os que têm CPF via cadastro
+   completo/matrícula — que é o caso mais importante de pegar.
 5. **Cadastro já existente (decidido 2026-08-07)**: a API nunca cria duplicata,
    e o visitante vê SEMPRE a mesma tela de sucesso — responder "esse número já
    existe" num endpoint público vaza quem é aluno. Por dentro: grava um evento
