@@ -77,7 +77,9 @@ export async function commitMatricula({
     interactionText,
     stampConvertedAt,
     setStatusVenda,
-    stampClienteSince
+    stampClienteSince,
+    notifyReferrerId,
+    referrerInteractionText
   } = buildMatriculaWrites({ lead, plan, value, startsAt, appUser, mode, renewedFromId });
 
   const batch = writeBatch(db);
@@ -121,6 +123,26 @@ export async function commitMatricula({
     type: 'status_change',
     createdAt: serverTimestamp()
   });
+
+  // (4) Indicação: 🎉 na timeline do INDICADOR quando o indicado fecha a 1ª
+  //     matrícula. Só o doc de interação — nada de patch no doc do indicador
+  //     (indicação não é contato real; ver hasActiveInteractionToday). O
+  //     leadName evita evento anônimo no extrato: o indicador é cliente e não
+  //     está na base ativa em memória.
+  if (notifyReferrerId) {
+    const referrerInteractionRef = doc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH));
+    batch.set(referrerInteractionRef, {
+      leadId: notifyReferrerId,
+      leadName: lead.referredByName || null,
+      consultantName: appUser?.name || null,
+      ...getInteractionSecurityFields(lead, appUser),
+      actorId: appUser?.id || null,
+      actorAuthUid: appUser?.authUid || null,
+      text: referrerInteractionText,
+      type: 'referral',
+      createdAt: serverTimestamp()
+    });
+  }
 
   await batch.commit();
 
