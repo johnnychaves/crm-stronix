@@ -63,20 +63,27 @@ Flag própria porque `funnelsSetupDoneAt` já estava carimbada nos tenants antig
   (PhaseChanger) — é também o caminho retroativo para leads antigos com origem
   "Indicação".
 
-## Fase 2 — link compartilhável (NÃO construída)
+## Fase 2 — link compartilhável (CONSTRUÍDA 2026-08-09)
 
-Cada cliente ganha um link/código para divulgar (ex.:
-`stronilead.app/i/{slug}?ref={leadId}`); o lead entra sozinho já vinculado e
-caindo na etapa de entrada do funil. Requisitos quando for construir:
+Cada cliente tem um link público — `{origin}/i/{slug}?ref={idDoCliente}` — na
+caixa "Link de indicação" da aba Indicações da ficha (copiar, ou mandar direto
+no WhatsApp do cliente com mensagem pronta). A página pública
+(`src/views/public/ReferralLandingScreen.jsx`, gate de rota por pathname no
+`App()` — o segmento `/i/` é reservado) mostra a marca da academia e o 1º nome
+de quem indicou, e cadastra em dois toques: nome + WhatsApp, com CPF e
+modalidade opcionais.
 
-1. **API**: a Vercel está em 12/12 funções (plano Hobby) — consolidar como
-   `action` numa função existente (padrão `api/impersonate.js`/`api/asaas.js`),
-   usando Admin SDK para criar o lead com `referredById` + funil/etapa de
-   entrada + `source: 'Indicação'` (mesmo shape do AddLeadModal, com
-   `buildLeadSearchFields`/`lifecycleBucket`).
-2. **Página pública** com marca da academia (padrão `api/tenant-resolve.js`).
-3. **Código do cliente**: o próprio id do doc serve; um slug curto denormalizado
-   fica melhor pra URL.
+1. **API consolidada em `api/tenant-resolve.js`** (único endpoint 100% público;
+   Vercel segue 12/12): actions POST `referral-info` e `referral-signup` via
+   Admin SDK — lead no mesmo shape do AddLeadModal, com o espelho puro
+   `api/_referral.js` e o teste de paridade (`referralApiMirror.test.js`)
+   travando a deriva com o front.
+2. **Dono do lead (decidido 2026-08-09)**: o indicado HERDA o consultor
+   responsável pelo cliente dono do link. Ref inválido/apagado degrada: página
+   sem personalização e lead SEM vínculo no funil default (origem 'Indicação')
+   — o coorte do funil de Indicações segue 100% vinculado.
+3. **Branding**: `displayName` + `tenants/{slug}.settings.logoUrl` (primeiro
+   consumidor real do campo).
 4. **Anti-abuso e dedupe (decidido 2026-08-07)**: rate limit
    (`api/_rateLimit.js`) + honeypot + dedupe em DUAS chaves — telefone sempre
    (`findDuplicateLeadRemote`) e CPF quando preenchido (igualdade em

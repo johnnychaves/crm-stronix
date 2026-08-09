@@ -13,7 +13,9 @@ import {
   sortReferrals,
   referralIndicadoText,
   referralIndicouText,
-  referralConvertedText
+  referralConvertedText,
+  buildReferralShareLink,
+  buildReferralWhatsAppText
 } from '../referrals.js';
 
 describe('isReferralFunnel', () => {
@@ -191,5 +193,21 @@ describe('textos dos eventos de indicação', () => {
     expect(referralIndicadoText('Maria Silva')).toBe('🤝 Indicado por Maria Silva');
     expect(referralIndicouText('João Souza')).toBe('🤝 Indicou João Souza');
     expect(referralConvertedText('João Souza')).toBe('🎉 João Souza que você indicou fechou matrícula');
+  });
+});
+
+describe('link compartilhável (fase 2)', () => {
+  it('monta a URL pública /i/{slug}?ref= com origin sem barra final e ref escapado', () => {
+    expect(buildReferralShareLink('https://app.stronilead.com.br/', 'stronix', 'aB3/xY9'))
+      .toBe('https://app.stronilead.com.br/i/stronix?ref=aB3%2FxY9');
+    expect(buildReferralShareLink('http://localhost:5173', 'iron-fit', 'z9'))
+      .toBe('http://localhost:5173/i/iron-fit?ref=z9');
+  });
+
+  it('mensagem de WhatsApp leva o primeiro nome e o link (sem nome, sauda genérico)', () => {
+    const text = buildReferralWhatsAppText({ firstName: 'Maria', link: 'https://x/i/s?ref=1' });
+    expect(text).toContain('Oi Maria!');
+    expect(text).toContain('https://x/i/s?ref=1');
+    expect(buildReferralWhatsAppText({ firstName: '', link: 'L' })).toContain('Oi!');
   });
 });

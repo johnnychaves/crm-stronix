@@ -1790,7 +1790,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         {/* ----- Aba: Indicações (só cliente) ----- */}
         {isClient && (
           <TabsContent value="referrals" className="pt-2">
-            <ReferralsSection items={referralItems} loading={referralsLoading} />
+            <ReferralsSection lead={lead} items={referralItems} loading={referralsLoading} />
           </TabsContent>
         )}
 

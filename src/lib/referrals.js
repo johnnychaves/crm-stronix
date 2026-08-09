@@ -143,3 +143,16 @@ export const sortReferrals = (leads) =>
 export const referralIndicadoText = (referrerName) => `🤝 Indicado por ${referrerName}`;
 export const referralIndicouText = (leadName) => `🤝 Indicou ${leadName}`;
 export const referralConvertedText = (leadName) => `🎉 ${leadName} que você indicou fechou matrícula`;
+
+// --- Fase 2: link compartilhável -------------------------------------------
+
+// URL pública da página de indicação de um cliente. O slug do tenant É o appId
+// (id do doc em /tenants) e o ref é o id do doc do cliente. O segmento /i/ é
+// reservado no roteamento do App (1 letra nunca colide com slug real, 3+).
+export const buildReferralShareLink = (origin, slug, leadId) =>
+  `${String(origin || '').replace(/\/+$/, '')}/i/${slug}?ref=${encodeURIComponent(String(leadId || ''))}`;
+
+// Mensagem pronta pro consultor mandar o link PRO PRÓPRIO CLIENTE repassar.
+export const buildReferralWhatsAppText = ({ firstName, link }) =>
+  `Oi${firstName ? ` ${firstName}` : ''}! Esse é o seu link de indicação 🤝\n` +
+  `Manda pros amigos que querem treinar: quando alguém se cadastrar por ele, a indicação entra no seu nome.\n${link}`;
