@@ -72,6 +72,7 @@ import { SidebarItem, SidebarGroup, SidebarSubItem, SIDEBAR_EXPANDED_ONLY } from
 import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
 import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
+import { ReferralLandingScreen } from './views/public/ReferralLandingScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
 import { DashboardOperacionalView } from './views/dashboard/DashboardOperacionalView.jsx';
 import { DashboardGerencialView } from './views/dashboard/DashboardGerencialView.jsx';
@@ -109,11 +110,26 @@ export default function App() {
       return { token: null, tenantId: null };
     }
   });
+  // /i/<slug>?ref=<idDoCliente> abre a página PÚBLICA de indicação (fase 2).
+  // O segmento "i" é reservado: tem 1 letra e slugs reais têm 3+ (TENANT_ID_RE
+  // do provisionamento), então o getTenantSlug abaixo nunca colide com ele.
+  const [referralRoute] = useState(() => {
+    try {
+      const m = String(window.location.pathname || '').match(/^\/i\/([a-z0-9][a-z0-9-]{0,63})\/?$/i);
+      if (!m) return null;
+      const p = new URLSearchParams(window.location.search);
+      return { slug: m[1].toLowerCase(), refId: p.get('ref') || '' };
+    } catch {
+      return null;
+    }
+  });
   return (
     <ToastProvider>
-      {invite.token && invite.tenantId
-        ? <AcceptInviteScreen token={invite.token} tenantId={invite.tenantId} />
-        : <AppInner />}
+      {referralRoute
+        ? <ReferralLandingScreen slug={referralRoute.slug} refId={referralRoute.refId} />
+        : invite.token && invite.tenantId
+          ? <AcceptInviteScreen token={invite.token} tenantId={invite.tenantId} />
+          : <AppInner />}
     </ToastProvider>
   );
 }
