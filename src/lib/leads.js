@@ -153,6 +153,10 @@ export const hasActiveInteractionToday = (lead, interactions, todayStart) => {
     if (i.leadId !== lead.id) return false;
     if (!(i.createdAt instanceof Date) || i.createdAt < todayStart) return false;
     if (i.type === 'daily_goal_done') return false;
+    // Eventos de indicação (🤝/🎉) não são contato real com a pessoa — sem
+    // esta exclusão, o 🎉 da conversão acenderia "Já interagido hoje" no
+    // INDICADOR quando o indicado fecha matrícula.
+    if (i.type === 'referral') return false;
     if (isRegistrationNote(i.text)) return false;
     return true;
   });

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ArrowRightLeft, CalendarClock, Gauge, Kanban, Library, Target, Users } from 'lucide-react';
+import { ArrowRightLeft, CalendarClock, Gauge, Handshake, Kanban, Library, Target, Users } from 'lucide-react';
 import { SettingsRailGroup, SettingsRailItem } from '../../components/ui/SettingsCard.jsx';
 import { buildSetupState } from '../../lib/settingsSetup.js';
 import { usePagedLeads } from '../../hooks/usePagedLeads.js';
@@ -10,6 +10,8 @@ import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { OverviewSection } from './OverviewSection.jsx';
 import { TeamAccessSection } from './TeamAccessSection.jsx';
 import { TransferSection } from './TransferLeadsTab.jsx';
+import { ReferralOwnersSection } from './ReferralOwnersSection.jsx';
+import { pendingReferralOwners } from '../../lib/referrals.js';
 import { PaceSection } from './PaceSection.jsx';
 import { SchedulingSection } from './SchedulingSection.jsx';
 import { FunnelsSection } from './FunnelsSection.jsx';
@@ -77,6 +79,9 @@ function SettingsView({
   const catalogTotal = (tags || []).length + (sources || []).length + (planos || []).length
     + (lossReasons || []).length + (dores || []).length;
 
+  // Quantas indicações antigas ainda estão sem quem indicou (badge do trilho).
+  const pendingOwnersCount = pendingReferralOwners(leads).length;
+
   const groups = [
     {
       label: null,
@@ -86,7 +91,8 @@ function SettingsView({
       label: 'Pessoas',
       items: [
         { id: 'team', label: 'Equipe & acessos', icon: <Users size={15} />, count: (usersList || []).length },
-        { id: 'transfer', label: 'Migrar leads', icon: <ArrowRightLeft size={15} /> }
+        { id: 'transfer', label: 'Migrar leads', icon: <ArrowRightLeft size={15} /> },
+        { id: 'referral-owners', label: 'Indicações sem dono', icon: <Handshake size={15} />, count: pendingOwnersCount || undefined }
       ]
     },
     {
@@ -152,6 +158,9 @@ function SettingsView({
         )}
         {section === 'transfer' && (
           <TransferSection db={db} usersList={usersList} appUser={appUser} leads={leads} />
+        )}
+        {section === 'referral-owners' && (
+          <ReferralOwnersSection db={db} leads={leads} appUser={appUser} />
         )}
         {section === 'pace' && (
           <PaceSection db={db} usersList={usersList} metaWeekdays={metaWeekdays} />

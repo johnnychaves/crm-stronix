@@ -16,6 +16,11 @@ export const getDefaultFunnel = (funnels) => {
   return funnels.find(f => f.isDefault === true) || funnels[0] || null;
 };
 
+// Etapa de sistema: fase fixa criada pelo app (flag isSystem) ou a 'Negociação'
+// legada anterior ao flag. Não pode ser renomeada/excluída na FunnelsSection.
+export const isSystemStage = (s) =>
+  Boolean(s?.isSystem) || (s?.name || '').trim().toLowerCase() === 'negociação';
+
 // Returns true if the given item (lead or status) belongs to the selected
 // funnel, *or* is a legacy item without funnelId that should fall through
 // to the default funnel.

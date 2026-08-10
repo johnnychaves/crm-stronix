@@ -1,4 +1,4 @@
-import { Building2, CreditCard, LogOut, Shield, User } from 'lucide-react';
+import { Building2, CreditCard, GraduationCap, LogOut, Moon, Shield, Sun, User } from 'lucide-react';
 import { Avatar } from '../ui/Avatar.jsx';
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
@@ -8,7 +8,7 @@ import {
 // Menu da conta no canto superior direito (ícone de persona). Reúne o perfil da
 // academia + Plano & faturas (só para o admin) e o logout. Consultor vê apenas
 // a própria identidade + Sair. Super-admin puro não tem academia → sem perfil.
-function PersonaMenu({ appUser, isAdmin, onProfile, onBilling, onLogout }) {
+function PersonaMenu({ appUser, isAdmin, onProfile, onBilling, onLogout, onHelp, onToggleTheme, isDarkMode }) {
   const superOnly = !!appUser?.superAdminOnly;
   const role = superOnly ? 'Super-admin' : isAdmin ? 'Acesso Master' : 'Consultor';
   const RoleIcon = superOnly ? Shield : isAdmin ? Shield : User;
@@ -42,6 +42,20 @@ function PersonaMenu({ appUser, isAdmin, onProfile, onBilling, onLogout }) {
               <CreditCard className="size-4 text-slate-500" /> Plano &amp; faturas
             </DropdownMenuItem>
           </>
+        )}
+        {/* No celular o header não comporta 🎓 + tema + sino, então esses dois
+            moram aqui. No desktop continuam como ícones do topo. */}
+        <DropdownMenuSeparator className="sm:hidden" />
+        {onHelp && (
+          <DropdownMenuItem onClick={onHelp} className="cursor-pointer sm:hidden">
+            <GraduationCap className="size-4 text-slate-500" /> Central de ajuda
+          </DropdownMenuItem>
+        )}
+        {onToggleTheme && (
+          <DropdownMenuItem onClick={onToggleTheme} className="cursor-pointer sm:hidden">
+            {isDarkMode ? <Sun className="size-4 text-slate-500" /> : <Moon className="size-4 text-slate-500" />}
+            {isDarkMode ? 'Tema claro' : 'Tema escuro'}
+          </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={onLogout} className="cursor-pointer text-rose-600 focus:text-rose-600 dark:text-rose-400 dark:focus:text-rose-400">

@@ -3,6 +3,8 @@ import { Kanban, ArrowRight, Check, TrendingUp, Ban } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Btn } from '../ui/Btn.jsx';
 import { phaseToneName, getTone } from '../../lib/leadState.js';
+import { isReferralFunnel } from '../../lib/referrals.js';
+import { ReferrerPicker } from './ReferrerPicker.jsx';
 
 // ── Mudar fase: funil selecionável + pipeline visual + outcomes + transição ──
 // Porte fiel do protótipo (design_handoff_perfil_cadastro/prototype/phase.jsx)
@@ -129,7 +131,7 @@ const OutcomeCard = ({ name, icon, color, desc, selected, onClick }) => {
   );
 };
 
-const PhaseChanger = ({ lead, funnels = [], statuses = [], onConfirm, onCancel }) => {
+const PhaseChanger = ({ lead, db = null, funnels = [], statuses = [], onConfirm, onCancel }) => {
   const originalFunnelId = lead?.funnelId || funnels[0]?.id || '';
   const originalFunnel = funnels.find((f) => f.id === originalFunnelId) || funnels[0];
   const originalStage = lead?.status || '';
@@ -137,6 +139,7 @@ const PhaseChanger = ({ lead, funnels = [], statuses = [], onConfirm, onCancel }
   const [funnelId, setFunnelId] = useState(originalFunnelId);
   const [target, setTarget] = useState(null); // {name,color}
   const [note, setNote] = useState('');
+  const [referrer, setReferrer] = useState(null); // cliente indicador (funil de Indicações)
 
   const funnel = funnels.find((f) => f.id === funnelId) || funnels[0];
   // Estágios = statuses filtrados pelo funil + ordenados.
@@ -152,6 +155,14 @@ const PhaseChanger = ({ lead, funnels = [], statuses = [], onConfirm, onCancel }
   const changed = hasTarget && !(sameFunnel && target.name === originalStage);
   const isAdvance = changed && targetIdx >= 0 && curIdx >= 0 && targetIdx > curIdx;
 
+  // Mover PRO funil de Indicações sem vínculo exige escolher o indicador —
+  // mantém o coorte do funil 100% rastreável. Venda/Perda ficam de fora:
+  // esses alvos caem nos fluxos próprios sem trocar o funil.
+  const movingToReferral = Boolean(funnel && isReferralFunnel(funnel) && funnelId !== originalFunnelId);
+  const needsReferrer =
+    movingToReferral && !lead?.referredById && hasTarget &&
+    target.name !== WIN_NAME && target.name !== LOSS_NAME;
+
   const curStage = { name: originalStage };
   const tgtTone = target ? getTone(phaseToneName(target.name, statuses)) : null;
 
@@ -161,6 +172,7 @@ const PhaseChanger = ({ lead, funnels = [], statuses = [], onConfirm, onCancel }
   const pickFunnel = (id) => {
     setFunnelId(id);
     setTarget(null);
+    setReferrer(null);
   };
 
   return (
@@ -295,6 +307,17 @@ const PhaseChanger = ({ lead, funnels = [], statuses = [], onConfirm, onCancel }
         </div>
       )}
 
+      {/* Indicador obrigatório ao entrar no funil de Indicações */}
+      {needsReferrer && (
+        <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/25 bg-emerald-50/50 dark:bg-emerald-500/[0.05] p-4">
+          <div className="text-[10.5px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-300 mb-2">Quem indicou?</div>
+          <ReferrerPicker db={db} value={referrer} onSelect={setReferrer} excludeId={lead?.id} />
+          <p className="text-[11.5px] text-emerald-700/80 dark:text-emerald-300/80 mt-2">
+            O funil de Indicações só recebe leads vinculados a um cliente indicador.
+          </p>
+        </div>
+      )}
+
       {/* Ações */}
       <div className="flex items-center gap-1.5">
         {(target || !sameFunnel) && (
@@ -318,10 +341,10 @@ const PhaseChanger = ({ lead, funnels = [], statuses = [], onConfirm, onCancel }
           kind={target && target.name === WIN_NAME ? 'success' : target && target.name === LOSS_NAME ? 'danger' : 'brand'}
           size="sm"
           icon={<Check size={13} />}
-          disabled={!changed}
-          onClick={() => changed && onConfirm?.({ funnelId, targetStatus: target.name, note })}
+          disabled={!changed || (needsReferrer && !referrer)}
+          onClick={() => changed && !(needsReferrer && !referrer) && onConfirm?.({ funnelId, targetStatus: target.name, note, referrer })}
         >
-          {changed ? `Mover para ${target.name}` : 'Selecione a fase'}
+          {changed ? (needsReferrer && !referrer ? 'Vincule o indicador' : `Mover para ${target.name}`) : 'Selecione a fase'}
         </Btn>
       </div>
     </div>

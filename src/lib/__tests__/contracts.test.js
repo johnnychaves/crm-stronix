@@ -10,6 +10,7 @@ import {
   buildContractEdit,
   buildContractPause,
   buildContractResume,
+  buildMatriculaWrites,
   deriveContractStatus,
   deriveLeadContractStatus
 } from '../contracts.js';
@@ -196,5 +197,36 @@ describe('deriveLeadContractStatus', () => {
 
   it('cliente legado sem vigência gravada devolve null', () => {
     expect(deriveLeadContractStatus({ currentContractStatus: 'ativo' }, NOW)).toBeNull();
+  });
+});
+
+describe('buildMatriculaWrites — sinal de indicação para o caller', () => {
+  const plan = { id: 'p1', name: 'Mensal', value: 200, durationMonths: 1 };
+  const referredLead = {
+    id: 'l1', name: 'João Souza',
+    referredById: 'ref9', referredByName: 'Maria Silva',
+    consultantId: 'c1', consultantAuthUid: 'u1'
+  };
+
+  it('matrícula de lead indicado devolve notifyReferrerId e o texto do 🎉', () => {
+    const out = buildMatriculaWrites({
+      lead: referredLead, plan, value: 200, startsAt: D(2026, 8, 1), appUser: {}
+    });
+    expect(out.notifyReferrerId).toBe('ref9');
+    expect(out.referrerInteractionText).toBe('🎉 João Souza que você indicou fechou matrícula');
+  });
+
+  it('renovação NÃO re-notifica o indicador (senão todo ciclo dispara 🎉)', () => {
+    const out = buildMatriculaWrites({
+      lead: referredLead, plan, value: 200, startsAt: D(2026, 8, 1), appUser: {}, mode: 'renovacao'
+    });
+    expect(out.notifyReferrerId).toBe(null);
+  });
+
+  it('lead sem vínculo: sinal nulo', () => {
+    const out = buildMatriculaWrites({
+      lead: { id: 'l2', name: 'Ana' }, plan, value: 200, startsAt: D(2026, 8, 1), appUser: {}
+    });
+    expect(out.notifyReferrerId).toBe(null);
   });
 });

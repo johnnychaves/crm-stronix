@@ -5,6 +5,7 @@
 
 import { addDays, addMonths, daysBetween, getSafeDateOrNull } from './dates.js';
 import { fmtBRL } from './format.js';
+import { referralConvertedText } from './referrals.js';
 
 const fmtDia = (d) => {
   const date = getSafeDateOrNull(d);
@@ -193,7 +194,12 @@ export const buildMatriculaWrites = ({
     }),
     stampConvertedAt: !isRenewal,
     setStatusVenda: !isRenewal,
-    stampClienteSince: !lead?.clienteSince
+    stampClienteSince: !lead?.clienteSince,
+    // Indicação: na 1ª matrícula (não renovação) o caller grava o 🎉 na
+    // timeline do INDICADOR. Id e texto nascem aqui, dos campos denormalizados
+    // do lead, para o batch não precisar ler doc nenhum.
+    notifyReferrerId: (!isRenewal && lead?.referredById) || null,
+    referrerInteractionText: referralConvertedText(lead?.name)
   };
 };
 

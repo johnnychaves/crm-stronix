@@ -3,6 +3,7 @@ import { collection, doc, deleteDoc, getDocs, writeBatch, query, where, serverTi
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH } from '../lib/firebase.js';
 import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
+import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { isAdminUser, canEditLead, isLeadConverted, isConvertedStatusName } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
@@ -10,18 +11,25 @@ import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
+import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText } from '../lib/referrals.js';
+import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
 import { upsertScheduledAula, markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
+import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../components/ui/dropdown-menu.jsx';
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../components/ui/dialog.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
 import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
+import { ReferralsSection } from '../components/profile/ReferralsSection.jsx';
+import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
@@ -40,7 +48,7 @@ import {
   TIMELINE_FILTERS,
   TIMELINE_SYSTEM_KIND
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, Link2, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Tom do bloco de contagem, do chip e do preenchimento da régua — o estado do
 // contrato manda na cor da aba Contratos inteira.
@@ -100,6 +108,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // mês corrente. A ficha remonta por lead (key), então o hook não reseta.
   const interactions = useLeadTimeline({ db, leadId: lead?.id });
   const toast = useToast();
+  const { openProfile } = useLeadProfile();
   const isReadOnly = !canEditLead(appUser, lead);
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
   // notas/interações e agendar na timeline de QUALQUER lead (base compartilhada,
@@ -132,8 +141,12 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // Composer tab — drives which form is shown in the activity Composer card.
   const [composerTab, setComposerTab] = useState('note');
 
-  // Aba ativa da ficha (timeline | crm | contratos).
+  // Aba ativa da ficha (timeline | crm | contratos | referrals).
   const [activeProfileTab, setActiveProfileTab] = useState('timeline');
+
+  // Vínculo de indicação: dialog de vincular/editar/remover + escolha do picker.
+  const [referrerDialogOpen, setReferrerDialogOpen] = useState(false);
+  const [referrerPick, setReferrerPick] = useState(null);
 
   // Timeline filter + search
   const [timelineFilter, setTimelineFilter] = useState('all');
@@ -238,12 +251,24 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // Confirmação do PhaseChanger (composer → "Mudar fase"). Venda/Perda caem nos
   // fluxos existentes (MatriculaModal / LossReasonModal); demais fases gravam o
   // status (+funil, se mudou) e registram a transição na timeline.
-  const handlePhaseConfirm = async ({ funnelId: targetFunnelId, targetStatus, note: phaseNote }) => {
+  const handlePhaseConfirm = async ({ funnelId: targetFunnelId, targetStatus, note: phaseNote, referrer }) => {
     if (targetStatus === 'Venda') { setMatriculaMode('matricula'); setMatriculaOpen(true); return; }
     if (targetStatus === 'Perda') { setLossModalOpen(true); return; }
     if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
+    // Mover PRO funil de Indicações exige o vínculo (o PhaseChanger coleta o
+    // indicador; isto é cinto de segurança pra manter o coorte rastreável).
+    const movingToReferral = Boolean(referralFunnel && targetFunnelId === referralFunnel.id && targetFunnelId !== lead.funnelId);
+    if (movingToReferral && !lead.referredById && !referrer) {
+      toast.warning('Para mover para o funil de Indicações, vincule o cliente indicador.');
+      return;
+    }
     setLoading(true);
     try {
+      // Vínculo retroativo primeiro (eventos 🤝 dos dois lados + referredAt);
+      // a mudança de fase segue no caminho normal logo abaixo.
+      if (movingToReferral && referrer && !lead.referredById) {
+        await commitReferralLink({ db, lead, appUser, referrer });
+      }
       const up = { status: targetStatus };
       if (targetFunnelId && targetFunnelId !== lead.funnelId) up.funnelId = targetFunnelId;
       // Etapa customizada com nome de matrícula conta como conversão nas
@@ -282,6 +307,60 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
     } catch (e) {
       console.error(e);
       toast.error('Não foi possível mudar a fase. Tente novamente.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Link público de indicação deste cliente. O menu do cabeçalho oferece as
+  // duas saídas: copiar, ou abrir o WhatsApp DELE com a mensagem pronta para
+  // ele repassar aos amigos.
+  const referralLink = buildReferralShareLink(window.location.origin, appId, lead.id);
+  const referralWaDigits = String(lead.whatsapp || '').replace(/\D/g, '');
+  const referralWaHref = referralWaDigits
+    ? `https://wa.me/${referralWaDigits}?text=${encodeURIComponent(
+        buildReferralWhatsAppText({ firstName: (lead.name || '').trim().split(/\s+/)[0] || '', link: referralLink })
+      )}`
+    : null;
+
+  const copyReferralLink = async () => {
+    try {
+      await navigator.clipboard.writeText(referralLink);
+      toast.success('Link de indicação copiado.');
+    } catch {
+      toast.info(`Copie manualmente: ${referralLink}`);
+    }
+  };
+
+  // Vincular/trocar/remover o indicador direto da ficha — corrige vínculo
+  // errado e é o caminho retroativo para leads antigos com origem Indicação.
+  const handleSaveReferral = async () => {
+    if (!referrerPick) return;
+    setLoading(true);
+    try {
+      await commitReferralLink({ db, lead, appUser, referrer: referrerPick });
+      toast.success?.(`Indicação vinculada a ${referrerPick.name}.`);
+      setReferrerDialogOpen(false);
+      setReferrerPick(null);
+      reloadReferrals();
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível salvar o vínculo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRemoveReferral = async () => {
+    setLoading(true);
+    try {
+      await removeReferralLink({ db, lead, appUser });
+      toast.success?.('Vínculo de indicação removido.');
+      setReferrerDialogOpen(false);
+      setReferrerPick(null);
+    } catch (e) {
+      console.error(e);
+      toast.error('Não foi possível remover o vínculo.');
     } finally {
       setLoading(false);
     }
@@ -501,6 +580,14 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   const profileState = deriveLeadState(lead, new Date(), contractThresholdDays);
   const profileTone = getTone(profileState.tone);
 
+  // Indicações: funil de sistema (pro cinto do PhaseChanger e pro chip
+  // "Vincular indicador") + dados da aba do CLIENTE. Contagem quando a ficha
+  // de cliente abre; lista só quando a aba ativa.
+  const referralFunnel = getReferralFunnel(safeFunnels);
+  const isInReferralFunnel = Boolean(referralFunnel && lead.funnelId === referralFunnel.id);
+  const { count: referralsCount, items: referralItems, loading: referralsLoading, reload: reloadReferrals } =
+    useReferrals({ db, leadId: lead.id, enabled: isClient, active: activeProfileTab === 'referrals' });
+
   // Classificação + filtro da timeline (helpers compartilhados em lib/timeline.js).
   const interactionsWithClass = (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }));
 
@@ -671,6 +758,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
             {composerTab === 'status' && (
               <PhaseChanger
                 lead={lead}
+                db={db}
                 funnels={safeFunnels}
                 statuses={statuses}
                 onConfirm={handlePhaseConfirm}
@@ -983,14 +1071,68 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
                 {(lead.tags || []).map(tName => (
                   <TagBadge key={tName} tagName={tName} tagsArray={tags} />
                 ))}
+                {(lead.referredById || lead.referredByName) ? (
+                  <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    <Handshake size={11} />
+                    <button
+                      type="button"
+                      onClick={() => lead.referredById && openProfile(lead.referredById)}
+                      className={cn('hover:underline', !lead.referredById && 'pointer-events-none')}
+                    >
+                      Indicado por {lead.referredByName || 'cliente'}
+                    </button>
+                    {!isReadOnly && (
+                      <button
+                        type="button"
+                        title="Editar vínculo de indicação"
+                        onClick={() => { setReferrerPick(null); setReferrerDialogOpen(true); }}
+                        className="text-emerald-600/70 hover:text-emerald-700 dark:text-emerald-300/70 dark:hover:text-emerald-300 transition"
+                      >
+                        <Pencil size={10} />
+                      </button>
+                    )}
+                  </span>
+                ) : (isInReferralFunnel && !isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={() => { setReferrerPick(null); setReferrerDialogOpen(true); }}
+                    className="inline-flex items-center gap-1 text-[11.5px] font-medium text-emerald-600 hover:text-emerald-700 dark:text-emerald-400 px-2 py-1 rounded-md border border-dashed border-emerald-300 dark:border-emerald-500/30 transition"
+                  >
+                    <Handshake size={11} /> Vincular indicador
+                  </button>
+                ))}
               </div>
             </div>
 
             {/* actions */}
             <div className="flex items-center gap-2 flex-wrap ml-auto">
-              <Btn kind="primary" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
+              {/* Ações de contato sem moldura: só ícone e rótulo. O que precisa
+                  de peso visual são Venda e Perda, logo ao lado. */}
+              <Btn kind="ghost" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
+              {isClient && (
+                <DropdownMenu>
+                  {/* Botão do próprio trigger, não o Btn: o Btn não encaminha
+                      ref nem as props que o Radix injeta, então com `asChild`
+                      o menu não abria. Estilo espelha o Btn ghost tamanho md. */}
+                  <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 px-3.5 text-[12.5px] rounded-lg font-semibold whitespace-nowrap transition active:scale-[.98] text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] data-[state=open]:bg-slate-100 dark:data-[state=open]:bg-white/[0.06]">
+                    <Link2 size={14} /> Link de indicação
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" sideOffset={6} className="w-56 rounded-xl">
+                    <DropdownMenuItem onClick={copyReferralLink} className="cursor-pointer">
+                      <Copy className="size-4 text-slate-500" /> Copiar link
+                    </DropdownMenuItem>
+                    {referralWaHref && (
+                      <DropdownMenuItem asChild className="cursor-pointer">
+                        <a href={referralWaHref} target="_blank" rel="noopener noreferrer">
+                          <MessageCircle className="size-4 text-emerald-600 dark:text-emerald-400" /> Enviar pro cliente
+                        </a>
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              )}
               <Btn
-                kind="secondary"
+                kind="ghost"
                 size="md"
                 icon={<Phone size={14} />}
                 onClick={() => { const num = String(lead.whatsapp || '').replace(/\D/g, ''); if (num) window.location.href = `tel:${num}`; }}
@@ -1119,6 +1261,16 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
             Contratos
             <TabCount n={leadContracts.length} active={activeProfileTab === 'contratos'} />
           </TabsTrigger>
+          {isClient && (
+            <TabsTrigger
+              value="referrals"
+              className="flex-none h-11 px-4 text-[13.5px] font-medium rounded-t-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/[0.06] data-[state=active]:font-semibold data-[state=active]:bg-transparent data-[state=active]:text-slate-900 dark:data-[state=active]:text-white data-[state=active]:[&_svg]:text-brand-600 dark:data-[state=active]:[&_svg]:text-brand-300 after:h-[3px] after:rounded-full after:bg-brand-600"
+            >
+              <Handshake className="size-[15px]" />
+              Indicações
+              <TabCount n={referralsCount ?? 0} active={activeProfileTab === 'referrals'} />
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* ----- Aba: Linha do tempo ----- */}
@@ -1680,6 +1832,13 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           </div>
         </TabsContent>
 
+        {/* ----- Aba: Indicações (só cliente) ----- */}
+        {isClient && (
+          <TabsContent value="referrals" className="pt-2">
+            <ReferralsSection items={referralItems} loading={referralsLoading} />
+          </TabsContent>
+        )}
+
       </Tabs>
 
       {/* Overlays */}
@@ -1693,6 +1852,33 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         tags={tags}
       />
       {lossModalOpen && <LossReasonModal lossReasons={lossReasons} onClose={() => setLossModalOpen(false)} onConfirm={confirmLoss} />}
+      {referrerDialogOpen && (
+        <Dialog open onOpenChange={(o) => { if (!o) setReferrerDialogOpen(false); }}>
+          <DialogContent className="max-w-[440px] rounded-2xl p-5 gap-0">
+            <DialogTitle className="text-[16px] font-bold tracking-tight">
+              {lead.referredById ? 'Editar vínculo de indicação' : 'Vincular indicador'}
+            </DialogTitle>
+            <DialogDescription className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
+              {lead.referredByName
+                ? <>Hoje: indicado por <strong className="text-slate-700 dark:text-slate-200">{lead.referredByName}</strong>. Escolha outro cliente para trocar.</>
+                : 'Escolha o cliente que indicou esta pessoa.'}
+            </DialogDescription>
+            <div className="mt-4">
+              <ReferrerPicker db={db} value={referrerPick} onSelect={setReferrerPick} excludeId={lead.id} autoFocus />
+            </div>
+            <div className="mt-5 flex items-center gap-2">
+              {lead.referredById && (
+                <Btn kind="danger" size="sm" disabled={loading} onClick={handleRemoveReferral}>Remover vínculo</Btn>
+              )}
+              <div className="flex-1"></div>
+              <Btn kind="soft" size="sm" onClick={() => setReferrerDialogOpen(false)}>Cancelar</Btn>
+              <Btn kind="success" size="sm" icon={<Handshake size={13} />} disabled={!referrerPick || loading} onClick={handleSaveReferral}>
+                Salvar vínculo
+              </Btn>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
       {contractAction && (
         <ContractOutcomeModal
           lead={lead}

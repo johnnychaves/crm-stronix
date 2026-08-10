@@ -58,6 +58,7 @@ import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useProfileLead } from './hooks/useProfileLead.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
+import { planReferralSetupOps } from './lib/referrals.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
@@ -71,6 +72,7 @@ import { SidebarItem, SidebarGroup, SidebarSubItem, SIDEBAR_EXPANDED_ONLY } from
 import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
 import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
+import { ReferralLandingScreen } from './views/public/ReferralLandingScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
 import { DashboardOperacionalView } from './views/dashboard/DashboardOperacionalView.jsx';
 import { DashboardGerencialView } from './views/dashboard/DashboardGerencialView.jsx';
@@ -84,7 +86,9 @@ import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
 import { WalkthroughModal } from './components/WalkthroughModal.jsx';
-import { TutorialsHubModal } from './components/TutorialsHubModal.jsx';
+import { HelpCenterModal } from './components/HelpCenterModal.jsx';
+import { NotificationBell } from './components/layout/NotificationBell.jsx';
+import { useNotificationsSeen } from './hooks/useNotificationsSeen.js';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
@@ -110,11 +114,26 @@ export default function App() {
       return { token: null, tenantId: null };
     }
   });
+  // /i/<slug>?ref=<idDoCliente> abre a página PÚBLICA de indicação (fase 2).
+  // O segmento "i" é reservado: tem 1 letra e slugs reais têm 3+ (TENANT_ID_RE
+  // do provisionamento), então o getTenantSlug abaixo nunca colide com ele.
+  const [referralRoute] = useState(() => {
+    try {
+      const m = String(window.location.pathname || '').match(/^\/i\/([a-z0-9][a-z0-9-]{0,63})\/?$/i);
+      if (!m) return null;
+      const p = new URLSearchParams(window.location.search);
+      return { slug: m[1].toLowerCase(), refId: p.get('ref') || '' };
+    } catch {
+      return null;
+    }
+  });
   return (
     <ToastProvider>
-      {invite.token && invite.tenantId
-        ? <AcceptInviteScreen token={invite.token} tenantId={invite.tenantId} />
-        : <AppInner />}
+      {referralRoute
+        ? <ReferralLandingScreen slug={referralRoute.slug} refId={referralRoute.refId} />
+        : invite.token && invite.tenantId
+          ? <AcceptInviteScreen token={invite.token} tenantId={invite.tenantId} />
+          : <AppInner />}
     </ToastProvider>
   );
 }
@@ -195,7 +214,12 @@ function AppInner() {
   }, [ticketsOn, appUser?.tenantId, listenersActive]);
   const tickets = useMemo(() => (ticketsOn ? rawTickets : []), [ticketsOn, rawTickets]);
   const ticketsUnread = useMemo(() => countUnreadForClient(tickets), [tickets]);
-  const [tutorialsOpen, setTutorialsOpen] = useState(false); // central de tutoriais (ícone 🎓 do topo) — hoje "em breve"
+  const [tutorialsOpen, setTutorialsOpen] = useState(false); // Central de ajuda (ícone 🎓 do topo)
+  // Artigo em que a Central de ajuda abre. O sino manda o leitor direto para o
+  // assunto da novidade em que ele clicou.
+  const [helpArticleId, setHelpArticleId] = useState(null);
+  // "Já li" do sino: ids das novidades vistas + carimbo das indicações.
+  const { seenIds, lastSeenReferralsAt, markAllSeen } = useNotificationsSeen({ db, appUser });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
@@ -303,6 +327,11 @@ function AppInner() {
   // leads em toda carga de admin só pra concluir que não havia nada a fazer
   // (auditoria de 28/07/2026: ~400 leituras por carga, jogadas fora).
   const [funnelsSetupDone, setFunnelsSetupDone] = useState(null);
+  // Semeadura do funil de INDICAÇÕES (sistema). Flag própria porque
+  // funnelsSetupDoneAt já está carimbado nos tenants antigos — este passo
+  // precisa rodar uma vez em todos, novos e existentes.
+  const [referralMigrationStatus, setReferralMigrationStatus] = useState('idle');
+  const [referralSetupDone, setReferralSetupDone] = useState(null);
   const [loadingData, setLoadingData] = useState(true);
   // Já baixamos os dados ao menos uma vez nesta sessão? Serve pra reassinar
   // (volta da ociosidade) sem piscar a tela de carregando por cima de um dado
@@ -740,6 +769,7 @@ useEffect(() => {
       // Doc inexistente (academia nova, antes do provision gravar) conta como
       // "não semeado" — a migração roda e carimba.
       setFunnelsSetupDone(!!data?.funnelsSetupDoneAt);
+      setReferralSetupDone(!!data?.referralSetupDoneAt);
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
@@ -960,6 +990,83 @@ useEffect(() => {
       }
     })();
   }, [appUser, funnels, loadingData, funnelsMigrationStatus, funnelsSetupDone]);
+
+  // Migração idempotente do funil de INDICAÇÕES: cria o funil de sistema com a
+  // etapa de entrada fixa ("Aguardando ação") + Negociação, e semeia a origem
+  // 'Indicação' se o catálogo não tiver nenhuma. A decisão do que falta é pura
+  // (planReferralSetupOps, testada); aqui só se executam as ops. Serializada
+  // DEPOIS da migração de funis: garante que existe um default antes — o funil
+  // de indicações nunca pode virar o default de facto (fallback legado de
+  // isItemInFunnel despejaria os leads sem funnelId nele).
+  useEffect(() => {
+    if (!appUser || !isAdminUser(appUser)) return;
+    if (loadingData) return;
+    if (funnelsMigrationStatus !== 'done') return;
+    if (referralMigrationStatus !== 'idle') return;
+    // Config ainda não chegou: espera (mesma guarda da migração de funis).
+    if (referralSetupDone === null) return;
+    if (referralSetupDone) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
+      setReferralMigrationStatus('done');
+      return;
+    }
+
+    // Gatilho one-shot (guardado por status !== 'idle').
+    setReferralMigrationStatus('running');
+
+    (async () => {
+      try {
+        // Snapshots frescos por getDocs (não os props): elimina a corrida com
+        // as assinaturas ao vivo ainda vazias no boot. Três leituras pequenas,
+        // uma única vez por tenant na vida.
+        const [funnelsSnap, statusesSnap, sourcesSnap] = await Promise.all([
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)),
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH)),
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH))
+        ]);
+        const plan = planReferralSetupOps({
+          funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          statuses: statusesSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          sources: sourcesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        });
+
+        let newFunnelId = null;
+        if (plan.createFunnel) {
+          const ref = await addDoc(
+            collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
+            { ...plan.createFunnel, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+          );
+          newFunnelId = ref.id;
+        }
+        for (const stage of plan.createStages) {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
+            ...stage,
+            // Etapas planejadas junto com o funil novo vêm sem funnelId — o id
+            // só existe depois do addDoc acima.
+            funnelId: stage.funnelId || newFunnelId
+          });
+        }
+        if (plan.createSource) {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH), {
+            ...plan.createSource,
+            createdAt: serverTimestamp()
+          });
+        }
+
+        // Carimba a flag própria — impede qualquer leitura nas cargas futuras.
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          { referralSetupDoneAt: serverTimestamp() },
+          { merge: true }
+        );
+
+        setReferralMigrationStatus('done');
+      } catch (err) {
+        console.error('Erro na migração do funil de indicações', err);
+        setReferralMigrationStatus('error');
+      }
+    })();
+  }, [appUser, loadingData, funnelsMigrationStatus, referralMigrationStatus, referralSetupDone]);
 
   // Impersonação ("entrar como"): o banner e o "sair" vivem aqui (nível do app);
   // o "entrar" é feito no SuperAdminView. Ressincroniza com o sessionStorage
@@ -1270,29 +1377,44 @@ useEffect(() => {
                 </button>
               </div>
             )}
+            {/* 🎓 e tema saem do header no celular (o sino ocupa o lugar) e
+                viram itens do menu da conta — ver PersonaMenu. */}
             {!appUser.superAdminOnly && (
               <button
                 onClick={() => setTutorialsOpen(true)}
-                className="p-2 rounded-xl text-brand-600 dark:text-brand-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
-                title="Tutoriais"
-                aria-label="Tutoriais"
+                className="hidden sm:block p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
+                title="Central de ajuda"
+                aria-label="Central de ajuda"
               >
                 <GraduationCap className="w-5 h-5" />
               </button>
             )}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
+              className="hidden sm:block p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
               title="Alternar Tema"
             >
               {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-brand-600" />}
             </button>
+            {!appUser.superAdminOnly && (
+              <NotificationBell
+                appUser={appUser}
+                leads={leads}
+                seenIds={seenIds}
+                lastSeenReferralsAt={lastSeenReferralsAt}
+                onMarkAllSeen={markAllSeen}
+                onOpenArticle={(id) => { setHelpArticleId(id); setTutorialsOpen(true); }}
+              />
+            )}
             <PersonaMenu
               appUser={appUser}
               isAdmin={!appUser.superAdminOnly && isAdminUser(appUser)}
               onProfile={() => changeTab('profile')}
               onBilling={() => changeTab('billing')}
               onLogout={handleLogout}
+              onHelp={!appUser.superAdminOnly ? () => setTutorialsOpen(true) : null}
+              onToggleTheme={() => setIsDarkMode(!isDarkMode)}
+              isDarkMode={isDarkMode}
             />
           </div>
         </header>
@@ -1401,7 +1523,11 @@ useEffect(() => {
       {ticketModalOpen && <SupportCenterModal appUser={appUser} tickets={tickets} onClose={() => setTicketModalOpen(false)} />}
       <WhatsNewModal appUser={appUser} onConfigure={() => openSettingsTab('general')} />
       <WalkthroughModal appUser={appUser} />
-      <TutorialsHubModal open={tutorialsOpen} onClose={() => setTutorialsOpen(false)} />
+      <HelpCenterModal
+        open={tutorialsOpen}
+        initialArticleId={helpArticleId}
+        onClose={() => { setTutorialsOpen(false); setHelpArticleId(null); }}
+      />
     </div>
     </LeadProfileContext.Provider>
     </GeneralConfigContext.Provider>
