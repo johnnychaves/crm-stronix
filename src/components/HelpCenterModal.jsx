@@ -88,7 +88,9 @@ export function HelpCenterModal({ open, onClose, initialArticleId = null }) {
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="p-0 gap-0 overflow-hidden w-full max-w-[calc(100%-1.5rem)] sm:max-w-[900px] h-[85vh] sm:h-[600px] flex flex-col rounded-2xl">
+      {/* Tela cheia: a wiki é para ler, então ocupa tudo. max-w-none derruba o
+          teto do Dialog padrão; o artigo mantém largura de leitura por dentro. */}
+      <DialogContent className="p-0 gap-0 overflow-hidden w-screen h-[100dvh] max-w-none sm:max-w-none rounded-none border-0 flex flex-col">
         {/* Cabeçalho */}
         <div className="flex items-center gap-3 px-5 py-3.5 border-b border-border shrink-0">
           <span className="size-9 rounded-xl bg-accent-50 dark:bg-accent-500/12 text-accent-600 dark:text-accent-400 grid place-items-center shrink-0">
@@ -102,7 +104,7 @@ export function HelpCenterModal({ open, onClose, initialArticleId = null }) {
           </div>
         </div>
 
-        <div className="flex-1 min-h-0 grid sm:grid-cols-[228px_minmax(0,1fr)]">
+        <div className="flex-1 min-h-0 grid sm:grid-cols-[280px_minmax(0,1fr)]">
           {/* Índice */}
           <aside className={cn(
             'border-r border-border bg-slate-50/60 dark:bg-white/[0.02] py-3 overflow-y-auto custom-scrollbar',
@@ -146,8 +148,9 @@ export function HelpCenterModal({ open, onClose, initialArticleId = null }) {
             ))}
           </aside>
 
-          {/* Artigo */}
-          <div className="min-w-0 overflow-y-auto custom-scrollbar px-5 sm:px-7 py-5">
+          {/* Artigo — a coluna ocupa a tela, o texto respeita a medida de leitura */}
+          <div className="min-w-0 overflow-y-auto custom-scrollbar px-5 sm:px-10 py-6 sm:py-9">
+            <div className="mx-auto w-full max-w-[780px]">
             {article ? (
               <>
                 <button
@@ -167,6 +170,7 @@ export function HelpCenterModal({ open, onClose, initialArticleId = null }) {
             ) : (
               <p className="text-[13px] text-muted-foreground">Escolha um artigo no índice.</p>
             )}
+            </div>
           </div>
         </div>
       </DialogContent>

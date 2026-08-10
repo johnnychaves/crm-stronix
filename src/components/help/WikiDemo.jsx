@@ -166,7 +166,9 @@ export function WikiDemo({ name, caption }) {
   const body = Body({ name });
   if (!body) return null;
   return (
-    <figure className="wd-anim my-3">
+    // max-w fixo: as animações têm geometria em pixels (o card anda 104px), então
+    // esticar a mini-tela numa janela larga desalinharia o movimento.
+    <figure className="wd-anim my-3 max-w-[460px]">
       <style>{KEYFRAMES}</style>
       {body}
       {caption && (
