@@ -11,7 +11,7 @@ import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
-import { getReferralFunnel } from '../lib/referrals.js';
+import { getReferralFunnel, buildReferralShareLink } from '../lib/referrals.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
@@ -47,7 +47,7 @@ import {
   TIMELINE_FILTERS,
   TIMELINE_SYSTEM_KIND
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, Link2, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Tom do bloco de contagem, do chip e do preenchimento da régua — o estado do
 // contrato manda na cor da aba Contratos inteira.
@@ -146,6 +146,8 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // Vínculo de indicação: dialog de vincular/editar/remover + escolha do picker.
   const [referrerDialogOpen, setReferrerDialogOpen] = useState(false);
   const [referrerPick, setReferrerPick] = useState(null);
+  // Feedback do "Link de indicação" do cabeçalho (mesmo padrão do copiar telefone).
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Timeline filter + search
   const [timelineFilter, setTimelineFilter] = useState('all');
@@ -308,6 +310,20 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       toast.error('Não foi possível mudar a fase. Tente novamente.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Copia o link de indicação deste cliente (atalho do cabeçalho; a aba
+  // Indicações tem a caixa completa, com o envio pelo WhatsApp dele).
+  const copyReferralLink = async () => {
+    const link = buildReferralShareLink(window.location.origin, appId, lead.id);
+    try {
+      await navigator.clipboard.writeText(link);
+      setLinkCopied(true);
+      toast.success('Link de indicação copiado.');
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      toast.info(`Copie manualmente: ${link}`);
     }
   };
 
@@ -1085,9 +1101,21 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
             {/* actions */}
             <div className="flex items-center gap-2 flex-wrap ml-auto">
-              <Btn kind="primary" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
+              {/* Ações de contato sem moldura: só ícone e rótulo. O que precisa
+                  de peso visual são Venda e Perda, logo ao lado. */}
+              <Btn kind="ghost" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
+              {isClient && (
+                <Btn
+                  kind="ghost"
+                  size="md"
+                  icon={linkCopied ? <Check size={14} className="text-emerald-600 dark:text-emerald-400" /> : <Link2 size={14} />}
+                  onClick={copyReferralLink}
+                >
+                  {linkCopied ? 'Link copiado' : 'Link de indicação'}
+                </Btn>
+              )}
               <Btn
-                kind="secondary"
+                kind="ghost"
                 size="md"
                 icon={<Phone size={14} />}
                 onClick={() => { const num = String(lead.whatsapp || '').replace(/\D/g, ''); if (num) window.location.href = `tel:${num}`; }}

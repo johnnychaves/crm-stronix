@@ -12,6 +12,13 @@ import { WikiDemo } from './help/WikiDemo.jsx';
 
 function Block({ block }) {
   switch (block.t) {
+    case 'h':
+      return (
+        <h4 className="font-display text-[15px] font-bold tracking-tight mt-6 mb-2 pb-1.5 border-b border-slate-100 dark:border-white/[0.06] first:mt-0">
+          {block.text}
+        </h4>
+      );
+
     case 'p':
       return <p className="text-[13.5px] leading-relaxed text-slate-600 dark:text-slate-300 mb-3">{block.text}</p>;
 

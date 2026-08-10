@@ -157,6 +157,114 @@ function Body({ name }) {
         </Screen>
       );
 
+    case 'busca':
+      return (
+        <Screen>
+          <div className="h-7 rounded-lg bg-white dark:bg-neutral-800 border border-slate-200 dark:border-white/10 px-2 flex items-center gap-1.5 mb-2">
+            <span className="text-[10px] text-slate-400">🔍</span>
+            <Typed text="ana pra" />
+          </div>
+          <div style={A('wdPop')} className="rounded-lg bg-white dark:bg-neutral-800 border border-slate-200 dark:border-white/10 p-1.5">
+            {[['Ana Prado', 'Cliente ativo', 'emerald'], ['Ana Prata', 'Lead quente', 'brand']].map(([n, s, c]) => (
+              <div key={n} className="flex items-center gap-1.5 px-1 py-1">
+                <span className={cn('size-5 rounded-full grid place-items-center text-[8px] font-bold text-white', c === 'emerald' ? 'bg-emerald-500' : 'bg-brand-600')}>
+                  {n.slice(0, 1)}
+                </span>
+                <span className="text-[9.5px] font-medium text-slate-700 dark:text-slate-200 flex-1">{n}</span>
+                <span className="text-[8px] text-slate-400">{s}</span>
+              </div>
+            ))}
+          </div>
+        </Screen>
+      );
+
+    case 'agendar':
+      return (
+        <Screen>
+          <div className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-2">Agendar</div>
+          <div className="flex gap-1.5 mb-2">
+            <span className="flex-1 h-6 rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 grid place-items-center text-[9px] text-slate-500">Visita</span>
+            <span className="flex-1 h-6 rounded-md border-2 border-brand-500 bg-brand-50 dark:bg-brand-500/12 grid place-items-center text-[9px] font-semibold text-brand-700 dark:text-brand-300" style={A('wdPop')}>
+              Aula experimental
+            </span>
+          </div>
+          <Field label="Quando"><Typed text="23/08 às 18:00" /></Field>
+          <Field label="Professor"><Typed text="Carla Nunes · Musculação" /></Field>
+        </Screen>
+      );
+
+    case 'desfecho':
+      return (
+        <Screen>
+          <div className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-2">Como foi a aula de Ana Prado?</div>
+          <div className="flex gap-1.5">
+            <span className="flex-1 h-7 rounded-md grid place-items-center text-[9px] font-semibold text-white bg-emerald-500" style={A('wdPop')}>Compareceu</span>
+            <span className="flex-1 h-7 rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 grid place-items-center text-[9px] text-slate-500">Não veio</span>
+            <span className="flex-1 h-7 rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 grid place-items-center text-[9px] text-slate-500">Remarcou</span>
+          </div>
+          <div className="mt-2 text-[9px] text-slate-500 dark:text-slate-400" style={A('wdPop')}>
+            → Ana avança para <span className="font-semibold text-violet-600 dark:text-violet-400">Negociação</span>
+          </div>
+        </Screen>
+      );
+
+    case 'matricula':
+      return (
+        <Screen>
+          <div className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-2">Matrícula</div>
+          <Field label="Plano"><Typed text="Trimestral · Musculação" /></Field>
+          <Field label="Valor"><Typed text="R$ 297,00" /></Field>
+          <div className="flex items-center justify-between text-[9px] text-slate-500 dark:text-slate-400 mt-1" style={A('wdPop')}>
+            <span>Vigência</span>
+            <span className="num font-semibold text-slate-700 dark:text-slate-200">23/08/2026 → 23/11/2026</span>
+          </div>
+        </Screen>
+      );
+
+    case 'perda':
+      return (
+        <Screen>
+          <div className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-2">Por que perdemos?</div>
+          <div className="flex flex-wrap gap-1">
+            {['Preço', 'Localização', 'Horário', 'Sem retorno'].map((m, i) => (
+              <span
+                key={m}
+                style={i === 0 ? A('wdPop') : undefined}
+                className={cn(
+                  'px-2 py-1 rounded-full text-[9px] font-semibold border',
+                  i === 0
+                    ? 'bg-rose-50 border-rose-300 text-rose-700 dark:bg-rose-500/10 dark:border-rose-500/30 dark:text-rose-300'
+                    : 'bg-white dark:bg-neutral-800 border-slate-200 dark:border-white/10 text-slate-500'
+                )}
+              >
+                {m}
+              </span>
+            ))}
+          </div>
+          <div className="mt-2 text-[9px] text-slate-500 dark:text-slate-400">O motivo vira relatório de perdas.</div>
+        </Screen>
+      );
+
+    case 'backfill':
+      return (
+        <Screen>
+          <div className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-2">Indicações sem dono</div>
+          <div className="flex items-center gap-1.5 rounded-lg bg-white dark:bg-neutral-800 border border-slate-200 dark:border-white/10 px-1.5 py-1.5">
+            <span className="size-5 rounded-full bg-brand-600 text-white grid place-items-center text-[8px] font-bold">R</span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[9px] font-semibold text-slate-700 dark:text-slate-200 truncate">Rafael Moura</span>
+              <span className="block text-[7.5px] text-slate-400">Cadastrado em 12/05 · Negociação</span>
+            </span>
+            <span className="relative h-5 w-[86px] rounded-md border border-slate-200 dark:border-white/10 grid place-items-center text-[8px] text-slate-400 shrink-0">
+              <span style={A('wdSwap')}>Quem indicou?</span>
+              <span className="absolute inset-0 grid place-items-center rounded-md bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 font-semibold" style={A('wdPop')}>
+                ✓ Maria Silva
+              </span>
+            </span>
+          </div>
+        </Screen>
+      );
+
     default:
       return null;
   }
