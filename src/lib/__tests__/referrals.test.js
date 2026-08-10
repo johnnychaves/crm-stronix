@@ -15,7 +15,8 @@ import {
   referralIndicouText,
   referralConvertedText,
   buildReferralShareLink,
-  buildReferralWhatsAppText
+  buildReferralWhatsAppText,
+  pendingReferralOwners
 } from '../referrals.js';
 
 describe('isReferralFunnel', () => {
@@ -193,6 +194,24 @@ describe('textos dos eventos de indicação', () => {
     expect(referralIndicadoText('Maria Silva')).toBe('🤝 Indicado por Maria Silva');
     expect(referralIndicouText('João Souza')).toBe('🤝 Indicou João Souza');
     expect(referralConvertedText('João Souza')).toBe('🎉 João Souza que você indicou fechou matrícula');
+  });
+});
+
+describe('pendingReferralOwners — indicações sem dono (backfill)', () => {
+  it('pega qualquer grafia de "indica", de todos os estados, e ignora quem já tem dono ou foi dispensado', () => {
+    const leads = [
+      { id: 'a', source: 'Indicação', createdAt: new Date(2026, 0, 3) },
+      { id: 'b', source: 'INDICACAO de aluno', createdAt: new Date(2026, 0, 5), lifecycleBucket: 'cliente' },
+      { id: 'c', source: 'Instagram', createdAt: new Date(2026, 0, 4) },
+      { id: 'd', source: 'Indicação', referredById: 'x', createdAt: new Date(2026, 0, 9) },
+      { id: 'e', source: 'Indicação', referrerUnknown: true, createdAt: new Date(2026, 0, 8) }
+    ];
+    expect(pendingReferralOwners(leads).map((l) => l.id)).toEqual(['b', 'a']);
+  });
+
+  it('lista vazia ou nula', () => {
+    expect(pendingReferralOwners([])).toEqual([]);
+    expect(pendingReferralOwners(null)).toEqual([]);
   });
 });
 

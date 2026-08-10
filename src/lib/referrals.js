@@ -138,6 +138,18 @@ const referredAtMs = (l) => {
 export const sortReferrals = (leads) =>
   [...(leads || [])].sort((a, b) => referredAtMs(b) - referredAtMs(a));
 
+// Indicações antigas SEM dono: entraram com origem "Indicação" antes da
+// feature existir, então não têm indicador. Alimenta a ferramenta de
+// Configurações que pergunta quem indicou cada uma.
+// - casa qualquer grafia da origem ('Indicacao', 'Indicação de aluno'…)
+// - vale para todos os estados (ativo, cliente e perda)
+// - `referrerUnknown` é o "já checamos, ninguém sabe" — sai da fila sem inventar
+//   vínculo (sem ele a lista nunca esvaziaria)
+export const pendingReferralOwners = (leads) =>
+  (leads || [])
+    .filter((l) => normalize(l?.source).includes('indica') && !l?.referredById && !l?.referrerUnknown)
+    .sort((a, b) => (getSafeDateOrNull(b?.createdAt)?.getTime() || 0) - (getSafeDateOrNull(a?.createdAt)?.getTime() || 0));
+
 // Textos dos eventos de timeline (type 'referral') — fonte única para
 // referralsWrites, contracts e testes.
 export const referralIndicadoText = (referrerName) => `🤝 Indicado por ${referrerName}`;
