@@ -11,7 +11,7 @@ import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
-import { getReferralFunnel, buildReferralShareLink } from '../lib/referrals.js';
+import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText } from '../lib/referrals.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
@@ -24,6 +24,7 @@ import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.jsx';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../components/ui/dropdown-menu.jsx';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../components/ui/dialog.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
 import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
@@ -146,8 +147,6 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // Vínculo de indicação: dialog de vincular/editar/remover + escolha do picker.
   const [referrerDialogOpen, setReferrerDialogOpen] = useState(false);
   const [referrerPick, setReferrerPick] = useState(null);
-  // Feedback do "Link de indicação" do cabeçalho (mesmo padrão do copiar telefone).
-  const [linkCopied, setLinkCopied] = useState(false);
 
   // Timeline filter + search
   const [timelineFilter, setTimelineFilter] = useState('all');
@@ -313,17 +312,23 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
     }
   };
 
-  // Copia o link de indicação deste cliente (atalho do cabeçalho; a aba
-  // Indicações tem a caixa completa, com o envio pelo WhatsApp dele).
+  // Link público de indicação deste cliente. O menu do cabeçalho oferece as
+  // duas saídas: copiar, ou abrir o WhatsApp DELE com a mensagem pronta para
+  // ele repassar aos amigos.
+  const referralLink = buildReferralShareLink(window.location.origin, appId, lead.id);
+  const referralWaDigits = String(lead.whatsapp || '').replace(/\D/g, '');
+  const referralWaHref = referralWaDigits
+    ? `https://wa.me/${referralWaDigits}?text=${encodeURIComponent(
+        buildReferralWhatsAppText({ firstName: (lead.name || '').trim().split(/\s+/)[0] || '', link: referralLink })
+      )}`
+    : null;
+
   const copyReferralLink = async () => {
-    const link = buildReferralShareLink(window.location.origin, appId, lead.id);
     try {
-      await navigator.clipboard.writeText(link);
-      setLinkCopied(true);
+      await navigator.clipboard.writeText(referralLink);
       toast.success('Link de indicação copiado.');
-      setTimeout(() => setLinkCopied(false), 2000);
     } catch {
-      toast.info(`Copie manualmente: ${link}`);
+      toast.info(`Copie manualmente: ${referralLink}`);
     }
   };
 
@@ -1105,14 +1110,26 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
                   de peso visual são Venda e Perda, logo ao lado. */}
               <Btn kind="ghost" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
               {isClient && (
-                <Btn
-                  kind="ghost"
-                  size="md"
-                  icon={linkCopied ? <Check size={14} className="text-emerald-600 dark:text-emerald-400" /> : <Link2 size={14} />}
-                  onClick={copyReferralLink}
-                >
-                  {linkCopied ? 'Link copiado' : 'Link de indicação'}
-                </Btn>
+                <DropdownMenu>
+                  {/* Botão do próprio trigger, não o Btn: o Btn não encaminha
+                      ref nem as props que o Radix injeta, então com `asChild`
+                      o menu não abria. Estilo espelha o Btn ghost tamanho md. */}
+                  <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 px-3.5 text-[12.5px] rounded-lg font-semibold whitespace-nowrap transition active:scale-[.98] text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] data-[state=open]:bg-slate-100 dark:data-[state=open]:bg-white/[0.06]">
+                    <Link2 size={14} /> Link de indicação
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" sideOffset={6} className="w-56 rounded-xl">
+                    <DropdownMenuItem onClick={copyReferralLink} className="cursor-pointer">
+                      <Copy className="size-4 text-slate-500" /> Copiar link
+                    </DropdownMenuItem>
+                    {referralWaHref && (
+                      <DropdownMenuItem asChild className="cursor-pointer">
+                        <a href={referralWaHref} target="_blank" rel="noopener noreferrer">
+                          <MessageCircle className="size-4 text-emerald-600 dark:text-emerald-400" /> Enviar pro cliente
+                        </a>
+                      </DropdownMenuItem>
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               <Btn
                 kind="ghost"
@@ -1818,7 +1835,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         {/* ----- Aba: Indicações (só cliente) ----- */}
         {isClient && (
           <TabsContent value="referrals" className="pt-2">
-            <ReferralsSection lead={lead} items={referralItems} loading={referralsLoading} />
+            <ReferralsSection items={referralItems} loading={referralsLoading} />
           </TabsContent>
         )}
 

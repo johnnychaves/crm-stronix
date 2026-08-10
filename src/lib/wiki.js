@@ -338,8 +338,8 @@ export const WIKI_ARTICLES = [
       { t: 'demo', name: 'indicacao-link', caption: 'Copiar ou mandar direto no WhatsApp do aluno.' },
       { t: 'steps', items: [
         'Abra a ficha do aluno.',
-        'Use o botão Link de indicação no cabeçalho, ao lado do WhatsApp, para copiar na hora.',
-        'Ou vá na aba Indicações, onde a caixa mostra o link e o botão Enviar pro cliente, que abre o WhatsApp dele com a mensagem pronta.',
+        'Clique em Link de indicação, no cabeçalho, ao lado do WhatsApp.',
+        'Escolha Copiar link, para mandar do seu jeito, ou Enviar pro cliente, que abre o WhatsApp dele já com a mensagem pronta.',
       ] },
 
       { t: 'h', text: '2. O que o amigo vê' },
