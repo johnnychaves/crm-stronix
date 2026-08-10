@@ -86,7 +86,9 @@ import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
 import { WalkthroughModal } from './components/WalkthroughModal.jsx';
-import { TutorialsHubModal } from './components/TutorialsHubModal.jsx';
+import { HelpCenterModal } from './components/HelpCenterModal.jsx';
+import { NotificationBell } from './components/layout/NotificationBell.jsx';
+import { useNotificationsSeen } from './hooks/useNotificationsSeen.js';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
@@ -210,7 +212,12 @@ function AppInner() {
   }, [ticketsOn, appUser?.tenantId, listenersActive]);
   const tickets = useMemo(() => (ticketsOn ? rawTickets : []), [ticketsOn, rawTickets]);
   const ticketsUnread = useMemo(() => countUnreadForClient(tickets), [tickets]);
-  const [tutorialsOpen, setTutorialsOpen] = useState(false); // central de tutoriais (ícone 🎓 do topo) — hoje "em breve"
+  const [tutorialsOpen, setTutorialsOpen] = useState(false); // Central de ajuda (ícone 🎓 do topo)
+  // Artigo em que a Central de ajuda abre. O sino manda o leitor direto para o
+  // assunto da novidade em que ele clicou.
+  const [helpArticleId, setHelpArticleId] = useState(null);
+  // "Já li" do sino: ids das novidades vistas + carimbo das indicações.
+  const { seenIds, lastSeenReferralsAt, markAllSeen } = useNotificationsSeen({ db, appUser });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
@@ -1352,29 +1359,44 @@ useEffect(() => {
                 </button>
               </div>
             )}
+            {/* 🎓 e tema saem do header no celular (o sino ocupa o lugar) e
+                viram itens do menu da conta — ver PersonaMenu. */}
             {!appUser.superAdminOnly && (
               <button
                 onClick={() => setTutorialsOpen(true)}
-                className="p-2 rounded-xl text-brand-600 dark:text-brand-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
-                title="Tutoriais"
-                aria-label="Tutoriais"
+                className="hidden sm:block p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
+                title="Central de ajuda"
+                aria-label="Central de ajuda"
               >
                 <GraduationCap className="w-5 h-5" />
               </button>
             )}
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className="p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
+              className="hidden sm:block p-2 rounded-xl text-gray-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition-all active:scale-95 border border-transparent hover:border-gray-200 dark:hover:border-neutral-700"
               title="Alternar Tema"
             >
               {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-brand-600" />}
             </button>
+            {!appUser.superAdminOnly && (
+              <NotificationBell
+                appUser={appUser}
+                leads={leads}
+                seenIds={seenIds}
+                lastSeenReferralsAt={lastSeenReferralsAt}
+                onMarkAllSeen={markAllSeen}
+                onOpenArticle={(id) => { setHelpArticleId(id); setTutorialsOpen(true); }}
+              />
+            )}
             <PersonaMenu
               appUser={appUser}
               isAdmin={!appUser.superAdminOnly && isAdminUser(appUser)}
               onProfile={() => changeTab('profile')}
               onBilling={() => changeTab('billing')}
               onLogout={handleLogout}
+              onHelp={!appUser.superAdminOnly ? () => setTutorialsOpen(true) : null}
+              onToggleTheme={() => setIsDarkMode(!isDarkMode)}
+              isDarkMode={isDarkMode}
             />
           </div>
         </header>
@@ -1479,7 +1501,11 @@ useEffect(() => {
       {ticketModalOpen && <SupportCenterModal appUser={appUser} tickets={tickets} onClose={() => setTicketModalOpen(false)} />}
       <WhatsNewModal appUser={appUser} onConfigure={() => openSettingsTab('general')} />
       <WalkthroughModal appUser={appUser} />
-      <TutorialsHubModal open={tutorialsOpen} onClose={() => setTutorialsOpen(false)} />
+      <HelpCenterModal
+        open={tutorialsOpen}
+        initialArticleId={helpArticleId}
+        onClose={() => { setTutorialsOpen(false); setHelpArticleId(null); }}
+      />
     </div>
     </LeadProfileContext.Provider>
     </GeneralConfigContext.Provider>
