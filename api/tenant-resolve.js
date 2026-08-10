@@ -1,6 +1,7 @@
 import { adminDb, admin } from './_firebaseAdmin.js';
 import { dataCollection } from './_auth.js';
 import { checkRateLimit, clientIp } from './_rateLimit.js';
+import { withSentry } from './_sentry.js';
 import {
   onlyDigits,
   buildLeadSearchFields,
@@ -34,7 +35,7 @@ const FUNNELS_PATH = 'stronix_funnels';
 const STATUSES_PATH = 'stronix_statuses';
 const MODALITIES_PATH = 'stronix_modalities';
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   if (req.method === 'POST') return handleReferral(req, res);
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Método não permitido' });
@@ -67,7 +68,7 @@ export default async function handler(req, res) {
     console.error('tenant-resolve:', err?.message || err);
     return res.status(500).json({ error: 'Erro ao resolver organização.' });
   }
-}
+});
 
 // ---------------------------------------------------------------------------
 // Fase 2 — actions públicas da página /i/{slug}

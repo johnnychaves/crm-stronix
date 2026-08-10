@@ -2,8 +2,9 @@ import { adminAuth, admin, verifyRequest } from './_firebaseAdmin.js';
 import { getSeatUsage, canAddSeat } from './_plans.js';
 import { syncSubscriptionValue } from './_asaas.js';
 import { usersCollection, isTenantAdmin } from './_auth.js';
+import { withSentry } from './_sentry.js';
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
@@ -90,4 +91,4 @@ export default async function handler(req, res) {
     console.error('admin-create-user', error);
     return res.status(500).json({ error: 'Erro interno ao cadastrar consultor.' });
   }
-}
+});

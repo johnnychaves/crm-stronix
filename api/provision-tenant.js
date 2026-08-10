@@ -3,6 +3,7 @@ import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { loadPlans } from './_plans.js';
 import { logAudit } from './_audit.js';
 import { sanitizeProfile } from './_profile.js';
+import { withSentry } from './_sentry.js';
 
 const USERS_PATH = 'stronix_users';
 const SOURCES_PATH = 'stronix_sources';
@@ -63,7 +64,7 @@ async function seedDefaults(tenantId, displayName) {
   await batch.commit();
 }
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   // Só o super-admin gerencia organizações (claim superAdmin no token verificado).
   const auth = await verifyRequest(req);
   if (!auth) return res.status(401).json({ error: 'Não autenticado.' });
@@ -346,4 +347,4 @@ export default async function handler(req, res) {
   }
 
   return res.status(405).json({ error: 'Método não permitido' });
-}
+});

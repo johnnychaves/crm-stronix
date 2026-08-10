@@ -6,6 +6,7 @@ import {
   cancelSubscription, listSubscriptionPayments,
 } from './_asaas.js';
 import { sanitizeProfile } from './_profile.js';
+import { withSentry } from './_sentry.js';
 
 // Endpoint ÚNICO do Asaas (gestão de assinatura + webhook no mesmo arquivo, para
 // caber no limite de 12 Serverless Functions do Vercel Hobby).
@@ -446,7 +447,7 @@ async function handleTenantSelf(req, res, auth) {
   return res.status(405).json({ error: 'Método não permitido.' });
 }
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   // Webhook do Asaas chega com o header `asaas-access-token` (público, validado por token).
   if (req.headers['asaas-access-token'] !== undefined) return handleWebhook(req, res);
   const auth = await verifyRequest(req);
@@ -454,4 +455,4 @@ export default async function handler(req, res) {
   if (auth.superAdmin) return handleSubscription(req, res, auth);   // super-admin: gerencia qualquer tenant
   if (auth.tenantId) return handleTenantSelf(req, res, auth);       // admin do tenant: self-service na própria assinatura
   return res.status(403).json({ error: 'Sem permissão.' });
-}
+});

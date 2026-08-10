@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { getSeatUsage, canAddSeat } from './_plans.js';
 import { isTenantAdmin } from './_auth.js';
+import { withSentry } from './_sentry.js';
 
 // Cria um convite para adicionar um usuário (admin ou consultor) ao tenant.
 // ADMIN do tenant only. Vercel serverless function.
@@ -16,7 +17,7 @@ const INVITE_TTL_DAYS = 7;
 const invitesCollection = (tenantId) =>
   adminDb.collection('tenants').doc(tenantId).collection('invites');
 
-export default async function handler(req, res) {
+export default withSentry(async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
@@ -86,4 +87,4 @@ export default async function handler(req, res) {
     console.error('invite-create', error);
     return res.status(500).json({ error: 'Erro interno ao criar convite.' });
   }
-}
+});
