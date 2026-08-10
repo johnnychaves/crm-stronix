@@ -254,6 +254,9 @@ async function referralSignup(req, res) {
       referredById: withReferrer ? referrer.id : null,
       referredByName: withReferrer ? (referrer.name || null) : null,
       referredAt: withReferrer ? now : null,
+      // Marca de origem do cadastro. É o que o sino do header usa para avisar
+      // "entrou uma indicação pelo link" sem confundir com o cadastro manual.
+      referralVia: 'link',
       consultantId: withReferrer ? (referrer.consultantId ?? null) : null,
       consultantName: withReferrer ? (referrer.consultantName ?? null) : null,
       consultantAuthUid: withReferrer ? (referrer.consultantAuthUid ?? null) : null,
