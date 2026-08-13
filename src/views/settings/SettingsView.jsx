@@ -160,7 +160,7 @@ function SettingsView({
           <TransferSection db={db} usersList={usersList} appUser={appUser} leads={leads} />
         )}
         {section === 'referral-owners' && (
-          <ReferralOwnersSection db={db} leads={leads} appUser={appUser} />
+          <ReferralOwnersSection db={db} leads={leads} funnels={funnels} statuses={statuses} appUser={appUser} />
         )}
         {section === 'pace' && (
           <PaceSection db={db} usersList={usersList} metaWeekdays={metaWeekdays} />

@@ -16,7 +16,8 @@ import {
   referralConvertedText,
   buildReferralShareLink,
   buildReferralWhatsAppText,
-  pendingReferralOwners
+  pendingReferralOwners,
+  planReferralFunnelMerge
 } from '../referrals.js';
 
 describe('isReferralFunnel', () => {
@@ -212,6 +213,73 @@ describe('pendingReferralOwners — indicações sem dono (backfill)', () => {
   it('lista vazia ou nula', () => {
     expect(pendingReferralOwners([])).toEqual([]);
     expect(pendingReferralOwners(null)).toEqual([]);
+  });
+});
+
+describe('planReferralFunnelMerge — trazer um funil inteiro para o de Indicações', () => {
+  const REF = 'fref';
+  const destino = [
+    { id: 'd0', funnelId: REF, name: 'Aguardando ação', isEntry: true, isSystem: true, order: 0 },
+    { id: 'd1', funnelId: REF, name: 'Negociação', isSystem: true, order: 1 }
+  ];
+
+  it('etapa com nome equivalente no destino é preservada; o resto cai na entrada', () => {
+    const leads = [
+      { id: 'a', funnelId: 'velho', status: 'Primeiro contato' },
+      { id: 'b', funnelId: 'velho', status: 'NEGOCIAÇÃO' },
+      { id: 'c', funnelId: 'outro', status: 'Primeiro contato' }
+    ];
+    const plan = planReferralFunnelMerge({ leads, statuses: destino, fromFunnelId: 'velho', referralFunnelId: REF });
+    expect(plan.moves).toEqual([
+      { id: 'a', funnelId: REF, status: 'Aguardando ação' },
+      { id: 'b', funnelId: REF, status: 'Negociação' }
+    ]);
+    expect(plan.total).toBe(2);
+  });
+
+  it('Venda e Perda são preservadas: são colunas de todo funil, não etapas', () => {
+    const leads = [
+      { id: 'v', funnelId: 'velho', status: 'Venda' },
+      { id: 'p', funnelId: 'velho', status: 'Perda' }
+    ];
+    const plan = planReferralFunnelMerge({ leads, statuses: destino, fromFunnelId: 'velho', referralFunnelId: REF });
+    expect(plan.moves.map((m) => m.status)).toEqual(['Venda', 'Perda']);
+  });
+
+  it('conta quantos vão precisar de indicador depois', () => {
+    const leads = [
+      { id: 'a', funnelId: 'velho', status: 'X' },
+      { id: 'b', funnelId: 'velho', status: 'X', referredById: 'cli1' },
+      { id: 'c', funnelId: 'velho', status: 'X', referrerUnknown: true }
+    ];
+    const plan = planReferralFunnelMerge({ leads, statuses: destino, fromFunnelId: 'velho', referralFunnelId: REF });
+    expect(plan.total).toBe(3);
+    expect(plan.semDono).toBe(1);
+  });
+
+  it('sem funil de origem, sem destino ou origem igual ao destino: nada a fazer', () => {
+    const leads = [{ id: 'a', funnelId: 'velho', status: 'X' }];
+    const vazio = { moves: [], total: 0, semDono: 0 };
+    expect(planReferralFunnelMerge({ leads, statuses: destino, fromFunnelId: null, referralFunnelId: REF })).toEqual(vazio);
+    expect(planReferralFunnelMerge({ leads, statuses: destino, fromFunnelId: 'velho', referralFunnelId: null })).toEqual(vazio);
+    expect(planReferralFunnelMerge({ leads, statuses: destino, fromFunnelId: REF, referralFunnelId: REF })).toEqual(vazio);
+  });
+
+  it('destino sem etapa de entrada não inventa status: mantém o que o lead tinha', () => {
+    const leads = [{ id: 'a', funnelId: 'velho', status: 'Primeiro contato' }];
+    const plan = planReferralFunnelMerge({ leads, statuses: [], fromFunnelId: 'velho', referralFunnelId: REF });
+    expect(plan.moves).toEqual([{ id: 'a', funnelId: REF, status: 'Primeiro contato' }]);
+  });
+});
+
+describe('pendingReferralOwners — também pega quem está no funil de Indicações', () => {
+  it('lead no funil do sistema sem vínculo entra na fila mesmo com outra origem', () => {
+    const leads = [
+      { id: 'a', source: 'Instagram', funnelId: 'fref' },
+      { id: 'b', source: 'Instagram', funnelId: 'outro' },
+      { id: 'c', source: 'Instagram', funnelId: 'fref', referredById: 'x' }
+    ];
+    expect(pendingReferralOwners(leads, 'fref').map((l) => l.id)).toEqual(['a']);
   });
 });
 

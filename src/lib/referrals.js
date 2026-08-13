@@ -145,10 +145,53 @@ export const sortReferrals = (leads) =>
 // - vale para todos os estados (ativo, cliente e perda)
 // - `referrerUnknown` é o "já checamos, ninguém sabe" — sai da fila sem inventar
 //   vínculo (sem ele a lista nunca esvaziaria)
-export const pendingReferralOwners = (leads) =>
+// `referralFunnelId` amplia a fila: quem está DENTRO do funil de Indicações
+// sem vínculo também precisa de dono, mesmo que a origem diga outra coisa
+// (é o caso dos leads trazidos de um funil de indicações antigo, feito à mão).
+export const pendingReferralOwners = (leads, referralFunnelId = null) =>
   (leads || [])
-    .filter((l) => normalize(l?.source).includes('indica') && !l?.referredById && !l?.referrerUnknown)
+    .filter((l) => {
+      if (l?.referredById || l?.referrerUnknown) return false;
+      const pelaOrigem = normalize(l?.source).includes('indica');
+      const peloFunil = Boolean(referralFunnelId) && l?.funnelId === referralFunnelId;
+      return pelaOrigem || peloFunil;
+    })
     .sort((a, b) => (getSafeDateOrNull(b?.createdAt)?.getTime() || 0) - (getSafeDateOrNull(a?.createdAt)?.getTime() || 0));
+
+// Plano para trazer um funil INTEIRO para o de Indicações do sistema. Nasceu
+// da migração real: quem já tinha um funil de indicações feito à mão precisa
+// juntar os dois sem saber quem indicou quem.
+//
+// Regras do mapeamento de etapa:
+// - 'Venda' e 'Perda' são colunas de TODO funil (sentinelas), então ficam;
+// - etapa com nome equivalente no destino é preservada (Negociação → Negociação);
+// - o resto cai na etapa de entrada, que é onde uma indicação começa;
+// - destino sem etapa de entrada não inventa status: mantém o que o lead tinha.
+//
+// Devolve só o plano. Quem grava é o caller — assim isto cabe em teste.
+export const planReferralFunnelMerge = ({ leads, statuses, fromFunnelId, referralFunnelId } = {}) => {
+  const vazio = { moves: [], total: 0, semDono: 0 };
+  if (!fromFunnelId || !referralFunnelId || fromFunnelId === referralFunnelId) return vazio;
+
+  const destino = (statuses || []).filter((s) => s.funnelId === referralFunnelId);
+  const entrada = getReferralEntryStage(statuses, referralFunnelId);
+  const porNome = new Map(destino.map((s) => [normalize(s.name).trim(), s.name]));
+
+  const alvo = (status) => {
+    const atual = String(status || '');
+    if (atual === 'Venda' || atual === 'Perda') return atual;
+    const equivalente = porNome.get(normalize(atual).trim());
+    if (equivalente) return equivalente;
+    return entrada?.name || atual;
+  };
+
+  const doFunil = (leads || []).filter((l) => l?.funnelId === fromFunnelId);
+  return {
+    moves: doFunil.map((l) => ({ id: l.id, funnelId: referralFunnelId, status: alvo(l.status) })),
+    total: doFunil.length,
+    semDono: doFunil.filter((l) => !l?.referredById && !l?.referrerUnknown).length
+  };
+};
 
 // Textos dos eventos de timeline (type 'referral') — fonte única para
 // referralsWrites, contracts e testes.
