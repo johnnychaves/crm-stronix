@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../lib/firebase.js';
+import { passwordTooShort, passwordTooShortError } from '../../lib/passwordPolicy.js';
 import { Check, AlertTriangle, User, Lock, EyeOff, Eye, ArrowRight } from 'lucide-react';
 import { SurgeMark, StronileadWordmark } from '../../components/brand/SurgeMark.jsx';
 
@@ -22,7 +23,7 @@ function AcceptInviteScreen({ token, tenantId }) {
     if (loading) return;
     setError('');
     if (!name.trim()) { setError('Informe seu nome.'); return; }
-    if (password.length < 6) { setError('A senha precisa ter ao menos 6 caracteres.'); return; }
+    if (passwordTooShort(password)) { setError(passwordTooShortError()); return; }
     setLoading(true);
     try {
       const res = await fetch('/api/invite-accept', {

@@ -3,6 +3,7 @@ import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { loadPlans } from './_plans.js';
 import { logAudit } from './_audit.js';
 import { sanitizeProfile } from './_profile.js';
+import { passwordTooShort, passwordTooShortError } from './_auth.js';
 import { withSentry } from './_sentry.js';
 
 const USERS_PATH = 'stronix_users';
@@ -181,8 +182,8 @@ export default withSentry(async function handler(req, res) {
       if (!EMAIL_RE.test(normalizedEmail)) {
         return res.status(400).json({ error: 'E-mail do responsável inválido.' });
       }
-      if (!inviteMode && String(adminPassword).length < 6) {
-        return res.status(400).json({ error: 'Senha precisa ter ao menos 6 caracteres.' });
+      if (!inviteMode && passwordTooShort(adminPassword)) {
+        return res.status(400).json({ error: passwordTooShortError() });
       }
 
       // Plano validado contra o CATÁLOGO DINÂMICO (plans/), com fallback aos 3

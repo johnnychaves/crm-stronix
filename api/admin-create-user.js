@@ -1,7 +1,7 @@
 import { adminAuth, admin, verifyRequest } from './_firebaseAdmin.js';
 import { getSeatUsage, canAddSeat } from './_plans.js';
 import { syncSubscriptionValue } from './_asaas.js';
-import { usersCollection, isTenantAdmin } from './_auth.js';
+import { usersCollection, isTenantAdmin, passwordTooShort, passwordTooShortError } from './_auth.js';
 import { withSentry } from './_sentry.js';
 
 export default withSentry(async function handler(req, res) {
@@ -24,8 +24,8 @@ export default withSentry(async function handler(req, res) {
         .json({ error: 'Campos obrigatórios: name, email, password.' });
     }
 
-    if (String(password).length < 6) {
-      return res.status(400).json({ error: 'Senha precisa ter ao menos 6 caracteres.' });
+    if (passwordTooShort(password)) {
+      return res.status(400).json({ error: passwordTooShortError() });
     }
 
     const isAdmin = await isTenantAdmin(auth.tenantId, auth.uid);
