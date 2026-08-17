@@ -21,7 +21,10 @@ import {
   overdueDaysOf,
   computeRitmo,
   slotTotals,
-  dgDateKey
+  dgDateKey,
+  DG_CATEGORY_ORDER,
+  DG_CATEGORY_META,
+  COLOR_TONES
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 
@@ -199,12 +202,15 @@ describe('computeDailyGoalSlots — renovação (marcos configuráveis, renewalG
     expect(byId(slots([c]), c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
   });
 
-  it('contrato vencido sem nenhum marco tratado ainda entra (corrige o bug: não sumia mais)', () => {
-    // Mudança de comportamento INTENCIONAL vs. o threshold único antigo: um
-    // contrato vencido que nunca foi decidido (nem renovado, nem declinado)
-    // continua pedindo desfecho — é exatamente o bug que esta feature corrige.
+  it('contrato vencido não entra mais em Renovações — vira tarefa do funil Vencidos', () => {
+    // Comportamento MUDOU de propósito: antes esse cliente ainda entrava aqui,
+    // dentro da tolerância de 15 dias depois do vencimento. Agora a Renovação
+    // para no dia do vencimento (corte limpo, src/lib/renewalGoal.js) e quem
+    // venceu vira tarefa do funil Vencidos (src/lib/expiredGoal.js) — a
+    // categoria já está ligada em computeDailyGoalSlots (Task 3).
     const vencido = cliente({ currentContractEndsAt: new Date(2026, 6, 14) }); // ontem
-    expect(byId(slots([vencido]), vencido.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
+    const result = slots([vencido]);
+    expect(byId(result, vencido.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.VENCIDO]);
   });
 
   it('contrato cancelado, sem endsAt ou sem lifecycleStage cliente não entram', () => {
@@ -705,5 +711,81 @@ describe('countClosedMetaDaysInMonth', () => {
 
   it('devolve 0 quando a lista de dias está vazia', () => {
     expect(countClosedMetaDaysInMonth([])).toBe(0);
+  });
+});
+
+describe('computeDailyGoalSlots — funil Vencidos', () => {
+  const CONSULTOR = 'u1';
+
+  const clienteVencido = (over = {}) => {
+    const endsAt = new Date();
+    endsAt.setHours(0, 0, 0, 0);
+    endsAt.setDate(endsAt.getDate() - 3);
+    return {
+      id: 'v1',
+      name: 'Cliente Vencido',
+      consultantId: CONSULTOR,
+      status: 'Venda',
+      lifecycleStage: 'cliente',
+      createdAt: new Date(2025, 0, 10),
+      currentContractStartsAt: new Date(2025, 0, 10),
+      currentContractEndsAt: endsAt,
+      ...over
+    };
+  };
+
+  const slugsOf = (leads, id) => {
+    const found = leads.find((l) => l.id === id);
+    return found ? found.categorySlugs : [];
+  };
+
+  it('cliente vencido aparece em Vencidos e não em Renovações', () => {
+    const out = computeDailyGoalSlots([clienteVencido()], new Map(), CONSULTOR, [90, 60, 30], 15);
+    expect(slugsOf(out, 'v1')).toContain(DAILY_GOAL_CATEGORIES.VENCIDO);
+    expect(slugsOf(out, 'v1')).not.toContain(DAILY_GOAL_CATEGORIES.RENOVACAO);
+  });
+
+  it('fora do período não aparece em nenhum dos dois', () => {
+    const endsAt = new Date();
+    endsAt.setHours(0, 0, 0, 0);
+    endsAt.setDate(endsAt.getDate() - 40);
+    const out = computeDailyGoalSlots([clienteVencido({ currentContractEndsAt: endsAt })], new Map(), CONSULTOR, [90, 60, 30], 15);
+    expect(slugsOf(out, 'v1')).toEqual([]);
+  });
+
+  it('cliente vencido com contato marcado para hoje aparece só em Contatos', () => {
+    const hoje = new Date();
+    hoje.setHours(9, 0, 0, 0);
+    const out = computeDailyGoalSlots([clienteVencido({ nextFollowUp: hoje, nextFollowUpType: 'Mensagem' })], new Map(), CONSULTOR, [90, 60, 30], 15);
+    expect(slugsOf(out, 'v1')).toContain(DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
+    expect(slugsOf(out, 'v1')).not.toContain(DAILY_GOAL_CATEGORIES.VENCIDO);
+  });
+
+  it('a categoria entra na ordem e nos metadados visuais', () => {
+    expect(DG_CATEGORY_ORDER).toContain(DAILY_GOAL_CATEGORIES.VENCIDO);
+    const meta = DG_CATEGORY_META[DAILY_GOAL_CATEGORIES.VENCIDO];
+    expect(meta.short).toBe('Vencidos');
+    expect(COLOR_TONES[meta.color]).toBeTruthy();
+  });
+
+  it('tarefa de cliente concluída hoje continua visível como feita', () => {
+    const hoje = new Date();
+    hoje.setHours(11, 0, 0, 0);
+    const endsAt = new Date();
+    endsAt.setHours(0, 0, 0, 0);
+    endsAt.setDate(endsAt.getDate() - 3);
+    // O desfecho "não vai voltar" grava renewalDeclined (tira da condição viva)
+    // e a marca daily_goal_done. Sem o conserto, o cartão sumia da tela.
+    const lead = clienteVencido({ renewalDeclined: true, currentContractEndsAt: endsAt });
+    const byLead = new Map([[lead.id, [{
+      leadId: lead.id,
+      type: 'daily_goal_done',
+      dailyGoalCategory: DAILY_GOAL_CATEGORIES.VENCIDO,
+      createdAt: hoje
+    }]]]);
+    const out = computeDailyGoalSlots([lead], byLead, CONSULTOR, [90, 60, 30], 15);
+    expect(slugsOf(out, 'v1')).toContain(DAILY_GOAL_CATEGORIES.VENCIDO);
+    const found = out.find((l) => l.id === 'v1');
+    expect(found.categoryStatus[DAILY_GOAL_CATEGORIES.VENCIDO]).toBe(true);
   });
 });

@@ -4,6 +4,7 @@ import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { logInteraction } from '../lib/interactions.js';
 import { renewalDecline, renewalReschedule } from '../lib/renewalGoal.js';
+import { expiredLabel } from '../lib/expiredGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { cn } from '../lib/utils.js';
@@ -32,19 +33,44 @@ const OUTCOMES = {
   REAGENDAR: 'reagendar'
 };
 
-const SEGMENTS = [
-  { key: OUTCOMES.RENOVOU, label: 'Renovou', Icon: CheckCircle2, tone: 'emerald' },
-  { key: OUTCOMES.NAO_RENOVA, label: 'Não vai renovar', Icon: Ban, tone: 'rose' },
-  { key: OUTCOMES.REAGENDAR, label: 'Reagendar contato', Icon: Calendar, tone: 'amber' }
-];
-
 const FOOTER_LABEL = {
   [OUTCOMES.RENOVOU]: 'Renovar',
   [OUTCOMES.NAO_RENOVA]: 'Registrar perda',
   [OUTCOMES.REAGENDAR]: 'Reagendar'
 };
 
-function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCheckpoint, onDone }) {
+// Os dois funis de CLIENTE usam o mesmo popup: a mecânica dos três desfechos é
+// idêntica, muda o vocabulário. 'renovacao' cobra antes de vencer; 'vencido'
+// cobra depois (ver src/lib/expiredGoal.js).
+const VARIANTS = {
+  renovacao: {
+    title: 'Renovação de contrato',
+    question: 'Qual o desfecho desta renovação?',
+    category: DAILY_GOAL_CATEGORIES.RENOVACAO,
+    categoryLabel: 'Renovação',
+    okLabel: 'Renovou',
+    noLabel: 'Não vai renovar',
+    okFooter: 'Renovar',
+    okHint: 'Ao confirmar, abrimos o fluxo de nova matrícula com os dados do cliente.',
+    noDoneText: '✅ Renovação — Meta Diária concluída (não vai renovar).',
+    noToast: 'Perda de renovação registrada. O cliente continua ativo — só sai desta cobrança.'
+  },
+  vencido: {
+    title: 'Contrato vencido',
+    question: 'Qual o desfecho deste contrato vencido?',
+    category: DAILY_GOAL_CATEGORIES.VENCIDO,
+    categoryLabel: 'Contrato vencido',
+    okLabel: 'Reativou',
+    noLabel: 'Não vai voltar',
+    okFooter: 'Reativar',
+    okHint: 'Ao confirmar, abrimos o fluxo de matrícula para reativar este cliente.',
+    noDoneText: '✅ Contrato vencido — Meta Diária concluída (não vai voltar).',
+    noToast: 'Registrado. Este cliente sai da cobrança de vencidos.'
+  }
+};
+
+function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCheckpoint, variant = 'renovacao', onDone }) {
+  const v = VARIANTS[variant] || VARIANTS.renovacao;
   const toast = useToast();
   const [outcome, setOutcome] = useState(OUTCOMES.RENOVOU);
   const [motivo, setMotivo] = useState('');
@@ -59,6 +85,20 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
   const parsedReschedule = fromDateInputValue(rescheduleStr);
   const isRescheduleFuture = Boolean(parsedReschedule) && parsedReschedule.getTime() > todayStart.getTime();
   const motivoTrimmed = motivo.trim();
+
+  // Vencidos troca "Marco de N dias" pelo selo de vencimento — calculado aqui
+  // dentro pra não chamar new Date() direto no render.
+  const expiredBadge = useMemo(
+    () => (variant === 'vencido' ? expiredLabel(lead) : null),
+    [variant, lead]
+  );
+
+  const segments = [
+    { key: OUTCOMES.RENOVOU, label: v.okLabel, Icon: CheckCircle2, tone: 'emerald' },
+    { key: OUTCOMES.NAO_RENOVA, label: v.noLabel, Icon: Ban, tone: 'rose' },
+    { key: OUTCOMES.REAGENDAR, label: 'Reagendar contato', Icon: Calendar, tone: 'amber' }
+  ];
+  const footerLabel = { ...FOOTER_LABEL, [OUTCOMES.RENOVOU]: v.okFooter };
 
   const endsAtLabel = lead?.currentContractEndsAt
     ? (lead.currentContractEndsAt.toDate ? lead.currentContractEndsAt.toDate() : new Date(lead.currentContractEndsAt)).toLocaleDateString('pt-BR')
@@ -93,11 +133,11 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
           type: 'note'
         }, patch);
         await logInteraction(db, lead, appUser, {
-          text: '✅ Renovação — Meta Diária concluída (não vai renovar).',
+          text: v.noDoneText,
           type: 'daily_goal_done',
-          dailyGoalCategory: DAILY_GOAL_CATEGORIES.RENOVACAO
+          dailyGoalCategory: v.category
         });
-        toast.success('Perda de renovação registrada. O cliente continua ativo — só sai desta cobrança.');
+        toast.success(v.noToast);
       } else if (outcome === OUTCOMES.REAGENDAR) {
         // Reagendar: o marco atual conta como resolvido (handled) e o contato
         // vira um follow-up na categoria Contatos na data escolhida (nextFollowUp).
@@ -109,9 +149,9 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
           type: 'note'
         }, patch);
         await logInteraction(db, lead, appUser, {
-          text: `✅ Renovação — Meta Diária concluída (contato reagendado para ${dateFmt}).`,
+          text: `✅ ${v.categoryLabel} — Meta Diária concluída (contato reagendado para ${dateFmt}).`,
           type: 'daily_goal_done',
-          dailyGoalCategory: DAILY_GOAL_CATEGORIES.RENOVACAO
+          dailyGoalCategory: v.category
         });
         toast.success(`Contato reagendado para ${dateFmt} — agora aparece em Contatos.`);
       }
@@ -133,7 +173,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
               <RefreshCw size={18} />
             </span>
             <span className="min-w-0">
-              <span className="block">Renovação de contrato</span>
+              <span className="block">{v.title}</span>
               <DialogDescription className="mt-0.5 truncate">{lead?.name || '—'}</DialogDescription>
             </span>
           </DialogTitle>
@@ -154,7 +194,11 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
                 <span>Vence em <b className="font-semibold text-foreground">{endsAtLabel}</b></span>
               </>
             )}
-            {activeCheckpoint != null && (
+            {expiredBadge ? (
+              <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 dark:bg-white/[0.06] dark:text-slate-200 whitespace-nowrap">
+                {expiredBadge}
+              </span>
+            ) : activeCheckpoint != null && (
               <span className="ml-auto inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-brand-50 text-brand-700 dark:bg-brand-600/20 dark:text-[#9FBCFF] whitespace-nowrap">
                 Marco de {activeCheckpoint} dias
               </span>
@@ -164,8 +208,8 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
 
         <SegmentedOutcome
           className="px-5 pt-4"
-          question="Qual o desfecho desta renovação?"
-          segments={SEGMENTS}
+          question={v.question}
+          segments={segments}
           value={outcome}
           onChange={setOutcome}
         />
@@ -174,7 +218,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
           {outcome === OUTCOMES.RENOVOU && (
             <div className={cn('rounded-xl px-3.5 py-3 flex items-start gap-2 text-[12.5px] leading-relaxed', OUTCOME_TONE.emerald.panel)}>
               <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
-              <span>Ao confirmar, abrimos o fluxo de nova matrícula com os dados do cliente.</span>
+              <span>{v.okHint}</span>
             </div>
           )}
 
@@ -249,10 +293,10 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
             disabled={!canSubmit}
             className={cn(
               'h-[38px] px-4 rounded-xl text-[13px] font-bold transition disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none',
-              outcomeButtonClass(SEGMENTS.find(s => s.key === outcome).tone)
+              outcomeButtonClass(segments.find(s => s.key === outcome).tone)
             )}
           >
-            {submitting ? 'Salvando...' : FOOTER_LABEL[outcome]}
+            {submitting ? 'Salvando...' : footerLabel[outcome]}
           </button>
         </div>
       </DialogContent>

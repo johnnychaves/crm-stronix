@@ -1,0 +1,197 @@
+# Funil "Não renovados" + filtro de período no pipeline — design
+
+status: ativo
+data: 2026-08-17
+autor: Johnny + Claude
+
+Continuação de `docs/superpowers/specs/2026-08-17-funil-vencidos-design.md`.
+
+## O problema
+
+O funil Vencidos da Meta Diária cobra o cliente que venceu por N dias e depois
+solta. Quem atravessa esse período sem voltar simplesmente some: não vira card,
+não entra em lista nenhuma, não tem onde ser trabalhado depois. A base de
+ex-clientes, que é o público mais barato de reconquistar que uma academia tem,
+fica invisível.
+
+Este spec cria o destino permanente dessas pessoas: um funil próprio do sistema
+no board, chamado **Não renovados**, onde o cliente cai sozinho ao vencer.
+
+## Decisões (Johnny, 2026-08-17)
+
+| # | Decisão | Escolha |
+|---|---|---|
+| 1 | O que o cliente vira ao cair no funil | **Continua cliente.** Segue na aba Clientes com ficha, contratos e histórico intactos; o funil é a vitrine de trabalho. |
+| 2 | Momento da entrada | **No vencimento.** Acabou o período de renovação, virou inativo, aparece no funil. Convive com a tarefa diária de Vencidos, que tem outro papel. |
+| 3 | Como o card existe | **Derivado, sem escrita.** Ver "A escolha que define o tamanho disto". |
+| 4 | Volume da coluna de entrada | Resolvido por **filtro de período no board**, mês a mês. |
+| 5 | Alcance do filtro | **Board inteiro**, todos os funis, com sentido próprio por funil. |
+| 6 | Filtragem pesada | Fica para a feature futura **Relatórios**, fora deste escopo. |
+
+## A escolha que define o tamanho disto
+
+O card **não é criado por ninguém**. O funil é uma leitura: o board busca os
+clientes cujo contrato já venceu e desenha um card para cada um. A etapa em que
+o card está só é gravada quando o consultor arrasta.
+
+Por que não materializar o card com uma escrita no vencimento: o app é
+client-side e não existe rotina rodando de madrugada. Criar uma exigiria função
+serverless nova (o plano Hobby da Vercel dá 12 no total, e o repositório já
+trata isso como recurso escasso), ou gravar de carona durante a leitura de
+alguma tela, o que significa vários consultores gravando a mesma coisa e quem
+venceu enquanto ninguém abriu o app ficando de fora.
+
+O derivado entrega o mesmo efeito visível com menos peças: funciona retroativo
+(no dia em que subir, toda a base vencida aparece, sem backfill), nada
+dessincroniza porque não há estado duplicado, e quem reativa some do funil
+sozinho.
+
+## O funil e suas etapas
+
+Funil de sistema, criado sozinho na primeira vez que o app precisa dele, no
+molde do funil de Indicações (`src/lib/referrals.js:86-108`). Nome: **Não
+renovados**. Três etapas de sistema (`isSystem: true`); a academia pode
+acrescentar as dela pelo editor de funis:
+
+| Etapa | Quem está aqui |
+|---|---|
+| **Vencido** (entrada, `isEntry`) | caiu sozinho quando o contrato venceu |
+| **Em contato** | o consultor está tentando trazer de volta |
+| **Não volta** | recusa registrada, veio da Meta ou o consultor arrastou |
+
+Três, e não quatro: "sem retorno" e "não volta" viram a mesma gaveta na prática,
+e etapa vazia atrapalha mais do que ajuda.
+
+## A regra derivada
+
+Quem aparece: **cliente** (`lifecycleStage === 'cliente'`) com **contrato
+vencido** (`deriveLeadContractStatus === VENCIDO`). Sem janela de tempo: o funil
+é permanente, ao contrário da Meta, que cobra por N dias e solta. Cancelado e
+trancado ficam de fora, igual à Meta: cancelado é rompimento, não vencimento, e
+trancado tem a vigência congelada.
+
+Isso pede uma separação em `src/lib/expiredGoal.js`, que hoje mistura duas
+perguntas dentro de `shouldPromptExpired`:
+
+- `isExpiredClient(lead, now)` — **novo**, a base: é cliente e o contrato venceu.
+- `shouldPromptExpired(lead, now, windowDays)` — passa a ser a base **mais** as
+  condições da cobrança diária (dentro do período, sem recusa, sem contato
+  marcado). Comportamento idêntico ao de hoje; só se apoia na base.
+
+O funil consome a base. A Meta continua com a regra completa.
+
+## Como o board carrega
+
+Uma query, disparada **só quando o funil Não renovados está selecionado**:
+clientes com `currentContractEndsAt` anterior a hoje, ordenados do vencimento
+mais recente para o mais antigo, paginados como o board já faz. Quem nunca abrir
+a aba não paga leitura nenhuma.
+
+O índice #4 (`lifecycleBucket ASC, currentContractEndsAt ASC`) já cobre:
+igualdade no balde mais range e ordenação no mesmo campo. **Nenhum índice novo,
+nenhuma regra para publicar no console.**
+
+**O funil não entra em "Todos os funis".** Só aparece quando selecionado.
+Misturar cliente inativo com prospecção no board geral desfaria a separação
+entre lead e cliente.
+
+## A etapa do card
+
+Campo novo no doc do lead: `reactivationStageId` (id da etapa). Gravado **só
+quando o consultor arrasta o card**. Enquanto ninguém arrastar, a etapa é
+derivada:
+
+- `renewalDeclined === true` → nasce em **Não volta**
+- caso contrário → nasce em **Vencido**
+
+É assim que quem registrou "não vou voltar" na Meta já aparece na gaveta certa,
+sem ninguém mexer.
+
+Campo separado, e não o `status` que o Kanban de prospecção usa, porque cliente
+é `status: 'Venda'` — sobrescrever corromperia o estado de cliente e a aba
+Clientes. O custo é o ponto de integração mais delicado da feature: **o arrastar
+do board precisa de uma bifurcação**, gravando `reactivationStageId` quando o
+funil aberto é o Não renovados e `status` em todos os outros.
+
+## Como o cliente sai
+
+Sozinho: reativou, o contrato novo tem vigência futura, ele deixa de ser vencido
+e some da query. Sem faxina, sem card órfão.
+
+Um cuidado que evita um bug silencioso daqui a um ano: `buildMatriculaWrites`
+precisa limpar `reactivationStageId` junto com os campos de renovação que já
+limpa. Sem isso, o cliente que voltou e vencesse de novo dois anos depois
+reapareceria na etapa da vida passada.
+
+## Filtro de período no board
+
+Vale para **todos os funis**, com sentido próprio em cada um:
+
+- **Não renovados** → "venceu neste mês" (`currentContractEndsAt`)
+- **demais funis** → "entrou neste mês" (`createdAt`)
+
+Navegação mês a mês, com o mês corrente e a possibilidade de voltar. Três regras
+que protegem contra o risco de esconder trabalho ativo:
+
+1. **Padrão "todos"** nos funis de prospecção. Quem usa o board hoje não sente
+   diferença nenhuma ao abrir.
+2. **Padrão "mês corrente"** só em Não renovados, que é onde o volume dói.
+3. **Não persiste entre recargas.** O filtro vive na sessão e volta ao padrão ao
+   recarregar. Filtro ligado e esquecido é como um lead ativo some da vista de
+   um consultor por uma semana sem ninguém entender por quê.
+
+Quando ligado, o filtro fica **visível como chip destacado**, com um clique para
+limpar, no lugar onde o board já mostra os filtros ativos.
+
+## Fora de escopo
+
+- **Relatórios**: feature futura, decidida nesta conversa, para filtragem e
+  cruzamento pesados sobre toda a base. A filtragem robusta mora lá; o filtro
+  deste spec é o recorte simples da tela de trabalho.
+- Etapas adicionais no funil (a academia acrescenta pelo editor, se sentir falta).
+- Campanha ou disparo em massa a partir do funil.
+
+## Testes
+
+Regra pura (`expiredGoal.test.js`, estendendo o arquivo que já existe):
+
+- `isExpiredClient`: entra cliente vencido de ontem e de dois anos atrás; não
+  entra contrato ativo, a vencer, agendado, cancelado, trancado, cliente legado
+  sem vigência, nem quem não é cliente
+- `shouldPromptExpired` continua com o comportamento de hoje, agora apoiado na
+  base (os testes existentes seguem verdes sem alteração — é o sinal de que a
+  separação não mudou nada)
+- etapa derivada: com `renewalDeclined` nasce em "Não volta", sem ele nasce em
+  "Vencido"
+
+O teste que mais importa, porque é contraintuitivo e alguém vai querer
+"consertar" no futuro: **o mesmo cliente aparece no funil e na Meta ao mesmo
+tempo durante os primeiros N dias, e isso está certo.** O teste precisa afirmar
+isso em voz alta.
+
+Filtro: a função pura que traduz "mês selecionado + funil" em janela de datas e
+campo de comparação, testada direto (mês corrente, mês anterior, virada de ano,
+funil sem filtro).
+
+## Riscos
+
+**A bifurcação no arrastar.** É a mudança que toca código em produção usado o dia
+inteiro. Precisa de teste que garanta que arrastar num funil de prospecção
+continua gravando `status` exatamente como hoje.
+
+**Contagem das colunas com paginação.** O número na coluna reflete o que foi
+carregado, não o total da etapa. É como o board já se comporta; confirmar o
+comportamento exato na implementação e, se ficar confuso com centenas de
+vencidos, mostrar o total à parte.
+
+**Sem trabalho manual no Firebase.** Nenhum índice novo, nenhuma regra nova.
+
+## Entrega
+
+Dois PRs, nesta ordem:
+
+1. **Funil Não renovados** — regra derivada, provisionamento do funil, carga no
+   board, etapa do card e a bifurcação do arrastar. Entrega valor sozinho, com
+   paginação segurando o volume.
+2. **Filtro de período no board** — todos os funis, com os padrões e a proteção
+   descritos acima.

@@ -1,4 +1,4 @@
-import { AlertCircle, BookOpen, Building2, MessageSquare, RefreshCw, Zap } from 'lucide-react';
+import { AlertCircle, BookOpen, Building2, MessageSquare, RefreshCw, UserX, Zap } from 'lucide-react';
 import {
   DAILY_GOAL_CATEGORIES,
   DAILY_GOAL_CATEGORY_LABEL,
@@ -9,6 +9,7 @@ import {
   hasActiveInteractionToday,
 } from './leads.js';
 import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
+import { shouldPromptExpired } from './expiredGoal.js';
 
 // ============================================================================
 // Lógica compartilhada da META DIÁRIA — usada pela tela do consultor
@@ -25,7 +26,8 @@ export const DG_CATEGORY_META = {
   [DAILY_GOAL_CATEGORIES.AULA_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.aula_hoje, short: 'Aulas exp.', color: 'amber', Icon: BookOpen },
   [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: { label: DAILY_GOAL_CATEGORY_LABEL.contato_hoje, short: 'Contatos', color: 'teal', Icon: MessageSquare },
   [DAILY_GOAL_CATEGORIES.ATRASADO]: { label: DAILY_GOAL_CATEGORY_LABEL.atrasado, short: 'Atrasados', color: 'rose', Icon: AlertCircle },
-  [DAILY_GOAL_CATEGORIES.RENOVACAO]: { label: DAILY_GOAL_CATEGORY_LABEL.renovacao, short: 'Renovações', color: 'emerald', Icon: RefreshCw }
+  [DAILY_GOAL_CATEGORIES.RENOVACAO]: { label: DAILY_GOAL_CATEGORY_LABEL.renovacao, short: 'Renovações', color: 'emerald', Icon: RefreshCw },
+  [DAILY_GOAL_CATEGORIES.VENCIDO]: { label: DAILY_GOAL_CATEGORY_LABEL.vencido, short: 'Vencidos', color: 'slate', Icon: UserX }
 };
 
 export const DG_CATEGORY_ORDER = [
@@ -34,7 +36,8 @@ export const DG_CATEGORY_ORDER = [
   DAILY_GOAL_CATEGORIES.AULA_HOJE,
   DAILY_GOAL_CATEGORIES.CONTATO_HOJE,
   DAILY_GOAL_CATEGORIES.ATRASADO,
-  DAILY_GOAL_CATEGORIES.RENOVACAO
+  DAILY_GOAL_CATEGORIES.RENOVACAO,
+  DAILY_GOAL_CATEGORIES.VENCIDO
 ];
 
 export const COLOR_TONES = {
@@ -43,7 +46,8 @@ export const COLOR_TONES = {
   amber: { dot: 'bg-amber-500', text: 'text-amber-700', soft: 'bg-amber-50', strong: 'bg-amber-600', border: 'border-amber-200', darkText: 'dark:text-amber-300', darkSoft: 'dark:bg-amber-500/10' },
   teal: { dot: 'bg-teal-500', text: 'text-teal-700', soft: 'bg-teal-50', strong: 'bg-teal-600', border: 'border-teal-200', darkText: 'dark:text-teal-300', darkSoft: 'dark:bg-teal-500/10' },
   rose: { dot: 'bg-rose-500', text: 'text-rose-700', soft: 'bg-rose-50', strong: 'bg-rose-600', border: 'border-rose-200', darkText: 'dark:text-rose-300', darkSoft: 'dark:bg-rose-500/10' },
-  emerald: { dot: 'bg-emerald-500', text: 'text-emerald-700', soft: 'bg-emerald-50', strong: 'bg-emerald-600', border: 'border-emerald-200', darkText: 'dark:text-emerald-300', darkSoft: 'dark:bg-emerald-500/10' }
+  emerald: { dot: 'bg-emerald-500', text: 'text-emerald-700', soft: 'bg-emerald-50', strong: 'bg-emerald-600', border: 'border-emerald-200', darkText: 'dark:text-emerald-300', darkSoft: 'dark:bg-emerald-500/10' },
+  slate: { dot: 'bg-slate-500', text: 'text-slate-700', soft: 'bg-slate-100', strong: 'bg-slate-500', border: 'border-slate-200', darkText: 'dark:text-slate-300', darkSoft: 'dark:bg-white/[0.06]' }
 };
 
 // Chave de dia em hora LOCAL ('YYYY-MM-DD'), usada como ID do histórico de
@@ -274,12 +278,19 @@ export function buildInteractionsByLead(interactions) {
 // Monta os "slots" da meta de UM consultor: cada lead alvo sai com
 // categorySlugs[] e categoryStatus{slug:bool} (par lead×categoria = 1 slot;
 // um lead pode estar feito numa categoria e pendente noutra).
+// renewalGraceDays: hoje governa o funil VENCIDOS (por quantos dias o cliente
+// vencido continua sendo cobrado), não mais a Renovação — essa parou no
+// vencimento (corte limpo, ver src/lib/renewalGoal.js).
 export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, renewalCheckpoints = DEFAULT_RENEWAL_CHECKPOINTS, renewalGraceDays = DEFAULT_RENEWAL_GRACE_DAYS) {
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   const todayEnd = new Date();
   todayEnd.setHours(23, 59, 59, 999);
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  // Horário REAL, não meia-noite: a regra de vencidos compara a vigência com o
+  // instante atual (ver o cabeçalho de shouldPromptExpired). Passar todayStart
+  // atrasaria em um dia a entrada de quem vence hoje.
+  const nowRef = new Date();
 
   const myLeads = (leads || []).filter(l => l.consultantId === consultantId);
   const allTargetLeadsMap = new Map();
@@ -391,6 +402,14 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     ) {
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.renovacao, DAILY_GOAL_CATEGORIES.RENOVACAO);
     }
+
+    // 7. Vencidos — CLIENTE com contrato vencido dentro do período configurado
+    // (renewalGraceDays) e sem contato marcado para hoje/futuro. Cobrado TODO
+    // dia enquanto durar o período; sai por desfecho (reativou / não vai voltar
+    // / reagendou) ou quando o período acaba. Regra em src/lib/expiredGoal.js.
+    if (shouldPromptExpired(lead, nowRef, renewalGraceDays)) {
+      addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.vencido, DAILY_GOAL_CATEGORIES.VENCIDO);
+    }
   });
 
   // Tarefas CONCLUÍDAS hoje continuam visíveis (como FEITAS) mesmo que a ação de
@@ -399,9 +418,16 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   // lead da categoria — sem isto a marca daily_goal_done ficaria órfã e a tarefa
   // sumiria em vez de contar como feita. addTarget deduplica, então não recria
   // slots já adicionados pela condição viva acima. (mesma correção da PR #125)
+  // Categorias cujo alvo é CLIENTE. Cliente é status 'Venda', então o guard
+  // abaixo o excluía do laço e a tarefa concluída hoje SUMIA da tela em vez de
+  // ficar marcada como feita. Aqui ele mantém visível só o que concluiu nestas
+  // duas — nada de lead muda de comportamento.
+  const CLIENT_CATEGORY_SLUGS = [DAILY_GOAL_CATEGORIES.RENOVACAO, DAILY_GOAL_CATEGORIES.VENCIDO];
   myLeads.forEach(lead => {
-    if (lead.status === 'Venda' || lead.status === 'Perda') return;
-    Object.values(DAILY_GOAL_CATEGORIES).forEach(slug => {
+    const isCliente = lead.lifecycleStage === 'cliente';
+    if (!isCliente && (lead.status === 'Venda' || lead.status === 'Perda')) return;
+    const slugs = isCliente ? CLIENT_CATEGORY_SLUGS : Object.values(DAILY_GOAL_CATEGORIES);
+    slugs.forEach(slug => {
       if (hasGoalDoneToday(lead, slug, leadInteractions(lead.id), todayStart)) {
         addTarget(lead, DAILY_GOAL_CATEGORY_LABEL[slug] || slug, slug);
       }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AlertCircle, CalendarDays, Minus, Plus, RefreshCw, X, Zap } from 'lucide-react';
+import { AlertCircle, CalendarDays, Minus, Plus, RefreshCw, UserX, X, Zap } from 'lucide-react';
 import { doc, setDoc, updateDoc, deleteField, serverTimestamp } from 'firebase/firestore';
 import { appId, CONFIG_PATH, CONFIG_GENERAL_ID, USERS_PATH } from '../../lib/firebase.js';
 import { normalizeRenewalCheckpoints } from '../../lib/leadStatus.js';
@@ -136,10 +136,10 @@ function PaceSection({ db, usersList, metaWeekdays }) {
   const persistGraceDays = async (n) => {
     try {
       await saveConfig({ renewalGraceDays: normalizeRenewalGraceDays(n) });
-      toast.success(`Vencido continua em Renovações por ${n} dias.`);
+      toast.success(`Vencidos ficam ${n} dias na Meta Diária.`);
     } catch (err) {
       console.error(err);
-      toast.error('Não foi possível salvar a tolerância.');
+      toast.error('Não foi possível salvar o período de vencidos.');
     }
   };
 
@@ -290,7 +290,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
         icon={<RefreshCw size={16} />}
         iconTone="brand"
         title="Marcos de renovação"
-        hint={<>Dias antes do vencimento em que o cliente entra na tarefa de Renovação. Ele aparece <b>uma vez</b> em cada marco — não todo dia.</>}
+        hint={<>Dias antes do vencimento em que o cliente entra na tarefa de Renovação. Ele aparece <b>uma vez</b> em cada marco, não todo dia. Vale só até o contrato vencer: depois disso a cobrança segue no funil <b>Vencidos</b>.</>}
         action={
           <SettingsBtn kind="dashed" size={34} icon={<Plus size={13} />} onClick={() => setCheckpointOpen(true)}>
             Novo marco
@@ -319,15 +319,19 @@ function PaceSection({ db, usersList, metaWeekdays }) {
           </div>
           <p className="text-[11.5px] text-muted-foreground">Para editar um marco, remova e adicione o novo valor.</p>
         </div>
+      </SettingsPanel>
 
-        {/* Depois do vencimento a conversa muda: não é mais renovação, é
-            reativação. Sem esse corte, o cliente que saiu há meses seguia
-            aparecendo na Meta Diária. */}
+      <SettingsPanel
+        icon={<UserX size={16} />}
+        iconTone="brand"
+        title="Funil de vencidos"
+        hint={<>Por quantos dias o cliente com contrato vencido continua sendo cobrado, <b>todo dia</b>, na Meta Diária. Passando disso ele sai da meta: a conversa deixa de ser renovação e vira reativação.</>}
+      >
         <div className="flex items-center justify-between gap-4 flex-wrap px-6 py-5 border-t border-border">
           <div className="min-w-0">
-            <div className="text-[13px] font-semibold">Tolerância depois do vencimento</div>
+            <div className="text-[13px] font-semibold">Período de cobrança</div>
             <p className="text-[11.5px] text-muted-foreground mt-0.5 max-w-[420px] text-pretty">
-              Por quantos dias o contrato vencido continua sendo cobrado como renovação. Passando disso o cliente conta como inativo e sai da Meta.
+              Vale do dia do vencimento em diante. Quem reativa, diz que não volta ou tem contato reagendado sai antes do prazo.
             </p>
           </div>
           <div className="flex items-center gap-1.5">

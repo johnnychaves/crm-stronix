@@ -14,6 +14,7 @@ import {
   adminDashboardWindowSpecs,
   ADMIN_DASHBOARD_WINDOW_FIELDS,
   wonInMonthQuerySpec,
+  renewalWindowMs,
 } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
@@ -238,5 +239,34 @@ describe('leadQueries — toda spec é coberta por um índice de firestore.index
       limit: 50,
     };
     expect(coveredByLeadsIndex(semIndice)).toBe(false);
+  });
+});
+
+describe('renewalWindowMs', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+  const NOW = new Date(2026, 6, 15, 10, 0, 0).getTime();
+
+  it('vai para frente até o maior marco e para trás até o período de vencidos', () => {
+    const w = renewalWindowMs(NOW, { contractThresholdDays: 30, renewalCheckpoints: [90, 60, 30], expiredWindowDays: 15 });
+    expect(w.start).toBe(NOW - 16 * DAY);
+    expect(w.end).toBe(NOW + 91 * DAY);
+  });
+
+  it('o threshold do sistema entra na conta quando é maior que os marcos', () => {
+    const w = renewalWindowMs(NOW, { contractThresholdDays: 120, renewalCheckpoints: [30], expiredWindowDays: 7 });
+    expect(w.end).toBe(NOW + 121 * DAY);
+    expect(w.start).toBe(NOW - 8 * DAY);
+  });
+
+  it('ignora marco inválido, zero e negativo', () => {
+    const w = renewalWindowMs(NOW, { contractThresholdDays: 0, renewalCheckpoints: [0, -5, NaN, 'x', 45], expiredWindowDays: 0 });
+    expect(w.end).toBe(NOW + 46 * DAY);
+    expect(w.start).toBe(NOW - 1 * DAY);
+  });
+
+  it('sem nada configurado ainda devolve a folga de 1 dia em cada ponta', () => {
+    const w = renewalWindowMs(NOW, {});
+    expect(w.start).toBe(NOW - 1 * DAY);
+    expect(w.end).toBe(NOW + 1 * DAY);
   });
 });
