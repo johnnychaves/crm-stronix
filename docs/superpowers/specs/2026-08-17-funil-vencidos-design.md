@@ -194,16 +194,35 @@ em vez de ficar marcado, porque quem grava é o fluxo de matrícula
 dois exigiria mexer no fluxo de contrato para resolver um detalhe visual. Nos
 outros dois desfechos o cartão fica marcado.
 
-### 2. Card de pendências do gestor conta as tarefas de cliente
+### 2. Card de pendências do gestor — CANCELADO, a premissa estava errada
 
-O card de pendências de hoje na Visão Geral, para o gestor, é calculado a partir
-da fatia que só tem quem está em prospecção, então as tarefas de cliente
-(Renovação hoje, Vencidos depois) não entram naquele número.
+**O que este spec afirmava:** que o card de pendências da Visão Geral, para o
+gestor, não contava as tarefas de cliente por ser calculado sobre a fatia de
+prospecção.
 
-Correção **cirúrgica**: só o componente do card recebe a base completa, que já
-está carregada na memória para a Meta (`metaLeads` no `App.jsx`). Custo zero de
-leitura no banco. Nenhum outro número daquela tela é tocado, de propósito, pelo
-motivo do achado abaixo.
+**O que a implementação provou:** as duas metades da afirmação são falsas.
+
+1. O card (`PlacarDoDia`) é renderizado dentro de `{!isAdmin && ...}`
+   (`DashboardOperacionalView.jsx:621`): o gestor **nunca o vê**. Ele é o card do
+   consultor.
+2. A base que o consultor já recebia (`consultantLeads`, de
+   `consultantLeadsQuerySpec`) busca por `consultantId` **sem filtro de balde**,
+   então já trazia os clientes dele. As tarefas de Renovação e de Vencidos já
+   contavam certo.
+
+A correção chegou a ser implementada (trocando a base do card por `metaLeads`) e
+foi **revertida**, porque piorava: `metaLeads` é a fatia ativa mais os clientes
+perto do vencimento, então o cliente cujo contrato está longe de vencer sumia
+dela. Um contato marcado para hoje com esse cliente (categoria Contatos, que
+aceita cliente sem olhar o vencimento) deixava de contar no card. Seria trocar um
+problema inexistente por uma regressão real.
+
+Commits: `12daf4a` (a mudança) e `3c1ba3c` (a reversão), mantidos no histórico
+para o raciocínio não se perder.
+
+**Lição:** a premissa "o gestor vê X" não foi conferida contra o código na hora
+de escrever o spec. Confirmar quem renderiza um componente é uma linha de `grep`
+e teria evitado a ida e volta.
 
 ## Achado registrado, fora deste escopo
 
