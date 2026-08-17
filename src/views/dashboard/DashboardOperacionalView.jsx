@@ -280,7 +280,7 @@ function SegStrip({ done, total, tone }) {
   );
 }
 
-function PlacarDoDia({ leads, metaLeads, interactions, appUser, db, onNavigate, now }) {
+function PlacarDoDia({ leads, interactions, appUser, db, onNavigate, now }) {
   const { metaWeekdays = [1, 2, 3, 4, 5], dailyVolumeTarget = 0, renewalCheckpoints = [90, 60, 30], renewalGraceDays } = useGeneralConfig();
 
   // Histórico PRÓPRIO de metas batidas (1 doc por dia batido) — mesma leitura
@@ -299,10 +299,7 @@ function PlacarDoDia({ leads, metaLeads, interactions, appUser, db, onNavigate, 
 
   const { goalDone, goalTotal, volDone, volTarget, monthVol, monthVolTarget, monthDots, monthHits } = useMemo(() => {
     const byLead = buildInteractionsByLead(interactions);
-    // Pendências vêm da base da META (ativos + clientes em renovação/vencidos),
-    // não da fatia de prospecção: senão as tarefas de CLIENTE não entram no
-    // número e o card do gestor fica menor que a Meta dele.
-    const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(metaLeads || leads, byLead, appUser.id, renewalCheckpoints, renewalGraceDays));
+    const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(leads, byLead, appUser.id, renewalCheckpoints, renewalGraceDays));
     const target = volumeTargetFor(appUser, dailyVolumeTarget);
     const vol = target > 0 ? computeDailyVolume(leads, interactions, appUser.id, appUser.authUid) : null;
     const monthStart = new Date(now); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
@@ -327,7 +324,7 @@ function PlacarDoDia({ leads, metaLeads, interactions, appUser, db, onNavigate, 
       monthDots: dots,
       monthHits: dots.filter(d => d.hit).length
     };
-  }, [leads, metaLeads, interactions, appUser, renewalCheckpoints, renewalGraceDays, dailyVolumeTarget, metaWeekdays, ownHistory, now]);
+  }, [leads, interactions, appUser, renewalCheckpoints, renewalGraceDays, dailyVolumeTarget, metaWeekdays, ownHistory, now]);
 
   const goalOk = goalTotal > 0 && goalDone >= goalTotal;
   const volOk = volTarget === 0 || volDone >= volTarget;
@@ -458,7 +455,7 @@ function PlacarDoDia({ leads, metaLeads, interactions, appUser, db, onNavigate, 
 }
 
 // ---- View -------------------------------------------------------------------
-function DashboardOperacionalView({ leads, metaLeads, interactions, appUser, usersList, db, onNavigate, listenersActive = true }) {
+function DashboardOperacionalView({ leads, interactions, appUser, usersList, db, onNavigate, listenersActive = true }) {
   const { openProfile } = useLeadProfile();
   const isAdmin = isAdminUser(appUser);
 
@@ -621,7 +618,6 @@ function DashboardOperacionalView({ leads, metaLeads, interactions, appUser, use
         {!isAdmin && (
           <PlacarDoDia
             leads={leads}
-            metaLeads={metaLeads}
             interactions={interactions}
             appUser={appUser}
             db={db}
