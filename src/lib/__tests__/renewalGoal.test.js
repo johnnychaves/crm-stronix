@@ -78,31 +78,25 @@ describe('activeRenewalCheckpoint', () => {
   });
 });
 
-describe('shouldPromptRenewal — tolerância depois do vencimento', () => {
-  it('vencido dentro da tolerância ainda cobra renovação', () => {
-    const l = cliente({ currentContractEndsAt: endsInDays(-10) });
-    expect(shouldPromptRenewal(l, NOW, [90, 60, 30], 15)).toBe(true);
+describe('shouldPromptRenewal — corte limpo no vencimento', () => {
+  it('vencido não cobra renovação: a cobrança é do funil Vencidos', () => {
+    const l = cliente({ currentContractEndsAt: endsInDays(-1) });
+    expect(shouldPromptRenewal(l, NOW, [90, 60, 30])).toBe(false);
   });
 
-  it('passada a tolerância vira inativo e some da Meta', () => {
+  it('vencido há muito tempo também fica fora', () => {
     const l = cliente({ currentContractEndsAt: endsInDays(-20) });
-    expect(shouldPromptRenewal(l, NOW, [90, 60, 30], 15)).toBe(false);
+    expect(shouldPromptRenewal(l, NOW, [90, 60, 30])).toBe(false);
   });
 
-  it('a academia manda no corte — 7 dias derruba o que 30 mantém', () => {
-    const l = cliente({ currentContractEndsAt: endsInDays(-10) });
-    expect(shouldPromptRenewal(l, NOW, [90, 60, 30], 7)).toBe(false);
-    expect(shouldPromptRenewal(l, NOW, [90, 60, 30], 30)).toBe(true);
+  it('o último dia de vigência ainda cobra renovação', () => {
+    const l = cliente({ currentContractEndsAt: endsInDays(1) });
+    expect(shouldPromptRenewal(l, NOW, [90, 60, 30])).toBe(true);
   });
 
   it('contrato trancado não se renova — a vigência está congelada', () => {
     const l = cliente({ currentContractEndsAt: endsInDays(15), currentContractStatus: 'trancado' });
     expect(shouldPromptRenewal(l, NOW, [90, 60, 30])).toBe(false);
-  });
-
-  it('sem informar a tolerância, vale o padrão de 15 dias', () => {
-    expect(shouldPromptRenewal(cliente({ currentContractEndsAt: endsInDays(-10) }), NOW, [90, 60, 30])).toBe(true);
-    expect(shouldPromptRenewal(cliente({ currentContractEndsAt: endsInDays(-40) }), NOW, [90, 60, 30])).toBe(false);
   });
 });
 

@@ -15,7 +15,7 @@
 //   renewalDeclined: boolean — "não renova neste ciclo".
 
 import { getSafeDateOrNull, fromDateInputValue } from './dates.js';
-import { CONTRACT_STATUS } from './contracts.js';
+import { deriveLeadContractStatus, CONTRACT_STATUS } from './contracts.js';
 
 // Default da academia (Regras gerais → Renovação de contrato → marcos).
 export const DEFAULT_RENEWAL_CHECKPOINTS = [90, 60, 30];
@@ -68,17 +68,19 @@ export function activeRenewalCheckpoint(daysToExpiry, checkpoints) {
 // Decide se o CLIENTE entra na categoria Renovação da Meta Diária hoje.
 //   1. renewalDeclined → nunca mais entra neste ciclo (reseta só numa nova
 //      matrícula/renovação — buildMatriculaWrites).
-//   2. Contrato cancelado (currentContractStatus === 'cancelado') → mesmo
-//      efeito do declined: nada a renovar. Guarda extra (não estava no texto
-//      literal da spec) para o cliente não voltar pedindo renovação de um
-//      contrato que o próprio consultor já cancelou pela ficha.
+//   2. Contrato cancelado (currentContractStatus === 'cancelado') ou VENCIDO
+//      (corte limpo no dia do vencimento — a cobrança passa para o funil
+//      VENCIDOS, ver src/lib/expiredGoal.js) → mesmo efeito do declined: nada
+//      a renovar. Guarda extra (não estava no texto literal da spec) para o
+//      cliente não voltar pedindo renovação de um contrato que o próprio
+//      consultor já cancelou pela ficha.
 //   3. Entra se existir um marco ATIVO (ver activeRenewalCheckpoint) e ele
 //      ainda não estiver em renewalHandledCheckpoints.
 // Reagendar NÃO é mais tratado aqui: reagendar marca o marco atual como
 // tratado (handled) e joga o contato pra categoria Contatos (via nextFollowUp)
 // — ver renewalReschedule. Assim o cliente sai de Renovações no marco atual e
 // só volta no PRÓXIMO marco (que ainda não está em handled).
-export function shouldPromptRenewal(lead, now, checkpoints, graceDays = DEFAULT_RENEWAL_GRACE_DAYS) {
+export function shouldPromptRenewal(lead, now, checkpoints) {
   if (!lead) return false;
   if (lead.renewalDeclined) return false;
   if (lead.currentContractStatus === CONTRACT_STATUS.CANCELADO) return false;
@@ -88,10 +90,13 @@ export function shouldPromptRenewal(lead, now, checkpoints, graceDays = DEFAULT_
 
   const ref = getSafeDateOrNull(now) || new Date();
 
+  // Corte limpo no vencimento: a partir do dia em que o contrato vence a
+  // cobrança passa para o funil VENCIDOS (src/lib/expiredGoal.js). Sem isto os
+  // dois funis cobrariam o mesmo cliente. Mesma fonte do "venceu" que a ficha
+  // usa para mostrar INATIVO.
+  if (deriveLeadContractStatus(lead, ref) === CONTRACT_STATUS.VENCIDO) return false;
+
   const daysToExpiry = daysToExpiryOf(lead.currentContractEndsAt, ref);
-  // Vencido há mais tempo que a tolerância: virou inativo. Sem isto o cliente
-  // que saiu há meses continuava aparecendo na Meta como renovação pendente.
-  if (Number.isFinite(daysToExpiry) && daysToExpiry < -normalizeRenewalGraceDays(graceDays)) return false;
 
   const activeCheckpoint = activeRenewalCheckpoint(daysToExpiry, checkpoints);
   if (activeCheckpoint == null) return false;

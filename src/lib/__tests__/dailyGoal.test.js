@@ -199,12 +199,14 @@ describe('computeDailyGoalSlots — renovação (marcos configuráveis, renewalG
     expect(byId(slots([c]), c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
   });
 
-  it('contrato vencido sem nenhum marco tratado ainda entra (corrige o bug: não sumia mais)', () => {
-    // Mudança de comportamento INTENCIONAL vs. o threshold único antigo: um
-    // contrato vencido que nunca foi decidido (nem renovado, nem declinado)
-    // continua pedindo desfecho — é exatamente o bug que esta feature corrige.
+  it('contrato vencido não entra mais em Renovações — o corte limpo manda pro funil Vencidos', () => {
+    // Comportamento MUDOU de propósito: antes esse cliente ainda entrava aqui,
+    // dentro da tolerância de 15 dias depois do vencimento. Agora a Renovação
+    // para no dia do vencimento (corte limpo, src/lib/renewalGoal.js) e quem
+    // venceu vira tarefa do funil Vencidos (src/lib/expiredGoal.js), que este
+    // arquivo de teste ainda não conhece — então aqui ele só some da lista.
     const vencido = cliente({ currentContractEndsAt: new Date(2026, 6, 14) }); // ontem
-    expect(byId(slots([vencido]), vencido.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
+    expect(slots([vencido])).toEqual([]);
   });
 
   it('contrato cancelado, sem endsAt ou sem lifecycleStage cliente não entram', () => {
