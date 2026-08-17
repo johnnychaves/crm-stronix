@@ -767,4 +767,25 @@ describe('computeDailyGoalSlots — funil Vencidos', () => {
     expect(meta.short).toBe('Vencidos');
     expect(COLOR_TONES[meta.color]).toBeTruthy();
   });
+
+  it('tarefa de cliente concluída hoje continua visível como feita', () => {
+    const hoje = new Date();
+    hoje.setHours(11, 0, 0, 0);
+    const endsAt = new Date();
+    endsAt.setHours(0, 0, 0, 0);
+    endsAt.setDate(endsAt.getDate() - 3);
+    // O desfecho "não vai voltar" grava renewalDeclined (tira da condição viva)
+    // e a marca daily_goal_done. Sem o conserto, o cartão sumia da tela.
+    const lead = clienteVencido({ renewalDeclined: true, currentContractEndsAt: endsAt });
+    const byLead = new Map([[lead.id, [{
+      leadId: lead.id,
+      type: 'daily_goal_done',
+      dailyGoalCategory: DAILY_GOAL_CATEGORIES.VENCIDO,
+      createdAt: hoje
+    }]]]);
+    const out = computeDailyGoalSlots([lead], byLead, CONSULTOR, [90, 60, 30], 15);
+    expect(slugsOf(out, 'v1')).toContain(DAILY_GOAL_CATEGORIES.VENCIDO);
+    const found = out.find((l) => l.id === 'v1');
+    expect(found.categoryStatus[DAILY_GOAL_CATEGORIES.VENCIDO]).toBe(true);
+  });
 });

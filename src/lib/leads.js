@@ -90,8 +90,9 @@ export const DAILY_GOAL_CATEGORIES = {
   VISITA_HOJE: 'visita_hoje',
   AULA_HOJE: 'aula_hoje',
   CONTATO_HOJE: 'contato_hoje',
-  // Cliente com contrato 'a vencer' (feature lead→cliente). Única categoria
-  // cujo alvo é um CLIENTE (status 'Venda'), não um lead em prospecção.
+  // Cliente com contrato 'a vencer' (feature lead→cliente). Uma das duas
+  // categorias cujo alvo é um CLIENTE (status 'Venda'), não um lead em
+  // prospecção — a outra é VENCIDO, do funil Vencidos, logo abaixo.
   RENOVACAO: 'renovacao',
   // Cliente com contrato VENCIDO ainda sem renovação (funil Vencidos). Segunda
   // categoria cujo alvo é um CLIENTE, e a única cobrada TODO dia enquanto

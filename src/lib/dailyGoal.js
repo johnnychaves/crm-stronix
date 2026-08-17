@@ -418,9 +418,16 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   // lead da categoria — sem isto a marca daily_goal_done ficaria órfã e a tarefa
   // sumiria em vez de contar como feita. addTarget deduplica, então não recria
   // slots já adicionados pela condição viva acima. (mesma correção da PR #125)
+  // Categorias cujo alvo é CLIENTE. Cliente é status 'Venda', então o guard
+  // abaixo o excluía do laço e a tarefa concluída hoje SUMIA da tela em vez de
+  // ficar marcada como feita. Aqui ele mantém visível só o que concluiu nestas
+  // duas — nada de lead muda de comportamento.
+  const CLIENT_CATEGORY_SLUGS = [DAILY_GOAL_CATEGORIES.RENOVACAO, DAILY_GOAL_CATEGORIES.VENCIDO];
   myLeads.forEach(lead => {
-    if (lead.status === 'Venda' || lead.status === 'Perda') return;
-    Object.values(DAILY_GOAL_CATEGORIES).forEach(slug => {
+    const isCliente = lead.lifecycleStage === 'cliente';
+    if (!isCliente && (lead.status === 'Venda' || lead.status === 'Perda')) return;
+    const slugs = isCliente ? CLIENT_CATEGORY_SLUGS : Object.values(DAILY_GOAL_CATEGORIES);
+    slugs.forEach(slug => {
       if (hasGoalDoneToday(lead, slug, leadInteractions(lead.id), todayStart)) {
         addTarget(lead, DAILY_GOAL_CATEGORY_LABEL[slug] || slug, slug);
       }
