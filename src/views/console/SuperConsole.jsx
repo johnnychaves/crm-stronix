@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { auth, db } from '../../lib/firebase.js';
+import { passwordTooShort, MIN_PASSWORD_LENGTH } from '../../lib/passwordPolicy.js';
 import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { planLabel, auditActionLabel, IMPERSONATION_KEY } from '../../lib/superadmin.js';
@@ -628,7 +629,7 @@ function NewTenantPanel({ plans, onClose, onDone }) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.adminEmail.trim())) { setErr('Informe um e-mail válido para o responsável.'); return; }
     if (f.mode === 'password') {
       if (!f.adminName.trim()) { setErr('Informe o nome do gestor.'); return; }
-      if (String(f.adminPassword).length < 6) { setErr('A senha temporária precisa de ao menos 6 caracteres.'); return; }
+      if (passwordTooShort(f.adminPassword)) { setErr(`A senha temporária precisa de ao menos ${MIN_PASSWORD_LENGTH} caracteres.`); return; }
     }
     if (cpfErr) { setErr('O CPF do responsável é inválido. Corrija antes de criar.'); return; }
     setSaving(true); setErr('');

@@ -1,5 +1,6 @@
 import { adminAuth, adminDb, admin } from './_firebaseAdmin.js';
 import { checkRateLimit, clientIp } from './_rateLimit.js';
+import { passwordTooShort, passwordTooShortError } from './_auth.js';
 import { getSeatUsage, canAddSeat } from './_plans.js';
 import { syncSubscriptionValue } from './_asaas.js';
 import { withSentry } from './_sentry.js';
@@ -40,8 +41,8 @@ export default withSentry(async function handler(req, res) {
     if (!slug || !cleanToken) {
       return res.status(400).json({ error: 'Convite inválido.' });
     }
-    if (String(password || '').length < 6) {
-      return res.status(400).json({ error: 'Senha precisa ter ao menos 6 caracteres.' });
+    if (passwordTooShort(password)) {
+      return res.status(400).json({ error: passwordTooShortError() });
     }
     const normalizedName = String(name || '').trim();
     if (!normalizedName) {

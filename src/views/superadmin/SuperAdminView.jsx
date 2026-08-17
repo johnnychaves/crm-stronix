@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { auth } from '../../lib/firebase.js';
+import { passwordTooShort, passwordTooShortError } from '../../lib/passwordPolicy.js';
 import { IMPERSONATION_KEY, slugify, planLabel, tenantSeatLabel, tenantHealth, lastActivityLabel, auditActionLabel } from '../../lib/superadmin.js';
 import { timeAgo } from '../../lib/format.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
@@ -171,7 +172,7 @@ function SuperAdminView({ tab, onOpenConsole }) {
       toast.warning('Preencha todos os campos.');
       return;
     }
-    if (form.adminPassword.length < 6) { toast.warning('Senha precisa ter ao menos 6 caracteres.'); return; }
+    if (passwordTooShort(form.adminPassword)) { toast.warning(passwordTooShortError()); return; }
     setSubmitting(true);
     try {
       const res = await fetch('/api/provision-tenant', {
