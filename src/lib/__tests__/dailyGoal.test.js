@@ -21,7 +21,10 @@ import {
   overdueDaysOf,
   computeRitmo,
   slotTotals,
-  dgDateKey
+  dgDateKey,
+  DG_CATEGORY_ORDER,
+  DG_CATEGORY_META,
+  COLOR_TONES
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 
@@ -199,14 +202,15 @@ describe('computeDailyGoalSlots — renovação (marcos configuráveis, renewalG
     expect(byId(slots([c]), c.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.RENOVACAO]);
   });
 
-  it('contrato vencido não entra mais em Renovações — o corte limpo manda pro funil Vencidos', () => {
+  it('contrato vencido não entra mais em Renovações — vira tarefa do funil Vencidos', () => {
     // Comportamento MUDOU de propósito: antes esse cliente ainda entrava aqui,
     // dentro da tolerância de 15 dias depois do vencimento. Agora a Renovação
     // para no dia do vencimento (corte limpo, src/lib/renewalGoal.js) e quem
-    // venceu vira tarefa do funil Vencidos (src/lib/expiredGoal.js), que este
-    // arquivo de teste ainda não conhece — então aqui ele só some da lista.
+    // venceu vira tarefa do funil Vencidos (src/lib/expiredGoal.js) — a
+    // categoria já está ligada em computeDailyGoalSlots (Task 3).
     const vencido = cliente({ currentContractEndsAt: new Date(2026, 6, 14) }); // ontem
-    expect(slots([vencido])).toEqual([]);
+    const result = slots([vencido]);
+    expect(byId(result, vencido.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.VENCIDO]);
   });
 
   it('contrato cancelado, sem endsAt ou sem lifecycleStage cliente não entram', () => {
@@ -707,5 +711,60 @@ describe('countClosedMetaDaysInMonth', () => {
 
   it('devolve 0 quando a lista de dias está vazia', () => {
     expect(countClosedMetaDaysInMonth([])).toBe(0);
+  });
+});
+
+describe('computeDailyGoalSlots — funil Vencidos', () => {
+  const CONSULTOR = 'u1';
+
+  const clienteVencido = (over = {}) => {
+    const endsAt = new Date();
+    endsAt.setHours(0, 0, 0, 0);
+    endsAt.setDate(endsAt.getDate() - 3);
+    return {
+      id: 'v1',
+      name: 'Cliente Vencido',
+      consultantId: CONSULTOR,
+      status: 'Venda',
+      lifecycleStage: 'cliente',
+      createdAt: new Date(2025, 0, 10),
+      currentContractStartsAt: new Date(2025, 0, 10),
+      currentContractEndsAt: endsAt,
+      ...over
+    };
+  };
+
+  const slugsOf = (leads, id) => {
+    const found = leads.find((l) => l.id === id);
+    return found ? found.categorySlugs : [];
+  };
+
+  it('cliente vencido aparece em Vencidos e não em Renovações', () => {
+    const out = computeDailyGoalSlots([clienteVencido()], new Map(), CONSULTOR, [90, 60, 30], 15);
+    expect(slugsOf(out, 'v1')).toContain(DAILY_GOAL_CATEGORIES.VENCIDO);
+    expect(slugsOf(out, 'v1')).not.toContain(DAILY_GOAL_CATEGORIES.RENOVACAO);
+  });
+
+  it('fora do período não aparece em nenhum dos dois', () => {
+    const endsAt = new Date();
+    endsAt.setHours(0, 0, 0, 0);
+    endsAt.setDate(endsAt.getDate() - 40);
+    const out = computeDailyGoalSlots([clienteVencido({ currentContractEndsAt: endsAt })], new Map(), CONSULTOR, [90, 60, 30], 15);
+    expect(slugsOf(out, 'v1')).toEqual([]);
+  });
+
+  it('cliente vencido com contato marcado para hoje aparece só em Contatos', () => {
+    const hoje = new Date();
+    hoje.setHours(9, 0, 0, 0);
+    const out = computeDailyGoalSlots([clienteVencido({ nextFollowUp: hoje, nextFollowUpType: 'Mensagem' })], new Map(), CONSULTOR, [90, 60, 30], 15);
+    expect(slugsOf(out, 'v1')).toContain(DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
+    expect(slugsOf(out, 'v1')).not.toContain(DAILY_GOAL_CATEGORIES.VENCIDO);
+  });
+
+  it('a categoria entra na ordem e nos metadados visuais', () => {
+    expect(DG_CATEGORY_ORDER).toContain(DAILY_GOAL_CATEGORIES.VENCIDO);
+    const meta = DG_CATEGORY_META[DAILY_GOAL_CATEGORIES.VENCIDO];
+    expect(meta.short).toBe('Vencidos');
+    expect(COLOR_TONES[meta.color]).toBeTruthy();
   });
 });
