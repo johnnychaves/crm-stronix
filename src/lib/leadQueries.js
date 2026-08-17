@@ -51,6 +51,7 @@ export const allLeadsQuerySpec = () => ({ wheres: [] });
 // Cliente sem currentContractEndsAt não é A_VENCER (deriveContractStatus dá
 // null), então já é ignorado hoje E some do range — a contagem casa mesmo sem
 // backfill do campo. start/end em ms viram Date pro Firestore.
+
 // Janela de vencimento que a META precisa carregar, em ms:
 //   para FRENTE  → até o maior entre contractThresholdDays e os marcos de
 //     renovação, porque o marco mais distante (ex.: 90) dispara antes do
