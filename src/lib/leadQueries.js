@@ -10,7 +10,7 @@
 // A ordem dos `wheres` (igualdades) seguida do `orderBy` espelha a ordem dos
 // campos no índice composto correspondente.
 
-import { LIST_PAGE_SIZE } from './leadStatus.js';
+import { LIST_PAGE_SIZE, DAY_MS } from './leadStatus.js';
 
 export const LIFECYCLE_BUCKETS = { ATIVO: 'ativo', PERDA: 'perda', CLIENTE: 'cliente' };
 
@@ -51,6 +51,28 @@ export const allLeadsQuerySpec = () => ({ wheres: [] });
 // Cliente sem currentContractEndsAt não é A_VENCER (deriveContractStatus dá
 // null), então já é ignorado hoje E some do range — a contagem casa mesmo sem
 // backfill do campo. start/end em ms viram Date pro Firestore.
+// Janela de vencimento que a META precisa carregar, em ms:
+//   para FRENTE  → até o maior entre contractThresholdDays e os marcos de
+//     renovação, porque o marco mais distante (ex.: 90) dispara antes do
+//     threshold do sistema (ex.: 30).
+//   para TRÁS    → até o período do funil Vencidos (expiredWindowDays), senão
+//     o cliente que venceu não é carregado e o funil aparece vazio. Era o furo
+//     que a tolerância antiga tinha: a janela começava em ontem.
+// 1 dia de folga em cada ponta para a borda não escapar por causa de hora.
+// Puro de propósito: este cálculo já morou dentro de um useMemo do hook, onde
+// ninguém conseguia ver que estava errado.
+export const renewalWindowMs = (nowMs, { contractThresholdDays, renewalCheckpoints, expiredWindowDays } = {}) => {
+  const forward = [Number(contractThresholdDays) || 0, ...(Array.isArray(renewalCheckpoints) ? renewalCheckpoints.map(Number) : [])]
+    .filter((n) => Number.isFinite(n) && n > 0);
+  const maxForward = forward.length ? Math.max(...forward) : 0;
+  const backNum = Number(expiredWindowDays);
+  const back = Number.isFinite(backNum) && backNum > 0 ? backNum : 0;
+  return {
+    start: nowMs - (back + 1) * DAY_MS,
+    end: nowMs + (maxForward + 1) * DAY_MS
+  };
+};
+
 export const renewalClientsQuerySpec = (startMs, endMs, pageSize = null) => ({
   wheres: [
     { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },

@@ -1157,7 +1157,7 @@ useEffect(() => {
   // Renovação. `clients` (o filtro A_VENCER exato) segue só pro badge âmbar de
   // Clientes; `candidates` é o pool cru (janela mais larga, até o maior marco)
   // que a Meta usa pra avaliar os marcos configuráveis (ver useRenewalClients.js).
-  const { clients: renewalClients, candidates: renewalCandidates } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, reloadKey: dayKey, enabled: !!appUser });
+  const { clients: renewalClients, candidates: renewalCandidates } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, expiredWindowDays: renewalGraceDays, reloadKey: dayKey, enabled: !!appUser });
   // Base da META (G1d): ativo (prop) ∪ candidatos a renovação (renewalCandidates),
   // dedupe por id (global primeiro). PRÉ-flip o prop já contém os clientes →
   // no-op → números idênticos; PÓS-flip o prop vira só 'ativo' e os
