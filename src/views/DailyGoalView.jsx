@@ -13,6 +13,7 @@ import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
 import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { applyOutcomeToAula, upsertScheduledAula } from '../lib/aulasWrites.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
+import { expiredLabel, expiredSortKey } from '../lib/expiredGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -340,6 +341,7 @@ function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, 
   const isOverdue = slug === DAILY_GOAL_CATEGORIES.ATRASADO;
   const isNovo = slug === DAILY_GOAL_CATEGORIES.NOVO_24H;
   const isContato = slug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE;
+  const isExpired = slug === DAILY_GOAL_CATEGORIES.VENCIDO;
   const Icon = m.Icon;
 
   // Contato: especifica se o follow-up agendado é Ligação ou Mensagem
@@ -419,6 +421,12 @@ function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, 
               ) : (
                 <TimePill icon={<AlertCircle size={11} />} tone="rose">{overdueDays} {overdueDays === 1 ? 'dia' : 'dias'} atrasado</TimePill>
               )
+            )}
+            {isExpired && (
+              <TimePill icon={<Clock size={11} />}>
+                {expiredLabel(task, now)}
+                {task.currentPlanName ? <span className="opacity-60"> · {task.currentPlanName}</span> : null}
+              </TimePill>
             )}
             {task.hasOtherActivityToday && (
               <TimePill icon={<Check size={11} />} tone="amber">Já interagido. Feche pela Meta</TimePill>
@@ -1224,6 +1232,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       setRenewalTarget({ lead, activeCheckpoint: checkpoint });
       return;
     }
+    // Vencidos: mesmo popup de desfecho da Renovação, na variante 'vencido'
+    // (Reativou / Não vai voltar / Reagendar contato). Não há marco a tratar —
+    // a saída do funil vem do nextFollowUp e do renewalDeclined.
+    if (categorySlug === DAILY_GOAL_CATEGORIES.VENCIDO) {
+      setRenewalTarget({ lead, activeCheckpoint: null, variant: 'vencido' });
+      return;
+    }
     // Contato Hoje: concluir abre o popup de desfecho (Contato feito /
     // Reagendar) — mesmo visual da renovação. A gravação (patch + timeline +
     // daily_goal_done) acontece dentro do ContactOutcomeModal (regra pura em
@@ -1495,6 +1510,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     // SLA: na seção Atrasados, o atraso mais antigo vem primeiro — o consultor
     // ataca o lead mais crônico antes de o gestor precisar cobrar.
     groups[DAILY_GOAL_CATEGORIES.ATRASADO].sort((a, b) => overdueDaysOf(b) - overdueDaysOf(a));
+    // Vencidos: o vencimento mais RECENTE primeiro — o inverso dos Atrasados,
+    // de propósito: a chance de reativação cai a cada dia fora da academia.
+    groups[DAILY_GOAL_CATEGORIES.VENCIDO].sort((a, b) => expiredSortKey(b) - expiredSortKey(a));
     return groups;
   }, [processedLeads]);
 
@@ -1804,6 +1822,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           appUser={appUser}
           db={db}
           activeCheckpoint={renewalTarget.activeCheckpoint}
+          variant={renewalTarget?.variant || 'renovacao'}
           onDone={handleRenewalOutcomeDone}
           onClose={() => setRenewalTarget(null)}
         />
