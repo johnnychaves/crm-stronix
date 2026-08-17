@@ -139,7 +139,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
       toast.success(`Vencidos ficam ${n} dias na Meta Diária.`);
     } catch (err) {
       console.error(err);
-      toast.error('Não foi possível salvar a tolerância.');
+      toast.error('Não foi possível salvar o período de vencidos.');
     }
   };
 
