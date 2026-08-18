@@ -98,3 +98,34 @@ describe('buildSchedulePatch — compromisso formal', () => {
     expect(depois.appointmentModality).toBeNull();
   });
 });
+
+describe('buildSchedulePatch — dono da tarefa', () => {
+  it('mensagem grava o dono escolhido', () => {
+    const p = buildSchedulePatch({ typeLabel: 'Mensagem', date: MSG, contactOwnerId: 'u2', contactOwnerName: 'Maria' });
+    expect(p.nextFollowUpOwnerId).toBe('u2');
+    expect(p.nextFollowUpOwnerName).toBe('Maria');
+  });
+
+  it('ligação grava o dono escolhido', () => {
+    const p = buildSchedulePatch({ typeLabel: 'Ligação', date: MSG, contactOwnerId: 'u2', contactOwnerName: 'Maria' });
+    expect(p.nextFollowUpOwnerId).toBe('u2');
+  });
+
+  // Explicitamente null, não ausente: agendamento novo não pode herdar o
+  // delegado do agendamento anterior.
+  it('sem escolha, grava null e a tarefa volta para o dono do lead', () => {
+    const antes = { nextFollowUpOwnerId: 'u9', nextFollowUpOwnerName: 'Antigo' };
+    const p = buildSchedulePatch({ typeLabel: 'Mensagem', date: MSG });
+    expect(p.nextFollowUpOwnerId).toBeNull();
+    expect(p.nextFollowUpOwnerName).toBeNull();
+    expect({ ...antes, ...p }.nextFollowUpOwnerId).toBeNull();
+  });
+
+  it('visita e aula NÃO têm dono de tarefa', () => {
+    for (const typeLabel of ['Visita', 'Aula Experimental']) {
+      const p = buildSchedulePatch({ typeLabel, date: AULA, contactOwnerId: 'u2', contactOwnerName: 'Maria' });
+      expect(p).not.toHaveProperty('nextFollowUpOwnerId');
+      expect(p).not.toHaveProperty('nextFollowUpOwnerName');
+    }
+  });
+});

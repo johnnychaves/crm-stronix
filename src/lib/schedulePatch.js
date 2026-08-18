@@ -22,6 +22,8 @@ export function buildSchedulePatch({
   unidade = null,
   note = null,
   currentAulaId = null,
+  contactOwnerId = null,
+  contactOwnerName = null,
 } = {}) {
   const appointmentType = normalizeAppointmentType(typeLabel); // 'visita' | 'aula_experimental' | null
   const isAula = appointmentType === 'aula_experimental';
@@ -36,7 +38,15 @@ export function buildSchedulePatch({
 
   // Mensagem/ligação param aqui: nenhum campo de compromisso é mencionado, e o
   // que o patch não menciona sobrevive ao merge.
-  if (!appointmentType) return patch;
+  if (!appointmentType) {
+    // Dono da TAREFA na Meta Diária. Ausente significa o dono do lead, e o null
+    // é EXPLÍCITO de propósito: agendamento novo não pode herdar o delegado do
+    // agendamento anterior. Só contato tem dono de tarefa — visita e aula
+    // seguem o dono do lead.
+    patch.nextFollowUpOwnerId = contactOwnerId || null;
+    patch.nextFollowUpOwnerName = contactOwnerId ? (contactOwnerName || null) : null;
+    return patch;
+  }
 
   // Os extras do tipo antigo são limpos de propósito: trocar uma aula por uma
   // visita não pode deixar professor e modalidade para trás.
