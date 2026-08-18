@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields } from '../aulas.js';
+import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, pickMirrorAppointment, aulaRecordFields } from '../aulas.js';
 
 describe('outcomeToAulaStatus', () => {
   it('mapeia os desfechos que resolvem a aula', () => {
@@ -94,5 +94,103 @@ describe('aulaRecordFields — type e unit', () => {
   });
   it('type inválido cai para aula', () => {
     expect(aulaRecordFields({ leadId: 'l1', type: 'mensagem' }).type).toBe('aula');
+  });
+});
+
+describe('pickMirrorAppointment', () => {
+  // Datas relativas a uma "agora" fixa, para o teste não depender do relógio.
+  const NOW = new Date(2026, 7, 18, 14, 0, 0); // 18/08/2026 14:00
+  const at = (day, hour = 10) => new Date(2026, 7, day, hour, 0, 0);
+  const rec = (id, status, day, hour, extra = {}) =>
+    ({ id, status, scheduledFor: at(day, hour), type: 'aula', ...extra });
+
+  it('sem registro devolve null', () => {
+    expect(pickMirrorAppointment([], NOW)).toBeNull();
+    expect(pickMirrorAppointment(null, NOW)).toBeNull();
+  });
+
+  it('regra 1: entre os abertos futuros, pega o MAIS PRÓXIMO', () => {
+    const out = pickMirrorAppointment([
+      rec('longe', 'agendada', 25),
+      rec('perto', 'agendada', 20),
+      rec('medio', 'agendada', 22),
+    ], NOW);
+    expect(out.id).toBe('perto');
+  });
+
+  it('regra 1: compromisso de HOJE mais cedo ainda conta como futuro', () => {
+    // 18/08 às 9h já passou no relógio, mas é hoje: continua sendo o
+    // compromisso do dia e não pode cair na regra do atrasado.
+    const out = pickMirrorAppointment([
+      rec('hoje', 'agendada', 18, 9),
+      rec('amanha', 'agendada', 19),
+    ], NOW);
+    expect(out.id).toBe('hoje');
+  });
+
+  it('regra 1 ganha da regra 2: futuro tem prioridade sobre atrasado', () => {
+    const out = pickMirrorAppointment([
+      rec('atrasado', 'agendada', 1),
+      rec('futuro', 'agendada', 20),
+    ], NOW);
+    expect(out.id).toBe('futuro');
+  });
+
+  it('regra 2: só atrasados em aberto, pega o MAIS RECENTE', () => {
+    const out = pickMirrorAppointment([
+      rec('antigo', 'agendada', 1),
+      rec('recente', 'agendada', 15),
+    ], NOW);
+    expect(out.id).toBe('recente');
+  });
+
+  it('regra 3: sem nada em aberto, pega o último resolvido', () => {
+    const out = pickMirrorAppointment([
+      rec('velho', 'attended', 1),
+      rec('novo', 'no_show', 10),
+    ], NOW);
+    expect(out.id).toBe('novo');
+  });
+
+  it('regra 3: comparecimento PRESERVA o compromisso (regra do Johnny)', () => {
+    const out = pickMirrorAppointment([rec('foi', 'attended', 10)], NOW);
+    expect(out.id).toBe('foi');
+  });
+
+  it('regra 3: cancelado NUNCA entra no espelho', () => {
+    expect(pickMirrorAppointment([rec('cancelou', 'cancelled', 10)], NOW)).toBeNull();
+  });
+
+  it('regra 3: cancelado não rouba a vez de um comparecimento anterior', () => {
+    const out = pickMirrorAppointment([
+      rec('foi', 'attended', 5),
+      rec('cancelou', 'cancelled', 12),
+    ], NOW);
+    expect(out.id).toBe('foi');
+  });
+
+  it('aberto ganha de resolvido, mesmo que o resolvido seja mais recente', () => {
+    const out = pickMirrorAppointment([
+      rec('resolvido', 'attended', 17),
+      rec('aberto', 'agendada', 2),
+    ], NOW);
+    expect(out.id).toBe('aberto');
+  });
+
+  it('visita e aula concorrem em pé de igualdade', () => {
+    const out = pickMirrorAppointment([
+      rec('aula', 'agendada', 22),
+      rec('visita', 'agendada', 20, 10, { type: 'visita' }),
+    ], NOW);
+    expect(out.id).toBe('visita');
+  });
+
+  it('registro sem data é ignorado (não pode virar espelho nem quebrar)', () => {
+    const out = pickMirrorAppointment([
+      { id: 'sem_data', status: 'agendada', scheduledFor: null, type: 'aula' },
+      rec('ok', 'agendada', 20),
+    ], NOW);
+    expect(out.id).toBe('ok');
+    expect(pickMirrorAppointment([{ id: 'x', status: 'agendada', scheduledFor: null }], NOW)).toBeNull();
   });
 });
