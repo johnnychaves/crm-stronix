@@ -53,6 +53,7 @@ import { getSafeDate } from './lib/dates.js';
 import { isAdminUser, normalizeLeadDoc } from './lib/leads.js';
 import { usePagedLeads } from './hooks/usePagedLeads.js';
 import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
+import { kanbanLeadsFor } from './lib/kanban.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
@@ -1205,6 +1206,13 @@ useEffect(() => {
   });
   // Gerencial admin usa metaLeads (definido acima) só p/ o useTeamGoals (Meta da
   // equipe); as métricas de PERÍODO do admin vêm da união de janelas (G1c) na view.
+  // Base do Kanban por papel: admin vê a academia, consultor vê só os próprios
+  // leads. Regra em lib/kanban.js — inclui o recorte de lifecycleBucket, que a
+  // query do consultor não faz (ela traz cliente e perda junto).
+  const kanbanLeads = useMemo(
+    () => kanbanLeadsFor(appUser, leads, consultantLeads),
+    [appUser, leads, consultantLeads]
+  );
   const gerencialLeads = dashIsAdmin ? metaLeads : consultantLeads;
   const clientsAVencer = useMemo(() => {
     if (!appUser) return 0;
@@ -1484,7 +1492,7 @@ useEffect(() => {
                   sem janela) — migra no G1d. interactions segue global (G2). */}
               {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : consultantLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} listenersActive={listenersActive} />}
               {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={gerencialLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
-              {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
+              {activeTab === 'kanban' && <KanbanView leads={kanbanLeads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
               {/* Meta Diária (G1d): base = ativo ∪ clientes a vencer (metaLeads),
                   flip-safe. computeDailyGoalSlots filtra por consultor e categoria

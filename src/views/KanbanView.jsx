@@ -813,7 +813,11 @@ if (!lead) return;
                   </button>
                 </div>
 
-                {/* Consultor (não-admin) só vê os próprios leads — sem seção Responsável. */}
+                {/* Consultor (não-admin) só vê os próprios leads, então não há o
+                    que filtrar por responsável. O recorte acontece ANTES, em
+                    kanbanLeadsFor (lib/kanban.js), não aqui — até 18/08/2026
+                    este comentário estava certo na intenção e errado no fato:
+                    a tela recebia a base global e o consultor via todo mundo. */}
                 {isAdmin && (
                   <div className="pt-2.5 px-2 pb-1">
                     <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">

@@ -5,14 +5,7 @@
 // `now` é injetado onde a função aceita, e fake timers onde ela lê o relógio.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import {
-  filterKanbanLeads,
-  partitionLeadsByStatus,
-  getKanbanInitials,
-  fmtKanbanRelDate,
-  kanbanSilence,
-  monthWindow
-} from '../kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, monthWindow, kanbanLeadsFor } from '../kanban.js';
 
 // 15 de julho de 2026, 10:00 local — "agora" de referência dos testes.
 const NOW = new Date(2026, 6, 15, 10, 0, 0);
@@ -274,5 +267,38 @@ describe('monthWindow', () => {
 
   it('rotula o mês em português para o header da coluna', () => {
     expect(monthWindow(new Date(2026, 6, 15)).label).toBe('julho');
+  });
+});
+
+describe('kanbanLeadsFor', () => {
+  const admin = { role: 'admin', id: 'a1' };
+  const consultor = { role: 'consultor', id: 'u1' };
+  const todos = [{ id: 'x', lifecycleBucket: 'ativo' }, { id: 'y', lifecycleBucket: 'ativo' }];
+  const meus = [
+    { id: 'meu-ativo', lifecycleBucket: 'ativo' },
+    { id: 'meu-cliente', lifecycleBucket: 'cliente' },
+    { id: 'minha-perda', lifecycleBucket: 'perda' },
+  ];
+
+  it('admin recebe a base global inteira', () => {
+    expect(kanbanLeadsFor(admin, todos, meus)).toBe(todos);
+  });
+
+  it('consultor recebe só os próprios leads', () => {
+    expect(kanbanLeadsFor(consultor, todos, meus).map(l => l.id)).toEqual(['meu-ativo']);
+  });
+
+  // A query do consultor é só por consultantId: sem este recorte, aluno
+  // matriculado e lead perdido apareceriam no board.
+  it('consultor não vê cliente nem perda no board', () => {
+    const ids = kanbanLeadsFor(consultor, todos, meus).map(l => l.id);
+    expect(ids).not.toContain('meu-cliente');
+    expect(ids).not.toContain('minha-perda');
+  });
+
+  it('listas vazias ou nulas não quebram', () => {
+    expect(kanbanLeadsFor(consultor, null, null)).toEqual([]);
+    expect(kanbanLeadsFor(admin, null, null)).toEqual([]);
+    expect(kanbanLeadsFor(consultor, todos, [null])).toEqual([]);
   });
 });
