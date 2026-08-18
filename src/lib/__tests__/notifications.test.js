@@ -1,8 +1,9 @@
 // Regras puras do SINO: o que entra no feed (novidades + indicações que
 // chegaram pelo link), quem vê o quê e o que conta como não lido.
 
-import { describe, it, expect } from 'vitest';
-import { buildNotificationFeed } from '../notifications.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { buildNotificationFeed, readSeenState, mergeSeenIds, writeReferralStamp } from '../notifications.js';
+import { markAnnouncementSeen } from '../announcements.js';
 
 const NOW = new Date(2026, 7, 9, 12, 0);
 const ago = (h) => new Date(NOW.getTime() - h * 3600_000);
@@ -93,5 +94,72 @@ describe('buildNotificationFeed — contagem do badge', () => {
   it('sem usuário devolve feed vazio', () => {
     expect(buildNotificationFeed({ announcements: ANNS, appUser: null, now: NOW }))
       .toEqual({ news: [], referrals: [], unreadCount: 0 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// "Já li" — a leitura que quebrava no F5
+// ---------------------------------------------------------------------------
+// O app monta ANTES de a sessão existir (appUser null) e só depois o usuário
+// chega. A leitura tem de acompanhar essa troca: era isso que faltava, e por
+// isso as mesmas novidades voltavam como não lidas a cada atualização da página.
+
+describe('readSeenState — leitura do "já li"', () => {
+  const fakeStorage = () => {
+    const m = new Map();
+    return {
+      getItem: (k) => (m.has(k) ? m.get(k) : null),
+      setItem: (k, v) => m.set(k, String(v)),
+      removeItem: (k) => m.delete(k)
+    };
+  };
+
+  beforeEach(() => { globalThis.localStorage = fakeStorage(); });
+  afterEach(() => { delete globalThis.localStorage; });
+
+  const u = { id: 'u1', role: 'consultant' };
+
+  it('sem sessão devolve vazio (é o estado do primeiro render do app)', () => {
+    expect(readSeenState(null)).toEqual({ seenIds: [], lastSeenReferralsAt: 0 });
+    expect(readSeenState({})).toEqual({ seenIds: [], lastSeenReferralsAt: 0 });
+  });
+
+  it('quando a sessão chega, devolve o que o usuário já tinha lido', () => {
+    // 1º render: ainda não há sessão.
+    expect(readSeenState(null).seenIds).toEqual([]);
+
+    // Usuário leu numa visita anterior (o que markAllSeen gravou).
+    markAnnouncementSeen(u, 'a1');
+    writeReferralStamp(u.id, 1_700_000_000_000);
+
+    // Render seguinte, já com a sessão: a leitura acompanha.
+    const s = readSeenState(u);
+    expect(s.seenIds).toEqual(['a1']);
+    expect(s.lastSeenReferralsAt).toBe(1_700_000_000_000);
+  });
+
+  it('não mistura usuários: o que um leu não conta para o outro', () => {
+    markAnnouncementSeen(u, 'a1');
+    writeReferralStamp(u.id, 1_700_000_000_000);
+    expect(readSeenState({ id: 'u2' })).toEqual({ seenIds: [], lastSeenReferralsAt: 0 });
+  });
+
+  it('carimbo das indicações é o maior entre o doc do usuário e o localStorage', () => {
+    writeReferralStamp(u.id, 100);
+    expect(readSeenState({ ...u, lastSeenReferralsAtMs: 500 }).lastSeenReferralsAt).toBe(500);
+    writeReferralStamp(u.id, 900);
+    expect(readSeenState({ ...u, lastSeenReferralsAtMs: 500 }).lastSeenReferralsAt).toBe(900);
+  });
+
+  it('localStorage indisponível não derruba a leitura', () => {
+    globalThis.localStorage = { getItem: () => { throw new Error('bloqueado'); } };
+    expect(readSeenState({ ...u, lastSeenReferralsAtMs: 42 })).toEqual({ seenIds: [], lastSeenReferralsAt: 42 });
+  });
+});
+
+describe('mergeSeenIds', () => {
+  it('junta o gravado com o que foi marcado agora, sem repetir', () => {
+    expect(mergeSeenIds(['a1'], ['a1', 'a2'])).toEqual(['a1', 'a2']);
+    expect(mergeSeenIds(undefined, undefined)).toEqual([]);
   });
 });
