@@ -6,13 +6,17 @@
 //       type:'aula'. Documento anterior à separação é aula por definição.
 //       Na segunda rodada ninguém mais se encaixa no filtro ("sem o campo").
 //
-//   (2) VISITAS FALTANDO: todo lead com appointmentType=='visita' e
-//       appointmentScheduledFor preenchido que ainda NÃO tenha um doc de
-//       visita com o MESMO scheduledFor ganha um. A chave de idempotência é
-//       o par (leadId, scheduledFor).
+//   (2) REGISTROS FALTANDO: todo lead com compromisso no espelho
+//       (appointmentType 'visita' OU 'aula_experimental') e
+//       appointmentScheduledFor preenchido que ainda NÃO tenha um doc do MESMO
+//       tipo com o MESMO scheduledFor ganha um. A chave de idempotência é a
+//       trinca (type, leadId, scheduledFor).
 //
-// NÃO cria aula faltando: isso é trabalho do backfill-aulas.js, que roda pelo
-// currentAulaId. Rodar os dois é seguro e independente.
+// POR QUE A AULA TAMBÉM ENTRA: no PR da virada o espelho passa a ser DERIVADO
+// dos registros. Lead com aula no espelho e sem registro teria o compromisso
+// zerado no recálculo — apagaria aula de verdade, o mesmo bug que este trabalho
+// veio consertar. Não dá para assumir que o backfill-aulas.js cobriu tudo.
+// Rodar os dois scripts é seguro: a chave de idempotência protege.
 //
 // ORDEM DE DEPLOY: rodar DEPOIS do merge do PR 1 em produção. A regra do
 // Firestore de stronix_aulas já está publicada desde a entrega do histórico de
@@ -54,6 +58,13 @@ function outcomeToAulaStatus(outcome) {
 
 const isAulaRecord = (rec) =>
   (rec?.type ?? APPOINTMENT_RECORD_TYPES.AULA) !== APPOINTMENT_RECORD_TYPES.VISITA;
+
+// CÓPIA VERBATIM de src/lib/leads.js (isConvertedStatusName + isLeadConverted).
+function isLeadConverted(lead) {
+  if (lead?.isConverted === true) return true;
+  if (lead?.status === 'Venda') return true;
+  return /convertid|matricul/i.test(lead?.status || '');
+}
 
 // ---------------------------------------------------------------------------
 // Paths (espelham src/lib/firebase.js) e flags
@@ -109,33 +120,45 @@ function millisOf(v) {
   return Number.isFinite(t) ? t : null;
 }
 
-// Chave de idempotência da passada 2: um lead não pode ganhar duas visitas
-// para o mesmo horário.
-const visitaKey = (leadId, scheduledFor) => `${leadId}|${millisOf(scheduledFor)}`;
+// Chave de idempotência da passada 2: um lead não pode ganhar dois registros do
+// MESMO tipo para o mesmo horário. O tipo entra na chave porque visita e aula
+// podem legitimamente coexistir na mesma data.
+const recordKey = (type, leadId, scheduledFor) => `${type}|${leadId}|${millisOf(scheduledFor)}`;
 
-// Campos do registro de VISITA a partir do bloco `appointment*` do lead.
-// Espelha aulaRecordFields de src/lib/aulas.js. Campos que só fazem sentido em
-// aula (professor, modalidade, treino solo, conversão) ficam nulos ou false:
-// visita NUNCA leva crédito de conversão nem carimba carteira de professor.
-function buildVisitaRecord(leadId, lead) {
+// Campos do registro a partir do bloco `appointment*` do lead. Espelha
+// aulaRecordFields de src/lib/aulas.js. Em VISITA, os campos que só fazem
+// sentido em aula (professor, modalidade, treino solo, conversão) ficam nulos
+// ou false: visita NUNCA leva crédito de conversão nem carimba carteira.
+function buildRecord(type, leadId, lead) {
+  const isVisita = type === APPOINTMENT_RECORD_TYPES.VISITA;
+  const status = outcomeToAulaStatus(lead.appointmentOutcome) || AULA_STATUS.AGENDADA;
+  const converted = !isVisita && isLeadConverted(lead) && status === AULA_STATUS.ATTENDED;
   return {
-    type: APPOINTMENT_RECORD_TYPES.VISITA,
-    unit: lead.appointmentUnit || null,
+    type,
+    unit: isVisita ? (lead.appointmentUnit || null) : null,
     leadId,
     leadName: lead.name || lead.nome || null,
-    professorId: null,
-    professorName: null,
-    soloTraining: false,
-    modality: null,
+    professorId: isVisita ? null : (lead.appointmentProfessorId || null),
+    professorName: isVisita ? null : (lead.appointmentProfessorName || null),
+    soloTraining: isVisita ? false : Boolean(lead.appointmentSoloTraining),
+    modality: isVisita ? null : (lead.appointmentModality || null),
     scheduledFor: lead.appointmentScheduledFor || null,
-    status: outcomeToAulaStatus(lead.appointmentOutcome) || AULA_STATUS.AGENDADA,
+    status,
     outcomeAt: lead.appointmentOutcomeAt || null,
-    converted: false,
-    convertedAt: null,
+    converted,
+    convertedAt: converted ? (lead.convertedAt || null) : null,
     consultantId: lead.consultantId || null,
     consultantAuthUid: lead.consultantAuthUid || null,
     consultantName: lead.consultantName || null,
   };
+}
+
+// appointmentType do lead -> type do registro. Qualquer outro valor (null,
+// mensagem, ligação) não é compromisso formal e não vira registro.
+function recordTypeOf(appointmentType) {
+  if (appointmentType === 'visita') return APPOINTMENT_RECORD_TYPES.VISITA;
+  if (appointmentType === 'aula_experimental') return APPOINTMENT_RECORD_TYPES.AULA;
+  return null;
 }
 
 const MAX_SAMPLES = 5;
@@ -159,7 +182,7 @@ async function run() {
   console.log('Passada 1: varrendo stronix_aulas...');
   let aulasScanned = 0;
   let stamped = 0;
-  const existingVisitas = new Set();
+  const existingRecords = new Set();
   const stampSamples = [];
 
   for await (const doc of aulasCol.stream()) {
@@ -178,19 +201,20 @@ async function run() {
       }
     }
 
-    if (!isAulaRecord(rec) && rec.leadId) {
-      existingVisitas.add(visitaKey(rec.leadId, rec.scheduledFor));
+    if (rec.leadId) {
+      const t = isAulaRecord(rec) ? APPOINTMENT_RECORD_TYPES.AULA : APPOINTMENT_RECORD_TYPES.VISITA;
+      existingRecords.add(recordKey(t, rec.leadId, rec.scheduledFor));
     }
   }
   console.log(stampSamples.join('\n'));
-  console.log(`  Docs varridos: ${aulasScanned} | sem \`type\` (a carimbar como aula): ${stamped} | visitas já existentes: ${existingVisitas.size}.`);
+  console.log(`  Docs varridos: ${aulasScanned} | sem \`type\` (a carimbar como aula): ${stamped} | registros já indexados: ${existingRecords.size}.`);
 
   // -------------------------------------------------------------------------
   // Passada 2 — visitas do espelho do lead que ainda não têm registro
   // -------------------------------------------------------------------------
   console.log('Passada 2: varrendo leads...');
   let leadsScanned = 0;
-  let created = 0;
+  const created = { visita: 0, aula: 0 };
   let skipped = 0;
   const createSamples = [];
 
@@ -198,17 +222,19 @@ async function run() {
     leadsScanned++;
     const lead = doc.data();
 
-    if (lead.appointmentType !== 'visita' || !lead.appointmentScheduledFor) continue;
+    const type = recordTypeOf(lead.appointmentType);
+    if (!type || !lead.appointmentScheduledFor) continue;
 
-    if (existingVisitas.has(visitaKey(doc.id, lead.appointmentScheduledFor))) {
+    const key = recordKey(type, doc.id, lead.appointmentScheduledFor);
+    if (existingRecords.has(key)) {
       skipped++;
       continue;
     }
 
-    created++;
-    const record = buildVisitaRecord(doc.id, lead);
+    created[type]++;
+    const record = buildRecord(type, doc.id, lead);
     if (createSamples.length < MAX_SAMPLES) {
-      createSamples.push(`  [${commit ? 'GRAVAR' : 'DRY'}] lead=${doc.id} (${record.leadName || '—'}) status=${record.status} unidade=${record.unit || '—'}`);
+      createSamples.push(`  [${commit ? 'GRAVAR' : 'DRY'}] ${type} lead=${doc.id} (${record.leadName || '—'}) status=${record.status}`);
     }
 
     if (commit) {
@@ -218,9 +244,9 @@ async function run() {
     }
 
     // Marca na memória para o caso raro de dois leads com o mesmo id no stream.
-    existingVisitas.add(visitaKey(doc.id, lead.appointmentScheduledFor));
+    existingRecords.add(key);
 
-    if (leadsScanned % 500 === 0) console.log(`  ...${leadsScanned} leads varridos (${created} visitas a criar até aqui)`);
+    if (leadsScanned % 500 === 0) console.log(`  ...${leadsScanned} leads varridos (${created.visita + created.aula} registros a criar até aqui)`);
   }
 
   if (commit && pendingOps > 0) await batch.commit();
@@ -229,8 +255,9 @@ async function run() {
   console.log('');
   console.log('Resumo:');
   console.log(`  Docs de stronix_aulas carimbados com type='aula': ${stamped}`);
-  console.log(`  Visitas criadas: ${created}`);
-  console.log(`  Leads pulados (visita já tinha registro): ${skipped}`);
+  console.log(`  Visitas criadas: ${created.visita}`);
+  console.log(`  AULAS criadas (lead tinha aula no espelho e nenhum registro): ${created.aula}`);
+  console.log(`  Leads pulados (já tinham registro): ${skipped}`);
   console.log(`  Leads varridos: ${leadsScanned}`);
   console.log(commit
     ? 'Concluído.'
