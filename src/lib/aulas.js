@@ -40,6 +40,53 @@ export function pickConvertingAula(aulas) {
   });
 }
 
+// Espelho do lead: qual dos registros de agendamento representa o compromisso
+// "atual" do lead. O documento do lead guarda uma cópia desses campos
+// (appointmentType, appointmentScheduledFor...) porque as telas e os relatórios
+// leem o lead, não a coleção — mas quem manda são os registros, e o espelho é
+// SEMPRE derivado daqui. É isso que torna o espelho reconstruível: escrita
+// errada não apaga compromisso para sempre, basta recalcular.
+//
+// Três regras, nesta ordem:
+//   1. Em aberto de hoje em diante → o MAIS PRÓXIMO (o próximo compromisso).
+//   2. Só em aberto atrasado → o MAIS RECENTE (o que espera desfecho). Sem
+//      isto, uma visita esquecida de três semanas atrás seguraria o espelho e
+//      esconderia a aula marcada para amanhã.
+//   3. Nada em aberto → o último resolvido como 'attended' ou 'no_show'.
+//      CANCELADO nunca entra: comparecimento preserva o compromisso na tela de
+//      Aulas/Visitas e cancelamento remove (regra do Johnny, ver o comentário
+//      em appointmentOutcome.js).
+//
+// Registro sem data é ignorado: não dá para posicionar no tempo, e virar
+// espelho sem data quebraria as telas que fazem range por data.
+export function pickMirrorAppointment(records, now = new Date()) {
+  const dated = (records || [])
+    .map((r) => ({ rec: r, at: getSafeDateOrNull(r?.scheduledFor) }))
+    .filter((x) => x.rec && x.at);
+  if (!dated.length) return null;
+
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const open = dated.filter((x) => x.rec.status === AULA_STATUS.AGENDADA);
+
+  // 1. Próximo compromisso de hoje em diante.
+  const upcoming = open.filter((x) => x.at.getTime() >= todayStart);
+  if (upcoming.length) {
+    return upcoming.reduce((best, x) => (x.at < best.at ? x : best)).rec;
+  }
+
+  // 2. Atrasado em aberto mais recente.
+  if (open.length) {
+    return open.reduce((best, x) => (x.at > best.at ? x : best)).rec;
+  }
+
+  // 3. Último desfecho que mantém a pessoa na tela.
+  const resolved = dated.filter(
+    (x) => x.rec.status === AULA_STATUS.ATTENDED || x.rec.status === AULA_STATUS.NO_SHOW
+  );
+  if (!resolved.length) return null;
+  return resolved.reduce((best, x) => (x.at > best.at ? x : best)).rec;
+}
+
 // Monta os campos de um registro de aula. Puro: recebe valores já resolvidos,
 // devolve objeto plano (o caller adiciona createdAt/serverTimestamp e grava).
 export function aulaRecordFields({

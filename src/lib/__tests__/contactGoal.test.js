@@ -44,15 +44,27 @@ describe('contactReschedule', () => {
     expect(patch.nextFollowUpType).toBe('Mensagem');
   });
 
-  it('limpa o agendamento formal antigo (visita/aula) e o desfecho anterior', () => {
+  // ANTES de 18/08/2026 este patch LIMPAVA o agendamento formal, e o teste
+  // exigia isso. Era o bug: reagendar um contato pela Meta apagava a visita ou
+  // aula que o lead tinha marcada. Contato e compromisso são coisas separadas —
+  // o contato mexe só no nextFollowUp.
+  it('NÃO encosta no compromisso formal nem no desfecho dele', () => {
     const patch = contactReschedule({}, '2026-08-01');
-    expect(patch).toMatchObject({
-      appointmentScheduledFor: null,
-      appointmentType: null,
-      appointmentOutcome: null,
-      appointmentOutcomeAt: null,
-      appointmentOutcomeBy: null
-    });
+    expect(patch).not.toHaveProperty('appointmentScheduledFor');
+    expect(patch).not.toHaveProperty('appointmentType');
+    expect(patch).not.toHaveProperty('appointmentOutcome');
+    expect(patch).not.toHaveProperty('appointmentOutcomeAt');
+    expect(patch).not.toHaveProperty('appointmentOutcomeBy');
+  });
+
+  it('reagendar contato preserva a aula marcada do lead', () => {
+    const aula = new Date(2026, 7, 20, 18, 0);
+    const lead = { appointmentType: 'aula_experimental', appointmentScheduledFor: aula };
+    const patch = contactReschedule(lead, '2026-08-15');
+    // O patch é aplicado por cima do lead: o que ele não menciona, sobrevive.
+    const depois = { ...lead, ...patch };
+    expect(depois.appointmentType).toBe('aula_experimental');
+    expect(depois.appointmentScheduledFor).toBe(aula);
   });
 
   it('NÃO toca status/funil', () => {
