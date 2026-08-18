@@ -33,7 +33,10 @@
 //   node scripts/backfill-appointments.js [--tenant=stronix-crm-app] [--commit]
 //
 // Flags:
-//   --tenant=<id>   tenant a migrar (default "stronix-crm-app", dados do Johnny)
+//   --tenant=<id>   UMA academia (default "stronix-crm-app", dados do Johnny)
+//   --all-tenants   TODAS as academias da coleção `tenants` (recomendado: o
+//                   Stronilead é multi-tenant e o PR da virada zeraria o
+//                   compromisso de quem ficasse sem registro)
 //   --commit        grava de verdade (default: DRY-RUN — só conta e loga amostra)
 //
 // Ver plano em docs/superpowers/plans/2026-08-18-agendamentos-separados-pr1.md (Task 5).
@@ -75,14 +78,16 @@ const AULAS_PATH = 'stronix_aulas';
 function parseArgs(argv) {
   let tenant = 'stronix-crm-app';
   let commit = false;
+  let allTenants = false;
   for (const a of argv) {
     if (a === '--commit') commit = true;
+    else if (a === '--all-tenants') allTenants = true;
     else if (a.startsWith('--tenant=')) tenant = a.slice('--tenant='.length);
   }
-  return { tenant, commit };
+  return { tenant, commit, allTenants };
 }
 
-const { tenant, commit } = parseArgs(process.argv.slice(2));
+const { tenant, commit, allTenants } = parseArgs(process.argv.slice(2));
 
 const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const clientEmail = process.env.FIREBASE_ADMIN_CLIENT_EMAIL;
@@ -108,9 +113,10 @@ if (!admin.apps.length) {
 }
 
 const db = admin.firestore();
-const dataDoc = db.collection('artifacts').doc(tenant).collection('public').doc('data');
-const leadsCol = dataDoc.collection(LEADS_PATH);
-const aulasCol = dataDoc.collection(AULAS_PATH);
+
+const dataDoc = (tenantId) => db.collection('artifacts').doc(tenantId).collection('public').doc('data');
+const leadsColOf = (tenantId) => dataDoc(tenantId).collection(LEADS_PATH);
+const aulasColOf = (tenantId) => dataDoc(tenantId).collection(AULAS_PATH);
 
 // Milissegundos de um valor que pode ser Timestamp do Firestore, Date ou string.
 function millisOf(v) {
@@ -161,11 +167,14 @@ function recordTypeOf(appointmentType) {
   return null;
 }
 
-const MAX_SAMPLES = 5;
+const MAX_SAMPLES = 3;
 const BATCH_LIMIT = 400; // Firestore: 500 ops/batch — teto conservador.
 
-async function run() {
-  console.log(`Backfill de agendamentos — tenant="${tenant}" | ${commit ? 'GRAVANDO' : 'DRY-RUN (não grava)'}`);
+// Uma academia. Devolve os contadores para o total geral.
+async function runForTenant(tenantId) {
+  const aulasCol = aulasColOf(tenantId);
+  const leadsCol = leadsColOf(tenantId);
+  console.log(`\n=== tenant "${tenantId}" ===`);
 
   let batch = commit ? db.batch() : null;
   let pendingOps = 0;
@@ -176,14 +185,10 @@ async function run() {
     pendingOps = 0;
   };
 
-  // -------------------------------------------------------------------------
-  // Passada 1 — carimbo do `type` e índice das visitas que já existem
-  // -------------------------------------------------------------------------
-  console.log('Passada 1: varrendo stronix_aulas...');
+  // Passada 1 — carimbo do `type` e índice dos registros que já existem.
   let aulasScanned = 0;
   let stamped = 0;
   const existingRecords = new Set();
-  const stampSamples = [];
 
   for await (const doc of aulasCol.stream()) {
     aulasScanned++;
@@ -191,9 +196,6 @@ async function run() {
 
     if (rec.type === undefined) {
       stamped++;
-      if (stampSamples.length < MAX_SAMPLES) {
-        stampSamples.push(`  [${commit ? 'GRAVAR' : 'DRY'}] aula=${doc.id} lead=${rec.leadId || '—'} status=${rec.status || '—'}`);
-      }
       if (commit) {
         batch.update(doc.ref, { type: APPOINTMENT_RECORD_TYPES.AULA });
         pendingOps++;
@@ -206,17 +208,12 @@ async function run() {
       existingRecords.add(recordKey(t, rec.leadId, rec.scheduledFor));
     }
   }
-  console.log(stampSamples.join('\n'));
-  console.log(`  Docs varridos: ${aulasScanned} | sem \`type\` (a carimbar como aula): ${stamped} | registros já indexados: ${existingRecords.size}.`);
 
-  // -------------------------------------------------------------------------
-  // Passada 2 — visitas do espelho do lead que ainda não têm registro
-  // -------------------------------------------------------------------------
-  console.log('Passada 2: varrendo leads...');
+  // Passada 2 — compromissos do espelho que ainda não têm registro.
   let leadsScanned = 0;
   const created = { visita: 0, aula: 0 };
   let skipped = 0;
-  const createSamples = [];
+  const samples = [];
 
   for await (const doc of leadsCol.stream()) {
     leadsScanned++;
@@ -233,8 +230,8 @@ async function run() {
 
     created[type]++;
     const record = buildRecord(type, doc.id, lead);
-    if (createSamples.length < MAX_SAMPLES) {
-      createSamples.push(`  [${commit ? 'GRAVAR' : 'DRY'}] ${type} lead=${doc.id} (${record.leadName || '—'}) status=${record.status}`);
+    if (samples.length < MAX_SAMPLES) {
+      samples.push(`    [${commit ? 'GRAVAR' : 'DRY'}] ${type} lead=${doc.id} status=${record.status}`);
     }
 
     if (commit) {
@@ -242,26 +239,53 @@ async function run() {
       pendingOps++;
       await flushIfFull();
     }
-
-    // Marca na memória para o caso raro de dois leads com o mesmo id no stream.
     existingRecords.add(key);
-
-    if (leadsScanned % 500 === 0) console.log(`  ...${leadsScanned} leads varridos (${created.visita + created.aula} registros a criar até aqui)`);
   }
 
   if (commit && pendingOps > 0) await batch.commit();
 
-  console.log(createSamples.join('\n'));
-  console.log('');
-  console.log('Resumo:');
-  console.log(`  Docs de stronix_aulas carimbados com type='aula': ${stamped}`);
-  console.log(`  Visitas criadas: ${created.visita}`);
-  console.log(`  AULAS criadas (lead tinha aula no espelho e nenhum registro): ${created.aula}`);
-  console.log(`  Leads pulados (já tinham registro): ${skipped}`);
-  console.log(`  Leads varridos: ${leadsScanned}`);
+  if (samples.length) console.log(samples.join('\n'));
+  console.log(`  docs de aulas: ${aulasScanned} | carimbados: ${stamped}`);
+  console.log(`  leads: ${leadsScanned} | visitas a criar: ${created.visita} | aulas a criar: ${created.aula} | já tinham registro: ${skipped}`);
+
+  return { stamped, visitas: created.visita, aulas: created.aula, skipped, leads: leadsScanned };
+}
+
+async function listTenantIds() {
+  const snap = await db.collection('tenants').get();
+  return snap.docs.map((d) => ({ id: d.id, status: d.data().status || '—' }));
+}
+
+async function main() {
+  console.log(`Backfill de agendamentos | ${commit ? 'GRAVANDO' : 'DRY-RUN (não grava)'}`);
+
+  let targets;
+  if (allTenants) {
+    const list = await listTenantIds();
+    console.log(`Academias encontradas: ${list.length}`);
+    for (const t of list) console.log(`  - ${t.id} (status=${t.status})`);
+    targets = list.map((t) => t.id);
+  } else {
+    console.log(`Academia única: ${tenant}. Use --all-tenants para cobrir todas.`);
+    targets = [tenant];
+  }
+
+  const total = { stamped: 0, visitas: 0, aulas: 0, skipped: 0, leads: 0 };
+  for (const t of targets) {
+    const r = await runForTenant(t);
+    for (const k of Object.keys(total)) total[k] += r[k];
+  }
+
+  console.log('\n=== TOTAL GERAL ===');
+  console.log(`  Academias processadas: ${targets.length}`);
+  console.log(`  Docs carimbados com type='aula': ${total.stamped}`);
+  console.log(`  Visitas criadas: ${total.visitas}`);
+  console.log(`  Aulas criadas (espelho sem registro): ${total.aulas}`);
+  console.log(`  Leads que já tinham registro: ${total.skipped}`);
+  console.log(`  Leads varridos: ${total.leads}`);
   console.log(commit
     ? 'Concluído.'
     : 'DRY-RUN: nada foi gravado. Rode de novo com --commit para gravar.');
 }
 
-run().then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });
+main().then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });
