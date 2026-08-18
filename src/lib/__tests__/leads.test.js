@@ -21,7 +21,8 @@ import {
   getLeadConversionDate,
   getLeadConversionDateStrict,
   outcomeAppliesToAula,
-  DAILY_GOAL_CATEGORIES
+  DAILY_GOAL_CATEGORIES,
+  contactOwnerId,
 } from '../leads.js';
 
 // 15 de julho de 2026 — dia de referência dos testes.
@@ -407,5 +408,18 @@ describe('outcomeAppliesToAula', () => {
     expect(outcomeAppliesToAula(null)).toBe(false);
     expect(outcomeAppliesToAula(undefined)).toBe(false);
     expect(outcomeAppliesToAula('qualquer_coisa')).toBe(false);
+  });
+});
+
+describe('contactOwnerId', () => {
+  it('sem campo, a tarefa é do dono do lead', () => {
+    expect(contactOwnerId({ consultantId: 'u1' })).toBe('u1');
+  });
+  it('com campo, a tarefa é de quem foi escolhido', () => {
+    expect(contactOwnerId({ consultantId: 'u1', nextFollowUpOwnerId: 'u2' })).toBe('u2');
+  });
+  it('lead sem consultor e sem escolha devolve null', () => {
+    expect(contactOwnerId({})).toBeNull();
+    expect(contactOwnerId(null)).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import {
   hasGoalDoneToday,
   isLeadResolvedToday,
   hasActiveInteractionToday,
+  contactOwnerId
 } from './leads.js';
 import { normalizeAppointmentType } from './dates.js';
 import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
@@ -294,6 +295,12 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   const nowRef = new Date();
 
   const myLeads = (leads || []).filter(l => l.consultantId === consultantId);
+  // Contato DELEGADO: lead de OUTRO consultor cuja tarefa de contato foi
+  // atribuída a mim. Fica FORA de myLeads de propósito — delegar um contato não
+  // arrasta visita, aula, atrasado nem novo 24h do lead (spec, decisão 3).
+  const delegatedContactLeads = (leads || []).filter(
+    l => l.consultantId !== consultantId && l.nextFollowUpOwnerId === consultantId
+  );
   const allTargetLeadsMap = new Map();
   const leadInteractions = (id) => interactionsByLead.get(id) || [];
 
@@ -325,6 +332,21 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
       entry.categorySlugs.push(categorySlug);
       entry.categoryStatus[categorySlug] = isCategoryDone(lead, categorySlug);
     }
+  };
+
+  // Categoria 5 — Contato Hoje. Extraída porque roda em DOIS conjuntos: os leads
+  // do consultor e os contatos delegados a ele por colegas.
+  const addContactTodayIfDue = (lead) => {
+    // Dono da TAREFA, que pode não ser o dono do lead.
+    if (contactOwnerId(lead) !== consultantId) return;
+    if (lead.status === 'Perda') return;
+    // CLIENTE ('Venda' + lifecycleStage) entra: é o contato de renovação
+    // reagendado, mesma exceção de antes da extração.
+    if (lead.status === 'Venda' && lead.lifecycleStage !== 'cliente') return;
+    if (!lead.nextFollowUp || lead.nextFollowUp < todayStart || lead.nextFollowUp > todayEnd) return;
+    // Eco do compromisso: agendar visita/aula também grava nextFollowUp.
+    if (normalizeAppointmentType(lead.nextFollowUpType)) return;
+    addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.contato_hoje, DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
   };
 
   myLeads.forEach(lead => {
@@ -365,39 +387,9 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
       }
     }
 
-    // 5. Contato Hoje — follow-up via Mensagem/Ligação agendado para hoje
-    // (qualquer tipo que NÃO seja visita/aula). Pega WhatsApp + ligações sem
-    // duplicar quem já está nas seções de visita/aula.
-    // CLIENTE (status 'Venda') também entra aqui quando tem um nextFollowUp
-    // de hoje: é o contato de renovação REAGENDADO (o desfecho "Reagendar" da
-    // tarefa de Renovação grava nextFollowUp + marca o marco como tratado, ver
-    // src/lib/renewalGoal.js). Sem esta exceção, o contato reagendado sumiria
-    // (as categorias 1-5 excluem 'Venda'); é a MESMA lógica da Renovação, que
-    // já é a única categoria a surfar clientes.
-    if (
-      (lead.status !== 'Venda' || lead.lifecycleStage === 'cliente') &&
-      lead.status !== 'Perda' &&
-      lead.nextFollowUp &&
-      lead.nextFollowUp >= todayStart &&
-      lead.nextFollowUp <= todayEnd
-    ) {
-      // O critério é o CANAL deste follow-up, lido SÓ do nextFollowUpType.
-      //
-      // Agendar uma visita ou aula também grava nextFollowUp, então sem filtro
-      // todo lead com aula hoje viraria Contato Hoje por tabela. O que separa
-      // um do outro é o canal: 'Mensagem'/'Ligação' é contato de verdade,
-      // 'Visita'/'Aula Experimental' é só o eco do compromisso.
-      //
-      // NÃO usar getLeadAppointmentType aqui: ele também olha o
-      // lead.appointmentType, que desde 18/08/2026 sobrevive ao agendamento de
-      // um contato. Olhar para ele esconderia a mensagem de quem tem aula
-      // marcada — inclusive no caso de aula e mensagem no MESMO dia, que são
-      // duas tarefas reais (atender a aula e mandar a confirmação).
-      const followUpIsAppointmentEcho = Boolean(normalizeAppointmentType(lead.nextFollowUpType));
-      if (!followUpIsAppointmentEcho) {
-        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.contato_hoje, DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
-      }
-    }
+    // 5. Contato Hoje — regra em addContactTodayIfDue (acima), porque ela roda
+    // também sobre os contatos delegados a este consultor por colegas.
+    addContactTodayIfDue(lead);
 
     // 6. Renovação — CLIENTE com um MARCO configurável ativo (ex.: 90/60/30
     // dias antes de vencer) ainda não tratado neste ciclo, OU com um
@@ -424,6 +416,9 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.vencido, DAILY_GOAL_CATEGORIES.VENCIDO);
     }
   });
+
+  // Contatos que colegas delegaram a este consultor: SÓ a categoria 5.
+  delegatedContactLeads.forEach(addContactTodayIfDue);
 
   // Tarefas CONCLUÍDAS hoje continuam visíveis (como FEITAS) mesmo que a ação de
   // conclusão tenha tirado o lead da condição viva da categoria. Ex.: concluir um

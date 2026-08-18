@@ -873,3 +873,37 @@ describe('computeDailyGoalSlots — funil Vencidos', () => {
     expect(found.categoryStatus[DAILY_GOAL_CATEGORIES.VENCIDO]).toBe(true);
   });
 });
+
+describe('contato delegado a outro consultor', () => {
+  const hoje = new Date(2026, 6, 15, 16, 0);
+
+  it('aparece na Meta de quem RECEBEU, mesmo não sendo dono do lead', () => {
+    const l = lead({ consultantId: 'outro', nextFollowUp: hoje, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1' });
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+  });
+
+  it('SOME da Meta do dono do lead quando delegado', () => {
+    const l = lead({ consultantId: 'u1', nextFollowUp: hoje, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'outro' });
+    expect(byId(slots([l]), l.id)).toBeUndefined();
+  });
+
+  it('delegação NÃO arrasta as outras tarefas do lead para quem recebeu', () => {
+    const l = lead({
+      consultantId: 'outro', nextFollowUp: hoje, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1',
+      appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 15, 18, 0),
+      createdAt: new Date(2026, 6, 14, 12, 0),
+    });
+    // A aula de hoje e o novo 24h continuam sendo do dono do lead.
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+  });
+
+  it('sem o campo, a tarefa continua indo para o dono do lead', () => {
+    const l = lead({ consultantId: 'u1', nextFollowUp: hoje, nextFollowUpType: 'Mensagem' });
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+  });
+
+  it('delegar não cria tarefa quando o contato não é de hoje', () => {
+    const l = lead({ consultantId: 'outro', nextFollowUp: new Date(2026, 6, 20, 10, 0), nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1' });
+    expect(byId(slots([l]), l.id)).toBeUndefined();
+  });
+});

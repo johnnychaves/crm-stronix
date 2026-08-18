@@ -236,6 +236,13 @@ export const outcomeAppliesToAula = (categorySlug) =>
 
 export const isAdminUser = (user) => user?.role === 'admin';
 
+// Dono da TAREFA de contato (mensagem/ligação) na Meta Diária. AUSENTE
+// SIGNIFICA O DONO DO LEAD, então lead antigo continua se comportando como
+// antes e não precisa de migração. Só vale para contato: visita e aula não têm
+// dono de tarefa, elas seguem o dono do lead e já aparecem na Agenda do Dia,
+// que é compartilhada.
+export const contactOwnerId = (lead) => lead?.nextFollowUpOwnerId || lead?.consultantId || null;
+
 export const canEditLead = (user, lead) =>
   isAdminUser(user) || (Boolean(lead?.consultantAuthUid) && lead.consultantAuthUid === user?.authUid);
 
