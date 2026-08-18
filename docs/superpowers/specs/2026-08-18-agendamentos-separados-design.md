@@ -105,18 +105,16 @@ Campos que só fazem sentido em aula (`professorId`, `professorName`,
 `soloTraining`, `modality`, `converted`, `convertedAt`) ficam nulos ou `false`
 em visita.
 
-Índice novo em `firestore.indexes.json` (sai por CLI, não é passo manual):
+**Nenhum índice novo** (corrigido em 2026-08-18, durante o detalhamento do PR 1).
+A versão anterior deste spec pedia um índice composto `type` + `scheduledFor`.
+Estava errado e seria perigoso: documento anterior ao backfill não tem o campo
+`type`, e no Firestore `where('type','==','aula')` **exclui documento que não
+tem o campo**. Uma query dessas antes do backfill sumiria com todo o histórico
+de aulas da conversão por professor, sem erro na tela.
 
-```json
-{
-  "collectionGroup": "stronix_aulas",
-  "queryScope": "COLLECTION",
-  "fields": [
-    { "fieldPath": "type", "order": "ASCENDING" },
-    { "fieldPath": "scheduledFor", "order": "ASCENDING" }
-  ]
-}
-```
+O filtro por tipo é **sempre client-side**, via `isAulaRecord`, que trata `type`
+ausente como `'aula'` e funciona antes e depois do backfill. A janela de datas
+já limita o volume lido.
 
 Nenhuma mudança em `firestore.rules`. A regra atual
 (`firestore.rules:184-191`) já cobre a coleção inteira.
@@ -243,7 +241,7 @@ O backfill precisa rodar entre o dual-write e a virada, mesmo desenho das PRs
 1. `type` e `unit` em `aulaRecordFields`
 2. Visita passa a gerar registro em `upsertScheduledAula` (dual-write)
 3. `isAulaRecord` e os quatro filtros de contaminação
-4. Índice `type` + `scheduledFor` em `firestore.indexes.json`
+4. Sem índice novo: o filtro por tipo é client-side (ver Modelo de dados)
 5. `scripts/backfill-appointments.js` escrito, **não rodado**
 
 **Entre os PRs:** backfill roda em produção. Cria registro para todo lead com
