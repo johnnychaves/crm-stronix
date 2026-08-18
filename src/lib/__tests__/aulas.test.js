@@ -23,6 +23,23 @@ describe('pickConvertingAula', () => {
     ];
     expect(pickConvertingAula(aulas).id).toBe('b');
   });
+  it('ignora visita mesmo com data maior (contaminação)', () => {
+    const aulas = [
+      { id: 'aula', type: 'aula', status: 'attended', scheduledFor: d('2026-07-01') },
+      { id: 'visita', type: 'visita', status: 'attended', scheduledFor: d('2026-07-20') },
+    ];
+    expect(pickConvertingAula(aulas).id).toBe('aula');
+  });
+  it('só visitas atendidas devolve null', () => {
+    expect(pickConvertingAula([
+      { id: 'v', type: 'visita', status: 'attended', scheduledFor: d('2026-07-20') },
+    ])).toBeNull();
+  });
+  it('documento histórico sem type continua valendo como aula', () => {
+    expect(pickConvertingAula([
+      { id: 'legado', status: 'attended', scheduledFor: d('2026-07-01') },
+    ]).id).toBe('legado');
+  });
   it('ignora não-atendidas e retorna null se nenhuma foi atendida', () => {
     expect(pickConvertingAula([{ id: 'x', status: 'agendada', scheduledFor: d('2026-07-01') }])).toBeNull();
     expect(pickConvertingAula([])).toBeNull();

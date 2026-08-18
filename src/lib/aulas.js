@@ -27,7 +27,9 @@ export function outcomeToAulaStatus(outcome) {
 // A aula que leva o crédito da conversão: a atendida de maior scheduledFor.
 // null se nenhuma foi atendida.
 export function pickConvertingAula(aulas) {
-  const attended = (aulas || []).filter((a) => a && a.status === AULA_STATUS.ATTENDED);
+  // isAulaRecord: visita mora na mesma coleção desde a separação de agendamentos
+  // e NÃO pode levar o crédito da conversão nem carimbar carteira de professor.
+  const attended = (aulas || []).filter((a) => a && isAulaRecord(a) && a.status === AULA_STATUS.ATTENDED);
   if (!attended.length) return null;
   return attended.reduce((best, a) => {
     const ad = getSafeDateOrNull(a.scheduledFor);
