@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AULA_STATUS, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields } from '../aulas.js';
+import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields } from '../aulas.js';
 
 describe('outcomeToAulaStatus', () => {
   it('mapeia os desfechos que resolvem a aula', () => {
@@ -22,6 +22,23 @@ describe('pickConvertingAula', () => {
       { id: 'c', status: 'no_show',  scheduledFor: d('2026-07-20') },
     ];
     expect(pickConvertingAula(aulas).id).toBe('b');
+  });
+  it('ignora visita mesmo com data maior (contaminação)', () => {
+    const aulas = [
+      { id: 'aula', type: 'aula', status: 'attended', scheduledFor: d('2026-07-01') },
+      { id: 'visita', type: 'visita', status: 'attended', scheduledFor: d('2026-07-20') },
+    ];
+    expect(pickConvertingAula(aulas).id).toBe('aula');
+  });
+  it('só visitas atendidas devolve null', () => {
+    expect(pickConvertingAula([
+      { id: 'v', type: 'visita', status: 'attended', scheduledFor: d('2026-07-20') },
+    ])).toBeNull();
+  });
+  it('documento histórico sem type continua valendo como aula', () => {
+    expect(pickConvertingAula([
+      { id: 'legado', status: 'attended', scheduledFor: d('2026-07-01') },
+    ]).id).toBe('legado');
   });
   it('ignora não-atendidas e retorna null se nenhuma foi atendida', () => {
     expect(pickConvertingAula([{ id: 'x', status: 'agendada', scheduledFor: d('2026-07-01') }])).toBeNull();
@@ -47,5 +64,35 @@ describe('aulaRecordFields', () => {
     expect(r.professorId).toBeNull();
     expect(r.soloTraining).toBe(true);
     expect(r.status).toBe('agendada'); // default
+  });
+});
+
+describe('isAulaRecord', () => {
+  it('type ausente conta como aula (documento histórico)', () => {
+    expect(isAulaRecord({ id: 'a', status: 'attended' })).toBe(true);
+  });
+  it('type explícito decide', () => {
+    expect(isAulaRecord({ type: 'aula' })).toBe(true);
+    expect(isAulaRecord({ type: 'visita' })).toBe(false);
+  });
+  it('null/undefined não quebra', () => {
+    expect(isAulaRecord(null)).toBe(true);
+    expect(isAulaRecord(undefined)).toBe(true);
+  });
+});
+
+describe('aulaRecordFields — type e unit', () => {
+  it('sem type explícito, nasce aula com unit nula', () => {
+    const r = aulaRecordFields({ leadId: 'l1' });
+    expect(r.type).toBe('aula');
+    expect(r.unit).toBeNull();
+  });
+  it('visita guarda a unidade', () => {
+    const r = aulaRecordFields({ leadId: 'l1', type: 'visita', unit: 'Centro' });
+    expect(r.type).toBe('visita');
+    expect(r.unit).toBe('Centro');
+  });
+  it('type inválido cai para aula', () => {
+    expect(aulaRecordFields({ leadId: 'l1', type: 'mensagem' }).type).toBe('aula');
   });
 });

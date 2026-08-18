@@ -4,6 +4,17 @@ import { getSafeDateOrNull } from './dates.js';
 
 export const AULA_STATUS = { AGENDADA: 'agendada', ATTENDED: 'attended', NO_SHOW: 'no_show', CANCELLED: 'cancelled' };
 
+// Tipo do registro de agendamento. `stronix_aulas` guardava só aulas; desde a
+// separação entre agendamento e próximo contato ela guarda visitas também.
+// AUSENTE SIGNIFICA 'aula': todo documento anterior à mudança continua valendo
+// sem ser tocado. Por isso o filtro é sempre client-side (isAulaRecord) e nunca
+// um where('type','==','aula'), que no Firestore EXCLUI doc sem o campo — uma
+// query dessas antes do backfill sumiria com todo o histórico de aulas.
+export const APPOINTMENT_RECORD_TYPES = { AULA: 'aula', VISITA: 'visita' };
+
+export const isAulaRecord = (rec) =>
+  (rec?.type ?? APPOINTMENT_RECORD_TYPES.AULA) !== APPOINTMENT_RECORD_TYPES.VISITA;
+
 // Desfecho do agendamento (appointmentOutcome) -> status da aula. 'rescheduled'
 // não resolve a aula (o reagendamento move a aula, não a fecha).
 export function outcomeToAulaStatus(outcome) {
@@ -16,7 +27,9 @@ export function outcomeToAulaStatus(outcome) {
 // A aula que leva o crédito da conversão: a atendida de maior scheduledFor.
 // null se nenhuma foi atendida.
 export function pickConvertingAula(aulas) {
-  const attended = (aulas || []).filter((a) => a && a.status === AULA_STATUS.ATTENDED);
+  // isAulaRecord: visita mora na mesma coleção desde a separação de agendamentos
+  // e NÃO pode levar o crédito da conversão nem carimbar carteira de professor.
+  const attended = (aulas || []).filter((a) => a && isAulaRecord(a) && a.status === AULA_STATUS.ATTENDED);
   if (!attended.length) return null;
   return attended.reduce((best, a) => {
     const ad = getSafeDateOrNull(a.scheduledFor);
@@ -34,8 +47,15 @@ export function aulaRecordFields({
   modality = null, scheduledFor = null, status = AULA_STATUS.AGENDADA, outcomeAt = null,
   converted = false, convertedAt = null,
   consultantId = null, consultantAuthUid = null, consultantName = null,
+  type = APPOINTMENT_RECORD_TYPES.AULA, unit = null,
 } = {}) {
   return {
+    // Qualquer valor fora de 'visita' vira 'aula': registro nasce aula por
+    // padrão e tipo desconhecido não pode criar uma terceira categoria muda.
+    type: type === APPOINTMENT_RECORD_TYPES.VISITA
+      ? APPOINTMENT_RECORD_TYPES.VISITA
+      : APPOINTMENT_RECORD_TYPES.AULA,
+    unit: unit || null,
     leadId: leadId || null,
     leadName: leadName || null,
     professorId: professorId || null,

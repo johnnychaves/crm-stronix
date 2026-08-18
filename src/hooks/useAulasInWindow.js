@@ -13,6 +13,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { appId, AULAS_PATH } from '../lib/firebase.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
+import { isAulaRecord } from '../lib/aulas.js';
 
 // useAulasInWindow({ db, startMs, endMs, enabled })
 //   startMs, endMs : limites da janela (ms) aplicados a `scheduledFor`
@@ -47,15 +48,20 @@ export function useAulasInWindow({ db, startMs, endMs, enabled = true }) {
       // antes do getDocs anterior resolver).
       if (reqId !== reqIdRef.current) return;
       setAulas(
-        snap.docs.map((d) => {
-          const data = d.data();
-          return {
-            id: d.id,
-            ...data,
-            scheduledFor: getSafeDateOrNull(data.scheduledFor),
-            convertedAt: getSafeDateOrNull(data.convertedAt)
-          };
-        })
+        snap.docs
+          // Visita mora na mesma coleção. O filtro é CLIENT-SIDE de propósito:
+          // where('type','==','aula') excluiria os documentos anteriores ao
+          // backfill, que não têm o campo, e o Gerencial perderia histórico.
+          .filter((d) => isAulaRecord(d.data()))
+          .map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              ...data,
+              scheduledFor: getSafeDateOrNull(data.scheduledFor),
+              convertedAt: getSafeDateOrNull(data.convertedAt)
+            };
+          })
       );
     } catch (e) {
       if (reqId !== reqIdRef.current) return;
