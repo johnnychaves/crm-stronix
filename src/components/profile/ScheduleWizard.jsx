@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { BookOpen, Building2, Calendar, Check, Clock, Dumbbell, GraduationCap, MessageCircle, Phone, RefreshCw } from 'lucide-react';
+import { BookOpen, Building2, Calendar, Check, Clock, Dumbbell, GraduationCap, MessageCircle, Phone, RefreshCw, UserRound } from 'lucide-react';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../../lib/professores.js';
 import { Btn } from '../ui/Btn.jsx';
@@ -39,11 +39,17 @@ const WZ_TYPES = [
 // Mensagem e ligação são CONTATO: só elas têm dono de tarefa escolhível.
 const isContactType = (typeId) => typeId === 'mensagem' || typeId === 'ligacao';
 
+// Sentinela da etapa "Responsável": manter a tarefa com o dono do lead. Precisa
+// ser um valor NÃO VAZIO, senão o wizard trata a etapa como não cumprida
+// (firstIncomplete testa null e string vazia).
+const WZ_OWNER_LEAD = '__lead__';
+
 const WZ_STEP_INFO = {
   modalidade: { title:'Modalidade',       hint:'Qual treino o lead vai experimentar?' },
   professor:  { title:'Professor',        hint:'Quem vai acompanhar a aula?' },
   quantidade: { title:'Quantas aulas',    hint:'O que foi combinado com o aluno.' },
   unidade:    { title:'Unidade',          hint:'Onde a visita vai acontecer?' },
+  responsavel:{ title:'Responsável',      hint:'Quem vai fazer esse contato?' },
   datahora:   { title:'Dia e horário',    hint:'Quando vai ser?' },
 };
 
@@ -143,7 +149,7 @@ const WzStepDot = ({ state, n, color = 'brand' }) => {
   return <span className="w-7 h-7 rounded-full grid place-items-center bg-slate-100 dark:bg-white/[0.05] text-slate-400 dark:text-slate-500 text-[12px] font-bold num shrink-0">{n}</span>;
 };
 
-const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions, professores }) => {
+const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions, professores, ownerOptions, leadOwnerName }) => {
   // Dias da Meta Diária (ex.: [1,2,3,4,5] = seg–sex) filtram os cards rápidos de dia.
   const { metaWeekdays } = useGeneralConfig();
   // Horário por-card do passo "Dia e horário" (off → 'HH:MM'); fallback no default.
@@ -205,6 +211,22 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
           {units.map((u, i) => (
             <WzOptionCard key={u.id} index={i} Icon={Building2} label={u.name} hint={u.address}
               color={color} selected={values.unidade===u.name} onClick={()=>set('unidade', u.name)}/>
+          ))}
+        </div>
+      );
+    case 'responsavel':
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <WzOptionCard index={0} Icon={UserRound}
+            label={leadOwnerName ? `Responsável pelo lead (${leadOwnerName})` : 'Responsável pelo lead'}
+            hint="Mantém a tarefa com quem já cuida do lead"
+            color={color} selected={values.responsavel === WZ_OWNER_LEAD}
+            onClick={() => set('responsavel', WZ_OWNER_LEAD)}/>
+          {(ownerOptions || []).map((u, i) => (
+            <WzOptionCard key={u.id} index={i + 1} Icon={UserRound} label={u.name}
+              hint="A tarefa vai para a Meta Diária dessa pessoa"
+              color={color} selected={values.responsavel === u.id}
+              onClick={() => set('responsavel', u.id)}/>
           ))}
         </div>
       );
@@ -279,7 +301,7 @@ const WzStepBody = ({ stepId, values, set, color, modalities, units, qtyOptions,
   }
 };
 
-function wzSummary(stepId, values, professores) {
+function wzSummary(stepId, values, professores, ownerOptions) {
   switch (stepId) {
     case 'modalidade': return values.modalidade || null;
     case 'professor':
@@ -287,13 +309,17 @@ function wzSummary(stepId, values, professores) {
       return values.professor ? (professorNameById(professores, values.professor) || 'Professor selecionado') : null;
     case 'quantidade': return values.quantidade ? `${values.quantidade} ${values.quantidade === 1 ? 'aula' : 'aulas'}` : null;
     case 'unidade':    return values.unidade ? `Unidade ${values.unidade}` : null;
+    case 'responsavel':
+      if (!values.responsavel) return null;
+      if (values.responsavel === WZ_OWNER_LEAD) return 'Responsável pelo lead';
+      return (ownerOptions || []).find(u => u.id === values.responsavel)?.name || 'Outro consultor';
     case 'datahora':   return values.datahora ? wzFmtDateTime(values.datahora) : null;
     default: return null;
   }
 }
 
-const WzStepRow = ({ stepId, n, state, color, values, set, onEdit, isLast, modalities, units, qtyOptions, professores }) => {
-  const info = WZ_STEP_INFO[stepId]; const t = WZ_TONES[color] || WZ_TONES.brand; const summary = wzSummary(stepId, values, professores);
+const WzStepRow = ({ stepId, n, state, color, values, set, onEdit, isLast, modalities, units, qtyOptions, professores, ownerOptions, leadOwnerName }) => {
+  const info = WZ_STEP_INFO[stepId]; const t = WZ_TONES[color] || WZ_TONES.brand; const summary = wzSummary(stepId, values, professores, ownerOptions);
   // 'datahora' é o último passo e nunca colapsa: o resumo já vive no rail lateral,
   // então mantemos o corpo (cards de dia + calendário) sempre aberto p/ o usuário
   // revisar/ajustar o horário. A finalização é só pelo botão "Confirmar".
@@ -324,7 +350,9 @@ const WzStepRow = ({ stepId, n, state, color, values, set, onEdit, isLast, modal
               <div className="text-[14px] font-semibold text-slate-900 dark:text-white">{info.title}</div>
               {info.hint && <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">{info.hint}</div>}
             </div>
-            <WzStepBody stepId={stepId} values={values} set={set} color={color} modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}/>
+            <WzStepBody stepId={stepId} values={values} set={set} color={color}
+              modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}
+              ownerOptions={ownerOptions} leadOwnerName={leadOwnerName}/>
           </div>
         )}
       </div>
@@ -363,17 +391,30 @@ const WzSummaryCard = ({ type, values, complete, professores }) => {
   );
 };
 
-function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [], leadOwnerName = null }) {
+function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [], leadOwnerName = null, leadOwnerId = null }) {
   const { modalities, trialClassOptions, units, professores } = useGeneralConfig();
   const [typeId, setTypeId] = useState(null);
   const [values, setValues] = useState({});
   const [editing, setEditing] = useState(null);
   const [note, setNote] = useState('');
-  // Dono da TAREFA de contato. '' significa o dono do lead (padrão).
-  const [ownerId, setOwnerId] = useState('');
 
   const type = WZ_TYPES.find(t => t.id === typeId) || null;
-  const flow = useMemo(() => (type ? type.flow : []), [type]);
+
+  // Candidatos a receber a tarefa, SEM o dono do lead: ele já é a primeira opção
+  // da etapa ("Responsável pelo lead"), e listar o nome dele duas vezes confunde.
+  const ownerOptions = useMemo(
+    () => (usersList || []).filter(u => u?.id && u.name && u.id !== leadOwnerId),
+    [usersList, leadOwnerId]
+  );
+
+  // A etapa "Responsável" só entra no fluxo em mensagem/ligação E quando há
+  // alguém para escolher além do dono do lead. Sem candidato, a etapa seria um
+  // clique obrigatório com uma opção só.
+  const flow = useMemo(() => {
+    if (!type) return [];
+    if (isContactType(type.id) && ownerOptions.length > 0) return ['responsavel', ...type.flow];
+    return type.flow;
+  }, [type, ownerOptions]);
   const color = type ? type.color : 'brand';
   const qtyOptions = (trialClassOptions && trialClassOptions.length ? trialClassOptions : [1]);
 
@@ -412,6 +453,7 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
 
   const handleConfirm = () => {
     if (!complete || !type) return;
+    const escolhido = values.responsavel && values.responsavel !== WZ_OWNER_LEAD ? values.responsavel : null;
     onConfirm({
       typeId: type.id,
       typeLabel: type.followUpLabel,
@@ -423,12 +465,10 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
       unidade: type.id === 'visita' ? (values.unidade || null) : null,
       note: note.trim(),
       // Só contato tem dono de tarefa; visita e aula seguem o dono do lead.
-      contactOwnerId: isContactType(type.id) ? (ownerId || null) : null,
-      contactOwnerName: isContactType(type.id) && ownerId
-        ? (usersList.find(u => u.id === ownerId)?.name || null)
-        : null,
+      // A sentinela WZ_OWNER_LEAD vira null: null significa "o dono do lead".
+      contactOwnerId: escolhido,
+      contactOwnerName: escolhido ? (ownerOptions.find(u => u.id === escolhido)?.name || null) : null,
     });
-    setOwnerId('');
     resetAll();
   };
 
@@ -472,22 +512,12 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
         {flow.map((stepId, i) => (
           <WzStepRow key={stepId} stepId={stepId} n={i+2} state={stepState(stepId)} color={color}
             values={values} set={setVal} onEdit={()=>setEditing(stepId)} isLast={i === flow.length - 1}
-            modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}/>
+            modalities={modalities} units={units} qtyOptions={qtyOptions} professores={professores}
+            ownerOptions={ownerOptions} leadOwnerName={leadOwnerName}/>
         ))}
 
         {type && (
           <div className="mt-5 pt-5 border-t border-slate-100 dark:border-white/[0.06] step-reveal">
-            {isContactType(type.id) && usersList.length > 0 && (
-              <div className="mb-4">
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Tarefa para</div>
-                <select value={ownerId} onChange={e=>setOwnerId(e.target.value)}
-                  className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-slate-300 dark:focus:border-white/15 outline-none text-[13px] p-3 transition">
-                  <option value="">{leadOwnerName ? `Responsável pelo lead (${leadOwnerName})` : 'Responsável pelo lead'}</option>
-                  {usersList.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-                </select>
-                <p className="mt-1.5 text-[11px] text-slate-400">Escolher outra pessoa move a tarefa para a Meta Diária dela.</p>
-              </div>
-            )}
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Anotação (opcional)</div>
             <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2}
               placeholder="O que precisa ser tratado nesse contato?"

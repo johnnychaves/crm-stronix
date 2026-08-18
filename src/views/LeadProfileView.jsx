@@ -784,7 +784,8 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
             {composerTab === 'schedule' && (
               <ScheduleWizard onConfirm={handleWizardConfirm} onCancel={resetComposer} submitting={loading}
-                usersList={activeUsers} leadOwnerName={lead.consultantName || null} />
+                usersList={activeUsers} leadOwnerName={lead.consultantName || null}
+                leadOwnerId={lead.consultantId || null} />
             )}
 
             {composerTab !== 'schedule' && composerTab !== 'status' && (
