@@ -1,4 +1,18 @@
-import { isClientLead } from './leads.js';
+import { isAdminUser, isClientLead } from './leads.js';
+
+// Base do Kanban por PAPEL.
+//
+// Admin vê a academia inteira. Consultor vê SÓ os próprios leads — que é o que o
+// código já assumia (a seção "Responsável" do filtro é escondida para não-admin
+// justamente por isso, ver KanbanView), mas que nunca acontecia: a tela recebia
+// a assinatura global e o consultor enxergava o pipeline de todo mundo.
+//
+// O filtro de lifecycleBucket é OBRIGATÓRIO aqui: a query de leads do consultor
+// é só por consultantId, sem recorte de ciclo de vida, então ela traz cliente
+// matriculado e lead perdido junto. O Kanban não filtra isso sozinho — ele
+// confia que o que chega já é ativo.
+export const kanbanLeadsFor = (user, allLeads, ownLeads) =>
+  isAdminUser(user) ? (allLeads || []) : (ownLeads || []).filter(l => l?.lifecycleBucket === 'ativo');
 
 // --- KANBAN: recorte do board ---
 // Clientes (matriculados) e leads 'Venda' legados saem do Kanban — vivem na
