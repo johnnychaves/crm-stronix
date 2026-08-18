@@ -2,7 +2,7 @@
 // das escritas existentes do lead. Consultas por campo único (índice automático).
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, AULAS_PATH, LEADS_PATH } from './firebase.js';
-import { AULA_STATUS, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields } from './aulas.js';
+import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields } from './aulas.js';
 
 const aulasCol = (db) => collection(db, 'artifacts', appId, 'public', 'data', AULAS_PATH);
 const aulaDoc = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', AULAS_PATH, id);
@@ -105,6 +105,10 @@ export async function unmarkConvertedAula({ db, leadId }) {
   if (!leadId) return;
   const snap = await getDocs(query(aulasCol(db), where('leadId', '==', leadId)));
   await Promise.all(
-    snap.docs.filter((d) => d.data().converted).map((d) => updateDoc(aulaDoc(db, d.id), { converted: false, convertedAt: null }))
+    snap.docs
+      // Só aula tem conversão. Redundante hoje (pickConvertingAula já nunca
+      // marca visita) e mantido como segunda trava contra dado legado.
+      .filter((d) => isAulaRecord(d.data()) && d.data().converted)
+      .map((d) => updateDoc(aulaDoc(db, d.id), { converted: false, convertedAt: null }))
   );
 }
