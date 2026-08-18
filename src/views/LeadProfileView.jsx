@@ -16,6 +16,7 @@ import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.j
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
 import { upsertScheduledAula, upsertScheduledAppointment, markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
+import { buildSchedulePatch } from '../lib/schedulePatch.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -482,28 +483,15 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         }
       }
 
-      const up = {
-        nextFollowUp: date,
-        nextFollowUpType: typeLabel,
-        // Observação do agendamento, exibida no card da Meta Diária.
-        nextFollowUpNote: noteStr || null,
-        // Limpa extras de agendamentos anteriores e grava só os do tipo atual.
-        appointmentModality: isAula ? (modalidade || null) : null,
-        appointmentProfessorId: isAula ? (professorId || null) : null,
-        appointmentProfessorName: isAula ? (professorId ? professorNameById(professores, professorId) : null) : null,
-        appointmentSoloTraining: isAula ? Boolean(soloTraining) : false,
-        trialClassesPlanned: isAula ? (quantidade || null) : null,
-        appointmentUnit: isVisita ? (unidade || null) : null,
-        appointmentType: appointmentType || null,
-        appointmentScheduledFor: appointmentType ? date : null,
-        // Compromisso NOVO nasce sem desfecho. Sem isto, o "não veio" do
-        // agendamento anterior ficava colado no lead e a tela de Aulas/Visitas
-        // mostrava o compromisso novo como já resolvido antes da data chegar.
-        appointmentOutcome: null,
-        appointmentOutcomeAt: null,
-        appointmentOutcomeBy: null,
-        currentAulaId
-      };
+      // Patch em src/lib/schedulePatch.js: mensagem e ligação mexem SÓ no
+      // próximo contato; visita e aula mexem no contato E no compromisso. Vive
+      // fora da view porque foi solto aqui dentro que o bug de 18/08/2026
+      // nasceu, sem teste possível.
+      const up = buildSchedulePatch({
+        typeLabel, date, modalidade, professorId,
+        professorName: professorId ? professorNameById(professores, professorId) : null,
+        soloTraining, quantidade, unidade, note: noteStr, currentAulaId,
+      });
 
       await logInteraction(db, lead, appUser,
         {

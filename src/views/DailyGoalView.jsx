@@ -1292,11 +1292,14 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     const volumeKind = isLigacao ? 'ligacao' : 'mensagem';
     const closeTask = flow === 'complete';
     try {
+      // Agendar o próximo CONTATO não encosta no compromisso formal. Até
+      // 18/08/2026 isto zerava appointmentType/appointmentScheduledFor e
+      // apagava a visita ou aula que o lead tinha marcada (mesmo bug do wizard
+      // e do contactReschedule). A categoria "Contato Hoje" da Meta agora
+      // compara a DATA do compromisso, então não há mais conflito a evitar.
       const leadUpdate = {
         nextFollowUp: newDate,
-        nextFollowUpType: followUpTypeLabel,
-        appointmentScheduledFor: null,
-        appointmentType: null
+        nextFollowUpType: followUpTypeLabel
       };
       // No fluxo 'complete' não há desfecho a preservar; em 'after_outcome' o
       // appointmentOutcome ('Compareceu'/'Cancelou') é mantido para o card.
