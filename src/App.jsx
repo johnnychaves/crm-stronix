@@ -55,6 +55,7 @@ import { usePagedLeads } from './hooks/usePagedLeads.js';
 import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
+import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
 import { useProfileLead } from './hooks/useProfileLead.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
@@ -1164,12 +1165,18 @@ useEffect(() => {
   // renewalCandidates repõem os clientes em qualquer marco. Alimenta a Meta
   // pessoal (DailyGoalView), a badge de pendências (dailyGoalPending) e a Meta
   // da equipe (useTeamGoals via gerencialLeads).
+  // Terceira fonte: cliente com contato marcado para hoje. Sem ela, aluno com
+  // contrato longe de vencer não entra na base e o contato marcado com ele some
+  // da Meta em silêncio (a categoria 5 prevê o caso, mas nunca é avaliada
+  // porque o lead não chega a ser carregado).
+  const { clients: clientsContactToday } = useClientsWithContactToday({ db, reloadKey: dayKey, enabled: !!appUser });
   const metaLeads = useMemo(() => {
     const byId = new Map();
     (leads || []).forEach((l) => byId.set(l.id, l));
     (renewalCandidates || []).forEach((c) => { if (!byId.has(c.id)) byId.set(c.id, c); });
+    (clientsContactToday || []).forEach((c) => { if (!byId.has(c.id)) byId.set(c.id, c); });
     return Array.from(byId.values());
-  }, [leads, renewalCandidates]);
+  }, [leads, renewalCandidates, clientsContactToday]);
 
   // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
   const dailyGoalPending = useMemo(() => {

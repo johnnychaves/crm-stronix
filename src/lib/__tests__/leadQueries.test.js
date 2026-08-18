@@ -14,8 +14,7 @@ import {
   adminDashboardWindowSpecs,
   ADMIN_DASHBOARD_WINDOW_FIELDS,
   wonInMonthQuerySpec,
-  renewalWindowMs,
-} from '../leadQueries.js';
+  renewalWindowMs, clientsWithContactTodayQuerySpec } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
 // um PREFIXO do índice (todas ASCENDING, mesmo conjunto) e — havendo orderBy —
@@ -268,5 +267,38 @@ describe('renewalWindowMs', () => {
     const w = renewalWindowMs(NOW, {});
     expect(w.start).toBe(NOW - 1 * DAY);
     expect(w.end).toBe(NOW + 1 * DAY);
+  });
+});
+
+describe('clientsWithContactTodayQuerySpec', () => {
+  const START = new Date(2026, 7, 18, 0, 0, 0).getTime();
+  const END = new Date(2026, 7, 18, 23, 59, 59, 999).getTime();
+
+  it('filtra só CLIENTE, com nextFollowUp dentro do dia', () => {
+    const spec = clientsWithContactTodayQuerySpec(START, END);
+    expect(spec.wheres).toEqual([
+      { field: 'lifecycleBucket', op: '==', value: 'cliente' },
+      { field: 'nextFollowUp', op: '>=', value: new Date(START) },
+      { field: 'nextFollowUp', op: '<=', value: new Date(END) },
+    ]);
+  });
+
+  it('ordena por nextFollowUp e NÃO limita a página', () => {
+    const spec = clientsWithContactTodayQuerySpec(START, END);
+    expect(spec.orderBy).toEqual({ field: 'nextFollowUp', dir: 'asc' });
+    expect(spec.limit).toBeUndefined();
+  });
+
+  // O índice composto precisa existir, senão a query falha em produção com
+  // failed-precondition e a Meta perde os clientes de novo.
+  it('o índice composto está declarado em firestore.indexes.json', async () => {
+    const { default: idx } = await import('../../../firestore.indexes.json', { with: { type: 'json' } });
+    const tem = idx.indexes.some((i) =>
+      i.collectionGroup === 'stronix_leads' &&
+      i.fields.length === 2 &&
+      i.fields[0].fieldPath === 'lifecycleBucket' &&
+      i.fields[1].fieldPath === 'nextFollowUp'
+    );
+    expect(tem).toBe(true);
   });
 });
