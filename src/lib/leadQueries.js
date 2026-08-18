@@ -84,6 +84,24 @@ export const renewalClientsQuerySpec = (startMs, endMs, pageSize = null) => ({
   ...(pageSize ? { limit: pageSize } : {}),
 });
 
+// CLIENTES com contato marcado para HOJE (Meta Diária). Existe porque a base da
+// Meta só carrega cliente que está numa janela de vencimento de contrato
+// (renewalClientsQuerySpec). Aluno com contrato longe de vencer ficava de fora,
+// e o contato marcado com ele sumia da Meta em silêncio — mesmo a categoria
+// "Contato Hoje" tendo uma exceção explícita para cliente.
+//
+// Igualdade num campo + range em outro: precisa do índice composto
+// (lifecycleBucket ASC, nextFollowUp ASC), declarado em firestore.indexes.json.
+// O recorte é pequeno por natureza: só quem tem toque marcado para hoje.
+export const clientsWithContactTodayQuerySpec = (startMs, endMs) => ({
+  wheres: [
+    { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },
+    { field: 'nextFollowUp', op: '>=', value: new Date(startMs) },
+    { field: 'nextFollowUp', op: '<=', value: new Date(endMs) },
+  ],
+  orderBy: { field: 'nextFollowUp', dir: 'asc' },
+});
+
 // Dashboard do CONSULTOR (E2a) — todos os leads do próprio consultor, pra as
 // funções de dashboardMetrics fatiarem por janela em memória como já fazem (não
 // reescrever a matemática, só a fonte). Sem orderBy DE PROPÓSITO: as métricas
