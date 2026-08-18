@@ -16,7 +16,8 @@ import { cn } from '@/lib/utils';
 // protótipo; token azul brand-500 do protótipo → brand-600 no app.
 //
 // CONTRATO: onConfirm devolve { typeId, typeLabel, date, modalidade, professorId,
-// soloTraining, quantidade, unidade, note } — consumido por handleWizardConfirm
+// soloTraining, quantidade, unidade, note, contactOwnerId, contactOwnerName } —
+// consumido por handleWizardConfirm
 // na LeadProfileView.
 
 const WZ_TONES = {
@@ -34,6 +35,9 @@ const WZ_TYPES = [
   { id:'visita',   label:'Visita',            followUpLabel:'Visita',            desc:'Conhecer a unidade',     Icon: Building2,     color:'violet',  flow:['unidade','datahora'] },
   { id:'aula',     label:'Aula experimental', followUpLabel:'Aula Experimental', desc:'Treino de experiência',  Icon: BookOpen,      color:'teal',    flow:['modalidade','professor','quantidade','datahora'] },
 ];
+
+// Mensagem e ligação são CONTATO: só elas têm dono de tarefa escolhível.
+const isContactType = (typeId) => typeId === 'mensagem' || typeId === 'ligacao';
 
 const WZ_STEP_INFO = {
   modalidade: { title:'Modalidade',       hint:'Qual treino o lead vai experimentar?' },
@@ -359,12 +363,14 @@ const WzSummaryCard = ({ type, values, complete, professores }) => {
   );
 };
 
-function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
+function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [], leadOwnerName = null }) {
   const { modalities, trialClassOptions, units, professores } = useGeneralConfig();
   const [typeId, setTypeId] = useState(null);
   const [values, setValues] = useState({});
   const [editing, setEditing] = useState(null);
   const [note, setNote] = useState('');
+  // Dono da TAREFA de contato. '' significa o dono do lead (padrão).
+  const [ownerId, setOwnerId] = useState('');
 
   const type = WZ_TYPES.find(t => t.id === typeId) || null;
   const flow = useMemo(() => (type ? type.flow : []), [type]);
@@ -416,7 +422,13 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
       quantidade: type.id === 'aula' ? (values.quantidade || null) : null,
       unidade: type.id === 'visita' ? (values.unidade || null) : null,
       note: note.trim(),
+      // Só contato tem dono de tarefa; visita e aula seguem o dono do lead.
+      contactOwnerId: isContactType(type.id) ? (ownerId || null) : null,
+      contactOwnerName: isContactType(type.id) && ownerId
+        ? (usersList.find(u => u.id === ownerId)?.name || null)
+        : null,
     });
+    setOwnerId('');
     resetAll();
   };
 
@@ -465,6 +477,17 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false }) {
 
         {type && (
           <div className="mt-5 pt-5 border-t border-slate-100 dark:border-white/[0.06] step-reveal">
+            {isContactType(type.id) && usersList.length > 0 && (
+              <div className="mb-4">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Tarefa para</div>
+                <select value={ownerId} onChange={e=>setOwnerId(e.target.value)}
+                  className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-slate-300 dark:focus:border-white/15 outline-none text-[13px] p-3 transition">
+                  <option value="">{leadOwnerName ? `Responsável pelo lead (${leadOwnerName})` : 'Responsável pelo lead'}</option>
+                  {usersList.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select>
+                <p className="mt-1.5 text-[11px] text-slate-400">Escolher outra pessoa move a tarefa para a Meta Diária dela.</p>
+              </div>
+            )}
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">Anotação (opcional)</div>
             <textarea value={note} onChange={e=>setNote(e.target.value)} rows={2}
               placeholder="O que precisa ser tratado nesse contato?"

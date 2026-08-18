@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { collection, doc, deleteDoc, getDocs, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH } from '../lib/firebase.js';
 import { logInteraction } from '../lib/interactions.js';
@@ -422,7 +422,14 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // Grava o agendamento montado no ScheduleWizard. Mantém os campos canônicos
   // (nextFollowUp/nextFollowUpType/appointmentType/appointmentScheduledFor) e
   // grava os extras por tipo (modalidade+professor+quantidade p/ aula; unidade p/ visita).
-  const handleWizardConfirm = async ({ typeLabel, date, modalidade, professorId, soloTraining, quantidade, unidade, note: wizNote }) => {
+  // Só usuários ATIVOS podem receber tarefa: delegar para quem saiu da academia
+  // deixaria a tarefa órfã, sem aparecer para ninguém.
+  const activeUsers = useMemo(
+    () => (usersList || []).filter(u => u?.id && u.name && u.active !== false),
+    [usersList]
+  );
+
+  const handleWizardConfirm = async ({ typeLabel, date, modalidade, professorId, soloTraining, quantidade, unidade, note: wizNote, contactOwnerId: wizOwnerId, contactOwnerName: wizOwnerName }) => {
     if (!canTimeline) { toast.warning('Você não tem permissão para agendar neste lead.'); return; }
     if (!(date instanceof Date) || isNaN(date.getTime())) { toast.warning('Selecione o dia e o horário.'); return; }
     setLoading(true);
@@ -444,7 +451,11 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       // agendamento dez→jan aparece na data errada até virar o ano.
       const dateStr = date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       const noteStr = (wizNote || '').trim();
-      const text = `🔔 ${typeLabel} agendada${extra} p/ ${dateStr}.` + (noteStr ? ` Obs: ${noteStr}` : '');
+      // Rastro do dono da TAREFA: quando o contato vai para outra pessoa, só ela
+      // vê a tarefa na Meta (decisão de produto). A nota é como o dono do lead
+      // fica sabendo que alguém marcou um contato no lead dele.
+      const delegado = wizOwnerId && wizOwnerId !== lead.consultantId ? ` · tarefa de ${wizOwnerName || 'outro consultor'}` : '';
+      const text = `🔔 ${typeLabel} agendada${extra} p/ ${dateStr}${delegado}.` + (noteStr ? ` Obs: ${noteStr}` : '');
 
       // Dual-write best-effort no histórico de aulas (stronix_aulas): a regra
       // do Firestore pode ainda não estar publicada, então falha aqui NÃO
@@ -491,6 +502,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         typeLabel, date, modalidade, professorId,
         professorName: professorId ? professorNameById(professores, professorId) : null,
         soloTraining, quantidade, unidade, note: noteStr, currentAulaId,
+        contactOwnerId: wizOwnerId || null, contactOwnerName: wizOwnerName || null,
       });
 
       await logInteraction(db, lead, appUser,
@@ -771,7 +783,8 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
             )}
 
             {composerTab === 'schedule' && (
-              <ScheduleWizard onConfirm={handleWizardConfirm} onCancel={resetComposer} submitting={loading} />
+              <ScheduleWizard onConfirm={handleWizardConfirm} onCancel={resetComposer} submitting={loading}
+                usersList={activeUsers} leadOwnerName={lead.consultantName || null} />
             )}
 
             {composerTab !== 'schedule' && composerTab !== 'status' && (
