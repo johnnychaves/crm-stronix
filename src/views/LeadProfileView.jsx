@@ -15,7 +15,7 @@ import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText } 
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
-import { upsertScheduledAula, markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
+import { upsertScheduledAula, upsertScheduledAppointment, markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -463,6 +463,22 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           });
         } catch (e) {
           console.error('upsertScheduledAula falhou', e);
+        }
+      }
+
+      // Dual-write da VISITA, espelhando o da aula acima. O lead ainda não
+      // guarda ponteiro de visita, então o registro em aberto é achado por
+      // leadId. Best-effort pelo mesmo motivo: falha aqui não pode derrubar o
+      // agendamento do lead.
+      if (isVisita) {
+        try {
+          await upsertScheduledAppointment({
+            db, lead,
+            type: 'visita',
+            fields: { unit: unidade || null, scheduledFor: date },
+          });
+        } catch (e) {
+          console.error('upsertScheduledAppointment (visita) falhou', e);
         }
       }
 

@@ -2,31 +2,36 @@
 // das escritas existentes do lead. Consultas por campo único (índice automático).
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, AULAS_PATH, LEADS_PATH } from './firebase.js';
-import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields } from './aulas.js';
+import { AULA_STATUS, APPOINTMENT_RECORD_TYPES, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields } from './aulas.js';
 
 const aulasCol = (db) => collection(db, 'artifacts', appId, 'public', 'data', AULAS_PATH);
 const aulaDoc = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', AULAS_PATH, id);
 
-// Ao agendar: atualiza o registro atual se ele ainda estiver 'agendada' (só
-// ajuste antes da aula acontecer); senão cria um novo. Devolve o aulaId — o
-// caller grava em lead.currentAulaId.
-export async function upsertScheduledAula({ db, lead, fields }) {
-  const currentId = lead.currentAulaId;
-  const patch = {
-    professorId: fields.professorId || null,
-    professorName: fields.professorName || null,
-    soloTraining: Boolean(fields.soloTraining),
-    modality: fields.modality || null,
-    scheduledFor: fields.scheduledFor || null,
-  };
-  if (currentId) {
-    const snap = await getDoc(aulaDoc(db, currentId));
-    if (snap.exists() && snap.data().status === AULA_STATUS.AGENDADA) {
-      await updateDoc(aulaDoc(db, currentId), patch);
-      return currentId;
-    }
+// Ao agendar: atualiza o registro em aberto se houver (só ajuste antes do
+// compromisso acontecer); senão cria um novo. Devolve o id do registro — no
+// caso de AULA o caller grava em lead.currentAulaId.
+export async function upsertScheduledAppointment({ db, lead, type = APPOINTMENT_RECORD_TYPES.AULA, fields }) {
+  const isVisita = type === APPOINTMENT_RECORD_TYPES.VISITA;
+  const patch = isVisita
+    ? { unit: fields.unit || null, scheduledFor: fields.scheduledFor || null }
+    : {
+        professorId: fields.professorId || null,
+        professorName: fields.professorName || null,
+        soloTraining: Boolean(fields.soloTraining),
+        modality: fields.modality || null,
+        scheduledFor: fields.scheduledFor || null,
+      };
+
+  const openId = isVisita
+    ? await findOpenVisitaId(db, lead.id)
+    : await findOpenAulaId(db, lead.currentAulaId);
+  if (openId) {
+    await updateDoc(aulaDoc(db, openId), patch);
+    return openId;
   }
+
   const record = aulaRecordFields({
+    type,
     leadId: lead.id,
     leadName: lead.name || lead.nome || null,
     consultantId: lead.consultantId || null,
@@ -37,6 +42,27 @@ export async function upsertScheduledAula({ db, lead, fields }) {
   });
   const ref = await addDoc(aulasCol(db), { ...record, createdAt: serverTimestamp() });
   return ref.id;
+}
+
+// Compatibilidade: os chamadores de aula seguem com a assinatura antiga.
+export const upsertScheduledAula = ({ db, lead, fields }) =>
+  upsertScheduledAppointment({ db, lead, type: APPOINTMENT_RECORD_TYPES.AULA, fields });
+
+// Aula: atalho barato pelo ponteiro que já existia no lead.
+async function findOpenAulaId(db, currentId) {
+  if (!currentId) return null;
+  const snap = await getDoc(aulaDoc(db, currentId));
+  return snap.exists() && snap.data().status === AULA_STATUS.AGENDADA ? currentId : null;
+}
+
+// Visita: o lead ainda NÃO guarda ponteiro de visita (só passa a guardar no PR
+// da virada), então o registro em aberto é achado por query em leadId.
+async function findOpenVisitaId(db, leadId) {
+  const snap = await getDocs(query(aulasCol(db), where('leadId', '==', leadId)));
+  const open = snap.docs.find(
+    (d) => !isAulaRecord(d.data()) && d.data().status === AULA_STATUS.AGENDADA
+  );
+  return open ? open.id : null;
 }
 
 // Ao marcar presença: aplica attended/no_show/cancelled no registro atual.
