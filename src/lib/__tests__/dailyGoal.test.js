@@ -140,16 +140,67 @@ describe('computeDailyGoalSlots — categorias', () => {
     expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
   });
 
-  // A outra ponta: quando o compromisso é HOJE, a categoria de visita/aula já
-  // cobre o lead e o contato não pode duplicar a tarefa.
-  it('contato_hoje NÃO duplica quando a aula é hoje', () => {
+  // A supressão existe porque agendar uma AULA também grava nextFollowUp: sem
+  // ela, todo lead com aula hoje apareceria como Contato Hoje por tabela. O
+  // critério é o CANAL do follow-up, não a data: 'Aula Experimental' no
+  // nextFollowUpType é só o eco do compromisso.
+  it('contato_hoje NÃO duplica com o eco da própria aula', () => {
     const l = lead({
       appointmentType: 'aula_experimental',
       appointmentScheduledFor: new Date(2026, 6, 15, 18, 0),
-      nextFollowUp: new Date(2026, 6, 15, 9, 0),
+      nextFollowUp: new Date(2026, 6, 15, 18, 0),
+      nextFollowUpType: 'Aula Experimental',
     });
     expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.AULA_HOJE]);
   });
+
+  // Cenário que o Johnny testou ao vivo em 18/08/2026: aula marcada para hoje
+  // E mensagem de confirmação marcada para hoje. São DUAS tarefas reais — a
+  // aula para atender e a mensagem para mandar — e as duas têm que aparecer.
+  it('aula hoje + mensagem hoje geram as DUAS tarefas', () => {
+    const l = lead({
+      appointmentType: 'aula_experimental',
+      appointmentScheduledFor: new Date(2026, 6, 15, 18, 0),
+      nextFollowUp: new Date(2026, 6, 15, 18, 0),
+      nextFollowUpType: 'Mensagem',
+    });
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([
+      DAILY_GOAL_CATEGORIES.AULA_HOJE,
+      DAILY_GOAL_CATEGORIES.CONTATO_HOJE,
+    ]);
+  });
+
+  it('visita hoje + ligação hoje geram as DUAS tarefas', () => {
+    const l = lead({
+      appointmentType: 'visita',
+      appointmentScheduledFor: new Date(2026, 6, 15, 9, 0),
+      nextFollowUp: new Date(2026, 6, 15, 15, 0),
+      nextFollowUpType: 'Ligação',
+    });
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([
+      DAILY_GOAL_CATEGORIES.VISITA_HOJE,
+      DAILY_GOAL_CATEGORIES.CONTATO_HOJE,
+    ]);
+  });
+
+  it('contato_hoje: aparece mesmo com aula FUTURA marcada no lead', () => {
+    const l = lead({
+      appointmentType: 'aula_experimental',
+      appointmentScheduledFor: new Date(2026, 6, 20, 18, 0), // semana que vem
+      nextFollowUp: new Date(2026, 6, 15, 16, 0),            // mensagem de hoje
+    });
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+  });
+
+  it('contato_hoje: aparece mesmo com visita FUTURA marcada no lead', () => {
+    const l = lead({
+      appointmentType: 'visita',
+      appointmentScheduledFor: new Date(2026, 6, 22, 9, 0),
+      nextFollowUp: new Date(2026, 6, 15, 16, 0),
+    });
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+  });
+
 
   it('um lead pode ocupar mais de uma categoria (uma entrada, vários slugs)', () => {
     // Criado ontem 20:00 (dentro da janela 24h) E com follow-up vencido.

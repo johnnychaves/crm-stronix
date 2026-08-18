@@ -8,6 +8,7 @@ import {
   isLeadResolvedToday,
   hasActiveInteractionToday,
 } from './leads.js';
+import { normalizeAppointmentType } from './dates.js';
 import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
 import { shouldPromptExpired } from './expiredGoal.js';
 
@@ -380,16 +381,20 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
       lead.nextFollowUp >= todayStart &&
       lead.nextFollowUp <= todayEnd
     ) {
-      // Critério é a DATA do compromisso, não o TIPO. Antes da separação entre
-      // agendamento e próximo contato (18/08/2026), agendar uma mensagem apagava
-      // o compromisso do lead, então testar o tipo funcionava por acidente. Com o
-      // compromisso preservado, testar o tipo esconderia a mensagem de quem tem
-      // aula marcada para a semana que vem — justamente o caso que o conserto
-      // veio destravar. Compromisso HOJE já é coberto pelas categorias 3 e 4,
-      // então a comparação por data também evita duplicar a tarefa.
-      const apptDate = getLeadAppointmentDate(lead);
-      const apptIsToday = Boolean(apptDate) && apptDate >= todayStart && apptDate <= todayEnd;
-      if (!apptIsToday) {
+      // O critério é o CANAL deste follow-up, lido SÓ do nextFollowUpType.
+      //
+      // Agendar uma visita ou aula também grava nextFollowUp, então sem filtro
+      // todo lead com aula hoje viraria Contato Hoje por tabela. O que separa
+      // um do outro é o canal: 'Mensagem'/'Ligação' é contato de verdade,
+      // 'Visita'/'Aula Experimental' é só o eco do compromisso.
+      //
+      // NÃO usar getLeadAppointmentType aqui: ele também olha o
+      // lead.appointmentType, que desde 18/08/2026 sobrevive ao agendamento de
+      // um contato. Olhar para ele esconderia a mensagem de quem tem aula
+      // marcada — inclusive no caso de aula e mensagem no MESMO dia, que são
+      // duas tarefas reais (atender a aula e mandar a confirmação).
+      const followUpIsAppointmentEcho = Boolean(normalizeAppointmentType(lead.nextFollowUpType));
+      if (!followUpIsAppointmentEcho) {
         addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.contato_hoje, DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
       }
     }
