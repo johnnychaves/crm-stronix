@@ -6,8 +6,12 @@
 //     "visto" por carimbo de tempo (lastSeenReferralsAt).
 // Sem React, sem Firestore: os leads já vêm da assinatura que o app mantém em
 // memória, então o sino não custa nenhuma leitura nova.
+//
+// Aqui também mora a LEITURA do "já li" (readSeenState), porque ela precisa ser
+// pura: o hook a chama a cada render em vez de congelar o valor no mount.
 
 import { getSafeDateOrNull } from './dates.js';
+import { seenAnnouncementIds } from './announcements.js';
 
 // Janela do feed de indicações. Passou disso, o lead virou trabalho de
 // pipeline, não aviso.
@@ -67,4 +71,45 @@ export function buildNotificationFeed({
     news.filter((n) => n.unread).length + referrals.filter((r) => r.unread).length;
 
   return { news, referrals, unreadCount };
+}
+
+
+// ---------------------------------------------------------------------------
+// "JÁ LI" — leitura
+// ---------------------------------------------------------------------------
+// O carimbo das indicações tem duas moradas: o doc do usuário (viaja entre
+// aparelhos) e o localStorage (reserva para conta antiga cujo id do doc não é o
+// auth uid, em que a regra nega a escrita). Vale sempre o maior dos dois.
+
+const REFERRAL_STAMP_KEY = (uid) => `stronix_seen_referrals_${uid || 'anon'}`;
+
+export function readReferralStamp(uid) {
+  try { return Number(localStorage.getItem(REFERRAL_STAMP_KEY(uid))) || 0; }
+  catch { return 0; }
+}
+
+export function writeReferralStamp(uid, ms) {
+  try { localStorage.setItem(REFERRAL_STAMP_KEY(uid), String(ms)); }
+  catch { /* sem localStorage: fica só o doc do usuário */ }
+}
+
+// O que este usuário já leu. SEM usuário devolve vazio, e é justamente por isso
+// que ela tem de ser chamada de novo quando a sessão chega: no primeiro render
+// do app o appUser ainda é null (a sessão é resolvida depois, no
+// onAuthStateChanged). Guardar este retorno no mount marcava tudo como não lido
+// para sempre, e todo F5 trazia os mesmos avisos de volta.
+export function readSeenState(appUser) {
+  if (!appUser?.id) return { seenIds: [], lastSeenReferralsAt: 0 };
+  return {
+    seenIds: seenAnnouncementIds(appUser),
+    lastSeenReferralsAt: Math.max(
+      Number(appUser.lastSeenReferralsAtMs) || 0,
+      readReferralStamp(appUser.id)
+    )
+  };
+}
+
+// Junta o que está gravado com o que foi marcado agora, nesta sessão.
+export function mergeSeenIds(stored = [], justMarked = []) {
+  return [...new Set([...(stored || []), ...(justMarked || [])])];
 }

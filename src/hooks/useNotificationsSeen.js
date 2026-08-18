@@ -7,33 +7,39 @@
 // no próprio doc, sem publicar nada novo. Contas antigas em que o id do doc não
 // é o auth uid têm a escrita negada — por isso o localStorage fica como reserva
 // e a leitura usa sempre o maior dos dois.
+//
+// A leitura é DERIVADA do appUser a cada render (readSeenState), nunca guardada
+// no mount: quando o app monta, a sessão ainda está sendo resolvida e o appUser
+// é null. Congelar ali era ler o "já li" de ninguém e não reler mais, e por isso
+// os mesmos avisos voltavam como novos a cada F5.
 
-import { useCallback, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { doc, setDoc } from 'firebase/firestore';
 import { appId, USERS_PATH } from '../lib/firebase.js';
-import { ANNOUNCEMENTS, seenAnnouncementIds, markAnnouncementSeen } from '../lib/announcements.js';
+import { ANNOUNCEMENTS, markAnnouncementSeen } from '../lib/announcements.js';
+import { readSeenState, mergeSeenIds, writeReferralStamp } from '../lib/notifications.js';
 
-const LS_KEY = (uid) => `stronix_seen_referrals_${uid || 'anon'}`;
-
-const readLocalStamp = (uid) => {
-  try { return Number(localStorage.getItem(LS_KEY(uid))) || 0; } catch { return 0; }
-};
+const NADA_MARCADO = { uid: null, ids: [], atMs: 0 };
 
 export function useNotificationsSeen({ db, appUser }) {
-  const uid = appUser?.id;
-  const [seenIds, setSeenIds] = useState(() => seenAnnouncementIds(appUser));
-  const [lastSeenReferralsAt, setLastSeenReferralsAt] = useState(
-    () => Math.max(Number(appUser?.lastSeenReferralsAtMs) || 0, readLocalStamp(uid))
-  );
+  // O que foi marcado NESTA sessão. Só serve para a tela reagir na hora do
+  // clique; a persistência de verdade é o localStorage + o doc do usuário, que
+  // o readSeenState relê. Guarda o uid junto para não vazar de um usuário para
+  // o outro quando alguém sai e outro entra na mesma aba.
+  const [marcado, setMarcado] = useState(NADA_MARCADO);
+  const meu = marcado.uid && marcado.uid === appUser?.id ? marcado : NADA_MARCADO;
+
+  const gravado = useMemo(() => readSeenState(appUser), [appUser]);
+  const seenIds = useMemo(() => mergeSeenIds(gravado.seenIds, meu.ids), [gravado.seenIds, meu.ids]);
+  const lastSeenReferralsAt = Math.max(gravado.lastSeenReferralsAt, meu.atMs);
 
   const markAllSeen = useCallback(() => {
     if (!appUser?.id) return;
     ANNOUNCEMENTS.forEach((a) => markAnnouncementSeen(appUser, a.id));
-    setSeenIds(ANNOUNCEMENTS.map((a) => a.id));
 
     const now = Date.now();
-    setLastSeenReferralsAt(now);
-    try { localStorage.setItem(LS_KEY(appUser.id), String(now)); } catch { /* sem localStorage: só o doc */ }
+    writeReferralStamp(appUser.id, now);
+    setMarcado({ uid: appUser.id, ids: ANNOUNCEMENTS.map((a) => a.id), atMs: now });
     // Best-effort: falha (doc legado com id ≠ uid) não pode quebrar o clique.
     if (db) {
       setDoc(
