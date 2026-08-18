@@ -183,6 +183,7 @@ export const WIKI_ARTICLES = [
         'Atrasado: o retorno venceu e ninguém falou com a pessoa.',
         'Agenda do dia: visitas e aulas experimentais marcadas para hoje.',
         'Renovação: clientes que entraram na janela dos marcos configurados.',
+        'Vencidos: cliente cujo contrato venceu e que segue na lista todo dia, enquanto o prazo configurado durar.',
       ] },
 
       { t: 'h', text: 'Concluindo uma tarefa' },
@@ -273,6 +274,7 @@ export const WIKI_ARTICLES = [
 
       { t: 'h', text: 'Os marcos' },
       { t: 'p', text: 'O padrão é 90, 60 e 30 dias antes do contrato vencer, e a academia pode mudar isso em Configurações. Cada marco é uma conversa, não um lembrete repetido: quando você trata um marco, ele não volta.' },
+      { t: 'tip', text: 'Os marcos param no dia do vencimento. Dali em diante o cliente continua sendo cobrado no funil Vencidos, com desfechos próprios.' },
 
       { t: 'h', text: 'Conduzindo' },
       { t: 'steps', items: [
@@ -286,6 +288,37 @@ export const WIKI_ARTICLES = [
       { t: 'h', text: 'Trancar e cancelar' },
       { t: 'p', text: 'A aba Contratos também trata o que foge do fluxo normal: trancar o contrato por um período, cancelar com motivo ou reativar depois. Tudo fica no histórico.' },
       { t: 'warn', text: 'Renovação não recarimba a data de conversão. A matrícula original continua contando no mês em que aconteceu de verdade, para o histórico do consultor não se mexer.' },
+    ],
+  },
+  {
+    id: 'vencidos',
+    category: 'fechamento',
+    title: 'Contrato vencido: quem continua na sua lista',
+    summary: 'Por quantos dias o cliente vencido volta na Meta Diária, o que fazer com ele e onde isso se ajusta.',
+    blocks: [
+      { t: 'p', text: 'A renovação trabalha o cliente antes de o contrato vencer. Do dia do vencimento em diante quem assume é o funil Vencidos, e a pessoa volta na sua lista todo dia enquanto durar o prazo que a academia definiu. É a janela em que ela ainda tem a rotina de treino fresca e é mais fácil de trazer de volta.' },
+
+      { t: 'h', text: 'Quem entra na lista' },
+      { t: 'steps', items: [
+        'Cliente com contrato vencido, a partir do próprio dia do vencimento.',
+        'Que não avisou antes que ia sair. Quem já respondeu "não vou renovar" na fase de renovação fica de fora.',
+        'Que não tem contato marcado para hoje ou para depois. Se tiver, ele aparece em Contatos, para você não receber a mesma pessoa duas vezes.',
+        'Contrato trancado ou cancelado não entra. A lista é de quem chegou ao fim da vigência sem renovar.',
+      ] },
+      { t: 'p', text: 'A ordem é do vencimento mais recente para o mais antigo, porque a chance de trazer alguém de volta cai a cada dia fora. O card mostra "Venceu hoje" ou "Venceu há 4 dias".' },
+
+      { t: 'h', text: 'Os três desfechos' },
+      { t: 'steps', items: [
+        'Reativou: abre o fluxo de matrícula com os dados do cliente e o contrato recomeça.',
+        'Não vai voltar: peça o motivo e registre. Ele sai desta cobrança e continua na base como inativo.',
+        'Reagendar contato: escolha uma data futura. Ele volta pelo funil Contatos no dia combinado.',
+      ] },
+      { t: 'p', text: 'Enquanto não tiver desfecho, a tarefa volta amanhã. É a mesma lógica dos atrasados.' },
+
+      { t: 'h', text: 'Quando o prazo acaba' },
+      { t: 'p', text: 'Passado o prazo, o cliente sai da Meta Diária. Daí para frente a conversa é outra: não é mais renovar um contrato recente, é reativar um ex-aluno, trabalho de campanha e lista.' },
+      { t: 'tip', text: 'O prazo fica em Configurações, Metas & ritmo, no painel Funil de vencidos. O padrão é 15 dias e vai de 0 a 90. Com 0, o cliente é cobrado só no dia em que o contrato vence.' },
+      { t: 'warn', text: 'Os marcos de renovação valem só até o vencimento. Se você quer falar com o cliente antes de ele vencer, mexa lá, não aqui.' },
     ],
   },
 
