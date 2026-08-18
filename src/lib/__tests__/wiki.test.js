@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { WIKI_ARTICLES, WIKI_CATEGORIES, BLOCK_KINDS, searchWiki, getWikiArticle } from '../wiki.js';
+import { ANNOUNCEMENTS } from '../announcements.js';
 
 describe('conteúdo da wiki', () => {
   it('todo artigo tem id único, título, resumo e pelo menos um bloco', () => {
@@ -37,6 +38,23 @@ describe('conteúdo da wiki', () => {
     const texto = JSON.stringify(WIKI_ARTICLES).toLowerCase();
     expect(texto).toContain('indica');
     expect(texto).toContain('aguardando ação'.toLowerCase());
+  });
+
+  it('cobre o funil de vencidos, com os três desfechos e o prazo', () => {
+    const a = getWikiArticle('vencidos');
+    expect(a?.category).toBe('fechamento');
+    const texto = JSON.stringify(a).toLowerCase();
+    ['reativou', 'não vai voltar', 'reagendar contato', 'metas & ritmo'].forEach((termo) => {
+      expect(texto, `artigo de vencidos sem "${termo}"`).toContain(termo.toLowerCase());
+    });
+  });
+
+  // O sino manda o leitor direto pro artigo da novidade. Aviso apontando pra
+  // artigo que não existe abre a Central de ajuda em branco.
+  it('todo aviso do sino aponta para um artigo que existe', () => {
+    ANNOUNCEMENTS.filter((a) => a.articleId).forEach((a) => {
+      expect(getWikiArticle(a.articleId), `aviso "${a.id}" aponta pra artigo inexistente`).toBeTruthy();
+    });
   });
 });
 

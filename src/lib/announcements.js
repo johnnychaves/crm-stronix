@@ -13,6 +13,16 @@
 // ============================================================================
 export const ANNOUNCEMENTS = [
   {
+    id: 'vencidos-2026-08',
+    audience: 'todos',
+    date: '2026-08-18',
+    articleId: 'vencidos',
+    eyebrow: 'Novidade',
+    title: 'Vencidos entram na Meta Diária',
+    summary:
+      'Cliente que deixou o contrato vencer volta na lista todo dia, pelo prazo que a academia definir. Antes ele sumia da rotina no dia seguinte ao vencimento.',
+  },
+  {
     id: 'indicacoes-2026-08',
     audience: 'todos',
     date: '2026-08-09',
