@@ -244,7 +244,15 @@ O backfill precisa rodar entre o dual-write e a virada, mesmo desenho das PRs
 4. Sem índice novo: o filtro por tipo é client-side (ver Modelo de dados)
 5. `scripts/backfill-appointments.js` escrito, **não rodado**
 
-**Entre os PRs:** backfill roda em produção. Cria registro para todo lead com
+**Entre os PRs:** backfill roda em produção **com `--all-tenants`**.
+
+> **Multi-tenant (achado em 2026-08-18, no dry-run).** O Stronilead tem 5
+> academias ativas. O `backfill-aulas.js` original só rodou no tenant do Johnny,
+> então `academia-power-club` e `petros-barbell-club` tinham **5 aulas em aberto
+> sem registro nenhum**. Como o espelho vira derivado no PR 2, essas aulas
+> seriam apagadas no recálculo. O backfill cobre todas as academias numa
+> passada só, e o PR 2 **não pode ser mergeado antes de o backfill ter rodado
+> com `--commit` em todas**. Cria registro para todo lead com
 compromisso no espelho e sem registro correspondente, cobrindo principalmente as
 visitas, que hoje não têm nenhum. Carimba `type: 'aula'` nos registros
 existentes.
