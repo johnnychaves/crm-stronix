@@ -380,8 +380,16 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
       lead.nextFollowUp >= todayStart &&
       lead.nextFollowUp <= todayEnd
     ) {
-      const apptType = getLeadAppointmentType(lead);
-      if (apptType !== 'visita' && apptType !== 'aula_experimental') {
+      // Critério é a DATA do compromisso, não o TIPO. Antes da separação entre
+      // agendamento e próximo contato (18/08/2026), agendar uma mensagem apagava
+      // o compromisso do lead, então testar o tipo funcionava por acidente. Com o
+      // compromisso preservado, testar o tipo esconderia a mensagem de quem tem
+      // aula marcada para a semana que vem — justamente o caso que o conserto
+      // veio destravar. Compromisso HOJE já é coberto pelas categorias 3 e 4,
+      // então a comparação por data também evita duplicar a tarefa.
+      const apptDate = getLeadAppointmentDate(lead);
+      const apptIsToday = Boolean(apptDate) && apptDate >= todayStart && apptDate <= todayEnd;
+      if (!apptIsToday) {
         addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.contato_hoje, DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
       }
     }

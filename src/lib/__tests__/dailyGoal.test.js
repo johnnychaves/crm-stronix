@@ -118,6 +118,39 @@ describe('computeDailyGoalSlots — categorias', () => {
     expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
   });
 
+  // Regressão do bug relatado em 18/08/2026: agendar mensagem depois de uma aula
+  // apagava a aula. Com o compromisso PRESERVADO, a categoria 5 não pode mais se
+  // esconder pelo TIPO do agendamento, senão a mensagem some da Meta e o
+  // consultor perde a tarefa. O critério passa a ser a DATA.
+  it('contato_hoje: aparece mesmo com aula FUTURA marcada no lead', () => {
+    const l = lead({
+      appointmentType: 'aula_experimental',
+      appointmentScheduledFor: new Date(2026, 6, 20, 18, 0), // semana que vem
+      nextFollowUp: new Date(2026, 6, 15, 16, 0),            // mensagem de hoje
+    });
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+  });
+
+  it('contato_hoje: aparece mesmo com visita FUTURA marcada no lead', () => {
+    const l = lead({
+      appointmentType: 'visita',
+      appointmentScheduledFor: new Date(2026, 6, 22, 9, 0),
+      nextFollowUp: new Date(2026, 6, 15, 16, 0),
+    });
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+  });
+
+  // A outra ponta: quando o compromisso é HOJE, a categoria de visita/aula já
+  // cobre o lead e o contato não pode duplicar a tarefa.
+  it('contato_hoje NÃO duplica quando a aula é hoje', () => {
+    const l = lead({
+      appointmentType: 'aula_experimental',
+      appointmentScheduledFor: new Date(2026, 6, 15, 18, 0),
+      nextFollowUp: new Date(2026, 6, 15, 9, 0),
+    });
+    expect(byId(slots([l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.AULA_HOJE]);
+  });
+
   it('um lead pode ocupar mais de uma categoria (uma entrada, vários slugs)', () => {
     // Criado ontem 20:00 (dentro da janela 24h) E com follow-up vencido.
     const l = lead({ createdAt: new Date(2026, 6, 14, 20, 0), nextFollowUp: new Date(2026, 6, 13, 9, 0) });
