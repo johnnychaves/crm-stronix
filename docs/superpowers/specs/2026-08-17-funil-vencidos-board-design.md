@@ -23,6 +23,10 @@ Três mudanças pedidas pelo Johnny depois que o funil da Meta entrou em produç
 3. **Escopo.** O **filtro de período no board** (decisões 4 e 5 abaixo) sai deste
    trabalho e vira spec própria. Ele mexe em todos os funis e é a parte mais
    arriscada; o pedido imediato é só o funil existir e ser configurável.
+4. **Arrastar para Venda abre o modal de contrato**, não é só posição visual.
+   Ver "Arrastar para Venda abre o contrato".
+
+**Sem pontos em aberto.** O spec está pronto para virar plano de implementação.
 
 O modelo derivado-até-o-primeiro-toque (seção "A etapa do card") **não mudou** —
 já era o desenho aprovado em 17/08.
@@ -98,14 +102,35 @@ O app **semeia uma etapa do meio** na criação, chamada "Em contato", só para 
 funil não nascer com um vão entre a entrada e a Venda. Ela **não** é protegida: a
 academia renomeia ou apaga à vontade.
 
-### Ponto em aberto para decidir no plano
+### Arrastar para Venda abre o contrato
 
-Arrastar um card para **Venda** neste funil: é só posição visual, ou abre o
-modal de matrícula como nos outros funis? A seção "Como o cliente sai" descreve
-a saída automática (contrato novo → deixa de ser vencido → some da query), o que
-sugere que a Venda aqui é consequência, não gatilho. Resolver antes de codar:
-prender o modal de matrícula num funil de cliente pode conflitar com o fluxo de
-renovação que já existe.
+Decisão do Johnny em 2026-08-18: **abre o modal de matrícula**, não é só posição
+visual.
+
+Em produção o modal de contrato é um só, o `ContractModal`
+(`src/modals/ContractModal.jsx`), usado tanto para a primeira matrícula quanto
+para renovar. Não existe modal de renovação separado — o `RenewalModal` do
+redesign de contratos vive numa branch sem PR. Então "abre matrícula" resolve
+sem ambiguidade para o `ContractModal`.
+
+O fluxo fecha sozinho e sem faxina:
+
+1. Consultor arrasta o card para **Venda**
+2. Abre o `ContractModal`, o consultor registra o contrato novo
+3. O contrato tem vigência futura → o cliente deixa de ser vencido
+4. Ele **some da query** do funil, porque a regra derivada só traz vencido
+
+Nenhum card órfão, nenhum estado para limpar na saída. É o mesmo desfecho
+descrito em "Como o cliente sai".
+
+**O cuidado que continua valendo:** `buildMatriculaWrites` precisa limpar
+`reactivationStageId` junto com os campos de renovação que já limpa. Sem isso, o
+cliente que voltou e vencesse de novo daqui a dois anos reapareceria na etapa da
+vida passada.
+
+**Se o `RenewalModal` daquela branch entrar em produção um dia**, esta decisão
+merece revisão: aí passam a existir dois fluxos e vencido voltando é
+conceitualmente renovação, não matrícula nova.
 
 ## A regra derivada
 
