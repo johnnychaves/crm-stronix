@@ -1,10 +1,31 @@
-# Funil "Não renovados" + filtro de período no pipeline — design
+# Funil "Vencidos" no pipeline (board) — design
 
 status: ativo
 data: 2026-08-17
+revisado: 2026-08-18
 autor: Johnny + Claude
 
-Continuação de `docs/superpowers/specs/2026-08-17-funil-vencidos-design.md`.
+Continuação de `docs/superpowers/specs/2026-08-17-funil-vencidos-design.md`, que
+trata do funil **Vencidos da Meta Diária** (a tarefa diária). Este trata do funil
+**Vencidos do board** (a coluna no pipeline). São coisas diferentes com nomes
+parecidos, e confundir os dois já custou uma conversa inteira.
+
+## Revisão de 2026-08-18
+
+Três mudanças pedidas pelo Johnny depois que o funil da Meta entrou em produção:
+
+1. **Nome.** Era "Não renovados", passa a ser **Vencidos** — é como ele fala no
+   dia a dia. O arquivo foi renomeado junto.
+2. **Etapas.** O conjunto fixo de três (Vencido / Em contato / Não volta) sai. O
+   funil passa a ter a **forma padrão dos outros**: entrada protegida, etapas do
+   meio livres para a academia configurar, e **Venda e Perda protegidas**. Ver
+   "O funil e suas etapas".
+3. **Escopo.** O **filtro de período no board** (decisões 4 e 5 abaixo) sai deste
+   trabalho e vira spec própria. Ele mexe em todos os funis e é a parte mais
+   arriscada; o pedido imediato é só o funil existir e ser configurável.
+
+O modelo derivado-até-o-primeiro-toque (seção "A etapa do card") **não mudou** —
+já era o desenho aprovado em 17/08.
 
 ## O problema
 
@@ -15,7 +36,7 @@ ex-clientes, que é o público mais barato de reconquistar que uma academia tem,
 fica invisível.
 
 Este spec cria o destino permanente dessas pessoas: um funil próprio do sistema
-no board, chamado **Não renovados**, onde o cliente cai sozinho ao vencer.
+no board, chamado **Vencidos**, onde o cliente cai sozinho ao vencer.
 
 ## Decisões (Johnny, 2026-08-17)
 
@@ -24,8 +45,8 @@ no board, chamado **Não renovados**, onde o cliente cai sozinho ao vencer.
 | 1 | O que o cliente vira ao cair no funil | **Continua cliente.** Segue na aba Clientes com ficha, contratos e histórico intactos; o funil é a vitrine de trabalho. |
 | 2 | Momento da entrada | **No vencimento.** Acabou o período de renovação, virou inativo, aparece no funil. Convive com a tarefa diária de Vencidos, que tem outro papel. |
 | 3 | Como o card existe | **Derivado, sem escrita.** Ver "A escolha que define o tamanho disto". |
-| 4 | Volume da coluna de entrada | Resolvido por **filtro de período no board**, mês a mês. |
-| 5 | Alcance do filtro | **Board inteiro**, todos os funis, com sentido próprio por funil. |
+| 4 | Volume da coluna de entrada | Resolvido por **filtro de período no board**, mês a mês. ⚠️ **Fora deste spec desde 18/08** — vira trabalho próprio. |
+| 5 | Alcance do filtro | **Board inteiro**, todos os funis, com sentido próprio por funil. ⚠️ **Fora deste spec desde 18/08.** |
 | 6 | Filtragem pesada | Fica para a feature futura **Relatórios**, fora deste escopo. |
 
 ## A escolha que define o tamanho disto
@@ -48,19 +69,43 @@ sozinho.
 
 ## O funil e suas etapas
 
-Funil de sistema, criado sozinho na primeira vez que o app precisa dele, no
-molde do funil de Indicações (`src/lib/referrals.js:86-108`). Nome: **Não
-renovados**. Três etapas de sistema (`isSystem: true`); a academia pode
-acrescentar as dela pelo editor de funis:
+Funil de sistema, criado sozinho na primeira vez que o app precisa dele, no molde
+do funil de Indicações (`src/lib/referrals.js:86-108`). Nome: **Vencidos**.
 
-| Etapa | Quem está aqui |
-|---|---|
-| **Vencido** (entrada, `isEntry`) | caiu sozinho quando o contrato venceu |
-| **Em contato** | o consultor está tentando trazer de volta |
-| **Não volta** | recusa registrada, veio da Meta ou o consultor arrastou |
+O discriminador é a flag `systemKind`, **nunca o nome** — a academia pode ter um
+funil "Vencidos" próprio e os dois precisam conviver. É a mesma regra do
+`REFERRAL_FUNNEL_KIND` (`referrals.js:12`).
 
-Três, e não quatro: "sem retorno" e "não volta" viram a mesma gaveta na prática,
-e etapa vazia atrapalha mais do que ajuda.
+### A forma: igual à dos outros funis
+
+Decisão do Johnny em 2026-08-18. O funil tem a mesma anatomia dos demais, e não
+um conjunto fechado próprio:
+
+| Etapa | Protegida? | Papel |
+|---|---|---|
+| **Vencido** (entrada, `isEntry`) | 🔒 sim | Onde o cliente cai sozinho ao vencer |
+| *(etapas do meio)* | ✏️ não | A academia cria e renomeia como quiser |
+| **Venda** | 🔒 sim | Reconquistado |
+| **Perda** | 🔒 sim | Não volta mais |
+
+As três protegidas carregam `isSystem: true` e ficam bloqueadas para edição e
+exclusão pelo `isSystemStage()` que já existe (`src/lib/funnels.js:21`), a mesma
+trava usada no funil de Indicações. O funil em si também não pode ser excluído e
+tem o nome travado — comportamento já implementado em
+`src/views/settings/FunnelsSection.jsx:118`.
+
+O app **semeia uma etapa do meio** na criação, chamada "Em contato", só para o
+funil não nascer com um vão entre a entrada e a Venda. Ela **não** é protegida: a
+academia renomeia ou apaga à vontade.
+
+### Ponto em aberto para decidir no plano
+
+Arrastar um card para **Venda** neste funil: é só posição visual, ou abre o
+modal de matrícula como nos outros funis? A seção "Como o cliente sai" descreve
+a saída automática (contrato novo → deixa de ser vencido → some da query), o que
+sugere que a Venda aqui é consequência, não gatilho. Resolver antes de codar:
+prender o modal de matrícula num funil de cliente pode conflitar com o fluxo de
+renovação que já existe.
 
 ## A regra derivada
 
@@ -82,7 +127,7 @@ O funil consome a base. A Meta continua com a regra completa.
 
 ## Como o board carrega
 
-Uma query, disparada **só quando o funil Não renovados está selecionado**:
+Uma query, disparada **só quando o funil Vencidos está selecionado**:
 clientes com `currentContractEndsAt` anterior a hoje, ordenados do vencimento
 mais recente para o mais antigo, paginados como o board já faz. Quem nunca abrir
 a aba não paga leitura nenhuma.
