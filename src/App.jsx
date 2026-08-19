@@ -53,6 +53,7 @@ import { getSafeDate } from './lib/dates.js';
 import { isAdminUser, normalizeLeadDoc } from './lib/leads.js';
 import { usePagedLeads } from './hooks/usePagedLeads.js';
 import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
+import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { kanbanLeadsFor } from './lib/kanban.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
@@ -334,6 +335,8 @@ function AppInner() {
   // precisa rodar uma vez em todos, novos e existentes.
   const [referralMigrationStatus, setReferralMigrationStatus] = useState('idle');
   const [referralSetupDone, setReferralSetupDone] = useState(null);
+  const [expiredSetupDone, setExpiredSetupDone] = useState(null);
+  const [expiredFunnelStatus, setExpiredFunnelStatus] = useState('idle');
   const [loadingData, setLoadingData] = useState(true);
   // Já baixamos os dados ao menos uma vez nesta sessão? Serve pra reassinar
   // (volta da ociosidade) sem piscar a tela de carregando por cima de um dado
@@ -772,6 +775,7 @@ useEffect(() => {
       // "não semeado" — a migração roda e carimba.
       setFunnelsSetupDone(!!data?.funnelsSetupDoneAt);
       setReferralSetupDone(!!data?.referralSetupDoneAt);
+      setExpiredSetupDone(!!data?.expiredFunnelSetupDoneAt);
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
@@ -1069,6 +1073,67 @@ useEffect(() => {
       }
     })();
   }, [appUser, loadingData, funnelsMigrationStatus, referralMigrationStatus, referralSetupDone]);
+
+  // Funil VENCIDOS do board. Mesmo desenho do provisionamento de indicações
+  // acima, e guardado por ele estar 'done' para as duas escritas não correrem
+  // juntas no primeiro login de admin de uma academia nova.
+  useEffect(() => {
+    if (!appUser || !isAdminUser(appUser)) return;
+    if (loadingData) return;
+    if (referralMigrationStatus !== 'done') return;
+    if (expiredFunnelStatus !== 'idle') return;
+    if (expiredSetupDone === null) return;
+    if (expiredSetupDone) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
+      setExpiredFunnelStatus('done');
+      return;
+    }
+
+    setExpiredFunnelStatus('running');
+
+    (async () => {
+      try {
+        // Snapshots frescos por getDocs (não os props): elimina a corrida com
+        // as assinaturas ao vivo ainda vazias no boot.
+        const [funnelsSnap, statusesSnap] = await Promise.all([
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)),
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH))
+        ]);
+        const plan = planExpiredSetupOps({
+          funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          statuses: statusesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        });
+
+        let newFunnelId = null;
+        if (plan.createFunnel) {
+          const ref = await addDoc(
+            collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
+            { ...plan.createFunnel, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+          );
+          newFunnelId = ref.id;
+        }
+        for (const stage of plan.createStages) {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
+            ...stage,
+            // Etapas planejadas junto com o funil novo vêm sem funnelId — o id
+            // só existe depois do addDoc acima.
+            funnelId: stage.funnelId || newFunnelId
+          });
+        }
+
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          { expiredFunnelSetupDoneAt: serverTimestamp() },
+          { merge: true }
+        );
+
+        setExpiredFunnelStatus('done');
+      } catch (err) {
+        console.error('Erro no provisionamento do funil de vencidos', err);
+        setExpiredFunnelStatus('error');
+      }
+    })();
+  }, [appUser, loadingData, referralMigrationStatus, expiredFunnelStatus, expiredSetupDone]);
 
   // Impersonação ("entrar como"): o banner e o "sair" vivem aqui (nível do app);
   // o "entrar" é feito no SuperAdminView. Ressincroniza com o sessionStorage
