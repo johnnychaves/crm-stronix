@@ -106,3 +106,27 @@ export const expiredStageIdOf = (lead, statuses, funnelId) => {
   }
   return getExpiredEntryStage(statuses, funnelId)?.id || null;
 };
+
+// Projeta clientes vencidos como cards do board.
+//
+// As colunas do Kanban casam por NOME e os cards são agrupados por
+// `lead.status` (ver partitionLeadsByStatus). Cliente é `status: 'Venda'`, então
+// sem projeção todos cairiam na coluna Venda. Aqui o status EXIBIDO vira o nome
+// da etapa derivada.
+//
+// A projeção é SÓ EM MEMÓRIA: o `status` real do documento continua 'Venda', e é
+// o que preserva o estado de cliente e a aba Clientes. Quem grava a etapa de
+// verdade é o arrastar, em `reactivationStageId`.
+//
+// `_expiredCard` marca o card projetado — o handler de drop usa para saber que
+// precisa gravar reactivationStageId em vez de status.
+export const projectExpiredLeads = (leads, statuses, funnelId) => {
+  if (!funnelId) return [];
+  const inFunnel = (statuses || []).filter((s) => s?.funnelId === funnelId);
+  const nameById = new Map(inFunnel.map((s) => [s.id, s.name]));
+  return (leads || []).map((lead) => {
+    const stageId = expiredStageIdOf(lead, statuses, funnelId);
+    const name = stageId ? nameById.get(stageId) : null;
+    return name ? { ...lead, status: name, _expiredCard: true } : null;
+  }).filter(Boolean);
+};

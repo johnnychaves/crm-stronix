@@ -7,8 +7,9 @@ import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { getExpiredFunnel, projectExpiredLeads } from '../lib/expiredFunnel.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
-import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS } from '../lib/leadQueries.js';
+import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow } from '../lib/kanban.js';
@@ -394,9 +395,39 @@ const [isPanning, setIsPanning] = useState(false);
 
   // Recorte do board extraído p/ lib/kanban.js (clientes/convertidos saem;
   // filtros de responsável e atraso) — coberto por teste de caracterização.
+  // FUNIL VENCIDOS (funil de sistema): cliente com contrato vencido, carregado
+  // por query própria e SÓ quando a aba está aberta — quem nunca abrir não paga
+  // leitura. Regra e projeção em lib/expiredFunnel.js.
+  const expiredFunnel = useMemo(() => getExpiredFunnel(funnels), [funnels]);
+  const isExpiredView = Boolean(expiredFunnel && selectedFunnelId === expiredFunnel.id);
+  // Corte do "venceu": fixado uma vez na montagem. useState com inicializador
+  // roda fora do render, então não fere a pureza — e um contrato que vence no
+  // meio da sessão é caso de borda que o próximo carregamento resolve.
+  const [expiredCutoffMs] = useState(() => Date.now());
+  const expiredSpec = useMemo(
+    () => (isExpiredView ? expiredClientsQuerySpec(expiredCutoffMs, KANBAN_PAGE_SIZE) : null),
+    [isExpiredView, expiredCutoffMs]
+  );
+  const {
+    items: expiredDocs, hasMore: expiredHasMore, loadMore: expiredLoadMore,
+  } = usePagedLeads({
+    db, path: LEADS_PATH, spec: expiredSpec, specKey: `vencidos:${isExpiredView ? '1' : '0'}`,
+    enabled: !!db && isExpiredView,
+  });
+  // O status EXIBIDO vira o nome da etapa derivada (o real continua 'Venda').
+  // O respFilter continua valendo; onlyOverdue não faz sentido aqui (cliente
+  // vencido não tem follow-up de prospecção), então é ignorado.
+  const expiredLeads = useMemo(() => {
+    if (!isExpiredView) return EMPTY_LEADS;
+    const projetados = projectExpiredLeads(expiredDocs || [], statuses, expiredFunnel?.id);
+    return respFilter.length === 0 ? projetados : projetados.filter(l => respFilter.includes(l.consultantId));
+  }, [isExpiredView, expiredDocs, statuses, expiredFunnel, respFilter]);
+
   const kanbanLeads = useMemo(
-    () => filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue }),
-    [funnelLeads, respFilter, onlyOverdue]
+    // No funil Vencidos os cards vêm da query própria já projetada, não da
+    // assinatura de leads ativos — cliente não está no board de prospecção.
+    () => (isExpiredView ? expiredLeads : filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue })),
+    [isExpiredView, expiredLeads, funnelLeads, respFilter, onlyOverdue]
   );
 
   // Índice leadId → { count, lastDate }. Percorre interactions UMA vez,
@@ -916,6 +947,10 @@ if (!lead) return;
                 color={column.color}
                 special={null}
                 columnLeads={getLeadsByStatus(column.name)}
+                // Paginação do funil Vencidos: o volume mora na coluna de
+                // entrada, então é ela que ganha o "carregar mais".
+                hasMore={isExpiredView && column.isEntry ? expiredHasMore : false}
+                onLoadMore={isExpiredView && column.isEntry ? expiredLoadMore : null}
                 isHovered={draggedOverColumn === column.name}
                 draggingLeadId={draggingLeadId}
                 interactionIndex={interactionIndex}

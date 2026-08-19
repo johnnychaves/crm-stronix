@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   EXPIRED_FUNNEL_KIND, EXPIRED_FUNNEL_NAME, EXPIRED_ENTRY_NAME,
   isExpiredFunnel, getExpiredFunnel, getExpiredEntryStage,
-  planExpiredSetupOps, expiredStageIdOf,
+  planExpiredSetupOps, expiredStageIdOf, projectExpiredLeads,
 } from '../expiredFunnel.js';
 
 describe('isExpiredFunnel', () => {
@@ -122,5 +122,49 @@ describe('expiredStageIdOf', () => {
   });
   it('sem etapas devolve null em vez de quebrar', () => {
     expect(expiredStageIdOf({}, [], 'f1')).toBeNull();
+  });
+});
+
+describe('projectExpiredLeads', () => {
+  const stages = [
+    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
+    { id: 'meio', funnelId: 'f1', name: 'Em contato' },
+    { id: 'perda', funnelId: 'f1', isSystem: true, name: 'Perda' },
+  ];
+
+  // Cliente é status 'Venda'. Sem a projeção, TODOS cairiam na coluna Venda.
+  it('o status exibido vira o nome da etapa derivada', () => {
+    const out = projectExpiredLeads([{ id: 'l1', status: 'Venda' }], stages, 'f1');
+    expect(out[0].status).toBe('Vencido');
+  });
+
+  it('o status REAL do documento não é alterado', () => {
+    const original = { id: 'l1', status: 'Venda' };
+    projectExpiredLeads([original], stages, 'f1');
+    expect(original.status).toBe('Venda');
+  });
+
+  it('quem já foi arrastado vai para a etapa gravada', () => {
+    const out = projectExpiredLeads([{ id: 'l1', status: 'Venda', reactivationStageId: 'meio' }], stages, 'f1');
+    expect(out[0].status).toBe('Em contato');
+  });
+
+  it('quem recusou na Meta nasce em Perda', () => {
+    const out = projectExpiredLeads([{ id: 'l1', status: 'Venda', renewalDeclined: true }], stages, 'f1');
+    expect(out[0].status).toBe('Perda');
+  });
+
+  it('marca o card para o handler de drop saber onde gravar', () => {
+    expect(projectExpiredLeads([{ id: 'l1' }], stages, 'f1')[0]._expiredCard).toBe(true);
+  });
+
+  // Etapa apagada pelo console: o card sumiria numa coluna inexistente.
+  it('lead cuja etapa gravada não existe mais é descartado, não quebra', () => {
+    const out = projectExpiredLeads([{ id: 'l1', reactivationStageId: 'fantasma' }], stages, 'f1');
+    expect(out).toEqual([]);
+  });
+
+  it('sem funil devolve lista vazia', () => {
+    expect(projectExpiredLeads([{ id: 'l1' }], stages, null)).toEqual([]);
   });
 });
