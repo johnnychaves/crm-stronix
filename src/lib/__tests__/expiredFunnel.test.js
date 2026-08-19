@@ -4,6 +4,7 @@ import {
   isExpiredFunnel, getExpiredFunnel, getExpiredEntryStage,
   planExpiredSetupOps, expiredStageIdOf, projectExpiredLeads,
 } from '../expiredFunnel.js';
+import { partitionLeadsByStatus } from '../kanban.js';
 
 describe('isExpiredFunnel', () => {
   it('casa pela flag, NUNCA pelo nome', () => {
@@ -164,5 +165,44 @@ describe('projectExpiredLeads', () => {
 
   it('sem funil devolve lista vazia', () => {
     expect(projectExpiredLeads([{ id: 'l1' }], stages, null)).toEqual([]);
+  });
+});
+
+// Costura entre projectExpiredLeads e partitionLeadsByStatus: é o caminho real
+// que o board percorre para colocar cada card numa coluna. Testado junto porque
+// o erro mora exatamente entre os dois — a projeção devolve NOME de etapa e o
+// particionador agrupa por `status`.
+describe('projeção + particionamento (o caminho do board)', () => {
+  const stages = [
+    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
+    { id: 'meio', funnelId: 'f1', name: 'Em contato' },
+    { id: 'naovolta', funnelId: 'f1', name: 'Não volta' },
+  ];
+  const colunas = (leads) =>
+    partitionLeadsByStatus(projectExpiredLeads(leads, stages, 'f1'), stages.map(s => s.name));
+
+  it('cada card cai na coluna da sua etapa', () => {
+    const mapa = colunas([
+      { id: 'novo', status: 'Venda' },
+      { id: 'trabalhando', status: 'Venda', reactivationStageId: 'meio' },
+      { id: 'recusou', status: 'Venda', renewalDeclined: true },
+    ]);
+    expect((mapa.get('Vencido') || []).map(l => l.id)).toEqual(['novo']);
+    expect((mapa.get('Em contato') || []).map(l => l.id)).toEqual(['trabalhando']);
+    expect((mapa.get('Não volta') || []).map(l => l.id)).toEqual(['recusou']);
+  });
+
+  // O erro que a projeção existe para evitar: cliente é status 'Venda', então
+  // sem ela TODOS cairiam numa coluna Venda e nenhum no funil.
+  it('nenhum card vaza para uma coluna "Venda"', () => {
+    const mapa = colunas([{ id: 'a', status: 'Venda' }, { id: 'b', status: 'Venda' }]);
+    expect(mapa.get('Venda')).toBeUndefined();
+    const total = stages.reduce((n, s) => n + (mapa.get(s.name) || []).length, 0);
+    expect(total).toBe(2);
+  });
+
+  it('base sem cliente vencido devolve colunas vazias, sem quebrar', () => {
+    const mapa = colunas([]);
+    expect(stages.every(s => (mapa.get(s.name) || []).length === 0)).toBe(true);
   });
 });
