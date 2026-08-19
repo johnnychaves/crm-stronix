@@ -1,20 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import indexesConfig from '../../../firestore.indexes.json';
-import {
-  LIFECYCLE_BUCKETS,
-  clientsQuerySpec,
-  clientsAllQuerySpec,
-  allLeadsQuerySpec,
-  lostByFunnelQuerySpec,
-  bucketByFunnelQuerySpec,
-  bucketByFunnelCountSpec,
-  appointmentsInWindowQuerySpec,
-  renewalClientsQuerySpec,
-  consultantLeadsQuerySpec,
-  adminDashboardWindowSpecs,
-  ADMIN_DASHBOARD_WINDOW_FIELDS,
-  wonInMonthQuerySpec,
-  renewalWindowMs, clientsWithContactTodayQuerySpec } from '../leadQueries.js';
+import { LIFECYCLE_BUCKETS, clientsQuerySpec, clientsAllQuerySpec, allLeadsQuerySpec, lostByFunnelQuerySpec, bucketByFunnelQuerySpec, bucketByFunnelCountSpec, appointmentsInWindowQuerySpec, renewalClientsQuerySpec, consultantLeadsQuerySpec, adminDashboardWindowSpecs, ADMIN_DASHBOARD_WINDOW_FIELDS, wonInMonthQuerySpec, renewalWindowMs, clientsWithContactTodayQuerySpec, expiredClientsQuerySpec } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
 // um PREFIXO do índice (todas ASCENDING, mesmo conjunto) e — havendo orderBy —
@@ -300,5 +286,27 @@ describe('clientsWithContactTodayQuerySpec', () => {
       i.fields[1].fieldPath === 'nextFollowUp'
     );
     expect(tem).toBe(true);
+  });
+});
+
+describe('expiredClientsQuerySpec', () => {
+  const ANTES = new Date(2026, 7, 18, 0, 0, 0).getTime();
+
+  it('filtra cliente com vigência anterior ao corte', () => {
+    expect(expiredClientsQuerySpec(ANTES).wheres).toEqual([
+      { field: 'lifecycleBucket', op: '==', value: 'cliente' },
+      { field: 'currentContractEndsAt', op: '<', value: new Date(ANTES) },
+    ]);
+  });
+
+  // Inverso dos Atrasados, de propósito: quem venceu ontem tem mais chance de
+  // voltar que quem venceu há dois meses.
+  it('ordena do vencimento mais RECENTE para o mais antigo', () => {
+    expect(expiredClientsQuerySpec(ANTES).orderBy).toEqual({ field: 'currentContractEndsAt', dir: 'desc' });
+  });
+
+  it('aceita tamanho de página', () => {
+    expect(expiredClientsQuerySpec(ANTES, 10).limit).toBe(10);
+    expect(expiredClientsQuerySpec(ANTES).limit).toBeUndefined();
   });
 });

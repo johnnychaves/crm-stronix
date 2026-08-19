@@ -84,6 +84,24 @@ export const renewalClientsQuerySpec = (startMs, endMs, pageSize = null) => ({
   ...(pageSize ? { limit: pageSize } : {}),
 });
 
+// CLIENTES VENCIDOS — funil Vencidos do board (pipeline). Do vencimento mais
+// RECENTE para o mais antigo: a chance de reativação cai a cada dia fora da
+// academia, então quem saiu ontem aparece antes de quem saiu há dois meses.
+//
+// Sem janela para trás de propósito: o funil é PERMANENTE, ao contrário da
+// tarefa da Meta, que cobra por N dias e solta.
+//
+// Coberta pelo índice #4 (lifecycleBucket ASC, currentContractEndsAt ASC):
+// igualdade no balde mais range e ordenação no mesmo campo. NENHUM índice novo.
+export const expiredClientsQuerySpec = (beforeMs, pageSize = null) => ({
+  wheres: [
+    { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },
+    { field: 'currentContractEndsAt', op: '<', value: new Date(beforeMs) },
+  ],
+  orderBy: { field: 'currentContractEndsAt', dir: 'desc' },
+  ...(pageSize ? { limit: pageSize } : {}),
+});
+
 // CLIENTES com contato marcado para HOJE (Meta Diária). Existe porque a base da
 // Meta só carrega cliente que está numa janela de vencimento de contrato
 // (renewalClientsQuerySpec). Aluno com contrato longe de vencer ficava de fora,
