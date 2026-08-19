@@ -28,9 +28,12 @@ export const EXPIRED_SEED_MIDDLE_NAME = 'Em contato';
 // protege automaticamente qualquer etapa chamada exatamente 'negociação', e
 // aqui ela precisa ficar LIVRE para a academia mexer.
 export const EXPIRED_NEGOTIATION_NAME = 'Em negociação';
-// Gaveta de quem disse que não volta. Livre como as de cima, mas o card de quem
-// recusou na Meta nasce aqui.
-export const EXPIRED_DECLINED_NAME = 'Não volta';
+// NÃO existe etapa "não volta": quem recusou é venda perdida, e o board já tem
+// a coluna PERDA de sistema. Nesse funil ela mostra quem tem `renewalDeclined`.
+//
+// A pessoa NÃO vira lifecycleBucket 'perda' — ela continua CLIENTE, com ficha,
+// contratos e histórico, e segue aparecendo na aba Clientes. É um ex-aluno que
+// não volta, não um lead descartado (decisão do Johnny em 18/08).
 
 // VENDA e PERDA não são etapas deste funil. O board renderiza as duas como
 // colunas ESPECIAIS em todo funil, fora do laço das etapas (ver KanbanView) —
@@ -84,7 +87,6 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
         { name: EXPIRED_ENTRY_NAME, color: 'slate', order: 0, isSystem: true, isEntry: true },
         { name: EXPIRED_SEED_MIDDLE_NAME, color: 'amber', order: 1 },
         { name: EXPIRED_NEGOTIATION_NAME, color: 'purple', order: 2 },
-        { name: EXPIRED_DECLINED_NAME, color: 'gray', order: 3 },
       ],
     };
   }
@@ -107,13 +109,6 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
 // reactivationStageId e a partir daí ele manda.
 export const expiredStageIdOf = (lead, statuses, funnelId) => {
   if (lead?.reactivationStageId) return lead.reactivationStageId;
-  const inFunnel = (statuses || []).filter((s) => s?.funnelId === funnelId);
-  // Quem registrou "não vou voltar" na Meta já nasce na gaveta certa. Se a
-  // academia apagou essa etapa, cai na entrada como todo mundo.
-  if (lead?.renewalDeclined) {
-    const naoVolta = inFunnel.find((s) => sameStageName(s.name, EXPIRED_DECLINED_NAME));
-    if (naoVolta) return naoVolta.id;
-  }
   return getExpiredEntryStage(statuses, funnelId)?.id || null;
 };
 
@@ -139,4 +134,20 @@ export const projectExpiredLeads = (leads, statuses, funnelId) => {
     const name = stageId ? nameById.get(stageId) : null;
     return name ? { ...lead, status: name, _expiredCard: true } : null;
   }).filter(Boolean);
+};
+
+// Divide os vencidos entre as ETAPAS e a coluna PERDA do board.
+//
+// Quem recusou (`renewalDeclined`) sai das etapas e vai para a coluna Perda, que
+// o board já renderiza em todo funil. Ele continua CLIENTE — o que muda é só
+// onde o card aparece, nunca o lifecycleBucket.
+export const splitExpiredForBoard = (leads, statuses, funnelId) => {
+  const all = leads || [];
+  const declined = all.filter((l) => l?.renewalDeclined);
+  const ativos = all.filter((l) => !l?.renewalDeclined);
+  return {
+    cards: projectExpiredLeads(ativos, statuses, funnelId),
+    // Marcados também, para o drop saber que é card de vencido e não perda real.
+    declined: declined.map((l) => ({ ...l, _expiredCard: true })),
+  };
 };

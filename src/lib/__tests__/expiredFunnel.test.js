@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   EXPIRED_FUNNEL_KIND, EXPIRED_FUNNEL_NAME, EXPIRED_ENTRY_NAME,
   isExpiredFunnel, getExpiredFunnel, getExpiredEntryStage,
-  planExpiredSetupOps, expiredStageIdOf, projectExpiredLeads,
+  planExpiredSetupOps, expiredStageIdOf, projectExpiredLeads, splitExpiredForBoard,
 } from '../expiredFunnel.js';
 import { partitionLeadsByStatus } from '../kanban.js';
 import { isSystemStage } from '../funnels.js';
@@ -53,7 +53,7 @@ describe('planExpiredSetupOps', () => {
   it('base zerada: cria o funil e as QUATRO etapas', () => {
     const plan = planExpiredSetupOps({ funnels: [], statuses: [] });
     expect(plan.createFunnel).toMatchObject({ name: EXPIRED_FUNNEL_NAME, systemKind: EXPIRED_FUNNEL_KIND });
-    expect(plan.createStages.map(s => s.name)).toEqual([EXPIRED_ENTRY_NAME, 'Em contato', 'Em negociação', 'Não volta']);
+    expect(plan.createStages.map(s => s.name)).toEqual([EXPIRED_ENTRY_NAME, 'Em contato', 'Em negociação']);
   });
 
   // Venda e Perda NÃO são etapas: o board as renderiza como colunas especiais em
@@ -64,7 +64,6 @@ describe('planExpiredSetupOps', () => {
     expect(by[EXPIRED_ENTRY_NAME]).toMatchObject({ isSystem: true, isEntry: true });
     expect(by['Em contato'].isSystem).toBeFalsy();
     expect(by['Em negociação'].isSystem).toBeFalsy();
-    expect(by['Não volta'].isSystem).toBeFalsy();
     expect(stages.some(s => s.name === 'Venda' || s.name === 'Perda')).toBe(false);
   });
 
@@ -106,18 +105,11 @@ describe('expiredStageIdOf', () => {
   const stages = [
     { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
     { id: 'meio', funnelId: 'f1', name: 'Em contato' },
-    { id: 'naovolta', funnelId: 'f1', name: 'Não volta' },
   ];
   it('sem toque, nasce na entrada', () => {
     expect(expiredStageIdOf({}, stages, 'f1')).toBe('entrada');
   });
-  it('quem recusou na Meta já nasce em "Não volta", sem ninguém mexer', () => {
-    expect(expiredStageIdOf({ renewalDeclined: true }, stages, 'f1')).toBe('naovolta');
-  });
-  it('se a academia apagou "Não volta", quem recusou cai na entrada', () => {
-    const semGaveta = stages.filter(s => s.id !== 'naovolta');
-    expect(expiredStageIdOf({ renewalDeclined: true }, semGaveta, 'f1')).toBe('entrada');
-  });
+
   it('depois do primeiro arrasto, manda o campo gravado', () => {
     expect(expiredStageIdOf({ reactivationStageId: 'meio', renewalDeclined: true }, stages, 'f1')).toBe('meio');
   });
@@ -130,7 +122,6 @@ describe('projectExpiredLeads', () => {
   const stages = [
     { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
     { id: 'meio', funnelId: 'f1', name: 'Em contato' },
-    { id: 'naovolta', funnelId: 'f1', name: 'Não volta' },
   ];
 
   // Cliente é status 'Venda'. Sem a projeção, TODOS cairiam na coluna Venda.
@@ -150,10 +141,7 @@ describe('projectExpiredLeads', () => {
     expect(out[0].status).toBe('Em contato');
   });
 
-  it('quem recusou na Meta nasce em "Não volta"', () => {
-    const out = projectExpiredLeads([{ id: 'l1', status: 'Venda', renewalDeclined: true }], stages, 'f1');
-    expect(out[0].status).toBe('Não volta');
-  });
+
 
   it('marca o card para o handler de drop saber onde gravar', () => {
     expect(projectExpiredLeads([{ id: 'l1' }], stages, 'f1')[0]._expiredCard).toBe(true);
@@ -178,7 +166,6 @@ describe('projeção + particionamento (o caminho do board)', () => {
   const stages = [
     { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
     { id: 'meio', funnelId: 'f1', name: 'Em contato' },
-    { id: 'naovolta', funnelId: 'f1', name: 'Não volta' },
   ];
   const colunas = (leads) =>
     partitionLeadsByStatus(projectExpiredLeads(leads, stages, 'f1'), stages.map(s => s.name));
@@ -187,11 +174,9 @@ describe('projeção + particionamento (o caminho do board)', () => {
     const mapa = colunas([
       { id: 'novo', status: 'Venda' },
       { id: 'trabalhando', status: 'Venda', reactivationStageId: 'meio' },
-      { id: 'recusou', status: 'Venda', renewalDeclined: true },
     ]);
     expect((mapa.get('Vencido') || []).map(l => l.id)).toEqual(['novo']);
     expect((mapa.get('Em contato') || []).map(l => l.id)).toEqual(['trabalhando']);
-    expect((mapa.get('Não volta') || []).map(l => l.id)).toEqual(['recusou']);
   });
 
   // O erro que a projeção existe para evitar: cliente é status 'Venda', então
@@ -218,5 +203,45 @@ describe('a etapa de negociação nasce editável', () => {
     expect(nomes).toContain('em negociação');
     expect(nomes).not.toContain('negociação');
     expect(stages.every(s => !isSystemStage(s) || s.isEntry)).toBe(true);
+  });
+});
+
+describe('splitExpiredForBoard', () => {
+  const stages = [
+    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
+    { id: 'meio', funnelId: 'f1', name: 'Em contato' },
+  ];
+
+  it('quem recusou vai para a coluna Perda, fora das etapas', () => {
+    const { cards, declined } = splitExpiredForBoard([
+      { id: 'ativo', status: 'Venda' },
+      { id: 'recusou', status: 'Venda', renewalDeclined: true },
+    ], stages, 'f1');
+    expect(cards.map(l => l.id)).toEqual(['ativo']);
+    expect(declined.map(l => l.id)).toEqual(['recusou']);
+  });
+
+  // O ponto que o Johnny confirmou: a coluna Perda deste funil NÃO mexe no
+  // ciclo de vida. A pessoa continua cliente, com ficha e contratos.
+  it('quem está na Perda continua CLIENTE, sem virar lifecycleBucket perda', () => {
+    const { declined } = splitExpiredForBoard(
+      [{ id: 'r', status: 'Venda', lifecycleStage: 'cliente', lifecycleBucket: 'cliente', renewalDeclined: true }],
+      stages, 'f1'
+    );
+    expect(declined[0].lifecycleBucket).toBe('cliente');
+    expect(declined[0].lifecycleStage).toBe('cliente');
+    expect(declined[0].status).toBe('Venda');
+  });
+
+  it('marca os dois lados como card de vencido, para o drop bifurcar', () => {
+    const { cards, declined } = splitExpiredForBoard([
+      { id: 'a' }, { id: 'b', renewalDeclined: true },
+    ], stages, 'f1');
+    expect(cards[0]._expiredCard).toBe(true);
+    expect(declined[0]._expiredCard).toBe(true);
+  });
+
+  it('lista vazia não quebra', () => {
+    expect(splitExpiredForBoard([], stages, 'f1')).toEqual({ cards: [], declined: [] });
   });
 });

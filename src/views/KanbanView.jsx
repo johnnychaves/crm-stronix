@@ -7,7 +7,7 @@ import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
-import { getExpiredFunnel, projectExpiredLeads } from '../lib/expiredFunnel.js';
+import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
@@ -417,11 +417,17 @@ const [isPanning, setIsPanning] = useState(false);
   // O status EXIBIDO vira o nome da etapa derivada (o real continua 'Venda').
   // O respFilter continua valendo; onlyOverdue não faz sentido aqui (cliente
   // vencido não tem follow-up de prospecção), então é ignorado.
-  const expiredLeads = useMemo(() => {
-    if (!isExpiredView) return EMPTY_LEADS;
-    const projetados = projectExpiredLeads(expiredDocs || [], statuses, expiredFunnel?.id);
-    return respFilter.length === 0 ? projetados : projetados.filter(l => respFilter.includes(l.consultantId));
+  // Divide entre as ETAPAS e a coluna PERDA: quem recusou (renewalDeclined) vai
+  // para a Perda, que o board já renderiza em todo funil. Ele continua CLIENTE —
+  // muda só onde o card aparece, nunca o lifecycleBucket.
+  const expiredSplit = useMemo(() => {
+    if (!isExpiredView) return { cards: EMPTY_LEADS, declined: EMPTY_LEADS };
+    const { cards, declined } = splitExpiredForBoard(expiredDocs || [], statuses, expiredFunnel?.id);
+    if (respFilter.length === 0) return { cards, declined };
+    const meu = (l) => respFilter.includes(l.consultantId);
+    return { cards: cards.filter(meu), declined: declined.filter(meu) };
   }, [isExpiredView, expiredDocs, statuses, expiredFunnel, respFilter]);
+  const expiredLeads = expiredSplit.cards;
 
   const kanbanLeads = useMemo(
     // No funil Vencidos os cards vêm da query própria já projetada, não da
@@ -669,7 +675,10 @@ const handleKanbanMouseMove = (e) => {
       );
       if (!etapa) return;
       updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-        reactivationStageId: etapa.id
+        reactivationStageId: etapa.id,
+        // Saindo da Perda de volta para uma etapa: a recusa deixa de valer,
+        // senão o card sumiria das etapas na próxima renderização.
+        renewalDeclined: false
       }).catch(err => {
         console.error('Erro ao mover card do funil de vencidos', err);
         toast.error('Não foi possível mover o card.');
@@ -694,14 +703,26 @@ const handleKanbanMouseMove = (e) => {
   const handleLossDrop = useCallback((e) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
-    const lead = leadId && draggableById.get(leadId);
-    if (!lead || lead.status === 'Perda') return;
-    if (!canEditLead(appUser, lead)) {
+    const alvo = leadId && draggableById.get(leadId);
+    // Funil VENCIDOS: "não volta" é venda perdida, mas a pessoa NÃO vira lead
+    // perdido — ela segue cliente, com ficha e contratos, e continua na aba
+    // Clientes. O que muda é só a flag que já existe e que a Meta também usa.
+    if (alvo?._expiredCard) {
+      updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, alvo.id), {
+        renewalDeclined: true, reactivationStageId: null
+      }).catch(err => {
+        console.error('Erro ao marcar recusa no funil de vencidos', err);
+        toast.error('Não foi possível mover o card.');
+      });
+      return;
+    }
+    if (!alvo || alvo.status === 'Perda') return;
+    if (!canEditLead(appUser, alvo)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
-    setLossModalLeadId(lead.id);
-  }, [draggableById, appUser, toast]);
+    setLossModalLeadId(alvo.id);
+  }, [draggableById, appUser, toast, db]);
 
   const confirmKanbanLoss = async (reason) => {
     if (!lossModalLeadId) return;
@@ -1006,7 +1027,7 @@ if (!lead) return;
               name="Perda"
               color="gray"
               special="loss"
-              columnLeads={lostLeads}
+              columnLeads={isExpiredView ? expiredSplit.declined : lostLeads}
 
               totalCount={perdaHeaderCount}
               hasMore={lostHasMore}

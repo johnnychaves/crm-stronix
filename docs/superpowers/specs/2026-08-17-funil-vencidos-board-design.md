@@ -105,7 +105,18 @@ renomeia, reordena ou apaga à vontade, e o provisionamento nunca as recria:
 |---|---|
 | **Em contato** | Falou com a pessoa |
 | **Em negociação** | Discutindo plano e preço |
-| **Não volta** | Recusou; quem marcou "não vou voltar" na Meta nasce aqui |
+
+**Não existe etapa "não volta"** (decisão do Johnny em 18/08). Quem recusa é
+venda perdida, e o board já tem a coluna **Perda** de sistema — etapa própria
+duplicaria o conceito.
+
+Neste funil a coluna Perda mostra quem tem `renewalDeclined`. Soltar um card ali
+grava a flag; tirar de lá limpa. **A pessoa NÃO vira `lifecycleBucket: 'perda'`:**
+ela continua CLIENTE, com ficha, contratos e histórico, e segue aparecendo na aba
+Clientes. É um ex-aluno que não volta, não um lead descartado.
+
+É uma diferença de significado proposital em relação ao resto do app, e foi
+confirmada explicitamente pelo Johnny.
 
 "Em negociação" e **não** "Negociação" de propósito: `isSystemStage`
 (`src/lib/funnels.js:21`) protege automaticamente qualquer etapa chamada
