@@ -5,6 +5,7 @@ import {
   planExpiredSetupOps, expiredStageIdOf, projectExpiredLeads,
 } from '../expiredFunnel.js';
 import { partitionLeadsByStatus } from '../kanban.js';
+import { isSystemStage } from '../funnels.js';
 
 describe('isExpiredFunnel', () => {
   it('casa pela flag, NUNCA pelo nome', () => {
@@ -52,7 +53,7 @@ describe('planExpiredSetupOps', () => {
   it('base zerada: cria o funil e as QUATRO etapas', () => {
     const plan = planExpiredSetupOps({ funnels: [], statuses: [] });
     expect(plan.createFunnel).toMatchObject({ name: EXPIRED_FUNNEL_NAME, systemKind: EXPIRED_FUNNEL_KIND });
-    expect(plan.createStages.map(s => s.name)).toEqual([EXPIRED_ENTRY_NAME, 'Em contato', 'Não volta']);
+    expect(plan.createStages.map(s => s.name)).toEqual([EXPIRED_ENTRY_NAME, 'Em contato', 'Em negociação', 'Não volta']);
   });
 
   // Venda e Perda NÃO são etapas: o board as renderiza como colunas especiais em
@@ -62,6 +63,7 @@ describe('planExpiredSetupOps', () => {
     const by = Object.fromEntries(stages.map(s => [s.name, s]));
     expect(by[EXPIRED_ENTRY_NAME]).toMatchObject({ isSystem: true, isEntry: true });
     expect(by['Em contato'].isSystem).toBeFalsy();
+    expect(by['Em negociação'].isSystem).toBeFalsy();
     expect(by['Não volta'].isSystem).toBeFalsy();
     expect(stages.some(s => s.name === 'Venda' || s.name === 'Perda')).toBe(false);
   });
@@ -204,5 +206,17 @@ describe('projeção + particionamento (o caminho do board)', () => {
   it('base sem cliente vencido devolve colunas vazias, sem quebrar', () => {
     const mapa = colunas([]);
     expect(stages.every(s => (mapa.get(s.name) || []).length === 0)).toBe(true);
+  });
+});
+
+// isSystemStage (funnels.js) protege automaticamente a etapa chamada exatamente
+// 'negociação'. A daqui precisa ficar LIVRE, por isso o nome é "Em negociação".
+describe('a etapa de negociação nasce editável', () => {
+  it('não usa o nome que dispara a proteção automática', () => {
+    const stages = planExpiredSetupOps({ funnels: [], statuses: [] }).createStages;
+    const nomes = stages.map(s => s.name.trim().toLowerCase());
+    expect(nomes).toContain('em negociação');
+    expect(nomes).not.toContain('negociação');
+    expect(stages.every(s => !isSystemStage(s) || s.isEntry)).toBe(true);
   });
 });

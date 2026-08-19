@@ -98,9 +98,18 @@ trava usada no funil de Indicações. O funil em si também não pode ser exclu�
 tem o nome travado — comportamento já implementado em
 `src/views/settings/FunnelsSection.jsx:118`.
 
-O app **semeia uma etapa do meio** na criação, chamada "Em contato", só para o
-funil não nascer com um vão entre a entrada e a Venda. Ela **não** é protegida: a
-academia renomeia ou apaga à vontade.
+O app **semeia três etapas do meio** na criação, nenhuma protegida — a academia
+renomeia, reordena ou apaga à vontade, e o provisionamento nunca as recria:
+
+| Semeada | Papel |
+|---|---|
+| **Em contato** | Falou com a pessoa |
+| **Em negociação** | Discutindo plano e preço |
+| **Não volta** | Recusou; quem marcou "não vou voltar" na Meta nasce aqui |
+
+"Em negociação" e **não** "Negociação" de propósito: `isSystemStage`
+(`src/lib/funnels.js:21`) protege automaticamente qualquer etapa chamada
+exatamente `negociação`, e esta precisa ficar livre.
 
 ### Arrastar para Venda abre o contrato
 

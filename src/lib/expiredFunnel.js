@@ -20,7 +20,15 @@ export const EXPIRED_ENTRY_NAME = 'Vencido';
 // protegidas, e o provisionamento NUNCA as recria: ressuscitar uma etapa que a
 // academia apagou de propósito seria pior que o vão.
 export const EXPIRED_SEED_MIDDLE_NAME = 'Em contato';
-// Gaveta de quem disse que não volta. Livre como a de cima, mas o card de quem
+// Segundo momento da reconquista: já falou e agora discute plano e preço. Sem
+// ela, "Em contato" acumula os dois e some a leitura de quem está perto de
+// fechar.
+//
+// "Em negociação" e NÃO "Negociação" de propósito: isSystemStage (funnels.js)
+// protege automaticamente qualquer etapa chamada exatamente 'negociação', e
+// aqui ela precisa ficar LIVRE para a academia mexer.
+export const EXPIRED_NEGOTIATION_NAME = 'Em negociação';
+// Gaveta de quem disse que não volta. Livre como as de cima, mas o card de quem
 // recusou na Meta nasce aqui.
 export const EXPIRED_DECLINED_NAME = 'Não volta';
 
@@ -75,7 +83,8 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
       createStages: [
         { name: EXPIRED_ENTRY_NAME, color: 'slate', order: 0, isSystem: true, isEntry: true },
         { name: EXPIRED_SEED_MIDDLE_NAME, color: 'amber', order: 1 },
-        { name: EXPIRED_DECLINED_NAME, color: 'gray', order: 2 },
+        { name: EXPIRED_NEGOTIATION_NAME, color: 'purple', order: 2 },
+        { name: EXPIRED_DECLINED_NAME, color: 'gray', order: 3 },
       ],
     };
   }
