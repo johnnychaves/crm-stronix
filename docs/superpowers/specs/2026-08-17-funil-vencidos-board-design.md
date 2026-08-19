@@ -98,9 +98,38 @@ trava usada no funil de Indicações. O funil em si também não pode ser exclu�
 tem o nome travado — comportamento já implementado em
 `src/views/settings/FunnelsSection.jsx:118`.
 
-O app **semeia uma etapa do meio** na criação, chamada "Em contato", só para o
-funil não nascer com um vão entre a entrada e a Venda. Ela **não** é protegida: a
-academia renomeia ou apaga à vontade.
+O app **semeia três etapas do meio** na criação, nenhuma protegida — a academia
+renomeia, reordena ou apaga à vontade, e o provisionamento nunca as recria:
+
+| Semeada | Papel |
+|---|---|
+| **Em contato** | Falou com a pessoa |
+
+**Sem etapa de negociação** (decisão do Johnny em 18/08). Com Venda e Perda já
+sendo colunas do board, o funil ficaria largo demais para o volume que costuma
+ter, e coluna vazia atrapalha mais que ajuda. A academia adiciona pela tela se
+sentir falta: errar para menos custa dez segundos, errar para mais deixa uma
+coluna morta que todo mundo olha todo dia.
+
+> Armadilha para quem for adicionar: uma etapa chamada exatamente `Negociação`
+> vira protegida automaticamente (`isSystemStage`, em `src/lib/funnels.js:21`) e
+> não pode mais ser apagada pela tela. Nomear "Em negociação" evita isso.
+
+**Não existe etapa "não volta"** (decisão do Johnny em 18/08). Quem recusa é
+venda perdida, e o board já tem a coluna **Perda** de sistema — etapa própria
+duplicaria o conceito.
+
+Neste funil a coluna Perda mostra quem tem `renewalDeclined`. Soltar um card ali
+grava a flag; tirar de lá limpa. **A pessoa NÃO vira `lifecycleBucket: 'perda'`:**
+ela continua CLIENTE, com ficha, contratos e histórico, e segue aparecendo na aba
+Clientes. É um ex-aluno que não volta, não um lead descartado.
+
+É uma diferença de significado proposital em relação ao resto do app, e foi
+confirmada explicitamente pelo Johnny.
+
+"Em negociação" e **não** "Negociação" de propósito: `isSystemStage`
+(`src/lib/funnels.js:21`) protege automaticamente qualquer etapa chamada
+exatamente `negociação`, e esta precisa ficar livre.
 
 ### Arrastar para Venda abre o contrato
 

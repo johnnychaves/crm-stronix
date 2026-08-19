@@ -230,3 +230,17 @@ describe('buildMatriculaWrites — sinal de indicação para o caller', () => {
     expect(out.notifyReferrerId).toBe(null);
   });
 });
+
+describe('buildMatriculaWrites — funil Vencidos', () => {
+  // Sem isto, o cliente que voltou e vencesse de novo daqui a dois anos
+  // reapareceria na etapa da vida passada.
+  it('limpa o reactivationStageId junto com os campos de renovação', () => {
+    const { leadPatch } = buildMatriculaWrites({
+      plan: { name: 'Mensal', priceCents: 10000 },
+      startsAt: new Date(2026, 7, 18),
+      months: 1,
+    });
+    expect(leadPatch.reactivationStageId).toBeNull();
+    expect(leadPatch.renewalDeclined).toBe(false);
+  });
+});

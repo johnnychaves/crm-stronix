@@ -33,17 +33,29 @@ export const normalizeExpiredWindowDays = normalizeRenewalGraceDays;
 // está vencido (é o que deriveContractStatus enxerga, e é o que a ficha mostra
 // como INATIVO). Passar meia-noite aqui empataria a comparação e atrasaria a
 // entrada do cliente em um dia.
-export function shouldPromptExpired(lead, now, windowDays = DEFAULT_EXPIRED_WINDOW_DAYS) {
+// Base compartilhada: é cliente e o contrato venceu. SEM janela de tempo e SEM
+// olhar renewalDeclined ou contato marcado — essas são condições da COBRANÇA
+// diária, não do fato de estar vencido.
+//
+// O funil VENCIDOS do board (src/lib/expiredFunnel.js) consome esta, porque lá
+// o cliente fica permanentemente, inclusive quem disse que não volta. A Meta
+// consome shouldPromptExpired, que é esta MAIS as condições da cobrança.
+//
+// Fonte única do "venceu" — a mesma que pinta INATIVO na ficha. De graça exclui
+// cancelado, trancado, agendado, ativo, a vencer e o legado sem vigência
+// gravada (que devolve null).
+export function isExpiredClient(lead, now) {
   if (!lead) return false;
   if (lead.lifecycleStage !== 'cliente') return false;
+  const ref = getSafeDateOrNull(now) || new Date();
+  return deriveLeadContractStatus(lead, ref) === CONTRACT_STATUS.VENCIDO;
+}
+
+export function shouldPromptExpired(lead, now, windowDays = DEFAULT_EXPIRED_WINDOW_DAYS) {
+  if (!isExpiredClient(lead, now)) return false;
   if (lead.renewalDeclined) return false;
 
   const ref = getSafeDateOrNull(now) || new Date();
-
-  // Fonte única do "venceu" — a mesma que pinta INATIVO na ficha. De graça
-  // exclui cancelado, trancado, agendado, ativo, a vencer e o legado sem
-  // vigência gravada (que devolve null).
-  if (deriveLeadContractStatus(lead, ref) !== CONTRACT_STATUS.VENCIDO) return false;
 
   const daysToExpiry = daysToExpiryOf(lead.currentContractEndsAt, ref);
   if (!Number.isFinite(daysToExpiry)) return false;

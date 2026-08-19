@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
-import { serverTimestamp } from 'firebase/firestore';
+import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { isAdminUser, canEditLead, isConvertedStatusName } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
@@ -7,9 +7,10 @@ import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
-import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS } from '../lib/leadQueries.js';
-import { LEADS_PATH } from '../lib/firebase.js';
+import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
+import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow } from '../lib/kanban.js';
 import { markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
@@ -394,9 +395,45 @@ const [isPanning, setIsPanning] = useState(false);
 
   // Recorte do board extraído p/ lib/kanban.js (clientes/convertidos saem;
   // filtros de responsável e atraso) — coberto por teste de caracterização.
+  // FUNIL VENCIDOS (funil de sistema): cliente com contrato vencido, carregado
+  // por query própria e SÓ quando a aba está aberta — quem nunca abrir não paga
+  // leitura. Regra e projeção em lib/expiredFunnel.js.
+  const expiredFunnel = useMemo(() => getExpiredFunnel(funnels), [funnels]);
+  const isExpiredView = Boolean(expiredFunnel && selectedFunnelId === expiredFunnel.id);
+  // Corte do "venceu": fixado uma vez na montagem. useState com inicializador
+  // roda fora do render, então não fere a pureza — e um contrato que vence no
+  // meio da sessão é caso de borda que o próximo carregamento resolve.
+  const [expiredCutoffMs] = useState(() => Date.now());
+  const expiredSpec = useMemo(
+    () => (isExpiredView ? expiredClientsQuerySpec(expiredCutoffMs, KANBAN_PAGE_SIZE) : null),
+    [isExpiredView, expiredCutoffMs]
+  );
+  const {
+    items: expiredDocs, hasMore: expiredHasMore, loadMore: expiredLoadMore,
+  } = usePagedLeads({
+    db, path: LEADS_PATH, spec: expiredSpec, specKey: `vencidos:${isExpiredView ? '1' : '0'}`,
+    enabled: !!db && isExpiredView,
+  });
+  // O status EXIBIDO vira o nome da etapa derivada (o real continua 'Venda').
+  // O respFilter continua valendo; onlyOverdue não faz sentido aqui (cliente
+  // vencido não tem follow-up de prospecção), então é ignorado.
+  // Divide entre as ETAPAS e a coluna PERDA: quem recusou (renewalDeclined) vai
+  // para a Perda, que o board já renderiza em todo funil. Ele continua CLIENTE —
+  // muda só onde o card aparece, nunca o lifecycleBucket.
+  const expiredSplit = useMemo(() => {
+    if (!isExpiredView) return { cards: EMPTY_LEADS, declined: EMPTY_LEADS };
+    const { cards, declined } = splitExpiredForBoard(expiredDocs || [], statuses, expiredFunnel?.id);
+    if (respFilter.length === 0) return { cards, declined };
+    const meu = (l) => respFilter.includes(l.consultantId);
+    return { cards: cards.filter(meu), declined: declined.filter(meu) };
+  }, [isExpiredView, expiredDocs, statuses, expiredFunnel, respFilter]);
+  const expiredLeads = expiredSplit.cards;
+
   const kanbanLeads = useMemo(
-    () => filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue }),
-    [funnelLeads, respFilter, onlyOverdue]
+    // No funil Vencidos os cards vêm da query própria já projetada, não da
+    // assinatura de leads ativos — cliente não está no board de prospecção.
+    () => (isExpiredView ? expiredLeads : filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue })),
+    [isExpiredView, expiredLeads, funnelLeads, respFilter, onlyOverdue]
   );
 
   // Índice leadId → { count, lastDate }. Percorre interactions UMA vez,
@@ -628,8 +665,28 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
+    // BIFURCAÇÃO do funil Vencidos. O card ali é um CLIENTE, cujo status real é
+    // 'Venda' — gravar a etapa em `status` corromperia o estado de cliente e a
+    // aba Clientes. A etapa dele mora num campo próprio, reactivationStageId.
+    // O `status` que chega aqui é o projetado (nome da etapa), não o do banco.
+    if (lead._expiredCard) {
+      const etapa = (statuses || []).find(
+        st => st.funnelId === expiredFunnel?.id && st.name === newStatus
+      );
+      if (!etapa) return;
+      updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+        reactivationStageId: etapa.id,
+        // Saindo da Perda de volta para uma etapa: a recusa deixa de valer,
+        // senão o card sumiria das etapas na próxima renderização.
+        renewalDeclined: false
+      }).catch(err => {
+        console.error('Erro ao mover card do funil de vencidos', err);
+        toast.error('Não foi possível mover o card.');
+      });
+      return;
+    }
     applyMoveToStage(lead, newStatus);
-  }, [draggableById, appUser, toast, applyMoveToStage]);
+  }, [draggableById, appUser, toast, applyMoveToStage, statuses, expiredFunnel, db]);
 
   const handleWinDrop = useCallback((e) => {
     e.preventDefault();
@@ -646,14 +703,26 @@ const handleKanbanMouseMove = (e) => {
   const handleLossDrop = useCallback((e) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
-    const lead = leadId && draggableById.get(leadId);
-    if (!lead || lead.status === 'Perda') return;
-    if (!canEditLead(appUser, lead)) {
+    const alvo = leadId && draggableById.get(leadId);
+    // Funil VENCIDOS: "não volta" é venda perdida, mas a pessoa NÃO vira lead
+    // perdido — ela segue cliente, com ficha e contratos, e continua na aba
+    // Clientes. O que muda é só a flag que já existe e que a Meta também usa.
+    if (alvo?._expiredCard) {
+      updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, alvo.id), {
+        renewalDeclined: true, reactivationStageId: null
+      }).catch(err => {
+        console.error('Erro ao marcar recusa no funil de vencidos', err);
+        toast.error('Não foi possível mover o card.');
+      });
+      return;
+    }
+    if (!alvo || alvo.status === 'Perda') return;
+    if (!canEditLead(appUser, alvo)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
-    setLossModalLeadId(lead.id);
-  }, [draggableById, appUser, toast]);
+    setLossModalLeadId(alvo.id);
+  }, [draggableById, appUser, toast, db]);
 
   const confirmKanbanLoss = async (reason) => {
     if (!lossModalLeadId) return;
@@ -916,6 +985,10 @@ if (!lead) return;
                 color={column.color}
                 special={null}
                 columnLeads={getLeadsByStatus(column.name)}
+                // Paginação do funil Vencidos: o volume mora na coluna de
+                // entrada, então é ela que ganha o "carregar mais".
+                hasMore={isExpiredView && column.isEntry ? expiredHasMore : false}
+                onLoadMore={isExpiredView && column.isEntry ? expiredLoadMore : null}
                 isHovered={draggedOverColumn === column.name}
                 draggingLeadId={draggingLeadId}
                 interactionIndex={interactionIndex}
@@ -954,7 +1027,7 @@ if (!lead) return;
               name="Perda"
               color="gray"
               special="loss"
-              columnLeads={lostLeads}
+              columnLeads={isExpiredView ? expiredSplit.declined : lostLeads}
 
               totalCount={perdaHeaderCount}
               hasMore={lostHasMore}
