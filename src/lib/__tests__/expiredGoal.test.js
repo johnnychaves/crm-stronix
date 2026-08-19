@@ -3,7 +3,7 @@
 // que mais erra, então ela está travada aqui.
 
 import { describe, it, expect } from 'vitest';
-import { shouldPromptExpired, expiredLabel, expiredSortKey } from '../expiredGoal.js';
+import { shouldPromptExpired, expiredLabel, expiredSortKey, isExpiredClient } from '../expiredGoal.js';
 
 const NOW = new Date(2026, 6, 15, 10, 0, 0); // quarta, 15/07/2026 10:00
 
@@ -144,5 +144,33 @@ describe('expiredSortKey', () => {
 
   it('sem vigência vai para o fim', () => {
     expect(expiredSortKey(cliente({ currentContractEndsAt: null }))).toBe(0);
+  });
+});
+
+describe('isExpiredClient — a base que o funil do board consome', () => {
+  const AGORA = new Date(2026, 7, 18, 10, 0);
+  const venceuOntem = {
+    lifecycleStage: 'cliente',
+    currentContractEndsAt: new Date(2026, 7, 17),
+    currentContractStatus: 'ativo',
+  };
+
+  it('cliente com contrato vencido conta, SEM janela de tempo', () => {
+    expect(isExpiredClient(venceuOntem, AGORA)).toBe(true);
+    // Um ano depois continua contando: o funil do board é permanente. É a Meta
+    // que cobra por N dias e solta.
+    expect(isExpiredClient(venceuOntem, new Date(2027, 7, 18))).toBe(true);
+  });
+
+  it('quem não é cliente fica de fora', () => {
+    expect(isExpiredClient({ ...venceuOntem, lifecycleStage: null }, AGORA)).toBe(false);
+    expect(isExpiredClient(null, AGORA)).toBe(false);
+  });
+
+  // A diferença central entre a base e a regra da Meta.
+  it('renewalDeclined NÃO exclui do funil, mas exclui da cobrança diária', () => {
+    const recusou = { ...venceuOntem, renewalDeclined: true };
+    expect(isExpiredClient(recusou, AGORA)).toBe(true);
+    expect(shouldPromptExpired(recusou, AGORA, 15)).toBe(false);
   });
 });
