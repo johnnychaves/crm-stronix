@@ -104,7 +104,16 @@ renomeia, reordena ou apaga à vontade, e o provisionamento nunca as recria:
 | Semeada | Papel |
 |---|---|
 | **Em contato** | Falou com a pessoa |
-| **Em negociação** | Discutindo plano e preço |
+
+**Sem etapa de negociação** (decisão do Johnny em 18/08). Com Venda e Perda já
+sendo colunas do board, o funil ficaria largo demais para o volume que costuma
+ter, e coluna vazia atrapalha mais que ajuda. A academia adiciona pela tela se
+sentir falta: errar para menos custa dez segundos, errar para mais deixa uma
+coluna morta que todo mundo olha todo dia.
+
+> Armadilha para quem for adicionar: uma etapa chamada exatamente `Negociação`
+> vira protegida automaticamente (`isSystemStage`, em `src/lib/funnels.js:21`) e
+> não pode mais ser apagada pela tela. Nomear "Em negociação" evita isso.
 
 **Não existe etapa "não volta"** (decisão do Johnny em 18/08). Quem recusa é
 venda perdida, e o board já tem a coluna **Perda** de sistema — etapa própria

@@ -20,14 +20,15 @@ export const EXPIRED_ENTRY_NAME = 'Vencido';
 // protegidas, e o provisionamento NUNCA as recria: ressuscitar uma etapa que a
 // academia apagou de propósito seria pior que o vão.
 export const EXPIRED_SEED_MIDDLE_NAME = 'Em contato';
-// Segundo momento da reconquista: já falou e agora discute plano e preço. Sem
-// ela, "Em contato" acumula os dois e some a leitura de quem está perto de
-// fechar.
+// NÃO semeamos etapa de negociação (decisão do Johnny em 18/08): com Venda e
+// Perda já sendo colunas do board, o funil ficaria largo demais para o volume
+// que costuma ter, e coluna vazia atrapalha mais que ajuda. A academia adiciona
+// pela tela se sentir falta — errar para menos custa dez segundos, errar para
+// mais deixa uma coluna morta que todo mundo olha todo dia.
 //
-// "Em negociação" e NÃO "Negociação" de propósito: isSystemStage (funnels.js)
-// protege automaticamente qualquer etapa chamada exatamente 'negociação', e
-// aqui ela precisa ficar LIVRE para a academia mexer.
-export const EXPIRED_NEGOTIATION_NAME = 'Em negociação';
+// ARMADILHA para quem for adicionar: uma etapa chamada exatamente 'Negociação'
+// vira PROTEGIDA automaticamente (isSystemStage, em funnels.js), e não dá mais
+// para apagar pela tela. Nomear "Em negociação" evita isso.
 // NÃO existe etapa "não volta": quem recusou é venda perdida, e o board já tem
 // a coluna PERDA de sistema. Nesse funil ela mostra quem tem `renewalDeclined`.
 //
@@ -86,7 +87,6 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
       createStages: [
         { name: EXPIRED_ENTRY_NAME, color: 'slate', order: 0, isSystem: true, isEntry: true },
         { name: EXPIRED_SEED_MIDDLE_NAME, color: 'amber', order: 1 },
-        { name: EXPIRED_NEGOTIATION_NAME, color: 'purple', order: 2 },
       ],
     };
   }
