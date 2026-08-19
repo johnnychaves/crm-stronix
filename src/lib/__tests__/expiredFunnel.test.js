@@ -53,6 +53,7 @@ describe('planExpiredSetupOps', () => {
     const plan = planExpiredSetupOps({ funnels: [], statuses: [] });
     expect(plan.createFunnel).toMatchObject({ name: EXPIRED_FUNNEL_NAME, systemKind: EXPIRED_FUNNEL_KIND });
     expect(plan.createStages.map(s => s.name)).toEqual([EXPIRED_ENTRY_NAME, 'Em contato']);
+    expect(EXPIRED_ENTRY_NAME).toBe('Aguardando contato');
   });
 
   // Venda e Perda NÃO são etapas: o board as renderiza como colunas especiais em
@@ -65,6 +66,22 @@ describe('planExpiredSetupOps', () => {
     expect(stages.some(s => s.name === 'Venda' || s.name === 'Perda')).toBe(false);
   });
 
+  // A etapa de entrada é protegida: quem provisionou na versão de 19/08 ficaria
+  // preso no nome antigo, sem conseguir arrumar pela tela.
+  it('renomeia a entrada legada "Vencido" em vez de criar outra', () => {
+    const funnels = [{ id: 'f1', systemKind: EXPIRED_FUNNEL_KIND }];
+    const statuses = [{ id: 'a', funnelId: 'f1', name: 'Vencido', isSystem: true, isEntry: true }];
+    const plan = planExpiredSetupOps({ funnels, statuses });
+    expect(plan.createStages).toEqual([]);
+    expect(plan.renameStages).toEqual([{ id: 'a', name: EXPIRED_ENTRY_NAME }]);
+  });
+
+  it('entrada já com o nome novo não é renomeada de novo', () => {
+    const funnels = [{ id: 'f1', systemKind: EXPIRED_FUNNEL_KIND }];
+    const statuses = [{ id: 'a', funnelId: 'f1', name: EXPIRED_ENTRY_NAME, isSystem: true, isEntry: true }];
+    expect(planExpiredSetupOps({ funnels, statuses }).renameStages).toEqual([]);
+  });
+
   it('idempotente: com tudo pronto não cria nada', () => {
     const funnels = [{ id: 'f1', systemKind: EXPIRED_FUNNEL_KIND }];
     const statuses = [
@@ -74,6 +91,7 @@ describe('planExpiredSetupOps', () => {
     const plan = planExpiredSetupOps({ funnels, statuses });
     expect(plan.createFunnel).toBeNull();
     expect(plan.createStages).toEqual([]);
+    expect(plan.renameStages).toEqual([]);
   });
 
   it('self-heal: funil existe mas alguém apagou a ENTRADA pelo console', () => {
@@ -101,7 +119,7 @@ describe('planExpiredSetupOps', () => {
 
 describe('expiredStageIdOf', () => {
   const stages = [
-    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
+    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Aguardando contato' },
     { id: 'meio', funnelId: 'f1', name: 'Em contato' },
   ];
   it('sem toque, nasce na entrada', () => {
@@ -118,14 +136,14 @@ describe('expiredStageIdOf', () => {
 
 describe('projectExpiredLeads', () => {
   const stages = [
-    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
+    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Aguardando contato' },
     { id: 'meio', funnelId: 'f1', name: 'Em contato' },
   ];
 
   // Cliente é status 'Venda'. Sem a projeção, TODOS cairiam na coluna Venda.
   it('o status exibido vira o nome da etapa derivada', () => {
     const out = projectExpiredLeads([{ id: 'l1', status: 'Venda' }], stages, 'f1');
-    expect(out[0].status).toBe('Vencido');
+    expect(out[0].status).toBe('Aguardando contato');
   });
 
   it('o status REAL do documento não é alterado', () => {
@@ -162,7 +180,7 @@ describe('projectExpiredLeads', () => {
 // particionador agrupa por `status`.
 describe('projeção + particionamento (o caminho do board)', () => {
   const stages = [
-    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
+    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Aguardando contato' },
     { id: 'meio', funnelId: 'f1', name: 'Em contato' },
   ];
   const colunas = (leads) =>
@@ -173,7 +191,7 @@ describe('projeção + particionamento (o caminho do board)', () => {
       { id: 'novo', status: 'Venda' },
       { id: 'trabalhando', status: 'Venda', reactivationStageId: 'meio' },
     ]);
-    expect((mapa.get('Vencido') || []).map(l => l.id)).toEqual(['novo']);
+    expect((mapa.get('Aguardando contato') || []).map(l => l.id)).toEqual(['novo']);
     expect((mapa.get('Em contato') || []).map(l => l.id)).toEqual(['trabalhando']);
   });
 
@@ -195,7 +213,7 @@ describe('projeção + particionamento (o caminho do board)', () => {
 
 describe('splitExpiredForBoard', () => {
   const stages = [
-    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
+    { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Aguardando contato' },
     { id: 'meio', funnelId: 'f1', name: 'Em contato' },
   ];
 

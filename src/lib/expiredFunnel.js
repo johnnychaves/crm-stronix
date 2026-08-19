@@ -15,7 +15,11 @@ import { normalize } from './globalSearch.js';
 export const EXPIRED_FUNNEL_KIND = 'expired';
 export const EXPIRED_FUNNEL_NAME = 'Vencidos';
 // Etapa 1 (fixa). Onde o cliente cai sozinho ao vencer.
-export const EXPIRED_ENTRY_NAME = 'Vencido';
+export const EXPIRED_ENTRY_NAME = 'Aguardando contato';
+// Nome da primeira versão, que chegou a ir para produção em 19/08. A etapa de
+// entrada é PROTEGIDA e não pode ser renomeada pela tela, então quem provisionou
+// antes ficaria preso nele — o plano abaixo renomeia.
+export const EXPIRED_ENTRY_LEGACY_NAME = 'Vencido';
 // Etapas do meio, semeadas na criação para o funil não nascer vazio. NÃO são
 // protegidas, e o provisionamento NUNCA as recria: ressuscitar uma etapa que a
 // academia apagou de propósito seria pior que o vão.
@@ -72,7 +76,9 @@ export const getExpiredEntryStage = (statuses, funnelId) => {
   if (!inFunnel.length) return null;
   return (
     inFunnel.find((s) => s.isEntry) ||
-    inFunnel.find((s) => s.isSystem && sameStageName(s.name, EXPIRED_ENTRY_NAME)) ||
+    // Aceita o nome legado: academia provisionada em 19/08 que tenha perdido a
+    // flag por fora ficaria órfã se olhássemos só o nome novo.
+    inFunnel.find((s) => s.isSystem && (sameStageName(s.name, EXPIRED_ENTRY_NAME) || sameStageName(s.name, EXPIRED_ENTRY_LEGACY_NAME))) ||
     inFunnel.reduce((best, s) => ((s.order ?? 99) < (best.order ?? 99) ? s : best))
   );
 };
@@ -84,6 +90,7 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
   if (!existing) {
     return {
       createFunnel: { name: EXPIRED_FUNNEL_NAME, systemKind: EXPIRED_FUNNEL_KIND, order: 99 },
+      renameStages: [],
       createStages: [
         { name: EXPIRED_ENTRY_NAME, color: 'slate', order: 0, isSystem: true, isEntry: true },
         { name: EXPIRED_SEED_MIDDLE_NAME, color: 'amber', order: 1 },
@@ -92,16 +99,21 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
   }
 
   const inFunnel = (statuses || []).filter((s) => s?.funnelId === existing.id);
-  const has = (target, alsoFlag) =>
-    inFunnel.some((s) => sameStageName(s.name, target) || (alsoFlag && s[alsoFlag]));
-
   // Só a ENTRADA é garantida: ela é protegida e o funil não funciona sem ela.
   // As do meio são livres e não voltam se a academia apagar.
   const createStages = [];
-  if (!has(EXPIRED_ENTRY_NAME, 'isEntry')) {
+  const renameStages = [];
+  const entrada = inFunnel.find(
+    (s) => s.isEntry || sameStageName(s.name, EXPIRED_ENTRY_NAME) || sameStageName(s.name, EXPIRED_ENTRY_LEGACY_NAME)
+  );
+  if (!entrada) {
     createStages.push({ name: EXPIRED_ENTRY_NAME, color: 'slate', order: 0, funnelId: existing.id, isSystem: true, isEntry: true });
+  } else if (sameStageName(entrada.name, EXPIRED_ENTRY_LEGACY_NAME)) {
+    // Renomeia em vez de criar outra: a etapa é protegida e ninguém consegue
+    // arrumar pela tela.
+    renameStages.push({ id: entrada.id, name: EXPIRED_ENTRY_NAME });
   }
-  return { createFunnel: null, createStages };
+  return { createFunnel: null, createStages, renameStages };
 };
 
 // Etapa do card. DERIVADA enquanto ninguém arrasta — é o que faz o funil

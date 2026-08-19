@@ -775,7 +775,10 @@ useEffect(() => {
       // "não semeado" — a migração roda e carimba.
       setFunnelsSetupDone(!!data?.funnelsSetupDoneAt);
       setReferralSetupDone(!!data?.referralSetupDoneAt);
-      setExpiredSetupDone(!!data?.expiredFunnelSetupDoneAt);
+      // v2: a chave mudou para o provisionamento rodar uma vez a mais e renomear a
+      // etapa de entrada de 'Vencido' para 'Aguardando contato'. Ela é protegida,
+      // então ninguém consegue arrumar pela tela.
+      setExpiredSetupDone(!!data?.expiredFunnelSetupV2DoneAt);
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
@@ -1120,10 +1123,16 @@ useEffect(() => {
             funnelId: stage.funnelId || newFunnelId
           });
         }
+        for (const ren of (plan.renameStages || [])) {
+          await updateDoc(
+            doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, ren.id),
+            { name: ren.name }
+          );
+        }
 
         await setDoc(
           doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
-          { expiredFunnelSetupDoneAt: serverTimestamp() },
+          { expiredFunnelSetupV2DoneAt: serverTimestamp() },
           { merge: true }
         );
 

@@ -87,7 +87,7 @@ um conjunto fechado próprio:
 
 | Etapa | Protegida? | Papel |
 |---|---|---|
-| **Vencido** (entrada, `isEntry`) | 🔒 sim | Onde o cliente cai sozinho ao vencer |
+| **Aguardando contato** (entrada, `isEntry`) | 🔒 sim | Onde o cliente cai sozinho ao vencer |
 | *(etapas do meio)* | ✏️ não | A academia cria e renomeia como quiser |
 | **Venda** | 🔒 sim | Reconquistado |
 | **Perda** | 🔒 sim | Não volta mais |
@@ -110,6 +110,12 @@ sendo colunas do board, o funil ficaria largo demais para o volume que costuma
 ter, e coluna vazia atrapalha mais que ajuda. A academia adiciona pela tela se
 sentir falta: errar para menos custa dez segundos, errar para mais deixa uma
 coluna morta que todo mundo olha todo dia.
+
+> **Renome de 19/08:** a entrada chamava-se "Vencido" na primeira versão que foi
+> a produção. Como ela é protegida e não pode ser renomeada pela tela, o
+> provisionamento ganhou uma passada de `renameStages` e a chave da flag virou
+> `expiredFunnelSetupV2DoneAt`, para rodar uma vez a mais em quem já tinha
+> provisionado.
 
 > Armadilha para quem for adicionar: uma etapa chamada exatamente `Negociação`
 > vira protegida automaticamente (`isSystemStage`, em `src/lib/funnels.js:21`) e
