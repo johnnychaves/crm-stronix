@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
-import { serverTimestamp } from 'firebase/firestore';
+import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { isAdminUser, canEditLead, isConvertedStatusName } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
@@ -10,7 +10,7 @@ import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { getExpiredFunnel, projectExpiredLeads } from '../lib/expiredFunnel.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
-import { LEADS_PATH } from '../lib/firebase.js';
+import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow } from '../lib/kanban.js';
 import { markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
@@ -659,8 +659,25 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
+    // BIFURCAÇÃO do funil Vencidos. O card ali é um CLIENTE, cujo status real é
+    // 'Venda' — gravar a etapa em `status` corromperia o estado de cliente e a
+    // aba Clientes. A etapa dele mora num campo próprio, reactivationStageId.
+    // O `status` que chega aqui é o projetado (nome da etapa), não o do banco.
+    if (lead._expiredCard) {
+      const etapa = (statuses || []).find(
+        st => st.funnelId === expiredFunnel?.id && st.name === newStatus
+      );
+      if (!etapa) return;
+      updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+        reactivationStageId: etapa.id
+      }).catch(err => {
+        console.error('Erro ao mover card do funil de vencidos', err);
+        toast.error('Não foi possível mover o card.');
+      });
+      return;
+    }
     applyMoveToStage(lead, newStatus);
-  }, [draggableById, appUser, toast, applyMoveToStage]);
+  }, [draggableById, appUser, toast, applyMoveToStage, statuses, expiredFunnel, db]);
 
   const handleWinDrop = useCallback((e) => {
     e.preventDefault();

@@ -16,14 +16,18 @@ export const EXPIRED_FUNNEL_KIND = 'expired';
 export const EXPIRED_FUNNEL_NAME = 'Vencidos';
 // Etapa 1 (fixa). Onde o cliente cai sozinho ao vencer.
 export const EXPIRED_ENTRY_NAME = 'Vencido';
-// Terminais, protegidas como a entrada: o funil tem a forma padrão dos outros
-// (decisão do Johnny em 18/08).
-export const EXPIRED_WON_NAME = 'Venda';
-export const EXPIRED_LOST_NAME = 'Perda';
-// Semeada só para o funil não nascer com um vão entre a entrada e a Venda. NÃO é
-// protegida, e o provisionamento NUNCA a recria: ressuscitar uma etapa que a
+// Etapas do meio, semeadas na criação para o funil não nascer vazio. NÃO são
+// protegidas, e o provisionamento NUNCA as recria: ressuscitar uma etapa que a
 // academia apagou de propósito seria pior que o vão.
 export const EXPIRED_SEED_MIDDLE_NAME = 'Em contato';
+// Gaveta de quem disse que não volta. Livre como a de cima, mas o card de quem
+// recusou na Meta nasce aqui.
+export const EXPIRED_DECLINED_NAME = 'Não volta';
+
+// VENDA e PERDA não são etapas deste funil. O board renderiza as duas como
+// colunas ESPECIAIS em todo funil, fora do laço das etapas (ver KanbanView) —
+// criá-las aqui produziria colunas duplicadas. A coluna Venda especial já abre
+// o ContractModal no drop, que é o comportamento pedido.
 
 export const isExpiredFunnel = (f) => f?.systemKind === EXPIRED_FUNNEL_KIND;
 
@@ -71,8 +75,7 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
       createStages: [
         { name: EXPIRED_ENTRY_NAME, color: 'slate', order: 0, isSystem: true, isEntry: true },
         { name: EXPIRED_SEED_MIDDLE_NAME, color: 'amber', order: 1 },
-        { name: EXPIRED_WON_NAME, color: 'emerald', order: 98, isSystem: true },
-        { name: EXPIRED_LOST_NAME, color: 'rose', order: 99, isSystem: true },
+        { name: EXPIRED_DECLINED_NAME, color: 'gray', order: 2 },
       ],
     };
   }
@@ -81,15 +84,11 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
   const has = (target, alsoFlag) =>
     inFunnel.some((s) => sameStageName(s.name, target) || (alsoFlag && s[alsoFlag]));
 
+  // Só a ENTRADA é garantida: ela é protegida e o funil não funciona sem ela.
+  // As do meio são livres e não voltam se a academia apagar.
   const createStages = [];
   if (!has(EXPIRED_ENTRY_NAME, 'isEntry')) {
     createStages.push({ name: EXPIRED_ENTRY_NAME, color: 'slate', order: 0, funnelId: existing.id, isSystem: true, isEntry: true });
-  }
-  if (!has(EXPIRED_WON_NAME)) {
-    createStages.push({ name: EXPIRED_WON_NAME, color: 'emerald', order: 98, funnelId: existing.id, isSystem: true });
-  }
-  if (!has(EXPIRED_LOST_NAME)) {
-    createStages.push({ name: EXPIRED_LOST_NAME, color: 'rose', order: 99, funnelId: existing.id, isSystem: true });
   }
   return { createFunnel: null, createStages };
 };
@@ -100,9 +99,11 @@ export const planExpiredSetupOps = ({ funnels, statuses } = {}) => {
 export const expiredStageIdOf = (lead, statuses, funnelId) => {
   if (lead?.reactivationStageId) return lead.reactivationStageId;
   const inFunnel = (statuses || []).filter((s) => s?.funnelId === funnelId);
+  // Quem registrou "não vou voltar" na Meta já nasce na gaveta certa. Se a
+  // academia apagou essa etapa, cai na entrada como todo mundo.
   if (lead?.renewalDeclined) {
-    const perda = inFunnel.find((s) => s.isSystem && sameStageName(s.name, EXPIRED_LOST_NAME));
-    if (perda) return perda.id;
+    const naoVolta = inFunnel.find((s) => sameStageName(s.name, EXPIRED_DECLINED_NAME));
+    if (naoVolta) return naoVolta.id;
   }
   return getExpiredEntryStage(statuses, funnelId)?.id || null;
 };

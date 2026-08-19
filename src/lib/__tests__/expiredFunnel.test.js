@@ -51,15 +51,18 @@ describe('planExpiredSetupOps', () => {
   it('base zerada: cria o funil e as QUATRO etapas', () => {
     const plan = planExpiredSetupOps({ funnels: [], statuses: [] });
     expect(plan.createFunnel).toMatchObject({ name: EXPIRED_FUNNEL_NAME, systemKind: EXPIRED_FUNNEL_KIND });
-    expect(plan.createStages.map(s => s.name)).toEqual([EXPIRED_ENTRY_NAME, 'Em contato', 'Venda', 'Perda']);
+    expect(plan.createStages.map(s => s.name)).toEqual([EXPIRED_ENTRY_NAME, 'Em contato', 'Não volta']);
   });
 
-  it('entrada, Venda e Perda nascem protegidas; a do meio NÃO', () => {
-    const by = Object.fromEntries(planExpiredSetupOps({ funnels: [], statuses: [] }).createStages.map(s => [s.name, s]));
+  // Venda e Perda NÃO são etapas: o board as renderiza como colunas especiais em
+  // todo funil. Criá-las aqui duplicaria a coluna.
+  it('só a entrada nasce protegida; as do meio são livres', () => {
+    const stages = planExpiredSetupOps({ funnels: [], statuses: [] }).createStages;
+    const by = Object.fromEntries(stages.map(s => [s.name, s]));
     expect(by[EXPIRED_ENTRY_NAME]).toMatchObject({ isSystem: true, isEntry: true });
-    expect(by['Venda'].isSystem).toBe(true);
-    expect(by['Perda'].isSystem).toBe(true);
     expect(by['Em contato'].isSystem).toBeFalsy();
+    expect(by['Não volta'].isSystem).toBeFalsy();
+    expect(stages.some(s => s.name === 'Venda' || s.name === 'Perda')).toBe(false);
   });
 
   it('idempotente: com tudo pronto não cria nada', () => {
@@ -67,41 +70,32 @@ describe('planExpiredSetupOps', () => {
     const statuses = [
       { id: 'a', funnelId: 'f1', name: EXPIRED_ENTRY_NAME, isSystem: true, isEntry: true },
       { id: 'b', funnelId: 'f1', name: 'Em contato' },
-      { id: 'c', funnelId: 'f1', name: 'Venda', isSystem: true },
-      { id: 'd', funnelId: 'f1', name: 'Perda', isSystem: true },
     ];
     const plan = planExpiredSetupOps({ funnels, statuses });
     expect(plan.createFunnel).toBeNull();
     expect(plan.createStages).toEqual([]);
   });
 
-  it('self-heal: funil existe mas alguém apagou a Perda pelo console', () => {
+  it('self-heal: funil existe mas alguém apagou a ENTRADA pelo console', () => {
     const funnels = [{ id: 'f1', systemKind: EXPIRED_FUNNEL_KIND }];
-    const statuses = [
-      { id: 'a', funnelId: 'f1', name: EXPIRED_ENTRY_NAME, isSystem: true, isEntry: true },
-      { id: 'c', funnelId: 'f1', name: 'Venda', isSystem: true },
-    ];
+    const statuses = [{ id: 'b', funnelId: 'f1', name: 'Em contato' }];
     const plan = planExpiredSetupOps({ funnels, statuses });
     expect(plan.createFunnel).toBeNull();
-    expect(plan.createStages.map(s => s.name)).toEqual(['Perda']);
+    expect(plan.createStages.map(s => s.name)).toEqual([EXPIRED_ENTRY_NAME]);
     expect(plan.createStages[0].funnelId).toBe('f1');
   });
 
-  it('NÃO recria a etapa do meio se a academia apagou (ela é livre)', () => {
+  it('NÃO recria as etapas do meio se a academia apagou (elas são livres)', () => {
     const funnels = [{ id: 'f1', systemKind: EXPIRED_FUNNEL_KIND }];
-    const statuses = [
-      { id: 'a', funnelId: 'f1', name: EXPIRED_ENTRY_NAME, isSystem: true, isEntry: true },
-      { id: 'c', funnelId: 'f1', name: 'Venda', isSystem: true },
-      { id: 'd', funnelId: 'f1', name: 'Perda', isSystem: true },
-    ];
+    const statuses = [{ id: 'a', funnelId: 'f1', name: EXPIRED_ENTRY_NAME, isSystem: true, isEntry: true }];
     expect(planExpiredSetupOps({ funnels, statuses }).createStages).toEqual([]);
   });
 
   it('etapas de OUTRO funil não contam como existentes', () => {
     const funnels = [{ id: 'f1', systemKind: EXPIRED_FUNNEL_KIND }];
-    const statuses = [{ id: 'x', funnelId: 'outro', name: 'Perda', isSystem: true }];
+    const statuses = [{ id: 'x', funnelId: 'outro', name: EXPIRED_ENTRY_NAME, isEntry: true }];
     expect(planExpiredSetupOps({ funnels, statuses }).createStages.map(s => s.name))
-      .toEqual([EXPIRED_ENTRY_NAME, 'Venda', 'Perda']);
+      .toEqual([EXPIRED_ENTRY_NAME]);
   });
 });
 
@@ -109,13 +103,17 @@ describe('expiredStageIdOf', () => {
   const stages = [
     { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
     { id: 'meio', funnelId: 'f1', name: 'Em contato' },
-    { id: 'perda', funnelId: 'f1', isSystem: true, name: 'Perda' },
+    { id: 'naovolta', funnelId: 'f1', name: 'Não volta' },
   ];
   it('sem toque, nasce na entrada', () => {
     expect(expiredStageIdOf({}, stages, 'f1')).toBe('entrada');
   });
-  it('quem recusou na Meta já nasce em Perda, sem ninguém mexer', () => {
-    expect(expiredStageIdOf({ renewalDeclined: true }, stages, 'f1')).toBe('perda');
+  it('quem recusou na Meta já nasce em "Não volta", sem ninguém mexer', () => {
+    expect(expiredStageIdOf({ renewalDeclined: true }, stages, 'f1')).toBe('naovolta');
+  });
+  it('se a academia apagou "Não volta", quem recusou cai na entrada', () => {
+    const semGaveta = stages.filter(s => s.id !== 'naovolta');
+    expect(expiredStageIdOf({ renewalDeclined: true }, semGaveta, 'f1')).toBe('entrada');
   });
   it('depois do primeiro arrasto, manda o campo gravado', () => {
     expect(expiredStageIdOf({ reactivationStageId: 'meio', renewalDeclined: true }, stages, 'f1')).toBe('meio');
@@ -129,7 +127,7 @@ describe('projectExpiredLeads', () => {
   const stages = [
     { id: 'entrada', funnelId: 'f1', isEntry: true, name: 'Vencido' },
     { id: 'meio', funnelId: 'f1', name: 'Em contato' },
-    { id: 'perda', funnelId: 'f1', isSystem: true, name: 'Perda' },
+    { id: 'naovolta', funnelId: 'f1', name: 'Não volta' },
   ];
 
   // Cliente é status 'Venda'. Sem a projeção, TODOS cairiam na coluna Venda.
@@ -149,9 +147,9 @@ describe('projectExpiredLeads', () => {
     expect(out[0].status).toBe('Em contato');
   });
 
-  it('quem recusou na Meta nasce em Perda', () => {
+  it('quem recusou na Meta nasce em "Não volta"', () => {
     const out = projectExpiredLeads([{ id: 'l1', status: 'Venda', renewalDeclined: true }], stages, 'f1');
-    expect(out[0].status).toBe('Perda');
+    expect(out[0].status).toBe('Não volta');
   });
 
   it('marca o card para o handler de drop saber onde gravar', () => {
