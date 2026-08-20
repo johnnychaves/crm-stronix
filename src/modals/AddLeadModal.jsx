@@ -321,7 +321,15 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const submittingRef = useRef(false);
 
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
-  const initialFunnelId = selectedFunnelId || getDefaultFunnel(safeFunnels)?.id || null;
+  // Porta de entrada do cadastro: a aba de funil aberta na tela, mas só quando
+  // ela é um funil em que o lead PODE nascer. Ficam de fora o de Renovações
+  // (sem etapa nenhuma, o lead nasceria com etapa vazia) e o "Todos os funis"
+  // do dashboard, que é um sentinel e não um funil. Nos dois casos o cadastro
+  // cai no funil padrão em vez de abrir travado num funil sem fase.
+  const entryFunnelId = safeFunnels.some((f) => f.id === selectedFunnelId && !isRenewalFunnel(f))
+    ? selectedFunnelId
+    : null;
+  const initialFunnelId = entryFunnelId || getDefaultFunnel(safeFunnels)?.id || null;
   const initialStatuses = (statuses || []).filter((s) => s.funnelId === initialFunnelId).sort((a, b) => (a.order || 0) - (b.order || 0));
 
   // Indicação: funil de sistema + etapa de entrada fixa. Sem eles (o admin
@@ -381,7 +389,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
     }
     setReferrer(null);
     const backId =
-      (selectedFunnelId && selectedFunnelId !== referralFunnel?.id ? selectedFunnelId : null) ||
+      (entryFunnelId && entryFunnelId !== referralFunnel?.id ? entryFunnelId : null) ||
       getDefaultFunnel(pickerFunnels)?.id || null;
     const next = (statuses || []).filter((s) => s.funnelId === backId).sort((a, b) => (a.order || 0) - (b.order || 0));
     setForm((f) => ({ ...f, funnelId: backId, status: next[0]?.name || '', source: sources?.[0]?.name || '' }));
