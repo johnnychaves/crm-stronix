@@ -10,7 +10,7 @@ import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
 import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard } from '../lib/renewalFunnel.js';
-import { renewalDecline } from '../lib/renewalGoal.js';
+import { renewalDecline, daysToExpiryOf } from '../lib/renewalGoal.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
@@ -45,7 +45,17 @@ function InitialsAvatar({ name = '', size = 22, textSize = 9 }) {
 
 // Etiqueta da linha 1. Só aparece quando informa algo: agendado para amanhã ou
 // semana que vem não é notícia, então não leva selo.
-function cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp }) {
+function cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp, renewalDaysLeft }) {
+  // Card do funil Renovações: o que importa é o relógio do contrato, não o
+  // follow-up. Quanto menos tempo sobra, mais quente a etiqueta.
+  if (Number.isFinite(renewalDaysLeft)) {
+    const tom = renewalDaysLeft <= 7
+      ? 'bg-rose-500/[0.07] text-[#E11D48] dark:text-rose-400'
+      : renewalDaysLeft <= 30
+        ? 'bg-amber-500/10 text-[#B45309] dark:text-amber-300'
+        : 'bg-[#EAF0FF] text-[#1C3FC4] dark:bg-brand-500/15 dark:text-brand-300';
+    return { label: `Vence em ${renewalDaysLeft}d`, className: tom };
+  }
   if (isWon) return { label: 'Matriculado', className: 'bg-emerald-500/[0.08] text-[#0F9D6E] dark:text-emerald-300' };
   if (isLost) return { label: 'Perdido', className: 'bg-[#eef0f5] text-slate-500 dark:bg-white/[0.06] dark:text-neutral-400' };
   if (isOverdue) return { label: 'Atrasado', className: 'bg-rose-500/[0.07] text-[#E11D48] dark:text-rose-400' };
@@ -110,7 +120,18 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
   const accent = getKanbanColumnAccent(columnColor);
   const convertedAt = getSafeDateOrNull(lead.convertedAt);
 
-  const badge = cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp });
+  // Card projetado do funil Renovações: dias até vencer e se o marco daquela
+  // coluna já foi tratado (a Meta grava isso em renewalHandledCheckpoints).
+  const renewalDaysLeft = lead._renewalCard
+    ? daysToExpiryOf(lead.currentContractEndsAt, now)
+    : null;
+  const marcoTratado = Boolean(
+    lead._renewalCard &&
+    Array.isArray(lead.renewalHandledCheckpoints) &&
+    lead.renewalHandledCheckpoints.includes(lead._renewalDays)
+  );
+
+  const badge = cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp, renewalDaysLeft });
   const tone = isWon ? 'won' : isLost ? 'normal' : isOverdue ? 'overdue' : !hasFollowUp ? 'none' : isToday ? 'today' : 'normal';
   const footerTone = isWon ? 'won' : isLost ? 'normal' : isOverdue ? 'overdue' : !hasFollowUp ? 'none' : 'normal';
   const silence = kanbanSilence(lastDate, now);
@@ -163,7 +184,19 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
         </div>
 
         <div className={cn('mt-1 flex items-center gap-[5px] text-[11.5px] font-semibold', COMMITMENT_TONE[tone])}>
-          {isWon ? (
+          {lead._renewalCard ? (
+            marcoTratado ? (
+              <>
+                <Check className="size-[11px] shrink-0" strokeWidth={2.2} />
+                <span className="truncate">Marco de {lead._renewalDays} dias tratado</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="size-[11px] shrink-0" strokeWidth={2.2} />
+                <span className="truncate">Aguardando contato</span>
+              </>
+            )
+          ) : isWon ? (
             <>
               <CheckCircle className="size-[11px] shrink-0" strokeWidth={2.2} />
               <span className="truncate tabular-nums">
