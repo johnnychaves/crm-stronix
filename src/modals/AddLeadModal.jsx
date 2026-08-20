@@ -13,6 +13,7 @@ import { buildLeadSearchFields, deriveLeadBucket } from '../lib/leadDerived.js';
 import { fromDateInputValue } from '../lib/dates.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
 import { getReferralFunnel, getReferralEntryStage, isReferralFunnel, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
+import { isRenewalFunnel } from '../lib/renewalFunnel.js';
 import { commitReferralLink } from '../lib/referralsWrites.js';
 import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
 import { Switch } from '../components/ui/switch.jsx';
@@ -330,7 +331,11 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const referralEntry = getReferralEntryStage(statuses, referralFunnel?.id);
   const canReferral = Boolean(referralFunnel && referralEntry);
   // O funil de indicações não aparece no select do modo normal — só via switch.
-  const pickerFunnels = safeFunnels.filter((f) => !isReferralFunnel(f));
+  // Renovações fica de fora de vez: é funil de sistema SEM nenhuma etapa (as
+  // colunas do board são os marcos de renovação, derivados na hora). Um lead
+  // criado ali nasceria com a etapa vazia — vivo nas listas, sem casar com
+  // coluna de board nenhum, sumido do pipeline sem aviso.
+  const pickerFunnels = safeFunnels.filter((f) => !isReferralFunnel(f) && !isRenewalFunnel(f));
   // Modal aberto já na aba do funil de indicações → switch nasce ligado.
   const initialIsReferral = canReferral && initialFunnelId === referralFunnel.id;
 
