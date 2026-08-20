@@ -102,6 +102,23 @@ desalinhar config e board.
 O preço: a academia **não** pode renomear nem acrescentar coluna neste funil.
 É o preço certo — a coluna não é uma etapa de conversa, é uma faixa de tempo.
 
+### Teto de 6 colunas
+
+`normalizeRenewalCheckpoints` (`src/lib/leadStatus.js:58`) limpa cada marco (1 a
+365, sem repetido) mas **não limita quantos marcos** a academia pode cadastrar.
+Isso era inofensivo enquanto os marcos só alimentavam a Meta Diária; agora que
+cada marco vira uma query, 20 marcos custariam 200 leituras por abertura da aba.
+
+O board renderiza no máximo os **6 maiores** marcos. Os demais continuam valendo
+normalmente na Meta Diária, só não viram coluna.
+
+Corta-se por cima, nunca por baixo: a coluna menor que sobra cobre `[0, C_min]`,
+então **nenhum card fica órfão**. Cortar os maiores encolheria a janela do board
+e deixaria cliente dentro do alcance configurado sem lugar nenhum.
+
+Seis colunas já enchem a largura da tela (6 × 264px, mais Venda e Perda) e
+custam 60 leituras para abrir.
+
 ### A coluna de cada card
 
 Sai de `activeRenewalCheckpoint(diasParaVencer, marcos)`, em
@@ -268,6 +285,10 @@ funil, agora que são três.
 - `getRenewalFunnel` desempata duplicata pelo `createdAt` mais antigo.
 - `renewalColumnsFromCheckpoints` devolve as colunas em ordem decrescente,
   descarta marco inválido (≤ 0, não numérico) e deduplica.
+- `renewalColumnsFromCheckpoints` corta em 6 colunas mantendo as MAIORES, e a
+  menor coluna que sobra continua absorvendo tudo abaixo dela: com marcos
+  [120, 90, 60, 45, 30, 15, 7], o cliente a 5 dias de vencer cai em "15 dias"
+  e nenhum card fica sem coluna.
 - `renewalColumnOf` (a coluna do card) casa com `activeRenewalCheckpoint` nas
   bordas: 90, 89, 61, 60, 31, 30, 1, 0.
 - `splitRenewalForBoard` manda `renewalDeclined` para a Perda e exclui
@@ -291,6 +312,7 @@ funil, agora que são três.
 | Board com ~150 clientes na janela numa academia de 600 | Paginação por coluna (10 por vez) e carga só com a aba aberta |
 | Coluna Perda incompleta confunde quem espera ver todos os recusados | Limitação conhecida e igual à do Vencidos; o registro completo está na ficha e o cliente reaparece na Perda do Vencidos ao vencer |
 | Marco configurado maior que a vigência do plano (ex.: marco 90 num plano mensal) | `activeRenewalCheckpoint` já resolve: o contrato de 30 dias nasce dentro da coluna "30 dias" e nunca aparece nas outras |
+| Academia cadastra muitos marcos e o board dispara uma query por marco | Teto de 6 colunas (as maiores). Os marcos além disso seguem valendo na Meta Diária |
 
 ## Entrega
 
