@@ -10,6 +10,7 @@ import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
 import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard } from '../lib/renewalFunnel.js';
+import { renewalDecline } from '../lib/renewalGoal.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
@@ -685,6 +686,36 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
+    // BIFURCAÇÃO do card projetado do funil Renovações. applyMoveToStage grava
+    // `status` no documento, e o status real de um cliente é 'Venda' — gravar o
+    // nome da coluna ali corromperia o estado de cliente e a aba Clientes.
+    if (lead._renewalCard) {
+      if (statusName === 'Venda') return openMatricula(lead);
+      if (statusName === 'Perda') {
+        updateDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+          renewalDecline(lead, lead._renewalDays)
+        ).catch(err => {
+          console.error('Erro ao marcar recusa de renovação', err);
+          toast.error('Não foi possível marcar a recusa.');
+        });
+        return;
+      }
+      // Sair da Perda de volta para um marco desfaz a recusa — a MESMA volta que
+      // o arrasto permite (handleDrop). Sem isto o menu divergiria do mouse e no
+      // celular não haveria como desfazer.
+      if (lead.renewalDeclined) {
+        updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+          renewalDeclined: false
+        }).catch(err => {
+          console.error('Erro ao desfazer a recusa de renovação', err);
+          toast.error('Não foi possível mover o card.');
+        });
+        return;
+      }
+      toast.warning('As colunas de Renovações seguem o vencimento do contrato e não podem ser movidas à mão.');
+      return;
+    }
     if (statusName === 'Venda') return openMatricula(lead);
     if (statusName === 'Perda') { setLossModalLeadId(lead.id); return; }
     return applyMoveToStage(lead, statusName);
@@ -698,6 +729,23 @@ const handleKanbanMouseMove = (e) => {
     if (!lead || lead.status === newStatus) return;
     if (!canEditLead(appUser, lead)) {
       toast.warning('Você não tem permissão para mover este lead.');
+      return;
+    }
+    // FUNIL RENOVAÇÕES: as colunas são faixas de tempo, não etapas de conversa.
+    // Mover à mão mentiria na tela — o card voltaria para a coluna do relógio na
+    // próxima carga. A única volta permitida é sair da Perda (desfazer a recusa).
+    if (lead._renewalCard) {
+      if (newStatus === 'Perda' || newStatus === 'Venda') return; // tratados pelos handlers próprios
+      if (!lead.renewalDeclined) {
+        toast.warning('As colunas de Renovações seguem o vencimento do contrato e não podem ser movidas à mão.');
+        return;
+      }
+      updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
+        renewalDeclined: false
+      }).catch(err => {
+        console.error('Erro ao desfazer a recusa de renovação', err);
+        toast.error('Não foi possível mover o card.');
+      });
       return;
     }
     // BIFURCAÇÃO do funil Vencidos. O card ali é um CLIENTE, cujo status real é
@@ -739,6 +787,21 @@ const handleKanbanMouseMove = (e) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
     const alvo = leadId && draggableById.get(leadId);
+    // FUNIL RENOVAÇÕES: "não vai renovar" é a MESMA flag que a Meta Diária usa.
+    // A pessoa NÃO vira lead perdido — segue cliente, com ficha e contratos, e
+    // continua na aba Clientes. Perda de venda != perda de funil.
+    if (alvo?._renewalCard) {
+      updateDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, alvo.id),
+        // Marca o marco atual como tratado junto: sem isso o cliente continuaria
+        // sendo cobrado hoje na Meta, no mesmo marco que ele acabou de recusar.
+        renewalDecline(alvo, alvo._renewalDays)
+      ).catch(err => {
+        console.error('Erro ao marcar recusa de renovação', err);
+        toast.error('Não foi possível marcar a recusa.');
+      });
+      return;
+    }
     // Funil VENCIDOS: "não volta" é venda perdida, mas a pessoa NÃO vira lead
     // perdido — ela segue cliente, com ficha e contratos, e continua na aba
     // Clientes. O que muda é só a flag que já existe e que a Meta também usa.
@@ -852,7 +915,10 @@ if (!lead) return;
   // Resumo à esquerda do botão de filtro: sem filtros mostra "X de Y leads";
   // com filtros, o recorte ativo ("Ana · Em atraso", "2 responsáveis"...).
   const filterSummary = useMemo(() => {
-    if (!hasActiveFilters) return `${kanbanLeads.length} de ${totalFunnelLeads} leads`;
+    // Renovações não tem contagem de pipeline: os cards vêm das queries por
+    // coluna, então kanbanLeads/totalFunnelLeads dariam "0 de 0" num board cheio
+    // — cada coluna já mostra o próprio total no cabeçalho.
+    if (!hasActiveFilters) return isRenewalView ? '' : `${kanbanLeads.length} de ${totalFunnelLeads} leads`;
     const parts = [];
     if (respFilter.length === 1) {
       const user = (usersList || []).find(u => u.id === respFilter[0]);
@@ -862,7 +928,7 @@ if (!lead) return;
     }
     if (onlyOverdue) parts.push('Em atraso');
     return parts.join(' · ');
-  }, [hasActiveFilters, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
+  }, [hasActiveFilters, isRenewalView, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
 
   const toggleResp = (id) => {
     setRespFilter(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
@@ -1114,7 +1180,10 @@ if (!lead) return;
 
       {matriculaLead && (
         <ContractModal
-          mode="matricula"
+          // Card do funil Renovações: é renovação, não primeira matrícula. O
+          // modal em modo renovação NÃO carimba convertedAt e emenda a vigência
+          // no fim do contrato atual (ver src/lib/renewal.js, seamStart).
+          mode={matriculaLead._renewalCard ? 'renovacao' : 'matricula'}
           lead={matriculaLead}
           appUser={appUser}
           db={db}
