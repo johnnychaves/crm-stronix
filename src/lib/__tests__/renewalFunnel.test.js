@@ -6,6 +6,7 @@ import {
   isRenewalEligible, splitRenewalForBoard, planRenewalSetupOps,
 } from '../renewalFunnel.js';
 import { activeRenewalCheckpoint } from '../renewalGoal.js';
+import { KANBAN_COLUMN_ACCENT } from '../kanban.js';
 
 describe('isRenewalFunnel', () => {
   it('casa pela flag, NUNCA pelo nome', () => {
@@ -97,6 +98,26 @@ describe('as faixas das colunas traduzem activeRenewalCheckpoint', () => {
     for (let dias = 0; dias <= 120; dias++) {
       expect(faixa(dias)?.days).toBe(activeRenewalCheckpoint(dias, usados));
     }
+  });
+});
+
+describe('cores das colunas', () => {
+  // A paleta REAL do board, não uma cópia: nome fora dela cai no fallback cinza
+  // em silêncio, e foi assim que 'slate'/'amber'/'rose' passaram batido na
+  // primeira versão. Importar amarra o teste na fonte.
+  const PALETA = Object.keys(KANBAN_COLUMN_ACCENT);
+
+  it('usa só cores que existem em KANBAN_COLUMN_ACCENT', () => {
+    const cols = renewalColumnsFromCheckpoints([120, 90, 60, 45, 30, 15]);
+    cols.forEach(c => expect(PALETA).toContain(c.color));
+  });
+
+  it('a coluna que vence primeiro é sempre a mais quente, com 3 ou com 6 colunas', () => {
+    expect(renewalColumnsFromCheckpoints([90, 60, 30]).map(c => c.color))
+      .toEqual(['yellow', 'orange', 'red']);
+    expect(renewalColumnsFromCheckpoints([120, 90, 60, 45, 30, 15]).map(c => c.color))
+      .toEqual(['gray', 'blue', 'teal', 'yellow', 'orange', 'red']);
+    expect(renewalColumnsFromCheckpoints([30]).map(c => c.color)).toEqual(['red']);
   });
 });
 

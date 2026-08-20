@@ -29,9 +29,9 @@ export const RENEWAL_FUNNEL_ORDER = 98;
 // maiores encolheria a janela do board e deixaria cliente sem lugar nenhum.
 export const RENEWAL_MAX_COLUMNS = 6;
 
-// Cor de cada coluna, do marco mais distante ao mais próximo: quanto menos
-// tempo sobra, mais quente. Casa com a paleta de getKanbanColumnAccent.
-const COLUMN_COLORS = ['slate', 'blue', 'teal', 'amber', 'orange', 'rose'];
+// Do mais frio ao mais quente. Só chaves que existem em KANBAN_COLUMN_ACCENT
+// (src/lib/kanban.js) — nome fora da paleta cai no fallback cinza em silêncio.
+const COLUMN_COLORS = ['gray', 'blue', 'teal', 'yellow', 'orange', 'red'];
 
 export const isRenewalFunnel = (f) => f?.systemKind === RENEWAL_FUNNEL_KIND;
 
@@ -82,7 +82,11 @@ export const renewalColumnsFromCheckpoints = (checkpoints) => {
     days,
     // Piso EXCLUSIVO da faixa. A última coluna desce até 0 e absorve o resto.
     prevDays: i === usados.length - 1 ? 0 : usados[i + 1],
-    color: COLUMN_COLORS[Math.min(i, COLUMN_COLORS.length - 1)],
+    // A cor sai do FIM da lista: a coluna que vence primeiro é sempre a mais
+    // quente, tenha o board três colunas ou seis. Indexar do começo daria os
+    // tons mais frios para um board de 3 colunas, e a mais urgente delas
+    // apareceria fria.
+    color: COLUMN_COLORS[COLUMN_COLORS.length - (usados.length - i)] || COLUMN_COLORS[0],
     order: i,
   }));
 };
