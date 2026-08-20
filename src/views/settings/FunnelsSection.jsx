@@ -3,7 +3,7 @@ import { ChevronRight, GripVertical, Pencil, Plus, Trophy } from 'lucide-react';
 import { collection, doc, addDoc, setDoc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { appId, FUNNELS_PATH, LEADS_PATH, STATUSES_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks, isSystemStage, isSystemFunnel } from '../../lib/funnels.js';
-import { pinEntryFirst, REFERRAL_ENTRY_NAME } from '../../lib/referrals.js';
+import { pinEntryFirst } from '../../lib/referrals.js';
 import { isRenewalFunnel } from '../../lib/renewalFunnel.js';
 import { cn } from '../../lib/utils.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
@@ -323,7 +323,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
             hint={isRenewalFunnel(selected)
               ? 'As colunas deste funil são os marcos de renovação, configurados em Metas & ritmo. Elas mudam sozinhas quando você muda os marcos.'
               : isSystemFunnel(selected)
-                ? `${REFERRAL_ENTRY_NAME} é a porta de entrada das indicações; Negociação, Venda e Perda também são do sistema. Configure as etapas do meio.`
+                ? 'A etapa de entrada deste funil e as fases Negociação, Venda e Perda são do sistema. Configure as etapas do meio.'
                 : 'Arraste para reordenar. Negociação, Venda e Perda são etapas do sistema.'}
             // Funil de Renovações não tem etapa no banco: criar uma aqui geraria
             // uma coluna que o board nunca renderiza.
