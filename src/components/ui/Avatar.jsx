@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { getKanbanAvatarPalette, getKanbanInitials } from '../../lib/kanban.js';
 
 function KanbanAvatar({ name = '', size = 32 }) {
@@ -38,14 +39,30 @@ const avatarTone = (seed) => {
   return AVATAR_PALETTES[h % AVATAR_PALETTES.length];
 };
 
-function Avatar({ name, size = 36 }) {
+// `photoUrl` opcional: quando presente, mostra a foto (object-cover) no lugar
+// das iniciais; se a imagem falhar ao carregar (URL expirada/quebrada), cai de
+// volta pras iniciais via onError. Sem photoUrl, comportamento idêntico ao antigo.
+function Avatar({ name, size = 36, photoUrl = null }) {
   const [bg, fg] = avatarTone(name);
+  const [failed, setFailed] = useState(false);
+  const showPhoto = Boolean(photoUrl) && !failed;
   return (
     <div
-      className="rounded-full grid place-items-center font-semibold shrink-0 ring-1 ring-black/[0.04]"
-      style={{ width: size, height: size, background: bg, color: fg, fontSize: size * 0.36 }}
+      className="rounded-full grid place-items-center font-semibold shrink-0 ring-1 ring-black/[0.04] overflow-hidden"
+      style={{ width: size, height: size, background: showPhoto ? 'transparent' : bg, color: fg, fontSize: size * 0.36 }}
     >
-      {initials(name)}
+      {showPhoto ? (
+        <img
+          src={photoUrl}
+          alt={name || ''}
+          width={size}
+          height={size}
+          className="w-full h-full object-cover"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        initials(name)
+      )}
     </div>
   );
 }

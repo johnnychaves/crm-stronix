@@ -12,6 +12,7 @@ import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../components/ui/dialog.jsx';
+import { Avatar } from '../components/ui/Avatar.jsx';
 import { Field, StyledInput, StyledSelect } from '../components/ui/Field.jsx';
 import { TagsInput } from '../components/ui/TagsInput.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
@@ -74,9 +75,16 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
       <DialogContent className="z-[210] w-full sm:max-w-3xl p-0 gap-0 overflow-hidden flex flex-col max-h-[92vh]" overlayClassName="z-[210]">
         {/* Cabeçalho */}
         <DialogHeader className="shrink-0 flex flex-row items-center gap-3 text-left px-6 py-4 border-b border-slate-100 dark:border-white/[0.06]">
-          <span className="w-10 h-10 rounded-xl grid place-items-center shrink-0 bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
-            <Pencil size={18} />
-          </span>
+          {/* Com foto enviada, o cabeçalho mostra a PESSOA em vez do lápis
+              genérico — fica claro quem está sendo editado. Sem foto, mantém
+              o ícone de sempre. */}
+          {lead.photoUrl ? (
+            <Avatar name={lead.name} size={40} photoUrl={lead.photoUrl} />
+          ) : (
+            <span className="w-10 h-10 rounded-xl grid place-items-center shrink-0 bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
+              <Pencil size={18} />
+            </span>
+          )}
           <div className="min-w-0 flex-1">
             <DialogTitle className="text-[17px] font-bold tracking-tight leading-tight font-display">{isClient ? 'Cadastro do cliente' : 'Cadastro do lead'}</DialogTitle>
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400 truncate">{lead.name}</p>
