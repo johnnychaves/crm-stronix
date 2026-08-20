@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import indexesConfig from '../../../firestore.indexes.json';
-import { LIFECYCLE_BUCKETS, clientsQuerySpec, clientsAllQuerySpec, allLeadsQuerySpec, lostByFunnelQuerySpec, bucketByFunnelQuerySpec, bucketByFunnelCountSpec, appointmentsInWindowQuerySpec, renewalClientsQuerySpec, consultantLeadsQuerySpec, adminDashboardWindowSpecs, ADMIN_DASHBOARD_WINDOW_FIELDS, wonInMonthQuerySpec, renewalWindowMs, clientsWithContactTodayQuerySpec, expiredClientsQuerySpec } from '../leadQueries.js';
+import { LIFECYCLE_BUCKETS, clientsQuerySpec, clientsAllQuerySpec, allLeadsQuerySpec, lostByFunnelQuerySpec, bucketByFunnelQuerySpec, bucketByFunnelCountSpec, appointmentsInWindowQuerySpec, renewalClientsQuerySpec, consultantLeadsQuerySpec, adminDashboardWindowSpecs, ADMIN_DASHBOARD_WINDOW_FIELDS, wonInMonthQuerySpec, renewalWindowMs, clientsWithContactTodayQuerySpec, expiredClientsQuerySpec, renewalColumnQuerySpec } from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
 // um PREFIXO do índice (todas ASCENDING, mesmo conjunto) e — havendo orderBy —
@@ -308,5 +308,75 @@ describe('expiredClientsQuerySpec', () => {
   it('aceita tamanho de página', () => {
     expect(expiredClientsQuerySpec(ANTES, 10).limit).toBe(10);
     expect(expiredClientsQuerySpec(ANTES).limit).toBeUndefined();
+  });
+});
+
+describe('renewalColumnQuerySpec', () => {
+  const DIA = 86400000;
+  const corte = new Date('2026-08-20T12:00:00Z').getTime();
+
+  it('a coluna do meio é uma faixa aberta embaixo e fechada em cima', () => {
+    const spec = renewalColumnQuerySpec(corte, 60, 30, 10);
+    expect(spec.wheres).toEqual([
+      { field: 'lifecycleBucket', op: '==', value: 'cliente' },
+      { field: 'currentContractEndsAt', op: '>', value: new Date(corte + 30 * DIA) },
+      { field: 'currentContractEndsAt', op: '<=', value: new Date(corte + 60 * DIA) },
+    ]);
+    expect(spec.orderBy).toEqual({ field: 'currentContractEndsAt', dir: 'asc' });
+    expect(spec.limit).toBe(10);
+  });
+
+  it('a coluna menor começa NO corte, inclusive: quem vence hoje ainda renova', () => {
+    const spec = renewalColumnQuerySpec(corte, 30, 0, 10);
+    expect(spec.wheres[1]).toEqual({
+      field: 'currentContractEndsAt', op: '>=', value: new Date(corte),
+    });
+  });
+
+  it('sem pageSize não emite limit', () => {
+    expect(renewalColumnQuerySpec(corte, 30, 0).limit).toBeUndefined();
+  });
+
+  // A INVARIANTE DA ESTEIRA: Renovações e Vencidos partem o mesmo eixo no
+  // mesmo ponto. Se este teste cair, ou um cliente aparece nos dois boards, ou
+  // some dos dois.
+  it('não sobrepõe nem deixa buraco com o funil Vencidos', () => {
+    const colunas = [
+      renewalColumnQuerySpec(corte, 90, 60),
+      renewalColumnQuerySpec(corte, 60, 30),
+      renewalColumnQuerySpec(corte, 30, 0),
+    ];
+    const vencidos = expiredClientsQuerySpec(corte);
+
+    const casa = (spec, ms) => {
+      const d = new Date(ms);
+      return spec.wheres.filter(w => w.field === 'currentContractEndsAt').every(w => {
+        if (w.op === '>') return d > w.value;
+        if (w.op === '>=') return d >= w.value;
+        if (w.op === '<') return d < w.value;
+        if (w.op === '<=') return d <= w.value;
+        return true;
+      });
+    };
+
+    const pontos = [
+      corte - DIA, corte - 1, corte, corte + 1,
+      corte + 30 * DIA, corte + 30 * DIA + 1,
+      corte + 60 * DIA, corte + 60 * DIA + 1,
+      corte + 90 * DIA,
+    ];
+
+    pontos.forEach(ms => {
+      const emColuna = colunas.filter(c => casa(c, ms)).length;
+      const emVencidos = casa(vencidos, ms) ? 1 : 0;
+      // exatamente UM lugar para cada instante dentro do alcance do board
+      expect(emColuna + emVencidos).toBe(1);
+    });
+  });
+
+  it('quem vence depois do maior marco não entra em coluna nenhuma', () => {
+    const spec = renewalColumnQuerySpec(corte, 90, 60);
+    const depois = new Date(corte + 91 * DIA);
+    expect(depois <= spec.wheres[2].value).toBe(false);
   });
 });
