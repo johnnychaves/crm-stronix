@@ -488,7 +488,7 @@ const [isPanning, setIsPanning] = useState(false);
   // eixo no MESMO ponto, senão um cliente aparece nos dois ou some dos dois.
   const {
     pages: renewalPages, hasMore: renewalHasMore, loadMore: renewalLoadMore,
-    reload: renewalReload,
+    reload: renewalReload, patchLead: renewalPatchLead,
   } = useRenewalBoard({
     db, columns: renewalColumns, cutoffMs: expiredCutoffMs,
     pageSize: KANBAN_PAGE_SIZE, enabled: !!db && isRenewalView,
@@ -739,8 +739,16 @@ const handleKanbanMouseMove = (e) => {
   // qualquer membro do tenant atualizar qualquer lead desde que não troque o
   // dono, então canEditLead é a única política que existe.
   //
-  // A recarga vai no .then e não antes: o board é uma foto (getDocs), e pedir a
-  // foto antes do ack do servidor traria o dado velho de volta.
+  // Os dois NÃO recarregam o board: aplicam o mesmo patch na cópia local
+  // (renewalPatchLead) depois do ack do servidor. Recarregar aqui era caro e
+  // mentia — o reload devolve TODAS as colunas para os 10 primeiros, então quem
+  // paginou perde o lugar e o card que veio da página 2 SOME da tela ao ser
+  // recusado (a coluna do marco volta sem ele, e a Perda só mostra recusados das
+  // páginas carregadas). Como splitRenewalForBoard já decide coluna x Perda pelo
+  // renewalDeclined, mudar o campo na cópia local basta para o card andar.
+  //
+  // O patch vai no .then e não antes: se a escrita falhar, a tela não pode ter
+  // mostrado o card no lugar novo.
 
   // "Não vai renovar": a MESMA flag que a Meta Diária usa. A pessoa NÃO vira
   // lead perdido — segue cliente, com ficha e contratos, e continua na aba
@@ -750,16 +758,20 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
+    // Marca o marco atual como tratado junto: sem isso o cliente continuaria
+    // sendo cobrado hoje na Meta, no mesmo marco que ele acabou de recusar.
+    // O MESMO objeto vai para o banco e para a cópia local — só assim o card já
+    // troca a linha de compromisso para "Marco de X dias tratado", que lê
+    // renewalHandledCheckpoints.
+    const patch = renewalDecline(lead, lead._renewalDays);
     updateDoc(
       doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
-      // Marca o marco atual como tratado junto: sem isso o cliente continuaria
-      // sendo cobrado hoje na Meta, no mesmo marco que ele acabou de recusar.
-      renewalDecline(lead, lead._renewalDays)
-    ).then(() => renewalReload()).catch(err => {
+      patch
+    ).then(() => renewalPatchLead(lead.id, patch)).catch(err => {
       console.error('Erro ao marcar recusa de renovação', err);
       toast.error('Não foi possível marcar a recusa.');
     });
-  }, [appUser, db, toast, renewalReload]);
+  }, [appUser, db, toast, renewalPatchLead]);
 
   // Desfazer a recusa (sair da Perda de volta para um marco). NÃO tira o marco
   // de renewalHandledCheckpoints de propósito: o consultor conversou com o
@@ -769,13 +781,13 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
-    updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-      renewalDeclined: false
-    }).then(() => renewalReload()).catch(err => {
-      console.error('Erro ao desfazer a recusa de renovação', err);
-      toast.error('Não foi possível mover o card.');
-    });
-  }, [appUser, db, toast, renewalReload]);
+    const patch = { renewalDeclined: false };
+    updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch)
+      .then(() => renewalPatchLead(lead.id, patch)).catch(err => {
+        console.error('Erro ao desfazer a recusa de renovação', err);
+        toast.error('Não foi possível mover o card.');
+      });
+  }, [appUser, db, toast, renewalPatchLead]);
 
   // Despacha um destino (etapa / Venda / Perda) com checagem de permissão.
   // Usada pelo menu "Mover" — funciona em toque, mouse e teclado, sem
@@ -1268,10 +1280,14 @@ if (!lead) return;
             // como a coluna Perda não é ao vivo, refaz a query+contagem senão
             // fica card fantasma / total inflado. Só quando veio da Perda.
             const wasPerda = matriculaLead?.status === 'Perda';
-            // Renovação fechada: sem recarga o card ficaria no mesmo marco com a
-            // vigência VELHA, o consultor acharia que não gravou e repetiria o
-            // gesto — e o modal emendaria um SEGUNDO contrato a partir da data
-            // antiga (seamStart, em lib/renewal.js).
+            // Renovação fechada: o ÚNICO desfecho de Renovações que ainda
+            // recarrega o board — e aqui a recarga é a resposta certa, porque a
+            // vigência nova tira o cliente da janela e ele precisa sumir de
+            // verdade (patch local não daria conta). Sem ela o card ficaria no
+            // mesmo marco com a vigência VELHA, o consultor acharia que não
+            // gravou e repetiria o gesto — e o modal emendaria um SEGUNDO
+            // contrato a partir da data antiga (seamStart, em lib/renewal.js).
+            // Custa N queries, mas é uma vez por cliente por ciclo.
             const wasRenewal = Boolean(matriculaLead?._renewalCard);
             setMatriculaLead(null);
             if (wasPerda) refreshLost();

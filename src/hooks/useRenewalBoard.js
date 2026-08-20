@@ -26,7 +26,8 @@ import { normalizeLeadDoc } from '../lib/leads.js';
 // useRenewalBoard({ db, columns, cutoffMs, pageSize, enabled })
 //   columns : saída de renewalColumnsFromCheckpoints (precisa de .days/.prevDays)
 //   cutoffMs: o "hoje" do board, fixado uma vez na montagem da tela
-// Devolve { pages, hasMore, loading, loadMore(days) }. `pages` e `hasMore` são
+// Devolve { pages, hasMore, loading, loadMore(days), reload(), patchLead(id,
+// patch) }. `pages` e `hasMore` são
 // indexados pelo MARCO (days), a chave estável da coluna; `loading` é só a
 // carga inicial do board, porque o "carregar mais" trava por coluna no inFlight.
 // Coluna que falha fica vazia e só loga: NÃO existe estado de erro exposto, e
@@ -143,8 +144,45 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
       .catch((err) => console.error('useRenewalBoard loadMore', err));
   }, [enabled, columns, hasMore, fetchColumn]);
 
+  // Patch RASO na cópia local de um lead já carregado, em qualquer coluna.
+  //
+  // Existe para o desfecho que muda SÓ um campo do documento (recusar a
+  // renovação e desfazer) não precisar refazer o board. Recarregar ali custava
+  // caro e mentia: o reload zera os cursores e devolve TODAS as colunas para os
+  // 10 primeiros, então quem paginou perde o lugar — e o card que veio da
+  // página 2 e foi para a Perda SOME da tela, porque a coluna do marco volta
+  // sem ele e a Perda só mostra recusados das páginas carregadas.
+  //
+  // Não busca nada, então fica FORA das duas travas de concorrência do arquivo:
+  //   • inFlight é a vaga da busca de uma coluna — tomar essa vaga aqui só
+  //     barraria um "carregar mais" legítimo que estivesse no ar;
+  //   • a geração invalida busca vencida — e este patch nunca fica velho: ele
+  //     parte de `prev` dentro do próprio setState, então o que a busca em voo
+  //     acabar de escrever já está lá quando ele roda.
+  // Pelo mesmo motivo não encosta em cursor nem em hasMore: a página continua
+  // sendo exatamente a mesma, só com um campo diferente.
+  const patchLead = useCallback((id, patch) => {
+    if (!id) return;
+    setPages((prev) => {
+      let mudou = false;
+      const next = {};
+      // Cópia IMUTÁVEL: mutar o objeto do lead (ou o array da coluna) no lugar
+      // manteria as mesmas identidades, o useMemo do split não recalcularia e a
+      // tela ficaria parada mostrando o card onde ele não está mais.
+      Object.keys(prev).forEach((days) => {
+        const lista = prev[days] || [];
+        if (!lista.some((l) => l?.id === id)) { next[days] = prev[days]; return; }
+        mudou = true;
+        next[days] = lista.map((l) => (l?.id === id ? { ...l, ...patch } : l));
+      });
+      // Lead que não está em página nenhuma não gera render à toa.
+      return mudou ? next : prev;
+    });
+  }, []);
+
   // `reload` refaz a carga inicial de todas as colunas. O board é uma foto
-  // (getDocs, não onSnapshot), então quem grava um desfecho precisa pedir a foto
-  // nova — senão o card fica no lugar antigo com a vigência antiga.
-  return { pages, hasMore, loading, loadMore, reload: loadAllColumns };
+  // (getDocs, não onSnapshot), então quem grava um desfecho que MUDA A FAIXA do
+  // card (renovação fechada: a vigência nova tira o cliente da janela) precisa
+  // pedir a foto nova. Para o que só muda um campo existe o patchLead.
+  return { pages, hasMore, loading, loadMore, reload: loadAllColumns, patchLead };
 }
