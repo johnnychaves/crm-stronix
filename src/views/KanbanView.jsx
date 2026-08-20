@@ -7,7 +7,9 @@ import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
+import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard } from '../lib/renewalFunnel.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
@@ -16,6 +18,7 @@ import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKa
 import { markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
+import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { FollowUpIcon } from '../components/ui/Badges.jsx';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
@@ -429,6 +432,38 @@ const [isPanning, setIsPanning] = useState(false);
   }, [isExpiredView, expiredDocs, statuses, expiredFunnel, respFilter]);
   const expiredLeads = expiredSplit.cards;
 
+  // FUNIL RENOVAÇÕES (funil de sistema): cliente cujo contrato entrou na janela
+  // dos marcos. Mesmo molde do Vencidos — projeção em memória, o status real
+  // continua 'Venda' — com uma diferença: as COLUNAS são virtuais, derivadas
+  // dos marcos da config, e ninguém arrasta entre elas. Regras em
+  // lib/renewalFunnel.js.
+  const { renewalCheckpoints } = useGeneralConfig();
+  const renewalFunnel = useMemo(() => getRenewalFunnel(funnels), [funnels]);
+  const isRenewalView = Boolean(renewalFunnel && selectedFunnelId === renewalFunnel.id);
+  const renewalColumns = useMemo(
+    // `[]` literal é estável aqui porque está dentro do useMemo (EMPTY_LEADS é
+    // para leads e o nome mentiria).
+    () => (isRenewalView ? renewalColumnsFromCheckpoints(renewalCheckpoints) : []),
+    [isRenewalView, renewalCheckpoints]
+  );
+  // Mesmo corte do Vencidos, fixado uma vez na montagem: os dois boards partem o
+  // eixo no MESMO ponto, senão um cliente aparece nos dois ou some dos dois.
+  const {
+    pages: renewalPages, hasMore: renewalHasMore, loadMore: renewalLoadMore,
+  } = useRenewalBoard({
+    db, columns: renewalColumns, cutoffMs: expiredCutoffMs,
+    pageSize: KANBAN_PAGE_SIZE, enabled: !!db && isRenewalView,
+  });
+  const renewalSplit = useMemo(() => {
+    if (!isRenewalView) return { cardsByColumn: new Map(), declined: EMPTY_LEADS };
+    const { cardsByColumn, declined } = splitRenewalForBoard(renewalPages, renewalColumns);
+    if (respFilter.length === 0) return { cardsByColumn, declined };
+    const meu = (l) => respFilter.includes(l.consultantId);
+    const filtrado = new Map();
+    cardsByColumn.forEach((cards, nome) => filtrado.set(nome, cards.filter(meu)));
+    return { cardsByColumn: filtrado, declined: declined.filter(meu) };
+  }, [isRenewalView, renewalPages, renewalColumns, respFilter]);
+
   const kanbanLeads = useMemo(
     // No funil Vencidos os cards vêm da query própria já projetada, não da
     // assinatura de leads ativos — cliente não está no board de prospecção.
@@ -795,10 +830,19 @@ if (!lead) return;
   // em cada mudança de estado de drag/filtro/modal. O fallback EMPTY_LEADS
   // (constante de módulo) mantém a prop columnLeads estável em colunas
   // vazias — um [] literal novo por render anularia o React.memo delas.
-  const leadsByStatus = useMemo(() => partitionLeadsByStatus(kanbanLeads), [kanbanLeads]);
+  // No funil Renovações o agrupamento já vem pronto por coluna (cada coluna tem
+  // sua própria query), então não há o que particionar.
+  const leadsByStatus = useMemo(
+    () => (isRenewalView ? renewalSplit.cardsByColumn : partitionLeadsByStatus(kanbanLeads)),
+    [isRenewalView, renewalSplit, kanbanLeads]
+  );
   const getLeadsByStatus = (statusName) => leadsByStatus.get(statusName) || EMPTY_LEADS;
 
-  const pipelineColumns = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
+  // No funil Renovações as colunas NÃO vêm de stronix_statuses: são derivadas
+  // dos marcos, em memória. Nos demais, seguem sendo as etapas do funil.
+  const pipelineColumns = isRenewalView
+    ? renewalColumns
+    : (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
   const totalFunnelLeads = funnelLeads.length;
   const isAdmin = isAdminUser(appUser);
 
@@ -985,10 +1029,18 @@ if (!lead) return;
                 color={column.color}
                 special={null}
                 columnLeads={getLeadsByStatus(column.name)}
-                // Paginação do funil Vencidos: o volume mora na coluna de
-                // entrada, então é ela que ganha o "carregar mais".
-                hasMore={isExpiredView && column.isEntry ? expiredHasMore : false}
-                onLoadMore={isExpiredView && column.isEntry ? expiredLoadMore : null}
+                // Vencidos: o volume mora na coluna de entrada, e é ela que
+                // pagina. Renovações: cada coluna tem sua query e pagina sozinha.
+                hasMore={
+                  isRenewalView ? Boolean(renewalHasMore[column.days])
+                    : isExpiredView && column.isEntry ? expiredHasMore
+                      : false
+                }
+                onLoadMore={
+                  isRenewalView ? () => renewalLoadMore(column.days)
+                    : isExpiredView && column.isEntry ? expiredLoadMore
+                      : null
+                }
                 isHovered={draggedOverColumn === column.name}
                 draggingLeadId={draggingLeadId}
                 interactionIndex={interactionIndex}
@@ -1027,7 +1079,11 @@ if (!lead) return;
               name="Perda"
               color="gray"
               special="loss"
-              columnLeads={isExpiredView ? expiredSplit.declined : lostLeads}
+              columnLeads={
+                isRenewalView ? renewalSplit.declined
+                  : isExpiredView ? expiredSplit.declined
+                    : lostLeads
+              }
 
               totalCount={perdaHeaderCount}
               hasMore={lostHasMore}
