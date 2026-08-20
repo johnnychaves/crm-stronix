@@ -379,4 +379,13 @@ describe('renewalColumnQuerySpec', () => {
     const depois = new Date(corte + 91 * DIA);
     expect(depois <= spec.wheres[2].value).toBe(false);
   });
+
+  it('roda no índice #4 que já existe, nas duas formas da faixa', () => {
+    // Promessa da entrega: nenhum índice novo para publicar à mão nas academias.
+    // Como índice aqui é passo MANUAL no console, isto precisa ser teste e não
+    // comentário — mexer no where/orderBy desta spec sem índice quebraria o
+    // board em produção com failed-precondition.
+    expect(coveredByLeadsIndex(renewalColumnQuerySpec(corte, 60, 30, 10))).toBe(true);
+    expect(coveredByLeadsIndex(renewalColumnQuerySpec(corte, 30, 0, 10))).toBe(true);
+  });
 });
