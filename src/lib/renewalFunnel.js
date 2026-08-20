@@ -11,7 +11,7 @@
 // cobra o cliente uma vez em cada marco e solta. Aqui é a COLUNA do board, onde
 // ele fica parado até renovar ou vencer.
 
-import { DEFAULT_RENEWAL_CHECKPOINTS } from './renewalGoal.js';
+import { normalizeRenewalCheckpoints } from './leadStatus.js';
 import { CONTRACT_STATUS } from './contracts.js';
 
 // Discriminador. NUNCA casar por nome: a academia pode ter um funil "Renovações"
@@ -66,14 +66,11 @@ export const getRenewalFunnel = (funnels) => {
 // da query discordaria na borda. Quem garante que board e Meta concordam é o teste
 // "as faixas das colunas traduzem activeRenewalCheckpoint".
 export const renewalColumnsFromCheckpoints = (checkpoints) => {
-  const limpos = Array.from(new Set(
-    (Array.isArray(checkpoints) ? checkpoints : [])
-      .map((n) => Math.floor(Number(n)))
-      .filter((n) => Number.isFinite(n) && n > 0)
-  )).sort((a, b) => b - a);
-
-  const usados = (limpos.length ? limpos : DEFAULT_RENEWAL_CHECKPOINTS)
-    .slice(0, RENEWAL_MAX_COLUMNS);
+  // A normalização é a MESMA das Configurações (normalizeRenewalCheckpoints, em
+  // leadStatus.js): inteiros de 1 a 365, sem repetição, do maior para o menor, e
+  // nunca vazia — sem marco válido ela cai no padrão 90/60/30. Reescrever a regra
+  // aqui faria o board e o campo que grava o valor discordarem com o tempo.
+  const usados = normalizeRenewalCheckpoints(checkpoints).slice(0, RENEWAL_MAX_COLUMNS);
 
   return usados.map((days, i) => ({
     // id sintético: as colunas não existem no banco, mas o React precisa de key.
@@ -95,6 +92,10 @@ export const renewalColumnsFromCheckpoints = (checkpoints) => {
 // shouldPromptRenewal (renewalGoal.js) já exclui da Meta: contrato cancelado
 // pelo próprio consultor, ou trancado (a vigência está congelada e volta a
 // correr na reativação).
+// A TERCEIRA exclusão de shouldPromptRenewal não está aqui: contrato já VENCIDO
+// (que passa a ser cobrado pelo funil Vencidos) é cortado pela FAIXA DA QUERY de
+// cada coluna, que só alcança contrato vencendo daqui para a frente. Não adianta
+// procurar por ela neste arquivo.
 export const isRenewalEligible = (lead) =>
   lead?.currentContractStatus !== CONTRACT_STATUS.CANCELADO &&
   lead?.currentContractStatus !== CONTRACT_STATUS.TRANCADO;
@@ -115,6 +116,15 @@ export const isRenewalEligible = (lead) =>
 //
 // `_renewalCard` marca o card projetado e `_renewalDays` carrega o marco ativo —
 // o handler de drop precisa dele para gravar renewalDecline.
+//
+// ORDEM: o Map já sai ordenado por vencimento, quem vence primeiro no topo,
+// porque a query de cada coluna ordena por currentContractEndsAt ASC. Este
+// resultado NÃO pode passar por partitionLeadsByStatus (kanban.js), que é como o
+// funil Vencidos monta as colunas dele: aquela função reordena cada coluna por
+// prioridade de nextFollowUp, e cliente de renovação PODE ter esse campo —
+// renewalReschedule grava um ao reagendar. Passando por lá, quem tem contato
+// marcado sobe na frente de quem vence antes: o board fica plausível, fica
+// errado, e nenhum teste pega.
 export const splitRenewalForBoard = (pagesByDays, columns) => {
   const cols = Array.isArray(columns) ? columns : [];
   const cardsByColumn = new Map();

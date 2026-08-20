@@ -53,6 +53,10 @@ describe('renewalColumnsFromCheckpoints', () => {
     expect(renewalColumnsFromCheckpoints(null).map(c => c.days)).toEqual([90, 60, 30]);
   });
 
+  it('marco de 1 dia sai no singular', () => {
+    expect(renewalColumnsFromCheckpoints([1]).map(c => c.name)).toEqual(['1 dia']);
+  });
+
   it('corta em 6 colunas mantendo as MAIORES', () => {
     const cols = renewalColumnsFromCheckpoints([120, 90, 60, 45, 30, 15, 7]);
     expect(cols).toHaveLength(RENEWAL_MAX_COLUMNS);
@@ -118,6 +122,19 @@ describe('cores das colunas', () => {
     expect(renewalColumnsFromCheckpoints([120, 90, 60, 45, 30, 15]).map(c => c.color))
       .toEqual(['gray', 'blue', 'teal', 'yellow', 'orange', 'red']);
     expect(renewalColumnsFromCheckpoints([30]).map(c => c.color)).toEqual(['red']);
+  });
+
+  it('a paleta cobre o teto de colunas', () => {
+    // Sem isto, subir RENEWAL_MAX_COLUMNS sem crescer COLUMN_COLORS faz as
+    // colunas extras saírem CINZA em silêncio, e os dois testes acima seguem
+    // verdes — cinza é chave válida da paleta. Conferimos pelo board NO TETO
+    // (uma cor distinta por coluna) em vez de exportar COLUMN_COLORS: o
+    // acoplamento fica travado sem alargar a interface do módulo por teste.
+    const noTeto = renewalColumnsFromCheckpoints(
+      Array.from({ length: RENEWAL_MAX_COLUMNS }, (_, i) => i + 1)
+    );
+    expect(noTeto).toHaveLength(RENEWAL_MAX_COLUMNS);
+    expect(new Set(noTeto.map(c => c.color)).size).toBe(RENEWAL_MAX_COLUMNS);
   });
 });
 
