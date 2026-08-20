@@ -54,9 +54,9 @@ function cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp, renewalDays
       : renewalDaysLeft <= 30
         ? 'bg-amber-500/10 text-[#B45309] dark:text-amber-300'
         : 'bg-[#EAF0FF] text-[#1C3FC4] dark:bg-brand-500/15 dark:text-brand-300';
-    // <= 0 pega os tres casos do ultimo dia de uma vez: o -0 do contrato que
+    // <= 0 pega os três casos do último dia de uma vez: o -0 do contrato que
     // vence mais cedo hoje, o 0 redondo, e o negativo da aba aberta desde antes
-    // do vencimento. "Vence em 0d" nao e como uma pessoa fala.
+    // do vencimento. "Vence em 0d" não é como uma pessoa fala.
     const label = renewalDaysLeft <= 0 ? 'Vence hoje' : `Vence em ${renewalDaysLeft}d`;
     return { label, className: tom };
   }
