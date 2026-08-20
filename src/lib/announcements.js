@@ -13,6 +13,15 @@
 // ============================================================================
 export const ANNOUNCEMENTS = [
   {
+    id: 'foto-cliente-2026-08',
+    audience: 'todos',
+    date: '2026-08-20',
+    eyebrow: 'Novidade',
+    title: 'Foto no perfil do aluno',
+    summary:
+      'Agora dá para colocar a foto de cada aluno. Na ficha, clique no ícone de câmera sobre o avatar e escolha uma imagem salva no aparelho ou tire na hora pela câmera. Antes de salvar, você ajusta o zoom e arrasta o rosto para o meio do círculo. A foto passa a aparecer na ficha, na lista de clientes e na busca do topo.',
+  },
+  {
     id: 'vencidos-2026-08',
     audience: 'todos',
     date: '2026-08-18',
