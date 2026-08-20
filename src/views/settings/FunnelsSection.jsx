@@ -292,7 +292,11 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
                       Sistema
                     </span>
                   )}
-                  {stages.length < 2 && (
+                  {/* Renovações fica fora do alerta: ele tem zero etapa por
+                      construção e as colunas do board saem dos marcos, então o
+                      aviso seria falso e ainda pediria a etapa que o painel ao
+                      lado acabou de dizer que não existe. */}
+                  {stages.length < 2 && !isRenewalFunnel(f) && (
                     <span
                       title="Funil com menos de duas etapas — o Kanban vira uma coluna só"
                       className="size-[7px] rounded-full bg-amber-500 shrink-0"
