@@ -455,6 +455,10 @@ const [isPanning, setIsPanning] = useState(false);
     db, columns: renewalColumns, cutoffMs: expiredCutoffMs,
     pageSize: KANBAN_PAGE_SIZE, enabled: !!db && isRenewalView,
   });
+  // Mesmo recorte do Vencidos: o respFilter continua valendo, mas onlyOverdue é
+  // ignorado — cliente em renovação não tem follow-up de prospecção, então o
+  // filtro não se aplica às colunas de marco nem à Perda daqui. Com ele ligado o
+  // que muda na tela é só a coluna Venda, que tem fonte própria (wonLeads).
   const renewalSplit = useMemo(() => {
     if (!isRenewalView) return { cardsByColumn: new Map(), declined: EMPTY_LEADS };
     const { cardsByColumn, declined } = splitRenewalForBoard(renewalPages, renewalColumns);
@@ -536,8 +540,21 @@ const [isPanning, setIsPanning] = useState(false);
     (leads || []).forEach((l) => m.set(l.id, l));
     (lostDocs || []).forEach((l) => { if (!m.has(l.id)) m.set(l.id, l); });
     (wonDocs || []).forEach((l) => { if (!m.has(l.id)) m.set(l.id, l); });
+    // Cards PROJETADOS do funil Renovações. Eles não existem em nenhuma das três
+    // fontes acima: são cópias em memória que só o board conhece. Sem isto o
+    // arrasto não acha o card pelo id e não faz nada — e, pior, o cliente que
+    // fechou contrato ESTE mês está em wonDocs como documento CRU, sem a flag
+    // _renewalCard: o guard não pegaria e o handler gravaria o nome da coluna no
+    // status dele, que é a corrupção que a projeção existe para impedir.
+    //
+    // Entram por ÚLTIMO e SOBRESCREVENDO (m.set, não o `if (!m.has)` das linhas
+    // acima), porque a versão projetada é a que os handlers precisam ver.
+    if (isRenewalView) {
+      renewalSplit.cardsByColumn.forEach((cards) => cards.forEach((l) => m.set(l.id, l)));
+      (renewalSplit.declined || []).forEach((l) => m.set(l.id, l));
+    }
     return m;
-  }, [leads, lostDocs, wonDocs]);
+  }, [leads, lostDocs, wonDocs, isRenewalView, renewalSplit]);
 
   // E1d: total REAL de perdas do funil via getCountFromServer (o header da
   // coluna, depois do E1c, mostraria só a página carregada). Recontado quando
@@ -953,9 +970,11 @@ if (!lead) return;
             onSelect={setSelectedFunnelId}
           />
 
-          <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
-            <span className="font-semibold text-gray-700 dark:text-neutral-200">{filterSummary}</span>
-          </div>
+          {filterSummary && (
+            <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
+              <span className="font-semibold text-gray-700 dark:text-neutral-200">{filterSummary}</span>
+            </div>
+          )}
 
           <div ref={filterWrapRef} className="relative shrink-0">
             <button
