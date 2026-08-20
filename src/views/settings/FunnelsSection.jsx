@@ -4,6 +4,7 @@ import { collection, doc, addDoc, setDoc, deleteDoc, writeBatch, serverTimestamp
 import { appId, FUNNELS_PATH, LEADS_PATH, STATUSES_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks, isSystemStage, isSystemFunnel } from '../../lib/funnels.js';
 import { pinEntryFirst, REFERRAL_ENTRY_NAME } from '../../lib/referrals.js';
+import { isRenewalFunnel } from '../../lib/renewalFunnel.js';
 import { cn } from '../../lib/utils.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { ColorDot, SETTINGS_COLOR_OPTIONS, settingsColorTone } from '../../components/ui/ColorPicker.jsx';
@@ -63,7 +64,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
     try {
       if (funnelDialog?.funnel) {
         if (isSystemFunnel(funnelDialog.funnel)) {
-          toast.warning('O funil de Indicações é do sistema e não pode ser renomeado.');
+          toast.warning(`O funil "${funnelDialog.funnel.name}" é do sistema e não pode ser renomeado.`);
           setFunnelDialog(null);
           return;
         }
@@ -101,7 +102,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
     // O fallback legado de isItemInFunnel joga leads sem funnelId no funil
     // default — o funil de Indicações nunca pode assumir esse papel.
     if (isSystemFunnel(f)) {
-      toast.warning('O funil de Indicações não pode ser o padrão.');
+      toast.warning(`O funil "${f.name}" é do sistema e não pode ser o padrão.`);
       return;
     }
     const batch = writeBatch(db);
@@ -283,7 +284,9 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
                   )}
                   {isSystemFunnel(f) && (
                     <span
-                      title="Funil do sistema para indicações — só as etapas do meio são configuráveis"
+                      title={isRenewalFunnel(f)
+                        ? 'Funil do sistema — as colunas são os marcos de renovação, configurados em Metas & ritmo'
+                        : 'Funil do sistema — só as etapas do meio são configuráveis'}
                       className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 shrink-0"
                     >
                       Sistema
@@ -317,14 +320,24 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
         {selected && (
           <SettingsPanel
             title={<>Etapas de <b>{selected.name}</b></>}
-            hint={isSystemFunnel(selected)
-              ? `${REFERRAL_ENTRY_NAME} é a porta de entrada das indicações; Negociação, Venda e Perda também são do sistema. Configure as etapas do meio.`
-              : 'Arraste para reordenar. Negociação, Venda e Perda são etapas do sistema.'}
-            action={<SettingsBtn size={34} icon={<Plus size={13} />} onClick={() => openStage(null)}>Nova etapa</SettingsBtn>}
+            hint={isRenewalFunnel(selected)
+              ? 'As colunas deste funil são os marcos de renovação, configurados em Metas & ritmo. Elas mudam sozinhas quando você muda os marcos.'
+              : isSystemFunnel(selected)
+                ? `${REFERRAL_ENTRY_NAME} é a porta de entrada das indicações; Negociação, Venda e Perda também são do sistema. Configure as etapas do meio.`
+                : 'Arraste para reordenar. Negociação, Venda e Perda são etapas do sistema.'}
+            // Funil de Renovações não tem etapa no banco: criar uma aqui geraria
+            // uma coluna que o board nunca renderiza.
+            action={isRenewalFunnel(selected) ? null : (
+              <SettingsBtn size={34} icon={<Plus size={13} />} onClick={() => openStage(null)}>Nova etapa</SettingsBtn>
+            )}
           >
             <div className="border-t border-border">
               {selectedStages.length === 0 ? (
-                <EmptyState>Nenhuma etapa neste funil ainda — crie a primeira.</EmptyState>
+                <EmptyState>
+                  {isRenewalFunnel(selected)
+                    ? 'Este funil não tem etapas para configurar: as colunas do board são os marcos de renovação.'
+                    : 'Nenhuma etapa neste funil ainda — crie a primeira.'}
+                </EmptyState>
               ) : selectedStages.map((s, i) => {
                 const system = isSystemStage(s);
                 const tone = settingsColorTone(s.color || 'blue');
