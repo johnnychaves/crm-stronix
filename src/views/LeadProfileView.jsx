@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
-import { collection, doc, deleteDoc, getDocs, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
-import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH } from '../lib/firebase.js';
+import { collection, doc, deleteDoc, getDocs, updateDoc, writeBatch, query, where, serverTimestamp } from 'firebase/firestore';
+import { appId, LEADS_PATH, INTERACTIONS_PATH, CONTRACTS_PATH, storage } from '../lib/firebase.js';
+import { uploadLeadPhoto, deleteLeadPhoto } from '../lib/leadPhoto.js';
 import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
@@ -28,6 +29,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs.
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../components/ui/dropdown-menu.jsx';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '../components/ui/dialog.jsx';
 import { RingAvatar } from '../components/profile/RingAvatar.jsx';
+import { PhotoCaptureMenu } from '../components/profile/PhotoCaptureMenu.jsx';
 import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
 import { ReferralsSection } from '../components/profile/ReferralsSection.jsx';
 import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
@@ -144,6 +146,52 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
   // Aba ativa da ficha (timeline | crm | contratos | referrals).
   const [activeProfileTab, setActiveProfileTab] = useState('timeline');
+
+  // Foto do cliente: menu (galeria/câmera) + gravação. No perfil não há botão
+  // Salvar — escolheu/capturou, sobe pro Storage e grava na hora.
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
+
+  const handlePhotoPicked = async (blob) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    setPhotoBusy(true);
+    try {
+      const { url, path } = await uploadLeadPhoto(storage, appId, lead.id, blob);
+      await updateDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+        { photoUrl: url, photoPath: path, photoUpdatedAt: serverTimestamp() }
+      );
+      toast.success('Foto atualizada.');
+    } catch (e) {
+      console.error('Erro ao salvar a foto:', e);
+      toast.error(
+        e?.code === 'storage/unauthorized'
+          ? 'Sem permissão no Storage. Publique as regras no console do Firebase.'
+          : 'Não foi possível salvar a foto. Tente novamente.'
+      );
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
+
+  const handlePhotoRemove = async () => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    setPhotoBusy(true);
+    try {
+      await updateDoc(
+        doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+        { photoUrl: null, photoPath: null, photoUpdatedAt: serverTimestamp() }
+      );
+      // Best-effort: o doc já não aponta mais pro objeto.
+      if (lead.photoPath) deleteLeadPhoto(storage, lead.photoPath).catch(() => {});
+      toast.success('Foto removida.');
+    } catch (e) {
+      console.error('Erro ao remover a foto:', e);
+      toast.error('Não foi possível remover a foto.');
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   // Vínculo de indicação: dialog de vincular/editar/remover + escolha do picker.
   const [referrerDialogOpen, setReferrerDialogOpen] = useState(false);
@@ -1051,7 +1099,15 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           <div className="flex items-start gap-4 sm:gap-5 flex-wrap">
             {/* Sem o ponto: o anel, o ponto e o texto "CLIENTE ATIVO" diziam a
                 mesma coisa três vezes. Fica o anel. */}
-            <RingAvatar name={lead.name} size={64} toneName={profileState.tone} showDot={false} splitHex={profileState.key === 'a_vencer' ? '#10B981' : null} />
+            <RingAvatar
+              name={lead.name}
+              size={64}
+              toneName={profileState.tone}
+              showDot={false}
+              splitHex={profileState.key === 'a_vencer' ? '#10B981' : null}
+              photoUrl={lead.photoUrl}
+              onPhotoClick={isReadOnly || photoBusy ? null : () => setPhotoMenuOpen(true)}
+            />
 
             <div className="min-w-[240px] flex-1">
               {/* lifecycle label */}
@@ -1860,6 +1916,12 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       </Tabs>
 
       {/* Overlays */}
+      <PhotoCaptureMenu
+        open={photoMenuOpen}
+        onClose={() => setPhotoMenuOpen(false)}
+        onPicked={handlePhotoPicked}
+        onRemove={lead.photoUrl ? handlePhotoRemove : null}
+      />
       <ClientRegistrationModal
         open={isEditing}
         onClose={() => setIsEditing(false)}

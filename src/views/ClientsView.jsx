@@ -61,11 +61,11 @@ const contractRing = (status) =>
 
 // Avatar com o anel, dimensão constante (32 + gap 2 + anel 2.5) para não
 // desalinhar as linhas entre situações.
-function ContractRingAvatar({ name, status }) {
+function ContractRingAvatar({ name, status, photoUrl = null }) {
   return (
     <span className="relative shrink-0 rounded-full" style={{ background: contractRing(status), padding: 2.5 }}>
       <span className="block rounded-full bg-white dark:bg-neutral-900" style={{ padding: 2 }}>
-        <Avatar name={name} size={32} />
+        <Avatar name={name} size={32} photoUrl={photoUrl} />
       </span>
     </span>
   );
@@ -342,7 +342,7 @@ function ClientsView({ appUser, usersList, db }) {
                 >
                   {/* Cliente */}
                   <div className="flex items-center gap-[11px] min-w-0">
-                    <ContractRingAvatar name={c.name} status={st} />
+                    <ContractRingAvatar name={c.name} status={st} photoUrl={c.photoUrl} />
                     <div className="min-w-0">
                       <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{c.name}</div>
                       <div className="mt-px flex items-center gap-1.5 text-[11.5px] text-slate-500 dark:text-neutral-400 tabular-nums">

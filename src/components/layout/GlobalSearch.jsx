@@ -198,7 +198,7 @@ export function GlobalSearch({ onAddLead, db }) {
                 onMouseDown={(e) => { e.preventDefault(); pick(lead); }}
                 className={cn('flex items-center gap-3 px-2.5 py-2 rounded-xl cursor-pointer', i === activeIndex && 'bg-slate-100 dark:bg-white/[0.05]')}
               >
-                <StateRingAvatar name={lead.name} toneName={r.state.tone} splitHex={r.splitHex} size={30} />
+                <StateRingAvatar name={lead.name} toneName={r.state.tone} splitHex={r.splitHex} size={30} photoUrl={lead.photoUrl} />
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px] text-gray-900 dark:text-white truncate">
                     <HighlightedName name={lead.name || 'Sem nome'} range={r.matchRange} />

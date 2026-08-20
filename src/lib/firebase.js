@@ -5,6 +5,7 @@
 
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { initAppCheck } from './appCheck.js';
 
@@ -32,6 +33,10 @@ const app = initializeApp(firebaseConfig);
 initAppCheck(app);
 
 export const auth = getAuth(app);
+
+// Firebase Storage — fotos de lead/cliente. O bucket já vem no firebaseConfig
+// (storageBucket). Upload/leitura são client-side pelo SDK; ver src/lib/leadPhoto.js.
+export const storage = getStorage(app);
 
 // Cache local persistente (IndexedDB): reload/nova sessão sincroniza só os
 // DELTAS em vez de rebaixar as coleções inteiras — corte direto de custo de
