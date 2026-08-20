@@ -290,7 +290,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
         icon={<RefreshCw size={16} />}
         iconTone="brand"
         title="Marcos de renovação"
-        hint={<>Dias antes do vencimento em que o cliente entra na tarefa de Renovação. Ele aparece <b>uma vez</b> em cada marco, não todo dia. Vale só até o contrato vencer: depois disso a cobrança segue no funil <b>Vencidos</b>.</>}
+        hint={<>Dias antes do vencimento em que o cliente entra na tarefa de Renovação. Ele aparece <b>uma vez</b> em cada marco, não todo dia. Vale só até o contrato vencer: depois disso a cobrança segue no funil <b>Vencidos</b>. Cada marco também vira uma coluna do funil <b>Renovações</b> no Pipeline. O board mostra no máximo os seis marcos maiores: do sétimo em diante o marco continua valendo na Meta Diária, mas não ganha coluna.</>}
         action={
           <SettingsBtn kind="dashed" size={34} icon={<Plus size={13} />} onClick={() => setCheckpointOpen(true)}>
             Novo marco
