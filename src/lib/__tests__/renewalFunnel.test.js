@@ -172,6 +172,10 @@ describe('splitRenewalForBoard', () => {
     // o recusado também é card de renovação — o drop precisa saber disso
     expect(declined[0]._renewalCard).toBe(true);
     expect(declined[0]._renewalDays).toBe(60);
+    // e o status EXIBIDO é o nome da coluna onde ele está, como em todo card
+    // projetado. Com o 'Venda' do documento, arrastar de volta para a Venda era
+    // no-op (handleWinDrop) e o menu Mover nem oferecia a opção.
+    expect(declined[0].status).toBe('Perda');
   });
 
   it('cancelado e trancado somem do board inteiro', () => {
@@ -187,9 +191,14 @@ describe('splitRenewalForBoard', () => {
 
   it('NÃO altera o documento original (a projeção é em memória)', () => {
     const original = { id: 'a', status: 'Venda' };
-    splitRenewalForBoard({ 90: [original] }, cols);
+    const recusado = { id: 'b', status: 'Venda', renewalDeclined: true };
+    splitRenewalForBoard({ 90: [original, recusado] }, cols);
     expect(original.status).toBe('Venda');
     expect(original._renewalCard).toBeUndefined();
+    // o ramo da recusa projeta 'Perda' em CÓPIA: gravar esse nome no documento
+    // do cliente é exatamente a corrupção que a projeção existe para impedir.
+    expect(recusado.status).toBe('Venda');
+    expect(recusado._renewalCard).toBeUndefined();
   });
 
   it('coluna sem página carregada devolve lista vazia, não undefined', () => {

@@ -138,7 +138,16 @@ export const splitRenewalForBoard = (pagesByDays, columns) => {
       // Quem recusou sai das colunas e vai para a Perda, que o board já
       // renderiza em todo funil. Ele continua CLIENTE — muda só onde o card
       // aparece, nunca o lifecycleBucket.
-      if (lead?.renewalDeclined) declined.push(marcado);
+      //
+      // O status EXIBIDO dele é 'Perda' pela MESMA regra dos outros: é o nome da
+      // coluna onde o card está. Mantendo o 'Venda' do documento, os guards de
+      // "já está aí" tratavam o recusado como venda fechada e fechavam a única
+      // saída que importa: handleWinDrop tem `if (lead.status === 'Venda')
+      // return`, então arrastar da Perda para Venda era no-op silencioso, e o
+      // MoveLeadModal filtra `t.name !== lead.status`, então nem oferecia Venda
+      // no celular — da Perda não dava para renovar. De quebra o card saía no
+      // tom verde de ganho, com o valor do plano no rodapé.
+      if (lead?.renewalDeclined) declined.push({ ...marcado, status: 'Perda' });
       else cards.push({ ...marcado, status: col.name });
     });
     cardsByColumn.set(col.name, cards);
