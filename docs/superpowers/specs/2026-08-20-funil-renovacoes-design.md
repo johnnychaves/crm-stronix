@@ -289,8 +289,12 @@ funil, agora que são três.
   menor coluna que sobra continua absorvendo tudo abaixo dela: com marcos
   [120, 90, 60, 45, 30, 15, 7], o cliente a 5 dias de vencer cai em "15 dias"
   e nenhum card fica sem coluna.
-- `renewalColumnOf` (a coluna do card) casa com `activeRenewalCheckpoint` nas
-  bordas: 90, 89, 61, 60, 31, 30, 1, 0.
+- A faixa `(prevDays, days]` de cada coluna é a tradução fiel de
+  `activeRenewalCheckpoint`: varrer todo prazo de 0 a 90 (e de 0 a 120 com o
+  teto aplicado) e conferir que a coluna da faixa é a do marco ativo. NÃO existe
+  função de ponte no código de propósito — recalcular a coluna com um "agora"
+  diferente do corte da query discordaria na borda. É este teste que garante que
+  board e Meta contam a mesma história.
 - `splitRenewalForBoard` manda `renewalDeclined` para a Perda e exclui
   cancelado e trancado das colunas.
 - `planRenewalSetupOps` é idempotente: com o funil já existente devolve
