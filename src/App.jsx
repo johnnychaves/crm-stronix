@@ -54,6 +54,7 @@ import { isAdminUser, normalizeLeadDoc } from './lib/leads.js';
 import { usePagedLeads } from './hooks/usePagedLeads.js';
 import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
+import { planRenewalSetupOps } from './lib/renewalFunnel.js';
 import { kanbanLeadsFor } from './lib/kanban.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
@@ -337,6 +338,8 @@ function AppInner() {
   const [referralSetupDone, setReferralSetupDone] = useState(null);
   const [expiredSetupDone, setExpiredSetupDone] = useState(null);
   const [expiredFunnelStatus, setExpiredFunnelStatus] = useState('idle');
+  const [renewalSetupDone, setRenewalSetupDone] = useState(null);
+  const [renewalFunnelStatus, setRenewalFunnelStatus] = useState('idle');
   const [loadingData, setLoadingData] = useState(true);
   // Já baixamos os dados ao menos uma vez nesta sessão? Serve pra reassinar
   // (volta da ociosidade) sem piscar a tela de carregando por cima de um dado
@@ -779,6 +782,7 @@ useEffect(() => {
       // etapa de entrada de 'Vencido' para 'Aguardando contato'. Ela é protegida,
       // então ninguém consegue arrumar pela tela.
       setExpiredSetupDone(!!data?.expiredFunnelSetupV2DoneAt);
+      setRenewalSetupDone(!!data?.renewalFunnelSetupDoneAt);
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
@@ -1143,6 +1147,58 @@ useEffect(() => {
       }
     })();
   }, [appUser, loadingData, referralMigrationStatus, expiredFunnelStatus, expiredSetupDone]);
+
+  // Funil RENOVAÇÕES do board. Mesmo desenho dos dois provisionamentos acima, e
+  // guardado pelo Vencidos estar 'done' para as escritas não correrem juntas no
+  // primeiro login de admin de uma academia nova.
+  //
+  // Mais simples que os irmãos: as colunas deste funil são VIRTUAIS (derivadas
+  // dos marcos de renovação), então não há etapa nenhuma para criar.
+  useEffect(() => {
+    if (!appUser || !isAdminUser(appUser)) return;
+    if (loadingData) return;
+    if (expiredFunnelStatus !== 'done') return;
+    if (renewalFunnelStatus !== 'idle') return;
+    if (renewalSetupDone === null) return;
+    if (renewalSetupDone) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
+      setRenewalFunnelStatus('done');
+      return;
+    }
+
+    setRenewalFunnelStatus('running');
+
+    (async () => {
+      try {
+        // Snapshot fresco por getDocs (não o prop): elimina a corrida com a
+        // assinatura ao vivo ainda vazia no boot.
+        const funnelsSnap = await getDocs(
+          collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)
+        );
+        const plan = planRenewalSetupOps({
+          funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        });
+
+        if (plan.createFunnel) {
+          await addDoc(
+            collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
+            { ...plan.createFunnel, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+          );
+        }
+
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          { renewalFunnelSetupDoneAt: serverTimestamp() },
+          { merge: true }
+        );
+
+        setRenewalFunnelStatus('done');
+      } catch (err) {
+        console.error('Erro no provisionamento do funil de renovações', err);
+        setRenewalFunnelStatus('error');
+      }
+    })();
+  }, [appUser, loadingData, expiredFunnelStatus, renewalFunnelStatus, renewalSetupDone]);
 
   // Impersonação ("entrar como"): o banner e o "sair" vivem aqui (nível do app);
   // o "entrar" é feito no SuperAdminView. Ressincroniza com o sessionStorage
