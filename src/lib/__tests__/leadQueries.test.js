@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import indexesConfig from '../../../firestore.indexes.json';
 import { LIFECYCLE_BUCKETS, clientsQuerySpec, clientsAllQuerySpec, allLeadsQuerySpec, lostByFunnelQuerySpec, bucketByFunnelQuerySpec, bucketByFunnelCountSpec, appointmentsInWindowQuerySpec, renewalClientsQuerySpec, consultantLeadsQuerySpec, adminDashboardWindowSpecs, ADMIN_DASHBOARD_WINDOW_FIELDS, wonInMonthQuerySpec, renewalWindowMs, clientsWithContactTodayQuerySpec, expiredClientsQuerySpec, renewalColumnQuerySpec } from '../leadQueries.js';
+import { renewalColumnsFromCheckpoints } from '../renewalFunnel.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
 // um PREFIXO do índice (todas ASCENDING, mesmo conjunto) e — havendo orderBy —
@@ -315,6 +316,26 @@ describe('renewalColumnQuerySpec', () => {
   const DIA = 86400000;
   const corte = new Date('2026-08-20T12:00:00Z').getTime();
 
+  // Avalia a spec contra um cliente imaginário que vence em `ms`. Confere TODOS
+  // os wheres, inclusive a igualdade de balde: com o bucket fora da conta, quem
+  // trocasse o balde de uma das specs continuaria vendo verde enquanto os
+  // clientes sumiam dos dois boards. Campo ou operador que o teste não conhece
+  // ESTOURA em vez de passar batido — senão a falha chega como "expected 2 to
+  // be 1", que não diz o que houve.
+  const casa = (spec, ms) => {
+    const doc = { lifecycleBucket: 'cliente', currentContractEndsAt: new Date(ms) };
+    return spec.wheres.every((w) => {
+      if (!(w.field in doc)) throw new Error(`campo não previsto no teste: ${w.field}`);
+      const v = doc[w.field];
+      if (w.op === '==') return v === w.value;
+      if (w.op === '>') return v > w.value;
+      if (w.op === '>=') return v >= w.value;
+      if (w.op === '<') return v < w.value;
+      if (w.op === '<=') return v <= w.value;
+      throw new Error(`op não previsto no teste: ${w.op}`);
+    });
+  };
+
   it('a coluna do meio é uma faixa aberta embaixo e fechada em cima', () => {
     const spec = renewalColumnQuerySpec(corte, 60, 30, 10);
     expect(spec.wheres).toEqual([
@@ -348,17 +369,6 @@ describe('renewalColumnQuerySpec', () => {
     ];
     const vencidos = expiredClientsQuerySpec(corte);
 
-    const casa = (spec, ms) => {
-      const d = new Date(ms);
-      return spec.wheres.filter(w => w.field === 'currentContractEndsAt').every(w => {
-        if (w.op === '>') return d > w.value;
-        if (w.op === '>=') return d >= w.value;
-        if (w.op === '<') return d < w.value;
-        if (w.op === '<=') return d <= w.value;
-        return true;
-      });
-    };
-
     const pontos = [
       corte - DIA, corte - 1, corte, corte + 1,
       corte + 30 * DIA, corte + 30 * DIA + 1,
@@ -374,10 +384,43 @@ describe('renewalColumnQuerySpec', () => {
     });
   });
 
+  // A invariante acima é provada com pares escritos na mão. Em produção quem
+  // monta os pares é renewalColumnsFromCheckpoints, em outro arquivo — e as duas
+  // metades do contrato podem divergir sem ninguém ver: lá se decide que a última
+  // coluna leva prevDays 0, aqui se decide que prevDays 0 (e só ele) vira >= no
+  // corte. Este teste fecha a junção, alimentando a corrente inteira.
+  it('a corrente real (colunas da config → specs) também parte o eixo sem sobra nem buraco', () => {
+    const CONFIGS = [
+      [90, 60, 30],                      // o padrão
+      [120, 90, 60, 45, 30, 15, 7],      // mais de 6 marcos: exercita o teto
+      [30],                              // marco único: a coluna de baixo é a única
+    ];
+    CONFIGS.forEach((marcos) => {
+      const cols = renewalColumnsFromCheckpoints(marcos);
+      const specs = cols.map(c => renewalColumnQuerySpec(corte, c.days, c.prevDays));
+      const vencidos = expiredClientsQuerySpec(corte);
+      const maior = cols[0].days;
+
+      const pontos = [corte - DIA, corte - 1, corte, corte + 1];
+      cols.forEach((c) => {
+        pontos.push(corte + c.days * DIA, corte + c.days * DIA - 1);
+        if (c.prevDays > 0) pontos.push(corte + c.prevDays * DIA + 1);
+      });
+
+      pontos.filter(ms => ms <= corte + maior * DIA).forEach((ms) => {
+        const onde = specs.filter(s => casa(s, ms)).length + (casa(vencidos, ms) ? 1 : 0);
+        expect(onde, `marcos ${marcos} no ponto ${(ms - corte) / DIA}d`).toBe(1);
+      });
+    });
+  });
+
   it('quem vence depois do maior marco não entra em coluna nenhuma', () => {
     const spec = renewalColumnQuerySpec(corte, 90, 60);
-    const depois = new Date(corte + 91 * DIA);
-    expect(depois <= spec.wheres[2].value).toBe(false);
+    // As duas bordas do teto, por casa() — indexar wheres[2] na mão passava
+    // vazio se os wheres fossem reordenados, e passava com <= virando <.
+    expect(casa(spec, corte + 90 * DIA)).toBe(true);
+    expect(casa(spec, corte + 90 * DIA + 1)).toBe(false);
+    expect(casa(spec, corte + 91 * DIA)).toBe(false);
   });
 
   it('roda no índice #4 que já existe, nas duas formas da faixa', () => {

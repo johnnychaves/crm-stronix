@@ -93,6 +93,12 @@ export const renewalClientsQuerySpec = (startMs, endMs, pageSize = null) => ({
 //
 // Coberta pelo índice #4 (lifecycleBucket ASC, currentContractEndsAt ASC):
 // igualdade no balde mais range e ordenação no mesmo campo. NENHUM índice novo.
+//
+// PAR DA ESTEIRA com renewalColumnQuerySpec (logo abaixo): aqui `< corte`, lá
+// `>= corte`. Mexer neste corte sem olhar o de lá abre sobreposição ou buraco
+// entre os dois boards. O teste que trava isso mora no describe do OUTRO
+// ('renewalColumnQuerySpec', em leadQueries.test.js) — se ele quebrar depois de
+// você mexer aqui, é este par que está falando.
 export const expiredClientsQuerySpec = (beforeMs, pageSize = null) => ({
   wheres: [
     { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },
