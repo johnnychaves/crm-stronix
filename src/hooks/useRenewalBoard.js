@@ -79,7 +79,13 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
   }, [db, cutoffMs, pageSize]);
 
   useEffect(() => {
-    if (!enabled || !db || !(columns || []).length) return;
+    if (!enabled || !db || !(columns || []).length) {
+      // Sair da aba no meio da carga: o .finally da busca em voo pula o
+      // setLoading por geração, e sem isto o hook ficaria "carregando" para
+      // sempre até uma rodada completa acontecer.
+      setLoading(false);
+      return;
+    }
     const gen = ++generation.current;
     cursors.current = {};
     inFlight.current = {};
@@ -88,25 +94,40 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
     // all — com `all`, a primeira falha limparia o loading com as outras colunas
     // ainda no ar, e o board sairia do carregando cedo demais.
     Promise.allSettled((columns || []).map((col) => fetchColumn(col, true, gen)))
-      .then((rs) => rs.forEach((r) => {
-        if (r.status === 'rejected') console.error('useRenewalBoard', r.reason);
+      .then((rs) => rs.forEach((r, i) => {
+        if (r.status !== 'rejected') return;
+        console.error('useRenewalBoard', r.reason);
+        // Coluna que falhou fica com hasMore ligado de propósito: sem isso ela
+        // some do alcance do loadMore e vira coluna morta até o board inteiro
+        // recarregar. Com ele, o "carregar mais" que já existe vira o botão de
+        // tentar de novo — o cursor está vazio, então a retentativa busca a
+        // primeira página. allSettled indexa pela ORDEM DE ENTRADA, então rs[i]
+        // é sempre a coluna columns[i], não a que assentou primeiro.
+        // Só para a geração corrente, como todo o resto do arquivo: carga
+        // vencida não grava.
+        const col = (columns || [])[i];
+        if (col && gen === generation.current) {
+          setHasMore((prev) => ({ ...prev, [col.days]: true }));
+        }
       }))
       .finally(() => { if (gen === generation.current) setLoading(false); });
     // Sair da aba (ou trocar os marcos) invalida o que estava no ar.
     return () => { generation.current += 1; };
-    // columnsKey representa `columns`; fetchColumn é derivado de db/cutoffMs.
+    // columnsKey representa `columns`; fetchColumn é derivado de db, cutoffMs e
+    // pageSize — este último fica fora daqui de propósito, porque é constante no
+    // consumidor e recarregar o board por ele nunca aconteceria.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, db, columnsKey, cutoffMs]);
 
   const loadMore = useCallback((days) => {
     const col = (columns || []).find((c) => c.days === days);
-    if (!col || !hasMore[days]) return;
+    if (!enabled || !col || !hasMore[days]) return;
     // Sem `loading` no guard: a trava real é o inFlight, por coluna e síncrona.
     // Barrar por `loading` do board ainda impediria carregar mais numa coluna
     // enquanto outra busca — e não impediria o duplo-clique, que é o problema.
     fetchColumn(col, false, generation.current)
       .catch((err) => console.error('useRenewalBoard loadMore', err));
-  }, [columns, hasMore, fetchColumn]);
+  }, [enabled, columns, hasMore, fetchColumn]);
 
   return { pages, hasMore, loading, loadMore };
 }
