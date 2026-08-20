@@ -100,7 +100,8 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
   const setDefaultFunnel = async (f) => {
     if (f.isDefault) return;
     // O fallback legado de isItemInFunnel joga leads sem funnelId no funil
-    // default — o funil de Indicações nunca pode assumir esse papel.
+    // default — nenhum funil de sistema pode assumir esse papel (são três hoje:
+    // Indicações, Renovações e Vencidos).
     if (isSystemFunnel(f)) {
       toast.warning(`O funil "${f.name}" é do sistema e não pode ser o padrão.`);
       return;
