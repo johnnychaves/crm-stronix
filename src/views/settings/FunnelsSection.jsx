@@ -390,9 +390,11 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
         onOpenChange={(v) => !v && setFunnelDialog(null)}
         title={funnelDialog?.funnel ? `Editar ${funnelDialog.funnel.name}` : 'Novo funil'}
         description={funnelDialog?.funnel
-          ? (isSystemFunnel(funnelDialog.funnel)
-            ? 'Funil do sistema para indicações — o nome é fixo; você configura as etapas do meio na lista ao lado.'
-            : 'Renomear o funil não muda as etapas nem os leads dentro dele.')
+          ? (isRenewalFunnel(funnelDialog.funnel)
+            ? 'Funil do sistema — o nome é fixo e não há etapa para configurar: as colunas do board são os marcos de renovação, configurados em Metas & ritmo.'
+            : isSystemFunnel(funnelDialog.funnel)
+              ? 'Funil do sistema — o nome é fixo; você configura as etapas do meio na lista ao lado.'
+              : 'Renomear o funil não muda as etapas nem os leads dentro dele.')
           : 'O funil nasce com a etapa Negociação — as demais você desenha depois.'}
         submitLabel={funnelDialog?.funnel ? 'Salvar' : 'Criar funil'}
         submitting={saving}
