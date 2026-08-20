@@ -324,9 +324,11 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
 
         {selected && (
           <SettingsPanel
-            title={<>Etapas de <b>{selected.name}</b></>}
+            title={isRenewalFunnel(selected)
+              ? <>Colunas de <b>{selected.name}</b></>
+              : <>Etapas de <b>{selected.name}</b></>}
             hint={isRenewalFunnel(selected)
-              ? 'As colunas deste funil são os marcos de renovação, configurados em Metas & ritmo. Elas mudam sozinhas quando você muda os marcos.'
+              ? 'As colunas deste funil são os marcos de renovação, configurados em Metas & ritmo. Elas mudam sozinhas quando você muda os marcos. O board mostra no máximo os seis marcos maiores: do sétimo em diante o marco continua valendo na Meta Diária, mas não ganha coluna aqui.'
               : isSystemFunnel(selected)
                 ? 'A etapa de entrada deste funil e as fases Negociação, Venda e Perda são do sistema. Configure as etapas do meio.'
                 : 'Arraste para reordenar. Negociação, Venda e Perda são etapas do sistema.'}
