@@ -78,7 +78,11 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
     }
   }, [db, cutoffMs, pageSize]);
 
-  useEffect(() => {
+  // Carga inicial de TODAS as colunas. É o corpo do effect de montagem E o
+  // `reload` exposto — um lugar só, de propósito: duplicar isto seria duplicar o
+  // gate de geração, que é justamente o que segura a corrida entre uma carga
+  // velha e uma nova. Recarregar é a MESMA operação de montar o board.
+  const loadAllColumns = useCallback(() => {
     if (!enabled || !db || !(columns || []).length) {
       // Sair da aba no meio da carga: o .finally da busca em voo pula o
       // setLoading por geração, e sem isto o hook ficaria "carregando" para
@@ -86,6 +90,11 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
       setLoading(false);
       return;
     }
+    // Subir a geração aqui invalida tudo que estiver no ar — inclusive um
+    // "carregar mais" de outra coluna, que resolveria com o cursor da carga
+    // antiga. As duas travas seguem valendo na recarga: a busca vencida não
+    // escreve (gate de geração dentro do fetchColumn) e o .finally dela não
+    // devolve a vaga de quem entrou depois.
     const gen = ++generation.current;
     cursors.current = {};
     inFlight.current = {};
@@ -111,9 +120,14 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
         }
       }))
       .finally(() => { if (gen === generation.current) setLoading(false); });
+  }, [enabled, db, columns, fetchColumn]);
+
+  useEffect(() => {
+    loadAllColumns();
     // Sair da aba (ou trocar os marcos) invalida o que estava no ar.
     return () => { generation.current += 1; };
-    // columnsKey representa `columns`; fetchColumn é derivado de db, cutoffMs e
+    // columnsKey representa `columns` (e loadAllColumns), que muda de identidade
+    // a cada render no consumidor; fetchColumn é derivado de db, cutoffMs e
     // pageSize — este último fica fora daqui de propósito, porque é constante no
     // consumidor e recarregar o board por ele nunca aconteceria.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,5 +143,8 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
       .catch((err) => console.error('useRenewalBoard loadMore', err));
   }, [enabled, columns, hasMore, fetchColumn]);
 
-  return { pages, hasMore, loading, loadMore };
+  // `reload` refaz a carga inicial de todas as colunas. O board é uma foto
+  // (getDocs, não onSnapshot), então quem grava um desfecho precisa pedir a foto
+  // nova — senão o card fica no lugar antigo com a vigência antiga.
+  return { pages, hasMore, loading, loadMore, reload: loadAllColumns };
 }
