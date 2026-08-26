@@ -58,6 +58,28 @@ export const fromDateInputValue = (str) => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+// Valor 'yyyy-mm-ddTHH:MM' de um <input type="datetime-local">, no fuso LOCAL.
+// Mesma razão do toDateInputValue: serializar via toISOString jogaria a hora 3h
+// para trás no Brasil e um contato marcado para 00:30 cairia no dia anterior.
+export const toDateTimeInputValue = (date) => {
+  const d = getSafeDateOrNull(date);
+  if (!d) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
+// Interpreta 'yyyy-mm-ddTHH:MM' (alguns navegadores mandam com segundos) como
+// hora LOCAL. Valor só com o dia cai no fromDateInputValue, virando meia-noite
+// local — é o que acontece com um agendamento antigo, gravado antes de a hora
+// existir na tela. null para string vazia ou fora do formato.
+export const fromDateTimeInputValue = (str) => {
+  if (!str || typeof str !== 'string') return null;
+  const m = str.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return fromDateInputValue(str);
+  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5]), Number(m[6] || 0));
+  return isNaN(d.getTime()) ? null : d;
+};
+
 // Dias inteiros entre duas datas (b - a). Arredonda para absorver o pulo de
 // 1h do horário de verão. null se qualquer uma for inválida.
 export const daysBetween = (a, b) => {
