@@ -5,7 +5,7 @@
 // `now` é injetado onde a função aceita, e fake timers onde ela lê o relógio.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { filterKanbanLeads, partitionLeadsByStatus, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, monthWindow, kanbanLeadsFor } from '../kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter } from '../kanban.js';
 
 // 15 de julho de 2026, 10:00 local — "agora" de referência dos testes.
 const NOW = new Date(2026, 6, 15, 10, 0, 0);
@@ -270,35 +270,33 @@ describe('monthWindow', () => {
   });
 });
 
-describe('kanbanLeadsFor', () => {
+describe('carteira padrão do board', () => {
   const admin = { role: 'admin', id: 'a1' };
   const consultor = { role: 'consultor', id: 'u1' };
-  const todos = [{ id: 'x', lifecycleBucket: 'ativo' }, { id: 'y', lifecycleBucket: 'ativo' }];
-  const meus = [
-    { id: 'meu-ativo', lifecycleBucket: 'ativo' },
-    { id: 'meu-cliente', lifecycleBucket: 'cliente' },
-    { id: 'minha-perda', lifecycleBucket: 'perda' },
-  ];
 
-  it('admin recebe a base global inteira', () => {
-    expect(kanbanLeadsFor(admin, todos, meus)).toBe(todos);
+  it('gestor abre vendo a equipe inteira', () => {
+    expect(defaultRespFilterFor(admin)).toEqual([]);
   });
 
-  it('consultor recebe só os próprios leads', () => {
-    expect(kanbanLeadsFor(consultor, todos, meus).map(l => l.id)).toEqual(['meu-ativo']);
+  it('consultor abre na própria carteira', () => {
+    expect(defaultRespFilterFor(consultor)).toEqual(['u1']);
   });
 
-  // A query do consultor é só por consultantId: sem este recorte, aluno
-  // matriculado e lead perdido apareceriam no board.
-  it('consultor não vê cliente nem perda no board', () => {
-    const ids = kanbanLeadsFor(consultor, todos, meus).map(l => l.id);
-    expect(ids).not.toContain('meu-cliente');
-    expect(ids).not.toContain('minha-perda');
+  it('usuário sem id (ou ausente) cai na equipe inteira em vez de quebrar', () => {
+    expect(defaultRespFilterFor({ role: 'consultor' })).toEqual([]);
+    expect(defaultRespFilterFor(null)).toEqual([]);
   });
 
-  it('listas vazias ou nulas não quebram', () => {
-    expect(kanbanLeadsFor(consultor, null, null)).toEqual([]);
-    expect(kanbanLeadsFor(admin, null, null)).toEqual([]);
-    expect(kanbanLeadsFor(consultor, todos, [null])).toEqual([]);
+  // O padrão não pinta o botão nem soma no badge — é o estado natural da tela.
+  it('reconhece o padrão de cada papel', () => {
+    expect(isDefaultRespFilter(admin, [])).toBe(true);
+    expect(isDefaultRespFilter(consultor, ['u1'])).toBe(true);
+  });
+
+  it('sair do padrão conta como filtro — inclusive o consultor abrindo para a equipe', () => {
+    expect(isDefaultRespFilter(admin, ['u1'])).toBe(false);
+    expect(isDefaultRespFilter(consultor, [])).toBe(false);
+    expect(isDefaultRespFilter(consultor, ['u2'])).toBe(false);
+    expect(isDefaultRespFilter(consultor, ['u1', 'u2'])).toBe(false);
   });
 });

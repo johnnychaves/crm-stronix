@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { User, MapPin, Phone, Briefcase, Users, Calendar, IdCard, Mail, Check, Pencil } from 'lucide-react';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
-import { isAdminUser, isClientLead } from '../lib/leads.js';
+import { isClientLead } from '../lib/leads.js';
 import { lookupCep, isCepComplete, isValidCpf, isCpfComplete } from '../lib/brazilLookups.js';
 import { formatCPF, formatPhone } from '../lib/masks.js';
 import {
   MARITAL_STATUS_OPTIONS, readClientRegistration, buildClientRegistrationPatch, computeCompleteness,
+  ownerChangeFor, ownerChangeNote,
 } from '../lib/clientRegistration.js';
+import { logInteraction } from '../lib/interactions.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -31,7 +33,6 @@ const TABS = [
 function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, tags }) {
   const toast = useToast();
   const { professores, dores, modalities } = useGeneralConfig();
-  const isAdmin = isAdminUser(appUser);
   const isClient = isClientLead(lead);
   const [form, setForm] = useState(() => readClientRegistration(lead));
   const [tab, setTab] = useState('identidade');
@@ -39,6 +40,16 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
   const [loading, setLoading] = useState(false);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  // Quem pode receber o lead: gente ATIVA da equipe e com login vinculado.
+  // Passar para quem saiu deixaria o lead órfão (mesma regra do dono da tarefa
+  // de contato), e passar para um cadastro sem authUid deixaria o lead sem
+  // ninguém que possa editá-lo, já que a permissão é o authUid do dono.
+  const ownerOptions = useMemo(
+    () => (usersList || []).filter(
+      (u) => u?.id && u.name && u.authUid && u.active !== false && !u.superAdminOnly
+    ),
+    [usersList]
+  );
   const pct = useMemo(() => computeCompleteness(form), [form]);
   const cpfInvalid = isCpfComplete(form.cpf) && !isValidCpf(form.cpf);
   const tagSuggestions = (tags || []).map((t) => t.name);
@@ -56,9 +67,26 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
     if (!form.name.trim()) { toast.warning('Informe o nome.'); return; }
     setLoading(true);
     try {
-      const patch = buildClientRegistrationPatch(form, { isAdmin, usersList, professores });
-      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch);
-      toast.success('Cadastro salvo!');
+      const patch = buildClientRegistrationPatch(form, { usersList, professores });
+      const ownerChange = ownerChangeFor(lead, patch);
+      if (ownerChange) {
+        // Troca de responsável deixa rastro: nota na linha do tempo e patch do
+        // lead no MESMO batch (logInteraction), então ou grava tudo ou nada.
+        // O carimbo é o que o sino de quem recebeu lê depois.
+        await logInteraction(
+          db, lead, appUser,
+          { text: ownerChangeNote(ownerChange), type: 'status_change' },
+          {
+            ...patch,
+            consultantChangedAt: serverTimestamp(),
+            consultantChangedByName: appUser?.name || null,
+            consultantChangedByAuthUid: appUser?.authUid || null,
+          }
+        );
+      } else {
+        await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch);
+      }
+      toast.success(ownerChange ? `Cadastro salvo. ${ownerChange.toName} agora é o responsável.` : 'Cadastro salvo!');
       onClose();
     } catch (e) {
       console.error(e);
@@ -175,11 +203,18 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
                 </Field>
                 <div className="sm:col-span-2"><Field label="Origem"><StyledSelect value={form.source} onChange={(e) => set('source', e.target.value)}>{!SOURCES.includes(form.source) && form.source && <option value={form.source}>{form.source}</option>}{SOURCES.map((s) => <option key={s} value={s}>{s}</option>)}</StyledSelect></Field></div>
                 <Field label="Consultor responsável">
-                  {isAdmin ? (
-                    <StyledSelect value={form.consultantId} onChange={(e) => set('consultantId', e.target.value)}><option value="">Selecione…</option>{(usersList || []).map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}</StyledSelect>
-                  ) : (
-                    <StyledInput value={lead.consultantName || '—'} disabled readOnly />
-                  )}
+                  {/* Passar a bola é de toda a equipe (não só do admin): quem
+                      recebe fica sabendo pelo sino e a troca vai pra linha do
+                      tempo. */}
+                  <StyledSelect value={form.consultantId} onChange={(e) => set('consultantId', e.target.value)}>
+                    <option value="">Selecione…</option>
+                    {/* Dono atual que já saiu da equipe continua listado, senão
+                        o campo abriria em branco e a troca viraria acidente. */}
+                    {form.consultantId && !ownerOptions.some((u) => u.id === form.consultantId) && (
+                      <option value={form.consultantId}>{lead.consultantName || 'Responsável atual'}</option>
+                    )}
+                    {ownerOptions.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  </StyledSelect>
                 </Field>
                 <Field label="Professor responsável">
                   <StyledSelect value={form.professorId} onChange={(e) => set('professorId', e.target.value)}>

@@ -55,7 +55,6 @@ import { usePagedLeads } from './hooks/usePagedLeads.js';
 import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
-import { kanbanLeadsFor } from './lib/kanban.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
@@ -93,6 +92,7 @@ import { WalkthroughModal } from './components/WalkthroughModal.jsx';
 import { HelpCenterModal } from './components/HelpCenterModal.jsx';
 import { NotificationBell } from './components/layout/NotificationBell.jsx';
 import { useNotificationsSeen } from './hooks/useNotificationsSeen.js';
+import { useHandoffs } from './hooks/useHandoffs.js';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
@@ -224,6 +224,8 @@ function AppInner() {
   const [helpArticleId, setHelpArticleId] = useState(null);
   // "Já li" do sino: ids das novidades vistas + carimbo das indicações.
   const { seenIds, lastSeenReferralsAt, markAllSeen } = useNotificationsSeen({ db, appUser });
+  // Leads/clientes que passaram pra carteira desta pessoa (grupo do sino).
+  const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
@@ -793,7 +795,15 @@ useEffect(() => {
       setUsersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
   } else {
+    // A equipe inteira, não só o próprio usuário: o consultor precisa dela para
+    // passar um lead adiante e para delegar tarefa de contato. É uma coleção
+    // pequena e que quase não muda, então vale UMA leitura por sessão em vez de
+    // mais uma assinatura ao vivo. Falhou, fica só o próprio usuário e o app
+    // segue funcionando como antes.
     setUsersList([appUser]);
+    getDocs(usersRef)
+      .then((snap) => setUsersList(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+      .catch((e) => { console.error('usersList', e); });
   }
 
   return () => {
@@ -1336,13 +1346,9 @@ useEffect(() => {
   });
   // Gerencial admin usa metaLeads (definido acima) só p/ o useTeamGoals (Meta da
   // equipe); as métricas de PERÍODO do admin vêm da união de janelas (G1c) na view.
-  // Base do Kanban por papel: admin vê a academia, consultor vê só os próprios
-  // leads. Regra em lib/kanban.js — inclui o recorte de lifecycleBucket, que a
-  // query do consultor não faz (ela traz cliente e perda junto).
-  const kanbanLeads = useMemo(
-    () => kanbanLeadsFor(appUser, leads, consultantLeads),
-    [appUser, leads, consultantLeads]
-  );
+  // Base do Kanban: a assinatura de leads ATIVOS, igual para todo mundo. Quem
+  // recorta por carteira é o filtro de responsável da própria tela, que abre na
+  // carteira do consultor e é livre para ele trocar (lib/kanban.js).
   const gerencialLeads = dashIsAdmin ? metaLeads : consultantLeads;
   const clientsAVencer = useMemo(() => {
     if (!appUser) return 0;
@@ -1545,6 +1551,7 @@ useEffect(() => {
               <NotificationBell
                 appUser={appUser}
                 leads={leads}
+                handoffLeads={handoffLeads}
                 seenIds={seenIds}
                 lastSeenReferralsAt={lastSeenReferralsAt}
                 onMarkAllSeen={markAllSeen}
@@ -1622,7 +1629,7 @@ useEffect(() => {
                   sem janela) — migra no G1d. interactions segue global (G2). */}
               {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : consultantLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} listenersActive={listenersActive} />}
               {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={gerencialLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
-              {activeTab === 'kanban' && <KanbanView leads={kanbanLeads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
+              {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
               {/* Meta Diária (G1d): base = ativo ∪ clientes a vencer (metaLeads),
                   flip-safe. computeDailyGoalSlots filtra por consultor e categoria
