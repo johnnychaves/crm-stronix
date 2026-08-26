@@ -135,7 +135,12 @@ Com marcos [90, 60, 30]:
 | 60 | 60 dias |
 | 45 | 60 dias |
 | 12 | 30 dias |
-| 0 (vence hoje) | 30 dias |
+| 1 (vence amanhã) | 30 dias |
+
+O contrato que vence **hoje** não aparece aqui: o corte é o instante atual e a
+data de vencimento é gravada à meia-noite, então ele já é `< corte` desde as
+00:00 e está no funil **Vencidos**. É o mesmo critério que `deriveContractStatus`
+usa no resto do sistema, então os três concordam.
 
 A regra é `min{ C ∈ marcos : C >= diasParaVencer }`, ou seja a coluna C cobre
 o intervalo `(marcoMenorAnterior, C]`.
