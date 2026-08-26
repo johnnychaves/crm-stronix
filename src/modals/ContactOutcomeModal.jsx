@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Calendar, CheckCircle2, MessageSquare } from 'lucide-react';
-import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
+import { fromDateTimeInputValue, toDateTimeInputValue } from '../lib/dates.js';
 import { logInteraction } from '../lib/interactions.js';
+import { formatHourLabel } from '../lib/format.js';
 import { contactDone, contactReschedule, followUpChannelOf } from '../lib/contactGoal.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL } from '../lib/leads.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -42,16 +43,26 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
   const toast = useToast();
   const [outcome, setOutcome] = useState(OUTCOMES.FEITO);
   const [motivo, setMotivo] = useState('');
+  // Amanhã às 09:00, o mesmo horário que o wizard de agendamento sugere para
+  // dias futuros. Dia e hora saem do mesmo campo.
   const [rescheduleStr, setRescheduleStr] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() + 1);
-    return toDateInputValue(d);
+    d.setHours(9, 0, 0, 0);
+    return toDateTimeInputValue(d);
   });
   const [submitting, setSubmitting] = useState(false);
 
-  const todayStart = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
-  const parsedReschedule = fromDateInputValue(rescheduleStr);
-  const isRescheduleFuture = Boolean(parsedReschedule) && parsedReschedule.getTime() > todayStart.getTime();
+  // Trava de instante futuro. Até 26/08/2026 a tela pedia só o DIA e gravava
+  // meia-noite, então todo reagendamento nascia às 00h; com a hora no campo o
+  // corte vira "depois de agora". Marcar para hoje mais tarde é caso real
+  // (mensagem sem resposta de manhã) e não joga o lead em Atrasados: a Meta
+  // classifica atraso por DIA (ver dailyGoal.js). O `nowMs` é fixado na
+  // montagem para o render seguir puro; o clique confere de novo no relógio.
+  const nowMs = useMemo(() => Date.now(), []);
+  const minRescheduleStr = useMemo(() => toDateTimeInputValue(new Date(nowMs)), [nowMs]);
+  const parsedReschedule = fromDateTimeInputValue(rescheduleStr);
+  const isRescheduleFuture = Boolean(parsedReschedule) && parsedReschedule.getTime() > nowMs;
   const motivoTrimmed = motivo.trim();
   const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || 'Contato';
 
@@ -66,6 +77,12 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
 
   const handleConfirm = async () => {
     if (!canSubmit) return;
+    // O nowMs do render envelhece se o popup ficar aberto; confere no relógio
+    // antes de gravar para nunca agendar um contato no passado.
+    if (outcome === OUTCOMES.REAGENDAR && (!parsedReschedule || parsedReschedule.getTime() <= Date.now())) {
+      toast.warning('Escolha uma data e hora futuras.');
+      return;
+    }
     setSubmitting(true);
     try {
       if (outcome === OUTCOMES.FEITO) {
@@ -82,7 +99,7 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
         // o canal, conta como reaquecimento (volumeKind) e registra o motivo.
         const patch = contactReschedule(lead, parsedReschedule);
         const { volumeKind } = followUpChannelOf(lead);
-        const dateFmt = parsedReschedule.toLocaleDateString('pt-BR');
+        const dateFmt = `${parsedReschedule.toLocaleDateString('pt-BR')} às ${formatHourLabel(parsedReschedule)}`;
         await logInteraction(db, lead, appUser, {
           text: `Motivo do reagendamento: ${motivoTrimmed} — próximo contato em ${dateFmt}.`,
           type: 'note'
@@ -140,17 +157,18 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
             <div className="space-y-3">
               <div>
                 <label className="flex items-center gap-1 text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
-                  Data do próximo contato
+                  Data e hora do próximo contato
                   <span className="text-accent-500 normal-case text-[12px] leading-none">*</span>
                 </label>
                 <input
-                  type="date"
+                  type="datetime-local"
                   value={rescheduleStr}
+                  min={minRescheduleStr}
                   onChange={(e) => setRescheduleStr(e.target.value)}
                   className="w-full h-[38px] px-3 rounded-xl bg-slate-50 dark:bg-white/5 border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] num transition"
                 />
                 {rescheduleStr && !isRescheduleFuture && (
-                  <p className="text-[11.5px] text-rose-600 dark:text-rose-400 mt-1.5">Escolha uma data futura.</p>
+                  <p className="text-[11.5px] text-rose-600 dark:text-rose-400 mt-1.5">Escolha uma data e hora futuras.</p>
                 )}
               </div>
               <div>
