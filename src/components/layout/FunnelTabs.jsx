@@ -8,6 +8,9 @@ const TAB_GAP = 4;
 
 // Aba de funil. Usada na linha visível e na linha fantasma de medição
 // (mesmas classes ⇒ mesma largura medida).
+// `count` ausente (null/undefined) NÃO é zero: é "ainda não sei". Funil de
+// sistema projeta clientes por query, então a contagem dele nem sempre está na
+// mão — e mostrar 0 ao lado de um board cheio é pior que não mostrar nada.
 function FunnelTab({ funnel, count, active, onClick, tabIndex }) {
   return (
     <button
@@ -23,16 +26,18 @@ function FunnelTab({ funnel, count, active, onClick, tabIndex }) {
       )}
     >
       {funnel.name}
-      <span
-        className={cn(
-          'text-[11px] font-bold px-1.5 py-px rounded-md tabular-nums',
-          active
-            ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
-            : 'bg-slate-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400'
-        )}
-      >
-        {count}
-      </span>
+      {count != null && (
+        <span
+          className={cn(
+            'text-[11px] font-bold px-1.5 py-px rounded-md tabular-nums',
+            active
+              ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
+              : 'bg-slate-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400'
+          )}
+        >
+          {count}
+        </span>
+      )}
     </button>
   );
 }
@@ -44,8 +49,9 @@ function FunnelTab({ funnel, count, active, onClick, tabIndex }) {
 //
 // Props: funnels [{id,name}], counts (Map id→n ou objeto), selectedId, onSelect(id).
 function FunnelTabs({ funnels, counts, selectedId, onSelect }) {
+  // Sem `|| 0`: preserva null/undefined para o badge saber que não há número.
   const getCount = (id) =>
-    (counts && typeof counts.get === 'function' ? counts.get(id) : counts?.[id]) || 0;
+    counts && typeof counts.get === 'function' ? counts.get(id) : counts?.[id];
 
   // Ordem de exibição das abas (sincroniza com os funis cadastrados).
   const [tabOrder, setTabOrder] = useState(() => (funnels || []).map(f => f.id));

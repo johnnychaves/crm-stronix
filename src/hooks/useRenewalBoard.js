@@ -23,31 +23,34 @@ import { renewalColumnQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { normalizeLeadDoc } from '../lib/leads.js';
 
-// useRenewalBoard({ db, columns, cutoffMs, pageSize, enabled })
+// useRenewalBoard({ db, columns, cutoffMs, enabled })
 //   columns : saída de renewalColumnsFromCheckpoints (precisa de .days/.prevDays)
 //   cutoffMs: o "hoje" do board, fixado uma vez na montagem da tela
-// Devolve { pages, hasMore, loading, loadMore(days), reload(), patchLead(id,
-// patch) }. `pages` e `hasMore` são
-// indexados pelo MARCO (days), a chave estável da coluna; `loading` é só a
-// carga inicial do board, porque o "carregar mais" trava por coluna no inFlight.
+// Devolve { pages, loading, reload(), patchLead(id, patch) }. `pages` é indexado
+// pelo MARCO (days), a chave estável da coluna.
+//
+// Cada coluna busca a FAIXA INTEIRA, sem paginar. É o que torna a contagem
+// exata: a exclusão de contrato cancelado e trancado só existe no cliente (o
+// campo currentContractStatus não tem backfill, então filtrar por ele no
+// servidor derrubaria em silêncio todo cliente antigo que não o tem), e contar
+// certo exige ter os documentos na mão. A coluna continua revelando 10 por vez
+// na tela — quem pagina o RENDER é o KanbanColumn.
+//
 // Coluna que falha fica vazia e só loga: NÃO existe estado de erro exposto, e
 // isso é de propósito — para o consumidor, hoje, "vazio" e "falhou" são
 // indistinguíveis.
-export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled = true }) {
+export function useRenewalBoard({ db, columns, cutoffMs, enabled = true }) {
   const [pages, setPages] = useState({});
-  const [hasMore, setHasMore] = useState({});
   const [loading, setLoading] = useState(false);
-  const cursors = useRef({});
   // Geração da carga. Toda troca do conjunto de colunas (ou saída da aba) sobe a
   // geração e transforma em lixo tudo que estava no ar: sem isso, uma query da
   // faixa ANTIGA que resolva depois grava na chave da coluna nova e deixa o
   // cursor apontando para o lugar errado — e isso não se repara sozinho.
   const generation = useRef(0);
-  // Colunas com busca no ar, por marco. É ref e NÃO estado de propósito: o guard
-  // do loadMore precisa valer no mesmo instante do clique, e estado só muda no
-  // próximo render. Dois cliques dentro do mesmo frame leriam `loading: false`
-  // nos dois, usariam o MESMO cursor e anexariam a mesma página duas vezes,
-  // duplicando card na tela.
+  // Colunas com busca no ar, por marco. É ref e NÃO estado de propósito: duas
+  // recargas disparadas no mesmo frame (dois desfechos seguidos, por exemplo)
+  // leriam `loading: false` nas duas e buscariam a mesma faixa em paralelo.
+  // Estado só muda no próximo render; ref vale no mesmo instante.
   const inFlight = useRef({});
 
   // Chave estável do conjunto de colunas: muda quando a config muda, e é o que
@@ -55,29 +58,22 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
   // porque ele é recriado toda vez.
   const columnsKey = (columns || []).map((c) => `${c.prevDays}-${c.days}`).join('|');
 
-  const fetchColumn = useCallback(async (col, reset, gen) => {
+  const fetchColumn = useCallback(async (col, gen) => {
     if (inFlight.current[col.days]) return;
     inFlight.current[col.days] = true;
     try {
-      const spec = renewalColumnQuerySpec(cutoffMs, col.days, col.prevDays, pageSize);
+      // Sem pageSize: a spec não emite `limit` e a faixa vem inteira.
+      const spec = renewalColumnQuerySpec(cutoffMs, col.days, col.prevDays);
       const colRef = collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH);
-      const cursor = reset ? null : cursors.current[col.days];
-      const snap = await getDocsWithAuthRetry(query(colRef, ...specToConstraints(spec, cursor)));
+      const snap = await getDocsWithAuthRetry(query(colRef, ...specToConstraints(spec)));
       if (gen !== generation.current) return;
-      const page = snap.docs.map(normalizeLeadDoc);
-      cursors.current[col.days] = snap.docs[snap.docs.length - 1] || cursors.current[col.days];
-      setPages((prev) => ({
-        ...prev,
-        [col.days]: reset ? page : [...(prev[col.days] || []), ...page],
-      }));
-      // Página cheia ⇒ pode haver mais; menos que o limite ⇒ acabou.
-      setHasMore((prev) => ({ ...prev, [col.days]: snap.size === pageSize }));
+      setPages((prev) => ({ ...prev, [col.days]: snap.docs.map(normalizeLeadDoc) }));
     } finally {
       // Só devolve a vaga se ela ainda é sua: uma carga velha terminando não pode
       // liberar a trava de uma carga nova da mesma coluna.
       if (gen === generation.current) inFlight.current[col.days] = false;
     }
-  }, [db, cutoffMs, pageSize]);
+  }, [db, cutoffMs]);
 
   // Carga inicial de TODAS as colunas. É o corpo do effect de montagem E o
   // `reload` exposto — um lugar só, de propósito: duplicar isto seria duplicar o
@@ -97,28 +93,14 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
     // escreve (gate de geração dentro do fetchColumn) e o .finally dela não
     // devolve a vaga de quem entrou depois.
     const gen = ++generation.current;
-    cursors.current = {};
     inFlight.current = {};
     setLoading(true);
     // As colunas são independentes: em paralelo, não em fila. allSettled e não
     // all — com `all`, a primeira falha limparia o loading com as outras colunas
     // ainda no ar, e o board sairia do carregando cedo demais.
-    Promise.allSettled((columns || []).map((col) => fetchColumn(col, true, gen)))
-      .then((rs) => rs.forEach((r, i) => {
-        if (r.status !== 'rejected') return;
-        console.error('useRenewalBoard', r.reason);
-        // Coluna que falhou fica com hasMore ligado de propósito: sem isso ela
-        // some do alcance do loadMore e vira coluna morta até o board inteiro
-        // recarregar. Com ele, o "carregar mais" que já existe vira o botão de
-        // tentar de novo — o cursor está vazio, então a retentativa busca a
-        // primeira página. allSettled indexa pela ORDEM DE ENTRADA, então rs[i]
-        // é sempre a coluna columns[i], não a que assentou primeiro.
-        // Só para a geração corrente, como todo o resto do arquivo: carga
-        // vencida não grava.
-        const col = (columns || [])[i];
-        if (col && gen === generation.current) {
-          setHasMore((prev) => ({ ...prev, [col.days]: true }));
-        }
+    Promise.allSettled((columns || []).map((col) => fetchColumn(col, gen)))
+      .then((rs) => rs.forEach((r) => {
+        if (r.status === 'rejected') console.error('useRenewalBoard', r.reason);
       }))
       .finally(() => { if (gen === generation.current) setLoading(false); });
   }, [enabled, db, columns, fetchColumn]);
@@ -129,20 +111,8 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
     return () => { generation.current += 1; };
     // columnsKey representa `columns` (e loadAllColumns), que muda de identidade
     // a cada render no consumidor; fetchColumn é derivado de db, cutoffMs e
-    // pageSize — este último fica fora daqui de propósito, porque é constante no
-    // consumidor e recarregar o board por ele nunca aconteceria.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [enabled, db, columnsKey, cutoffMs]);
-
-  const loadMore = useCallback((days) => {
-    const col = (columns || []).find((c) => c.days === days);
-    if (!enabled || !col || !hasMore[days]) return;
-    // Sem `loading` no guard: a trava real é o inFlight, por coluna e síncrona.
-    // Barrar por `loading` do board ainda impediria carregar mais numa coluna
-    // enquanto outra busca — e não impediria o duplo-clique, que é o problema.
-    fetchColumn(col, false, generation.current)
-      .catch((err) => console.error('useRenewalBoard loadMore', err));
-  }, [enabled, columns, hasMore, fetchColumn]);
 
   // Patch RASO na cópia local de um lead já carregado, em qualquer coluna.
   //
@@ -159,7 +129,7 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
   //   • a geração invalida busca vencida — e este patch nunca fica velho: ele
   //     parte de `prev` dentro do próprio setState, então o que a busca em voo
   //     acabar de escrever já está lá quando ele roda.
-  // Pelo mesmo motivo não encosta em cursor nem em hasMore: a página continua
+  // Pelo mesmo motivo não refaz busca nenhuma: a coluna continua
   // sendo exatamente a mesma, só com um campo diferente.
   const patchLead = useCallback((id, patch) => {
     if (!id) return;
@@ -184,5 +154,5 @@ export function useRenewalBoard({ db, columns, cutoffMs, pageSize = 10, enabled 
   // (getDocs, não onSnapshot), então quem grava um desfecho que MUDA A FAIXA do
   // card (renovação fechada: a vigência nova tira o cliente da janela) precisa
   // pedir a foto nova. Para o que só muda um campo existe o patchLead.
-  return { pages, hasMore, loading, loadMore, reload: loadAllColumns, patchLead };
+  return { pages, loading, reload: loadAllColumns, patchLead };
 }
