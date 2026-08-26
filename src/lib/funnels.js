@@ -19,8 +19,9 @@ export const getDefaultFunnel = (funnels) => {
 // Etapa de sistema: fase fixa criada pelo app (flag isSystem) ou a 'Negociação'
 // legada anterior ao flag. Não pode ser renomeada/excluída na FunnelsSection.
 // Funil de SISTEMA: criado e mantido pelo app, não pela academia. Não pode ser
-// excluído e tem o nome travado nas Configurações. Hoje são dois — Indicações e
-// Vencidos — e a checagem vive aqui para não espalhar a condição pelas telas.
+// excluído e tem o nome travado nas Configurações. Hoje são três — Indicações,
+// Renovações e Vencidos — e a checagem vive aqui para não espalhar a condição
+// pelas telas.
 // O discriminador é sempre a flag `systemKind`, NUNCA o nome.
 export const isSystemFunnel = (f) => Boolean(f?.systemKind);
 

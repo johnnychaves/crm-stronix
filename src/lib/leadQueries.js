@@ -93,12 +93,48 @@ export const renewalClientsQuerySpec = (startMs, endMs, pageSize = null) => ({
 //
 // Coberta pelo índice #4 (lifecycleBucket ASC, currentContractEndsAt ASC):
 // igualdade no balde mais range e ordenação no mesmo campo. NENHUM índice novo.
+//
+// PAR DA ESTEIRA com renewalColumnQuerySpec (logo abaixo): aqui `< corte`, lá
+// `>= corte`. Mexer neste corte sem olhar o de lá abre sobreposição ou buraco
+// entre os dois boards. O teste que trava isso mora no describe do OUTRO
+// ('renewalColumnQuerySpec', em leadQueries.test.js) — se ele quebrar depois de
+// você mexer aqui, é este par que está falando.
 export const expiredClientsQuerySpec = (beforeMs, pageSize = null) => ({
   wheres: [
     { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },
     { field: 'currentContractEndsAt', op: '<', value: new Date(beforeMs) },
   ],
   orderBy: { field: 'currentContractEndsAt', dir: 'desc' },
+  ...(pageSize ? { limit: pageSize } : {}),
+});
+
+// UMA COLUNA do funil RENOVAÇÕES do board. Cada marco busca a própria faixa de
+// vencimento, com o próprio cursor, então todas as colunas nascem cheias em vez
+// de a mais urgente comer a página inteira.
+//
+// A faixa é (corte + prevDays, corte + days] — aberta embaixo para não repetir o
+// cliente que está na fronteira com a coluna de baixo. A MENOR coluna passa
+// prevDays 0 e vira `>=` no próprio corte: quem vence hoje ainda é renovação, e
+// só vira Vencidos a partir do instante seguinte.
+//
+// ESTA É A INVARIANTE DA ESTEIRA: aqui `>= corte`, no expiredClientsQuerySpec
+// `< corte`. Nunca sobrepõe, nunca deixa buraco. Tem teste travando isso.
+//
+// Coberta pelo índice #4 (lifecycleBucket ASC, currentContractEndsAt ASC):
+// igualdade no balde mais range e ordenação no mesmo campo. NENHUM índice novo.
+export const renewalColumnQuerySpec = (cutoffMs, days, prevDays = 0, pageSize = null) => ({
+  wheres: [
+    { field: 'lifecycleBucket', op: '==', value: LIFECYCLE_BUCKETS.CLIENTE },
+    {
+      field: 'currentContractEndsAt',
+      op: prevDays > 0 ? '>' : '>=',
+      value: new Date(cutoffMs + prevDays * DAY_MS),
+    },
+    { field: 'currentContractEndsAt', op: '<=', value: new Date(cutoffMs + days * DAY_MS) },
+  ],
+  // Vencimento mais próximo no topo da coluna: dentro da mesma faixa, quem
+  // vence antes precisa de contato antes.
+  orderBy: { field: 'currentContractEndsAt', dir: 'asc' },
   ...(pageSize ? { limit: pageSize } : {}),
 });
 

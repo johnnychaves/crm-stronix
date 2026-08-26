@@ -7,7 +7,10 @@ import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
+import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard } from '../lib/renewalFunnel.js';
+import { renewalDecline, daysToExpiryOf } from '../lib/renewalGoal.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
@@ -16,6 +19,7 @@ import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKa
 import { markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
+import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { FollowUpIcon } from '../components/ui/Badges.jsx';
 import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
@@ -41,7 +45,21 @@ function InitialsAvatar({ name = '', size = 22, textSize = 9 }) {
 
 // Etiqueta da linha 1. Só aparece quando informa algo: agendado para amanhã ou
 // semana que vem não é notícia, então não leva selo.
-function cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp }) {
+function cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp, renewalDaysLeft }) {
+  // Card do funil Renovações: o que importa é o relógio do contrato, não o
+  // follow-up. Quanto menos tempo sobra, mais quente a etiqueta.
+  if (Number.isFinite(renewalDaysLeft)) {
+    const tom = renewalDaysLeft <= 7
+      ? 'bg-rose-500/[0.07] text-[#E11D48] dark:text-rose-400'
+      : renewalDaysLeft <= 30
+        ? 'bg-amber-500/10 text-[#B45309] dark:text-amber-300'
+        : 'bg-[#EAF0FF] text-[#1C3FC4] dark:bg-brand-500/15 dark:text-brand-300';
+    // <= 0 pega os três casos do último dia de uma vez: o -0 do contrato que
+    // vence mais cedo hoje, o 0 redondo, e o negativo da aba aberta desde antes
+    // do vencimento. "Vence em 0d" não é como uma pessoa fala.
+    const label = renewalDaysLeft <= 0 ? 'Vence hoje' : `Vence em ${renewalDaysLeft}d`;
+    return { label, className: tom };
+  }
   if (isWon) return { label: 'Matriculado', className: 'bg-emerald-500/[0.08] text-[#0F9D6E] dark:text-emerald-300' };
   if (isLost) return { label: 'Perdido', className: 'bg-[#eef0f5] text-slate-500 dark:bg-white/[0.06] dark:text-neutral-400' };
   if (isOverdue) return { label: 'Atrasado', className: 'bg-rose-500/[0.07] text-[#E11D48] dark:text-rose-400' };
@@ -106,7 +124,18 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
   const accent = getKanbanColumnAccent(columnColor);
   const convertedAt = getSafeDateOrNull(lead.convertedAt);
 
-  const badge = cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp });
+  // Card projetado do funil Renovações: dias até vencer e se o marco daquela
+  // coluna já foi tratado (a Meta grava isso em renewalHandledCheckpoints).
+  const renewalDaysLeft = lead._renewalCard
+    ? daysToExpiryOf(lead.currentContractEndsAt, now)
+    : null;
+  const marcoTratado = Boolean(
+    lead._renewalCard &&
+    Array.isArray(lead.renewalHandledCheckpoints) &&
+    lead.renewalHandledCheckpoints.includes(lead._renewalDays)
+  );
+
+  const badge = cardBadge({ isWon, isLost, isOverdue, isToday, hasFollowUp, renewalDaysLeft });
   const tone = isWon ? 'won' : isLost ? 'normal' : isOverdue ? 'overdue' : !hasFollowUp ? 'none' : isToday ? 'today' : 'normal';
   const footerTone = isWon ? 'won' : isLost ? 'normal' : isOverdue ? 'overdue' : !hasFollowUp ? 'none' : 'normal';
   const silence = kanbanSilence(lastDate, now);
@@ -159,7 +188,19 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
         </div>
 
         <div className={cn('mt-1 flex items-center gap-[5px] text-[11.5px] font-semibold', COMMITMENT_TONE[tone])}>
-          {isWon ? (
+          {lead._renewalCard ? (
+            marcoTratado ? (
+              <>
+                <Check className="size-[11px] shrink-0" strokeWidth={2.2} />
+                <span className="truncate">Marco de {lead._renewalDays} dias tratado</span>
+              </>
+            ) : (
+              <>
+                <AlertCircle className="size-[11px] shrink-0" strokeWidth={2.2} />
+                <span className="truncate">Aguardando contato</span>
+              </>
+            )
+          ) : isWon ? (
             <>
               <CheckCircle className="size-[11px] shrink-0" strokeWidth={2.2} />
               <span className="truncate tabular-nums">
@@ -431,6 +472,43 @@ const [isPanning, setIsPanning] = useState(false);
   }, [isExpiredView, expiredDocs, statuses, expiredFunnel, respFilter]);
   const expiredLeads = expiredSplit.cards;
 
+  // FUNIL RENOVAÇÕES (funil de sistema): cliente cujo contrato entrou na janela
+  // dos marcos. Mesmo molde do Vencidos — projeção em memória, o status real
+  // continua 'Venda' — com uma diferença: as COLUNAS são virtuais, derivadas
+  // dos marcos da config, e ninguém arrasta entre elas. Regras em
+  // lib/renewalFunnel.js.
+  const { renewalCheckpoints } = useGeneralConfig();
+  const renewalFunnel = useMemo(() => getRenewalFunnel(funnels), [funnels]);
+  const isRenewalView = Boolean(renewalFunnel && selectedFunnelId === renewalFunnel.id);
+  const renewalColumns = useMemo(
+    // `[]` literal é estável aqui porque está dentro do useMemo (EMPTY_LEADS é
+    // para leads e o nome mentiria).
+    () => (isRenewalView ? renewalColumnsFromCheckpoints(renewalCheckpoints) : []),
+    [isRenewalView, renewalCheckpoints]
+  );
+  // Mesmo corte do Vencidos, fixado uma vez na montagem: os dois boards partem o
+  // eixo no MESMO ponto, senão um cliente aparece nos dois ou some dos dois.
+  const {
+    pages: renewalPages, hasMore: renewalHasMore, loadMore: renewalLoadMore,
+    reload: renewalReload, patchLead: renewalPatchLead,
+  } = useRenewalBoard({
+    db, columns: renewalColumns, cutoffMs: expiredCutoffMs,
+    pageSize: KANBAN_PAGE_SIZE, enabled: !!db && isRenewalView,
+  });
+  // Mesmo recorte do Vencidos: o respFilter continua valendo, mas onlyOverdue é
+  // ignorado — cliente em renovação não tem follow-up de prospecção, então o
+  // filtro não se aplica às colunas de marco nem à Perda daqui. Com ele ligado o
+  // que muda na tela é só a coluna Venda, que tem fonte própria (wonLeads).
+  const renewalSplit = useMemo(() => {
+    if (!isRenewalView) return { cardsByColumn: new Map(), declined: EMPTY_LEADS };
+    const { cardsByColumn, declined } = splitRenewalForBoard(renewalPages, renewalColumns);
+    if (respFilter.length === 0) return { cardsByColumn, declined };
+    const meu = (l) => respFilter.includes(l.consultantId);
+    const filtrado = new Map();
+    cardsByColumn.forEach((cards, nome) => filtrado.set(nome, cards.filter(meu)));
+    return { cardsByColumn: filtrado, declined: declined.filter(meu) };
+  }, [isRenewalView, renewalPages, renewalColumns, respFilter]);
+
   const kanbanLeads = useMemo(
     // No funil Vencidos os cards vêm da query própria já projetada, não da
     // assinatura de leads ativos — cliente não está no board de prospecção.
@@ -502,8 +580,21 @@ const [isPanning, setIsPanning] = useState(false);
     (leads || []).forEach((l) => m.set(l.id, l));
     (lostDocs || []).forEach((l) => { if (!m.has(l.id)) m.set(l.id, l); });
     (wonDocs || []).forEach((l) => { if (!m.has(l.id)) m.set(l.id, l); });
+    // Cards PROJETADOS do funil Renovações. Eles não existem em nenhuma das três
+    // fontes acima: são cópias em memória que só o board conhece. Sem isto o
+    // arrasto não acha o card pelo id e não faz nada — e, pior, o cliente que
+    // fechou contrato ESTE mês está em wonDocs como documento CRU, sem a flag
+    // _renewalCard: o guard não pegaria e o handler gravaria o nome da coluna no
+    // status dele, que é a corrupção que a projeção existe para impedir.
+    //
+    // Entram por ÚLTIMO e SOBRESCREVENDO (m.set, não o `if (!m.has)` das linhas
+    // acima), porque a versão projetada é a que os handlers precisam ver.
+    if (isRenewalView) {
+      renewalSplit.cardsByColumn.forEach((cards) => cards.forEach((l) => m.set(l.id, l)));
+      (renewalSplit.declined || []).forEach((l) => m.set(l.id, l));
+    }
     return m;
-  }, [leads, lostDocs, wonDocs]);
+  }, [leads, lostDocs, wonDocs, isRenewalView, renewalSplit]);
 
   // E1d: total REAL de perdas do funil via getCountFromServer (o header da
   // coluna, depois do E1c, mostraria só a página carregada). Recontado quando
@@ -643,6 +734,63 @@ const handleKanbanMouseMove = (e) => {
   // lead + timeline acontece dentro do modal (lib/contracts.js).
   const openMatricula = useCallback((lead) => setMatriculaLead(lead), []);
 
+  // ── Desfechos do card projetado de Renovações, num lugar só ──────────
+  // O arrasto e o menu "Mover" chamam os MESMOS dois helpers. Estavam escritos
+  // quatro vezes e já tinham divergido: o arrasto para a Perda gravava sem
+  // checar permissão. Por isso a checagem mora aqui DENTRO — as rules deixam
+  // qualquer membro do tenant atualizar qualquer lead desde que não troque o
+  // dono, então canEditLead é a única política que existe.
+  //
+  // Os dois NÃO recarregam o board: aplicam o mesmo patch na cópia local
+  // (renewalPatchLead) depois do ack do servidor. Recarregar aqui era caro e
+  // mentia — o reload devolve TODAS as colunas para os 10 primeiros, então quem
+  // paginou perde o lugar e o card que veio da página 2 SOME da tela ao ser
+  // recusado (a coluna do marco volta sem ele, e a Perda só mostra recusados das
+  // páginas carregadas). Como splitRenewalForBoard já decide coluna x Perda pelo
+  // renewalDeclined, mudar o campo na cópia local basta para o card andar.
+  //
+  // O patch vai no .then e não antes: se a escrita falhar, a tela não pode ter
+  // mostrado o card no lugar novo.
+
+  // "Não vai renovar": a MESMA flag que a Meta Diária usa. A pessoa NÃO vira
+  // lead perdido — segue cliente, com ficha e contratos, e continua na aba
+  // Clientes. Perda de venda != perda de funil.
+  const declineRenewal = useCallback((lead) => {
+    if (!canEditLead(appUser, lead)) {
+      toast.warning('Você não tem permissão para alterar este lead.');
+      return;
+    }
+    // Marca o marco atual como tratado junto: sem isso o cliente continuaria
+    // sendo cobrado hoje na Meta, no mesmo marco que ele acabou de recusar.
+    // O MESMO objeto vai para o banco e para a cópia local — só assim o card já
+    // troca a linha de compromisso para "Marco de X dias tratado", que lê
+    // renewalHandledCheckpoints.
+    const patch = renewalDecline(lead, lead._renewalDays);
+    updateDoc(
+      doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
+      patch
+    ).then(() => renewalPatchLead(lead.id, patch)).catch(err => {
+      console.error('Erro ao marcar recusa de renovação', err);
+      toast.error('Não foi possível marcar a recusa.');
+    });
+  }, [appUser, db, toast, renewalPatchLead]);
+
+  // Desfazer a recusa (sair da Perda de volta para um marco). NÃO tira o marco
+  // de renewalHandledCheckpoints de propósito: o consultor conversou com o
+  // cliente naquele marco, e quem pega ele de novo é o marco seguinte.
+  const undoRenewalDecline = useCallback((lead) => {
+    if (!canEditLead(appUser, lead)) {
+      toast.warning('Você não tem permissão para mover este lead.');
+      return;
+    }
+    const patch = { renewalDeclined: false };
+    updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch)
+      .then(() => renewalPatchLead(lead.id, patch)).catch(err => {
+        console.error('Erro ao desfazer a recusa de renovação', err);
+        toast.error('Não foi possível mover o card.');
+      });
+  }, [appUser, db, toast, renewalPatchLead]);
+
   // Despacha um destino (etapa / Venda / Perda) com checagem de permissão.
   // Usada pelo menu "Mover" — funciona em toque, mouse e teclado, sem
   // depender do drag-and-drop nativo (que não dispara em telas de toque).
@@ -650,6 +798,19 @@ const handleKanbanMouseMove = (e) => {
     if (!lead || lead.status === statusName) return;
     if (!canEditLead(appUser, lead)) {
       toast.warning('Você não tem permissão para mover este lead.');
+      return;
+    }
+    // BIFURCAÇÃO do card projetado do funil Renovações. applyMoveToStage grava
+    // `status` no documento, e o status real de um cliente é 'Venda' — gravar o
+    // nome da coluna ali corromperia o estado de cliente e a aba Clientes.
+    if (lead._renewalCard) {
+      if (statusName === 'Venda') return openMatricula(lead);
+      if (statusName === 'Perda') return declineRenewal(lead);
+      // Sair da Perda de volta para um marco desfaz a recusa — a MESMA volta que
+      // o arrasto permite (handleDrop). Sem isto o menu divergiria do mouse e no
+      // celular não haveria como desfazer.
+      if (lead.renewalDeclined) return undoRenewalDecline(lead);
+      toast.warning('As colunas de Renovações seguem o vencimento do contrato e não podem ser movidas à mão.');
       return;
     }
     if (statusName === 'Venda') return openMatricula(lead);
@@ -665,6 +826,18 @@ const handleKanbanMouseMove = (e) => {
     if (!lead || lead.status === newStatus) return;
     if (!canEditLead(appUser, lead)) {
       toast.warning('Você não tem permissão para mover este lead.');
+      return;
+    }
+    // FUNIL RENOVAÇÕES: as colunas são faixas de tempo, não etapas de conversa.
+    // Mover à mão mentiria na tela — o card voltaria para a coluna do relógio na
+    // próxima carga. A única volta permitida é sair da Perda (desfazer a recusa).
+    if (lead._renewalCard) {
+      if (newStatus === 'Perda' || newStatus === 'Venda') return; // tratados pelos handlers próprios
+      if (!lead.renewalDeclined) {
+        toast.warning('As colunas de Renovações seguem o vencimento do contrato e não podem ser movidas à mão.');
+        return;
+      }
+      undoRenewalDecline(lead);
       return;
     }
     // BIFURCAÇÃO do funil Vencidos. O card ali é um CLIENTE, cujo status real é
@@ -688,7 +861,7 @@ const handleKanbanMouseMove = (e) => {
       return;
     }
     applyMoveToStage(lead, newStatus);
-  }, [draggableById, appUser, toast, applyMoveToStage, statuses, expiredFunnel, db]);
+  }, [draggableById, appUser, toast, applyMoveToStage, undoRenewalDecline, statuses, expiredFunnel, db]);
 
   const handleWinDrop = useCallback((e) => {
     e.preventDefault();
@@ -706,6 +879,16 @@ const handleKanbanMouseMove = (e) => {
     e.preventDefault();
     const leadId = e.dataTransfer.getData('leadId');
     const alvo = leadId && draggableById.get(leadId);
+    // FUNIL RENOVAÇÕES: "não vai renovar" é a MESMA flag que a Meta Diária usa.
+    // A pessoa NÃO vira lead perdido — segue cliente, com ficha e contratos, e
+    // continua na aba Clientes. Perda de venda != perda de funil.
+    // A permissão é checada DENTRO do helper: este ramo corre antes do
+    // canEditLead lá de baixo, e sem isso um consultor arrastaria o cliente de
+    // outro para a Perda.
+    if (alvo?._renewalCard) {
+      declineRenewal(alvo);
+      return;
+    }
     // Funil VENCIDOS: "não volta" é venda perdida, mas a pessoa NÃO vira lead
     // perdido — ela segue cliente, com ficha e contratos, e continua na aba
     // Clientes. O que muda é só a flag que já existe e que a Meta também usa.
@@ -724,7 +907,7 @@ const handleKanbanMouseMove = (e) => {
       return;
     }
     setLossModalLeadId(alvo.id);
-  }, [draggableById, appUser, toast, db]);
+  }, [draggableById, appUser, toast, declineRenewal, db]);
 
   const confirmKanbanLoss = async (reason) => {
     if (!lossModalLeadId) return;
@@ -797,10 +980,19 @@ if (!lead) return;
   // em cada mudança de estado de drag/filtro/modal. O fallback EMPTY_LEADS
   // (constante de módulo) mantém a prop columnLeads estável em colunas
   // vazias — um [] literal novo por render anularia o React.memo delas.
-  const leadsByStatus = useMemo(() => partitionLeadsByStatus(kanbanLeads), [kanbanLeads]);
+  // No funil Renovações o agrupamento já vem pronto por coluna (cada coluna tem
+  // sua própria query), então não há o que particionar.
+  const leadsByStatus = useMemo(
+    () => (isRenewalView ? renewalSplit.cardsByColumn : partitionLeadsByStatus(kanbanLeads)),
+    [isRenewalView, renewalSplit, kanbanLeads]
+  );
   const getLeadsByStatus = (statusName) => leadsByStatus.get(statusName) || EMPTY_LEADS;
 
-  const pipelineColumns = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
+  // No funil Renovações as colunas NÃO vêm de stronix_statuses: são derivadas
+  // dos marcos, em memória. Nos demais, seguem sendo as etapas do funil.
+  const pipelineColumns = isRenewalView
+    ? renewalColumns
+    : (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
   const totalFunnelLeads = funnelLeads.length;
   // A carteira padrão do papel não conta como filtro: o consultor abre na
   // própria e o botão fica apagado, como o do gestor na equipe inteira.
@@ -813,6 +1005,11 @@ if (!lead) return;
   // Resumo à esquerda do botão de filtro: sem recorte de responsável mostra
   // "X de Y leads"; com recorte, de quem é a carteira ("Ana · 12 leads").
   const filterSummary = useMemo(() => {
+    // Renovações não tem contagem de pipeline: os cards vêm das queries por
+    // coluna, então kanbanLeads e totalFunnelLeads dariam "0 de 0" num board
+    // cheio. Sem recorte ativo o resumo some; com recorte ele volta, porque aí
+    // descreve de quem é a carteira e não quantos são.
+    if (isRenewalView && !hasActiveFilters) return '';
     const parts = [];
     if (respFilter.length === 1) {
       const user = (usersList || []).find(u => u.id === respFilter[0]);
@@ -823,7 +1020,7 @@ if (!lead) return;
     if (onlyOverdue) parts.push('Em atraso');
     parts.push(parts.length === 0 ? `${kanbanLeads.length} de ${totalFunnelLeads} leads` : `${kanbanLeads.length} leads`);
     return parts.join(' · ');
-  }, [kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
+  }, [isRenewalView, hasActiveFilters, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
 
   // Lista do filtro: o próprio usuário primeiro (é a carteira que ele mais
   // procura), o resto em ordem alfabética.
@@ -861,9 +1058,11 @@ if (!lead) return;
             onSelect={setSelectedFunnelId}
           />
 
-          <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
-            <span className="font-semibold text-gray-700 dark:text-neutral-200">{filterSummary}</span>
-          </div>
+          {filterSummary && (
+            <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
+              <span className="font-semibold text-gray-700 dark:text-neutral-200">{filterSummary}</span>
+            </div>
+          )}
 
           <div ref={filterWrapRef} className="relative shrink-0">
             <button
@@ -1005,10 +1204,18 @@ if (!lead) return;
                 color={column.color}
                 special={null}
                 columnLeads={getLeadsByStatus(column.name)}
-                // Paginação do funil Vencidos: o volume mora na coluna de
-                // entrada, então é ela que ganha o "carregar mais".
-                hasMore={isExpiredView && column.isEntry ? expiredHasMore : false}
-                onLoadMore={isExpiredView && column.isEntry ? expiredLoadMore : null}
+                // Vencidos: o volume mora na coluna de entrada, e é ela que
+                // pagina. Renovações: cada coluna tem sua query e pagina sozinha.
+                hasMore={
+                  isRenewalView ? Boolean(renewalHasMore[column.days])
+                    : isExpiredView && column.isEntry ? expiredHasMore
+                      : false
+                }
+                onLoadMore={
+                  isRenewalView ? () => renewalLoadMore(column.days)
+                    : isExpiredView && column.isEntry ? expiredLoadMore
+                      : null
+                }
                 isHovered={draggedOverColumn === column.name}
                 draggingLeadId={draggingLeadId}
                 interactionIndex={interactionIndex}
@@ -1047,7 +1254,11 @@ if (!lead) return;
               name="Perda"
               color="gray"
               special="loss"
-              columnLeads={isExpiredView ? expiredSplit.declined : lostLeads}
+              columnLeads={
+                isRenewalView ? renewalSplit.declined
+                  : isExpiredView ? expiredSplit.declined
+                    : lostLeads
+              }
 
               totalCount={perdaHeaderCount}
               hasMore={lostHasMore}
@@ -1078,7 +1289,10 @@ if (!lead) return;
 
       {matriculaLead && (
         <ContractModal
-          mode="matricula"
+          // Card do funil Renovações: é renovação, não primeira matrícula. O
+          // modal em modo renovação NÃO carimba convertedAt e emenda a vigência
+          // no fim do contrato atual (ver src/lib/renewal.js, seamStart).
+          mode={matriculaLead._renewalCard ? 'renovacao' : 'matricula'}
           lead={matriculaLead}
           appUser={appUser}
           db={db}
@@ -1088,8 +1302,18 @@ if (!lead) return;
             // como a coluna Perda não é ao vivo, refaz a query+contagem senão
             // fica card fantasma / total inflado. Só quando veio da Perda.
             const wasPerda = matriculaLead?.status === 'Perda';
+            // Renovação fechada: o ÚNICO desfecho de Renovações que ainda
+            // recarrega o board — e aqui a recarga é a resposta certa, porque a
+            // vigência nova tira o cliente da janela e ele precisa sumir de
+            // verdade (patch local não daria conta). Sem ela o card ficaria no
+            // mesmo marco com a vigência VELHA, o consultor acharia que não
+            // gravou e repetiria o gesto — e o modal emendaria um SEGUNDO
+            // contrato a partir da data antiga (seamStart, em lib/renewal.js).
+            // Custa N queries, mas é uma vez por cliente por ciclo.
+            const wasRenewal = Boolean(matriculaLead?._renewalCard);
             setMatriculaLead(null);
             if (wasPerda) refreshLost();
+            if (wasRenewal) renewalReload();
             // A venda recém-fechada precisa aparecer na coluna do mês, que
             // também não é ao vivo.
             wonReload();

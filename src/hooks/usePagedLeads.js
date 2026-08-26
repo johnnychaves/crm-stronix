@@ -31,7 +31,7 @@ export function specToConstraints(spec, cursor = null) {
 // permission-denied — que se cura sozinho em ~centenas de ms. Retenta com backoff
 // (limitado); outros erros, ou permission-denied persistente (ex.: tenant
 // bloqueado), sobem depois das tentativas. Sem loop infinito.
-async function getDocsWithAuthRetry(q, retries = 3, baseDelayMs = 300) {
+export async function getDocsWithAuthRetry(q, retries = 3, baseDelayMs = 300) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await getDocs(q);
