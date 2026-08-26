@@ -1,15 +1,16 @@
 import { useMemo, useState } from 'react';
-import { Bell, Handshake, Sparkles, ArrowRight } from 'lucide-react';
+import { Bell, Handshake, Sparkles, ArrowRight, UserRoundPlus } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { ANNOUNCEMENTS } from '../../lib/announcements.js';
 import { buildNotificationFeed } from '../../lib/notifications.js';
 import { useLeadProfile } from '../../contexts/LeadProfileContext.jsx';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover.jsx';
 
-// Sino do header: novidades do sistema e indicações que chegaram pelo link.
-// O ícone é neutro como os vizinhos (🎓 e tema); quem chama atenção é o
-// contador. As indicações saem dos leads que o app já tem em memória, então o
-// sino não custa leitura nenhuma.
+// Sino do header: novidades do sistema, indicações que chegaram pelo link e
+// gente que passaram pra sua carteira. O ícone é neutro como os vizinhos (🎓 e
+// tema); quem chama atenção é o contador. As indicações saem dos leads que o
+// app já tem em memória; as trocas de responsável vêm do useHandoffs (uma
+// consulta por sessão, porque cliente não está na memória).
 
 const relTime = (date) => {
   if (!date) return '';
@@ -55,18 +56,18 @@ function Row({ icon, tone, title, subtitle, time, unread, action, onClick }) {
   );
 }
 
-export function NotificationBell({ appUser, leads, seenIds, lastSeenReferralsAt, onMarkAllSeen, onOpenArticle }) {
+export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSeenReferralsAt, onMarkAllSeen, onOpenArticle }) {
   const [open, setOpen] = useState(false);
   const { openProfile } = useLeadProfile();
 
-  const { news, referrals, unreadCount } = useMemo(
+  const { news, referrals, handoffs, unreadCount } = useMemo(
     () => buildNotificationFeed({
-      announcements: ANNOUNCEMENTS, appUser, leads, seenIds, lastSeenReferralsAt, now: new Date()
+      announcements: ANNOUNCEMENTS, appUser, leads, handoffLeads, seenIds, lastSeenReferralsAt, now: new Date()
     }),
-    [appUser, leads, seenIds, lastSeenReferralsAt]
+    [appUser, leads, handoffLeads, seenIds, lastSeenReferralsAt]
   );
 
-  const vazio = news.length === 0 && referrals.length === 0;
+  const vazio = news.length === 0 && referrals.length === 0 && handoffs.length === 0;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -111,7 +112,7 @@ export function NotificationBell({ appUser, leads, seenIds, lastSeenReferralsAt,
         <div className="max-h-[min(26rem,60vh)] overflow-y-auto custom-scrollbar">
           {vazio && (
             <p className="px-3.5 py-8 text-center text-[12.5px] text-slate-500 dark:text-slate-400">
-              Nada por aqui ainda. Novidades do sistema e indicações pelo link aparecem neste espaço.
+              Nada por aqui ainda. Novidades do sistema, indicações pelo link e leads que passarem pra você aparecem neste espaço.
             </p>
           )}
 
@@ -130,6 +131,22 @@ export function NotificationBell({ appUser, leads, seenIds, lastSeenReferralsAt,
                 setOpen(false);
                 if (n.articleId) onOpenArticle?.(n.articleId);
               }}
+            />
+          ))}
+
+          {handoffs.length > 0 && <GroupLabel>Passaram para você</GroupLabel>}
+          {handoffs.map((h) => (
+            <Row
+              key={h.id}
+              icon={<UserRoundPlus size={15} />}
+              tone="bg-brand-50 text-brand-600 dark:bg-brand-500/12 dark:text-brand-300"
+              title={`${h.name} é sua responsabilidade agora`}
+              subtitle={[h.byName ? `Passado por ${h.byName}` : null, h.isClient ? 'Aluno' : null]
+                .filter(Boolean).join(' · ') || null}
+              time={relTime(h.at)}
+              unread={h.unread}
+              action="Abrir ficha"
+              onClick={() => { setOpen(false); openProfile(h.id); }}
             />
           ))}
 

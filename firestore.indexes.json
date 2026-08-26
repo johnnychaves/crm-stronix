@@ -161,6 +161,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "consultantId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "consultantChangedAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

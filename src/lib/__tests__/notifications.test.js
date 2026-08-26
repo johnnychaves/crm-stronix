@@ -93,7 +93,7 @@ describe('buildNotificationFeed — contagem do badge', () => {
 
   it('sem usuário devolve feed vazio', () => {
     expect(buildNotificationFeed({ announcements: ANNS, appUser: null, now: NOW }))
-      .toEqual({ news: [], referrals: [], unreadCount: 0 });
+      .toEqual({ news: [], referrals: [], handoffs: [], unreadCount: 0 });
   });
 });
 
@@ -161,5 +161,78 @@ describe('mergeSeenIds', () => {
   it('junta o gravado com o que foi marcado agora, sem repetir', () => {
     expect(mergeSeenIds(['a1'], ['a1', 'a2'])).toEqual(['a1', 'a2']);
     expect(mergeSeenIds(undefined, undefined)).toEqual([]);
+  });
+});
+
+
+describe('buildNotificationFeed — passaram para você', () => {
+  const passado = (over) => ({
+    id: 'l9', name: 'Carla', consultantId: 'u1', consultantAuthUid: 'uid1',
+    consultantChangedAt: ago(2), consultantChangedByName: 'Bruno', consultantChangedByAuthUid: 'uid2',
+    ...over
+  });
+
+  it('mostra o lead que outra pessoa passou pra sua carteira', () => {
+    const { handoffs, unreadCount } = buildNotificationFeed({
+      appUser: consultor, handoffLeads: [passado()], now: NOW
+    });
+    expect(handoffs).toHaveLength(1);
+    expect(handoffs[0]).toMatchObject({ id: 'l9', name: 'Carla', byName: 'Bruno', unread: true });
+    expect(unreadCount).toBe(1);
+  });
+
+  it('troca feita por você mesmo não vira aviso', () => {
+    const { handoffs } = buildNotificationFeed({
+      appUser: consultor,
+      handoffLeads: [passado({ consultantChangedByAuthUid: 'uid1' })],
+      now: NOW
+    });
+    expect(handoffs).toEqual([]);
+  });
+
+  it('lead de outra carteira não aparece, nem para o admin', () => {
+    const deOutro = passado({ consultantId: 'u7', consultantAuthUid: 'uid7' });
+    expect(buildNotificationFeed({ appUser: consultor, handoffLeads: [deOutro], now: NOW }).handoffs).toEqual([]);
+    expect(buildNotificationFeed({ appUser: admin, handoffLeads: [deOutro], now: NOW }).handoffs).toEqual([]);
+  });
+
+  it('lead sem carimbo de troca fica de fora', () => {
+    const { handoffs } = buildNotificationFeed({
+      appUser: consultor, handoffLeads: [passado({ consultantChangedAt: null })], now: NOW
+    });
+    expect(handoffs).toEqual([]);
+  });
+
+  it('troca de mais de 30 dias sai do feed', () => {
+    const { handoffs } = buildNotificationFeed({
+      appUser: consultor, handoffLeads: [passado({ consultantChangedAt: ago(24 * 31) })], now: NOW
+    });
+    expect(handoffs).toEqual([]);
+  });
+
+  it('carimbo de leitura zera o não lido', () => {
+    const { handoffs, unreadCount } = buildNotificationFeed({
+      appUser: consultor, handoffLeads: [passado()], lastSeenReferralsAt: NOW.getTime(), now: NOW
+    });
+    expect(handoffs[0].unread).toBe(false);
+    expect(unreadCount).toBe(0);
+  });
+
+  it('o mesmo lead nas duas fontes conta uma vez só, e o cliente é marcado', () => {
+    const cliente = passado({ lifecycleBucket: 'cliente' });
+    const { handoffs } = buildNotificationFeed({
+      appUser: consultor, handoffLeads: [cliente], leads: [cliente], now: NOW
+    });
+    expect(handoffs).toHaveLength(1);
+    expect(handoffs[0].isClient).toBe(true);
+  });
+
+  it('ordena da troca mais recente para a mais antiga', () => {
+    const { handoffs } = buildNotificationFeed({
+      appUser: consultor,
+      handoffLeads: [passado({ id: 'a', consultantChangedAt: ago(10) }), passado({ id: 'b', consultantChangedAt: ago(1) })],
+      now: NOW
+    });
+    expect(handoffs.map((h) => h.id)).toEqual(['b', 'a']);
   });
 });

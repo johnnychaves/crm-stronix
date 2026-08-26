@@ -163,7 +163,7 @@ export const WIKI_ARTICLES = [
         'Mudar fase: move a pessoa no funil sem sair da ficha.',
         'Agendar: marca visita ou aula experimental.',
       ] },
-      { t: 'tip', text: 'Qualquer consultor pode registrar na linha do tempo de qualquer pessoa, mesmo não sendo o responsável. Já editar dados, marcar venda ou perda e trocar o responsável ficam com o dono do lead e com o administrador.' },
+      { t: 'tip', text: 'Qualquer consultor pode registrar na linha do tempo de qualquer pessoa, mesmo não sendo o responsável, e também pode passar o lead ou o aluno para outro colega pelo campo Consultor responsável, no lápis do cadastro. A troca fica registrada na linha do tempo e quem recebeu é avisado no sino. Editar os dados, marcar venda ou perda continuam com o dono e com o administrador.' },
     ],
   },
 
