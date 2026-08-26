@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
-import { isAdminUser, canEditLead, isConvertedStatusName } from '../lib/leads.js';
+import { canEditLead, isConvertedStatusName } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
@@ -12,7 +12,7 @@ import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
-import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow } from '../lib/kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter } from '../lib/kanban.js';
 import { markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -368,8 +368,10 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, lossRea
   const toast = useToast();
   const { openProfile } = useLeadProfile();
   const [moveLead, setMoveLead] = useState(null); // lead com o menu "Mover" aberto (toque/teclado)
-  // Filtro de responsáveis multi-seleção: conjunto vazio = toda a equipe.
-  const [respFilter, setRespFilter] = useState([]);
+  // Filtro de responsáveis multi-seleção: conjunto vazio = toda a equipe. Abre
+  // na carteira do próprio consultor (o gestor abre na equipe inteira) e daí em
+  // diante é ele quem manda — regra em lib/kanban.js.
+  const [respFilter, setRespFilter] = useState(() => defaultRespFilterFor(appUser));
   const [onlyOverdue, setOnlyOverdue] = useState(false);
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
   // Lead aguardando matrícula no ContractModal (caminho de Venda do Kanban).
@@ -800,15 +802,17 @@ if (!lead) return;
 
   const pipelineColumns = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
   const totalFunnelLeads = funnelLeads.length;
-  const isAdmin = isAdminUser(appUser);
+  // A carteira padrão do papel não conta como filtro: o consultor abre na
+  // própria e o botão fica apagado, como o do gestor na equipe inteira.
+  const respIsDefault = isDefaultRespFilter(appUser, respFilter);
+  const hasActiveFilters = !respIsDefault || onlyOverdue;
+  // Consultor vendo "toda a equipe" tem respFilter vazio e ainda assim saiu do
+  // padrão — o `|| 1` mantém isso visível no badge.
+  const activeFilterCount = (respIsDefault ? 0 : (respFilter.length || 1)) + (onlyOverdue ? 1 : 0);
 
-  const hasActiveFilters = respFilter.length > 0 || onlyOverdue;
-  const activeFilterCount = respFilter.length + (onlyOverdue ? 1 : 0);
-
-  // Resumo à esquerda do botão de filtro: sem filtros mostra "X de Y leads";
-  // com filtros, o recorte ativo ("Ana · Em atraso", "2 responsáveis"...).
+  // Resumo à esquerda do botão de filtro: sem recorte de responsável mostra
+  // "X de Y leads"; com recorte, de quem é a carteira ("Ana · 12 leads").
   const filterSummary = useMemo(() => {
-    if (!hasActiveFilters) return `${kanbanLeads.length} de ${totalFunnelLeads} leads`;
     const parts = [];
     if (respFilter.length === 1) {
       const user = (usersList || []).find(u => u.id === respFilter[0]);
@@ -817,15 +821,29 @@ if (!lead) return;
       parts.push(`${respFilter.length} responsáveis`);
     }
     if (onlyOverdue) parts.push('Em atraso');
+    parts.push(parts.length === 0 ? `${kanbanLeads.length} de ${totalFunnelLeads} leads` : `${kanbanLeads.length} leads`);
     return parts.join(' · ');
-  }, [hasActiveFilters, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
+  }, [kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
+
+  // Lista do filtro: o próprio usuário primeiro (é a carteira que ele mais
+  // procura), o resto em ordem alfabética.
+  const respOptions = useMemo(() => {
+    const list = (usersList || []).filter(u => u?.id);
+    return [...list].sort((a, b) => {
+      if (a.id === appUser?.id) return -1;
+      if (b.id === appUser?.id) return 1;
+      return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+    });
+  }, [usersList, appUser]);
 
   const toggleResp = (id) => {
     setRespFilter(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
   };
 
+  // "Limpar" devolve a tela ao estado de abertura do papel — para o consultor
+  // isso é a própria carteira, não a equipe inteira.
   const clearFilters = () => {
-    setRespFilter([]);
+    setRespFilter(defaultRespFilterFor(appUser));
     setOnlyOverdue(false);
   };
 
@@ -882,56 +900,58 @@ if (!lead) return;
                   </button>
                 </div>
 
-                {/* Consultor (não-admin) só vê os próprios leads, então não há o
-                    que filtrar por responsável. O recorte acontece ANTES, em
-                    kanbanLeadsFor (lib/kanban.js), não aqui — até 18/08/2026
-                    este comentário estava certo na intenção e errado no fato:
-                    a tela recebia a base global e o consultor via todo mundo. */}
-                {isAdmin && (
-                  <div className="pt-2.5 px-2 pb-1">
-                    <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
-                      Responsável
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setRespFilter([])}
-                      className={cn(
-                        'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
-                        respFilter.length === 0 ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
-                      )}
-                    >
-                      <span className="size-6 rounded-full grid place-items-center bg-paper-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400 shrink-0">
-                        <Users className="size-[13px]" />
-                      </span>
-                      <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', respFilter.length === 0 ? 'font-bold' : 'font-medium')}>
-                        Toda a equipe
-                      </span>
-                      {respFilter.length === 0 && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
-                    </button>
-                    {(usersList || []).map(u => {
-                      const selected = respFilter.includes(u.id);
-                      return (
-                        <button
-                          key={u.id}
-                          type="button"
-                          onClick={() => toggleResp(u.id)}
-                          className={cn(
-                            'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
-                            selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
-                          )}
-                        >
-                          <InitialsAvatar name={u.name} size={24} textSize={9.5} />
-                          <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', selected ? 'font-bold' : 'font-medium')}>
-                            {u.name}
-                          </span>
-                          {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
-                        </button>
-                      );
-                    })}
+                {/* Carteira: aberta para a equipe inteira, gestor ou consultor.
+                    Quem manda no que aparece é este filtro — a base que chega na
+                    tela é sempre a academia toda (ver lib/kanban.js). */}
+                <div className="pt-2.5 px-2 pb-1">
+                  <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
+                    Responsável
                   </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => setRespFilter([])}
+                    className={cn(
+                      'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
+                      respFilter.length === 0 ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
+                    )}
+                  >
+                    <span className="size-6 rounded-full grid place-items-center bg-paper-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400 shrink-0">
+                      <Users className="size-[13px]" />
+                    </span>
+                    <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', respFilter.length === 0 ? 'font-bold' : 'font-medium')}>
+                      Toda a equipe
+                    </span>
+                    {respFilter.length === 0 && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                  </button>
+                  {respOptions.map(u => {
+                    const selected = respFilter.includes(u.id);
+                    const isSelf = u.id === appUser?.id;
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => toggleResp(u.id)}
+                        className={cn(
+                          'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
+                          selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
+                        )}
+                      >
+                        <InitialsAvatar name={u.name} size={24} textSize={9.5} />
+                        <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', selected ? 'font-bold' : 'font-medium')}>
+                          {u.name}
+                        </span>
+                        {isSelf && (
+                          <span className="text-[10px] font-semibold uppercase tracking-[.06em] text-slate-400 dark:text-neutral-500 shrink-0">
+                            você
+                          </span>
+                        )}
+                        {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                      </button>
+                    );
+                  })}
+                </div>
 
-                {isAdmin && <div className="mx-3.5 mt-1.5 border-t border-slate-100 dark:border-white/10" />}
+                <div className="mx-3.5 mt-1.5 border-t border-slate-100 dark:border-white/10" />
 
                 <div className="px-3.5 pt-2.5 pb-3.5">
                   <button
