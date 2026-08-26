@@ -8,6 +8,7 @@ import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
+import { useLeadCount } from '../hooks/useLeadCount.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
 import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard } from '../lib/renewalFunnel.js';
 import { renewalDecline, daysToExpiryOf } from '../lib/renewalGoal.js';
@@ -489,11 +490,11 @@ const [isPanning, setIsPanning] = useState(false);
   // Mesmo corte do Vencidos, fixado uma vez na montagem: os dois boards partem o
   // eixo no MESMO ponto, senão um cliente aparece nos dois ou some dos dois.
   const {
-    pages: renewalPages, hasMore: renewalHasMore, loadMore: renewalLoadMore,
+    pages: renewalPages,
     reload: renewalReload, patchLead: renewalPatchLead,
   } = useRenewalBoard({
     db, columns: renewalColumns, cutoffMs: expiredCutoffMs,
-    pageSize: KANBAN_PAGE_SIZE, enabled: !!db && isRenewalView,
+    enabled: !!db && isRenewalView,
   });
   // Mesmo recorte do Vencidos: o respFilter continua valendo, mas onlyOverdue é
   // ignorado — cliente em renovação não tem follow-up de prospecção, então o
@@ -627,13 +628,47 @@ const [isPanning, setIsPanning] = useState(false);
     : undefined;
 
   // ── Abas de funil: contagem por funil (mesmo recorte de funnelLeads) ──
+  // Total do funil VENCIDOS para o badge da aba: agregação no servidor, 1
+  // leitura. O board dele não exclui ninguém no cliente (só separa quem recusou
+  // numa coluna), então o número do servidor é exatamente o da tela.
+  const expiredCountSpec = useMemo(
+    () => (expiredFunnel ? expiredClientsQuerySpec(expiredCutoffMs) : null),
+    [expiredFunnel, expiredCutoffMs]
+  );
+  const expiredCount = useLeadCount({
+    db, path: LEADS_PATH, spec: expiredCountSpec,
+    specKey: `vencidos:${expiredCutoffMs}`, enabled: !!db && !!expiredFunnel,
+  });
+
+  // Total do funil RENOVAÇÕES: somado do que o board carregou, não do servidor.
+  // A contagem agregada incluiria contrato cancelado e trancado, que o board
+  // exclui — e excluir isso no servidor exigiria filtrar por
+  // currentContractStatus, campo sem backfill que derrubaria em silêncio todo
+  // cliente antigo que não o tem. Como cada coluna carrega a faixa INTEIRA
+  // (useRenewalBoard não pagina), esta soma é o total de verdade.
+  const renewalTotal = useMemo(() => {
+    if (!isRenewalView) return null;
+    let n = renewalSplit.declined.length;
+    renewalSplit.cardsByColumn.forEach((cards) => { n += cards.length; });
+    return n;
+  }, [isRenewalView, renewalSplit]);
+
   const funnelCounts = useMemo(() => {
     const map = new Map();
     (funnels || []).forEach(f => {
       map.set(f.id, (leads || []).filter(l => isItemInFunnel(l, f.id, defaultFunnelId)).length);
     });
+    // Funil de SISTEMA projeta clientes: ninguém tem funnelId apontando para
+    // ele, e o prop `leads` só traz o balde 'ativo' desde o flip da PR G. Contar
+    // por funnelId dava ZERO num board cheio — era o bug. Cada um tem a fonte
+    // que consegue ser exata:
+    //   • Vencidos: o servidor.
+    //   • Renovações: o próprio board. Fora da aba fica `null`, e o badge some
+    //     em vez de mostrar um número que conta cancelado.
+    if (expiredFunnel) map.set(expiredFunnel.id, expiredCount);
+    if (renewalFunnel) map.set(renewalFunnel.id, renewalTotal);
     return map;
-  }, [funnels, leads, defaultFunnelId]);
+  }, [funnels, leads, defaultFunnelId, expiredFunnel, expiredCount, renewalFunnel, renewalTotal]);
 
   // Bubble de filtros fecha em clique fora / Esc (o overflow "+N" das abas
   // é tratado internamente pelo FunnelTabs).
@@ -1205,17 +1240,10 @@ if (!lead) return;
                 special={null}
                 columnLeads={getLeadsByStatus(column.name)}
                 // Vencidos: o volume mora na coluna de entrada, e é ela que
-                // pagina. Renovações: cada coluna tem sua query e pagina sozinha.
-                hasMore={
-                  isRenewalView ? Boolean(renewalHasMore[column.days])
-                    : isExpiredView && column.isEntry ? expiredHasMore
-                      : false
-                }
-                onLoadMore={
-                  isRenewalView ? () => renewalLoadMore(column.days)
-                    : isExpiredView && column.isEntry ? expiredLoadMore
-                      : null
-                }
+                // pagina. Renovações não pagina no servidor — a coluna carrega a
+                // faixa inteira e o KanbanColumn revela de 10 em 10.
+                hasMore={isExpiredView && column.isEntry ? expiredHasMore : false}
+                onLoadMore={isExpiredView && column.isEntry ? expiredLoadMore : null}
                 isHovered={draggedOverColumn === column.name}
                 draggingLeadId={draggingLeadId}
                 interactionIndex={interactionIndex}
