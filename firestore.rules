@@ -62,14 +62,26 @@ service cloud.firestore {
     }
 
     // Base COMPARTILHADA: qualquer membro do tenant lê/cria/edita leads (1 lead por
-    // pessoa, acessível por todos). O DONO (consultantAuthUid) é preservado — só
-    // admin pode trocar o dono. Excluir: dono ou admin.
+    // pessoa, acessível por todos). Passar a bola também é de todos: qualquer
+    // membro reatribui o lead a outro consultor (o app registra a troca na linha
+    // do tempo e avisa quem recebeu). Excluir: dono ou admin.
+    //
+    // O que a regra AINDA garante é a INTEGRIDADE do dono: consultantId e
+    // consultantAuthUid mudam JUNTOS ou não mudam. Sem isso dava para reescrever
+    // só o consultantId — que é por onde a carteira, a Meta Diária e os
+    // relatórios recortam — e deixar o consultantAuthUid (a chave de permissão)
+    // apontando para outra pessoa, criando lead que aparece pra um e é editável
+    // por outro. `.get(campo, null)` evita erro em doc legado sem os campos.
+    function ownerFieldsMoveTogether() {
+      return (request.resource.data.get('consultantId', null) == resource.data.get('consultantId', null))
+        == (request.resource.data.get('consultantAuthUid', null) == resource.data.get('consultantAuthUid', null));
+    }
     match /artifacts/{appId}/public/data/stronix_leads/{leadId} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow create: if inTenant(appId) && tenantActive(appId)
         && (isAdmin(appId) || request.resource.data.consultantAuthUid == request.auth.uid);
       allow update: if inTenant(appId) && tenantActive(appId)
-        && (isAdmin(appId) || request.resource.data.consultantAuthUid == resource.data.consultantAuthUid);
+        && (isAdmin(appId) || ownerFieldsMoveTogether());
       allow delete: if inTenant(appId) && tenantActive(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
     }
 

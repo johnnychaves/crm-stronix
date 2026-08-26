@@ -1,9 +1,12 @@
 // Regra pura do SINO do header: monta o feed de avisos e diz quantos estão por
-// ler. Duas fontes, semânticas de leitura diferentes:
+// ler. Três fontes, duas semânticas de leitura:
 //   • novidades  — anúncios de feature (lib/announcements.js), "visto" por id
 //     no localStorage do usuário (padrão que já existia no pop-up).
 //   • indicações — leads que entraram pelo LINK público (campo referralVia),
 //     "visto" por carimbo de tempo (lastSeenReferralsAt).
+//   • passados pra você — leads/clientes que outra pessoa reatribuiu pra sua
+//     carteira (campo consultantChangedAt), no MESMO carimbo das indicações:
+//     o "marcar tudo como lido" é um clique só, então um carimbo basta.
 // Sem React, sem Firestore: os leads já vêm da assinatura que o app mantém em
 // memória, então o sino não custa nenhuma leitura nova.
 //
@@ -22,12 +25,13 @@ export function buildNotificationFeed({
   appUser,
   seenIds = [],
   leads = [],
+  handoffLeads = [],
   lastSeenReferralsAt = 0,
   now = new Date(),
   maxReferrals = 15,
   windowDays = REFERRAL_WINDOW_DAYS
 } = {}) {
-  if (!appUser?.id) return { news: [], referrals: [], unreadCount: 0 };
+  if (!appUser?.id) return { news: [], referrals: [], handoffs: [], unreadCount: 0 };
 
   const isAdmin = appUser.role === 'admin';
   const seen = new Set(seenIds || []);
@@ -67,10 +71,42 @@ export function buildNotificationFeed({
       unread: at.getTime() > (lastSeenReferralsAt || 0)
     }));
 
-  const unreadCount =
-    news.filter((n) => n.unread).length + referrals.filter((r) => r.unread).length;
+  // Passados pra você. Duas fontes somadas e deduplicadas por id: a consulta
+  // do sino (useHandoffs, alcança cliente e perda) e os leads ATIVOS que já
+  // estão em memória (pega a troca que acontece com o app aberto).
+  // A dona aqui é sempre a pessoa, nunca o atalho de admin: senão o gestor
+  // receberia aviso de toda troca da academia.
+  const isStrictlyMine = (l) =>
+    (Boolean(appUser.authUid) && l?.consultantAuthUid === appUser.authUid) ||
+    (Boolean(appUser.id) && l?.consultantId === appUser.id);
 
-  return { news, referrals, unreadCount };
+  const handoffById = new Map();
+  [...(handoffLeads || []), ...(leads || [])].forEach((l) => {
+    if (!l?.id || handoffById.has(l.id)) return;
+    if (!isStrictlyMine(l)) return;
+    // Troca feita por você mesmo não é aviso.
+    if (appUser.authUid && l.consultantChangedByAuthUid === appUser.authUid) return;
+    const at = getSafeDateOrNull(l.consultantChangedAt);
+    if (!at || at.getTime() < cutoff) return;
+    handoffById.set(l.id, {
+      id: l.id,
+      name: l.name || 'Sem nome',
+      byName: l.consultantChangedByName || null,
+      isClient: l.lifecycleBucket === 'cliente',
+      at,
+      unread: at.getTime() > (lastSeenReferralsAt || 0)
+    });
+  });
+  const handoffs = Array.from(handoffById.values())
+    .sort((a, b) => b.at.getTime() - a.at.getTime())
+    .slice(0, maxReferrals);
+
+  const unreadCount =
+    news.filter((n) => n.unread).length
+    + referrals.filter((r) => r.unread).length
+    + handoffs.filter((h) => h.unread).length;
+
+  return { news, referrals, handoffs, unreadCount };
 }
 
 

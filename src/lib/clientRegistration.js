@@ -45,7 +45,7 @@ export function readClientRegistration(lead = {}) {
 }
 
 // form do modal -> patch para updateDoc no documento do lead.
-export function buildClientRegistrationPatch(form, { isAdmin, usersList, professores } = {}) {
+export function buildClientRegistrationPatch(form, { usersList, professores } = {}) {
   const patch = {
     name: str(form.name),
     whatsapp: str(form.whatsapp),
@@ -75,9 +75,10 @@ export function buildClientRegistrationPatch(form, { isAdmin, usersList, profess
     // Dual-write: campos de busca recomputados a partir do que será gravado.
     ...buildLeadSearchFields({ name: str(form.name), whatsapp: str(form.whatsapp), cpf: nullify(form.cpf) }),
   };
-  // Reatribuição de consultor só para admin: grava os três campos juntos
-  // (consultantAuthUid é a chave de permissão/atribuição).
-  if (isAdmin && form.consultantId) {
+  // Reatribuição de consultor: qualquer membro da equipe pode passar a bola,
+  // e os três campos vão JUNTOS (consultantAuthUid é a chave de permissão e a
+  // regra do Firestore exige o par id+authUid andando junto).
+  if (form.consultantId) {
     const c = (usersList || []).find((u) => u.id === form.consultantId);
     if (c) {
       patch.consultantId = form.consultantId;
@@ -87,6 +88,25 @@ export function buildClientRegistrationPatch(form, { isAdmin, usersList, profess
   }
   return patch;
 }
+
+// Troca de responsável: compara o dono ATUAL do lead com o que o patch vai
+// gravar. Devolve null quando ninguém mudou de mão, e é o que decide se o
+// salvamento deixa rastro (nota na linha do tempo + carimbo pro sino).
+export function ownerChangeFor(lead = {}, patch = {}) {
+  const to = patch.consultantId || null;
+  if (!to || to === (lead.consultantId || null)) return null;
+  return {
+    fromId: lead.consultantId || null,
+    fromName: lead.consultantName || 'sem responsável',
+    toId: to,
+    toName: patch.consultantName || 'consultor',
+  };
+}
+
+// Texto da nota. Sem as palavras de contrato (matrícula/renovação/plano), que a
+// timeline usa para classificar evento de contrato.
+export const ownerChangeNote = (change) =>
+  `Responsável alterado de [${change.fromName}] para [${change.toName}].`;
 
 // Medidor de completude do cadastro do cliente (0..100). Address e emergência
 // contam como 1 cada se tiverem o essencial preenchido.

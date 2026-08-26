@@ -4,7 +4,10 @@ import {
   readClientRegistration,
   buildClientRegistrationPatch,
   computeCompleteness,
+  ownerChangeFor,
+  ownerChangeNote,
 } from '../clientRegistration.js';
+import { classifyInteraction } from '../timeline.js';
 import { buildLeadSearchFields } from '../leadDerived.js';
 
 const baseForm = () => ({
@@ -32,7 +35,7 @@ describe('MARITAL_STATUS_OPTIONS', () => {
 
 describe('buildClientRegistrationPatch', () => {
   it('monta o patch com identidade, mapas e campos de busca', () => {
-    const patch = buildClientRegistrationPatch(baseForm(), { isAdmin: false, usersList: [] });
+    const patch = buildClientRegistrationPatch(baseForm(), { usersList: [] });
     expect(patch.name).toBe('Marina Alves Ribeiro');
     expect(patch.cpf).toBe('034.567.890-12');
     expect(patch.rg).toBe('6098765431');
@@ -58,7 +61,7 @@ describe('buildClientRegistrationPatch', () => {
     const f = { ...baseForm(), rg: '', profession: '', cpf: '', email: '',
       cep: '', street: '', number: '', complement: '', neighborhood: '', city: '', state: '',
       emgName: '', emgPhone: '', emgRelation: '', birthDate: '' };
-    const patch = buildClientRegistrationPatch(f, { isAdmin: false, usersList: [] });
+    const patch = buildClientRegistrationPatch(f, { usersList: [] });
     expect(patch.rg).toBeNull();
     expect(patch.profession).toBeNull();
     expect(patch.cpf).toBeNull();
@@ -68,20 +71,50 @@ describe('buildClientRegistrationPatch', () => {
     expect(patch.emergencyContact).toBeNull();
   });
 
-  it('não-admin não grava campos de consultor', () => {
+  it('qualquer um grava consultantName/authUid juntos (a regra exige o par)', () => {
     const f = { ...baseForm(), consultantId: 'u1' };
-    const patch = buildClientRegistrationPatch(f, { isAdmin: false, usersList: [{ id: 'u1', name: 'Ana', authUid: 'a1' }] });
-    expect('consultantId' in patch).toBe(false);
-    expect('consultantName' in patch).toBe(false);
-    expect('consultantAuthUid' in patch).toBe(false);
-  });
-
-  it('admin grava consultantName/authUid juntos', () => {
-    const f = { ...baseForm(), consultantId: 'u1' };
-    const patch = buildClientRegistrationPatch(f, { isAdmin: true, usersList: [{ id: 'u1', name: 'Ana', authUid: 'a1' }] });
+    const patch = buildClientRegistrationPatch(f, { usersList: [{ id: 'u1', name: 'Ana', authUid: 'a1' }] });
     expect(patch.consultantId).toBe('u1');
     expect(patch.consultantName).toBe('Ana');
     expect(patch.consultantAuthUid).toBe('a1');
+  });
+
+  it('consultor fora da lista não vira dono', () => {
+    const f = { ...baseForm(), consultantId: 'fantasma' };
+    const patch = buildClientRegistrationPatch(f, { usersList: [{ id: 'u1', name: 'Ana', authUid: 'a1' }] });
+    expect('consultantId' in patch).toBe(false);
+    expect('consultantAuthUid' in patch).toBe(false);
+  });
+});
+
+describe('ownerChangeFor', () => {
+  const ana = { id: 'u1', name: 'Ana', authUid: 'a1' };
+  const patchPara = (consultantId) =>
+    buildClientRegistrationPatch({ ...baseForm(), consultantId }, { usersList: [ana] });
+
+  it('devolve null quando o dono não muda', () => {
+    expect(ownerChangeFor({ consultantId: 'u1', consultantName: 'Ana' }, patchPara('u1'))).toBeNull();
+  });
+
+  it('devolve null quando o patch não mexe no dono', () => {
+    expect(ownerChangeFor({ consultantId: 'u1' }, patchPara(''))).toBeNull();
+  });
+
+  it('descreve a troca com os dois nomes', () => {
+    const c = ownerChangeFor({ consultantId: 'u2', consultantName: 'Bruno' }, patchPara('u1'));
+    expect(c).toEqual({ fromId: 'u2', fromName: 'Bruno', toId: 'u1', toName: 'Ana' });
+  });
+
+  it('lead sem dono vira troca a partir de "sem responsável"', () => {
+    const c = ownerChangeFor({}, patchPara('u1'));
+    expect(c.fromId).toBeNull();
+    expect(c.fromName).toBe('sem responsável');
+  });
+
+  it('a nota não bate no regex de contrato da timeline', () => {
+    const nota = ownerChangeNote(ownerChangeFor({ consultantId: 'u2', consultantName: 'Bruno' }, patchPara('u1')));
+    expect(nota).toBe('Responsável alterado de [Bruno] para [Ana].');
+    expect(classifyInteraction({ type: 'status_change', text: nota })).toBe('status');
   });
 });
 

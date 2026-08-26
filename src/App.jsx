@@ -92,6 +92,7 @@ import { WalkthroughModal } from './components/WalkthroughModal.jsx';
 import { HelpCenterModal } from './components/HelpCenterModal.jsx';
 import { NotificationBell } from './components/layout/NotificationBell.jsx';
 import { useNotificationsSeen } from './hooks/useNotificationsSeen.js';
+import { useHandoffs } from './hooks/useHandoffs.js';
 import { GymProfileTab } from './views/settings/GymProfileTab.jsx';
 import { PlanInvoicesTab } from './views/settings/PlanInvoicesTab.jsx';
 import { PersonaMenu } from './components/layout/PersonaMenu.jsx';
@@ -223,6 +224,8 @@ function AppInner() {
   const [helpArticleId, setHelpArticleId] = useState(null);
   // "Já li" do sino: ids das novidades vistas + carimbo das indicações.
   const { seenIds, lastSeenReferralsAt, markAllSeen } = useNotificationsSeen({ db, appUser });
+  // Leads/clientes que passaram pra carteira desta pessoa (grupo do sino).
+  const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly });
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
@@ -789,7 +792,15 @@ useEffect(() => {
       setUsersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
   } else {
+    // A equipe inteira, não só o próprio usuário: o consultor precisa dela para
+    // passar um lead adiante e para delegar tarefa de contato. É uma coleção
+    // pequena e que quase não muda, então vale UMA leitura por sessão em vez de
+    // mais uma assinatura ao vivo. Falhou, fica só o próprio usuário e o app
+    // segue funcionando como antes.
     setUsersList([appUser]);
+    getDocs(usersRef)
+      .then((snap) => setUsersList(snap.docs.map(d => ({ id: d.id, ...d.data() }))))
+      .catch((e) => { console.error('usersList', e); });
   }
 
   return () => {
@@ -1489,6 +1500,7 @@ useEffect(() => {
               <NotificationBell
                 appUser={appUser}
                 leads={leads}
+                handoffLeads={handoffLeads}
                 seenIds={seenIds}
                 lastSeenReferralsAt={lastSeenReferralsAt}
                 onMarkAllSeen={markAllSeen}
