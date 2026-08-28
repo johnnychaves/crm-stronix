@@ -235,7 +235,13 @@ describe('splitExpiredForBoard', () => {
     );
     expect(declined[0].lifecycleBucket).toBe('cliente');
     expect(declined[0].lifecycleStage).toBe('cliente');
-    expect(declined[0].status).toBe('Venda');
+    // O status EXIBIDO é 'Perda', o nome da coluna — como já era nos cards das
+    // etapas. Quem diz que a pessoa continua cliente é o lifecycle acima, e o
+    // documento no banco, que a projeção não toca (teste de imutabilidade
+    // logo abaixo). Esta linha já pediu 'Venda' aqui: era o status projetado
+    // sendo usado como terceiro sinal de "é cliente", o que nunca valeu para
+    // os outros cards deste mesmo funil.
+    expect(declined[0].status).toBe('Perda');
   });
 
   it('marca os dois lados como card de vencido, para o drop bifurcar', () => {
@@ -248,5 +254,23 @@ describe('splitExpiredForBoard', () => {
 
   it('lista vazia não quebra', () => {
     expect(splitExpiredForBoard([], stages, 'f1')).toEqual({ cards: [], declined: [] });
+  });
+});
+
+describe('splitExpiredForBoard: status do card recusado', () => {
+  it('projeta Perda, o nome da coluna onde ele aparece', () => {
+    const { declined } = splitExpiredForBoard(
+      [{ id: 'a', status: 'Venda', renewalDeclined: true }], [], 'f1'
+    );
+    // Com o status REAL ('Venda') o board se sabotava: arrastar da Perda para
+    // Venda não fazia nada, e o menu "Mover" escondia a opção.
+    expect(declined[0].status).toBe('Perda');
+    expect(declined[0]._expiredCard).toBe(true);
+  });
+
+  it('não muta o documento original', () => {
+    const original = { id: 'a', status: 'Venda', renewalDeclined: true };
+    splitExpiredForBoard([original], [], 'f1');
+    expect(original.status).toBe('Venda');
   });
 });

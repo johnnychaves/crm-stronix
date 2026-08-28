@@ -5,7 +5,8 @@
 // `now` é injetado onde a função aceita, e fake timers onde ela lê o relógio.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { filterKanbanLeads, partitionLeadsByStatus, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter } from '../kanban.js';
+import { filterKanbanLeads, partitionLeadsByStatus, getKanbanInitials, fmtKanbanRelDate, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter, KANBAN_COLUMN_ACCENT } from '../kanban.js';
+import { SETTINGS_COLOR_OPTIONS } from '../../components/ui/ColorPicker.jsx';
 
 // 15 de julho de 2026, 10:00 local — "agora" de referência dos testes.
 const NOW = new Date(2026, 6, 15, 10, 0, 0);
@@ -298,5 +299,27 @@ describe('carteira padrão do board', () => {
     expect(isDefaultRespFilter(consultor, [])).toBe(false);
     expect(isDefaultRespFilter(consultor, ['u2'])).toBe(false);
     expect(isDefaultRespFilter(consultor, ['u1', 'u2'])).toBe(false);
+  });
+});
+
+// A tela de Configurações deixa escolher a cor da etapa, e o board pinta a
+// coluna com ela. As duas listas moram em arquivos diferentes e já se
+// separaram uma vez: cinco das dez cores oferecidas não existiam no mapa do
+// board e caíam no cinza SEM ERRO NENHUM — o funil Vencidos ficou cinza em
+// produção por causa disso. Este teste é o que impede a divergência de voltar.
+describe('cores do seletor x paleta do board', () => {
+  it('toda cor que a academia pode escolher existe na paleta do Kanban', () => {
+    SETTINGS_COLOR_OPTIONS.forEach((cor) => {
+      // Own property, não o valor: 'slate' e 'gray' têm os MESMOS valores, então
+      // comparar o objeto não distinguiria acerto de fallback.
+      expect(Object.keys(KANBAN_COLUMN_ACCENT)).toContain(cor);
+    });
+  });
+
+  it('os apelidos são a mesma cor do nome semântico, não um tom novo', () => {
+    const pares = [['amber', 'yellow'], ['violet', 'purple'], ['rose', 'red'], ['emerald', 'green'], ['slate', 'gray']];
+    pares.forEach(([apelido, semantico]) => {
+      expect(KANBAN_COLUMN_ACCENT[apelido]).toEqual(KANBAN_COLUMN_ACCENT[semantico]);
+    });
   });
 });

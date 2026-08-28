@@ -453,7 +453,7 @@ const [isPanning, setIsPanning] = useState(false);
     [isExpiredView, expiredCutoffMs]
   );
   const {
-    items: expiredDocs, hasMore: expiredHasMore, loadMore: expiredLoadMore,
+    items: expiredDocs, hasMore: expiredHasMore, loadMore: expiredLoadMore, patchItem: expiredPatchLead,
   } = usePagedLeads({
     db, path: LEADS_PATH, spec: expiredSpec, specKey: `vencidos:${isExpiredView ? '1' : '0'}`,
     enabled: !!db && isExpiredView,
@@ -594,8 +594,16 @@ const [isPanning, setIsPanning] = useState(false);
       renewalSplit.cardsByColumn.forEach((cards) => cards.forEach((l) => m.set(l.id, l)));
       (renewalSplit.declined || []).forEach((l) => m.set(l.id, l));
     }
+    // Mesma coisa para o funil VENCIDOS, pelo mesmo motivo. Sem isto o arrasto
+    // não achava o card e saía calado — e o cliente que fechou contrato ESTE mês
+    // está em wonDocs como doc CRU, sem a flag _expiredCard: o guard não pegava
+    // e o handler gravava o nome da etapa no status dele.
+    if (isExpiredView) {
+      (expiredSplit.cards || []).forEach((l) => m.set(l.id, l));
+      (expiredSplit.declined || []).forEach((l) => m.set(l.id, l));
+    }
     return m;
-  }, [leads, lostDocs, wonDocs, isRenewalView, renewalSplit]);
+  }, [leads, lostDocs, wonDocs, isRenewalView, renewalSplit, isExpiredView, expiredSplit]);
 
   // E1d: total REAL de perdas do funil via getCountFromServer (o header da
   // coluna, depois do E1c, mostraria só a página carregada). Recontado quando
@@ -787,6 +795,46 @@ const handleKanbanMouseMove = (e) => {
   // O patch vai no .then e não antes: se a escrita falhar, a tela não pode ter
   // mostrado o card no lugar novo.
 
+  // ── Desfechos do card projetado do funil VENCIDOS ────────────────────────
+  // Os dois caminhos da tela (arrasto e menu "Mover") passam por aqui, e é o
+  // que impede eles de divergirem: a permissão morava só no arrasto, então
+  // arrastando dava para marcar recusa no cliente de outro consultor e pelo
+  // menu não. As rules deixam qualquer membro do tenant atualizar qualquer
+  // lead, então canEditLead é a única política que existe.
+  const moveExpiredToStage = useCallback((lead, statusName) => {
+    if (!canEditLead(appUser, lead)) {
+      toast.warning('Você não tem permissão para mover este lead.');
+      return;
+    }
+    const etapa = (statuses || []).find(
+      st => st.funnelId === expiredFunnel?.id && st.name === statusName
+    );
+    if (!etapa) return;
+    // Sair da Perda de volta para uma etapa: a recusa deixa de valer, senão o
+    // card sumiria das etapas na próxima renderização.
+    const patch = { reactivationStageId: etapa.id, renewalDeclined: false };
+    updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch)
+      .then(() => expiredPatchLead(lead.id, patch))
+      .catch(err => {
+        console.error('Erro ao mover card do funil de vencidos', err);
+        toast.error('Não foi possível mover o card.');
+      });
+  }, [appUser, db, toast, statuses, expiredFunnel, expiredPatchLead]);
+
+  const declineExpired = useCallback((lead) => {
+    if (!canEditLead(appUser, lead)) {
+      toast.warning('Você não tem permissão para alterar este lead.');
+      return;
+    }
+    const patch = { renewalDeclined: true, reactivationStageId: null };
+    updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch)
+      .then(() => expiredPatchLead(lead.id, patch))
+      .catch(err => {
+        console.error('Erro ao marcar recusa no funil de vencidos', err);
+        toast.error('Não foi possível mover o card.');
+      });
+  }, [appUser, db, toast, expiredPatchLead]);
+
   // "Não vai renovar": a MESMA flag que a Meta Diária usa. A pessoa NÃO vira
   // lead perdido — segue cliente, com ficha e contratos, e continua na aba
   // Clientes. Perda de venda != perda de funil.
@@ -848,6 +896,15 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('As colunas de Renovações seguem o vencimento do contrato e não podem ser movidas à mão.');
       return;
     }
+    // MESMA bifurcação para o funil VENCIDOS. Este é o caminho do menu "Mover",
+    // que existe porque drag nativo não dispara em tela de toque — e era o único
+    // que não tinha guard nenhum: em tablet, mover um card de lá gravava o nome
+    // da etapa no status de um CLIENTE.
+    if (lead._expiredCard) {
+      if (statusName === 'Venda') return openMatricula(lead);
+      if (statusName === 'Perda') return declineExpired(lead);
+      return moveExpiredToStage(lead, statusName);
+    }
     if (statusName === 'Venda') return openMatricula(lead);
     if (statusName === 'Perda') { setLossModalLeadId(lead.id); return; }
     return applyMoveToStage(lead, statusName);
@@ -879,24 +936,9 @@ const handleKanbanMouseMove = (e) => {
     // 'Venda' — gravar a etapa em `status` corromperia o estado de cliente e a
     // aba Clientes. A etapa dele mora num campo próprio, reactivationStageId.
     // O `status` que chega aqui é o projetado (nome da etapa), não o do banco.
-    if (lead._expiredCard) {
-      const etapa = (statuses || []).find(
-        st => st.funnelId === expiredFunnel?.id && st.name === newStatus
-      );
-      if (!etapa) return;
-      updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), {
-        reactivationStageId: etapa.id,
-        // Saindo da Perda de volta para uma etapa: a recusa deixa de valer,
-        // senão o card sumiria das etapas na próxima renderização.
-        renewalDeclined: false
-      }).catch(err => {
-        console.error('Erro ao mover card do funil de vencidos', err);
-        toast.error('Não foi possível mover o card.');
-      });
-      return;
-    }
+    if (lead._expiredCard) return moveExpiredToStage(lead, newStatus);
     applyMoveToStage(lead, newStatus);
-  }, [draggableById, appUser, toast, applyMoveToStage, undoRenewalDecline, statuses, expiredFunnel, db]);
+  }, [draggableById, appUser, toast, applyMoveToStage, undoRenewalDecline, moveExpiredToStage]);
 
   const handleWinDrop = useCallback((e) => {
     e.preventDefault();
@@ -927,22 +969,14 @@ const handleKanbanMouseMove = (e) => {
     // Funil VENCIDOS: "não volta" é venda perdida, mas a pessoa NÃO vira lead
     // perdido — ela segue cliente, com ficha e contratos, e continua na aba
     // Clientes. O que muda é só a flag que já existe e que a Meta também usa.
-    if (alvo?._expiredCard) {
-      updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, alvo.id), {
-        renewalDeclined: true, reactivationStageId: null
-      }).catch(err => {
-        console.error('Erro ao marcar recusa no funil de vencidos', err);
-        toast.error('Não foi possível mover o card.');
-      });
-      return;
-    }
+    if (alvo?._expiredCard) return declineExpired(alvo);
     if (!alvo || alvo.status === 'Perda') return;
     if (!canEditLead(appUser, alvo)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
     setLossModalLeadId(alvo.id);
-  }, [draggableById, appUser, toast, declineRenewal, db]);
+  }, [draggableById, appUser, toast, declineRenewal, declineExpired]);
 
   const confirmKanbanLoss = async (reason) => {
     if (!lossModalLeadId) return;

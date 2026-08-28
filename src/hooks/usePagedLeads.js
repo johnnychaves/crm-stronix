@@ -89,8 +89,16 @@ export function usePagedLeads({ db, path, spec, specKey, mapDoc, enabled = true 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [specKey, enabled, db, path]);
 
+  // Corrige a cópia local de UM item, sem refazer busca nenhuma. Existe porque
+  // recarregar depois de uma escrita descarta a paginação: um item que veio da
+  // página 2 sumiria da tela justamente ao ser alterado. Quem projeta o item na
+  // tela (funis de sistema) reprojeta sozinho, porque lê o campo corrigido.
+  const patchItem = useCallback((id, patch) => {
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, ...patch } : it)));
+  }, []);
+
   const loadMore = useCallback(() => { if (!loading && hasMore) fetchPage(false); }, [loading, hasMore, fetchPage]);
   const reload = useCallback(() => fetchPage(true), [fetchPage]);
 
-  return { items, loading, error, hasMore, loadMore, reload };
+  return { items, loading, error, hasMore, loadMore, reload, patchItem };
 }

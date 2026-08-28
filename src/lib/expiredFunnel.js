@@ -160,6 +160,12 @@ export const splitExpiredForBoard = (leads, statuses, funnelId) => {
   return {
     cards: projectExpiredLeads(ativos, statuses, funnelId),
     // Marcados também, para o drop saber que é card de vencido e não perda real.
-    declined: declined.map((l) => ({ ...l, _expiredCard: true })),
+    // O status EXIBIDO vira 'Perda', o nome da coluna onde eles aparecem — como
+    // já acontece com os cards das etapas. Sem isso eles ficavam com o status
+    // REAL do cliente ('Venda'), e dois guards disparavam contra o próprio card:
+    // handleWinDrop saía calado (lead.status === 'Venda') e o menu "Mover"
+    // escondia a opção Venda (filtra t.name !== lead.status). Ou seja, quem
+    // recusou e mudou de ideia não conseguia reativar pelo board.
+    declined: declined.map((l) => ({ ...l, _expiredCard: true, status: 'Perda' })),
   };
 };

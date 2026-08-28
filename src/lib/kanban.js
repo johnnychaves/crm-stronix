@@ -93,6 +93,18 @@ const KANBAN_COLUMN_ACCENT = {
   pink:   { dot: 'bg-pink-500',    border: '#ec4899' },
   indigo: { dot: 'bg-indigo-500',  border: '#6366f1' },
   lime:   { dot: 'bg-lime-500',    border: '#84cc16' },
+  // APELIDOS. O seletor de cores das Configurações (SETTINGS_COLOR_OPTIONS, em
+  // components/ui/ColorPicker.jsx) nomeia as cores como o Tailwind; este mapa
+  // nasceu com nomes semânticos. As duas convenções se separaram, e cinco das
+  // dez cores oferecidas na tela não existiam aqui — etapa salva como 'amber'
+  // caía no fallback cinza em silêncio, que é por que as colunas do funil
+  // Vencidos estavam cinzas. Não é cor nova: é a MESMA cor com o outro nome.
+  // Tem teste travando que toda opção do seletor existe neste mapa.
+  amber:   { dot: 'bg-amber-500',   border: '#f59e0b' }, // = yellow
+  violet:  { dot: 'bg-violet-500',  border: '#8b5cf6' }, // = purple
+  rose:    { dot: 'bg-rose-500',    border: '#f43f5e' }, // = red
+  emerald: { dot: 'bg-emerald-500', border: '#10b981' }, // = green
+  slate:   { dot: 'bg-slate-400',   border: '#94a3b8' }, // = gray
 };
 const getKanbanColumnAccent = (color) => KANBAN_COLUMN_ACCENT[color] || KANBAN_COLUMN_ACCENT.gray;
 
