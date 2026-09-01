@@ -780,9 +780,9 @@ const handleKanbanMouseMove = (e) => {
   // ── Desfechos do card projetado de Renovações, num lugar só ──────────
   // O arrasto e o menu "Mover" chamam os MESMOS dois helpers. Estavam escritos
   // quatro vezes e já tinham divergido: o arrasto para a Perda gravava sem
-  // checar permissão. Por isso a checagem mora aqui DENTRO — as rules deixam
-  // qualquer membro do tenant atualizar qualquer lead desde que não troque o
-  // dono, então canEditLead é a única política que existe.
+  // checar permissão. Por isso a checagem mora aqui DENTRO — canEditLead é a
+  // única política que existe, e hoje ela só pede que o usuário tenha vínculo
+  // (authUid): gestor e consultor mexem no card de qualquer carteira.
   //
   // Os dois NÃO recarregam o board: aplicam o mesmo patch na cópia local
   // (renewalPatchLead) depois do ack do servidor. Recarregar aqui era caro e
@@ -797,12 +797,11 @@ const handleKanbanMouseMove = (e) => {
 
   // ── Desfechos do card projetado do funil VENCIDOS ────────────────────────
   // Os dois caminhos da tela (arrasto e menu "Mover") passam por aqui, e é o
-  // que impede eles de divergirem: a permissão morava só no arrasto, então
-  // arrastando dava para marcar recusa no cliente de outro consultor e pelo
-  // menu não. As rules deixam qualquer membro do tenant atualizar qualquer
-  // lead, então canEditLead é a única política que existe.
+  // que impede eles de divergirem: a permissão morava só no arrasto, e o menu
+  // gravava sem checar nada. As rules deixam qualquer membro do tenant
+  // atualizar qualquer lead, então canEditLead é a única política que existe.
   const moveExpiredToStage = useCallback((lead, statusName) => {
-    if (!canEditLead(appUser, lead)) {
+    if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
@@ -822,7 +821,7 @@ const handleKanbanMouseMove = (e) => {
   }, [appUser, db, toast, statuses, expiredFunnel, expiredPatchLead]);
 
   const declineExpired = useCallback((lead) => {
-    if (!canEditLead(appUser, lead)) {
+    if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
@@ -839,7 +838,7 @@ const handleKanbanMouseMove = (e) => {
   // lead perdido — segue cliente, com ficha e contratos, e continua na aba
   // Clientes. Perda de venda != perda de funil.
   const declineRenewal = useCallback((lead) => {
-    if (!canEditLead(appUser, lead)) {
+    if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
@@ -862,7 +861,7 @@ const handleKanbanMouseMove = (e) => {
   // de renewalHandledCheckpoints de propósito: o consultor conversou com o
   // cliente naquele marco, e quem pega ele de novo é o marco seguinte.
   const undoRenewalDecline = useCallback((lead) => {
-    if (!canEditLead(appUser, lead)) {
+    if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
@@ -879,7 +878,7 @@ const handleKanbanMouseMove = (e) => {
   // depender do drag-and-drop nativo (que não dispara em telas de toque).
   const moveLeadToStatus = (lead, statusName) => {
     if (!lead || lead.status === statusName) return;
-    if (!canEditLead(appUser, lead)) {
+    if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
@@ -916,7 +915,7 @@ const handleKanbanMouseMove = (e) => {
     const leadId = e.dataTransfer.getData('leadId');
     const lead = leadId && draggableById.get(leadId);
     if (!lead || lead.status === newStatus) return;
-    if (!canEditLead(appUser, lead)) {
+    if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
@@ -945,7 +944,7 @@ const handleKanbanMouseMove = (e) => {
     const leadId = e.dataTransfer.getData('leadId');
     const lead = leadId && draggableById.get(leadId);
     if (!lead || lead.status === 'Venda') return;
-    if (!canEditLead(appUser, lead)) {
+    if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
@@ -960,8 +959,8 @@ const handleKanbanMouseMove = (e) => {
     // A pessoa NÃO vira lead perdido — segue cliente, com ficha e contratos, e
     // continua na aba Clientes. Perda de venda != perda de funil.
     // A permissão é checada DENTRO do helper: este ramo corre antes do
-    // canEditLead lá de baixo, e sem isso um consultor arrastaria o cliente de
-    // outro para a Perda.
+    // canEditLead lá de baixo, e sem isso o arrasto gravaria sem passar por
+    // guarda nenhuma.
     if (alvo?._renewalCard) {
       declineRenewal(alvo);
       return;
@@ -971,7 +970,7 @@ const handleKanbanMouseMove = (e) => {
     // Clientes. O que muda é só a flag que já existe e que a Meta também usa.
     if (alvo?._expiredCard) return declineExpired(alvo);
     if (!alvo || alvo.status === 'Perda') return;
-    if (!canEditLead(appUser, alvo)) {
+    if (!canEditLead(appUser)) {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }

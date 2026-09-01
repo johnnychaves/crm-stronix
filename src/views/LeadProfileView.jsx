@@ -112,13 +112,13 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   const interactions = useLeadTimeline({ db, leadId: lead?.id });
   const toast = useToast();
   const { openProfile } = useLeadProfile();
-  const isReadOnly = !canEditLead(appUser, lead);
+  const isReadOnly = !canEditLead(appUser);
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
   // notas/interações e agendar na timeline de QUALQUER lead (base compartilhada,
-  // PR #101) — mesmo não sendo o responsável. Edição dos dados do lead,
-  // Venda/Perda, reatribuição de responsável e exclusão seguem com dono/admin
-  // (isReadOnly / isAdminUser). As regras do Firestore já permitem interações
-  // por qualquer membro do tenant, então não há mudança de rules.
+  // PR #101) — mesmo não sendo o responsável. Edição do cadastro, Venda/Perda,
+  // contrato e reatribuição de responsável andam junto com isso: isReadOnly hoje
+  // só barra quem está sem vínculo de authUid (ver canEditLead). A exclusão é a
+  // única coisa que continua no gestor (isAdminUser).
   const canTimeline = Boolean(appUser?.authUid);
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
   const fallbackFunnelId = lead.funnelId || getDefaultFunnel(safeFunnels)?.id || null;
