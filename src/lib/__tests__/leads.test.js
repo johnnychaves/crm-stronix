@@ -23,6 +23,7 @@ import {
   outcomeAppliesToAula,
   DAILY_GOAL_CATEGORIES,
   contactOwnerId,
+  canEditLead,
 } from '../leads.js';
 
 // 15 de julho de 2026 — dia de referência dos testes.
@@ -421,5 +422,33 @@ describe('contactOwnerId', () => {
   it('lead sem consultor e sem escolha devolve null', () => {
     expect(contactOwnerId({})).toBeNull();
     expect(contactOwnerId(null)).toBeNull();
+  });
+});
+
+describe('canEditLead', () => {
+  const gestor = { id: 'u1', authUid: 'auth-1', role: 'admin' };
+  const dono = { id: 'u2', authUid: 'auth-2', role: 'consultor' };
+  const colega = { id: 'u3', authUid: 'auth-3', role: 'consultor' };
+  const leadDoDono = { id: 'l1', consultantId: 'u2', consultantAuthUid: 'auth-2' };
+
+  it('gestor e dono editam, como sempre', () => {
+    expect(canEditLead(gestor)).toBe(true);
+    expect(canEditLead(dono)).toBe(true);
+  });
+
+  it('consultor edita lead que não é dele — a base é compartilhada', () => {
+    expect(canEditLead(colega)).toBe(true);
+  });
+
+  it('não depende do lead: mesma resposta para lead de outro, sem dono ou nulo', () => {
+    expect(canEditLead(colega, leadDoDono)).toBe(true);
+    expect(canEditLead(colega, { id: 'l2' })).toBe(true);
+    expect(canEditLead(colega, null)).toBe(true);
+  });
+
+  it('usuário sem vínculo de authUid não escreve — é a chave que as rules exigem', () => {
+    expect(canEditLead({ id: 'u4', role: 'consultor' })).toBe(false);
+    expect(canEditLead(null)).toBe(false);
+    expect(canEditLead(undefined)).toBe(false);
   });
 });

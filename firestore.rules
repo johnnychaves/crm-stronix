@@ -179,14 +179,27 @@ service cloud.firestore {
 
     // Contratos de matrícula (feature lead→cliente). Histórico imutável: 1 doc
     // por matrícula e por renovação, ligado ao lead por leadId. Qualquer membro
-    // do tenant lê; cria/edita o DONO do lead (consultantAuthUid) ou admin.
+    // do tenant lê, cria e edita: matricular, renovar e dar desfecho no contrato
+    // deixaram de ser exclusividade do dono do lead — é a mesma base
+    // compartilhada dos leads, e a tela liberou junto (canEditLead).
+    //
+    // O contrato grava o consultor do LEAD, não quem clicou (lib/contracts.js),
+    // porque o crédito da venda é dele no ranking e na comissão. Era isso que a
+    // regra antiga barrava sem querer: o consultor que fechasse a venda de um
+    // colega escrevia o authUid do colega no doc e caía no permission-denied.
+    // O que fica de guarda é a AUTORIA: no update, consultantAuthUid não muda.
+    // Sem ela, qualquer membro do tenant reescreveria pelo SDK a autoria de uma
+    // venda alheia. `.get(campo, null)` cobre contrato legado sem o campo, e o
+    // isAdmin vem DEPOIS para o caminho comum não pagar o get() do doc do usuário
+    // (o gestor segue com a saída para corrigir uma venda creditada errado).
     // Sem delete pelo cliente — o histórico não se apaga (igual ao daily_goal_history).
     match /artifacts/{appId}/public/data/stronix_contratos/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
-      allow create: if inTenant(appId) && tenantActive(appId)
-        && (isAdmin(appId) || request.resource.data.consultantAuthUid == request.auth.uid);
+      allow create: if inTenant(appId) && tenantActive(appId);
       allow update: if inTenant(appId) && tenantActive(appId)
-        && (isAdmin(appId) || resource.data.consultantAuthUid == request.auth.uid);
+        && (request.resource.data.get('consultantAuthUid', null)
+              == resource.data.get('consultantAuthUid', null)
+            || isAdmin(appId));
       allow delete: if false;
     }
 

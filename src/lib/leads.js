@@ -243,8 +243,18 @@ export const isAdminUser = (user) => user?.role === 'admin';
 // que é compartilhada.
 export const contactOwnerId = (lead) => lead?.nextFollowUpOwnerId || lead?.consultantId || null;
 
-export const canEditLead = (user, lead) =>
-  isAdminUser(user) || (Boolean(lead?.consultantAuthUid) && lead.consultantAuthUid === user?.authUid);
+// Gestor e consultor têm a MESMA liberdade sobre a ficha: editar o cadastro do
+// lead/cliente, mover no funil, registrar venda, perda e desfecho de contrato.
+// Antes só o dono do lead (ou o admin) podia, e a trava vivia só aqui — as rules
+// já liberavam a escrita para qualquer membro do tenant desde a base
+// compartilhada. Na prática o consultor via a carteira do colega, cobria férias
+// e esbarrava no toast na hora de agir; matricular quem estava de folga
+// dependia do gestor.
+//
+// O que sobra de guarda é o VÍNCULO do usuário: sem authUid a escrita é negada
+// pelas rules de qualquer jeito, então a tela avisa em vez de deixar falhar.
+// Excluir lead continua só do gestor (botão) e do dono ou admin (rules).
+export const canEditLead = (user) => Boolean(user?.authUid);
 
 // --- Security fields written alongside leads/interactions ---
 
