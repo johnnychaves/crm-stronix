@@ -192,6 +192,18 @@ async function referralSignup(req, res) {
     const now = admin.firestore.FieldValue.serverTimestamp();
     const referrer = await loadReferrer(slug, req.body?.ref);
 
+    // SEM INDICADOR VÁLIDO NÃO GRAVA NADA. Este endpoint é público: qualquer
+    // pessoa na internet alcança ele com o slug da academia, que é descobrível.
+    // Enquanto o cadastro sem `ref` era aceito, o lead caía no funil padrão —
+    // o mesmo que o time trabalha todo dia — e o formulário virava um canal
+    // aberto de injeção em qualquer academia. O link compartilhado sempre leva
+    // o ref, então quem chega aqui sem ele editou a URL ou veio de um cliente
+    // que foi apagado. A página segue abrindo sem personalização (referral-info
+    // continua degradando); só o envio é que exige o indicador.
+    if (!referrer) {
+      return res.status(403).json({ error: 'Este link de indicação não é mais válido. Peça um novo a quem indicou você.' });
+    }
+
     // Dedupe em DUAS chaves (telefone sempre; CPF quando veio). Cadastro já
     // existente → MESMA resposta de sucesso (não vazar quem é aluno) + evento
     // na timeline do existente pro time decidir — sem auto-vínculo nem mudança

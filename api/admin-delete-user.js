@@ -1,12 +1,15 @@
 import { adminAuth, verifyRequest } from './_firebaseAdmin.js';
-import { usersCollection, isTenantAdmin } from './_auth.js';
+import { usersCollection, isTenantAdmin, resolveTargetVerdict, targetVerdictError, TARGET_OK, TARGET_FOREIGN, TARGET_SUPERADMIN } from './_auth.js';
 import { getSeatUsage } from './_plans.js';
 import { syncSubscriptionValue } from './_asaas.js';
 import { withSentry } from './_sentry.js';
 
 // Exclui um consultor do tenant do admin. ADMIN do tenant only.
-// SEGURANÇA: o authUid a deletar vem SEMPRE do doc validado dentro do tenant —
-// nunca do body — para evitar IDOR (admin de A apagando conta de usuário de B).
+//
+// SEGURANÇA: o authUid a deletar vem do doc dentro do tenant, nunca do body —
+// mas isso sozinho NÃO evitava o IDOR, porque o doc é escrito pelo próprio
+// admin. Quem prova que a conta é desta academia é o claim `tenantId` do
+// Firebase Auth, checado em resolveTargetVerdict antes do deleteUser.
 
 export default withSentry(async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -42,6 +45,21 @@ export default withSentry(async function handler(req, res) {
     const resolvedAuthUid = docSnap.data()?.authUid || null;
     const deletedRole = docSnap.data()?.role || 'consultant';
 
+    // Tirar o uid do doc em vez do body NÃO fecha o IDOR sozinho: o doc é
+    // escrito pelo próprio admin (as rules liberam o write nos usuários da
+    // academia dele), então dava para gravar ali o uid de alguém de outra
+    // academia e apagar a conta dessa pessoa. Quem decide é o claim do Auth.
+    //
+    // Recusa só o que é ataque: conta de OUTRA academia e conta do dono da
+    // plataforma. Cadastro sem conta no Auth ou com conta sem claim segue e
+    // apaga apenas o registro interno — é limpeza de cadastro legado, e o
+    // gestor já pode apagar esse doc direto pelas rules de qualquer jeito.
+    const verdict = await resolveTargetVerdict(resolvedAuthUid, auth.tenantId);
+    if (verdict === TARGET_FOREIGN || verdict === TARGET_SUPERADMIN) {
+      const denied = targetVerdictError(verdict);
+      return res.status(denied.status).json({ error: denied.error });
+    }
+
     // Excluir consultor com extras faturáveis em uso muda o preço → sync depois.
     let hadExtras = false;
     if (deletedRole !== 'admin') {
@@ -49,7 +67,8 @@ export default withSentry(async function handler(req, res) {
       catch (e) { console.error('seat check (delete)', e?.message || e); }
     }
 
-    if (resolvedAuthUid) {
+    // Só apaga a conta do Auth quando ela é comprovadamente desta academia.
+    if (verdict === TARGET_OK) {
       try {
         await adminAuth.deleteUser(resolvedAuthUid);
       } catch (err) {

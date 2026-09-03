@@ -51,6 +51,10 @@ STRONILEAD (super-admin · claim superAdmin:true)
 ```
 api/                      Funções serverless (Vercel) com Firebase Admin SDK
   _firebaseAdmin.js       Init do Admin + verifyRequest (verifica ID token)
+  _auth.js                isTenantAdmin + veredito de tenancy do alvo pelo claim
+                          (src/lib/tenantGuard.js) — nunca pelo doc de usuário
+  _tenantPrivate.js       Perfil/WhatsApp do dono em /tenants/{id}/private/profile
+                          (fora do doc raiz, que todo membro lê no login)
   provision-tenant.js     [super-admin] POST cria tenant+admin+seed · GET lista
   tenant-status.js        [super-admin] POST suspende/reativa + revoga tokens
   invite-create.js        [admin] cria convite (/tenants/{id}/invites)
@@ -61,7 +65,10 @@ api/                      Funções serverless (Vercel) com Firebase Admin SDK
 scripts/                  Utilitários Admin (rodar fora do app)
   set-super-admin.js      Define claim superAdmin num usuário
   register-tenant.js      Registra um tenant legado na coleção `tenants`
-  backfill-tenant-claims.js  Backfill de claim tenantId em usuários antigos
+  backfill-tenant-claims.js  Claim tenantId nos usuários DE UMA academia
+                             (`<tenantId>` obrigatório; simula sem `--apply`)
+  migrate-tenant-private.js  Move perfil/WhatsApp do dono para o subdoc privado
+                             `/tenants/{id}/private/profile` (simula sem `--apply`)
 src/
   App.jsx                 Toda a UI (single-file)
   lib/                    firebase.js, leads.js, funnels.js, dates.js, constants.js, auth.js

@@ -23,6 +23,41 @@ const PATTERNS = [
 
 const MAX_DEPTH = 6;
 
+// A query string carrega segredo. O convite viaja em /?invite=<token>&t=<tenant>
+// e o SDK preenche request.url com o href inteiro, então o token chegaria ao
+// Sentry mesmo com corpo, cookie e header já removidos. O corte é aqui, e não
+// no init, porque este módulo serve o front e as funções da api/.
+export function stripQuery(url) {
+  if (typeof url !== 'string' || !url) return url;
+  const cut = url.search(/[?#]/);
+  return cut === -1 ? url : url.slice(0, cut);
+}
+
+// Chaves em que o SDK guarda URL dentro de span, contexto de trace e breadcrumb.
+const URL_KEYS = ['url', 'url.full', 'http.url', 'to', 'from'];
+
+function stripUrlsIn(bag) {
+  if (!bag || typeof bag !== 'object') return bag;
+  for (const key of URL_KEYS) {
+    if (typeof bag[key] === 'string') bag[key] = stripQuery(bag[key]);
+  }
+  delete bag['url.query'];
+  return bag;
+}
+
+// O htmlTreeAsString do SDK anexa aria-label, type, name, title e alt ao seletor
+// do elemento clicado. title e alt são justamente onde o app põe nome de cliente
+// e o campo "dor" (card do Kanban, Avatar, Agendamentos), então a PII entra pelo
+// caminho do DOM, não pela mensagem de erro. Os cinco atributos são fixos no
+// código do SDK: a opção dom.serializeAttribute não desliga isso, por isso a
+// redação acontece aqui. Tag e classe ficam, que é o valor de diagnóstico.
+const DOM_ATTR_RE = /\[(title|alt|aria-label)="[^"]*"\]/g;
+
+export function redactDomAttrs(text) {
+  if (typeof text !== 'string') return text;
+  return text.replace(DOM_ATTR_RE, '[$1="[redigido]"]');
+}
+
 export function maskSensitive(value) {
   if (typeof value !== 'string') return value;
   let out = value;
@@ -103,11 +138,48 @@ export function scrubEvent(event) {
   if (event.request) {
     delete event.request.data;
     delete event.request.cookies;
+    if (typeof event.request.url === 'string') event.request.url = stripQuery(event.request.url);
+    delete event.request.query_string;
     if (event.request.headers) {
       delete event.request.headers.authorization;
       delete event.request.headers.cookie;
     }
   }
 
+  // Transação (beforeSendTransaction): a URL reaparece nas spans e no contexto
+  // de trace, que não passam pelo bloco de request acima.
+  if (Array.isArray(event.spans)) {
+    for (const span of event.spans) {
+      if (!span) continue;
+      stripUrlsIn(span.data);
+      stripUrlsIn(span.attributes);
+      if (typeof span.description === 'string') {
+        span.description = maskSensitive(span.description);
+        // Só corta quando a descrição carrega uma URL de verdade, para não
+        // truncar texto de diagnóstico que por acaso tenha "?".
+        if (span.description.includes('://')) span.description = stripQuery(span.description);
+      }
+    }
+  }
+  if (event.contexts?.trace) {
+    stripUrlsIn(event.contexts.trace.data);
+    stripUrlsIn(event.contexts.trace.attributes);
+  }
+
   return event;
+}
+
+// beforeBreadcrumb do Sentry: devolver null descarta a migalha. Aqui nada é
+// descartado, só redigido — a trilha de cliques é o que explica o erro.
+export function scrubBreadcrumb(crumb) {
+  if (!crumb) return crumb;
+
+  if (typeof crumb.message === 'string') {
+    const fromDom = String(crumb.category || '').startsWith('ui.');
+    crumb.message = maskSensitive(fromDom ? redactDomAttrs(crumb.message) : crumb.message);
+  }
+
+  if (crumb.data) crumb.data = stripUrlsIn(scrubDeep(crumb.data));
+
+  return crumb;
 }

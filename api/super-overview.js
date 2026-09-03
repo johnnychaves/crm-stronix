@@ -1,6 +1,7 @@
 import { adminDb, verifyRequest } from './_firebaseAdmin.js';
 import { effectivePrice, loadPlans } from './_plans.js';
 import { isAsaasConfigured } from './_asaas.js';
+import { readTenantPrivate } from './_tenantPrivate.js';
 import { withSentry } from './_sentry.js';
 
 // Visão agregada da plataforma para o painel super-admin — SUPER-ADMIN only.
@@ -39,12 +40,14 @@ async function lastInteractionMillis(tenantId) {
 async function tenantMetrics(doc, plansMap) {
   const id = doc.id;
   const data = doc.data() || {};
-  const [userCount, managerCount, leadCount, interactionCount, lastInteractionMs] = await Promise.all([
+  const [userCount, managerCount, leadCount, interactionCount, lastInteractionMs, priv] = await Promise.all([
     countOr(dataCol(id, 'stronix_users')),
     countOr(dataCol(id, 'stronix_users').where('role', '==', 'admin')),
     countOr(dataCol(id, 'stronix_leads')),
     countOr(dataCol(id, 'stronix_interactions')),
     lastInteractionMillis(id),
+    // Perfil e WhatsApp do responsável vivem no subdocumento privado.
+    readTenantPrivate(id, data),
   ]);
   const consultantCount = Math.max(0, userCount - managerCount);
   const createdAt = toMillis(data.createdAt);
@@ -64,11 +67,11 @@ async function tenantMetrics(doc, plansMap) {
     createdAt,
     primaryAdminEmail: data.primaryAdminEmail || null,
     activationPending: data.activationPending === true, // convite de ativação ainda não aceito
-    responsiblePhone: data.responsiblePhone || null,
+    responsiblePhone: priv.responsiblePhone || null,
     monthlyPrice,
     internalNotes: data.internalNotes || '',
     settings: data.settings || null,
-    profile: data.profile || null, // Perfil da academia (editado no Detail do console)
+    profile: priv.profile || null, // Perfil da academia (editado no Detail do console; subdoc privado)
     paymentStatus: data.paymentStatus || null,
     lastPaymentAt: toMillis(data.lastPaymentAt),
     nextBillingAt: toMillis(data.nextBillingAt),

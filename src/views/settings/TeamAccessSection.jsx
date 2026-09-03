@@ -48,7 +48,7 @@ const PROFESSORS_COLUMNS = [
 const initialsOf = (name) => (name || '?')
   .trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
-const emptyForm = { name: '', email: '', authUid: '', password: '', shiftStart: '', shiftEnd: '', dailyVolumeTarget: '' };
+const emptyForm = { name: '', email: '', password: '', shiftStart: '', shiftEnd: '', dailyVolumeTarget: '' };
 
 const normalizeEmail = (v) => String(v || '').trim().toLowerCase();
 const normalizeUid = (v) => String(v || '').trim();
@@ -177,7 +177,6 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     setForm({
       name: user.name || '',
       email: user.email || '',
-      authUid: user.authUid || '',
       password: '',
       shiftStart: user.shiftStart || '',
       shiftEnd: user.shiftEnd || '',
@@ -250,7 +249,9 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, target.id), {
         name: newName,
         email: normalizeEmail(form.email),
-        authUid: normalizeUid(form.authUid) || null,
+        // authUid não sai daqui: é a chave que liga o cadastro à conta do Auth,
+        // e as rules agora recusam a troca. Ele nasce no /api/admin-create-user
+        // e no aceite de convite.
         shiftStart: form.shiftStart || null,
         shiftEnd: form.shiftEnd || null,
         // Vazio ou 0 = sem meta de prospecção. Não existe padrão de academia:
@@ -278,7 +279,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       }
 
       if (form.password.trim()) {
-        const targetUid = normalizeUid(form.authUid) || target.authUid;
+        const targetUid = target.authUid;
         if (!targetUid) {
           toast.error('Cadastro sem authUid. Não é possível redefinir senha.');
         } else {
