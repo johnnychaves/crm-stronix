@@ -1,4 +1,17 @@
-# Importação de clientes de outros sistemas: plano de implementação
+| `src/lib/clientImportWrites.js` (novo) | `lookupExisting` (consultas `in` por `cpfDigits` e `whatsappDigits`, `array-contains-any` em `nameTokens` para os homônimos)  const wanted = new Set(unmatched.map((c) => c.nameLower).filter(Boolean));
+  const firstTokens = [...new Set(unmatched.map((c) => c.nameLower.split(' ')[0]).filter(Boolean))];
+  for (const part of chunk(firstTokens, IN_LIMIT)) {
+    const snap = await getDocs(query(leadsCol(db), where('nameTokens', 'array-contains-any', part)));
+    snap.docs.forEach((d) => {
+      const l = normalizeLeadDoc(d);
+      const key = normalizeName(l.name);
+      if (!wanted.has(key)) return;
+      const list = byName.get(key) || [];
+      if (!list.some((x) => x.id === l.id)) list.push(l);
+      byName.set(key, list);
+    });
+  }
+  return { byCpf, byPhone, byName };# Importação de clientes de outros sistemas: plano de implementação
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -1995,6 +2008,7 @@ Create `src/lib/clientImportWrites.js`:
 import { collection, doc, getDocs, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { appId, LEADS_PATH, CONTRACTS_PATH, INTERACTIONS_PATH } from './firebase.js';
 import { normalizeLeadDoc } from './leads.js';
+import { normalizeName } from './clientImport.js';
 
 // Limite do operador `in` do Firestore.
 const IN_LIMIT = 30;
@@ -2021,9 +2035,14 @@ const queryIn = async (db, field, values) => {
   return found;
 };
 
-// Índice da base para resolveMatch (clientImport.js): CPF e telefone em duas
-// passadas, nome só para quem não casou por nenhum dos dois (economiza
-// leitura e é o único uso do nome, que nunca casa sozinho).
+// Índice da base para resolveMatch (clientImport.js): CPF e telefone por
+// igualdade em duas passadas; nome só para quem não casou por nenhum dos dois
+// (é o único uso do nome, que nunca casa sozinho). O nome NÃO consulta
+// nameLower por igualdade: o cadastro grava nameLower sem colapsar espaços,
+// então "Ana  Silva" digitada com dois espaços nunca casaria com a planilha.
+// Consulta nameTokens (array de palavras, sem espaço) pelo primeiro token e
+// recompõe a chave a partir do `name` gravado com a mesma normalizeName da
+// planilha. Dedupe por id: um doc pode voltar em mais de um lote.
 export async function lookupExisting({ db, candidates }) {
   const byCpf = new Map();
   const byPhone = new Map();
