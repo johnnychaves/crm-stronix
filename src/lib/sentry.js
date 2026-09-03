@@ -2,7 +2,7 @@
 // A lógica de limpeza mora em sentryScrub.js, que é puro e testado.
 
 import * as Sentry from '@sentry/react';
-import { scrubEvent } from './sentryScrub.js';
+import { scrubEvent, scrubBreadcrumb } from './sentryScrub.js';
 
 const env = import.meta.env || {};
 const DSN = env.VITE_SENTRY_DSN || '';
@@ -33,6 +33,13 @@ export function initSentry() {
     tracesSampleRate: 0.1,
 
     beforeSend: scrubEvent,
+    // O beforeSend só vale para evento de ERRO. Sem esta linha, a amostra de
+    // 10% das transações sairia sem limpeza nenhuma, levando a URL inteira
+    // (e o token de convite que viaja nela) para o Sentry.
+    beforeSendTransaction: scrubEvent,
+    // Redige nome de cliente e o campo "dor" que o SDK captura sozinho dos
+    // atributos title/alt/aria-label do elemento clicado.
+    beforeBreadcrumb: scrubBreadcrumb,
   });
 
   return true;
