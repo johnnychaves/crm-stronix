@@ -253,6 +253,16 @@ service cloud.firestore {
         allow read: if isSuperAdmin() || isAdmin(tenantId);
         allow write: if false;
       }
+
+      // Dados privados da academia: perfil (CNPJ, CPF e nascimento do
+      // responsável, endereço, e-mail) e WhatsApp do responsável. Saíram do doc
+      // raiz porque a raiz é lida por TODO membro no login, e consultor não tem
+      // por que ler o CPF do dono. Escrita só via Admin SDK (tenant-status,
+      // provision-tenant, asaas self-service); hoje nenhuma tela lê direto.
+      match /private/{docId} {
+        allow read: if isSuperAdmin() || isAdmin(tenantId);
+        allow write: if false;
+      }
     }
 
     // Log de auditoria do super-admin (provisionamento, status, "entrar como").

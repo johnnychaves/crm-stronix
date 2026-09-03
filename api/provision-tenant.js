@@ -3,6 +3,7 @@ import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { loadPlans } from './_plans.js';
 import { logAudit } from './_audit.js';
 import { sanitizeProfile } from './_profile.js';
+import { writeTenantPrivate } from './_tenantPrivate.js';
 import { passwordTooShort, passwordTooShortError } from './_auth.js';
 import { withSentry } from './_sentry.js';
 
@@ -264,8 +265,6 @@ export default withSentry(async function handler(req, res) {
             city: String(city || '').trim(),
             state: String(state || '').trim().toUpperCase().slice(0, 2),
           },
-          ...(profilePatch ? { profile: profilePatch } : {}),
-          ...(String(responsiblePhone || '').trim() ? { responsiblePhone: String(responsiblePhone).trim() } : {}),
           ...(internal === true ? { internal: true } : {}),
           ...(negotiated !== null ? { monthlyPrice: negotiated } : {}),
           primaryAdminUid: userRecord ? userRecord.uid : null,
@@ -285,6 +284,18 @@ export default withSentry(async function handler(req, res) {
           return res.status(409).json({ error: `Já existe uma organização com o identificador "${slug}".` });
         }
         throw createErr;
+      }
+
+      // 2b. Perfil e WhatsApp do responsável no SUBDOCUMENTO privado, fora do
+      // doc raiz que todo membro lê no login. Best-effort: é metadado, o tenant
+      // já existe, e o Console edita o perfil depois se esta escrita falhar.
+      try {
+        await writeTenantPrivate(slug, {
+          profile: profilePatch,
+          ...(String(responsiblePhone || '').trim() ? { responsiblePhone: String(responsiblePhone).trim() } : {}),
+        });
+      } catch (privErr) {
+        console.error('provision-tenant: perfil privado', privErr?.message || privErr);
       }
 
       // 3. modo SENHA: doc do admin dentro do tenant.

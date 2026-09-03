@@ -3,9 +3,10 @@
 //   • super-admin  → tenant-status.js (PATCH do tenant)
 //   • self-service → asaas.js handleTenantSelf (action:'updateProfile')
 //
-// Os campos vivem em `tenant.profile`. NÃO duplicamos fontes já existentes:
-// cidade/UF continuam em `tenant.settings` e o WhatsApp do responsável em
-// `tenant.responsiblePhone`. Logo ADIADA: sem campo de imagem nesta versão.
+// Os campos vivem no SUBDOCUMENTO privado /tenants/{id}/private/profile
+// (api/_tenantPrivate.js), junto com o WhatsApp do responsável — fora do doc
+// raiz, que todo membro da academia lê no login. Cidade/UF continuam em
+// `tenant.settings`, que é dado público. Logo ADIADA: sem campo de imagem.
 //
 // Arquivo com prefixo `_` → utilitário, NÃO conta no limite de 12 Serverless
 // Functions do Vercel Hobby.

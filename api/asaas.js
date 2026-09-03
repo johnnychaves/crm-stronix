@@ -6,6 +6,7 @@ import {
   cancelSubscription, listSubscriptionPayments,
 } from './_asaas.js';
 import { sanitizeProfile } from './_profile.js';
+import { readTenantPrivate, writeTenantPrivate } from './_tenantPrivate.js';
 import { withSentry } from './_sentry.js';
 
 // Endpoint ÚNICO do Asaas (gestão de assinatura + webhook no mesmo arquivo, para
@@ -291,6 +292,7 @@ async function handleTenantSelf(req, res, auth) {
   const plansMap = await loadPlans();
 
   if (req.method === 'GET') {
+    const priv = await readTenantPrivate(auth.tenantId, tenant);
     let invoices = [];
     if (tenant.asaasSubscriptionId && isAsaasConfigured()) {
       try {
@@ -321,9 +323,9 @@ async function handleTenantSelf(req, res, auth) {
       // Perfil da academia (lido pela aba "Perfil da academia"): nome + campos de
       // texto (profile) + cidade/UF (settings) + WhatsApp (responsiblePhone).
       displayName: tenant.displayName || null,
-      profile: tenant.profile || null,
+      profile: priv.profile || null,
       settings: { city: tenant.settings?.city || '', state: tenant.settings?.state || '' },
-      responsiblePhone: tenant.responsiblePhone || '',
+      responsiblePhone: priv.responsiblePhone || '',
       priceMonthly: cur?.priceMonthly ?? null,
       billingCycle: tenant.billingCycle || 'monthly',
       paymentStatus: tenant.paymentStatus || null,
@@ -342,12 +344,14 @@ async function handleTenantSelf(req, res, auth) {
   }
 
   // Self-service: o admin salva o Perfil da academia (campos de texto; logo
-  // adiada). Grava em tenant.profile + cidade/UF (settings) + WhatsApp
-  // (responsiblePhone) — exatamente as mesmas fontes do caminho do super-admin.
+  // adiada). Perfil e WhatsApp vão para o SUBDOCUMENTO privado
+  // (api/_tenantPrivate.js); só cidade/UF, dado público, ficam no doc raiz —
+  // exatamente as mesmas fontes do caminho do super-admin (tenant-status).
   if (req.method === 'POST' && req.body?.action === 'updateProfile') {
     const patch = { updatedAt: admin.firestore.FieldValue.serverTimestamp() };
+    const privatePatch = {};
     const profilePatch = sanitizeProfile(req.body.profile);
-    if (profilePatch) patch.profile = profilePatch;
+    if (profilePatch) privatePatch.profile = profilePatch;
     const s = req.body.settings;
     if (s && typeof s === 'object') {
       const setS = {};
@@ -355,12 +359,15 @@ async function handleTenantSelf(req, res, auth) {
       if (s.state !== undefined) setS.state = String(s.state || '').trim().toUpperCase().slice(0, 2);
       if (Object.keys(setS).length) patch.settings = setS;
     }
-    if (req.body.responsiblePhone !== undefined) {
-      patch.responsiblePhone = String(req.body.responsiblePhone || '').trim().slice(0, 30);
+    if (req.body.responsiblePhone !== undefined) privatePatch.responsiblePhone = req.body.responsiblePhone;
+    if (Object.keys(patch).length === 1 && !Object.keys(privatePatch).length) {
+      return res.status(400).json({ error: 'Nada para atualizar.' });
     }
-    if (Object.keys(patch).length === 1) return res.status(400).json({ error: 'Nada para atualizar.' });
     await ref.set(patch, { merge: true });
-    await audit('tenant.profile.self', auth.tenantId, auth.uid, { changed: Object.keys(patch).filter((k) => k !== 'updatedAt') });
+    const privateChanged = await writeTenantPrivate(auth.tenantId, privatePatch);
+    await audit('tenant.profile.self', auth.tenantId, auth.uid, {
+      changed: [...Object.keys(patch).filter((k) => k !== 'updatedAt'), ...privateChanged],
+    });
     return res.status(200).json({ ok: true });
   }
 
@@ -424,7 +431,8 @@ async function handleTenantSelf(req, res, auth) {
 
     try {
       if (chosen !== tenant.plan) await ref.update({ plan: chosen, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
-      const customer = await findOrCreateCustomer({ tenantId: auth.tenantId, name: tenant.displayName, cpfCnpj, email: tenant.primaryAdminEmail, mobilePhone: tenant.responsiblePhone });
+      const { responsiblePhone } = await readTenantPrivate(auth.tenantId, tenant);
+      const customer = await findOrCreateCustomer({ tenantId: auth.tenantId, name: tenant.displayName, cpfCnpj, email: tenant.primaryAdminEmail, mobilePhone: responsiblePhone });
       const nextDueDate = ymd(Date.now()); // trial encerrado → cobra a partir de hoje
       const sub = await createSubscription({ customerId: customer.id, value, cycle: cycleAsaas, nextDueDate, description: `STRONILEAD — plano ${chosen}`, tenantId: auth.tenantId });
       let invoiceUrl = null, nextBillingMs = null;
