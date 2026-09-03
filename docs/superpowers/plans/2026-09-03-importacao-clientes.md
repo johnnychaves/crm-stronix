@@ -1,17 +1,4 @@
-| `src/lib/clientImportWrites.js` (novo) | `lookupExisting` (consultas `in` por `cpfDigits` e `whatsappDigits`, `array-contains-any` em `nameTokens` para os homônimos)  const wanted = new Set(unmatched.map((c) => c.nameLower).filter(Boolean));
-  const firstTokens = [...new Set(unmatched.map((c) => c.nameLower.split(' ')[0]).filter(Boolean))];
-  for (const part of chunk(firstTokens, IN_LIMIT)) {
-    const snap = await getDocs(query(leadsCol(db), where('nameTokens', 'array-contains-any', part)));
-    snap.docs.forEach((d) => {
-      const l = normalizeLeadDoc(d);
-      const key = normalizeName(l.name);
-      if (!wanted.has(key)) return;
-      const list = byName.get(key) || [];
-      if (!list.some((x) => x.id === l.id)) list.push(l);
-      byName.set(key, list);
-    });
-  }
-  return { byCpf, byPhone, byName };# Importação de clientes de outros sistemas: plano de implementação
+# Importação de clientes de outros sistemas: plano de implementação
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -42,7 +29,7 @@
 | `src/lib/spreadsheetRead.js` (novo) | Lê `.xlsx`/`.csv` do `File` do navegador e devolve `{ headers, rows }`. Único lugar que importa `xlsx`, por `import()` dinâmico. |
 | `src/lib/importPresets.js` (novo) | Campos-alvo, presets por sistema (NextFit pronto), detecção pela assinatura dos cabeçalhos e chute por sinônimo para o mapeamento manual. |
 | `src/lib/clientImport.js` (novo) | Normalizadores (telefone, CPF, nome, data, sexo, VIP, situações), `parseRow`, dedupe no arquivo, enriquecimento (consultor, professor, plano), escopo, casamento, classificação, `buildImportedClientWrites`, contadores e CSV do relatório. Puro. |
-| `src/lib/clientImportWrites.js` (novo) | `lookupExisting` (consultas `in` por `cpfDigits`, `whatsappDigits`, `nameLower`) e `runImport` (batches de até 450 operações, progresso, falha por lote). |
+| `src/lib/clientImportWrites.js` (novo) | `lookupExisting` (consultas `in` por `cpfDigits` e `whatsappDigits`, `array-contains-any` em `nameTokens` para os homônimos) e `runImport` (batches de até 450 operações, progresso, falha por lote). |
 | `src/lib/timeline.js` | `type: 'import'` classifica como Sistema. |
 | `src/views/settings/ImportClientsSection.jsx` (novo) | O assistente: Arquivo → Mapeamento → Revisão → Importar. |
 | `src/views/settings/SettingsView.jsx` | Item "Importar clientes" no grupo Pessoas, só com `appUser.impersonating` (ou dev local). |
@@ -2055,12 +2042,19 @@ export async function lookupExisting({ db, candidates }) {
   });
   const unmatched = candidates.filter((c) =>
     !(c.cpfDigits && byCpf.has(c.cpfDigits)) && !(c.whatsappDigits && byPhone.has(c.whatsappDigits)));
-  (await queryIn(db, 'nameLower', unmatched.map((c) => c.nameLower))).forEach((l) => {
-    if (!l.nameLower) return;
-    const list = byName.get(l.nameLower) || [];
-    list.push(l);
-    byName.set(l.nameLower, list);
-  });
+  const wanted = new Set(unmatched.map((c) => c.nameLower).filter(Boolean));
+  const firstTokens = [...new Set(unmatched.map((c) => c.nameLower.split(' ')[0]).filter(Boolean))];
+  for (const part of chunk(firstTokens, IN_LIMIT)) {
+    const snap = await getDocs(query(leadsCol(db), where('nameTokens', 'array-contains-any', part)));
+    snap.docs.forEach((d) => {
+      const l = normalizeLeadDoc(d);
+      const key = normalizeName(l.name);
+      if (!wanted.has(key)) return;
+      const list = byName.get(key) || [];
+      if (!list.some((x) => x.id === l.id)) list.push(l);
+      byName.set(key, list);
+    });
+  }
   return { byCpf, byPhone, byName };
 }
 
