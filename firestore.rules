@@ -94,18 +94,43 @@ service cloud.firestore {
         && (isAdmin(appId) || resource.data.consultantAuthUid == request.auth.uid);
     }
 
+    // authUid é a CHAVE DE PERMISSÃO do cadastro: é ele que diz de qual conta do
+    // Firebase Auth aquele documento fala. Quem consegue reescrevê-lo aponta o
+    // cadastro para a conta de outra pessoa. Enquanto o admin pôde gravá-lo, dava
+    // para pôr o uid de alguém de OUTRA academia num membro do próprio time e
+    // fazer /api/admin-set-password e /api/admin-delete-user agirem sobre aquela
+    // conta — a checagem de "é do meu tenant?" consultava justamente o documento
+    // que o atacante acabara de escrever. Os endpoints agora decidem pelo claim
+    // do Auth, e aqui o campo para de ser escrevível pelo cliente.
+    //
+    // O campo só entra por dois caminhos: o Admin SDK (admin-create-user,
+    // invite-accept), que não passa por regra, e o autovínculo do primeiro login,
+    // em que a pessoa grava o PRÓPRIO uid no PRÓPRIO doc.
+    function authUidKept() {
+      return request.resource.data.get('authUid', null) == resource.data.get('authUid', null);
+    }
+    function selfLinksOwnUid(userId) {
+      return request.auth.uid == userId
+        && request.resource.data.get('authUid', null) == request.auth.uid;
+    }
+
     // stronix_users: NÃO usa tenantActive — o login precisa ler/vincular o doc do
     // próprio usuário mesmo para conseguir mostrar a tela de bloqueio. O self-update
     // já é travado (role/tenantId imutáveis) contra escalada de privilégio.
     match /artifacts/{appId}/public/data/stronix_users/{userId} {
       allow read: if inTenant(appId);
-      allow write: if isAdmin(appId) && inTenant(appId);
-      // o próprio usuário pode atualizar o próprio doc (ex.: vínculo de authUid no
-      // login), MAS sem alterar campos sensíveis (role/tenantId) — caso contrário
-      // um consultor poderia se autopromover a admin editando o próprio doc.
-      allow update: if inTenant(appId) && request.auth.uid == userId
-        && request.resource.data.role == resource.data.role
-        && request.resource.data.tenantId == resource.data.tenantId;
+      allow create, delete: if isAdmin(appId) && inTenant(appId);
+      allow update: if inTenant(appId)
+        && (authUidKept() || selfLinksOwnUid(userId))
+        && (
+          // admin edita a equipe (nome, e-mail, turno, meta), menos a chave
+          isAdmin(appId)
+          // ou o próprio usuário mexe no próprio doc (vínculo do login, "já li"
+          // do sino), sem se autopromover
+          || (request.auth.uid == userId
+              && request.resource.data.role == resource.data.role
+              && request.resource.data.tenantId == resource.data.tenantId)
+        );
     }
 
     match /artifacts/{appId}/public/data/stronix_sources/{id} {

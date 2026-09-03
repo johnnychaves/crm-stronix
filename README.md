@@ -61,7 +61,8 @@ api/                      Funções serverless (Vercel) com Firebase Admin SDK
 scripts/                  Utilitários Admin (rodar fora do app)
   set-super-admin.js      Define claim superAdmin num usuário
   register-tenant.js      Registra um tenant legado na coleção `tenants`
-  backfill-tenant-claims.js  Backfill de claim tenantId em usuários antigos
+  backfill-tenant-claims.js  Claim tenantId nos usuários DE UMA academia
+                             (`<tenantId>` obrigatório; simula sem `--apply`)
 src/
   App.jsx                 Toda a UI (single-file)
   lib/                    firebase.js, leads.js, funnels.js, dates.js, constants.js, auth.js
