@@ -26,10 +26,22 @@ const uniqueHeaders = (raw) => {
   });
 };
 
+// CSV em UTF-8 sem BOM chega decodificado como Windows-1252 pelo SheetJS e
+// todo acento vira lixo ("SituaÃ§Ã£o"). Se os bytes são UTF-8 válido, avisa o
+// codepage; senão deixa o padrão (BOM ou cp1252 já funcionam).
+const isUtf8 = (buf) => {
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(buf);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 export async function readSpreadsheetFile(file) {
   const XLSX = await loadXlsx();
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: 'array', cellDates: true, raw: true });
+  const wb = XLSX.read(buf, { type: 'array', cellDates: true, raw: true, ...(isUtf8(buf) ? { codepage: 65001 } : {}) });
   const sheetName = wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
   if (!ws) throw new Error('Planilha sem aba.');
@@ -40,7 +52,7 @@ export async function readSpreadsheetFile(file) {
   const rows = matrix
     .slice(headerIdx + 1)
     .map((r, i) => ({ cells: r, row: headerIdx + 2 + i }))
-    .filter(({ cells }) => cells.some((v) => v !== '' && v != null))
+    .filter(({ cells }) => cells.some((v) => String(v ?? '').trim() !== ''))
     .map(({ cells, row }) => {
       const obj = { __row: row };
       headers.forEach((h, j) => { if (h) obj[h] = cells[j]; });
