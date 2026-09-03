@@ -78,6 +78,10 @@ Os dados vão para dentro do tenant da academia. Não há estrutura paralela:
 cada aluno vira o mesmo par lead + contrato que nasce quando um consultor
 fecha uma matrícula pelo app.
 
+Em dev local não existe "Entrar como" (a `/api` responde 404 no vite), então
+nesse ambiente o admin da academia vê a seção para conseguir testar; em
+produção a condição é só o claim.
+
 A trava é de tela, não de permissão. `impersonating` é condição de
 renderização; as regras do Firestore já permitem que um admin de academia
 crie lead e contrato, porque é o que a matrícula pela tela faz. A importação
@@ -254,11 +258,16 @@ honesto: ninguém foi captado hoje.
 O assistente oferece duas opções. A padrão, "ativos e vencidos recentes",
 aceita a linha quando:
 
-- a situação do contrato é ativo, a vencer ou trancado; ou
-- é vencido com data de fim dentro da janela de Vencidos da academia
-  (`expiredWindowDays`, padrão 15); ou
+- a situação do contrato é trancado (o tempo não corre); ou
+- tem data de fim e, pelo relógio (`deriveContractStatus`, a mesma regra do
+  app), o contrato está vigente, agendado ou a vencer; ou
+- tem data de fim, está vencido pelo relógio, e venceu há no máximo a janela
+  de Vencidos da academia (`expiredWindowDays`, padrão 15); ou
 - não tem data de fim e a situação do cliente é ativa (ou a coluna não
   existe).
+
+Com data de fim, a situação escrita na planilha não manda: uma linha marcada
+"Ativo" com fim de dois anos atrás é um vencido antigo e fica de fora.
 
 Ficam de fora cancelados, vencidos além da janela, e linhas sem data de fim
 cujo cliente está inativo. A opção "todos" aceita tudo que passou na
