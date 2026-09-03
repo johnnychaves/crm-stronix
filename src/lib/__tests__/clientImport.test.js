@@ -35,6 +35,13 @@ describe('normalizePhoneDigits', () => {
     expect(normalizePhoneDigits(null)).toBeNull();
     expect(normalizePhoneDigits('123456789012345')).toBeNull();
   });
+
+  it('tira o 0 de tronco legado (0xx DDD)', () => {
+    expect(normalizePhoneDigits('(0xx71) 3333-4444')).toBe('7133334444');
+    expect(normalizePhoneDigits('(0xx71) 99999-8888')).toBe('71999998888');
+    expect(normalizePhoneDigits('0 55 3333-4444')).toBe('5533334444');
+    expect(normalizePhoneDigits('55 0 71 99999-8888')).toBe('71999998888');
+  });
 });
 
 describe('isValidCpf / normalizeCpfDigits', () => {
@@ -135,6 +142,8 @@ describe('contractSituationFromText', () => {
     expect(contractSituationFromText('A vencer')).toBe(CONTRACT_SITUATION.A_VENCER);
     expect(contractSituationFromText('Cancelado')).toBe(CONTRACT_SITUATION.CANCELADO);
     expect(contractSituationFromText('Trancado')).toBe(CONTRACT_SITUATION.TRANCADO);
+    expect(contractSituationFromText('Pré-cancelado')).toBe(CONTRACT_SITUATION.ATIVO);
+    expect(contractSituationFromText('Suspenso')).toBe(CONTRACT_SITUATION.TRANCADO);
   });
   it('vazio é null e texto estranho é desconhecido', () => {
     expect(contractSituationFromText('')).toBeNull();

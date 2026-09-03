@@ -22,7 +22,9 @@ import { CONTRACT_STATUS, deriveContractStatus } from './contracts.js';
 // casaria). Fora disso devolve null: a linha guarda o bruto e não casa.
 export const normalizePhoneDigits = (raw) => {
   let d = onlyDigits(raw);
-  if (d.startsWith('55') && (d.length === 12 || d.length === 13)) d = d.slice(2);
+  if (d.startsWith('55') && (d.length === 12 || d.length === 13 || d.length === 14)) d = d.slice(2);
+  // Prefixo de tronco legado ("0xx71", "0 71"): DDD nunca começa com 0.
+  if (d.startsWith('0') && (d.length === 11 || d.length === 12)) d = d.slice(1);
   return d.length === 10 || d.length === 11 ? d : null;
 };
 
@@ -48,7 +50,10 @@ export const normalizeCpfDigits = (raw) => {
   return isValidCpf(d) ? { digits: d, invalid: false } : { digits: null, invalid: true };
 };
 
-// Igual ao nameLower que buildLeadSearchFields grava, com espaços colapsados.
+// Chave de nome da planilha: normalize + espaços colapsados. O cadastro grava
+// nameLower SEM colapsar espaços, por isso o casamento por nome (lookupExisting,
+// em clientImportWrites.js) recompõe a chave a partir do name gravado com esta
+// mesma função, em vez de comparar nameLower por igualdade.
 export const normalizeName = (raw) => normalize(String(raw ?? '').replace(/\s+/g, ' ').trim());
 
 const localDate = (y, m, d) => {
@@ -61,6 +66,8 @@ const localDate = (y, m, d) => {
 // 'dd/mm/aaaa', 'dd/mm/aa' e 'aaaa-mm-dd', com ou sem hora atrás. Ano de dois
 // dígitos: até (ano atual + 10) é 20xx, acima é 19xx: contrato vence daqui a
 // poucos anos, nascimento é décadas atrás.
+// ISO com hora e fuso ("...T03:00:00Z") toma a data escrita ao pé da letra, sem
+// converter fuso: a convenção do app é o dia local, e a planilha não traz instante.
 export const parseImportDate = (raw, now = new Date()) => {
   if (raw == null || raw === '') return null;
   if (raw instanceof Date) {
@@ -115,6 +122,9 @@ export const CONTRACT_SITUATION = {
 export const contractSituationFromText = (raw) => {
   const s = normalizeName(raw);
   if (!s) return null;
+  // "Pré-cancelado" / "a cancelar" ainda está vigente até o fim: é ativo, e a
+  // data de fim decide o resto.
+  if (/pre[- ]?cancel|a cancelar|cancelamento (agendado|programado)/.test(s)) return CONTRACT_SITUATION.ATIVO;
   if (/cancel/.test(s)) return CONTRACT_SITUATION.CANCELADO;
   if (/tranc|pausa|suspens|congel/.test(s)) return CONTRACT_SITUATION.TRANCADO;
   if (/a vencer|vencendo|renov/.test(s)) return CONTRACT_SITUATION.A_VENCER;
