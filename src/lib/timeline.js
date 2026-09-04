@@ -52,6 +52,10 @@ export const classifyInteraction = (i) => {
   // qualquer regex de texto: o 🎉 de conversão menciona "matrícula" e sem este
   // gate cairia em 'contract' (ou, pior, no 'system' oculto por padrão).
   if (i.type === 'referral') return 'referral';
+  // Cadastro importado de outro sistema (clientImportWrites.js): evento de
+  // sistema, atrás do interruptor. Vem antes do regex de contrato porque o
+  // texto cita o plano e a vigência.
+  if (i.type === 'import') return 'system';
   // Contrato vem ANTES das demais regras: matrícula/renovação são gravadas como
   // status_change, mas pertencem ao bucket de contrato. O gate por type evita
   // que o regex capture outros types cujo texto livre só por coincidência
