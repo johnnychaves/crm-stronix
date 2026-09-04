@@ -1,5 +1,5 @@
 import { adminAuth, verifyRequest } from './_firebaseAdmin.js';
-import { usersCollection, isTenantAdmin, passwordTooShort, passwordTooShortError } from './_auth.js';
+import { usersCollection, isTenantAdmin, assertTargetInTenant, passwordTooShort, passwordTooShortError } from './_auth.js';
 import { withSentry } from './_sentry.js';
 
 export default withSentry(async function handler(req, res) {
@@ -30,7 +30,15 @@ export default withSentry(async function handler(req, res) {
       return res.status(403).json({ error: 'Apenas o master pode redefinir senhas.' });
     }
 
-    // O alvo precisa pertencer ao MESMO tenant do admin.
+    // O alvo precisa pertencer ao MESMO tenant do admin — e a prova disso é o
+    // CLAIM da conta, não o doc em stronix_users. O doc é escrito pelo próprio
+    // admin (as rules liberam o write na coleção de usuários da academia dele),
+    // então bastava gravar o authUid de alguém de outra academia num membro do
+    // próprio time para a busca abaixo encontrar e a troca de senha passar.
+    const denied = await assertTargetInTenant(targetAuthUid, auth.tenantId);
+    if (denied) return res.status(denied.status).json({ error: denied.error });
+
+    // Segunda camada: além de ser do tenant, precisa ser gente cadastrada nele.
     const targetSnap = await usersCollection(auth.tenantId)
       .where('authUid', '==', targetAuthUid)
       .limit(1)

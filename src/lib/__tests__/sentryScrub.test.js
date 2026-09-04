@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { maskSensitive, scrubDeep, isNoise, scrubEvent } from '../sentryScrub.js';
+import { maskSensitive, scrubDeep, isNoise, scrubEvent, stripQuery, scrubBreadcrumb } from '../sentryScrub.js';
 
 describe('maskSensitive', () => {
   it('mascara CPF formatado', () => {
@@ -124,5 +124,90 @@ describe('scrubEvent', () => {
 
   it('devolve null para evento de ruido', () => {
     expect(scrubEvent({ exception: { values: [{ value: 'ResizeObserver loop' }] } })).toBe(null);
+  });
+});
+
+describe('stripQuery', () => {
+  it('corta a query string do link de convite', () => {
+    expect(stripQuery('https://app.com/?invite=abc-123&t=academia'))
+      .toBe('https://app.com/');
+  });
+
+  it('corta o fragmento', () => {
+    expect(stripQuery('https://app.com/lead#token=xyz')).toBe('https://app.com/lead');
+  });
+
+  it('deixa URL sem query intacta', () => {
+    expect(stripQuery('https://app.com/leads')).toBe('https://app.com/leads');
+  });
+
+  it('devolve valor nao-string sem alterar', () => {
+    expect(stripQuery(null)).toBe(null);
+    expect(stripQuery(undefined)).toBe(undefined);
+  });
+});
+
+describe('scrubEvent — URL', () => {
+  it('tira o token de convite da URL da requisicao', () => {
+    const event = { request: { url: 'https://app.com/?invite=7f3a-9b1c&t=academia' } };
+    expect(scrubEvent(event).request.url).toBe('https://app.com/');
+  });
+
+  it('remove a query_string separada', () => {
+    const event = { request: { url: 'https://app.com/', query_string: 'invite=7f3a-9b1c' } };
+    expect(scrubEvent(event).request.query_string).toBeUndefined();
+  });
+
+  it('corta a query nas spans de uma transacao', () => {
+    const event = {
+      type: 'transaction',
+      spans: [{ data: { 'url.full': 'https://app.com/?invite=7f3a-9b1c', 'http.method': 'GET' } }]
+    };
+    const out = scrubEvent(event);
+    expect(out.spans[0].data['url.full']).toBe('https://app.com/');
+    expect(out.spans[0].data['http.method']).toBe('GET');
+  });
+
+  it('corta a query no contexto de trace', () => {
+    const event = { contexts: { trace: { data: { url: 'https://app.com/?invite=abc' } } } };
+    expect(scrubEvent(event).contexts.trace.data.url).toBe('https://app.com/');
+  });
+
+  it('nao descarta transacao por falta de exception', () => {
+    const event = { type: 'transaction', transaction: '/leads' };
+    expect(scrubEvent(event)).not.toBe(null);
+  });
+});
+
+describe('scrubBreadcrumb', () => {
+  it('redige o nome do cliente vindo do title do card', () => {
+    const crumb = { category: 'ui.click', message: 'div.card > span[title="Maria Souza"]' };
+    expect(scrubBreadcrumb(crumb).message).toBe('div.card > span[title="[redigido]"]');
+  });
+
+  it('redige alt e aria-label', () => {
+    const crumb = { category: 'ui.click', message: 'img[alt="Joao Lima"][aria-label="Abrir ficha de Joao"]' };
+    expect(scrubBreadcrumb(crumb).message)
+      .toBe('img[alt="[redigido]"][aria-label="[redigido]"]');
+  });
+
+  it('preserva classe e tag, que sao o valor de diagnostico', () => {
+    const crumb = { category: 'ui.click', message: 'button.btn-primary[title="Ana"]' };
+    expect(scrubBreadcrumb(crumb).message).toBe('button.btn-primary[title="[redigido]"]');
+  });
+
+  it('mascara PII em breadcrumb que nao e de UI', () => {
+    const crumb = { category: 'fetch', message: 'POST /api/x tel 11987654321' };
+    expect(scrubBreadcrumb(crumb).message).toBe('POST /api/x tel [telefone]');
+  });
+
+  it('corta a query da URL em breadcrumb de navegacao', () => {
+    const crumb = { category: 'navigation', data: { to: 'https://app.com/?invite=abc', from: '/' } };
+    const out = scrubBreadcrumb(crumb);
+    expect(out.data.to).toBe('https://app.com/');
+  });
+
+  it('devolve o breadcrumb nulo sem quebrar', () => {
+    expect(scrubBreadcrumb(null)).toBe(null);
   });
 });

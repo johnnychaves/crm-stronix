@@ -2,6 +2,7 @@ import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { logAudit } from './_audit.js';
 import { loadPlans, getSeatUsage } from './_plans.js';
 import { sanitizeProfile } from './_profile.js';
+import { writeTenantPrivate } from './_tenantPrivate.js';
 import { withSentry } from './_sentry.js';
 
 // Atualiza status / plano / cobrança / perfil de uma organização — SUPERADMIN only.
@@ -193,14 +194,15 @@ export default withSentry(async function handler(req, res) {
       if (settings.logoUrl !== undefined) s.logoUrl = String(settings.logoUrl || '').slice(0, 500);
       if (Object.keys(s).length) update.settings = s;
     }
-    // Perfil da academia (campos de texto; logo adiada). Merge parcial em
-    // tenant.profile via set(merge:true); cidade/UF seguem em settings (acima).
+    // Perfil da academia (campos de texto; logo adiada) e WhatsApp do
+    // responsável vão para o SUBDOCUMENTO privado (api/_tenantPrivate.js), não
+    // para o doc raiz: a raiz é lida por todo membro da academia no login, e
+    // CPF/CNPJ do dono não têm por que passar na frente de consultor. Cidade/UF
+    // seguem em settings (acima), que é dado público da academia.
+    const privatePatch = {};
     const profilePatch = sanitizeProfile(profile);
-    if (profilePatch) update.profile = profilePatch;
-    // WhatsApp do responsável (top-level; reusado pelo link de ativação wa.me).
-    if (responsiblePhone !== undefined) {
-      update.responsiblePhone = String(responsiblePhone || '').trim().slice(0, 30);
-    }
+    if (profilePatch) privatePatch.profile = profilePatch;
+    if (responsiblePhone !== undefined) privatePatch.responsiblePhone = responsiblePhone;
     // Cobrança manual (ainda sem gateway de pagamento).
     if (paymentStatus !== undefined) {
       if (paymentStatus === null || paymentStatus === '') {
@@ -232,15 +234,16 @@ export default withSentry(async function handler(req, res) {
       update.statusChangedAt = admin.firestore.FieldValue.serverTimestamp();
     }
 
-    if (Object.keys(update).length === 1) {
+    if (Object.keys(update).length === 1 && !Object.keys(privatePatch).length) {
       return res.status(400).json({ error: 'Nada para atualizar.' });
     }
 
     await ref.set(update, { merge: true });
+    const privateChanged = await writeTenantPrivate(slug, privatePatch);
 
     await logAudit({
       action: 'tenant.update', tenantId: slug, actorUid: auth.uid,
-      details: { changed: Object.keys(update).filter((k) => k !== 'updatedAt') },
+      details: { changed: [...Object.keys(update).filter((k) => k !== 'updatedAt'), ...privateChanged] },
     });
 
     // Ao suspender, derruba as sessões ativas imediatamente.
