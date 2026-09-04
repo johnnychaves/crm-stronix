@@ -67,6 +67,7 @@ describe('isValidCpf / normalizeCpfDigits', () => {
     expect(normalizeCpfDigits('000.000.000-00')).toEqual({ digits: null, invalid: true });
     expect(normalizeCpfDigits('')).toEqual({ digits: null, invalid: false });
     expect(normalizeCpfDigits(undefined)).toEqual({ digits: null, invalid: false });
+    expect(normalizeCpfDigits(1234567890)).toEqual({ digits: '01234567890', invalid: false });
   });
 });
 
@@ -241,6 +242,11 @@ describe('parseRow', () => {
     expect(c.endsAt).toEqual(D(2026, 11, 12));
     expect(c.value).toBe(450);
   });
+
+  it('CEP numérico recupera o zero à esquerda', () => {
+    const c = parseRow(nextfitRow({ 'Cep': 4567000 }), NEXTFIT_MAPPING, 2, NOW);
+    expect(c.address.cep).toBe('04567000');
+  });
 });
 
 describe('isCandidateValid', () => {
@@ -282,6 +288,15 @@ describe('dedupeInFile', () => {
       { ...base, rowNumber: 3, endsAt: D(2026, 11, 12) }
     ]);
     expect(kept.map((c) => c.rowNumber)).toEqual([2]);
+  });
+
+  it('linha válida vence a inválida mesmo com fim mais antigo', () => {
+    const { kept, duplicates } = dedupeInFile([
+      { name: '', rowNumber: 2, cpfDigits: '52998224725', whatsappDigits: null, endsAt: D(2026, 11, 12) },
+      { name: 'Ana', rowNumber: 3, cpfDigits: '52998224725', whatsappDigits: null, endsAt: D(2026, 10, 1) }
+    ]);
+    expect(kept.map((c) => c.rowNumber)).toEqual([3]);
+    expect(duplicates.map((c) => [c.rowNumber, c.duplicateOf])).toEqual([[2, 3]]);
   });
 });
 

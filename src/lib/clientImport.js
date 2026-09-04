@@ -45,7 +45,8 @@ export const isValidCpf = (digits) => {
 // { digits, invalid }: digits só quando válido; invalid marca CPF preenchido
 // mas errado (vira aviso na linha, sem barrar).
 export const normalizeCpfDigits = (raw) => {
-  const d = onlyDigits(raw);
+  // Célula numérica perde o zero à esquerda: completa até 11 antes de validar.
+  const d = typeof raw === 'number' && Number.isFinite(raw) ? String(Math.trunc(raw)).padStart(11, '0') : onlyDigits(raw);
   if (!d) return { digits: null, invalid: false };
   return isValidCpf(d) ? { digits: d, invalid: false } : { digits: null, invalid: true };
 };
@@ -167,6 +168,9 @@ const cell = (row, mapping, field) => {
 };
 const str = (v) => (v == null ? '' : String(v).trim());
 const nullify = (v) => (str(v) ? str(v) : null);
+// Célula numérica perde o zero à esquerda (CEP 04567000 chega como 4567000):
+// completa até 8 dígitos. Texto passa como está.
+const cepStr = (v) => (typeof v === 'number' && Number.isFinite(v) ? String(Math.trunc(v)).padStart(8, '0') : str(v));
 
 export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
   const get = (field) => cell(row, mapping, field);
@@ -174,7 +178,7 @@ export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
   const cpf = normalizeCpfDigits(get('cpf'));
   const whatsappRaw = str(get('whatsapp'));
   const address = {
-    cep: str(get('addrCep')), street: str(get('addrStreet')), number: str(get('addrNumber')),
+    cep: cepStr(get('addrCep')), street: str(get('addrStreet')), number: str(get('addrNumber')),
     complement: str(get('addrComplement')), neighborhood: str(get('addrNeighborhood')),
     city: str(get('addrCity')), state: ''
   };
@@ -218,9 +222,10 @@ export const isCandidateValid = (c) =>
   String(c?.name || '').length > 1 && Boolean(c?.cpfDigits || c?.whatsappDigits);
 
 // Duplicata dentro do arquivo: mesmo CPF (ou, sem CPF, mesmo telefone) vira
-// uma só antes de qualquer consulta. Fica a de fim mais recente (null perde;
-// empate fica com a primeira). As outras saem com `duplicateOf` = linha que
-// ficou, para o relatório.
+// uma só antes de qualquer consulta. Fica a linha válida sobre a inválida;
+// entre válidas, a de fim mais recente (null perde; empate fica com a
+// primeira). As outras saem com `duplicateOf` = linha que ficou, para o
+// relatório.
 export const dedupeInFile = (candidates) => {
   const keyOf = (c) => (c.cpfDigits ? `cpf:${c.cpfDigits}` : c.whatsappDigits ? `tel:${c.whatsappDigits}` : null);
   const groups = new Map();
@@ -234,6 +239,10 @@ export const dedupeInFile = (candidates) => {
   });
   groups.forEach((list) => {
     const winner = list.reduce((best, c) => {
+      // Válida vence inválida; entre iguais, o fim mais recente (empate: a primeira).
+      const validBest = isCandidateValid(best);
+      const validC = isCandidateValid(c);
+      if (validC !== validBest) return validC ? c : best;
       const a = best.endsAt ? best.endsAt.getTime() : -Infinity;
       const b = c.endsAt ? c.endsAt.getTime() : -Infinity;
       return b > a ? c : best;
