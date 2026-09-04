@@ -48,12 +48,15 @@ export async function lookupExisting({ db, candidates }) {
   const byCpf = new Map();
   const byPhone = new Map();
   const byName = new Map();
-  (await queryIn(db, 'cpfDigits', candidates.map((c) => c.cpfDigits))).forEach((l) => {
-    if (l.cpfDigits && !byCpf.has(l.cpfDigits)) byCpf.set(l.cpfDigits, l);
-  });
-  (await queryIn(db, 'whatsappDigits', candidates.map((c) => c.whatsappDigits))).forEach((l) => {
-    if (l.whatsappDigits && !byPhone.has(l.whatsappDigits)) byPhone.set(l.whatsappDigits, l);
-  });
+  // Chave repetida na base (dado sujo): prefere o doc que é cliente, senão o
+  // primeiro que a consulta devolveu.
+  const keep = (map, key, l) => {
+    if (!key) return;
+    const cur = map.get(key);
+    if (!cur || (cur.lifecycleBucket !== 'cliente' && l.lifecycleBucket === 'cliente')) map.set(key, l);
+  };
+  (await queryIn(db, 'cpfDigits', candidates.map((c) => c.cpfDigits))).forEach((l) => keep(byCpf, l.cpfDigits, l));
+  (await queryIn(db, 'whatsappDigits', candidates.map((c) => c.whatsappDigits))).forEach((l) => keep(byPhone, l.whatsappDigits, l));
   const unmatched = candidates.filter((c) =>
     !(c.cpfDigits && byCpf.has(c.cpfDigits)) && !(c.whatsappDigits && byPhone.has(c.whatsappDigits)));
   const wanted = new Set(unmatched.map((c) => c.nameLower).filter(Boolean));
@@ -77,6 +80,8 @@ export async function lookupExisting({ db, candidates }) {
 // Falhou um batch (na montagem ou no commit): devolve quantas linhas entraram
 // e de qual linha em diante faltou; a recuperação é rodar o mesmo arquivo de
 // novo (idempotente).
+// Cada item precisa vir com `rowNumber` (o assistente acrescenta): é o que o
+// relatório usa para apontar de qual linha em diante faltou.
 export async function runImport({ db, appUser, items, importMeta, onProgress }) {
   const groups = [];
   let cur = [];

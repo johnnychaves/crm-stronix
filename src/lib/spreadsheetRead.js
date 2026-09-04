@@ -31,7 +31,8 @@ const uniqueHeaders = (raw) => {
 // resolveria, mas faz o SheetJS gritar console.error a cada leitura por falta
 // da tabela opcional. Então, quando o arquivo não é um zip (xlsx) e os bytes
 // são UTF-8 válido, decodificamos aqui e entregamos texto pronto; o resto
-// (xlsx, CSV com BOM, CSV em cp1252) segue o caminho padrão.
+// (xlsx e CSV que não decodifica como UTF-8, tipicamente cp1252) segue o caminho
+// padrão. CSV com BOM também decodifica e entra pelo texto, sem o BOM.
 const isZip = (bytes) => bytes.length > 1 && bytes[0] === 0x50 && bytes[1] === 0x4b;
 const decodeUtf8OrNull = (buf) => {
   try {

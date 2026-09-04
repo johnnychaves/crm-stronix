@@ -490,7 +490,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
 
           <div className="flex items-center justify-between gap-3">
             <SettingsBtn kind="soft" disabled={busy} onClick={() => { setReview(null); setDecisions({}); setStep(2); }}>Voltar ao mapeamento</SettingsBtn>
-            <SettingsBtn kind="primary" disabled={busy || summary.gravaveis === 0} onClick={runImportNow}>
+            <SettingsBtn kind="primary" disabled={busy || summary.gravaveis === 0 || summary.suspeita > 0} onClick={runImportNow}>
               Importar {summary.gravaveis} cadastro(s)
             </SettingsBtn>
           </div>
