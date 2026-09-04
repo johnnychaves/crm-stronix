@@ -243,9 +243,12 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     const writable = results.filter((r) => WRITABLE_OUTCOMES.includes(r.cls.outcome));
     if (!writable.length) { toast.info('Nada para gravar.'); return; }
     if (summary.suspeita > 0) { toast.warning('Decida as suspeitas por nome antes de importar.'); return; }
-    if (!window.confirm(`Gravar ${writable.length} cadastro(s) na base desta academia?\n\nO que já existe é promovido, não recriado. Esta ação não pode ser desfeita.`)) return;
     if (submittingRef.current) return;
     submittingRef.current = true;
+    if (!window.confirm(`Gravar ${writable.length} cadastro(s) na base desta academia?\n\nO que já existe é promovido, não recriado. Esta ação não pode ser desfeita.`)) {
+      submittingRef.current = false;
+      return;
+    }
 
     setBusy(true);
     try {
