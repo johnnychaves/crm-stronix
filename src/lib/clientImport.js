@@ -552,8 +552,12 @@ const contractSummary = (contract) => (contract ? {
   currentContractStatus: contract.status
 } : {});
 
+// "do NextFit" / "de planilha": a origem sem preset não leva artigo.
+const sourcePhrase = (label) => (label === 'planilha' ? 'de planilha' : `do ${label}`);
+const sourceField = (label) => (label === 'planilha' ? 'Importação por planilha' : `Importação ${label}`);
+
 export const buildImportInteractionText = ({ sourceLabel, contract }) =>
-  `Cadastro importado do ${sourceLabel}. ${contract
+  `Cadastro importado ${sourcePhrase(sourceLabel)}. ${contract
     ? `Plano ${contract.planName || 'sem nome'}, vigência até ${fmtDia(contract.endsAt)}.`
     : 'Sem vigência registrada.'}`;
 
@@ -563,10 +567,6 @@ export const buildImportInteractionText = ({ sourceLabel, contract }) =>
 export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, importMeta, now }) => {
   const lead = cls?.lead || null;
   const isNew = !lead;
-  const historical = c.startsAt || c.registeredAt || null;
-  const convertedAt = historical || now;
-  const warnings = [...(c.warnings || [])];
-  if (!historical) warnings.push('Sem data histórica: conta como venda de hoje');
 
   const owner = lead?.consultantId
     ? { consultantId: lead.consultantId, consultantName: lead.consultantName ?? null, consultantAuthUid: lead.consultantAuthUid ?? null }
@@ -576,6 +576,14 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
   const contract = cls?.createContract && c.endsAt
     ? buildImportedContract(c, { owner, leadName, importMeta })
     : null;
+
+  // Data histórica: início real, data de cadastro, ou o início inferido do
+  // contrato (fim menos a duração do plano). Só sem nenhuma delas cai em hoje.
+  const historical = c.startsAt || c.registeredAt || contract?.startsAt || null;
+  const convertedAt = historical || now;
+  const warnings = [...(c.warnings || [])];
+  if (!historical) warnings.push('Sem data histórica: conta como venda de hoje');
+
   const stamps = { importedBy: importMeta.importedBy, importSource: importMeta.importSource, importBatchId: importMeta.importBatchId };
 
   let leadData;
@@ -594,7 +602,7 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
       modalidade: null,
       address: c.address,
       tags: c.vip ? ['VIP'] : [],
-      source: `Importação ${importMeta.sourceLabel}`,
+      source: sourceField(importMeta.sourceLabel),
       observation: '',
       funnelId: funnelId ?? null,
       professorId: c.professorId || null,
@@ -607,7 +615,7 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
       ...buildLeadSearchFields({ name: c.name, whatsapp, cpf }),
       createdAt: c.registeredAt || now,
       convertedAt,
-      clienteSince: earliest(c.registeredAt, c.startsAt) || now,
+      clienteSince: earliest(c.registeredAt, c.startsAt, contract?.startsAt) || now,
       lastInteractionAt: null,
       interactionsCount: 0,
       nextFollowUpType: null,
@@ -624,7 +632,7 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
       ...(promote ? CLIENT_MARKS : {}),
       ...contractSummary(contract),
       ...(promote ? { convertedAt: getSafeDateOrNull(lead.convertedAt) || convertedAt } : {}),
-      ...(lead.clienteSince ? {} : { clienteSince: earliest(c.registeredAt, c.startsAt) || now }),
+      ...(lead.clienteSince ? {} : { clienteSince: earliest(c.registeredAt, c.startsAt, contract?.startsAt) || now }),
       ...stamps
     };
     leadData.lifecycleBucket = deriveLeadBucket({ ...lead, ...leadData });
@@ -653,6 +661,7 @@ export const summarizeOutcomes = (results) => {
   s.gravaveis = 0;
   const planos = new Set();
   const consultores = new Set();
+  const professores = new Set();
   (results || []).forEach(({ c, cls }) => {
     s[cls.outcome] = (s[cls.outcome] || 0) + 1;
     if ((c.warnings || []).length) s.avisos += 1;
@@ -661,9 +670,11 @@ export const summarizeOutcomes = (results) => {
     if ((cls.outcome === OUTCOME.CRIAR || cls.outcome === OUTCOME.PROMOVER) && !c.endsAt) s.semVigencia += 1;
     if (cls.createContract && c.planName && !c.plan) planos.add(c.planName);
     if (c.consultantName && !c.consultant && !cls.lead?.consultantId) consultores.add(c.consultantName);
+    if (c.professorName && !c.professorId) professores.add(c.professorName);
   });
   s.planosForaDoCatalogo = [...planos];
   s.consultoresNaoReconhecidos = [...consultores];
+  s.professoresNaoReconhecidos = [...professores];
   return s;
 };
 

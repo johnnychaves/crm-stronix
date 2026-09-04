@@ -704,6 +704,21 @@ describe('buildImportedClientWrites', () => {
     const k = buildImportedContract({ ...VALID, endsAt: D(2026, 11, 12), contractSituation: 'trancado', plan: null }, { owner: OWNER, leadName: 'Ana', importMeta: { ...META, now: undefined } });
     expect(Object.values(k).some((v) => v === undefined)).toBe(false);
   });
+
+  it('sem início nem cadastro, o início inferido do contrato vira a data histórica', () => {
+    const c = { ...VALID, endsAt: D(2026, 9, 1), plan: PLANOS[1], planName: 'Mensal', consultant: null };
+    const w = buildImportedClientWrites({ c, cls: { lead: null, fill: null, createContract: true }, consultant: USERS[0], funnelId: 'f1', importMeta: META, now: NOW });
+    expect(w.contract.startsAt).toEqual(D(2026, 8, 1));
+    expect(w.leadData.convertedAt).toEqual(D(2026, 8, 1));
+    expect(w.leadData.clienteSince).toEqual(D(2026, 8, 1));
+    expect(w.warnings).toEqual([]);
+  });
+
+  it('sem preset o texto é "de planilha" e a origem "Importação por planilha"', () => {
+    const w = buildImportedClientWrites({ c: VALID, cls: { lead: null, fill: null, createContract: false }, consultant: USERS[0], funnelId: 'f1', importMeta: { ...META, sourceLabel: 'planilha', importSource: 'manual' }, now: NOW });
+    expect(w.interactionText).toBe('Cadastro importado de planilha. Sem vigência registrada.');
+    expect(w.leadData.source).toBe('Importação por planilha');
+  });
 });
 
 describe('summarizeOutcomes / buildReportCsv', () => {
@@ -711,21 +726,23 @@ describe('summarizeOutcomes / buildReportCsv', () => {
     { c: { ...VALID, rowNumber: 2, endsAt: D(2026, 11, 12), plan: PLANOS[0] }, cls: { outcome: OUTCOME.CRIAR, reason: 'x', createContract: true } },
     { c: { ...VALID, rowNumber: 3, endsAt: null, plan: null, consultant: null, consultantName: 'Zé' }, cls: { outcome: OUTCOME.PROMOVER, reason: 'y', createContract: false } },
     { c: { ...VALID, rowNumber: 4, endsAt: D(2026, 11, 12), plan: null, planName: 'Plano Ouro' }, cls: { outcome: OUTCOME.REGISTRAR_CONTRATO, reason: 'z', createContract: true } },
-    { c: { ...VALID, rowNumber: 5, warnings: ['CPF inválido'] }, cls: { outcome: OUTCOME.CONFLITO, reason: 'w', createContract: false } }
+    { c: { ...VALID, rowNumber: 5, warnings: ['CPF inválido'] }, cls: { outcome: OUTCOME.CONFLITO, reason: 'w', createContract: false } },
+    { c: { ...VALID, rowNumber: 6, endsAt: null, plan: null, professorId: null, professorName: 'Ninguém' }, cls: { outcome: OUTCOME.CRIAR, reason: 'p', createContract: false } }
   ];
 
   it('conta por resultado, sem vigência, planos fora do catálogo, consultores não reconhecidos e avisos', () => {
     const s = summarizeOutcomes(results);
-    expect(s.criar).toBe(1);
+    expect(s.criar).toBe(2);
     expect(s.promover).toBe(1);
     expect(s.registrar_contrato).toBe(1);
     expect(s.conflito).toBe(1);
     expect(s.sem_alteracao).toBe(0);
-    expect(s.semVigencia).toBe(1);
+    expect(s.semVigencia).toBe(2);
     expect(s.planosForaDoCatalogo).toEqual(['Plano Ouro']);
     expect(s.consultoresNaoReconhecidos).toEqual(['Zé']);
+    expect(s.professoresNaoReconhecidos).toEqual(['Ninguém']);
     expect(s.avisos).toBe(1);
-    expect(s.gravaveis).toBe(3);
+    expect(s.gravaveis).toBe(4);
   });
 
   it('CSV com BOM, ponto e vírgula e aspas escapadas', () => {

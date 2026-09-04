@@ -7,7 +7,7 @@ import { useToast } from '../../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { cn } from '../../lib/utils.js';
 import { readSpreadsheetFile } from '../../lib/spreadsheetRead.js';
-import { TARGET_FIELDS, TARGET_GROUP_LABEL, detectPreset, buildMapping, importSourceLabel } from '../../lib/importPresets.js';
+import { TARGET_FIELDS, TARGET_GROUP_LABEL, detectPreset, buildMapping, importSourceLabel, IMPORT_PRESETS } from '../../lib/importPresets.js';
 import {
   parseRow, dedupeInFile, enrichCandidate, distinctPlanNames, resolveMatch, classifyCandidate,
   buildImportedClientWrites, summarizeOutcomes, buildReportCsv,
@@ -122,12 +122,14 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
   const toast = useToast();
   const { professores, renewalGraceDays } = useGeneralConfig();
   const fileInputRef = useRef(null);
+  const submittingRef = useRef(false);
 
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
   const [file, setFile] = useState(null);            // { name, headers, rows, preset }
   const [mapping, setMapping] = useState({});
   const [planMap, setPlanMap] = useState({});        // { [nomeNormalizado]: planId | PLAN_AS_TEXT }
+  const [sourceId, setSourceId] = useState('manual');
   const [defaultConsultantId, setDefaultConsultantId] = useState('');
   const [scope, setScope] = useState(SCOPE.PADRAO);
   const [review, setReview] = useState(null);        // { base: [{ c, match }], now }
@@ -139,7 +141,11 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
   const defaultConsultant = consultants.find((u) => u.id === defaultConsultantId) || null;
   const windowDays = normalizeExpiredWindowDays(renewalGraceDays);
   const funnelId = getDefaultFunnel((funnels || []).filter((f) => !isSystemFunnel(f)))?.id || null;
-  const sourceLabel = importSourceLabel(file?.preset);
+  // Origem escolhida no passo 2 (pré-preenchida pelo preset detectado). Vale
+  // para o carimbo importSource e para o texto da timeline: a rodada 2
+  // (relatório de contratos, sem preset) continua registrada como NextFit.
+  const sourcePreset = IMPORT_PRESETS.find((p) => p.id === sourceId) || null;
+  const sourceLabel = importSourceLabel(sourcePreset);
 
   // Nomes de plano da planilha, para a tabela de mapeamento de planos. Lê só
   // a coluna mapeada: não precisa do parse completo da linha.
@@ -190,6 +196,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
       if (!headers.length || !rows.length) { toast.error('A planilha não tem cabeçalho ou não tem linhas.'); return; }
       const preset = detectPreset(headers);
       setFile({ name: f.name, headers, rows, preset });
+      setSourceId(preset?.id || 'manual');
       setMapping(buildMapping(headers, preset));
       setPlanMap({}); setReview(null); setDecisions({}); setReport(null);
       setStep(2);
@@ -237,12 +244,14 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     if (!writable.length) { toast.info('Nada para gravar.'); return; }
     if (summary.suspeita > 0) { toast.warning('Decida as suspeitas por nome antes de importar.'); return; }
     if (!window.confirm(`Gravar ${writable.length} cadastro(s) na base desta academia?\n\nO que já existe é promovido, não recriado. Esta ação não pode ser desfeita.`)) return;
+    if (submittingRef.current) return;
+    submittingRef.current = true;
 
     setBusy(true);
     try {
       const importMeta = {
         importedBy: appUser?.authUid || appUser?.id || null,
-        importSource: file.preset?.id || 'manual',
+        importSource: sourceId,
         sourceLabel,
         importBatchId: newBatchId(),
         now: review.now
@@ -278,6 +287,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
       setStep(3);
     } finally {
       setBusy(false);
+      submittingRef.current = false;
     }
   };
 
@@ -391,8 +401,19 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
               )}
           </SettingsPanel>
 
-          <SettingsPanel title="Consultor padrão e escopo">
-            <div className="px-5 pb-5 grid gap-4 sm:grid-cols-2">
+          <SettingsPanel title="Origem, consultor padrão e escopo">
+            <div className="px-5 pb-5 grid gap-4 sm:grid-cols-3">
+              <label className="flex flex-col gap-1">
+                <span className="text-[11.5px] font-semibold">Sistema de origem</span>
+                <Select value={sourceId} onValueChange={setSourceId}>
+                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {IMPORT_PRESETS.map((p) => <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>)}
+                    <SelectItem value="manual">Outro (planilha)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <span className="text-[11px] text-muted-foreground">Fica no carimbo de cada cadastro e na linha do tempo.</span>
+              </label>
               <label className="flex flex-col gap-1">
                 <span className="text-[11.5px] font-semibold">Consultor padrão *</span>
                 <Select value={defaultConsultantId || NONE} onValueChange={(v) => setDefaultConsultantId(v === NONE ? '' : v)}>
@@ -432,11 +453,12 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
               {COUNTER_ORDER.filter((k) => k !== OUTCOME.ERRO).map((k) => <Counter key={k} label={OUTCOME_LABEL[k]} value={summary[k] || 0} tone={COUNTER_TONE[k]} />)}
               <Counter label="Sem vigência" value={summary.semVigencia} tone="amber" />
             </div>
-            {(summary.semVigencia > 0 || summary.planosForaDoCatalogo.length > 0 || summary.consultoresNaoReconhecidos.length > 0 || summary.avisos > 0) && (
+            {(summary.semVigencia > 0 || summary.planosForaDoCatalogo.length > 0 || summary.consultoresNaoReconhecidos.length > 0 || summary.professoresNaoReconhecidos.length > 0 || summary.avisos > 0) && (
               <div className="px-5 pb-4 flex flex-col gap-1.5 text-[12px]">
                 {summary.semVigencia > 0 && <div className="flex items-start gap-2 text-amber-700 dark:text-amber-300"><AlertTriangle size={14} className="shrink-0 mt-px" /><span>{summary.semVigencia} cliente(s) sem vigência: não entram em Renovações nem em Vencidos até alguém registrar o contrato.</span></div>}
                 {summary.planosForaDoCatalogo.length > 0 && <div className="text-muted-foreground">{summary.planosForaDoCatalogo.length} plano(s) fora do catálogo: {summary.planosForaDoCatalogo.join(', ')}.</div>}
                 {summary.consultoresNaoReconhecidos.length > 0 && <div className="text-muted-foreground">Consultor não reconhecido (vai para {defaultConsultant?.name}): {summary.consultoresNaoReconhecidos.join(', ')}.</div>}
+                {summary.professoresNaoReconhecidos.length > 0 && <div className="text-muted-foreground">Professor não reconhecido (fica vazio): {summary.professoresNaoReconhecidos.join(', ')}.</div>}
                 {summary.avisos > 0 && <div className="text-muted-foreground">{summary.avisos} linha(s) com aviso (CPF inválido, data ilegível, sem data histórica). Aparecem no relatório.</div>}
               </div>
             )}

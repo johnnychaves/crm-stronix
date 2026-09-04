@@ -9,7 +9,7 @@
 import { collection, doc, getDocs, query, where, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { appId, LEADS_PATH, CONTRACTS_PATH, INTERACTIONS_PATH } from './firebase.js';
 import { normalizeLeadDoc } from './leads.js';
-import { normalizeName } from './clientImport.js';
+import { normalizeName, isCandidateValid } from './clientImport.js';
 
 // Limite do operador `in` (e do array-contains-any) do Firestore.
 const IN_LIMIT = 30;
@@ -57,8 +57,10 @@ export async function lookupExisting({ db, candidates }) {
   };
   (await queryIn(db, 'cpfDigits', candidates.map((c) => c.cpfDigits))).forEach((l) => keep(byCpf, l.cpfDigits, l));
   (await queryIn(db, 'whatsappDigits', candidates.map((c) => c.whatsappDigits))).forEach((l) => keep(byPhone, l.whatsappDigits, l));
+  // Só quem pode nascer ou casar consulta por nome: linha inválida não entra
+  // de qualquer jeito, e a consulta por token é a mais cara das três.
   const unmatched = candidates.filter((c) =>
-    !(c.cpfDigits && byCpf.has(c.cpfDigits)) && !(c.whatsappDigits && byPhone.has(c.whatsappDigits)));
+    isCandidateValid(c) && !(c.cpfDigits && byCpf.has(c.cpfDigits)) && !(c.whatsappDigits && byPhone.has(c.whatsappDigits)));
   const wanted = new Set(unmatched.map((c) => c.nameLower).filter(Boolean));
   const firstTokens = [...new Set(unmatched.map((c) => c.nameLower.split(' ')[0]).filter(Boolean))];
   for (const part of chunk(firstTokens, IN_LIMIT)) {

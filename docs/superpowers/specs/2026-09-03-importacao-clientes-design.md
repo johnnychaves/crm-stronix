@@ -233,7 +233,7 @@ Com a data de fim na mão:
 | `planId` / `planName` | Nome da planilha casado por nome normalizado com `stronix_planos`, ou pelo mapeamento feito no assistente. Sem correspondência: guarda o texto, `planId` nulo, relatório avisa "N planos fora do catálogo". |
 | `durationMonths` | Do plano do catálogo; senão meses inteiros entre início e fim; senão nulo. |
 | `value` / `listValue` | Coluna de valor, se existir; senão o valor de tabela do plano casado; senão zero. A unidade segue a do catálogo (conferir contra `stronix_planos` na implementação). |
-| `status` gravado | `ativo` para Ativo, Vencido e A vencer (o relógio decide, como no app). `cancelado` com `cancelledAt` na data de fim quando a situação disser cancelado. `trancado`, com `pausedAt` na data da importação por falta de dado melhor, quando disser trancado (a reativação pela ficha empurra o fim pelos dias parados a partir daí). Valor desconhecido: linha para revisão. |
+| `status` gravado | `ativo` para Ativo, Vencido e A vencer (o relógio decide, como no app). `cancelado` com `cancelledAt` na data de fim quando a situação disser cancelado. `trancado`, com `pausedAt` na data da importação por falta de dado melhor, quando disser trancado (a reativação pela ficha empurra o fim pelos dias parados a partir daí). Valor desconhecido: grava `ativo` (a data decide) e a linha ganha o aviso "Situação do contrato desconhecida", visível na revisão e no CSV. |
 | `renewedFromId` | Nulo. Histórico de contratos anteriores fica fora da v1. |
 
 Datas aceitas: `dd/mm/aaaa`, `dd/mm/aa`, `aaaa-mm-dd` e serial numérico do
