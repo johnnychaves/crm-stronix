@@ -64,6 +64,9 @@ export default defineConfig({
           if (id.includes('/firebase/') || id.includes('/@firebase/')) return 'firebase';
           if (id.includes('/lucide-react/')) return 'icons';
           if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) return 'react';
+          // SheetJS só entra pelo import() da importação de clientes: chunk
+          // próprio, baixado sob demanda. No 'vendor' ele iria para todo mundo.
+          if (id.includes('/xlsx/')) return 'xlsx';
           return 'vendor';
         },
       },
