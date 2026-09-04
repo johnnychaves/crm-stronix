@@ -12,6 +12,7 @@ import { parseValorBRL } from './format.js';
 import { buildLeadSearchFields, deriveLeadBucket } from './leadDerived.js';
 import { isClientLead } from './leads.js';
 import { CONTRACT_STATUS, deriveContractStatus } from './contracts.js';
+import { DEFAULT_EXPIRED_WINDOW_DAYS } from './expiredGoal.js';
 
 // ---------------------------------------------------------------------------
 // Normalizadores
@@ -321,7 +322,13 @@ export const isInScope = (c, scope, now, windowDays) => {
   if (!endsAt) return c.clientSituation !== 'inativo';
   const derived = deriveContractStatus({ status: CONTRACT_STATUS.ATIVO, startsAt: c.startsAt, endsAt }, now);
   if (derived !== CONTRACT_STATUS.VENCIDO) return true;
-  return daysBetween(endsAt, now) <= Number(windowDays);
+  // endsAt é meia-noite local; `now` no assistente é hora de relógio. Sem
+  // truncar, Math.round de daysBetween empurrava o limite da janela um dia
+  // conforme a hora em que o gestor clicasse. Compara dia contra dia.
+  const today = new Date(now);
+  today.setHours(0, 0, 0, 0);
+  const win = Number.isFinite(Number(windowDays)) ? Number(windowDays) : DEFAULT_EXPIRED_WINDOW_DAYS;
+  return daysBetween(endsAt, today) <= win;
 };
 
 // ---------------------------------------------------------------------------

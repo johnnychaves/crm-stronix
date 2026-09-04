@@ -373,6 +373,23 @@ describe('isInScope', () => {
     expect(isInScope(c({ contractSituation: 'cancelado' }), SCOPE.TODOS, NOW, W)).toBe(true);
     expect(isInScope(c({ clientSituation: 'inativo' }), SCOPE.TODOS, NOW, W)).toBe(true);
   });
+
+  it('a hora do dia não muda o limite da janela', () => {
+    const late = new Date(2026, 8, 3, 23, 0);
+    expect(isInScope(c({ endsAt: D(2026, 8, 19) }), SCOPE.PADRAO, late, W)).toBe(true);
+    expect(isInScope(c({ endsAt: D(2026, 8, 18) }), SCOPE.PADRAO, late, W)).toBe(false);
+  });
+
+  it('janela 0 aceita só quem venceu hoje; windowDays ausente usa o padrão', () => {
+    const midday = new Date(2026, 8, 3, 12, 0);
+    expect(isInScope(c({ endsAt: D(2026, 9, 3) }), SCOPE.PADRAO, midday, 0)).toBe(true);
+    expect(isInScope(c({ endsAt: D(2026, 9, 2) }), SCOPE.PADRAO, midday, 0)).toBe(false);
+    expect(isInScope(c({ endsAt: D(2026, 8, 25) }), SCOPE.PADRAO, midday, undefined)).toBe(true);
+  });
+
+  it('matrícula agendada (início no futuro) entra', () => {
+    expect(isInScope(c({ startsAt: D(2026, 10, 1), endsAt: D(2027, 1, 1) }), SCOPE.PADRAO, NOW, W)).toBe(true);
+  });
 });
 
 describe('resolveMatch', () => {
