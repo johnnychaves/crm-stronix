@@ -15,7 +15,11 @@ import {
   parseRow,
   isCandidateValid,
   dedupeInFile,
-  distinctPlanNames
+  distinctPlanNames,
+  enrichCandidate,
+  isInScope,
+  resolveMatch,
+  SCOPE
 } from '../clientImport.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
@@ -306,5 +310,81 @@ describe('distinctPlanNames', () => {
       { planName: 'Trimestral' }, { planName: 'TRIMESTRAL ' }, { planName: 'Mensal' }, { planName: null }, { planName: '' }
     ]);
     expect(out).toEqual([{ key: 'trimestral', label: 'Trimestral', count: 2 }, { key: 'mensal', label: 'Mensal', count: 1 }]);
+  });
+});
+
+const USERS = [{ id: 'u1', name: 'Bia Souza', authUid: 'a1' }, { id: 'u2', name: 'Caio', authUid: 'a2' }];
+const PROFS = [{ id: 'p1', name: 'Carlos Lima' }];
+const PLANOS = [
+  { id: 'pl1', name: 'Trimestral', durationMonths: 3, value: 450 },
+  { id: 'pl2', name: 'Mensal', durationMonths: 1, value: 150 }
+];
+
+describe('enrichCandidate', () => {
+  it('casa consultor, professor e plano por nome normalizado', () => {
+    const c = enrichCandidate({ consultantName: 'bia souza', professorName: 'CARLOS LIMA', planName: 'trimestral' }, { usersList: USERS, professores: PROFS, planos: PLANOS, planMap: {} });
+    expect(c.consultant).toBe(USERS[0]);
+    expect(c.professorId).toBe('p1');
+    expect(c.professorName).toBe('Carlos Lima');
+    expect(c.plan).toBe(PLANOS[0]);
+  });
+
+  it('sem correspondência: consultor null, professorId null (mantém o texto), plano null', () => {
+    const c = enrichCandidate({ consultantName: 'Zé', professorName: 'Ninguém', planName: 'Plano Ouro' }, { usersList: USERS, professores: PROFS, planos: PLANOS, planMap: {} });
+    expect(c.consultant).toBeNull();
+    expect(c.professorId).toBeNull();
+    expect(c.professorName).toBe('Ninguém');
+    expect(c.plan).toBeNull();
+  });
+
+  it('o mapeamento manual de plano vence o nome; __text__ força texto', () => {
+    const byMap = enrichCandidate({ planName: 'Plano Ouro' }, { usersList: USERS, professores: PROFS, planos: PLANOS, planMap: { 'plano ouro': 'pl2' } });
+    expect(byMap.plan).toBe(PLANOS[1]);
+    const forcedText = enrichCandidate({ planName: 'Trimestral' }, { usersList: USERS, professores: PROFS, planos: PLANOS, planMap: { trimestral: '__text__' } });
+    expect(forcedText.plan).toBeNull();
+  });
+});
+
+describe('isInScope', () => {
+  const W = 15;
+  const c = (over) => ({ contractSituation: 'ativo', clientSituation: 'ativo', startsAt: null, endsAt: null, ...over });
+
+  it('com data de fim o relógio decide: vigente entra, vencido só dentro da janela', () => {
+    expect(isInScope(c({ endsAt: D(2026, 11, 12) }), SCOPE.PADRAO, NOW, W)).toBe(true);
+    expect(isInScope(c({ endsAt: D(2026, 8, 25), contractSituation: 'vencido' }), SCOPE.PADRAO, NOW, W)).toBe(true);
+    expect(isInScope(c({ endsAt: D(2026, 8, 19) }), SCOPE.PADRAO, NOW, W)).toBe(true);
+    expect(isInScope(c({ endsAt: D(2026, 8, 18) }), SCOPE.PADRAO, NOW, W)).toBe(false);
+    expect(isInScope(c({ endsAt: D(2026, 7, 1), contractSituation: 'ativo' }), SCOPE.PADRAO, NOW, W)).toBe(false);
+  });
+
+  it('cancelado fica fora; trancado entra mesmo com fim no passado', () => {
+    expect(isInScope(c({ endsAt: D(2027, 1, 1), contractSituation: 'cancelado' }), SCOPE.PADRAO, NOW, W)).toBe(false);
+    expect(isInScope(c({ endsAt: D(2026, 1, 1), contractSituation: 'trancado' }), SCOPE.PADRAO, NOW, W)).toBe(true);
+  });
+
+  it('sem data de fim manda a situação do cliente', () => {
+    expect(isInScope(c({ clientSituation: 'ativo' }), SCOPE.PADRAO, NOW, W)).toBe(true);
+    expect(isInScope(c({ clientSituation: null }), SCOPE.PADRAO, NOW, W)).toBe(true);
+    expect(isInScope(c({ clientSituation: 'inativo' }), SCOPE.PADRAO, NOW, W)).toBe(false);
+  });
+
+  it('escopo "todos" aceita tudo', () => {
+    expect(isInScope(c({ endsAt: D(2020, 1, 1) }), SCOPE.TODOS, NOW, W)).toBe(true);
+    expect(isInScope(c({ contractSituation: 'cancelado' }), SCOPE.TODOS, NOW, W)).toBe(true);
+    expect(isInScope(c({ clientSituation: 'inativo' }), SCOPE.TODOS, NOW, W)).toBe(true);
+  });
+});
+
+describe('resolveMatch', () => {
+  const ana = { id: 'L1', name: 'Ana', cpfDigits: '52998224725', whatsappDigits: '71999990001' };
+  const bruno = { id: 'L2', name: 'Bruno', cpfDigits: '', whatsappDigits: '71999990002' };
+  const homonimo = { id: 'L3', name: 'Ana', cpfDigits: '', whatsappDigits: '' };
+  const index = { byCpf: new Map([['52998224725', ana]]), byPhone: new Map([['71999990002', bruno]]), byName: new Map([['ana', [homonimo]]]) };
+
+  it('CPF antes de telefone, telefone antes de nome', () => {
+    expect(resolveMatch({ cpfDigits: '52998224725', whatsappDigits: '71999990002', nameLower: 'ana' }, index)).toEqual({ kind: 'cpf', lead: ana, homonyms: [] });
+    expect(resolveMatch({ cpfDigits: null, whatsappDigits: '71999990002', nameLower: 'ana' }, index)).toEqual({ kind: 'phone', lead: bruno, homonyms: [] });
+    expect(resolveMatch({ cpfDigits: '11144477735', whatsappDigits: '71999990009', nameLower: 'ana' }, index)).toEqual({ kind: 'name', lead: null, homonyms: [homonimo] });
+    expect(resolveMatch({ cpfDigits: null, whatsappDigits: null, nameLower: 'ninguem' }, index)).toEqual({ kind: 'none', lead: null, homonyms: [] });
   });
 });

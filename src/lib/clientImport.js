@@ -268,6 +268,79 @@ export const distinctPlanNames = (candidates) => {
   return [...map.values()].sort((a, b) => b.count - a.count);
 };
 
+// ---------------------------------------------------------------------------
+// Enriquecimento: consultor, professor e plano por nome normalizado
+// ---------------------------------------------------------------------------
+
+const findByName = (list, name) => {
+  const key = normalizeName(name);
+  if (!key) return null;
+  return (list || []).find((x) => normalizeName(x?.name) === key) || null;
+};
+
+// Valor especial do mapeamento de planos: "manter como texto" (não casa com o
+// catálogo mesmo que o nome bata).
+export const PLAN_AS_TEXT = '__text__';
+
+export const enrichCandidate = (c, { usersList, professores, planos, planMap } = {}) => {
+  const consultant = findByName(usersList, c.consultantName);
+  const professor = findByName(professores, c.professorName);
+  const planKey = normalizeName(c.planName);
+  let plan = null;
+  if (planKey) {
+    const mapped = planMap?.[planKey];
+    if (mapped === PLAN_AS_TEXT) plan = null;
+    else if (mapped) plan = (planos || []).find((p) => p.id === mapped) || null;
+    else plan = (planos || []).find((p) => normalizeName(p.name) === planKey) || null;
+  }
+  return {
+    ...c,
+    consultant,
+    professorId: professor?.id || null,
+    professorName: professor ? professor.name : c.professorName,
+    plan
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Escopo
+// ---------------------------------------------------------------------------
+
+export const SCOPE = { PADRAO: 'padrao', TODOS: 'todos' };
+
+// Padrão = ativos e vencidos recentes. Com data de fim, o relógio decide (é a
+// mesma deriveContractStatus do app): vigente entra, vencido só se venceu há
+// no máximo `windowDays` (janela de Vencidos da academia). Trancado entra
+// sempre, cancelado nunca. Sem data de fim, manda a situação do cliente
+// (desconhecida conta como ativa).
+export const isInScope = (c, scope, now, windowDays) => {
+  if (scope === SCOPE.TODOS) return true;
+  if (c.contractSituation === CONTRACT_SITUATION.CANCELADO) return false;
+  if (c.contractSituation === CONTRACT_SITUATION.TRANCADO) return true;
+  const endsAt = getSafeDateOrNull(c.endsAt);
+  if (!endsAt) return c.clientSituation !== 'inativo';
+  const derived = deriveContractStatus({ status: CONTRACT_STATUS.ATIVO, startsAt: c.startsAt, endsAt }, now);
+  if (derived !== CONTRACT_STATUS.VENCIDO) return true;
+  return daysBetween(endsAt, now) <= Number(windowDays);
+};
+
+// ---------------------------------------------------------------------------
+// Casamento com a base
+// ---------------------------------------------------------------------------
+
+// `index` vem de lookupExisting (clientImportWrites.js): três Maps, chaveados
+// por cpfDigits, whatsappDigits e o nome normalizado (este com a lista de
+// homônimos).
+export const resolveMatch = (c, index) => {
+  const byCpf = c.cpfDigits ? index?.byCpf?.get(c.cpfDigits) : null;
+  if (byCpf) return { kind: 'cpf', lead: byCpf, homonyms: [] };
+  const byPhone = c.whatsappDigits ? index?.byPhone?.get(c.whatsappDigits) : null;
+  if (byPhone) return { kind: 'phone', lead: byPhone, homonyms: [] };
+  const homonyms = c.nameLower ? (index?.byName?.get(c.nameLower) || []) : [];
+  if (homonyms.length) return { kind: 'name', lead: null, homonyms };
+  return { kind: 'none', lead: null, homonyms: [] };
+};
+
 // Mantém os imports usados pelas próximas tasks referenciados desde já (o
 // lint acusa import sem uso). Cada task abaixo substitui o uso de verdade.
-export const __IMPORT_INTERNALS = { addMonths, daysBetween, formatCPF, formatPhone, parseValorBRL, buildLeadSearchFields, deriveLeadBucket, isClientLead, CONTRACT_STATUS, deriveContractStatus, fmtDia, sameDay, earliest };
+export const __IMPORT_INTERNALS = { addMonths, formatCPF, formatPhone, parseValorBRL, buildLeadSearchFields, deriveLeadBucket, isClientLead, fmtDia, sameDay, earliest };
