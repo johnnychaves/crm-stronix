@@ -186,6 +186,8 @@ export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
   const hasAddress = Object.values(address).some(Boolean);
   const warnings = [];
   if (cpf.invalid) warnings.push('CPF inválido');
+  const contractSituation = contractSituationFromText(get('contractSituation'));
+  if (contractSituation === CONTRACT_SITUATION.DESCONHECIDO) warnings.push('Situação do contrato desconhecida');
   const endsRaw = get('contractEndsAt');
   const endsAt = parseImportDate(endsRaw, now);
   if (str(endsRaw) && !endsAt) warnings.push('Data de fim ilegível');
@@ -209,7 +211,7 @@ export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
     consultantName: nullify(get('consultantName')),
     professorName: nullify(get('professorName')),
     planName: nullify(get('planName')),
-    contractSituation: contractSituationFromText(get('contractSituation')),
+    contractSituation,
     clientSituation: clientSituationFromText(get('clientSituation')),
     startsAt: parseImportDate(get('contractStartsAt'), now),
     endsAt,
@@ -513,7 +515,7 @@ export const buildImportedContract = (c, { owner, leadName, importMeta }) => {
     cancelReason: null,
     // Trancado sem data de pausa na planilha: a importação é o melhor dado
     // que existe; a reativação pela ficha empurra o fim a partir daí.
-    pausedAt: status === CONTRACT_STATUS.TRANCADO ? importMeta.now : null,
+    pausedAt: status === CONTRACT_STATUS.TRANCADO ? (importMeta.now ?? null) : null,
     renewedFromId: null,
     startsAtInferred,
     consultantId: owner.consultantId,
@@ -594,7 +596,7 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
       tags: c.vip ? ['VIP'] : [],
       source: `Importação ${importMeta.sourceLabel}`,
       observation: '',
-      funnelId,
+      funnelId: funnelId ?? null,
       professorId: c.professorId || null,
       professorName: c.professorId ? c.professorName : null,
       referredById: null,
@@ -667,7 +669,11 @@ export const summarizeOutcomes = (results) => {
 
 // CSV para o Excel em pt-BR: BOM, ponto e vírgula, tudo entre aspas.
 export const buildReportCsv = (results) => {
-  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  // Célula começando com = + - @ vira fórmula no Excel: prefixa apóstrofo.
+  const esc = (v) => {
+    const s = String(v ?? '');
+    return `"${(/^[=+\-@]/.test(s) ? `'${s}` : s).replace(/"/g, '""')}"`;
+  };
   const lines = [['linha', 'nome', 'resultado', 'motivo', 'avisos'].map(esc).join(';')];
   (results || []).forEach(({ c, cls }) => {
     lines.push([c.rowNumber, c.name, OUTCOME_LABEL[cls.outcome] || cls.outcome, cls.reason || '', (c.warnings || []).join(' | ')].map(esc).join(';'));

@@ -260,6 +260,12 @@ describe('parseRow', () => {
     const c = parseRow(nextfitRow({ 'Cep': 4567000 }), NEXTFIT_MAPPING, 2, NOW);
     expect(c.address.cep).toBe('04567000');
   });
+
+  it('situação do contrato desconhecida vira aviso', () => {
+    const c = parseRow(nextfitRow({ 'Situação do contrato': 'Xyz' }), NEXTFIT_MAPPING, 2, NOW);
+    expect(c.contractSituation).toBe('desconhecido');
+    expect(c.warnings).toEqual(['Situação do contrato desconhecida']);
+  });
 });
 
 describe('isCandidateValid', () => {
@@ -689,6 +695,15 @@ describe('buildImportedClientWrites', () => {
     ['planId', 'planName', 'value', 'listValue', 'durationMonths', 'startsAt', 'endsAt', 'status', 'cancelledAt', 'cancelReason', 'renewedFromId', 'consultantId', 'consultantName', 'consultantAuthUid']
       .forEach((k) => expect(w.contract[k], k).toEqual(ref.contract[k]));
   });
+
+  it('nenhum campo gravado fica undefined (o Firestore rejeita)', () => {
+    const minimal = enrichCandidate(parseRow({ __row: 2, Nome: 'Zé', CPF: '529.982.247-25' }, { name: 'Nome', cpf: 'CPF' }, 2, NOW), { usersList: [], professores: [], planos: [], planMap: {} });
+    const w = buildImportedClientWrites({ c: minimal, cls: { lead: null, fill: null, createContract: false }, consultant: null, funnelId: undefined, importMeta: META, now: NOW });
+    expect(Object.values(w.leadData).some((v) => v === undefined)).toBe(false);
+    expect(w.leadData.funnelId).toBeNull();
+    const k = buildImportedContract({ ...VALID, endsAt: D(2026, 11, 12), contractSituation: 'trancado', plan: null }, { owner: OWNER, leadName: 'Ana', importMeta: { ...META, now: undefined } });
+    expect(Object.values(k).some((v) => v === undefined)).toBe(false);
+  });
 });
 
 describe('summarizeOutcomes / buildReportCsv', () => {
@@ -719,5 +734,11 @@ describe('summarizeOutcomes / buildReportCsv', () => {
     const lines = csv.slice(1).split('\r\n');
     expect(lines[0]).toBe('"linha";"nome";"resultado";"motivo";"avisos"');
     expect(lines[1]).toBe(`"2";"Ana ""Teste""";"${OUTCOME_LABEL.criar}";"Cadastro novo";"CPF inválido"`);
+  });
+
+  it('célula que começa com sinal de fórmula ganha apóstrofo', () => {
+    const csv = buildReportCsv([{ c: { rowNumber: 2, name: '=HYPERLINK("x")', warnings: [] }, cls: { outcome: OUTCOME.CRIAR, reason: '-1' } }]);
+    expect(csv).toContain(`"'=HYPERLINK(""x"")"`);
+    expect(csv).toContain(`"'-1"`);
   });
 });
