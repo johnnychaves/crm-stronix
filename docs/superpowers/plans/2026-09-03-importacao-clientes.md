@@ -2687,10 +2687,10 @@ Create `docs/superpowers/fixtures/2026-09-03-nextfit-contratos-exemplo.csv`:
 ```csv
 Nome;CPF;Contrato;Data de início;Data de fim;Valor;Situação do contrato
 Ana Teste Importacao;529.982.247-25;Trimestral;12/08/2026;12/11/2026;R$ 450,00;Ativo
-Bruno Teste Importacao;111.444.777-35;Mensal;;25/08/2026;150,00;Vencido
+Bruno Teste Importacao;111.444.777-35;Mensal;;01/09/2026;150,00;Vencido
 ```
 
-O que cada linha prova, na rodada 1 (cadastro): Ana cria; Bruno cria (telefone com 55 normalizado, VIP vira etiqueta); Carla fica fora do escopo (inativa sem vigência); Diego é inválido (CPF fictício e sem telefone); a segunda Ana é duplicada no arquivo. Na rodada 2 (contratos): Ana recebe contrato com início real; Bruno recebe contrato vencido há 9 dias (na janela) com início inferido pelo plano Mensal. Rodar a rodada 2 de novo tem de dar "sem alteração" nas duas.
+O que cada linha prova, na rodada 1 (cadastro): Ana cria; Bruno cria (telefone com 55 normalizado, VIP vira etiqueta); Carla fica fora do escopo (inativa sem vigência); Diego é inválido (CPF fictício e sem telefone); a segunda Ana é duplicada no arquivo. Na rodada 2 (contratos): Ana recebe contrato com início real; Bruno recebe contrato vencido em 01/09/2026 (dentro da janela de 15 dias de Vencidos) com início inferido pelo plano Mensal. ATENÇÃO: no dia do teste real, a data de fim do Bruno precisa estar dentro dos últimos 15 dias; se o teste for depois de 16/09/2026, edite essa célula para uma data de até 10 dias atrás antes de subir o arquivo. Rodar a rodada 2 de novo tem de dar "sem alteração" nas duas.
 
 - [ ] **Step 3: Lint, testes e build**
 
@@ -2717,7 +2717,7 @@ Só em ACADEMIA DE TESTE. Nunca numa academia real.
 4. Revisão esperada: criar 2 (Ana, Bruno), fora do escopo 1 (Carla), inválida 1 (Diego), duplicada no arquivo 1 (linha 6), sem vigência 2.
 5. Importar. Relatório: 2 gravadas. Conferir na aba Clientes: Ana e Bruno como CLIENTE ATIVO, sem contrato; Bruno com etiqueta VIP e telefone (71) 9 9999-0002; ficha de cada um com o evento "Cadastro importado do NextFit. Sem vigência registrada." visível só com o interruptor Sistema ligado; coluna Venda do mês do pipeline SEM os dois (convertedAt é a data de cadastro).
 6. Subir `2026-09-03-nextfit-contratos-exemplo.csv`. Esperado: sem preset, mapeamento por sinônimo já preenchido (nome, CPF, plano, início, fim, valor, situação). Revisão: contrato registrado 2. Importar.
-7. Conferir: Ana com vigência 12/08/2026 a 12/11/2026, plano Trimestral, R$ 450,00, estado A VENCER ou CLIENTE ATIVO conforme o threshold da academia; funil Renovações do board mostra Ana na coluna do marco correspondente. Bruno vencido em 25/08/2026: aparece no funil Vencidos do board e na Meta Diária (categoria Vencido) do consultor padrão; contrato com `startsAtInferred` (início 25/07/2026).
+7. Conferir: Ana com vigência 12/08/2026 a 12/11/2026, plano Trimestral, R$ 450,00, estado A VENCER ou CLIENTE ATIVO conforme o threshold da academia; funil Renovações do board mostra Ana na coluna do marco correspondente. Bruno vencido em 01/09/2026 (ou na data que você editou): aparece no funil Vencidos do board e na Meta Diária (categoria Vencido) do consultor padrão; contrato com `startsAtInferred` (início um mês antes do fim).
 8. Subir o mesmo arquivo de contratos de novo. Esperado: sem alteração 2, gravadas 0.
 9. Sair da sessão assumida e entrar como o gestor da academia de teste: a seção "Importar clientes" NÃO aparece.
 10. Registrar na PR o resultado dos passos 4, 5, 7, 8 e 9 (uma linha cada).
