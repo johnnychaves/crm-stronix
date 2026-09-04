@@ -438,7 +438,7 @@ describe('buildFillPatch', () => {
   });
 
   it('endereço entra campo a campo sem apagar o que já existe', () => {
-    const lead = { name: 'Ana', address: { city: 'Salvador', street: '', number: '' } };
+    const lead = { name: 'Ana', whatsapp: '(71) 9 9999-0001', email: 'ana@example.com', cpf: '529.982.247-25', address: { city: 'Salvador', street: '', number: '' } };
     const patch = buildFillPatch({ ...VALID, address: { cep: '40000-000', street: 'Rua A', number: '10', complement: '', neighborhood: 'Centro', city: 'Feira', state: '' } }, lead);
     expect(patch.address).toEqual({ city: 'Salvador', street: 'Rua A', number: '10', cep: '40000-000', neighborhood: 'Centro' });
     expect(buildFillPatch({ ...VALID, address: { city: 'Feira' } }, lead)).toEqual({});
