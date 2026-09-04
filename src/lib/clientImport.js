@@ -157,6 +157,108 @@ const earliest = (...dates) => {
   return list.reduce((min, d) => (d.getTime() < min.getTime() ? d : min));
 };
 
+// ---------------------------------------------------------------------------
+// Linha → candidato
+// ---------------------------------------------------------------------------
+
+const cell = (row, mapping, field) => {
+  const header = mapping?.[field];
+  return header ? row?.[header] : undefined;
+};
+const str = (v) => (v == null ? '' : String(v).trim());
+const nullify = (v) => (str(v) ? str(v) : null);
+
+export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
+  const get = (field) => cell(row, mapping, field);
+  const name = str(get('name')).replace(/\s+/g, ' ');
+  const cpf = normalizeCpfDigits(get('cpf'));
+  const whatsappRaw = str(get('whatsapp'));
+  const address = {
+    cep: str(get('addrCep')), street: str(get('addrStreet')), number: str(get('addrNumber')),
+    complement: str(get('addrComplement')), neighborhood: str(get('addrNeighborhood')),
+    city: str(get('addrCity')), state: ''
+  };
+  const hasAddress = Object.values(address).some(Boolean);
+  const warnings = [];
+  if (cpf.invalid) warnings.push('CPF inválido');
+  const endsRaw = get('contractEndsAt');
+  const endsAt = parseImportDate(endsRaw, now);
+  if (str(endsRaw) && !endsAt) warnings.push('Data de fim ilegível');
+  const value = parseValorBRL(get('contractValue'));
+  return {
+    rowNumber,
+    name,
+    nameLower: normalizeName(name),
+    email: nullify(get('email')),
+    whatsappRaw,
+    whatsappDigits: normalizePhoneDigits(whatsappRaw),
+    cpfDigits: cpf.digits,
+    cpfInvalid: cpf.invalid,
+    rg: nullify(get('rg')),
+    birthDate: parseImportDate(get('birthDate'), now),
+    registeredAt: parseImportDate(get('registeredAt'), now),
+    sexo: normalizeSexo(get('sexo')),
+    dor: nullify(get('dor')),
+    vip: isTruthyCell(get('vip')),
+    address: hasAddress ? address : null,
+    consultantName: nullify(get('consultantName')),
+    professorName: nullify(get('professorName')),
+    planName: nullify(get('planName')),
+    contractSituation: contractSituationFromText(get('contractSituation')),
+    clientSituation: clientSituationFromText(get('clientSituation')),
+    startsAt: parseImportDate(get('contractStartsAt'), now),
+    endsAt,
+    value: Number.isFinite(value) ? value : null,
+    warnings
+  };
+};
+
+// Sem nome, ou sem CPF válido e sem telefone válido, a linha não casa nem nasce.
+export const isCandidateValid = (c) =>
+  String(c?.name || '').length > 1 && Boolean(c?.cpfDigits || c?.whatsappDigits);
+
+// Duplicata dentro do arquivo: mesmo CPF (ou, sem CPF, mesmo telefone) vira
+// uma só antes de qualquer consulta. Fica a de fim mais recente (null perde;
+// empate fica com a primeira). As outras saem com `duplicateOf` = linha que
+// ficou, para o relatório.
+export const dedupeInFile = (candidates) => {
+  const keyOf = (c) => (c.cpfDigits ? `cpf:${c.cpfDigits}` : c.whatsappDigits ? `tel:${c.whatsappDigits}` : null);
+  const groups = new Map();
+  const kept = [];
+  const duplicates = [];
+  (candidates || []).forEach((c) => {
+    const key = keyOf(c);
+    if (!key) { kept.push(c); return; }
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(c);
+  });
+  groups.forEach((list) => {
+    const winner = list.reduce((best, c) => {
+      const a = best.endsAt ? best.endsAt.getTime() : -Infinity;
+      const b = c.endsAt ? c.endsAt.getTime() : -Infinity;
+      return b > a ? c : best;
+    });
+    kept.push(winner);
+    list.forEach((c) => { if (c !== winner) duplicates.push({ ...c, duplicateOf: winner.rowNumber }); });
+  });
+  kept.sort((a, b) => a.rowNumber - b.rowNumber);
+  duplicates.sort((a, b) => a.rowNumber - b.rowNumber);
+  return { kept, duplicates };
+};
+
+// Nomes de plano distintos da planilha, para a tabela de mapeamento de planos.
+export const distinctPlanNames = (candidates) => {
+  const map = new Map();
+  (candidates || []).forEach((c) => {
+    const key = normalizeName(c.planName);
+    if (!key) return;
+    const cur = map.get(key);
+    if (cur) cur.count += 1;
+    else map.set(key, { key, label: str(c.planName), count: 1 });
+  });
+  return [...map.values()].sort((a, b) => b.count - a.count);
+};
+
 // Mantém os imports usados pelas próximas tasks referenciados desde já (o
 // lint acusa import sem uso). Cada task abaixo substitui o uso de verdade.
 export const __IMPORT_INTERNALS = { addMonths, daysBetween, formatCPF, formatPhone, parseValorBRL, buildLeadSearchFields, deriveLeadBucket, isClientLead, CONTRACT_STATUS, deriveContractStatus, fmtDia, sameDay, earliest };

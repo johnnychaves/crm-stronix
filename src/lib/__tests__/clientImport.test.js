@@ -11,7 +11,11 @@ import {
   isTruthyCell,
   contractSituationFromText,
   clientSituationFromText,
-  CONTRACT_SITUATION
+  CONTRACT_SITUATION,
+  parseRow,
+  isCandidateValid,
+  dedupeInFile,
+  distinctPlanNames
 } from '../clientImport.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
@@ -159,5 +163,133 @@ describe('clientSituationFromText', () => {
     expect(clientSituationFromText('Bloqueado')).toBe('inativo');
     expect(clientSituationFromText('')).toBeNull();
     expect(clientSituationFromText('Xyz')).toBeNull();
+  });
+});
+
+const NEXTFIT_MAPPING = {
+  name: 'Nome', email: 'E-mail', planName: 'Contrato', whatsapp: 'Telefone',
+  contractSituation: 'Situação do contrato', clientSituation: 'Situação do cliente',
+  cpf: 'CPF', rg: 'RG', birthDate: 'Data de nascimento', registeredAt: 'Data de cadastro',
+  dor: 'Objetivo', sexo: 'Sexo', vip: 'VIP', addrStreet: 'Endereco', addrNumber: 'Número',
+  addrNeighborhood: 'Bairro', addrCep: 'Cep', addrCity: 'Cidade', addrComplement: 'Complemento',
+  consultantName: 'Consultor', professorName: 'Professor',
+  contractStartsAt: null, contractEndsAt: null, contractValue: null
+};
+
+const nextfitRow = (over = {}) => ({
+  __row: 2,
+  'Nome': ' Ana  Teste ', 'E-mail': 'ana@example.com', 'Contrato': 'Trimestral', 'Telefone': '(71) 99999-0001',
+  'Situação do contrato': 'Ativo', 'Situação do cliente': 'Ativo', 'CPF': '529.982.247-25', 'RG': '123',
+  'Data de nascimento': '05/03/1985', 'Data de cadastro': '10/01/2026', 'Objetivo': 'Emagrecer', 'Sexo': 'F',
+  'VIP': 'Não', 'Endereco': 'Rua A', 'Número': '10', 'Bairro': 'Centro', 'Cep': '40000-000', 'Cidade': 'Salvador',
+  'Complemento': '', 'Consultor': 'Bia', 'Professor': 'Carlos',
+  ...over
+});
+
+describe('parseRow', () => {
+  it('monta o candidato a partir do mapeamento', () => {
+    const c = parseRow(nextfitRow(), NEXTFIT_MAPPING, 2, NOW);
+    expect(c.rowNumber).toBe(2);
+    expect(c.name).toBe('Ana Teste');
+    expect(c.nameLower).toBe('ana teste');
+    expect(c.email).toBe('ana@example.com');
+    expect(c.whatsappRaw).toBe('(71) 99999-0001');
+    expect(c.whatsappDigits).toBe('71999990001');
+    expect(c.cpfDigits).toBe('52998224725');
+    expect(c.cpfInvalid).toBe(false);
+    expect(c.rg).toBe('123');
+    expect(c.birthDate).toEqual(D(1985, 3, 5));
+    expect(c.registeredAt).toEqual(D(2026, 1, 10));
+    expect(c.sexo).toBe('Feminino');
+    expect(c.dor).toBe('Emagrecer');
+    expect(c.vip).toBe(false);
+    expect(c.address).toEqual({ cep: '40000-000', street: 'Rua A', number: '10', complement: '', neighborhood: 'Centro', city: 'Salvador', state: '' });
+    expect(c.consultantName).toBe('Bia');
+    expect(c.professorName).toBe('Carlos');
+    expect(c.planName).toBe('Trimestral');
+    expect(c.contractSituation).toBe('ativo');
+    expect(c.clientSituation).toBe('ativo');
+    expect(c.startsAt).toBeNull();
+    expect(c.endsAt).toBeNull();
+    expect(c.value).toBeNull();
+    expect(c.warnings).toEqual([]);
+  });
+
+  it('campo sem coluna mapeada fica nulo; endereço todo vazio é null', () => {
+    const c = parseRow({ __row: 5, 'Nome': 'Bruno', 'CPF': '111.444.777-35' }, { ...NEXTFIT_MAPPING, addrStreet: null, addrNumber: null, addrNeighborhood: null, addrCep: null, addrCity: null, addrComplement: null }, 5, NOW);
+    expect(c.email).toBeNull();
+    expect(c.whatsappDigits).toBeNull();
+    expect(c.address).toBeNull();
+    expect(c.contractSituation).toBeNull();
+    expect(c.clientSituation).toBeNull();
+  });
+
+  it('CPF inválido vira aviso e não trava; data de fim ilegível vira aviso', () => {
+    const c = parseRow(nextfitRow({ 'CPF': '000.000.000-00', 'Fim': 'amanhã' }), { ...NEXTFIT_MAPPING, contractEndsAt: 'Fim' }, 2, NOW);
+    expect(c.cpfDigits).toBeNull();
+    expect(c.cpfInvalid).toBe(true);
+    expect(c.endsAt).toBeNull();
+    expect(c.warnings).toEqual(['CPF inválido', 'Data de fim ilegível']);
+  });
+
+  it('lê datas e valor do contrato quando mapeados', () => {
+    const c = parseRow(
+      { __row: 3, 'Nome': 'Ana', 'CPF': '529.982.247-25', 'Início': '12/08/2026', 'Fim': '12/11/2026', 'Valor': 'R$ 450,00' },
+      { ...NEXTFIT_MAPPING, contractStartsAt: 'Início', contractEndsAt: 'Fim', contractValue: 'Valor' }, 3, NOW
+    );
+    expect(c.startsAt).toEqual(D(2026, 8, 12));
+    expect(c.endsAt).toEqual(D(2026, 11, 12));
+    expect(c.value).toBe(450);
+  });
+});
+
+describe('isCandidateValid', () => {
+  it('precisa de nome e de CPF válido ou telefone válido', () => {
+    expect(isCandidateValid({ name: 'Ana', cpfDigits: '52998224725', whatsappDigits: null })).toBe(true);
+    expect(isCandidateValid({ name: 'Ana', cpfDigits: null, whatsappDigits: '71999990001' })).toBe(true);
+    expect(isCandidateValid({ name: 'Ana', cpfDigits: null, whatsappDigits: null })).toBe(false);
+    expect(isCandidateValid({ name: 'A', cpfDigits: '52998224725', whatsappDigits: null })).toBe(false);
+    expect(isCandidateValid({ name: '', cpfDigits: '52998224725', whatsappDigits: '71999990001' })).toBe(false);
+  });
+});
+
+describe('dedupeInFile', () => {
+  const base = { name: 'Ana', cpfDigits: '52998224725', whatsappDigits: '71999990001', endsAt: null };
+  it('mesmo CPF: fica a de fim mais recente, a outra recebe duplicateOf', () => {
+    const { kept, duplicates } = dedupeInFile([
+      { ...base, rowNumber: 2, endsAt: D(2026, 10, 1) },
+      { ...base, rowNumber: 3, endsAt: D(2026, 11, 12) },
+      { ...base, rowNumber: 4, endsAt: null }
+    ]);
+    expect(kept.map((c) => c.rowNumber)).toEqual([3]);
+    expect(duplicates.map((c) => [c.rowNumber, c.duplicateOf])).toEqual([[2, 3], [4, 3]]);
+  });
+
+  it('sem CPF casa pelo telefone; sem os dois nunca é duplicata', () => {
+    const { kept, duplicates } = dedupeInFile([
+      { name: 'Bruno', rowNumber: 2, cpfDigits: null, whatsappDigits: '71999990002', endsAt: null },
+      { name: 'Bruno', rowNumber: 3, cpfDigits: null, whatsappDigits: '71999990002', endsAt: null },
+      { name: 'Sem nada', rowNumber: 4, cpfDigits: null, whatsappDigits: null, endsAt: null },
+      { name: 'Sem nada', rowNumber: 5, cpfDigits: null, whatsappDigits: null, endsAt: null }
+    ]);
+    expect(kept.map((c) => c.rowNumber)).toEqual([2, 4, 5]);
+    expect(duplicates.map((c) => c.rowNumber)).toEqual([3]);
+  });
+
+  it('empate de fim fica com a primeira linha', () => {
+    const { kept } = dedupeInFile([
+      { ...base, rowNumber: 2, endsAt: D(2026, 11, 12) },
+      { ...base, rowNumber: 3, endsAt: D(2026, 11, 12) }
+    ]);
+    expect(kept.map((c) => c.rowNumber)).toEqual([2]);
+  });
+});
+
+describe('distinctPlanNames', () => {
+  it('agrupa por nome normalizado com contagem, na ordem de frequência', () => {
+    const out = distinctPlanNames([
+      { planName: 'Trimestral' }, { planName: 'TRIMESTRAL ' }, { planName: 'Mensal' }, { planName: null }, { planName: '' }
+    ]);
+    expect(out).toEqual([{ key: 'trimestral', label: 'Trimestral', count: 2 }, { key: 'mensal', label: 'Mensal', count: 1 }]);
   });
 });
