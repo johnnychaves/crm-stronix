@@ -31,6 +31,12 @@ import { deriveLeadState, getTone } from '../../lib/leadState.js';
 const STEPS = ['Arquivo', 'Mapeamento', 'Revisão', 'Importar'];
 const NONE = '__none__';
 const AUTO = '__auto__';
+const UNDECIDED = '__undecided__';
+
+// Fora de contexto seguro (preview por IP em http) crypto.randomUUID não existe.
+const newBatchId = () => (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+  ? crypto.randomUUID()
+  : `${Date.now()}-${Math.random().toString(36).slice(2)}`);
 
 const COUNTER_TONE = {
   criar: 'emerald', promover: 'emerald', registrar_contrato: 'brand', atualizar: 'teal',
@@ -78,7 +84,39 @@ function Counter({ label, value, tone }) {
   );
 }
 
-const leadStateLabel = (lead) => deriveLeadState(lead).label;
+const REPORT_ROWS_MAX = 200;
+
+function ReportTable({ results }) {
+  const shown = results.slice(0, REPORT_ROWS_MAX);
+  return (
+    <div className="px-5 pb-4">
+      <div className="rounded-xl border border-border overflow-hidden">
+        <div className="grid grid-cols-[56px_1fr_1fr_1.4fr] gap-3 px-3 py-2 bg-muted/60 text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted-foreground">
+          <span>Linha</span><span>Nome</span><span>Resultado</span><span>Motivo</span>
+        </div>
+        <div className="max-h-[360px] overflow-y-auto">
+          {shown.map(({ c, cls }) => {
+            const t = getTone(COUNTER_TONE[cls.outcome] || 'slate');
+            return (
+              <div key={c.rowNumber} className="grid grid-cols-[56px_1fr_1fr_1.4fr] gap-3 px-3 py-1.5 text-[12px] border-t border-border">
+                <span className="num text-muted-foreground">{c.rowNumber}</span>
+                <span className="truncate font-medium">{c.name || '(sem nome)'}</span>
+                <span className={cn('truncate', t.text, t.darkText)}>{OUTCOME_LABEL[cls.outcome] || cls.outcome}</span>
+                <span className="truncate text-muted-foreground">{cls.reason || ''}</span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {results.length > REPORT_ROWS_MAX && (
+        <div className="text-[11px] text-muted-foreground mt-2">Mostrando {REPORT_ROWS_MAX} de {results.length} linhas. O CSV traz todas.</div>
+      )}
+    </div>
+  );
+}
+
+// O instante vem de quem chama, nunca do relógio no render.
+const leadStateLabel = (lead, now) => deriveLeadState(lead, now).label;
 
 function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
   const toast = useToast();
@@ -103,27 +141,42 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
   const funnelId = getDefaultFunnel((funnels || []).filter((f) => !isSystemFunnel(f)))?.id || null;
   const sourceLabel = importSourceLabel(file?.preset);
 
-  // Nomes de plano da planilha, para a tabela de mapeamento de planos.
+  // Nomes de plano da planilha, para a tabela de mapeamento de planos. Lê só
+  // a coluna mapeada: não precisa do parse completo da linha.
   const planNames = useMemo(
-    () => (file ? distinctPlanNames(file.rows.map((r) => parseRow(r, mapping, r.__row))) : []),
-    [file, mapping]
+    () => (file && mapping.planName ? distinctPlanNames(file.rows.map((r) => ({ planName: r[mapping.planName] }))) : []),
+    [file, mapping.planName]
   );
 
   // Classificação reativa às decisões de suspeita (a revisão em si, com as
-  // consultas, só roda no botão).
+  // consultas, só roda no botão). `review.now` é o instante congelado do
+  // ensaio: gravar com o mesmo `now` mantém escopo e relatório coerentes.
+  //
+  // Duas linhas do arquivo podem casar com o MESMO cadastro (uma pelo CPF,
+  // outra pelo telefone). A primeira fica; as outras viram conflito, senão o
+  // batch gravaria o mesmo lead duas vezes e criaria dois contratos.
   const results = useMemo(() => {
     if (!review) return [];
-    return review.base.map(({ c, match }) => ({
-      c, match,
-      cls: classifyCandidate(c, match, { decision: decisions[c.rowNumber], scope, now: review.now, windowDays })
-    }));
+    const claimed = new Map();
+    return review.base.map(({ c, match }) => {
+      let cls = classifyCandidate(c, match, { decision: decisions[c.rowNumber], scope, now: review.now, windowDays });
+      const leadId = cls.lead?.id;
+      if (leadId && WRITABLE_OUTCOMES.includes(cls.outcome)) {
+        const first = claimed.get(leadId);
+        if (first) cls = { ...cls, outcome: OUTCOME.CONFLITO, reason: `Outra linha do arquivo já casou com este cadastro (linha ${first})`, fill: null, createContract: false };
+        else claimed.set(leadId, c.rowNumber);
+      }
+      return { c, match, cls };
+    });
   }, [review, decisions, scope, windowDays]);
   const summary = useMemo(() => summarizeOutcomes(results), [results]);
   const suspects = results.filter((r) => r.cls.outcome === OUTCOME.SUSPEITA || (r.match.kind === 'name' && decisions[r.c.rowNumber]));
   const conflicts = results.filter((r) => r.cls.outcome === OUTCOME.CONFLITO);
   const invalids = results.filter((r) => r.cls.outcome === OUTCOME.INVALIDA);
 
+  // Mantém consultor padrão e escopo de propósito: a rodada 2 (contratos) usa os mesmos.
   const resetAll = () => {
+    if (report && !window.confirm('Descartar o relatório desta importação? Baixe o CSV antes, se precisar.')) return;
     setStep(1); setFile(null); setMapping({}); setPlanMap({}); setReview(null);
     setDecisions({}); setReport(null); setProgress({ done: 0, total: 0 });
   };
@@ -186,38 +239,45 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     if (!window.confirm(`Gravar ${writable.length} cadastro(s) na base desta academia?\n\nO que já existe é promovido, não recriado. Esta ação não pode ser desfeita.`)) return;
 
     setBusy(true);
-    const importMeta = {
-      importedBy: appUser?.authUid || appUser?.id || null,
-      importSource: file.preset?.id || 'manual',
-      sourceLabel,
-      importBatchId: crypto.randomUUID(),
-      now: review.now
-    };
-    const items = writable.map(({ c, cls }) => ({
-      rowNumber: c.rowNumber,
-      ...buildImportedClientWrites({ c, cls, consultant: c.consultant || defaultConsultant, funnelId, appUser, importMeta, now: review.now })
-    }));
-    setProgress({ done: 0, total: items.length });
-    setStep(4);
+    try {
+      const importMeta = {
+        importedBy: appUser?.authUid || appUser?.id || null,
+        importSource: file.preset?.id || 'manual',
+        sourceLabel,
+        importBatchId: newBatchId(),
+        now: review.now
+      };
+      const items = writable.map(({ c, cls }) => ({
+        rowNumber: c.rowNumber,
+        ...buildImportedClientWrites({ c, cls, consultant: c.consultant || defaultConsultant, funnelId, importMeta, now: review.now })
+      }));
+      setProgress({ done: 0, total: items.length });
+      setStep(4);
 
-    const res = await runImport({ db, appUser, items, importMeta, onProgress: (done, total) => setProgress({ done, total }) });
+      const res = await runImport({ db, appUser, items, importMeta, onProgress: (done, total) => setProgress({ done, total }) });
 
-    const writtenRows = new Set(items.slice(0, res.done).map((i) => i.rowNumber));
-    const finalResults = results.map((r) => {
-      if (!WRITABLE_OUTCOMES.includes(r.cls.outcome)) return r;
-      if (writtenRows.has(r.c.rowNumber)) return { ...r, written: true };
-      return { ...r, cls: { ...r.cls, outcome: OUTCOME.ERRO, reason: res.failedFromRow ? `Não gravada (falha a partir da linha ${res.failedFromRow})` : 'Não gravada' } };
-    });
-    setReport({ results: finalResults, summary: summarizeOutcomes(finalResults), failedFromRow: res.failedFromRow, error: res.error, batchId: importMeta.importBatchId });
-    setBusy(false);
+      const writtenRows = new Set(items.slice(0, res.done).map((i) => i.rowNumber));
+      const finalResults = results.map((r) => {
+        if (!WRITABLE_OUTCOMES.includes(r.cls.outcome)) return r;
+        if (writtenRows.has(r.c.rowNumber)) return { ...r, written: true };
+        return { ...r, cls: { ...r.cls, outcome: OUTCOME.ERRO, reason: res.failedFromRow ? `Não gravada (falha a partir da linha ${res.failedFromRow})` : 'Não gravada' } };
+      });
+      setReport({ results: finalResults, summary: summarizeOutcomes(finalResults), failedFromRow: res.failedFromRow, error: res.error, batchId: importMeta.importBatchId });
 
-    if (res.error) {
-      console.error('runImport', res.error);
-      toast.error(res.error?.code === 'permission-denied'
-        ? 'Gravação negada pelo Firestore. Confira se a academia está ativa e se a sessão é de admin.'
-        : 'A gravação parou no meio. Rode o mesmo arquivo de novo: o que já entrou conta como sem alteração.');
-    } else {
-      toast.success(`${res.done} cadastro(s) gravado(s).`);
+      if (res.error) {
+        console.error('runImport', res.error);
+        toast.error(res.error?.code === 'permission-denied'
+          ? 'Gravação negada pelo Firestore. Confira se a academia está ativa e se a sessão é de admin.'
+          : 'A gravação parou no meio. Rode o mesmo arquivo de novo: o que já entrou conta como sem alteração.');
+      } else {
+        toast.success(`${res.done} cadastro(s) gravado(s).`);
+      }
+    } catch (err) {
+      console.error('runImportNow', err);
+      toast.error('Falha ao preparar a gravação. Confira o arquivo e tente de novo.');
+      setStep(3);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -228,7 +288,9 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     const a = document.createElement('a');
     a.href = url;
     a.download = `importacao-${file.name.replace(/\.[^.]+$/, '')}-${review.now.toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(url);
   };
 
@@ -239,7 +301,12 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     else next[key] = value;
     return next;
   });
-  const setDecision = (rowNumber, value) => setDecisions((d) => ({ ...d, [rowNumber]: value }));
+  const setDecision = (rowNumber, value) => setDecisions((d) => {
+    const next = { ...d };
+    if (value === UNDECIDED) delete next[rowNumber];
+    else next[rowNumber] = value;
+    return next;
+  });
 
   const groupedFields = ['pessoa', 'endereco', 'contrato'].map((g) => ({ id: g, label: TARGET_GROUP_LABEL[g], fields: TARGET_FIELDS.filter((f) => f.group === g) }));
 
@@ -382,28 +449,30 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
                   <div key={c.rowNumber} className="grid grid-cols-[auto_1fr_1fr] items-center gap-3 text-[12.5px]">
                     <span className="num text-muted-foreground">L{c.rowNumber}</span>
                     <span className="font-semibold truncate">{c.name}</span>
-                    <Select value={decisions[c.rowNumber] || 'create'} onValueChange={(v) => setDecision(c.rowNumber, v)}>
+                    <Select value={decisions[c.rowNumber] || UNDECIDED} onValueChange={(v) => setDecision(c.rowNumber, v)}>
                       <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={UNDECIDED}>Escolha o que fazer</SelectItem>
                         <SelectItem value="create">Criar cadastro novo</SelectItem>
                         {match.homonyms.map((h) => (
-                          <SelectItem key={h.id} value={h.id}>Usar: {h.name} · {leadStateLabel(h)}{h.consultantName ? ` · ${h.consultantName}` : ''}</SelectItem>
+                          <SelectItem key={h.id} value={h.id}>Usar: {h.name} · {leadStateLabel(h, review.now)}{h.consultantName ? ` · ${h.consultantName}` : ''}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 ))}
               </div>
-              <PanelNote>Nada aqui é gravado até você confirmar. Quem ficar sem decisão é tratado como cadastro novo.</PanelNote>
+              <PanelNote>Nada aqui é gravado até você confirmar. Linha sem decisão segura a importação até você escolher.</PanelNote>
             </SettingsPanel>
           )}
 
           {conflicts.length > 0 && (
             <SettingsPanel title="Conflitos (pulados)" hint="Contrato com vigência diferente, ou CPF divergente no mesmo telefone. Resolva na ficha e rode de novo.">
               <div className="px-5 pb-4 flex flex-col gap-1 text-[12.5px]">
-                {conflicts.map(({ c, cls }) => (
+                {conflicts.slice(0, 50).map(({ c, cls }) => (
                   <div key={c.rowNumber} className="grid grid-cols-[auto_1fr_1fr] gap-3"><span className="num text-muted-foreground">L{c.rowNumber}</span><span className="font-semibold truncate">{c.name}</span><span className="text-muted-foreground truncate">{cls.reason}</span></div>
                 ))}
+                {conflicts.length > 50 && <div className="text-[11px] text-muted-foreground">E mais {conflicts.length - 50} no relatório.</div>}
               </div>
             </SettingsPanel>
           )}
@@ -411,9 +480,10 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
           {invalids.length > 0 && (
             <SettingsPanel title="Linhas inválidas" hint="Sem nome, ou sem CPF válido e sem telefone válido. Não casam nem nascem.">
               <div className="px-5 pb-4 flex flex-col gap-1 text-[12.5px]">
-                {invalids.map(({ c, cls }) => (
+                {invalids.slice(0, 50).map(({ c, cls }) => (
                   <div key={c.rowNumber} className="grid grid-cols-[auto_1fr_1fr] gap-3"><span className="num text-muted-foreground">L{c.rowNumber}</span><span className="font-semibold truncate">{c.name || '(sem nome)'}</span><span className="text-muted-foreground truncate">{cls.reason}</span></div>
                 ))}
+                {invalids.length > 50 && <div className="text-[11px] text-muted-foreground">E mais {invalids.length - 50} no relatório.</div>}
               </div>
             </SettingsPanel>
           )}
@@ -439,7 +509,9 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
             <>
               <div className="px-5 pb-4 grid gap-2 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
                 {COUNTER_ORDER.map((k) => <Counter key={k} label={OUTCOME_LABEL[k]} value={report.summary[k] || 0} tone={COUNTER_TONE[k]} />)}
+                <Counter label="Sem vigência" value={report.summary.semVigencia} tone="amber" />
               </div>
+              <ReportTable results={report.results} />
               <div className="px-5 pb-5 flex flex-wrap items-center justify-between gap-3">
                 <span className="text-[11px] text-muted-foreground num">Lote {report.batchId}</span>
                 <div className="flex gap-2">
