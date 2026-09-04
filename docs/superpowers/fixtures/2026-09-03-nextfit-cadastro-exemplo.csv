@@ -1,0 +1,6 @@
+Nome;E-mail;Contrato;Telefone;Situação do contrato;Situação do cliente;CPF;RG;Data de nascimento;Data de cadastro;Objetivo;Sexo;VIP;Endereco;Número;Bairro;Cep;Cidade;Complemento;Consultor;Professor
+Ana Teste Importacao;ana.teste@example.com;Trimestral;(71) 99999-0001;Ativo;Ativo;529.982.247-25;123456;05/03/1985;10/01/2026;Emagrecer;F;Não;Rua A;10;Centro;40000-000;Salvador;;;
+Bruno Teste Importacao;;Mensal;5571999990002;Ativo;Ativo;111.444.777-35;;20/07/1990;15/02/2026;Hipertrofia;M;Sim;;;;;;;;
+Carla Teste Importacao;carla.teste@example.com;Anual;71 99999-0003;Vencido;Inativo;123.456.789-09;;;01/06/2024;;F;Não;;;;;;;;
+Diego Teste Importacao;;Trimestral;;Ativo;Ativo;000.000.000-00;;;03/03/2026;;M;Não;;;;;;;;
+Ana Teste Importacao;ana2@example.com;Trimestral;(71) 99999-0001;Ativo;Ativo;529.982.247-25;;;10/01/2026;;F;Não;;;;;;;;

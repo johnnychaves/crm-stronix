@@ -238,3 +238,14 @@ describe('buildStageTransitions — origem e tempo na etapa anterior', () => {
     expect(buildStageTransitions(null, CADASTRO)).toEqual({});
   });
 });
+
+describe('classifyInteraction: cadastro importado', () => {
+  // O texto cita "Plano ..." e cairia no regex de contrato se o gate por type
+  // não existisse. É evento de sistema: fica atrás do interruptor.
+  it('type import é sistema mesmo mencionando plano e vigência', () => {
+    expect(classifyInteraction({
+      type: 'import',
+      text: 'Cadastro importado do NextFit. Plano Trimestral, vigência até 12/11/2026.'
+    })).toBe('system');
+  });
+});
