@@ -436,6 +436,13 @@ describe('buildFillPatch', () => {
     const lead = { name: 'Ana', whatsapp: '(71) 9 9999-0001', email: 'x@y.com', cpf: '529.982.247-25', rg: '1', birthDate: D(1985, 3, 5), sexo: 'Feminino', dor: 'x', address: { street: 'r' }, professorId: 'p9', tags: ['VIP'] };
     expect(buildFillPatch({ ...VALID, vip: true, rg: '2', professorId: 'p1' }, lead)).toEqual({});
   });
+
+  it('endereço entra campo a campo sem apagar o que já existe', () => {
+    const lead = { name: 'Ana', address: { city: 'Salvador', street: '', number: '' } };
+    const patch = buildFillPatch({ ...VALID, address: { cep: '40000-000', street: 'Rua A', number: '10', complement: '', neighborhood: 'Centro', city: 'Feira', state: '' } }, lead);
+    expect(patch.address).toEqual({ city: 'Salvador', street: 'Rua A', number: '10', cep: '40000-000', neighborhood: 'Centro' });
+    expect(buildFillPatch({ ...VALID, address: { city: 'Feira' } }, lead)).toEqual({});
+  });
 });
 
 describe('classifyCandidate', () => {
@@ -497,7 +504,23 @@ describe('classifyCandidate', () => {
     const atualiza = classifyCandidate(VALID, m, OPTS);
     expect(atualiza.outcome).toBe(OUTCOME.ATUALIZAR);
     expect(atualiza.fill).toEqual({ email: 'ana@example.com' });
+    expect(atualiza.reason).toBe('Preenche e-mail');
     const completo = { ...cliente, email: 'ana@example.com', currentContractId: 'C1', currentContractEndsAt: D(2026, 11, 12) };
     expect(classifyCandidate({ ...VALID, endsAt: D(2026, 11, 12) }, { kind: 'cpf', lead: completo, homonyms: [] }, OPTS).outcome).toBe(OUTCOME.SEM_ALTERACAO);
+  });
+
+  it('decisão com id que não é homônimo volta a pedir decisão', () => {
+    const homonimo = { id: 'L3', name: 'Ana Teste', status: 'Novo', cpfDigits: '', whatsappDigits: '' };
+    const r = classifyCandidate(VALID, { kind: 'name', lead: null, homonyms: [homonimo] }, { ...OPTS, decision: 'BOGUS' });
+    expect(r.outcome).toBe(OUTCOME.SUSPEITA);
+    expect(r.homonyms).toEqual([homonimo]);
+  });
+
+  it('fim do contrato existente como Timestamp do Firestore compara por dia', () => {
+    const ts = { toDate: () => new Date(2026, 10, 12, 0, 0) };
+    const cliente = { id: 'L1', name: 'Ana', lifecycleStage: 'cliente', status: 'Venda', isConverted: true, currentContractId: 'C1', currentContractEndsAt: ts, cpfDigits: '52998224725', email: 'ana@example.com', whatsapp: '(71) 9 9999-0001', cpf: '529.982.247-25' };
+    const m = { kind: 'cpf', lead: cliente, homonyms: [] };
+    expect(classifyCandidate({ ...VALID, endsAt: D(2026, 11, 12) }, m, OPTS).outcome).toBe(OUTCOME.SEM_ALTERACAO);
+    expect(classifyCandidate({ ...VALID, endsAt: D(2026, 12, 12) }, m, OPTS).outcome).toBe(OUTCOME.CONFLITO);
   });
 });

@@ -354,6 +354,10 @@ export const resolveMatch = (c, index) => {
 
 const blank = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
 
+// Rótulos pt-BR do que a planilha preencheu, para o motivo na revisão.
+const FILL_LABEL = { whatsapp: 'telefone', email: 'e-mail', cpf: 'CPF', rg: 'RG', birthDate: 'nascimento', sexo: 'sexo', dor: 'objetivo', address: 'endereço', professorId: 'professor', tags: 'etiqueta VIP' };
+const fillSummary = (fill) => [...new Set(Object.keys(fill).map((k) => FILL_LABEL[k]).filter(Boolean))].join(', ');
+
 // Nome e consultor dono NUNCA entram aqui (decisão do spec). Telefone e CPF
 // entram só se vazios, e quando entram os campos de busca são recomputados
 // com o que vai ficar gravado (dual-write, como o cadastro faz).
@@ -366,7 +370,13 @@ export const buildFillPatch = (c, lead) => {
   if (blank(lead.birthDate) && c.birthDate) patch.birthDate = c.birthDate;
   if (blank(lead.sexo) && c.sexo) patch.sexo = c.sexo;
   if (blank(lead.dor) && c.dor) patch.dor = c.dor;
-  if (blank(lead.address) && c.address) patch.address = c.address;
+  // Endereço entra campo a campo: o cadastro completo pode ter gravado só a
+  // cidade, e o resto que a planilha traz ainda cabe. Só grava se acrescentar.
+  if (c.address) {
+    const cur = lead.address && typeof lead.address === 'object' ? lead.address : {};
+    const adds = Object.fromEntries(Object.entries(c.address).filter(([k, v]) => v && blank(cur[k])));
+    if (Object.keys(adds).length) patch.address = { ...cur, ...adds };
+  }
   if (blank(lead.professorId) && c.professorId) {
     patch.professorId = c.professorId;
     patch.professorName = c.professorName;
@@ -434,7 +444,12 @@ export const classifyCandidate = (c, match, { decision, scope, now, windowDays }
   const homonyms = match?.homonyms || [];
   if (match?.kind === 'name') {
     if (!decision) return { outcome: OUTCOME.SUSPEITA, reason: `Já existe "${homonyms[0]?.name}" na base`, lead: null, fill: null, createContract: false, homonyms };
-    lead = decision === 'create' ? null : (homonyms.find((h) => h.id === decision) || null);
+    if (decision !== 'create') {
+      lead = homonyms.find((h) => h.id === decision) || null;
+      // Id que não está entre os homônimos (estado velho da tela): volta a
+      // pedir decisão em vez de criar duplicata em silêncio.
+      if (!lead) return { outcome: OUTCOME.SUSPEITA, reason: 'Decisão desatualizada, escolha de novo', lead: null, fill: null, createContract: false, homonyms };
+    }
   }
   if (!lead) {
     return { outcome: OUTCOME.CRIAR, reason: c.endsAt ? 'Cadastro novo com contrato' : 'Cadastro novo sem vigência', lead: null, fill: null, createContract: Boolean(c.endsAt), homonyms: [] };
@@ -452,7 +467,7 @@ export const classifyCandidate = (c, match, { decision, scope, now, windowDays }
     return { outcome: OUTCOME.PROMOVER, reason: createContract ? 'Lead vira cliente com contrato' : 'Lead vira cliente sem vigência', lead, fill, createContract, homonyms: [] };
   }
   if (createContract) return { outcome: OUTCOME.REGISTRAR_CONTRATO, reason: `Vigência até ${fmtDia(c.endsAt)}`, lead, fill, createContract, homonyms: [] };
-  if (Object.keys(fill).length) return { outcome: OUTCOME.ATUALIZAR, reason: `Preenche ${Object.keys(fill).filter((k) => !/Digits|Lower|Tokens/.test(k)).join(', ')}`, lead, fill, createContract: false, homonyms: [] };
+  if (Object.keys(fill).length) return { outcome: OUTCOME.ATUALIZAR, reason: `Preenche ${fillSummary(fill)}`, lead, fill, createContract: false, homonyms: [] };
   return { outcome: OUTCOME.SEM_ALTERACAO, reason: 'Já está igual', lead, fill: null, createContract: false, homonyms: [] };
 };
 
