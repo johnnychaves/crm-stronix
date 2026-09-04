@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ArrowRightLeft, CalendarClock, Gauge, Handshake, Kanban, Library, Target, Users } from 'lucide-react';
+import { ArrowRightLeft, CalendarClock, FileSpreadsheet, Gauge, Handshake, Kanban, Library, Target, Users } from 'lucide-react';
 import { SettingsRailGroup, SettingsRailItem } from '../../components/ui/SettingsCard.jsx';
 import { buildSetupState } from '../../lib/settingsSetup.js';
 import { usePagedLeads } from '../../hooks/usePagedLeads.js';
@@ -16,6 +16,7 @@ import { PaceSection } from './PaceSection.jsx';
 import { SchedulingSection } from './SchedulingSection.jsx';
 import { FunnelsSection } from './FunnelsSection.jsx';
 import { CatalogsSection } from './CatalogsSection.jsx';
+import { ImportClientsSection } from './ImportClientsSection.jsx';
 
 // ==========================================
 // CONFIGURAÇÕES — sete destinos agrupados por intenção
@@ -82,6 +83,13 @@ function SettingsView({
   // Quantas indicações antigas ainda estão sem quem indicou (badge do trilho).
   const pendingOwnersCount = pendingReferralOwners(leads).length;
 
+  // Importação de clientes: só na sessão assumida do super console (spec
+  // 2026-09-03). Em dev local não existe "Entrar como" (a /api dá 404 no
+  // vite), então o admin vê a seção para conseguir testar; em produção a
+  // condição é só o claim. É trava de tela, não de permissão: as regras já
+  // deixam o admin criar lead e contrato um a um.
+  const canImport = Boolean(appUser?.impersonating) || import.meta.env.DEV;
+
   const groups = [
     {
       label: null,
@@ -92,7 +100,8 @@ function SettingsView({
       items: [
         { id: 'team', label: 'Equipe & acessos', icon: <Users size={15} />, count: (usersList || []).length },
         { id: 'transfer', label: 'Migrar leads', icon: <ArrowRightLeft size={15} /> },
-        { id: 'referral-owners', label: 'Indicações sem dono', icon: <Handshake size={15} />, count: pendingOwnersCount || undefined }
+        { id: 'referral-owners', label: 'Indicações sem dono', icon: <Handshake size={15} />, count: pendingOwnersCount || undefined },
+        ...(canImport ? [{ id: 'import', label: 'Importar clientes', icon: <FileSpreadsheet size={15} /> }] : [])
       ]
     },
     {
@@ -161,6 +170,9 @@ function SettingsView({
         )}
         {section === 'referral-owners' && (
           <ReferralOwnersSection db={db} leads={leads} funnels={funnels} statuses={statuses} appUser={appUser} />
+        )}
+        {section === 'import' && canImport && (
+          <ImportClientsSection db={db} appUser={appUser} usersList={usersList} funnels={funnels} planos={planos} />
         )}
         {section === 'pace' && (
           <PaceSection db={db} usersList={usersList} metaWeekdays={metaWeekdays} />
