@@ -348,6 +348,114 @@ export const resolveMatch = (c, index) => {
   return { kind: 'none', lead: null, homonyms: [] };
 };
 
+// ---------------------------------------------------------------------------
+// Promover o existente: a planilha só preenche o que está vazio
+// ---------------------------------------------------------------------------
+
+const blank = (v) => v == null || v === '' || (Array.isArray(v) && v.length === 0);
+
+// Nome e consultor dono NUNCA entram aqui (decisão do spec). Telefone e CPF
+// entram só se vazios, e quando entram os campos de busca são recomputados
+// com o que vai ficar gravado (dual-write, como o cadastro faz).
+export const buildFillPatch = (c, lead) => {
+  const patch = {};
+  if (blank(lead.whatsapp) && c.whatsappDigits) patch.whatsapp = formatPhone(c.whatsappDigits);
+  if (blank(lead.email) && c.email) patch.email = c.email;
+  if (blank(lead.cpf) && c.cpfDigits) patch.cpf = formatCPF(c.cpfDigits);
+  if (blank(lead.rg) && c.rg) patch.rg = c.rg;
+  if (blank(lead.birthDate) && c.birthDate) patch.birthDate = c.birthDate;
+  if (blank(lead.sexo) && c.sexo) patch.sexo = c.sexo;
+  if (blank(lead.dor) && c.dor) patch.dor = c.dor;
+  if (blank(lead.address) && c.address) patch.address = c.address;
+  if (blank(lead.professorId) && c.professorId) {
+    patch.professorId = c.professorId;
+    patch.professorName = c.professorName;
+  }
+  if (c.vip && !(lead.tags || []).includes('VIP')) patch.tags = [...(lead.tags || []), 'VIP'];
+  if (patch.whatsapp || patch.cpf) {
+    Object.assign(patch, buildLeadSearchFields({
+      name: lead.name,
+      whatsapp: patch.whatsapp || lead.whatsapp,
+      cpf: patch.cpf || lead.cpf
+    }));
+  }
+  return patch;
+};
+
+// ---------------------------------------------------------------------------
+// Classificação
+// ---------------------------------------------------------------------------
+
+export const OUTCOME = {
+  CRIAR: 'criar',
+  PROMOVER: 'promover',
+  REGISTRAR_CONTRATO: 'registrar_contrato',
+  ATUALIZAR: 'atualizar',
+  SEM_ALTERACAO: 'sem_alteracao',
+  CONFLITO: 'conflito',
+  SUSPEITA: 'suspeita',
+  INVALIDA: 'invalida',
+  FORA_DO_ESCOPO: 'fora_do_escopo',
+  DUPLICADA: 'duplicada_no_arquivo',
+  ERRO: 'erro'
+};
+
+export const OUTCOME_LABEL = {
+  criar: 'Criado',
+  promover: 'Promovido a cliente',
+  registrar_contrato: 'Contrato registrado',
+  atualizar: 'Dados preenchidos',
+  sem_alteracao: 'Sem alteração',
+  conflito: 'Conflito (pulada)',
+  suspeita: 'Suspeita por nome',
+  invalida: 'Inválida',
+  fora_do_escopo: 'Fora do escopo',
+  duplicada_no_arquivo: 'Duplicada no arquivo',
+  erro: 'Erro na gravação'
+};
+
+// Só estes chegam ao Firestore.
+export const WRITABLE_OUTCOMES = [OUTCOME.CRIAR, OUTCOME.PROMOVER, OUTCOME.REGISTRAR_CONTRATO, OUTCOME.ATUALIZAR];
+
+// `decision` (suspeita por nome): undefined = ainda sem decisão; 'create' =
+// cadastro novo; qualquer outro valor = id do homônimo a usar.
+export const classifyCandidate = (c, match, { decision, scope, now, windowDays }) => {
+  if (c.duplicateOf) return { outcome: OUTCOME.DUPLICADA, reason: `Repetida da linha ${c.duplicateOf}`, lead: null, fill: null, createContract: false, homonyms: [] };
+  if (!isCandidateValid(c)) {
+    return { outcome: OUTCOME.INVALIDA, reason: String(c.name || '').length > 1 ? 'Sem CPF válido nem telefone válido' : 'Sem nome', lead: null, fill: null, createContract: false, homonyms: [] };
+  }
+  if (!isInScope(c, scope, now, windowDays)) {
+    const reason = c.contractSituation === CONTRACT_SITUATION.CANCELADO ? 'Contrato cancelado'
+      : c.endsAt ? `Venceu em ${fmtDia(c.endsAt)}, fora da janela`
+        : 'Cliente inativo sem vigência';
+    return { outcome: OUTCOME.FORA_DO_ESCOPO, reason, lead: null, fill: null, createContract: false, homonyms: [] };
+  }
+  let lead = match?.lead || null;
+  const homonyms = match?.homonyms || [];
+  if (match?.kind === 'name') {
+    if (!decision) return { outcome: OUTCOME.SUSPEITA, reason: `Já existe "${homonyms[0]?.name}" na base`, lead: null, fill: null, createContract: false, homonyms };
+    lead = decision === 'create' ? null : (homonyms.find((h) => h.id === decision) || null);
+  }
+  if (!lead) {
+    return { outcome: OUTCOME.CRIAR, reason: c.endsAt ? 'Cadastro novo com contrato' : 'Cadastro novo sem vigência', lead: null, fill: null, createContract: Boolean(c.endsAt), homonyms: [] };
+  }
+  if (match?.kind === 'phone' && c.cpfDigits && lead.cpfDigits && lead.cpfDigits !== c.cpfDigits) {
+    return { outcome: OUTCOME.CONFLITO, reason: 'CPF diferente do cadastro com este telefone', lead, fill: null, createContract: false, homonyms: [] };
+  }
+  const existingEnds = getSafeDateOrNull(lead.currentContractEndsAt);
+  if (c.endsAt && lead.currentContractId && existingEnds && !sameDay(existingEnds, c.endsAt)) {
+    return { outcome: OUTCOME.CONFLITO, reason: `Já tem contrato até ${fmtDia(existingEnds)}`, lead, fill: null, createContract: false, homonyms: [] };
+  }
+  const fill = buildFillPatch(c, lead);
+  const createContract = Boolean(c.endsAt) && !lead.currentContractId;
+  if (!isClientLead(lead)) {
+    return { outcome: OUTCOME.PROMOVER, reason: createContract ? 'Lead vira cliente com contrato' : 'Lead vira cliente sem vigência', lead, fill, createContract, homonyms: [] };
+  }
+  if (createContract) return { outcome: OUTCOME.REGISTRAR_CONTRATO, reason: `Vigência até ${fmtDia(c.endsAt)}`, lead, fill, createContract, homonyms: [] };
+  if (Object.keys(fill).length) return { outcome: OUTCOME.ATUALIZAR, reason: `Preenche ${Object.keys(fill).filter((k) => !/Digits|Lower|Tokens/.test(k)).join(', ')}`, lead, fill, createContract: false, homonyms: [] };
+  return { outcome: OUTCOME.SEM_ALTERACAO, reason: 'Já está igual', lead, fill: null, createContract: false, homonyms: [] };
+};
+
 // Mantém os imports usados pelas próximas tasks referenciados desde já (o
 // lint acusa import sem uso). Cada task abaixo substitui o uso de verdade.
-export const __IMPORT_INTERNALS = { addMonths, formatCPF, formatPhone, parseValorBRL, buildLeadSearchFields, deriveLeadBucket, isClientLead, fmtDia, sameDay, earliest };
+export const __IMPORT_INTERNALS = { addMonths, parseValorBRL, deriveLeadBucket, earliest };

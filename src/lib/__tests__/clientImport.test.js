@@ -19,7 +19,10 @@ import {
   enrichCandidate,
   isInScope,
   resolveMatch,
-  SCOPE
+  SCOPE,
+  buildFillPatch,
+  classifyCandidate,
+  OUTCOME
 } from '../clientImport.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
@@ -403,5 +406,98 @@ describe('resolveMatch', () => {
     expect(resolveMatch({ cpfDigits: null, whatsappDigits: '71999990002', nameLower: 'ana' }, index)).toEqual({ kind: 'phone', lead: bruno, homonyms: [] });
     expect(resolveMatch({ cpfDigits: '11144477735', whatsappDigits: '71999990009', nameLower: 'ana' }, index)).toEqual({ kind: 'name', lead: null, homonyms: [homonimo] });
     expect(resolveMatch({ cpfDigits: null, whatsappDigits: null, nameLower: 'ninguem' }, index)).toEqual({ kind: 'none', lead: null, homonyms: [] });
+  });
+});
+
+const VALID = { name: 'Ana Teste', nameLower: 'ana teste', cpfDigits: '52998224725', whatsappDigits: '71999990001', email: 'ana@example.com', rg: null, birthDate: null, sexo: null, dor: null, vip: false, address: null, professorId: null, professorName: null, contractSituation: 'ativo', clientSituation: 'ativo', startsAt: null, endsAt: null, warnings: [] };
+const OPTS = { decision: undefined, scope: SCOPE.PADRAO, now: NOW, windowDays: 15 };
+const NONE = { kind: 'none', lead: null, homonyms: [] };
+
+describe('buildFillPatch', () => {
+  it('preenche só o que está vazio e recomputa os campos de busca quando toca telefone ou CPF', () => {
+    const lead = { name: 'Ana', whatsapp: '', email: 'ja@tem.com', cpf: null, tags: [] };
+    const patch = buildFillPatch({ ...VALID, vip: true, rg: '12', sexo: 'Feminino', dor: 'Emagrecer', address: { street: 'Rua A' }, professorId: 'p1', professorName: 'Carlos' }, lead);
+    expect(patch.whatsapp).toBe('(71) 9 9999-0001');
+    expect(patch.email).toBeUndefined();
+    expect(patch.cpf).toBe('529.982.247-25');
+    expect(patch.rg).toBe('12');
+    expect(patch.sexo).toBe('Feminino');
+    expect(patch.dor).toBe('Emagrecer');
+    expect(patch.address).toEqual({ street: 'Rua A' });
+    expect(patch.professorId).toBe('p1');
+    expect(patch.professorName).toBe('Carlos');
+    expect(patch.tags).toEqual(['VIP']);
+    expect(patch.whatsappDigits).toBe('71999990001');
+    expect(patch.cpfDigits).toBe('52998224725');
+    expect(patch.nameLower).toBe('ana');
+  });
+
+  it('nada vazio, nada no patch; VIP já presente não repete', () => {
+    const lead = { name: 'Ana', whatsapp: '(71) 9 9999-0001', email: 'x@y.com', cpf: '529.982.247-25', rg: '1', birthDate: D(1985, 3, 5), sexo: 'Feminino', dor: 'x', address: { street: 'r' }, professorId: 'p9', tags: ['VIP'] };
+    expect(buildFillPatch({ ...VALID, vip: true, rg: '2', professorId: 'p1' }, lead)).toEqual({});
+  });
+});
+
+describe('classifyCandidate', () => {
+  it('duplicada no arquivo, inválida e fora do escopo, nessa ordem', () => {
+    expect(classifyCandidate({ ...VALID, duplicateOf: 2 }, NONE, OPTS).outcome).toBe(OUTCOME.DUPLICADA);
+    expect(classifyCandidate({ ...VALID, cpfDigits: null, whatsappDigits: null }, NONE, OPTS).outcome).toBe(OUTCOME.INVALIDA);
+    expect(classifyCandidate({ ...VALID, name: '' }, NONE, OPTS).reason).toBe('Sem nome');
+    expect(classifyCandidate({ ...VALID, clientSituation: 'inativo' }, NONE, OPTS).outcome).toBe(OUTCOME.FORA_DO_ESCOPO);
+  });
+
+  it('sem casamento cria; com fim cria com contrato', () => {
+    const semFim = classifyCandidate(VALID, NONE, OPTS);
+    expect(semFim.outcome).toBe(OUTCOME.CRIAR);
+    expect(semFim.createContract).toBe(false);
+    const comFim = classifyCandidate({ ...VALID, endsAt: D(2026, 11, 12) }, NONE, OPTS);
+    expect(comFim.createContract).toBe(true);
+  });
+
+  it('suspeita por nome espera decisão; "create" cria; id de homônimo usa o existente', () => {
+    const homonimo = { id: 'L3', name: 'Ana Teste', status: 'Novo', cpfDigits: '', whatsappDigits: '' };
+    const match = { kind: 'name', lead: null, homonyms: [homonimo] };
+    expect(classifyCandidate(VALID, match, OPTS).outcome).toBe(OUTCOME.SUSPEITA);
+    expect(classifyCandidate(VALID, match, { ...OPTS, decision: 'create' }).outcome).toBe(OUTCOME.CRIAR);
+    const usa = classifyCandidate(VALID, match, { ...OPTS, decision: 'L3' });
+    expect(usa.outcome).toBe(OUTCOME.PROMOVER);
+    expect(usa.lead).toBe(homonimo);
+  });
+
+  it('casado por telefone com CPF diferente é conflito', () => {
+    const lead = { id: 'L2', name: 'Bruno', cpfDigits: '11144477735', whatsappDigits: '71999990001', status: 'Novo' };
+    const r = classifyCandidate(VALID, { kind: 'phone', lead, homonyms: [] }, OPTS);
+    expect(r.outcome).toBe(OUTCOME.CONFLITO);
+    expect(r.reason).toMatch(/CPF diferente/);
+  });
+
+  it('já tem contrato com fim diferente é conflito; com o mesmo dia não é', () => {
+    const cliente = { id: 'L1', name: 'Ana', lifecycleStage: 'cliente', status: 'Venda', isConverted: true, currentContractId: 'C1', currentContractEndsAt: D(2026, 10, 1), cpfDigits: '52998224725' };
+    const m = { kind: 'cpf', lead: cliente, homonyms: [] };
+    expect(classifyCandidate({ ...VALID, endsAt: D(2026, 11, 12) }, m, OPTS).outcome).toBe(OUTCOME.CONFLITO);
+    const mesmo = classifyCandidate({ ...VALID, endsAt: new Date(2026, 9, 1, 15, 0) }, m, OPTS);
+    expect(mesmo.outcome).not.toBe(OUTCOME.CONFLITO);
+    expect(mesmo.createContract).toBe(false);
+  });
+
+  it('lead em prospecção ou em perda vira promover (com ou sem contrato)', () => {
+    const lead = { id: 'L1', name: 'Ana', status: 'Negociando', cpfDigits: '52998224725', email: 'ana@example.com' };
+    const semFim = classifyCandidate(VALID, { kind: 'cpf', lead, homonyms: [] }, OPTS);
+    expect(semFim.outcome).toBe(OUTCOME.PROMOVER);
+    expect(semFim.createContract).toBe(false);
+    const perda = classifyCandidate({ ...VALID, endsAt: D(2026, 11, 12) }, { kind: 'cpf', lead: { ...lead, status: 'Perda' }, homonyms: [] }, OPTS);
+    expect(perda.outcome).toBe(OUTCOME.PROMOVER);
+    expect(perda.createContract).toBe(true);
+  });
+
+  it('cliente sem contrato + fim = registrar contrato; cliente completo = atualizar ou sem alteração', () => {
+    const cliente = { id: 'L1', name: 'Ana', lifecycleStage: 'cliente', status: 'Venda', isConverted: true, cpfDigits: '52998224725', email: null, whatsapp: '(71) 9 9999-0001', cpf: '529.982.247-25' };
+    const m = { kind: 'cpf', lead: cliente, homonyms: [] };
+    expect(classifyCandidate({ ...VALID, endsAt: D(2026, 11, 12) }, m, OPTS).outcome).toBe(OUTCOME.REGISTRAR_CONTRATO);
+    const atualiza = classifyCandidate(VALID, m, OPTS);
+    expect(atualiza.outcome).toBe(OUTCOME.ATUALIZAR);
+    expect(atualiza.fill).toEqual({ email: 'ana@example.com' });
+    const completo = { ...cliente, email: 'ana@example.com', currentContractId: 'C1', currentContractEndsAt: D(2026, 11, 12) };
+    expect(classifyCandidate({ ...VALID, endsAt: D(2026, 11, 12) }, { kind: 'cpf', lead: completo, homonyms: [] }, OPTS).outcome).toBe(OUTCOME.SEM_ALTERACAO);
   });
 });
