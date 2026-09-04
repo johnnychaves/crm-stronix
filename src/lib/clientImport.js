@@ -471,6 +471,206 @@ export const classifyCandidate = (c, match, { decision, scope, now, windowDays }
   return { outcome: OUTCOME.SEM_ALTERACAO, reason: 'Já está igual', lead, fill: null, createContract: false, homonyms: [] };
 };
 
-// Mantém os imports usados pelas próximas tasks referenciados desde já (o
-// lint acusa import sem uso). Cada task abaixo substitui o uso de verdade.
-export const __IMPORT_INTERNALS = { addMonths, parseValorBRL, deriveLeadBucket, earliest };
+// ---------------------------------------------------------------------------
+// Contrato importado
+// ---------------------------------------------------------------------------
+
+// Meses inteiros entre duas datas (mínimo 1), ou null.
+const monthsBetween = (a, b) => {
+  const days = daysBetween(a, b);
+  if (days == null) return null;
+  const m = Math.round(days / 30.4375);
+  return m >= 1 ? m : null;
+};
+
+// Mesmo shape do `contract` de buildMatriculaWrites (contracts.js), com
+// startsAt/endsAt vindos da planilha. A importação NUNCA inventa data: fim é
+// obrigatório (o caller só chama com c.endsAt); início real se veio, inferido
+// (fim menos a duração do plano do catálogo, marcado) se der, senão nulo.
+export const buildImportedContract = (c, { owner, leadName, importMeta }) => {
+  const plan = c.plan || null;
+  const planMonths = Number(plan?.durationMonths) || 0;
+  const startsAt = c.startsAt || (planMonths > 0 ? addMonths(c.endsAt, -planMonths) : null);
+  const startsAtInferred = !c.startsAt && Boolean(startsAt);
+  const durationMonths = planMonths > 0 ? planMonths : (c.startsAt ? monthsBetween(c.startsAt, c.endsAt) : null);
+  const status = c.contractSituation === CONTRACT_SITUATION.CANCELADO ? CONTRACT_STATUS.CANCELADO
+    : c.contractSituation === CONTRACT_SITUATION.TRANCADO ? CONTRACT_STATUS.TRANCADO
+      : CONTRACT_STATUS.ATIVO;
+  const listValue = Number(plan?.value) || 0;
+  const value = Number.isFinite(Number(c.value)) && c.value != null ? Number(c.value) : listValue;
+  return {
+    leadId: null,
+    leadName: leadName || null,
+    planId: plan?.id || null,
+    planName: plan?.name || c.planName || null,
+    value,
+    listValue,
+    durationMonths,
+    startsAt,
+    endsAt: c.endsAt,
+    status,
+    cancelledAt: status === CONTRACT_STATUS.CANCELADO ? c.endsAt : null,
+    cancelReason: null,
+    // Trancado sem data de pausa na planilha: a importação é o melhor dado
+    // que existe; a reativação pela ficha empurra o fim a partir daí.
+    pausedAt: status === CONTRACT_STATUS.TRANCADO ? importMeta.now : null,
+    renewedFromId: null,
+    startsAtInferred,
+    consultantId: owner.consultantId,
+    consultantName: owner.consultantName,
+    consultantAuthUid: owner.consultantAuthUid,
+    importedBy: importMeta.importedBy,
+    importSource: importMeta.importSource,
+    importBatchId: importMeta.importBatchId
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Escritas do lead (o QUE gravar; o COMO fica em clientImportWrites.js)
+// ---------------------------------------------------------------------------
+
+// Espelho do patch que commitMatricula grava (contractsWrites.js).
+const CLIENT_MARKS = {
+  status: 'Venda',
+  isConverted: true,
+  lifecycleStage: 'cliente',
+  lossReason: null,
+  lostAt: null,
+  nextFollowUp: null,
+  renewalHandledCheckpoints: [],
+  renewalDeclined: false,
+  reactivationStageId: null
+};
+
+const contractSummary = (contract) => (contract ? {
+  currentPlanName: contract.planName,
+  currentContractValue: contract.value,
+  currentContractStartsAt: contract.startsAt,
+  currentContractEndsAt: contract.endsAt,
+  currentContractStatus: contract.status
+} : {});
+
+export const buildImportInteractionText = ({ sourceLabel, contract }) =>
+  `Cadastro importado do ${sourceLabel}. ${contract
+    ? `Plano ${contract.planName || 'sem nome'}, vigência até ${fmtDia(contract.endsAt)}.`
+    : 'Sem vigência registrada.'}`;
+
+// `consultant` é o dono para cadastro NOVO (ou para lead existente sem dono):
+// o consultor da linha quando casou, senão o padrão escolhido no assistente.
+// Lead existente com dono mantém o dono, sempre.
+export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, importMeta, now }) => {
+  const lead = cls?.lead || null;
+  const isNew = !lead;
+  const historical = c.startsAt || c.registeredAt || null;
+  const convertedAt = historical || now;
+  const warnings = [...(c.warnings || [])];
+  if (!historical) warnings.push('Sem data histórica: conta como venda de hoje');
+
+  const owner = lead?.consultantId
+    ? { consultantId: lead.consultantId, consultantName: lead.consultantName ?? null, consultantAuthUid: lead.consultantAuthUid ?? null }
+    : { consultantId: consultant?.id ?? null, consultantName: consultant?.name ?? null, consultantAuthUid: consultant?.authUid ?? null };
+
+  const leadName = lead?.name || c.name;
+  const contract = cls?.createContract && c.endsAt
+    ? buildImportedContract(c, { owner, leadName, importMeta })
+    : null;
+  const stamps = { importedBy: importMeta.importedBy, importSource: importMeta.importSource, importBatchId: importMeta.importBatchId };
+
+  let leadData;
+  if (isNew) {
+    const whatsapp = c.whatsappDigits ? formatPhone(c.whatsappDigits) : c.whatsappRaw;
+    const cpf = c.cpfDigits ? formatCPF(c.cpfDigits) : null;
+    leadData = {
+      name: c.name,
+      whatsapp,
+      email: c.email,
+      cpf,
+      rg: c.rg,
+      birthDate: c.birthDate,
+      sexo: c.sexo,
+      dor: c.dor,
+      modalidade: null,
+      address: c.address,
+      tags: c.vip ? ['VIP'] : [],
+      source: `Importação ${importMeta.sourceLabel}`,
+      observation: '',
+      funnelId,
+      professorId: c.professorId || null,
+      professorName: c.professorId ? c.professorName : null,
+      referredById: null,
+      referredByName: null,
+      ...owner,
+      ...CLIENT_MARKS,
+      ...contractSummary(contract),
+      ...buildLeadSearchFields({ name: c.name, whatsapp, cpf }),
+      createdAt: c.registeredAt || now,
+      convertedAt,
+      clienteSince: earliest(c.registeredAt, c.startsAt) || now,
+      lastInteractionAt: null,
+      interactionsCount: 0,
+      nextFollowUpType: null,
+      appointmentType: null,
+      appointmentScheduledFor: null,
+      ...stamps
+    };
+    leadData.lifecycleBucket = deriveLeadBucket(leadData);
+  } else {
+    const promote = !isClientLead(lead);
+    leadData = {
+      ...(cls.fill || {}),
+      ...(lead.consultantId ? {} : owner),
+      ...(promote ? CLIENT_MARKS : {}),
+      ...contractSummary(contract),
+      ...(promote ? { convertedAt: getSafeDateOrNull(lead.convertedAt) || convertedAt } : {}),
+      ...(lead.clienteSince ? {} : { clienteSince: earliest(c.registeredAt, c.startsAt) || now }),
+      ...stamps
+    };
+    leadData.lifecycleBucket = deriveLeadBucket({ ...lead, ...leadData });
+  }
+
+  return {
+    isNew,
+    leadId: lead?.id || null,
+    leadName,
+    leadData,
+    contract,
+    interactionText: buildImportInteractionText({ sourceLabel: importMeta.sourceLabel, contract }),
+    owner,
+    warnings
+  };
+};
+
+// ---------------------------------------------------------------------------
+// Relatório
+// ---------------------------------------------------------------------------
+
+export const summarizeOutcomes = (results) => {
+  const s = Object.fromEntries(Object.values(OUTCOME).map((k) => [k, 0]));
+  s.semVigencia = 0;
+  s.avisos = 0;
+  s.gravaveis = 0;
+  const planos = new Set();
+  const consultores = new Set();
+  (results || []).forEach(({ c, cls }) => {
+    s[cls.outcome] = (s[cls.outcome] || 0) + 1;
+    if ((c.warnings || []).length) s.avisos += 1;
+    if (!WRITABLE_OUTCOMES.includes(cls.outcome)) return;
+    s.gravaveis += 1;
+    if ((cls.outcome === OUTCOME.CRIAR || cls.outcome === OUTCOME.PROMOVER) && !c.endsAt) s.semVigencia += 1;
+    if (cls.createContract && c.planName && !c.plan) planos.add(c.planName);
+    if (c.consultantName && !c.consultant && !cls.lead?.consultantId) consultores.add(c.consultantName);
+  });
+  s.planosForaDoCatalogo = [...planos];
+  s.consultoresNaoReconhecidos = [...consultores];
+  return s;
+};
+
+// CSV para o Excel em pt-BR: BOM, ponto e vírgula, tudo entre aspas.
+export const buildReportCsv = (results) => {
+  const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const lines = [['linha', 'nome', 'resultado', 'motivo', 'avisos'].map(esc).join(';')];
+  (results || []).forEach(({ c, cls }) => {
+    lines.push([c.rowNumber, c.name, OUTCOME_LABEL[cls.outcome] || cls.outcome, cls.reason || '', (c.warnings || []).join(' | ')].map(esc).join(';'));
+  });
+  return `\uFEFF${lines.join('\r\n')}`;
+};

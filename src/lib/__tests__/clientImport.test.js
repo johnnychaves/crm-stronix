@@ -22,8 +22,14 @@ import {
   SCOPE,
   buildFillPatch,
   classifyCandidate,
-  OUTCOME
+  OUTCOME,
+  buildImportedContract,
+  buildImportedClientWrites,
+  summarizeOutcomes,
+  buildReportCsv,
+  OUTCOME_LABEL
 } from '../clientImport.js';
+import { buildMatriculaWrites, computeEndsAt, CONTRACT_STATUS } from '../contracts.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const NOW = D(2026, 9, 3);
@@ -522,5 +528,196 @@ describe('classifyCandidate', () => {
     const m = { kind: 'cpf', lead: cliente, homonyms: [] };
     expect(classifyCandidate({ ...VALID, endsAt: D(2026, 11, 12) }, m, OPTS).outcome).toBe(OUTCOME.SEM_ALTERACAO);
     expect(classifyCandidate({ ...VALID, endsAt: D(2026, 12, 12) }, m, OPTS).outcome).toBe(OUTCOME.CONFLITO);
+  });
+});
+
+const META = { importedBy: 'adminUid', importSource: 'nextfit', sourceLabel: 'NextFit', importBatchId: 'b1', now: NOW };
+const OWNER = { consultantId: 'u1', consultantName: 'Bia Souza', consultantAuthUid: 'a1' };
+const APP_USER = { id: 'u1', name: 'Bia Souza', authUid: 'a1' };
+
+describe('buildImportedContract', () => {
+  it('início real, plano do catálogo, valor da planilha', () => {
+    const k = buildImportedContract({ ...VALID, startsAt: D(2026, 8, 12), endsAt: D(2026, 11, 12), value: 450, plan: PLANOS[0], planName: 'Trimestral', contractSituation: 'ativo' }, { owner: OWNER, leadName: 'Ana', importMeta: META });
+    expect(k.planId).toBe('pl1');
+    expect(k.planName).toBe('Trimestral');
+    expect(k.value).toBe(450);
+    expect(k.listValue).toBe(450);
+    expect(k.durationMonths).toBe(3);
+    expect(k.startsAt).toEqual(D(2026, 8, 12));
+    expect(k.startsAtInferred).toBe(false);
+    expect(k.endsAt).toEqual(D(2026, 11, 12));
+    expect(k.status).toBe(CONTRACT_STATUS.ATIVO);
+    expect(k.cancelledAt).toBeNull();
+    expect(k.pausedAt).toBeNull();
+    expect(k.renewedFromId).toBeNull();
+    expect(k.consultantId).toBe('u1');
+    expect(k.importBatchId).toBe('b1');
+  });
+
+  it('sem início: infere fim menos a duração do plano e marca; sem plano fica nulo', () => {
+    const comPlano = buildImportedContract({ ...VALID, endsAt: D(2026, 11, 12), plan: PLANOS[0], value: null }, { owner: OWNER, leadName: 'Ana', importMeta: META });
+    expect(comPlano.startsAt).toEqual(D(2026, 8, 12));
+    expect(comPlano.startsAtInferred).toBe(true);
+    expect(comPlano.value).toBe(450);
+    const semPlano = buildImportedContract({ ...VALID, endsAt: D(2026, 11, 12), plan: null, planName: 'Plano Ouro', value: null }, { owner: OWNER, leadName: 'Ana', importMeta: META });
+    expect(semPlano.startsAt).toBeNull();
+    expect(semPlano.startsAtInferred).toBe(false);
+    expect(semPlano.planId).toBeNull();
+    expect(semPlano.planName).toBe('Plano Ouro');
+    expect(semPlano.durationMonths).toBeNull();
+    expect(semPlano.value).toBe(0);
+  });
+
+  it('sem plano mas com início: duração em meses inteiros', () => {
+    const k = buildImportedContract({ ...VALID, startsAt: D(2026, 8, 12), endsAt: D(2026, 11, 12), plan: null, planName: 'X' }, { owner: OWNER, leadName: 'Ana', importMeta: META });
+    expect(k.durationMonths).toBe(3);
+  });
+
+  it('cancelado leva cancelledAt no fim; trancado leva pausedAt na importação', () => {
+    const c = buildImportedContract({ ...VALID, endsAt: D(2026, 11, 12), contractSituation: 'cancelado', plan: null }, { owner: OWNER, leadName: 'Ana', importMeta: META });
+    expect(c.status).toBe(CONTRACT_STATUS.CANCELADO);
+    expect(c.cancelledAt).toEqual(D(2026, 11, 12));
+    const t = buildImportedContract({ ...VALID, endsAt: D(2026, 11, 12), contractSituation: 'trancado', plan: null }, { owner: OWNER, leadName: 'Ana', importMeta: META });
+    expect(t.status).toBe(CONTRACT_STATUS.TRANCADO);
+    expect(t.pausedAt).toBe(NOW);
+  });
+});
+
+describe('buildImportedClientWrites', () => {
+  const newCandidate = { ...VALID, rg: '12', birthDate: D(1985, 3, 5), sexo: 'Feminino', dor: 'Emagrecer', vip: true, address: { street: 'Rua A' }, registeredAt: D(2026, 1, 10), startsAt: D(2026, 8, 12), endsAt: D(2026, 11, 12), value: 450, plan: PLANOS[0], planName: 'Trimestral', consultant: null, professorId: 'p1', professorName: 'Carlos Lima' };
+
+  it('cadastro novo nasce cliente, com contrato, carimbos históricos e campos de busca', () => {
+    const w = buildImportedClientWrites({ c: newCandidate, cls: { lead: null, fill: null, createContract: true }, consultant: USERS[0], funnelId: 'f1', appUser: APP_USER, importMeta: META, now: NOW });
+    expect(w.isNew).toBe(true);
+    expect(w.leadId).toBeNull();
+    expect(w.leadName).toBe('Ana Teste');
+    const d = w.leadData;
+    expect(d.name).toBe('Ana Teste');
+    expect(d.whatsapp).toBe('(71) 9 9999-0001');
+    expect(d.cpf).toBe('529.982.247-25');
+    expect(d.status).toBe('Venda');
+    expect(d.isConverted).toBe(true);
+    expect(d.lifecycleStage).toBe('cliente');
+    expect(d.lifecycleBucket).toBe('cliente');
+    expect(d.funnelId).toBe('f1');
+    expect(d.source).toBe('Importação NextFit');
+    expect(d.tags).toEqual(['VIP']);
+    expect(d.consultantId).toBe('u1');
+    expect(d.consultantAuthUid).toBe('a1');
+    expect(d.professorId).toBe('p1');
+    expect(d.createdAt).toEqual(D(2026, 1, 10));
+    expect(d.convertedAt).toEqual(D(2026, 8, 12));
+    expect(d.clienteSince).toEqual(D(2026, 1, 10));
+    expect(d.currentContractEndsAt).toEqual(D(2026, 11, 12));
+    expect(d.currentContractStatus).toBe(CONTRACT_STATUS.ATIVO);
+    expect(d.currentPlanName).toBe('Trimestral');
+    expect(d.renewalHandledCheckpoints).toEqual([]);
+    expect(d.reactivationStageId).toBeNull();
+    expect(d.whatsappDigits).toBe('71999990001');
+    expect(d.cpfDigits).toBe('52998224725');
+    expect(d.nameTokens).toEqual(['ana', 'teste']);
+    expect(d.lastInteractionAt).toBeNull();
+    expect(d.interactionsCount).toBe(0);
+    expect(d.importBatchId).toBe('b1');
+    expect(d.importedBy).toBe('adminUid');
+    expect(w.contract.endsAt).toEqual(D(2026, 11, 12));
+    expect(w.owner).toEqual(OWNER);
+    expect(w.interactionText).toBe('Cadastro importado do NextFit. Plano Trimestral, vigência até 12/11/2026.');
+    expect(w.warnings).toEqual([]);
+  });
+
+  it('professor não reconhecido não vaza nome; sem data histórica avisa e usa a importação', () => {
+    const w = buildImportedClientWrites({ c: { ...VALID, professorId: null, professorName: 'Ninguém', consultant: null }, cls: { lead: null, fill: null, createContract: false }, consultant: USERS[0], funnelId: 'f1', appUser: APP_USER, importMeta: META, now: NOW });
+    expect(w.leadData.professorId).toBeNull();
+    expect(w.leadData.professorName).toBeNull();
+    expect(w.leadData.createdAt).toBe(NOW);
+    expect(w.leadData.convertedAt).toBe(NOW);
+    expect(w.contract).toBeNull();
+    expect(w.interactionText).toBe('Cadastro importado do NextFit. Sem vigência registrada.');
+    expect(w.warnings).toEqual(['Sem data histórica: conta como venda de hoje']);
+  });
+
+  it('promover lead existente: patch de matrícula + preenchimentos, sem tocar nome nem consultor', () => {
+    const lead = { id: 'L1', name: 'Ana', status: 'Negociando', consultantId: 'u2', consultantName: 'Caio', consultantAuthUid: 'a2', email: null, whatsapp: '(71) 9 9999-0001', cpf: '529.982.247-25', tags: [], createdAt: D(2026, 5, 1) };
+    const fill = buildFillPatch(newCandidate, lead);
+    const w = buildImportedClientWrites({ c: newCandidate, cls: { lead, fill, createContract: true }, consultant: USERS[0], funnelId: 'f1', appUser: APP_USER, importMeta: META, now: NOW });
+    expect(w.isNew).toBe(false);
+    expect(w.leadId).toBe('L1');
+    const d = w.leadData;
+    expect(d.name).toBeUndefined();
+    expect(d.consultantId).toBeUndefined();
+    expect(d.email).toBe('ana@example.com');
+    expect(d.status).toBe('Venda');
+    expect(d.isConverted).toBe(true);
+    expect(d.lifecycleStage).toBe('cliente');
+    expect(d.lifecycleBucket).toBe('cliente');
+    expect(d.nextFollowUp).toBeNull();
+    expect(d.lostAt).toBeNull();
+    expect(d.convertedAt).toEqual(D(2026, 8, 12));
+    expect(d.clienteSince).toEqual(D(2026, 1, 10));
+    expect(d.currentContractEndsAt).toEqual(D(2026, 11, 12));
+    expect(d.createdAt).toBeUndefined();
+    expect(w.owner).toEqual({ consultantId: 'u2', consultantName: 'Caio', consultantAuthUid: 'a2' });
+    expect(w.contract.consultantId).toBe('u2');
+  });
+
+  it('cliente existente só recebendo contrato não muda status nem convertedAt', () => {
+    const lead = { id: 'L1', name: 'Ana', lifecycleStage: 'cliente', status: 'Venda', isConverted: true, convertedAt: D(2025, 1, 1), clienteSince: D(2025, 1, 1), consultantId: 'u2', consultantName: 'Caio', consultantAuthUid: 'a2' };
+    const w = buildImportedClientWrites({ c: newCandidate, cls: { lead, fill: {}, createContract: true }, consultant: USERS[0], funnelId: 'f1', appUser: APP_USER, importMeta: META, now: NOW });
+    expect(w.leadData.status).toBeUndefined();
+    expect(w.leadData.convertedAt).toBeUndefined();
+    expect(w.leadData.clienteSince).toBeUndefined();
+    expect(w.leadData.currentContractStatus).toBe(CONTRACT_STATUS.ATIVO);
+    expect(w.leadData.lifecycleBucket).toBe('cliente');
+  });
+
+  it('lead existente sem dono ganha o consultor padrão (preencher vazio, não trocar)', () => {
+    const lead = { id: 'L1', name: 'Ana', status: 'Novo' };
+    const w = buildImportedClientWrites({ c: VALID, cls: { lead, fill: {}, createContract: false }, consultant: USERS[0], funnelId: 'f1', appUser: APP_USER, importMeta: META, now: NOW });
+    expect(w.leadData.consultantId).toBe('u1');
+    expect(w.leadData.consultantAuthUid).toBe('a1');
+  });
+
+  it('PARIDADE com buildMatriculaWrites: mesmo leadPatch e mesmo contrato nos campos comuns', () => {
+    const lead = { id: 'L1', name: 'Ana Teste', consultantId: 'u1', consultantName: 'Bia Souza', consultantAuthUid: 'a1' };
+    const start = D(2026, 8, 12);
+    const ref = buildMatriculaWrites({ lead, plan: PLANOS[0], value: 450, startsAt: start, appUser: APP_USER });
+    const c = { ...newCandidate, startsAt: start, endsAt: computeEndsAt(start, 3), value: 450, plan: PLANOS[0] };
+    const w = buildImportedClientWrites({ c, cls: { lead: null, fill: null, createContract: true }, consultant: USERS[0], funnelId: 'f1', appUser: APP_USER, importMeta: META, now: NOW });
+    ['lifecycleStage', 'currentPlanName', 'currentContractValue', 'currentContractStartsAt', 'currentContractEndsAt', 'currentContractStatus', 'renewalHandledCheckpoints', 'renewalDeclined', 'reactivationStageId']
+      .forEach((k) => expect(w.leadData[k], k).toEqual(ref.leadPatch[k]));
+    ['planId', 'planName', 'value', 'listValue', 'durationMonths', 'startsAt', 'endsAt', 'status', 'cancelledAt', 'cancelReason', 'renewedFromId', 'consultantId', 'consultantName', 'consultantAuthUid']
+      .forEach((k) => expect(w.contract[k], k).toEqual(ref.contract[k]));
+  });
+});
+
+describe('summarizeOutcomes / buildReportCsv', () => {
+  const results = [
+    { c: { ...VALID, rowNumber: 2, endsAt: D(2026, 11, 12), plan: PLANOS[0] }, cls: { outcome: OUTCOME.CRIAR, reason: 'x', createContract: true } },
+    { c: { ...VALID, rowNumber: 3, endsAt: null, plan: null, consultant: null, consultantName: 'Zé' }, cls: { outcome: OUTCOME.PROMOVER, reason: 'y', createContract: false } },
+    { c: { ...VALID, rowNumber: 4, endsAt: D(2026, 11, 12), plan: null, planName: 'Plano Ouro' }, cls: { outcome: OUTCOME.REGISTRAR_CONTRATO, reason: 'z', createContract: true } },
+    { c: { ...VALID, rowNumber: 5, warnings: ['CPF inválido'] }, cls: { outcome: OUTCOME.CONFLITO, reason: 'w', createContract: false } }
+  ];
+
+  it('conta por resultado, sem vigência, planos fora do catálogo, consultores não reconhecidos e avisos', () => {
+    const s = summarizeOutcomes(results);
+    expect(s.criar).toBe(1);
+    expect(s.promover).toBe(1);
+    expect(s.registrar_contrato).toBe(1);
+    expect(s.conflito).toBe(1);
+    expect(s.sem_alteracao).toBe(0);
+    expect(s.semVigencia).toBe(1);
+    expect(s.planosForaDoCatalogo).toEqual(['Plano Ouro']);
+    expect(s.consultoresNaoReconhecidos).toEqual(['Zé']);
+    expect(s.avisos).toBe(1);
+    expect(s.gravaveis).toBe(3);
+  });
+
+  it('CSV com BOM, ponto e vírgula e aspas escapadas', () => {
+    const csv = buildReportCsv([{ c: { rowNumber: 2, name: 'Ana "Teste"', warnings: ['CPF inválido'] }, cls: { outcome: OUTCOME.CRIAR, reason: 'Cadastro novo' } }]);
+    expect(csv.startsWith('\uFEFF')).toBe(true);
+    const lines = csv.slice(1).split('\r\n');
+    expect(lines[0]).toBe('"linha";"nome";"resultado";"motivo";"avisos"');
+    expect(lines[1]).toBe(`"2";"Ana ""Teste""";"${OUTCOME_LABEL.criar}";"Cadastro novo";"CPF inválido"`);
   });
 });
