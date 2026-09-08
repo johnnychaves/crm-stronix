@@ -576,7 +576,7 @@ No comentário de cabeçalho do arquivo, acrescente uma linha: "`planUpgradeMove
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npx vitest run src/lib/__tests__/stageMove.test.js`
-Expected: todos verdes (30 testes).
+Expected: todos verdes (28 testes).
 
 - [ ] **Step 5: Commit**
 
