@@ -55,6 +55,7 @@ import { usePagedLeads } from './hooks/usePagedLeads.js';
 import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
+import { planUpgradeSetupOps } from './lib/upgradeFunnel.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
@@ -342,6 +343,8 @@ function AppInner() {
   const [expiredFunnelStatus, setExpiredFunnelStatus] = useState('idle');
   const [renewalSetupDone, setRenewalSetupDone] = useState(null);
   const [renewalFunnelStatus, setRenewalFunnelStatus] = useState('idle');
+  const [upgradeSetupDone, setUpgradeSetupDone] = useState(null);
+  const [upgradeFunnelStatus, setUpgradeFunnelStatus] = useState('idle');
   const [loadingData, setLoadingData] = useState(true);
   // Já baixamos os dados ao menos uma vez nesta sessão? Serve pra reassinar
   // (volta da ociosidade) sem piscar a tela de carregando por cima de um dado
@@ -785,6 +788,7 @@ useEffect(() => {
       // então ninguém consegue arrumar pela tela.
       setExpiredSetupDone(!!data?.expiredFunnelSetupV2DoneAt);
       setRenewalSetupDone(!!data?.renewalFunnelSetupDoneAt);
+      setUpgradeSetupDone(!!data?.upgradeFunnelSetupDoneAt);
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
@@ -1209,6 +1213,68 @@ useEffect(() => {
       }
     })();
   }, [appUser, loadingData, expiredFunnelStatus, renewalFunnelStatus, renewalSetupDone]);
+
+  // Funil UPGRADE do board. Mesmo desenho dos três provisionamentos acima, e
+  // guardado pelo Renovações estar 'done' para as escritas não correrem juntas
+  // no primeiro login de admin de uma academia nova. Só a etapa de entrada
+  // nasce; as demais a academia cria em Configurações.
+  useEffect(() => {
+    if (!appUser || !isAdminUser(appUser)) return;
+    if (loadingData) return;
+    if (renewalFunnelStatus !== 'done') return;
+    if (upgradeFunnelStatus !== 'idle') return;
+    if (upgradeSetupDone === null) return;
+    if (upgradeSetupDone) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
+      setUpgradeFunnelStatus('done');
+      return;
+    }
+
+    setUpgradeFunnelStatus('running');
+
+    (async () => {
+      try {
+        // Snapshots frescos por getDocs (não os props): elimina a corrida com
+        // as assinaturas ao vivo ainda vazias no boot.
+        const [funnelsSnap, statusesSnap] = await Promise.all([
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)),
+          getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH))
+        ]);
+        const plan = planUpgradeSetupOps({
+          funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
+          statuses: statusesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
+        });
+
+        let newFunnelId = null;
+        if (plan.createFunnel) {
+          const ref = await addDoc(
+            collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
+            { ...plan.createFunnel, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
+          );
+          newFunnelId = ref.id;
+        }
+        for (const stage of plan.createStages) {
+          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
+            ...stage,
+            // Etapa planejada junto com o funil novo vem sem funnelId — o id só
+            // existe depois do addDoc acima.
+            funnelId: stage.funnelId || newFunnelId
+          });
+        }
+
+        await setDoc(
+          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          { upgradeFunnelSetupDoneAt: serverTimestamp() },
+          { merge: true }
+        );
+
+        setUpgradeFunnelStatus('done');
+      } catch (err) {
+        console.error('Erro no provisionamento do funil de upgrade', err);
+        setUpgradeFunnelStatus('error');
+      }
+    })();
+  }, [appUser, loadingData, renewalFunnelStatus, upgradeFunnelStatus, upgradeSetupDone]);
 
   // Impersonação ("entrar como"): o banner e o "sair" vivem aqui (nível do app);
   // o "entrar" é feito no SuperAdminView. Ressincroniza com o sessionStorage
