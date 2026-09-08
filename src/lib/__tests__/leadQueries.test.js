@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import indexesConfig from '../../../firestore.indexes.json';
 import { LIFECYCLE_BUCKETS, clientsQuerySpec, clientsAllQuerySpec, allLeadsQuerySpec, lostByFunnelQuerySpec, bucketByFunnelQuerySpec, bucketByFunnelCountSpec, appointmentsInWindowQuerySpec, renewalClientsQuerySpec, consultantLeadsQuerySpec, adminDashboardWindowSpecs, ADMIN_DASHBOARD_WINDOW_FIELDS, wonInMonthQuerySpec, renewalWindowMs, clientsWithContactTodayQuerySpec, expiredClientsQuerySpec, renewalColumnQuerySpec } from '../leadQueries.js';
 import { renewalColumnsFromCheckpoints } from '../renewalFunnel.js';
+import * as Q from '../leadQueries.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
 // um PREFIXO do índice (todas ASCENDING, mesmo conjunto) e — havendo orderBy —
@@ -228,6 +229,64 @@ describe('leadQueries — toda spec é coberta por um índice de firestore.index
   });
 });
 
+// O bloco acima é opt-in: quem escreve uma spec nova precisa LEMBRAR de somar
+// um `it` lá. Foi exatamente o que não aconteceu com expiredClientsQuerySpec —
+// ela nasceu ordenando por vencimento DESCENDING, ninguém pediu o índice, e o
+// board do Vencidos ficou vazio em produção sem erro na tela (o badge da aba
+// conta por outro caminho e mostrava o total certo). Este bloco fecha a porta:
+// toda spec exportada precisa estar registrada aqui, coberta por um índice ou
+// dispensada com motivo.
+describe('leadQueries — registro EXAUSTIVO: nenhuma spec escapa do guarda', () => {
+  const AGORA = new Date(2026, 7, 18, 9, 0, 0).getTime();
+  const DIA = 24 * 60 * 60 * 1000;
+
+  // Precisam de índice composto declarado em firestore.indexes.json.
+  const COM_INDICE = {
+    clientsQuerySpec: clientsQuerySpec(),
+    clientsAllQuerySpec: clientsAllQuerySpec(),
+    renewalClientsQuerySpec: renewalClientsQuerySpec(AGORA, AGORA + 90 * DIA, 10),
+    expiredClientsQuerySpec: expiredClientsQuerySpec(AGORA, 10),
+    renewalColumnQuerySpec: renewalColumnQuerySpec(AGORA, 60, 30, 10),
+    clientsWithContactTodayQuerySpec: clientsWithContactTodayQuerySpec(AGORA, AGORA + DIA),
+    consultantLeadsQuerySpec: consultantLeadsQuerySpec('u1'),
+    lostByFunnelQuerySpec: lostByFunnelQuerySpec('f1'),
+    wonInMonthQuerySpec: wonInMonthQuerySpec(AGORA - 30 * DIA, AGORA),
+    bucketByFunnelQuerySpec: bucketByFunnelQuerySpec(LIFECYCLE_BUCKETS.ATIVO, 'f1'),
+    appointmentsInWindowQuerySpec: appointmentsInWindowQuerySpec('visita', AGORA, AGORA + DIA, 10),
+    bucketByFunnelCountSpec: bucketByFunnelCountSpec(LIFECYCLE_BUCKETS.PERDA, 'f1'),
+  };
+
+  // Dispensadas: sem NENHUMA igualdade, no máximo um campo com range/orderBy —
+  // o índice de campo único que o Firestore mantém sozinho (nas duas direções)
+  // já serve. Coleção inteira sem constraint idem.
+  const SEM_INDICE_COMPOSTO = {
+    allLeadsQuerySpec: allLeadsQuerySpec(),
+    adminDashboardWindowSpecs: adminDashboardWindowSpecs(AGORA - DIA, AGORA),
+  };
+
+  it('cobre todas as specs exportadas por leadQueries.js', () => {
+    const exportadas = Object.keys(Q).filter((k) => /Specs?$/.test(k)).sort();
+    const registradas = [...Object.keys(COM_INDICE), ...Object.keys(SEM_INDICE_COMPOSTO)].sort();
+    // Falhou aqui? Você criou (ou renomeou) uma spec: registre-a numa das duas
+    // listas. Se ela tem igualdade + orderBy/range em outro campo, o índice
+    // correspondente precisa entrar em firestore.indexes.json E ser publicado.
+    expect(registradas).toEqual(exportadas);
+  });
+
+  it.each(Object.entries(COM_INDICE))('%s é coberta por um índice declarado', (_nome, spec) => {
+    expect(coveredByLeadsIndex(spec)).toBe(true);
+  });
+
+  it.each(Object.entries(SEM_INDICE_COMPOSTO))('%s dispensa índice composto (nenhuma igualdade)', (_nome, valor) => {
+    for (const spec of Array.isArray(valor) ? valor : [valor]) {
+      expect(spec.wheres.filter((w) => w.op === '==')).toEqual([]);
+      const campos = new Set(spec.wheres.map((w) => w.field));
+      if (spec.orderBy) campos.add(spec.orderBy.field);
+      expect(campos.size).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
 describe('renewalWindowMs', () => {
   const DAY = 24 * 60 * 60 * 1000;
   const NOW = new Date(2026, 6, 15, 10, 0, 0).getTime();
@@ -309,6 +368,18 @@ describe('expiredClientsQuerySpec', () => {
   it('aceita tamanho de página', () => {
     expect(expiredClientsQuerySpec(ANTES, 10).limit).toBe(10);
     expect(expiredClientsQuerySpec(ANTES).limit).toBeUndefined();
+  });
+
+  // O board do Vencidos nasceu (PR #184) pedindo o vencimento mais RECENTE
+  // primeiro, e o único índice do vencimento era ASCENDING. Firestore NÃO serve
+  // ordenação descendente com índice ascendente quando a igualdade e a ordenação
+  // estão em campos diferentes: a query volta failed-precondition, o
+  // usePagedLeads engole o erro e o board fica vazio — com o badge da aba
+  // mostrando o total certo, porque a CONTAGEM não leva orderBy e roda no índice
+  // ascendente. Foi assim que o funil passou semanas em produção contando 8 e
+  // não mostrando ninguém.
+  it('roda num índice declarado — sem ele o board vem vazio com o badge cheio', () => {
+    expect(coveredByLeadsIndex(expiredClientsQuerySpec(ANTES, 10))).toBe(true);
   });
 });
 
