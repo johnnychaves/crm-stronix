@@ -93,7 +93,9 @@ Um módulo puro `src/lib/upgradeFunnel.js`, espelho de `expiredFunnel.js`:
 - `planUpgradeSetupOps({ funnels, statuses })`: idempotente. Sem funil, cria o
   funil e a entrada. Com funil e sem entrada, cria só a entrada. Com os dois,
   não faz nada.
-- `projectUpgradeLeads` e `splitUpgradeForBoard`, descritos adiante.
+- `upgradeStageIdOf` e `projectUpgradeLeads`, descritos adiante. Não há um
+  "split" como no Vencidos: quem recusa sai do funil, então a coluna Perda
+  não lista ninguém.
 
 No `App.jsx`, um quarto efeito na corrente dos três provisionamentos
 existentes, guardado pelo Renovações estar `done`, com carimbo

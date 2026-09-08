@@ -316,7 +316,7 @@ export const projectUpgradeLeads = (leads, statuses, funnelId) => {
 - [ ] **Step 4: Rodar e ver passar**
 
 Run: `npx vitest run src/lib/__tests__/upgradeFunnel.test.js`
-Expected: `Tests  17 passed`.
+Expected: `Tests  19 passed`.
 
 - [ ] **Step 5: Commit**
 
