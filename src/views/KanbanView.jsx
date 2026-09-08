@@ -3,18 +3,20 @@ import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { canEditLead } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { planStageMove, planLoss, stageMoveBlockMessage } from '../lib/stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage } from '../lib/stageMove.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
+import { hasLiveContract } from '../lib/contracts.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
 import { useLeadCount } from '../hooks/useLeadCount.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
+import { getUpgradeFunnel, projectUpgradeLeads } from '../lib/upgradeFunnel.js';
 import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard } from '../lib/renewalFunnel.js';
 import { renewalDecline, daysToExpiryOf } from '../lib/renewalGoal.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
-import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
+import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec, upgradeClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter } from '../lib/kanban.js';
@@ -474,6 +476,29 @@ const [isPanning, setIsPanning] = useState(false);
   }, [isExpiredView, expiredDocs, statuses, expiredFunnel, respFilter]);
   const expiredLeads = expiredSplit.cards;
 
+  // FUNIL UPGRADE (funil de sistema): cliente que o consultor colocou à mão
+  // para vender um plano melhor. Mesmo molde do Vencidos — query própria só
+  // com a aba aberta, projeção em memória, o status real continua 'Venda' —
+  // com uma diferença: ninguém cai aqui sozinho, a entrada é pela ficha e
+  // grava upgradeStageId. Regras em lib/upgradeFunnel.js.
+  const upgradeFunnel = useMemo(() => getUpgradeFunnel(funnels), [funnels]);
+  const isUpgradeView = Boolean(upgradeFunnel && selectedFunnelId === upgradeFunnel.id);
+  const upgradeSpec = useMemo(() => (isUpgradeView ? upgradeClientsQuerySpec() : null), [isUpgradeView]);
+  const {
+    items: upgradeDocs, reload: upgradeReload, patchItem: upgradePatchLead,
+  } = usePagedLeads({
+    db, path: LEADS_PATH, spec: upgradeSpec, specKey: `upgrade:${isUpgradeView ? '1' : '0'}`,
+    enabled: !!db && isUpgradeView,
+  });
+  // Mesmo recorte do Vencidos: respFilter vale, onlyOverdue é ignorado (cliente
+  // não tem follow-up de prospecção). A coluna Perda deste funil fica vazia:
+  // quem recusou sai do funil, não muda de coluna.
+  const upgradeLeads = useMemo(() => {
+    if (!isUpgradeView) return EMPTY_LEADS;
+    const cards = projectUpgradeLeads(upgradeDocs || [], statuses, upgradeFunnel?.id);
+    return respFilter.length === 0 ? cards : cards.filter((l) => respFilter.includes(l.consultantId));
+  }, [isUpgradeView, upgradeDocs, statuses, upgradeFunnel, respFilter]);
+
   // FUNIL RENOVAÇÕES (funil de sistema): cliente cujo contrato entrou na janela
   // dos marcos. Mesmo molde do Vencidos — projeção em memória, o status real
   // continua 'Venda' — com uma diferença: as COLUNAS são virtuais, derivadas
@@ -512,10 +537,10 @@ const [isPanning, setIsPanning] = useState(false);
   }, [isRenewalView, renewalPages, renewalColumns, respFilter]);
 
   const kanbanLeads = useMemo(
-    // No funil Vencidos os cards vêm da query própria já projetada, não da
-    // assinatura de leads ativos — cliente não está no board de prospecção.
-    () => (isExpiredView ? expiredLeads : filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue })),
-    [isExpiredView, expiredLeads, funnelLeads, respFilter, onlyOverdue]
+    // Nos funis Vencidos e Upgrade os cards vêm da query própria já projetada,
+    // não da assinatura de leads ativos — cliente não está no board de prospecção.
+    () => (isExpiredView ? expiredLeads : isUpgradeView ? upgradeLeads : filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue })),
+    [isExpiredView, expiredLeads, isUpgradeView, upgradeLeads, funnelLeads, respFilter, onlyOverdue]
   );
 
   // Índice leadId → { count, lastDate }. Percorre interactions UMA vez,
@@ -603,8 +628,13 @@ const [isPanning, setIsPanning] = useState(false);
       (expiredSplit.cards || []).forEach((l) => m.set(l.id, l));
       (expiredSplit.declined || []).forEach((l) => m.set(l.id, l));
     }
+    // Mesma coisa para o funil UPGRADE: o cliente que fechou contrato ESTE mês
+    // está em wonDocs como doc cru, sem a flag _upgradeCard.
+    if (isUpgradeView) {
+      upgradeLeads.forEach((l) => m.set(l.id, l));
+    }
     return m;
-  }, [leads, lostDocs, wonDocs, isRenewalView, renewalSplit, isExpiredView, expiredSplit]);
+  }, [leads, lostDocs, wonDocs, isRenewalView, renewalSplit, isExpiredView, expiredSplit, isUpgradeView, upgradeLeads]);
 
   // E1d: total REAL de perdas do funil via getCountFromServer (o header da
   // coluna, depois do E1c, mostraria só a página carregada). Recontado quando
@@ -649,6 +679,14 @@ const [isPanning, setIsPanning] = useState(false);
     specKey: `vencidos:${expiredCutoffMs}`, enabled: !!db && !!expiredFunnel,
   });
 
+  // Total do funil UPGRADE para o badge da aba: agregação no servidor, 1
+  // leitura. O board não exclui ninguém no cliente, então o número bate.
+  const upgradeCountSpec = useMemo(() => (upgradeFunnel ? upgradeClientsQuerySpec() : null), [upgradeFunnel]);
+  const upgradeCount = useLeadCount({
+    db, path: LEADS_PATH, spec: upgradeCountSpec,
+    specKey: 'upgrade', enabled: !!db && !!upgradeFunnel,
+  });
+
   // Total do funil RENOVAÇÕES: somado do que o board carregou, não do servidor.
   // A contagem agregada incluiria contrato cancelado e trancado, que o board
   // exclui — e excluir isso no servidor exigiria filtrar por
@@ -676,8 +714,9 @@ const [isPanning, setIsPanning] = useState(false);
     //     em vez de mostrar um número que conta cancelado.
     if (expiredFunnel) map.set(expiredFunnel.id, expiredCount);
     if (renewalFunnel) map.set(renewalFunnel.id, renewalTotal);
+    if (upgradeFunnel) map.set(upgradeFunnel.id, upgradeCount);
     return map;
-  }, [funnels, leads, defaultFunnelId, expiredFunnel, expiredCount, renewalFunnel, renewalTotal]);
+  }, [funnels, leads, defaultFunnelId, expiredFunnel, expiredCount, renewalFunnel, renewalTotal, upgradeFunnel, upgradeCount]);
 
   // Bubble de filtros fecha em clique fora / Esc (o overflow "+N" das abas
   // é tratado internamente pelo FunnelTabs).
@@ -1083,7 +1122,7 @@ if (!lead) return;
     // coluna, então kanbanLeads e totalFunnelLeads dariam "0 de 0" num board
     // cheio. Sem recorte ativo o resumo some; com recorte ele volta, porque aí
     // descreve de quem é a carteira e não quantos são.
-    if (isRenewalView && !hasActiveFilters) return '';
+    if ((isRenewalView || isUpgradeView) && !hasActiveFilters) return '';
     const parts = [];
     if (respFilter.length === 1) {
       const user = (usersList || []).find(u => u.id === respFilter[0]);
@@ -1094,7 +1133,7 @@ if (!lead) return;
     if (onlyOverdue) parts.push('Em atraso');
     parts.push(parts.length === 0 ? `${kanbanLeads.length} de ${totalFunnelLeads} leads` : `${kanbanLeads.length} leads`);
     return parts.join(' · ');
-  }, [isRenewalView, hasActiveFilters, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
+  }, [isRenewalView, isUpgradeView, hasActiveFilters, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
 
   // Lista do filtro: o próprio usuário primeiro (é a carteira que ele mais
   // procura), o resto em ordem alfabética.
@@ -1324,7 +1363,8 @@ if (!lead) return;
               columnLeads={
                 isRenewalView ? renewalSplit.declined
                   : isExpiredView ? expiredSplit.declined
-                    : lostLeads
+                    : isUpgradeView ? EMPTY_LEADS
+                      : lostLeads
               }
 
               totalCount={perdaHeaderCount}
