@@ -33,6 +33,7 @@ etapa do cliente ali mora num campo próprio (`reactivationStageId`) e o
 | 6 | Encontro com Renovações | **Fica nos dois.** Ao entrar nos marcos, o cliente aparece no Upgrade e em Renovações, e a Meta cobra a renovação. Nada é removido de lado nenhum; o time combina quem conversa. |
 | 7 | Contagem | **A venda é única por cliente.** Um contrato fechado por quem estava no Upgrade e na janela de renovação conta um upgrade e uma renovação nos respectivos relatórios, mas é uma venda só. |
 | 8 | Mecânica | **Molde do Vencidos, campo próprio.** Ver "A escolha que define o tamanho disto". |
+| 9 | O que é upgrade | **Só se estava no funil na hora de fechar.** Definição por processo. A comparação de plano que o modal já faz (valor ou duração maior) segue só na tela; um plano maior fechado fora do funil não conta como upgrade, e um plano igual fechado de dentro conta. |
 
 ## A escolha que define o tamanho disto
 
@@ -206,11 +207,17 @@ contract.closedFromUpgrade = Boolean(lead.upgradeStageId)
 isso, o cliente que fechou pelo Vencidos ou pela ficha continuaria parado no
 Upgrade com um contrato novo.
 
-A contagem segue a decisão 7. Renovação continua sendo o contrato com
-`renewedFromId`. Upgrade é o contrato com `closedFromUpgrade`. O mesmo
-contrato pode ser os dois, e é uma venda só: o painel de vendas conta
-contratos, não flags. O relatório de upgrades em si fica para a segunda
-entrega; esta só grava o dado certo desde o primeiro dia.
+A contagem segue as decisões 7 e 9. Renovação continua sendo o contrato com
+`renewedFromId`. Upgrade é o contrato com `closedFromUpgrade`, e só ele: a
+marca vem do funil, não do plano. O mesmo contrato pode ser os dois, e é uma
+venda só: o painel de vendas conta contratos, não flags. O relatório de
+upgrades em si fica para a segunda entrega; esta só grava o dado certo desde
+o primeiro dia.
+
+Foi considerado e descartado gravar também se o plano cresceu (o modal já
+calcula isso para o rótulo "Upgrade" e "Acima do atual"). Johnny preferiu a
+definição por processo. Se um dia o relatório precisar da comparação, ela
+pode ser gravada no contrato sem mexer em nada disto.
 
 Depois do fechamento, o board do Upgrade recarrega (o cliente saiu do funil) e
 a coluna Venda do mês também, como já acontece com a renovação.
