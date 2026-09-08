@@ -261,7 +261,7 @@ export const WIKI_ARTICLES = [
 
       { t: 'h', text: 'Corrigindo' },
       { t: 'tip', text: 'Errou plano, valor ou data? A aba Contratos tem a correção do contrato vigente. Não precisa desfazer a matrícula e refazer tudo.' },
-      { t: 'warn', text: 'Tirar a pessoa de Venda desfaz a conversão: ela volta a ser lead e sai da contagem de matrículas do mês. Use isso só quando a venda realmente não aconteceu.' },
+      { t: 'warn', text: 'Cliente com contrato não volta para uma fase de lead: a mudança de fase é recusada e o contrato continua valendo. Para desfazer uma matrícula registrada por engano, cancele o contrato na aba Contratos. Só a Venda antiga, sem contrato, volta a ser lead ao sair de Venda.' },
     ],
   },
   {

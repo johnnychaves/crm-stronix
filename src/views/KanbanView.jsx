@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
-import { canEditLead, isConvertedStatusName } from '../lib/leads.js';
+import { canEditLead } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
+import { planStageMove, stageMoveBlockMessage } from '../lib/stageMove.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
@@ -732,40 +733,42 @@ const handleKanbanMouseMove = (e) => {
   //    e o menu "Mover" (toque/teclado). ──────────────────────────────
 
   // Move para uma etapa normal (não Venda/Perda). Mover só muda a FASE:
-  // não inventa agendamento (ver P4). Ao sair de Venda/Perda, limpa os
-  // campos de resolução da origem para o lead não seguir contando como
-  // matrícula/perda nas métricas.
+  // não inventa agendamento (ver P4). O que gravar ao sair de Venda/Perda é
+  // regra de src/lib/stageMove.js (a MESMA da ficha): quem tem contrato não
+  // sai de Venda por aqui — o card da coluna do mês é arrastável para
+  // "desfazer", e antes isso zerava a conversão de um cliente com contrato.
   const applyMoveToStage = useCallback(async (lead, newStatus) => {
+    const plan = planStageMove(lead, newStatus, { funnelId: lead.funnelId ? null : selectedFunnelId });
+    if (!plan.ok) {
+      toast.warning(stageMoveBlockMessage(lead, plan.reason));
+      return;
+    }
     try {
-      const leadPatch = { status: newStatus };
-      if (selectedFunnelId && !lead.funnelId) leadPatch.funnelId = selectedFunnelId;
       // Etapa customizada com nome de matrícula ("Matriculado", "Convertido"...)
       // conta como conversão nas métricas — então precisa do carimbo de data.
       // Sem ele, a matrícula caía no mês do CADASTRO do lead, não no do
-      // fechamento. Destino convertido também não limpa os campos ao sair
-      // de Venda (continuaria matrícula, só que sem data).
-      const destinoConvertido = isConvertedStatusName(newStatus);
-      if (lead.status === 'Venda' && !destinoConvertido) { leadPatch.isConverted = false; leadPatch.convertedAt = null; }
-      if (lead.status === 'Perda') { leadPatch.lossReason = null; leadPatch.lostAt = null; }
-      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) leadPatch.convertedAt = serverTimestamp();
+      // fechamento. O carimbo é do SDK, por isso entra aqui e não na regra pura.
+      const leadPatch = plan.stampConvertedAt
+        ? { ...plan.patch, convertedAt: serverTimestamp() }
+        : plan.patch;
 
       await logInteraction(
         db, lead, appUser,
         { text: `Movido para a etapa [${newStatus}] via Kanban.`, type: 'status_change' },
-        withBucket(leadPatch, lead)
+        leadPatch
       );
       // Histórico de aulas (dual-write best-effort): atribui/retira a
       // conversão da última aula atendida do lead.
-      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) {
+      if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
-      if (lead.status === 'Venda' && !destinoConvertido) {
+      if (plan.undoesSale) {
         try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
       }
       if (lead.status === 'Perda') refreshLost(); // saiu da Perda: refaz query+contagem
       // Saiu da Venda (desfez a matrícula): a coluna do mês tem fonte própria e
       // não é ao vivo — recarrega pra o card sumir de lá.
-      if (lead.status === 'Venda' && !destinoConvertido) wonReload();
+      if (plan.undoesSale) wonReload();
     } catch (err) {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
