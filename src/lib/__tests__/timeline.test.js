@@ -54,6 +54,11 @@ describe('classifyInteraction — desfecho de agendamento', () => {
       type: 'status_change', text: 'Renovação registrada — Plano Anual (R$ 199,90). Vigência até 10/08/2027.'
     })).toBe('contract');
   });
+
+  it('eventos do funil Upgrade são marcos (status), não contrato', () => {
+    expect(classifyInteraction({ type: 'status_change', text: 'Upgrade: entrou na etapa Aguardando contato.' })).toBe('status');
+    expect(classifyInteraction({ type: 'status_change', text: 'Upgrade: não quis. Motivo: Preço.' })).toBe('status');
+  });
 });
 
 describe('classifyInteraction — reagendamento/perda de renovação (Meta Diária) não é contrato', () => {
@@ -236,6 +241,13 @@ describe('buildStageTransitions — origem e tempo na etapa anterior', () => {
   it('lista vazia devolve mapa vazio', () => {
     expect(buildStageTransitions([], CADASTRO)).toEqual({});
     expect(buildStageTransitions(null, CADASTRO)).toEqual({});
+  });
+
+  it('evento do funil Upgrade (sem colchetes) não vira origem nem quebra a cadeia', () => {
+    const upgrade = { id: 'u', createdAt: new Date(2026, 6, 10, 10, 0), text: 'Upgrade: entrou na etapa Aguardando contato.' };
+    const out = buildStageTransitions([t('a', 1, 'Contato feito'), upgrade, t('c', 20, 'Negociação')], CADASTRO);
+    expect(out.c.from).toBe('Contato feito');
+    expect(out.c.days).toBe(19);
   });
 });
 
