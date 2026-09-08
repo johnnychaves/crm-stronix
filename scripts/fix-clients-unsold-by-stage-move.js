@@ -1,25 +1,34 @@
-// Reparo dos clientes "desfeitos" por mudança de fase.
+// Reparo dos clientes "desfeitos" por mudança de fase ou por Perda.
 //
-// CONTEXTO: até a correção em src/lib/stageMove.js, tirar um cliente de Venda
-// por uma mudança de fase (Mudar fase na ficha, composer de nota, arrasto ou
-// menu Mover no Kanban) "desfazia a venda" sem olhar o contrato: zerava
-// isConverted/convertedAt e, na ficha, lifecycleStage. O contrato ficava —
-// currentContractId e o doc em stronix_contratos seguiam lá —, mas a pessoa
-// virava LEAD carregando um contrato: sumia da aba Clientes e do mês de
-// matrículas, e a aba Contratos dizia "Ainda não é cliente" com o chip em 1.
-// O app já não faz mais isso; este script conserta o que JÁ foi gravado.
+// CONTEXTO: até a regra em src/lib/stageMove.js, tirar um cliente de Venda por
+// uma mudança de fase (Mudar fase na ficha, composer de nota, arrasto ou menu
+// Mover no Kanban) "desfazia a venda": zerava isConverted/convertedAt e, na
+// ficha, lifecycleStage. Marcar Perda num cliente zerava a conversão e o
+// pintava como LEAD PERDIDO. O contrato ficava — currentContractId e o doc em
+// stronix_contratos seguiam lá —, mas a pessoa virava LEAD: sumia da aba
+// Clientes e do mês de matrículas, e a aba Contratos dizia "Ainda não é
+// cliente" com o chip em 1. O app já não faz mais isso (cliente não volta a
+// ser lead, em hipótese alguma); este script conserta o que JÁ foi gravado.
 //
-// REGRA DE REPARO: quem tem currentContractId é cliente. Para cada lead com
-// contrato apontado:
+// QUEM É CLIENTE: lifecycleStage 'cliente' OU currentContractId apontado. O
+// caminho da ficha zerava lifecycleStage mas não o contrato; o do Kanban e o
+// da Perda zeravam a conversão mas não lifecycleStage — os dois sinais juntos
+// cobrem todos os casos que deixaram rastro. (Venda antiga sem contrato que
+// saiu de Venda pela ficha não deixou rastro nenhum: não há como achar.)
+//
+// REGRA DE REPARO, por lead que é cliente:
 //   - lifecycleStage volta a 'cliente', isConverted a true, lifecycleBucket a
 //     'cliente' (o que estiver fora disso).
 //   - status em etapa de lead volta a 'Venda'. Etapa com nome de matrícula
 //     ("Matriculado"...) é mantida — conta como conversão e sempre contou.
+//   - status 'Perda' volta a 'Venda' e grava renewalDeclined=true: é o mesmo
+//     "não vai renovar" que a coluna Perda dos funis Renovações e Vencidos
+//     grava — a pessoa segue cliente. lossReason/lostAt ficam como histórico.
 //   - convertedAt zerado é restaurado do contrato apontado: createdAt do doc
 //     (a matrícula grava contrato e convertedAt no mesmo batch, com o mesmo
-//     serverTimestamp) ou, na falta, startsAt. Sem os dois, reporta.
-//   - status 'Perda' com contrato NÃO é mexido: é o fluxo de Perda em cliente,
-//     decisão de produto fora deste reparo — só reporta para revisão.
+//     serverTimestamp) ou, na falta, startsAt. Sem contrato ou sem data, as
+//     marcas são gravadas mesmo assim e o convertedAt fica vazio (a aba
+//     Clientes já trata cliente sem convertedAt).
 //
 // Uso (mesmas credenciais Admin das funções api/):
 //   FIREBASE_ADMIN_PROJECT_ID=... FIREBASE_ADMIN_CLIENT_EMAIL=... \
@@ -65,59 +74,71 @@ const fmt = (ts) => {
   return d ? d.toISOString().slice(0, 10) : '∅';
 };
 
-// Planeja o reparo de UM lead. Retorna:
-//   null                     → consistente (ignora)
-//   { patch, reason }        → campos a gravar (merge)
-//   { review: true, reason } → precisa de olho humano (não mexe)
+// Planeja o reparo de UM lead. Retorna null (consistente ou não é cliente) ou
+// { patch, reason } com os campos a gravar (merge).
 async function planFix(tenantId, d) {
-  if (!d.currentContractId) return null;
-
-  if (d.status === 'Perda') {
-    return { review: true, reason: `status Perda com contrato ${d.currentContractId} (fluxo de Perda em cliente; fora deste reparo)` };
-  }
+  const isClient = d.lifecycleStage === 'cliente' || Boolean(d.currentContractId);
+  if (!isClient) return null;
 
   const patch = {};
   const why = [];
   if (d.lifecycleStage !== 'cliente') { patch.lifecycleStage = 'cliente'; why.push(`lifecycleStage ${d.lifecycleStage ?? '∅'}`); }
   if (d.isConverted !== true) { patch.isConverted = true; why.push(`isConverted ${d.isConverted ?? '∅'}`); }
   if (d.lifecycleBucket !== 'cliente') { patch.lifecycleBucket = 'cliente'; why.push(`bucket ${d.lifecycleBucket ?? '∅'}`); }
-  if (!isConvertedStatusName(d.status)) { patch.status = 'Venda'; why.push(`status "${d.status ?? '∅'}"`); }
+  if (d.status === 'Perda') {
+    patch.status = 'Venda';
+    if (d.renewalDeclined !== true) patch.renewalDeclined = true;
+    why.push('status Perda ⇒ Venda + renewalDeclined (não vai renovar)');
+  } else if (!isConvertedStatusName(d.status)) {
+    patch.status = 'Venda';
+    why.push(`status "${d.status ?? '∅'}"`);
+  }
 
   if (!d.convertedAt) {
-    const snap = await dataCol(tenantId, CONTRACTS_PATH).doc(d.currentContractId).get();
-    const c = snap.exists ? snap.data() : null;
-    const restored = c?.createdAt || c?.startsAt || null;
-    if (!restored) {
-      return { review: true, reason: `convertedAt zerado e contrato ${d.currentContractId} ${snap.exists ? 'sem createdAt/startsAt' : 'não existe'} — ${why.join(', ') || 'demais campos ok'}` };
+    if (!d.currentContractId) {
+      why.push('convertedAt ∅ sem contrato para restaurar (fica ∅)');
+    } else {
+      const snap = await dataCol(tenantId, CONTRACTS_PATH).doc(d.currentContractId).get();
+      const c = snap.exists ? snap.data() : null;
+      const restored = c?.createdAt || c?.startsAt || null;
+      if (restored) {
+        patch.convertedAt = restored;
+        why.push(`convertedAt ∅ ⇒ ${fmt(restored)} (${c.createdAt ? 'createdAt' : 'startsAt'} do contrato)`);
+      } else {
+        why.push(`convertedAt ∅ e contrato ${d.currentContractId} ${snap.exists ? 'sem createdAt/startsAt' : 'não existe'} (fica ∅)`);
+      }
     }
-    patch.convertedAt = restored;
-    why.push(`convertedAt ∅ ⇒ ${fmt(restored)} (${c.createdAt ? 'createdAt' : 'startsAt'} do contrato)`);
   }
 
   if (Object.keys(patch).length === 0) return null;
   return { patch, reason: why.join(', ') };
 }
 
+// Os dois sinais de cliente, em duas queries, sem duplicar doc. '!=' null só
+// devolve docs em que o campo existe e não é null.
+async function loadClients(tenantId) {
+  const byId = new Map();
+  const [byStage, byContract] = await Promise.all([
+    dataCol(tenantId, LEADS_PATH).where('lifecycleStage', '==', 'cliente').get(),
+    dataCol(tenantId, LEADS_PATH).where('currentContractId', '!=', null).get()
+  ]);
+  byStage.forEach((doc) => byId.set(doc.id, doc));
+  byContract.forEach((doc) => byId.set(doc.id, doc));
+  return [...byId.values()];
+}
+
 async function sweep(tenantId) {
-  // '!=' null só devolve docs em que o campo existe e não é null — exatamente
-  // "quem tem contrato apontado".
-  const snap = await dataCol(tenantId, LEADS_PATH).where('currentContractId', '!=', null).get();
-  let scanned = 0, toFix = 0, fixed = 0, review = 0;
+  const docs = await loadClients(tenantId);
+  let scanned = 0, toFix = 0, fixed = 0;
   let batch = db.batch();
   let pending = 0;
 
-  for (const doc of snap.docs) {
+  for (const doc of docs) {
     scanned++;
     const data = doc.data() || {};
     const who = data.name || '—';
     const plan = await planFix(tenantId, data);
     if (!plan) continue;
-
-    if (plan.review) {
-      review++;
-      console.log(`  [REVISAR] ${doc.id} (${who}): ${plan.reason}`);
-      continue;
-    }
 
     toFix++;
     const shown = { ...plan.patch, ...(plan.patch.convertedAt ? { convertedAt: fmt(plan.patch.convertedAt) } : {}) };
@@ -130,22 +151,21 @@ async function sweep(tenantId) {
     }
   }
   if (APPLY && pending > 0) await batch.commit();
-  return { scanned, toFix, fixed, review };
+  return { scanned, toFix, fixed };
 }
 
 async function run() {
-  console.log(`\nReparo de clientes desfeitos por mudança de fase — modo=${APPLY ? 'APLICAR' : 'DRY-RUN'}\n`);
+  console.log(`\nReparo de clientes desfeitos por mudança de fase ou Perda — modo=${APPLY ? 'APLICAR' : 'DRY-RUN'}\n`);
   for (const tenantId of TENANTS) {
     console.log(`— tenant "${tenantId}" —`);
     const r = await sweep(tenantId);
-    console.log(`  ${r.scanned} leads com contrato | ${r.toFix} a corrigir${APPLY ? ` | ${r.fixed} corrigidos` : ''} | ${r.review} p/ revisar.\n`);
+    console.log(`  ${r.scanned} clientes varridos | ${r.toFix} a corrigir${APPLY ? ` | ${r.fixed} corrigidos` : ''}.\n`);
   }
   if (!APPLY) {
     console.log('DRY-RUN: nada foi gravado. Revise a lista acima e rode de novo com --apply para aplicar.');
   } else {
-    console.log('Concluído. Clientes com contrato voltaram a ser tratados como clientes.');
+    console.log('Concluído. Quem virou cliente voltou a ser tratado como cliente.');
   }
-  console.log('[REVISAR] = Perda em cliente com contrato, ou convertedAt sem data no contrato para restaurar.');
 }
 
 run().then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });

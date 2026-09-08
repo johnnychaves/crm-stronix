@@ -261,7 +261,7 @@ export const WIKI_ARTICLES = [
 
       { t: 'h', text: 'Corrigindo' },
       { t: 'tip', text: 'Errou plano, valor ou data? A aba Contratos tem a correção do contrato vigente. Não precisa desfazer a matrícula e refazer tudo.' },
-      { t: 'warn', text: 'Cliente com contrato não volta para uma fase de lead: a mudança de fase é recusada e o contrato continua valendo. Para desfazer uma matrícula registrada por engano, cancele o contrato na aba Contratos. Só a Venda antiga, sem contrato, volta a ser lead ao sair de Venda.' },
+      { t: 'warn', text: 'Quem virou cliente não volta a ser lead, nem com o contrato vencido: passa a cliente inativo. Mudança de fase e Perda são recusadas para cliente. Para encerrar uma matrícula, cancele o contrato na aba Contratos; nos funis Renovações e Vencidos, a coluna Perda marca que ele não vai renovar.' },
     ],
   },
   {

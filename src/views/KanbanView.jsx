@@ -3,7 +3,7 @@ import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { canEditLead } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { planStageMove, stageMoveBlockMessage } from '../lib/stageMove.js';
+import { planStageMove, planLoss, stageMoveBlockMessage } from '../lib/stageMove.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
@@ -18,7 +18,7 @@ import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expire
 import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter } from '../lib/kanban.js';
-import { markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
+import { markConvertingAula } from '../lib/aulasWrites.js';
 import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -733,10 +733,10 @@ const handleKanbanMouseMove = (e) => {
   //    e o menu "Mover" (toque/teclado). ──────────────────────────────
 
   // Move para uma etapa normal (não Venda/Perda). Mover só muda a FASE:
-  // não inventa agendamento (ver P4). O que gravar ao sair de Venda/Perda é
-  // regra de src/lib/stageMove.js (a MESMA da ficha): quem tem contrato não
-  // sai de Venda por aqui — o card da coluna do mês é arrastável para
-  // "desfazer", e antes isso zerava a conversão de um cliente com contrato.
+  // não inventa agendamento (ver P4). O que pode e o que gravar é regra de
+  // src/lib/stageMove.js (a MESMA da ficha): cliente não volta a ser lead —
+  // o card da coluna Venda do mês é arrastável, e antes isso "desfazia" a
+  // conversão de um cliente com contrato.
   const applyMoveToStage = useCallback(async (lead, newStatus) => {
     const plan = planStageMove(lead, newStatus, { funnelId: lead.funnelId ? null : selectedFunnelId });
     if (!plan.ok) {
@@ -757,23 +757,17 @@ const handleKanbanMouseMove = (e) => {
         { text: `Movido para a etapa [${newStatus}] via Kanban.`, type: 'status_change' },
         leadPatch
       );
-      // Histórico de aulas (dual-write best-effort): atribui/retira a
-      // conversão da última aula atendida do lead.
+      // Histórico de aulas (dual-write best-effort): atribui a conversão à
+      // última aula atendida do lead.
       if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
-      if (plan.undoesSale) {
-        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
-      }
       if (lead.status === 'Perda') refreshLost(); // saiu da Perda: refaz query+contagem
-      // Saiu da Venda (desfez a matrícula): a coluna do mês tem fonte própria e
-      // não é ao vivo — recarrega pra o card sumir de lá.
-      if (plan.undoesSale) wonReload();
     } catch (err) {
       console.error("Erro Kanban:", err);
       toast.error('Não foi possível mover o lead. Tente novamente.');
     }
-  }, [db, appUser, selectedFunnelId, toast, refreshLost, wonReload]);
+  }, [db, appUser, selectedFunnelId, toast, refreshLost]);
 
   // A Venda no Kanban agora abre o ContractModal (plano/valor/vigência) em vez
   // de gravar direto — mesmo fluxo da ficha. A escrita do contrato + resumo do
@@ -908,7 +902,14 @@ const handleKanbanMouseMove = (e) => {
       return moveExpiredToStage(lead, statusName);
     }
     if (statusName === 'Venda') return openMatricula(lead);
-    if (statusName === 'Perda') { setLossModalLeadId(lead.id); return; }
+    if (statusName === 'Perda') {
+      // Cliente não vira lead perdido (src/lib/stageMove.js). O card cru da
+      // coluna Venda do mês chega aqui sem flag de projeção.
+      const loss = planLoss(lead);
+      if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
+      setLossModalLeadId(lead.id);
+      return;
+    }
     return applyMoveToStage(lead, statusName);
   };
 
@@ -977,6 +978,10 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
+    // Cliente não vira lead perdido (src/lib/stageMove.js): o card cru da
+    // coluna Venda do mês é arrastável e chega aqui sem flag de projeção.
+    const loss = planLoss(alvo);
+    if (!loss.ok) { toast.warning(stageMoveBlockMessage(alvo, loss.reason)); return; }
     setLossModalLeadId(alvo.id);
   }, [draggableById, appUser, toast, declineRenewal, declineExpired]);
 
@@ -1001,10 +1006,8 @@ if (!lead) return;
           lead
         )
       );
-      // #8: Perda é CHURN, então NÃO desfaz a conversão histórica da aula. A
-      // matrícula aconteceu; o churn é medido pela taxa de renovação, não
-      // reescrevendo a conversão passada do professor. (Sair de Venda p/ fase de
-      // lead ainda desfaz, ver handlePhaseConfirm/saveInteraction: venda por engano.)
+      // Só lead chega aqui: cliente é barrado antes (planLoss). Por isso não há
+      // conversão histórica de aula a desfazer.
 
       setLossModalLeadId(null);
       refreshLost(); // query da coluna Perda não é ao vivo — refaz fetch+contagem

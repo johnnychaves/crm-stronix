@@ -6,7 +6,7 @@ import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { planStageMove, stageMoveBlockMessage } from '../lib/stageMove.js';
+import { planStageMove, planLoss, stageMoveBlockMessage } from '../lib/stageMove.js';
 import { isAdminUser, canEditLead, isLeadConverted } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
@@ -17,7 +17,7 @@ import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText } 
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
-import { upsertScheduledAula, upsertScheduledAppointment, markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
+import { upsertScheduledAula, upsertScheduledAppointment, markConvertingAula } from '../lib/aulasWrites.js';
 import { buildSchedulePatch } from '../lib/schedulePatch.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -270,6 +270,10 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
   const confirmLoss = async (reason) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    // Cliente não vira lead perdido (src/lib/stageMove.js). O botão e o
+    // PhaseChanger já barram antes; aqui é a última trava.
+    const loss = planLoss(lead);
+    if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); setLossModalOpen(false); return; }
     setLoading(true);
     try {
       await logInteraction(db, lead, appUser,
@@ -303,12 +307,17 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // status (+funil, se mudou) e registram a transição na timeline.
   const handlePhaseConfirm = async ({ funnelId: targetFunnelId, targetStatus, note: phaseNote, referrer }) => {
     if (targetStatus === 'Venda') { setMatriculaMode('matricula'); setMatriculaOpen(true); return; }
-    if (targetStatus === 'Perda') { setLossModalOpen(true); return; }
+    if (targetStatus === 'Perda') {
+      const loss = planLoss(lead);
+      if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
+      setLossModalOpen(true);
+      return;
+    }
     if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
     // O que gravar (e se pode gravar) é regra única em src/lib/stageMove.js, a
-    // MESMA do Kanban. Cliente com contrato não sai de Venda por aqui: antes a
-    // mudança de fase zerava lifecycleStage e a aba Contratos passava a dizer
-    // "Ainda não é cliente" com o contrato ainda gravado.
+    // MESMA do Kanban. Cliente não volta a ser lead por aqui: antes a mudança
+    // de fase zerava lifecycleStage e a aba Contratos passava a dizer "Ainda
+    // não é cliente" com o contrato ainda gravado.
     const plan = planStageMove(lead, targetStatus, { funnelId: targetFunnelId || null });
     if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); return; }
     // Mover PRO funil de Indicações exige o vínculo (o PhaseChanger coleta o
@@ -335,13 +344,10 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         { text: `Fase alterada para [${targetStatus}]${phaseNote ? ' — ' + phaseNote : ''}.`, type: 'status_change' },
         up
       );
-      // Histórico de aulas (dual-write best-effort): atribui/retira a
-      // conversão da última aula atendida do lead.
+      // Histórico de aulas (dual-write best-effort): atribui a conversão à
+      // última aula atendida do lead.
       if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
-      }
-      if (plan.undoesSale) {
-        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
       }
       setStatus(targetStatus);
       if (up.funnelId) setFunnelId(up.funnelId);
@@ -424,13 +430,19 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       if (status !== lead.status) actionText += `Fase alterada para [${status}]. `;
       if (note) actionText += `Obs: ${note}. `;
 
-      // Mesma regra da ficha e do Kanban (src/lib/stageMove.js). Com a fase
-      // igual à do lead (só nota) o patch é o status atual, sem efeito.
-      const plan = planStageMove(lead, status, { funnelId: funnelChanged ? funnelId : null });
-      if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); setLoading(false); return; }
-      const up = plan.stampConvertedAt
-        ? { ...plan.patch, convertedAt: serverTimestamp() }
-        : plan.patch;
+      // Só nota: nenhum patch de status. Uma nota não pode ser barrada pela
+      // regra de fase, e o doc de um cliente não precisa ser reescrito por ela.
+      // Com fase ou funil diferentes, a MESMA regra da ficha e do Kanban decide
+      // (src/lib/stageMove.js).
+      let plan = null;
+      let up = null;
+      if (status !== lead.status || funnelChanged) {
+        plan = planStageMove(lead, status, { funnelId: funnelChanged ? funnelId : null });
+        if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); setLoading(false); return; }
+        up = plan.stampConvertedAt
+          ? { ...plan.patch, convertedAt: serverTimestamp() }
+          : plan.patch;
+      }
 
       await logInteraction(db, lead, appUser,
         {
@@ -440,12 +452,9 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
         up
       );
       // Histórico de aulas (best-effort): destino de matrícula atribui a
-      // conversão; saindo de Venda desfaz.
-      if (plan.stampConvertedAt) {
+      // conversão à última aula atendida.
+      if (plan?.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
-      }
-      if (plan.undoesSale) {
-        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
       }
 
       setNote('');
@@ -817,14 +826,14 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
             {composerTab === 'status' && (
               <>
-                {/* Cliente com contrato: avisa ANTES de a pessoa montar a mudança
-                    inteira e só descobrir no confirmar (stageMove.js bloqueia). */}
-                {lead.status === 'Venda' && lead.currentContractId && (
+                {/* Cliente: avisa ANTES de a pessoa montar a mudança inteira e
+                    só descobrir no confirmar (stageMove.js bloqueia). */}
+                {isClient && (
                   <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] leading-[1.45] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
                     <FileText size={14} className="mt-0.5 shrink-0" />
                     <div>
-                      <span className="font-semibold">{firstName} tem contrato e continua cliente.</span>{' '}
-                      As fases do funil valem para leads. Renovar, corrigir, trancar ou cancelar a matrícula fica na{' '}
+                      <span className="font-semibold">{firstName} é cliente e não volta a ser lead.</span>{' '}
+                      As fases do funil valem para leads. A matrícula e o contrato ficam na{' '}
                       <button type="button" onClick={() => setActiveProfileTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
                     </div>
                   </div>
