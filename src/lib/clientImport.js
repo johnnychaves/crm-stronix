@@ -546,8 +546,8 @@ const CLIENT_MARKS = {
   renewalDeclined: false,
   reactivationStageId: null,
   // Funil UPGRADE: contrato novo tira o cliente do funil, como em
-  // buildMatriculaWrites. Sem isto, quem estava no Upgrade e foi importado de
-  // novo ficaria preso lá com um contrato novo.
+  // buildMatriculaWrites. A reimportação de quem já era cliente limpa em
+  // buildImportedClientWrites.
   upgradeStageId: null,
   upgradeEnteredAt: null
 };
@@ -638,6 +638,10 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
       ...(cls.fill || {}),
       ...(lead.consultantId ? {} : owner),
       ...(promote ? CLIENT_MARKS : {}),
+      // Contrato novo tira o cliente do funil Upgrade, venha de onde vier — a
+      // mesma regra de buildMatriculaWrites. CLIENT_MARKS só entra na
+      // promoção; quem já era cliente e ganha contrato aqui precisa disto.
+      ...(contract ? { upgradeStageId: null, upgradeEnteredAt: null } : {}),
       ...contractSummary(contract),
       ...(promote ? { convertedAt: getSafeDateOrNull(lead.convertedAt) || convertedAt } : {}),
       ...(lead.clienteSince ? {} : { clienteSince: earliest(c.registeredAt, c.startsAt, contract?.startsAt) || now }),
