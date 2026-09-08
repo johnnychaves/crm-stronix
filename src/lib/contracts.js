@@ -104,6 +104,15 @@ export const deriveLeadContractStatus = (lead, refDate, thresholdDays) =>
     thresholdDays
   );
 
+// Contrato "vivo": o que ainda vale ou vai valer. Decide se fechar pelo funil
+// Upgrade é renovação (liga ao atual e emenda a vigência) ou nova matrícula.
+export const hasLiveContract = (lead, refDate, thresholdDays) => {
+  if (!lead?.currentContractId) return false;
+  const cs = deriveLeadContractStatus(lead, refDate, thresholdDays);
+  return cs === CONTRACT_STATUS.ATIVO || cs === CONTRACT_STATUS.A_VENCER
+    || cs === CONTRACT_STATUS.AGENDADO || cs === CONTRACT_STATUS.TRANCADO;
+};
+
 // Texto humano gravado na timeline (interaction) na matrícula/renovação.
 export const buildMatriculaInteractionText = ({ planName, value, endsAt, isRenewal }) => {
   const verb = isRenewal ? 'Renovação registrada' : 'Matrícula realizada';
@@ -159,6 +168,10 @@ export const buildMatriculaWrites = ({
     cancelledAt: null,
     cancelReason: null,
     renewedFromId: renewedFromId || null,
+    // Fechou de dentro do funil Upgrade (decisão 9 do spec): a marca vem do
+    // funil, não do plano. Renovação continua sendo renewedFromId; o mesmo
+    // contrato pode ser os dois, e é uma venda só.
+    closedFromUpgrade: Boolean(lead?.upgradeStageId),
     // O contrato espelha o CONSULTOR DO LEAD (não quem clicou): garante
     // ranking correto quando um admin matricula em nome de outro consultor
     // e satisfaz a regra de create (consultantAuthUid == auth.uid OU admin).
@@ -184,7 +197,12 @@ export const buildMatriculaWrites = ({
     // Etapa no funil VENCIDOS do board (src/lib/expiredFunnel.js). Sem esta
     // limpeza, o cliente que voltou e vencesse de novo daqui a dois anos
     // reapareceria na etapa da vida passada — bug silencioso de longo prazo.
-    reactivationStageId: null
+    reactivationStageId: null,
+    // Funil UPGRADE (src/lib/upgradeFunnel.js): contrato novo, venha de onde
+    // vier, tira o cliente do funil. Sem isto, quem fechou pela ficha ou pelo
+    // Vencidos continuaria parado no Upgrade com um contrato novo.
+    upgradeStageId: null,
+    upgradeEnteredAt: null
   };
 
   return {
