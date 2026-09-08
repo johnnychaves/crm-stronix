@@ -517,6 +517,9 @@ export const buildImportedContract = (c, { owner, leadName, importMeta }) => {
     // que existe; a reativação pela ficha empurra o fim a partir daí.
     pausedAt: status === CONTRACT_STATUS.TRANCADO ? (importMeta.now ?? null) : null,
     renewedFromId: null,
+    // Importação nunca é fechamento pelo funil Upgrade. Explícito (false, não
+    // ausente) para o relatório de upgrades não precisar tratar campo faltante.
+    closedFromUpgrade: false,
     startsAtInferred,
     consultantId: owner.consultantId,
     consultantName: owner.consultantName,
@@ -541,7 +544,12 @@ const CLIENT_MARKS = {
   nextFollowUp: null,
   renewalHandledCheckpoints: [],
   renewalDeclined: false,
-  reactivationStageId: null
+  reactivationStageId: null,
+  // Funil UPGRADE: contrato novo tira o cliente do funil, como em
+  // buildMatriculaWrites. Sem isto, quem estava no Upgrade e foi importado de
+  // novo ficaria preso lá com um contrato novo.
+  upgradeStageId: null,
+  upgradeEnteredAt: null
 };
 
 const contractSummary = (contract) => (contract ? {

@@ -264,6 +264,11 @@ describe('buildMatriculaWrites — funil Upgrade', () => {
     expect(contract.renewedFromId).toBe('k1');
   });
 
+  it('em modo matrícula (cliente sem contrato vivo) a marca vem do funil do mesmo jeito', () => {
+    const { contract } = buildMatriculaWrites({ lead: noFunil, plan, value: 500, startsAt: D(2026, 9, 1), appUser: {} });
+    expect(contract.closedFromUpgrade).toBe(true);
+  });
+
   it('fora do funil, o contrato NÃO é upgrade, mesmo que o plano seja maior', () => {
     const { contract } = buildMatriculaWrites({ lead: foraDoFunil, plan, value: 500, startsAt: D(2026, 9, 1), appUser: {}, mode: 'renovacao' });
     expect(contract.closedFromUpgrade).toBe(false);
