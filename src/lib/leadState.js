@@ -43,9 +43,11 @@ export const phaseToneName = (statusName, statusesArray = []) => {
 // key: lead | cliente_ativo | a_vencer | inativo | cancelado | perdido
 export function deriveLeadState(lead, refDate = new Date(), thresholdDays) {
   if (!lead) return { key: 'lead', tone: 'brand', label: 'LEAD', hint: 'Em prospecção' };
-  if (lead.status === 'Perda') {
-    return { key: 'perdido', tone: 'rose', label: 'LEAD PERDIDO', hint: 'Oportunidade encerrada' };
-  }
+  // Cliente vem ANTES de Perda: quem virou cliente não volta a ser lead, nem
+  // perdido — com contrato vencido ele é INATIVO (regra do Johnny, set/2026).
+  // Mesma precedência de deriveLeadBucket. Doc antigo com status 'Perda' e
+  // marcas de cliente (fluxo de Perda anterior à regra) cai aqui, não em
+  // "LEAD PERDIDO".
   const isClient = lead.lifecycleStage === 'cliente' || isLeadConverted(lead);
   if (isClient) {
     const cs = deriveLeadContractStatus(lead, refDate, thresholdDays);
@@ -54,6 +56,9 @@ export function deriveLeadState(lead, refDate = new Date(), thresholdDays) {
     if (cs === CONTRACT_STATUS.VENCIDO) return { key: 'inativo', tone: 'slate', label: 'INATIVO', hint: 'Contrato vencido' };
     if (cs === CONTRACT_STATUS.CANCELADO) return { key: 'cancelado', tone: 'rose', label: 'CANCELADO', hint: 'Contrato cancelado' };
     return { key: 'cliente_ativo', tone: 'emerald', label: 'CLIENTE ATIVO', hint: 'Matrícula vigente' };
+  }
+  if (lead.status === 'Perda') {
+    return { key: 'perdido', tone: 'rose', label: 'LEAD PERDIDO', hint: 'Oportunidade encerrada' };
   }
   return { key: 'lead', tone: 'brand', label: 'LEAD', hint: 'Em prospecção' };
 }

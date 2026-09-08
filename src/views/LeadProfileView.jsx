@@ -6,7 +6,8 @@ import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { isAdminUser, canEditLead, isLeadConverted, isConvertedStatusName } from '../lib/leads.js';
+import { planStageMove, planLoss, stageMoveBlockMessage } from '../lib/stageMove.js';
+import { isAdminUser, canEditLead, isLeadConverted } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
@@ -16,7 +17,7 @@ import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText } 
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
-import { upsertScheduledAula, upsertScheduledAppointment, markConvertingAula, unmarkConvertedAula } from '../lib/aulasWrites.js';
+import { upsertScheduledAula, upsertScheduledAppointment, markConvertingAula } from '../lib/aulasWrites.js';
 import { buildSchedulePatch } from '../lib/schedulePatch.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -269,6 +270,10 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
   const confirmLoss = async (reason) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    // Cliente não vira lead perdido (src/lib/stageMove.js). O botão e o
+    // PhaseChanger já barram antes; aqui é a última trava.
+    const loss = planLoss(lead);
+    if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); setLossModalOpen(false); return; }
     setLoading(true);
     try {
       await logInteraction(db, lead, appUser,
@@ -302,8 +307,19 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // status (+funil, se mudou) e registram a transição na timeline.
   const handlePhaseConfirm = async ({ funnelId: targetFunnelId, targetStatus, note: phaseNote, referrer }) => {
     if (targetStatus === 'Venda') { setMatriculaMode('matricula'); setMatriculaOpen(true); return; }
-    if (targetStatus === 'Perda') { setLossModalOpen(true); return; }
+    if (targetStatus === 'Perda') {
+      const loss = planLoss(lead);
+      if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
+      setLossModalOpen(true);
+      return;
+    }
     if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
+    // O que gravar (e se pode gravar) é regra única em src/lib/stageMove.js, a
+    // MESMA do Kanban. Cliente não volta a ser lead por aqui: antes a mudança
+    // de fase zerava lifecycleStage e a aba Contratos passava a dizer "Ainda
+    // não é cliente" com o contrato ainda gravado.
+    const plan = planStageMove(lead, targetStatus, { funnelId: targetFunnelId || null });
+    if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); return; }
     // Mover PRO funil de Indicações exige o vínculo (o PhaseChanger coleta o
     // indicador; isto é cinto de segurança pra manter o coorte rastreável).
     const movingToReferral = Boolean(referralFunnel && targetFunnelId === referralFunnel.id && targetFunnelId !== lead.funnelId);
@@ -318,37 +334,20 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       if (movingToReferral && referrer && !lead.referredById) {
         await commitReferralLink({ db, lead, appUser, referrer });
       }
-      const up = { status: targetStatus };
-      if (targetFunnelId && targetFunnelId !== lead.funnelId) up.funnelId = targetFunnelId;
       // Etapa customizada com nome de matrícula conta como conversão nas
       // métricas — carimba a data do fechamento se faltar (senão a matrícula
-      // cai no mês do cadastro). Destino convertido também não limpa a
-      // resolução ao sair de Venda: a pessoa continua matriculada/cliente.
-      const destinoConvertido = isConvertedStatusName(targetStatus);
-      // Saindo de Venda/Perda para outra fase: limpa os campos de resolução.
-      if (lead.status === 'Venda' && targetStatus !== 'Venda' && !destinoConvertido) {
-        up.isConverted = false;
-        up.convertedAt = null;
-        // Desfaz o "cliente": senão lifecycleStage='cliente' segue tratando a
-        // pessoa como cliente (some do Kanban, header de cliente) numa fase de lead.
-        up.lifecycleStage = null;
-      }
-      if (lead.status === 'Perda' && targetStatus !== 'Perda') {
-        up.lossReason = null;
-        up.lostAt = null;
-      }
-      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) up.convertedAt = serverTimestamp();
+      // cai no mês do cadastro). O carimbo é do SDK, por isso entra aqui.
+      const up = plan.stampConvertedAt
+        ? { ...plan.patch, convertedAt: serverTimestamp() }
+        : plan.patch;
       await logInteraction(db, lead, appUser,
         { text: `Fase alterada para [${targetStatus}]${phaseNote ? ' — ' + phaseNote : ''}.`, type: 'status_change' },
-        withBucket(up, lead)
+        up
       );
-      // Histórico de aulas (dual-write best-effort): atribui/retira a
-      // conversão da última aula atendida do lead.
-      if (destinoConvertido && !getSafeDateOrNull(lead.convertedAt)) {
+      // Histórico de aulas (dual-write best-effort): atribui a conversão à
+      // última aula atendida do lead.
+      if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
-      }
-      if (lead.status === 'Venda' && targetStatus !== 'Venda' && !destinoConvertido) {
-        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
       }
       setStatus(targetStatus);
       if (up.funnelId) setFunnelId(up.funnelId);
@@ -431,19 +430,18 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       if (status !== lead.status) actionText += `Fase alterada para [${status}]. `;
       if (note) actionText += `Obs: ${note}. `;
 
-      const up = { status };
-      if (funnelChanged) up.funnelId = funnelId;
-      // Saindo de Venda/Perda para outra fase: limpa os campos de
-      // resolução, senão o lead segue contando como matrícula/perda.
-      if (lead.status === 'Venda' && status !== 'Venda') {
-        up.isConverted = false;
-        up.convertedAt = null;
-        // Desfaz o "cliente" (ver handlePhaseConfirm): some do Kanban se não limpar.
-        up.lifecycleStage = null;
-      }
-      if (lead.status === 'Perda' && status !== 'Perda') {
-        up.lossReason = null;
-        up.lostAt = null;
+      // Só nota: nenhum patch de status. Uma nota não pode ser barrada pela
+      // regra de fase, e o doc de um cliente não precisa ser reescrito por ela.
+      // Com fase ou funil diferentes, a MESMA regra da ficha e do Kanban decide
+      // (src/lib/stageMove.js).
+      let plan = null;
+      let up = null;
+      if (status !== lead.status || funnelChanged) {
+        plan = planStageMove(lead, status, { funnelId: funnelChanged ? funnelId : null });
+        if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); setLoading(false); return; }
+        up = plan.stampConvertedAt
+          ? { ...plan.patch, convertedAt: serverTimestamp() }
+          : plan.patch;
       }
 
       await logInteraction(db, lead, appUser,
@@ -451,11 +449,12 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           text: actionText || 'Atualização registrada.',
           type: (status !== lead.status || funnelChanged) ? 'status_change' : 'note'
         },
-        withBucket(up, lead)
+        up
       );
-      // Histórico de aulas: saindo de Venda desfaz a conversão (best-effort).
-      if (lead.status === 'Venda' && status !== 'Venda') {
-        try { await unmarkConvertedAula({ db, leadId: lead.id }); } catch (e) { console.error('unmarkConvertedAula falhou', e); }
+      // Histórico de aulas (best-effort): destino de matrícula atribui a
+      // conversão à última aula atendida.
+      if (plan?.stampConvertedAt) {
+        try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
 
       setNote('');
@@ -636,9 +635,8 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // ----- Derived computations -----
   const firstName = (lead.name || '').split(' ')[0] || 'lead';
 
-  // Ciclo de vida + status do contrato (cliente) p/ os selos do cabeçalho.
+  // Ciclo de vida (cliente) p/ os selos do cabeçalho e a aba Indicações.
   const isClient = lead.lifecycleStage === 'cliente' || isLeadConverted(lead);
-  const clientContractStatus = isClient ? deriveLeadContractStatus(lead, new Date(), contractThresholdDays) : null;
   // Estado de ciclo de vida da pessoa (fonte única em lib/leadState.js): dita o
   // tom/rótulo/hint do cabeçalho, o anel do RingAvatar e o alerta contextual.
   const profileState = deriveLeadState(lead, new Date(), contractThresholdDays);
@@ -737,10 +735,17 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
   // Estado do contrato vigente + a régua de vigência com os marcos de
   // renovação da academia (Configurações → Metas & ritmo, nunca hardcode).
-  const curStatus = isClient && lead.currentContractId ? (clientContractStatus || CONTRACT_STATUS.ATIVO) : null;
+  //
+  // A aba lê o CONTRATO (currentContractId), não as marcas de cliente
+  // (isClient). É a mesma fonte do chip de contagem da aba: quando as marcas
+  // estavam erradas (mudança de fase antiga que zerava lifecycleStage), a aba
+  // dizia "Ainda não é cliente" com o chip em 1 e o contrato ainda gravado.
+  const curStatus = lead.currentContractId
+    ? (deriveLeadContractStatus(lead, new Date(), contractThresholdDays) || CONTRACT_STATUS.ATIVO)
+    : null;
   const curStartsAt = getSafeDateOrNull(lead.currentContractStartsAt);
   const curEndsAt = getSafeDateOrNull(lead.currentContractEndsAt);
-  const hasCurrentContract = Boolean(isClient && lead.currentContractId && curEndsAt);
+  const hasCurrentContract = Boolean(lead.currentContractId && curEndsAt);
   const curClosed = curStatus === CONTRACT_STATUS.VENCIDO || curStatus === CONTRACT_STATUS.CANCELADO;
   // Trancado congela a régua na data em que parou: o contrato não corre.
   const curPaused = curStatus === CONTRACT_STATUS.TRANCADO;
@@ -820,14 +825,28 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
             )}
 
             {composerTab === 'status' && (
-              <PhaseChanger
-                lead={lead}
-                db={db}
-                funnels={safeFunnels}
-                statuses={statuses}
-                onConfirm={handlePhaseConfirm}
-                onCancel={() => setComposerTab('note')}
-              />
+              <>
+                {/* Cliente: avisa ANTES de a pessoa montar a mudança inteira e
+                    só descobrir no confirmar (stageMove.js bloqueia). */}
+                {isClient && (
+                  <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] leading-[1.45] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
+                    <FileText size={14} className="mt-0.5 shrink-0" />
+                    <div>
+                      <span className="font-semibold">{firstName} é cliente e não volta a ser lead.</span>{' '}
+                      As fases do funil valem para leads. A matrícula e o contrato ficam na{' '}
+                      <button type="button" onClick={() => setActiveProfileTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
+                    </div>
+                  </div>
+                )}
+                <PhaseChanger
+                  lead={lead}
+                  db={db}
+                  funnels={safeFunnels}
+                  statuses={statuses}
+                  onConfirm={handlePhaseConfirm}
+                  onCancel={() => setComposerTab('note')}
+                />
+              </>
             )}
 
             {composerTab === 'schedule' && (
