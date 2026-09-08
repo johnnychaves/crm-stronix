@@ -189,6 +189,16 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "zapMatchKey",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

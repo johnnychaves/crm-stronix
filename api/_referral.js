@@ -4,6 +4,8 @@
 // paridade src/lib/__tests__/referralApiMirror.test.js trava a deriva.
 // Puro — sem Firestore/Admin SDK, para caber em teste.
 
+import { zapMatchKey } from './_zapPhone.js';
+
 export const REFERRAL_FUNNEL_KIND = 'referral';
 export const REFERRAL_ENTRY_NAME = 'Aguardando ação';
 
@@ -28,6 +30,7 @@ export const buildLeadSearchFields = ({ name, whatsapp, cpf } = {}) => {
     whatsappDigits,
     whatsappDigitsRev: whatsappDigits.split('').reverse().join(''),
     cpfDigits,
+    zapMatchKey: zapMatchKey(whatsapp),
   };
 };
 
