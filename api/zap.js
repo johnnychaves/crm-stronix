@@ -3,15 +3,22 @@
 //
 // Autenticação por chave emitida no Stronilead (Configurações → Integrações),
 // guardada aqui só como hash em tenants/{id}.integrations.zap.keyHash.
-import { adminDb } from './_firebaseAdmin.js';
+//
+// O POST é o outro lado da ponte: quem GERA e REVOGA a chave é o admin da
+// academia, logado no CRM — autenticado por verifyRequest (ID token), nunca
+// pela própria chave do Zap.
+import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { withSentry } from './_sentry.js';
-import { verifyZapKey } from './_zapAuth.js';
+import { isTenantAdmin } from './_auth.js';
+import { generateZapKey, verifyZapKey } from './_zapAuth.js';
 import { zapMatchKey } from './_zapPhone.js';
 import { buildZapCard } from './_zapCard.js';
 
 const LEADS_PATH = 'stronix_leads';
 
 export default withSentry(async function handler(req, res) {
+  if (req.method === 'POST') return handlePost(req, res);
+
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Método não permitido' });
     return;
@@ -61,3 +68,54 @@ export default withSentry(async function handler(req, res) {
   res.setHeader('Cache-Control', 'private, max-age=120');
   res.status(200).json(buildZapCard(lead, new Date()));
 });
+
+// Gera e revoga a chave de conexão do Stronizap. Ação do admin da academia,
+// pela tela de Configurações → Integrações — nunca pelo próprio Zap.
+async function handlePost(req, res) {
+  try {
+    const auth = await verifyRequest(req);
+    if (!auth || !auth.tenantId) {
+      return res.status(401).json({ error: 'Não autenticado.' });
+    }
+
+    const isAdmin = await isTenantAdmin(auth.tenantId, auth.uid);
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Só o admin da academia pode alterar a integração' });
+    }
+
+    const { action } = req.body || {};
+    const tenantRef = adminDb.collection('tenants').doc(auth.tenantId);
+
+    if (action === 'generate') {
+      const { key, keyPrefix, keyHash } = generateZapKey();
+      await tenantRef.set({
+        integrations: {
+          zap: {
+            keyHash,
+            keyPrefix,
+            revokedAt: null,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdBy: auth.uid
+          }
+        }
+      }, { merge: true });
+      // Única vez que a chave em claro sai do servidor: quem perder isto tem
+      // que gerar outra.
+      return res.status(200).json({ key, keyPrefix });
+    }
+
+    if (action === 'revoke') {
+      await tenantRef.set({
+        integrations: {
+          zap: { revokedAt: admin.firestore.FieldValue.serverTimestamp() }
+        }
+      }, { merge: true });
+      return res.status(200).json({ ok: true });
+    }
+
+    return res.status(400).json({ error: 'Ação inválida' });
+  } catch (error) {
+    console.error('zap POST', error);
+    return res.status(500).json({ error: 'Erro interno ao alterar a integração.' });
+  }
+}
