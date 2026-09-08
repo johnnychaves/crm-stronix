@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import indexesConfig from '../../../firestore.indexes.json';
-import { LIFECYCLE_BUCKETS, clientsQuerySpec, clientsAllQuerySpec, allLeadsQuerySpec, lostByFunnelQuerySpec, bucketByFunnelQuerySpec, bucketByFunnelCountSpec, appointmentsInWindowQuerySpec, renewalClientsQuerySpec, consultantLeadsQuerySpec, adminDashboardWindowSpecs, ADMIN_DASHBOARD_WINDOW_FIELDS, wonInMonthQuerySpec, renewalWindowMs, clientsWithContactTodayQuerySpec, expiredClientsQuerySpec, renewalColumnQuerySpec } from '../leadQueries.js';
+import { LIFECYCLE_BUCKETS, clientsQuerySpec, clientsAllQuerySpec, allLeadsQuerySpec, lostByFunnelQuerySpec, bucketByFunnelQuerySpec, bucketByFunnelCountSpec, appointmentsInWindowQuerySpec, renewalClientsQuerySpec, consultantLeadsQuerySpec, adminDashboardWindowSpecs, ADMIN_DASHBOARD_WINDOW_FIELDS, wonInMonthQuerySpec, renewalWindowMs, clientsWithContactTodayQuerySpec, expiredClientsQuerySpec, renewalColumnQuerySpec, upgradeClientsQuerySpec } from '../leadQueries.js';
 import { renewalColumnsFromCheckpoints } from '../renewalFunnel.js';
 
 // Uma spec é "coberta" por um índice de stronix_leads quando as igualdades são
@@ -430,5 +430,22 @@ describe('renewalColumnQuerySpec', () => {
     // board em produção com failed-precondition.
     expect(coveredByLeadsIndex(renewalColumnQuerySpec(corte, 60, 30, 10))).toBe(true);
     expect(coveredByLeadsIndex(renewalColumnQuerySpec(corte, 30, 0, 10))).toBe(true);
+  });
+});
+
+describe('upgradeClientsQuerySpec', () => {
+  // '!=' null só devolve docs em que o campo existe e não é nulo: exatamente
+  // "quem está no funil". Só cliente recebe o campo, então não cruza com o balde.
+  it('filtra quem tem upgradeStageId gravado', () => {
+    expect(upgradeClientsQuerySpec().wheres).toEqual([
+      { field: 'upgradeStageId', op: '!=', value: null },
+    ]);
+  });
+
+  // O Firestore exige que o primeiro orderBy seja o campo da desigualdade.
+  it('ordena pelo próprio campo da desigualdade e não pagina', () => {
+    const spec = upgradeClientsQuerySpec();
+    expect(spec.orderBy).toEqual({ field: 'upgradeStageId', dir: 'asc' });
+    expect(spec.limit).toBeUndefined();
   });
 });
