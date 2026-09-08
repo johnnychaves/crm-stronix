@@ -504,7 +504,7 @@ const [isPanning, setIsPanning] = useState(false);
   // continua 'Venda' — com uma diferença: as COLUNAS são virtuais, derivadas
   // dos marcos da config, e ninguém arrasta entre elas. Regras em
   // lib/renewalFunnel.js.
-  const { renewalCheckpoints } = useGeneralConfig();
+  const { renewalCheckpoints, contractThresholdDays } = useGeneralConfig();
   const renewalFunnel = useMemo(() => getRenewalFunnel(funnels), [funnels]);
   const isRenewalView = Boolean(renewalFunnel && selectedFunnelId === renewalFunnel.id);
   const renewalColumns = useMemo(
@@ -870,6 +870,50 @@ const handleKanbanMouseMove = (e) => {
       });
   }, [appUser, db, toast, expiredPatchLead]);
 
+  // ── Desfechos do card projetado do funil UPGRADE ────────────────────────
+  // Arrasto e menu "Mover" passam por aqui. A etapa mora em upgradeStageId; o
+  // status real continua 'Venda' (regra em lib/stageMove.js). Cada movimento
+  // deixa evento na linha do tempo, por isso logInteraction e não updateDoc.
+  const moveUpgradeToStage = useCallback((lead, statusName) => {
+    if (!canEditLead(appUser)) {
+      toast.warning('Você não tem permissão para mover este lead.');
+      return;
+    }
+    const etapa = (statuses || []).find(
+      (st) => st.funnelId === upgradeFunnel?.id && st.name === statusName
+    );
+    const plan = planUpgradeMove(lead, etapa);
+    if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); return; }
+    const patch = plan.entering ? { ...plan.patch, upgradeEnteredAt: serverTimestamp() } : plan.patch;
+    logInteraction(db, lead, appUser, { text: plan.interactionText, type: 'status_change' }, patch)
+      .then(() => upgradePatchLead(lead.id, plan.patch))
+      .catch((err) => {
+        console.error('Erro ao mover card do funil Upgrade', err);
+        toast.error('Não foi possível mover o card.');
+      });
+  }, [appUser, db, toast, statuses, upgradeFunnel, upgradePatchLead]);
+
+  // "Não quis o upgrade": sai do funil e mais nada — a pessoa segue cliente.
+  // Recarrega o board porque o card precisa sumir de verdade.
+  const declineUpgrade = useCallback(async (lead, reason) => {
+    if (!canEditLead(appUser)) {
+      toast.warning('Você não tem permissão para alterar este lead.');
+      return;
+    }
+    const plan = planUpgradeDecline(lead, reason);
+    try {
+      await logInteraction(
+        db, lead, appUser,
+        { text: plan.interactionText, type: 'status_change' },
+        { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
+      );
+      upgradeReload();
+    } catch (err) {
+      console.error('Erro ao registrar recusa de upgrade', err);
+      toast.error('Não foi possível registrar a recusa.');
+    }
+  }, [appUser, db, toast, upgradeReload]);
+
   // "Não vai renovar": a MESMA flag que a Meta Diária usa. A pessoa NÃO vira
   // lead perdido — segue cliente, com ficha e contratos, e continua na aba
   // Clientes. Perda de venda != perda de funil.
@@ -940,10 +984,19 @@ const handleKanbanMouseMove = (e) => {
       if (statusName === 'Perda') return declineExpired(lead);
       return moveExpiredToStage(lead, statusName);
     }
+    // Funil UPGRADE: Venda abre o contrato, Perda pede o motivo e tira do
+    // funil, etapa grava upgradeStageId.
+    if (lead._upgradeCard) {
+      if (statusName === 'Venda') return openMatricula(lead);
+      if (statusName === 'Perda') { setLossModalLeadId(lead.id); return; }
+      return moveUpgradeToStage(lead, statusName);
+    }
     if (statusName === 'Venda') return openMatricula(lead);
     if (statusName === 'Perda') {
       // Cliente não vira lead perdido (src/lib/stageMove.js). O card cru da
-      // coluna Venda do mês chega aqui sem flag de projeção.
+      // coluna Venda do mês chega aqui sem flag de projeção. Cliente que está
+      // no funil Upgrade passa (kind 'upgrade') e o modal de motivo vira "não
+      // quis o upgrade" em confirmKanbanLoss.
       const loss = planLoss(lead);
       if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
       setLossModalLeadId(lead.id);
@@ -979,8 +1032,9 @@ const handleKanbanMouseMove = (e) => {
     // aba Clientes. A etapa dele mora num campo próprio, reactivationStageId.
     // O `status` que chega aqui é o projetado (nome da etapa), não o do banco.
     if (lead._expiredCard) return moveExpiredToStage(lead, newStatus);
+    if (lead._upgradeCard) return moveUpgradeToStage(lead, newStatus);
     applyMoveToStage(lead, newStatus);
-  }, [draggableById, appUser, toast, applyMoveToStage, undoRenewalDecline, moveExpiredToStage]);
+  }, [draggableById, appUser, toast, applyMoveToStage, undoRenewalDecline, moveExpiredToStage, moveUpgradeToStage]);
 
   const handleWinDrop = useCallback((e) => {
     e.preventDefault();
@@ -1019,6 +1073,8 @@ const handleKanbanMouseMove = (e) => {
     }
     // Cliente não vira lead perdido (src/lib/stageMove.js): o card cru da
     // coluna Venda do mês é arrastável e chega aqui sem flag de projeção.
+    // Cliente que está no funil Upgrade passa (kind 'upgrade') e o modal de
+    // motivo vira "não quis o upgrade" em confirmKanbanLoss.
     const loss = planLoss(alvo);
     if (!loss.ok) { toast.warning(stageMoveBlockMessage(alvo, loss.reason)); return; }
     setLossModalLeadId(alvo.id);
@@ -1026,8 +1082,19 @@ const handleKanbanMouseMove = (e) => {
 
   const confirmKanbanLoss = async (reason) => {
     if (!lossModalLeadId) return;
-const lead = leads.find(l => l.id === lossModalLeadId);
-if (!lead) return;
+    // draggableById e não `leads`: o card projetado do Upgrade e o doc cru da
+    // coluna Venda do mês não estão no prop de leads ativos.
+    const lead = draggableById.get(lossModalLeadId);
+    if (!lead) return;
+    const loss = planLoss(lead);
+    if (!loss.ok) { setLossModalLeadId(null); toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
+    // Cliente no funil Upgrade: a Perda é "não quis o upgrade". Sai do funil
+    // com o motivo e segue cliente — nada de status Perda.
+    if (loss.kind === 'upgrade') {
+      setLossModalLeadId(null);
+      await declineUpgrade(lead, reason);
+      return;
+    }
     try {
       await logInteraction(
         db, lead, appUser,
@@ -1396,10 +1463,15 @@ if (!lead) return;
 
       {matriculaLead && (
         <ContractModal
-          // Card do funil Renovações: é renovação, não primeira matrícula. O
-          // modal em modo renovação NÃO carimba convertedAt e emenda a vigência
-          // no fim do contrato atual (ver src/lib/renewal.js, seamStart).
-          mode={matriculaLead._renewalCard ? 'renovacao' : 'matricula'}
+          // Card do funil Renovações é renovação. Card do funil Upgrade é
+          // renovação quando há contrato vivo (liga ao atual e emenda a
+          // vigência) e nova matrícula quando o contrato venceu ou foi
+          // cancelado. O modal em modo renovação NÃO carimba convertedAt.
+          mode={
+            matriculaLead._renewalCard || (matriculaLead._upgradeCard && hasLiveContract(matriculaLead, new Date(), contractThresholdDays))
+              ? 'renovacao'
+              : 'matricula'
+          }
           lead={matriculaLead}
           appUser={appUser}
           db={db}
@@ -1418,9 +1490,13 @@ if (!lead) return;
             // contrato a partir da data antiga (seamStart, em lib/renewal.js).
             // Custa N queries, mas é uma vez por cliente por ciclo.
             const wasRenewal = Boolean(matriculaLead?._renewalCard);
+            // Fechou pelo Upgrade: o contrato novo tirou o cliente do funil
+            // (buildMatriculaWrites), então o board precisa recarregar.
+            const wasUpgrade = Boolean(matriculaLead?._upgradeCard);
             setMatriculaLead(null);
             if (wasPerda) refreshLost();
             if (wasRenewal) renewalReload();
+            if (wasUpgrade) upgradeReload();
             // A venda recém-fechada precisa aparecer na coluna do mês, que
             // também não é ao vivo.
             wonReload();
