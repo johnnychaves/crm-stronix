@@ -28,9 +28,9 @@
 //     (withBucket); convertedAt NÃO vem no patch quando stampConvertedAt é
 //     true: é serverTimestamp() do SDK, o caller injeta.
 //   { ok: false, reason }                 — nada a gravar.
-// planLoss devolve { ok: true } ou { ok: false, reason }.
+// planLoss devolve { ok: true, kind: 'lead' | 'upgrade' } ou { ok: false, reason }.
 //
-// planUpgradeMove e planUpgradeDecline são o único caminho de escrita da etapa de Upgrade (upgradeStageId).
+// `planUpgradeMove` e `planUpgradeDecline` são o único caminho de escrita da etapa de Upgrade (`upgradeStageId`).
 
 import { isConvertedStatusName, isClientLead } from './leads.js';
 import { getSafeDateOrNull } from './dates.js';
