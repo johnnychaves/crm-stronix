@@ -71,6 +71,12 @@ function ZapIntegrationSection({ db, appUser }) {
   };
 
   const generate = async () => {
+    // Gerar a primeira chave é inofensivo. Gerar quando já existe uma derruba
+    // a que o Stronizap está usando naquele instante, então a segunda vez em
+    // diante pede confirmação.
+    if (zap?.keyHash && !window.confirm(
+      'Gerar uma chave nova?\n\nA chave atual para de funcionar na hora, e o Stronizap fica sem reconhecer os contatos desta academia até alguém colar a nova lá.'
+    )) return;
     setBusy(true);
     try {
       const data = await callZap('generate');
