@@ -216,10 +216,10 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
 
     setSaving(true);
     try {
-      const res = await fetch('/api/admin-create-user', {
+      const res = await fetch('/api/admin-users', {
         method: 'POST',
         headers: await authHeader(),
-        body: JSON.stringify({ name: form.name.trim(), email: normalizeEmail(form.email), password: form.password, allowExtra })
+        body: JSON.stringify({ action: 'create', name: form.name.trim(), email: normalizeEmail(form.email), password: form.password, allowExtra })
       });
       const data = await res.json();
       if (res.status === 409 && data?.requiresExtraConfirmation) {
@@ -250,8 +250,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         name: newName,
         email: normalizeEmail(form.email),
         // authUid não sai daqui: é a chave que liga o cadastro à conta do Auth,
-        // e as rules agora recusam a troca. Ele nasce no /api/admin-create-user
-        // e no aceite de convite.
+        // e as rules agora recusam a troca. Ele nasce no /api/admin-users (ação
+        // create) e no aceite de convite.
         shiftStart: form.shiftStart || null,
         shiftEnd: form.shiftEnd || null,
         // Vazio ou 0 = sem meta de prospecção. Não existe padrão de academia:
@@ -283,10 +283,10 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         if (!targetUid) {
           toast.error('Cadastro sem authUid. Não é possível redefinir senha.');
         } else {
-          const res = await fetch('/api/admin-set-password', {
+          const res = await fetch('/api/admin-users', {
             method: 'POST',
             headers: await authHeader(),
-            body: JSON.stringify({ targetAuthUid: targetUid, password: form.password })
+            body: JSON.stringify({ action: 'set-password', targetAuthUid: targetUid, password: form.password })
           });
           const data = await res.json();
           if (!res.ok) { toast.error(data.error || 'Erro ao redefinir senha.'); return; }
@@ -309,10 +309,10 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     if (!window.confirm(`Excluir o acesso de "${user.name}"?\n\nApaga a conta no Auth e o cadastro interno. Essa ação é irreversível.`)) return;
     if (!appUser?.authUid) { toast.error('Sessão sem authUid. Reentre no sistema.'); return; }
     try {
-      const res = await fetch('/api/admin-delete-user', {
+      const res = await fetch('/api/admin-users', {
         method: 'POST',
         headers: await authHeader(),
-        body: JSON.stringify({ userDocId: user.id, targetAuthUid: user.authUid || null })
+        body: JSON.stringify({ action: 'delete', userDocId: user.id, targetAuthUid: user.authUid || null })
       });
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || 'Erro ao excluir consultor.'); return; }

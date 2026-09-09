@@ -7,6 +7,7 @@
 
 import { isClientLead } from './leads.js';
 import { normalize, onlyDigits } from './globalSearch.js';
+import { zapMatchKey } from '../../api/_zapPhone.js';
 
 // Balde de ciclo de vida do lead. É a chave da assinatura permanente da PR G:
 // - 'cliente' : matriculado (lifecycleStage) OU 'Venda' legado (isClientLead)
@@ -32,6 +33,7 @@ export const buildLeadSearchFields = ({ name, whatsapp, cpf } = {}) => {
     whatsappDigits,
     whatsappDigitsRev: whatsappDigits.split('').reverse().join(''),
     cpfDigits,
+    zapMatchKey: zapMatchKey(whatsapp),
   };
 };
 
