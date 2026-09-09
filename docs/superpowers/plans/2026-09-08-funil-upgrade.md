@@ -1422,9 +1422,18 @@ Roteiro, na ordem:
 2. Abrir a ficha de um cliente ativo. "Mudar fase" mostra o aviso âmbar e só o funil Upgrade. Escolher "Aguardando contato" e confirmar. Conferir: chip "Upgrade · Aguardando contato" no cabeçalho; evento "Upgrade: entrou na etapa Aguardando contato." na linha do tempo, sem colchetes; cliente continua na aba Clientes.
 3. Pipeline, aba Upgrade: o card está lá e a barra mostra 1. Arrastar para "Em contato". Recarregar: continua em "Em contato". Filtro de responsável funciona.
 4. Menu Mover (celular ou clique no botão do card): mover de volta. Mover para Perda: o modal de motivo abre; confirmar. O card some; a ficha mostra "Upgrade: não quis. Motivo: X." e o chip sumiu; a pessoa segue cliente ativo.
-5. Colocar de novo pela ficha. No board, soltar em Venda: o modal abre em modo "Renovar contrato". Fechar com um plano maior. Conferir: card sumiu do Upgrade; apareceu na coluna Venda do mês; na aba Contratos o contrato novo está ligado ao anterior; no Firestore o contrato tem `closedFromUpgrade: true`.
-6. Cliente com contrato vencido: colocar no Upgrade e soltar em Venda. O modal abre em "Matricular cliente".
-7. Lead comum: mover entre etapas, marcar Perda e desfazer seguem como antes. Para lead, o funil Upgrade não aparece no "Mudar fase".
+5. Colocar de novo pela ficha. No board, soltar em Venda: o modal abre em modo "Renovar contrato". Fechar com um plano maior. Conferir: card sumiu do Upgrade; na aba Contratos o contrato novo está ligado ao anterior; no Firestore o contrato tem `closedFromUpgrade: true`. A coluna Venda do mês NÃO muda: ela é recortada por `funnelId` (nenhum lead aponta para o funil Upgrade) e a renovação não recarimba `convertedAt`, que é o campo da consulta do mês.
+6. Cliente com contrato vencido: colocar no Upgrade e soltar em Venda. O modal abre em "Matricular cliente". Cliente com contrato trancado: abre em "Renovar contrato".
+7. Lead comum: mover entre etapas, marcar Perda e desfazer seguem como antes. Para lead, os funis Upgrade, Renovações e Vencidos não aparecem no "Mudar fase"; Indicações continua aparecendo.
+8. Logado como consultor (não gestor): a carteira padrão do board é a própria, então o número da aba (total da academia) e os cards na tela divergem de propósito. Arrastar, Venda e Perda funcionam com o papel de consultor.
+9. Fechar contrato pela FICHA (aba Contratos, Renovar) com o cliente parado no Upgrade: o chip do cabeçalho some sozinho e o contrato sai com `closedFromUpgrade: true`.
+10. Ficha, Mudar fase, Venda, para um cliente com contrato vivo que NÃO está no Upgrade: abre em "Renovar contrato" (antes abria em matrícula e recarimbava a conversão). Vale para todo cliente, não só os do funil.
+11. Apagar uma etapa do meio em Configurações com um card parado nela: o card cai em "Aguardando contato" e o primeiro arrasto conserta o campo.
+12. Cliente que já está em Renovações ou Vencidos: colocar no Upgrade e conferir que ele continua nos outros dois funis e que a Meta Diária segue cobrando a renovação.
+13. Etapa com nome que cita plano ("Plano apresentado"): o evento aparece na linha do tempo como mudança de fase, nunca como faixa verde de matrícula com valor.
+14. Reimportar planilha com um cliente que está no Upgrade: ele sai do funil.
+15. Academia com um funil próprio chamado "Upgrade": duas abas com o mesmo rótulo. Conhecido, decisão pendente do Johnny.
+16. Sino: o aviso do funil Upgrade aparece sem abrir pop-up e leva ao artigo da Central de ajuda. Com a aba Upgrade aberta, "Novo lead" não vem pré-preenchido com o funil Upgrade.
 
 - [ ] **Step 4: Abrir a PR**
 

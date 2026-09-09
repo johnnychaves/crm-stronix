@@ -224,6 +224,12 @@ pode ser gravada no contrato sem mexer em nada disto.
 Depois do fechamento, o board do Upgrade recarrega (o cliente saiu do funil) e
 a coluna Venda do mês também, como já acontece com a renovação.
 
+A importação de clientes espelha os mesmos campos (`src/lib/clientImport.js`):
+contrato importado nasce com `closedFromUpgrade: false`, explícito, e
+reimportar um cliente que ganha contrato novo tira ele do funil, como
+`buildMatriculaWrites`. Isso entrou na revisão da implementação, não estava
+no desenho original.
+
 ## Convivência com Renovações e Vencidos
 
 Nada é automático nas duas direções. Entrar no Upgrade não tira ninguém de
@@ -246,9 +252,11 @@ renovação ou matrícula, que é o que ele é.
 
 ## Central de ajuda
 
-O artigo de funis ganha a seção "Upgrade": para que serve, como colocar um
-cliente, o que Venda e Perda fazem ali, e que a pessoa continua cliente o
-tempo todo.
+Um artigo próprio, "Funil Upgrade: um plano melhor para quem já é cliente",
+na categoria Fechamento, como o do Vencidos: para que serve, como colocar um
+cliente, o que Venda e Perda fazem ali, a regra da contagem, e que a pessoa
+continua cliente o tempo todo. O sino ganha um aviso apontando para ele, sem
+pop-up.
 
 ## Fora de escopo
 
@@ -258,7 +266,11 @@ tempo todo.
 - Categoria própria na Meta Diária.
 - Contrato paralelo (personal ao lado do plano principal). Decisão 2 fecha
   isso: o upgrade substitui o plano.
-- Qualquer mudança em Vencidos, Renovações ou Indicações.
+- Qualquer mudança em Vencidos, Renovações ou Indicações. Desvio aceito na
+  revisão: o "Mudar fase" de um LEAD deixou de listar Renovações, Vencidos e
+  Upgrade (Indicações continua). Um lead movido para um funil que projeta
+  clientes sumia de todo board. E o "Novo lead" não nasce mais apontando para
+  esses funis, pelo mesmo motivo.
 
 ## Testes
 
@@ -288,6 +300,14 @@ Perda; conferir que o cliente segue na aba Clientes o tempo todo.
 - **Cadeia de fases da linha do tempo.** Se o texto do evento carregar
   "[etapa]", a origem e a duração das fases de lead ficam erradas. Mitigado
   pelo texto sem colchetes e por teste.
+- **Classificação na linha do tempo.** O texto do evento cita a etapa, e uma
+  etapa chamada "Plano apresentado" batia no `CONTRACT_RE` de
+  `classifyInteraction`: a ficha pintava uma faixa de "matrícula fechada" com
+  valor no meio da esteira. Mitigado por `UPGRADE_EVENT_RE` no gate de
+  contrato e no `isLoss` da ficha, com teste.
+- **Datas do card.** A busca do board sem `normalizeLeadDoc` deixava
+  `nextFollowUp` como Timestamp e todo card saía "sem agendamento". Mitigado
+  passando o normalizador, como o Renovações já fazia.
 - **Consulta `!=`.** O Firestore exige que o `orderBy` seja pelo mesmo campo
   da desigualdade; a spec já vem assim. Sem paginação, então não há cursor a
   se preocupar.
