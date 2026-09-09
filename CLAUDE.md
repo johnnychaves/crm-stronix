@@ -44,6 +44,6 @@ Tudo cabe numa função só, `api/zap.js`:
 
 **`src/lib/dailyGoal.js` não pode ser importado por função serverless.** Ele importa `lucide-react` e quebra em runtime de servidor. É por isso que a faixa deriva dos módulos puros em vez de reusar as categorias da Meta Diária direto.
 
-**Diferença conhecida:** a faixa usa `DEFAULT_RENEWAL_CHECKPOINTS` (90/60/30) fixo. `buildZapStrip` aceita os marcos por parâmetro, mas `buildZapCard` não passa e `api/zap.js` não lê `stronix_config/geral`. Resultado: mudar os marcos em Configurações → Ritmo muda a Meta Diária e não muda o cartão do Zap. A spec prometia o contrário. Falta ler a config na rota.
+**Os marcos de renovação são os da academia.** `api/zap.js` lê `renewalCheckpoints` em `stronix_config/general` depois de achar o lead, e nunca quando ninguém casa, e repassa a `buildZapCard` → `buildZapStrip`. Doc inexistente, campo ausente ou lista malformada caem em `DEFAULT_RENEWAL_CHECKPOINTS` (90/60/30). Mudar os marcos em Configurações → Metas & ritmo muda a Meta Diária e o cartão do Zap juntos.
 
 **Próximo passo.** A Parte B (mensagem enviada virando interação na timeline, Meta Diária deixando de ser autodeclarada, `awaitingReplySince`, fila de contatos a classificar e a rota que abre a conversa a partir do lead) está desenhada em `docs/superpowers/specs/2026-09-08-ponte-stronizap-design.md` e ainda sem plano escrito. Pelo desenho, o `POST` de eventos entra no MESMO `api/zap.js`, não numa função nova. Hoje são 11 das 12 funções da Vercel, e a vaga que sobra continua livre.
