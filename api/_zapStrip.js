@@ -6,6 +6,7 @@
 // servidor. Os gatilhos são derivados dos módulos puros.
 import { deriveLeadContractStatus, CONTRACT_STATUS } from '../src/lib/contracts.js';
 import { DEFAULT_RENEWAL_CHECKPOINTS, daysToExpiryOf, activeRenewalCheckpoint } from '../src/lib/renewalGoal.js';
+import { normalizeRenewalCheckpoints } from '../src/lib/leadStatus.js';
 import { getLeadAppointmentType, getLeadAppointmentDate } from '../src/lib/leads.js';
 import { getSafeDateOrNull } from '../src/lib/dates.js';
 
@@ -32,6 +33,11 @@ function freepassInfo(lead, now) {
 
 export function buildZapStrip(lead, now = new Date(), checkpoints = DEFAULT_RENEWAL_CHECKPOINTS) {
   if (!lead) return null;
+
+  // Marcos configurados pela academia (Configurações → Metas & ritmo). Mesma
+  // normalização de PaceSection.jsx: array vazio, valores fora de 1..365 ou
+  // lixo (string, negativo) cai no padrão 90/60/30 — nunca desliga a faixa.
+  const marcos = normalizeRenewalCheckpoints(checkpoints);
 
   // 1. Compromisso de hoje ganha de tudo.
   const tipo = getLeadAppointmentType(lead);
@@ -71,9 +77,20 @@ export function buildZapStrip(lead, now = new Date(), checkpoints = DEFAULT_RENE
     };
   }
 
-  // 4. Marco de renovação (90, 60, 30 por padrão).
-  if (status === CONTRACT_STATUS.A_VENCER && fim) {
-    const marco = activeRenewalCheckpoint(daysToExpiryOf(fim, now), checkpoints);
+  // 4. Marco de renovação (90, 60, 30 por padrão, ou os marcos da academia).
+  // Gatilho INDEPENDENTE do status "a vencer" do sistema (que usa o threshold
+  // fixo de 30 dias — contracts.js) — mesma regra de shouldPromptRenewal em
+  // renewalGoal.js: o marco mais distante (ex.: 90 dias) precisa disparar bem
+  // antes do threshold de 30, senão nenhum marco > 30 nunca aparece. Só fica
+  // de fora quem não tem vigência correndo: cancelado, trancado ou agendado
+  // (vencido já saiu na checagem 2, acima).
+  if (
+    fim &&
+    status !== CONTRACT_STATUS.CANCELADO &&
+    status !== CONTRACT_STATUS.TRANCADO &&
+    status !== CONTRACT_STATUS.AGENDADO
+  ) {
+    const marco = activeRenewalCheckpoint(daysToExpiryOf(fim, now), marcos);
     if (marco != null) {
       return { kind: 'renovacao', tone: 'avencer', text: `Marco de renovação · ${marco} dias` };
     }

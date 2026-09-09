@@ -49,6 +49,17 @@ describe('buildZapStrip', () => {
     });
   });
 
+  // O status "a vencer" do SISTEMA (badge/ficha) usa um threshold FIXO de 30
+  // dias, separado dos marcos de renovação (ver src/lib/renewalGoal.js). O
+  // marco de 90 dias tem que acusar antes desse threshold — senão nenhum
+  // marco > 30 aparece nunca, nem o padrão 90/60/30 usado aqui.
+  it('devolve marco de 90 dias mesmo o contrato ainda não estando "a vencer" pelo threshold fixo do sistema', () => {
+    const lead = cliente({ currentContractEndsAt: new Date(2026, 10, 12) }); // 65 dias
+    expect(buildZapStrip(lead, HOJE)).toEqual({
+      kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 90 dias'
+    });
+  });
+
   it('devolve freepass ativo com a contagem', () => {
     // aula em 07/09 com 3 dias de validade: último dia é 09/09, hoje é 08/09.
     const lead = {
@@ -68,5 +79,37 @@ describe('buildZapStrip', () => {
       appointmentScheduledFor: new Date(2026, 8, 8, 9, 0)
     });
     expect(buildZapStrip(lead, HOJE).kind).toBe('visita_hoje');
+  });
+
+  describe('marcos de renovação configuráveis', () => {
+    it('usa marcos customizados da academia em vez do padrão 90/60/30', () => {
+      // Vence em 120 dias (06/01/2027): mais longe que o maior marco padrão
+      // (90), então o padrão não acusa nada. Um marco customizado de 120 já
+      // cobre esse prazo.
+      const lead = cliente({ currentContractEndsAt: new Date(2027, 0, 6) });
+      expect(buildZapStrip(lead, HOJE)).toBeNull();
+      expect(buildZapStrip(lead, HOJE, [120, 60])).toEqual({
+        kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 120 dias'
+      });
+    });
+
+    it('cai no padrão 90/60/30 quando os marcos não são passados', () => {
+      const lead = cliente({ currentContractEndsAt: new Date(2026, 9, 8) }); // 30 dias
+      expect(buildZapStrip(lead, HOJE, undefined)).toEqual({
+        kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 30 dias'
+      });
+    });
+
+    it.each([
+      ['array vazio', []],
+      ['valores negativos', [-30, -10]],
+      ['string em vez de array', '30'],
+      ['array com lixo misturado', [0, -5, NaN, 'x']]
+    ])('cai no padrão 90/60/30 quando os marcos são inválidos (%s)', (_label, marcosRuins) => {
+      const lead = cliente({ currentContractEndsAt: new Date(2026, 9, 8) }); // 30 dias
+      expect(buildZapStrip(lead, HOJE, marcosRuins)).toEqual({
+        kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 30 dias'
+      });
+    });
   });
 });

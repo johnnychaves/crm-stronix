@@ -15,6 +15,12 @@ import { zapMatchKey } from './_zapPhone.js';
 import { buildZapCard } from './_zapCard.js';
 
 const LEADS_PATH = 'stronix_leads';
+// Config geral da academia (mesmo doc que PaceSection.jsx grava em
+// Configurações → Metas & ritmo). Não importar src/lib/firebase.js aqui pelo
+// mesmo motivo do zapStrip com dailyGoal.js: aquele módulo inicializa o SDK
+// CLIENTE do Firebase (App Check, IndexedDB) e quebra em runtime de servidor.
+const CONFIG_PATH = 'stronix_config';
+const CONFIG_GENERAL_ID = 'general';
 
 export default withSentry(async function handler(req, res) {
   if (req.method === 'POST') return handlePost(req, res);
@@ -65,8 +71,17 @@ export default withSentry(async function handler(req, res) {
     if (lead[campo]?.toDate) lead[campo] = lead[campo].toDate();
   }
 
+  // Marcos de renovação da academia. Só lê depois de achar o lead — em
+  // 'found: false' não há faixa pra montar, então não vale o custo da
+  // consulta. Doc inexistente (academia nunca abriu Configurações → Metas &
+  // ritmo) ou campo ausente/malformado: buildZapCard/buildZapStrip caem no
+  // padrão 90/60/30 sozinhos, não precisa validar aqui.
+  const configSnap = await adminDb.collection('artifacts').doc(tenantId)
+    .collection('public').doc('data').collection(CONFIG_PATH).doc(CONFIG_GENERAL_ID).get();
+  const renewalCheckpoints = configSnap.exists() ? configSnap.data()?.renewalCheckpoints : undefined;
+
   res.setHeader('Cache-Control', 'private, max-age=120');
-  res.status(200).json(buildZapCard(lead, new Date()));
+  res.status(200).json(buildZapCard(lead, new Date(), renewalCheckpoints));
 });
 
 // Gera e revoga a chave de conexão do Stronizap. Ação do admin da academia,

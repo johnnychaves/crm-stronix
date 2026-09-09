@@ -13,7 +13,11 @@ describe('buildZapCard', () => {
       currentPlanName: 'Musculação Anual',
       currentContractStatus: 'ativo',
       currentContractStartsAt: new Date(2025, 10, 12),
-      currentContractEndsAt: new Date(2026, 10, 12),
+      // Longe de qualquer marco padrão (90/60/30) de propósito: este teste
+      // valida os campos do cartão de um cliente comum, não a faixa — a faixa
+      // tem cobertura própria em 'marcos de renovação repassados pra faixa',
+      // abaixo.
+      currentContractEndsAt: new Date(2027, 8, 8),
       lastInteractionAt: new Date(2026, 8, 7, 14, 22)
     };
     expect(buildZapCard(lead, HOJE)).toMatchObject({
@@ -24,7 +28,7 @@ describe('buildZapCard', () => {
       consultantName: 'Ana Beatriz',
       planName: 'Musculação Anual',
       contractStatus: 'ativo',
-      daysLeft: 65,
+      daysLeft: 365,
       strip: null
     });
   });
@@ -69,5 +73,49 @@ describe('buildZapCard', () => {
 
   it('devolve não encontrado quando não há lead', () => {
     expect(buildZapCard(null, HOJE)).toEqual({ found: false });
+  });
+
+  describe('marcos de renovação repassados pra faixa', () => {
+    const clienteAVencer = (extra = {}) => ({
+      id: 'c1',
+      name: 'Cliente Teste',
+      lifecycleStage: 'cliente',
+      currentContractStatus: 'ativo',
+      currentContractStartsAt: new Date(2025, 8, 8),
+      currentContractEndsAt: new Date(2026, 9, 23), // 45 dias após HOJE
+      ...extra
+    });
+
+    it('repassa marcos customizados pra buildZapStrip', () => {
+      const card = buildZapCard(clienteAVencer(), HOJE, [45, 20]);
+      expect(card.strip).toEqual({
+        kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 45 dias'
+      });
+    });
+
+    it('cai no padrão 90/60/30 quando nenhum marco é passado (config ausente)', () => {
+      const lead = clienteAVencer({ currentContractEndsAt: new Date(2026, 9, 8) }); // 30 dias
+      const card = buildZapCard(lead, HOJE);
+      expect(card.strip).toEqual({
+        kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 30 dias'
+      });
+    });
+
+    it('cai no padrão 90/60/30 quando o valor da config é lixo', () => {
+      const lead = clienteAVencer({ currentContractEndsAt: new Date(2026, 9, 8) }); // 30 dias
+      const card = buildZapCard(lead, HOJE, [-1, 0, 'x']);
+      expect(card.strip).toEqual({
+        kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 30 dias'
+      });
+    });
+
+    it('não acrescenta campo novo ao cartão — continua a mesma lista fechada', () => {
+      const card = buildZapCard(clienteAVencer(), HOJE, [45, 20]);
+      expect(Object.keys(card).sort()).toEqual([
+        'appointment', 'consultantName', 'contractEndsAt', 'contractStatus',
+        'daysLeft', 'found', 'kind', 'lastInteractionAt', 'leadId', 'name',
+        'planName', 'strip'
+      ]);
+    });
   });
 });
