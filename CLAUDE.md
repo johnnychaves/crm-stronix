@@ -25,4 +25,25 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 - Trabalho sempre via PR (nunca commit direto na main); merge só com aprovação do Johnny.
 - UI nova invoca a skill `frontend-design`; identidade: Space Grotesk (display), azul `#2B59FF`, laranja `#FF6A2B`.
 - Firestore rules são publicadas MANUALMENTE no console Firebase (não via CLI).
-- Lógica da Meta Diária é regra única em `src/lib/dailyGoal.js` — alterações de categoria/critério acontecem lá.
+- Lógica da Meta Diária é regra única em `src/lib/dailyGoal.js` — alterações de categoria/critério acontecem lá. Esse arquivo importa `lucide-react`, então nenhuma função de `api/` pode importá-lo (ver a ponte com o Stronizap, abaixo).
+
+## Ponte com o Stronizap — Parte A, em produção desde 2026-09-09
+
+O atendente do Stronizap enxerga um telefone e um nome do WhatsApp. Quem diz se aquilo é lead em negociação, aluno ativo ou contrato vencendo é **este sistema**. O CRM é dono da identidade; o Zap só renderiza o que recebe.
+
+Tudo cabe numa função só, `api/zap.js`:
+
+- `GET /api/zap?tenant=<id>&phone=<dígitos>` com header `x-stronizap-key` devolve o cartão de contexto, ou `{ found: false }` quando ninguém casa. A lista de campos é FECHADA em `api/_zapCard.js` de propósito: nada de CPF, endereço, valor de contrato ou situação de pagamento numa tela de chat.
+- `POST /api/zap` com `{ action: 'generate' | 'revoke' }` gera e revoga a chave. Autentica por ID token do admin da academia, nunca pela chave do próprio Zap.
+
+**A chave é emitida aqui.** Fica gravada só como hash em `tenants/{id}.integrations.zap` (`keyHash`, `keyPrefix`, `createdAt`, `createdBy`, `revokedAt`). O valor em claro sai do servidor uma única vez, na tela Configurações → Integrações → Stronizap (`src/views/settings/ZapIntegrationSection.jsx`), e não fica salvo no navegador. Quem perder gera outra.
+
+**Casamento de telefone.** O campo indexado `lead.zapMatchKey` é o DDD mais os últimos 8 dígitos. É a única parte estável entre o formato daqui (até 11 dígitos, sem DDI) e o do WhatsApp (com 55 na frente, e o nono dígito que existe em número novo e não existe em número antigo). A regra mora em `api/_zapPhone.js` e quem grava é `buildLeadSearchFields`, em `src/lib/leadDerived.js`. Esse builder tem espelho em `api/_referral.js`: mexeu num, mexa no outro, senão `src/lib/__tests__/referralApiMirror.test.js` quebra. Base antiga se acerta com `scripts/backfill-zap-match-key.js`.
+
+**Faixa de destaque** (`api/_zapStrip.js`), por ordem de precedência: visita ou aula de hoje, contrato vencido, freepass válido, marco de renovação. Os gatilhos saem de `src/lib/contracts.js`, de `src/lib/renewalGoal.js` e da conta do freepass. Nenhuma regra é recalculada do outro lado.
+
+**`src/lib/dailyGoal.js` não pode ser importado por função serverless.** Ele importa `lucide-react` e quebra em runtime de servidor. É por isso que a faixa deriva dos módulos puros em vez de reusar as categorias da Meta Diária direto.
+
+**Diferença conhecida:** a faixa usa `DEFAULT_RENEWAL_CHECKPOINTS` (90/60/30) fixo. `buildZapStrip` aceita os marcos por parâmetro, mas `buildZapCard` não passa e `api/zap.js` não lê `stronix_config/geral`. Resultado: mudar os marcos em Configurações → Ritmo muda a Meta Diária e não muda o cartão do Zap. A spec prometia o contrário. Falta ler a config na rota.
+
+**Próximo passo.** A Parte B (mensagem enviada virando interação na timeline, Meta Diária deixando de ser autodeclarada, `awaitingReplySince`, fila de contatos a classificar e a rota que abre a conversa a partir do lead) está desenhada em `docs/superpowers/specs/2026-09-08-ponte-stronizap-design.md` e ainda sem plano escrito. Pelo desenho, o `POST` de eventos entra no MESMO `api/zap.js`, não numa função nova. Hoje são 11 das 12 funções da Vercel, e a vaga que sobra continua livre.
