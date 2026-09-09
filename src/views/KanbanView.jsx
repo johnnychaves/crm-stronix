@@ -457,6 +457,7 @@ const [isPanning, setIsPanning] = useState(false);
   );
   const {
     items: expiredDocs, hasMore: expiredHasMore, loadMore: expiredLoadMore, patchItem: expiredPatchLead,
+    error: expiredError,
   } = usePagedLeads({
     db, path: LEADS_PATH, spec: expiredSpec, specKey: `vencidos:${isExpiredView ? '1' : '0'}`,
     enabled: !!db && isExpiredView,
@@ -1382,6 +1383,21 @@ const handleKanbanMouseMove = (e) => {
             )}
           </div>
         </div>
+
+        {/* O board dos funis de sistema é alimentado por uma busca própria, e o
+            número da aba vem de uma CONTAGEM separada. Quando a busca falha, o
+            usePagedLeads devolve lista vazia e a tela mostrava "Sem leads" com
+            a aba cheia — foi assim que o Vencidos ficou semanas parecendo um
+            funil vazio. Agora ele fala. */}
+        {isExpiredView && expiredError && (
+          <div className="mx-4 md:mx-7 mt-1 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+            <AlertCircle className="size-4 shrink-0 mt-px text-amber-600 dark:text-amber-400" />
+            <span className="text-[12.5px] text-amber-900 dark:text-amber-200">
+              Não deu para carregar os clientes vencidos agora. O número na aba vem de outra
+              consulta, por isso ele continua aparecendo. Recarregue a página; se persistir, avise o suporte.
+            </span>
+          </div>
+        )}
 
         {/* Board denso */}
         <div

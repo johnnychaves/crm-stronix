@@ -175,6 +175,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "stronix_leads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "lifecycleBucket",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "currentContractEndsAt",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []
