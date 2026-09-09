@@ -14,6 +14,8 @@ import { fromDateInputValue } from '../lib/dates.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
 import { getReferralFunnel, getReferralEntryStage, isReferralFunnel, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
 import { isRenewalFunnel } from '../lib/renewalFunnel.js';
+import { isExpiredFunnel } from '../lib/expiredFunnel.js';
+import { isUpgradeFunnel } from '../lib/upgradeFunnel.js';
 import { commitReferralLink } from '../lib/referralsWrites.js';
 import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
 import { Switch } from '../components/ui/switch.jsx';
@@ -323,10 +325,13 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
   // Porta de entrada do cadastro: a aba de funil aberta na tela, mas só quando
   // ela é um funil em que o lead PODE nascer. Ficam de fora o de Renovações
-  // (sem etapa nenhuma, o lead nasceria com etapa vazia) e o "Todos os funis"
-  // do dashboard, que é um sentinel e não um funil. Nos dois casos o cadastro
-  // cai no funil padrão em vez de abrir travado num funil sem fase.
-  const entryFunnelId = safeFunnels.some((f) => f.id === selectedFunnelId && !isRenewalFunnel(f))
+  // (sem etapa nenhuma, o lead nasceria com etapa vazia), Vencidos e Upgrade
+  // (projetam clientes por query, o lead nunca apareceria em board nenhum) e
+  // o "Todos os funis" do dashboard, que é um sentinel e não um funil. Nos
+  // casos acima o cadastro cai no funil padrão em vez de abrir travado num
+  // funil sem fase.
+  // Funis que projetam CLIENTES (Renovações, Vencidos, Upgrade) não recebem lead novo: ele sumiria de todo board.
+  const entryFunnelId = safeFunnels.some((f) => f.id === selectedFunnelId && !isRenewalFunnel(f) && !isExpiredFunnel(f) && !isUpgradeFunnel(f))
     ? selectedFunnelId
     : null;
   const initialFunnelId = entryFunnelId || getDefaultFunnel(safeFunnels)?.id || null;
@@ -343,7 +348,8 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   // colunas do board são os marcos de renovação, derivados na hora). Um lead
   // criado ali nasceria com a etapa vazia — vivo nas listas, sem casar com
   // coluna de board nenhum, sumido do pipeline sem aviso.
-  const pickerFunnels = safeFunnels.filter((f) => !isReferralFunnel(f) && !isRenewalFunnel(f));
+  // Funis que projetam CLIENTES (Renovações, Vencidos, Upgrade) não recebem lead novo: ele sumiria de todo board.
+  const pickerFunnels = safeFunnels.filter((f) => !isReferralFunnel(f) && !isRenewalFunnel(f) && !isExpiredFunnel(f) && !isUpgradeFunnel(f));
   // Modal aberto já na aba do funil de indicações → switch nasce ligado.
   const initialIsReferral = canReferral && initialFunnelId === referralFunnel.id;
 
