@@ -1,9 +1,9 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
-import { canEditLead } from '../lib/leads.js';
+import { canEditLead, normalizeLeadDoc } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage } from '../lib/stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK } from '../lib/stageMove.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { hasLiveContract } from '../lib/contracts.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
@@ -483,12 +483,14 @@ const [isPanning, setIsPanning] = useState(false);
   // grava upgradeStageId. Regras em lib/upgradeFunnel.js.
   const upgradeFunnel = useMemo(() => getUpgradeFunnel(funnels), [funnels]);
   const isUpgradeView = Boolean(upgradeFunnel && selectedFunnelId === upgradeFunnel.id);
+  const [upgradeCountEpoch, setUpgradeCountEpoch] = useState(0);
   const upgradeSpec = useMemo(() => (isUpgradeView ? upgradeClientsQuerySpec() : null), [isUpgradeView]);
+  // normalizeLeadDoc: nextFollowUp/createdAt viram Date, senão todo card sai "sem agendamento".
   const {
     items: upgradeDocs, reload: upgradeReload, patchItem: upgradePatchLead,
   } = usePagedLeads({
     db, path: LEADS_PATH, spec: upgradeSpec, specKey: `upgrade:${isUpgradeView ? '1' : '0'}`,
-    enabled: !!db && isUpgradeView,
+    enabled: !!db && isUpgradeView, mapDoc: normalizeLeadDoc,
   });
   // Mesmo recorte do Vencidos: respFilter vale, onlyOverdue é ignorado (cliente
   // não tem follow-up de prospecção). A coluna Perda deste funil fica vazia:
@@ -682,9 +684,10 @@ const [isPanning, setIsPanning] = useState(false);
   // Total do funil UPGRADE para o badge da aba: agregação no servidor, 1
   // leitura. O board não exclui ninguém no cliente, então o número bate.
   const upgradeCountSpec = useMemo(() => (upgradeFunnel ? upgradeClientsQuerySpec() : null), [upgradeFunnel]);
+  // O epoch refaz a contagem depois de recusa ou fechamento pela própria tela; sem ele o número da aba ficava velho a sessão inteira.
   const upgradeCount = useLeadCount({
     db, path: LEADS_PATH, spec: upgradeCountSpec,
-    specKey: 'upgrade', enabled: !!db && !!upgradeFunnel,
+    specKey: `upgrade:${upgradeCountEpoch}`, enabled: !!db && !!upgradeFunnel,
   });
 
   // Total do funil RENOVAÇÕES: somado do que o board carregou, não do servidor.
@@ -908,6 +911,8 @@ const handleKanbanMouseMove = (e) => {
         { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
       );
       upgradeReload();
+      setUpgradeCountEpoch((e) => e + 1);
+      toast.success('Recusa registrada. O cliente saiu do funil Upgrade e segue cliente.');
     } catch (err) {
       console.error('Erro ao registrar recusa de upgrade', err);
       toast.error('Não foi possível registrar a recusa.');
@@ -994,11 +999,14 @@ const handleKanbanMouseMove = (e) => {
     if (statusName === 'Venda') return openMatricula(lead);
     if (statusName === 'Perda') {
       // Cliente não vira lead perdido (src/lib/stageMove.js). O card cru da
-      // coluna Venda do mês chega aqui sem flag de projeção. Cliente que está
-      // no funil Upgrade passa (kind 'upgrade') e o modal de motivo vira "não
-      // quis o upgrade" em confirmKanbanLoss.
+      // coluna Venda do mês chega aqui sem flag de projeção — inclusive cliente
+      // que está no funil Upgrade: recusar o upgrade é gesto da aba Upgrade
+      // (card projetado), não daqui, senão sumiria do funil sem aviso.
       const loss = planLoss(lead);
-      if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
+      if (!loss.ok || loss.kind === 'upgrade') {
+        toast.warning(stageMoveBlockMessage(lead, STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA));
+        return;
+      }
       setLossModalLeadId(lead.id);
       return;
     }
@@ -1071,12 +1079,18 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
-    // Cliente não vira lead perdido (src/lib/stageMove.js): o card cru da
-    // coluna Venda do mês é arrastável e chega aqui sem flag de projeção.
-    // Cliente que está no funil Upgrade passa (kind 'upgrade') e o modal de
-    // motivo vira "não quis o upgrade" em confirmKanbanLoss.
+    // Funil UPGRADE: a Perda do card projetado é "não quis o upgrade" — abre o
+    // modal de motivo e confirmKanbanLoss chama declineUpgrade.
+    if (alvo._upgradeCard) { setLossModalLeadId(alvo.id); return; }
+    // Cliente não vira lead perdido (src/lib/stageMove.js). O card cru da
+    // coluna Venda do mês é arrastável e chega aqui sem flag de projeção —
+    // inclusive cliente que está no funil Upgrade: recusar o upgrade é gesto
+    // da aba Upgrade (card projetado, tratado acima), não daqui.
     const loss = planLoss(alvo);
-    if (!loss.ok) { toast.warning(stageMoveBlockMessage(alvo, loss.reason)); return; }
+    if (!loss.ok || loss.kind === 'upgrade') {
+      toast.warning(stageMoveBlockMessage(alvo, STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA));
+      return;
+    }
     setLossModalLeadId(alvo.id);
   }, [draggableById, appUser, toast, declineRenewal, declineExpired]);
 
@@ -1088,11 +1102,16 @@ const handleKanbanMouseMove = (e) => {
     if (!lead) return;
     const loss = planLoss(lead);
     if (!loss.ok) { setLossModalLeadId(null); toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
-    // Cliente no funil Upgrade: a Perda é "não quis o upgrade". Sai do funil
-    // com o motivo e segue cliente — nada de status Perda.
-    if (loss.kind === 'upgrade') {
+    // Cliente no funil Upgrade: a Perda é "não quis o upgrade". Só pelo card
+    // projetado da aba Upgrade — o doc cru da coluna Venda é barrado antes.
+    if (lead._upgradeCard) {
       setLossModalLeadId(null);
       await declineUpgrade(lead, reason);
+      return;
+    }
+    if (loss.kind === 'upgrade') {
+      setLossModalLeadId(null);
+      toast.warning(stageMoveBlockMessage(lead, STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA));
       return;
     }
     try {
@@ -1497,6 +1516,7 @@ const handleKanbanMouseMove = (e) => {
             if (wasPerda) refreshLost();
             if (wasRenewal) renewalReload();
             if (wasUpgrade) upgradeReload();
+            if (wasUpgrade) setUpgradeCountEpoch((e) => e + 1);
             // A venda recém-fechada precisa aparecer na coluna do mês, que
             // também não é ao vivo.
             wonReload();
