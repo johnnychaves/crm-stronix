@@ -815,7 +815,7 @@ vercel dev
 Semeie um `keyHash` à mão no documento do tenant (use `hashZapKey` no console do Node para gerar o hash de uma chave de teste). Depois:
 
 ```bash
-curl -i "http://localhost:3000/api/zap?tenant=stronix&phone=5551999998888" \
+curl -i "http://localhost:3000/api/zap?tenant=stronix-crm-app&phone=5551999998888" \
   -H "x-stronizap-key: szk_a-chave-de-teste"
 ```
 
@@ -1003,7 +1003,7 @@ Publique manualmente no console do Firebase o conteúdo de `firestore.rules` e o
 - [ ] **Step 4: Rodar o backfill em produção**
 
 ```bash
-node scripts/backfill-zap-match-key.js stronix
+node scripts/backfill-zap-match-key.js stronix-crm-app
 ```
 
 Sem isso, leads antigos não são encontrados pela consulta e o cartão volta `found: false` para gente que está na base.

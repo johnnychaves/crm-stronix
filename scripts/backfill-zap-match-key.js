@@ -54,6 +54,22 @@ const leadsCol = db
   .collection('public').doc('data')
   .collection(LEADS_PATH);
 
+// Tenant inexistente varre um caminho vazio e conclui "0 lidos, 0 atualizados"
+// como se tivesse dado certo. Já aconteceu: rodaram com `stronix` quando o slug
+// real era `stronix-crm-app`, o script disse Concluído, e ninguém percebeu que a
+// academia inteira tinha ficado de fora. Recusar antes de varrer.
+const tenantDoc = await db.collection('tenants').doc(TENANT_ID).get();
+if (!tenantDoc.exists) {
+  console.error(`Tenant "${TENANT_ID}" não existe na coleção 'tenants'.`);
+  const todos = await db.collection('tenants').listDocuments();
+  if (todos.length) {
+    console.error('Tenants cadastrados:');
+    for (const t of todos) console.error(`  ${t.id}`);
+  }
+  process.exit(1);
+}
+
+
 async function run() {
   console.log(`Backfill de zapMatchKey — tenant="${TENANT_ID}"\n`);
 
