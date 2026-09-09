@@ -273,13 +273,13 @@ O gatilho é a categoria da Meta Diária em que a pessoa está hoje, mais o free
 |---|---|---|
 | Visita hoje | `DAILY_GOAL_CATEGORIES.VISITA_HOJE` | agendado |
 | Aula experimental hoje | `DAILY_GOAL_CATEGORIES.AULA_HOJE` | agendado |
-| Marco de renovação | `DEFAULT_RENEWAL_CHECKPOINTS` (90, 60, 30) | a vencer |
+| Marco de renovação | `renewalCheckpoints` (`stronix_config/general`), padrão `DEFAULT_RENEWAL_CHECKPOINTS` (90, 60, 30) | a vencer |
 | Contrato vencido | `DAILY_GOAL_CATEGORIES.VENCIDO` | vencido |
 | Freepass ativo | `freePass.js` | segue `getTrialPassNote` |
 
 Ficam de fora `NOVO_24H`, `ATRASADO` e `CONTATO_HOJE`. São tarefa do consultor, não contexto de quem está atendendo.
 
-Nenhuma regra é recalculada no Stronizap. O `GET` devolve a categoria e a interface renderiza. Se a academia mudar os marcos nas configurações, o Zap acompanha sozinho.
+Nenhuma regra é recalculada no Stronizap. O `GET` devolve a categoria e a interface renderiza. `api/zap.js` lê `stronix_config/general` (o mesmo doc que a tela Configurações → Metas & ritmo grava) logo depois de achar o lead, e repassa `renewalCheckpoints` para `buildZapCard` → `buildZapStrip`; doc inexistente ou campo ausente/malformado caem no padrão 90/60/30 sem quebrar. Se a academia mudar os marcos nas configurações, o Zap acompanha sozinho.
 
 ### Avatar
 
