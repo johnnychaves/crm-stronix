@@ -12,9 +12,9 @@ import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
-import { getDefaultFunnel } from '../lib/funnels.js';
-import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText } from '../lib/referrals.js';
-import { getUpgradeFunnel } from '../lib/upgradeFunnel.js';
+import { getDefaultFunnel, isSystemFunnel } from '../lib/funnels.js';
+import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
+import { getUpgradeFunnel, upgradeStageIdOf } from '../lib/upgradeFunnel.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
@@ -272,8 +272,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   const confirmLoss = async (reason) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     // Cliente não vira lead perdido (src/lib/stageMove.js). O botão e o
-    // PhaseChanger já barram antes; aqui é a última trava. Cliente que está no
-    // funil Upgrade passa (kind 'upgrade') e a Perda vira "não quis o upgrade".
+    // PhaseChanger já barram antes; aqui é a última trava.
     const loss = planLoss(lead);
     if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); setLossModalOpen(false); return; }
     // Cliente no funil Upgrade: a Perda é "não quis o upgrade". Sai do funil
@@ -287,6 +286,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
         );
         setLossModalOpen(false);
+        setComposerTab('note');
       } catch (e) {
         console.error(e);
         toast.error('Não foi possível registrar a recusa.');
@@ -689,8 +689,10 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // Funil UPGRADE (lib/upgradeFunnel.js): é o único funil que um cliente pode
   // ocupar, e a etapa dele mora em upgradeStageId, não em status.
   const upgradeFunnel = getUpgradeFunnel(safeFunnels);
+  // upgradeStageIdOf cai na entrada quando a etapa gravada foi apagada em
+  // Configurações — mesma regra do board, senão ficha e card discordariam.
   const upgradeStage = lead.upgradeStageId
-    ? (statuses || []).find((s) => s.id === lead.upgradeStageId) || null
+    ? (statuses || []).find((s) => s.id === upgradeStageIdOf(lead, statuses, upgradeFunnel?.id)) || null
     : null;
   // O PhaseChanger destaca a etapa atual pelo `status`. Para o cliente, passa
   // uma cópia com o status igual ao nome da etapa de Upgrade, só para o
@@ -698,7 +700,12 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   const phaseChangerLead = isClient
     ? { ...lead, funnelId: upgradeFunnel?.id || '', status: upgradeStage?.name || '' }
     : lead;
-  const phaseChangerFunnels = isClient ? (upgradeFunnel ? [upgradeFunnel] : []) : safeFunnels;
+  // Lead não entra em funil de sistema pela ficha: Renovações, Vencidos e
+  // Upgrade projetam CLIENTES por query, então um lead com funnelId apontando
+  // para eles sumiria de todo board. Indicações fica: é fluxo de lead.
+  const phaseChangerFunnels = isClient
+    ? (upgradeFunnel ? [upgradeFunnel] : [])
+    : safeFunnels.filter((f) => !isSystemFunnel(f) || isReferralFunnel(f));
   // Estado de ciclo de vida da pessoa (fonte única em lib/leadState.js): dita o
   // tom/rótulo/hint do cabeçalho, o anel do RingAvatar e o alerta contextual.
   const profileState = deriveLeadState(lead, new Date(), contractThresholdDays);
@@ -986,7 +993,9 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
     const lowerText = String(i.text || '').toLowerCase();
     // Perda: o status_change que encerra a oportunidade não traz etapa entre
     // colchetes — vem como "Lead perdido. Motivo: ...".
-    const isLoss = i._kind === 'status' && !stageName && /perdid|perda/i.test(lowerText);
+    // Evento do funil Upgrade nunca é perda de lead, mesmo que o motivo
+    // configurado diga "Perda de contato".
+    const isLoss = i._kind === 'status' && !stageName && !/^upgrade: /.test(lowerText) && /perdid|perda/i.test(lowerText);
     const isWin = i._kind === 'status' && /^venda$/i.test(stageName);
 
     // Corpo limpo: tira os prefixos que o composer injeta (📲/📞 das conversas,

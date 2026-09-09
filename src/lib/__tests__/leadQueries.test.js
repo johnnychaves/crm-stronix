@@ -262,6 +262,9 @@ describe('leadQueries — registro EXAUSTIVO: nenhuma spec escapa do guarda', ()
   const SEM_INDICE_COMPOSTO = {
     allLeadsQuerySpec: allLeadsQuerySpec(),
     adminDashboardWindowSpecs: adminDashboardWindowSpecs(AGORA - DIA, AGORA),
+    // Funil Upgrade: só `!=` num campo e orderBy no mesmo campo — índice de
+    // campo único, que o Firestore mantém sozinho.
+    upgradeClientsQuerySpec: upgradeClientsQuerySpec(),
   };
 
   it('cobre todas as specs exportadas por leadQueries.js', () => {

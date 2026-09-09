@@ -59,6 +59,13 @@ describe('classifyInteraction — desfecho de agendamento', () => {
     expect(classifyInteraction({ type: 'status_change', text: 'Upgrade: entrou na etapa Aguardando contato.' })).toBe('status');
     expect(classifyInteraction({ type: 'status_change', text: 'Upgrade: não quis. Motivo: Preço.' })).toBe('status');
   });
+
+  it('evento do Upgrade cuja etapa ou nota cita plano/renovação continua marco de status', () => {
+    expect(classifyInteraction({ type: 'status_change', text: 'Upgrade: entrou na etapa Plano apresentado.' })).toBe('status');
+    expect(classifyInteraction({ type: 'status_change', text: 'Upgrade: movido para a etapa Em contato. Obs: quer renovação antecipada' })).toBe('status');
+    // Matrícula de verdade continua contrato.
+    expect(classifyInteraction({ type: 'status_change', text: 'Matrícula realizada — Plano Gold (R$ 249,00). Vigência até 01/01/2027.' })).toBe('contract');
+  });
 });
 
 describe('classifyInteraction — reagendamento/perda de renovação (Meta Diária) não é contrato', () => {

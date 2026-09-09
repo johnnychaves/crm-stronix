@@ -488,7 +488,7 @@ const [isPanning, setIsPanning] = useState(false);
   const upgradeSpec = useMemo(() => (isUpgradeView ? upgradeClientsQuerySpec() : null), [isUpgradeView]);
   // normalizeLeadDoc: nextFollowUp/createdAt viram Date, senão todo card sai "sem agendamento".
   const {
-    items: upgradeDocs, reload: upgradeReload, patchItem: upgradePatchLead,
+    items: upgradeDocs, reload: upgradeReload, patchItem: upgradePatchLead, error: upgradeError,
   } = usePagedLeads({
     db, path: LEADS_PATH, spec: upgradeSpec, specKey: `upgrade:${isUpgradeView ? '1' : '0'}`,
     enabled: !!db && isUpgradeView, mapDoc: normalizeLeadDoc,
@@ -1394,6 +1394,16 @@ const handleKanbanMouseMove = (e) => {
             <AlertCircle className="size-4 shrink-0 mt-px text-amber-600 dark:text-amber-400" />
             <span className="text-[12.5px] text-amber-900 dark:text-amber-200">
               Não deu para carregar os clientes vencidos agora. O número na aba vem de outra
+              consulta, por isso ele continua aparecendo. Recarregue a página; se persistir, avise o suporte.
+            </span>
+          </div>
+        )}
+
+        {isUpgradeView && upgradeError && (
+          <div className="mx-4 md:mx-7 mt-1 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+            <AlertCircle className="size-4 shrink-0 mt-px text-amber-600 dark:text-amber-400" />
+            <span className="text-[12.5px] text-amber-900 dark:text-amber-200">
+              Não deu para carregar o funil Upgrade agora. O número na aba vem de outra
               consulta, por isso ele continua aparecendo. Recarregue a página; se persistir, avise o suporte.
             </span>
           </div>
