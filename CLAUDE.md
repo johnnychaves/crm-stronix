@@ -44,6 +44,8 @@ Tudo cabe numa função só, `api/zap.js`:
 
 **`src/lib/dailyGoal.js` não pode ser importado por função serverless.** Ele importa `lucide-react` e quebra em runtime de servidor. É por isso que a faixa deriva dos módulos puros em vez de reusar as categorias da Meta Diária direto.
 
+**Em `api/`, `snap.exists` é propriedade. Em `src/`, `snap.exists()` é função.** `api/` roda o SDK de servidor (firebase-admin) e `src/` o do navegador, e os dois divergem justamente aqui. Copiar leitura de documento de um lado pro outro sem trocar isso derruba a rota: em 2026-09-10 o cartão do Zap ficou fora do ar para todo contato cadastrado por causa de um `configSnap.exists()` em `api/zap.js`. O `api/__tests__/zapRoute.test.js` testa a rota com um banco falso que imita o SDK de servidor, e é ele que pega esse erro.
+
 **Os marcos de renovação são os da academia.** `api/zap.js` lê `renewalCheckpoints` em `stronix_config/general` depois de achar o lead, e nunca quando ninguém casa, e repassa a `buildZapCard` → `buildZapStrip`. Doc inexistente, campo ausente ou lista malformada caem em `DEFAULT_RENEWAL_CHECKPOINTS` (90/60/30). Mudar os marcos em Configurações → Metas & ritmo muda a Meta Diária e o cartão do Zap juntos.
 
 **Próximo passo.** A Parte B (mensagem enviada virando interação na timeline, Meta Diária deixando de ser autodeclarada, `awaitingReplySince`, fila de contatos a classificar e a rota que abre a conversa a partir do lead) está desenhada em `docs/superpowers/specs/2026-09-08-ponte-stronizap-design.md` e ainda sem plano escrito. Pelo desenho, o `POST` de eventos entra no MESMO `api/zap.js`, não numa função nova. Hoje são 11 das 12 funções da Vercel, e a vaga que sobra continua livre.
