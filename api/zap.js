@@ -78,7 +78,7 @@ export default withSentry(async function handler(req, res) {
   // padrão 90/60/30 sozinhos, não precisa validar aqui.
   const configSnap = await adminDb.collection('artifacts').doc(tenantId)
     .collection('public').doc('data').collection(CONFIG_PATH).doc(CONFIG_GENERAL_ID).get();
-  const renewalCheckpoints = configSnap.exists() ? configSnap.data()?.renewalCheckpoints : undefined;
+  const renewalCheckpoints = configSnap.exists ? configSnap.data()?.renewalCheckpoints : undefined;
 
   res.setHeader('Cache-Control', 'private, max-age=120');
   res.status(200).json(buildZapCard(lead, new Date(), renewalCheckpoints));
