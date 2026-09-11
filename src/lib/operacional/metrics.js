@@ -5,9 +5,20 @@
 import { monthRange, effectiveEnd, metaDaysOfMonth, isCurrentMonthKey, addMonthsToKey } from './month.js';
 import { computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow } from './base.js';
 import { renewalCohort, summarizeCohort, milestones, upcomingExpirations } from './renewal.js';
-import { metaDaysSummary, pickMeta, metaCalendar, prospectionSummary, pickProspection, tasksByType, overdueNow } from './routine.js';
+import {
+  OTHERS_ID, metaDaysSummary, pickMeta, metaCalendar, prospectionSummary, pickProspection, tasksByType, overdueNow
+} from './routine.js';
 
-const sumMap = (m) => [...m.values()].reduce((a, b) => a + b, 0);
+// Quem não está em ctx.users (ex-consultor ou sem consultor). Somado às
+// pessoas, bate com a equipe. Mora em routine.js porque o overdueNow usa.
+export { OTHERS_ID };
+
+// Soma dos valores do mapa; com `keep`, só das chaves que passam.
+const sumMap = (m, keep = null) => {
+  let total = 0;
+  m.forEach((v, k) => { if (!keep || keep(k)) total += v; });
+  return total;
+};
 
 // Cache por ctx (WeakMap: ctx novo, cache novo). Um desenho da tela chama
 // metricsOf dezenas de vezes (mês, comparado, pessoas, tendências). O resultado
@@ -74,11 +85,21 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
   const contracts = ctx.contracts || [];
   const metaDays = metaDaysOfMonth(monthKey, ctx.config?.metaWeekdays || [], end);
 
-  const meta = src ? metaDaysSummary({ users, history: src.history, metaDays }) : null;
-  const prospSummary = src ? prospectionSummary({ users, interactions: src.interactions, leadsCreated: src.leadsCreated, metaDays, end }) : null;
+  // OTHERS_ID: só o que dá para atribuir a quem não está em ctx.users. Meta e
+  // prospecção são de quem tem usuário, então ficam sem número.
+  const others = userId === OTHERS_ID;
+  const team = new Set(users.map((u) => u.id));
+  const owner = others ? (id) => !team.has(id) : userId;
+  const meta = src && !others ? metaDaysSummary({ users, history: src.history, metaDays }) : null;
+  const prospSummary = src && !others
+    ? prospectionSummary({ users, interactions: src.interactions, leadsCreated: src.leadsCreated, metaDays, end })
+    : null;
   const academy = academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf });
   const { sales } = academy;
-  const salesOf = (m) => (userId ? (m.get(userId) || 0) : sumMap(m));
+  const salesOf = (m) => {
+    if (!userId) return sumMap(m);
+    return others ? sumMap(m, (seller) => !team.has(seller)) : (m.get(userId) || 0);
+  };
 
   return {
     monthKey,
@@ -104,7 +125,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
     enteredBy: sales.entered,
     upgrades: academy.known ? salesOf(sales.upgrades) : null,
     upgradesBy: sales.upgrades,
-    renewal: summarizeCohort(academy.cohortRows, { owner: userId }),
+    renewal: summarizeCohort(academy.cohortRows, { owner }),
     milestones: src
       ? milestones(contracts, {
         start,
@@ -113,10 +134,10 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
         checkpoints: ctx.config?.renewalCheckpoints,
         interactions: nextSrc ? [...(src.interactions || []), ...(nextSrc.interactions || [])] : src.interactions,
         leadsById: ctx.leadsById,
-        owner: userId
+        owner
       })
       : null,
-    upcoming: snapshot ? upcomingExpirations(contracts, { now: ctx.now, leadsById: ctx.leadsById, owner: userId }) : null
+    upcoming: snapshot ? upcomingExpirations(contracts, { now: ctx.now, leadsById: ctx.leadsById, owner }) : null
   };
 }
 

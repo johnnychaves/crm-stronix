@@ -14,6 +14,13 @@ export function ownerOf(contract, leadsById) {
   return leadsById?.get(contract.leadId)?.consultantId || contract.consultantId || 'sem-consultor';
 }
 
+// Filtro de dono: null = todos; um id; ou uma função (id → boolean), que o
+// metricsOf usa para quem está fora da equipe.
+const ownerFilter = (owner) => {
+  if (!owner) return null;
+  return typeof owner === 'function' ? owner : (id) => id === owner;
+};
+
 // A lista da pessoa no índice vem em ordem de início: o mais recente é o último.
 const isLatestOfPerson = (c, index) => {
   const list = index.byPerson.get(c.personKey) || [];
@@ -82,7 +89,8 @@ export function renewalCohort(contracts, { start, end, asOf, graceDays, leadsByI
 }
 
 export function summarizeCohort(rows, { owner = null } = {}) {
-  const pick = owner ? rows.filter((r) => r.owner === owner) : rows;
+  const match = ownerFilter(owner);
+  const pick = match ? rows.filter((r) => match(r.owner)) : rows;
   const counts = { renew: 0, wont: 0, lapsed: 0, pending: 0 };
   const when = { antes: 0, no: 0, depois: 0 };
   const reasons = new Map();
@@ -133,6 +141,7 @@ export function milestones(contracts, { start, end, asOf = null, checkpoints, in
   const startMs = start.getTime();
   const endMs = end.getTime();
   const asOfMs = asOf ? asOf.getTime() : Infinity;
+  const match = ownerFilter(owner);
   return cps.map((cp, i) => {
     const next = cps[i + 1];
     let total = 0;
@@ -142,7 +151,7 @@ export function milestones(contracts, { start, end, asOf = null, checkpoints, in
       const endsMs = c.endsAt.getTime();
       const xMs = endsMs - cp * DAY_MS;
       if (xMs < startMs || xMs >= endMs) return;
-      if (owner && ownerOf(c, leadsById) !== owner) return;
+      if (match && !match(ownerOf(c, leadsById))) return;
       if (contractStateAt(c, new Date(xMs)) !== 'vigente') return;
       const successors = successorTimes(c, index);
       if (successors.some((t) => t < xMs)) return;
@@ -159,6 +168,7 @@ export function milestones(contracts, { start, end, asOf = null, checkpoints, in
 export function upcomingExpirations(contracts, { now, leadsById, owner = null }) {
   const index = indexContracts(contracts);
   const nowMs = now.getTime();
+  const match = ownerFilter(owner);
   const buckets = { d30: 0, d60: 0, d90: 0 };
   (contracts || []).forEach((c) => {
     if (!c.endsAt) return;
@@ -166,7 +176,7 @@ export function upcomingExpirations(contracts, { now, leadsById, owner = null })
     // Vigente agora tem fim depois de agora; fora das faixas nem precisa de mais conta.
     if (days <= 0 || days > 90) return;
     if (contractStateAt(c, now) !== 'vigente' || !isLatestOfPerson(c, index)) return;
-    if (owner && ownerOf(c, leadsById) !== owner) return;
+    if (match && !match(ownerOf(c, leadsById))) return;
     if (days <= 30) buckets.d30 += 1;
     else if (days <= 60) buckets.d60 += 1;
     else buckets.d90 += 1;

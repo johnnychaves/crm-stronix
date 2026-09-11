@@ -177,3 +177,24 @@ describe('trancado não vence', () => {
     expect(computeChurn(list, OCT).exits).toBe(0);
   });
 });
+
+describe('dono por predicado', () => {
+  it('coorte, marcos e a vencer aceitam uma função no lugar do id', () => {
+    const fora = (id) => id !== 'ana';
+    const rows = [
+      { owner: 'ana', outcome: 'renew', when: 'antes', reason: null },
+      { owner: 'ex', outcome: 'lapsed', when: null, reason: null },
+      { owner: 'sem-consultor', outcome: 'renew', when: 'depois', reason: null }
+    ];
+    expect(summarizeCohort(rows, { owner: fora })).toMatchObject({ cohort: 2, counts: { renew: 1, lapsed: 1 } });
+
+    const contracts = [
+      C('p1', { endsAt: D(2026, 10, 20) }),                     // ana
+      C('p2', { endsAt: D(2026, 10, 25), consultantId: 'ex' }) // ex-consultor
+    ];
+    const args = { leadsById: new Map(), owner: fora };
+    expect(milestones(contracts, { ...args, start: SEP.start, end: SEP.end, checkpoints: [30], interactions: [] }))
+      .toEqual([{ days: 30, total: 1, done: 0, pct: 0 }]);
+    expect(upcomingExpirations(contracts, { ...args, now: D(2026, 9, 11) })).toEqual({ d30: 0, d60: 1, d90: 0 });
+  });
+});

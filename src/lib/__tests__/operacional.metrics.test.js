@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContract } from '../operacional/base.js';
-import { metricsOf, deltaOf, buildHighlights, seriesOf } from '../operacional/metrics.js';
+import { metricsOf, deltaOf, buildHighlights, seriesOf, OTHERS_ID } from '../operacional/metrics.js';
 
 const NOW = new Date(2026, 8, 11, 14, 0);
 const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
@@ -207,5 +207,53 @@ describe('prospecção no corte pró-rata', () => {
     };
     expect(metricsOf(ctx, { monthKey: '2026-08', userId: 'ana', cutEnd: D(8, 11, 14) }).prosp.done).toBe(1);
     expect(metricsOf(ctx, { monthKey: '2026-08', userId: 'ana' }).prosp.done).toBe(3);
+  });
+});
+
+describe('responsável fora da equipe (OTHERS_ID)', () => {
+  function ctxWithOutsiders() {
+    const ctx = makeCtx();
+    ctx.contracts = [
+      ...ctx.contracts,
+      C('ex-venda', { startsAt: D(9, 3), createdAt: D(9, 3), consultantId: 'ex' }),  // ex-consultor vendeu
+      C('sem-dono', { startsAt: D(9, 4), createdAt: D(9, 4), consultantId: null }),  // venda sem consultor
+      C('ex-upgrade', { leadId: 'a1', renewedFromId: 'a1', closedFromUpgrade: true, startsAt: D(9, 5), createdAt: D(9, 5), consultantId: 'ex' }),
+      C('ex-carteira', { endsAt: D(9, 8), consultantId: 'ex' })                        // vence em setembro, dono fora da equipe
+    ];
+    ctx.liveLeads = [
+      ...ctx.liveLeads,
+      { consultantId: 'ex', status: 'Negociação', nextFollowUp: D(9, 2) },
+      { consultantId: '', status: 'Novo', nextFollowUp: D(9, 3) }
+    ];
+    ctx.months['2026-09'].interactions = [
+      ...ctx.months['2026-09'].interactions,
+      { type: 'daily_goal_done', dailyGoalCategory: 'vencido', leadId: 'y', actorAuthUid: 'u-ex', createdAt: D(9, 3) }
+    ];
+    return ctx;
+  }
+
+  it('só o que é de quem não está em ctx.users; meta e prospecção ficam sem número', () => {
+    const others = metricsOf(ctxWithOutsiders(), { monthKey: '2026-09', userId: OTHERS_ID });
+    expect(others.meta).toBeNull();
+    expect(others.prosp).toBeNull();
+    expect(others.entered).toBe(2);
+    expect(others.upgrades).toBe(1);
+    expect(others.renewal).toMatchObject({ cohort: 1, counts: { lapsed: 1 } });
+    expect(others.tasks).toMatchObject({ vencidos: 1, total: 1 });
+    expect(others.late.byUser.get(OTHERS_ID)).toBe(2);
+  });
+
+  it('pessoas + OTHERS_ID batem com a equipe em entraram, upgrades, renovação e atrasados', () => {
+    const ctx = ctxWithOutsiders();
+    const ids = [...USERS.map((u) => u.id), OTHERS_ID];
+    const team = metricsOf(ctx, { monthKey: '2026-09' });
+    const parts = ids.map((userId) => metricsOf(ctx, { monthKey: '2026-09', userId }));
+    const sum = (pick) => parts.reduce((a, m) => a + pick(m), 0);
+    expect(sum((m) => m.entered)).toBe(team.entered);
+    expect(sum((m) => m.upgrades)).toBe(team.upgrades);
+    expect(sum((m) => m.renewal.cohort)).toBe(team.renewal.cohort);
+    ['renew', 'wont', 'lapsed', 'pending'].forEach((k) => expect(sum((m) => m.renewal.counts[k])).toBe(team.renewal.counts[k]));
+    expect(team.late.total).toBe(3);
+    expect(ids.reduce((a, id) => a + (team.late.byUser.get(id) || 0), 0)).toBe(team.late.total);
   });
 });

@@ -5,6 +5,10 @@
 import { volumeTargetFor, interactionOwnerAuthUid } from '../dailyGoal.js';
 import { dayKeyOf } from './month.js';
 
+// Chave de quem não está em ctx.users: ex-consultor ou lead sem consultor.
+// Somada às pessoas, bate com a equipe.
+export const OTHERS_ID = '__outros__';
+
 export const TASK_ROWS = [
   { id: 'novos', label: 'Novos leads' },
   { id: 'contatos', label: 'Contatos' },
@@ -109,14 +113,19 @@ export function pickProspection(summary, userId = null) {
 }
 
 export function tasksByType({ interactions, users, userId = null, start, end }) {
-  const auth = userId ? (users || []).find((u) => u.id === userId)?.authUid : null;
+  const teamAuth = new Set((users || []).map((u) => u.authUid).filter(Boolean));
+  const auth = userId && userId !== OTHERS_ID ? (users || []).find((u) => u.id === userId)?.authUid : null;
+  // Pessoa: as que ela fez. OTHERS_ID: as de autor fora da equipe, ou sem autor.
+  const mine = !userId ? null
+    : userId === OTHERS_ID ? (i) => !teamAuth.has(interactionOwnerAuthUid(i))
+      : (i) => interactionOwnerAuthUid(i) === auth;
   const out = Object.fromEntries(TASK_ROWS.map((r) => [r.id, 0]));
   const seen = new Set();
   (interactions || []).forEach((i) => {
     if (i.type !== 'daily_goal_done' || !(i.createdAt instanceof Date) || i.createdAt < start || i.createdAt >= end) return;
     const task = TASK_OF_CATEGORY[i.dailyGoalCategory];
     if (!task) return;
-    if (userId && interactionOwnerAuthUid(i) !== auth) return;
+    if (mine && !mine(i)) return;
     const key = `${i.leadId}|${i.dailyGoalCategory}|${dayKeyOf(i.createdAt)}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -127,14 +136,18 @@ export function tasksByType({ interactions, users, userId = null, start, end }) 
 }
 
 // Mesma condição da categoria Atrasados da Meta Diária: lead fora de Venda e
-// Perda com próximo contato antes do início de hoje.
+// Perda com próximo contato antes do início de hoje. Lead de quem não está na
+// equipe (ou sem consultor) fica em OTHERS_ID, chave que só aparece se houver.
 export function overdueNow({ liveLeads, users, now }) {
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const byUser = new Map((users || []).map((u) => [u.id, 0]));
+  let others = 0;
   (liveLeads || []).forEach((l) => {
     if (l.status === 'Venda' || l.status === 'Perda') return;
     if (!(l.nextFollowUp instanceof Date) || l.nextFollowUp >= todayStart) return;
     if (byUser.has(l.consultantId)) byUser.set(l.consultantId, byUser.get(l.consultantId) + 1);
+    else others += 1;
   });
+  if (others > 0) byUser.set(OTHERS_ID, others);
   return { total: [...byUser.values()].reduce((a, b) => a + b, 0), byUser };
 }

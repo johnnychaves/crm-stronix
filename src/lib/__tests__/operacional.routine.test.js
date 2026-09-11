@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { metaDaysOfMonth } from '../operacional/month.js';
 import {
-  TASK_ROWS, metaDaysSummary, pickMeta, metaCalendar,
+  TASK_ROWS, OTHERS_ID, metaDaysSummary, pickMeta, metaCalendar,
   prospectionSummary, pickProspection, tasksByType, overdueNow
 } from '../operacional/routine.js';
 
@@ -109,5 +109,30 @@ describe('atrasados agora', () => {
     const r = overdueNow({ liveLeads, users: USERS, now: NOW });
     expect(r.total).toBe(2);
     expect(Object.fromEntries(r.byUser)).toEqual({ ana: 1, marcos: 1 });
+  });
+});
+
+describe('responsável fora da equipe', () => {
+  it('atrasados de ex-consultor ou sem consultor ficam em OTHERS_ID e entram no total', () => {
+    const liveLeads = [
+      { consultantId: 'ana', status: 'Negociação', nextFollowUp: D(10) },
+      { consultantId: 'ex', status: 'Negociação', nextFollowUp: D(9) },
+      { consultantId: '', status: 'Novo', nextFollowUp: D(8) },
+      { status: 'Novo', nextFollowUp: D(7) }
+    ];
+    const r = overdueNow({ liveLeads, users: USERS, now: NOW });
+    expect(Object.fromEntries(r.byUser)).toEqual({ ana: 1, marcos: 0, [OTHERS_ID]: 3 });
+    expect(r.total).toBe(4);
+  });
+
+  it('tarefas de OTHERS_ID são as de autor fora da equipe, inclusive sem autor', () => {
+    const interactions = [
+      { type: 'daily_goal_done', dailyGoalCategory: 'contato_hoje', leadId: 'a', actorAuthUid: 'u-ana', createdAt: D(2) },
+      { type: 'daily_goal_done', dailyGoalCategory: 'contato_hoje', leadId: 'b', actorAuthUid: 'u-ex', createdAt: D(2) },
+      { type: 'daily_goal_done', dailyGoalCategory: 'vencido', leadId: 'c', createdAt: D(3) }
+    ];
+    const range = { start: new Date(2026, 8, 1), end: NOW };
+    expect(tasksByType({ interactions, users: USERS, userId: OTHERS_ID, ...range })).toMatchObject({ contatos: 1, vencidos: 1, total: 2 });
+    expect(tasksByType({ interactions, users: USERS, ...range }).total).toBe(3);
   });
 });
