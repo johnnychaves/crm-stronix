@@ -1,0 +1,165 @@
+// Base de clientes a partir de stronix_contratos (coleção inteira, já em
+// memória). Vigência por pessoa num instante, ponte do mês por transição de
+// estado (fecha por construção), churn por saída definitiva, cancelamentos por
+// motivo, matrículas e upgrades por vendedor. Importado de planilha entra na
+// base, mas nunca conta como matrícula, retorno, cancelamento ou trancamento.
+
+import { getSafeDateOrNull } from '../dates.js';
+
+const DAY_MS = 86400000;
+
+export function normalizeContract(c) {
+  const d = (v) => getSafeDateOrNull(v);
+  const endsAt = d(c.endsAt);
+  return {
+    ...c,
+    startsAt: d(c.startsAt),
+    endsAt,
+    createdAt: d(c.createdAt),
+    // Cancelado sem data (legado): trata como encerrado no fim, sem efeito na ponte.
+    cancelledAt: d(c.cancelledAt) || (c.status === 'cancelado' ? endsAt : null),
+    pausedAt: d(c.pausedAt),
+    resumedAt: d(c.resumedAt),
+    imported: Boolean(c.importBatchId || c.importSource || c.importedBy),
+    personKey: c.leadId || `contrato:${c.id}`
+  };
+}
+
+// 'vigente' | 'trancado' | null no instante t.
+export function contractStateAt(c, t) {
+  if (!c.startsAt || !c.endsAt) return null;
+  if (t < c.startsAt || t >= c.endsAt) return null;
+  if (c.cancelledAt && c.cancelledAt <= t) return null;
+  const paused = c.pausedAt && c.pausedAt <= t && (!c.resumedAt || c.resumedAt < c.pausedAt || c.resumedAt > t);
+  return paused ? 'trancado' : 'vigente';
+}
+
+// Estado de cada pessoa no instante t: vigente vence trancado.
+export function personStatesAt(contracts, t) {
+  const map = new Map();
+  (contracts || []).forEach((c) => {
+    const s = contractStateAt(c, t);
+    if (!s) return;
+    if (s === 'vigente' || !map.has(c.personKey)) map.set(c.personKey, s);
+  });
+  return map;
+}
+
+const vigentSet = (states) => new Set([...states].filter(([, s]) => s === 'vigente').map(([k]) => k));
+
+export const countActiveAt = (contracts, t) => vigentSet(personStatesAt(contracts, t)).size;
+
+export const countLockedAt = (contracts, t) =>
+  [...personStatesAt(contracts, t).values()].filter((s) => s === 'trancado').length;
+
+const firstMoment = (c) => c.createdAt || c.startsAt;
+
+export function contractsByPerson(contracts) {
+  const m = new Map();
+  (contracts || []).forEach((c) => {
+    const arr = m.get(c.personKey);
+    if (arr) arr.push(c); else m.set(c.personKey, [c]);
+  });
+  m.forEach((arr) => arr.sort((a, b) => (a.startsAt?.getTime() ?? 0) - (b.startsAt?.getTime() ?? 0)));
+  return m;
+}
+
+// Ponte do mês: A = vigentes no início, B = vigentes no fim efetivo. Quem muda de
+// lado ganha um motivo, então início + passos = fim sempre.
+export function computeBaseMovement(contracts, { start, end }) {
+  const tEnd = new Date(end.getTime() - 1);
+  const A = personStatesAt(contracts, start);
+  const B = personStatesAt(contracts, tEnd);
+  const vA = vigentSet(A);
+  const vB = vigentSet(B);
+  const people = contractsByPerson(contracts);
+  const n = { entraram: 0, voltaram: 0, cancelaram: 0, venceram: 0, trancaram: 0, destrancaram: 0 };
+
+  vB.forEach((key) => {
+    if (vA.has(key)) return;
+    if (A.get(key) === 'trancado') { n.destrancaram += 1; return; }
+    const list = people.get(key) || [];
+    const current = list.find((c) => contractStateAt(c, tEnd) === 'vigente');
+    const hadBefore = list.some((c) => c !== current && c.startsAt && current?.startsAt && c.startsAt < current.startsAt);
+    if (hadBefore) n.voltaram += 1; else n.entraram += 1;
+  });
+
+  vA.forEach((key) => {
+    if (vB.has(key)) return;
+    if (B.get(key) === 'trancado') { n.trancaram += 1; return; }
+    const list = people.get(key) || [];
+    const cancelledHere = list.some((c) => !c.imported && c.cancelledAt && c.cancelledAt >= start && c.cancelledAt < end);
+    if (cancelledHere) n.cancelaram += 1; else n.venceram += 1;
+  });
+
+  return {
+    startCount: vA.size,
+    endCount: vB.size,
+    steps: {
+      entraram: n.entraram,
+      voltaram: n.voltaram,
+      cancelaram: n.cancelaram,
+      venceram: n.venceram,
+      trancamentos: n.destrancaram - n.trancaram
+    },
+    trancaram: n.trancaram,
+    destrancaram: n.destrancaram
+  };
+}
+
+// Saída definitiva no mês: cancelamento sem outro contrato vigente logo depois,
+// ou fim da tolerância de um contrato vencido sem retorno. ÷ vigentes no início.
+export function computeChurn(contracts, { start, end, graceDays }) {
+  const graceMs = (Number(graceDays) || 0) * DAY_MS;
+  const vigentAt = (list, t) => list.some((c) => contractStateAt(c, t) === 'vigente');
+  let exits = 0;
+  contractsByPerson(contracts).forEach((list) => {
+    const hit = list.some((c) => {
+      if (c.cancelledAt && !c.imported && c.endsAt && c.cancelledAt < c.endsAt) {
+        return c.cancelledAt >= start && c.cancelledAt < end && !vigentAt(list, c.cancelledAt);
+      }
+      if (!c.endsAt) return false;
+      const x = new Date(c.endsAt.getTime() + graceMs);
+      if (x < start || x >= end) return false;
+      const returned = list.some((o) => o !== c && o.startsAt && o.startsAt >= c.endsAt && o.startsAt <= x);
+      return !returned && !vigentAt(list, x);
+    });
+    if (hit) exits += 1;
+  });
+  const base = countActiveAt(contracts, start);
+  return { exits, base, pct: base > 0 ? Math.round((exits / base) * 1000) / 10 : null };
+}
+
+const sortItems = (map) => [...map].map(([name, count]) => ({ name, count }))
+  .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+
+export function cancellationsByReason(contracts, { start, end }) {
+  const map = new Map();
+  (contracts || []).forEach((c) => {
+    if (c.imported || !c.cancelledAt || c.cancelledAt < start || c.cancelledAt >= end) return;
+    const name = c.cancelReason || 'Outro';
+    map.set(name, (map.get(name) || 0) + 1);
+  });
+  const items = sortItems(map);
+  return { total: items.reduce((s, r) => s + r.count, 0), items };
+}
+
+// Matrículas (primeiro contrato da pessoa) e upgrades do mês, por vendedor: o
+// consultor gravado no contrato, o mesmo nome da comissão.
+export function salesInWindow(contracts, { start, end }) {
+  const people = contractsByPerson(contracts);
+  const entered = new Map();
+  const upgrades = new Map();
+  const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);
+  (contracts || []).forEach((c) => {
+    const t = firstMoment(c);
+    if (c.imported || !t || t < start || t >= end) return;
+    const seller = c.consultantId || 'sem-consultor';
+    if (c.closedFromUpgrade) bump(upgrades, seller);
+    if (!c.renewedFromId) {
+      const earlier = (people.get(c.personKey) || []).some((o) => o !== c && firstMoment(o) && firstMoment(o) < t);
+      if (!earlier) bump(entered, seller);
+    }
+  });
+  return { entered, upgrades };
+}
