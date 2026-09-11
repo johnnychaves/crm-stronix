@@ -4,34 +4,72 @@
 // motivo, matrículas e upgrades por vendedor. Importado de planilha entra na
 // base, mas nunca conta como matrícula, retorno, cancelamento ou trancamento.
 
-import { getSafeDateOrNull } from '../dates.js';
+import { addDays, getSafeDateOrNull } from '../dates.js';
+import { isImportedContract } from '../contracts.js';
 
 const DAY_MS = 86400000;
 
+// Pausas como intervalos [from, to), to = null na pausa em curso. Fontes, na
+// ordem: o histórico gravado na reativação (pauseHistory); sem ele, a última
+// reativação vira UM intervalo de pausedDaysTotal dias terminando em resumedAt
+// (várias pausas antigas se juntam numa só, aproximação conhecida); e a pausa
+// aberta de quem está trancado (ou foi cancelado trancado). A pausa gravada
+// pela importação não tem data real e começa em startsAt, para não inventar
+// trancamento no mês da importação; o trancamento pela ficha sempre tem motivo.
+function pausesOf(c, { startsAt, pausedAt, resumedAt, imported }) {
+  const fromImport = imported && !c.pauseReason;
+  const out = [];
+  if (Array.isArray(c.pauseHistory) && c.pauseHistory.length) {
+    c.pauseHistory.forEach((p) => {
+      const from = p?.fromImport ? startsAt : getSafeDateOrNull(p?.pausedAt);
+      const to = getSafeDateOrNull(p?.resumedAt);
+      if (from && to) out.push({ from, to });
+    });
+  } else if (resumedAt && Number(c.pausedDaysTotal) > 0) {
+    out.push({ from: fromImport ? startsAt : addDays(resumedAt, -Number(c.pausedDaysTotal)), to: resumedAt });
+  }
+  if (c.status === 'trancado' || (c.status === 'cancelado' && pausedAt)) {
+    const from = fromImport ? startsAt : (pausedAt || startsAt);
+    if (from) out.push({ from, to: null });
+  }
+  return out;
+}
+
 export function normalizeContract(c) {
   const d = (v) => getSafeDateOrNull(v);
+  const createdAt = d(c.createdAt);
+  // Importado pode vir sem início: vale a criação.
+  const startsAt = d(c.startsAt) || createdAt;
   const endsAt = d(c.endsAt);
+  const pausedAt = d(c.pausedAt);
+  const resumedAt = d(c.resumedAt);
+  const imported = isImportedContract(c);
   return {
     ...c,
-    startsAt: d(c.startsAt),
+    startsAt,
     endsAt,
-    createdAt: d(c.createdAt),
+    createdAt,
     // Cancelado sem data (legado): trata como encerrado no fim, sem efeito na ponte.
     cancelledAt: d(c.cancelledAt) || (c.status === 'cancelado' ? endsAt : null),
-    pausedAt: d(c.pausedAt),
-    resumedAt: d(c.resumedAt),
-    imported: Boolean(c.importBatchId || c.importSource || c.importedBy),
+    pausedAt,
+    resumedAt,
+    imported,
+    pauses: pausesOf(c, { startsAt, pausedAt, resumedAt, imported }),
     personKey: c.leadId || `contrato:${c.id}`
   };
 }
 
-// 'vigente' | 'trancado' | null no instante t.
+export const hasOpenPause = (c) => (c.pauses || []).some((p) => p.to == null);
+
+// 'vigente' | 'trancado' | null no instante t. Trancado não vence: na pausa em
+// curso vale 'trancado' mesmo depois de endsAt, que anda quando reativar.
 export function contractStateAt(c, t) {
-  if (!c.startsAt || !c.endsAt) return null;
-  if (t < c.startsAt || t >= c.endsAt) return null;
+  if (!c.startsAt || t < c.startsAt) return null;
   if (c.cancelledAt && c.cancelledAt <= t) return null;
-  const paused = c.pausedAt && c.pausedAt <= t && (!c.resumedAt || c.resumedAt < c.pausedAt || c.resumedAt > t);
-  return paused ? 'trancado' : 'vigente';
+  const pauses = c.pauses || [];
+  if (pauses.some((p) => p.to == null && p.from <= t)) return 'trancado';
+  if (!c.endsAt || t >= c.endsAt) return null;
+  return pauses.some((p) => p.to != null && p.from <= t && t < p.to) ? 'trancado' : 'vigente';
 }
 
 // Estado de cada pessoa no instante t: vigente vence trancado.

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { buildContractResume } from '../contracts.js';
 import {
   normalizeContract, contractStateAt, countActiveAt, countLockedAt,
   computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow
@@ -20,21 +21,87 @@ describe('contractStateAt', () => {
     expect(contractStateAt(c, D(2026, 11, 2))).toBe(null);
   });
 
-  it('trancado entre a pausa e a reativação', () => {
-    const c = C('a', { pausedAt: D(2026, 9, 3), resumedAt: D(2026, 9, 20) });
+  // Formatos reais: trancar grava status 'trancado' + pausedAt; reativar
+  // grava pausedAt null, resumedAt, pausedDaysTotal acumulado e empurra o fim.
+  it('pausa aberta: trancado desde pausedAt e, trancado, não vence', () => {
+    const c = C('a', { status: 'trancado', pausedAt: D(2026, 9, 3), endsAt: D(2026, 9, 20) });
+    expect(contractStateAt(c, D(2026, 9, 2))).toBe('vigente');
+    expect(contractStateAt(c, D(2026, 9, 10))).toBe('trancado');
+    expect(contractStateAt(c, D(2026, 10, 15))).toBe('trancado');
+  });
+
+  it('pausa encerrada sem histórico: um intervalo que acaba na reativação e dura pausedDaysTotal', () => {
+    const c = C('a', { pausedAt: null, resumedAt: D(2026, 9, 20), pausedDaysTotal: 17 });
+    expect(contractStateAt(c, D(2026, 9, 2))).toBe('vigente');
     expect(contractStateAt(c, D(2026, 9, 10))).toBe('trancado');
     expect(contractStateAt(c, D(2026, 9, 21))).toBe('vigente');
   });
 
-  it('pausa atual depois de uma reativação antiga continua trancada', () => {
-    const c = C('a', { resumedAt: D(2026, 5, 1), pausedAt: D(2026, 9, 3) });
+  it('pausa atual depois de uma reativação antiga: as duas pausas valem', () => {
+    const c = C('a', { status: 'trancado', resumedAt: D(2026, 5, 1), pausedDaysTotal: 10, pausedAt: D(2026, 9, 3) });
+    expect(contractStateAt(c, D(2026, 4, 25))).toBe('trancado');
+    expect(contractStateAt(c, D(2026, 6, 1))).toBe('vigente');
     expect(contractStateAt(c, D(2026, 9, 10))).toBe('trancado');
+  });
+
+  it('histórico de pausas: cada item vira um intervalo, inclusive Timestamp do Firestore', () => {
+    const ts = (date) => ({ toDate: () => date });
+    const c = C('a', {
+      resumedAt: D(2026, 9, 20), pausedDaysTotal: 27,
+      pauseHistory: [
+        { pausedAt: ts(D(2026, 3, 1)), resumedAt: ts(D(2026, 3, 11)) },
+        { pausedAt: D(2026, 9, 3), resumedAt: D(2026, 9, 20) }
+      ]
+    });
+    expect(contractStateAt(c, D(2026, 3, 5))).toBe('trancado');
+    expect(contractStateAt(c, D(2026, 8, 28))).toBe('vigente'); // a reconstrução pelo total diria trancado
+    expect(contractStateAt(c, D(2026, 9, 10))).toBe('trancado');
+    expect(contractStateAt(c, D(2026, 9, 21))).toBe('vigente');
   });
 
   it('cancelado deixa de valer no cancelamento', () => {
     const c = C('a', { status: 'cancelado', cancelledAt: D(2026, 9, 10) });
     expect(contractStateAt(c, D(2026, 9, 9))).toBe('vigente');
     expect(contractStateAt(c, D(2026, 9, 11))).toBe(null);
+  });
+
+  it('cancelado enquanto trancado: trancado até o cancelamento', () => {
+    const c = C('a', { status: 'cancelado', pausedAt: D(2026, 8, 1), pauseReason: 'Viagem', cancelledAt: D(2026, 9, 15) });
+    expect(contractStateAt(c, D(2026, 8, 10))).toBe('trancado');
+    expect(contractStateAt(c, D(2026, 9, 16))).toBe(null);
+  });
+});
+
+describe('contratos importados', () => {
+  it('trancado na planilha: a pausa começa no início, sem inventar trancamento no mês da importação', () => {
+    const c = C('imp', { status: 'trancado', importBatchId: 'lote', startsAt: D(2026, 3, 1), pausedAt: D(2026, 9, 4) });
+    expect(contractStateAt(c, D(2026, 3, 5))).toBe('trancado');
+    expect(computeBaseMovement([c], SEP)).toMatchObject({ startCount: 0, endCount: 0, trancaram: 0 });
+  });
+
+  it('trancado pela ficha depois da importação usa a data real da pausa', () => {
+    const c = C('imp', { status: 'trancado', importBatchId: 'lote', pausedAt: D(2026, 9, 12), pauseReason: 'Viagem' });
+    expect(contractStateAt(c, D(2026, 9, 5))).toBe('vigente');
+    expect(contractStateAt(c, D(2026, 9, 15))).toBe('trancado');
+  });
+
+  it('reativar o trancado da planilha não muda o passado', () => {
+    const raw = {
+      id: 'imp', leadId: 'imp', status: 'trancado', importBatchId: 'lote',
+      startsAt: D(2026, 3, 1), endsAt: D(2026, 12, 1), createdAt: D(2026, 9, 4), pausedAt: D(2026, 9, 4)
+    };
+    const { contractPatch } = buildContractResume({ contract: raw, resumedAt: D(2026, 10, 5) });
+    const c = normalizeContract({ ...raw, ...contractPatch });
+    expect(contractStateAt(c, D(2026, 5, 1))).toBe('trancado');
+    expect(contractStateAt(c, D(2026, 10, 6))).toBe('vigente');
+    expect(computeBaseMovement([c], SEP).trancaram).toBe(0);
+  });
+
+  it('sem início na planilha, começa na criação', () => {
+    const c = C('imp', { startsAt: null, createdAt: D(2026, 9, 12), importSource: 'NextFit' });
+    expect(c.startsAt).toEqual(D(2026, 9, 12));
+    expect(contractStateAt(c, D(2026, 9, 11))).toBe(null);
+    expect(contractStateAt(c, D(2026, 9, 13))).toBe('vigente');
   });
 });
 
@@ -45,7 +112,7 @@ describe('contagem por pessoa', () => {
   });
 
   it('trancado conta à parte', () => {
-    const list = [C('a'), C('b', { pausedAt: D(2026, 8, 1) })];
+    const list = [C('a'), C('b', { status: 'trancado', pausedAt: D(2026, 8, 1) })];
     expect(countActiveAt(list, D(2026, 9, 1))).toBe(1);
     expect(countLockedAt(list, D(2026, 9, 1))).toBe(1);
   });
@@ -59,8 +126,8 @@ describe('computeBaseMovement (ponte do mês)', () => {
     C('volta-novo', { leadId: 'V', startsAt: D(2026, 9, 10), createdAt: D(2026, 9, 10), endsAt: D(2026, 12, 10) }),
     C('cancela', { status: 'cancelado', cancelledAt: D(2026, 9, 15), cancelReason: 'Financeiro' }),
     C('vence', { endsAt: D(2026, 9, 20) }),
-    C('tranca', { pausedAt: D(2026, 9, 12) }),
-    C('destranca', { pausedAt: D(2026, 8, 1), resumedAt: D(2026, 9, 8) })
+    C('tranca', { status: 'trancado', pausedAt: D(2026, 9, 12) }),
+    C('destranca', { pausedAt: null, resumedAt: D(2026, 9, 8), pausedDaysTotal: 38 }) // parado desde 01/08
   ];
 
   it('classifica cada pessoa que mudou de lado', () => {
