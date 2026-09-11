@@ -75,7 +75,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
   const metaDays = metaDaysOfMonth(monthKey, ctx.config?.metaWeekdays || [], end);
 
   const meta = src ? metaDaysSummary({ users, history: src.history, metaDays }) : null;
-  const prospSummary = src ? prospectionSummary({ users, interactions: src.interactions, leadsCreated: src.leadsCreated, metaDays }) : null;
+  const prospSummary = src ? prospectionSummary({ users, interactions: src.interactions, leadsCreated: src.leadsCreated, metaDays, end }) : null;
   const academy = academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf });
   const { sales } = academy;
 

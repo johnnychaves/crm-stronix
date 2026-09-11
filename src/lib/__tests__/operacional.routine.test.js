@@ -65,6 +65,16 @@ describe('prospecção', () => {
     expect(pickProspection(summary, 'marcos').on).toBe(false);
     expect(pickProspection(summary, null)).toMatchObject({ done: 3, target: 90, dailyTarget: 10 });
   });
+
+  it('respeita o corte: lead e ação depois dele não contam, nem no dia do corte', () => {
+    const lateInteractions = [...interactions, { volumeKind: 'mensagem', actorAuthUid: 'u-ana', createdAt: D(11, 20) }];
+    const lateLeads = [...leadsCreated, { id: 'l9', consultantId: 'ana', createdAt: D(11, 20) }];
+    const args = { users: USERS, interactions: lateInteractions, leadsCreated: lateLeads, metaDays: DAYS };
+    expect(pickProspection(prospectionSummary(args), 'ana').done).toBe(5);
+    const cut = pickProspection(prospectionSummary({ ...args, end: NOW }), 'ana');
+    expect(cut.done).toBe(3);
+    expect(cut.perDay[8]).toBe(1);
+  });
 });
 
 describe('tarefas por tipo', () => {

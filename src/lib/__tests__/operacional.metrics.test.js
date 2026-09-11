@@ -174,3 +174,19 @@ describe('marcos no metricsOf', () => {
     expect(metricsOf(ctx, { monthKey: '2026-09' }).milestones).toEqual([{ days: 30, total: 1, done: 1, pct: 100 }]);
   });
 });
+
+describe('prospecção no corte pró-rata', () => {
+  it('lead e ação depois do corte das 14h, no mesmo dia, ficam fora do mês comparado', () => {
+    const ctx = makeCtx();
+    ctx.months['2026-08'] = {
+      history: [],
+      interactions: [
+        { volumeKind: 'mensagem', actorAuthUid: 'u-ana', createdAt: D(8, 11, 9) },
+        { volumeKind: 'mensagem', actorAuthUid: 'u-ana', createdAt: D(8, 11, 20) }
+      ],
+      leadsCreated: [{ id: 'n1', consultantId: 'ana', createdAt: D(8, 11, 20) }]
+    };
+    expect(metricsOf(ctx, { monthKey: '2026-08', userId: 'ana', cutEnd: D(8, 11, 14) }).prosp.done).toBe(1);
+    expect(metricsOf(ctx, { monthKey: '2026-08', userId: 'ana' }).prosp.done).toBe(3);
+  });
+});

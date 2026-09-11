@@ -61,22 +61,24 @@ export function metaCalendar({ metaDays, hitsBy, userId = null }) {
 }
 
 // Ações por dia de meta (fechados + hoje): lead criado (dono = consultantId,
-// qualquer balde) e interação com volumeKind (dono = quem fez).
-export function prospectionSummary({ users, interactions, leadsCreated, metaDays }) {
+// qualquer balde) e interação com volumeKind (dono = quem fez). Com `end` (o
+// corte), nada criado a partir dele conta, nem no próprio dia do corte.
+export function prospectionSummary({ users, interactions, leadsCreated, metaDays, end = null }) {
   const days = metaDays.filter((d) => d.state !== 'future');
   const idxOf = new Map(days.map((d, i) => [d.key, i]));
   const byUser = new Map((users || []).map((u) => [u.id, { target: volumeTargetFor(u), perDay: days.map(() => 0) }]));
   const userOfAuth = new Map((users || []).map((u) => [u.authUid, u.id]));
+  const afterCut = (d) => end != null && d >= end;
   const seenLead = new Set();
   (leadsCreated || []).forEach((l) => {
-    if (!l?.id || seenLead.has(l.id) || l.createdAtMissing || !(l.createdAt instanceof Date)) return;
+    if (!l?.id || seenLead.has(l.id) || l.createdAtMissing || !(l.createdAt instanceof Date) || afterCut(l.createdAt)) return;
     seenLead.add(l.id);
     const i = idxOf.get(dayKeyOf(l.createdAt));
     const row = byUser.get(l.consultantId);
     if (i != null && row) row.perDay[i] += 1;
   });
   (interactions || []).forEach((it) => {
-    if (!it.volumeKind || !(it.createdAt instanceof Date)) return;
+    if (!it.volumeKind || !(it.createdAt instanceof Date) || afterCut(it.createdAt)) return;
     const i = idxOf.get(dayKeyOf(it.createdAt));
     const row = byUser.get(userOfAuth.get(interactionOwnerAuthUid(it)));
     if (i != null && row) row.perDay[i] += 1;
