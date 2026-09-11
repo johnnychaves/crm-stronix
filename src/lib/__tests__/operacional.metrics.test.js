@@ -126,3 +126,32 @@ describe('seriesOf', () => {
     expect(s.map((p) => p.key)).toEqual(['2026-08', '2026-09']);
   });
 });
+
+describe('metricsOf em cache', () => {
+  it('mesma chamada no mesmo ctx devolve o mesmo objeto', () => {
+    const ctx = makeCtx();
+    const a = metricsOf(ctx, { monthKey: '2026-09', userId: 'ana' });
+    expect(metricsOf(ctx, { monthKey: '2026-09', userId: 'ana' })).toBe(a);
+    expect(metricsOf(ctx, { monthKey: '2026-09', userId: 'diego' })).not.toBe(a);
+    expect(metricsOf(ctx, { monthKey: '2026-08', cutEnd: D(8, 11, 14) }))
+      .toBe(metricsOf(ctx, { monthKey: '2026-08', cutEnd: D(8, 11, 14) }));
+  });
+
+  it('mudar o ctx invalida, inclusive trocando os contratos no mesmo objeto', () => {
+    const ctx = makeCtx();
+    const a = metricsOf(ctx, { monthKey: '2026-09' });
+    const contracts = [...ctx.contracts, C('extra', { startsAt: D(9, 3), createdAt: D(9, 3) })];
+    const b = metricsOf({ ...ctx, contracts }, { monthKey: '2026-09' });
+    expect(b).not.toBe(a);
+    expect(b.base.active).toBe(a.base.active + 1);
+    ctx.contracts = contracts;
+    expect(metricsOf(ctx, { monthKey: '2026-09' }).base.active).toBe(a.base.active + 1);
+  });
+
+  it('mês carregado depois no mesmo ctx aparece', () => {
+    const ctx = makeCtx();
+    expect(metricsOf(ctx, { monthKey: '2026-07' }).hasSource).toBe(false);
+    ctx.months['2026-07'] = { history: [], interactions: [], leadsCreated: [] };
+    expect(metricsOf(ctx, { monthKey: '2026-07' }).hasSource).toBe(true);
+  });
+});

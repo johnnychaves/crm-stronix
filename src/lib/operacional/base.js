@@ -92,14 +92,30 @@ export const countLockedAt = (contracts, t) =>
 
 const firstMoment = (c) => c.createdAt || c.startsAt;
 
-export function contractsByPerson(contracts) {
-  const m = new Map();
-  (contracts || []).forEach((c) => {
-    const arr = m.get(c.personKey);
-    if (arr) arr.push(c); else m.set(c.personKey, [c]);
+const NO_CONTRACTS = Object.freeze([]);
+const indexCache = new WeakMap();
+
+// Contratos por pessoa (em ordem de início) e renovações por contrato de
+// origem, montados uma vez por array. A lista vem do estado do React e é
+// tratada como imutável: array novo, índice novo.
+export function indexContracts(contracts) {
+  const list = contracts || NO_CONTRACTS;
+  const cached = indexCache.get(list);
+  if (cached) return cached;
+  const byPerson = new Map();
+  const byRenewedFrom = new Map();
+  const push = (m, k, c) => {
+    const arr = m.get(k);
+    if (arr) arr.push(c); else m.set(k, [c]);
+  };
+  list.forEach((c) => {
+    push(byPerson, c.personKey, c);
+    if (c.renewedFromId) push(byRenewedFrom, c.renewedFromId, c);
   });
-  m.forEach((arr) => arr.sort((a, b) => (a.startsAt?.getTime() ?? 0) - (b.startsAt?.getTime() ?? 0)));
-  return m;
+  byPerson.forEach((arr) => arr.sort((a, b) => (a.startsAt?.getTime() ?? 0) - (b.startsAt?.getTime() ?? 0)));
+  const index = { byPerson, byRenewedFrom };
+  indexCache.set(list, index);
+  return index;
 }
 
 // Ponte do mês: A = vigentes no início, B = vigentes no fim efetivo. Quem muda de
@@ -111,7 +127,7 @@ export function computeBaseMovement(contracts, { start, end }) {
   const B = personStatesAt(contracts, tEnd);
   const vA = vigentSet(A);
   const vB = vigentSet(B);
-  const people = contractsByPerson(contracts);
+  const people = indexContracts(contracts).byPerson;
   const n = { entraram: 0, voltaram: 0, importados: 0, cancelaram: 0, venceram: 0, trancaram: 0, destrancaram: 0 };
 
   vB.forEach((key) => {
@@ -158,7 +174,7 @@ export function computeChurn(contracts, { start, end, graceDays }) {
   const graceMs = (Number(graceDays) || 0) * DAY_MS;
   const aliveAt = (list, t) => list.some((c) => contractStateAt(c, t) != null);
   let exits = 0;
-  contractsByPerson(contracts).forEach((list) => {
+  indexContracts(contracts).byPerson.forEach((list) => {
     const hit = list.some((c) => {
       // Cancelado antes do fim, ou cancelado ainda parado: trancado não vence,
       // então a saída é o cancelamento, mesmo depois do fim antigo.
@@ -194,7 +210,7 @@ export function cancellationsByReason(contracts, { start, end }) {
 // Matrículas (primeiro contrato da pessoa) e upgrades do mês, por vendedor: o
 // consultor gravado no contrato, o mesmo nome da comissão.
 export function salesInWindow(contracts, { start, end }) {
-  const people = contractsByPerson(contracts);
+  const people = indexContracts(contracts).byPerson;
   const entered = new Map();
   const upgrades = new Map();
   const bump = (m, k) => m.set(k, (m.get(k) || 0) + 1);

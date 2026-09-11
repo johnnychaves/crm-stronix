@@ -9,7 +9,57 @@ import { metaDaysSummary, pickMeta, metaCalendar, prospectionSummary, pickProspe
 
 const sumMap = (m) => [...m.values()].reduce((a, b) => a + b, 0);
 
+// Cache por ctx (WeakMap: ctx novo, cache novo). Um desenho da tela chama
+// metricsOf dezenas de vezes (mês, comparado, pessoas, tendências). O resultado
+// fica guardado por mês, pessoa e corte, e é compartilhado: não mutar. O que é
+// da academia e não depende da pessoa fica à parte, por mês e fim efetivo.
+// Trocar um insumo no mesmo objeto de ctx zera o cache, e um mês carregado
+// depois em ctx.months não devolve resultado velho.
+const caches = new WeakMap();
+
+function cacheOf(ctx) {
+  const sig = [ctx.now?.getTime(), ctx.users, ctx.contracts, ctx.config, ctx.leadsById, ctx.liveLeads, ctx.months];
+  let cache = caches.get(ctx);
+  if (!cache || cache.sig.some((v, i) => v !== sig[i])) {
+    cache = { sig, results: new Map(), academy: new Map() };
+    caches.set(ctx, cache);
+  }
+  return cache;
+}
+
+// Ponte, trancados, churn, cancelamentos, vendas por vendedor e linhas da
+// coorte: iguais para a equipe e para qualquer pessoa filtrada.
+function academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf }) {
+  const key = `${monthKey}|${end.getTime()}`;
+  const hit = cache.academy.get(key);
+  if (hit) return hit;
+  const contracts = ctx.contracts || [];
+  const grace = ctx.config?.renewalGraceDays;
+  const parts = {
+    known: contracts.some((c) => c.startsAt && c.startsAt < end),
+    movement: computeBaseMovement(contracts, { start, end }),
+    locked: countLockedAt(contracts, new Date(end.getTime() - 1)),
+    churn: computeChurn(contracts, { start, end, graceDays: grace }),
+    cancels: cancellationsByReason(contracts, { start, end }),
+    sales: salesInWindow(contracts, { start, end }),
+    cohortRows: renewalCohort(contracts, { start, end: monthEnd, asOf, graceDays: grace, leadsById: ctx.leadsById })
+  };
+  cache.academy.set(key, parts);
+  return parts;
+}
+
 export function metricsOf(ctx, { monthKey, userId = null, cutEnd = null }) {
+  const cache = cacheOf(ctx);
+  const src = ctx.months?.[monthKey] || null;
+  const key = `${monthKey}|${userId ?? ''}|${cutEnd?.getTime() ?? ''}`;
+  const hit = cache.results.get(key);
+  if (hit && hit.src === src) return hit.value;
+  const value = computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src });
+  cache.results.set(key, { src, value });
+  return value;
+}
+
+function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src }) {
   const { start, end: monthEnd } = monthRange(monthKey);
   const running = isCurrentMonthKey(monthKey, ctx.now);
   const end = cutEnd || effectiveEnd(monthKey, ctx.now);
@@ -17,19 +67,14 @@ export function metricsOf(ctx, { monthKey, userId = null, cutEnd = null }) {
   // demais casos, o que existe hoje (renovação atrasada ainda conta).
   const asOf = end < monthEnd ? end : ctx.now;
   const snapshot = running && !cutEnd;
-  const src = ctx.months?.[monthKey] || null;
   const users = ctx.users || [];
   const contracts = ctx.contracts || [];
-  const grace = ctx.config?.renewalGraceDays;
   const metaDays = metaDaysOfMonth(monthKey, ctx.config?.metaWeekdays || [], end);
 
   const meta = src ? metaDaysSummary({ users, history: src.history, metaDays }) : null;
   const prospSummary = src ? prospectionSummary({ users, interactions: src.interactions, leadsCreated: src.leadsCreated, metaDays }) : null;
-
-  const baseKnown = contracts.some((c) => c.startsAt && c.startsAt < end);
-  const movement = computeBaseMovement(contracts, { start, end });
-  const sales = salesInWindow(contracts, { start, end });
-  const cohortRows = renewalCohort(contracts, { start, end: monthEnd, asOf, graceDays: grace, leadsById: ctx.leadsById });
+  const academy = academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf });
+  const { sales } = academy;
 
   return {
     monthKey,
@@ -43,18 +88,18 @@ export function metricsOf(ctx, { monthKey, userId = null, cutEnd = null }) {
     tasks: src ? tasksByType({ interactions: src.interactions, users, userId, start, end }) : null,
     late: snapshot ? overdueNow({ liveLeads: ctx.liveLeads, users, now: ctx.now }) : null,
     base: {
-      known: baseKnown,
-      active: baseKnown ? movement.endCount : null,
-      movement,
-      locked: countLockedAt(contracts, new Date(end.getTime() - 1)),
-      churn: computeChurn(contracts, { start, end, graceDays: grace }),
-      cancels: cancellationsByReason(contracts, { start, end })
+      known: academy.known,
+      active: academy.known ? academy.movement.endCount : null,
+      movement: academy.movement,
+      locked: academy.locked,
+      churn: academy.churn,
+      cancels: academy.cancels
     },
     entered: userId ? (sales.entered.get(userId) || 0) : sumMap(sales.entered),
     enteredBy: sales.entered,
     upgrades: userId ? (sales.upgrades.get(userId) || 0) : sumMap(sales.upgrades),
     upgradesBy: sales.upgrades,
-    renewal: summarizeCohort(cohortRows, { owner: userId }),
+    renewal: summarizeCohort(academy.cohortRows, { owner: userId }),
     milestones: src
       ? milestones(contracts, { start, end, checkpoints: ctx.config?.renewalCheckpoints, interactions: src.interactions, leadsById: ctx.leadsById, owner: userId })
       : null,

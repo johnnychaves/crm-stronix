@@ -4,7 +4,7 @@
 // pelo cliente (doc do lead); sem o doc, vale o consultor do contrato.
 
 import { getSafeDateOrNull } from '../dates.js';
-import { contractStateAt, hasOpenPause } from './base.js';
+import { contractStateAt, hasOpenPause, indexContracts } from './base.js';
 import { dayKeyOf } from './month.js';
 
 const DAY_MS = 86400000;
@@ -14,32 +14,46 @@ export function ownerOf(contract, leadsById) {
   return leadsById?.get(contract.leadId)?.consultantId || contract.consultantId || 'sem-consultor';
 }
 
-const isLatestOfPerson = (c, contracts) =>
-  !contracts.some((o) => o !== c && o.personKey === c.personKey && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
+// A lista da pessoa no índice vem em ordem de início: o mais recente é o último.
+const isLatestOfPerson = (c, index) => {
+  const list = index.byPerson.get(c.personKey) || [];
+  const last = list[list.length - 1];
+  return !c.startsAt || !last?.startsAt || last.startsAt <= c.startsAt;
+};
+
+// Contratos da mesma pessoa que começam depois deste.
+const laterOfPerson = (c, index) => (index.byPerson.get(c.personKey) || [])
+  .filter((o) => o !== c && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
 
 // Sucessor = renovação ligada (renewedFromId) ou outro contrato da mesma pessoa
 // criado até o fim + tolerância (cobre a reativação feita pela ficha, que nasce
 // como matrícula). Só conta o que já existia no corte (asOf).
-function successorOf(c, contracts, graceMs, asOf) {
+function successorOf(c, index, graceMs, asOf) {
   const limit = c.endsAt ? c.endsAt.getTime() + graceMs : null;
-  const cands = contracts.filter((o) => {
-    if (o === c || !o.createdAt || o.createdAt > asOf) return false;
-    if (o.renewedFromId === c.id) return true;
-    return o.personKey === c.personKey && o.startsAt && c.startsAt && o.startsAt > c.startsAt
-      && limit != null && o.createdAt.getTime() <= limit;
-  });
-  return cands.sort((a, b) => a.createdAt - b.createdAt)[0] || null;
+  let best = null;
+  const take = (o) => {
+    if (o === c || !o.createdAt || o.createdAt > asOf) return;
+    if (!best || o.createdAt < best.createdAt) best = o;
+  };
+  (index.byRenewedFrom.get(c.id) || []).forEach(take);
+  if (limit != null) {
+    laterOfPerson(c, index).forEach((o) => {
+      if (o.createdAt && o.createdAt.getTime() <= limit) take(o);
+    });
+  }
+  return best;
 }
 
-function declineOf(c, contracts, leadsById, asOf) {
+function declineOf(c, index, leadsById, asOf) {
   const lead = leadsById?.get(c.leadId);
-  if (!lead?.renewalDeclined || !isLatestOfPerson(c, contracts)) return null;
+  if (!lead?.renewalDeclined || !isLatestOfPerson(c, index)) return null;
   const at = getSafeDateOrNull(lead.renewalDeclinedAt);
   if (at && at > asOf) return null;
   return { reason: lead.renewalDeclineReason || OTHER_REASON };
 }
 
 export function renewalCohort(contracts, { start, end, asOf, graceDays, leadsById }) {
+  const index = indexContracts(contracts);
   const graceMs = (Number(graceDays) || 0) * DAY_MS;
   const rows = [];
   (contracts || []).forEach((c) => {
@@ -48,7 +62,7 @@ export function renewalCohort(contracts, { start, end, asOf, graceDays, leadsByI
     // Trancado não vence: o fim anda na reativação e o contrato vai para a
     // coorte do mês em que passar a vencer.
     if (hasOpenPause(c)) return;
-    const s = successorOf(c, contracts, graceMs, asOf);
+    const s = successorOf(c, index, graceMs, asOf);
     let outcome;
     let when = null;
     let reason = null;
@@ -58,7 +72,7 @@ export function renewalCohort(contracts, { start, end, asOf, graceDays, leadsByI
       const ek = dayKeyOf(c.endsAt);
       when = sk < ek ? 'antes' : sk === ek ? 'no' : 'depois';
     } else {
-      const decline = declineOf(c, contracts, leadsById, asOf);
+      const decline = declineOf(c, index, leadsById, asOf);
       if (decline) { outcome = 'wont'; reason = decline.reason; }
       else outcome = c.endsAt <= asOf ? 'lapsed' : 'pending';
     }
@@ -95,6 +109,8 @@ export function summarizeCohort(rows, { owner = null } = {}) {
 // ainda sem renovação nesse dia. Feito = tarefa de renovação concluída (ou
 // renovação) entre o cruzamento e o marco seguinte, dentro da janela do mês.
 export function milestones(contracts, { start, end, checkpoints, interactions, leadsById, owner = null }) {
+  const index = indexContracts(contracts);
+  const renewalsOf = (c) => index.byRenewedFrom.get(c.id) || [];
   const cps = [...new Set((checkpoints || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
   const doneByLead = new Map();
   (interactions || []).forEach((i) => {
@@ -102,19 +118,19 @@ export function milestones(contracts, { start, end, checkpoints, interactions, l
     const arr = doneByLead.get(i.leadId);
     if (arr) arr.push(i.createdAt); else doneByLead.set(i.leadId, [i.createdAt]);
   });
-  return cps.map((cp, idx) => {
-    const next = cps[idx + 1];
+  return cps.map((cp, i) => {
+    const next = cps[i + 1];
     let total = 0;
     let done = 0;
     (contracts || []).forEach((c) => {
       if (!c.endsAt || (owner && ownerOf(c, leadsById) !== owner)) return;
       const x = new Date(c.endsAt.getTime() - cp * DAY_MS);
       if (x < start || x >= end || contractStateAt(c, x) !== 'vigente') return;
-      if (contracts.some((o) => o.renewedFromId === c.id && o.createdAt && o.createdAt < x)) return;
+      if (renewalsOf(c).some((o) => o.createdAt && o.createdAt < x)) return;
       total += 1;
       const until = new Date(Math.min(next ? c.endsAt.getTime() - next * DAY_MS : c.endsAt.getTime(), end.getTime()));
       const contacted = (doneByLead.get(c.leadId) || []).some((t) => t >= x && t < until);
-      const renewed = contracts.some((o) => o.renewedFromId === c.id && o.createdAt && o.createdAt >= x && o.createdAt < until);
+      const renewed = renewalsOf(c).some((o) => o.createdAt && o.createdAt >= x && o.createdAt < until);
       if (contacted || renewed) done += 1;
     });
     return { days: cp, total, done, pct: total > 0 ? Math.round((done / total) * 100) : null };
@@ -123,9 +139,10 @@ export function milestones(contracts, { start, end, checkpoints, interactions, l
 
 // Contratos vigentes, sem o próximo já fechado, em faixas a partir de agora.
 export function upcomingExpirations(contracts, { now, leadsById, owner = null }) {
+  const index = indexContracts(contracts);
   const buckets = { d30: 0, d60: 0, d90: 0 };
   (contracts || []).forEach((c) => {
-    if (!c.endsAt || contractStateAt(c, now) !== 'vigente' || !isLatestOfPerson(c, contracts)) return;
+    if (!c.endsAt || contractStateAt(c, now) !== 'vigente' || !isLatestOfPerson(c, index)) return;
     if (owner && ownerOf(c, leadsById) !== owner) return;
     const days = (c.endsAt.getTime() - now.getTime()) / DAY_MS;
     if (days <= 30) buckets.d30 += 1;

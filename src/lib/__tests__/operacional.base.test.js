@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildContractResume } from '../contracts.js';
 import {
   normalizeContract, contractStateAt, countActiveAt, countLockedAt,
-  computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow
+  computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow, indexContracts
 } from '../operacional/base.js';
 
 const D = (y, m, d, h = 12) => new Date(y, m - 1, d, h);
@@ -214,5 +214,22 @@ describe('salesInWindow', () => {
     const r = salesInWindow(list, SEP);
     expect(Object.fromEntries(r.entered)).toEqual({ ana: 1 });
     expect(Object.fromEntries(r.upgrades)).toEqual({ ana: 1 });
+  });
+});
+
+describe('indexContracts', () => {
+  it('agrupa por pessoa em ordem de início, liga renovações e monta uma vez por lista', () => {
+    const list = [
+      C('b2', { leadId: 'B', startsAt: D(2026, 6, 1) }),
+      C('b1', { leadId: 'B', startsAt: D(2026, 1, 1) }),
+      C('r', { leadId: 'B', renewedFromId: 'b1', startsAt: D(2026, 9, 1) }),
+      C('solo')
+    ];
+    const idx = indexContracts(list);
+    expect(idx.byPerson.get('B').map((c) => c.id)).toEqual(['b1', 'b2', 'r']);
+    expect(idx.byPerson.get('solo').map((c) => c.id)).toEqual(['solo']);
+    expect(idx.byRenewedFrom.get('b1').map((c) => c.id)).toEqual(['r']);
+    expect(indexContracts(list)).toBe(idx);
+    expect(indexContracts([...list])).not.toBe(idx);
   });
 });
