@@ -12,7 +12,8 @@ import {
   buildContractResume,
   buildMatriculaWrites,
   deriveContractStatus,
-  deriveLeadContractStatus
+  deriveLeadContractStatus,
+  hasLiveContract
 } from '../contracts.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
@@ -242,5 +243,49 @@ describe('buildMatriculaWrites — funil Vencidos', () => {
     });
     expect(leadPatch.reactivationStageId).toBeNull();
     expect(leadPatch.renewalDeclined).toBe(false);
+  });
+});
+
+describe('buildMatriculaWrites — funil Upgrade', () => {
+  const plan = { id: 'p2', name: 'Trimestral', value: 500, durationMonths: 3 };
+  const noFunil = { id: 'l1', name: 'Carla', upgradeStageId: 'st1', currentContractId: 'k1' };
+  const foraDoFunil = { id: 'l2', name: 'Bruno', currentContractId: 'k2' };
+
+  it('todo contrato novo limpa a etapa e a entrada do Upgrade', () => {
+    const { leadPatch } = buildMatriculaWrites({ lead: noFunil, plan, value: 500, startsAt: D(2026, 9, 1), appUser: {} });
+    expect(leadPatch.upgradeStageId).toBeNull();
+    expect(leadPatch.upgradeEnteredAt).toBeNull();
+  });
+
+  it('marca o contrato como fechado pelo Upgrade quando o cliente estava no funil (decisão 9)', () => {
+    const { contract } = buildMatriculaWrites({ lead: noFunil, plan, value: 500, startsAt: D(2026, 9, 1), appUser: {}, mode: 'renovacao', renewedFromId: 'k1' });
+    expect(contract.closedFromUpgrade).toBe(true);
+    // Uma venda só: continua sendo renovação também.
+    expect(contract.renewedFromId).toBe('k1');
+  });
+
+  it('em modo matrícula (cliente sem contrato vivo) a marca vem do funil do mesmo jeito', () => {
+    const { contract } = buildMatriculaWrites({ lead: noFunil, plan, value: 500, startsAt: D(2026, 9, 1), appUser: {} });
+    expect(contract.closedFromUpgrade).toBe(true);
+  });
+
+  it('fora do funil, o contrato NÃO é upgrade, mesmo que o plano seja maior', () => {
+    const { contract } = buildMatriculaWrites({ lead: foraDoFunil, plan, value: 500, startsAt: D(2026, 9, 1), appUser: {}, mode: 'renovacao' });
+    expect(contract.closedFromUpgrade).toBe(false);
+  });
+});
+
+describe('hasLiveContract', () => {
+  const base = { currentContractId: 'k1', currentContractStartsAt: D(2026, 1, 10), currentContractEndsAt: D(2027, 1, 10) };
+  it('ativo, a vencer, agendado e trancado são contrato vivo', () => {
+    expect(hasLiveContract(base, NOW)).toBe(true);
+    expect(hasLiveContract({ ...base, currentContractEndsAt: D(2026, 8, 20) }, NOW)).toBe(true);
+    expect(hasLiveContract({ ...base, currentContractStartsAt: D(2026, 9, 1) }, NOW)).toBe(true);
+    expect(hasLiveContract({ ...base, currentContractStatus: 'trancado' }, NOW)).toBe(true);
+  });
+  it('vencido, cancelado e sem contrato não são', () => {
+    expect(hasLiveContract({ ...base, currentContractEndsAt: D(2026, 1, 10) }, NOW)).toBe(false);
+    expect(hasLiveContract({ ...base, currentContractStatus: 'cancelado' }, NOW)).toBe(false);
+    expect(hasLiveContract({ name: 'sem contrato' }, NOW)).toBe(false);
   });
 });

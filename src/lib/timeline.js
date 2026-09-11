@@ -44,6 +44,9 @@ export const groupTimeline = (events) => {
 // consultor como se fosse uma matrícula fechada.
 const CONTRACT_RE = /matrícula|matricula|renova(ç|c)ão|contrato cancelado|plano /i;
 
+// Prefixo dos eventos do funil Upgrade (src/lib/stageMove.js).
+const UPGRADE_EVENT_RE = /^Upgrade: /;
+
 // Classifica uma interaction num dos buckets de filtro da timeline.
 // Usa o campo `type` e prefixos injetados pelo composer.
 export const classifyInteraction = (i) => {
@@ -60,7 +63,11 @@ export const classifyInteraction = (i) => {
   // status_change, mas pertencem ao bucket de contrato. O gate por type evita
   // que o regex capture outros types cujo texto livre só por coincidência
   // bate com essas palavras.
-  if (i.type === 'status_change' && CONTRACT_RE.test(t)) return 'contract';
+  // Eventos do funil Upgrade ("Upgrade: entrou na etapa Plano apresentado.")
+  // são marcos de status mesmo quando a etapa ou a nota cita plano/renovação:
+  // sem este gate a ficha pintava uma "matrícula fechada" com valor no meio
+  // da esteira de upgrade.
+  if (i.type === 'status_change' && !UPGRADE_EVENT_RE.test(t) && CONTRACT_RE.test(t)) return 'contract';
   // Desfecho de agendamento (compareceu/faltou) é gravado com
   // type='daily_goal_done', mas carrega o campo appointmentOutcome. É evento de
   // AGENDAMENTO: sem esta regra ele cai no balde 'system' e some do feed padrão,

@@ -6,14 +6,15 @@ import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { planStageMove, planLoss, stageMoveBlockMessage } from '../lib/stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage } from '../lib/stageMove.js';
 import { isAdminUser, canEditLead, isLeadConverted } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
-import { deriveContractStatus, deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
+import { deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
-import { getDefaultFunnel } from '../lib/funnels.js';
-import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText } from '../lib/referrals.js';
+import { getDefaultFunnel, isSystemFunnel } from '../lib/funnels.js';
+import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
+import { getUpgradeFunnel, upgradeStageIdOf } from '../lib/upgradeFunnel.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
@@ -274,6 +275,26 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
     // PhaseChanger já barram antes; aqui é a última trava.
     const loss = planLoss(lead);
     if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); setLossModalOpen(false); return; }
+    // Cliente no funil Upgrade: a Perda é "não quis o upgrade". Sai do funil
+    // com o motivo e segue cliente — nada de status Perda.
+    if (loss.kind === 'upgrade') {
+      setLoading(true);
+      try {
+        const plan = planUpgradeDecline(lead, reason);
+        await logInteraction(db, lead, appUser,
+          { text: plan.interactionText, type: 'status_change' },
+          { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
+        );
+        setLossModalOpen(false);
+        setComposerTab('note');
+      } catch (e) {
+        console.error(e);
+        toast.error('Não foi possível registrar a recusa.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     setLoading(true);
     try {
       await logInteraction(db, lead, appUser,
@@ -306,11 +327,39 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // fluxos existentes (MatriculaModal / LossReasonModal); demais fases gravam o
   // status (+funil, se mudou) e registram a transição na timeline.
   const handlePhaseConfirm = async ({ funnelId: targetFunnelId, targetStatus, note: phaseNote, referrer }) => {
-    if (targetStatus === 'Venda') { setMatriculaMode('matricula'); setMatriculaOpen(true); return; }
+    if (targetStatus === 'Venda') {
+      // Cliente com contrato vivo renova (o contrato novo se liga ao atual);
+      // lead, ou cliente vencido/cancelado, faz matrícula.
+      setMatriculaMode(isClient && hasLiveContract(lead, new Date(), contractThresholdDays) ? 'renovacao' : 'matricula');
+      setMatriculaOpen(true);
+      return;
+    }
     if (targetStatus === 'Perda') {
       const loss = planLoss(lead);
       if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
       setLossModalOpen(true);
+      return;
+    }
+    // Cliente só anda no funil UPGRADE, e a etapa mora em upgradeStageId.
+    if (isClient) {
+      if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
+      const etapa = (statuses || []).find((s) => s.funnelId === upgradeFunnel?.id && s.name === targetStatus);
+      const plan = planUpgradeMove(lead, etapa);
+      if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); return; }
+      setLoading(true);
+      try {
+        const patch = plan.entering ? { ...plan.patch, upgradeEnteredAt: serverTimestamp() } : plan.patch;
+        await logInteraction(db, lead, appUser,
+          { text: `${plan.interactionText}${phaseNote ? ` Obs: ${phaseNote}` : ''}`, type: 'status_change' },
+          patch
+        );
+        setComposerTab('note');
+      } catch (e) {
+        console.error(e);
+        toast.error('Não foi possível mudar a etapa. Tente novamente.');
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
@@ -637,6 +686,26 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
   // Ciclo de vida (cliente) p/ os selos do cabeçalho e a aba Indicações.
   const isClient = lead.lifecycleStage === 'cliente' || isLeadConverted(lead);
+  // Funil UPGRADE (lib/upgradeFunnel.js): é o único funil que um cliente pode
+  // ocupar, e a etapa dele mora em upgradeStageId, não em status.
+  const upgradeFunnel = getUpgradeFunnel(safeFunnels);
+  // upgradeStageIdOf cai na entrada quando a etapa gravada foi apagada em
+  // Configurações — mesma regra do board, senão ficha e card discordariam.
+  const upgradeStage = lead.upgradeStageId
+    ? (statuses || []).find((s) => s.id === upgradeStageIdOf(lead, statuses, upgradeFunnel?.id)) || null
+    : null;
+  // O PhaseChanger destaca a etapa atual pelo `status`. Para o cliente, passa
+  // uma cópia com o status igual ao nome da etapa de Upgrade, só para o
+  // destaque — a escrita continua em upgradeStageId (handlePhaseConfirm).
+  const phaseChangerLead = isClient
+    ? { ...lead, funnelId: upgradeFunnel?.id || '', status: upgradeStage?.name || '' }
+    : lead;
+  // Lead não entra em funil de sistema pela ficha: Renovações, Vencidos e
+  // Upgrade projetam CLIENTES por query, então um lead com funnelId apontando
+  // para eles sumiria de todo board. Indicações fica: é fluxo de lead.
+  const phaseChangerFunnels = isClient
+    ? (upgradeFunnel ? [upgradeFunnel] : [])
+    : safeFunnels.filter((f) => !isSystemFunnel(f) || isReferralFunnel(f));
   // Estado de ciclo de vida da pessoa (fonte única em lib/leadState.js): dita o
   // tom/rótulo/hint do cabeçalho, o anel do RingAvatar e o alerta contextual.
   const profileState = deriveLeadState(lead, new Date(), contractThresholdDays);
@@ -826,22 +895,24 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
             {composerTab === 'status' && (
               <>
-                {/* Cliente: avisa ANTES de a pessoa montar a mudança inteira e
-                    só descobrir no confirmar (stageMove.js bloqueia). */}
+                {/* Cliente: só o funil Upgrade. O aviso vem ANTES para a pessoa
+                    não montar a mudança inteira e descobrir no confirmar. */}
                 {isClient && (
                   <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-[12.5px] leading-[1.45] text-amber-800 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200">
                     <FileText size={14} className="mt-0.5 shrink-0" />
                     <div>
                       <span className="font-semibold">{firstName} é cliente e não volta a ser lead.</span>{' '}
-                      As fases do funil valem para leads. A matrícula e o contrato ficam na{' '}
+                      {upgradeFunnel
+                        ? 'Aqui você coloca o cliente no funil Upgrade ou muda a etapa dele lá. A matrícula e o contrato ficam na '
+                        : 'O funil Upgrade ainda não foi criado nesta academia: ele nasce quando um gestor abre o app. A matrícula e o contrato ficam na '}
                       <button type="button" onClick={() => setActiveProfileTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
                     </div>
                   </div>
                 )}
                 <PhaseChanger
-                  lead={lead}
+                  lead={phaseChangerLead}
                   db={db}
-                  funnels={safeFunnels}
+                  funnels={phaseChangerFunnels}
                   statuses={statuses}
                   onConfirm={handlePhaseConfirm}
                   onCancel={() => setComposerTab('note')}
@@ -922,7 +993,9 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
     const lowerText = String(i.text || '').toLowerCase();
     // Perda: o status_change que encerra a oportunidade não traz etapa entre
     // colchetes — vem como "Lead perdido. Motivo: ...".
-    const isLoss = i._kind === 'status' && !stageName && /perdid|perda/i.test(lowerText);
+    // Evento do funil Upgrade nunca é perda de lead, mesmo que o motivo
+    // configurado diga "Perda de contato".
+    const isLoss = i._kind === 'status' && !stageName && !/^upgrade: /.test(lowerText) && /perdid|perda/i.test(lowerText);
     const isWin = i._kind === 'status' && /^venda$/i.test(stageName);
 
     // Corpo limpo: tira os prefixos que o composer injeta (📲/📞 das conversas,
@@ -1139,6 +1212,11 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
                 <span className={cn('inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider shrink-0', profileTone.text, profileTone.darkText)}>
                   <span className={cn('w-2 h-2 rounded-full', profileTone.strong)}></span>{profileState.label}
                 </span>
+                {upgradeStage && (
+                  <span className="inline-flex items-center gap-1 h-[18px] px-1.5 rounded-md text-[10px] font-bold uppercase tracking-[.05em] shrink-0 bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300">
+                    <TrendingUp size={10} /> Upgrade · {upgradeStage.name}
+                  </span>
+                )}
                 <span className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate">· {profileState.hint}</span>
               </div>
               {/* name + edit */}

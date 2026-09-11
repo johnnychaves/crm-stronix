@@ -291,6 +291,33 @@ export const WIKI_ARTICLES = [
     ],
   },
   {
+    id: 'upgrade',
+    category: 'fechamento',
+    title: 'Funil Upgrade: um plano melhor para quem já é cliente',
+    summary: 'Onde colocar o cliente que você quer levar a um plano maior, como trabalhar a esteira e o que Venda e Perda fazem ali.',
+    blocks: [
+      { t: 'p', text: 'Quem virou cliente não volta para as fases de lead. Quando o consultor quer vender um plano maior ou mais longo para alguém que já treina, o lugar é o funil Upgrade, no Pipeline. A pessoa continua cliente o tempo todo: com ficha, contrato e histórico, e seguindo na aba Clientes.' },
+
+      { t: 'h', text: 'Como colocar um cliente' },
+      { t: 'steps', items: [
+        'Abra a ficha do cliente e vá em Mudar fase. Para cliente, o único funil que aparece é o Upgrade.',
+        'Escolha a etapa e confirme. O card aparece na aba Upgrade do Pipeline e a ficha ganha o chip "Upgrade" no cabeçalho.',
+        'Qualquer cliente entra, inclusive quem já está em Renovações ou em Vencidos. Ele aparece nos dois lugares; o time combina quem conversa.',
+      ] },
+
+      { t: 'h', text: 'Trabalhando a esteira' },
+      { t: 'p', text: 'A primeira etapa, "Aguardando contato", é fixa. As demais a academia cria em Configurações, Funis, como em qualquer funil. Arraste o card entre as etapas ou use Mover no celular. Cada movimento fica na linha do tempo.' },
+
+      { t: 'h', text: 'Os dois desfechos' },
+      { t: 'steps', items: [
+        'Venda: abre o contrato. Com contrato vigente é uma renovação, ligada ao contrato atual; com contrato vencido ou cancelado é uma nova matrícula. O cliente sai do funil sozinho.',
+        'Perda: quer dizer "não quis o upgrade". Peça o motivo e registre. O cliente sai do funil e segue cliente, com o contrato que já tinha.',
+      ] },
+      { t: 'tip', text: 'Um contrato fechado por quem estava no Upgrade conta como upgrade. Se a pessoa também estava na janela de renovação, conta como renovação. É uma venda só.' },
+      { t: 'warn', text: 'Contrato fechado fora do funil não conta como upgrade, mesmo que o plano seja maior. O que marca o upgrade é ter passado pelo funil.' },
+    ],
+  },
+  {
     id: 'vencidos',
     category: 'fechamento',
     title: 'Contrato vencido: quem continua na sua lista',

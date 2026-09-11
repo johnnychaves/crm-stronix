@@ -28,7 +28,9 @@
 //     (withBucket); convertedAt NÃO vem no patch quando stampConvertedAt é
 //     true: é serverTimestamp() do SDK, o caller injeta.
 //   { ok: false, reason }                 — nada a gravar.
-// planLoss devolve { ok: true } ou { ok: false, reason }.
+// planLoss devolve { ok: true, kind: 'lead' | 'upgrade' } ou { ok: false, reason }.
+//
+// `planUpgradeMove` e `planUpgradeDecline` são o único caminho de escrita da etapa de Upgrade (`upgradeStageId`).
 
 import { isConvertedStatusName, isClientLead } from './leads.js';
 import { getSafeDateOrNull } from './dates.js';
@@ -36,7 +38,9 @@ import { withBucket } from './leadDerived.js';
 
 export const STAGE_MOVE_BLOCK = {
   CLIENTE_NAO_VOLTA_A_LEAD: 'cliente_nao_volta_a_lead',
-  CLIENTE_NAO_VIRA_PERDA: 'cliente_nao_vira_perda'
+  CLIENTE_NAO_VIRA_PERDA: 'cliente_nao_vira_perda',
+  UPGRADE_SO_CLIENTE: 'upgrade_so_cliente',
+  UPGRADE_ETAPA_INVALIDA: 'upgrade_etapa_invalida'
 };
 
 export function planStageMove(lead, targetStatus, { funnelId = null } = {}) {
@@ -60,9 +64,42 @@ export function planStageMove(lead, targetStatus, { funnelId = null } = {}) {
   return { ok: true, patch: withBucket(patch, lead), stampConvertedAt };
 }
 
+// Perda: lead comum vira Perda; cliente no funil Upgrade sai do Upgrade
+// (planUpgradeDecline); cliente fora dele continua barrado.
 export function planLoss(lead) {
-  if (isClientLead(lead)) return { ok: false, reason: STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA };
-  return { ok: true };
+  if (!isClientLead(lead)) return { ok: true, kind: 'lead' };
+  if (lead?.upgradeStageId) return { ok: true, kind: 'upgrade' };
+  return { ok: false, reason: STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA };
+}
+
+// Entrar no funil Upgrade ou mudar de etapa dentro dele. O patch leva SÓ
+// upgradeStageId; quando está entrando, o caller acrescenta
+// `upgradeEnteredAt: serverTimestamp()` (é do SDK, não cabe aqui). O texto do
+// evento não usa colchetes de propósito: a linha do tempo reconstrói a cadeia
+// de fases de LEAD a partir de "[etapa]" (src/lib/timeline.js), e a etapa de
+// Upgrade não pode entrar nessa cadeia.
+export function planUpgradeMove(lead, stage) {
+  if (!isClientLead(lead)) return { ok: false, reason: STAGE_MOVE_BLOCK.UPGRADE_SO_CLIENTE };
+  if (!stage?.id) return { ok: false, reason: STAGE_MOVE_BLOCK.UPGRADE_ETAPA_INVALIDA };
+  const entering = !lead?.upgradeStageId;
+  return {
+    ok: true,
+    entering,
+    patch: { upgradeStageId: stage.id },
+    interactionText: entering
+      ? `Upgrade: entrou na etapa ${stage.name}.`
+      : `Upgrade: movido para a etapa ${stage.name}.`
+  };
+}
+
+// "Não quis o upgrade": sai do funil e mais nada. A pessoa segue cliente. O
+// caller acrescenta `upgradeDeclinedAt: serverTimestamp()`.
+export function planUpgradeDecline(lead, reason) {
+  const motivo = String(reason || '').trim();
+  return {
+    patch: { upgradeStageId: null, upgradeEnteredAt: null },
+    interactionText: motivo ? `Upgrade: não quis. Motivo: ${motivo}.` : 'Upgrade: não quis.'
+  };
 }
 
 // Texto do aviso quando o movimento é bloqueado. Um lugar só, para o Kanban e a
@@ -78,6 +115,12 @@ export function stageMoveBlockMessage(lead, reason) {
   }
   if (reason === STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA) {
     return `${quem} é cliente e não vira lead perdido. Para encerrar, cancele o contrato na aba Contratos ou use a coluna Perda dos funis Renovações e Vencidos.`;
+  }
+  if (reason === STAGE_MOVE_BLOCK.UPGRADE_SO_CLIENTE) {
+    return `${firstName || 'Esta pessoa'} ainda é lead. O funil Upgrade é para quem já é cliente.`;
+  }
+  if (reason === STAGE_MOVE_BLOCK.UPGRADE_ETAPA_INVALIDA) {
+    return 'Essa etapa não existe mais no funil Upgrade. Recarregue a página e tente de novo.';
   }
   return 'Não foi possível mover para esta etapa.';
 }

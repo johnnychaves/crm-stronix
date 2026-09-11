@@ -49,6 +49,16 @@ describe('conteúdo da wiki', () => {
     });
   });
 
+  it('cobre o funil Upgrade: entrada pela ficha, Venda, Perda e a regra da contagem', () => {
+    const a = getWikiArticle('upgrade');
+    expect(a?.category).toBe('fechamento');
+    const texto = JSON.stringify(a).toLowerCase();
+    expect(texto).toContain('mudar fase');
+    expect(texto).toContain('renovação');
+    expect(texto).toContain('não quis o upgrade');
+    expect(texto).toContain('venda só');
+  });
+
   // O sino manda o leitor direto pro artigo da novidade. Aviso apontando pra
   // artigo que não existe abre a Central de ajuda em branco.
   it('todo aviso do sino aponta para um artigo que existe', () => {

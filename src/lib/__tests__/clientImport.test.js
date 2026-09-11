@@ -759,3 +759,22 @@ describe('summarizeOutcomes / buildReportCsv', () => {
     expect(csv).toContain(`"'-1"`);
   });
 });
+
+describe('buildImportedClientWrites — espelha os campos do funil Upgrade', () => {
+  it('cadastro novo com contrato sai do funil Upgrade como em buildMatriculaWrites', () => {
+    const c = { ...VALID, startsAt: D(2026, 8, 12), endsAt: D(2026, 11, 12), value: 450, plan: PLANOS[0], planName: 'Trimestral' };
+    const w = buildImportedClientWrites({ c, cls: { lead: null, fill: null, createContract: true }, consultant: USERS[0], funnelId: 'f1', importMeta: META, now: NOW });
+    expect(w.leadData.upgradeStageId).toBeNull();
+    expect(w.leadData.upgradeEnteredAt).toBeNull();
+    expect(w.contract.closedFromUpgrade).toBe(false);
+  });
+
+  it('cliente já existente que ganha contrato na reimportação também sai do funil Upgrade', () => {
+    const c = { ...VALID, startsAt: D(2026, 8, 12), endsAt: D(2026, 11, 12), value: 450, plan: PLANOS[0], planName: 'Trimestral' };
+    const lead = { id: 'lead-1', name: VALID.name, status: 'Venda', isConverted: true, lifecycleStage: 'cliente', upgradeStageId: 'st1', upgradeEnteredAt: D(2026, 8, 1), consultantId: USERS[0].id };
+    const w = buildImportedClientWrites({ c, cls: { lead, fill: null, createContract: true }, consultant: USERS[0], funnelId: 'f1', importMeta: META, now: NOW });
+    expect(w.contract).toBeTruthy();
+    expect(w.leadData.upgradeStageId).toBeNull();
+    expect(w.leadData.upgradeEnteredAt).toBeNull();
+  });
+});

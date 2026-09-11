@@ -6,7 +6,7 @@
 // aba Contratos dizia "Ainda não é cliente" com o chip de contagem em 1.
 
 import { describe, it, expect } from 'vitest';
-import { planStageMove, planLoss, stageMoveBlockMessage, STAGE_MOVE_BLOCK } from '../stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK } from '../stageMove.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 
@@ -95,7 +95,11 @@ describe('planStageMove — cliente nunca volta a ser lead', () => {
 
 describe('planLoss — cliente não vira lead perdido', () => {
   it('lead em etapa comum pode ser marcado como Perda', () => {
-    expect(planLoss(leadEmEtapa)).toEqual({ ok: true });
+    expect(planLoss(leadEmEtapa)).toEqual({ ok: true, kind: 'lead' });
+  });
+
+  it('cliente no funil Upgrade: a Perda é sair do Upgrade, e a pessoa segue cliente', () => {
+    expect(planLoss({ ...clienteComContrato, upgradeStageId: 'st1' })).toEqual({ ok: true, kind: 'upgrade' });
   });
 
   it('cliente com contrato, Venda sem contrato e etapa de matrícula: bloqueia', () => {
@@ -127,5 +131,65 @@ describe('stageMoveBlockMessage', () => {
 
   it('tem um texto genérico para lead sem nome', () => {
     expect(stageMoveBlockMessage({}, STAGE_MOVE_BLOCK.CLIENTE_NAO_VOLTA_A_LEAD)).toContain('Este cliente');
+  });
+});
+
+describe('planUpgradeMove — entrar e mover no funil Upgrade', () => {
+  const entrada = { id: 'st-entrada', name: 'Aguardando contato' };
+  const meio = { id: 'st-meio', name: 'Em contato' };
+
+  it('cliente fora do funil entra: patch só com a etapa, entering true, texto sem colchetes', () => {
+    const plan = planUpgradeMove(clienteComContrato, entrada);
+    expect(plan.ok).toBe(true);
+    expect(plan.entering).toBe(true);
+    expect(plan.patch).toEqual({ upgradeStageId: 'st-entrada' });
+    expect(plan.interactionText).toBe('Upgrade: entrou na etapa Aguardando contato.');
+    expect(plan.interactionText).not.toMatch(/[[\]]/);
+  });
+
+  it('cliente já no funil só muda de etapa: entering false', () => {
+    const plan = planUpgradeMove({ ...clienteComContrato, upgradeStageId: 'st-entrada' }, meio);
+    expect(plan.entering).toBe(false);
+    expect(plan.patch).toEqual({ upgradeStageId: 'st-meio' });
+    expect(plan.interactionText).toBe('Upgrade: movido para a etapa Em contato.');
+  });
+
+  it('nunca toca status, funil ou marcas de cliente', () => {
+    const plan = planUpgradeMove(clienteComContrato, meio);
+    expect(Object.keys(plan.patch)).toEqual(['upgradeStageId']);
+  });
+
+  it('lead ainda não é cliente: bloqueia', () => {
+    const plan = planUpgradeMove(leadEmEtapa, entrada);
+    expect(plan.ok).toBe(false);
+    expect(plan.reason).toBe(STAGE_MOVE_BLOCK.UPGRADE_SO_CLIENTE);
+  });
+
+  it('etapa inexistente: bloqueia', () => {
+    expect(planUpgradeMove(clienteComContrato, null).reason).toBe(STAGE_MOVE_BLOCK.UPGRADE_ETAPA_INVALIDA);
+    expect(planUpgradeMove(clienteComContrato, { name: 'sem id' }).ok).toBe(false);
+  });
+});
+
+describe('planUpgradeDecline — não quis o upgrade', () => {
+  it('zera a etapa e a entrada, e o texto leva o motivo', () => {
+    const plan = planUpgradeDecline({ ...clienteComContrato, upgradeStageId: 'st1' }, 'Preço');
+    expect(plan.patch).toEqual({ upgradeStageId: null, upgradeEnteredAt: null });
+    expect(plan.interactionText).toBe('Upgrade: não quis. Motivo: Preço.');
+  });
+
+  it('sem motivo o texto fecha sem o "Motivo:"', () => {
+    expect(planUpgradeDecline(clienteComContrato, '').interactionText).toBe('Upgrade: não quis.');
+  });
+});
+
+describe('stageMoveBlockMessage — razões do Upgrade', () => {
+  it('lead no funil Upgrade fala em lead, não em cliente', () => {
+    const msg = stageMoveBlockMessage(leadEmEtapa, STAGE_MOVE_BLOCK.UPGRADE_SO_CLIENTE);
+    expect(msg).toContain('Ana');
+    expect(msg).toContain('ainda é lead');
+  });
+  it('etapa inválida pede para recarregar', () => {
+    expect(stageMoveBlockMessage({}, STAGE_MOVE_BLOCK.UPGRADE_ETAPA_INVALIDA)).toContain('Recarregue');
   });
 });

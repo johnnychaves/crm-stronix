@@ -1,20 +1,22 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
-import { canEditLead } from '../lib/leads.js';
+import { canEditLead, normalizeLeadDoc } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { planStageMove, planLoss, stageMoveBlockMessage } from '../lib/stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK } from '../lib/stageMove.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
+import { hasLiveContract } from '../lib/contracts.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { buildInteractionIndex, lastInteractionDateOf } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useRenewalBoard } from '../hooks/useRenewalBoard.js';
 import { useLeadCount } from '../hooks/useLeadCount.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
+import { getUpgradeFunnel, projectUpgradeLeads } from '../lib/upgradeFunnel.js';
 import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard } from '../lib/renewalFunnel.js';
 import { renewalDecline, daysToExpiryOf } from '../lib/renewalGoal.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
-import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec } from '../lib/leadQueries.js';
+import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec, upgradeClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
 import { filterKanbanLeads, partitionLeadsByStatus, getKanbanColumnAccent, getKanbanAvatarPalette, getKanbanInitials, fmtKanbanRelDate, fmtKanbanRelDateTime, KANBAN_PAGE_SIZE, kanbanSilence, monthWindow, defaultRespFilterFor, isDefaultRespFilter } from '../lib/kanban.js';
@@ -475,12 +477,37 @@ const [isPanning, setIsPanning] = useState(false);
   }, [isExpiredView, expiredDocs, statuses, expiredFunnel, respFilter]);
   const expiredLeads = expiredSplit.cards;
 
+  // FUNIL UPGRADE (funil de sistema): cliente que o consultor colocou à mão
+  // para vender um plano melhor. Mesmo molde do Vencidos — query própria só
+  // com a aba aberta, projeção em memória, o status real continua 'Venda' —
+  // com uma diferença: ninguém cai aqui sozinho, a entrada é pela ficha e
+  // grava upgradeStageId. Regras em lib/upgradeFunnel.js.
+  const upgradeFunnel = useMemo(() => getUpgradeFunnel(funnels), [funnels]);
+  const isUpgradeView = Boolean(upgradeFunnel && selectedFunnelId === upgradeFunnel.id);
+  const [upgradeCountEpoch, setUpgradeCountEpoch] = useState(0);
+  const upgradeSpec = useMemo(() => (isUpgradeView ? upgradeClientsQuerySpec() : null), [isUpgradeView]);
+  // normalizeLeadDoc: nextFollowUp/createdAt viram Date, senão todo card sai "sem agendamento".
+  const {
+    items: upgradeDocs, reload: upgradeReload, patchItem: upgradePatchLead, error: upgradeError,
+  } = usePagedLeads({
+    db, path: LEADS_PATH, spec: upgradeSpec, specKey: `upgrade:${isUpgradeView ? '1' : '0'}`,
+    enabled: !!db && isUpgradeView, mapDoc: normalizeLeadDoc,
+  });
+  // Mesmo recorte do Vencidos: respFilter vale, onlyOverdue é ignorado (cliente
+  // não tem follow-up de prospecção). A coluna Perda deste funil fica vazia:
+  // quem recusou sai do funil, não muda de coluna.
+  const upgradeLeads = useMemo(() => {
+    if (!isUpgradeView) return EMPTY_LEADS;
+    const cards = projectUpgradeLeads(upgradeDocs || [], statuses, upgradeFunnel?.id);
+    return respFilter.length === 0 ? cards : cards.filter((l) => respFilter.includes(l.consultantId));
+  }, [isUpgradeView, upgradeDocs, statuses, upgradeFunnel, respFilter]);
+
   // FUNIL RENOVAÇÕES (funil de sistema): cliente cujo contrato entrou na janela
   // dos marcos. Mesmo molde do Vencidos — projeção em memória, o status real
   // continua 'Venda' — com uma diferença: as COLUNAS são virtuais, derivadas
   // dos marcos da config, e ninguém arrasta entre elas. Regras em
   // lib/renewalFunnel.js.
-  const { renewalCheckpoints } = useGeneralConfig();
+  const { renewalCheckpoints, contractThresholdDays } = useGeneralConfig();
   const renewalFunnel = useMemo(() => getRenewalFunnel(funnels), [funnels]);
   const isRenewalView = Boolean(renewalFunnel && selectedFunnelId === renewalFunnel.id);
   const renewalColumns = useMemo(
@@ -513,10 +540,10 @@ const [isPanning, setIsPanning] = useState(false);
   }, [isRenewalView, renewalPages, renewalColumns, respFilter]);
 
   const kanbanLeads = useMemo(
-    // No funil Vencidos os cards vêm da query própria já projetada, não da
-    // assinatura de leads ativos — cliente não está no board de prospecção.
-    () => (isExpiredView ? expiredLeads : filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue })),
-    [isExpiredView, expiredLeads, funnelLeads, respFilter, onlyOverdue]
+    // Nos funis Vencidos e Upgrade os cards vêm da query própria já projetada,
+    // não da assinatura de leads ativos — cliente não está no board de prospecção.
+    () => (isExpiredView ? expiredLeads : isUpgradeView ? upgradeLeads : filterKanbanLeads(funnelLeads, { respFilter, onlyOverdue })),
+    [isExpiredView, expiredLeads, isUpgradeView, upgradeLeads, funnelLeads, respFilter, onlyOverdue]
   );
 
   // Índice leadId → { count, lastDate }. Percorre interactions UMA vez,
@@ -604,8 +631,13 @@ const [isPanning, setIsPanning] = useState(false);
       (expiredSplit.cards || []).forEach((l) => m.set(l.id, l));
       (expiredSplit.declined || []).forEach((l) => m.set(l.id, l));
     }
+    // Mesma coisa para o funil UPGRADE: o cliente que fechou contrato ESTE mês
+    // está em wonDocs como doc cru, sem a flag _upgradeCard.
+    if (isUpgradeView) {
+      upgradeLeads.forEach((l) => m.set(l.id, l));
+    }
     return m;
-  }, [leads, lostDocs, wonDocs, isRenewalView, renewalSplit, isExpiredView, expiredSplit]);
+  }, [leads, lostDocs, wonDocs, isRenewalView, renewalSplit, isExpiredView, expiredSplit, isUpgradeView, upgradeLeads]);
 
   // E1d: total REAL de perdas do funil via getCountFromServer (o header da
   // coluna, depois do E1c, mostraria só a página carregada). Recontado quando
@@ -650,6 +682,15 @@ const [isPanning, setIsPanning] = useState(false);
     specKey: `vencidos:${expiredCutoffMs}`, enabled: !!db && !!expiredFunnel,
   });
 
+  // Total do funil UPGRADE para o badge da aba: agregação no servidor, 1
+  // leitura. O board não exclui ninguém no cliente, então o número bate.
+  const upgradeCountSpec = useMemo(() => (upgradeFunnel ? upgradeClientsQuerySpec() : null), [upgradeFunnel]);
+  // O epoch refaz a contagem depois de recusa ou fechamento pela própria tela; sem ele o número da aba ficava velho a sessão inteira.
+  const upgradeCount = useLeadCount({
+    db, path: LEADS_PATH, spec: upgradeCountSpec,
+    specKey: `upgrade:${upgradeCountEpoch}`, enabled: !!db && !!upgradeFunnel,
+  });
+
   // Total do funil RENOVAÇÕES: somado do que o board carregou, não do servidor.
   // A contagem agregada incluiria contrato cancelado e trancado, que o board
   // exclui — e excluir isso no servidor exigiria filtrar por
@@ -677,8 +718,9 @@ const [isPanning, setIsPanning] = useState(false);
     //     em vez de mostrar um número que conta cancelado.
     if (expiredFunnel) map.set(expiredFunnel.id, expiredCount);
     if (renewalFunnel) map.set(renewalFunnel.id, renewalTotal);
+    if (upgradeFunnel) map.set(upgradeFunnel.id, upgradeCount);
     return map;
-  }, [funnels, leads, defaultFunnelId, expiredFunnel, expiredCount, renewalFunnel, renewalTotal]);
+  }, [funnels, leads, defaultFunnelId, expiredFunnel, expiredCount, renewalFunnel, renewalTotal, upgradeFunnel, upgradeCount]);
 
   // Bubble de filtros fecha em clique fora / Esc (o overflow "+N" das abas
   // é tratado internamente pelo FunnelTabs).
@@ -832,6 +874,52 @@ const handleKanbanMouseMove = (e) => {
       });
   }, [appUser, db, toast, expiredPatchLead]);
 
+  // ── Desfechos do card projetado do funil UPGRADE ────────────────────────
+  // Arrasto e menu "Mover" passam por aqui. A etapa mora em upgradeStageId; o
+  // status real continua 'Venda' (regra em lib/stageMove.js). Cada movimento
+  // deixa evento na linha do tempo, por isso logInteraction e não updateDoc.
+  const moveUpgradeToStage = useCallback((lead, statusName) => {
+    if (!canEditLead(appUser)) {
+      toast.warning('Você não tem permissão para mover este lead.');
+      return;
+    }
+    const etapa = (statuses || []).find(
+      (st) => st.funnelId === upgradeFunnel?.id && st.name === statusName
+    );
+    const plan = planUpgradeMove(lead, etapa);
+    if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); return; }
+    const patch = plan.entering ? { ...plan.patch, upgradeEnteredAt: serverTimestamp() } : plan.patch;
+    logInteraction(db, lead, appUser, { text: plan.interactionText, type: 'status_change' }, patch)
+      .then(() => upgradePatchLead(lead.id, plan.patch))
+      .catch((err) => {
+        console.error('Erro ao mover card do funil Upgrade', err);
+        toast.error('Não foi possível mover o card.');
+      });
+  }, [appUser, db, toast, statuses, upgradeFunnel, upgradePatchLead]);
+
+  // "Não quis o upgrade": sai do funil e mais nada — a pessoa segue cliente.
+  // Recarrega o board porque o card precisa sumir de verdade.
+  const declineUpgrade = useCallback(async (lead, reason) => {
+    if (!canEditLead(appUser)) {
+      toast.warning('Você não tem permissão para alterar este lead.');
+      return;
+    }
+    const plan = planUpgradeDecline(lead, reason);
+    try {
+      await logInteraction(
+        db, lead, appUser,
+        { text: plan.interactionText, type: 'status_change' },
+        { ...plan.patch, upgradeDeclinedAt: serverTimestamp() }
+      );
+      upgradeReload();
+      setUpgradeCountEpoch((e) => e + 1);
+      toast.success('Recusa registrada. O cliente saiu do funil Upgrade e segue cliente.');
+    } catch (err) {
+      console.error('Erro ao registrar recusa de upgrade', err);
+      toast.error('Não foi possível registrar a recusa.');
+    }
+  }, [appUser, db, toast, upgradeReload]);
+
   // "Não vai renovar": a MESMA flag que a Meta Diária usa. A pessoa NÃO vira
   // lead perdido — segue cliente, com ficha e contratos, e continua na aba
   // Clientes. Perda de venda != perda de funil.
@@ -902,12 +990,24 @@ const handleKanbanMouseMove = (e) => {
       if (statusName === 'Perda') return declineExpired(lead);
       return moveExpiredToStage(lead, statusName);
     }
+    // Funil UPGRADE: Venda abre o contrato, Perda pede o motivo e tira do
+    // funil, etapa grava upgradeStageId.
+    if (lead._upgradeCard) {
+      if (statusName === 'Venda') return openMatricula(lead);
+      if (statusName === 'Perda') { setLossModalLeadId(lead.id); return; }
+      return moveUpgradeToStage(lead, statusName);
+    }
     if (statusName === 'Venda') return openMatricula(lead);
     if (statusName === 'Perda') {
       // Cliente não vira lead perdido (src/lib/stageMove.js). O card cru da
-      // coluna Venda do mês chega aqui sem flag de projeção.
+      // coluna Venda do mês chega aqui sem flag de projeção — inclusive cliente
+      // que está no funil Upgrade: recusar o upgrade é gesto da aba Upgrade
+      // (card projetado), não daqui, senão sumiria do funil sem aviso.
       const loss = planLoss(lead);
-      if (!loss.ok) { toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
+      if (!loss.ok || loss.kind === 'upgrade') {
+        toast.warning(stageMoveBlockMessage(lead, STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA));
+        return;
+      }
       setLossModalLeadId(lead.id);
       return;
     }
@@ -941,8 +1041,9 @@ const handleKanbanMouseMove = (e) => {
     // aba Clientes. A etapa dele mora num campo próprio, reactivationStageId.
     // O `status` que chega aqui é o projetado (nome da etapa), não o do banco.
     if (lead._expiredCard) return moveExpiredToStage(lead, newStatus);
+    if (lead._upgradeCard) return moveUpgradeToStage(lead, newStatus);
     applyMoveToStage(lead, newStatus);
-  }, [draggableById, appUser, toast, applyMoveToStage, undoRenewalDecline, moveExpiredToStage]);
+  }, [draggableById, appUser, toast, applyMoveToStage, undoRenewalDecline, moveExpiredToStage, moveUpgradeToStage]);
 
   const handleWinDrop = useCallback((e) => {
     e.preventDefault();
@@ -979,17 +1080,41 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
-    // Cliente não vira lead perdido (src/lib/stageMove.js): o card cru da
-    // coluna Venda do mês é arrastável e chega aqui sem flag de projeção.
+    // Funil UPGRADE: a Perda do card projetado é "não quis o upgrade" — abre o
+    // modal de motivo e confirmKanbanLoss chama declineUpgrade.
+    if (alvo._upgradeCard) { setLossModalLeadId(alvo.id); return; }
+    // Cliente não vira lead perdido (src/lib/stageMove.js). O card cru da
+    // coluna Venda do mês é arrastável e chega aqui sem flag de projeção —
+    // inclusive cliente que está no funil Upgrade: recusar o upgrade é gesto
+    // da aba Upgrade (card projetado, tratado acima), não daqui.
     const loss = planLoss(alvo);
-    if (!loss.ok) { toast.warning(stageMoveBlockMessage(alvo, loss.reason)); return; }
+    if (!loss.ok || loss.kind === 'upgrade') {
+      toast.warning(stageMoveBlockMessage(alvo, STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA));
+      return;
+    }
     setLossModalLeadId(alvo.id);
   }, [draggableById, appUser, toast, declineRenewal, declineExpired]);
 
   const confirmKanbanLoss = async (reason) => {
     if (!lossModalLeadId) return;
-const lead = leads.find(l => l.id === lossModalLeadId);
-if (!lead) return;
+    // draggableById e não `leads`: o card projetado do Upgrade e o doc cru da
+    // coluna Venda do mês não estão no prop de leads ativos.
+    const lead = draggableById.get(lossModalLeadId);
+    if (!lead) return;
+    const loss = planLoss(lead);
+    if (!loss.ok) { setLossModalLeadId(null); toast.warning(stageMoveBlockMessage(lead, loss.reason)); return; }
+    // Cliente no funil Upgrade: a Perda é "não quis o upgrade". Só pelo card
+    // projetado da aba Upgrade — o doc cru da coluna Venda é barrado antes.
+    if (lead._upgradeCard) {
+      setLossModalLeadId(null);
+      await declineUpgrade(lead, reason);
+      return;
+    }
+    if (loss.kind === 'upgrade') {
+      setLossModalLeadId(null);
+      toast.warning(stageMoveBlockMessage(lead, STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA));
+      return;
+    }
     try {
       await logInteraction(
         db, lead, appUser,
@@ -1084,7 +1209,7 @@ if (!lead) return;
     // coluna, então kanbanLeads e totalFunnelLeads dariam "0 de 0" num board
     // cheio. Sem recorte ativo o resumo some; com recorte ele volta, porque aí
     // descreve de quem é a carteira e não quantos são.
-    if (isRenewalView && !hasActiveFilters) return '';
+    if ((isRenewalView || isUpgradeView) && !hasActiveFilters) return '';
     const parts = [];
     if (respFilter.length === 1) {
       const user = (usersList || []).find(u => u.id === respFilter[0]);
@@ -1095,7 +1220,7 @@ if (!lead) return;
     if (onlyOverdue) parts.push('Em atraso');
     parts.push(parts.length === 0 ? `${kanbanLeads.length} de ${totalFunnelLeads} leads` : `${kanbanLeads.length} leads`);
     return parts.join(' · ');
-  }, [isRenewalView, hasActiveFilters, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
+  }, [isRenewalView, isUpgradeView, hasActiveFilters, kanbanLeads.length, totalFunnelLeads, respFilter, onlyOverdue, usersList]);
 
   // Lista do filtro: o próprio usuário primeiro (é a carteira que ele mais
   // procura), o resto em ordem alfabética.
@@ -1274,6 +1399,16 @@ if (!lead) return;
           </div>
         )}
 
+        {isUpgradeView && upgradeError && (
+          <div className="mx-4 md:mx-7 mt-1 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+            <AlertCircle className="size-4 shrink-0 mt-px text-amber-600 dark:text-amber-400" />
+            <span className="text-[12.5px] text-amber-900 dark:text-amber-200">
+              Não deu para carregar o funil Upgrade agora. O número na aba vem de outra
+              consulta, por isso ele continua aparecendo. Recarregue a página; se persistir, avise o suporte.
+            </span>
+          </div>
+        )}
+
         {/* Board denso */}
         <div
           ref={kanbanScrollRef}
@@ -1340,7 +1475,8 @@ if (!lead) return;
               columnLeads={
                 isRenewalView ? renewalSplit.declined
                   : isExpiredView ? expiredSplit.declined
-                    : lostLeads
+                    : isUpgradeView ? EMPTY_LEADS
+                      : lostLeads
               }
 
               totalCount={perdaHeaderCount}
@@ -1372,10 +1508,15 @@ if (!lead) return;
 
       {matriculaLead && (
         <ContractModal
-          // Card do funil Renovações: é renovação, não primeira matrícula. O
-          // modal em modo renovação NÃO carimba convertedAt e emenda a vigência
-          // no fim do contrato atual (ver src/lib/renewal.js, seamStart).
-          mode={matriculaLead._renewalCard ? 'renovacao' : 'matricula'}
+          // Card do funil Renovações é renovação. Card do funil Upgrade é
+          // renovação quando há contrato vivo (liga ao atual e emenda a
+          // vigência) e nova matrícula quando o contrato venceu ou foi
+          // cancelado. O modal em modo renovação NÃO carimba convertedAt.
+          mode={
+            matriculaLead._renewalCard || (matriculaLead._upgradeCard && hasLiveContract(matriculaLead, new Date(), contractThresholdDays))
+              ? 'renovacao'
+              : 'matricula'
+          }
           lead={matriculaLead}
           appUser={appUser}
           db={db}
@@ -1394,9 +1535,14 @@ if (!lead) return;
             // contrato a partir da data antiga (seamStart, em lib/renewal.js).
             // Custa N queries, mas é uma vez por cliente por ciclo.
             const wasRenewal = Boolean(matriculaLead?._renewalCard);
+            // Fechou pelo Upgrade: o contrato novo tirou o cliente do funil
+            // (buildMatriculaWrites), então o board precisa recarregar.
+            const wasUpgrade = Boolean(matriculaLead?._upgradeCard);
             setMatriculaLead(null);
             if (wasPerda) refreshLost();
             if (wasRenewal) renewalReload();
+            if (wasUpgrade) upgradeReload();
+            if (wasUpgrade) setUpgradeCountEpoch((e) => e + 1);
             // A venda recém-fechada precisa aparecer na coluna do mês, que
             // também não é ao vivo.
             wonReload();

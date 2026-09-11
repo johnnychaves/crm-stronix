@@ -13,6 +13,16 @@
 // ============================================================================
 export const ANNOUNCEMENTS = [
   {
+    id: 'upgrade-2026-09',
+    audience: 'todos',
+    date: '2026-09-09',
+    articleId: 'upgrade',
+    eyebrow: 'Novidade',
+    title: 'Funil Upgrade: um plano melhor para quem já é cliente',
+    summary:
+      'Cliente não volta a ser lead, mas agora tem onde ser trabalhado: o funil Upgrade, no Pipeline. Coloque o cliente pela ficha, em Mudar fase, e trabalhe a esteira até fechar um plano maior. Venda abre o contrato como renovação; Perda tira do funil e a pessoa segue cliente.',
+  },
+  {
     id: 'troca-responsavel-2026-08',
     audience: 'todos',
     date: '2026-08-26',

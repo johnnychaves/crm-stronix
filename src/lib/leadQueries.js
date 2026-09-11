@@ -108,6 +108,19 @@ export const expiredClientsQuerySpec = (beforeMs, pageSize = null) => ({
   ...(pageSize ? { limit: pageSize } : {}),
 });
 
+// FUNIL UPGRADE do board (src/lib/upgradeFunnel.js): cliente que o consultor
+// colocou à mão. Só quem tem `upgradeStageId` gravado. '!=' null devolve só docs
+// em que o campo existe e não é nulo, e só cliente recebe o campo — por isso
+// não cruza com lifecycleBucket, e não precisa de índice manual (campo único).
+//
+// Sem limit de propósito: o funil guarda quem está sendo trabalhado, não a base
+// inteira. O orderBy pelo próprio campo é exigência do Firestore para
+// desigualdade, não uma escolha de ordem (a coluna é decidida pela projeção).
+export const upgradeClientsQuerySpec = () => ({
+  wheres: [{ field: 'upgradeStageId', op: '!=', value: null }],
+  orderBy: { field: 'upgradeStageId', dir: 'asc' },
+});
+
 // UMA COLUNA do funil RENOVAÇÕES do board. Cada marco busca a própria faixa de
 // vencimento, com o próprio cursor, então todas as colunas nascem cheias em vez
 // de a mais urgente comer a página inteira.

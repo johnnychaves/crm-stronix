@@ -517,6 +517,9 @@ export const buildImportedContract = (c, { owner, leadName, importMeta }) => {
     // que existe; a reativação pela ficha empurra o fim a partir daí.
     pausedAt: status === CONTRACT_STATUS.TRANCADO ? (importMeta.now ?? null) : null,
     renewedFromId: null,
+    // Importação nunca é fechamento pelo funil Upgrade. Explícito (false, não
+    // ausente) para o relatório de upgrades não precisar tratar campo faltante.
+    closedFromUpgrade: false,
     startsAtInferred,
     consultantId: owner.consultantId,
     consultantName: owner.consultantName,
@@ -541,7 +544,12 @@ const CLIENT_MARKS = {
   nextFollowUp: null,
   renewalHandledCheckpoints: [],
   renewalDeclined: false,
-  reactivationStageId: null
+  reactivationStageId: null,
+  // Funil UPGRADE: contrato novo tira o cliente do funil, como em
+  // buildMatriculaWrites. A reimportação de quem já era cliente limpa em
+  // buildImportedClientWrites.
+  upgradeStageId: null,
+  upgradeEnteredAt: null
 };
 
 const contractSummary = (contract) => (contract ? {
@@ -630,6 +638,10 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
       ...(cls.fill || {}),
       ...(lead.consultantId ? {} : owner),
       ...(promote ? CLIENT_MARKS : {}),
+      // Contrato novo tira o cliente do funil Upgrade, venha de onde vier — a
+      // mesma regra de buildMatriculaWrites. CLIENT_MARKS só entra na
+      // promoção; quem já era cliente e ganha contrato aqui precisa disto.
+      ...(contract ? { upgradeStageId: null, upgradeEnteredAt: null } : {}),
       ...contractSummary(contract),
       ...(promote ? { convertedAt: getSafeDateOrNull(lead.convertedAt) || convertedAt } : {}),
       ...(lead.clienteSince ? {} : { clienteSince: earliest(c.registeredAt, c.startsAt, contract?.startsAt) || now }),
