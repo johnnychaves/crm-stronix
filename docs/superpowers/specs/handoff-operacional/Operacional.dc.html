@@ -1,0 +1,1716 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F7FB; --card:#FFFFFF; --fg:#0E1A40; --fg2:#334155; --muted:#64748b; --faint:#94a3b8;
+  --border:#e2e8f0; --rule:#eef2f7; --soft:#f8fafc; --soft2:#eef0f5; --hover:#f1f5f9;
+  --brand:#2B59FF; --brand-50:#EAF0FF; --brand-100:#D6E1FF; --brand-200:#B8CCFF; --brand-300:#8FB0FF; --brand-400:#6E92FF; --brand-500:#5A7FFF; --brand-700:#1C3FC4;
+  --orange:#FF6A2B; --orange-t:#FFF1EA; --orange-700:#C2410C;
+  --green:#15B981; --green-t:rgba(21,185,129,.10); --green-700:#047857;
+  --red:#F43F5E; --red-t:rgba(244,63,94,.09); --red-700:#BE123C;
+  --amber:#F59E0B; --amber-t:rgba(245,158,11,.12); --amber-700:#B45309;
+  --grey:#94a3b8; --grey-t:rgba(148,163,184,.14);
+  --shadow-card:0 1px 0 rgba(15,23,42,.04), 0 1px 2px rgba(15,23,42,.06);
+  --shadow-card-lg:0 1px 0 rgba(15,23,42,.04), 0 8px 24px -8px rgba(15,23,42,.10);
+}
+:root[data-theme="dark"]{
+  --bg:#080D22; --card:#122142; --fg:#EAEEF9; --fg2:#CBD5E1; --muted:#8A93B0; --faint:#6B7593;
+  --border:rgba(255,255,255,.08); --rule:rgba(255,255,255,.06); --soft:rgba(255,255,255,.03); --soft2:rgba(255,255,255,.07); --hover:rgba(255,255,255,.06);
+  --brand-50:rgba(43,89,255,.18); --brand-100:rgba(43,89,255,.26); --brand-200:rgba(43,89,255,.36); --brand-300:#C9D8FF; --brand-400:#8FB0FF; --brand-500:#5A7FFF; --brand-700:#8FB0FF;
+  --orange:#F2541A; --orange-t:rgba(242,84,26,.16); --orange-700:#FF8A52;
+  --green:#0E9F6E; --green-t:rgba(14,159,110,.18); --green-700:#34D399;
+  --red:#E11D48; --red-t:rgba(225,29,72,.18); --red-700:#FB7185;
+  --amber:#D97706; --amber-t:rgba(217,119,6,.20); --amber-700:#FBBF24;
+  --grey:#6B7593; --grey-t:rgba(148,163,184,.16);
+  --shadow-card:0 1px 0 rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.4);
+  --shadow-card-lg:0 8px 24px -8px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:'Geist',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--brand);text-decoration:none}
+a:hover{color:var(--brand-700)}
+button,select{font-family:inherit}
+[tabindex]:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:4px}
+.num{font-variant-numeric:tabular-nums}
+.tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+</helmet>
+
+<section style="padding:44px;background:var(--bg);color:var(--fg);font-size:14px">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding-bottom:20px;border-bottom:1px solid var(--border);margin-bottom:30px;max-width:1440px">
+    <div>
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)">Visão geral · Operacional</div>
+      <h1 style="margin:6px 0 0;font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.02em">A tela nova, ao vivo</h1>
+      <p style="margin:8px 0 0;font-size:13px;color:var(--muted);max-width:980px;line-height:1.6;text-wrap:pretty"><b style="color:var(--fg2)">Interativo:</b> troque o mês nas setas (setembro em andamento → agosto e julho fechados), escolha uma pessoa no filtro (Marcos Lima está com a prospecção desligada), e clique numa linha da tabela da equipe. Os estados de carregamento, vazio e celular estão logo abaixo do quadro principal.</p>
+    </div>
+    <button onClick="{{ toggleTheme }}" style="flex:none;height:36px;padding:0 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg2);font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer" style-hover="background:var(--hover)">{{ themeLabel }}</button>
+  </div>
+
+  <!-- ═══════════ APP FRAME 1440 ═══════════ -->
+  <div style="width:1440px;border-radius:20px;border:1px solid var(--border);background:var(--bg);box-shadow:var(--shadow-card-lg);overflow:hidden;display:flex">
+
+    <aside style="width:72px;flex:none;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center">
+      <div style="height:64px;display:grid;place-items:center;width:100%;border-bottom:1px solid var(--border)">
+        <svg width="22" height="22" viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF" stroke-width="4.4"></path><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF" stroke-width="4.4"></path><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B" stroke-width="4.4"></path></svg>
+      </div>
+      <nav style="display:flex;flex-direction:column;gap:6px;padding:18px 0;align-items:center">
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--brand);color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z"></path></svg></span>
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18M12 3v12M19 3v8"></path></svg></span>
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2"></path></svg></span>
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path></svg></span>
+      </nav>
+    </aside>
+
+    <main style="flex:1;min-width:0">
+
+      <!-- ── Cabeçalho + controles ── -->
+      <header style="padding:20px 32px 16px;background:var(--card)">
+        <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.02em">Operacional</h2>
+        <p style="margin:5px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5;max-width:820px">{{ subline }}</p>
+      </header>
+
+      <!-- Barra de controles fixa: acompanha a rolagem; os seletores abrem para baixo -->
+      <div style="position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;padding:10px 32px;background:var(--card);border-top:1px solid var(--rule);border-bottom:1px solid var(--border)">
+
+        <div style="display:flex;align-items:center;gap:2px;padding:3px;border-radius:12px;border:1px solid var(--border);background:var(--card)">
+          <button type="button" onClick="{{ prevMonth }}" aria-label="Mês anterior" style="width:30px;height:30px;border-radius:9px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover);color:var(--fg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+          <select value="{{ month }}" onChange="{{ setMonth }}" aria-label="Mês de competência" style="height:30px;min-width:150px;border:0;border-radius:9px;background:transparent;color:var(--fg);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center;outline:none;cursor:pointer;appearance:none;padding:0 6px">
+            <sc-for list="{{ monthOptions }}" as="o" hint-placeholder-count="3">
+              <option value="{{ o.key }}">{{ o.label }}</option>
+            </sc-for>
+          </select>
+          <button type="button" onClick="{{ nextMonth }}" disabled="{{ atLatest }}" aria-label="Próximo mês" style="width:30px;height:30px;border-radius:9px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;opacity:{{ nextOpacity }}" style-hover="background:var(--hover);color:var(--fg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+        </div>
+
+        <div style="display:flex;align-items:center;height:36px;border-radius:12px;border:1px solid {{ cmpEdge }};background:{{ cmpBg }};overflow:hidden">
+          <button type="button" role="checkbox" aria-checked="{{ compareOn }}" onClick="{{ toggleCompare }}" style="display:flex;align-items:center;gap:8px;height:100%;padding:0 12px;border:0;background:transparent;cursor:pointer" style-hover="background:var(--hover)">
+            <span style="width:16px;height:16px;flex:none;border-radius:5px;border:1.5px solid {{ boxEdge }};background:{{ boxBg }};display:grid;place-items:center">
+              <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ true }}">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+              </sc-if>
+            </span>
+            <span style="font-size:12.5px;font-weight:600;color:{{ cmpFg }};white-space:nowrap">Comparar</span>
+          </button>
+          <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ true }}">
+            <span style="width:1px;height:20px;flex:none;background:var(--border)"></span>
+            <select value="{{ compareKey }}" onChange="{{ setCompare }}" aria-label="Mês de comparação" style="height:34px;border:0;background:transparent;color:{{ cmpFg }};font-size:12.5px;font-weight:600;outline:none;cursor:pointer;appearance:none;padding:0 11px">
+              <sc-for list="{{ compareOptions }}" as="o" hint-placeholder-count="3">
+                <option value="{{ o.key }}">{{ o.label }}</option>
+              </sc-for>
+            </select>
+          </sc-if>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;border-radius:12px;border:1px solid {{ personEdge }};background:{{ personBg }};cursor:pointer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:{{ personIconFg }}"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path></svg>
+          <select value="{{ person }}" onChange="{{ setPerson }}" aria-label="Pessoa" style="border:0;background:transparent;color:{{ personFg }};font-size:12.5px;font-weight:600;outline:none;cursor:pointer;appearance:none">
+            <option value="todos">Equipe toda</option>
+            <sc-for list="{{ peopleOptions }}" as="p" hint-placeholder-count="4">
+              <option value="{{ p.key }}">{{ p.name }}</option>
+            </sc-for>
+          </select>
+        </label>
+
+        <div style="flex:1"></div>
+        <span class="num tr" style="font-size:11.5px;color:var(--faint);max-width:420px">{{ toolbarNote }}</span>
+      </div>
+
+      <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ true }}">
+        <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;padding:18px 32px 0">
+          <sc-for list="{{ highlights }}" as="h" hint-placeholder-count="3">
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:13px 15px;border-radius:16px;border:1px solid var(--border);background:{{ h.bg }}">
+              <span style="width:26px;height:26px;flex:none;border-radius:8px;display:grid;place-items:center;background:{{ h.iconBg }};color:#fff;margin-top:1px">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="{{ h.arrow }}"></path></svg>
+              </span>
+              <div style="min-width:0;flex:1">
+                <div style="font-size:12.5px;font-weight:600;line-height:1.45;text-wrap:pretty">{{ h.text }}</div>
+                <div style="display:flex;align-items:center;gap:7px;margin-top:5px">
+                  <span class="num" style="font-size:11.5px;font-weight:700;color:{{ h.fg }}">{{ h.delta }}</span>
+                  <span style="width:3px;height:3px;border-radius:999px;background:var(--faint)"></span>
+                  <span style="font-size:11.5px;color:{{ h.fg }}">{{ h.verdict }}</span>
+                </div>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+
+      <!-- ── Corpo ── -->
+      <div style="padding:20px 32px 32px;display:flex;flex-direction:column;gap:22px">
+
+        <!-- FAIXA DE RESUMO -->
+        <div style="display:flex;align-items:stretch;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);overflow:hidden">
+          <sc-for list="{{ summary }}" as="k" hint-placeholder-count="5">
+            <div style="flex:1;min-width:0;padding:16px 18px;border-left:1px solid {{ k.divider }}">
+              <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+                <div style="display:flex;align-items:center;gap:5px;min-width:0">
+                  <span class="tr" style="font-size:12px;font-weight:500;color:var(--muted)">{{ k.label }}</span>
+                  <button type="button" aria-label="{{ k.helpLabel }}" title="{{ k.help }}" style="width:16px;height:16px;flex:none;border:0;border-radius:999px;background:transparent;color:var(--faint);display:grid;place-items:center;cursor:help" style-hover="background:var(--hover);color:var(--fg2)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"></path></svg>
+                  </button>
+                </div>
+                <sc-if value="{{ k.hasDelta }}" hint-placeholder-val="{{ true }}">
+                  <span class="num" style="flex:none;display:inline-flex;align-items:center;gap:3px;height:20px;padding:0 6px;border-radius:6px;font-size:11px;font-weight:600;white-space:nowrap;background:{{ k.deltaBg }};color:{{ k.deltaFg }}">{{ k.deltaArrow }} {{ k.delta }}</span>
+                </sc-if>
+              </div>
+              <div style="margin-top:8px">
+                <span class="num" style="font-size:32px;font-weight:600;letter-spacing:-.025em;line-height:1;color:{{ k.valueFg }}">{{ k.value }}</span>
+              </div>
+              <div class="num tr" style="font-size:11.5px;color:var(--muted);margin-top:4px">{{ k.sub }}</div>
+              <sc-if value="{{ k.hasSpark }}" hint-placeholder-val="{{ true }}">
+                <div tabindex="0" role="img" aria-label="{{ k.sparkLabel }}" title="{{ k.sparkLabel }}" style="margin:12px -4px 0;color:{{ k.sparkColor }};cursor:help">
+                  <svg width="100%" height="42" viewBox="0 0 120 42" preserveAspectRatio="none">
+                    <path d="{{ k.sparkArea }}" fill="currentColor" fill-opacity=".22"></path>
+                    <path d="{{ k.sparkPath }}" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"></path>
+                  </svg>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:2px">
+                  <span style="font-size:9.5px;color:var(--faint)">{{ k.sparkFrom }}</span>
+                  <span style="font-size:9.5px;color:var(--faint)">{{ k.sparkTo }}</span>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+
+        <!-- ═══ ROTINA ═══ -->
+        <div>
+          <div style="display:flex;align-items:baseline;gap:11px;padding-bottom:9px;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.01em">Rotina</h3>
+            <span style="font-size:12.5px;color:var(--muted)">o trabalho foi feito?</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:{{ rotinaCols }};gap:14px">
+
+            <!-- prospecção por dia -->
+            <sc-if value="{{ prospCardVisible }}" hint-placeholder-val="{{ true }}">
+            <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 14px">
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <span style="font-size:13.5px;font-weight:600">Prospecção por dia</span>
+                <div style="flex:1"></div>
+                <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap"><span style="width:14px;height:2px;background:var(--fg2)"></span>alvo {{ prospTargetLabel }}</span>
+              </div>
+
+              <div style="position:relative;height:132px;margin-top:16px">
+                <span style="position:absolute;left:0;right:0;bottom:{{ prospTargetBottom }};height:2px;background:var(--fg2);opacity:.55"></span>
+                <div style="position:absolute;inset:0;display:flex;align-items:flex-end;gap:{{ prospBarGap }}">
+                  <sc-for list="{{ prospDays }}" as="d" hint-placeholder-count="9">
+                    <div style="flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:5px">
+                      <sc-if value="{{ d.showValue }}" hint-placeholder-val="{{ true }}">
+                        <span class="num" style="font-size:10px;font-weight:600;color:{{ d.labelFg }}">{{ d.value }}</span>
+                      </sc-if>
+                      <span tabindex="0" role="img" title="{{ d.title }}" style="width:100%;max-width:24px;border-radius:4px 4px 0 0;height:{{ d.h }};background:{{ d.bg }};cursor:help"></span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+              <div style="display:flex;gap:{{ prospBarGap }};margin-top:7px;padding-top:7px;border-top:1px solid var(--rule)">
+                <sc-for list="{{ prospDays }}" as="d" hint-placeholder-count="9">
+                  <span class="num" style="flex:1;min-width:0;text-align:center;font-size:9.5px;color:{{ d.dayFg }};font-weight:{{ d.dayWeight }}">{{ d.day }}</span>
+                </sc-for>
+              </div>
+            </div>
+            </sc-if>
+
+            <!-- dias de meta -->
+            <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 14px">
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <span style="font-size:13.5px;font-weight:600">Dias de meta</span>
+              </div>
+
+              <div style="display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px;margin-top:14px;max-width:470px">
+                <sc-for list="{{ weekdayLabels }}" as="w" hint-placeholder-count="5">
+                  <span style="text-align:center;font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)">{{ w.label }}</span>
+                </sc-for>
+                <sc-for list="{{ calendar }}" as="c" hint-placeholder-count="25">
+                  <span tabindex="0" role="img" title="{{ c.title }}" style="height:52px;border-radius:10px;background:{{ c.bg }};border:{{ c.borderStyle }};display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:{{ c.cursor }}">
+                    <span class="num" style="font-size:13px;font-weight:600;color:{{ c.dayFg }};line-height:1">{{ c.day }}</span>
+                    <span class="num" style="font-size:9.5px;font-weight:700;color:{{ c.markFg }};line-height:1">{{ c.mark }}</span>
+                  </span>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--rule);max-width:470px">
+                <span style="font-size:10.5px;color:var(--muted);white-space:nowrap">{{ scaleLabel }}</span>
+                <div style="flex:1"></div>
+                <sc-for list="{{ scaleSwatches }}" as="sw" hint-placeholder-count="5">
+                  <span tabindex="0" role="img" title="{{ sw.title }}" style="display:flex;align-items:center;gap:4px">
+                    <span style="width:13px;height:13px;border-radius:4px;background:{{ sw.bg }};border:{{ sw.borderStyle }}"></span>
+                    <span class="num" style="font-size:10px;color:var(--muted)">{{ sw.label }}</span>
+                  </span>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- tarefas por tipo -->
+            <div style="grid-column:{{ tasksSpan }};border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 14px">
+              <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:13px">
+                <span style="font-size:13.5px;font-weight:600">Tarefas concluídas por tipo</span>
+                <div style="flex:1"></div>
+                <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ true }}">
+                  <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap"><span style="width:2px;height:12px;background:var(--fg2)"></span>{{ compareShort }}</span>
+                </sc-if>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <sc-for list="{{ tasks }}" as="t" hint-placeholder-count="6">
+                  <div style="display:flex;align-items:center;gap:12px">
+                    <span class="tr" style="width:124px;flex:none;font-size:12px;color:var(--fg2)">{{ t.label }}</span>
+                    <div style="flex:1;min-width:0;position:relative;height:16px">
+                      <span tabindex="0" role="img" title="{{ t.title }}" style="position:absolute;left:0;top:0;bottom:0;width:{{ t.w }};border-radius:4px;background:var(--brand);cursor:help"></span>
+                      <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ true }}">
+                        <span tabindex="0" role="img" title="{{ t.compareTitle }}" style="position:absolute;left:{{ t.cmpLeft }};top:-2px;bottom:-2px;width:2px;background:var(--fg2);cursor:help"></span>
+                      </sc-if>
+                    </div>
+                    <span class="num" style="width:34px;flex:none;text-align:right;font-size:12.5px;font-weight:600">{{ t.value }}</span>
+                    <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ true }}">
+                      <span class="num" style="width:40px;flex:none;text-align:right;font-size:11px;font-weight:600;color:{{ t.deltaFg }}">{{ t.delta }}</span>
+                    </sc-if>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- atrasados agora · só quando a tabela da equipe não está na tela -->
+            <sc-if value="{{ lateCardVisible }}" hint-placeholder-val="{{ false }}">
+              <div style="grid-column:{{ lateCol }};border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 14px">
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span style="font-size:13.5px;font-weight:600">Atrasados agora</span>
+                  <span title="Contatos que passaram da data sem retorno. É um retrato de agora e não existe para mês fechado." style="width:14px;height:14px;flex:none;border-radius:999px;border:1px solid var(--border);color:var(--faint);font-size:9px;font-weight:700;display:grid;place-items:center;cursor:help">?</span>
+                  <div style="flex:1"></div>
+                  <span style="height:19px;padding:0 7px;border-radius:6px;background:var(--soft2);color:var(--muted);font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;display:flex;align-items:center;white-space:nowrap">Agora</span>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-top:10px">
+                  <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--red-700)">{{ lateTotal }}</span>
+                  <span style="font-size:12px;color:var(--muted)">contatos sem retorno</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:7px;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule)">
+                  <sc-for list="{{ lateRows }}" as="l" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:10px">
+                      <span style="width:24px;height:24px;flex:none;border-radius:999px;display:grid;place-items:center;font-size:9px;font-weight:700;background:var(--soft2);color:var(--fg2)">{{ l.ini }}</span>
+                      <span class="tr" style="min-width:0;flex:1;font-size:12px;font-weight:500">{{ l.name }}</span>
+                      <div style="width:74px;flex:none;height:6px;border-radius:999px;background:var(--soft2);overflow:hidden;display:flex">
+                        <span tabindex="0" role="img" title="{{ l.title }}" style="width:{{ l.w }};background:var(--red);border-radius:999px"></span>
+                      </div>
+                      <span class="num" style="width:20px;flex:none;text-align:right;font-size:12px;font-weight:600;color:{{ l.fg }}">{{ l.n }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ closed }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px dashed var(--border);border-radius:16px;background:var(--soft);padding:18px;display:flex;align-items:center;gap:12px">
+                <span style="width:32px;height:32px;flex:none;border-radius:10px;display:grid;place-items:center;background:var(--soft2);color:var(--faint)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                </span>
+                <div style="min-width:0;flex:1">
+                  <div style="font-size:12.5px;font-weight:600;color:var(--fg2)">Atrasados agora só existe no mês em andamento</div>
+                  <div style="font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:2px">É um retrato do momento, não um número do mês fechado.</div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <!-- ═══ BASE DE CLIENTES ═══ -->
+        <div>
+          <div style="display:flex;align-items:baseline;gap:11px;padding-bottom:9px;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.01em">Base de clientes</h3>
+            <span style="font-size:12.5px;color:var(--muted)">a carteira cresceu ou encolheu?</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:14px">
+
+            <!-- ponte -->
+            <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 14px">
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <span style="font-size:13.5px;font-weight:600">Movimento da base</span>
+                <div style="flex:1"></div>
+                <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap"><span style="width:9px;height:9px;border-radius:3px;background:var(--brand)"></span>entrou</span>
+                <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap"><span style="width:9px;height:9px;border-radius:3px;background:var(--red)"></span>saiu</span>
+              </div>
+
+              <div style="position:relative;height:144px;margin-top:18px;display:flex;align-items:flex-end;gap:8px">
+                <sc-for list="{{ bridge }}" as="b" hint-placeholder-count="7">
+                  <div style="flex:1;min-width:0;position:relative;height:100%">
+                    <span class="num" style="position:absolute;left:0;right:0;bottom:{{ b.labelBottom }};text-align:center;font-size:11px;font-weight:700;color:{{ b.labelFg }}">{{ b.label }}</span>
+                    <span tabindex="0" role="img" title="{{ b.title }}" style="position:absolute;left:50%;transform:translateX(-50%);width:100%;max-width:24px;bottom:{{ b.bottom }};height:{{ b.h }};border-radius:4px;background:{{ b.bg }};cursor:help"></span>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--rule)">
+                <sc-for list="{{ bridge }}" as="b" hint-placeholder-count="7">
+                  <span class="tr" style="flex:1;min-width:0;text-align:center;font-size:10px;color:{{ b.nameFg }};font-weight:{{ b.nameWeight }}">{{ b.name }}</span>
+                </sc-for>
+              </div>
+              <div style="font-size:10.5px;color:var(--faint);margin-top:9px;line-height:1.5">A escala não começa em zero: a base é grande e o movimento é pequeno. O número está escrito em cada nível.</div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <!-- cancelamentos -->
+              <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 14px">
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="font-size:13.5px;font-weight:600">Cancelamentos por motivo</span>
+                  <div style="flex:1"></div>
+                  <span class="num" style="font-size:12px;color:var(--muted)">{{ cancelCard.sub }}</span>
+                </div>
+                <sc-if value="{{ cancelCard.hasItems }}" hint-placeholder-val="{{ true }}">
+                  <div style="font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-top:15px">{{ cancelCard.eyebrow }}</div>
+                  <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+                    <span class="num" style="flex:none;font-family:'Space Grotesk',sans-serif;font-size:34px;font-weight:700;line-height:.9;letter-spacing:-.02em;color:var(--orange-700)">{{ cancelCard.leaderN }}</span>
+                    <div style="min-width:0">
+                      <div class="tr" style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;line-height:1.15">{{ cancelCard.leaderName }}</div>
+                      <div class="num" style="font-size:12px;color:var(--muted)">{{ cancelCard.leaderMeta }}</div>
+                    </div>
+                  </div>
+                  <div role="img" aria-label="{{ cancelCard.capsuleLabel }}" style="display:flex;height:42px;margin-top:14px;border-radius:12px;overflow:hidden;background:var(--soft2)">
+                    <sc-for list="{{ cancelCard.items }}" as="it" hint-placeholder-count="3">
+                      <div tabindex="0" title="{{ it.title }}" style="height:100%;display:flex;align-items:center;padding:0 8px;min-width:7px;width:{{ it.w }};background:{{ it.bg }};border-left:{{ it.edge }};cursor:help">
+                        <sc-if value="{{ it.showPct }}" hint-placeholder-val="{{ false }}">
+                          <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:700;color:#fff;white-space:nowrap">{{ it.pct }}</span>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+                    <sc-for list="{{ cancelCard.items }}" as="it" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <span style="width:9px;height:9px;flex:none;border-radius:999px;background:{{ it.bg }}"></span>
+                        <span class="tr" style="flex:1;min-width:0;font-size:13px;font-weight:{{ it.weight }};color:{{ it.fg }}">{{ it.label }}</span>
+                        <span class="num" style="flex:none;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700">{{ it.n }}</span>
+                        <span class="num" style="width:32px;flex:none;text-align:right;font-size:12px;color:var(--muted)">{{ it.pct }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ cancelCard.isEmpty }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:32px 0;text-align:center;font-size:12.5px;font-style:italic;color:var(--muted)">{{ cancelCard.emptyText }}</div>
+                </sc-if>
+              </div>
+
+              <!-- upgrades e trancamentos -->
+              <div style="flex:1;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px;display:flex;align-items:stretch">
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Upgrades</div>
+                  <div style="display:flex;align-items:baseline;gap:7px;margin-top:9px">
+                    <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1">{{ upgrades }}</span>
+                    <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ true }}">
+                      <span class="num" style="font-size:11.5px;font-weight:600;color:{{ upgradesFg }}">{{ upgradesDelta }}</span>
+                    </sc-if>
+                  </div>
+                  <div style="font-size:11px;color:var(--muted);margin-top:5px">vendas pelo funil Upgrade</div>
+                </div>
+                <span style="width:1px;flex:none;background:var(--rule);margin:0 18px"></span>
+                <div style="flex:1;min-width:0">
+                  <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Trancamentos</div>
+                  <div style="display:flex;align-items:baseline;gap:7px;margin-top:9px">
+                    <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1">{{ locksLabel }}</span>
+                    <span class="num" style="font-size:11.5px;font-weight:600;color:var(--muted)">saldo</span>
+                  </div>
+                  <div class="num" style="font-size:11px;color:var(--muted);margin-top:5px">{{ locksDetail }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ RENOVAÇÃO ═══ -->
+        <div>
+          <div style="display:flex;align-items:baseline;gap:11px;padding-bottom:9px;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.01em">Renovação</h3>
+            <span style="font-size:12.5px;color:var(--muted)">estamos segurando quem vence?</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:minmax(0,1.55fr) minmax(0,1fr);gap:14px">
+
+            <!-- desfecho -->
+            <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 16px">
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <span style="font-size:13.5px;font-weight:600">Contratos vencendo no mês</span>
+                <span title="Renovados ÷ vencendo. No mês em andamento, renovados ÷ contratos que já tiveram desfecho." style="width:14px;height:14px;flex:none;border-radius:999px;border:1px solid var(--border);color:var(--faint);font-size:9px;font-weight:700;display:grid;place-items:center;cursor:help">?</span>
+                <div style="flex:1"></div>
+                <span class="num" style="font-size:12.5px;color:var(--muted)">{{ renewSummary }}</span>
+              </div>
+
+              <div style="display:flex;height:26px;border-radius:6px;overflow:hidden;margin-top:14px;gap:2px">
+                <sc-for list="{{ outcome }}" as="o" hint-placeholder-count="4">
+                  <span tabindex="0" role="img" title="{{ o.title }}" style="width:{{ o.w }};background:{{ o.bg }};border-radius:4px;display:grid;place-items:center;cursor:help">
+                    <sc-if value="{{ o.showLabel }}" hint-placeholder-val="{{ true }}">
+                      <span class="num" style="font-size:11px;font-weight:700;color:{{ o.labelFg }}">{{ o.n }}</span>
+                    </sc-if>
+                  </span>
+                </sc-for>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:11px">
+                <sc-for list="{{ outcome }}" as="o" hint-placeholder-count="4">
+                  <span style="display:flex;align-items:center;gap:6px;white-space:nowrap">
+                    <span style="width:9px;height:9px;border-radius:3px;background:{{ o.bg }}"></span>
+                    <span style="font-size:11.5px;color:var(--fg2)">{{ o.label }}</span>
+                    <span class="num" style="font-size:11.5px;font-weight:700;color:{{ o.fg }}">{{ o.n }}</span>
+                  </span>
+                </sc-for>
+              </div>
+
+              <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--rule)">
+                <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-bottom:11px">Quando renovou</div>
+                <div style="display:flex;flex-direction:column;gap:8px">
+                  <sc-for list="{{ renewWhen }}" as="r" hint-placeholder-count="3">
+                    <div style="display:flex;align-items:center;gap:11px">
+                      <span class="tr" style="width:170px;flex:none;font-size:12px;color:var(--fg2)">{{ r.label }}</span>
+                      <div style="flex:1;min-width:0;height:14px;border-radius:4px;background:var(--soft2);overflow:hidden;display:flex">
+                        <span tabindex="0" role="img" title="{{ r.title }}" style="width:{{ r.w }};background:{{ r.bg }};border-radius:4px;cursor:help"></span>
+                      </div>
+                      <span class="num" style="width:20px;flex:none;text-align:right;font-size:12.5px;font-weight:600">{{ r.n }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </div>
+            </div>
+
+            <!-- marcos -->
+            <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 14px">
+              <div style="display:flex;align-items:baseline;gap:8px">
+                <span style="font-size:13.5px;font-weight:600">Contatos nos marcos</span>
+                <span title="Tarefas de renovação feitas ÷ clientes que chegaram a cada marco. A academia pode mudar os marcos em Configurações." style="width:14px;height:14px;flex:none;border-radius:999px;border:1px solid var(--border);color:var(--faint);font-size:9px;font-weight:700;display:grid;place-items:center;cursor:help">?</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:14px;margin-top:16px">
+                <sc-for list="{{ milestones }}" as="m" hint-placeholder-count="3">
+                  <div>
+                    <div style="display:flex;align-items:baseline;gap:8px">
+                      <span class="num" style="font-size:12.5px;font-weight:600">{{ m.label }}</span>
+                      <div style="flex:1"></div>
+                      <span class="num" style="font-size:12.5px;font-weight:700;color:{{ m.fg }}">{{ m.pct }}</span>
+                      <span class="num" style="font-size:11px;color:var(--muted)">{{ m.ratio }}</span>
+                    </div>
+                    <div style="height:10px;border-radius:999px;background:var(--soft2);overflow:hidden;display:flex;margin-top:6px">
+                      <span tabindex="0" role="img" title="{{ m.title }}" style="width:{{ m.w }};background:{{ m.bg }};border-radius:999px;cursor:help"></span>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+            </div>
+
+            <!-- motivos não vai renovar -->
+            <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 14px">
+              <div style="display:flex;align-items:baseline;gap:10px">
+                <span style="font-size:13.5px;font-weight:600">Motivos de quem não vai renovar</span>
+                <div style="flex:1"></div>
+                <span class="num" style="font-size:12px;color:var(--muted)">{{ wontCard.sub }}</span>
+              </div>
+                <sc-if value="{{ wontCard.hasItems }}" hint-placeholder-val="{{ true }}">
+                  <div style="font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-top:15px">{{ wontCard.eyebrow }}</div>
+                  <div style="display:flex;align-items:center;gap:10px;margin-top:6px">
+                    <span class="num" style="flex:none;font-family:'Space Grotesk',sans-serif;font-size:34px;font-weight:700;line-height:.9;letter-spacing:-.02em;color:var(--orange-700)">{{ wontCard.leaderN }}</span>
+                    <div style="min-width:0">
+                      <div class="tr" style="font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;line-height:1.15">{{ wontCard.leaderName }}</div>
+                      <div class="num" style="font-size:12px;color:var(--muted)">{{ wontCard.leaderMeta }}</div>
+                    </div>
+                  </div>
+                  <div role="img" aria-label="{{ wontCard.capsuleLabel }}" style="display:flex;height:42px;margin-top:14px;border-radius:12px;overflow:hidden;background:var(--soft2)">
+                    <sc-for list="{{ wontCard.items }}" as="it" hint-placeholder-count="3">
+                      <div tabindex="0" title="{{ it.title }}" style="height:100%;display:flex;align-items:center;padding:0 8px;min-width:7px;width:{{ it.w }};background:{{ it.bg }};border-left:{{ it.edge }};cursor:help">
+                        <sc-if value="{{ it.showPct }}" hint-placeholder-val="{{ false }}">
+                          <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:700;color:#fff;white-space:nowrap">{{ it.pct }}</span>
+                        </sc-if>
+                      </div>
+                    </sc-for>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+                    <sc-for list="{{ wontCard.items }}" as="it" hint-placeholder-count="3">
+                      <div style="display:flex;align-items:center;gap:8px">
+                        <span style="width:9px;height:9px;flex:none;border-radius:999px;background:{{ it.bg }}"></span>
+                        <span class="tr" style="flex:1;min-width:0;font-size:13px;font-weight:{{ it.weight }};color:{{ it.fg }}">{{ it.label }}</span>
+                        <span class="num" style="flex:none;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700">{{ it.n }}</span>
+                        <span class="num" style="width:32px;flex:none;text-align:right;font-size:12px;color:var(--muted)">{{ it.pct }}</span>
+                      </div>
+                    </sc-for>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ wontCard.isEmpty }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding:32px 0;text-align:center;font-size:12.5px;font-style:italic;color:var(--muted)">{{ wontCard.emptyText }}</div>
+                </sc-if>
+            </div>
+
+            <!-- a vencer -->
+            <sc-if value="{{ running }}" hint-placeholder-val="{{ true }}">
+              <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 14px">
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span style="font-size:13.5px;font-weight:600">A vencer</span>
+                  <div style="flex:1"></div>
+                  <span style="height:19px;padding:0 7px;border-radius:6px;background:var(--soft2);color:var(--muted);font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;display:flex;align-items:center;white-space:nowrap">Agora</span>
+                </div>
+                <div style="display:flex;align-items:stretch;margin-top:16px">
+                  <sc-for list="{{ upcoming }}" as="u" hint-placeholder-count="3">
+                    <div style="flex:1;min-width:0;text-align:center;border-left:1px solid {{ u.divider }}">
+                      <div class="num" style="font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.03em;line-height:1">{{ u.n }}</div>
+                      <div class="num" style="font-size:11px;color:var(--muted);margin-top:5px">{{ u.label }}</div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-size:10.5px;color:var(--faint);margin-top:13px;padding-top:11px;border-top:1px solid var(--rule);line-height:1.5">Contratos com fim nos próximos 30, 60 e 90 dias. Serve para planejar o contato, não entra na taxa do mês.</div>
+              </div>
+            </sc-if>
+
+            <sc-if value="{{ closed }}" hint-placeholder-val="{{ false }}">
+              <div style="border:1px dashed var(--border);border-radius:16px;background:var(--soft);padding:18px;display:flex;align-items:center;gap:12px">
+                <span style="width:32px;height:32px;flex:none;border-radius:10px;display:grid;place-items:center;background:var(--soft2);color:var(--faint)">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4"></path></svg>
+                </span>
+                <div style="min-width:0;flex:1">
+                  <div style="font-size:12.5px;font-weight:600;color:var(--fg2)">A vencer só existe no mês em andamento</div>
+                  <div style="font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:2px">Em mês fechado todos os contratos do período já tiveram desfecho.</div>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+        </div>
+
+        <!-- ═══ EQUIPE ═══ -->
+        <sc-if value="{{ showTeam }}" hint-placeholder-val="{{ true }}">
+          <div>
+            <div style="display:flex;align-items:baseline;gap:11px;padding-bottom:9px;border-bottom:2px solid var(--border);margin-bottom:14px">
+              <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.01em">Equipe no mês</h3>
+              <span style="font-size:12.5px;color:var(--muted)">clique numa linha para filtrar a tela por essa pessoa</span>
+            </div>
+
+            <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);overflow:hidden">
+              <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;border-bottom:1px solid var(--rule);background:var(--soft)">
+                <span style="width:206px;flex:none;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Pessoa</span>
+                <span style="width:132px;flex:none;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Meta diária</span>
+                <span style="width:132px;flex:none;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Prospecção</span>
+                <span style="flex:1;min-width:0;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Taxa de renovação</span>
+                <span style="width:78px;flex:none;text-align:right;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Entraram</span>
+                <span style="width:78px;flex:none;text-align:right;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Upgrades</span>
+                <sc-if value="{{ running }}" hint-placeholder-val="{{ true }}">
+                  <span style="width:92px;flex:none;text-align:right;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Atrasados agora</span>
+                </sc-if>
+              </div>
+
+              <sc-for list="{{ teamRows }}" as="r" hint-placeholder-count="4">
+                <button onClick="{{ r.pick }}" style="display:flex;align-items:center;gap:14px;width:100%;text-align:left;padding:11px 18px;border:0;border-bottom:1px solid var(--rule);background:transparent;cursor:pointer" style-hover="background:var(--hover)">
+                  <div style="width:206px;flex:none;display:flex;align-items:center;gap:10px">
+                    <span style="width:28px;height:28px;flex:none;border-radius:999px;display:grid;place-items:center;font-size:10px;font-weight:700;background:var(--brand-50);color:var(--brand-700)">{{ r.ini }}</span>
+                    <div style="min-width:0">
+                      <div class="tr" style="font-size:13px;font-weight:600">{{ r.name }}</div>
+                      <div class="tr" style="font-size:10.5px;color:var(--faint)">{{ r.role }}</div>
+                    </div>
+                  </div>
+
+                  <div style="width:132px;flex:none;display:flex;align-items:center;gap:8px">
+                    <div style="flex:1;min-width:0;height:6px;border-radius:999px;background:var(--soft2);overflow:hidden;display:flex">
+                      <span style="width:{{ r.metaW }};background:var(--brand);border-radius:999px"></span>
+                    </div>
+                    <span class="num" style="flex:none;font-size:11.5px;font-weight:600">{{ r.metaPct }}</span>
+                  </div>
+
+                  <div style="width:132px;flex:none;display:flex;align-items:center;gap:8px">
+                    <sc-if value="{{ r.prospOn }}" hint-placeholder-val="{{ true }}">
+                      <div style="flex:1;min-width:0;height:6px;border-radius:999px;background:var(--soft2);overflow:hidden;display:flex">
+                        <span style="width:{{ r.prospW }};background:var(--orange);border-radius:999px"></span>
+                      </div>
+                      <span class="num" style="flex:none;font-size:11.5px;font-weight:600">{{ r.prospPct }}</span>
+                    </sc-if>
+                    <sc-if value="{{ r.prospOff }}" hint-placeholder-val="{{ false }}">
+                      <span style="height:20px;padding:0 8px;border-radius:6px;background:var(--soft2);color:var(--muted);font-size:10.5px;font-weight:600;display:flex;align-items:center;white-space:nowrap">Desligada</span>
+                    </sc-if>
+                  </div>
+
+                  <div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px">
+                    <div style="flex:1;min-width:0;height:6px;border-radius:999px;background:var(--soft2);overflow:hidden;display:flex">
+                      <span style="width:{{ r.renewW }};background:{{ r.renewBar }};border-radius:999px"></span>
+                    </div>
+                    <span class="num" style="flex:none;font-size:11.5px;font-weight:600;color:{{ r.renewFg }}">{{ r.renewPct }}</span>
+                  </div>
+
+                  <span class="num" style="width:78px;flex:none;text-align:right;font-size:12.5px;font-weight:600">{{ r.entered }}</span>
+                  <span class="num" style="width:78px;flex:none;text-align:right;font-size:12.5px;font-weight:600">{{ r.upgrades }}</span>
+                  <sc-if value="{{ running }}" hint-placeholder-val="{{ true }}">
+                    <span class="num" style="width:92px;flex:none;text-align:right;font-size:12.5px;font-weight:600;color:{{ r.lateFg }}">{{ r.late }}</span>
+                  </sc-if>
+                </button>
+              </sc-for>
+
+              <div style="display:flex;align-items:center;gap:14px;padding:11px 18px;background:var(--soft)">
+                <span style="width:206px;flex:none;font-size:11.5px;font-weight:700;color:var(--fg2)">Equipe toda</span>
+                <span class="num" style="width:132px;flex:none;font-size:12px;font-weight:700">{{ totalMeta }}</span>
+                <span class="num" style="width:132px;flex:none;font-size:12px;font-weight:700">{{ totalProsp }}</span>
+                <span class="num" style="flex:1;min-width:0;font-size:12px;font-weight:700">{{ totalRenew }}</span>
+                <span class="num" style="width:78px;flex:none;text-align:right;font-size:12px;font-weight:700">{{ totalEntered }}</span>
+                <span class="num" style="width:78px;flex:none;text-align:right;font-size:12px;font-weight:700">{{ totalUpgrades }}</span>
+                <sc-if value="{{ running }}" hint-placeholder-val="{{ true }}">
+                  <span class="num" style="width:92px;flex:none;text-align:right;font-size:12px;font-weight:700;color:var(--red-700)">{{ totalLate }}</span>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══════════ ESTADOS ═══════════ -->
+  <div style="margin-top:38px;padding-top:26px;border-top:1px solid var(--border);max-width:1440px">
+    <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700">Estados e celular</h2>
+    <p style="margin:5px 0 22px;font-size:12.5px;color:var(--muted);max-width:900px">Vazios, carregamento e a quebra para 390px. Os dois primeiros vazios também aparecem no quadro acima quando o mês não tem o dado.</p>
+
+    <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap">
+
+      <!-- carregando -->
+      <div style="width:430px">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:9px">Carregando ao trocar de mês</div>
+        <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);overflow:hidden">
+          <div style="height:2px;background:var(--brand-100);position:relative;overflow:hidden">
+            <span style="position:absolute;left:0;top:0;bottom:0;width:42%;background:var(--brand)"></span>
+          </div>
+          <div style="display:flex;align-items:stretch;opacity:.35">
+            <div style="flex:1;padding:14px 16px">
+              <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Meta diária</div>
+              <div class="num" style="font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.03em;margin-top:8px">69%</div>
+              <div class="num" style="font-size:11px;color:var(--muted);margin-top:4px">22 de 32 dias</div>
+            </div>
+            <div style="flex:1;padding:14px 16px;border-left:1px solid var(--rule)">
+              <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Prospecção</div>
+              <div class="num" style="font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.03em;margin-top:8px">79%</div>
+              <div class="num" style="font-size:11px;color:var(--muted);margin-top:4px">214 de 270</div>
+            </div>
+            <div style="flex:1;padding:14px 16px;border-left:1px solid var(--rule)">
+              <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Clientes ativos</div>
+              <div class="num" style="font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.03em;margin-top:8px">419</div>
+              <div class="num" style="font-size:11px;color:var(--muted);margin-top:4px">no fim do período</div>
+            </div>
+          </div>
+        </div>
+        <p style="margin:9px 0 0;font-size:12px;color:var(--muted);line-height:1.55;text-wrap:pretty">Sem esqueleto: os números do mês anterior ficam na tela a 35% de opacidade até os novos chegarem, com um fio de progresso no topo do bloco. A tela não muda de altura, então nada salta quando o dado chega.</p>
+      </div>
+
+      <!-- celular -->
+      <div style="width:390px">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:9px">Celular · 390px</div>
+        <div style="border:1px solid var(--border);border-radius:20px;background:var(--bg);overflow:hidden;box-shadow:var(--shadow-card-lg)">
+          <div style="padding:16px 16px 14px;background:var(--card);border-bottom:1px solid var(--border)">
+            <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.02em">Operacional</h3>
+            <p style="margin:4px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45">1 a 11 de setembro comparado com os 11 primeiros dias de agosto</p>
+            <div style="display:flex;align-items:center;gap:2px;padding:3px;border-radius:12px;border:1px solid var(--border);margin-top:12px">
+              <span style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></span>
+              <span class="num" style="flex:1;text-align:center;font-size:13px;font-weight:600">Setembro 2026</span>
+              <span style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--faint)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></span>
+            </div>
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <span style="flex:1;height:34px;display:flex;align-items:center;padding:0 11px;border-radius:11px;border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--fg2)">vs agosto</span>
+              <span style="flex:1;height:34px;display:flex;align-items:center;padding:0 11px;border-radius:11px;border:1px solid var(--border);font-size:12px;font-weight:600;color:var(--fg2)">Equipe toda</span>
+            </div>
+          </div>
+
+          <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+            <div style="display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:14px;border:1px solid var(--border);background:var(--red-t)">
+              <span style="width:22px;height:22px;flex:none;border-radius:7px;display:grid;place-items:center;background:var(--red);color:#fff"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M19 12l-7 7-7-7"></path></svg></span>
+              <div style="min-width:0;flex:1">
+                <div style="font-size:12px;font-weight:600;line-height:1.4">Contatos no marco de 30 dias: de 71% para 56%</div>
+                <div class="num" style="font-size:11px;font-weight:700;color:var(--red-700);margin-top:4px">▼ 15 p.p. · piorou</div>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:12px 13px">
+                <div class="tr" style="font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Meta diária</div>
+                <div style="display:flex;align-items:baseline;gap:6px;margin-top:7px">
+                  <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:23px;font-weight:700;letter-spacing:-.03em;line-height:1">69%</span>
+                  <span class="num" style="font-size:11px;font-weight:600;color:var(--green-700)">+3 p.p.</span>
+                </div>
+                <div class="num" style="font-size:10.5px;color:var(--muted);margin-top:4px">22 de 32 dias</div>
+              </div>
+              <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:12px 13px">
+                <div class="tr" style="font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Prospecção</div>
+                <div style="display:flex;align-items:baseline;gap:6px;margin-top:7px">
+                  <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:23px;font-weight:700;letter-spacing:-.03em;line-height:1">79%</span>
+                  <span class="num" style="font-size:11px;font-weight:600;color:var(--green-700)">+11 p.p.</span>
+                </div>
+                <div class="num" style="font-size:10.5px;color:var(--muted);margin-top:4px">214 de 270</div>
+              </div>
+              <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:12px 13px">
+                <div class="tr" style="font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Clientes ativos</div>
+                <div style="display:flex;align-items:baseline;gap:6px;margin-top:7px">
+                  <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:23px;font-weight:700;letter-spacing:-.03em;line-height:1">419</span>
+                  <span class="num" style="font-size:11px;font-weight:600;color:var(--green-700)">+2</span>
+                </div>
+                <div class="num" style="font-size:10.5px;color:var(--muted);margin-top:4px">hoje</div>
+              </div>
+              <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:12px 13px">
+                <div class="tr" style="font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Taxa de renovação</div>
+                <div style="display:flex;align-items:baseline;gap:6px;margin-top:7px">
+                  <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:23px;font-weight:700;letter-spacing:-.03em;line-height:1">82%</span>
+                  <span class="num" style="font-size:11px;font-weight:600;color:var(--green-700)">+8 p.p.</span>
+                </div>
+                <div class="num" style="font-size:10.5px;color:var(--muted);margin-top:4px">18 de 22</div>
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:13px">
+              <div style="font-size:12.5px;font-weight:600">Contratos vencendo no mês</div>
+              <div style="display:flex;height:22px;gap:2px;margin-top:11px">
+                <span style="width:53%;background:var(--green);border-radius:4px;display:grid;place-items:center"><span class="num" style="font-size:10.5px;font-weight:700;color:#fff">18</span></span>
+                <span style="width:6%;background:var(--amber);border-radius:4px"></span>
+                <span style="width:6%;background:var(--red);border-radius:4px"></span>
+                <span style="width:35%;background:var(--grey);border-radius:4px;display:grid;place-items:center"><span class="num" style="font-size:10.5px;font-weight:700;color:#fff">12</span></span>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px 12px;margin-top:10px">
+                <span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:3px;background:var(--green)"></span><span style="font-size:11px;color:var(--fg2)">renovou 18</span></span>
+                <span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:3px;background:var(--amber)"></span><span style="font-size:11px;color:var(--fg2)">não vai 2</span></span>
+                <span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:3px;background:var(--red)"></span><span style="font-size:11px;color:var(--fg2)">venceu 2</span></span>
+                <span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:3px;background:var(--grey)"></span><span style="font-size:11px;color:var(--fg2)">a vencer 12</span></span>
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:13px">
+              <div style="font-size:12.5px;font-weight:600;margin-bottom:10px">Equipe no mês</div>
+              <div style="display:flex;flex-direction:column;gap:9px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="width:26px;height:26px;flex:none;border-radius:999px;display:grid;place-items:center;font-size:9.5px;font-weight:700;background:var(--brand-50);color:var(--brand-700)">AR</span>
+                  <div style="min-width:0;flex:1">
+                    <div class="tr" style="font-size:12.5px;font-weight:600">Ana Ribeiro</div>
+                    <div class="num" style="font-size:10.5px;color:var(--muted)">meta 88% · prosp. 82% · renov. 86%</div>
+                  </div>
+                  <span class="num" style="flex:none;font-size:12px;font-weight:700;color:var(--red-700)">4</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="width:26px;height:26px;flex:none;border-radius:999px;display:grid;place-items:center;font-size:9.5px;font-weight:700;background:var(--brand-50);color:var(--brand-700)">ML</span>
+                  <div style="min-width:0;flex:1">
+                    <div class="tr" style="font-size:12.5px;font-weight:600">Marcos Lima</div>
+                    <div class="num" style="font-size:10.5px;color:var(--muted)">meta 50% · prosp. desligada · renov. 79%</div>
+                  </div>
+                  <span class="num" style="flex:none;font-size:12px;font-weight:700;color:var(--red-700)">2</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p style="margin:9px 0 0;font-size:12px;color:var(--muted);line-height:1.55;text-wrap:pretty">Abaixo de 768px: uma coluna, resumo em grade de 2, destaques viram carrossel com o pior deles primeiro, e a tabela da equipe vira lista com as três taxas numa linha de texto. Os gráficos de dia mantêm a barra e perdem o rótulo por cima.</p>
+      </div>
+
+      <!-- prospecção desligada -->
+      <div style="width:430px">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:9px">Pessoa com a prospecção desligada</div>
+        <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);display:flex;align-items:stretch">
+          <div style="flex:1;padding:14px 16px">
+            <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Meta diária</div>
+            <div class="num" style="font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.03em;margin-top:8px">50%</div>
+            <div class="num" style="font-size:11px;color:var(--muted);margin-top:4px">4 de 8 dias</div>
+          </div>
+          <div style="flex:1;padding:14px 16px;border-left:1px solid var(--rule)">
+            <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Prospecção</div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;letter-spacing:-.02em;margin-top:11px;color:var(--muted)">Desligada</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px">alvo 0 no cadastro</div>
+          </div>
+        </div>
+        <p style="margin:9px 0 0;font-size:12px;color:var(--muted);line-height:1.55;text-wrap:pretty">Alvo 0 não é 0%. A célula troca o número por “Desligada”, some com a barra e com a tendência, e o card “Prospecção por dia” sai da tela inteiro. Na tabela da equipe vira uma etiqueta cinza, nunca uma barra vazia.</p>
+
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:22px 0 9px">Mês sem cancelamento</div>
+        <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px">
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span style="font-size:13.5px;font-weight:600">Cancelamentos por motivo</span>
+            <div style="flex:1"></div>
+            <span class="num" style="font-size:12.5px;font-weight:700;color:var(--muted)">0</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:13px;padding:13px;border-radius:12px;background:var(--green-t)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--green)"><path d="M20 6 9 17l-5-5"></path></svg>
+            <span style="font-size:12px;color:var(--fg2);line-height:1.45">Nenhum cancelamento neste mês.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- notas -->
+  <div style="margin-top:36px;padding-top:24px;border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:24px;max-width:1440px">
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Destaque não repete o resumo</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">A regra de geração exclui as cinco métricas da faixa: se “taxa de renovação subiu 8 p.p.” já está escrito a 60px dali, o destaque não ganhou nada. Sobram as mudanças que só existem no fundo da tela — marcos, atrasados concluídos, upgrades, motivo de cancelamento.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Três perguntas, três blocos</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">Rotina, Base e Renovação têm título e uma pergunta em texto corrido. A régua de 2px entre eles é o que faz a tela se ler em blocos em vez de vinte cartões soltos — e o subtítulo diz o que procurar em cada um.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">A ponte não começa em zero</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">419 clientes com movimento de 9 entradas seria uma barra reta. A escala corta perto do mínimo, o número vem escrito em cada nível e a legenda avisa do corte. Entrada em azul e saída em vermelho — verde e vermelho lado a lado reprovam no teste de daltonismo.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">O mês em andamento é honesto</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">A comparação é pró-rata e está escrita embaixo do título. Hoje fica de fora da meta e aparece à parte na régua de dias. “Ainda vai vencer” é a quarta fatia da barra em vez de sumir na conta. E o que é retrato do agora vem com etiqueta.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Sem R$ e sem funil</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">Nada de valores, conversão, canais ou motivos de perda: isso é CRM. Nada de agenda, placar do dia ou feed: isso é Meta Diária. O Operacional mede o trabalho feito e a saúde da base, e nada mais.</p>
+    </div>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1530,&quot;height&quot;:1400}}">
+const PEOPLE = [
+  { key: 'ana', name: 'Ana Ribeiro', ini: 'AR', role: 'Consultora', share: .28 },
+  { key: 'diego', name: 'Diego Santos', ini: 'DS', role: 'Consultor', share: .24 },
+  { key: 'larissa', name: 'Larissa Moura', ini: 'LM', role: 'Consultora', share: .30 },
+  { key: 'marcos', name: 'Marcos Lima', ini: 'ML', role: 'Gestor · também vende', share: .18 },
+];
+
+// Um mês por chave. `running` marca o mês em andamento: só ele tem
+// "atrasados agora", "a vencer" e a fatia "ainda vai vencer".
+const MONTHS = {
+  jul: {
+    label: 'Julho 2026', short: 'julho', running: false, order: 0,
+    range: 'julho inteiro', compareDefault: 'ano',
+    year: 2026, mIdx: 6,
+    daysMeta: 23, daysClosed: 23,
+    meta: { done: 65, total: 92, pct: 71 },
+    prosp: { done: 511, target: 690, pct: 74 },
+    prospTarget: 30,
+    daily: [26, 21, 19, 24, 23, 21, 18, 27, 20, 22, 16, 25, 29, 20, 23, 17, 28, 24, 21, 26, 19, 22, 20],
+    hitsBy: {
+      ana:     [1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1],
+      diego:   [1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0],
+      larissa: [1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1],
+      marcos:  [0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0],
+    },
+    active: { n: 414, delta: -6 },
+    churn: { pct: 1.9 },
+    renew: { pct: 66 },
+    sparks: { meta: [66, 70, 73, 71, 0, 0], prosp: [70, 66, 71, 74, 0, 0], active: [402, 409, 420, 414, 0, 0], churn: [1.5, 1.1, 1.4, 1.9, 0, 0], renew: [69, 75, 72, 66, 0, 0] },
+    tasks: [
+      { label: 'Novos leads', v: 372, c: 341 },
+      { label: 'Contatos', v: 258, c: 276 },
+      { label: 'Visitas e aulas', v: 104, c: 96 },
+      { label: 'Atrasados', v: 88, c: 112 },
+      { label: 'Renovações', v: 71, c: 64 },
+      { label: 'Vencidos', v: 24, c: 19 },
+    ],
+    late: null,
+    bridge: [
+      { name: 'Início', v: 420, kind: 'level' },
+      { name: 'Entraram', v: 18, kind: 'in' },
+      { name: 'Voltaram', v: 4, kind: 'in' },
+      { name: 'Cancelaram', v: -14, kind: 'out' },
+      { name: 'Venceram', v: -9, kind: 'out' },
+      { name: 'Trancamentos', v: -5, kind: 'out' },
+      { name: 'Fim', v: 414, kind: 'level' },
+    ],
+    cancels: [
+      { label: 'Financeiro', n: 6 },
+      { label: 'Mudou de cidade', n: 3 },
+      { label: 'Foi para outra', n: 2 },
+      { label: 'Insatisfação', n: 2 },
+      { label: 'Saúde ou lesão', n: 1 },
+    ],
+    upgrades: 11, upgradesDelta: '+3',
+    locks: -5, locksDetail: '9 trancaram · 4 destrancaram',
+    split: {
+      ana: { renew: 12, wont: 3, lapsed: 2 },
+      diego: { renew: 7, wont: 3, lapsed: 2 },
+      larissa: { renew: 13, wont: 3, lapsed: 2 },
+      marcos: { renew: 8, wont: 2, lapsed: 3 },
+    },
+    renewWhen: [
+      { label: 'Antes de vencer', n: 22 },
+      { label: 'No vencimento', n: 12 },
+      { label: 'Depois, na tolerância', n: 5 },
+    ],
+    milestones: [
+      { d: 90, done: 52, total: 66 },
+      { d: 60, done: 41, total: 62 },
+      { d: 30, done: 33, total: 59 },
+    ],
+    wont: [
+      { label: 'Financeiro', n: 5 },
+      { label: 'Mudou de cidade', n: 3 },
+      { label: 'Insatisfação', n: 2 },
+      { label: 'Outro', n: 1 },
+    ],
+    upcoming: null,
+    team: [
+      { key: 'ana', prosp: 79, entered: 6, upgrades: 4, late: null },
+      { key: 'diego', prosp: 66, entered: 4, upgrades: 2, late: null },
+      { key: 'larissa', prosp: 77, entered: 5, upgrades: 4, late: null },
+      { key: 'marcos', prosp: null, entered: 3, upgrades: 1, late: null },
+    ],
+    highlights: [
+      { text: 'Cancelamentos por financeiro: de 3 para 6', delta: '3 pessoas', dir: 'up', bad: true },
+      { text: 'Contatos no marco de 60 dias: de 71% para 66%', delta: '5 p.p.', dir: 'down', bad: true },
+      { text: 'Upgrades: de 8 para 11', delta: '3 vendas', dir: 'up', bad: false },
+    ],
+  },
+
+  ago: {
+    label: 'Agosto 2026', short: 'agosto', running: false, order: 1,
+    range: 'agosto inteiro', compareDefault: 'jul',
+    year: 2026, mIdx: 7,
+    daysMeta: 21, daysClosed: 21,
+    meta: { done: 62, total: 84, pct: 74 },
+    prosp: { done: 441, target: 630, pct: 70 },
+    prospTarget: 30,
+    daily: [24, 19, 22, 26, 18, 21, 23, 17, 25, 20, 22, 16, 24, 21, 19, 23, 20, 18, 22, 21, 20],
+    hitsBy: {
+      ana:     [1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+      diego:   [1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0],
+      larissa: [1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0],
+      marcos:  [1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1],
+    },
+    active: { n: 417, delta: 3 },
+    churn: { pct: 1.2 },
+    renew: { pct: 74 },
+    sparks: { meta: [66, 70, 73, 71, 74, 0], prosp: [70, 66, 71, 74, 70, 0], active: [402, 409, 420, 414, 417, 0], churn: [1.5, 1.1, 1.4, 1.9, 1.2, 0], renew: [69, 75, 72, 66, 74, 0] },
+    tasks: [
+      { label: 'Novos leads', v: 341, c: 372 },
+      { label: 'Contatos', v: 276, c: 258 },
+      { label: 'Visitas e aulas', v: 96, c: 104 },
+      { label: 'Atrasados', v: 112, c: 88 },
+      { label: 'Renovações', v: 64, c: 71 },
+      { label: 'Vencidos', v: 19, c: 24 },
+    ],
+    late: null,
+    bridge: [
+      { name: 'Início', v: 414, kind: 'level' },
+      { name: 'Entraram', v: 16, kind: 'in' },
+      { name: 'Voltaram', v: 3, kind: 'in' },
+      { name: 'Cancelaram', v: -8, kind: 'out' },
+      { name: 'Venceram', v: -6, kind: 'out' },
+      { name: 'Trancamentos', v: -2, kind: 'out' },
+      { name: 'Fim', v: 417, kind: 'level' },
+    ],
+    cancels: [
+      { label: 'Financeiro', n: 4 },
+      { label: 'Insatisfação', n: 2 },
+      { label: 'Saúde ou lesão', n: 1 },
+      { label: 'Outro', n: 1 },
+    ],
+    upgrades: 8, upgradesDelta: '−3',
+    locks: -2, locksDetail: '6 trancaram · 4 destrancaram',
+    split: {
+      ana: { renew: 11, wont: 2, lapsed: 1 },
+      diego: { renew: 8, wont: 2, lapsed: 2 },
+      larissa: { renew: 10, wont: 1, lapsed: 2 },
+      marcos: { renew: 5, wont: 1, lapsed: 1 },
+    },
+    renewWhen: [
+      { label: 'Antes de vencer', n: 21 },
+      { label: 'No vencimento', n: 9 },
+      { label: 'Depois, na tolerância', n: 4 },
+    ],
+    milestones: [
+      { d: 90, done: 55, total: 63 },
+      { d: 60, done: 43, total: 61 },
+      { d: 30, done: 42, total: 59 },
+    ],
+    wont: [
+      { label: 'Financeiro', n: 3 },
+      { label: 'Foi para outra', n: 2 },
+      { label: 'Outro', n: 1 },
+    ],
+    upcoming: null,
+    team: [
+      { key: 'ana', prosp: 74, entered: 5, upgrades: 3, late: null },
+      { key: 'diego', prosp: 63, entered: 4, upgrades: 2, late: null },
+      { key: 'larissa', prosp: 73, entered: 4, upgrades: 3, late: null },
+      { key: 'marcos', prosp: null, entered: 3, upgrades: 0, late: null },
+    ],
+    highlights: [
+      { text: 'Tarefas de atrasados concluídas: de 88 para 112', delta: '24 tarefas', dir: 'up', bad: false },
+      { text: 'Contatos no marco de 30 dias: de 56% para 71%', delta: '15 p.p.', dir: 'up', bad: false },
+      { text: 'Upgrades: de 11 para 8', delta: '3 vendas', dir: 'down', bad: true },
+    ],
+  },
+
+  set: {
+    label: 'Setembro 2026', short: 'setembro', running: true, order: 2,
+    range: '1 a 11 de setembro', compareDefault: 'ago',
+    year: 2026, mIdx: 8,
+    daysMeta: 22, daysClosed: 8, elapsed: 9,
+    meta: { done: 22, total: 32, pct: 69 },
+    prosp: { done: 214, target: 270, pct: 79 },
+    active: { n: 419, delta: 2 },
+    churn: { pct: 0.5 },
+    renew: { pct: 82 },
+    sparks: { meta: [66, 70, 73, 71, 74, 69], prosp: [70, 66, 71, 74, 70, 79], active: [402, 409, 420, 414, 417, 419], churn: [1.5, 1.1, 1.4, 1.9, 1.2, 0.5], renew: [69, 75, 72, 66, 74, 82] },
+    // 9 dias decorridos; o último é hoje, parcial. Alvo da equipe: 30 por dia.
+    prospTarget: 30,
+    daily: [34, 28, 31, 19, 26, 33, 22, 18, 3],
+    hitsBy: {
+      ana:     [1, 1, 1, 1, 0, 1, 1, 1, 1],
+      diego:   [1, 1, 0, 1, 1, 1, 0, 0, 0],
+      larissa: [1, 1, 1, 1, 0, 1, 1, 0, 0],
+      marcos:  [0, 1, 0, 0, 1, 0, 1, 1, 0],
+    },
+    todayIdx: 8,
+    tasks: [
+      { label: 'Novos leads', v: 148, c: 131 },
+      { label: 'Contatos', v: 96, c: 104 },
+      { label: 'Visitas e aulas', v: 41, c: 37 },
+      { label: 'Atrasados', v: 33, c: 44 },
+      { label: 'Renovações', v: 27, c: 22 },
+      { label: 'Vencidos', v: 8, c: 11 },
+    ],
+    late: { total: 21, rows: [{ key: 'diego', n: 9 }, { key: 'larissa', n: 6 }, { key: 'ana', n: 4 }, { key: 'marcos', n: 2 }] },
+    bridge: [
+      { name: 'Início', v: 417, kind: 'level' },
+      { name: 'Entraram', v: 9, kind: 'in' },
+      { name: 'Voltaram', v: 2, kind: 'in' },
+      { name: 'Cancelaram', v: -2, kind: 'out' },
+      { name: 'Venceram', v: -3, kind: 'out' },
+      { name: 'Trancamentos', v: -4, kind: 'out' },
+      { name: 'Fim', v: 419, kind: 'level' },
+    ],
+    cancels: [
+      { label: 'Financeiro', n: 1 },
+      { label: 'Insatisfação', n: 1 },
+    ],
+    upgrades: 4, upgradesDelta: '+1',
+    locks: -4, locksDetail: '7 trancaram · 3 destrancaram',
+    split: {
+      ana: { renew: 6, wont: 0, lapsed: 1, pending: 3 },
+      diego: { renew: 3, wont: 1, lapsed: 0, pending: 3 },
+      larissa: { renew: 7, wont: 0, lapsed: 1, pending: 4 },
+      marcos: { renew: 2, wont: 1, lapsed: 0, pending: 2 },
+    },
+    renewWhen: [
+      { label: 'Antes de vencer', n: 12 },
+      { label: 'No vencimento', n: 4 },
+      { label: 'Depois, na tolerância', n: 2 },
+    ],
+    milestones: [
+      { d: 90, done: 24, total: 28 },
+      { d: 60, done: 22, total: 31 },
+      { d: 30, done: 19, total: 34 },
+    ],
+    wont: [
+      { label: 'Financeiro', n: 1 },
+      { label: 'Mudou de cidade', n: 1 },
+    ],
+    upcoming: [{ label: 'em 30 dias', n: 29 }, { label: 'em 60 dias', n: 26 }, { label: 'em 90 dias', n: 31 }],
+    team: [
+      { key: 'ana', prosp: 82, entered: 3, upgrades: 2, late: 4 },
+      { key: 'diego', prosp: 71, entered: 2, upgrades: 1, late: 9 },
+      { key: 'larissa', prosp: 82, entered: 3, upgrades: 1, late: 6 },
+      { key: 'marcos', prosp: null, entered: 1, upgrades: 0, late: 2 },
+    ],
+    highlights: [
+      { text: 'Contatos no marco de 30 dias: de 71% para 56%', delta: '15 p.p.', dir: 'down', bad: true },
+      { text: 'Tarefas de atrasados concluídas: de 44 para 33', delta: '11 tarefas', dir: 'down', bad: true },
+      { text: 'Renovações fechadas antes de vencer: de 8 para 12', delta: '4 contratos', dir: 'up', bad: false },
+    ],
+  },
+};
+
+// Dias de meta vêm da configuração da academia (padrão seg a sex), então a
+// lista de dias é derivada do calendário, não digitada.
+function metaDays(year, mIdx) {
+  const out = [];
+  const d = new Date(year, mIdx, 1);
+  while (d.getMonth() === mIdx) {
+    const w = d.getDay();
+    if (w >= 1 && w <= 5) out.push({ d: d.getDate(), w });
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+const ORDER = ['jul', 'ago', 'set'];
+const WEEKDAYS = ['Seg', 'Ter', 'Qua', 'Qui', 'Sex'];
+const ARROW_UP = 'M12 19V5M5 12l7-7 7 7';
+const ARROW_DOWN = 'M12 5v14M19 12l-7 7-7-7';
+
+const br = (n) => Number(n).toLocaleString('pt-BR');
+const pp = (v) => String(v).replace('.', ',');
+
+class Component extends DCLogic {
+  state = { theme: 'light', month: 'set', compare: null, compareOn: true, person: 'todos' };
+
+  componentDidMount() { this.applyTheme(); }
+  componentDidUpdate() { this.applyTheme(); }
+  applyTheme() {
+    const t = this.state.theme === 'dark' ? 'dark' : 'light';
+    if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t;
+  }
+
+  step(dir) {
+    const i = ORDER.indexOf(this.state.month) + dir;
+    if (i < 0 || i >= ORDER.length) return;
+    this.setState({ month: ORDER[i], compare: null });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const dark = s.theme === 'dark';
+    const M = MONTHS[s.month];
+    const cmpKey = s.compare || M.compareDefault;
+    const CMP = MONTHS[cmpKey];
+    const cmpShort = CMP ? CMP.short : M.short + ' de 2025';
+
+    const person = s.person === 'todos' ? null : PEOPLE.find(p => p.key === s.person);
+
+    // Desfecho da renovação: a carteira da pessoa é a fonte, o total da equipe
+    // é a soma. Taxa, sub e barra saem todos daqui, então não podem discordar.
+    const OUT_LABEL = { renew: 'Renovou', wont: 'Não vai renovar', lapsed: 'Venceu sem renovar', pending: 'Ainda vai vencer' };
+    const OUT_KEYS = M.running ? ['renew', 'wont', 'lapsed', 'pending'] : ['renew', 'wont', 'lapsed'];
+    const counts = {};
+    OUT_KEYS.forEach(k => {
+      counts[k] = person
+        ? (M.split[person.key][k] || 0)
+        : PEOPLE.reduce((a, p) => a + (M.split[p.key][k] || 0), 0);
+    });
+    const decided = counts.renew + counts.wont + counts.lapsed;
+    const renewPctCalc = decided > 0 ? Math.round((counts.renew / decided) * 100) : 0;
+    const outcomeRows = OUT_KEYS.map(k => ({ key: k, label: OUT_LABEL[k], n: counts[k] }));
+    const share = person ? person.share : 1;
+    // Uma pessoa selecionada escala os gráficos de volume; as taxas vêm da linha dela.
+    const sc = (n) => Math.max(0, Math.round(n * share));
+    const teamRow = person ? M.team.find(t => t.key === person.key) : null;
+
+    const pctBar = (v, max) => (max > 0 ? Math.max(2, Math.round((v / max) * 100)) : 0) + '%';
+
+    const days = metaDays(M.year, M.mIdx);
+    const todayIdx = M.todayIdx == null ? -1 : M.todayIdx;
+    const pKey = person ? person.key : null;
+
+    const metricsOf = (key, who) => {
+      const X = MONTHS[key];
+      if (!X) return null;
+      const h = X.hitsBy;
+      const cN = X.todayIdx == null ? h.ana.length : X.todayIdx;
+      const sum = (arr) => arr.slice(0, cN).reduce((a, b) => a + b, 0);
+      const metaDone = who ? sum(h[who]) : PEOPLE.reduce((a, p) => a + sum(h[p.key]), 0);
+      const metaTotal = who ? cN : cN * PEOPLE.length;
+      const sp = who
+        ? X.split[who]
+        : PEOPLE.reduce((a, p) => ({
+            renew: a.renew + X.split[p.key].renew,
+            wont: a.wont + X.split[p.key].wont,
+            lapsed: a.lapsed + X.split[p.key].lapsed,
+          }), { renew: 0, wont: 0, lapsed: 0 });
+      const dec = sp.renew + sp.wont + sp.lapsed;
+      const row = who ? X.team.find(t => t.key === who) : null;
+      return {
+        closedN: cN,
+        metaDone, metaTotal,
+        metaPct: metaTotal ? Math.round((metaDone / metaTotal) * 100) : 0,
+        renewDone: sp.renew, renewDec: dec,
+        renewPct: dec ? Math.round((sp.renew / dec) * 100) : 0,
+        prospPct: who ? (row ? row.prosp : null) : X.prosp.pct,
+      };
+    };
+
+    const cur = metricsOf(s.month, pKey);
+    const teamCur = person ? metricsOf(s.month, null) : cur;
+    const base = metricsOf(cmpKey, pKey);
+    // Série: a equipe tem seis meses autorados; por pessoa só existem os meses
+    // no modelo, então a tendência encurta em vez de mentir.
+    const upTo = ORDER.slice(0, ORDER.indexOf(s.month) + 1);
+    const seriesOf = (pick, teamArr) => person
+      ? { values: upTo.map(k => pick(metricsOf(k, pKey))), names: upTo.map(k => MONTHS[k].short.slice(0, 3)) }
+      : { values: teamArr, names: NAMES };
+
+    const hb = M.hitsBy;
+    const nDays = hb.ana.length;
+    const closedN = cur.closedN;
+    const hitsTeam = hb.ana.map((_, i) => PEOPLE.reduce((a, p) => a + hb[p.key][i], 0));
+    const sumTo = (arr, n) => arr.slice(0, n).reduce((a, b) => a + b, 0);
+
+    // ── resumo ──
+    const metaPct = cur.metaPct;
+    const metaSub = person
+      ? br(cur.metaDone) + ' de ' + br(cur.metaTotal) + ' dias'
+      : br(cur.metaDone) + ' de ' + br(cur.metaTotal) + ' dias-pessoa';
+    const prospOff = Boolean(teamRow) && teamRow.prosp === null;
+    const prospPct = cur.prospPct;
+
+    const delta = (v, prev, unit) => {
+      if (prev == null) return { text: 'sem base', none: true };
+      const d = Math.round((v - prev) * 10) / 10;
+      if (d === 0) return { text: 'igual', fg: 'var(--muted)' };
+      const up = d > 0;
+      return { text: (up ? '+' : '−') + pp(Math.abs(d)) + unit, up };
+    };
+
+    const cmpOn = s.compareOn;
+    const mk = (label, value, sub, d, spark, help, good, valueFg) => {
+      const neutral = d.text === 'igual';
+      const ok = d.up === good;
+      return {
+        label, value, sub, help,
+        helpLabel: 'O que é "' + label + '"?',
+        valueFg: valueFg || 'var(--fg)',
+        hasDelta: cmpOn && !d.none,
+        delta: d.text,
+        deltaArrow: neutral ? '' : (d.up ? '▲' : '▼'),
+        deltaFg: neutral ? 'var(--muted)' : (ok ? 'var(--green-700)' : 'var(--red-700)'),
+        deltaBg: neutral ? 'var(--soft2)' : (ok ? 'var(--green-t)' : 'var(--red-t)'),
+        ...spark,
+      };
+    };
+
+    const NAMES = ['abr', 'mai', 'jun', 'jul', 'ago', 'set'];
+    const W = 120, HH = 42;
+    const sparkOf = (src, fmt) => {
+      const arr = src.values, names = src.names;
+      const live = arr.filter(v => v != null && v > 0);
+      if (live.length < 2) return { hasSpark: false, sparkPath: '', sparkArea: '', sparkLabel: '', sparkColor: 'var(--brand)', sparkFrom: '', sparkTo: '' };
+      const max = Math.max.apply(null, live);
+      const min = Math.min.apply(null, live);
+      const range = max - min || 1;
+      const stepX = W / (live.length - 1);
+      const yOf = (v) => HH - 2 - ((v - min) / range) * (HH - 4);
+      const line = live.map((v, i) => (i ? 'L' : 'M') + (i * stepX).toFixed(1) + ',' + yOf(v).toFixed(1)).join(' ');
+      const last = live.length - 1;
+      return {
+        hasSpark: true,
+        sparkPath: line,
+        sparkArea: line + ' L' + W + ',' + HH + ' L0,' + HH + ' Z',
+        sparkLabel: live.length + ' meses · ' + live.map((v, i) => names[i] + ' ' + fmt(v)).join(' · ')
+          + (M.running ? ' (' + names[last] + ' parcial)' : ''),
+        sparkColor: 'var(--brand)',
+        sparkFrom: names[0],
+        sparkTo: names[last] + (M.running ? ' · parcial' : ''),
+      };
+    };
+
+    const pctFmt = (v) => pp(v) + '%';
+
+    const summaryRaw = [
+      mk('Meta diária', metaPct + '%', metaSub,
+        delta(metaPct, base ? base.metaPct : null, ' p.p.'),
+        sparkOf(seriesOf(m => m.metaPct, M.sparks.meta), pctFmt),
+        'Dias com meta batida ÷ dias de meta do mês. No mês em andamento conta só os dias já fechados; hoje aparece à parte na régua de dias.', true),
+      prospOff
+        ? { label: 'Prospecção', value: 'Desligada', sub: 'alvo 0 no cadastro', help: 'Alvo diário 0 no cadastro: a pessoa está sem cota de prospecção. Não é 0%.', helpLabel: 'O que é "Prospecção"?', valueFg: 'var(--muted)', hasDelta: false, delta: '', deltaArrow: '', deltaFg: 'var(--muted)', deltaBg: 'transparent', hasSpark: false, sparkPath: '', sparkArea: '', sparkLabel: '', sparkColor: 'var(--brand)', sparkFrom: '', sparkTo: '' }
+        : mk('Prospecção', prospPct + '%',
+            person ? 'alvo diário ativo' : br(M.prosp.done) + ' de ' + br(M.prosp.target) + ' ações',
+            delta(prospPct, base ? base.prospPct : null, ' p.p.'),
+            sparkOf(seriesOf(m => m.prospPct, M.sparks.prosp), pctFmt),
+            'Ações de prospecção ÷ alvo do mês (alvo diário da pessoa × dias de meta).', true),
+      mk('Clientes ativos', br(M.active.n),
+        person ? 'base da academia, não da carteira' : (M.running ? 'com contrato vigente hoje' : 'no fim do mês'),
+        { text: (M.active.delta >= 0 ? '+' : '−') + Math.abs(M.active.delta), up: M.active.delta >= 0 },
+        sparkOf({ values: M.sparks.active, names: NAMES }, br),
+        'Pessoas com contrato vigente no fim do mês. Quem está trancado conta à parte.', true),
+      mk('Churn', pp(M.churn.pct) + '%', person ? 'base da academia' : 'saídas definitivas',
+        delta(M.churn.pct, base ? MONTHS[cmpKey].churn.pct : null, ' p.p.'), sparkOf({ values: M.sparks.churn, names: NAMES }, pctFmt),
+        'Cancelamentos mais vencidos que passaram da tolerância ÷ clientes ativos no início do mês.', false),
+      mk('Taxa de renovação', cur.renewPct + '%',
+        br(cur.renewDone) + ' de ' + br(cur.renewDec) + (M.running ? ' com desfecho' : ' vencendo'),
+        delta(cur.renewPct, base ? base.renewPct : null, ' p.p.'),
+        sparkOf(seriesOf(m => m.renewPct, M.sparks.renew), pctFmt),
+        'Renovados ÷ vencendo. No mês em andamento, renovados ÷ contratos que já tiveram desfecho.', true),
+    ];
+
+    // ── prospecção por dia + régua de dias ──
+    // Alvo 0 no cadastro não é alvo pequeno: o card inteiro sai da tela.
+    const prospOffPerson = Boolean(teamRow) && teamRow.prosp === null;
+    const perDay = person
+      ? Math.round((M.prospTarget || 30) * share)
+      : (M.prospTarget || 30);
+    const target = prospOffPerson ? 0 : perDay;
+    const pd = (M.daily || []).map((v, i) => ({
+      day: String(days[i] ? days[i].d : ''),
+      v: Math.round(v * share),
+      today: i === todayIdx,
+    }));
+    const pdMax = Math.max.apply(null, pd.map(d => d.v).concat([target, 1]));
+
+    // ── ponte ──
+    let run = M.bridge[0].v;
+    const levels = M.bridge.map((b, i) => {
+      if (i === 0) return { from: b.v, to: b.v, val: b.v };
+      if (b.kind === 'level') return { from: b.v, to: b.v, val: b.v };
+      const from = run;
+      run = run + b.v;
+      return { from: Math.min(from, run), to: Math.max(from, run), val: run };
+    });
+    const all = levels.flatMap(l => [l.from, l.to]);
+    const lo = Math.min.apply(null, all);
+    const hi = Math.max.apply(null, all);
+    const pad = Math.max(Math.round((hi - lo) * 0.35), 3);
+    const floor = lo - pad, ceil = hi + pad;
+    const H = 144;
+    const y = (v) => ((v - floor) / (ceil - floor)) * H;
+
+    // ── desfecho ──
+    const outTotal = outcomeRows.reduce((a, b) => a + b.n, 0);
+    const OUT_COLOR = { renew: 'var(--green)', wont: 'var(--amber)', lapsed: 'var(--red)', pending: 'var(--grey)' };
+    const OUT_FG = { renew: 'var(--green-700)', wont: 'var(--amber-700)', lapsed: 'var(--red-700)', pending: 'var(--muted)' };
+
+    const cancelTotalN = M.cancels.reduce((a, b) => a + b.n, 0);
+    const wontTotalN = M.wont.reduce((a, b) => a + b.n, 0);
+    // Paleta segmentada do BreakdownCard (dashTokens.BREAKDOWN_PALETTE):
+    // laranja → azul → navy → cinza → verde.
+    const PALETTE = dark
+      ? ['var(--orange)', 'var(--brand-500)', '#94a3b8', '#475569', 'var(--green)']
+      : ['var(--orange)', 'var(--brand)', '#0E1A40', '#94a3b8', 'var(--green)'];
+    const breakdownCard = (items, total, o) => {
+      const rows = (items || []).map((it, i) => ({
+        label: it.label, n: br(it.n),
+        pctN: total > 0 ? Math.round((it.n / total) * 100) : 0,
+        bg: PALETTE[i % PALETTE.length],
+        edge: i === 0 ? '0' : '2px solid var(--card)',
+        weight: i === 0 ? '600' : '400',
+        fg: i === 0 ? 'var(--fg)' : 'var(--fg2)',
+        raw: it,
+      }));
+      const leader = rows[0];
+      return {
+        hasItems: rows.length > 0,
+        isEmpty: rows.length === 0,
+        emptyText: o.empty,
+        sub: br(total) + ' ' + o.unit,
+        eyebrow: o.eyebrow,
+        leaderN: leader ? leader.n : '',
+        leaderName: leader ? leader.label : '',
+        leaderMeta: leader ? leader.n + ' de ' + br(total) + ' · ' + leader.pctN + '%' : '',
+        capsuleLabel: 'Participação: ' + rows.map(r => r.label + ' ' + r.pctN + '%').join(', '),
+        items: rows.map(r => ({
+          label: r.label, n: r.n, pct: r.pctN + '%',
+          w: r.pctN + '%',
+          bg: r.bg, edge: r.edge, weight: r.weight, fg: r.fg,
+          showPct: r.pctN >= 20,
+          title: r.label + ': ' + r.n + ' de ' + br(total) + ' · ' + r.pctN + '%',
+        })),
+      };
+    };
+    const taskMax = Math.max.apply(null, M.tasks.flatMap(t => [t.v, t.c]).concat([1]));
+    // "Quando renovou" reparte as renovações da carteira ativa nas três janelas,
+    // com o resto sobrando na primeira, para o total sempre fechar.
+    const whenTeam = M.renewWhen.reduce((a, b) => a + b.n, 0);
+    let left = counts.renew;
+    const renewWhenRows = M.renewWhen.map((r, i) => {
+      if (i === M.renewWhen.length - 1) return { label: r.label, n: left };
+      const n = Math.round((r.n / whenTeam) * counts.renew);
+      left -= n;
+      return { label: r.label, n };
+    });
+    const whenMax = Math.max.apply(null, renewWhenRows.map(r => r.n).concat([1]));
+    const lateMax = M.late ? Math.max.apply(null, M.late.rows.map(r => r.n).concat([1])) : 1;
+
+    const SCALE = dark
+      ? ['#2B59FF', '#5A7FFF', '#8FB0FF', '#C9D8FF']
+      : ['#8FB0FF', '#5A7FFF', '#2B59FF', '#1C3FC4'];
+
+    const teamSize = PEOPLE.length;
+    const totalLateN = M.late ? M.late.total : 0;
+
+    return {
+      // controles
+      monthLabel: M.label,
+      subline: cmpOn
+        ? (M.running
+            ? M.range + ' comparado com os ' + (M.elapsed + 2) + ' primeiros dias de ' + cmpShort + '. O mês está em andamento, então a comparação é pró-rata.'
+            : M.range + ' comparado com ' + cmpShort + '. Mês fechado.')
+        : (M.running
+            ? M.range + '. O mês está em andamento: hoje conta à parte.'
+            : M.range + '. Mês fechado.'),
+      compareOn: cmpOn,
+      compareOff: !cmpOn,
+      toggleCompare: () => this.setState(x => ({ compareOn: !x.compareOn })),
+
+      month: s.month,
+      setMonth: (e) => this.setState({ month: e.target.value, compare: null }),
+      monthOptions: ORDER.slice().reverse().map(k => ({
+        key: k,
+        label: MONTHS[k].label + (MONTHS[k].running ? ' · em andamento' : ''),
+      })),
+      compareKey: cmpKey,
+      setCompare: (e) => this.setState({ compare: e.target.value }),
+      compareOptions: ORDER.filter(k => MONTHS[k].order < M.order).slice().reverse()
+        .map(k => ({ key: k, label: MONTHS[k].label }))
+        .concat([{ key: 'ano', label: M.short + ' de 2025' }]),
+      person: s.person,
+      setPerson: (e) => this.setState({ person: e.target.value }),
+      peopleOptions: PEOPLE,
+      toolbarNote: cmpOn
+        ? (M.running ? 'Comparação pró-rata: mesmos ' + (M.elapsed + 2) + ' primeiros dias' : 'Mês fechado contra mês fechado')
+        : 'Sem comparativo',
+      cmpEdge: cmpOn ? 'var(--brand)' : 'var(--border)',
+      cmpBg: cmpOn ? 'var(--brand-50)' : 'var(--card)',
+      cmpFg: cmpOn ? 'var(--brand-700)' : 'var(--fg2)',
+      boxEdge: cmpOn ? 'var(--brand)' : 'var(--border)',
+      boxBg: cmpOn ? 'var(--brand)' : 'transparent',
+      prevMonth: () => this.step(-1),
+      nextMonth: () => this.step(1),
+      atLatest: s.month === ORDER[ORDER.length - 1],
+      nextOpacity: s.month === ORDER[ORDER.length - 1] ? '.35' : '1',
+      compareKey: cmpKey,
+      compareShort: cmpShort,
+
+      person: s.person,
+      personSelected: Boolean(person),
+      personName: person ? person.name : '',
+      personIni: person ? person.ini : '',
+      clearPerson: () => this.setState({ person: 'todos' }),
+      personEdge: person ? 'var(--brand)' : 'var(--border)',
+      personBg: person ? 'var(--brand-50)' : 'var(--card)',
+      personFg: person ? 'var(--brand-700)' : 'var(--fg)',
+      personIconFg: person ? 'var(--brand-700)' : 'var(--muted)',
+
+      running: M.running,
+      closed: !M.running,
+      showTeam: !person,
+      // A quebra por pessoa já está na coluna da tabela; o card só entra
+      // quando a tabela sai (pessoa filtrada). Aí as tarefas cedem metade.
+      lateCardVisible: M.running && Boolean(person),
+      tasksSpan: M.running && !person ? 'span 2' : 'auto',
+
+      // destaques
+      highlights: M.highlights.map(h => ({
+        text: h.text,
+        delta: (h.dir === 'up' ? '▲ ' : '▼ ') + h.delta,
+        verdict: h.bad ? 'piorou' : 'melhorou',
+        arrow: h.dir === 'up' ? ARROW_UP : ARROW_DOWN,
+        bg: h.bad ? 'var(--red-t)' : 'var(--green-t)',
+        iconBg: h.bad ? 'var(--red)' : 'var(--green)',
+        fg: h.bad ? 'var(--red-700)' : 'var(--green-700)',
+      })),
+
+      // resumo
+      summary: summaryRaw.map((k, i) => ({ ...k, divider: i === 0 ? 'transparent' : 'var(--rule)' })),
+
+      // prospecção por dia
+      prospCardVisible: !prospOffPerson,
+      // Sem o card de prospecção, o calendário abre a linha na largura que ele
+      // realmente tem e a tabela de tarefas fica com a trilha larga.
+      rotinaCols: prospOffPerson
+        ? 'minmax(0,505px) minmax(0,1fr)'
+        : 'minmax(0,1.55fr) minmax(0,1fr)',
+      lateCol: prospOffPerson ? '1 / -1' : 'auto',
+      prospTargetLabel: br(target) + '/dia',
+      prospTargetBottom: Math.round((target / pdMax) * 108) + 'px',
+      prospBarGap: pd.length > 14 ? '3px' : '6px',
+      prospDays: pd.map(d => {
+        const v = d.v;
+        return {
+          day: d.day, value: br(v),
+          showValue: pd.length <= 14,
+          h: Math.max(Math.round((v / pdMax) * 108), 3) + 'px',
+          bg: d.today ? 'var(--orange-t)' : (v >= target ? 'var(--orange)' : 'var(--brand-200)'),
+          labelFg: d.today ? 'var(--faint)' : (v >= target ? 'var(--orange-700)' : 'var(--muted)'),
+          dayFg: d.today ? 'var(--fg)' : 'var(--muted)',
+          dayWeight: d.today ? '700' : '500',
+          title: 'Dia ' + d.day + ': ' + br(v) + ' ações' + (d.today ? ' até agora (hoje)' : '') + ' · alvo ' + br(target),
+        };
+      }),
+
+      // dias de meta
+      weekdayLabels: WEEKDAYS.map(w => ({ label: w })),
+      calendar: (() => {
+        const lead = days.length ? days[0].w - 1 : 0;
+        const cells = [];
+        for (let i = 0; i < lead; i++) cells.push(null);
+        days.forEach((day, i) => {
+          const has = i < nDays;
+          cells.push(has
+            ? { d: day.d, n: hitsTeam[i], me: person ? hb[person.key][i] : null, today: i === todayIdx }
+            : { d: day.d, f: true });
+        });
+        while (cells.length % 5 !== 0) cells.push(null);
+        return cells.map(c => {
+          if (!c) return { day: '', mark: '', bg: 'transparent', borderStyle: '0', dayFg: 'transparent', markFg: 'transparent', title: '', cursor: 'default' };
+          if (c.f) return { day: String(c.d), mark: '', bg: 'transparent', borderStyle: '1px dashed var(--border)', dayFg: 'var(--faint)', markFg: 'transparent', title: 'Dia ' + c.d + ': ainda não aconteceu', cursor: 'default' };
+          if (person) {
+            const ok = c.me === 1;
+            return {
+              day: String(c.d), mark: c.today ? 'hoje' : (ok ? 'bateu' : 'não'),
+              bg: c.today ? 'var(--brand-50)' : (ok ? 'var(--brand)' : 'var(--soft2)'),
+              borderStyle: c.today ? '1px dashed var(--brand)' : '0',
+              dayFg: ok && !c.today ? '#fff' : 'var(--fg)',
+              markFg: ok && !c.today ? 'rgba(255,255,255,.75)' : 'var(--muted)',
+              title: 'Dia ' + c.d + ': ' + (c.today ? 'hoje, ainda em curso' : (ok ? 'bateu a meta' : 'não bateu')),
+              cursor: 'help',
+            };
+          }
+          const idx = Math.max(0, Math.min(SCALE.length - 1, c.n - 1));
+          const filled = c.n > 0;
+          const strong = c.n >= 3;
+          return {
+            day: String(c.d), mark: c.today ? 'hoje' : br(c.n),
+            bg: c.today ? 'var(--brand-50)' : (filled ? SCALE[idx] : 'var(--soft2)'),
+            borderStyle: c.today ? '1px dashed var(--brand)' : '0',
+            dayFg: strong && !c.today ? '#fff' : 'var(--fg)',
+            markFg: strong && !c.today ? 'rgba(255,255,255,.8)' : 'var(--muted)',
+            title: 'Dia ' + c.d + ': ' + c.n + ' de ' + teamSize + ' bateram' + (c.today ? ' até agora (hoje)' : ''),
+            cursor: 'help',
+          };
+        });
+      })(),
+      scaleLabel: person ? 'bateu / não bateu' : 'quantos bateram',
+      scaleSwatches: person
+        ? [
+            { bg: 'var(--soft2)', borderStyle: '0', label: 'não', title: 'Não bateu a meta' },
+            { bg: 'var(--brand)', borderStyle: '0', label: 'bateu', title: 'Bateu a meta' },
+          ]
+        : [{ bg: 'var(--soft2)', borderStyle: '0', label: '0', title: 'Ninguém bateu' }].concat(
+            SCALE.map((c, i) => ({ bg: c, borderStyle: '0', label: String(i + 1), title: (i + 1) + ' de ' + teamSize + ' bateram' }))
+          ),
+
+      // tarefas
+      tasks: M.tasks.map(t => {
+        const v = sc(t.v), c = sc(t.c);
+        const d = v - c;
+        return {
+          label: t.label, value: br(v),
+          w: pctBar(v, taskMax * share || 1),
+          cmpLeft: pctBar(c, taskMax * share || 1),
+          delta: d === 0 ? '=' : (d > 0 ? '+' : '−') + br(Math.abs(d)),
+          deltaFg: d === 0 ? 'var(--muted)' : (d > 0 ? 'var(--green-700)' : 'var(--red-700)'),
+          title: t.label + ': ' + br(v) + ' concluídas',
+          compareTitle: cmpShort + ': ' + br(c),
+        };
+      }),
+
+      // atrasados agora
+      lateTotal: br(person && teamRow ? teamRow.late : totalLateN),
+      lateRows: (M.late ? M.late.rows : []).filter(r => !person || r.key === person.key).map(r => {
+        const p = PEOPLE.find(x => x.key === r.key);
+        return {
+          name: p.name, ini: p.ini, n: br(r.n),
+          w: pctBar(r.n, lateMax),
+          fg: r.n >= 8 ? 'var(--red-700)' : 'var(--fg)',
+          title: p.name + ': ' + r.n + ' contatos atrasados',
+        };
+      }),
+
+      // ponte
+      bridge: M.bridge.map((b, i) => {
+        const L = levels[i];
+        const isLevel = b.kind === 'level';
+        const bottom = isLevel ? 0 : y(L.from);
+        const h = isLevel ? y(L.val) : Math.max(y(L.to) - y(L.from), 3);
+        const bg = isLevel ? 'var(--soft2)' : (b.kind === 'in' ? 'var(--brand)' : 'var(--red)');
+        return {
+          name: b.name,
+          label: isLevel ? br(b.v) : (b.v > 0 ? '+' + br(b.v) : '−' + br(Math.abs(b.v))),
+          labelBottom: Math.round(bottom + h + 6) + 'px',
+          labelFg: isLevel ? 'var(--fg)' : (b.kind === 'in' ? 'var(--brand-700)' : 'var(--red-700)'),
+          bottom: Math.round(bottom) + 'px',
+          h: Math.round(h) + 'px',
+          bg,
+          nameFg: isLevel ? 'var(--fg2)' : 'var(--muted)',
+          nameWeight: isLevel ? '700' : '500',
+          title: isLevel
+            ? b.name + ': ' + br(b.v) + ' clientes ativos'
+            : b.name + ': ' + (b.v > 0 ? '+' : '−') + Math.abs(b.v) + ' · base em ' + br(L.val),
+        };
+      }),
+
+      cancelCard: breakdownCard(M.cancels, cancelTotalN, {
+        eyebrow: 'Motivo mais comum',
+        unit: 'cancelamentos',
+        empty: 'Nenhum cancelamento neste mês.',
+      }),
+
+      upgrades: br(teamRow ? teamRow.upgrades : M.upgrades),
+      upgradesDelta: M.upgradesDelta,
+      upgradesFg: M.upgradesDelta.startsWith('+') ? 'var(--green-700)' : 'var(--red-700)',
+      locksLabel: (M.locks > 0 ? '+' : '−') + Math.abs(M.locks),
+      locksDetail: M.locksDetail,
+
+      // renovação
+      renewSummary: person
+        ? br(outTotal) + ' contratos na carteira de ' + person.name.split(' ')[0]
+        : br(outTotal) + ' contratos com fim neste mês',
+      outcome: outcomeRows.map(o => {
+        const w = (o.n / outTotal) * 100;
+        return {
+          label: o.label, n: br(o.n),
+          w: w + '%',
+          bg: OUT_COLOR[o.key],
+          fg: OUT_FG[o.key],
+          showLabel: w >= 10,
+          labelFg: '#fff',
+          title: o.label + ': ' + o.n + ' de ' + outTotal + ' contratos',
+        };
+      }),
+      renewWhen: renewWhenRows.map(r => ({
+        label: r.label, n: br(r.n), w: pctBar(r.n, whenMax),
+        bg: 'var(--green)',
+        title: r.label + ': ' + r.n + ' renovações',
+      })),
+      milestones: M.milestones.map(m => {
+        const done = person ? Math.max(0, Math.round(m.done * share)) : m.done;
+        const total = person ? Math.max(1, Math.round(m.total * share)) : m.total;
+        const p = Math.round((done / total) * 100);
+        return {
+          label: m.d + ' dias antes',
+          pct: p + '%',
+          ratio: done + ' de ' + total,
+          w: p + '%',
+          bg: p >= 70 ? 'var(--brand)' : 'var(--amber)',
+          fg: p >= 70 ? 'var(--brand-700)' : 'var(--amber-700)',
+          title: 'Marco de ' + m.d + ' dias: ' + done + ' contatos feitos de ' + total + ' clientes que chegaram ao marco',
+        };
+      }),
+      wontCard: breakdownCard(M.wont, wontTotalN, {
+        eyebrow: 'Motivo mais comum',
+        unit: 'clientes',
+        empty: 'Ninguém declarou que não vai renovar neste mês.',
+      }),
+      upcoming: (M.upcoming || []).map((u, i) => ({
+        label: u.label, n: br(person ? sc(u.n) : u.n),
+        divider: i === 0 ? 'transparent' : 'var(--rule)',
+      })),
+
+      // equipe
+      lateColLabel: M.running ? 'Atrasados agora' : '—',
+      teamRows: M.team.map(t0 => {
+        const sp = M.split[t0.key];
+        const dec = sp.renew + sp.wont + sp.lapsed;
+        const hitN = sumTo(hb[t0.key], closedN);
+        const t = {
+          ...t0,
+          renewPct: dec > 0 ? Math.round((sp.renew / dec) * 100) : 0,
+          metaPct: Math.round((hitN / closedN) * 100),
+          meta: hitN + '/' + closedN,
+        };
+        const p = PEOPLE.find(x => x.key === t.key);
+        return {
+          name: p.name, ini: p.ini, role: p.role,
+          metaPct: t.metaPct + '%', metaW: t.metaPct + '%',
+          prospOn: t.prosp !== null,
+          prospOff: t.prosp === null,
+          prospPct: (t.prosp || 0) + '%', prospW: (t.prosp || 0) + '%',
+          renewPct: t.renewPct + '%', renewW: t.renewPct + '%',
+          renewBar: t.renewPct >= 75 ? 'var(--green)' : 'var(--amber)',
+          renewFg: t.renewPct >= 75 ? 'var(--green-700)' : 'var(--amber-700)',
+          entered: br(t.entered), upgrades: br(t.upgrades),
+          late: t.late === null ? '—' : br(t.late),
+          lateFg: t.late === null ? 'var(--faint)' : (t.late >= 8 ? 'var(--red-700)' : 'var(--fg)'),
+          pick: () => this.setState({ person: t.key }),
+        };
+      }),
+      totalMeta: teamCur.metaPct + '%',
+      totalProsp: teamCur.prospPct + '%',
+      totalRenew: teamCur.renewPct + '%',
+      totalEntered: br(M.team.reduce((a, b) => a + b.entered, 0)),
+      totalUpgrades: br(M.team.reduce((a, b) => a + b.upgrades, 0)),
+      totalLate: M.running ? br(totalLateN) : '—',
+
+      themeLabel: dark ? 'Tema claro' : 'Tema escuro',
+      toggleTheme: () => this.setState({ theme: dark ? 'light' : 'dark' }),
+    };
+  }
+}
+
+</script>
+</body>
+</html>
