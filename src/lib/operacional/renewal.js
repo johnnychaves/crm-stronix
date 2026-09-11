@@ -105,33 +105,51 @@ export function summarizeCohort(rows, { owner = null } = {}) {
   };
 }
 
-// Marco C cruza em fim − C dias. Chegou ao marco no mês quem estava vigente e
-// ainda sem renovação nesse dia. Feito = tarefa de renovação concluída (ou
-// renovação) entre o cruzamento e o marco seguinte, dentro da janela do mês.
-export function milestones(contracts, { start, end, checkpoints, interactions, leadsById, owner = null }) {
+// Quando cada candidato a sucessor foi criado (ms), pela regra da coorte:
+// renovação ligada ou outro contrato da mesma pessoa que começa depois.
+function successorTimes(c, index) {
+  const out = [];
+  const add = (o) => { if (o !== c && o.createdAt) out.push(o.createdAt.getTime()); };
+  (index.byRenewedFrom.get(c.id) || []).forEach(add);
+  laterOfPerson(c, index).forEach((o) => { if (o.renewedFromId !== c.id) add(o); });
+  return out;
+}
+
+// Marco C cruza em fim − C dias, e o cruzamento tem de cair no mês. Chegou ao
+// marco quem estava vigente e ainda sem sucessor nesse dia. Feito = tarefa de
+// renovação concluída (de qualquer autor) ou sucessor criado entre o
+// cruzamento e o marco seguinte (o fim, no menor marco): o intervalo passa do
+// fim do mês, mas não do corte (asOf). As interações precisam cobrir esse
+// intervalo; o metricsOf manda as do mês e as do seguinte.
+export function milestones(contracts, { start, end, asOf = null, checkpoints, interactions, leadsById, owner = null }) {
   const index = indexContracts(contracts);
-  const renewalsOf = (c) => index.byRenewedFrom.get(c.id) || [];
   const cps = [...new Set((checkpoints || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
   const doneByLead = new Map();
   (interactions || []).forEach((i) => {
     if (i.type !== 'daily_goal_done' || i.dailyGoalCategory !== 'renovacao' || !(i.createdAt instanceof Date)) return;
     const arr = doneByLead.get(i.leadId);
-    if (arr) arr.push(i.createdAt); else doneByLead.set(i.leadId, [i.createdAt]);
+    if (arr) arr.push(i.createdAt.getTime()); else doneByLead.set(i.leadId, [i.createdAt.getTime()]);
   });
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  const asOfMs = asOf ? asOf.getTime() : Infinity;
   return cps.map((cp, i) => {
     const next = cps[i + 1];
     let total = 0;
     let done = 0;
     (contracts || []).forEach((c) => {
-      if (!c.endsAt || (owner && ownerOf(c, leadsById) !== owner)) return;
-      const x = new Date(c.endsAt.getTime() - cp * DAY_MS);
-      if (x < start || x >= end || contractStateAt(c, x) !== 'vigente') return;
-      if (renewalsOf(c).some((o) => o.createdAt && o.createdAt < x)) return;
+      if (!c.endsAt) return;
+      const endsMs = c.endsAt.getTime();
+      const xMs = endsMs - cp * DAY_MS;
+      if (xMs < startMs || xMs >= endMs) return;
+      if (owner && ownerOf(c, leadsById) !== owner) return;
+      if (contractStateAt(c, new Date(xMs)) !== 'vigente') return;
+      const successors = successorTimes(c, index);
+      if (successors.some((t) => t < xMs)) return;
       total += 1;
-      const until = new Date(Math.min(next ? c.endsAt.getTime() - next * DAY_MS : c.endsAt.getTime(), end.getTime()));
-      const contacted = (doneByLead.get(c.leadId) || []).some((t) => t >= x && t < until);
-      const renewed = renewalsOf(c).some((o) => o.createdAt && o.createdAt >= x && o.createdAt < until);
-      if (contacted || renewed) done += 1;
+      const untilMs = Math.min(next ? endsMs - next * DAY_MS : endsMs, asOfMs);
+      const inside = (t) => t >= xMs && t < untilMs;
+      if ((doneByLead.get(c.leadId) || []).some(inside) || successors.some(inside)) done += 1;
     });
     return { days: cp, total, done, pct: total > 0 ? Math.round((done / total) * 100) : null };
   });

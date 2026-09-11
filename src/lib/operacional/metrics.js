@@ -51,15 +51,17 @@ function academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf }) {
 export function metricsOf(ctx, { monthKey, userId = null, cutEnd = null }) {
   const cache = cacheOf(ctx);
   const src = ctx.months?.[monthKey] || null;
+  // Os marcos também olham as interações do mês seguinte, quando carregado.
+  const nextSrc = ctx.months?.[addMonthsToKey(monthKey, 1)] || null;
   const key = `${monthKey}|${userId ?? ''}|${cutEnd?.getTime() ?? ''}`;
   const hit = cache.results.get(key);
-  if (hit && hit.src === src) return hit.value;
-  const value = computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src });
-  cache.results.set(key, { src, value });
+  if (hit && hit.src === src && hit.nextSrc === nextSrc) return hit.value;
+  const value = computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc });
+  cache.results.set(key, { src, nextSrc, value });
   return value;
 }
 
-function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src }) {
+function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) {
   const { start, end: monthEnd } = monthRange(monthKey);
   const running = isCurrentMonthKey(monthKey, ctx.now);
   const end = cutEnd || effectiveEnd(monthKey, ctx.now);
@@ -101,7 +103,15 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src }) {
     upgradesBy: sales.upgrades,
     renewal: summarizeCohort(academy.cohortRows, { owner: userId }),
     milestones: src
-      ? milestones(contracts, { start, end, checkpoints: ctx.config?.renewalCheckpoints, interactions: src.interactions, leadsById: ctx.leadsById, owner: userId })
+      ? milestones(contracts, {
+        start,
+        end,
+        asOf,
+        checkpoints: ctx.config?.renewalCheckpoints,
+        interactions: nextSrc ? [...(src.interactions || []), ...(nextSrc.interactions || [])] : src.interactions,
+        leadsById: ctx.leadsById,
+        owner: userId
+      })
       : null,
     upcoming: snapshot ? upcomingExpirations(contracts, { now: ctx.now, leadsById: ctx.leadsById, owner: userId }) : null
   };

@@ -103,6 +103,22 @@ describe('milestones', () => {
     expect(m30).toEqual({ days: 30, total: 2, done: 1, pct: 50 });
     expect(r.map((m) => m.days)).toEqual([90, 60, 30]);
   });
+
+  it('o intervalo passa do fim do mês até o próximo marco, limitado ao corte, e o sucessor segue a regra da coorte', () => {
+    const contracts = [
+      C('fim', { endsAt: D(2026, 10, 29) }),   // marco de 30 dias em 29/09, contato em 01/10
+      C('ficha', { endsAt: D(2026, 10, 28) }), // marco em 28/09, reativação pela ficha em 02/10
+      C('ficha-nova', { leadId: 'ficha', startsAt: D(2026, 10, 2), endsAt: D(2027, 4, 2), createdAt: D(2026, 10, 2) }),
+      C('antes', { endsAt: D(2026, 10, 27) }), // contrato novo da pessoa antes do marco: fica fora
+      C('antes-nova', { leadId: 'antes', startsAt: D(2026, 9, 20), endsAt: D(2027, 3, 20), createdAt: D(2026, 9, 20) })
+    ];
+    const interactions = [
+      { type: 'daily_goal_done', dailyGoalCategory: 'renovacao', leadId: 'fim', createdAt: D(2026, 10, 1) }
+    ];
+    const args = { start: SEP.start, end: SEP.end, checkpoints: [30], interactions, leadsById: new Map() };
+    expect(milestones(contracts, { ...args, asOf: D(2026, 10, 5) })).toEqual([{ days: 30, total: 2, done: 2, pct: 100 }]);
+    expect(milestones(contracts, { ...args, asOf: D(2026, 9, 30) })).toEqual([{ days: 30, total: 2, done: 0, pct: 0 }]);
+  });
 });
 
 describe('upcomingExpirations', () => {

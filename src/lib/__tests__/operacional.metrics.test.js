@@ -155,3 +155,22 @@ describe('metricsOf em cache', () => {
     expect(metricsOf(ctx, { monthKey: '2026-07' }).hasSource).toBe(true);
   });
 });
+
+describe('marcos no metricsOf', () => {
+  it('contato no começo do mês seguinte conta para o marco cruzado no fim do mês', () => {
+    const empty = { history: [], interactions: [], leadsCreated: [] };
+    const ctx = {
+      now: new Date(2026, 9, 5, 10),
+      users: USERS,
+      config: { metaWeekdays: [1, 2, 3, 4, 5], renewalCheckpoints: [30], renewalGraceDays: 15 },
+      contracts: [C('m', { startsAt: D(3, 1), createdAt: D(3, 1), endsAt: D(10, 29, 12) })], // marco em 29/09
+      leadsById: new Map(),
+      liveLeads: [],
+      months: {
+        '2026-09': empty,
+        '2026-10': { ...empty, interactions: [{ type: 'daily_goal_done', dailyGoalCategory: 'renovacao', leadId: 'm', createdAt: D(10, 1) }] }
+      }
+    };
+    expect(metricsOf(ctx, { monthKey: '2026-09' }).milestones).toEqual([{ days: 30, total: 1, done: 1, pct: 100 }]);
+  });
+});
