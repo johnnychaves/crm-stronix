@@ -13,7 +13,8 @@ import {
   buildMatriculaWrites,
   deriveContractStatus,
   deriveLeadContractStatus,
-  hasLiveContract
+  hasLiveContract,
+  isImportedContract
 } from '../contracts.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
@@ -147,6 +148,56 @@ describe('buildContractResume', () => {
     const r = buildContractResume({ contract: contrato, resumedAt: D(2026, 7, 8) });
     expect(r.pausedDays).toBe(0);
     expect(r.contractPatch.endsAt).toEqual(D(2027, 1, 10));
+  });
+
+  // O Operacional precisa saber em que meses o cliente esteve trancado, e o
+  // contrato só guardava a pausa atual.
+  it('guarda a pausa encerrada no histórico', () => {
+    const r = buildContractResume({ contract: contrato, resumedAt: D(2026, 7, 28) });
+    expect(r.contractPatch.pauseHistory).toEqual([{ pausedAt: D(2026, 7, 8), resumedAt: D(2026, 7, 28) }]);
+  });
+
+  it('acrescenta ao histórico que já existe', () => {
+    const antiga = { pausedAt: D(2026, 3, 1), resumedAt: D(2026, 3, 11) };
+    const r = buildContractResume({
+      contract: { ...contrato, pauseHistory: [antiga], pausedDaysTotal: 10, resumedAt: D(2026, 3, 11) },
+      resumedAt: D(2026, 7, 28)
+    });
+    expect(r.contractPatch.pauseHistory).toEqual([antiga, { pausedAt: D(2026, 7, 8), resumedAt: D(2026, 7, 28) }]);
+  });
+
+  it('pausa de antes do histórico entra como primeiro item, reconstruída pelo total de dias', () => {
+    const r = buildContractResume({
+      contract: { ...contrato, pausedDaysTotal: 10, resumedAt: D(2026, 5, 1) },
+      resumedAt: D(2026, 7, 28)
+    });
+    expect(r.contractPatch.pauseHistory).toEqual([
+      { pausedAt: D(2026, 4, 21), resumedAt: D(2026, 5, 1), reconstructed: true },
+      { pausedAt: D(2026, 7, 8), resumedAt: D(2026, 7, 28) }
+    ]);
+  });
+
+  it('marca a pausa que veio da importação (sem motivo, porque a ficha sempre pede um)', () => {
+    const importado = { ...contrato, importBatchId: 'lote-1' };
+    expect(buildContractResume({ contract: importado, resumedAt: D(2026, 7, 28) }).contractPatch.pauseHistory)
+      .toEqual([{ pausedAt: D(2026, 7, 8), resumedAt: D(2026, 7, 28), fromImport: true }]);
+    const pelaFicha = buildContractResume({ contract: { ...importado, pauseReason: 'Viagem' }, resumedAt: D(2026, 7, 28) });
+    expect(pelaFicha.contractPatch.pauseHistory[0]).not.toHaveProperty('fromImport');
+  });
+
+  it('sem pausedAt não mexe no histórico', () => {
+    const r = buildContractResume({ contract: { endsAt: D(2027, 1, 10) }, resumedAt: D(2026, 7, 28) });
+    expect(r.contractPatch).not.toHaveProperty('pauseHistory');
+  });
+});
+
+describe('isImportedContract', () => {
+  it('reconhece qualquer uma das marcas da importação', () => {
+    expect(isImportedContract({ importBatchId: 'lote' })).toBe(true);
+    expect(isImportedContract({ importSource: 'NextFit' })).toBe(true);
+    expect(isImportedContract({ importedBy: 'u1' })).toBe(true);
+    expect(isImportedContract({ consultantId: 'ana' })).toBe(false);
+    expect(isImportedContract(null)).toBe(false);
   });
 });
 

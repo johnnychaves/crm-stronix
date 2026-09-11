@@ -264,6 +264,21 @@ export const buildContractPause = ({ planName, pausedAt, reason } = {}) => {
   };
 };
 
+// Contrato que veio de planilha (clientImport.js). Importado entra na base,
+// mas nunca conta como venda, cancelamento ou trancamento feito no sistema.
+export const isImportedContract = (c) => Boolean(c?.importBatchId || c?.importSource || c?.importedBy);
+
+// Pausas já encerradas, para o Operacional saber em que meses o cliente
+// esteve trancado. Contrato de antes do histórico começa com UM item refeito
+// a partir da última reativação e do total de dias parados (várias pausas
+// antigas viram uma), a mesma aproximação que o Operacional faz ao ler.
+const closedPausesOf = (contract) => {
+  if (Array.isArray(contract?.pauseHistory) && contract.pauseHistory.length) return contract.pauseHistory;
+  const lastBack = getSafeDateOrNull(contract?.resumedAt);
+  const days = Number(contract?.pausedDaysTotal) || 0;
+  return lastBack && days > 0 ? [{ pausedAt: addDays(lastBack, -days), resumedAt: lastBack, reconstructed: true }] : [];
+};
+
 // Reativação. O cliente pagou por N meses de treino, não por N meses de
 // calendário: o término anda para frente pelos dias parados. `pausedDaysTotal`
 // acumula porque o contrato pode ser trancado mais de uma vez.
@@ -274,6 +289,9 @@ export const buildContractResume = ({ contract, resumedAt } = {}) => {
   const pausedDays = pausedAt ? Math.max(0, daysBetween(pausedAt, back) || 0) : 0;
   const newEndsAt = endsAt && pausedDays > 0 ? addDays(endsAt, pausedDays) : endsAt;
   const total = (Number(contract?.pausedDaysTotal) || 0) + pausedDays;
+  // A pausa gravada pela importação usa a hora da importação, não a data real,
+  // e não tem motivo, porque o trancamento pela ficha sempre pede um.
+  const fromImport = isImportedContract(contract) && !contract?.pauseReason;
 
   return {
     pausedDays,
@@ -283,7 +301,13 @@ export const buildContractResume = ({ contract, resumedAt } = {}) => {
       pausedAt: null,
       resumedAt: back,
       pausedDaysTotal: total,
-      ...(newEndsAt ? { endsAt: newEndsAt } : {})
+      ...(newEndsAt ? { endsAt: newEndsAt } : {}),
+      ...(pausedAt ? {
+        pauseHistory: [
+          ...closedPausesOf(contract),
+          { pausedAt, resumedAt: back, ...(fromImport ? { fromImport: true } : {}) }
+        ]
+      } : {})
     },
     leadPatch: {
       currentContractStatus: CONTRACT_STATUS.ATIVO,
