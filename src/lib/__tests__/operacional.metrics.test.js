@@ -76,6 +76,14 @@ describe('metricsOf', () => {
     expect(r.prosp).toBeNull();
     expect(r.tasks).toBeNull();
   });
+
+  it('sem base de contratos no mês, entraram e upgrades ficam sem número', () => {
+    const r = metricsOf(ctx, { monthKey: '2025-12' });
+    expect(r.base.known).toBe(false);
+    expect(r.entered).toBeNull();
+    expect(r.upgrades).toBeNull();
+    expect(team.entered).toBe(1);
+  });
 });
 
 describe('deltaOf', () => {
@@ -93,7 +101,7 @@ describe('deltaOf', () => {
 });
 
 describe('buildHighlights', () => {
-  const base = { cancels: { items: [] } };
+  const base = { known: true, cancels: { items: [] } };
   const mk = (over) => ({
     tasks: { novos: 10, contatos: 10, agenda: 10, atrasados: 10, renovacoes: 10, vencidos: 10 },
     milestones: [{ days: 30, pct: 70 }],
@@ -104,8 +112,8 @@ describe('buildHighlights', () => {
   });
 
   it('escolhe as maiores mudanças e marca o que piorou', () => {
-    const cur = mk({ milestones: [{ days: 30, pct: 56 }], upgrades: 8, base: { cancels: { items: [{ name: 'Financeiro', count: 6 }] } } });
-    const prev = mk({ base: { cancels: { items: [{ name: 'Financeiro', count: 3 }] } } });
+    const cur = mk({ milestones: [{ days: 30, pct: 56 }], upgrades: 8, base: { known: true, cancels: { items: [{ name: 'Financeiro', count: 6 }] } } });
+    const prev = mk({ base: { known: true, cancels: { items: [{ name: 'Financeiro', count: 3 }] } } });
     const h = buildHighlights(cur, prev);
     expect(h).toHaveLength(3);
     expect(h.map((x) => x.text)).toContain('Contatos no marco de 30 dias: de 70% para 56%');
@@ -116,6 +124,17 @@ describe('buildHighlights', () => {
   it('nada mudou, nenhum destaque; sem comparado, nenhum destaque', () => {
     expect(buildHighlights(mk({}), mk({}))).toEqual([]);
     expect(buildHighlights(mk({}), null)).toEqual([]);
+  });
+
+  it('sem base de um dos lados, fica só o que não sai dos contratos', () => {
+    const cur = mk({
+      upgrades: 8,
+      tasks: { ...mk({}).tasks, contatos: 20 },
+      renewal: { when: { antes: 9, no: 2, depois: 1 } },
+      base: { known: true, cancels: { items: [{ name: 'Financeiro', count: 6 }] } }
+    });
+    const prev = mk({ base: { known: false, cancels: { items: [] } } });
+    expect(buildHighlights(cur, prev, { limit: 10 }).map((x) => x.text)).toEqual(['Contatos concluídos: de 10 para 20']);
   });
 });
 

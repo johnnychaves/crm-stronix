@@ -78,6 +78,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
   const prospSummary = src ? prospectionSummary({ users, interactions: src.interactions, leadsCreated: src.leadsCreated, metaDays, end }) : null;
   const academy = academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf });
   const { sales } = academy;
+  const salesOf = (m) => (userId ? (m.get(userId) || 0) : sumMap(m));
 
   return {
     monthKey,
@@ -98,9 +99,10 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
       churn: academy.churn,
       cancels: academy.cancels
     },
-    entered: userId ? (sales.entered.get(userId) || 0) : sumMap(sales.entered),
+    // Sem contrato nenhum antes do fim, o sistema ainda não tinha base: sem número.
+    entered: academy.known ? salesOf(sales.entered) : null,
     enteredBy: sales.entered,
-    upgrades: userId ? (sales.upgrades.get(userId) || 0) : sumMap(sales.upgrades),
+    upgrades: academy.known ? salesOf(sales.upgrades) : null,
     upgradesBy: sales.upgrades,
     renewal: summarizeCohort(academy.cohortRows, { owner: userId }),
     milestones: src
@@ -172,14 +174,18 @@ export function buildHighlights(cur, prev, { limit = 3 } = {}) {
     const pm = (prev.milestones || []).find((x) => x.days === m.days);
     add(`Contatos no marco de ${m.days} dias`, m.pct, pm?.pct ?? null, { kind: 'pp' });
   });
-  add('Upgrades', cur.upgrades, prev.upgrades, { unit: ['venda', 'vendas'] });
-  const count = (m, name) => m.base?.cancels?.items?.find((r) => r.name === name)?.count || 0;
-  const names = new Set([...(cur.base?.cancels?.items || []), ...(prev.base?.cancels?.items || [])].map((r) => r.name));
-  names.forEach((n) => add(`Cancelamentos ${CANCEL_TEXT[n] || `(${n})`}`, count(cur, n), count(prev, n), { unit: ['pessoa', 'pessoas'], goodUp: false }));
-  if (cur.renewal?.when && prev.renewal?.when) {
-    add('Renovações fechadas antes de vencer', cur.renewal.when.antes, prev.renewal.when.antes, { unit: ['contrato', 'contratos'] });
-    add('Renovações no dia do vencimento', cur.renewal.when.no, prev.renewal.when.no, { unit: ['contrato', 'contratos'] });
-    add('Renovações depois de vencer', cur.renewal.when.depois, prev.renewal.when.depois, { unit: ['contrato', 'contratos'] });
+  // Upgrades, cancelamentos e renovações saem dos contratos: sem base num dos
+  // lados, a diferença seria inventada.
+  if (cur.base?.known && prev.base?.known) {
+    add('Upgrades', cur.upgrades, prev.upgrades, { unit: ['venda', 'vendas'] });
+    const count = (m, name) => m.base?.cancels?.items?.find((r) => r.name === name)?.count || 0;
+    const names = new Set([...(cur.base?.cancels?.items || []), ...(prev.base?.cancels?.items || [])].map((r) => r.name));
+    names.forEach((n) => add(`Cancelamentos ${CANCEL_TEXT[n] || `(${n})`}`, count(cur, n), count(prev, n), { unit: ['pessoa', 'pessoas'], goodUp: false }));
+    if (cur.renewal?.when && prev.renewal?.when) {
+      add('Renovações fechadas antes de vencer', cur.renewal.when.antes, prev.renewal.when.antes, { unit: ['contrato', 'contratos'] });
+      add('Renovações no dia do vencimento', cur.renewal.when.no, prev.renewal.when.no, { unit: ['contrato', 'contratos'] });
+      add('Renovações depois de vencer', cur.renewal.when.depois, prev.renewal.when.depois, { unit: ['contrato', 'contratos'] });
+    }
   }
   return out.sort((a, b) => b.score - a.score).slice(0, limit);
 }
