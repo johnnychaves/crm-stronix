@@ -4,7 +4,7 @@
 // pelo cliente (doc do lead); sem o doc, vale o consultor do contrato.
 
 import { getSafeDateOrNull } from '../dates.js';
-import { contractStateAt } from './base.js';
+import { contractStateAt, hasOpenPause } from './base.js';
 import { dayKeyOf } from './month.js';
 
 const DAY_MS = 86400000;
@@ -45,6 +45,9 @@ export function renewalCohort(contracts, { start, end, asOf, graceDays, leadsByI
   (contracts || []).forEach((c) => {
     if (!c.endsAt || c.endsAt < start || c.endsAt >= end) return;
     if (c.cancelledAt && c.cancelledAt < c.endsAt) return;
+    // Trancado não vence: o fim anda na reativação e o contrato vai para a
+    // coorte do mês em que passar a vencer.
+    if (hasOpenPause(c)) return;
     const s = successorOf(c, contracts, graceMs, asOf);
     let outcome;
     let when = null;

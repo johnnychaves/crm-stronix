@@ -150,22 +150,26 @@ export function computeBaseMovement(contracts, { start, end }) {
   };
 }
 
-// Saída definitiva no mês: cancelamento sem outro contrato vigente logo depois,
-// ou fim da tolerância de um contrato vencido sem retorno. ÷ vigentes no início.
+// Saída definitiva no mês: cancelamento sem outro contrato valendo logo depois,
+// ou fim da tolerância de um contrato vencido sem retorno. Trancado continua
+// cliente: não vence, e quem tem outro contrato trancado não saiu.
+// ÷ vigentes no início.
 export function computeChurn(contracts, { start, end, graceDays }) {
   const graceMs = (Number(graceDays) || 0) * DAY_MS;
-  const vigentAt = (list, t) => list.some((c) => contractStateAt(c, t) === 'vigente');
+  const aliveAt = (list, t) => list.some((c) => contractStateAt(c, t) != null);
   let exits = 0;
   contractsByPerson(contracts).forEach((list) => {
     const hit = list.some((c) => {
-      if (c.cancelledAt && !c.imported && c.endsAt && c.cancelledAt < c.endsAt) {
-        return c.cancelledAt >= start && c.cancelledAt < end && !vigentAt(list, c.cancelledAt);
+      // Cancelado antes do fim, ou cancelado ainda parado: trancado não vence,
+      // então a saída é o cancelamento, mesmo depois do fim antigo.
+      if (c.cancelledAt && !c.imported && ((c.endsAt && c.cancelledAt < c.endsAt) || hasOpenPause(c))) {
+        return c.cancelledAt >= start && c.cancelledAt < end && !aliveAt(list, c.cancelledAt);
       }
-      if (!c.endsAt) return false;
+      if (!c.endsAt || hasOpenPause(c)) return false;
       const x = new Date(c.endsAt.getTime() + graceMs);
       if (x < start || x >= end) return false;
       const returned = list.some((o) => o !== c && o.startsAt && o.startsAt >= c.endsAt && o.startsAt <= x);
-      return !returned && !vigentAt(list, x);
+      return !returned && !aliveAt(list, x);
     });
     if (hit) exits += 1;
   });
