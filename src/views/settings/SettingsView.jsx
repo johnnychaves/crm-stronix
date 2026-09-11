@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { ArrowRightLeft, CalendarClock, FileSpreadsheet, Gauge, Handshake, Kanban, Library, Target, Users } from 'lucide-react';
+import { ArrowRightLeft, CalendarClock, FileSpreadsheet, Gauge, Handshake, Kanban, Library, PlugZap, Target, Users } from 'lucide-react';
 import { SettingsRailGroup, SettingsRailItem } from '../../components/ui/SettingsCard.jsx';
 import { buildSetupState } from '../../lib/settingsSetup.js';
 import { usePagedLeads } from '../../hooks/usePagedLeads.js';
@@ -17,6 +17,7 @@ import { SchedulingSection } from './SchedulingSection.jsx';
 import { FunnelsSection } from './FunnelsSection.jsx';
 import { CatalogsSection } from './CatalogsSection.jsx';
 import { ImportClientsSection } from './ImportClientsSection.jsx';
+import { ZapIntegrationSection } from './ZapIntegrationSection.jsx';
 
 // ==========================================
 // CONFIGURAÇÕES — sete destinos agrupados por intenção
@@ -115,6 +116,10 @@ function SettingsView({
     {
       label: 'Vocabulário do funil',
       items: [{ id: 'catalogs', label: 'Catálogos', icon: <Library size={15} />, count: catalogTotal }]
+    },
+    {
+      label: 'Integrações',
+      items: [{ id: 'zap', label: 'Stronizap', icon: <PlugZap size={15} /> }]
     }
   ];
 
@@ -195,6 +200,9 @@ function SettingsView({
             lossReasons={lossReasons} dores={dores} modalities={modalities} leads={leads}
             focusId={focus} onFocusHandled={clearFocus}
           />
+        )}
+        {section === 'zap' && (
+          <ZapIntegrationSection db={db} appUser={appUser} />
         )}
       </div>
     </div>
