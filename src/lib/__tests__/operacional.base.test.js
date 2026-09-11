@@ -132,16 +132,34 @@ describe('computeBaseMovement (ponte do mês)', () => {
 
   it('classifica cada pessoa que mudou de lado', () => {
     const r = computeBaseMovement(contracts, SEP);
-    expect(r.steps).toEqual({ entraram: 1, voltaram: 1, cancelaram: 1, venceram: 1, trancamentos: 0 });
+    expect(r.steps).toEqual({ entraram: 1, voltaram: 1, importados: 0, cancelaram: 1, venceram: 1, trancamentos: 0 });
     expect(r.trancaram).toBe(1);
     expect(r.destrancaram).toBe(1);
   });
 
+  const closes = (r) => {
+    const s = r.steps;
+    return r.startCount + s.entraram + s.voltaram + s.importados - s.cancelaram - s.venceram + s.trancamentos;
+  };
+
   it('a conta fecha: início + passos = fim', () => {
     const r = computeBaseMovement(contracts, SEP);
-    const s = r.steps;
-    expect(r.startCount + s.entraram + s.voltaram - s.cancelaram - s.venceram + s.trancamentos).toBe(r.endCount);
+    expect(closes(r)).toBe(r.endCount);
     expect(r.endCount).toBe(countActiveAt(contracts, new Date(SEP.end.getTime() - 1)));
+  });
+
+  it('importado que começa no mês entra como importado, nunca como matrícula ou retorno', () => {
+    const list = [
+      ...contracts,
+      C('imp-novo', { startsAt: D(2026, 9, 10), createdAt: D(2026, 9, 10), importBatchId: 'lote' }),
+      C('imp-sem-inicio', { startsAt: null, createdAt: D(2026, 9, 12), importSource: 'NextFit' }),
+      C('imp-volta-antigo', { leadId: 'IV', endsAt: D(2026, 5, 1) }),
+      C('imp-volta-novo', { leadId: 'IV', startsAt: D(2026, 9, 14), createdAt: D(2026, 9, 14), importedBy: 'u1' })
+    ];
+    const r = computeBaseMovement(list, SEP);
+    expect(r.steps).toMatchObject({ entraram: 1, voltaram: 1, importados: 3 });
+    expect(closes(r)).toBe(r.endCount);
+    expect(r.endCount).toBe(countActiveAt(list, new Date(SEP.end.getTime() - 1)));
   });
 
   it('cancelamento de contrato importado sai como vencido, nunca como cancelamento', () => {

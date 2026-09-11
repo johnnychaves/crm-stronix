@@ -103,7 +103,8 @@ export function contractsByPerson(contracts) {
 }
 
 // Ponte do mês: A = vigentes no início, B = vigentes no fim efetivo. Quem muda de
-// lado ganha um motivo, então início + passos = fim sempre.
+// lado ganha um motivo, então início + passos = fim sempre. Quem entra por um
+// contrato importado vai para "importados": não é matrícula nem retorno.
 export function computeBaseMovement(contracts, { start, end }) {
   const tEnd = new Date(end.getTime() - 1);
   const A = personStatesAt(contracts, start);
@@ -111,13 +112,16 @@ export function computeBaseMovement(contracts, { start, end }) {
   const vA = vigentSet(A);
   const vB = vigentSet(B);
   const people = contractsByPerson(contracts);
-  const n = { entraram: 0, voltaram: 0, cancelaram: 0, venceram: 0, trancaram: 0, destrancaram: 0 };
+  const n = { entraram: 0, voltaram: 0, importados: 0, cancelaram: 0, venceram: 0, trancaram: 0, destrancaram: 0 };
 
   vB.forEach((key) => {
     if (vA.has(key)) return;
     if (A.get(key) === 'trancado') { n.destrancaram += 1; return; }
     const list = people.get(key) || [];
-    const current = list.find((c) => contractStateAt(c, tEnd) === 'vigente');
+    const vig = list.filter((c) => contractStateAt(c, tEnd) === 'vigente');
+    // Com mais de um vigente, vale o feito no sistema.
+    const current = vig.find((c) => !c.imported) || vig[0];
+    if (current?.imported) { n.importados += 1; return; }
     const hadBefore = list.some((c) => c !== current && c.startsAt && current?.startsAt && c.startsAt < current.startsAt);
     if (hadBefore) n.voltaram += 1; else n.entraram += 1;
   });
@@ -136,6 +140,7 @@ export function computeBaseMovement(contracts, { start, end }) {
     steps: {
       entraram: n.entraram,
       voltaram: n.voltaram,
+      importados: n.importados,
       cancelaram: n.cancelaram,
       venceram: n.venceram,
       trancamentos: n.destrancaram - n.trancaram
