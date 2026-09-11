@@ -148,6 +148,12 @@ describe('computeBaseMovement (ponte do mês)', () => {
     expect(r.endCount).toBe(countActiveAt(contracts, new Date(SEP.end.getTime() - 1)));
   });
 
+  it('traz os trancados do fim, o mesmo retrato de countLockedAt', () => {
+    const r = computeBaseMovement(contracts, SEP);
+    expect(r.locked).toBe(1);
+    expect(r.locked).toBe(countLockedAt(contracts, new Date(SEP.end.getTime() - 1)));
+  });
+
   it('importado que começa no mês entra como importado, nunca como matrícula ou retorno', () => {
     const list = [
       ...contracts,
@@ -182,6 +188,9 @@ describe('computeChurn', () => {
     expect(r.exits).toBe(2);
     expect(r.base).toBe(countActiveAt(list, SEP.start));
     expect(r.pct).toBe(Math.round((2 / r.base) * 1000) / 10);
+    // Quem já contou os vigentes do início (a ponte) passa o número e poupa uma passada.
+    expect(computeChurn(list, { ...SEP, activeAtStart: r.base })).toEqual(r);
+    expect(computeChurn(list, { ...SEP, activeAtStart: 40 })).toMatchObject({ base: 40, pct: 5 });
   });
 });
 

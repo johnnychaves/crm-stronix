@@ -66,7 +66,9 @@ export const hasOpenPause = (c) => (c.pauses || []).some((p) => p.to == null);
 export function contractStateAt(c, t) {
   if (!c.startsAt || t < c.startsAt) return null;
   if (c.cancelledAt && c.cancelledAt <= t) return null;
-  const pauses = c.pauses || [];
+  const pauses = c.pauses;
+  // Caminho comum, contrato que nunca parou: só a vigência decide.
+  if (!pauses?.length) return c.endsAt && t < c.endsAt ? 'vigente' : null;
   if (pauses.some((p) => p.to == null && p.from <= t)) return 'trancado';
   if (!c.endsAt || t >= c.endsAt) return null;
   return pauses.some((p) => p.to != null && p.from <= t && t < p.to) ? 'trancado' : 'vigente';
@@ -87,8 +89,9 @@ const vigentSet = (states) => new Set([...states].filter(([, s]) => s === 'vigen
 
 export const countActiveAt = (contracts, t) => vigentSet(personStatesAt(contracts, t)).size;
 
-export const countLockedAt = (contracts, t) =>
-  [...personStatesAt(contracts, t).values()].filter((s) => s === 'trancado').length;
+const lockedIn = (states) => [...states.values()].filter((s) => s === 'trancado').length;
+
+export const countLockedAt = (contracts, t) => lockedIn(personStatesAt(contracts, t));
 
 const firstMoment = (c) => c.createdAt || c.startsAt;
 
@@ -162,16 +165,20 @@ export function computeBaseMovement(contracts, { start, end }) {
       trancamentos: n.destrancaram - n.trancaram
     },
     trancaram: n.trancaram,
-    destrancaram: n.destrancaram
+    destrancaram: n.destrancaram,
+    // Trancados no fim: o mesmo retrato de B, sem outra passada pela lista.
+    locked: lockedIn(B)
   };
 }
 
 // Saída definitiva no mês: cancelamento sem outro contrato valendo logo depois,
 // ou fim da tolerância de um contrato vencido sem retorno. Trancado continua
 // cliente: não vence, e quem tem outro contrato trancado não saiu.
-// ÷ vigentes no início.
-export function computeChurn(contracts, { start, end, graceDays }) {
+// ÷ vigentes no início (activeAtStart, quando a ponte já contou).
+export function computeChurn(contracts, { start, end, graceDays, activeAtStart = null }) {
   const graceMs = (Number(graceDays) || 0) * DAY_MS;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
   const aliveAt = (list, t) => list.some((c) => contractStateAt(c, t) != null);
   let exits = 0;
   indexContracts(contracts).byPerson.forEach((list) => {
@@ -182,14 +189,15 @@ export function computeChurn(contracts, { start, end, graceDays }) {
         return c.cancelledAt >= start && c.cancelledAt < end && !aliveAt(list, c.cancelledAt);
       }
       if (!c.endsAt || hasOpenPause(c)) return false;
-      const x = new Date(c.endsAt.getTime() + graceMs);
-      if (x < start || x >= end) return false;
+      const xMs = c.endsAt.getTime() + graceMs;
+      if (xMs < startMs || xMs >= endMs) return false;
+      const x = new Date(xMs);
       const returned = list.some((o) => o !== c && o.startsAt && o.startsAt >= c.endsAt && o.startsAt <= x);
       return !returned && !aliveAt(list, x);
     });
     if (hit) exits += 1;
   });
-  const base = countActiveAt(contracts, start);
+  const base = activeAtStart ?? countActiveAt(contracts, start);
   return { exits, base, pct: base > 0 ? Math.round((exits / base) * 1000) / 10 : null };
 }
 

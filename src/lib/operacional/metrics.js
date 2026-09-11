@@ -3,7 +3,7 @@
 // número da equipe é a soma; nenhuma taxa é guardada.
 
 import { monthRange, effectiveEnd, metaDaysOfMonth, isCurrentMonthKey, addMonthsToKey } from './month.js';
-import { computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow, countLockedAt } from './base.js';
+import { computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow } from './base.js';
 import { renewalCohort, summarizeCohort, milestones, upcomingExpirations } from './renewal.js';
 import { metaDaysSummary, pickMeta, metaCalendar, prospectionSummary, pickProspection, tasksByType, overdueNow } from './routine.js';
 
@@ -35,11 +35,12 @@ function academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf }) {
   if (hit) return hit;
   const contracts = ctx.contracts || [];
   const grace = ctx.config?.renewalGraceDays;
+  const movement = computeBaseMovement(contracts, { start, end });
   const parts = {
     known: contracts.some((c) => c.startsAt && c.startsAt < end),
-    movement: computeBaseMovement(contracts, { start, end }),
-    locked: countLockedAt(contracts, new Date(end.getTime() - 1)),
-    churn: computeChurn(contracts, { start, end, graceDays: grace }),
+    movement,
+    locked: movement.locked,
+    churn: computeChurn(contracts, { start, end, graceDays: grace, activeAtStart: movement.startCount }),
     cancels: cancellationsByReason(contracts, { start, end }),
     sales: salesInWindow(contracts, { start, end }),
     cohortRows: renewalCohort(contracts, { start, end: monthEnd, asOf, graceDays: grace, leadsById: ctx.leadsById })

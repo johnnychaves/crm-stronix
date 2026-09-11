@@ -158,14 +158,18 @@ export function milestones(contracts, { start, end, asOf = null, checkpoints, in
 // Contratos vigentes, sem o próximo já fechado, em faixas a partir de agora.
 export function upcomingExpirations(contracts, { now, leadsById, owner = null }) {
   const index = indexContracts(contracts);
+  const nowMs = now.getTime();
   const buckets = { d30: 0, d60: 0, d90: 0 };
   (contracts || []).forEach((c) => {
-    if (!c.endsAt || contractStateAt(c, now) !== 'vigente' || !isLatestOfPerson(c, index)) return;
+    if (!c.endsAt) return;
+    const days = (c.endsAt.getTime() - nowMs) / DAY_MS;
+    // Vigente agora tem fim depois de agora; fora das faixas nem precisa de mais conta.
+    if (days <= 0 || days > 90) return;
+    if (contractStateAt(c, now) !== 'vigente' || !isLatestOfPerson(c, index)) return;
     if (owner && ownerOf(c, leadsById) !== owner) return;
-    const days = (c.endsAt.getTime() - now.getTime()) / DAY_MS;
     if (days <= 30) buckets.d30 += 1;
     else if (days <= 60) buckets.d60 += 1;
-    else if (days <= 90) buckets.d90 += 1;
+    else buckets.d90 += 1;
   });
   return buckets;
 }
