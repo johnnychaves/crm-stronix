@@ -107,8 +107,10 @@ Leads em `metaLeads` com `nextFollowUp` antes do início de hoje e status fora d
   - O passo "Trancamentos" mostra o saldo. A conta fecha: início + entradas − saídas = fim = Clientes ativos.
 - Quem entrou e saiu dentro do mesmo mês não aparece na ponte. O "Entraram" da tabela da equipe conta matrículas por vendedor, então os dois só divergem nesse caso raro. A dica da ponte avisa.
 - Churn = saídas definitivas em M ÷ ativos no início de M. A saída definitiva acontece no dia do cancelamento, ou no dia em que acaba a tolerância de um contrato vencido sem retorno.
-- Cancelamentos por motivo: contratos com `cancelledAt` em M e sem `importBatchId`, agrupados por `cancelReason`.
-- Trancaram e destrancaram: `pausedAt` e `resumedAt` em M, sem importados. O contrato guarda só a última pausa, então trancamentos antigos repetidos ficam de fora; é uma limitação conhecida.
+- Cancelamentos por motivo: contratos com `cancelledAt` em M, agrupados por `cancelReason`. Ficam de fora os cancelamentos que vieram da planilha, isto é, contrato importado, sem motivo e com `cancelledAt` no dia do `endsAt`. Cancelamento feito no app conta normalmente, mesmo em contrato importado.
+- Trancaram e destrancaram saem da transição de estado da ponte. As pausas vêm do `pauseHistory`, que a reativação passa a gravar a partir desta entrega. Nos contratos antigos, a pausa é reconstruída por `resumedAt − pausedDaysTotal`, e várias pausas antigas viram uma só (limitação conhecida).
+- Contrato trancado não vence enquanto a pausa estiver aberta. Se ele ganhar um contrato sucessor, a pausa fecha no início do sucessor.
+- A pausa gravada pela importação começa no dia da importação e não conta como trancamento.
 - Upgrades: contratos com `closedFromUpgrade` e `createdAt` em M, sem importados, atribuídos ao consultor do contrato.
 
 ### 5.6 Renovação
