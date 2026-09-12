@@ -2,10 +2,14 @@
 // memória). Vigência por pessoa num instante, ponte do mês por transição de
 // estado (fecha por construção), churn por saída definitiva, cancelamentos por
 // motivo, matrículas e upgrades por vendedor. Importado de planilha entra na
-// base, mas nunca conta como matrícula, retorno, cancelamento ou trancamento.
+// base, mas nunca conta como matrícula ou retorno. O trancamento e o
+// cancelamento que a importação gravou também não contam. Os que o app grava
+// depois num importado contam como os outros.
 
 import { getSafeDateOrNull } from '../dates.js';
-import { buildContractResume, isImportedContract, isImportPause, reconstructedPauseOf } from '../contracts.js';
+import {
+  buildContractResume, isImportedContract, isImportCancel, isImportPause, reconstructedPauseOf
+} from '../contracts.js';
 
 const DAY_MS = 86400000;
 
@@ -56,6 +60,8 @@ export function normalizeContract(c) {
     pausedAt,
     resumedAt,
     imported,
+    // O cancelamento que a própria importação gravou não é cancelamento feito aqui.
+    cancelFromImport: isImportCancel(c),
     pauses: pausesOf(c, { startsAt, pausedAt }),
     personKey: c.leadId || `contrato:${c.id}`
   };
@@ -194,7 +200,7 @@ export function computeBaseMovement(contracts, { start, end }) {
     if (vB.has(key)) return;
     if (B.get(key) === 'trancado') { n.trancaram += 1; return; }
     const list = people.get(key) || [];
-    const cancelledHere = list.some((c) => !c.imported && c.cancelledAt && c.cancelledAt >= start && c.cancelledAt < end);
+    const cancelledHere = list.some((c) => !c.cancelFromImport && c.cancelledAt && c.cancelledAt >= start && c.cancelledAt < end);
     if (cancelledHere) n.cancelaram += 1; else n.venceram += 1;
   });
 
@@ -230,7 +236,7 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
     const hit = list.some((c) => {
       // Cancelado antes do fim, ou cancelado ainda parado: trancado não vence,
       // então a saída é o cancelamento, mesmo depois do fim antigo.
-      if (c.cancelledAt && !c.imported && ((c.endsAt && c.cancelledAt < c.endsAt) || hasOpenPause(c))) {
+      if (c.cancelledAt && !c.cancelFromImport && ((c.endsAt && c.cancelledAt < c.endsAt) || hasOpenPause(c))) {
         return c.cancelledAt >= start && c.cancelledAt < end && !aliveAt(list, c.cancelledAt);
       }
       if (!c.endsAt || hasOpenPause(c)) return false;
@@ -252,7 +258,7 @@ const sortItems = (map) => [...map].map(([name, count]) => ({ name, count }))
 export function cancellationsByReason(contracts, { start, end }) {
   const map = new Map();
   (contracts || []).forEach((c) => {
-    if (c.imported || !c.cancelledAt || c.cancelledAt < start || c.cancelledAt >= end) return;
+    if (c.cancelFromImport || !c.cancelledAt || c.cancelledAt < start || c.cancelledAt >= end) return;
     const name = c.cancelReason || 'Outro';
     map.set(name, (map.get(name) || 0) + 1);
   });

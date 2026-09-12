@@ -198,9 +198,17 @@ describe('computeBaseMovement (ponte do mês)', () => {
     expect(r.endCount).toBe(countActiveAt(list, new Date(SEP.end.getTime() - 1)));
   });
 
-  it('cancelamento de contrato importado sai como vencido, nunca como cancelamento', () => {
-    const list = [C('imp', { status: 'cancelado', cancelledAt: D(2026, 9, 15), importBatchId: 'lote-1' })];
+  // A importação grava o cancelado da planilha com cancelledAt = endsAt e sem motivo.
+  it('cancelamento gravado pela importação sai como vencido, nunca como cancelamento', () => {
+    const list = [C('imp', { status: 'cancelado', endsAt: D(2026, 9, 15), cancelledAt: D(2026, 9, 15), importBatchId: 'lote-1' })];
     expect(computeBaseMovement(list, SEP).steps).toMatchObject({ cancelaram: 0, venceram: 1 });
+  });
+
+  it('contrato importado cancelado depois pelo app conta em Cancelaram, com ou sem motivo', () => {
+    [{ cancelReason: 'Financeiro' }, {}].forEach((extra) => {
+      const list = [C('imp', { status: 'cancelado', cancelledAt: D(2026, 9, 15), importBatchId: 'lote-1', ...extra })];
+      expect(computeBaseMovement(list, SEP).steps).toMatchObject({ cancelaram: 1, venceram: 0 });
+    });
   });
 });
 
@@ -222,21 +230,34 @@ describe('computeChurn', () => {
     expect(computeChurn(list, { ...SEP, activeAtStart: r.base })).toEqual(r);
     expect(computeChurn(list, { ...SEP, activeAtStart: 40 })).toMatchObject({ base: 40, pct: 5 });
   });
+
+  it('importado trancado e cancelado depois pelo app sai no cancelamento', () => {
+    const c = C('imp', {
+      status: 'cancelado', importBatchId: 'lote', createdAt: D(2026, 5, 10), importedAt: D(2026, 5, 10),
+      pausedAt: D(2026, 5, 10), cancelledAt: D(2026, 9, 15), cancelReason: 'Financeiro'
+    });
+    expect(computeChurn([c], SEP).exits).toBe(1);
+  });
 });
 
 describe('cancellationsByReason', () => {
-  it('agrupa por motivo, sem importados, "Outro" quando falta motivo', () => {
+  it('agrupa por motivo, sem o cancelamento da importação, "Outro" quando falta motivo', () => {
     const list = [
       C('a', { status: 'cancelado', cancelledAt: D(2026, 9, 3), cancelReason: 'Financeiro' }),
       C('b', { status: 'cancelado', cancelledAt: D(2026, 9, 4), cancelReason: 'Financeiro' }),
       C('c', { status: 'cancelado', cancelledAt: D(2026, 9, 5) }),
-      C('d', { status: 'cancelado', cancelledAt: D(2026, 9, 6), cancelReason: 'Financeiro', importSource: 'NextFit' }),
+      C('d', { status: 'cancelado', endsAt: D(2026, 9, 6), cancelledAt: D(2026, 9, 6), importSource: 'NextFit' }),
       C('e', { status: 'cancelado', cancelledAt: D(2026, 8, 6), cancelReason: 'Financeiro' })
     ];
     expect(cancellationsByReason(list, SEP)).toEqual({
       total: 3,
       items: [{ name: 'Financeiro', count: 2 }, { name: 'Outro', count: 1 }]
     });
+  });
+
+  it('contrato importado cancelado depois pelo app entra no motivo', () => {
+    const list = [C('d', { status: 'cancelado', cancelledAt: D(2026, 9, 6), cancelReason: 'Financeiro', importSource: 'NextFit' })];
+    expect(cancellationsByReason(list, SEP)).toEqual({ total: 1, items: [{ name: 'Financeiro', count: 1 }] });
   });
 });
 

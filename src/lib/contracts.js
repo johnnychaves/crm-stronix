@@ -293,6 +293,16 @@ export const isImportPause = (contract, pausedAt, slackMs = 0) => {
   return Boolean(at && day && onDayOf(at, day, slackMs));
 };
 
+// Cancelamento gravado pela importação: o cancelado da planilha vira
+// cancelledAt = endsAt, sem motivo (clientImport.js). O que o app grava depois,
+// mesmo em contrato importado, é cancelamento como outro qualquer.
+export const isImportCancel = (contract) => {
+  if (!isImportedContract(contract) || contract?.cancelReason) return false;
+  const at = getSafeDateOrNull(contract?.cancelledAt);
+  const end = getSafeDateOrNull(contract?.endsAt);
+  return Boolean(at && end && onDayOf(at, end));
+};
+
 // Pausa de contrato de antes do histórico, refeita a partir da última
 // reativação e do total de dias parados. Várias pausas antigas viram uma. A
 // reativação grava esta conta no histórico e o Operacional faz a mesma ao ler.
