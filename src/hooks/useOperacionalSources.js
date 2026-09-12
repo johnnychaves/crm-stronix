@@ -57,7 +57,6 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
   const loadingRef = useRef(new Set());
   useEffect(() => {
     if (!db || !enabled) return undefined;
-    let cancelled = false;
     (monthKeys || []).forEach((key) => {
       if (months[key] || loadingRef.current.has(key)) return;
       loadingRef.current.add(key);
@@ -74,13 +73,11 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
         : getDocsWithAuthRetry(q).then((snap) => snap.docs.map(mapDoc)));
       Promise.all([closed ? load(qI, mapInteraction) : Promise.resolve(null), load(qL, normalizeLeadDoc)])
         .then(([interactions, leadsCreated]) => {
-          if (cancelled) return;
           setMonths((prev) => ({ ...prev, [key]: { interactions, leadsCreated } }));
         })
         .catch((e) => console.error('operacional fontes', key, e))
         .finally(() => loadingRef.current.delete(key));
     });
-    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- months entra só como guarda de "já carregado"
   }, [db, enabled, monthKeys, currentKey]);
 
@@ -89,7 +86,6 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
   const askedRef = useRef(new Set());
   useEffect(() => {
     if (!db || !enabled) return undefined;
-    let cancelled = false;
     const known = new Set((liveLeads || []).map((l) => l.id));
     askedRef.current.forEach((id) => known.add(id));
     const ids = leadIdsForRenewal(contracts, { monthKeys, known });
@@ -103,7 +99,6 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
         countOnServer: async () => (await getCountFromServer(q)).data().count
       })
         .then(({ docs }) => {
-          if (cancelled) return;
           setFetchedLeads((prev) => {
             const next = new Map(prev);
             docs.forEach((l) => next.set(l.id, l));
@@ -112,7 +107,6 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
         })
         .catch((e) => console.error('operacional carteira', e));
     });
-    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- ref() é estável por db/appId
   }, [db, enabled, contracts, monthKeys, liveLeads]);
 
