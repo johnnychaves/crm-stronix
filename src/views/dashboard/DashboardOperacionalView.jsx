@@ -476,8 +476,8 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
 
   return (
     <TooltipProvider delayDuration={150}>
-      <div className="font-sans">
-        <header className="bg-card px-8 pb-4 pt-5">
+      <div className="-m-4 md:-m-8 font-sans">
+        <header className="bg-card px-4 md:px-8 pb-4 pt-5">
           <h2 className="m-0 font-display text-[24px] font-bold tracking-[-0.02em]">Operacional</h2>
           <p className="mt-[5px] max-w-[820px] text-[12.5px] leading-normal text-muted-foreground">{subline}</p>
         </header>
@@ -491,7 +491,7 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
           note={note}
         />
         {failedNames.length > 0 && (
-          <p role="status" className="flex items-center gap-1.5 px-8 pt-3 text-[12px] text-amber-700 dark:text-amber-300">
+          <p role="status" className="flex items-center gap-1.5 px-4 md:px-8 pt-3 text-[12px] text-amber-700 dark:text-amber-300">
             <CircleAlert size={13} strokeWidth={2.2} className="flex-none" />
             Não foi possível carregar os dados de {failedNames.join(' e ')}. Recarregue a página para tentar de novo.
           </p>
@@ -504,9 +504,9 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
           )}
           <div className={cn('transition-opacity', sources.loading && 'opacity-35')} aria-busy={sources.loading}>
             {compareOn && highlights.length > 0 && (
-              <div className="px-8 pt-[18px]"><DashHighlights items={highlights} /></div>
+              <div className="px-4 md:px-8 pt-[18px]"><DashHighlights items={highlights} /></div>
             )}
-            <div className="flex flex-col gap-[22px] px-8 pb-8 pt-5">
+            <div className="flex flex-col gap-[22px] px-4 md:px-8 pb-8 pt-5">
               <DashSummaryBand items={summary} />
 
               <section>

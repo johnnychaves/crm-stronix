@@ -137,7 +137,7 @@ function PersonControl({ person, people, onPerson }) {
 export function OperacionalToolbar(props) {
   const { note } = props;
   return (
-    <div className="sticky top-0 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-8 py-2.5 dark:border-t-white/[0.06]">
+    <div className="sticky top-0 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06]">
       <div className="hidden items-center gap-2.5 md:flex">
         <MonthControl {...props} />
         <CompareControl {...props} />
