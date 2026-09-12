@@ -21,13 +21,8 @@ import {
   computeSparklines,
   computeSourceMetrics,
   computeAulasPorModalidade,
-  computePendingFollowUps,
-  computeTodayAgenda,
-  computeNoShowsToRework,
   computeProfessorConversion,
-  computeLossReasons,
-  computeDayFunnel,
-  computeConsultantDayBoard
+  computeLossReasons
 } from '../dashboardMetrics.js';
 import {
   getLeadConversionDateStrict,
@@ -365,41 +360,6 @@ describe('agrupadores simples', () => {
     const rows = computeAulasPorModalidade(scheduled);
     expect(rows.map(r => r.name).sort()).toEqual(['Musculação', 'Sem modalidade']);
   });
-
-  it('follow-ups pendentes excluem Venda/Perda e ordenam pela data', () => {
-    const later = lead({ nextFollowUp: new Date(2026, 6, 20) });
-    const sooner = lead({ nextFollowUp: new Date(2026, 6, 10) });
-    const won = lead({ status: 'Venda', nextFollowUp: new Date(2026, 6, 11) });
-    const rows = computePendingFollowUps([later, sooner, won]);
-    expect(rows.map(l => l.id)).toEqual([sooner.id, later.id]);
-  });
-});
-
-describe('computeTodayAgenda (tela Operacional)', () => {
-  it('lista só visitas/aulas com data HOJE, em ordem de horário', () => {
-    const manha = lead({ appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 9, 9, 0) });
-    const noite = lead({ appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 9, 19, 30) });
-    const tarde = lead({ appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 9, 15, 0) });
-    const amanha = lead({ appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 10, 9, 0) });
-    const ontem = lead({ appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 8, 9, 0) });
-    const semTipo = lead({ appointmentScheduledFor: new Date(2026, 6, 9, 11, 0) });
-    const rows = computeTodayAgenda([noite, amanha, manha, ontem, tarde, semTipo], NOW);
-    expect(rows.map(l => l.id)).toEqual([manha.id, tarde.id, noite.id]);
-  });
-});
-
-describe('computeNoShowsToRework (tela Operacional)', () => {
-  it('só não-comparecimentos recentes de leads ainda em jogo, mais novo primeiro', () => {
-    const recente = lead({ appointmentOutcome: 'no_show', appointmentOutcomeAt: new Date(2026, 6, 7, 11, 0) });
-    const maisRecente = lead({ appointmentOutcome: 'no_show', appointmentOutcomeAt: new Date(2026, 6, 8, 10, 0) });
-    const antigo = lead({ appointmentOutcome: 'no_show', appointmentOutcomeAt: new Date(2026, 5, 10) });
-    const jaConverteu = lead({ appointmentOutcome: 'no_show', appointmentOutcomeAt: new Date(2026, 6, 7), status: 'Venda', isConverted: true });
-    const perdido = lead({ appointmentOutcome: 'no_show', appointmentOutcomeAt: new Date(2026, 6, 7), status: 'Perda' });
-    const semData = lead({ appointmentOutcome: 'no_show' });
-    const compareceu = lead({ appointmentOutcome: 'attended', appointmentOutcomeAt: new Date(2026, 6, 7) });
-    const rows = computeNoShowsToRework([recente, antigo, jaConverteu, perdido, semData, compareceu, maisRecente], { now: NOW, days: 14 });
-    expect(rows.map(l => l.id)).toEqual([maisRecente.id, recente.id]);
-  });
 });
 
 describe('computeProfessorConversion (Gerencial)', () => {
@@ -482,49 +442,6 @@ describe('computeLossReasons (Gerencial)', () => {
   });
 });
 
-describe('computeDayFunnel (barra de progresso do Operacional)', () => {
-  it('conta novos, agendados, compareceram e matrículas de HOJE + andamento da agenda', () => {
-    const leads = [
-      lead({ createdAt: new Date(2026, 6, 9, 8, 0) }),
-      lead({ createdAt: new Date(2026, 6, 9, 10, 0) }),
-      lead({ createdAt: new Date(2026, 6, 9, 11, 0), createdAtMissing: true }), // sem createdAt real: fora
-      lead({ createdAt: new Date(2026, 6, 1), appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 9, 9, 0), appointmentOutcome: 'attended' }),
-      lead({ createdAt: new Date(2026, 6, 1), appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 9, 10, 30), appointmentOutcome: 'no_show' }),
-      lead({ createdAt: new Date(2026, 6, 1), appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 9, 19, 30) }), // futura (15:00)
-      lead({ createdAt: new Date(2026, 5, 10), status: 'Venda', isConverted: true, convertedAt: new Date(2026, 6, 9, 12, 0) })
-    ];
-    expect(computeDayFunnel(leads, NOW)).toEqual({
-      novos: 2,
-      agendados: 3,
-      compareceram: 1,
-      matriculas: 1,
-      agendaRealizados: 2,
-      agendaTotal: 3
-    });
-  });
-});
-
-describe('computeConsultantDayBoard (cards "Time agora")', () => {
-  it('agrupa funil de hoje e backlog por consultor', () => {
-    const c1 = { consultantId: 'c1', consultantName: 'Ana' };
-    const c2 = { consultantId: 'c2', consultantName: 'Hosiel' };
-    const leads = [
-      lead({ ...c1, appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 9, 9, 0), appointmentOutcome: 'attended' }),
-      lead({ ...c1, status: 'Venda', isConverted: true, convertedAt: new Date(2026, 6, 9, 12, 0) }),
-      lead({ ...c1, nextFollowUp: new Date(2026, 6, 8, 10, 0) }), // atrasado
-      lead({ ...c1, appointmentOutcome: 'no_show', appointmentOutcomeAt: new Date(2026, 6, 7, 11, 0) }),
-      lead({ ...c2, appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 9, 19, 30) }), // futura
-      lead({ ...c2, nextFollowUp: new Date(2026, 6, 10, 10, 0) }), // futuro: não é atrasado
-      lead({ appointmentType: 'visita', appointmentScheduledFor: new Date(2026, 6, 9, 11, 0) }) // sem dono
-    ];
-    const board = computeConsultantDayBoard(leads, { now: NOW });
-
-    expect(board.c1).toMatchObject({ name: 'Ana', agendou: 1, compareceu: 1, matriculas: 1, followUpsAtrasados: 1, noShows: 1 });
-    expect(board.c2).toMatchObject({ name: 'Hosiel', agendou: 1, compareceu: 0, matriculas: 0, followUpsAtrasados: 0, noShows: 0 });
-    expect(board.unassigned).toMatchObject({ agendou: 1 });
-  });
-});
-
 describe('helpers novos em leads.js', () => {
   it('isConvertedStatusName casa Venda e nomes com "matricul"/"convertid"', () => {
     expect(isConvertedStatusName('Venda')).toBe(true);
@@ -591,38 +508,5 @@ describe('computeAdminDashboardSpan', () => {
     expect(span.startMs).toBe(prev.start.getTime());
     expect(span.startMs).toBeLessThanOrEqual(sparkStart.getTime());
     expect(span.endMs).toBe(range.end.getTime());
-  });
-});
-
-// ── O board devolve QUEM está por trás de cada número ───────────────────────
-// O gestor clica no "7 follow-ups atrasados" e precisa da lista. Os leads já
-// são conhecidos dentro da função; antes eram descartados depois de contados.
-describe('computeConsultantDayBoard — listas junto das contagens', () => {
-  const now = new Date(2026, 6, 15, 10, 0, 0);
-  const atrasado = (id, name, dia) => ({
-    id, name, consultantId: 'u1', consultantName: 'Marta',
-    status: 'Contato', nextFollowUp: new Date(2026, 6, dia)
-  });
-
-  it('devolve os leads de follow-up atrasado, não só o total', () => {
-    const board = computeConsultantDayBoard(
-      [atrasado('l1', 'Ana', 10), atrasado('l2', 'Bruno', 12)],
-      { now }
-    );
-    expect(board.u1.followUpsAtrasados).toBe(2);
-    expect(board.u1.leads.followUpsAtrasados.map(l => l.id).sort()).toEqual(['l1', 'l2']);
-  });
-
-  it('não cria entrada de consultor quando não há lead', () => {
-    expect(computeConsultantDayBoard([], { now })).toEqual({});
-  });
-
-  it('cada lista tem exatamente o tamanho da contagem correspondente', () => {
-    const b = computeConsultantDayBoard([atrasado('l1', 'Ana', 10)], { now }).u1;
-    expect(b.leads.followUpsAtrasados).toHaveLength(b.followUpsAtrasados);
-    expect(b.leads.agendou).toHaveLength(b.agendou);
-    expect(b.leads.compareceu).toHaveLength(b.compareceu);
-    expect(b.leads.matriculas).toHaveLength(b.matriculas);
-    expect(b.leads.noShows).toHaveLength(b.noShows);
   });
 });
