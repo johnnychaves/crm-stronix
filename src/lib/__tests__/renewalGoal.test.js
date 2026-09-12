@@ -8,6 +8,8 @@ import {
   activeRenewalCheckpoint,
   shouldPromptRenewal,
   renewalDecline,
+  renewalDeclineStamp,
+  renewalUndoDecline,
   renewalReschedule
 } from '../renewalGoal.js';
 
@@ -216,6 +218,36 @@ describe('renewalDecline com motivo', () => {
 
   it('sem motivo vira "Outro"', () => {
     expect(renewalDecline({}, 30, { at: new Date(0) }).renewalDeclineReason).toBe('Outro');
+  });
+});
+
+// O board (funil Vencidos) recusa sem mexer nos marcos, e o arrasto não pergunta
+// o motivo.
+describe('renewalDeclineStamp', () => {
+  it('grava a recusa com data e motivo, sem tocar nos marcos', () => {
+    const at = new Date(2026, 8, 11, 10);
+    expect(renewalDeclineStamp({ reason: 'Financeiro', at })).toEqual({
+      renewalDeclined: true,
+      renewalDeclinedAt: at,
+      renewalDeclineReason: 'Financeiro'
+    });
+  });
+
+  it('sem argumentos: agora e "Outro"', () => {
+    const patch = renewalDeclineStamp();
+    expect(patch.renewalDeclinedAt).toEqual(expect.any(Date));
+    expect(patch.renewalDeclineReason).toBe('Outro');
+    expect(patch).not.toHaveProperty('renewalHandledCheckpoints');
+  });
+});
+
+describe('renewalUndoDecline', () => {
+  it('desfaz a recusa e apaga data e motivo, sem devolver o marco tratado', () => {
+    expect(renewalUndoDecline()).toEqual({
+      renewalDeclined: false,
+      renewalDeclinedAt: null,
+      renewalDeclineReason: null
+    });
   });
 });
 
