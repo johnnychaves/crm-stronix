@@ -359,8 +359,11 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
   // effect, e um useRef lido/escrito aqui seria pego pelo react-hooks/refs —
   // os dois testados e recusados por este lint antes desta escolha.
   const ready = curLoaded.hasSource && (!compareOn || Boolean(cmpLoaded?.hasSource));
+  // cur, series e team mudam juntos (mesmas dependências); cmp muda sozinho
+  // quando só o mês de comparação troca. A guarda depende de ctx estável entre
+  // renders: dentro do App a config vem do provider memorizado.
   const [lastGood, setLastGood] = useState(null);
-  if (ready && lastGood?.cur !== curLoaded) {
+  if (ready && (lastGood?.cur !== curLoaded || lastGood?.cmp !== cmpLoaded)) {
     setLastGood({ cur: curLoaded, cmp: cmpLoaded, series: seriesLoaded, team: teamLoaded });
   }
   const { cur, cmp, series, team } = ready || !lastGood
