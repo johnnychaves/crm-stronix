@@ -4,8 +4,8 @@
 // motivo, matrículas e upgrades por vendedor. Importado de planilha entra na
 // base, mas nunca conta como matrícula, retorno, cancelamento ou trancamento.
 
-import { addDays, getSafeDateOrNull } from '../dates.js';
-import { buildContractResume, isImportedContract } from '../contracts.js';
+import { getSafeDateOrNull } from '../dates.js';
+import { buildContractResume, isImportedContract, isImportPause, reconstructedPauseOf } from '../contracts.js';
 
 const DAY_MS = 86400000;
 
@@ -15,9 +15,9 @@ const DAY_MS = 86400000;
 // (várias pausas antigas se juntam numa só, aproximação conhecida); e a pausa
 // aberta de quem está trancado (ou foi cancelado trancado). A pausa gravada
 // pela importação não tem data real e começa em startsAt, para não inventar
-// trancamento no mês da importação; o trancamento pela ficha sempre tem motivo.
-function pausesOf(c, { startsAt, pausedAt, resumedAt, imported }) {
-  const fromImport = imported && !c.pauseReason;
+// trancamento no mês da importação. Quem diz se a pausa é dela é
+// isImportPause (contracts.js), pelo dia em que o contrato foi gravado.
+function pausesOf(c, { startsAt, pausedAt }) {
   const out = [];
   if (Array.isArray(c.pauseHistory) && c.pauseHistory.length) {
     c.pauseHistory.forEach((p) => {
@@ -25,11 +25,13 @@ function pausesOf(c, { startsAt, pausedAt, resumedAt, imported }) {
       const to = getSafeDateOrNull(p?.resumedAt);
       if (from && to) out.push({ from, to });
     });
-  } else if (resumedAt && Number(c.pausedDaysTotal) > 0) {
-    out.push({ from: fromImport ? startsAt : addDays(resumedAt, -Number(c.pausedDaysTotal)), to: resumedAt });
+  } else {
+    const r = reconstructedPauseOf(c);
+    const from = r && (r.fromImport ? startsAt : r.pausedAt);
+    if (from) out.push({ from, to: r.resumedAt });
   }
   if (c.status === 'trancado' || (c.status === 'cancelado' && pausedAt)) {
-    const from = fromImport ? startsAt : (pausedAt || startsAt);
+    const from = isImportPause(c, pausedAt) ? startsAt : (pausedAt || startsAt);
     if (from) out.push({ from, to: null });
   }
   return out;
@@ -54,7 +56,7 @@ export function normalizeContract(c) {
     pausedAt,
     resumedAt,
     imported,
-    pauses: pausesOf(c, { startsAt, pausedAt, resumedAt, imported }),
+    pauses: pausesOf(c, { startsAt, pausedAt }),
     personKey: c.leadId || `contrato:${c.id}`
   };
 }

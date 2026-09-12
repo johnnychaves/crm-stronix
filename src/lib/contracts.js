@@ -270,15 +270,48 @@ export const buildContractPause = ({ planName, pausedAt, reason } = {}) => {
 // mas nunca conta como venda, cancelamento ou trancamento feito no sistema.
 export const isImportedContract = (c) => Boolean(c?.importBatchId || c?.importSource || c?.importedBy);
 
+const HALF_DAY_MS = 43200000;
+
+// `at` cai no dia civil (horário local) de `day`, com folga opcional.
+const onDayOf = (at, day, slackMs = 0) => {
+  const start = new Date(day.getFullYear(), day.getMonth(), day.getDate()).getTime();
+  const end = new Date(day.getFullYear(), day.getMonth(), day.getDate() + 1).getTime();
+  return at.getTime() + slackMs >= start && at.getTime() - slackMs < end;
+};
+
+// Pausa gravada pela importação. O trancado da planilha vira pausedAt = hora
+// da importação (clientImport.js), sem data real, e o contrato nasce com
+// importedAt no mesmo dia (clientImportWrites.js). Então é da importação a
+// pausa de contrato importado que começa no dia em que ele foi gravado
+// (importedAt; sem ele, createdAt). O motivo não serve de sinal, porque fica
+// gravado de uma pausa para a outra. `slackMs` é para o início refeito pelo
+// total de dias, que arredonda para dias inteiros e erra até meio dia.
+export const isImportPause = (contract, pausedAt, slackMs = 0) => {
+  if (!isImportedContract(contract)) return false;
+  const at = getSafeDateOrNull(pausedAt);
+  const day = getSafeDateOrNull(contract?.importedAt) || getSafeDateOrNull(contract?.createdAt);
+  return Boolean(at && day && onDayOf(at, day, slackMs));
+};
+
+// Pausa de contrato de antes do histórico, refeita a partir da última
+// reativação e do total de dias parados. Várias pausas antigas viram uma. A
+// reativação grava esta conta no histórico e o Operacional faz a mesma ao ler.
+export const reconstructedPauseOf = (contract) => {
+  const resumedAt = getSafeDateOrNull(contract?.resumedAt);
+  const days = Number(contract?.pausedDaysTotal) || 0;
+  if (!resumedAt || days <= 0) return null;
+  const pausedAt = addDays(resumedAt, -days);
+  return { pausedAt, resumedAt, fromImport: isImportPause(contract, pausedAt, HALF_DAY_MS) };
+};
+
 // Pausas já encerradas, para o Operacional saber em que meses o cliente
-// esteve trancado. Contrato de antes do histórico começa com UM item refeito
-// a partir da última reativação e do total de dias parados (várias pausas
-// antigas viram uma), a mesma aproximação que o Operacional faz ao ler.
+// esteve trancado. Contrato de antes do histórico começa com UM item refeito.
 const closedPausesOf = (contract) => {
   if (Array.isArray(contract?.pauseHistory) && contract.pauseHistory.length) return contract.pauseHistory;
-  const lastBack = getSafeDateOrNull(contract?.resumedAt);
-  const days = Number(contract?.pausedDaysTotal) || 0;
-  return lastBack && days > 0 ? [{ pausedAt: addDays(lastBack, -days), resumedAt: lastBack, reconstructed: true }] : [];
+  const r = reconstructedPauseOf(contract);
+  return r
+    ? [{ pausedAt: r.pausedAt, resumedAt: r.resumedAt, reconstructed: true, ...(r.fromImport ? { fromImport: true } : {}) }]
+    : [];
 };
 
 // Reativação. O cliente pagou por N meses de treino, não por N meses de
@@ -291,9 +324,8 @@ export const buildContractResume = ({ contract, resumedAt } = {}) => {
   const pausedDays = pausedAt ? Math.max(0, daysBetween(pausedAt, back) || 0) : 0;
   const newEndsAt = endsAt && pausedDays > 0 ? addDays(endsAt, pausedDays) : endsAt;
   const total = (Number(contract?.pausedDaysTotal) || 0) + pausedDays;
-  // A pausa gravada pela importação usa a hora da importação, não a data real,
-  // e não tem motivo, porque o trancamento pela ficha sempre pede um.
-  const fromImport = isImportedContract(contract) && !contract?.pauseReason;
+  // A pausa gravada pela importação usa a hora da importação, não a data real.
+  const fromImport = isImportPause(contract, pausedAt);
 
   return {
     pausedDays,

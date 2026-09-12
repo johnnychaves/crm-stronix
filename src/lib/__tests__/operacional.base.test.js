@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildContractResume } from '../contracts.js';
+import { buildContractPause, buildContractResume } from '../contracts.js';
 import {
   normalizeContract, normalizeContracts, hasOpenPause, contractStateAt, countActiveAt, countLockedAt,
   computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow, indexContracts
@@ -74,7 +74,10 @@ describe('contractStateAt', () => {
 
 describe('contratos importados', () => {
   it('trancado na planilha: a pausa começa no início, sem inventar trancamento no mês da importação', () => {
-    const c = C('imp', { status: 'trancado', importBatchId: 'lote', startsAt: D(2026, 3, 1), pausedAt: D(2026, 9, 4) });
+    const c = C('imp', {
+      status: 'trancado', importBatchId: 'lote', startsAt: D(2026, 3, 1),
+      createdAt: D(2026, 9, 4), importedAt: D(2026, 9, 4), pausedAt: D(2026, 9, 4)
+    });
     expect(contractStateAt(c, D(2026, 3, 5))).toBe('trancado');
     expect(computeBaseMovement([c], SEP)).toMatchObject({ startCount: 0, endCount: 0, trancaram: 0 });
   });
@@ -95,6 +98,33 @@ describe('contratos importados', () => {
     expect(contractStateAt(c, D(2026, 5, 1))).toBe('trancado');
     expect(contractStateAt(c, D(2026, 10, 6))).toBe('vigente');
     expect(computeBaseMovement([c], SEP).trancaram).toBe(0);
+  });
+
+  // Caso da revisão. A importação grava a pausa às 15h de 10/05, com início real
+  // em 01/03. A ficha reativou em 10/06 com o código de antes do histórico,
+  // trancou com motivo em 05/07 e reativou em 04/08.
+  it('importado trancado, reativado sem histórico, trancado pela ficha e reativado: o passado não muda', () => {
+    const MAR = { start: new Date(2026, 2, 1), end: new Date(2026, 3, 1) };
+    const MAY = { start: new Date(2026, 4, 1), end: new Date(2026, 5, 1) };
+    const importado = {
+      id: 'imp', leadId: 'imp', status: 'trancado', importBatchId: 'lote',
+      startsAt: D(2026, 3, 1), endsAt: D(2026, 12, 1),
+      createdAt: D(2026, 5, 10, 15), importedAt: D(2026, 5, 10, 15), pausedAt: D(2026, 5, 10, 15)
+    };
+    const semHistorico = {
+      ...importado, status: 'ativo', pausedAt: null, resumedAt: new Date(2026, 5, 10), pausedDaysTotal: 30, endsAt: D(2026, 12, 31)
+    };
+    const pelaFicha = { ...semHistorico, ...buildContractPause({ pausedAt: new Date(2026, 6, 5), reason: 'Viagem' }).contractPatch };
+    const reativado = { ...pelaFicha, ...buildContractResume({ contract: pelaFicha, resumedAt: new Date(2026, 7, 4) }).contractPatch };
+
+    [pelaFicha, reativado].forEach((raw) => {
+      const c = normalizeContract(raw);
+      expect(computeBaseMovement([c], MAR).steps.importados).toBe(0);
+      expect(contractStateAt(c, D(2026, 5, 1))).toBe('trancado');
+      expect(computeBaseMovement([c], MAY)).toMatchObject({ startCount: 0, endCount: 0, trancaram: 0 });
+      expect(contractStateAt(c, D(2026, 6, 20))).toBe('vigente');
+      expect(contractStateAt(c, D(2026, 7, 10))).toBe('trancado');
+    });
   });
 
   it('sem início na planilha, começa na criação', () => {
