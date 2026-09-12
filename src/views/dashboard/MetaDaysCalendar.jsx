@@ -84,7 +84,7 @@ export function MetaDaysCalendar({ cells, teamSize, person }) {
       </div>
 
       <div className="mt-3.5 overflow-x-auto snap-x">
-        <div className="grid w-[470px] grid-cols-5 gap-1.5">
+        <div className="grid w-full max-w-[470px] max-md:w-[470px] grid-cols-5 gap-1.5">
           {WEEKDAY_LABELS.map((w) => (
             <span key={w} className="text-center text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{w}</span>
           ))}
