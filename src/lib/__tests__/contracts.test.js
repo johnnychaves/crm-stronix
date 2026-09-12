@@ -294,6 +294,8 @@ describe('buildMatriculaWrites — funil Vencidos', () => {
     });
     expect(leadPatch.reactivationStageId).toBeNull();
     expect(leadPatch.renewalDeclined).toBe(false);
+    expect(leadPatch.renewalDeclinedAt).toBe(null);
+    expect(leadPatch.renewalDeclineReason).toBe(null);
   });
 });
 

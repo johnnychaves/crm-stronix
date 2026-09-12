@@ -194,6 +194,8 @@ export const buildMatriculaWrites = ({
     // ver src/lib/renewalGoal.js).
     renewalHandledCheckpoints: [],
     renewalDeclined: false,
+    renewalDeclinedAt: null,
+    renewalDeclineReason: null,
     // Etapa no funil VENCIDOS do board (src/lib/expiredFunnel.js). Sem esta
     // limpeza, o cliente que voltou e vencesse de novo daqui a dois anos
     // reapareceria na etapa da vida passada — bug silencioso de longo prazo.

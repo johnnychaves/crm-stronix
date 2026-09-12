@@ -161,7 +161,12 @@ describe('renewalDecline', () => {
   it('marca declinado e adiciona o marco ativo aos handled', () => {
     const l = cliente({ renewalHandledCheckpoints: [] });
     const patch = renewalDecline(l, 30);
-    expect(patch).toEqual({ renewalDeclined: true, renewalHandledCheckpoints: [30] });
+    expect(patch).toEqual({
+      renewalDeclined: true,
+      renewalHandledCheckpoints: [30],
+      renewalDeclinedAt: expect.any(Date),
+      renewalDeclineReason: 'Outro'
+    });
   });
 
   it('não duplica um marco já presente em handled', () => {
@@ -179,12 +184,38 @@ describe('renewalDecline', () => {
   it('activeCheckpoint null não adiciona nada, mas ainda declina', () => {
     const l = cliente({ renewalHandledCheckpoints: [90] });
     const patch = renewalDecline(l, null);
-    expect(patch).toEqual({ renewalDeclined: true, renewalHandledCheckpoints: [90] });
+    expect(patch).toEqual({
+      renewalDeclined: true,
+      renewalHandledCheckpoints: [90],
+      renewalDeclinedAt: expect.any(Date),
+      renewalDeclineReason: 'Outro'
+    });
   });
 
   it('lead sem renewalHandledCheckpoints (legado) não quebra', () => {
     const patch = renewalDecline({}, 30);
-    expect(patch).toEqual({ renewalDeclined: true, renewalHandledCheckpoints: [30] });
+    expect(patch).toEqual({
+      renewalDeclined: true,
+      renewalHandledCheckpoints: [30],
+      renewalDeclinedAt: expect.any(Date),
+      renewalDeclineReason: 'Outro'
+    });
+  });
+});
+
+describe('renewalDecline com motivo', () => {
+  it('grava motivo e data junto com o marco tratado', () => {
+    const at = new Date(2026, 8, 11, 10);
+    expect(renewalDecline({ renewalHandledCheckpoints: [90] }, 60, { reason: 'Financeiro', at })).toEqual({
+      renewalDeclined: true,
+      renewalHandledCheckpoints: [90, 60],
+      renewalDeclinedAt: at,
+      renewalDeclineReason: 'Financeiro'
+    });
+  });
+
+  it('sem motivo vira "Outro"', () => {
+    expect(renewalDecline({}, 30, { at: new Date(0) }).renewalDeclineReason).toBe('Outro');
   });
 });
 

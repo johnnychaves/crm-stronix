@@ -105,17 +105,20 @@ export function shouldPromptRenewal(lead, now, checkpoints) {
   return !handled.includes(activeCheckpoint);
 }
 
-// Patch do desfecho "Não vai renovar": marca o ciclo como declinado e some o
-// marco atual dos próximos marcos (idempotente — não duplica se já estiver
-// lá). NÃO mexe em status/lifecycleStage: perda de venda != perda de funil.
-export function renewalDecline(lead, activeCheckpoint) {
+// Patch do desfecho "Não vai renovar": marca o ciclo como declinado, some o
+// marco atual dos próximos marcos (idempotente) e grava QUANDO e POR QUÊ, com o
+// motivo da mesma lista fixa do cancelamento (CONTRACT_CANCEL_REASONS). NÃO
+// mexe em status/lifecycleStage: perda de venda != perda de funil.
+export function renewalDecline(lead, activeCheckpoint, { reason = null, at = new Date() } = {}) {
   const handled = Array.isArray(lead?.renewalHandledCheckpoints) ? lead.renewalHandledCheckpoints : [];
   const next = (activeCheckpoint != null && !handled.includes(activeCheckpoint))
     ? [...handled, activeCheckpoint]
     : handled;
   return {
     renewalDeclined: true,
-    renewalHandledCheckpoints: next
+    renewalHandledCheckpoints: next,
+    renewalDeclinedAt: at,
+    renewalDeclineReason: reason || 'Outro'
   };
 }
 
