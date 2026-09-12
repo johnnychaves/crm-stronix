@@ -30,7 +30,9 @@ function cellView(c, { teamSize, person }) {
     return {
       mark: 'hoje', bg: 'bg-brand-50 dark:bg-brand-500/15', border: 'border border-dashed border-brand-600',
       dayFg: 'text-foreground', markFg: 'text-muted-foreground',
-      tip: `Dia ${c.day}: hoje, ainda em curso`
+      tip: person
+        ? `Dia ${c.day}: hoje, ainda em curso`
+        : `Dia ${c.day}: ${fmtNum(c.hits)} de ${fmtNum(teamSize)} bateram até agora (hoje)`
     };
   }
   if (person) {
