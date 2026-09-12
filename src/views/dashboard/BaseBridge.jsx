@@ -24,6 +24,9 @@ export function BaseBridge({ startCount, endCount, steps }) {
     { name: 'Fim', kind: 'level', v: endCount }
   ];
 
+  // Passo zero é "0", não "−0": o sinal só faz sentido quando há variação.
+  const signed = (v) => (v === 0 ? '0' : `${v > 0 ? '+' : '−'}${fmtNum(Math.abs(v))}`);
+
   let run = startCount;
   const spans = items.map((b) => {
     if (b.kind === 'level') return { from: b.v, to: b.v, val: b.v };
@@ -47,12 +50,12 @@ export function BaseBridge({ startCount, endCount, steps }) {
     const h = isLevel ? y(span.val) : Math.max(y(span.to) - y(span.from), 3);
     const bg = isLevel ? 'bg-muted' : b.kind === 'in' ? 'bg-brand-600' : 'bg-danger dark:bg-[#E11D48]';
     const labelFg = isLevel ? 'text-foreground' : b.kind === 'in' ? 'text-brand-700 dark:text-brand-300' : 'text-rose-700 dark:text-rose-300';
-    const label = isLevel ? fmtNum(b.v) : `${b.v > 0 ? '+' : '−'}${fmtNum(Math.abs(b.v))}`;
+    const label = isLevel ? fmtNum(b.v) : signed(b.v);
     const tip = b.imported
       ? `Importados: +${fmtNum(b.v)} · clientes vindos da planilha`
       : isLevel
         ? `${b.name}: ${fmtNum(b.v)} clientes ativos`
-        : `${b.name}: ${b.v > 0 ? '+' : '−'}${fmtNum(Math.abs(b.v))} · base em ${fmtNum(span.val)}`;
+        : `${b.name}: ${signed(b.v)} · base em ${fmtNum(span.val)}`;
     return {
       name: b.name, label, labelFg, bg, tip,
       bottom: Math.round(bottom), height: Math.round(h),
