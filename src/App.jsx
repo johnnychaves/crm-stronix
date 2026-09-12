@@ -57,6 +57,7 @@ import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
 import { planUpgradeSetupOps } from './lib/upgradeFunnel.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
+import { recordGoalHit as recordGoalHitDoc } from './lib/dailyGoalHistory.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
 import { useProfileLead } from './hooks/useProfileLead.js';
@@ -1365,7 +1366,7 @@ useEffect(() => {
   // Renovação. `clients` (o filtro A_VENCER exato) segue só pro badge âmbar de
   // Clientes; `candidates` é o pool cru (janela mais larga, até o maior marco)
   // que a Meta usa pra avaliar os marcos configuráveis (ver useRenewalClients.js).
-  const { clients: renewalClients, candidates: renewalCandidates } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, expiredWindowDays: renewalGraceDays, reloadKey: dayKey, enabled: !!appUser });
+  const { clients: renewalClients, candidates: renewalCandidates, loading: renewalLoading } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, expiredWindowDays: renewalGraceDays, reloadKey: dayKey, enabled: !!appUser });
   // Base da META (G1d): ativo (prop) ∪ candidatos a renovação (renewalCandidates),
   // dedupe por id (global primeiro). PRÉ-flip o prop já contém os clientes →
   // no-op → números idênticos; PÓS-flip o prop vira só 'ativo' e os
@@ -1386,13 +1387,23 @@ useEffect(() => {
   }, [leads, renewalCandidates, clientsContactToday]);
 
   // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
-  const dailyGoalPending = useMemo(() => {
-    if (!appUser?.id) return 0;
+  const dailyGoalProgress = useMemo(() => {
+    if (!appUser?.id) return { total: 0, pending: 0 };
     void dayKey; // recalcula na virada do dia
     const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
-    return totalSlots - doneSlots;
+    return { total: totalSlots, pending: totalSlots - doneSlots };
   }, [metaLeads, interactions, appUser, dayKey, renewalCheckpoints, renewalGraceDays]);
+  const dailyGoalPending = dailyGoalProgress.pending;
+
+  // Dia batido gravado de QUALQUER tela: antes só a Meta Diária aberta gravava,
+  // e quem fechava a última tarefa pelo Pipeline ficava sem o dia. Só grava com
+  // a base carregada (senão uma pendência ainda não carregada parece zerada).
+  useEffect(() => {
+    if (!db || !appUser?.id || !listenersActive || loadingData || renewalLoading) return;
+    if (dailyGoalProgress.total > 0 && dailyGoalProgress.pending === 0) recordGoalHitDoc(db, appUser);
+    // db é o singleton do módulo (lib/firebase.js) — não é dependência válida.
+  }, [appUser, listenersActive, loadingData, renewalLoading, dailyGoalProgress, dayKey]);
 
   // Dashboard Gerencial do CONSULTOR (E2a): busca os PRÓPRIOS leads por query
   // (where consultantId==id, sem orderBy → índice automático, sem armadilha de
