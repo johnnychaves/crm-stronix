@@ -11,7 +11,8 @@
 // esgotadas as tentativas, o mês entra vazio e sai em `failedKeys`, sem prender
 // a tela carregando.
 //
-// Também busca os docs dos leads da carteira de renovação (responsável atual).
+// Também busca os docs dos leads da carteira de renovação (responsável atual),
+// sempre do servidor e uma vez por id na sessão do navegador.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { collection, documentId, getCountFromServer, getDocsFromCache, onSnapshot, query, where } from 'firebase/firestore';
@@ -74,6 +75,11 @@ async function loadMonth(db, key, closed) {
   return { closed, interactions, leadsCreated, history };
 }
 
+// Leads da carteira já lidos nesta sessão do navegador, por academia (appId).
+// Fica fora do estado do hook porque a tela desmonta ao trocar de aba, e cada
+// abertura leria a carteira inteira de novo do servidor.
+const carteiraDaSessao = new Map();
+
 export function useOperacionalSources({ db, enabled = true, now, monthKeys, liveInteractions, liveLeads, contracts, appUser }) {
   const currentKey = monthKeyOf(now);
   const authUid = appUser?.authUid;
@@ -131,24 +137,27 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
     // eslint-disable-next-line react-hooks/exhaustive-deps -- months entra só como guarda de "já carregado"
   }, [db, enabled, monthKeys, currentKey]);
 
-  // --- leads da carteira (responsável atual), por id, em lotes de 30.
-  const [fetchedLeads, setFetchedLeads] = useState(() => new Map());
+  // --- leads da carteira (responsável atual), por id, em lotes de 30. Sempre do
+  // servidor: a conferência por contagem só enxerga exclusão, e uma troca de
+  // responsável ficaria congelada no cache. Uma vez por id na sessão: o que já
+  // foi lido (carteiraDaSessao) entra como semente e não é buscado de novo.
+  const [seed] = useState(() => new Map(carteiraDaSessao.get(appId)));
+  const [fetchedLeads, setFetchedLeads] = useState(seed);
   const askedRef = useRef(new Set());
   useEffect(() => {
     if (!db || !enabled) return undefined;
-    const known = new Set((liveLeads || []).map((l) => l.id));
-    askedRef.current.forEach((id) => known.add(id));
+    const tenant = appId;
+    const known = new Set([...(liveLeads || []).map((l) => l.id), ...seed.keys(), ...askedRef.current]);
     const ids = leadIdsForRenewal(contracts, { monthKeys, known });
     if (!ids.length) return undefined;
     ids.forEach((id) => askedRef.current.add(id));
     chunk(ids).forEach((part) => {
       const q = query(colRef(db, LEADS_PATH), where(documentId(), 'in', part));
-      loadWithCountCheck({
-        fromCache: async () => (await getDocsFromCache(q)).docs.map(normalizeLeadDoc),
-        fromServer: async () => (await getDocsWithAuthRetry(q)).docs.map(normalizeLeadDoc),
-        countOnServer: async () => (await getCountFromServer(q)).data().count
-      })
-        .then(({ docs }) => {
+      getDocsWithAuthRetry(q)
+        .then((snap) => {
+          const docs = snap.docs.map(normalizeLeadDoc);
+          if (!carteiraDaSessao.has(tenant)) carteiraDaSessao.set(tenant, new Map());
+          docs.forEach((l) => carteiraDaSessao.get(tenant).set(l.id, l));
           setFetchedLeads((prev) => {
             const next = new Map(prev);
             docs.forEach((l) => next.set(l.id, l));
@@ -158,7 +167,7 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
         .catch((e) => console.error('operacional carteira', e));
     });
     return undefined;
-  }, [db, enabled, contracts, monthKeys, liveLeads]);
+  }, [db, enabled, contracts, monthKeys, liveLeads, seed]);
 
   // --- saída no formato de ctx.months e ctx.leadsById. Mês cuja entrada não
   // vale mais (virada com a tela aberta) fica de fora até recarregar.
