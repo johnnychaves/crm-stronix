@@ -1,664 +1,581 @@
-// Tela OPERACIONAL (Visão geral · Operacional) — o painel de controle do
-// gestor em tempo real, fixo em HOJE, sem seletor de período: barra sutil de
-// progresso do dia, a agenda em linha do tempo com o responsável de cada
-// horário e um card por consultor mostrando quem está produzindo e quem
-// parou. Para o consultor, a mesma tela vira o dia DELE: números de hoje,
-// linha do dia e o "Placar do dia" (md- do mockup). Layout aprovado nos
-// mockups v2 (Johnny, 2026-07-11): sem índice composto, sem feed global.
+// Tela OPERACIONAL (Visão geral · Operacional): o trabalho feito e a saúde da
+// base de clientes, por mês de competência, igual para todos os perfis, com
+// comparativo e filtro de pessoa. Visual e textos: handoff do Claude Design
+// (docs/superpowers/specs/handoff-operacional/). Toda a matemática vem de
+// src/lib/operacional/ (metricsOf); aqui é só orquestração e apresentação.
 
-import { useState, useMemo, useEffect } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import { ArrowRight, Check, Flame, Zap } from 'lucide-react';
-import { appId, DAILY_GOAL_HISTORY_PATH } from '../../lib/firebase.js';
-import { isAdminUser, isRegistrationNote, getLeadAppointmentDate } from '../../lib/leads.js';
+import { useEffect, useMemo, useState } from 'react';
+import { CircleAlert, Lock, TrendingDown, UserX } from 'lucide-react';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
-import { useLeadProfile } from '../../contexts/LeadProfileContext.jsx';
-import {
-  buildInteractionsByLead,
-  computeDailyGoalSlots,
-  slotTotals,
-  computeDailyVolume,
-  computeVolumeInRange,
-  countMetaDaysInMonth,
-  volumeTargetFor,
-  overdueDaysOf,
-  dgDateKey
-} from '../../lib/dailyGoal.js';
-import { LeadListPanel } from '../../components/ui/LeadListPanel.jsx';
-import {
-  computeDayFunnel,
-  computeTodayAgenda,
-  computeConsultantDayBoard
-} from '../../lib/dashboardMetrics.js';
-import { useDayAgenda } from '../../hooks/useDayAgenda.js';
-import { formatHourLabel, humanizeAge } from '../../lib/format.js';
+import { TooltipProvider } from '../../components/ui/tooltip.jsx';
+import { useOperacionalSources } from '../../hooks/useOperacionalSources.js';
+import { normalizeContracts } from '../../lib/operacional/base.js';
+import { monthKeyOf, addMonthsToKey, comparisonCut, compareOptions, monthLabel } from '../../lib/operacional/month.js';
+import { metricsOf, deltaOf, buildHighlights, seriesOf, OTHERS_ID } from '../../lib/operacional/metrics.js';
+import { TASK_ROWS } from '../../lib/operacional/routine.js';
+import { fmtNum } from '../../lib/format.js';
 import { cn } from '../../lib/utils.js';
-import { DashCard, DashTimeline } from './DashPrimitives.jsx';
+import { BreakdownCard, DashHelpTip } from './DashPrimitives.jsx';
 import { dashInitials } from './dashTokens.js';
-import { useTeamGoals } from './useTeamGoals.js';
+import { ChartMark } from './ChartMark.jsx';
+import { OperacionalToolbar } from './OperacionalToolbar.jsx';
+import { DashSummaryBand } from './DashSummaryBand.jsx';
+import { DashHighlights } from './DashHighlights.jsx';
+import { ProspectionByDay } from './ProspectionByDay.jsx';
+import { MetaDaysCalendar } from './MetaDaysCalendar.jsx';
+import { BaseBridge } from './BaseBridge.jsx';
+import { RenewalOutcomeBar } from './RenewalOutcomeBar.jsx';
+import { MilestoneBars } from './MilestoneBars.jsx';
+import { TeamMonthTable } from './TeamMonthTable.jsx';
 
-// Verbo da "última ação" — mesma leitura do antigo feed de atividade, agora
-// por consultor dentro do card.
-function actionVerb(i, lead) {
-  const txt = String(i.text || '');
-  if (i.type === 'daily_goal_done') {
-    if (i.appointmentOutcome === 'attended' || /compareceu/i.test(txt)) return 'marcou comparecimento de';
-    if (i.appointmentOutcome === 'no_show' || /não veio/i.test(txt)) return 'marcou Não veio de';
-    if (i.appointmentOutcome === 'rescheduled' || /remarc/i.test(txt)) return 'remarcou';
-    if (i.appointmentOutcome === 'cancelled' || /cancelou/i.test(txt)) return 'cancelou agendamento de';
-    return 'concluiu tarefa de';
-  }
-  if (i.type === 'status_change') {
-    if (lead?.status === 'Venda' || /matrícul/i.test(txt)) return 'fechou matrícula de';
-    if (lead?.status === 'Perda' || /perd/i.test(txt)) return 'registrou perda de';
-    if (/agendou|retorno agendado/i.test(txt)) return 'agendou retorno para';
-    return 'atualizou fase de';
-  }
-  if (i.type === 'note') return isRegistrationNote(txt) ? 'cadastrou' : 'anotou em';
-  return 'registrou atividade em';
-}
+// Padrões fora do componente: um array novo a cada render mudaria os memos.
+const DEFAULT_WEEKDAYS = [1, 2, 3, 4, 5];
+const DEFAULT_CHECKPOINTS = [90, 60, 30];
 
-// ---- Barra sutil de progresso do dia (opp- do mockup) ----------------------
-function DayPulseCard({ funnel, now }) {
-  const stages = [
-    { value: funnel.novos, label: 'Novos' },
-    { value: funnel.agendados, label: 'Agendados' },
-    { value: funnel.compareceram, label: 'Compareceram' },
-    { value: funnel.matriculas, label: 'Matrículas', win: true }
-  ];
-  const pct = funnel.agendaTotal > 0 ? Math.round((funnel.agendaRealizados / funnel.agendaTotal) * 100) : 0;
+const SHORT = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+const shortOf = (key) => SHORT[Number(key.slice(5, 7)) - 1];
+
+// Mês em texto corrido: "agosto", ou "setembro de 2025" quando o ano é outro.
+const monthName = (key, refKey) => {
+  const name = monthLabel(key, { capitalized: false, withYear: false });
+  return key.slice(0, 4) === refKey.slice(0, 4) ? name : `${name} de ${key.slice(0, 4)}`;
+};
+
+const plural = (n, one, many) => `${fmtNum(n)} ${n === 1 ? one : many}`;
+const pctFmt = (v) => `${String(v).replace('.', ',')}%`;
+// Largura relativa ao maior valor, com piso de 2% (mesmo helper do handoff).
+const barPct = (v, max) => `${max > 0 ? Math.max(2, Math.round((v / max) * 100)) : 0}%`;
+
+const CARD = 'rounded-2xl border border-border bg-card shadow-card';
+const RULE = 'border-slate-100 dark:border-white/[0.06]';
+const UPCOMING = [
+  { key: 'd30', label: 'até 30 dias' },
+  { key: 'd60', label: '31 a 60 dias' },
+  { key: 'd90', label: '61 a 90 dias' }
+];
+
+// Título de seção com a pergunta e a régua de 2px (README §2).
+function SectionTitle({ title, question }) {
   return (
-    <section className="rounded-2xl border border-border bg-card shadow-card px-4 sm:px-5 py-3.5">
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <span className="inline-flex items-center gap-2 text-[10.5px] font-extrabold uppercase tracking-[0.11em] text-muted-foreground">
-          <span className="relative flex size-[7px]" aria-hidden="true">
-            <span className="motion-reduce:hidden absolute inline-flex size-full animate-ping rounded-full bg-success/50" />
-            <span className="relative inline-flex size-full rounded-full bg-success" />
-          </span>
-          Progresso do dia · agora {formatHourLabel(now)}
-        </span>
-        <span className="text-[12px] text-muted-foreground num">
-          {funnel.agendaTotal > 0 ? (
-            <>Agenda do dia · <b className="font-display font-bold text-foreground">{funnel.agendaRealizados}</b> de <b className="font-display font-bold text-foreground">{funnel.agendaTotal}</b> já realizados</>
-          ) : 'Agenda do dia · sem visitas ou aulas marcadas'}
-        </span>
-      </div>
-      <div className="flex items-stretch mt-3 overflow-x-auto thin-scroll">
-        {stages.map((s, i) => (
-          <span key={s.label} className="flex items-stretch">
-            {i > 0 && (
-              <span className="flex items-center text-slate-300 dark:text-white/20 shrink-0" aria-hidden="true">
-                <ArrowRight size={16} strokeWidth={2.2} />
-              </span>
-            )}
-            <span className="flex flex-col items-center justify-center px-4 sm:px-5 min-w-[74px]">
-              <b className={cn(
-                'font-display text-[24px] font-bold leading-none num',
-                s.win && s.value > 0 ? 'text-accent-500' : s.value === 0 ? 'text-slate-300 dark:text-slate-600' : 'text-foreground'
-              )}>
-                {s.value}
-              </b>
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mt-1.5 whitespace-nowrap">{s.label}</span>
-            </span>
-          </span>
-        ))}
-      </div>
-      <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden mt-3">
-        <div className="h-full rounded-full bg-brand-600 transition-[width] duration-500" style={{ width: `${pct}%` }} />
-      </div>
-    </section>
-  );
-}
-
-// ---- Card por consultor (opc- do mockup) -----------------------------------
-function WorkRow({ label, done, target, tone }) {
-  const pct = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
-  return (
-    <div className="flex items-center gap-2.5">
-      <span className="shrink-0 w-20 text-[12px] font-medium text-slate-600 dark:text-slate-300">{label}</span>
-      <span className="flex-1 h-[7px] rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
-        <span className={cn('block h-full rounded-full', tone === 'brand' ? 'bg-brand-600 dark:bg-brand-500' : 'bg-accent-500')} style={{ width: `${pct}%` }} />
-      </span>
-      <span className={cn('shrink-0 w-10 text-right font-display text-[12.5px] font-bold num', done === 0 ? 'text-slate-300 dark:text-slate-600' : 'text-foreground')}>
-        {done}/{target}
-      </span>
+    <div className="mb-3.5 flex items-baseline gap-[11px] border-b-2 border-border pb-[9px]">
+      <h3 className="m-0 font-display text-[16px] font-bold tracking-[-0.01em]">{title}</h3>
+      <span className="text-[12.5px] text-muted-foreground">{question}</span>
     </div>
   );
 }
 
-function ConsultantCard({ card, onOpen }) {
-  const stopped = card.status === 'parada';
-  const chipClass = stopped
-    ? 'bg-rose-50 border-rose-200 text-rose-600 dark:bg-rose-500/10 dark:border-rose-500/25 dark:text-rose-300'
-    : 'bg-slate-50 border-slate-100 text-slate-500 dark:bg-white/[0.03] dark:border-white/[0.06] dark:text-slate-400';
+function NowTag() {
   return (
-    <article className="relative rounded-2xl border border-border bg-card shadow-card p-4 pl-[18px] overflow-hidden">
-      <span aria-hidden="true" className={cn('absolute left-0 inset-y-0 w-1', stopped ? 'bg-danger' : 'bg-success')} />
-      <div className="flex items-center gap-2.5">
-        <span className="shrink-0 size-10 rounded-xl bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 font-display text-[14px] font-bold flex items-center justify-center tracking-wide">
-          {dashInitials(card.name)}
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="text-[15px] font-semibold tracking-tight truncate">{card.name}</div>
-          <div className="text-[11.5px] text-slate-400 dark:text-slate-500">{card.role}</div>
-        </div>
-        <span className={cn(
-          'shrink-0 inline-flex items-center gap-1.5 text-[11.5px] font-bold px-2.5 py-1 rounded-full',
-          stopped
-            ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300'
-            : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
-        )}>
-          <i className={cn('size-[7px] rounded-full', stopped ? 'bg-danger' : 'bg-success')} aria-hidden="true" />
-          {stopped ? 'Parada' : 'Em dia'}
-        </span>
-      </div>
+    <span className="flex h-[19px] items-center whitespace-nowrap rounded-md bg-muted px-[7px] text-[9.5px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
+      Agora
+    </span>
+  );
+}
 
-      {card.hasRuler && (
-        <div className="mt-3.5">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">Trabalho de hoje</div>
-          <div className="space-y-2">
-            {card.volTarget > 0 && <WorkRow label="Prospecção" done={card.volDone} target={card.volTarget} tone="accent" />}
-            {card.goalTotal > 0 && <WorkRow label="Meta diária" done={card.goalDone} target={card.goalTotal} tone="brand" />}
+// No mês fechado, no lugar do retrato do agora, diz por que ele sumiu
+// (handoff linhas 315 a 325 e 569 a 579).
+function ClosedMonthCard({ title, text }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-dashed border-border bg-slate-50 p-[18px] dark:bg-white/[0.03]">
+      <span className="grid size-8 flex-none place-items-center rounded-[10px] bg-muted text-muted-foreground">
+        <Lock size={15} strokeWidth={2} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[12.5px] font-semibold text-foreground/80">{title}</div>
+        <div className="mt-0.5 text-[11.5px] leading-normal text-muted-foreground">{text}</div>
+      </div>
+    </div>
+  );
+}
+
+// Prospecção do mês ainda carregando: a mesma casca, para a grade da Rotina
+// não trocar de trilha quando o dado chegar.
+function ProspectionPending() {
+  return (
+    <div className={cn(CARD, 'px-[18px] pt-4 pb-3.5')}>
+      <span className="text-[13.5px] font-semibold">Prospecção por dia</span>
+      <div className="mt-4 h-[132px]" />
+      <div className={cn('mt-[7px] h-[22px] border-t', RULE)} />
+    </div>
+  );
+}
+
+// Tarefas concluídas por tipo, com a marca fina e a coluna de diferença do mês
+// comparado (handoff linhas 259 a 285). Sem fonte ainda, os números ficam "—".
+function TasksCard({ tasks, compareTasks, compareName, className }) {
+  const showCompare = compareName != null;
+  const rows = TASK_ROWS.map((r) => ({
+    ...r,
+    v: tasks ? tasks[r.id] : null,
+    c: showCompare && compareTasks ? compareTasks[r.id] : null
+  }));
+  const max = Math.max(1, ...rows.flatMap((r) => [r.v || 0, r.c || 0]));
+  return (
+    <div className={cn(CARD, 'px-[18px] pt-4 pb-3.5', className)}>
+      <div className="mb-[13px] flex items-baseline gap-2.5">
+        <span className="text-[13.5px] font-semibold">Tarefas concluídas por tipo</span>
+        <div className="flex-1" />
+        {showCompare && (
+          <span className="flex items-center gap-1.5 whitespace-nowrap text-[11px] text-muted-foreground">
+            <span className="h-3 w-0.5 bg-foreground/80" />
+            {compareName}
+          </span>
+        )}
+      </div>
+      <div className="flex flex-col gap-[9px]">
+        {rows.map((r) => {
+          const diff = r.v != null && r.c != null ? r.v - r.c : null;
+          return (
+            <div key={r.id} className="flex items-center gap-3">
+              <span className="w-[124px] flex-none truncate text-[12px] text-foreground/80">{r.label}</span>
+              <div className="relative h-4 min-w-0 flex-1">
+                {r.v != null && (
+                  <ChartMark
+                    tip={`${r.label}: ${fmtNum(r.v)} concluídas`}
+                    className="absolute inset-y-0 left-0 rounded bg-brand-600"
+                    style={{ width: barPct(r.v, max) }}
+                  />
+                )}
+                {r.c != null && (
+                  <ChartMark
+                    tip={`${compareName}: ${fmtNum(r.c)}`}
+                    className="absolute -inset-y-0.5 w-0.5 bg-foreground/80"
+                    style={{ left: barPct(r.c, max) }}
+                  />
+                )}
+              </div>
+              <span className="num w-[34px] flex-none text-right text-[12.5px] font-semibold">{r.v != null ? fmtNum(r.v) : '—'}</span>
+              {showCompare && (
+                <span
+                  className={cn(
+                    'num w-10 flex-none text-right text-[11px] font-semibold',
+                    diff == null || diff === 0 ? 'text-muted-foreground' : diff > 0 ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300'
+                  )}
+                >
+                  {diff == null ? '—' : diff === 0 ? '=' : `${diff > 0 ? '+' : '−'}${fmtNum(Math.abs(diff))}`}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Atrasados agora de uma pessoa: só com pessoa filtrada, porque com a equipe o
+// número vai para a coluna da tabela (handoff linhas 287 a 313). `late` é o
+// retrato da equipe inteira, com o número de cada um em byUser.
+function LateCard({ late, user, className }) {
+  const n = late ? (late.byUser.get(user.id) ?? 0) : null;
+  const max = late ? Math.max(1, ...late.byUser.values()) : 1;
+  const name = user.name || 'Sem nome';
+  return (
+    <div className={cn(CARD, 'px-[18px] pt-4 pb-3.5', className)}>
+      <div className="flex items-baseline gap-2">
+        <span className="text-[13.5px] font-semibold">Atrasados agora</span>
+        <DashHelpTip
+          text="Contatos que passaram da data sem retorno. É um retrato de agora e não existe para mês fechado."
+          label='O que é "Atrasados agora"?'
+        />
+        <div className="flex-1" />
+        <NowTag />
+      </div>
+      <div className="mt-2.5 flex items-baseline gap-2">
+        <span className="num font-display text-[30px] font-bold leading-none tracking-[-0.03em] text-rose-700 dark:text-rose-300">
+          {n != null ? fmtNum(n) : '—'}
+        </span>
+        <span className="text-[12px] text-muted-foreground">{n === 1 ? 'contato sem retorno' : 'contatos sem retorno'}</span>
+      </div>
+      {n != null && (
+        <div className={cn('mt-3.5 flex flex-col gap-[7px] border-t pt-3', RULE)}>
+          <div className="flex items-center gap-2.5">
+            <span className="grid size-6 flex-none place-items-center rounded-full bg-muted text-[9px] font-bold text-foreground/80">
+              {dashInitials(name)}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[12px] font-medium">{name}</span>
+            <div className="flex h-1.5 w-[74px] flex-none overflow-hidden rounded-full bg-muted">
+              <ChartMark
+                tip={`${name}: ${plural(n, 'contato atrasado', 'contatos atrasados')}`}
+                className="rounded-full bg-danger dark:bg-[#E11D48]"
+                style={{ width: barPct(n, max) }}
+              />
+            </div>
+            <span className={cn('num w-5 flex-none text-right text-[12px] font-semibold', n >= 8 ? 'text-rose-700 dark:text-rose-300' : 'text-foreground')}>
+              {fmtNum(n)}
+            </span>
           </div>
         </div>
       )}
-
-      <div className="flex mt-3.5 rounded-[11px] overflow-hidden bg-paper-50 border border-slate-100 dark:bg-white/[0.03] dark:border-white/[0.06]">
-        {[
-          { value: card.funnel.agendou, label: 'Agendou', leads: card.leadsBy.agendou },
-          { value: card.funnel.compareceu, label: 'Compareceu', leads: card.leadsBy.compareceu },
-          { value: card.funnel.matriculas, label: 'Matrículas', win: true, leads: card.leadsBy.matriculas }
-        ].map((t, i) => (
-          <button
-            key={t.label}
-            type="button"
-            disabled={t.value === 0}
-            onClick={() => onOpen({
-              title: `${t.label} · ${card.name}`,
-              subtitle: `${t.value} ${t.value === 1 ? 'lead' : 'leads'} hoje`,
-              leads: t.leads
-            })}
-            className={cn(
-              'flex-1 py-2 text-center transition',
-              i > 0 && 'border-l border-slate-200/70 dark:border-white/[0.06]',
-              t.value > 0 && 'hover:bg-slate-100/70 dark:hover:bg-white/[0.05] cursor-pointer'
-            )}
-          >
-            <b className={cn(
-              'block font-display text-[19px] font-bold leading-none num',
-              t.value === 0 ? 'text-slate-300 dark:text-slate-600' : t.win ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground'
-            )}>
-              {t.value}
-            </b>
-            <span className="block text-[9.5px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mt-1">{t.label}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="flex gap-2 mt-3">
-        <button
-          type="button"
-          disabled={card.backlog.followUps === 0}
-          onClick={() => onOpen({
-            title: `Follow-ups atrasados · ${card.name}`,
-            subtitle: `${card.backlog.followUps} ${card.backlog.followUps === 1 ? 'lead parado' : 'leads parados'} · ordenados por dias de atraso`,
-            // Mais parado primeiro: é por onde o gestor começa a cobrança.
-            leads: [...card.leadsBy.followUpsAtrasados].sort((a, b) => a.nextFollowUp - b.nextFollowUp),
-            // O board conta como atrasado o follow-up vencido em relação a
-            // AGORA; overdueDaysOf conta dias inteiros e devolve 0 pro toque
-            // marcado mais cedo hoje. "0d" não diz nada, então vira "hoje".
-            renderMeta: (lead) => {
-              const dias = overdueDaysOf(lead);
-              return (
-                <span className="text-rose-600 dark:text-rose-300 font-semibold">
-                  {dias > 0 ? `${dias}d` : 'hoje'}
-                </span>
-              );
-            }
-          })}
-          className={cn('flex-1 flex items-center gap-2 px-2.5 py-2 rounded-[10px] border text-[11.5px] text-left transition', chipClass, card.backlog.followUps > 0 && 'hover:brightness-95')}
-        >
-          <b className={cn('font-display text-[16px] font-bold num', stopped ? 'text-rose-600 dark:text-rose-300' : 'text-foreground')}>{card.backlog.followUps}</b>
-          follow-ups atrasados
-        </button>
-        <button
-          type="button"
-          disabled={card.backlog.noShows === 0}
-          onClick={() => onOpen({
-            title: `No-shows a reagendar · ${card.name}`,
-            subtitle: `${card.backlog.noShows} ${card.backlog.noShows === 1 ? 'lead faltou' : 'leads faltaram'}`,
-            leads: card.leadsBy.noShows,
-            renderMeta: (lead) => {
-              const d = getLeadAppointmentDate(lead);
-              return <span className="text-muted-foreground">{d ? d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '—'}</span>;
-            }
-          })}
-          className={cn('flex-1 flex items-center gap-2 px-2.5 py-2 rounded-[10px] border text-[11.5px] text-left transition', chipClass, card.backlog.noShows > 0 && 'hover:brightness-95')}
-        >
-          <b className={cn('font-display text-[16px] font-bold num', stopped ? 'text-rose-600 dark:text-rose-300' : 'text-foreground')}>{card.backlog.noShows}</b>
-          {card.backlog.noShows === 1 ? 'no-show a reagendar' : 'no-shows a reagendar'}
-        </button>
-      </div>
-
-      <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 dark:border-white/[0.06] text-[11.5px] text-muted-foreground">
-        <i className="size-1.5 rounded-full bg-slate-300 dark:bg-slate-600 shrink-0" aria-hidden="true" />
-        {card.last ? (
-          <>
-            <span className="truncate">Última ação: <b className="text-foreground font-semibold">{card.last.text}</b></span>
-            <span className="ml-auto shrink-0 text-slate-400 dark:text-slate-500 num whitespace-nowrap">{card.last.when}</span>
-          </>
-        ) : (
-          <span className="italic text-slate-400">Nenhuma ação registrada ainda</span>
-        )}
-      </div>
-    </article>
-  );
-}
-
-// ---- Placar do dia (md- do mockup) — visão do próprio consultor ------------
-function SegStrip({ done, total, tone }) {
-  if (total > 14) {
-    const pct = Math.min(100, Math.round((done / total) * 100));
-    return (
-      <div className="h-2.5 rounded-[3px] bg-slate-100 dark:bg-white/[0.06] overflow-hidden mt-2">
-        <div className={cn('h-full rounded-[3px]', tone === 'brand' ? 'bg-brand-600' : 'bg-accent-500')} style={{ width: `${pct}%` }} />
-      </div>
-    );
-  }
-  return (
-    <div className="flex gap-1 mt-2">
-      {Array.from({ length: total }, (_, i) => (
-        <span
-          key={i}
-          className={cn(
-            'flex-1 h-2.5 rounded-[3px]',
-            i < done ? (tone === 'brand' ? 'bg-brand-600' : 'bg-accent-500') : 'bg-slate-100 dark:bg-white/[0.08]'
-          )}
-        />
-      ))}
     </div>
   );
 }
 
-function PlacarDoDia({ leads, interactions, appUser, db, onNavigate, now }) {
-  const { metaWeekdays = [1, 2, 3, 4, 5], dailyVolumeTarget = 0, renewalCheckpoints = [90, 60, 30], renewalGraceDays } = useGeneralConfig();
-
-  // Histórico PRÓPRIO de metas batidas (1 doc por dia batido) — mesma leitura
-  // da tela Meta Diária.
-  const [ownHistory, setOwnHistory] = useState([]);
-  useEffect(() => {
-    if (!appUser?.authUid) return undefined;
-    const ref = collection(db, 'artifacts', appId, 'public', 'data', DAILY_GOAL_HISTORY_PATH);
-    const unsub = onSnapshot(
-      query(ref, where('consultantAuthUid', '==', appUser.authUid)),
-      (snap) => setOwnHistory(snap.docs.map(d => d.data())),
-      () => { /* regras ainda não publicadas → mantém vazio sem quebrar a UI */ }
-    );
-    return () => unsub();
-  }, [db, appUser]);
-
-  const { goalDone, goalTotal, volDone, volTarget, monthVol, monthVolTarget, monthDots, monthHits } = useMemo(() => {
-    const byLead = buildInteractionsByLead(interactions);
-    const { totalSlots, doneSlots } = slotTotals(computeDailyGoalSlots(leads, byLead, appUser.id, renewalCheckpoints, renewalGraceDays));
-    const target = volumeTargetFor(appUser, dailyVolumeTarget);
-    const vol = target > 0 ? computeDailyVolume(leads, interactions, appUser.id, appUser.authUid) : null;
-    const monthStart = new Date(now); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
-    const mVol = target > 0 ? computeVolumeInRange(leads, interactions, appUser.id, appUser.authUid, monthStart, null, metaWeekdays) : null;
-
-    // Dias de meta do mês até hoje: batido / perdido / hoje (pulsando).
-    const hits = new Set(ownHistory.map(h => h.date).filter(Boolean));
-    const today = new Date(now); today.setHours(0, 0, 0, 0);
-    const dots = [];
-    for (let day = 1; day <= today.getDate(); day++) {
-      const d = new Date(today.getFullYear(), today.getMonth(), day);
-      if (!(metaWeekdays || []).includes(d.getDay())) continue;
-      dots.push({ key: dgDateKey(d), hit: hits.has(dgDateKey(d)), isToday: d.getTime() === today.getTime() });
-    }
-    return {
-      goalDone: doneSlots,
-      goalTotal: totalSlots,
-      volDone: vol?.total || 0,
-      volTarget: target,
-      monthVol: mVol?.total || 0,
-      monthVolTarget: target * countMetaDaysInMonth(metaWeekdays, now),
-      monthDots: dots,
-      monthHits: dots.filter(d => d.hit).length
-    };
-  }, [leads, interactions, appUser, renewalCheckpoints, renewalGraceDays, dailyVolumeTarget, metaWeekdays, ownHistory, now]);
-
-  const goalOk = goalTotal > 0 && goalDone >= goalTotal;
-  const volOk = volTarget === 0 || volDone >= volTarget;
-  const pill = goalOk && volOk && (goalTotal > 0 || volTarget > 0)
-    ? { label: 'Dia fechado', cls: 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-500/10 dark:border-emerald-500/25 dark:text-emerald-300', icon: <Check size={12} strokeWidth={3} /> }
-    : goalDone > 0 || volDone > 0
-      ? { label: 'No ritmo', cls: 'bg-accent-50 border-accent-100 text-accent-600 dark:bg-accent-500/10 dark:border-accent-500/25 dark:text-accent-400', icon: <Flame size={12} className="fill-accent-500 text-accent-500" /> }
-      : { label: 'Hora de começar', cls: 'bg-slate-50 border-slate-200 text-slate-500 dark:bg-white/[0.04] dark:border-white/10 dark:text-slate-400', icon: null };
-
-  const faltamTarefas = Math.max(0, goalTotal - goalDone);
-  const faltamAcoes = volTarget > 0 ? Math.max(0, volTarget - volDone) : 0;
-
+// Upgrades (do vendedor no contrato) e saldo de trancamentos (da academia),
+// handoff linhas 406 a 427.
+function UpgradesLocksCard({ upgrades, delta, movement }) {
+  const saldo = movement?.steps?.trancamentos ?? 0;
+  const trancaram = movement?.trancaram || 0;
+  const destrancaram = movement?.destrancaram || 0;
+  const deltaTone = !delta || delta.none || delta.flat ? 'text-muted-foreground'
+    : delta.up ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300';
   return (
-    <section className="rounded-2xl border border-border bg-card shadow-card p-[18px] font-display">
-      <div className="flex items-start justify-between gap-2.5">
-        <div>
-          <div className="text-[10.5px] font-semibold tracking-[0.12em] text-slate-400 dark:text-slate-500">META DO DIA</div>
-          <div className="text-[16px] font-bold tracking-tight mt-0.5 leading-tight">Seu placar de hoje</div>
+    <div className={cn(CARD, 'flex flex-1 items-stretch px-[18px] py-4')}>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted-foreground">Upgrades</div>
+        <div className="mt-[9px] flex items-baseline gap-[7px]">
+          <span className="num font-display text-[24px] font-bold leading-none tracking-[-0.03em]">{upgrades != null ? fmtNum(upgrades) : '—'}</span>
+          {delta && <span className={cn('num text-[11.5px] font-semibold', deltaTone)}>{delta.text}</span>}
         </div>
-        <span className={cn('shrink-0 inline-flex items-center gap-1.5 border text-[11px] font-bold px-2 py-1 rounded-full whitespace-nowrap', pill.cls)}>
-          {pill.icon}
-          {pill.label}
-        </span>
+        <div className="mt-[5px] text-[11px] text-muted-foreground">vendas pelo funil Upgrade</div>
       </div>
-
-      <div className="mt-4 space-y-3.5">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="size-[26px] rounded-lg bg-brand-50 dark:bg-brand-500/15 grid place-items-center shrink-0" aria-hidden="true">
-              <Check size={15} strokeWidth={2.6} className="text-brand-600 dark:text-brand-300" />
-            </span>
-            <span className="flex-1 text-[13px] font-semibold">Tarefas da meta</span>
-            <span className="font-bold text-[20px] leading-none tracking-tight num">
-              {goalDone}<small className="text-[12.5px] font-semibold text-slate-400">/{goalTotal}</small>
-            </span>
-          </div>
-          {goalTotal > 0 ? (
-            <>
-              <SegStrip done={goalDone} total={goalTotal} tone="brand" />
-              <div className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 text-right num">
-                {faltamTarefas > 0 ? `faltam ${faltamTarefas}` : 'meta batida'}
-              </div>
-            </>
-          ) : (
-            <div className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">Nenhuma tarefa na meta de hoje.</div>
-          )}
+      <span className="mx-[18px] w-px flex-none bg-slate-100 dark:bg-white/[0.06]" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted-foreground">Trancamentos</div>
+        <div className="mt-[9px] flex items-baseline gap-[7px]">
+          <span className="num font-display text-[24px] font-bold leading-none tracking-[-0.03em]">
+            {saldo === 0 ? '0' : `${saldo > 0 ? '+' : '−'}${fmtNum(Math.abs(saldo))}`}
+          </span>
+          <span className="num text-[11.5px] font-semibold text-muted-foreground">saldo</span>
         </div>
-
-        {volTarget > 0 && (
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="size-[26px] rounded-lg bg-accent-50 dark:bg-accent-500/15 grid place-items-center shrink-0" aria-hidden="true">
-                <Zap size={15} className="fill-accent-500 text-accent-500" />
-              </span>
-              <span className="flex-1 text-[13px] font-semibold">Prospecção</span>
-              <span className="font-bold text-[20px] leading-none tracking-tight num">
-                {volDone}<small className="text-[12.5px] font-semibold text-slate-400">/{volTarget}</small>
-              </span>
-            </div>
-            <SegStrip done={volDone} total={volTarget} tone="accent" />
-            <div className="mt-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 text-right num">
-              {faltamAcoes > 0 ? `faltam ${faltamAcoes}` : 'alvo batido'}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="mt-4 flex gap-3 rounded-xl bg-paper-50 border border-slate-100 dark:bg-white/[0.03] dark:border-white/[0.06] p-3">
-        <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Ritmo do mês</div>
-          <div className="flex gap-1 mt-2">
-            {monthDots.map((d) => (
-              <span
-                key={d.key}
-                title={d.isToday ? 'hoje' : d.key}
-                className={cn(
-                  'flex-1 aspect-square max-w-4 rounded-full',
-                  d.hit
-                    ? 'bg-accent-500 shadow-[0_1px_3px_rgba(255,106,43,.4)]'
-                    : d.isToday
-                      ? 'bg-card border-2 border-dashed border-accent-400 motion-safe:animate-pulse'
-                      : 'bg-card border-[1.5px] border-dashed border-slate-300 dark:border-white/20'
-                )}
-              />
-            ))}
-          </div>
-          <div className="mt-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400 leading-tight num">
-            {monthHits} de {monthDots.length} {monthDots.length === 1 ? 'dia' : 'dias'} com a meta batida
-          </div>
+        <div className="num mt-[5px] text-[11px] text-muted-foreground">
+          {`${plural(trancaram, 'trancou', 'trancaram')} · ${plural(destrancaram, 'destrancou', 'destrancaram')}`}
         </div>
-        {volTarget > 0 && (
-          <div className="flex-1 min-w-0 border-l border-slate-200 dark:border-white/[0.08] pl-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Prospecção no mês</div>
-            <div className="font-bold text-[19px] tracking-tight mt-1.5 num">
-              {monthVol}<small className="text-[12px] font-semibold text-slate-400">/{monthVolTarget}</small>
-            </div>
-            <div className="h-[7px] rounded-full bg-slate-200/70 dark:bg-white/[0.08] overflow-hidden mt-2">
-              <div className="h-full rounded-full bg-accent-500" style={{ width: `${monthVolTarget > 0 ? Math.min(100, Math.round((monthVol / monthVolTarget) * 100)) : 0}%` }} />
-            </div>
-          </div>
-        )}
       </div>
-
-      <div className="mt-3.5 text-[11.5px] text-slate-600 dark:text-slate-300 text-center leading-snug font-sans">
-        {faltamTarefas === 0 && faltamAcoes === 0 ? (
-          <>Dia fechado — <b className="font-bold text-foreground">meta e prospecção completas</b>.</>
-        ) : (
-          <>
-            Faltam{' '}
-            {faltamTarefas > 0 && <b className="font-bold text-foreground num">{faltamTarefas} {faltamTarefas === 1 ? 'tarefa' : 'tarefas'}</b>}
-            {faltamTarefas > 0 && faltamAcoes > 0 && ' e '}
-            {faltamAcoes > 0 && <b className="font-bold text-foreground num">{faltamAcoes} {faltamAcoes === 1 ? 'ação' : 'ações'}</b>}
-            {' '}pra fechar o dia
-          </>
-        )}
-      </div>
-
-      <button
-        type="button"
-        onClick={() => onNavigate && onNavigate('dailyGoal')}
-        className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl bg-accent-500 hover:bg-accent-600 text-white font-bold text-[14px] tracking-tight py-3 shadow-[0_8px_18px_-8px_rgba(255,106,43,.6)] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50"
-      >
-        Trabalhar a meta
-        <ArrowRight size={16} strokeWidth={2.4} />
-      </button>
-    </section>
+    </div>
   );
 }
 
-// ---- View -------------------------------------------------------------------
-function DashboardOperacionalView({ leads, interactions, appUser, usersList, db, onNavigate, listenersActive = true }) {
-  const { openProfile } = useLeadProfile();
-  const isAdmin = isAdminUser(appUser);
+// A vencer: retrato de agora, só no mês em andamento (handoff linhas 549 a 567).
+// As faixas não se sobrepõem, daí os rótulos "até 30", "31 a 60" e "61 a 90".
+function UpcomingCard({ upcoming }) {
+  return (
+    <div className={cn(CARD, 'px-[18px] pt-4 pb-3.5')}>
+      <div className="flex items-baseline gap-2">
+        <span className="text-[13.5px] font-semibold">A vencer</span>
+        <div className="flex-1" />
+        <NowTag />
+      </div>
+      <div className="mt-4 flex items-stretch">
+        {UPCOMING.map((u, i) => (
+          <div key={u.key} className={cn('min-w-0 flex-1 border-l text-center', i === 0 ? 'border-transparent' : RULE)}>
+            <div className="num font-display text-[24px] font-bold leading-none tracking-[-0.03em]">
+              {upcoming ? fmtNum(upcoming[u.key]) : '—'}
+            </div>
+            <div className="num mt-[5px] text-[11px] text-muted-foreground">{u.label}</div>
+          </div>
+        ))}
+      </div>
+      <div className={cn('mt-[13px] border-t pt-[11px] text-[10.5px] leading-normal text-muted-foreground', RULE)}>
+        Contratos com fim nos próximos 30, 60 e 90 dias. Serve para planejar o contato, não entra na taxa do mês.
+      </div>
+    </div>
+  );
+}
 
-  // Qual número está aberto no painel lateral: { title, subtitle, leads,
-  // renderMeta } ou null. Um por vez.
-  const [panel, setPanel] = useState(null);
+function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions, db, listenersActive = true }) {
+  const {
+    contratos,
+    metaWeekdays = DEFAULT_WEEKDAYS,
+    renewalCheckpoints = DEFAULT_CHECKPOINTS,
+    renewalGraceDays = 15
+  } = useGeneralConfig();
 
-  // Relógio da tela (tempo real): atualiza por minuto — move o marcador
-  // "agora", o funil do dia e os cards sem depender de reload.
+  // Relógio da tela: vira o minuto (marca de hoje, mês em andamento, pró-rata).
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
   }, []);
 
-  const dayFunnel = useMemo(() => computeDayFunnel(leads, now), [leads, now]);
-  // Linha do tempo do dia: a assinatura global do gestor carrega SÓ o balde
-  // 'ativo' (flip da PR #144), então quem foi matriculado ou perdido hoje saía
-  // da lista e o compromisso dele sumia da linha do tempo — justamente depois
-  // de acontecer, que é quando ele é resolvido. A consulta do dia traz a janela
-  // inteira sem filtrar balde; a união recompõe a agenda real.
-  // Fora do admin, recorta pelo dono: o texto da tela promete "suas visitas e
-  // aulas de hoje", e a consulta não filtra consultor.
-  const { items: dayLeads } = useDayAgenda({ db, enabled: listenersActive, dayKey: dgDateKey(now) });
-  const agenda = useMemo(() => {
-    const extra = isAdmin ? (dayLeads || []) : (dayLeads || []).filter((l) => l.consultantId === appUser.id);
-    const byId = new Map();
-    extra.forEach((l) => { if (l?.id) byId.set(l.id, l); });
-    (leads || []).forEach((l) => { if (l?.id) byId.set(l.id, l); });
-    return computeTodayAgenda(Array.from(byId.values()), now);
-  }, [leads, dayLeads, isAdmin, appUser, now]);
-  const board = useMemo(() => computeConsultantDayBoard(leads, { now }), [leads, now]);
-  const goals = useTeamGoals({ db, appUser, usersList, leads, interactions });
+  const currentKey = monthKeyOf(now);
+  const [monthKey, setMonthKey] = useState(currentKey);
+  const [compareOn, setCompareOn] = useState(true);
+  const [compareKey, setCompareKey] = useState(null); // null = mês anterior
+  const [person, setPerson] = useState('all');
+  const userId = person === 'all' ? null : person;
+  const cmpKey = compareKey || addMonthsToKey(monthKey, -1);
+  // A lista de meses vai até 11 meses atrás; a seta não passa dela.
+  const oldestKey = addMonthsToKey(currentKey, -11);
 
-  // Última ação de cada consultor (autoria pela interaction, como no antigo
-  // feed): a mais recente, com verbo legível.
-  const lastActionByUser = useMemo(() => {
-    if (!isAdmin) return {};
-    const leadById = new Map((leads || []).map(l => [l.id, l]));
-    const sorted = (interactions || [])
-      .filter(i => i.createdAt instanceof Date)
-      .sort((a, b) => b.createdAt - a.createdAt);
-    const map = {};
-    (usersList || []).forEach((u) => {
-      const hit = sorted.find(i =>
-        (i.consultantAuthUid && u.authUid && i.consultantAuthUid === u.authUid) ||
-        (i.consultantName && i.consultantName === u.name)
-      );
-      if (!hit) return;
-      const lead = leadById.get(hit.leadId);
-      map[u.id] = {
-        text: `${actionVerb(hit, lead)} ${lead?.name || 'lead'}`,
-        when: humanizeAge(hit.createdAt, now)
-      };
-    });
-    return map;
-  }, [isAdmin, interactions, usersList, leads, now]);
+  const seriesKeys = useMemo(() => Array.from({ length: 6 }, (_, i) => addMonthsToKey(monthKey, i - 5)), [monthKey]);
+  // Mês exibido fechado: cada marco conta até o marco seguinte, que passa do
+  // fim do mês, e o metricsOf deixa os marcos sem número sem as interações do
+  // mês seguinte. Por isso ele entra na carga.
+  const monthKeys = useMemo(() => {
+    const keys = [...seriesKeys, cmpKey];
+    const next = addMonthsToKey(monthKey, 1);
+    if (monthKey < currentKey && next <= currentKey) keys.push(next);
+    return [...new Set(keys)];
+  }, [seriesKeys, cmpKey, monthKey, currentKey]);
+  // A lista inteira de uma vez: a pausa do contrato trancado que ganhou
+  // sucessor só fecha olhando os outros contratos da pessoa.
+  const contracts = useMemo(() => normalizeContracts(contratos), [contratos]);
+  const users = useMemo(() => (usersList || []).filter((u) => u?.id), [usersList]);
+  const personUser = userId ? users.find((u) => u.id === userId) || null : null;
 
-  // Cards "Time agora": um por consultor com régua de meta OU movimento no
-  // dia; ordenado por atenção (parada primeiro, backlog maior primeiro).
-  const consultantCards = useMemo(() => {
-    if (!isAdmin) return [];
-    return (usersList || [])
-      .map((u) => {
-        const g = goals[u.id] || null;
-        const b = board[u.id] || null;
-        const goalTotal = g?.goalTotal || 0;
-        const goalDone = g?.goalDone || 0;
-        const volTarget = g?.volTarget || 0;
-        const volDone = g?.volTotal || 0;
-        const hasRuler = goalTotal > 0 || volTarget > 0;
-        const hasBoard = Boolean(b && (b.agendou || b.matriculas || b.followUpsAtrasados || b.noShows));
-        if (!hasRuler && !hasBoard) return null; // sem meta e sem movimento: card não informa nada
-        const stopped = hasRuler && goalDone === 0 && volDone === 0;
-        return {
-          key: u.id,
-          name: u.name || 'Consultor',
-          role: u.role === 'admin' ? 'gestor' : 'consultor',
-          status: stopped ? 'parada' : 'ok',
-          hasRuler,
-          goalDone, goalTotal, volDone, volTarget,
-          funnel: {
-            agendou: b?.agendou || 0,
-            compareceu: b?.compareceu || 0,
-            matriculas: b?.matriculas || 0
-          },
-          backlog: {
-            followUps: b?.followUpsAtrasados || 0,
-            noShows: b?.noShows || 0
-          },
-          // Os leads por trás de cada número, pro painel lateral não precisar
-          // recalcular nada nem ler de novo.
-          leadsBy: b?.leads || { agendou: [], compareceu: [], matriculas: [], followUpsAtrasados: [], noShows: [] },
-          last: lastActionByUser[u.id] || null
-        };
-      })
-      .filter(Boolean)
-      .sort((a, b) => {
-        if ((a.status === 'parada') !== (b.status === 'parada')) return a.status === 'parada' ? -1 : 1;
-        const backlogA = a.backlog.followUps + a.backlog.noShows;
-        const backlogB = b.backlog.followUps + b.backlog.noShows;
-        return backlogB - backlogA || a.name.localeCompare(b.name);
-      });
-  }, [isAdmin, usersList, goals, board, lastActionByUser]);
+  const sources = useOperacionalSources({
+    db, enabled: listenersActive, now, monthKeys, liveInteractions: interactions, liveLeads, contracts, appUser
+  });
 
-  const eyebrowDate = now
-    .toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })
-    .replace(', ', ' · ');
+  const config = useMemo(
+    () => ({ metaWeekdays, renewalCheckpoints, renewalGraceDays }),
+    [metaWeekdays, renewalCheckpoints, renewalGraceDays]
+  );
+  const ctx = useMemo(() => ({
+    now, users, contracts, liveLeads, config,
+    leadsById: sources.leadsById,
+    months: sources.months
+  }), [now, users, contracts, liveLeads, config, sources.leadsById, sources.months]);
+
+  const cur = useMemo(() => metricsOf(ctx, { monthKey, userId }), [ctx, monthKey, userId]);
+  const cmp = useMemo(
+    () => (compareOn ? metricsOf(ctx, { monthKey: cmpKey, userId, cutEnd: comparisonCut(monthKey, cmpKey, now) }) : null),
+    [compareOn, ctx, cmpKey, userId, monthKey, now]
+  );
+  const highlights = useMemo(() => (compareOn ? buildHighlights(cur, cmp) : []), [compareOn, cur, cmp]);
+  const series = useMemo(() => ({
+    meta: seriesOf(ctx, { monthKey, userId, pick: (m) => m.meta?.pct ?? null }),
+    prosp: seriesOf(ctx, { monthKey, userId, pick: (m) => (m.prosp?.on ? m.prosp.pct : null) }),
+    active: seriesOf(ctx, { monthKey, pick: (m) => m.base.active }),
+    churn: seriesOf(ctx, { monthKey, pick: (m) => m.base.churn.pct }),
+    renew: seriesOf(ctx, { monthKey, userId, pick: (m) => m.renewal.rate })
+  }), [ctx, monthKey, userId]);
+  // Com "Equipe toda": uma linha por pessoa e a de quem está fora da equipe.
+  const team = useMemo(() => (userId ? null : {
+    rows: users.map((u) => ({ user: u, m: metricsOf(ctx, { monthKey, userId: u.id }) })),
+    others: metricsOf(ctx, { monthKey, userId: OTHERS_ID })
+  }), [ctx, monthKey, userId, users]);
+
+  // Textos do regime de comparação (README §7).
+  const running = cur.running;
+  const dayN = now.getDate();
+  const shownName = monthLabel(monthKey, { capitalized: false, withYear: false });
+  const cmpName = monthName(cmpKey, monthKey);
+  const range = running ? (dayN === 1 ? `1 de ${shownName}` : `1 a ${dayN} de ${shownName}`) : `${shownName} inteiro`;
+  const firstDays = dayN === 1 ? 'o primeiro dia' : `os ${dayN} primeiros dias`;
+  const subline = compareOn
+    ? (running
+      ? `${range} comparado com ${firstDays} de ${cmpName}. O mês está em andamento, então a comparação é pró-rata.`
+      : `${range} comparado com ${cmpName}. Mês fechado.`)
+    : (running ? `${range}. O mês está em andamento: hoje conta à parte.` : `${range}. Mês fechado.`);
+  const note = compareOn
+    ? (running ? `Comparação pró-rata: ${dayN === 1 ? 'mesmo primeiro dia' : `mesmos ${dayN} primeiros dias`}` : 'Mês fechado contra mês fechado')
+    : 'Sem comparativo';
+
+  // Mês cuja busca falhou em todas as tentativas entra vazio: avisa, em vez de
+  // deixar o zero passar por número do mês.
+  const failedNames = [monthKey, ...(compareOn ? [cmpKey] : [])]
+    .filter((k) => sources.failedKeys.includes(k))
+    .map((k) => monthName(k, monthKey));
+
+  const spark = (points, fmt) => {
+    const last = points[points.length - 1];
+    const partial = running && last?.key === monthKey;
+    return {
+      series: points.length > 1 ? points.map((p) => p.value) : null,
+      seriesFrom: points[0] ? shortOf(points[0].key) : '',
+      seriesTo: last ? `${shortOf(last.key)}${partial ? ' · parcial' : ''}` : '',
+      seriesLabel: `${points.length} ${points.length === 1 ? 'mês' : 'meses'} · ${points.map((p) => `${shortOf(p.key)} ${fmt(p.value)}`).join(' · ')}${partial ? ` (${shortOf(last.key)} parcial)` : ''}`
+    };
+  };
+  const d = (a, b, kind) => (compareOn ? deltaOf(a, b, { kind }) : null);
+
+  const summary = [
+    {
+      key: 'meta', label: 'Meta diária', goodUp: true,
+      help: 'Dias com meta batida ÷ dias de meta do mês. No mês em andamento conta só os dias já fechados; hoje aparece à parte na régua de dias.',
+      value: cur.meta?.pct != null ? `${cur.meta.pct}%` : '—',
+      sub: cur.meta ? `${fmtNum(cur.meta.done)} de ${fmtNum(cur.meta.total)} ${userId ? 'dias' : 'dias-pessoa'}` : 'carregando',
+      delta: d(cur.meta?.pct, cmp?.meta?.pct, 'pp'),
+      ...spark(series.meta, pctFmt)
+    },
+    cur.prosp && !cur.prosp.on
+      ? {
+        key: 'prosp', label: 'Prospecção', value: 'Desligada', muted: true, sub: 'alvo 0 no cadastro', delta: null, series: null,
+        help: 'Alvo diário 0 no cadastro: a pessoa está sem cota de prospecção. Não é 0%.'
+      }
+      : {
+        key: 'prosp', label: 'Prospecção', goodUp: true,
+        help: 'Ações de prospecção ÷ alvo do mês (alvo diário da pessoa × dias de meta).',
+        value: cur.prosp?.pct != null ? `${cur.prosp.pct}%` : '—',
+        sub: cur.prosp ? `${fmtNum(cur.prosp.done)} de ${fmtNum(cur.prosp.target)} ações` : 'carregando',
+        delta: d(cur.prosp?.pct, cmp?.prosp?.pct, 'pp'),
+        ...spark(series.prosp, pctFmt)
+      },
+    {
+      key: 'active', label: 'Clientes ativos', goodUp: true,
+      help: 'Pessoas com contrato vigente no fim do mês. Quem está trancado conta à parte.',
+      value: cur.base.active != null ? fmtNum(cur.base.active) : '—',
+      sub: userId ? 'base da academia, não da carteira' : running ? 'com contrato vigente hoje' : 'no fim do mês',
+      delta: d(cur.base.active, cmp?.base.active, 'count'),
+      ...spark(series.active, fmtNum)
+    },
+    {
+      key: 'churn', label: 'Churn', goodUp: false,
+      help: 'Cancelamentos mais vencidos que passaram da tolerância ÷ clientes ativos no início do mês.',
+      value: cur.base.churn.pct != null ? pctFmt(cur.base.churn.pct) : '—',
+      sub: userId ? 'base da academia' : 'saídas definitivas',
+      delta: d(cur.base.churn.pct, cmp?.base.churn.pct, 'pp'),
+      ...spark(series.churn, pctFmt)
+    },
+    {
+      key: 'renew', label: 'Taxa de renovação', goodUp: true,
+      help: 'Renovados ÷ vencendo. No mês em andamento, renovados ÷ contratos que já tiveram desfecho.',
+      value: cur.renewal.rate != null ? `${cur.renewal.rate}%` : '—',
+      sub: `${fmtNum(cur.renewal.counts.renew)} de ${fmtNum(cur.renewal.decided)} ${running ? 'com desfecho' : 'vencendo'}`,
+      delta: d(cur.renewal.rate, cmp?.renewal.rate, 'pp'),
+      ...spark(series.renew, pctFmt)
+    }
+  ];
+
+  const monthOptions = useMemo(
+    () => Array.from({ length: 12 }, (_, i) => addMonthsToKey(currentKey, -i))
+      .map((k) => ({ key: k, label: `${monthLabel(k)}${k === currentKey ? ' · em andamento' : ''}` })),
+    [currentKey]
+  );
+  const cmpOptions = compareOptions(monthKey).map((k) => ({ key: k, label: monthLabel(k) }));
+  const people = users.map((u) => ({ id: u.id, name: u.name || 'Sem nome' }));
+  const changeMonth = (k) => { setMonthKey(k); setCompareKey(null); };
+
+  // Alvo 0 não é alvo pequeno: o card de prospecção sai e a Rotina troca de trilhas.
+  const prospOff = Boolean(cur.prosp && !cur.prosp.on);
+  const movement = cur.base.movement;
+  const cancels = cur.base.cancels;
+  const wont = cur.renewal.wontReasons;
+  const firstName = (personUser?.name || '').trim().split(/\s+/)[0] || 'Sem nome';
+  const renewSummary = personUser
+    ? `${plural(cur.renewal.cohort, 'contrato', 'contratos')} na carteira de ${firstName}`
+    : `${plural(cur.renewal.cohort, 'contrato com fim', 'contratos com fim')} neste mês`;
+  // Marcos ainda sem fonte (mês carregando): uma linha por marco, sem número.
+  const milestoneItems = cur.milestones || [...new Set((renewalCheckpoints || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))]
+    .sort((a, b) => b - a)
+    .map((days) => ({ days, done: null, total: null, pct: null }));
 
   return (
-    <div className="space-y-4 animate-fade-in font-sans">
-      {/* ---- Hero ---- */}
-      <section className="min-w-0">
-        <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">{eyebrowDate}</div>
-        <h2 className="mt-1 font-display text-[26px] font-semibold tracking-tight leading-tight">
-          {isAdmin ? 'Painel do dia' : 'Seu dia de trabalho'}
-        </h2>
-      </section>
-
-      {isAdmin ? (
-        <DayPulseCard funnel={dayFunnel} now={now} />
-      ) : (
-        <div className="flex items-baseline gap-4 flex-wrap rounded-2xl bg-card border border-border shadow-card px-5 py-3">
-          {[
-            { value: dayFunnel.novos, label: dayFunnel.novos === 1 ? 'lead hoje' : 'leads hoje' },
-            { value: dayFunnel.agendados, label: dayFunnel.agendados === 1 ? 'agendamento' : 'agendamentos' },
-            { value: dayFunnel.matriculas, label: dayFunnel.matriculas === 1 ? 'matrícula' : 'matrículas', win: true }
-          ].map((it, i) => (
-            <span key={it.label} className="flex items-baseline gap-4">
-              {i > 0 && <span aria-hidden="true" className="w-px h-6 self-center bg-border" />}
-              <span className="flex items-baseline gap-2">
-                <span className={cn('num font-display text-[22px] font-bold leading-none', it.win && it.value > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-foreground')}>{it.value}</span>
-                <span className="text-[10.5px] font-semibold text-muted-foreground whitespace-nowrap">{it.label}</span>
-              </span>
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className={cn('grid gap-4', !isAdmin && 'lg:grid-cols-[minmax(0,1fr)_340px] items-start')}>
-        <DashCard
-          title="Linha do dia"
-          hint={isAdmin
-            ? 'visitas e aulas de hoje, na ordem do relógio · com o consultor responsável'
-            : 'suas visitas e aulas de hoje, na ordem do relógio'}
-          action={
-            <span className="text-[11.5px] font-medium text-muted-foreground num whitespace-nowrap">
-              {agenda.length === 1 ? '1 agendamento' : `${agenda.length} agendamentos`}
-            </span>
-          }
-        >
-          <DashTimeline
-            events={agenda}
-            now={now}
-            showConsultant={isAdmin}
-            onEventClick={(lead) => openProfile(lead.id)}
-          />
-        </DashCard>
-
-        {!isAdmin && (
-          <PlacarDoDia
-            leads={leads}
-            interactions={interactions}
-            appUser={appUser}
-            db={db}
-            onNavigate={onNavigate}
-            now={now}
-          />
+    <TooltipProvider delayDuration={150}>
+      <div className="font-sans">
+        <header className="bg-card px-8 pb-4 pt-5">
+          <h2 className="m-0 font-display text-[24px] font-bold tracking-[-0.02em]">Operacional</h2>
+          <p className="mt-[5px] max-w-[820px] text-[12.5px] leading-normal text-muted-foreground">{subline}</p>
+        </header>
+        <OperacionalToolbar
+          monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
+          canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
+          canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}
+          compareOn={compareOn} onCompareOn={setCompareOn}
+          compareKey={cmpKey} compareOptions={cmpOptions} onCompare={setCompareKey}
+          person={person} people={people} onPerson={setPerson}
+          note={note}
+        />
+        {failedNames.length > 0 && (
+          <p role="status" className="flex items-center gap-1.5 px-8 pt-3 text-[12px] text-amber-700 dark:text-amber-300">
+            <CircleAlert size={13} strokeWidth={2.2} className="flex-none" />
+            Não foi possível carregar os dados de {failedNames.join(' e ')}. Recarregue a página para tentar de novo.
+          </p>
         )}
-      </div>
-
-      {isAdmin && (
-        <section>
-          <div className="flex items-baseline gap-2.5 mb-3 px-0.5">
-            <h3 className="font-display text-[15px] font-bold tracking-tight">Time agora</h3>
-            <span className="text-[12px] text-slate-400 dark:text-slate-500">quem está produzindo e quem parou · ordenado por atenção</span>
-          </div>
-          {consultantCards.length > 0 ? (
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
-              {consultantCards.map((card) => <ConsultantCard key={card.key} card={card} onOpen={setPanel} />)}
-            </div>
-          ) : (
-            <div className="rounded-2xl border border-border bg-card shadow-card py-8 text-center text-[12.5px] text-slate-400 italic">
-              Nenhum consultor com meta configurada ou movimento hoje.
+        <div className="relative">
+          {sources.loading && (
+            <div className="absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-brand-100 dark:bg-brand-500/25" aria-hidden="true">
+              <span className="block h-full w-2/5 bg-brand-600 motion-safe:animate-pulse" />
             </div>
           )}
-        </section>
-      )}
+          <div className={cn('transition-opacity', sources.loading && 'opacity-35')} aria-busy={sources.loading}>
+            {compareOn && highlights.length > 0 && (
+              <div className="px-8 pt-[18px]"><DashHighlights items={highlights} /></div>
+            )}
+            <div className="flex flex-col gap-[22px] px-8 pb-8 pt-5">
+              <DashSummaryBand items={summary} />
 
-      <LeadListPanel
-        open={Boolean(panel)}
-        onClose={() => setPanel(null)}
-        title={panel?.title}
-        subtitle={panel?.subtitle}
-        leads={panel?.leads || []}
-        renderMeta={panel?.renderMeta}
-        emptyText="Nenhum lead neste grupo."
-      />
+              <section>
+                <SectionTitle title="Rotina" question="o trabalho foi feito?" />
+                <div
+                  className={cn(
+                    'grid grid-cols-1 gap-3.5',
+                    prospOff ? 'md:grid-cols-[minmax(0,505px)_minmax(0,1fr)]' : 'md:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]'
+                  )}
+                >
+                  {!prospOff && (cur.prosp
+                    ? <ProspectionByDay days={cur.prosp.days} values={cur.prosp.perDay} dailyTarget={cur.prosp.dailyTarget} />
+                    : <ProspectionPending />)}
+                  <MetaDaysCalendar cells={cur.calendar} teamSize={users.length} person={Boolean(userId)} />
+                  <TasksCard
+                    tasks={cur.tasks}
+                    compareTasks={cmp?.tasks}
+                    compareName={compareOn ? cmpName : null}
+                    className={running && !userId && !prospOff ? 'md:col-span-2' : undefined}
+                  />
+                  {running && personUser && (
+                    <LateCard late={cur.late} user={personUser} className={prospOff ? 'md:col-span-full' : undefined} />
+                  )}
+                  {!running && (
+                    <ClosedMonthCard
+                      title="Atrasados agora só existe no mês em andamento"
+                      text="É um retrato do momento, não um número do mês fechado."
+                    />
+                  )}
+                </div>
+              </section>
 
-      <footer className="pt-1 pb-2 text-center text-[11.5px] text-slate-400 whitespace-nowrap">
-        Atualizado agora · fixo em hoje
-      </footer>
-    </div>
+              <section>
+                <SectionTitle title="Base de clientes" question="a carteira cresceu ou encolheu?" />
+                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+                  <BaseBridge startCount={movement.startCount} endCount={movement.endCount} steps={movement.steps} />
+                  <div className="flex flex-col gap-3.5">
+                    <BreakdownCard
+                      icon={TrendingDown}
+                      title="Cancelamentos por motivo"
+                      sub={plural(cancels.total, 'cancelamento', 'cancelamentos')}
+                      eyebrow="Motivo mais comum"
+                      items={cancels.items}
+                      total={cancels.total}
+                      emptyText="Nenhum cancelamento neste mês."
+                    />
+                    <UpgradesLocksCard
+                      upgrades={cur.upgrades}
+                      delta={compareOn ? deltaOf(cur.upgrades, cmp?.upgrades, { kind: 'count' }) : null}
+                      movement={movement}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              <section>
+                <SectionTitle title="Renovação" question="estamos segurando quem vence?" />
+                <div className="grid grid-cols-1 gap-3.5 md:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+                  <RenewalOutcomeBar counts={cur.renewal.counts} when={cur.renewal.when} running={running} summary={renewSummary} />
+                  <MilestoneBars items={milestoneItems} />
+                  <BreakdownCard
+                    icon={UserX}
+                    title="Motivos de quem não vai renovar"
+                    sub={plural(wont.total, 'cliente', 'clientes')}
+                    eyebrow="Motivo mais comum"
+                    items={wont.items}
+                    total={wont.total}
+                    emptyText="Ninguém declarou que não vai renovar neste mês."
+                  />
+                  {running ? (
+                    <UpcomingCard upcoming={cur.upcoming} />
+                  ) : (
+                    <ClosedMonthCard
+                      title="A vencer só existe no mês em andamento"
+                      text="Em mês fechado todos os contratos do período já tiveram desfecho."
+                    />
+                  )}
+                </div>
+              </section>
+
+              {team && (
+                <section>
+                  <SectionTitle title="Equipe no mês" question="clique numa linha para filtrar a tela por essa pessoa" />
+                  <TeamMonthTable rows={team.rows} others={team.others} total={cur} running={running} onPick={setPerson} />
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </TooltipProvider>
   );
 }
 

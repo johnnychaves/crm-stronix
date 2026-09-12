@@ -28,7 +28,8 @@ export function MilestoneBars({ items }) {
                 <span className={cn('num text-[12.5px] font-bold', hasData ? (strong ? 'text-brand-700 dark:text-brand-300' : 'text-amber-700 dark:text-amber-300') : 'text-muted-foreground')}>
                   {hasData ? `${m.pct}%` : '—'}
                 </span>
-                <span className="num text-[11px] text-muted-foreground">{fmtNum(m.done)} de {fmtNum(m.total)}</span>
+                {/* Marco sem fonte ainda (mês carregando) vem com total null: fica só o "—". */}
+                {m.total != null && <span className="num text-[11px] text-muted-foreground">{fmtNum(m.done)} de {fmtNum(m.total)}</span>}
               </div>
               <div className="mt-1.5 flex h-2.5 overflow-hidden rounded-full bg-muted">
                 {hasData && (

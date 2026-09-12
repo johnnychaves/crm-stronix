@@ -1708,12 +1708,11 @@ useEffect(() => {
               ) : (profileLeadId && profileLoading) ? (
                 <div className="grid place-items-center h-full py-24 text-[13px] text-slate-400 dark:text-neutral-500 animate-pulse">Carregando ficha…</div>
               ) : (<>
-              {/* Operacional CONSULTOR: PRÓPRIOS leads por query (E2a consultantLeads,
-                  where consultantId== — mesmo conjunto do filtro antigo, já normalizado)
-                  em vez de varrer o prop global. ADMIN segue no prop global: o painel
-                  admin agrega board/última-ação/Meta que precisam da base crua (categorias
-                  sem janela) — migra no G1d. interactions segue global (G2). */}
-              {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : consultantLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} listenersActive={listenersActive} />}
+              {/* Operacional: a mesma tela para todos os perfis, por mês de
+                  competência. Base ao vivo = metaLeads (ativos, clientes a vencer e
+                  contato de hoje). As interações vão sem filtro: as regras já deixam
+                  qualquer membro ler. */}
+              {resolvedTab === 'dashOperacional' && <DashboardOperacionalView appUser={appUser} usersList={usersList} liveLeads={metaLeads} interactions={interactions} db={db} listenersActive={listenersActive} />}
               {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={gerencialLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
