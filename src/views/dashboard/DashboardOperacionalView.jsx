@@ -328,13 +328,12 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
     months: sources.months
   }), [now, users, contracts, liveLeads, config, sources.leadsById, sources.months]);
 
-  const cur = useMemo(() => metricsOf(ctx, { monthKey, userId }), [ctx, monthKey, userId]);
-  const cmp = useMemo(
+  const curLoaded = useMemo(() => metricsOf(ctx, { monthKey, userId }), [ctx, monthKey, userId]);
+  const cmpLoaded = useMemo(
     () => (compareOn ? metricsOf(ctx, { monthKey: cmpKey, userId, cutEnd: comparisonCut(monthKey, cmpKey, now) }) : null),
     [compareOn, ctx, cmpKey, userId, monthKey, now]
   );
-  const highlights = useMemo(() => (compareOn ? buildHighlights(cur, cmp) : []), [compareOn, cur, cmp]);
-  const series = useMemo(() => ({
+  const seriesLoaded = useMemo(() => ({
     meta: seriesOf(ctx, { monthKey, userId, pick: (m) => m.meta?.pct ?? null }),
     prosp: seriesOf(ctx, { monthKey, userId, pick: (m) => (m.prosp?.on ? m.prosp.pct : null) }),
     active: seriesOf(ctx, { monthKey, pick: (m) => m.base.active }),
@@ -342,10 +341,33 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
     renew: seriesOf(ctx, { monthKey, userId, pick: (m) => m.renewal.rate })
   }), [ctx, monthKey, userId]);
   // Com "Equipe toda": uma linha por pessoa e a de quem está fora da equipe.
-  const team = useMemo(() => (userId ? null : {
+  const teamLoaded = useMemo(() => (userId ? null : {
     rows: users.map((u) => ({ user: u, m: metricsOf(ctx, { monthKey, userId: u.id }) })),
     others: metricsOf(ctx, { monthKey, userId: OTHERS_ID })
   }), [ctx, monthKey, userId, users]);
+
+  // Trocar de mês pede a fonte de novo (interações, leads, histórico); até ela
+  // chegar, o mês novo tem hasSource falso e todo campo que depende dela
+  // (calendário, prospecção, tarefas, marcos) vem vazio — sem isto a tela
+  // mostrava o mês vazio na hora, o calendário encolhia e o layout saltava.
+  // Mantém o último retrato completo (cur+cmp+series+team) que tinha fonte na
+  // tela, sob a mesma opacidade de 35% e o fio de progresso que já existiam
+  // (README "Carregando"), até o mês novo ter fonte.
+  // Ajuste de estado durante o render, guardado por condição (padrão aceito
+  // pelo React para "adaptar estado numa troca de props/seleção" sem efeito):
+  // um useEffect chamando setState seria pego pelo react-hooks/set-state-in-
+  // effect, e um useRef lido/escrito aqui seria pego pelo react-hooks/refs —
+  // os dois testados e recusados por este lint antes desta escolha.
+  const ready = curLoaded.hasSource && (!compareOn || Boolean(cmpLoaded?.hasSource));
+  const [lastGood, setLastGood] = useState(null);
+  if (ready && lastGood?.cur !== curLoaded) {
+    setLastGood({ cur: curLoaded, cmp: cmpLoaded, series: seriesLoaded, team: teamLoaded });
+  }
+  const { cur, cmp, series, team } = ready || !lastGood
+    ? { cur: curLoaded, cmp: cmpLoaded, series: seriesLoaded, team: teamLoaded }
+    : lastGood;
+
+  const highlights = useMemo(() => (compareOn ? buildHighlights(cur, cmp) : []), [compareOn, cur, cmp]);
 
   // Textos do regime de comparação (README §7).
   const running = cur.running;
