@@ -126,7 +126,10 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
     upgrades: academy.known ? salesOf(sales.upgrades) : null,
     upgradesBy: sales.upgrades,
     renewal: summarizeCohort(academy.cohortRows, { owner }),
-    milestones: src
+    // O intervalo de cada marco vai até o marco seguinte e passa do fim do mês
+    // quando o corte (asOf) passa. Aí entram as interações do mês seguinte, e
+    // sem elas o número sairia menor do que é: fica sem número.
+    milestones: src && (asOf <= monthEnd || nextSrc)
       ? milestones(contracts, {
         start,
         end,

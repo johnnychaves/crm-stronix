@@ -257,3 +257,32 @@ describe('responsável fora da equipe (OTHERS_ID)', () => {
     expect(ids.reduce((a, id) => a + (team.late.byUser.get(id) || 0), 0)).toBe(team.late.total);
   });
 });
+
+describe('marcos de mês fechado', () => {
+  const empty = () => ({ history: [], interactions: [], leadsCreated: [] });
+
+  it('sem o mês seguinte carregado, os marcos ficam sem número e saem dos destaques', () => {
+    const ctx = makeCtx();
+    ctx.contracts = [...ctx.contracts, C('marco', { endsAt: D(12, 4) })]; // marco de 90 dias em 05/09
+    ctx.months['2026-09'].interactions.push({ type: 'daily_goal_done', dailyGoalCategory: 'renovacao', leadId: 'marco', createdAt: D(9, 6) });
+    ctx.months['2026-06'] = empty();
+    const june = metricsOf(ctx, { monthKey: '2026-06' });
+    expect(june.milestones).toBeNull();
+    const sep = metricsOf(ctx, { monthKey: '2026-09' });
+    expect(sep.milestones.find((m) => m.days === 90).pct).toBe(100);
+    expect(buildHighlights(sep, june, { limit: 20 }).filter((h) => h.text.includes('marco'))).toEqual([]);
+    // Com julho carregado, o contato de 01/07 conta para o marco de 90 dias cruzado em 07/06.
+    ctx.months['2026-07'] = { ...empty(), interactions: [{ type: 'daily_goal_done', dailyGoalCategory: 'renovacao', leadId: 'vence', createdAt: D(7, 1) }] };
+    expect(metricsOf(ctx, { monthKey: '2026-06' }).milestones.find((m) => m.days === 90)).toMatchObject({ total: 1, done: 1 });
+  });
+
+  it('o mês seguinte é o corrente e está carregado: agosto tem número', () => {
+    expect(metricsOf(makeCtx(), { monthKey: '2026-08' }).milestones).not.toBeNull();
+  });
+
+  it('no corte pró-rata o intervalo para no corte e não precisa do mês seguinte', () => {
+    const ctx = makeCtx();
+    ctx.months['2026-06'] = empty();
+    expect(metricsOf(ctx, { monthKey: '2026-06', cutEnd: D(6, 11, 14) }).milestones).not.toBeNull();
+  });
+});
