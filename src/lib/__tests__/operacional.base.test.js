@@ -88,6 +88,16 @@ describe('contratos importados', () => {
     expect(contractStateAt(c, D(2026, 9, 15))).toBe('trancado');
   });
 
+  // A ficha sempre grava o motivo do trancamento e a importação nunca grava.
+  it('trancado pela ficha no mesmo dia da importação usa a data real da pausa', () => {
+    const c = C('imp', {
+      status: 'trancado', importBatchId: 'lote', startsAt: D(2026, 3, 1),
+      createdAt: D(2026, 9, 4, 10), importedAt: D(2026, 9, 4, 10), pausedAt: D(2026, 9, 4, 18), pauseReason: 'Viagem'
+    });
+    expect(contractStateAt(c, D(2026, 9, 3))).toBe('vigente');
+    expect(contractStateAt(c, D(2026, 9, 5))).toBe('trancado');
+  });
+
   it('reativar o trancado da planilha não muda o passado', () => {
     const raw = {
       id: 'imp', leadId: 'imp', status: 'trancado', importBatchId: 'lote',

@@ -280,14 +280,19 @@ const onDayOf = (at, day, slackMs = 0) => {
 };
 
 // Pausa gravada pela importação. O trancado da planilha vira pausedAt = hora
-// da importação (clientImport.js), sem data real, e o contrato nasce com
-// importedAt no mesmo dia (clientImportWrites.js). Então é da importação a
-// pausa de contrato importado que começa no dia em que ele foi gravado
-// (importedAt; sem ele, createdAt). O motivo não serve de sinal, porque fica
-// gravado de uma pausa para a outra. `slackMs` é para o início refeito pelo
-// total de dias, que arredonda para dias inteiros e erra até meio dia.
+// da importação (clientImport.js), sem data real e sem motivo, e o contrato
+// nasce com importedAt no mesmo dia (clientImportWrites.js). Então é da
+// importação a pausa de contrato importado que começa no dia em que ele foi
+// gravado (importedAt; sem ele, createdAt).
+// Na pausa atual (sem folga) o motivo também decide: a ficha sempre grava um
+// (ContractOutcomeModal) e a importação nunca grava, então trancar pela ficha
+// no dia da importação é pausa de verdade. Na pausa refeita o motivo não serve,
+// porque a reativação não o apaga e ele fica de uma pausa para a outra.
+// `slackMs` é para esse início refeito pelo total de dias, que arredonda para
+// dias inteiros e erra até meio dia.
 export const isImportPause = (contract, pausedAt, slackMs = 0) => {
   if (!isImportedContract(contract)) return false;
+  if (!slackMs && contract?.pauseReason) return false;
   const at = getSafeDateOrNull(pausedAt);
   const day = getSafeDateOrNull(contract?.importedAt) || getSafeDateOrNull(contract?.createdAt);
   return Boolean(at && day && onDayOf(at, day, slackMs));

@@ -20,7 +20,8 @@ const DAY_MS = 86400000;
 // aberta de quem está trancado (ou foi cancelado trancado). A pausa gravada
 // pela importação não tem data real e começa em startsAt, para não inventar
 // trancamento no mês da importação. Quem diz se a pausa é dela é
-// isImportPause (contracts.js), pelo dia em que o contrato foi gravado.
+// isImportPause (contracts.js), pelo dia em que o contrato foi gravado e, na
+// pausa aberta, pela falta de motivo (a ficha sempre grava um).
 function pausesOf(c, { startsAt, pausedAt }) {
   const out = [];
   if (Array.isArray(c.pauseHistory) && c.pauseHistory.length) {

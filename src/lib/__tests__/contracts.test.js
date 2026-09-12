@@ -14,7 +14,8 @@ import {
   deriveContractStatus,
   deriveLeadContractStatus,
   hasLiveContract,
-  isImportedContract
+  isImportedContract,
+  isImportPause
 } from '../contracts.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
@@ -178,8 +179,8 @@ describe('buildContractResume', () => {
   });
 
   // A importação grava pausedAt = hora da importação, no dia em que o contrato
-  // nasce (importedAt). O motivo não serve de sinal: fica gravado de uma pausa
-  // para a outra.
+  // nasce (importedAt), e nunca grava motivo. Na pausa refeita o motivo não
+  // serve de sinal: fica gravado de uma pausa para a outra.
   it('marca a pausa que veio da importação: começa no dia em que o contrato foi gravado', () => {
     const importado = { ...contrato, importBatchId: 'lote-1', importedAt: new Date(2026, 6, 8, 15), createdAt: new Date(2026, 6, 8, 15) };
     expect(buildContractResume({ contract: importado, resumedAt: D(2026, 7, 28) }).contractPatch.pauseHistory)
@@ -209,6 +210,18 @@ describe('buildContractResume', () => {
       { pausedAt: D(2026, 5, 11), resumedAt: D(2026, 6, 10), reconstructed: true, fromImport: true },
       { pausedAt: D(2026, 7, 5), resumedAt: D(2026, 8, 4) }
     ]);
+  });
+
+  // A ficha sempre grava o motivo do trancamento (ContractOutcomeModal), e a
+  // importação nunca grava. Na pausa atual, motivo gravado quer dizer ficha,
+  // mesmo no dia em que o contrato foi importado.
+  it('trancado pela ficha no mesmo dia da importação é pausa de verdade', () => {
+    const importado = { ...contrato, importBatchId: 'lote-1', importedAt: new Date(2026, 6, 8, 15), createdAt: new Date(2026, 6, 8, 15) };
+    expect(isImportPause(importado, importado.pausedAt)).toBe(true);
+    const pelaFicha = { ...importado, ...buildContractPause({ pausedAt: new Date(2026, 6, 8, 18), reason: 'Viagem' }).contractPatch };
+    expect(isImportPause(pelaFicha, pelaFicha.pausedAt)).toBe(false);
+    expect(buildContractResume({ contract: pelaFicha, resumedAt: D(2026, 7, 28) }).contractPatch.pauseHistory[0])
+      .not.toHaveProperty('fromImport');
   });
 
   it('sem pausedAt não mexe no histórico', () => {
