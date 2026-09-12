@@ -50,8 +50,10 @@ function cellView(c, { teamSize, person }) {
   return {
     mark: fmtNum(c.hits),
     bg: filled ? SCALE[scaleIdx(c.hits, teamSize)] : 'bg-muted', border: '',
-    dayFg: strong ? 'text-white' : 'text-foreground',
-    markFg: strong ? 'text-white/80' : 'text-muted-foreground',
+    // Nos passos 3 e 4 da escala o fundo do escuro é claro (#8FB0FF/#C9D8FF):
+    // texto branco não passa no contraste, precisa do tom escuro do app.
+    dayFg: strong ? 'text-white dark:text-ink-900' : 'text-foreground',
+    markFg: strong ? 'text-white/80 dark:text-ink-900/80' : 'text-muted-foreground',
     tip: `Dia ${c.day}: ${fmtNum(c.hits)} de ${fmtNum(teamSize)} bateram`
   };
 }
