@@ -39,12 +39,12 @@ function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPre
           <button
             type="button"
             aria-label="Mês de competência"
-            className="num flex h-[30px] min-w-[150px] items-center justify-center rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none"
+            className="num flex h-[30px] min-w-[150px] items-center justify-center rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
           >
             <SelectValue />
           </button>
         </SelectPrimitive.Trigger>
-        <SelectContent>
+        <SelectContent position="popper">
           {(monthOptions || []).map((o) => (
             <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>
           ))}
@@ -90,12 +90,12 @@ function CompareControl({ compareOn, onCompareOn, compareKey, compareOptions, on
               <button
                 type="button"
                 aria-label="Mês de comparação"
-                className="flex h-[34px] items-center px-[11px] text-[12.5px] font-semibold text-brand-700 outline-none dark:text-brand-300"
+                className="flex h-[34px] items-center px-[11px] text-[12.5px] font-semibold text-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300"
               >
                 <SelectValue />
               </button>
             </SelectPrimitive.Trigger>
-            <SelectContent>
+            <SelectContent position="popper">
               {(compareOptions || []).map((o) => (
                 <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>
               ))}
@@ -116,7 +116,7 @@ function PersonControl({ person, people, onPerson }) {
           type="button"
           aria-label="Pessoa"
           className={cn(
-            'flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold outline-none',
+            'flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
             active ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'border-border bg-card text-foreground'
           )}
         >
@@ -124,7 +124,7 @@ function PersonControl({ person, people, onPerson }) {
           <SelectValue />
         </button>
       </SelectPrimitive.Trigger>
-      <SelectContent>
+      <SelectContent position="popper">
         <SelectItem value="all">Equipe toda</SelectItem>
         {(people || []).map((p) => (
           <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
