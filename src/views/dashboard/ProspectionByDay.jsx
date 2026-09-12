@@ -39,7 +39,7 @@ export function ProspectionByDay({ days, values, dailyTarget }) {
             return (
               <div key={d.key} className="flex min-w-0 flex-1 flex-col items-center gap-[5px]">
                 {showValues && (
-                  <span className={cn('num text-[10px] font-semibold', labelTone(v, isToday))}>{fmtNum(v)}</span>
+                  <span className={cn('num text-[10px] font-semibold max-md:hidden', labelTone(v, isToday))}>{fmtNum(v)}</span>
                 )}
                 <ChartMark
                   tip={tip(d, v)}
