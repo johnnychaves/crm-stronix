@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildContractResume } from '../contracts.js';
-import { normalizeContract, computeChurn, countLockedAt, computeBaseMovement } from '../operacional/base.js';
+import {
+  normalizeContract, normalizeContracts, hasOpenPause, computeChurn, countLockedAt, computeBaseMovement
+} from '../operacional/base.js';
 import { ownerOf, renewalCohort, summarizeCohort, milestones, upcomingExpirations } from '../operacional/renewal.js';
 
 const D = (y, m, d, h = 12) => new Date(y, m - 1, d, h);
@@ -175,6 +177,49 @@ describe('trancado não vence', () => {
       normalizeContract({ ...raw, id: 'novo', startsAt: D(2026, 9, 1), endsAt: D(2027, 3, 1), createdAt: D(2026, 8, 25) })
     ];
     expect(computeChurn(list, OCT).exits).toBe(0);
+  });
+});
+
+describe('trancado que renovou ainda parado', () => {
+  // Trancou em 10/09 faltando 15 dias. Em 09/11, ainda parado, fechou a
+  // renovação: nasce o contrato novo e o velho segue gravado como trancado,
+  // porque reativar pela ficha só alcança o contrato atual.
+  const velho = {
+    id: 'velho', leadId: 'P', consultantId: 'ana', status: 'trancado', pauseReason: 'Viagem',
+    startsAt: D(2026, 3, 25), endsAt: D(2026, 9, 25), createdAt: D(2026, 3, 25), pausedAt: D(2026, 9, 10)
+  };
+  const novo = {
+    id: 'novo', leadId: 'P', consultantId: 'ana', status: 'ativo', renewedFromId: 'velho',
+    startsAt: D(2026, 11, 9), endsAt: D(2027, 5, 9), createdAt: D(2026, 11, 9)
+  };
+  const monthOf = (y, m) => ({ start: new Date(y, m - 1, 1), end: new Date(y, m, 1), graceDays: 15 });
+  const list = normalizeContracts([velho, novo]);
+  const antigo = list.find((c) => c.id === 'velho');
+
+  it('a pausa do velho fecha no início do novo e o fim anda como numa reativação', () => {
+    expect(hasOpenPause(antigo)).toBe(false);
+    expect(antigo.endsAt).toEqual(D(2026, 11, 24));
+  });
+
+  it('Trancados: conta enquanto o novo não começa, e nunca mais depois', () => {
+    expect(countLockedAt(list, D(2026, 10, 31))).toBe(1);
+    expect(countLockedAt(list, D(2026, 11, 30))).toBe(0);
+    expect(countLockedAt(list, D(2027, 5, 31))).toBe(0);
+  });
+
+  it('ponte: destranca quando o novo começa e vence quando o novo acaba', () => {
+    expect(computeBaseMovement(list, monthOf(2026, 11))).toMatchObject({ destrancaram: 1, trancaram: 0 });
+    expect(computeBaseMovement(list, monthOf(2027, 5))).toMatchObject({ trancaram: 0, steps: { venceram: 1 } });
+  });
+
+  it('churn: sai quando acaba a tolerância do contrato novo', () => {
+    expect(computeChurn(list, monthOf(2026, 12)).exits).toBe(0);
+    expect(computeChurn(list, monthOf(2027, 5)).exits).toBe(1);
+  });
+
+  it('coorte: o velho volta a vencer, no mês do fim que andou, e renovou antes', () => {
+    const rows = renewalCohort(list, { ...monthOf(2026, 11), asOf: D(2026, 12, 1), leadsById: new Map() });
+    expect(rows.map((r) => [r.contract.id, r.outcome, r.when])).toEqual([['velho', 'renew', 'antes']]);
   });
 });
 

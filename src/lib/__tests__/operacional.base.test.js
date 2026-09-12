@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildContractResume } from '../contracts.js';
 import {
-  normalizeContract, contractStateAt, countActiveAt, countLockedAt,
+  normalizeContract, normalizeContracts, hasOpenPause, contractStateAt, countActiveAt, countLockedAt,
   computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow, indexContracts
 } from '../operacional/base.js';
 
@@ -240,5 +240,47 @@ describe('indexContracts', () => {
     expect(idx.byRenewedFrom.get('b1').map((c) => c.id)).toEqual(['r']);
     expect(indexContracts(list)).toBe(idx);
     expect(indexContracts([...list])).not.toBe(idx);
+  });
+});
+
+describe('normalizeContracts', () => {
+  const raw = (id, over = {}) => ({
+    id, leadId: 'P', consultantId: 'ana', status: 'ativo',
+    startsAt: D(2026, 1, 1), endsAt: D(2026, 12, 1), createdAt: D(2026, 1, 1), ...over
+  });
+  const trancado = raw('t', { status: 'trancado', pauseReason: 'Viagem', pausedAt: D(2026, 9, 10) });
+  const tOf = (list) => list.find((c) => c.id === 't');
+
+  it('fecha a pausa aberta no início do sucessor mais cedo, sem mutar a lista', () => {
+    const input = [
+      trancado,
+      raw('ligado', { renewedFromId: 't', startsAt: D(2026, 11, 1), createdAt: D(2026, 10, 20) }),
+      raw('depois', { startsAt: D(2026, 10, 15), createdAt: D(2026, 10, 15) })
+    ];
+    const before = structuredClone(input);
+    const c = tOf(normalizeContracts(input));
+    expect(c.pauses).toEqual([{ from: D(2026, 9, 10), to: D(2026, 10, 15) }]);
+    expect(c.endsAt).toEqual(D(2027, 1, 5)); // 35 dias parados
+    expect(input).toEqual(before);
+    expect(tOf(normalizeContracts([trancado])).pauses).toEqual([{ from: D(2026, 9, 10), to: null }]);
+  });
+
+  it('não fecha com contrato da pessoa que já corria quando trancou, nem com um que nunca valeu', () => {
+    const list = normalizeContracts([
+      trancado,
+      raw('paralelo', { startsAt: D(2026, 3, 1), endsAt: D(2026, 10, 1), createdAt: D(2026, 3, 1) }),
+      raw('desfeito', {
+        renewedFromId: 't', status: 'cancelado', startsAt: D(2026, 12, 2), createdAt: D(2026, 9, 20),
+        cancelledAt: D(2026, 9, 21), cancelReason: 'Outro'
+      })
+    ]);
+    expect(hasOpenPause(tOf(list))).toBe(true);
+  });
+
+  it('cancelado ainda parado antes de o sucessor começar: quem encerra a pausa é o cancelamento', () => {
+    const cancelado = { ...trancado, status: 'cancelado', cancelledAt: D(2026, 10, 1), cancelReason: 'Financeiro' };
+    const c = tOf(normalizeContracts([cancelado, raw('novo', { startsAt: D(2026, 11, 1), createdAt: D(2026, 11, 1) })]));
+    expect(hasOpenPause(c)).toBe(true);
+    expect(c.endsAt).toEqual(D(2026, 12, 1));
   });
 });

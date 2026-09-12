@@ -5,7 +5,7 @@
 // base, mas nunca conta como matrícula, retorno, cancelamento ou trancamento.
 
 import { addDays, getSafeDateOrNull } from '../dates.js';
-import { isImportedContract } from '../contracts.js';
+import { buildContractResume, isImportedContract } from '../contracts.js';
 
 const DAY_MS = 86400000;
 
@@ -57,6 +57,49 @@ export function normalizeContract(c) {
     pauses: pausesOf(c, { startsAt, pausedAt, resumedAt, imported }),
     personKey: c.leadId || `contrato:${c.id}`
   };
+}
+
+// Início do sucessor que encerra a pausa aberta (começada em `from`): a
+// renovação ligada (renewedFromId) ou outro contrato da pessoa que começa
+// depois deste, o que começar primeiro. O da pessoa que já corria quando a
+// pausa começou é paralelo, não sucessor. O cancelado antes de começar nunca
+// valeu.
+function successorStartOf(c, from, index) {
+  let at = null;
+  const consider = (o) => {
+    if (o === c || !o.startsAt || (o.cancelledAt && o.cancelledAt <= o.startsAt)) return;
+    if (!at || o.startsAt < at) at = o.startsAt;
+  };
+  (index.byRenewedFrom.get(c.id) || []).forEach(consider);
+  (index.byPerson.get(c.personKey) || []).forEach((o) => {
+    if (c.startsAt && o.startsAt > c.startsAt && o.startsAt >= from) consider(o);
+  });
+  return at;
+}
+
+// A lista inteira normalizada, e é por aqui que ela entra no Operacional. Quem
+// renova ainda trancado ganha contrato novo, e o velho segue gravado como
+// trancado, porque reativar pela ficha só alcança o contrato atual. Sem fechar
+// essa pausa, a pessoa voltava a ficar trancada para sempre quando o novo
+// acabasse. Ela fecha no início do sucessor, como se o contrato fosse reativado
+// nesse dia: o fim anda pelos dias parados (a conta de buildContractResume, sem
+// gravar nada). Devolve objetos novos e não muta a lista recebida.
+export function normalizeContracts(rawList) {
+  const list = (rawList || []).map(normalizeContract);
+  const index = indexContracts(list);
+  return list.map((c) => {
+    const open = c.pauses.find((p) => p.to == null);
+    const at = open ? successorStartOf(c, open.from, index) : null;
+    // Cancelado ainda parado antes de o sucessor começar: quem encerra é o cancelamento.
+    if (!at || (c.cancelledAt && c.cancelledAt <= at)) return c;
+    // Renovação ligada que começa antes da pausa: a pausa não chegou a valer.
+    const to = at < open.from ? open.from : at;
+    return {
+      ...c,
+      endsAt: buildContractResume({ contract: c, resumedAt: to }).newEndsAt,
+      pauses: c.pauses.map((p) => (p === open ? { from: p.from, to } : p))
+    };
+  });
 }
 
 export const hasOpenPause = (c) => (c.pauses || []).some((p) => p.to == null);
