@@ -1377,7 +1377,7 @@ useEffect(() => {
   // contrato longe de vencer não entra na base e o contato marcado com ele some
   // da Meta em silêncio (a categoria 5 prevê o caso, mas nunca é avaliada
   // porque o lead não chega a ser carregado).
-  const { clients: clientsContactToday } = useClientsWithContactToday({ db, reloadKey: dayKey, enabled: !!appUser });
+  const { clients: clientsContactToday, loading: contactTodayLoading } = useClientsWithContactToday({ db, reloadKey: dayKey, enabled: !!appUser });
   const metaLeads = useMemo(() => {
     const byId = new Map();
     (leads || []).forEach((l) => byId.set(l.id, l));
@@ -1395,15 +1395,24 @@ useEffect(() => {
     return { total: totalSlots, pending: totalSlots - doneSlots };
   }, [metaLeads, interactions, appUser, dayKey, renewalCheckpoints, renewalGraceDays]);
   const dailyGoalPending = dailyGoalProgress.pending;
+  const dailyGoalTotal = dailyGoalProgress.total;
 
   // Dia batido gravado de QUALQUER tela: antes só a Meta Diária aberta gravava,
   // e quem fechava a última tarefa pelo Pipeline ficava sem o dia. Só grava com
-  // a base carregada (senão uma pendência ainda não carregada parece zerada).
+  // a base carregada, inclusive os clientes com contato hoje (senão uma
+  // pendência ainda não carregada parece zerada). Olha os números e não o
+  // objeto, que muda a cada interação nova. O ref guarda o dia já gravado, por
+  // pessoa: o doc é o mesmo, e regravar na mesma sessão só gastaria escrita.
+  const goalHitRecordedRef = useRef(null);
   useEffect(() => {
-    if (!db || !appUser?.id || !listenersActive || loadingData || renewalLoading) return;
-    if (dailyGoalProgress.total > 0 && dailyGoalProgress.pending === 0) recordGoalHitDoc(db, appUser);
+    if (!db || !appUser?.id || !listenersActive || loadingData || renewalLoading || contactTodayLoading) return;
+    if (dailyGoalTotal === 0 || dailyGoalPending > 0) return;
+    const recorded = `${appUser.id}_${dayKey}`;
+    if (goalHitRecordedRef.current === recorded) return;
+    goalHitRecordedRef.current = recorded;
+    recordGoalHitDoc(db, appUser);
     // db é o singleton do módulo (lib/firebase.js) — não é dependência válida.
-  }, [appUser, listenersActive, loadingData, renewalLoading, dailyGoalProgress, dayKey]);
+  }, [appUser, listenersActive, loadingData, renewalLoading, contactTodayLoading, dailyGoalTotal, dailyGoalPending, dayKey]);
 
   // Dashboard Gerencial do CONSULTOR (E2a): busca os PRÓPRIOS leads por query
   // (where consultantId==id, sem orderBy → índice automático, sem armadilha de
