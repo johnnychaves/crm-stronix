@@ -1,5 +1,6 @@
 // Consultas do Operacional por mês e as regras da carga (cache conferido,
-// novas tentativas, validade da entrada do mês). As consultas são todas de
+// novas tentativas, validade da entrada do mês, memória da sessão e busca
+// incremental dos leads do mês corrente). As consultas são todas de
 // campo único (range e orderBy no mesmo campo): usam o índice automático do
 // Firestore, sem índice composto e sem publicação manual. Puras, sem SDK: o
 // hook traduz com specToConstraints.
@@ -68,10 +69,12 @@ export async function retryWithBackoff(fn, { retries = 3, baseDelayMs = 1000, sl
   }
 }
 
-// Entrada de mês do hook: { closed, interactions, leadsCreated, history, failed? }.
-// Vale enquanto o mês segue no estado em que foi carregada. O mês corrente é
-// guardado sem interações nem histórico (null: vêm ao vivo). Se ele fecha com a
-// tela aberta, a entrada deixa de valer e o mês é recarregado como fechado.
+// Entrada de mês do hook: { closed, interactions, leadsCreated, history, failed?,
+// fetchedAt? }. Vale enquanto o mês segue no estado em que foi carregada. O mês
+// corrente é guardado sem interações nem histórico (null: vêm ao vivo) e com o
+// instante da última busca dos leads (fetchedAt). Se ele fecha com a tela
+// aberta, ou enquanto ela estava fechada, a entrada deixa de valer e o mês é
+// recarregado como fechado.
 export const monthEntryFits = (entry, key, currentKey) => Boolean(entry) && entry.closed === (key !== currentKey);
 
 // O mês só anda de aberto para fechado. A busca do mês ainda aberto que termina
@@ -88,6 +91,62 @@ export const failedMonthEntry = (closed) => ({
   history: closed ? [] : null,
   failed: true
 });
+
+// Memória da sessão: o que entra nela. Só entrada completa. A que falhou fica
+// de fora, e também o mês fechado sem histórico (consulta negada pela regra
+// antiga), para a volta à tela tentar de novo. Como no estado, o mês só anda
+// de aberto para fechado.
+export const shouldRememberMonthEntry = (prev, next) => Boolean(next)
+  && !next.failed
+  && !(next.closed && next.history == null)
+  && shouldStoreMonthEntry(prev, next);
+
+// Estado inicial do hook, a partir da memória da sessão (Map mês → entrada):
+// só o que ainda vale no mês de agora. A entrada do mês que fechou desde a
+// última visita não volta; ele é recarregado como fechado.
+export function monthsFromSession(entries, currentKey) {
+  const out = {};
+  (entries || new Map()).forEach((entry, key) => {
+    if (monthEntryFits(entry, key, currentKey)) out[key] = entry;
+  });
+  return out;
+}
+
+// Folga da busca incremental do mês corrente: lead gravado pelo relógio de um
+// aparelho um pouco atrasado, ou que chegou ao servidor logo depois da última
+// busca, ainda entra.
+export const NEW_LEADS_SLACK_MS = 2 * 60 * 1000;
+
+// Janela dos leads criados no mês corrente: o mês inteiro na primeira busca;
+// depois, desde o instante da última busca menos a folga, até o fim do mês.
+export function currentMonthLeadsWindow(key, lastFetchedAt = null) {
+  const { start, end } = monthRange(key);
+  const from = Number.isFinite(lastFetchedAt)
+    ? Math.max(start.getTime(), lastFetchedAt - NEW_LEADS_SLACK_MS)
+    : start.getTime();
+  return { from, to: end.getTime() };
+}
+
+// União por id: a versão de `newer` ganha.
+export function unionById(older, newer) {
+  const map = new Map((older || []).map((x) => [x.id, x]));
+  (newer || []).forEach((x) => map.set(x.id, x));
+  return [...map.values()];
+}
+
+// Leads da busca incremental entrando na entrada do mês corrente, com o
+// instante da busca. Vale a busca mais recente: uma mais antiga que chega
+// depois só acrescenta quem faltava. Entrada ausente, de mês fechado ou que
+// falhou fica como está.
+export function mergeNewLeads(entry, leads, fetchedAt) {
+  if (!entry || entry.closed || entry.failed) return entry;
+  const newer = !Number.isFinite(entry.fetchedAt) || fetchedAt >= entry.fetchedAt;
+  return {
+    ...entry,
+    leadsCreated: newer ? unionById(entry.leadsCreated, leads) : unionById(leads, entry.leadsCreated),
+    fetchedAt: newer ? fetchedAt : entry.fetchedAt
+  };
+}
 
 // Leads cujo responsável atual a renovação precisa: contratos que vencem entre o
 // início do mês mais antigo pedido e 91 dias depois do fim do mais novo (cobre

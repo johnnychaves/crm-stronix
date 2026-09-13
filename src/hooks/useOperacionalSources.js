@@ -1,15 +1,22 @@
 // Fontes do Operacional por mês.
 //
-// Mês corrente: interações ao vivo (vêm do App), leads criados buscados uma vez
-// e unidos aos ao vivo, histórico de metas ao vivo só deste mês.
+// Mês corrente: interações ao vivo (vêm do App), leads criados buscados do
+// servidor e unidos aos ao vivo, histórico de metas ao vivo só deste mês.
 // Mês fechado: interações, leads criados e histórico buscados por mês, com o
 // cache local conferido por contagem (queries.loadWithCountCheck).
 //
-// Cada entrada de mês guarda se foi carregada como fechada: na virada do mês
-// com a tela aberta, a do mês que acabou de fechar deixa de valer e ele é
-// recarregado como fechado. Busca que falha tenta de novo com espera crescente;
-// esgotadas as tentativas, o mês entra vazio e sai em `failedKeys`, sem prender
-// a tela carregando.
+// Memória da sessão (mesesDaSessao): a tela desmonta a cada troca de aba e o
+// estado volta vazio. As entradas de mês ficam guardadas por academia, fora do
+// estado, e o estado inicial sai delas. Mês fechado guardado é usado direto,
+// sem nova contagem. O corrente também, e na montagem busca só os leads
+// criados desde a última busca, menos 2 minutos de folga, unidos por id. Entrada
+// que falhou nunca é guardada, para a volta tentar de novo.
+//
+// Cada entrada de mês guarda se foi carregada como fechada: na virada do mês,
+// com a tela aberta ou na volta, a do mês que acabou de fechar deixa de valer
+// e ele é recarregado como fechado. Busca que falha tenta de novo com espera
+// crescente; esgotadas as tentativas, o mês entra vazio e sai em `failedKeys`,
+// sem prender a tela carregando.
 //
 // Também busca os docs dos leads da carteira de renovação (responsável atual),
 // sempre do servidor e uma vez por id na sessão do navegador.
@@ -24,6 +31,7 @@ import { monthRange, monthKeyOf, addMonthsToKey } from '../lib/operacional/month
 import {
   interactionsInMonthSpec, leadsCreatedInMonthSpec, goalHistorySinceSpec, goalHistoryInMonthSpec,
   loadWithCountCheck, retryWithBackoff, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry,
+  shouldRememberMonthEntry, monthsFromSession, currentMonthLeadsWindow, mergeNewLeads,
   chunk, leadIdsForRenewal
 } from '../lib/operacional/queries.js';
 
@@ -51,17 +59,28 @@ const unlessDenied = (promise) => promise.catch((e) => {
   throw e;
 });
 
+// Leads criados no mês corrente, direto do servidor, na janela da busca: o mês
+// inteiro na primeira vez; depois, só desde a última busca (menos a folga).
+// Devolve junto o instante da busca.
+async function loadCurrentLeads(db, key, lastFetchedAt = null) {
+  const { from, to } = currentMonthLeadsWindow(key, lastFetchedAt);
+  const q = query(colRef(db, LEADS_PATH), ...specToConstraints(leadsCreatedInMonthSpec(from, to)));
+  const fetchedAt = Date.now();
+  const snap = await getDocsWithAuthRetry(q);
+  return { leads: snap.docs.map(normalizeLeadDoc), fetchedAt };
+}
+
 // Uma tentativa de carga do mês. Aberto: só os leads criados, direto do
 // servidor (interações e histórico vêm ao vivo). Fechado: interações, leads
 // criados e histórico, pelo cache conferido.
 async function loadMonth(db, key, closed) {
+  if (!closed) {
+    const { leads, fetchedAt } = await loadCurrentLeads(db, key);
+    return { closed, interactions: null, leadsCreated: leads, history: null, fetchedAt };
+  }
   const { start, end } = monthRange(key);
   const [from, to] = [start.getTime(), end.getTime()];
   const qL = query(colRef(db, LEADS_PATH), ...specToConstraints(leadsCreatedInMonthSpec(from, to)));
-  if (!closed) {
-    const snap = await getDocsWithAuthRetry(qL);
-    return { closed, interactions: null, leadsCreated: snap.docs.map(normalizeLeadDoc), history: null };
-  }
   const qI = query(colRef(db, INTERACTIONS_PATH), ...specToConstraints(interactionsInMonthSpec(from, to)));
   const qH = query(
     colRef(db, DAILY_GOAL_HISTORY_PATH),
@@ -75,10 +94,11 @@ async function loadMonth(db, key, closed) {
   return { closed, interactions, leadsCreated, history };
 }
 
-// Leads da carteira já lidos nesta sessão do navegador, por academia (appId).
-// Fica fora do estado do hook porque a tela desmonta ao trocar de aba, e cada
-// abertura leria a carteira inteira de novo do servidor.
+// Leads da carteira e entradas de mês já lidos nesta sessão do navegador, por
+// academia (appId). Ficam fora do estado do hook porque a tela desmonta ao
+// trocar de aba, e cada abertura leria tudo de novo.
 const carteiraDaSessao = new Map();
+const mesesDaSessao = new Map();
 
 export function useOperacionalSources({ db, enabled = true, now, monthKeys, liveInteractions, liveLeads, contracts, appUser }) {
   const currentKey = monthKeyOf(now);
@@ -113,24 +133,58 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
     return () => { cancelled = true; unsub(); };
   }, [db, enabled, currentKey, authUid]);
 
-  // --- meses: os fechados completos; o corrente só com os leads criados.
-  const [months, setMonths] = useState({});
+  // --- meses: os fechados completos; o corrente só com os leads criados. O
+  // estado começa da memória da sessão, sem o que deixou de valer.
+  const [months, setMonths] = useState(() => monthsFromSession(mesesDaSessao.get(appId), currentKey));
   const loadingRef = useRef(new Set());
+  // Mês corrente já buscado nesta montagem, pela carga cheia ou pela
+  // incremental: a incremental roda uma vez por montagem.
+  const refreshedRef = useRef(new Set());
   useEffect(() => {
     if (!db || !enabled) return undefined;
+    const tenant = appId;
+    if (!mesesDaSessao.has(tenant)) mesesDaSessao.set(tenant, new Map());
+    const memory = mesesDaSessao.get(tenant);
+    const store = (key, entry) => {
+      if (shouldRememberMonthEntry(memory.get(key), entry)) memory.set(key, entry);
+      setMonths((prev) => (shouldStoreMonthEntry(prev[key], entry) ? { ...prev, [key]: entry } : prev));
+    };
+    // Mês corrente que veio da memória: busca só os leads criados desde a
+    // última busca e une por id. Se falhar, fica o que já estava.
+    const refresh = (key, lastFetchedAt) => {
+      retryWithBackoff(() => loadCurrentLeads(db, key, lastFetchedAt))
+        .then(({ leads, fetchedAt }) => {
+          if (memory.has(key)) memory.set(key, mergeNewLeads(memory.get(key), leads, fetchedAt));
+          setMonths((prev) => {
+            const next = mergeNewLeads(prev[key], leads, fetchedAt);
+            return next === prev[key] ? prev : { ...prev, [key]: next };
+          });
+        })
+        .catch((e) => console.error('operacional leads novos', key, e));
+    };
     (monthKeys || []).forEach((key) => {
       const closed = key !== currentKey;
+      const entry = months[key];
+      // Entrada que vale: o mês fechado é usado direto, sem nova contagem.
+      if (monthEntryFits(entry, key, currentKey)) {
+        if (!closed && !entry.failed && !refreshedRef.current.has(key)) {
+          refreshedRef.current.add(key);
+          refresh(key, entry.fetchedAt);
+        }
+        return;
+      }
       // O estado entra na chave: a recarga do mês que acabou de fechar não
       // espera a busca dele como mês aberto terminar.
       const slot = `${key}:${closed ? 'fechado' : 'aberto'}`;
-      if (monthEntryFits(months[key], key, currentKey) || loadingRef.current.has(slot)) return;
+      if (loadingRef.current.has(slot)) return;
       loadingRef.current.add(slot);
+      if (!closed) refreshedRef.current.add(key);
       retryWithBackoff(() => loadMonth(db, key, closed))
         .catch((e) => {
           console.error('operacional fontes', key, e);
           return failedMonthEntry(closed);
         })
-        .then((entry) => setMonths((prev) => (shouldStoreMonthEntry(prev[key], entry) ? { ...prev, [key]: entry } : prev)))
+        .then((next) => store(key, next))
         .finally(() => loadingRef.current.delete(slot));
     });
     return undefined;

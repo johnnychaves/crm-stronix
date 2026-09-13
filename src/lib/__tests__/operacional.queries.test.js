@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   monthWindowSpec, interactionsInMonthSpec, leadsCreatedInMonthSpec, goalHistorySinceSpec, goalHistoryInMonthSpec,
-  chunk, loadWithCountCheck, retryWithBackoff, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry, leadIdsForRenewal
+  chunk, loadWithCountCheck, retryWithBackoff, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry, leadIdsForRenewal,
+  shouldRememberMonthEntry, monthsFromSession, NEW_LEADS_SLACK_MS, currentMonthLeadsWindow, unionById, mergeNewLeads
 } from '../operacional/queries.js';
 import { normalizeContract } from '../operacional/base.js';
 
@@ -117,6 +118,84 @@ describe('entradas de mês', () => {
 
   it('no mês corrente que falhou, interações e histórico seguem ao vivo', () => {
     expect(failedMonthEntry(false)).toEqual({ closed: false, interactions: null, leadsCreated: [], history: null, failed: true });
+  });
+});
+
+describe('memória da sessão', () => {
+  const aberta = { closed: false, interactions: null, leadsCreated: [], history: null, fetchedAt: 1 };
+  const fechada = { closed: true, interactions: [], leadsCreated: [], history: [] };
+
+  it('guarda entrada completa, aberta ou fechada', () => {
+    expect(shouldRememberMonthEntry(undefined, aberta)).toBe(true);
+    expect(shouldRememberMonthEntry(undefined, fechada)).toBe(true);
+  });
+
+  it('entrada que falhou nunca entra, para a volta tentar de novo', () => {
+    expect(shouldRememberMonthEntry(undefined, failedMonthEntry(true))).toBe(false);
+    expect(shouldRememberMonthEntry(aberta, failedMonthEntry(true))).toBe(false);
+    expect(shouldRememberMonthEntry(undefined, failedMonthEntry(false))).toBe(false);
+  });
+
+  it('mês fechado sem histórico (consulta negada) também fica de fora', () => {
+    expect(shouldRememberMonthEntry(undefined, { ...fechada, history: null })).toBe(false);
+  });
+
+  it('a busca atrasada do mês ainda aberto não troca o mês já guardado como fechado', () => {
+    expect(shouldRememberMonthEntry(aberta, fechada)).toBe(true);
+    expect(shouldRememberMonthEntry(fechada, aberta)).toBe(false);
+  });
+
+  it('estado inicial: só o que vale agora; a entrada do mês que fechou desde a última visita não volta', () => {
+    const memoria = new Map([['2026-08', fechada], ['2026-09', aberta]]);
+    expect(monthsFromSession(memoria, '2026-09')).toEqual({ '2026-08': fechada, '2026-09': aberta });
+    // Virou o mês com a tela fechada: setembro guardado como aberto fica de fora e recarrega como fechado.
+    expect(monthsFromSession(memoria, '2026-10')).toEqual({ '2026-08': fechada });
+    expect(monthsFromSession(undefined, '2026-09')).toEqual({});
+  });
+});
+
+describe('busca incremental dos leads do mês corrente', () => {
+  const D = (d, h = 10, min = 0) => new Date(2026, 8, d, h, min).getTime();
+  const SEP = { from: new Date(2026, 8, 1).getTime(), to: new Date(2026, 9, 1).getTime() };
+
+  it('primeira busca: o mês inteiro', () => {
+    expect(currentMonthLeadsWindow('2026-09')).toEqual(SEP);
+  });
+
+  it('depois: desde o instante da última busca menos 2 minutos, até o fim do mês', () => {
+    expect(NEW_LEADS_SLACK_MS).toBe(120000);
+    expect(currentMonthLeadsWindow('2026-09', D(12, 14))).toEqual({ from: D(12, 13, 58), to: SEP.to });
+  });
+
+  it('a folga não volta para antes do início do mês', () => {
+    expect(currentMonthLeadsWindow('2026-09', D(1, 0, 1)).from).toBe(SEP.from);
+  });
+
+  it('união por id: a versão nova ganha e ninguém se repete', () => {
+    const r = unionById([{ id: 'a', v: 1 }, { id: 'b', v: 1 }], [{ id: 'b', v: 2 }, { id: 'c', v: 1 }]);
+    expect(r).toEqual([{ id: 'a', v: 1 }, { id: 'b', v: 2 }, { id: 'c', v: 1 }]);
+  });
+
+  it('leads novos entram na entrada do mês corrente com o instante da busca', () => {
+    const entry = { closed: false, interactions: null, leadsCreated: [{ id: 'a', v: 1 }], history: null, fetchedAt: D(12, 9) };
+    const r = mergeNewLeads(entry, [{ id: 'a', v: 2 }, { id: 'n', v: 1 }], D(12, 14));
+    expect(r).toEqual({ ...entry, leadsCreated: [{ id: 'a', v: 2 }, { id: 'n', v: 1 }], fetchedAt: D(12, 14) });
+    expect(entry.leadsCreated).toEqual([{ id: 'a', v: 1 }]);
+  });
+
+  it('busca mais antiga que chega depois só acrescenta quem faltava', () => {
+    const entry = { closed: false, interactions: null, leadsCreated: [{ id: 'a', v: 2 }], history: null, fetchedAt: D(12, 14) };
+    const r = mergeNewLeads(entry, [{ id: 'a', v: 1 }, { id: 'x', v: 1 }], D(12, 13));
+    expect(r.leadsCreated).toEqual([{ id: 'a', v: 2 }, { id: 'x', v: 1 }]);
+    expect(r.fetchedAt).toBe(D(12, 14));
+  });
+
+  it('entrada ausente, de mês fechado ou que falhou fica como está', () => {
+    const fechada = { closed: true, interactions: [], leadsCreated: [], history: [] };
+    const falhou = failedMonthEntry(false);
+    expect(mergeNewLeads(undefined, [{ id: 'n' }], 1)).toBeUndefined();
+    expect(mergeNewLeads(fechada, [{ id: 'n' }], 1)).toBe(fechada);
+    expect(mergeNewLeads(falhou, [{ id: 'n' }], 1)).toBe(falhou);
   });
 });
 
