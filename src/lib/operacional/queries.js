@@ -119,19 +119,45 @@ export function monthsFromSession(entries, currentKey) {
   return out;
 }
 
-// Folga da busca incremental do mês corrente: lead gravado pelo relógio de um
-// aparelho um pouco atrasado, ou que chegou ao servidor logo depois da última
-// busca, ainda entra.
+// Folga da busca incremental do mês corrente. O `createdAt` do lead é a hora
+// do servidor (serverTimestamp), e a âncora da janela também sai do servidor
+// (leadsWindowSince). A folga cobre o lead gravado com a data do aparelho,
+// como na importação, e gravações que chegam quase juntas.
 export const NEW_LEADS_SLACK_MS = 2 * 60 * 1000;
 
 // Janela dos leads criados no mês corrente: o mês inteiro na primeira busca;
-// depois, desde o instante da última busca menos a folga, até o fim do mês.
-export function currentMonthLeadsWindow(key, lastFetchedAt = null) {
+// depois, desde a âncora (leadsWindowSince) menos a folga, até o fim do mês.
+export function currentMonthLeadsWindow(key, since = null) {
   const { start, end } = monthRange(key);
-  const from = Number.isFinite(lastFetchedAt)
-    ? Math.max(start.getTime(), lastFetchedAt - NEW_LEADS_SLACK_MS)
+  const from = Number.isFinite(since)
+    ? Math.max(start.getTime(), since - NEW_LEADS_SLACK_MS)
     : start.getTime();
   return { from, to: end.getTime() };
+}
+
+// Maior `createdAt` real entre os leads, ou null. Lead sem data real
+// (createdAtMissing) não conta: o normalizeLeadDoc põe "agora" nele.
+export function newestCreatedAtOf(leads) {
+  let newest = null;
+  (leads || []).forEach((l) => {
+    if (l?.createdAtMissing || !(l?.createdAt instanceof Date)) return;
+    const t = l.createdAt.getTime();
+    if (Number.isFinite(t) && (newest === null || t > newest)) newest = t;
+  });
+  return newest;
+}
+
+// Âncora da próxima busca incremental: o lead mais novo que o servidor já
+// devolveu no mês, e não o relógio do aparelho, que pode estar adiantado. Com
+// o aparelho atrasado vale o instante da busca, o mais cedo dos dois; assim um
+// lead gravado com data à frente (a importação grava a data do aparelho de
+// quem importa) também não empurra a âncora para o futuro. Nada visto ainda:
+// null, e a busca pega o mês inteiro. Lead apagado continua na entrada até a
+// página recarregar.
+export function leadsWindowSince(entry) {
+  const newest = entry?.newestCreatedAt;
+  if (!Number.isFinite(newest)) return null;
+  return Number.isFinite(entry.fetchedAt) ? Math.min(newest, entry.fetchedAt) : newest;
 }
 
 // União por id: a versão de `newer` ganha.
@@ -143,16 +169,46 @@ export function unionById(older, newer) {
 
 // Leads da busca incremental entrando na entrada do mês corrente, com o
 // instante da busca. Vale a busca mais recente: uma mais antiga que chega
-// depois só acrescenta quem faltava. Entrada ausente, de mês fechado ou que
-// falhou fica como está.
+// depois só acrescenta quem faltava. A entrada guarda o lead mais novo já
+// visto (newestCreatedAt), que nunca recua. Entrada ausente, de mês fechado
+// ou que falhou fica como está.
 export function mergeNewLeads(entry, leads, fetchedAt) {
   if (!entry || entry.closed || entry.failed) return entry;
   const newer = !Number.isFinite(entry.fetchedAt) || fetchedAt >= entry.fetchedAt;
+  const newest = [entry.newestCreatedAt, newestCreatedAtOf(leads)].filter(Number.isFinite);
   return {
     ...entry,
     leadsCreated: newer ? unionById(entry.leadsCreated, leads) : unionById(leads, entry.leadsCreated),
-    fetchedAt: newer ? fetchedAt : entry.fetchedAt
+    fetchedAt: newer ? fetchedAt : entry.fetchedAt,
+    ...(newest.length ? { newestCreatedAt: Math.max(...newest) } : {})
   };
+}
+
+// Busca que o hook espera do servidor. Com o cache persistente e sem rede, o
+// getDocs responde do cache do aparelho sem dar erro, e essa resposta pode
+// estar incompleta. Resposta do cache conta como falha: cai na nova tentativa
+// e, esgotada, na entrada que falhou, que não vai para a memória da sessão.
+export function docsFromServerOrThrow(snap) {
+  if (snap?.metadata?.fromCache) {
+    const err = new Error('Sem conexão com o servidor: a resposta veio do cache do aparelho');
+    err.code = 'unavailable';
+    throw err;
+  }
+  return snap?.docs || [];
+}
+
+// Histórico de um mês na saída do hook. No mês corrente, e em todos os meses
+// quando a assinatura é só da pessoa (scope 'own'), vale o que veio ao vivo,
+// recortado pelo mês. Sem resposta da assinatura ainda, ou com ela falhando
+// (docs null), vai null: a meta fica sem número em vez de zerada. Mês fechado
+// com a assinatura da equipe: o que veio com ele, ou null se a consulta foi
+// negada.
+export function monthHistory(key, { isCurrent, live, liveReady, loaded }) {
+  if (isCurrent || live?.scope === 'own') {
+    if (!liveReady || !Array.isArray(live?.docs)) return null;
+    return live.docs.filter((h) => typeof h.date === 'string' && h.date.startsWith(key));
+  }
+  return loaded?.history ?? null;
 }
 
 // Leads cujo responsável atual a renovação precisa: contratos que vencem entre o

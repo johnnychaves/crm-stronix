@@ -9,8 +9,14 @@
 // estado volta vazio. As entradas de mês ficam guardadas por academia, fora do
 // estado, e o estado inicial sai delas. Mês fechado guardado é usado direto,
 // sem nova contagem. O corrente também, e na montagem busca só os leads
-// criados desde a última busca, menos 2 minutos de folga, unidos por id. Entrada
-// que falhou nunca é guardada, para a volta tentar de novo.
+// criados desde o mais novo que o servidor já devolveu, menos 2 minutos de
+// folga, unidos por id (queries.leadsWindowSince). Entrada que falhou nunca é
+// guardada, para a volta tentar de novo.
+//
+// Toda busca que precisa do servidor confere de onde veio a resposta: sem
+// rede, o getDocs responde do cache do aparelho sem erro, e isso conta como
+// falha (queries.docsFromServerOrThrow). Assim um resultado incompleto não
+// entra na memória da sessão como mês completo.
 //
 // Cada entrada de mês guarda se foi carregada como fechada: na virada do mês,
 // com a tela aberta ou na volta, a do mês que acabou de fechar deixa de valer
@@ -32,6 +38,7 @@ import {
   interactionsInMonthSpec, leadsCreatedInMonthSpec, goalHistorySinceSpec, goalHistoryInMonthSpec,
   loadWithCountCheck, retryWithBackoff, retryDelayMs, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry,
   shouldRememberMonthEntry, monthsFromSession, currentMonthLeadsWindow, mergeNewLeads,
+  docsFromServerOrThrow, newestCreatedAtOf, leadsWindowSince, monthHistory,
   chunk, leadIdsForRenewal
 } from '../lib/operacional/queries.js';
 
@@ -44,10 +51,13 @@ const mapInteraction = (d) => {
 
 const mapHistory = (d) => d.data();
 
+// Busca que precisa do servidor: resposta do cache do aparelho é falha.
+const serverDocs = async (q) => docsFromServerOrThrow(await getDocsWithAuthRetry(q));
+
 // Consulta de mês fechado: cache local conferido pela contagem do servidor.
 const cachedOrServer = (q, mapDoc) => loadWithCountCheck({
   fromCache: async () => (await getDocsFromCache(q)).docs.map(mapDoc),
-  fromServer: async () => (await getDocsWithAuthRetry(q)).docs.map(mapDoc),
+  fromServer: async () => (await serverDocs(q)).map(mapDoc),
   countOnServer: async () => (await getCountFromServer(q)).data().count
 }).then((r) => r.docs);
 
@@ -60,14 +70,14 @@ const unlessDenied = (promise) => promise.catch((e) => {
 });
 
 // Leads criados no mês corrente, direto do servidor, na janela da busca: o mês
-// inteiro na primeira vez; depois, só desde a última busca (menos a folga).
-// Devolve junto o instante da busca.
-async function loadCurrentLeads(db, key, lastFetchedAt = null) {
-  const { from, to } = currentMonthLeadsWindow(key, lastFetchedAt);
+// inteiro na primeira vez; depois, só desde a âncora (leadsWindowSince), menos
+// a folga. Devolve junto o instante da busca.
+async function loadCurrentLeads(db, key, since = null) {
+  const { from, to } = currentMonthLeadsWindow(key, since);
   const q = query(colRef(db, LEADS_PATH), ...specToConstraints(leadsCreatedInMonthSpec(from, to)));
   const fetchedAt = Date.now();
-  const snap = await getDocsWithAuthRetry(q);
-  return { leads: snap.docs.map(normalizeLeadDoc), fetchedAt };
+  const leads = (await serverDocs(q)).map(normalizeLeadDoc);
+  return { leads, fetchedAt };
 }
 
 // Uma tentativa de carga do mês. Aberto: só os leads criados, direto do
@@ -76,7 +86,10 @@ async function loadCurrentLeads(db, key, lastFetchedAt = null) {
 async function loadMonth(db, key, closed) {
   if (!closed) {
     const { leads, fetchedAt } = await loadCurrentLeads(db, key);
-    return { closed, interactions: null, leadsCreated: leads, history: null, fetchedAt };
+    return {
+      closed, interactions: null, leadsCreated: leads, history: null, fetchedAt,
+      newestCreatedAt: newestCreatedAtOf(leads)
+    };
   }
   const { start, end } = monthRange(key);
   const [from, to] = [start.getTime(), end.getTime()];
@@ -114,7 +127,8 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
   // cai para os docs da pessoa, de todos os meses (scope 'own'); a saída
   // recorta por mês. `key` diz de que mês corrente é a resposta: sem resposta
   // ainda, o histórico que depende da assinatura sai null e a meta fica sem
-  // número em vez de zerada.
+  // número em vez de zerada. Sem a assinatura da pessoa (sem authUid, ou com
+  // ela falhando), docs fica null pelo mesmo motivo.
   const [live, setLive] = useState({ key: null, scope: 'all', docs: [] });
   useEffect(() => {
     if (!db || !enabled) return undefined;
@@ -124,11 +138,11 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
     let over = false;
     const team = query(colRef(db, DAILY_GOAL_HISTORY_PATH), ...specToConstraints(goalHistorySinceSpec(`${key}-01`)));
     const listenOwn = () => {
-      if (!authUid) { setLive({ key, scope: 'own', docs: [] }); return; }
+      if (!authUid) { setLive({ key, scope: 'own', docs: null }); return; }
       stop = onSnapshot(
         query(colRef(db, DAILY_GOAL_HISTORY_PATH), where('consultantAuthUid', '==', authUid)),
         (snap) => { if (!over) setLive({ key, scope: 'own', docs: snap.docs.map(mapHistory) }); },
-        () => { if (!over) setLive({ key, scope: 'own', docs: [] }); }
+        () => { if (!over) setLive({ key, scope: 'own', docs: null }); }
       );
     };
     const listenTeam = (attempt) => {
@@ -173,9 +187,9 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
       setMonths((prev) => (shouldStoreMonthEntry(prev[key], entry) ? { ...prev, [key]: entry } : prev));
     };
     // Mês corrente que veio da memória: busca só os leads criados desde a
-    // última busca e une por id. Se falhar, fica o que já estava.
-    const refresh = (key, lastFetchedAt) => {
-      retryWithBackoff(() => loadCurrentLeads(db, key, lastFetchedAt))
+    // âncora e une por id. Se falhar (inclusive sem rede), fica o que já estava.
+    const refresh = (key, since) => {
+      retryWithBackoff(() => loadCurrentLeads(db, key, since))
         .then(({ leads, fetchedAt }) => {
           if (memory.has(key)) memory.set(key, mergeNewLeads(memory.get(key), leads, fetchedAt));
           setMonths((prev) => {
@@ -193,7 +207,7 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
       if (monthEntryFits(entry, key, currentKey) && !gaps.includes(key)) {
         if (!closed && !entry.failed && !refreshedRef.current.has(key)) {
           refreshedRef.current.add(key);
-          refresh(key, entry.fetchedAt);
+          refresh(key, leadsWindowSince(entry));
         }
         return;
       }
@@ -219,6 +233,8 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
   // servidor: a conferência por contagem só enxerga exclusão, e uma troca de
   // responsável ficaria congelada no cache. Uma vez por id na sessão: o que já
   // foi lido (carteiraDaSessao) entra como semente e não é buscado de novo.
+  // Resposta que veio do cache do aparelho (sem rede) não entra na memória: a
+  // próxima montagem tenta de novo.
   const [seed] = useState(() => new Map(carteiraDaSessao.get(appId)));
   const [fetchedLeads, setFetchedLeads] = useState(seed);
   const askedRef = useRef(new Set());
@@ -231,9 +247,9 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
     ids.forEach((id) => askedRef.current.add(id));
     chunk(ids).forEach((part) => {
       const q = query(colRef(db, LEADS_PATH), where(documentId(), 'in', part));
-      getDocsWithAuthRetry(q)
-        .then((snap) => {
-          const docs = snap.docs.map(normalizeLeadDoc);
+      serverDocs(q)
+        .then((snapDocs) => {
+          const docs = snapDocs.map(normalizeLeadDoc);
           if (!carteiraDaSessao.has(tenant)) carteiraDaSessao.set(tenant, new Map());
           docs.forEach((l) => carteiraDaSessao.get(tenant).set(l.id, l));
           setFetchedLeads((prev) => {
@@ -263,17 +279,16 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
         ? (liveLeads || []).filter((l) => l.createdAt instanceof Date && l.createdAt >= start && l.createdAt < end)
         : [];
       const leadsCreated = [...new Map([...(loaded.leadsCreated || []), ...liveCreated].map((l) => [l.id, l])).values()];
-      // Histórico: o ao vivo no mês corrente e, com a assinatura só da pessoa
-      // (scope 'own'), em todos os meses; nos fechados, o que veio com o mês.
-      // Sem resposta da assinatura ainda, ou mês fechado com a consulta negada,
-      // vai null: a meta fica sem número em vez de zerada.
-      const history = isCurrent || live.scope === 'own'
-        ? (liveReady ? live.docs.filter((h) => typeof h.date === 'string' && h.date.startsWith(key)) : null)
-        : (loaded.history ?? null);
       byMonth[key] = {
         interactions: isCurrent ? (liveInteractions || []) : (loaded.interactions || []),
         leadsCreated,
-        history
+        // O ao vivo no mês corrente e, com a assinatura só da pessoa, em todos
+        // os meses; nos fechados, o que veio com o mês. Sem resposta, ou com a
+        // assinatura falhando, null: a meta fica sem número (queries.monthHistory).
+        history: monthHistory(key, { isCurrent, live, liveReady, loaded }),
+        // Mês que falhou vai marcado: os marcos de outro mês que dependem dele
+        // ficam sem número em vez de menores.
+        ...(loaded.failed ? { failed: true } : {})
       };
     });
     const leadsById = new Map(fetchedLeads);
