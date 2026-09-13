@@ -126,7 +126,11 @@ export function tasksByType({ interactions, users, userId = null, start, end }) 
     const task = TASK_OF_CATEGORY[i.dailyGoalCategory];
     if (!task) return;
     if (mine && !mine(i)) return;
-    const key = `${i.leadId}|${i.dailyGoalCategory}|${dayKeyOf(i.createdAt)}`;
+    // Autor entra na chave: duas pessoas concluindo a MESMA tarefa (mesmo
+    // lead, categoria e dia) são duas ações de verdade, uma de cada uma — sem
+    // o autor aqui, a equipe dava 1 e a soma das pessoas dava 2, quebrando a
+    // regra "a equipe é a soma das pessoas".
+    const key = `${i.leadId}|${i.dailyGoalCategory}|${dayKeyOf(i.createdAt)}|${interactionOwnerAuthUid(i)}`;
     if (seen.has(key)) return;
     seen.add(key);
     out[task] += 1;

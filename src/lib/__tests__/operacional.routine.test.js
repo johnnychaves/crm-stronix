@@ -96,6 +96,17 @@ describe('tarefas por tipo', () => {
   it('pessoa: só as tarefas que ela fez', () => {
     expect(tasksByType({ interactions, users: USERS, userId: 'marcos', ...range })).toMatchObject({ agenda: 1, total: 1 });
   });
+
+  it('duas pessoas na mesma tarefa contam uma vez para cada uma, e a equipe é a soma', () => {
+    const sameTask = [
+      { type: 'daily_goal_done', dailyGoalCategory: 'contato_hoje', leadId: 'z', actorAuthUid: 'u-ana', createdAt: D(4) },
+      { type: 'daily_goal_done', dailyGoalCategory: 'contato_hoje', leadId: 'z', actorAuthUid: 'u-marcos', createdAt: D(4, 15) },
+      { type: 'daily_goal_done', dailyGoalCategory: 'contato_hoje', leadId: 'z', actorAuthUid: 'u-ana', createdAt: D(4, 18) } // ana de novo: não soma
+    ];
+    expect(tasksByType({ interactions: sameTask, users: USERS, ...range })).toMatchObject({ contatos: 2, total: 2 });
+    expect(tasksByType({ interactions: sameTask, users: USERS, userId: 'ana', ...range })).toMatchObject({ contatos: 1, total: 1 });
+    expect(tasksByType({ interactions: sameTask, users: USERS, userId: 'marcos', ...range })).toMatchObject({ contatos: 1, total: 1 });
+  });
 });
 
 describe('atrasados agora', () => {
