@@ -19,6 +19,20 @@ export function buildGoalHitDoc(appUser, dateKey, { volumeCount = null, volumeTa
   };
 }
 
+// Decide se o dia batido de agora deve ser gravado, e com qual chave (pra
+// marcar no ref e não regravar à toa na mesma sessão). `ready` já reúne os
+// gates de carregamento de quem chama (App.jsx): base carregada
+// (loadingData/renewalLoading/contactTodayLoading) e listeners ligados —
+// combinar esses booleanos é responsabilidade de quem chama, não desta
+// função. Sem usuário ou sem base pronta, total zerado ou pendência ainda
+// maior que zero, ou o dia já gravado (recordedKey igual à chave): não grava.
+export function goalHitKeyToRecord({ userId, dayKey, ready, total, pending, recordedKey }) {
+  if (!userId || !ready) return null;
+  if (total === 0 || pending > 0) return null;
+  const key = `${userId}_${dayKey}`;
+  return key === recordedKey ? null : key;
+}
+
 export async function recordGoalHit(db, appUser, { date = new Date(), volumeCount = null, volumeTarget = null } = {}) {
   if (!db || !appUser?.id || !appUser?.authUid) return;
   const { id, data } = buildGoalHitDoc(appUser, dgDateKey(date), { volumeCount, volumeTarget });

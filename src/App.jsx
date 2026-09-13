@@ -57,7 +57,7 @@ import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
 import { planUpgradeSetupOps } from './lib/upgradeFunnel.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
-import { recordGoalHit as recordGoalHitDoc } from './lib/dailyGoalHistory.js';
+import { recordGoalHit as recordGoalHitDoc, goalHitKeyToRecord } from './lib/dailyGoalHistory.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
 import { useProfileLead } from './hooks/useProfileLead.js';
@@ -1403,13 +1403,22 @@ useEffect(() => {
   // pendência ainda não carregada parece zerada). Olha os números e não o
   // objeto, que muda a cada interação nova. O ref guarda o dia já gravado, por
   // pessoa: o doc é o mesmo, e regravar na mesma sessão só gastaria escrita.
+  // A decisão (qual chave gravar, ou se grava) é a função pura
+  // goalHitKeyToRecord em lib/dailyGoalHistory.js, testada isoladamente.
   const goalHitRecordedRef = useRef(null);
   useEffect(() => {
-    if (!db || !appUser?.id || !listenersActive || loadingData || renewalLoading || contactTodayLoading) return;
-    if (dailyGoalTotal === 0 || dailyGoalPending > 0) return;
-    const recorded = `${appUser.id}_${dayKey}`;
-    if (goalHitRecordedRef.current === recorded) return;
-    goalHitRecordedRef.current = recorded;
+    if (!db || !appUser?.id) return;
+    const ready = listenersActive && !loadingData && !renewalLoading && !contactTodayLoading;
+    const key = goalHitKeyToRecord({
+      userId: appUser.id,
+      dayKey,
+      ready,
+      total: dailyGoalTotal,
+      pending: dailyGoalPending,
+      recordedKey: goalHitRecordedRef.current
+    });
+    if (!key) return;
+    goalHitRecordedRef.current = key;
     recordGoalHitDoc(db, appUser);
     // db é o singleton do módulo (lib/firebase.js) — não é dependência válida.
   }, [appUser, listenersActive, loadingData, renewalLoading, contactTodayLoading, dailyGoalTotal, dailyGoalPending, dayKey]);
