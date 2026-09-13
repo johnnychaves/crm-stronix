@@ -420,6 +420,14 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
   };
   const d = (a, b, kind) => (compareOn ? deltaOf(a, b, { kind }) : null);
 
+  // Clientes ativos: o handoff só diz que o trancado conta à parte. O número
+  // de trancados no fim do mês (hoje, no mês em andamento) vai na dica.
+  const when = running ? 'hoje' : 'no fim do mês';
+  const lockedCount = cur.base.locked > 0 ? plural(cur.base.locked, 'trancado', 'trancados') : 'nenhum trancado';
+  const activeHelp = cur.base.known
+    ? `Pessoas com contrato vigente ${when}. Quem está trancado conta à parte: ${lockedCount} ${when}.`
+    : `Pessoas com contrato vigente ${when}. Quem está trancado conta à parte.`;
+
   const summary = [
     {
       key: 'meta', label: 'Meta diária', goodUp: true,
@@ -446,7 +454,7 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
       },
     {
       key: 'active', label: 'Clientes ativos', goodUp: true,
-      help: 'Pessoas com contrato vigente no fim do mês. Quem está trancado conta à parte.',
+      help: activeHelp,
       value: cur.base.active != null ? fmtNum(cur.base.active) : '—',
       sub: userId ? 'base da academia, não da carteira' : running ? 'com contrato vigente hoje' : 'no fim do mês',
       delta: d(cur.base.active, cmp?.base.active, 'count'),
