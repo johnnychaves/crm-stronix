@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { metaDaysOfMonth } from '../operacional/month.js';
 import {
-  TASK_ROWS, OTHERS_ID, metaDaysSummary, pickMeta, metaCalendar,
+  TASK_ROWS, OTHERS_ID, metaDaysSummary, pickMeta, metaCalendar, calendarGrid,
   prospectionSummary, pickProspection, tasksByType, overdueNow
 } from '../operacional/routine.js';
 
@@ -36,6 +36,53 @@ describe('meta diária', () => {
     const cal = metaCalendar({ metaDays: DAYS, hitsBy: meta.hitsBy, userId: 'ana' });
     expect(cal[0]).toMatchObject({ key: '2026-09-01', hits: 2, me: true, state: 'closed' });
     expect(cal.find((c) => c.day === 11)).toMatchObject({ state: 'today', me: true });
+  });
+});
+
+describe('grade da régua de dias (calendarGrid)', () => {
+  // state (closed/today/future) não importa pra grade; corte bem no futuro
+  // deixa todo mundo 'closed' e fora do caminho.
+  const FUTURE_CUT = new Date(2099, 0, 1);
+  const buildCells = (monthKey, metaWeekdays) =>
+    metaCalendar({ metaDays: metaDaysOfMonth(monthKey, metaWeekdays, FUTURE_CUT), hitsBy: new Map() });
+
+  it('dias úteis (Seg a Sex) em novembro de 2026: 5 colunas, sem espaço inicial', () => {
+    const { columns, slots } = calendarGrid(buildCells('2026-11', [1, 2, 3, 4, 5]));
+    expect(columns).toEqual([1, 2, 3, 4, 5]);
+    expect(slots).toHaveLength(25); // 21 dias úteis + 4 de preenchimento no fim
+    expect(slots.slice(0, 5).every((s) => s !== null)).toBe(true);
+    expect(slots[0]).toMatchObject({ day: 2, weekday: 1 });
+    expect(slots.filter(Boolean)).toHaveLength(21);
+  });
+
+  it('segunda a sábado em agosto de 2026, que começa num sábado: 6 colunas, sábado cai na 6ª', () => {
+    const { columns, slots } = calendarGrid(buildCells('2026-08', [1, 2, 3, 4, 5, 6]));
+    expect(columns).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(slots).toHaveLength(36); // 5 de espaço + 26 dias + 5 de preenchimento
+    expect(slots.slice(0, 5)).toEqual([null, null, null, null, null]);
+    expect(slots[5]).toMatchObject({ day: 1, weekday: 6 });
+  });
+
+  it('os 7 dias em novembro de 2026, que começa num domingo: 7 colunas, sem RangeError', () => {
+    const { columns, slots } = calendarGrid(buildCells('2026-11', [0, 1, 2, 3, 4, 5, 6]));
+    expect(columns).toEqual([1, 2, 3, 4, 5, 6, 0]);
+    expect(slots).toHaveLength(42); // 6 de espaço + 30 dias + 6 de preenchimento
+    expect(slots.slice(0, 6)).toEqual([null, null, null, null, null, null]);
+    expect(slots[6]).toMatchObject({ day: 1, weekday: 0 });
+  });
+
+  it('[1,3,5]: 3 colunas, primeiro dia (quarta) entra na 2ª coluna', () => {
+    const { columns, slots } = calendarGrid(buildCells('2026-09', [1, 3, 5]));
+    expect(columns).toEqual([1, 3, 5]);
+    expect(slots).toHaveLength(15); // 1 de espaço + 13 dias + 1 de preenchimento
+    expect(slots[0]).toBeNull();
+    expect(slots[1]).toMatchObject({ day: 2, weekday: 3 });
+    expect(slots.filter(Boolean)).toHaveLength(13);
+  });
+
+  it('cells vazio: cabeçalho padrão Seg a Sex, nenhum dia, sem erro', () => {
+    expect(calendarGrid([])).toEqual({ columns: [1, 2, 3, 4, 5], slots: [] });
+    expect(calendarGrid(undefined)).toEqual({ columns: [1, 2, 3, 4, 5], slots: [] });
   });
 });
 

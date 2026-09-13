@@ -1,11 +1,17 @@
-// Régua de dias de meta: grade de 5 colunas (Seg a Sex). Handoff linhas 229 a
-// 257; lógica de exemplo 1514 a 1564. Teto na grade (470px), card livre
-// (README §2) — em telas estreitas a grade rola na horizontal.
+// Régua de dias de meta: grade cujas colunas são os dias da semana
+// configurados em Metas & ritmo (calendarGrid, em lib/operacional/routine.js
+// resolve a conta). Handoff linhas 229 a 257; lógica de exemplo 1514 a 1564
+// pressupunha Seg-Sex fixo (5 colunas, 470px) — vira o caso comum aqui, mas a
+// grade cresce até 7 colunas quando a meta inclui sábado e/ou domingo. Teto
+// de 94px por coluna, card livre (README §2) — em telas estreitas a grade
+// rola na horizontal com largura fixa (n × 94px) dentro do contêiner.
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { ChartMark } from './ChartMark.jsx';
+import { calendarGrid } from '../../lib/operacional/routine.js';
 
-const WEEKDAY_LABELS = ['SEG', 'TER', 'QUA', 'QUI', 'SEX'];
+const COLUMN_WIDTH = 94;
+const WEEKDAY_LABEL = { 1: 'SEG', 2: 'TER', 3: 'QUA', 4: 'QUI', 5: 'SEX', 6: 'SÁB', 0: 'DOM' };
 
 // Escala de "quantos bateram" — claro #8FB0FF → #1C3FC4, escuro #2B59FF →
 // #C9D8FF (README §3).
@@ -59,10 +65,8 @@ function cellView(c, { teamSize, person }) {
 }
 
 export function MetaDaysCalendar({ cells, teamSize, person }) {
-  const list = cells || [];
-  const lead = list.length ? list[0].weekday - 1 : 0;
-  const slots = [...Array(lead).fill(null), ...list];
-  while (slots.length % 5 !== 0) slots.push(null);
+  const { columns, slots } = calendarGrid(cells);
+  const gridWidth = columns.length * COLUMN_WIDTH;
 
   const scaleLabel = person ? 'bateu / não bateu' : 'quantos bateram';
   const scaleSwatches = person
@@ -84,9 +88,12 @@ export function MetaDaysCalendar({ cells, teamSize, person }) {
       </div>
 
       <div className="mt-3.5 overflow-x-auto snap-x">
-        <div className="grid w-full max-w-[470px] max-md:w-[470px] grid-cols-5 gap-1.5">
-          {WEEKDAY_LABELS.map((w) => (
-            <span key={w} className="text-center text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{w}</span>
+        <div
+          className="grid w-full max-md:w-[var(--cal-w)] gap-1.5"
+          style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`, maxWidth: `${gridWidth}px`, '--cal-w': `${gridWidth}px` }}
+        >
+          {columns.map((w) => (
+            <span key={w} className="text-center text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{WEEKDAY_LABEL[w]}</span>
           ))}
           {slots.map((c, i) => {
             if (!c) return <span key={`empty-${i}`} aria-hidden="true" className="h-[52px]" />;
@@ -106,7 +113,7 @@ export function MetaDaysCalendar({ cells, teamSize, person }) {
         </div>
       </div>
 
-      <div className="mt-3 flex max-w-[470px] items-center gap-2 border-t border-slate-100 pt-2.5 dark:border-white/[0.06]">
+      <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5 dark:border-white/[0.06]" style={{ maxWidth: `${gridWidth}px` }}>
         <span className="whitespace-nowrap text-[10.5px] text-muted-foreground">{scaleLabel}</span>
         <div className="flex-1" />
         {scaleSwatches.map((sw) => (

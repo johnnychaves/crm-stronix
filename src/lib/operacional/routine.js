@@ -64,6 +64,32 @@ export function metaCalendar({ metaDays, hitsBy, userId = null }) {
   }));
 }
 
+// Ordem de coluna da régua, de segunda a domingo (0 = domingo é o último).
+const WEEKDAY_ORDER = [1, 2, 3, 4, 5, 6, 0];
+// Sem dias (meta dos colegas ainda não carregou): cabeçalho padrão Seg a Sex.
+const DEFAULT_COLUMNS = [1, 2, 3, 4, 5];
+
+// Monta a grade da régua de dias a partir dos dias de meta do mês (`cells`,
+// no formato de metaCalendar). As COLUNAS são os dias da semana que aparecem
+// em `cells`, em ordem a partir de segunda — todo mês tem cada dia da semana
+// pelo menos 4 vezes, então o que aparece em `cells` é sempre o conjunto
+// configurado em Metas & ritmo, nunca um recorte parcial do mês. Isso evita
+// duas quebras: meta com fim de semana (ex.: só domingo) não gera mais
+// `weekday - 1` negativo, e meta de 6 dias não fica espremida numa grade de
+// 5 colunas. Os ESPAÇOS antes do primeiro dia são a posição do weekday dele
+// nessa lista de colunas (não weekday - 1); o fim da última linha completa
+// com espaços em branco do mesmo jeito.
+export function calendarGrid(cells) {
+  const list = cells || [];
+  if (!list.length) return { columns: DEFAULT_COLUMNS, slots: [] };
+  const present = new Set(list.map((c) => c.weekday));
+  const columns = WEEKDAY_ORDER.filter((w) => present.has(w));
+  const lead = columns.indexOf(list[0].weekday);
+  const slots = [...Array(lead).fill(null), ...list];
+  while (slots.length % columns.length !== 0) slots.push(null);
+  return { columns, slots };
+}
+
 // Ações por dia de meta (fechados + hoje): lead criado (dono = consultantId,
 // qualquer balde) e interação com volumeKind (dono = quem fez). Com `end` (o
 // corte), nada criado a partir dele conta, nem no próprio dia do corte.
