@@ -371,3 +371,23 @@ describe('marcos de mês fechado', () => {
     expect(metricsOf(ctx, { monthKey: '2026-06', cutEnd: D(6, 11, 14) }).milestones).not.toBeNull();
   });
 });
+
+describe('mês seguinte que falhou', () => {
+  const empty = () => ({ history: [], interactions: [], leadsCreated: [] });
+
+  it('conta como ausente: os marcos ficam sem número, e voltam quando ele carrega', () => {
+    const ctx = makeCtx();
+    ctx.months['2026-06'] = empty();
+    ctx.months['2026-07'] = { ...empty(), failed: true };
+    expect(metricsOf(ctx, { monthKey: '2026-06' }).milestones).toBeNull();
+    ctx.months['2026-07'] = empty();
+    expect(metricsOf(ctx, { monthKey: '2026-06' }).milestones).not.toBeNull();
+  });
+
+  it('[90, 30] pede três meses para dezembro e janeiro, porque fevereiro é curto', () => {
+    const far = new Date(2027, 5, 1);
+    expect(milestoneMonthsAfter('2026-01', { checkpoints: [90, 30], asOf: far })).toEqual(['2026-02', '2026-03', '2026-04']);
+    expect(milestoneMonthsAfter('2025-12', { checkpoints: [90, 30], asOf: far })).toEqual(['2026-01', '2026-02', '2026-03']);
+    expect(milestoneMonthsAfter('2026-11', { checkpoints: [90, 30], asOf: far })).toEqual(['2026-12', '2027-01']);
+  });
+});

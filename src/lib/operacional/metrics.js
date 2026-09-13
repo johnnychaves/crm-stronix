@@ -27,7 +27,8 @@ const sumMap = (m, keep = null) => {
 // depois do fim dele e para no corte (asOf); mês que começa depois disso não
 // entra. Com o corte em agora (ou no fim do mês corrente, na carga da tela), a
 // lista não passa do mês corrente. [90, 60, 30] pede o mês seguinte, e março
-// para janeiro, porque fevereiro é curto; [90, 30] pede até dois meses.
+// para janeiro, porque fevereiro é curto; [90, 30] pede dois meses, e três
+// para dezembro e janeiro (janeiro alcança 2 de abril).
 export function milestoneMonthsAfter(monthKey, { checkpoints, asOf }) {
   const limit = Math.min(monthRange(monthKey).end.getTime() + milestoneSpanDays(checkpoints) * DAY_MS, asOf.getTime());
   const keys = [];
@@ -162,9 +163,9 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, after, win 
     renewal: summarizeCohort(academy.cohortRows, { owner }),
     // O intervalo de cada marco vai até o marco seguinte e passa do fim do mês
     // quando o corte (asOf) passa. Aí entram as interações dos meses que ele
-    // alcança (after), e sem algum deles o número sairia menor do que é: fica
-    // sem número.
-    milestones: src && after.every(Boolean)
+    // alcança (after). Sem algum deles, ou com a busca dele falhando (entra
+    // vazio e marcado), o número sairia menor do que é: fica sem número.
+    milestones: src && after.every((s) => s && !s.failed)
       ? milestones(contracts, {
         start,
         end,

@@ -163,7 +163,7 @@ Já estão em memória: contratos, usuários, configuração, os leads da Meta (
 | Leads criados no mês, todos os baldes | `createdAt` no intervalo do mês (índice automático; o Gerencial já faz igual) | cerca de 100 a 150 por mês |
 | Leads da carteira de renovação | por id, em lotes de 30, sem os que a Meta já carrega | cerca de 35 por mês da janela, perto de 200 no total |
 
-Mês exibido fechado carrega também os meses que o intervalo dos marcos alcança depois do fim dele, sem passar do mês corrente: um mês com os marcos padrão (90, 60 e 30), dois com marcos espaçados como 90 e 30.
+Mês exibido fechado carrega também os meses que o intervalo dos marcos alcança depois do fim dele, sem passar do mês corrente. Com os marcos padrão (90, 60 e 30), é o mês seguinte, e dois meses para janeiro, porque fevereiro é curto. Com marcos espaçados como 90 e 30, são dois meses, e três para dezembro e janeiro. Marcos muito espaçados (a configuração aceita até 365 dias) carregam até 11 meses a mais, e cada um traz leads e histórico que os marcos não usam.
 
 Cache: o app já usa o cache persistente do Firestore (`persistentLocalCache` em `src/lib/firebase.js:50`).
 - Mês fechado: a busca tenta primeiro o cache (`getDocsFromCache`) e confere com `getCountFromServer` da mesma consulta, que custa uma leitura por até mil docs.
@@ -175,8 +175,9 @@ As interações são praticamente só de inclusão, porque editar e apagar é ex
 
 Memória da sessão: a tela desmonta a cada troca de aba. Os meses já carregados ficam guardados no navegador até a página recarregar, separados por academia.
 - Mês fechado guardado é usado direto, sem nova contagem.
-- Mês corrente guardado também. Na volta à aba, busca só os leads criados desde a última busca, com 2 minutos de folga, e junta pelo id.
+- Mês corrente guardado também. Na volta à aba, busca só os leads criados desde o mais novo que o servidor já devolveu, com 2 minutos de folga, e junta pelo id. A âncora sai do servidor, e não do relógio do aparelho, que pode estar adiantado.
 - Não guarda mês que falhou nem mês fechado que veio sem o histórico. A volta tenta de novo.
+- Sem rede, o Firestore responde do cache do aparelho sem dar erro. Toda busca que precisa do servidor trata essa resposta como falha, para um mês incompleto não entrar na memória como completo.
 
 Estimativa de leitura, com as seis tendências e 4 pessoas:
 - Primeira abertura na sessão do navegador:
