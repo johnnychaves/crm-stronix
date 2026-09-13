@@ -30,7 +30,7 @@ import { getSafeDate } from '../lib/dates.js';
 import { monthRange, monthKeyOf, addMonthsToKey } from '../lib/operacional/month.js';
 import {
   interactionsInMonthSpec, leadsCreatedInMonthSpec, goalHistorySinceSpec, goalHistoryInMonthSpec,
-  loadWithCountCheck, retryWithBackoff, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry,
+  loadWithCountCheck, retryWithBackoff, retryDelayMs, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry,
   shouldRememberMonthEntry, monthsFromSession, currentMonthLeadsWindow, mergeNewLeads,
   chunk, leadIdsForRenewal
 } from '../lib/operacional/queries.js';
@@ -107,30 +107,47 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
   // --- histórico de metas ao vivo: só o mês corrente. Os fechados vêm com o
   // mês (loadMonth). Seis meses ao vivo custavam cerca de 540 docs a cada
   // montagem ou volta do portão de atividade.
-  const [liveHistory, setLiveHistory] = useState([]);
-  const [historyScope, setHistoryScope] = useState('all');
+  //
+  // A assinatura da equipe pode ser negada: pela regra antiga do histórico
+  // (cada um lê só o próprio) ou por um permission-denied passageiro logo
+  // depois do login. Tenta de novo com espera de 1, 2 e 4 segundos e só então
+  // cai para os docs da pessoa, de todos os meses (scope 'own'); a saída
+  // recorta por mês. `key` diz de que mês corrente é a resposta: sem resposta
+  // ainda, o histórico que depende da assinatura sai null e a meta fica sem
+  // número em vez de zerada.
+  const [live, setLive] = useState({ key: null, scope: 'all', docs: [] });
   useEffect(() => {
     if (!db || !enabled) return undefined;
-    let unsub = () => {};
-    let cancelled = false;
-    const live = query(colRef(db, DAILY_GOAL_HISTORY_PATH), ...specToConstraints(goalHistorySinceSpec(`${currentKey}-01`)));
-    unsub = onSnapshot(live, (snap) => {
-      if (cancelled) return;
-      setHistoryScope('all');
-      setLiveHistory(snap.docs.map(mapHistory));
-    }, () => {
-      if (cancelled) return;
-      // Regra antiga (só o próprio histórico) ainda publicada: cai para os docs
-      // da pessoa, de todos os meses. A saída recorta por mês.
-      if (!authUid) return;
-      setHistoryScope('own');
-      unsub = onSnapshot(
+    const key = currentKey;
+    let stop = () => {};
+    let timer = null;
+    let over = false;
+    const team = query(colRef(db, DAILY_GOAL_HISTORY_PATH), ...specToConstraints(goalHistorySinceSpec(`${key}-01`)));
+    const listenOwn = () => {
+      if (!authUid) { setLive({ key, scope: 'own', docs: [] }); return; }
+      stop = onSnapshot(
         query(colRef(db, DAILY_GOAL_HISTORY_PATH), where('consultantAuthUid', '==', authUid)),
-        (snap) => { if (!cancelled) setLiveHistory(snap.docs.map(mapHistory)); },
-        () => { if (!cancelled) setLiveHistory([]); }
+        (snap) => { if (!over) setLive({ key, scope: 'own', docs: snap.docs.map(mapHistory) }); },
+        () => { if (!over) setLive({ key, scope: 'own', docs: [] }); }
       );
-    });
-    return () => { cancelled = true; unsub(); };
+    };
+    const listenTeam = (attempt) => {
+      stop = onSnapshot(team, (snap) => {
+        if (!over) setLive({ key, scope: 'all', docs: snap.docs.map(mapHistory) });
+      }, () => {
+        if (over) return;
+        const delay = retryDelayMs(attempt);
+        if (delay == null) { listenOwn(); return; }
+        timer = setTimeout(() => { timer = null; if (!over) listenTeam(attempt + 1); }, delay);
+      });
+    };
+    listenTeam(0);
+    // Desmontou ou o efeito se refez: some a espera pendente e a assinatura.
+    return () => {
+      over = true;
+      if (timer) clearTimeout(timer);
+      stop();
+    };
   }, [db, enabled, currentKey, authUid]);
 
   // --- meses: os fechados completos; o corrente só com os leads criados. O
@@ -140,6 +157,12 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
   // Mês corrente já buscado nesta montagem, pela carga cheia ou pela
   // incremental: a incremental roda uma vez por montagem.
   const refreshedRef = useRef(new Set());
+  // Mês fechado que veio sem histórico (consulta negada) quando a assinatura
+  // da equipe já responde: a negação passou, e ele recarrega. Em texto, para o
+  // efeito rodar quando a lista muda e não a cada entrada nova.
+  const historyGaps = live.scope === 'all' && live.key === currentKey
+    ? Object.keys(months).filter((k) => months[k]?.closed && months[k].history == null).sort().join(',')
+    : '';
   useEffect(() => {
     if (!db || !enabled) return undefined;
     const tenant = appId;
@@ -162,11 +185,12 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
         })
         .catch((e) => console.error('operacional leads novos', key, e));
     };
+    const gaps = historyGaps ? historyGaps.split(',') : [];
     (monthKeys || []).forEach((key) => {
       const closed = key !== currentKey;
       const entry = months[key];
       // Entrada que vale: o mês fechado é usado direto, sem nova contagem.
-      if (monthEntryFits(entry, key, currentKey)) {
+      if (monthEntryFits(entry, key, currentKey) && !gaps.includes(key)) {
         if (!closed && !entry.failed && !refreshedRef.current.has(key)) {
           refreshedRef.current.add(key);
           refresh(key, entry.fetchedAt);
@@ -189,7 +213,7 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
     });
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- months entra só como guarda de "já carregado"
-  }, [db, enabled, monthKeys, currentKey]);
+  }, [db, enabled, monthKeys, currentKey, historyGaps]);
 
   // --- leads da carteira (responsável atual), por id, em lotes de 30. Sempre do
   // servidor: a conferência por contagem só enxerga exclusão, e uma troca de
@@ -228,6 +252,7 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
   return useMemo(() => {
     const byMonth = {};
     const failedKeys = [];
+    const liveReady = live.key === currentKey;
     (monthKeys || []).forEach((key) => {
       const loaded = months[key];
       if (!monthEntryFits(loaded, key, currentKey)) return;
@@ -238,11 +263,13 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
         ? (liveLeads || []).filter((l) => l.createdAt instanceof Date && l.createdAt >= start && l.createdAt < end)
         : [];
       const leadsCreated = [...new Map([...(loaded.leadsCreated || []), ...liveCreated].map((l) => [l.id, l])).values()];
-      // Histórico: o ao vivo no mês corrente e, com a regra antiga, em todos os
-      // meses (docs da pessoa); nos fechados, o que veio com o mês.
-      const history = isCurrent || historyScope === 'own' || !loaded.history
-        ? liveHistory.filter((h) => typeof h.date === 'string' && h.date.startsWith(key))
-        : loaded.history;
+      // Histórico: o ao vivo no mês corrente e, com a assinatura só da pessoa
+      // (scope 'own'), em todos os meses; nos fechados, o que veio com o mês.
+      // Sem resposta da assinatura ainda, ou mês fechado com a consulta negada,
+      // vai null: a meta fica sem número em vez de zerada.
+      const history = isCurrent || live.scope === 'own'
+        ? (liveReady ? live.docs.filter((h) => typeof h.date === 'string' && h.date.startsWith(key)) : null)
+        : (loaded.history ?? null);
       byMonth[key] = {
         interactions: isCurrent ? (liveInteractions || []) : (loaded.interactions || []),
         leadsCreated,
@@ -252,6 +279,6 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
     const leadsById = new Map(fetchedLeads);
     (liveLeads || []).forEach((l) => leadsById.set(l.id, l));
     const loading = (monthKeys || []).some((k) => !monthEntryFits(months[k], k, currentKey));
-    return { months: byMonth, leadsById, loading, failedKeys, historyScope };
-  }, [monthKeys, months, currentKey, liveLeads, liveInteractions, liveHistory, fetchedLeads, historyScope]);
+    return { months: byMonth, leadsById, loading, failedKeys, historyScope: live.scope };
+  }, [monthKeys, months, currentKey, liveLeads, liveInteractions, live, fetchedLeads]);
 }

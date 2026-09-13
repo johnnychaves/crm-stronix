@@ -7,7 +7,8 @@
 // quem cuida do cliente hoje (taxa de renovação), README §8. A linha "Outros"
 // junta o que não é de ninguém da equipe (ex-consultor ou sem responsável),
 // para as linhas fecharem com o rodapé. Só aparece com algum número, não tem
-// meta nem prospecção e não filtra a tela.
+// meta nem prospecção e não filtra a tela. Sem o histórico dos colegas
+// (metaHidden), a meta de quem ficou sem número mostra "—", sem barra.
 
 import { Users } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
@@ -64,7 +65,7 @@ function RowCells({ m, lateN, running, others = false }) {
   return (
     <>
       <div className="flex w-[132px] flex-none items-center gap-2">
-        {others ? dash : (
+        {others || m.metaHidden ? dash : (
           <>
             <Bar pct={meta} fill="bg-brand-600" />
             <span className="num flex-none text-[11.5px] font-semibold">{pctText(meta)}</span>

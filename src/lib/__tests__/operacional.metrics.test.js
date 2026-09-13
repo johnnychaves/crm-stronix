@@ -86,6 +86,42 @@ describe('metricsOf', () => {
   });
 });
 
+describe('histórico só da própria pessoa (historyOwnerOnly)', () => {
+  it('só a pessoa tem meta; equipe, colegas e OTHERS_ID ficam sem número e marcados', () => {
+    const ctx = { ...makeCtx(), historyOwnerOnly: 'ana' };
+    const ana = metricsOf(ctx, { monthKey: '2026-09', userId: 'ana' });
+    expect(ana.metaHidden).toBe(false);
+    expect(ana.meta).toEqual(metricsOf(makeCtx(), { monthKey: '2026-09', userId: 'ana' }).meta);
+    expect(ana.calendar.length).toBeGreaterThan(0);
+    [null, 'diego', OTHERS_ID].forEach((userId) => {
+      expect(metricsOf(ctx, { monthKey: '2026-09', userId })).toMatchObject({ meta: null, calendar: [], metaHidden: true });
+    });
+  });
+
+  it('o resto da tela não muda: prospecção, tarefas e base continuam', () => {
+    const team = metricsOf({ ...makeCtx(), historyOwnerOnly: 'ana' }, { monthKey: '2026-09' });
+    const full = metricsOf(makeCtx(), { monthKey: '2026-09' });
+    expect(team.prosp).toEqual(full.prosp);
+    expect(team.tasks).toEqual(full.tasks);
+    expect(team.base.active).toBe(full.base.active);
+  });
+
+  it('sem a marca ninguém fica escondido; ligar a marca no mesmo ctx não devolve o resultado guardado', () => {
+    const ctx = makeCtx();
+    expect(metricsOf(ctx, { monthKey: '2026-09' })).toMatchObject({ metaHidden: false, meta: { done: expect.any(Number) } });
+    ctx.historyOwnerOnly = 'ana';
+    expect(metricsOf(ctx, { monthKey: '2026-09' })).toMatchObject({ meta: null, metaHidden: true });
+  });
+
+  it('histórico ainda sem resposta (null): meta sem número, sem a marca, e o resto do mês segue', () => {
+    const ctx = makeCtx();
+    ctx.months['2026-09'] = { ...ctx.months['2026-09'], history: null };
+    const m = metricsOf(ctx, { monthKey: '2026-09' });
+    expect(m).toMatchObject({ meta: null, calendar: [], metaHidden: false, hasSource: true });
+    expect(m.tasks).not.toBeNull();
+  });
+});
+
 describe('deltaOf', () => {
   it('sem base quando falta o comparado', () => {
     expect(deltaOf(10, null)).toEqual({ none: true, text: 'sem base' });

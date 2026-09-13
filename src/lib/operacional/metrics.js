@@ -29,7 +29,7 @@ const sumMap = (m, keep = null) => {
 const caches = new WeakMap();
 
 function cacheOf(ctx) {
-  const sig = [ctx.now?.getTime(), ctx.users, ctx.contracts, ctx.config, ctx.leadsById, ctx.liveLeads, ctx.months];
+  const sig = [ctx.now?.getTime(), ctx.users, ctx.contracts, ctx.config, ctx.leadsById, ctx.liveLeads, ctx.months, ctx.historyOwnerOnly];
   let cache = caches.get(ctx);
   if (!cache || cache.sig.some((v, i) => v !== sig[i])) {
     cache = { sig, results: new Map(), academy: new Map() };
@@ -90,7 +90,14 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
   const others = userId === OTHERS_ID;
   const team = new Set(users.map((u) => u.id));
   const owner = others ? (id) => !team.has(id) : userId;
-  const meta = src && !others ? metaDaysSummary({ users, history: src.history, metaDays }) : null;
+  // Histórico só da própria pessoa (ctx.historyOwnerOnly = id dela): a meta de
+  // qualquer outro recorte sairia zerada. Equipe, colegas e OTHERS_ID ficam
+  // sem número e com a marca, para a tela dizer "indisponível" em vez de
+  // "carregando". Histórico ainda sem resposta (null) também deixa a meta sem
+  // número, mas sem a marca.
+  const ownerOnly = ctx.historyOwnerOnly ?? null;
+  const metaHidden = ownerOnly !== null && userId !== ownerOnly;
+  const meta = src?.history && !others && !metaHidden ? metaDaysSummary({ users, history: src.history, metaDays }) : null;
   const prospSummary = src && !others
     ? prospectionSummary({ users, interactions: src.interactions, leadsCreated: src.leadsCreated, metaDays, end })
     : null;
@@ -108,6 +115,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
     end,
     hasSource: Boolean(src),
     meta: meta ? pickMeta(meta, userId) : null,
+    metaHidden,
     calendar: meta ? metaCalendar({ metaDays, hitsBy: meta.hitsBy, userId }) : [],
     prosp: prospSummary ? pickProspection(prospSummary, userId) : null,
     tasks: src ? tasksByType({ interactions: src.interactions, users, userId, start, end }) : null,

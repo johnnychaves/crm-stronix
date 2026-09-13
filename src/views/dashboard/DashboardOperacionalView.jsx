@@ -64,6 +64,17 @@ function SectionTitle({ title, question }) {
   );
 }
 
+// Aviso sob a barra de controles, quando algum número da tela não é o
+// completo (mês que não carregou, meta só da própria pessoa).
+function Notice({ children }) {
+  return (
+    <p role="status" className="flex items-center gap-1.5 px-4 md:px-8 pt-3 text-[12px] text-amber-700 dark:text-amber-300">
+      <CircleAlert size={13} strokeWidth={2.2} className="flex-none" />
+      {children}
+    </p>
+  );
+}
+
 function NowTag() {
   return (
     <span className="flex h-[19px] items-center whitespace-nowrap rounded-md bg-muted px-[7px] text-[9.5px] font-bold uppercase tracking-[0.05em] text-muted-foreground">
@@ -322,11 +333,14 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
     () => ({ metaWeekdays, renewalCheckpoints, renewalGraceDays }),
     [metaWeekdays, renewalCheckpoints, renewalGraceDays]
   );
+  // Assinatura do histórico só da própria pessoa (regra antiga, ou a da equipe
+  // negada depois das novas tentativas): só ela tem número de meta.
+  const historyOwnerOnly = sources.historyScope === 'own' ? (appUser?.id ?? '') : null;
   const ctx = useMemo(() => ({
-    now, users, contracts, liveLeads, config,
+    now, users, contracts, liveLeads, config, historyOwnerOnly,
     leadsById: sources.leadsById,
     months: sources.months
-  }), [now, users, contracts, liveLeads, config, sources.leadsById, sources.months]);
+  }), [now, users, contracts, liveLeads, config, historyOwnerOnly, sources.leadsById, sources.months]);
 
   const curLoaded = useMemo(() => metricsOf(ctx, { monthKey, userId }), [ctx, monthKey, userId]);
   const cmpLoaded = useMemo(
@@ -411,7 +425,9 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
       key: 'meta', label: 'Meta diária', goodUp: true,
       help: 'Dias com meta batida ÷ dias de meta do mês. No mês em andamento conta só os dias já fechados; hoje aparece à parte na régua de dias.',
       value: cur.meta?.pct != null ? `${cur.meta.pct}%` : '—',
-      sub: cur.meta ? `${fmtNum(cur.meta.done)} de ${fmtNum(cur.meta.total)} ${userId ? 'dias' : 'dias-pessoa'}` : 'carregando',
+      sub: cur.meta
+        ? `${fmtNum(cur.meta.done)} de ${fmtNum(cur.meta.total)} ${userId ? 'dias' : 'dias-pessoa'}`
+        : cur.metaHidden ? 'indisponível' : 'carregando',
       delta: d(cur.meta?.pct, cmp?.meta?.pct, 'pp'),
       ...spark(series.meta, pctFmt)
     },
@@ -494,10 +510,10 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
           note={note}
         />
         {failedNames.length > 0 && (
-          <p role="status" className="flex items-center gap-1.5 px-4 md:px-8 pt-3 text-[12px] text-amber-700 dark:text-amber-300">
-            <CircleAlert size={13} strokeWidth={2.2} className="flex-none" />
-            Não foi possível carregar os dados de {failedNames.join(' e ')}. Recarregue a página para tentar de novo.
-          </p>
+          <Notice>Não foi possível carregar os dados de {failedNames.join(' e ')}. Recarregue a página para tentar de novo.</Notice>
+        )}
+        {historyOwnerOnly !== null && (
+          <Notice>A meta dos colegas não carregou. Por enquanto, a meta diária mostra só a sua.</Notice>
         )}
         <div className="relative">
           {sources.loading && (

@@ -56,15 +56,22 @@ export async function loadWithCountCheck({ fromCache, fromServer, countOnServer 
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// Tenta `fn` e, se falhar, tenta de novo até `retries` vezes, esperando base,
-// 2 × base, 4 × base... Esgotadas as tentativas, sobe o último erro.
+// Espera antes de tentar de novo depois da falha número `attempt` (a partir de
+// 0): base, 2 × base, 4 × base... Esgotadas as `retries`, null: hora de desistir.
+// Serve à carga do mês e à assinatura do histórico da equipe.
+export const retryDelayMs = (attempt, { retries = 3, baseDelayMs = 1000 } = {}) =>
+  (attempt < retries ? baseDelayMs * 2 ** attempt : null);
+
+// Tenta `fn` e, se falhar, tenta de novo até `retries` vezes, com as esperas de
+// retryDelayMs. Esgotadas as tentativas, sobe o último erro.
 export async function retryWithBackoff(fn, { retries = 3, baseDelayMs = 1000, sleep = wait } = {}) {
   for (let attempt = 0; ; attempt++) {
     try {
       return await fn();
     } catch (e) {
-      if (attempt >= retries) throw e;
-      await sleep(baseDelayMs * 2 ** attempt);
+      const delay = retryDelayMs(attempt, { retries, baseDelayMs });
+      if (delay == null) throw e;
+      await sleep(delay);
     }
   }
 }

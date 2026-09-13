@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
   monthWindowSpec, interactionsInMonthSpec, leadsCreatedInMonthSpec, goalHistorySinceSpec, goalHistoryInMonthSpec,
-  chunk, loadWithCountCheck, retryWithBackoff, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry, leadIdsForRenewal,
+  chunk, loadWithCountCheck, retryWithBackoff, retryDelayMs, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry, leadIdsForRenewal,
   shouldRememberMonthEntry, monthsFromSession, NEW_LEADS_SLACK_MS, currentMonthLeadsWindow, unionById, mergeNewLeads
 } from '../operacional/queries.js';
 import { normalizeContract } from '../operacional/base.js';
@@ -77,6 +77,12 @@ describe('retryWithBackoff', () => {
     await expect(retryWithBackoff(fn, { sleep, baseDelayMs: 100 })).resolves.toBe('ok');
     expect(fn).toHaveBeenCalledTimes(3);
     expect(waits(sleep)).toEqual([100, 200]);
+  });
+
+  it('esperas de 1, 2 e 4 segundos; depois, desistir (a assinatura do histórico usa a mesma régua)', () => {
+    expect([0, 1, 2, 3].map((a) => retryDelayMs(a))).toEqual([1000, 2000, 4000, null]);
+    expect(retryDelayMs(1, { baseDelayMs: 100 })).toBe(200);
+    expect(retryDelayMs(0, { retries: 0 })).toBeNull();
   });
 
   it('depois de 3 novas tentativas, desiste com o último erro', async () => {
