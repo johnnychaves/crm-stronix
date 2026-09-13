@@ -384,10 +384,32 @@ describe('mês seguinte que falhou', () => {
     expect(metricsOf(ctx, { monthKey: '2026-06' }).milestones).not.toBeNull();
   });
 
-  it('[90, 30] pede três meses para dezembro e janeiro, porque fevereiro é curto', () => {
+  it('[90, 30] pede três meses para dezembro e janeiro fora de ano bissexto, porque fevereiro é curto', () => {
     const far = new Date(2027, 5, 1);
     expect(milestoneMonthsAfter('2026-01', { checkpoints: [90, 30], asOf: far })).toEqual(['2026-02', '2026-03', '2026-04']);
     expect(milestoneMonthsAfter('2025-12', { checkpoints: [90, 30], asOf: far })).toEqual(['2026-01', '2026-02', '2026-03']);
     expect(milestoneMonthsAfter('2026-11', { checkpoints: [90, 30], asOf: far })).toEqual(['2026-12', '2027-01']);
+  });
+
+  it('em ano bissexto, [90, 30] pede dois meses para dezembro e janeiro', () => {
+    const far = new Date(2028, 11, 1);
+    expect(milestoneMonthsAfter('2028-01', { checkpoints: [90, 30], asOf: far })).toEqual(['2028-02', '2028-03']);
+    expect(milestoneMonthsAfter('2027-12', { checkpoints: [90, 30], asOf: far })).toEqual(['2028-01', '2028-02']);
+  });
+});
+
+describe('histórico sem assinatura nenhuma (historyUnavailable)', () => {
+  it('ninguém tem meta, nem a própria pessoa, e todo recorte fica marcado', () => {
+    const ctx = { ...makeCtx(), historyOwnerOnly: 'ana', historyUnavailable: true };
+    ['ana', 'diego', null].forEach((userId) => {
+      expect(metricsOf(ctx, { monthKey: '2026-09', userId })).toMatchObject({ meta: null, calendar: [], metaHidden: true });
+    });
+  });
+
+  it('ligar a marca no mesmo ctx não devolve o resultado guardado', () => {
+    const ctx = { ...makeCtx(), historyOwnerOnly: 'ana' };
+    expect(metricsOf(ctx, { monthKey: '2026-09', userId: 'ana' }).metaHidden).toBe(false);
+    ctx.historyUnavailable = true;
+    expect(metricsOf(ctx, { monthKey: '2026-09', userId: 'ana' }).metaHidden).toBe(true);
   });
 });

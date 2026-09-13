@@ -294,6 +294,9 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
     const leadsById = new Map(fetchedLeads);
     (liveLeads || []).forEach((l) => leadsById.set(l.id, l));
     const loading = (monthKeys || []).some((k) => !monthEntryFits(months[k], k, currentKey));
-    return { months: byMonth, leadsById, loading, failedKeys, historyScope: live.scope };
+    // A assinatura só da pessoa também falhou (ou não há authUid): nem a meta
+    // dela tem número, e a tela diz "indisponível" em vez de "carregando".
+    const historyFailed = live.scope === 'own' && liveReady && !Array.isArray(live.docs);
+    return { months: byMonth, leadsById, loading, failedKeys, historyScope: live.scope, historyFailed };
   }, [monthKeys, months, currentKey, liveLeads, liveInteractions, live, fetchedLeads]);
 }

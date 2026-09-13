@@ -334,13 +334,15 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
     [metaWeekdays, renewalCheckpoints, renewalGraceDays]
   );
   // Assinatura do histórico só da própria pessoa (regra antiga, ou a da equipe
-  // negada depois das novas tentativas): só ela tem número de meta.
+  // negada depois das novas tentativas): só ela tem número de meta. Se nem a
+  // dela responde, ninguém tem, e a meta aparece como indisponível.
   const historyOwnerOnly = sources.historyScope === 'own' ? (appUser?.id ?? '') : null;
+  const historyUnavailable = Boolean(sources.historyFailed);
   const ctx = useMemo(() => ({
-    now, users, contracts, liveLeads, config, historyOwnerOnly,
+    now, users, contracts, liveLeads, config, historyOwnerOnly, historyUnavailable,
     leadsById: sources.leadsById,
     months: sources.months
-  }), [now, users, contracts, liveLeads, config, historyOwnerOnly, sources.leadsById, sources.months]);
+  }), [now, users, contracts, liveLeads, config, historyOwnerOnly, historyUnavailable, sources.leadsById, sources.months]);
 
   const curLoaded = useMemo(() => metricsOf(ctx, { monthKey, userId }), [ctx, monthKey, userId]);
   const cmpLoaded = useMemo(
@@ -519,7 +521,9 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
         {failedNames.length > 0 && (
           <Notice>Não foi possível carregar os dados de {failedNames.join(' e ')}. Recarregue a página para tentar de novo.</Notice>
         )}
-        {historyOwnerOnly !== null && (
+        {historyUnavailable ? (
+          <Notice>A meta diária não carregou. Recarregue a página para tentar de novo.</Notice>
+        ) : historyOwnerOnly !== null && (
           <Notice>A meta dos colegas não carregou. Por enquanto, a meta diária mostra só a sua.</Notice>
         )}
         <div className="relative">

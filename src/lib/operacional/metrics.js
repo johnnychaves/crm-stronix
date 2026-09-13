@@ -28,7 +28,8 @@ const sumMap = (m, keep = null) => {
 // entra. Com o corte em agora (ou no fim do mês corrente, na carga da tela), a
 // lista não passa do mês corrente. [90, 60, 30] pede o mês seguinte, e março
 // para janeiro, porque fevereiro é curto; [90, 30] pede dois meses, e três
-// para dezembro e janeiro (janeiro alcança 2 de abril).
+// para dezembro e janeiro fora de ano bissexto (janeiro de 2026 alcança 2 de
+// abril; em 2028, com fevereiro de 29 dias, para em 1º de abril).
 export function milestoneMonthsAfter(monthKey, { checkpoints, asOf }) {
   const limit = Math.min(monthRange(monthKey).end.getTime() + milestoneSpanDays(checkpoints) * DAY_MS, asOf.getTime());
   const keys = [];
@@ -57,7 +58,7 @@ const sameItems = (a, b) => a.length === b.length && a.every((v, i) => v === b[i
 const caches = new WeakMap();
 
 function cacheOf(ctx) {
-  const sig = [ctx.now?.getTime(), ctx.users, ctx.contracts, ctx.config, ctx.leadsById, ctx.liveLeads, ctx.months, ctx.historyOwnerOnly];
+  const sig = [ctx.now?.getTime(), ctx.users, ctx.contracts, ctx.config, ctx.leadsById, ctx.liveLeads, ctx.months, ctx.historyOwnerOnly, Boolean(ctx.historyUnavailable)];
   let cache = caches.get(ctx);
   if (!cache || cache.sig.some((v, i) => v !== sig[i])) {
     cache = { sig, results: new Map(), academy: new Map() };
@@ -120,10 +121,12 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, after, win 
   // Histórico só da própria pessoa (ctx.historyOwnerOnly = id dela): a meta de
   // qualquer outro recorte sairia zerada. Equipe, colegas e OTHERS_ID ficam
   // sem número e com a marca, para a tela dizer "indisponível" em vez de
-  // "carregando". Histórico ainda sem resposta (null) também deixa a meta sem
-  // número, mas sem a marca.
+  // "carregando". Se nem a assinatura da pessoa responde
+  // (ctx.historyUnavailable), a marca vale para todo recorte, inclusive o
+  // dela. Histórico ainda sem resposta (null) também deixa a meta sem número,
+  // mas sem a marca.
   const ownerOnly = ctx.historyOwnerOnly ?? null;
-  const metaHidden = ownerOnly !== null && userId !== ownerOnly;
+  const metaHidden = Boolean(ctx.historyUnavailable) || (ownerOnly !== null && userId !== ownerOnly);
   const meta = src?.history && !others && !metaHidden ? metaDaysSummary({ users, history: src.history, metaDays }) : null;
   const prospSummary = src && !others
     ? prospectionSummary({ users, interactions: src.interactions, leadsCreated: src.leadsCreated, metaDays, end })
