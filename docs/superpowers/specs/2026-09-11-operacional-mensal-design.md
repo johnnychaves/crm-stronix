@@ -153,27 +153,43 @@ Contratos vigentes, sem o próximo contrato já fechado, com fim em três faixas
 
 ## 6. Carga de dados e custo de leitura
 
-Já estão em memória: contratos, usuários, configuração, leads ativos e interações do mês corrente.
+Já estão em memória: contratos, usuários, configuração, os leads da Meta (ativos, candidatos a renovação e clientes com contato hoje) e as interações do mês corrente.
 
 | Leitura nova | Consulta | Tamanho estimado |
 |---|---|---|
-| Histórico de metas | `date >=` primeiro dia do mês mais antigo necessário (índice automático) | cerca de 90 docs por mês com 4 pessoas |
+| Histórico de metas do mês corrente | ao vivo, `date >=` primeiro dia do mês (índice automático) | até cerca de 90 docs no fim do mês, com 4 pessoas |
+| Histórico de metas de mês fechado | `date` do primeiro dia do mês até antes do primeiro dia do seguinte | cerca de 90 por mês |
 | Interações de mês passado | `createdAt` no intervalo do mês (índice automático) | cerca de 400 por mês (auditoria de julho: 398) |
 | Leads criados no mês, todos os baldes | `createdAt` no intervalo do mês (índice automático; o Gerencial já faz igual) | cerca de 100 a 150 por mês |
-| Leads da coorte de renovação | por id, em lotes de 30 | cerca de 35 por mês |
+| Leads da carteira de renovação | por id, em lotes de 30, sem os que a Meta já carrega | cerca de 35 por mês da janela, perto de 200 no total |
+
+Mês exibido fechado carrega também os meses que o intervalo dos marcos alcança depois do fim dele, sem passar do mês corrente: um mês com os marcos padrão (90, 60 e 30), dois com marcos espaçados como 90 e 30.
 
 Cache: o app já usa o cache persistente do Firestore (`persistentLocalCache` em `src/lib/firebase.js:50`).
 - Mês fechado: a busca tenta primeiro o cache (`getDocsFromCache`) e confere com `getCountFromServer` da mesma consulta, que custa uma leitura por até mil docs.
   - Contagem igual: usa o cache.
   - Contagem diferente: busca do servidor.
-- Mês em andamento: não usa esse atalho.
+- Mês em andamento: os leads criados vêm do servidor, sem esse atalho.
 
 As interações são praticamente só de inclusão, porque editar e apagar é exclusivo do gestor. Por isso a contagem pega quase toda mudança.
 
-Estimativa de leitura:
-- Primeira abertura num aparelho, com as seis tendências: cerca de 3 mil leituras, uma vez só.
-- Aberturas seguintes: cerca de 20 leituras.
-- Sem o cache, seriam 3 mil a cada abertura.
+Memória da sessão: a tela desmonta a cada troca de aba. Os meses já carregados ficam guardados no navegador até a página recarregar, separados por academia.
+- Mês fechado guardado é usado direto, sem nova contagem.
+- Mês corrente guardado também. Na volta à aba, busca só os leads criados desde a última busca, com 2 minutos de folga, e junta pelo id.
+- Não guarda mês que falhou nem mês fechado que veio sem o histórico. A volta tenta de novo.
+
+Estimativa de leitura, com as seis tendências e 4 pessoas:
+- Primeira abertura na sessão do navegador:
+  - no primeiro uso do aparelho, sem cache: cerca de 3.500 leituras. São 5 meses fechados de cerca de 600 docs, mais os leads do mês corrente, o histórico ao vivo e a carteira;
+  - com o cache do aparelho já preenchido: de 250 a 450 leituras, conforme o dia do mês. São 15 contagens (3 por mês fechado), os leads criados no mês corrente (de 20 no começo a 150 no fim), o histórico ao vivo (até 90) e a carteira (perto de 200).
+- Volta à aba na mesma sessão: de 1 a cerca de 100 leituras.
+  - Os meses fechados saem da memória, sem contagem.
+  - Os leads novos custam uma leitura, mesmo sem nenhum lead novo, mais uma por lead criado desde a última busca.
+  - A carteira não é lida de novo.
+  - O que continua custando é o histórico ao vivo, assinado de novo a cada volta. Se a última escuta foi há menos de 30 minutos, o Firestore cobra só o que mudou. Se foi há mais, cobra o mês inteiro, até 90 docs.
+- Recarga da página: a memória some e o custo volta ao da primeira abertura com cache, de 250 a 450 leituras. A carteira, que vem sempre do servidor, é lida de novo.
+
+Enquanto a regra antiga do histórico estiver publicada, o mês fechado de quem não é gestor volta sem histórico e não fica na memória. Cada volta à aba refaz a conferência dos meses fechados, cerca de 15 leituras.
 
 As tendências completam depois do primeiro desenho, sem mudar a altura da tela.
 
