@@ -4,7 +4,7 @@
 
 import { monthRange, effectiveEnd, metaDaysOfMonth, isCurrentMonthKey, addMonthsToKey } from './month.js';
 import { computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow } from './base.js';
-import { renewalCohort, summarizeCohort, milestones, upcomingExpirations } from './renewal.js';
+import { renewalCohort, summarizeCohort, milestones, milestoneSpanDays, upcomingExpirations } from './renewal.js';
 import {
   OTHERS_ID, metaDaysSummary, pickMeta, metaCalendar, prospectionSummary, pickProspection, tasksByType, overdueNow
 } from './routine.js';
@@ -13,12 +13,39 @@ import {
 // pessoas, bate com a equipe. Mora em routine.js porque o overdueNow usa.
 export { OTHERS_ID };
 
+const DAY_MS = 86400000;
+
 // Soma dos valores do mapa; com `keep`, só das chaves que passam.
 const sumMap = (m, keep = null) => {
   let total = 0;
   m.forEach((v, k) => { if (!keep || keep(k)) total += v; });
   return total;
 };
+
+// Meses depois de `monthKey` cujas interações os marcos precisam. O intervalo
+// de um marco cruzado no último instante do mês vai até milestoneSpanDays
+// depois do fim dele e para no corte (asOf); mês que começa depois disso não
+// entra. Com o corte em agora (ou no fim do mês corrente, na carga da tela), a
+// lista não passa do mês corrente. [90, 60, 30] pede o mês seguinte, e março
+// para janeiro, porque fevereiro é curto; [90, 30] pede até dois meses.
+export function milestoneMonthsAfter(monthKey, { checkpoints, asOf }) {
+  const limit = Math.min(monthRange(monthKey).end.getTime() + milestoneSpanDays(checkpoints) * DAY_MS, asOf.getTime());
+  const keys = [];
+  for (let k = addMonthsToKey(monthKey, 1); monthRange(k).start.getTime() < limit; k = addMonthsToKey(k, 1)) keys.push(k);
+  return keys;
+}
+
+// Janela do mês: início, fim do mês, fim efetivo (agora no mês em andamento,
+// ou o corte pró-rata) e o instante do desfecho de renovação. No corte
+// pró-rata vale o que existia no corte; nos demais casos, o que existe hoje
+// (renovação atrasada ainda conta).
+function windowOf(ctx, monthKey, cutEnd) {
+  const { start, end: monthEnd } = monthRange(monthKey);
+  const end = cutEnd || effectiveEnd(monthKey, ctx.now);
+  return { start, monthEnd, end, asOf: end < monthEnd ? end : ctx.now };
+}
+
+const sameItems = (a, b) => a.length === b.length && a.every((v, i) => v === b[i]);
 
 // Cache por ctx (WeakMap: ctx novo, cache novo). Um desenho da tela chama
 // metricsOf dezenas de vezes (mês, comparado, pessoas, tendências). O resultado
@@ -62,24 +89,23 @@ function academyOf(ctx, cache, { monthKey, start, monthEnd, end, asOf }) {
 
 export function metricsOf(ctx, { monthKey, userId = null, cutEnd = null }) {
   const cache = cacheOf(ctx);
+  const win = windowOf(ctx, monthKey, cutEnd);
   const src = ctx.months?.[monthKey] || null;
-  // Os marcos também olham as interações do mês seguinte, quando carregado.
-  const nextSrc = ctx.months?.[addMonthsToKey(monthKey, 1)] || null;
+  // Os marcos também olham as interações dos meses que o intervalo deles
+  // alcança depois do fim do mês, quando carregados.
+  const after = milestoneMonthsAfter(monthKey, { checkpoints: ctx.config?.renewalCheckpoints, asOf: win.asOf })
+    .map((k) => ctx.months?.[k] || null);
   const key = `${monthKey}|${userId ?? ''}|${cutEnd?.getTime() ?? ''}`;
   const hit = cache.results.get(key);
-  if (hit && hit.src === src && hit.nextSrc === nextSrc) return hit.value;
-  const value = computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc });
-  cache.results.set(key, { src, nextSrc, value });
+  if (hit && hit.src === src && sameItems(hit.after, after)) return hit.value;
+  const value = computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, after, win });
+  cache.results.set(key, { src, after, value });
   return value;
 }
 
-function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) {
-  const { start, end: monthEnd } = monthRange(monthKey);
+function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, after, win }) {
+  const { start, monthEnd, end, asOf } = win;
   const running = isCurrentMonthKey(monthKey, ctx.now);
-  const end = cutEnd || effectiveEnd(monthKey, ctx.now);
-  // Desfecho de renovação: no corte pró-rata vale o que existia no corte; nos
-  // demais casos, o que existe hoje (renovação atrasada ainda conta).
-  const asOf = end < monthEnd ? end : ctx.now;
   const snapshot = running && !cutEnd;
   const users = ctx.users || [];
   const contracts = ctx.contracts || [];
@@ -135,15 +161,16 @@ function computeMetrics(ctx, cache, { monthKey, userId, cutEnd, src, nextSrc }) 
     upgradesBy: sales.upgrades,
     renewal: summarizeCohort(academy.cohortRows, { owner }),
     // O intervalo de cada marco vai até o marco seguinte e passa do fim do mês
-    // quando o corte (asOf) passa. Aí entram as interações do mês seguinte, e
-    // sem elas o número sairia menor do que é: fica sem número.
-    milestones: src && (asOf <= monthEnd || nextSrc)
+    // quando o corte (asOf) passa. Aí entram as interações dos meses que ele
+    // alcança (after), e sem algum deles o número sairia menor do que é: fica
+    // sem número.
+    milestones: src && after.every(Boolean)
       ? milestones(contracts, {
         start,
         end,
         asOf,
         checkpoints: ctx.config?.renewalCheckpoints,
-        interactions: nextSrc ? [...(src.interactions || []), ...(nextSrc.interactions || [])] : src.interactions,
+        interactions: after.length ? [src, ...after].flatMap((s) => s.interactions || []) : src.interactions,
         leadsById: ctx.leadsById,
         owner
       })

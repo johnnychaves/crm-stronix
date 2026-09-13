@@ -123,15 +123,32 @@ function successorTimes(c, index) {
   return out;
 }
 
+// Marcos da academia (renewalCheckpoints) prontos para a conta: números
+// positivos, sem repetição, do maior para o menor. Lista malformada vira vazia.
+export function normalizeCheckpoints(checkpoints) {
+  const list = Array.isArray(checkpoints) ? checkpoints : [];
+  return [...new Set(list.map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
+}
+
+// Quanto o intervalo de um marco pode passar do fim do mês, em dias: o maior
+// intervalo, do marco até o seguinte (ou até o fim, no menor). Um marco
+// cruzado no último instante do mês conta contatos até esse tanto depois.
+// [90, 60, 30] dá 30; [90, 30] dá 60.
+export function milestoneSpanDays(checkpoints) {
+  const cps = normalizeCheckpoints(checkpoints);
+  return cps.reduce((max, cp, i) => Math.max(max, cp - (cps[i + 1] ?? 0)), 0);
+}
+
 // Marco C cruza em fim − C dias, e o cruzamento tem de cair no mês. Chegou ao
 // marco quem estava vigente e ainda sem sucessor nesse dia. Feito = tarefa de
 // renovação concluída (de qualquer autor) ou sucessor criado entre o
 // cruzamento e o marco seguinte (o fim, no menor marco): o intervalo passa do
-// fim do mês, mas não do corte (asOf). As interações precisam cobrir esse
-// intervalo; o metricsOf manda as do mês e as do seguinte.
+// fim do mês em até milestoneSpanDays, mas não do corte (asOf). As interações
+// precisam cobrir esse intervalo; o metricsOf manda as do mês e as dos meses
+// que ele alcança (metrics.milestoneMonthsAfter).
 export function milestones(contracts, { start, end, asOf = null, checkpoints, interactions, leadsById, owner = null }) {
   const index = indexContracts(contracts);
-  const cps = [...new Set((checkpoints || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))].sort((a, b) => b - a);
+  const cps = normalizeCheckpoints(checkpoints);
   const doneByLead = new Map();
   (interactions || []).forEach((i) => {
     if (i.type !== 'daily_goal_done' || i.dailyGoalCategory !== 'renovacao' || !(i.createdAt instanceof Date)) return;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { normalizeContract } from '../operacional/base.js';
-import { metricsOf, deltaOf, buildHighlights, seriesOf, OTHERS_ID } from '../operacional/metrics.js';
+import { metricsOf, deltaOf, buildHighlights, seriesOf, milestoneMonthsAfter, OTHERS_ID } from '../operacional/metrics.js';
 
 const NOW = new Date(2026, 8, 11, 14, 0);
 const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
@@ -227,6 +227,55 @@ describe('marcos no metricsOf', () => {
       }
     };
     expect(metricsOf(ctx, { monthKey: '2026-09' }).milestones).toEqual([{ days: 30, total: 1, done: 1, pct: 100 }]);
+  });
+});
+
+describe('meses que os marcos alcançam', () => {
+  const far = new Date(2027, 5, 1);
+
+  it('[90, 60, 30] continua pedindo só o mês seguinte', () => {
+    expect(milestoneMonthsAfter('2026-08', { checkpoints: [90, 60, 30], asOf: far })).toEqual(['2026-09']);
+    expect(milestoneMonthsAfter('2026-06', { checkpoints: [90, 60, 30], asOf: far })).toEqual(['2026-07']);
+  });
+
+  it('[90, 30] pede dois meses, sem passar do corte', () => {
+    expect(milestoneMonthsAfter('2026-08', { checkpoints: [90, 30], asOf: far })).toEqual(['2026-09', '2026-10']);
+    expect(milestoneMonthsAfter('2026-08', { checkpoints: [90, 30], asOf: new Date(2026, 8, 11, 14) })).toEqual(['2026-09']);
+  });
+
+  it('mês em andamento, ou corte dentro do mês, não pede nada', () => {
+    expect(milestoneMonthsAfter('2026-09', { checkpoints: [90, 30], asOf: new Date(2026, 8, 11, 14) })).toEqual([]);
+    expect(milestoneMonthsAfter('2026-08', { checkpoints: [90, 60, 30], asOf: new Date(2026, 7, 11, 14) })).toEqual([]);
+  });
+
+  it('fevereiro é curto: janeiro com [90, 60, 30] alcança o começo de março', () => {
+    expect(milestoneMonthsAfter('2026-01', { checkpoints: [90, 60, 30], asOf: far })).toEqual(['2026-02', '2026-03']);
+  });
+});
+
+describe('marcos espaçados no metricsOf', () => {
+  const empty = () => ({ history: [], interactions: [], leadsCreated: [] });
+  // Marco de 90 dias em 30/08. Com [90, 30], o intervalo vai até o marco de 30,
+  // em 29/10, e o contato de 02/10 cai dois meses à frente.
+  function ctxLongInterval(checkpoints) {
+    const ctx = makeCtx();
+    ctx.now = new Date(2026, 9, 5, 10);
+    ctx.config = { ...ctx.config, renewalCheckpoints: checkpoints };
+    ctx.contracts = [...ctx.contracts, C('longe', { endsAt: D(11, 28) })];
+    ctx.months = { '2026-08': empty(), '2026-09': empty() };
+    return ctx;
+  }
+  const contatoEmOutubro = { type: 'daily_goal_done', dailyGoalCategory: 'renovacao', leadId: 'longe', createdAt: D(10, 2) };
+
+  it('[90, 30]: sem outubro, agosto fica sem marcos; outubro carregado depois no mesmo ctx, o contato conta', () => {
+    const ctx = ctxLongInterval([90, 30]);
+    expect(metricsOf(ctx, { monthKey: '2026-08' }).milestones).toBeNull();
+    ctx.months['2026-10'] = { ...empty(), interactions: [contatoEmOutubro] };
+    expect(metricsOf(ctx, { monthKey: '2026-08' }).milestones.find((m) => m.days === 90)).toEqual({ days: 90, total: 1, done: 1, pct: 100 });
+  });
+
+  it('[90, 60, 30]: agosto só precisa de setembro', () => {
+    expect(metricsOf(ctxLongInterval([90, 60, 30]), { monthKey: '2026-08' }).milestones).not.toBeNull();
   });
 });
 

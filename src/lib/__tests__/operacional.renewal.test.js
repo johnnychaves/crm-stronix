@@ -3,7 +3,9 @@ import { buildContractResume } from '../contracts.js';
 import {
   normalizeContract, normalizeContracts, hasOpenPause, computeChurn, countLockedAt, computeBaseMovement
 } from '../operacional/base.js';
-import { ownerOf, renewalCohort, summarizeCohort, milestones, upcomingExpirations } from '../operacional/renewal.js';
+import {
+  ownerOf, renewalCohort, summarizeCohort, milestones, upcomingExpirations, normalizeCheckpoints, milestoneSpanDays
+} from '../operacional/renewal.js';
 
 const D = (y, m, d, h = 12) => new Date(y, m - 1, d, h);
 const C = (id, over = {}) => normalizeContract({
@@ -120,6 +122,31 @@ describe('milestones', () => {
     const args = { start: SEP.start, end: SEP.end, checkpoints: [30], interactions, leadsById: new Map() };
     expect(milestones(contracts, { ...args, asOf: D(2026, 10, 5) })).toEqual([{ days: 30, total: 2, done: 2, pct: 100 }]);
     expect(milestones(contracts, { ...args, asOf: D(2026, 9, 30) })).toEqual([{ days: 30, total: 2, done: 0, pct: 0 }]);
+  });
+});
+
+describe('intervalo dos marcos', () => {
+  it('marcos normalizados: positivos, sem repetição, do maior para o menor', () => {
+    expect(normalizeCheckpoints([30, '90', 60, 90, -5, 'x', 0])).toEqual([90, 60, 30]);
+    expect(normalizeCheckpoints(null)).toEqual([]);
+    expect(normalizeCheckpoints({ 0: 30 })).toEqual([]);
+  });
+
+  it('o maior intervalo entre marcos é o quanto um marco passa do fim do mês', () => {
+    expect(milestoneSpanDays([90, 60, 30])).toBe(30);
+    expect(milestoneSpanDays([90, 30])).toBe(60);
+    expect(milestoneSpanDays([30])).toBe(30);
+    expect(milestoneSpanDays([120, 100, 10])).toBe(90);
+    expect(milestoneSpanDays([])).toBe(0);
+  });
+
+  it('com [90, 30], o contato 51 dias depois do marco de 90 ainda conta, dois meses à frente', () => {
+    // Marco de 90 dias em 30/08; o intervalo vai até o marco de 30, em 29/10.
+    const contracts = [C('longe', { endsAt: D(2026, 11, 28) })];
+    const interactions = [{ type: 'daily_goal_done', dailyGoalCategory: 'renovacao', leadId: 'longe', createdAt: D(2026, 10, 20) }];
+    const AUG = { start: new Date(2026, 7, 1), end: new Date(2026, 8, 1) };
+    const r = milestones(contracts, { ...AUG, asOf: D(2026, 11, 1), checkpoints: [90, 30], interactions, leadsById: new Map() });
+    expect(r).toEqual([{ days: 90, total: 1, done: 1, pct: 100 }, { days: 30, total: 0, done: 0, pct: null }]);
   });
 });
 

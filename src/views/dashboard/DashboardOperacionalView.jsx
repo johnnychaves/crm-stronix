@@ -10,8 +10,9 @@ import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { useOperacionalSources } from '../../hooks/useOperacionalSources.js';
 import { normalizeContracts } from '../../lib/operacional/base.js';
-import { monthKeyOf, addMonthsToKey, comparisonCut, compareOptions, monthLabel } from '../../lib/operacional/month.js';
-import { metricsOf, deltaOf, buildHighlights, seriesOf, OTHERS_ID } from '../../lib/operacional/metrics.js';
+import { monthKeyOf, monthRange, addMonthsToKey, comparisonCut, compareOptions, monthLabel } from '../../lib/operacional/month.js';
+import { metricsOf, deltaOf, buildHighlights, seriesOf, milestoneMonthsAfter, OTHERS_ID } from '../../lib/operacional/metrics.js';
+import { normalizeCheckpoints } from '../../lib/operacional/renewal.js';
 import { TASK_ROWS } from '../../lib/operacional/routine.js';
 import { fmtNum } from '../../lib/format.js';
 import { cn } from '../../lib/utils.js';
@@ -310,15 +311,14 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
   const oldestKey = addMonthsToKey(currentKey, -11);
 
   const seriesKeys = useMemo(() => Array.from({ length: 6 }, (_, i) => addMonthsToKey(monthKey, i - 5)), [monthKey]);
-  // Mês exibido fechado: cada marco conta até o marco seguinte, que passa do
-  // fim do mês, e o metricsOf deixa os marcos sem número sem as interações do
-  // mês seguinte. Por isso ele entra na carga.
+  // Mês exibido fechado: cada marco conta até o marco seguinte, e o intervalo
+  // passa do fim do mês (um mês, ou mais com marcos espaçados como 90 e 30).
+  // O metricsOf deixa os marcos sem número sem as interações dos meses que ele
+  // alcança, então eles entram na carga, até o mês corrente.
   const monthKeys = useMemo(() => {
-    const keys = [...seriesKeys, cmpKey];
-    const next = addMonthsToKey(monthKey, 1);
-    if (monthKey < currentKey && next <= currentKey) keys.push(next);
-    return [...new Set(keys)];
-  }, [seriesKeys, cmpKey, monthKey, currentKey]);
+    const after = milestoneMonthsAfter(monthKey, { checkpoints: renewalCheckpoints, asOf: monthRange(currentKey).end });
+    return [...new Set([...seriesKeys, cmpKey, ...after])];
+  }, [seriesKeys, cmpKey, monthKey, currentKey, renewalCheckpoints]);
   // A lista inteira de uma vez: a pausa do contrato trancado que ganhou
   // sucessor só fecha olhando os outros contratos da pessoa.
   const contracts = useMemo(() => normalizeContracts(contratos), [contratos]);
@@ -489,8 +489,7 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
     ? `${plural(cur.renewal.cohort, 'contrato', 'contratos')} na carteira de ${firstName}`
     : `${plural(cur.renewal.cohort, 'contrato com fim', 'contratos com fim')} neste mês`;
   // Marcos ainda sem fonte (mês carregando): uma linha por marco, sem número.
-  const milestoneItems = cur.milestones || [...new Set((renewalCheckpoints || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))]
-    .sort((a, b) => b - a)
+  const milestoneItems = cur.milestones || normalizeCheckpoints(renewalCheckpoints)
     .map((days) => ({ days, done: null, total: null, pct: null }));
 
   return (
