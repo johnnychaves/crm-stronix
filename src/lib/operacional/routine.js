@@ -90,9 +90,18 @@ export function calendarGrid(cells) {
   return { columns, slots };
 }
 
+// Lead criado pela importação de clientes (src/lib/clientImport.js): leva a
+// origem "Importação ..." e a marca do lote. Não é prospecção de ninguém, e o
+// createdAt dele é a data da planilha, ou a da importação. Lead que já existia
+// e só casou com a planilha também ganha a marca, mas mantém a origem de
+// quando foi cadastrado e continua contando.
+export const isImportCreatedLead = (l) => Boolean(l?.importBatchId || l?.importSource)
+  && typeof l?.source === 'string' && l.source.startsWith('Importação');
+
 // Ações por dia de meta (fechados + hoje): lead criado (dono = consultantId,
-// qualquer balde) e interação com volumeKind (dono = quem fez). Com `end` (o
-// corte), nada criado a partir dele conta, nem no próprio dia do corte.
+// qualquer balde; o criado pela importação não conta) e interação com
+// volumeKind (dono = quem fez). Com `end` (o corte), nada criado a partir dele
+// conta, nem no próprio dia do corte.
 export function prospectionSummary({ users, interactions, leadsCreated, metaDays, end = null }) {
   const days = metaDays.filter((d) => d.state !== 'future');
   const idxOf = new Map(days.map((d, i) => [d.key, i]));
@@ -101,7 +110,7 @@ export function prospectionSummary({ users, interactions, leadsCreated, metaDays
   const afterCut = (d) => end != null && d >= end;
   const seenLead = new Set();
   (leadsCreated || []).forEach((l) => {
-    if (!l?.id || seenLead.has(l.id) || l.createdAtMissing || !(l.createdAt instanceof Date) || afterCut(l.createdAt)) return;
+    if (!l?.id || seenLead.has(l.id) || isImportCreatedLead(l) || l.createdAtMissing || !(l.createdAt instanceof Date) || afterCut(l.createdAt)) return;
     seenLead.add(l.id);
     const i = idxOf.get(dayKeyOf(l.createdAt));
     const row = byUser.get(l.consultantId);
