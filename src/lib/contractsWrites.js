@@ -12,6 +12,7 @@ import { getInteractionSecurityFields } from './leads.js';
 import { buildMatriculaWrites } from './contracts.js';
 import { markConvertingAula } from './aulasWrites.js';
 import { withBucket } from './leadDerived.js';
+import { matriculaStageChange } from './stageMove.js';
 
 // Grava um desfecho do contrato VIGENTE (cancelar, trancar, reativar,
 // corrigir). O patch vem pronto dos construtores puros de contracts.js —
@@ -82,6 +83,12 @@ export async function commitMatricula({
     referrerInteractionText
   } = buildMatriculaWrites({ lead, plan, value, startsAt, appUser, mode, renewedFromId });
 
+  // Troca de etapa para Venda (base do CRM). null na renovação, quando o lead
+  // já está em Venda, e também quando quem matricula já é cliente — o card
+  // projetado dos funis Renovações, Vencidos e Upgrade chega com o nome da
+  // coluna em `status`, e essa matrícula não é troca de etapa de lead.
+  const stageChange = matriculaStageChange(lead, setStatusVenda);
+
   const batch = writeBatch(db);
 
   // (1) Contrato — id gerado client-side para já referenciá-lo no lead.
@@ -107,6 +114,7 @@ export async function commitMatricula({
   }
   if (stampConvertedAt) leadUpdate.convertedAt = serverTimestamp();
   if (stampClienteSince) leadUpdate.clienteSince = serverTimestamp();
+  if (stageChange) leadUpdate.statusEnteredAt = serverTimestamp();
   // lifecycleBucket derivado do estado RESULTANTE (o patch muda
   // lifecycleStage/status/isConverted) — sempre 'cliente' aqui.
   batch.set(leadRef, withBucket(leadUpdate, lead), { merge: true });
@@ -121,6 +129,7 @@ export async function commitMatricula({
     actorAuthUid: appUser?.authUid || null,
     text: interactionText,
     type: 'status_change',
+    ...stageChange,
     createdAt: serverTimestamp()
   });
 

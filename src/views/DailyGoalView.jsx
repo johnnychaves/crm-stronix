@@ -7,6 +7,7 @@ import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isAdminUser, outcomeAppliesToAula } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
+import { stageChangeFields } from '../lib/stageMove.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
@@ -1147,6 +1148,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       };
       if (shouldPromoteToNegociacao) {
         leadUpdate.status = negStatus.name; // 'Negociação'
+        leadUpdate.statusEnteredAt = serverTimestamp();
       }
       // Comparecimento PRESERVA o agendamento (appointmentScheduledFor+
       // appointmentType) → a pessoa nunca some da tela Visitas/Aulas e o desfecho
@@ -1183,7 +1185,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       if (shouldPromoteToNegociacao) {
         await logInteraction(db, lead, appUser, {
           text: `Fase alterada para [${negStatus.name}] após comparecimento em ${DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug}.`,
-          type: 'status_change'
+          type: 'status_change',
+          ...stageChangeFields(lead, negStatus.name)
         });
       }
       if (shouldPromoteToNegociacao) {

@@ -6,7 +6,7 @@
 // aba Contratos dizia "Ainda não é cliente" com o chip de contagem em 1.
 
 import { describe, it, expect } from 'vitest';
-import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK } from '../stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK, stageChangeFields, withStageEntered, matriculaStageChange } from '../stageMove.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 
@@ -94,8 +94,12 @@ describe('planStageMove — cliente nunca volta a ser lead', () => {
 });
 
 describe('planLoss — cliente não vira lead perdido', () => {
-  it('lead em etapa comum pode ser marcado como Perda', () => {
-    expect(planLoss(leadEmEtapa)).toEqual({ ok: true, kind: 'lead' });
+  it('lead em etapa comum pode ser marcado como Perda, com a troca para Perda', () => {
+    expect(planLoss(leadEmEtapa)).toEqual({
+      ok: true,
+      kind: 'lead',
+      stageChange: { fromStatus: 'Em contato', toStatus: 'Perda', funnelId: 'f1' }
+    });
   });
 
   it('cliente no funil Upgrade: a Perda é sair do Upgrade, e a pessoa segue cliente', () => {
@@ -191,5 +195,91 @@ describe('stageMoveBlockMessage — razões do Upgrade', () => {
   });
   it('etapa inválida pede para recarregar', () => {
     expect(stageMoveBlockMessage({}, STAGE_MOVE_BLOCK.UPGRADE_ETAPA_INVALIDA)).toContain('Recarregue');
+  });
+});
+
+describe('stageChangeFields: campos da troca de etapa', () => {
+  it('grava origem, destino e funil quando a etapa muda', () => {
+    expect(stageChangeFields(leadEmEtapa, 'Negociação'))
+      .toEqual({ fromStatus: 'Em contato', toStatus: 'Negociação', funnelId: 'f1' });
+  });
+
+  it('traz o funil de origem quando o lead troca de funil', () => {
+    expect(stageChangeFields(leadEmEtapa, 'Novo', { toFunnelId: 'f2' }))
+      .toEqual({ fromStatus: 'Em contato', toStatus: 'Novo', funnelId: 'f2', fromFunnelId: 'f1' });
+  });
+
+  it('mesma etapa no mesmo funil: nada a gravar', () => {
+    expect(stageChangeFields(leadEmEtapa, 'Em contato')).toBeNull();
+    expect(stageChangeFields(leadEmEtapa, 'Em contato', { toFunnelId: 'f1' })).toBeNull();
+  });
+
+  it('mesma etapa em outro funil conta como troca', () => {
+    expect(stageChangeFields(leadEmEtapa, 'Em contato', { toFunnelId: 'f2' }))
+      .toEqual({ fromStatus: 'Em contato', toStatus: 'Em contato', funnelId: 'f2', fromFunnelId: 'f1' });
+  });
+
+  it('sem destino: nada a gravar', () => {
+    expect(stageChangeFields(leadEmEtapa, '')).toBeNull();
+    expect(stageChangeFields(leadEmEtapa, null)).toBeNull();
+  });
+
+  it('lead ainda sem etapa e sem funil: origem nula', () => {
+    expect(stageChangeFields({ id: 'novo' }, 'Novo', { toFunnelId: 'f1' }))
+      .toEqual({ fromStatus: null, toStatus: 'Novo', funnelId: 'f1', fromFunnelId: null });
+  });
+});
+
+describe('withStageEntered: data de entrada na etapa', () => {
+  const carimbo = { carimbo: true };
+
+  it('carimba statusEnteredAt quando há troca', () => {
+    const troca = { fromStatus: 'Em contato', toStatus: 'Negociação', funnelId: 'f1' };
+    expect(withStageEntered({ status: 'Negociação' }, troca, carimbo))
+      .toEqual({ status: 'Negociação', statusEnteredAt: carimbo });
+  });
+
+  it('sem troca devolve o patch como veio', () => {
+    const patch = { status: 'Em contato' };
+    expect(withStageEntered(patch, null, carimbo)).toBe(patch);
+  });
+});
+
+describe('planStageMove devolve a troca', () => {
+  it('traz stageChange com o funil do lead ou com o funil novo', () => {
+    expect(planStageMove(leadEmEtapa, 'Negociação').stageChange)
+      .toEqual({ fromStatus: 'Em contato', toStatus: 'Negociação', funnelId: 'f1' });
+    expect(planStageMove(leadEmEtapa, 'Novo', { funnelId: 'f2' }).stageChange)
+      .toEqual({ fromStatus: 'Em contato', toStatus: 'Novo', funnelId: 'f2', fromFunnelId: 'f1' });
+  });
+
+  it('mesma etapa: stageChange nulo', () => {
+    expect(planStageMove(leadEmEtapa, 'Em contato').stageChange).toBeNull();
+    expect(planStageMove(clienteComContrato, 'Venda').stageChange).toBeNull();
+  });
+
+  it('movimento bloqueado não traz stageChange', () => {
+    expect(planStageMove(clienteComContrato, 'Em contato'))
+      .toEqual({ ok: false, reason: STAGE_MOVE_BLOCK.CLIENTE_NAO_VOLTA_A_LEAD });
+  });
+});
+
+describe('matriculaStageChange: troca para Venda na matrícula', () => {
+  it('lead em etapa de funil vira Venda com origem e destino', () => {
+    expect(matriculaStageChange(leadEmEtapa, true)).toEqual({ fromStatus: 'Em contato', toStatus: 'Venda', funnelId: 'f1' });
+  });
+
+  it('sem troca de status para Venda: nada a gravar', () => {
+    expect(matriculaStageChange(leadEmEtapa, false)).toBeNull();
+  });
+
+  it('card projetado de cliente (status com o nome da coluna) não conta como troca', () => {
+    const cardVencidos = { ...clienteComContrato, status: 'Vencido há 5 dias' };
+    expect(matriculaStageChange(cardVencidos, true)).toBeNull();
+  });
+
+  it('card projetado de funil de cliente não conta, mesmo sem as marcas de cliente', () => {
+    const cardUpgrade = { ...leadEmEtapa, status: 'Aguardando contato', _upgradeCard: true };
+    expect(matriculaStageChange(cardUpgrade, true)).toBeNull();
   });
 });

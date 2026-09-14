@@ -24,11 +24,13 @@
 // Renovações e Vencidos, que grava renewalDeclined e mantém a pessoa cliente.
 //
 // Retorno de planStageMove:
-//   { ok: true, patch, stampConvertedAt } — patch já com lifecycleBucket
-//     (withBucket); convertedAt NÃO vem no patch quando stampConvertedAt é
-//     true: é serverTimestamp() do SDK, o caller injeta.
+//   { ok: true, patch, stampConvertedAt, stageChange } — patch já com
+//     lifecycleBucket (withBucket); convertedAt NÃO vem no patch quando
+//     stampConvertedAt é true: é serverTimestamp() do SDK, o caller injeta.
+//     stageChange são os campos da troca (stageChangeFields), ou null.
 //   { ok: false, reason }                 — nada a gravar.
-// planLoss devolve { ok: true, kind: 'lead' | 'upgrade' } ou { ok: false, reason }.
+// planLoss devolve { ok: true, kind: 'lead', stageChange },
+// { ok: true, kind: 'upgrade' } ou { ok: false, reason }.
 //
 // `planUpgradeMove` e `planUpgradeDecline` são o único caminho de escrita da etapa de Upgrade (`upgradeStageId`).
 
@@ -42,6 +44,38 @@ export const STAGE_MOVE_BLOCK = {
   UPGRADE_SO_CLIENTE: 'upgrade_so_cliente',
   UPGRADE_ETAPA_INVALIDA: 'upgrade_etapa_invalida'
 };
+
+// Campos da troca de etapa, gravados na interação status_change. São a base do
+// dashboard CRM: passagem entre etapas, tempo em cada etapa e etapa da perda.
+// O nome da etapa vai como estava na hora da troca. null quando nada muda.
+export function stageChangeFields(lead, toStatus, { toFunnelId = null } = {}) {
+  if (!toStatus) return null;
+  const fromStatus = lead?.status ?? null;
+  const fromFunnelId = lead?.funnelId ?? null;
+  const funnelId = toFunnelId || fromFunnelId;
+  if (toStatus === fromStatus && funnelId === fromFunnelId) return null;
+  const fields = { fromStatus, toStatus, funnelId };
+  if (funnelId !== fromFunnelId) fields.fromFunnelId = fromFunnelId;
+  return fields;
+}
+
+// Data de entrada na etapa atual (statusEnteredAt). É serverTimestamp() do SDK,
+// então quem chama passa o carimbo, como no convertedAt e no upgradeEnteredAt.
+export function withStageEntered(patch, stageChange, stamp) {
+  return stageChange ? { ...patch, statusEnteredAt: stamp } : patch;
+}
+
+// Troca para Venda na matrícula. Cliente não conta: o card projetado dos funis
+// Renovações, Vencidos e Upgrade chega com o nome da coluna em `status`, e a
+// matrícula dele não é troca de etapa de lead. null quando não há troca.
+export function matriculaStageChange(lead, setStatusVenda) {
+  // Card projetado de funil de cliente: no Upgrade, quem só tem etapa com nome
+  // de matrícula (sem contrato vivo) não carrega isConverted/lifecycleStage, e
+  // aí isClientLead sozinho não pega — o card ainda traria o nome da etapa do
+  // Upgrade como "origem" da troca para Venda.
+  if (lead?._renewalCard || lead?._expiredCard || lead?._upgradeCard) return null;
+  return setStatusVenda && !isClientLead(lead) ? stageChangeFields(lead, 'Venda') : null;
+}
 
 export function planStageMove(lead, targetStatus, { funnelId = null } = {}) {
   const destinoConvertido = isConvertedStatusName(targetStatus);
@@ -61,13 +95,18 @@ export function planStageMove(lead, targetStatus, { funnelId = null } = {}) {
   // carimbo, a matrícula caía no mês do CADASTRO do lead, não no do fechamento.
   const stampConvertedAt = destinoConvertido && !getSafeDateOrNull(lead?.convertedAt);
 
-  return { ok: true, patch: withBucket(patch, lead), stampConvertedAt };
+  return {
+    ok: true,
+    patch: withBucket(patch, lead),
+    stampConvertedAt,
+    stageChange: stageChangeFields(lead, targetStatus, { toFunnelId: funnelId })
+  };
 }
 
 // Perda: lead comum vira Perda; cliente no funil Upgrade sai do Upgrade
 // (planUpgradeDecline); cliente fora dele continua barrado.
 export function planLoss(lead) {
-  if (!isClientLead(lead)) return { ok: true, kind: 'lead' };
+  if (!isClientLead(lead)) return { ok: true, kind: 'lead', stageChange: stageChangeFields(lead, 'Perda') };
   if (lead?.upgradeStageId) return { ok: true, kind: 'upgrade' };
   return { ok: false, reason: STAGE_MOVE_BLOCK.CLIENTE_NAO_VIRA_PERDA };
 }

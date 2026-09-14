@@ -3,7 +3,7 @@ import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { canEditLead, normalizeLeadDoc } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK } from '../lib/stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK, withStageEntered } from '../lib/stageMove.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { hasLiveContract } from '../lib/contracts.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
@@ -791,13 +791,15 @@ const handleKanbanMouseMove = (e) => {
       // conta como conversão nas métricas — então precisa do carimbo de data.
       // Sem ele, a matrícula caía no mês do CADASTRO do lead, não no do
       // fechamento. O carimbo é do SDK, por isso entra aqui e não na regra pura.
-      const leadPatch = plan.stampConvertedAt
-        ? { ...plan.patch, convertedAt: serverTimestamp() }
-        : plan.patch;
+      const leadPatch = withStageEntered(
+        plan.stampConvertedAt ? { ...plan.patch, convertedAt: serverTimestamp() } : plan.patch,
+        plan.stageChange,
+        serverTimestamp()
+      );
 
       await logInteraction(
         db, lead, appUser,
-        { text: `Movido para a etapa [${newStatus}] via Kanban.`, type: 'status_change' },
+        { text: `Movido para a etapa [${newStatus}] via Kanban.`, type: 'status_change', ...plan.stageChange },
         leadPatch
       );
       // Histórico de aulas (dual-write best-effort): atribui a conversão à
@@ -1120,18 +1122,22 @@ const handleKanbanMouseMove = (e) => {
     try {
       await logInteraction(
         db, lead, appUser,
-        { text: `Lead perdido. Motivo: ${reason}`, type: 'status_change' },
-        withBucket(
-          {
-            status: 'Perda',
-            lossReason: reason,
-            nextFollowUp: null,
-            lostAt: serverTimestamp(),
-            // Limpa resquício caso o lead viesse da coluna Venda.
-            isConverted: false,
-            convertedAt: null
-          },
-          lead
+        { text: `Lead perdido. Motivo: ${reason}`, type: 'status_change', ...loss.stageChange },
+        withStageEntered(
+          withBucket(
+            {
+              status: 'Perda',
+              lossReason: reason,
+              nextFollowUp: null,
+              lostAt: serverTimestamp(),
+              // Limpa resquício caso o lead viesse da coluna Venda.
+              isConverted: false,
+              convertedAt: null
+            },
+            lead
+          ),
+          loss.stageChange,
+          serverTimestamp()
         )
       );
       // Só lead chega aqui: cliente é barrado antes (planLoss). Por isso não há
