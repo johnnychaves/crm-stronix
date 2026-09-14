@@ -21,23 +21,27 @@ const DAY_MS = 86400000;
 // pela importação não tem data real e começa em startsAt, para não inventar
 // trancamento no mês da importação. Quem diz se a pausa é dela é
 // isImportPause (contracts.js), pelo dia em que o contrato foi gravado e, na
-// pausa aberta, pela falta de motivo (a ficha sempre grava um).
+// pausa aberta, pela falta de motivo (a ficha sempre grava um). Ela sai marcada
+// com fromImport: vale para o estado, mas não conta como trancamento
+// (lockEventsInWindow).
 function pausesOf(c, { startsAt, pausedAt }) {
   const out = [];
+  const push = (from, to, fromImport) => {
+    if (from) out.push(fromImport ? { from, to, fromImport: true } : { from, to });
+  };
   if (Array.isArray(c.pauseHistory) && c.pauseHistory.length) {
     c.pauseHistory.forEach((p) => {
       const from = p?.fromImport ? startsAt : getSafeDateOrNull(p?.pausedAt);
       const to = getSafeDateOrNull(p?.resumedAt);
-      if (from && to) out.push({ from, to });
+      if (from && to) push(from, to, p?.fromImport);
     });
   } else {
     const r = reconstructedPauseOf(c);
-    const from = r && (r.fromImport ? startsAt : r.pausedAt);
-    if (from) out.push({ from, to: r.resumedAt });
+    if (r) push(r.fromImport ? startsAt : r.pausedAt, r.resumedAt, r.fromImport);
   }
   if (c.status === 'trancado' || (c.status === 'cancelado' && pausedAt)) {
-    const from = isImportPause(c, pausedAt) ? startsAt : (pausedAt || startsAt);
-    if (from) out.push({ from, to: null });
+    const fromImport = isImportPause(c, pausedAt);
+    push(fromImport ? startsAt : (pausedAt || startsAt), null, fromImport);
   }
   return out;
 }
@@ -106,7 +110,7 @@ export function normalizeContracts(rawList) {
     return {
       ...c,
       endsAt: buildContractResume({ contract: c, resumedAt: to }).newEndsAt,
-      pauses: c.pauses.map((p) => (p === open ? { from: p.from, to } : p))
+      pauses: c.pauses.map((p) => (p === open ? { ...p, to } : p))
     };
   });
 }
@@ -173,9 +177,32 @@ export function indexContracts(contracts) {
   return index;
 }
 
+// Trancaram e destrancaram no mês: pessoas com uma pausa que começou, ou que
+// terminou, dentro da janela. Conta a pausa do contrato e não a saída da base,
+// porque contrato paralelo é permitido: quem tranca um de dois contratos segue
+// na base pelo outro (a ponte não muda), mas trancou. A pausa da importação não
+// é trancamento feito aqui; a reativação dela é. A pausa fechada no início do
+// sucessor (normalizeContracts) conta como destrancamento. Contrato cancelado
+// antes de começar nunca valeu.
+function lockEventsInWindow(contracts, { start, end }) {
+  const locked = new Set();
+  const unlocked = new Set();
+  const inWindow = (t) => t && t >= start && t < end;
+  (contracts || []).forEach((c) => {
+    if (c.cancelledAt && c.startsAt && c.cancelledAt <= c.startsAt) return;
+    (c.pauses || []).forEach((p) => {
+      if (!p.fromImport && inWindow(p.from)) locked.add(c.personKey);
+      if (p.to && p.to > p.from && inWindow(p.to)) unlocked.add(c.personKey);
+    });
+  });
+  return { trancaram: locked.size, destrancaram: unlocked.size };
+}
+
 // Ponte do mês: A = vigentes no início, B = vigentes no fim efetivo. Quem muda de
 // lado ganha um motivo, então início + passos = fim sempre. Quem entra por um
-// contrato importado vai para "importados": não é matrícula nem retorno.
+// contrato importado vai para "importados": não é matrícula nem retorno. O
+// passo "trancamentos" é o saldo de quem saiu ou voltou da base por trancamento;
+// trancaram e destrancaram, fora dos passos, vêm de lockEventsInWindow.
 export function computeBaseMovement(contracts, { start, end }) {
   const tEnd = new Date(end.getTime() - 1);
   const A = personStatesAt(contracts, start);
@@ -216,8 +243,7 @@ export function computeBaseMovement(contracts, { start, end }) {
       venceram: n.venceram,
       trancamentos: n.destrancaram - n.trancaram
     },
-    trancaram: n.trancaram,
-    destrancaram: n.destrancaram,
+    ...lockEventsInWindow(contracts, { start, end }),
     // Trancados no fim: o mesmo retrato de B, sem outra passada pela lista.
     locked: lockedIn(B)
   };
