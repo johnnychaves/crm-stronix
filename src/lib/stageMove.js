@@ -65,6 +65,13 @@ export function withStageEntered(patch, stageChange, stamp) {
   return stageChange ? { ...patch, statusEnteredAt: stamp } : patch;
 }
 
+// Troca para Venda na matrícula. Cliente não conta: o card projetado dos funis
+// Renovações, Vencidos e Upgrade chega com o nome da coluna em `status`, e a
+// matrícula dele não é troca de etapa de lead. null quando não há troca.
+export function matriculaStageChange(lead, setStatusVenda) {
+  return setStatusVenda && !isClientLead(lead) ? stageChangeFields(lead, 'Venda') : null;
+}
+
 export function planStageMove(lead, targetStatus, { funnelId = null } = {}) {
   const destinoConvertido = isConvertedStatusName(targetStatus);
 

@@ -6,7 +6,7 @@
 // aba Contratos dizia "Ainda não é cliente" com o chip de contagem em 1.
 
 import { describe, it, expect } from 'vitest';
-import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK, stageChangeFields, withStageEntered } from '../stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK, stageChangeFields, withStageEntered, matriculaStageChange } from '../stageMove.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 
@@ -261,5 +261,20 @@ describe('planStageMove devolve a troca', () => {
   it('movimento bloqueado não traz stageChange', () => {
     expect(planStageMove(clienteComContrato, 'Em contato'))
       .toEqual({ ok: false, reason: STAGE_MOVE_BLOCK.CLIENTE_NAO_VOLTA_A_LEAD });
+  });
+});
+
+describe('matriculaStageChange: troca para Venda na matrícula', () => {
+  it('lead em etapa de funil vira Venda com origem e destino', () => {
+    expect(matriculaStageChange(leadEmEtapa, true)).toEqual({ fromStatus: 'Em contato', toStatus: 'Venda', funnelId: 'f1' });
+  });
+
+  it('sem troca de status para Venda: nada a gravar', () => {
+    expect(matriculaStageChange(leadEmEtapa, false)).toBeNull();
+  });
+
+  it('card projetado de cliente (status com o nome da coluna) não conta como troca', () => {
+    const cardVencidos = { ...clienteComContrato, status: 'Vencido há 5 dias' };
+    expect(matriculaStageChange(cardVencidos, true)).toBeNull();
   });
 });
