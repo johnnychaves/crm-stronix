@@ -22,6 +22,7 @@
 //     duplicar a marca no feed a cada clique.
 
 import { doc, collection, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { stageChangeFields } from './stageMove.js';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from './firebase.js';
 import {
   APPOINTMENT_OUTCOMES,
@@ -86,7 +87,10 @@ export async function writeAppointmentOutcome({
     appointmentOutcomeAt: serverTimestamp(),
     appointmentOutcomeBy: appUser.authUid || appUser.id || null
   };
-  if (shouldPromote) leadUpdate.status = negStatus.name;
+  if (shouldPromote) {
+    leadUpdate.status = negStatus.name;
+    leadUpdate.statusEnteredAt = serverTimestamp();
+  }
   // Comparecimento PRESERVA o agendamento (appointmentScheduledFor+appointmentType)
   // para a pessoa NUNCA sumir da tela Visitas/Aulas e o desfecho refletir lá e na
   // Meta (regra do Johnny). Limpa só o nextFollowUp — o que já tira de "Atrasado"/
@@ -125,6 +129,7 @@ export async function writeAppointmentOutcome({
       ...getInteractionSecurityFields(lead, appUser),
       text: `Fase alterada para [${negStatus.name}] após comparecimento em ${categoryLabel}.`,
       type: 'status_change',
+      ...stageChangeFields(lead, negStatus.name),
       createdAt: serverTimestamp()
     });
   }
