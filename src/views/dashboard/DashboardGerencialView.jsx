@@ -1,3 +1,7 @@
+// FORA DO MENU desde 14/09/2026 (PR #206): as abas CRM e Gerencial mostram
+// "Em breve" (DashboardComingSoonView). Esta tela fica como base para o CRM,
+// que herda lead e funil, e para o novo Gerencial.
+//
 // Tela GERENCIAL (Visão geral · Gerencial) — análise de período no layout v2
 // aprovado (Gerencial ENXUTO, Johnny 2026-07-10): hero + 4 KPIs em cards,
 // cards GÊMEOS de conversão por consultor e por professor (com a conversão

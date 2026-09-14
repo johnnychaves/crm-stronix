@@ -51,12 +51,11 @@ import {
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
 import { getSafeDate } from './lib/dates.js';
 import { isAdminUser, normalizeLeadDoc } from './lib/leads.js';
-import { usePagedLeads } from './hooks/usePagedLeads.js';
-import { consultantLeadsQuerySpec } from './lib/leadQueries.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
 import { planUpgradeSetupOps } from './lib/upgradeFunnel.js';
 import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey } from './lib/dailyGoal.js';
+import { recordGoalHit as recordGoalHitDoc, goalHitKeyToRecord } from './lib/dailyGoalHistory.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
 import { useProfileLead } from './hooks/useProfileLead.js';
@@ -79,7 +78,7 @@ import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { ReferralLandingScreen } from './views/public/ReferralLandingScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
 import { DashboardOperacionalView } from './views/dashboard/DashboardOperacionalView.jsx';
-import { DashboardGerencialView } from './views/dashboard/DashboardGerencialView.jsx';
+import { DashboardComingSoonView } from './views/dashboard/DashboardComingSoonView.jsx';
 import { KanbanView } from './views/KanbanView.jsx';
 import { AppointmentTrackingView } from './views/AppointmentTrackingView.jsx';
 import { LeadsView } from './views/LeadsView.jsx';
@@ -182,12 +181,12 @@ function AppInner() {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
-  // 'dashboard' é um SENTINEL (estado inicial e pós-logout): a Visão geral
-  // virou duas abas e a inicial depende do papel — consultor abre no
-  // Operacional (o dia dele), admin abre no Gerencial (análise do período).
-  const resolvedTab = activeTab === 'dashboard'
-    ? (isAdminUser(appUser) ? 'dashGerencial' : 'dashOperacional')
-    : activeTab;
+  // 'dashboard' é um SENTINEL (estado inicial e pós-logout): a Visão geral abre
+  // no Operacional para todo mundo. CRM e Gerencial estão "Em breve".
+  const resolvedTab = activeTab === 'dashboard' ? 'dashOperacional' : activeTab;
+  // As três abas da Visão geral. O grupo do menu fica aberto enquanto uma
+  // delas está ativa; fora delas, vale o toggle do usuário.
+  const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashCrm' || resolvedTab === 'dashGerencial';
   // Ficha-página (lead/cliente): id em foco. A ficha SOBREPÕE o conteúdo da
   // aba ativa (não troca activeTab), então o "Voltar" só limpa este id e a
   // aba reaparece sozinha.
@@ -863,17 +862,16 @@ useEffect(() => {
     }
   }, [funnels, selectedFunnelId]);
 
-  // Cross-tab reset: o modo "Todos os funis" só existe no Gerencial (a
-  // Operacional é fixa em hoje, sem filtro de funil — mas alternar entre as
-  // duas abas do dashboard NÃO derruba a seleção). Ao trocar para
-  // Kanban/Leads/Meta, voltar para o funil default.
+  // Cross-tab reset: o modo "Todos os funis" era do Gerencial antigo. Alternar
+  // entre as abas da Visão geral não derruba a seleção; ao trocar para
+  // Kanban/Leads/Meta, volta para o funil default.
   useEffect(() => {
     if (!isAllFunnels(selectedFunnelId)) return;
-    if (resolvedTab === 'dashGerencial' || resolvedTab === 'dashOperacional') return;
+    if (isDashTab) return;
     const fallback = getDefaultFunnel(funnels)?.id;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- corrige seleção de funil ao sair das abas de dashboard; roda raramente.
     if (fallback) setSelectedFunnelId(fallback);
-  }, [resolvedTab, selectedFunnelId, funnels]);
+  }, [isDashTab, selectedFunnelId, funnels]);
 
   // Migração idempotente: cria funil "Comercial" default e backfill de funnelId em leads/statuses
   useEffect(() => {
@@ -1365,18 +1363,18 @@ useEffect(() => {
   // Renovação. `clients` (o filtro A_VENCER exato) segue só pro badge âmbar de
   // Clientes; `candidates` é o pool cru (janela mais larga, até o maior marco)
   // que a Meta usa pra avaliar os marcos configuráveis (ver useRenewalClients.js).
-  const { clients: renewalClients, candidates: renewalCandidates } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, expiredWindowDays: renewalGraceDays, reloadKey: dayKey, enabled: !!appUser });
+  const { clients: renewalClients, candidates: renewalCandidates, loading: renewalLoading } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, expiredWindowDays: renewalGraceDays, reloadKey: dayKey, enabled: !!appUser });
   // Base da META (G1d): ativo (prop) ∪ candidatos a renovação (renewalCandidates),
   // dedupe por id (global primeiro). PRÉ-flip o prop já contém os clientes →
   // no-op → números idênticos; PÓS-flip o prop vira só 'ativo' e os
   // renewalCandidates repõem os clientes em qualquer marco. Alimenta a Meta
-  // pessoal (DailyGoalView), a badge de pendências (dailyGoalPending) e a Meta
-  // da equipe (useTeamGoals via gerencialLeads).
+  // pessoal (DailyGoalView), a badge de pendências (dailyGoalPending) e o
+  // Operacional (liveLeads).
   // Terceira fonte: cliente com contato marcado para hoje. Sem ela, aluno com
   // contrato longe de vencer não entra na base e o contato marcado com ele some
   // da Meta em silêncio (a categoria 5 prevê o caso, mas nunca é avaliada
   // porque o lead não chega a ser carregado).
-  const { clients: clientsContactToday } = useClientsWithContactToday({ db, reloadKey: dayKey, enabled: !!appUser });
+  const { clients: clientsContactToday, loading: contactTodayLoading } = useClientsWithContactToday({ db, reloadKey: dayKey, enabled: !!appUser });
   const metaLeads = useMemo(() => {
     const byId = new Map();
     (leads || []).forEach((l) => byId.set(l.id, l));
@@ -1386,36 +1384,45 @@ useEffect(() => {
   }, [leads, renewalCandidates, clientsContactToday]);
 
   // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
-  const dailyGoalPending = useMemo(() => {
-    if (!appUser?.id) return 0;
+  const dailyGoalProgress = useMemo(() => {
+    if (!appUser?.id) return { total: 0, pending: 0 };
     void dayKey; // recalcula na virada do dia
     const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
-    return totalSlots - doneSlots;
+    return { total: totalSlots, pending: totalSlots - doneSlots };
   }, [metaLeads, interactions, appUser, dayKey, renewalCheckpoints, renewalGraceDays]);
+  const dailyGoalPending = dailyGoalProgress.pending;
+  const dailyGoalTotal = dailyGoalProgress.total;
 
-  // Dashboard Gerencial do CONSULTOR (E2a): busca os PRÓPRIOS leads por query
-  // (where consultantId==id, sem orderBy → índice automático, sem armadilha de
-  // campo ausente) normalizados igual à assinatura, em vez de filtrar o prop
-  // global. Admin fica no prop global (agrega todos + não-atribuídos — migra no
-  // G); a query fica gated fora do admin. A matemática (dashboardMetrics) não
-  // muda: só troca a fonte. Não é ao vivo (getDocs) — remonta ao trocar de aba.
-  const dashIsAdmin = isAdminUser(appUser);
-  const consultantLeadsSpec = useMemo(
-    () => (appUser?.id ? consultantLeadsQuerySpec(appUser.id) : null),
-    [appUser]
-  );
-  const { items: consultantLeads } = usePagedLeads({
-    db, path: LEADS_PATH, spec: consultantLeadsSpec, specKey: `consultant:${appUser?.id || ''}`,
-    mapDoc: normalizeLeadDoc,
-    enabled: !!db && !dashIsAdmin && !!appUser?.id,
-  });
-  // Gerencial admin usa metaLeads (definido acima) só p/ o useTeamGoals (Meta da
-  // equipe); as métricas de PERÍODO do admin vêm da união de janelas (G1c) na view.
+  // Dia batido gravado de QUALQUER tela: antes só a Meta Diária aberta gravava,
+  // e quem fechava a última tarefa pelo Pipeline ficava sem o dia. Só grava com
+  // a base carregada, inclusive os clientes com contato hoje (senão uma
+  // pendência ainda não carregada parece zerada). Olha os números e não o
+  // objeto, que muda a cada interação nova. O ref guarda o dia já gravado, por
+  // pessoa: o doc é o mesmo, e regravar na mesma sessão só gastaria escrita.
+  // A decisão (qual chave gravar, ou se grava) é a função pura
+  // goalHitKeyToRecord em lib/dailyGoalHistory.js, testada isoladamente.
+  const goalHitRecordedRef = useRef(null);
+  useEffect(() => {
+    if (!db || !appUser?.id) return;
+    const ready = listenersActive && !loadingData && !renewalLoading && !contactTodayLoading;
+    const key = goalHitKeyToRecord({
+      userId: appUser.id,
+      dayKey,
+      ready,
+      total: dailyGoalTotal,
+      pending: dailyGoalPending,
+      recordedKey: goalHitRecordedRef.current
+    });
+    if (!key) return;
+    goalHitRecordedRef.current = key;
+    recordGoalHitDoc(db, appUser);
+    // db é o singleton do módulo (lib/firebase.js) — não é dependência válida.
+  }, [appUser, listenersActive, loadingData, renewalLoading, contactTodayLoading, dailyGoalTotal, dailyGoalPending, dayKey]);
+
   // Base do Kanban: a assinatura de leads ATIVOS, igual para todo mundo. Quem
   // recorta por carteira é o filtro de responsável da própria tela, que abre na
   // carteira do consultor e é livre para ele trocar (lib/kanban.js).
-  const gerencialLeads = dashIsAdmin ? metaLeads : consultantLeads;
   const clientsAVencer = useMemo(() => {
     if (!appUser) return 0;
     const scope = isAdminUser(appUser) ? renewalClients : renewalClients.filter(l => l.consultantId === appUser.id);
@@ -1428,10 +1435,6 @@ useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- abre o grupo do menu ao navegar para uma aba de leads (efeito de navegação; o usuário ainda pode recolher).
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
-
-  // Grupo "Visão geral": derivado (sem effect) — fica aberto enquanto uma das
-  // duas abas do dashboard está ativa; fora delas, vale o toggle do usuário.
-  const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashGerencial';
 
   // Super-admin sem tenant entra direto na tela "Organizações" (única que vê).
   useEffect(() => {
@@ -1504,6 +1507,7 @@ useEffect(() => {
                   onToggle={() => setOverviewMenuOpen(o => !o)}
                 >
                   <SidebarSubItem label="Operacional" active={resolvedTab === 'dashOperacional'} onClick={() => changeTab('dashOperacional')} />
+                  <SidebarSubItem label="CRM" active={resolvedTab === 'dashCrm'} onClick={() => changeTab('dashCrm')} />
                   <SidebarSubItem label="Gerencial" active={resolvedTab === 'dashGerencial'} onClick={() => changeTab('dashGerencial')} />
                 </SidebarGroup>
                 <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
@@ -1567,6 +1571,7 @@ useEffect(() => {
             <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setIsMobileMenuOpen(true)}><Menu className="w-6 h-6" /></button>
             <h2 className="font-display text-xl font-bold text-gray-900 dark:text-white capitalize truncate tracking-tight">
               {resolvedTab === 'dashOperacional' && 'Operacional'}
+              {resolvedTab === 'dashCrm' && 'CRM'}
               {resolvedTab === 'dashGerencial' && 'Gerencial'}
               {activeTab === 'kanban' && 'Pipeline de Vendas'}
               {activeTab === 'clientes' && 'Clientes'}
@@ -1688,13 +1693,13 @@ useEffect(() => {
               ) : (profileLeadId && profileLoading) ? (
                 <div className="grid place-items-center h-full py-24 text-[13px] text-slate-400 dark:text-neutral-500 animate-pulse">Carregando ficha…</div>
               ) : (<>
-              {/* Operacional CONSULTOR: PRÓPRIOS leads por query (E2a consultantLeads,
-                  where consultantId== — mesmo conjunto do filtro antigo, já normalizado)
-                  em vez de varrer o prop global. ADMIN segue no prop global: o painel
-                  admin agrega board/última-ação/Meta que precisam da base crua (categorias
-                  sem janela) — migra no G1d. interactions segue global (G2). */}
-              {resolvedTab === 'dashOperacional' && <DashboardOperacionalView leads={isAdminUser(appUser) ? leads : consultantLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} onNavigate={changeTab} listenersActive={listenersActive} />}
-              {resolvedTab === 'dashGerencial' && <DashboardGerencialView leads={gerencialLeads} interactions={isAdminUser(appUser) ? interactions : (interactions || []).filter(i => i.consultantAuthUid === appUser.authUid || i.leadConsultantAuthUid === appUser.authUid)} appUser={appUser} usersList={usersList} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onNavigate={changeTab} />}
+              {/* Operacional: a mesma tela para todos os perfis, por mês de
+                  competência. Base ao vivo = metaLeads (ativos, clientes a vencer e
+                  contato de hoje). As interações vão sem filtro: as regras já deixam
+                  qualquer membro ler. */}
+              {resolvedTab === 'dashOperacional' && <DashboardOperacionalView appUser={appUser} usersList={usersList} liveLeads={metaLeads} interactions={interactions} db={db} listenersActive={listenersActive} />}
+              {resolvedTab === 'dashCrm' && <DashboardComingSoonView page="crm" onNavigate={changeTab} />}
+              {resolvedTab === 'dashGerencial' && <DashboardComingSoonView page="gerencial" onNavigate={changeTab} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
               {/* Meta Diária (G1d): base = ativo ∪ clientes a vencer (metaLeads),

@@ -3,6 +3,7 @@ import { Ban, Calendar, CheckCircle2, Info, RefreshCw } from 'lucide-react';
 import { fromDateTimeInputValue, toDateTimeInputValue } from '../lib/dates.js';
 import { fmtBRL, formatHourLabel } from '../lib/format.js';
 import { logInteraction } from '../lib/interactions.js';
+import { CONTRACT_CANCEL_REASONS } from '../lib/contracts.js';
 import { renewalDecline, renewalReschedule } from '../lib/renewalGoal.js';
 import { expiredLabel } from '../lib/expiredGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../lib/leads.js';
@@ -74,6 +75,10 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
   const toast = useToast();
   const [outcome, setOutcome] = useState(OUTCOMES.RENOVOU);
   const [motivo, setMotivo] = useState('');
+  // Motivo de "não vai renovar": lista fixa (mesmo vocabulário do cancelamento
+  // de contrato, CONTRACT_CANCEL_REASONS). `motivo` continua sendo o texto
+  // livre — obrigatório no reagendamento, observação opcional aqui.
+  const [motivoLista, setMotivoLista] = useState('');
   // Amanhã às 09:00, o mesmo horário que o wizard de agendamento sugere para
   // dias futuros. Dia e hora saem do mesmo campo.
   const [rescheduleStr, setRescheduleStr] = useState(() => {
@@ -117,7 +122,7 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
   const canSubmit = (() => {
     if (submitting) return false;
     if (outcome === OUTCOMES.RENOVOU) return true;
-    if (outcome === OUTCOMES.NAO_RENOVA) return motivoTrimmed.length > 0;
+    if (outcome === OUTCOMES.NAO_RENOVA) return motivoLista.length > 0;
     if (outcome === OUTCOMES.REAGENDAR) return motivoTrimmed.length > 0 && isRescheduleFuture;
     return false;
   })();
@@ -143,10 +148,12 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
     setSubmitting(true);
     try {
       if (outcome === OUTCOMES.NAO_RENOVA) {
-        const patch = renewalDecline(lead, activeCheckpoint);
+        const patch = renewalDecline(lead, activeCheckpoint, { reason: motivoLista });
         await logInteraction(db, lead, appUser, {
-          text: `Motivo da perda de renovação: ${motivoTrimmed}`,
-          type: 'note'
+          text: `Motivo da perda de renovação: ${motivoLista}.${motivoTrimmed ? ` ${motivoTrimmed}` : ''}`,
+          type: 'note',
+          renewalOutcome: 'declined',
+          renewalDeclineReason: motivoLista
         }, patch);
         await logInteraction(db, lead, appUser, {
           text: v.noDoneText,
@@ -279,11 +286,33 @@ function RenewalOutcomeModal({ open = true, onClose, lead, appUser, db, activeCh
                   Motivo da perda
                   <span className="text-accent-500 normal-case text-[12px] leading-none">*</span>
                 </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {CONTRACT_CANCEL_REASONS.map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setMotivoLista(r)}
+                      className={cn(
+                        'h-[30px] px-3 rounded-lg border-[1.5px] text-[12px] font-semibold whitespace-nowrap transition',
+                        r === motivoLista
+                          ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-500 dark:bg-brand-600/20 dark:text-[#9FBCFF]'
+                          : 'border-border bg-card text-slate-600 dark:text-slate-300 hover:border-brand-200 dark:hover:border-brand-500/45'
+                      )}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="flex items-center gap-1 text-[11.5px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">
+                  Observação <span className="normal-case text-[12px] leading-none text-muted-foreground">(opcional)</span>
+                </label>
                 <textarea
                   value={motivo}
                   onChange={(e) => setMotivo(e.target.value)}
-                  rows={3}
-                  placeholder="Escreva o motivo da perda…"
+                  rows={2}
+                  placeholder="Observação (opcional)"
                   className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-white/5 border border-border focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] transition resize-none"
                 />
               </div>

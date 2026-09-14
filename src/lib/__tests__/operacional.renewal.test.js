@@ -1,0 +1,272 @@
+import { describe, it, expect } from 'vitest';
+import { buildContractResume } from '../contracts.js';
+import {
+  normalizeContract, normalizeContracts, hasOpenPause, computeChurn, countLockedAt, computeBaseMovement
+} from '../operacional/base.js';
+import {
+  ownerOf, renewalCohort, summarizeCohort, milestones, upcomingExpirations, normalizeCheckpoints, milestoneSpanDays
+} from '../operacional/renewal.js';
+
+const D = (y, m, d, h = 12) => new Date(y, m - 1, d, h);
+const C = (id, over = {}) => normalizeContract({
+  id, leadId: id, consultantId: 'ana', status: 'ativo',
+  startsAt: D(2026, 3, 1), endsAt: D(2026, 9, 20), createdAt: D(2026, 3, 1), ...over
+});
+const SEP = { start: new Date(2026, 8, 1), end: new Date(2026, 9, 1), graceDays: 15 };
+
+describe('renewalCohort', () => {
+  const contracts = [
+    C('antes'), C('antes-r', { leadId: 'antes', renewedFromId: 'antes', startsAt: D(2026, 9, 20), endsAt: D(2027, 3, 20), createdAt: D(2026, 9, 5) }),
+    C('dia'), C('dia-r', { leadId: 'dia', renewedFromId: 'dia', startsAt: D(2026, 9, 20), endsAt: D(2027, 3, 20), createdAt: D(2026, 9, 20, 18) }),
+    C('depois'), C('depois-r', { leadId: 'depois', startsAt: D(2026, 9, 25), endsAt: D(2027, 3, 25), createdAt: D(2026, 9, 25) }),
+    C('nao'),
+    C('venceu', { endsAt: D(2026, 9, 5) }),
+    C('pendente', { endsAt: D(2026, 9, 28) }),
+    C('cancelado', { status: 'cancelado', cancelledAt: D(2026, 9, 2) })
+  ];
+  const leadsById = new Map([
+    ['nao', { id: 'nao', consultantId: 'diego', renewalDeclined: true, renewalDeclineReason: 'Financeiro' }],
+    ['venceu', { id: 'venceu', consultantId: 'ana' }]
+  ]);
+  const rows = renewalCohort(contracts, { ...SEP, asOf: D(2026, 9, 26), leadsById });
+  const byId = Object.fromEntries(rows.map((r) => [r.contract.id, r]));
+
+  it('fica fora quem foi cancelado antes do fim', () => {
+    expect(byId.cancelado).toBeUndefined();
+    expect(rows).toHaveLength(6);
+  });
+
+  it('classifica desfecho e quando renovou', () => {
+    expect(byId.antes).toMatchObject({ outcome: 'renew', when: 'antes' });
+    expect(byId.dia).toMatchObject({ outcome: 'renew', when: 'no' });
+    expect(byId.depois).toMatchObject({ outcome: 'renew', when: 'depois' });
+    expect(byId.nao).toMatchObject({ outcome: 'wont', reason: 'Financeiro', owner: 'diego' });
+    expect(byId.venceu.outcome).toBe('lapsed');
+    expect(byId.pendente.outcome).toBe('pending');
+  });
+
+  it('declínio sem motivo vira "Outro"; declínio depois do corte ainda não vale', () => {
+    const list = [C('x', { endsAt: D(2026, 9, 5) })];
+    const legacy = new Map([['x', { id: 'x', renewalDeclined: true }]]);
+    expect(renewalCohort(list, { ...SEP, asOf: D(2026, 9, 26), leadsById: legacy })[0]).toMatchObject({ outcome: 'wont', reason: 'Outro' });
+    const later = new Map([['x', { id: 'x', renewalDeclined: true, renewalDeclinedAt: D(2026, 9, 27) }]]);
+    expect(renewalCohort(list, { ...SEP, asOf: D(2026, 9, 26), leadsById: later })[0].outcome).toBe('lapsed');
+  });
+
+  it('declínio do lead não vale para um contrato que não é o mais recente', () => {
+    const list = [
+      C('velho', { leadId: 'P', endsAt: D(2026, 9, 5) }),
+      C('novo', { leadId: 'P', startsAt: D(2026, 12, 1), endsAt: D(2027, 6, 1), createdAt: D(2026, 12, 1) })
+    ];
+    const leads = new Map([['P', { id: 'P', renewalDeclined: true }]]);
+    expect(renewalCohort(list, { ...SEP, asOf: D(2026, 9, 26), leadsById: leads })[0].outcome).toBe('lapsed');
+  });
+});
+
+describe('summarizeCohort', () => {
+  it('taxa = renovados ÷ com desfecho; filtro por responsável atual', () => {
+    const rows = [
+      { owner: 'ana', outcome: 'renew', when: 'antes', reason: null },
+      { owner: 'ana', outcome: 'renew', when: 'depois', reason: null },
+      { owner: 'ana', outcome: 'lapsed', when: null, reason: null },
+      { owner: 'ana', outcome: 'pending', when: null, reason: null },
+      { owner: 'diego', outcome: 'wont', when: null, reason: 'Financeiro' }
+    ];
+    const team = summarizeCohort(rows);
+    expect(team).toMatchObject({ cohort: 5, decided: 4, rate: 50, counts: { renew: 2, wont: 1, lapsed: 1, pending: 1 }, when: { antes: 1, no: 0, depois: 1 } });
+    expect(team.wontReasons).toEqual({ total: 1, items: [{ name: 'Financeiro', count: 1 }] });
+    expect(summarizeCohort(rows, { owner: 'ana' })).toMatchObject({ cohort: 4, decided: 3, rate: 67 });
+  });
+
+  it('sem desfecho a taxa é nula', () => {
+    expect(summarizeCohort([]).rate).toBe(null);
+  });
+});
+
+describe('ownerOf', () => {
+  it('responsável atual do lead vence o consultor do contrato', () => {
+    const c = C('z', { consultantId: 'ana' });
+    expect(ownerOf(c, new Map([['z', { consultantId: 'larissa' }]]))).toBe('larissa');
+    expect(ownerOf(c, new Map())).toBe('ana');
+  });
+});
+
+describe('milestones', () => {
+  it('conta quem cruzou o marco no mês e quem teve contato de renovação até o próximo marco', () => {
+    const contracts = [
+      C('m1', { endsAt: D(2026, 10, 20) }),  // marco de 30 dias em 20/09
+      C('m2', { endsAt: D(2026, 10, 25) }),  // marco de 30 dias em 25/09, sem contato
+      C('m3', { endsAt: D(2026, 10, 22) }),  // renovou antes do marco: fica fora
+      C('m3-r', { leadId: 'm3', renewedFromId: 'm3', startsAt: D(2026, 10, 22), endsAt: D(2027, 4, 22), createdAt: D(2026, 9, 1) })
+    ];
+    const interactions = [
+      { type: 'daily_goal_done', dailyGoalCategory: 'renovacao', leadId: 'm1', createdAt: D(2026, 9, 22) }
+    ];
+    const r = milestones(contracts, { start: SEP.start, end: SEP.end, checkpoints: [90, 60, 30], interactions, leadsById: new Map() });
+    const m30 = r.find((m) => m.days === 30);
+    expect(m30).toEqual({ days: 30, total: 2, done: 1, pct: 50 });
+    expect(r.map((m) => m.days)).toEqual([90, 60, 30]);
+  });
+
+  it('o intervalo passa do fim do mês até o próximo marco, limitado ao corte, e o sucessor segue a regra da coorte', () => {
+    const contracts = [
+      C('fim', { endsAt: D(2026, 10, 29) }),   // marco de 30 dias em 29/09, contato em 01/10
+      C('ficha', { endsAt: D(2026, 10, 28) }), // marco em 28/09, reativação pela ficha em 02/10
+      C('ficha-nova', { leadId: 'ficha', startsAt: D(2026, 10, 2), endsAt: D(2027, 4, 2), createdAt: D(2026, 10, 2) }),
+      C('antes', { endsAt: D(2026, 10, 27) }), // contrato novo da pessoa antes do marco: fica fora
+      C('antes-nova', { leadId: 'antes', startsAt: D(2026, 9, 20), endsAt: D(2027, 3, 20), createdAt: D(2026, 9, 20) })
+    ];
+    const interactions = [
+      { type: 'daily_goal_done', dailyGoalCategory: 'renovacao', leadId: 'fim', createdAt: D(2026, 10, 1) }
+    ];
+    const args = { start: SEP.start, end: SEP.end, checkpoints: [30], interactions, leadsById: new Map() };
+    expect(milestones(contracts, { ...args, asOf: D(2026, 10, 5) })).toEqual([{ days: 30, total: 2, done: 2, pct: 100 }]);
+    expect(milestones(contracts, { ...args, asOf: D(2026, 9, 30) })).toEqual([{ days: 30, total: 2, done: 0, pct: 0 }]);
+  });
+});
+
+describe('intervalo dos marcos', () => {
+  it('marcos normalizados: positivos, sem repetição, do maior para o menor', () => {
+    expect(normalizeCheckpoints([30, '90', 60, 90, -5, 'x', 0])).toEqual([90, 60, 30]);
+    expect(normalizeCheckpoints(null)).toEqual([]);
+    expect(normalizeCheckpoints({ 0: 30 })).toEqual([]);
+  });
+
+  it('o maior intervalo entre marcos é o quanto um marco passa do fim do mês', () => {
+    expect(milestoneSpanDays([90, 60, 30])).toBe(30);
+    expect(milestoneSpanDays([90, 30])).toBe(60);
+    expect(milestoneSpanDays([30])).toBe(30);
+    expect(milestoneSpanDays([120, 100, 10])).toBe(90);
+    expect(milestoneSpanDays([])).toBe(0);
+  });
+
+  it('com [90, 30], o contato 51 dias depois do marco de 90 ainda conta, dois meses à frente', () => {
+    // Marco de 90 dias em 30/08; o intervalo vai até o marco de 30, em 29/10.
+    const contracts = [C('longe', { endsAt: D(2026, 11, 28) })];
+    const interactions = [{ type: 'daily_goal_done', dailyGoalCategory: 'renovacao', leadId: 'longe', createdAt: D(2026, 10, 20) }];
+    const AUG = { start: new Date(2026, 7, 1), end: new Date(2026, 8, 1) };
+    const r = milestones(contracts, { ...AUG, asOf: D(2026, 11, 1), checkpoints: [90, 30], interactions, leadsById: new Map() });
+    expect(r).toEqual([{ days: 90, total: 1, done: 1, pct: 100 }, { days: 30, total: 0, done: 0, pct: null }]);
+  });
+});
+
+describe('upcomingExpirations', () => {
+  it('faixas sem sobreposição a partir de agora, só o contrato mais recente da pessoa', () => {
+    const now = D(2026, 9, 11);
+    const contracts = [
+      C('a', { endsAt: D(2026, 9, 30) }),
+      C('b', { endsAt: D(2026, 11, 1) }),
+      C('c', { endsAt: D(2026, 11, 30) }),
+      C('d', { endsAt: D(2027, 3, 1) }),
+      C('e', { endsAt: D(2026, 9, 25) }),
+      C('e-r', { leadId: 'e', renewedFromId: 'e', startsAt: D(2026, 9, 25), endsAt: D(2027, 3, 25), createdAt: D(2026, 9, 2) })
+    ];
+    expect(upcomingExpirations(contracts, { now, leadsById: new Map() })).toEqual({ d30: 1, d60: 1, d90: 1 });
+  });
+});
+
+describe('trancado não vence', () => {
+  // Faltam 15 dias para o fim (25/09) quando tranca em 10/09, por 60 dias.
+  const raw = {
+    id: 't', leadId: 't', consultantId: 'ana', status: 'trancado', pauseReason: 'Viagem',
+    startsAt: D(2026, 3, 25), endsAt: D(2026, 9, 25), createdAt: D(2026, 3, 25), pausedAt: D(2026, 9, 10)
+  };
+  const OCT = { start: new Date(2026, 9, 1), end: new Date(2026, 10, 1), graceDays: 15 };
+  const NOV = { start: new Date(2026, 10, 1), end: new Date(2026, 11, 1), graceDays: 15 };
+
+  it('parado: não vira "venceu", não conta churn e continua em trancados', () => {
+    const c = normalizeContract(raw);
+    expect(renewalCohort([c], { ...SEP, asOf: D(2026, 10, 20), leadsById: new Map() })).toEqual([]);
+    expect(computeChurn([c], OCT).exits).toBe(0);
+    expect(countLockedAt([c], D(2026, 10, 31))).toBe(1);
+    expect(computeBaseMovement([c], SEP)).toMatchObject({ trancaram: 1, steps: { venceram: 0 } });
+  });
+
+  it('reativado 60 dias depois: o fim anda, vai para a coorte do mês novo e o passado segue trancado', () => {
+    const { contractPatch } = buildContractResume({ contract: raw, resumedAt: D(2026, 11, 9) });
+    const c = normalizeContract({ ...raw, ...contractPatch });
+    expect(c.endsAt).toEqual(D(2026, 11, 24));
+    expect(renewalCohort([c], { ...SEP, asOf: D(2026, 11, 10), leadsById: new Map() })).toEqual([]);
+    expect(renewalCohort([c], { ...NOV, asOf: D(2026, 11, 10), leadsById: new Map() })).toHaveLength(1);
+    expect(countLockedAt([c], D(2026, 10, 31))).toBe(1);
+    expect(computeChurn([c], OCT).exits).toBe(0);
+    expect(computeBaseMovement([c], { start: NOV.start, end: D(2026, 11, 15) })).toMatchObject({ destrancaram: 1 });
+  });
+
+  it('cancelado ainda parado sai no cancelamento, mesmo depois do fim antigo', () => {
+    const c = normalizeContract({ ...raw, status: 'cancelado', cancelledAt: D(2026, 10, 20) });
+    expect(computeChurn([c], OCT).exits).toBe(1);
+  });
+
+  it('quem tem outro contrato trancado não saiu', () => {
+    const list = [
+      normalizeContract({ ...raw, id: 'velho', status: 'ativo', pausedAt: null, endsAt: D(2026, 9, 20) }),
+      normalizeContract({ ...raw, id: 'novo', startsAt: D(2026, 9, 1), endsAt: D(2027, 3, 1), createdAt: D(2026, 8, 25) })
+    ];
+    expect(computeChurn(list, OCT).exits).toBe(0);
+  });
+});
+
+describe('trancado que renovou ainda parado', () => {
+  // Trancou em 10/09 faltando 15 dias. Em 09/11, ainda parado, fechou a
+  // renovação: nasce o contrato novo e o velho segue gravado como trancado,
+  // porque reativar pela ficha só alcança o contrato atual.
+  const velho = {
+    id: 'velho', leadId: 'P', consultantId: 'ana', status: 'trancado', pauseReason: 'Viagem',
+    startsAt: D(2026, 3, 25), endsAt: D(2026, 9, 25), createdAt: D(2026, 3, 25), pausedAt: D(2026, 9, 10)
+  };
+  const novo = {
+    id: 'novo', leadId: 'P', consultantId: 'ana', status: 'ativo', renewedFromId: 'velho',
+    startsAt: D(2026, 11, 9), endsAt: D(2027, 5, 9), createdAt: D(2026, 11, 9)
+  };
+  const monthOf = (y, m) => ({ start: new Date(y, m - 1, 1), end: new Date(y, m, 1), graceDays: 15 });
+  const list = normalizeContracts([velho, novo]);
+  const antigo = list.find((c) => c.id === 'velho');
+
+  it('a pausa do velho fecha no início do novo e o fim anda como numa reativação', () => {
+    expect(hasOpenPause(antigo)).toBe(false);
+    expect(antigo.endsAt).toEqual(D(2026, 11, 24));
+  });
+
+  it('Trancados: conta enquanto o novo não começa, e nunca mais depois', () => {
+    expect(countLockedAt(list, D(2026, 10, 31))).toBe(1);
+    expect(countLockedAt(list, D(2026, 11, 30))).toBe(0);
+    expect(countLockedAt(list, D(2027, 5, 31))).toBe(0);
+  });
+
+  it('ponte: destranca quando o novo começa e vence quando o novo acaba', () => {
+    expect(computeBaseMovement(list, monthOf(2026, 11))).toMatchObject({ destrancaram: 1, trancaram: 0 });
+    expect(computeBaseMovement(list, monthOf(2027, 5))).toMatchObject({ trancaram: 0, steps: { venceram: 1 } });
+  });
+
+  it('churn: sai quando acaba a tolerância do contrato novo', () => {
+    expect(computeChurn(list, monthOf(2026, 12)).exits).toBe(0);
+    expect(computeChurn(list, monthOf(2027, 5)).exits).toBe(1);
+  });
+
+  it('coorte: o velho volta a vencer, no mês do fim que andou, e renovou antes', () => {
+    const rows = renewalCohort(list, { ...monthOf(2026, 11), asOf: D(2026, 12, 1), leadsById: new Map() });
+    expect(rows.map((r) => [r.contract.id, r.outcome, r.when])).toEqual([['velho', 'renew', 'antes']]);
+  });
+});
+
+describe('dono por predicado', () => {
+  it('coorte, marcos e a vencer aceitam uma função no lugar do id', () => {
+    const fora = (id) => id !== 'ana';
+    const rows = [
+      { owner: 'ana', outcome: 'renew', when: 'antes', reason: null },
+      { owner: 'ex', outcome: 'lapsed', when: null, reason: null },
+      { owner: 'sem-consultor', outcome: 'renew', when: 'depois', reason: null }
+    ];
+    expect(summarizeCohort(rows, { owner: fora })).toMatchObject({ cohort: 2, counts: { renew: 1, lapsed: 1 } });
+
+    const contracts = [
+      C('p1', { endsAt: D(2026, 10, 20) }),                     // ana
+      C('p2', { endsAt: D(2026, 10, 25), consultantId: 'ex' }) // ex-consultor
+    ];
+    const args = { leadsById: new Map(), owner: fora };
+    expect(milestones(contracts, { ...args, start: SEP.start, end: SEP.end, checkpoints: [30], interactions: [] }))
+      .toEqual([{ days: 30, total: 1, done: 0, pct: 0 }]);
+    expect(upcomingExpirations(contracts, { ...args, now: D(2026, 9, 11) })).toEqual({ d30: 0, d60: 1, d90: 0 });
+  });
+});

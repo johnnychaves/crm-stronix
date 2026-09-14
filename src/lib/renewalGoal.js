@@ -105,17 +105,42 @@ export function shouldPromptRenewal(lead, now, checkpoints) {
   return !handled.includes(activeCheckpoint);
 }
 
-// Patch do desfecho "Não vai renovar": marca o ciclo como declinado e some o
-// marco atual dos próximos marcos (idempotente — não duplica se já estiver
-// lá). NÃO mexe em status/lifecycleStage: perda de venda != perda de funil.
-export function renewalDecline(lead, activeCheckpoint) {
+// QUANDO e POR QUÊ do "Não vai renovar/voltar", com o motivo da mesma lista
+// fixa do cancelamento (CONTRACT_CANCEL_REASONS). Quem não pergunta o motivo
+// (o arrasto para a Perda no board) grava 'Outro'. Sem a data, o Operacional
+// não sabe em que mês a recusa aconteceu.
+export function renewalDeclineStamp({ reason = null, at = new Date() } = {}) {
+  return {
+    renewalDeclined: true,
+    renewalDeclinedAt: at,
+    renewalDeclineReason: reason || 'Outro'
+  };
+}
+
+// Patch do desfecho "Não vai renovar": marca o ciclo como declinado, some o
+// marco atual dos próximos marcos (idempotente) e grava quando e por quê
+// (renewalDeclineStamp). NÃO mexe em status/lifecycleStage: perda de venda !=
+// perda de funil.
+export function renewalDecline(lead, activeCheckpoint, { reason = null, at = new Date() } = {}) {
   const handled = Array.isArray(lead?.renewalHandledCheckpoints) ? lead.renewalHandledCheckpoints : [];
   const next = (activeCheckpoint != null && !handled.includes(activeCheckpoint))
     ? [...handled, activeCheckpoint]
     : handled;
   return {
-    renewalDeclined: true,
+    ...renewalDeclineStamp({ reason, at }),
     renewalHandledCheckpoints: next
+  };
+}
+
+// Desfaz a recusa (board: sair da Perda de volta para uma etapa ou um marco).
+// Data e motivo saem junto com a flag, para uma recusa futura não herdar os
+// desta. NÃO devolve o marco de renewalHandledCheckpoints: o consultor já
+// conversou naquele marco, e quem pega o cliente de novo é o marco seguinte.
+export function renewalUndoDecline() {
+  return {
+    renewalDeclined: false,
+    renewalDeclinedAt: null,
+    renewalDeclineReason: null
   };
 }
 

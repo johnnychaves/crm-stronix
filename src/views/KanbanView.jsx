@@ -14,7 +14,7 @@ import { useLeadCount } from '../hooks/useLeadCount.js';
 import { getExpiredFunnel, splitExpiredForBoard } from '../lib/expiredFunnel.js';
 import { getUpgradeFunnel, projectUpgradeLeads } from '../lib/upgradeFunnel.js';
 import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard } from '../lib/renewalFunnel.js';
-import { renewalDecline, daysToExpiryOf } from '../lib/renewalGoal.js';
+import { renewalDecline, renewalDeclineStamp, renewalUndoDecline, daysToExpiryOf } from '../lib/renewalGoal.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
 import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec, upgradeClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
@@ -850,8 +850,8 @@ const handleKanbanMouseMove = (e) => {
     );
     if (!etapa) return;
     // Sair da Perda de volta para uma etapa: a recusa deixa de valer, senão o
-    // card sumiria das etapas na próxima renderização.
-    const patch = { reactivationStageId: etapa.id, renewalDeclined: false };
+    // card sumiria das etapas na próxima renderização. Data e motivo saem junto.
+    const patch = { reactivationStageId: etapa.id, ...renewalUndoDecline() };
     updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch)
       .then(() => expiredPatchLead(lead.id, patch))
       .catch(err => {
@@ -865,7 +865,9 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para alterar este lead.');
       return;
     }
-    const patch = { renewalDeclined: true, reactivationStageId: null };
+    // Quando e por quê, como na Meta Diária. Nem o arrasto nem o menu Mover
+    // perguntam o motivo, então vai 'Outro'.
+    const patch = { ...renewalDeclineStamp(), reactivationStageId: null };
     updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch)
       .then(() => expiredPatchLead(lead.id, patch))
       .catch(err => {
@@ -951,7 +953,7 @@ const handleKanbanMouseMove = (e) => {
       toast.warning('Você não tem permissão para mover este lead.');
       return;
     }
-    const patch = { renewalDeclined: false };
+    const patch = renewalUndoDecline();
     updateDoc(doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id), patch)
       .then(() => renewalPatchLead(lead.id, patch)).catch(err => {
         console.error('Erro ao desfazer a recusa de renovação', err);

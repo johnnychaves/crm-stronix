@@ -1,8 +1,9 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import confetti from 'canvas-confetti';
-import { collection, doc, setDoc, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
+import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isAdminUser, outcomeAppliesToAula } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
@@ -929,24 +930,12 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // Grava (idempotente) a marca de "meta batida hoje". ID determinístico
   // por (consultor, dia) → setDoc/merge não duplica. volumeCount/volumeTarget
   // ficam no mesmo doc — base do selo "dia perfeito" e do relatório futuro.
-  const recordGoalHit = useCallback(async (volCount = null, volTarget = null) => {
-    if (!appUser?.authUid) return;
-    const key = dgDateKey(new Date());
-    try {
-      await setDoc(
-        doc(db, 'artifacts', appId, 'public', 'data', DAILY_GOAL_HISTORY_PATH, `${appUser.id}_${key}`),
-        {
-          consultantId: appUser.id,
-          consultantAuthUid: appUser.authUid,
-          consultantName: appUser.name || null,
-          date: key,
-          ...(volTarget > 0 ? { volumeCount: volCount, volumeTarget: volTarget } : {}),
-          hitAt: serverTimestamp()
-        },
-        { merge: true }
-      );
-    } catch { /* regras podem não estar publicadas ainda — silencioso */ }
-  }, [db, appUser]);
+  // A escrita em si mora em lib/dailyGoalHistory.js: o App grava de qualquer
+  // tela quando as pendências do dia zeram, não só por aqui.
+  const recordGoalHit = useCallback(
+    (volCount = null, volTarget = null) => recordGoalHitDoc(db, appUser, { volumeCount: volCount, volumeTarget: volTarget }),
+    [db, appUser]
+  );
 
   const ritmoMes = useMemo(() => {
     void todayKey; // o "hoje" do ritmo/sequência também vira com o dia (A5)

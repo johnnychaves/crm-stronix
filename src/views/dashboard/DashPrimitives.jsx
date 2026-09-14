@@ -8,8 +8,6 @@ import { ArrowRight, HelpCircle, Info } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip.jsx';
 import { Sparkline } from '../../components/charts/Sparkline.jsx';
-import { getLeadAppointmentType, getLeadAppointmentDate, getAppointmentOutcomeMeta } from '../../lib/leads.js';
-import { formatHourLabel } from '../../lib/format.js';
 import { DASH_TONES, BREAKDOWN_PALETTE } from './dashTokens.js';
 
 export function DashCard({ title, hint, icon, action, children, padded = true, className }) {
@@ -117,119 +115,6 @@ export function DashKpiCard({ label, value, delta, accent = 'brand', series, sub
           <Sparkline data={series} width={120} height={42} strokeWidth={1.75} />
         </div>
       )}
-    </div>
-  );
-}
-
-// ---- Linha do dia (Operacional) --------------------------------------------
-// Trilho vertical com horários; bolinha colorida pelo desfecho; marcador
-// tracejado laranja de "agora" entre o que já passou e o que ainda vem.
-
-const TL_DOT = {
-  attended: 'border-emerald-500',
-  no_show: 'border-rose-500',
-  rescheduled: 'border-amber-500',
-  cancelled: 'border-slate-400',
-  pending: 'border-brand-500'
-};
-
-function timelineBadge(lead, isPast) {
-  const meta = getAppointmentOutcomeMeta(lead.appointmentOutcome);
-  if (meta) return { label: meta.label, className: meta.badgeClass };
-  if (isPast) return { label: 'marcar desfecho', className: 'bg-accent-500/12 text-accent-600 dark:bg-accent-500/15 dark:text-accent-400' };
-  return { label: 'confirmar presença', className: 'bg-muted text-muted-foreground' };
-}
-
-function timelineSub(lead, showConsultant) {
-  const type = getLeadAppointmentType(lead);
-  const parts = [];
-  if (type === 'aula_experimental') {
-    parts.push(lead.appointmentModality || 'Aula experimental');
-    if (lead.appointmentProfessorName) parts.push(`Prof. ${lead.appointmentProfessorName.split(' ')[0]}`);
-    else if (lead.appointmentSoloTraining) parts.push('treina sozinho');
-  } else if (lead.source) {
-    parts.push(`origem ${lead.source}`);
-  }
-  if (showConsultant && lead.consultantName) {
-    parts.push(`consultor ${lead.consultantName.split(' ')[0]}`);
-  }
-  return parts.join(' · ');
-}
-
-export function DashTimeline({ events, now = new Date(), onEventClick, showConsultant = false }) {
-  if (!events || events.length === 0) {
-    return (
-      <div className="py-10 text-center text-[12.5px] text-slate-400 italic">
-        Nenhuma visita ou aula marcada para hoje.
-      </div>
-    );
-  }
-
-  const nowMs = now.getTime();
-  const rows = [];
-  let agoraInserted = false;
-  events.forEach((lead) => {
-    const date = getLeadAppointmentDate(lead);
-    if (!agoraInserted && date.getTime() > nowMs) {
-      rows.push({ kind: 'agora', key: 'agora' });
-      agoraInserted = true;
-    }
-    rows.push({ kind: 'ev', key: lead.id, lead, date, isPast: date.getTime() <= nowMs });
-  });
-  if (!agoraInserted) rows.push({ kind: 'agora', key: 'agora' });
-
-  return (
-    <div className="relative pl-14 sm:pl-16">
-      <span aria-hidden="true" className="absolute left-10 sm:left-11 top-1 bottom-1 w-0.5 rounded bg-slate-200 dark:bg-white/[0.08]" />
-      {rows.map((row) => {
-        if (row.kind === 'agora') {
-          return (
-            <div key={row.key} className="relative my-2.5 h-0 border-t-2 border-dashed border-accent-500/70">
-              <span className="absolute right-0 -top-2.5 rounded-md bg-accent-500 px-2 py-0.5 text-[9.5px] font-bold text-white num">
-                agora · {formatHourLabel(now)}
-              </span>
-            </div>
-          );
-        }
-        const { lead, date, isPast } = row;
-        const type = getLeadAppointmentType(lead);
-        const outcomeKey = lead.appointmentOutcome || 'pending';
-        const badge = timelineBadge(lead, isPast);
-        const sub = timelineSub(lead, showConsultant);
-        return (
-          <button
-            key={row.key}
-            type="button"
-            onClick={() => onEventClick && onEventClick(lead)}
-            className="relative mb-2 flex w-full items-center gap-3 rounded-xl border border-border bg-background px-3.5 py-2.5 text-left transition hover:border-brand-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:bg-white/[0.02] dark:hover:border-brand-500/40"
-          >
-            <span className="num absolute -left-14 sm:-left-16 w-9 text-right text-[10.5px] font-semibold text-muted-foreground">
-              {formatHourLabel(date)}
-            </span>
-            <span
-              aria-hidden="true"
-              className={cn('absolute -left-[19px] sm:-left-[23px] size-2.5 rounded-full border-[2.5px] bg-card', TL_DOT[outcomeKey] || TL_DOT.pending)}
-            />
-            <span
-              className={cn(
-                'shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
-                type === 'visita'
-                  ? 'bg-accent-500/12 text-accent-600 dark:bg-accent-500/15 dark:text-accent-400'
-                  : 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300'
-              )}
-            >
-              {type === 'visita' ? 'Visita' : 'Aula'}
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-semibold">{lead.name}</span>
-              {sub && <span className="block truncate text-[10.5px] text-muted-foreground">{sub}</span>}
-            </span>
-            <span className={cn('shrink-0 rounded-md px-2 py-0.5 text-[9.5px] font-bold whitespace-nowrap', badge.className)}>
-              {badge.label}
-            </span>
-          </button>
-        );
-      })}
     </div>
   );
 }
