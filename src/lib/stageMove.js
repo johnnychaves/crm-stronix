@@ -69,6 +69,11 @@ export function withStageEntered(patch, stageChange, stamp) {
 // Renovações, Vencidos e Upgrade chega com o nome da coluna em `status`, e a
 // matrícula dele não é troca de etapa de lead. null quando não há troca.
 export function matriculaStageChange(lead, setStatusVenda) {
+  // Card projetado de funil de cliente: no Upgrade, quem só tem etapa com nome
+  // de matrícula (sem contrato vivo) não carrega isConverted/lifecycleStage, e
+  // aí isClientLead sozinho não pega — o card ainda traria o nome da etapa do
+  // Upgrade como "origem" da troca para Venda.
+  if (lead?._renewalCard || lead?._expiredCard || lead?._upgradeCard) return null;
   return setStatusVenda && !isClientLead(lead) ? stageChangeFields(lead, 'Venda') : null;
 }
 

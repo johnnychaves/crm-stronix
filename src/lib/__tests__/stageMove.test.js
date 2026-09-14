@@ -277,4 +277,9 @@ describe('matriculaStageChange: troca para Venda na matrícula', () => {
     const cardVencidos = { ...clienteComContrato, status: 'Vencido há 5 dias' };
     expect(matriculaStageChange(cardVencidos, true)).toBeNull();
   });
+
+  it('card projetado de funil de cliente não conta, mesmo sem as marcas de cliente', () => {
+    const cardUpgrade = { ...leadEmEtapa, status: 'Aguardando contato', _upgradeCard: true };
+    expect(matriculaStageChange(cardUpgrade, true)).toBeNull();
+  });
 });
