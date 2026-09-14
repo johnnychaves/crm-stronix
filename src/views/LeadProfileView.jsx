@@ -6,7 +6,7 @@ import { logInteraction } from '../lib/interactions.js';
 import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
-import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage } from '../lib/stageMove.js';
+import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered } from '../lib/stageMove.js';
 import { isAdminUser, canEditLead, isLeadConverted } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
@@ -298,16 +298,20 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
     setLoading(true);
     try {
       await logInteraction(db, lead, appUser,
-        { text: `Lead perdido. Motivo: ${reason}`, type: 'status_change' },
-        withBucket({
-          status: 'Perda',
-          lossReason: reason,
-          nextFollowUp: null,
-          lostAt: serverTimestamp(),
-          // Limpa resquício caso o lead viesse de Venda.
-          isConverted: false,
-          convertedAt: null
-        }, lead)
+        { text: `Lead perdido. Motivo: ${reason}`, type: 'status_change', ...loss.stageChange },
+        withStageEntered(
+          withBucket({
+            status: 'Perda',
+            lossReason: reason,
+            nextFollowUp: null,
+            lostAt: serverTimestamp(),
+            // Limpa resquício caso o lead viesse de Venda.
+            isConverted: false,
+            convertedAt: null
+          }, lead),
+          loss.stageChange,
+          serverTimestamp()
+        )
       );
       // #8: Perda é CHURN, então NÃO desfaz a conversão histórica da aula. A
       // matrícula aconteceu; o churn é medido pela taxa de renovação, não
@@ -386,11 +390,13 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       // Etapa customizada com nome de matrícula conta como conversão nas
       // métricas — carimba a data do fechamento se faltar (senão a matrícula
       // cai no mês do cadastro). O carimbo é do SDK, por isso entra aqui.
-      const up = plan.stampConvertedAt
-        ? { ...plan.patch, convertedAt: serverTimestamp() }
-        : plan.patch;
+      const up = withStageEntered(
+        plan.stampConvertedAt ? { ...plan.patch, convertedAt: serverTimestamp() } : plan.patch,
+        plan.stageChange,
+        serverTimestamp()
+      );
       await logInteraction(db, lead, appUser,
-        { text: `Fase alterada para [${targetStatus}]${phaseNote ? ' — ' + phaseNote : ''}.`, type: 'status_change' },
+        { text: `Fase alterada para [${targetStatus}]${phaseNote ? ' — ' + phaseNote : ''}.`, type: 'status_change', ...plan.stageChange },
         up
       );
       // Histórico de aulas (dual-write best-effort): atribui a conversão à
