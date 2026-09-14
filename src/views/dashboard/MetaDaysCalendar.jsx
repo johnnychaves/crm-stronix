@@ -2,9 +2,10 @@
 // configurados em Metas & ritmo (calendarGrid, em lib/operacional/routine.js
 // resolve a conta). Handoff linhas 229 a 257; lógica de exemplo 1514 a 1564
 // pressupunha Seg-Sex fixo (5 colunas, 470px) — vira o caso comum aqui, mas a
-// grade cresce até 7 colunas quando a meta inclui sábado e/ou domingo. Teto
-// de 94px por coluna, card livre (README §2) — em telas estreitas a grade
-// rola na horizontal com largura fixa (n × 94px) dentro do contêiner.
+// grade cresce até 7 colunas quando a meta inclui sábado e/ou domingo. No
+// computador a grade ocupa a largura toda do card (pedido do Johnny em
+// 14/09/2026; o teto de 470px do handoff deixava sobra à direita). No celular
+// cada coluna tem 94px e a grade rola na horizontal dentro do contêiner.
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { ChartMark } from './ChartMark.jsx';
@@ -90,7 +91,7 @@ export function MetaDaysCalendar({ cells, teamSize, person }) {
       <div className="mt-3.5 overflow-x-auto snap-x">
         <div
           className="grid w-full max-md:w-[var(--cal-w)] gap-1.5"
-          style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`, maxWidth: `${gridWidth}px`, '--cal-w': `${gridWidth}px` }}
+          style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`, '--cal-w': `${gridWidth}px` }}
         >
           {columns.map((w) => (
             <span key={w} className="text-center text-[10px] font-bold uppercase tracking-[0.06em] text-muted-foreground">{WEEKDAY_LABEL[w]}</span>
@@ -113,7 +114,7 @@ export function MetaDaysCalendar({ cells, teamSize, person }) {
         </div>
       </div>
 
-      <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5 dark:border-white/[0.06]" style={{ maxWidth: `${gridWidth}px` }}>
+      <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-2.5 dark:border-white/[0.06]">
         <span className="whitespace-nowrap text-[10.5px] text-muted-foreground">{scaleLabel}</span>
         <div className="flex-1" />
         {scaleSwatches.map((sw) => (
