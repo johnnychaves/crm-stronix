@@ -222,6 +222,71 @@ describe('computeBaseMovement (ponte do mês)', () => {
   });
 });
 
+// Trancaram e destrancaram contam a pausa do contrato, não a saída da base.
+// Contrato paralelo é permitido (decisão do Johnny, 14/09/2026), e quem tranca
+// um deles continua na base pelo outro: a ponte não muda, mas o trancamento
+// aconteceu. Caso real: o cadastro de teste com duas matrículas de 28/08.
+describe('computeBaseMovement (trancaram e destrancaram no mês)', () => {
+  const closes = (r) => {
+    const s = r.steps;
+    return r.startCount + s.entraram + s.voltaram + s.importados - s.cancelaram - s.venceram + s.trancamentos;
+  };
+
+  it('tranca um de dois contratos vigentes: conta o trancamento, a pessoa segue na base', () => {
+    const list = normalizeContracts([
+      { id: 'velho', leadId: 'J', status: 'ativo', startsAt: D(2026, 8, 28), endsAt: D(2027, 8, 28), createdAt: D(2026, 7, 28) },
+      {
+        id: 'atual', leadId: 'J', status: 'trancado', startsAt: D(2026, 8, 28), endsAt: D(2027, 9, 7),
+        createdAt: D(2026, 7, 28), pausedAt: new Date(2026, 8, 14), pauseReason: 'Viagem'
+      }
+    ]);
+    const r = computeBaseMovement(list, SEP);
+    expect(r).toMatchObject({ startCount: 1, endCount: 1, trancaram: 1, destrancaram: 0 });
+    expect(r.steps.trancamentos).toBe(0);
+    expect(closes(r)).toBe(r.endCount);
+  });
+
+  it('matriculou e trancou no mesmo mês: conta o trancamento', () => {
+    const c = C('novo', {
+      status: 'trancado', startsAt: D(2026, 9, 2), createdAt: D(2026, 9, 2), pausedAt: D(2026, 9, 14), pauseReason: 'Viagem'
+    });
+    expect(computeBaseMovement([c], SEP)).toMatchObject({ trancaram: 1, destrancaram: 0 });
+  });
+
+  it('reativa um de dois contratos: conta o destrancamento', () => {
+    const list = [
+      C('outro', { leadId: 'K' }),
+      C('parado', { leadId: 'K', pausedAt: null, resumedAt: D(2026, 9, 20), pausedDaysTotal: 60 })
+    ];
+    expect(computeBaseMovement(list, SEP)).toMatchObject({ trancaram: 0, destrancaram: 1 });
+  });
+
+  it('pausa que começou antes e segue aberta, ou que começa depois do corte, não conta', () => {
+    const list = [
+      C('antes', { status: 'trancado', pausedAt: D(2026, 8, 20), pauseReason: 'Viagem' }),
+      C('depois', { status: 'trancado', pausedAt: D(2026, 9, 25), pauseReason: 'Viagem' })
+    ];
+    const cut = { start: SEP.start, end: D(2026, 9, 14) };
+    expect(computeBaseMovement(list, cut)).toMatchObject({ trancaram: 0, destrancaram: 0 });
+  });
+
+  it('dois contratos da mesma pessoa trancados no mês contam uma pessoa', () => {
+    const list = [
+      C('a1', { leadId: 'M', status: 'trancado', pausedAt: D(2026, 9, 3), pauseReason: 'Viagem' }),
+      C('a2', { leadId: 'M', status: 'trancado', pausedAt: D(2026, 9, 4), pauseReason: 'Viagem' })
+    ];
+    expect(computeBaseMovement(list, SEP).trancaram).toBe(1);
+  });
+
+  it('contrato cancelado antes de começar nunca valeu: a pausa dele não conta', () => {
+    const c = C('desfeito', {
+      status: 'cancelado', startsAt: D(2026, 10, 1), createdAt: D(2026, 9, 1),
+      pausedAt: D(2026, 9, 5), pauseReason: 'Viagem', cancelledAt: D(2026, 9, 6), cancelReason: 'Outro'
+    });
+    expect(computeBaseMovement([c], SEP).trancaram).toBe(0);
+  });
+});
+
 describe('computeChurn', () => {
   it('conta cancelamento no mês e vencido que passou da tolerância no mês', () => {
     const list = [
