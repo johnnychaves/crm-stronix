@@ -494,15 +494,18 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       if (status !== lead.status || funnelChanged) {
         plan = planStageMove(lead, status, { funnelId: funnelChanged ? funnelId : null });
         if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); setLoading(false); return; }
-        up = plan.stampConvertedAt
-          ? { ...plan.patch, convertedAt: serverTimestamp() }
-          : plan.patch;
+        up = withStageEntered(
+          plan.stampConvertedAt ? { ...plan.patch, convertedAt: serverTimestamp() } : plan.patch,
+          plan?.stageChange,
+          serverTimestamp()
+        );
       }
 
       await logInteraction(db, lead, appUser,
         {
           text: actionText || 'Atualização registrada.',
-          type: (status !== lead.status || funnelChanged) ? 'status_change' : 'note'
+          type: (status !== lead.status || funnelChanged) ? 'status_change' : 'note',
+          ...plan?.stageChange
         },
         up
       );
