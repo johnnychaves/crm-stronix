@@ -224,11 +224,12 @@ function LateCard({ late, user, className }) {
 }
 
 // Upgrades (do vendedor no contrato) e saldo de trancamentos (da academia),
-// handoff linhas 406 a 427.
+// handoff linhas 406 a 427. O saldo é o dos trancamentos feitos no mês, e não o
+// passo da ponte: quem tranca um de dois contratos segue na base (base.js).
 function UpgradesLocksCard({ upgrades, delta, movement }) {
-  const saldo = movement?.steps?.trancamentos ?? 0;
   const trancaram = movement?.trancaram || 0;
   const destrancaram = movement?.destrancaram || 0;
+  const saldo = destrancaram - trancaram;
   const deltaTone = !delta || delta.none || delta.flat ? 'text-muted-foreground'
     : delta.up ? 'text-emerald-700 dark:text-emerald-300' : 'text-rose-700 dark:text-rose-300';
   return (
