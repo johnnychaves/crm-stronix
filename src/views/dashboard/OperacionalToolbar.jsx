@@ -136,8 +136,12 @@ function PersonControl({ person, people, onPerson }) {
 
 export function OperacionalToolbar(props) {
   const { note } = props;
+  // A área que rola no App tem recuo interno (p-4 md:p-8, App.jsx:1666), e o
+  // sticky respeita esse recuo: com top-0 a barra grudava 16/32px abaixo do
+  // topo e o conteúdo aparecia por cima dela. O top negativo do mesmo tamanho
+  // faz a barra encostar no cabeçalho do App.
   return (
-    <div className="sticky top-0 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06]">
+    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06]">
       <div className="hidden items-center gap-2.5 md:flex">
         <MonthControl {...props} />
         <CompareControl {...props} />
