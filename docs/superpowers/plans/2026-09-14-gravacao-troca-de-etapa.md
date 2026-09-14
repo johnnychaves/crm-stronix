@@ -19,7 +19,7 @@
 | `src/lib/stageMove.js` | `stageChangeFields` e `withStageEntered`; `planStageMove` e `planLoss` devolvem `stageChange` |
 | `src/lib/__tests__/stageMove.test.js` | testes das duas funções e dos retornos novos; ajuste do teste de `planLoss` que compara o objeto inteiro |
 | `src/views/KanbanView.jsx` | `applyMoveToStage` (arrasto e menu Mover) e `confirmKanbanLoss` |
-| `src/views/LeadProfileView.jsx` | `confirmLoss` (perda de lead) e `handlePhaseConfirm` (Mudar fase) |
+| `src/views/LeadProfileView.jsx` | `confirmLoss` (perda de lead), `handlePhaseConfirm` (Mudar fase) e `saveInteraction` (nota da ficha que muda a fase) |
 | `src/lib/appointmentOutcome.js` | promoção para Negociação no desfecho de agendamento |
 | `src/views/DailyGoalView.jsx` | promoção para Negociação no desfecho da Meta (`handleOutcome`) |
 | `src/lib/contractsWrites.js` | `commitMatricula`, quando a etapa vira Venda |
@@ -29,6 +29,7 @@ Ficam de fora de propósito:
 - o funil Upgrade (`planUpgradeMove` e `planUpgradeDecline`), que é funil de cliente;
 - `commitContractPatch` (cancelar, trancar, reativar e corrigir contrato), porque não muda a etapa;
 - a nota de troca de responsável (`src/modals/ClientRegistrationModal.jsx:78`), que só usa o mesmo tipo de interação;
+- a junção de um funil no de Indicações (`src/views/settings/ReferralOwnersSection.jsx` e `src/lib/referrals.js`), que reescreve funil e etapa em massa;
 - a importação e os funis Renovações e Vencidos.
 
 Lead criado por outro caminho (importação ou a página pública de indicação) fica sem `statusEnteredAt`. O CRM usa o `createdAt` como entrada na primeira etapa (spec, §4).

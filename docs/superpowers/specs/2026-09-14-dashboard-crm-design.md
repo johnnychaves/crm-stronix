@@ -168,6 +168,9 @@ A importação e os funis de cliente ficam de fora.
 - O histórico de agendamentos (`stronix_aulas`) só fica completo a partir da segunda quinzena de julho de 2026, quando a gravação a cada agendamento entrou. Antes disso, os registros vêm da carga inicial, com o agendamento que cada lead tinha na época. Pela contagem de 14/09/2026, a primeira quinzena de julho tem 3 aulas e a segunda tem 33. As visitas aparecem desde 01/06/2026. Nos meses anteriores a agosto de 2026, agendamentos e comparecimento aparecem marcados como parciais.
 - Etapa renomeada: o histórico guarda o nome da etapa na hora da troca, então os meses antigos mostram o nome antigo.
 - Troca de responsável: a carteira é a de quem cuida do lead hoje, o mesmo limite do Operacional.
+- A matrícula de quem já é cliente, inclusive pelo card dos funis Renovações, Vencidos e Upgrade, não conta como troca de etapa.
+- A junção de um funil no de Indicações (Configurações) reescreve funil e etapa em massa sem registrar a troca. Os leads movidos ficam sem histórico de etapa até a próxima troca.
+- Na promoção para Negociação pelo desfecho de agendamento, o lead e o registro da troca são gravados em duas escritas. Se a segunda falhar, o lead fica em Negociação sem o registro.
 
 ## 8. Testes
 
