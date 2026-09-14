@@ -12,7 +12,8 @@ import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
-import { getDefaultFunnel, isSystemFunnel } from '../lib/funnels.js';
+import { isSystemFunnel } from '../lib/funnels.js';
+import { planProfileNote } from '../lib/profileNote.js';
 import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
 import { getUpgradeFunnel, upgradeStageIdOf } from '../lib/upgradeFunnel.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
@@ -123,14 +124,12 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   // única coisa que continua no gestor (isAdminUser).
   const canTimeline = Boolean(appUser?.authUid);
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
-  const fallbackFunnelId = lead.funnelId || getDefaultFunnel(safeFunnels)?.id || null;
 
-  // Estado inicializado DIRETO do lead. A view é remontada via key={lead.id}
-  // pelo App quando o lead muda, então não há useEffect de re-sync.
+  // Só estado de interface. Nada aqui copia campo do lead: ele chega ao vivo
+  // (useProfileLead) e muda com a ficha aberta quando outra pessoa mexe nele,
+  // então fase e funil são lidos direto do `lead`.
   const [isEditing, setIsEditing] = useState(false);
   const [note, setNote] = useState('');
-  const [status, setStatus] = useState(lead.status);
-  const [funnelId, setFunnelId] = useState(fallbackFunnelId);
   const [loading, setLoading] = useState(false);
 
   const [lossModalOpen, setLossModalOpen] = useState(false);
@@ -314,7 +313,6 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       // reescrevendo a conversão passada do professor. (Sair de Venda p/ fase de
       // lead ainda desfaz, ver handlePhaseConfirm/saveInteraction: venda por engano.)
       setLossModalOpen(false);
-      setStatus('Perda');
     } catch (e) {
       console.error(e);
       toast.error('Erro ao registrar a perda. Tente novamente.');
@@ -398,8 +396,6 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       if (plan.stampConvertedAt) {
         try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
       }
-      setStatus(targetStatus);
-      if (up.funnelId) setFunnelId(up.funnelId);
       setComposerTab('note');
     } catch (e) {
       console.error(e);
@@ -463,56 +459,22 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
     }
   };
 
-  // Anotação / Mudar fase / Mover funil. O agendamento é tratado pelo
-  // ScheduleWizard via handleWizardConfirm.
+  // Nota comum do composer: só a anotação na timeline (planProfileNote), sem
+  // patch no lead. Mudar fase e mover funil ficam no PhaseChanger
+  // (handlePhaseConfirm); o agendamento, no ScheduleWizard.
   const saveInteraction = async () => {
     if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
-    const funnelChanged = Boolean(lead.funnelId) && funnelId && funnelId !== lead.funnelId;
-    if (!note.trim() && status === lead.status && !funnelChanged) return;
+    const payload = planProfileNote(note);
+    if (!payload) return;
     setLoading(true);
     try {
-      let actionText = '';
-      if (funnelChanged) {
-        const newFunnelName = safeFunnels.find(f => f.id === funnelId)?.name || 'outro funil';
-        actionText += `Lead movido para o funil [${newFunnelName}]. `;
-      }
-      if (status !== lead.status) actionText += `Fase alterada para [${status}]. `;
-      if (note) actionText += `Obs: ${note}. `;
-
-      // Só nota: nenhum patch de status. Uma nota não pode ser barrada pela
-      // regra de fase, e o doc de um cliente não precisa ser reescrito por ela.
-      // Com fase ou funil diferentes, a MESMA regra da ficha e do Kanban decide
-      // (src/lib/stageMove.js).
-      let plan = null;
-      let up = null;
-      if (status !== lead.status || funnelChanged) {
-        plan = planStageMove(lead, status, { funnelId: funnelChanged ? funnelId : null });
-        if (!plan.ok) { toast.warning(stageMoveBlockMessage(lead, plan.reason)); setLoading(false); return; }
-        up = plan.stampConvertedAt
-          ? { ...plan.patch, convertedAt: serverTimestamp() }
-          : plan.patch;
-      }
-
-      await logInteraction(db, lead, appUser,
-        {
-          text: actionText || 'Atualização registrada.',
-          type: (status !== lead.status || funnelChanged) ? 'status_change' : 'note'
-        },
-        up
-      );
-      // Histórico de aulas (best-effort): destino de matrícula atribui a
-      // conversão à última aula atendida.
-      if (plan?.stampConvertedAt) {
-        try { await markConvertingAula({ db, leadId: lead.id }); } catch (e) { console.error('markConvertingAula falhou', e); }
-      }
-
+      await logInteraction(db, lead, appUser, payload);
       setNote('');
-      setLoading(false);
     } catch (e) {
       console.error(e);
       toast.error('Erro ao salvar.');
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   // Grava o agendamento montado no ScheduleWizard. Mantém os campos canônicos
@@ -677,8 +639,6 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
   const resetComposer = () => {
     setNote('');
-    setStatus(lead.status);
-    setFunnelId(fallbackFunnelId);
   };
 
   // ----- Derived computations -----
@@ -2086,7 +2046,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
           currentContract={currentContract}
           renewedFromId={matriculaMode === 'renovacao' ? lead.currentContractId : null}
           onClose={() => setMatriculaOpen(false)}
-          onDone={() => { setMatriculaOpen(false); if (matriculaMode === 'matricula') setStatus('Venda'); }}
+          onDone={() => setMatriculaOpen(false)}
         />
       )}
     </div>
