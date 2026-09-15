@@ -4,7 +4,8 @@ import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { CrmSection, CrmCard, DashedNote, DeltaPill, ScopeTag } from '../../views/dashboard/CrmParts.jsx';
 import { CrmToolbar } from '../../views/dashboard/CrmToolbar.jsx';
-import { MonthControl } from '../../views/dashboard/OperacionalToolbar.jsx';
+import { MonthControl, OperacionalToolbar } from '../../views/dashboard/OperacionalToolbar.jsx';
+import { LOSS_PALETTE } from '../../views/dashboard/dashTokens.js';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -68,5 +69,27 @@ describe('peças do CRM', () => {
     expect(regular).toContain('min-w-[150px]');
     expect(regular).not.toContain('truncate');
     expect(regular).not.toContain('w-full');
+  });
+
+  it('barras do CRM e do Operacional opacas no escuro; filtro do CRM com o ícone do handoff', () => {
+    const noop = () => {};
+    const base = {
+      monthKey: '2026-09', monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }], onMonth: noop,
+      canPrev: true, canNext: false, onPrev: noop, onNext: noop,
+      compareOn: false, onCompareOn: noop, compareKey: '2026-08', compareOptions: [], onCompare: noop,
+      person: 'all', people: [], onPerson: noop, note: ''
+    };
+    const crm = render(createElement(CrmToolbar, { ...base, funnel: 'all', funnels: [], onFunnel: noop }));
+    const op = render(createElement(OperacionalToolbar, base));
+    expect(crm).toContain('dark:bg-[#0D1226]');
+    expect(op).toContain('dark:bg-[#0D1226]');
+    expect(crm).toContain('lucide-list-filter');
+    expect(crm).not.toContain('lucide-sliders-horizontal');
+    expect(op).toContain('lucide-sliders-horizontal');
+  });
+
+  it('sexta cor das perdas: o azul claro do handoff, mais claro no escuro', () => {
+    expect(LOSS_PALETTE).toHaveLength(6);
+    expect(LOSS_PALETTE[5]).toBe('bg-brand-300 dark:bg-brand-200');
   });
 });

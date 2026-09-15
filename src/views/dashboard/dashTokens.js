@@ -25,8 +25,9 @@ export const BREAKDOWN_PALETTE = [
 ];
 
 // Cores das perdas por motivo no CRM: a sequência da cápsula de quebra mais o
-// azul claro para o sexto motivo (LOSS_COLORS do handoff do CRM).
-export const LOSS_PALETTE = [...BREAKDOWN_PALETTE, 'bg-brand-300 dark:bg-brand-400'];
+// azul claro para o sexto motivo (LOSS_COLORS do handoff do CRM). No escuro o
+// sexto fica mais claro ainda (brand-200), longe do azul do segundo item.
+export const LOSS_PALETTE = [...BREAKDOWN_PALETTE, 'bg-brand-300 dark:bg-brand-200'];
 
 // Iniciais para os monogramas quadrados do mockup (te-av / opc-av / cf-mono).
 export function dashInitials(name) {

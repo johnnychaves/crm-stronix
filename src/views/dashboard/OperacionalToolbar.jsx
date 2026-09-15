@@ -1,6 +1,8 @@
 // Barra fixa de controles do Operacional: mês de competência, comparativo e
-// filtro de pessoa. Porta o handoff (linhas 86 a 129) — usado pela tela
-// DashboardOperacionalView (Task 12).
+// filtro de pessoa. Porta o handoff do Operacional (linhas 86 a 129) e é
+// usada pela tela DashboardOperacionalView. Os três controles (MonthControl,
+// CompareControl e PersonControl) também servem à barra do CRM
+// (CrmToolbar.jsx), que acrescenta o funil.
 //
 // O trigger dos três <Select> usa o primitivo Radix direto
 // (SelectPrimitive.Trigger asChild) em vez do SelectTrigger do shadcn: aquele
@@ -149,9 +151,11 @@ export function OperacionalToolbar(props) {
   // A área que rola no App tem recuo interno (p-4 md:p-8, App.jsx:1666), e o
   // sticky respeita esse recuo: com top-0 a barra grudava 16/32px abaixo do
   // topo e o conteúdo aparecia por cima dela. O top negativo do mesmo tamanho
-  // faz a barra encostar no cabeçalho do App.
+  // faz a barra encostar no cabeçalho do App. No escuro o bg-card é 2% de
+  // branco, translúcido, e os cards apareciam através da barra ao rolar: ela
+  // usa a cor efetiva do cabeçalho (2% de branco sobre o ink-950), opaca.
   return (
-    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06]">
+    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06] dark:bg-[#0D1226]">
       <div className="hidden items-center gap-2.5 md:flex">
         <MonthControl {...props} />
         <CompareControl {...props} />

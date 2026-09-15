@@ -7,7 +7,7 @@
 // O trigger do Select usa o primitivo Radix direto, pelo mesmo motivo do
 // Operacional: o SelectTrigger do shadcn tem dois filhos e quebra o asChild.
 import { Select as SelectPrimitive } from 'radix-ui';
-import { Filter, SlidersHorizontal } from 'lucide-react';
+import { Filter, ListFilter } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Select, SelectContent, SelectItem, SelectValue } from '../../components/ui/select.jsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.jsx';
@@ -45,8 +45,9 @@ export function CrmToolbar(props) {
   const filtered = person !== 'all' || funnel !== 'all';
   // A área que rola no App tem recuo interno (p-4 md:p-8): o top negativo do
   // mesmo tamanho faz a barra encostar no cabeçalho do App (ver Operacional).
+  // No escuro a barra é opaca, pelo mesmo motivo da do Operacional.
   return (
-    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06]">
+    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06] dark:bg-[#0D1226]">
       <div className="hidden items-center gap-2.5 md:flex">
         <MonthControl {...props} />
         <CompareControl {...props} />
@@ -67,7 +68,7 @@ export function CrmToolbar(props) {
               filtered ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'border-border bg-card text-muted-foreground'
             )}
           >
-            <SlidersHorizontal size={17} strokeWidth={2} />
+            <ListFilter size={17} strokeWidth={2} />
             {filtered && <span className="absolute right-2 top-[7px] size-1.5 rounded-full bg-brand-600" />}
           </button>
         </PopoverTrigger>
