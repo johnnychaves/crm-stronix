@@ -32,7 +32,7 @@ const valuesOf = (m) => ({
 });
 
 // O aria-label do botão da linha troca todo o conteúdo visual pro leitor de
-// tela, então precisa levar os números junto — só o nome deixaria a pessoa
+// tela, então precisa levar os números junto: só o nome deixaria a pessoa
 // cega pra tabela sem saber o que está filtrando.
 const count = (v, one, many) => (v == null ? `sem dado de ${many}` : plural(v, one, many));
 const rowLabel = (name, v) => `${name}: ${count(v.leads, 'lead', 'leads')}, ${count(v.appts, 'agendamento', 'agendamentos')}, comparecimento ${v.attend == null ? 'sem dado' : `${v.attend}%`}, ${count(v.enroll, 'matrícula', 'matrículas')}, conversão da safra ${v.conv == null ? 'sem dado' : `${v.conv}%`}, primeiro contato ${v.fc == null ? 'sem dado' : fmtDuration(v.fc)}. Filtrar a tela por essa pessoa.`;
