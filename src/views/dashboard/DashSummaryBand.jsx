@@ -8,14 +8,19 @@
 // (handoff do CRM, linhas 180 a 217): tone (cor da tendência, chave de
 // DASH_TONES; padrão brand), flag (etiqueta âmbar ao lado do valor),
 // emptySeries (texto do cartão tracejado quando não há tendência) e showNone
-// (mostra a pílula cinza "sem base"; sem ela, delta sem base some).
+// (mostra a pílula cinza "sem base"; sem ela, delta sem base some). Com flag,
+// a linha do valor quebra para a etiqueta não vazar da célula; sem flag, é a
+// linha de antes.
+//
+// Prop opcional da faixa, do CRM: stackPillsOnMobile. Nas células do celular,
+// o rótulo ocupa a linha sozinho e a pílula desce para baixo do valor.
 import { cn } from '../../lib/utils.js';
 import { DashHelpTip } from './DashPrimitives.jsx';
 import { DASH_TONES } from './dashTokens.js';
 import { Sparkline } from '../../components/charts/Sparkline.jsx';
 import { ChartMark } from './ChartMark.jsx';
 
-function SummaryCell({ item: k }) {
+function SummaryCell({ item: k, stacked = false }) {
   const delta = k.delta;
   const showPill = Boolean(delta && (!delta.none || k.showNone));
   const quiet = showPill && Boolean(delta.none || delta.flat);
@@ -23,6 +28,11 @@ function SummaryCell({ item: k }) {
     : quiet ? 'bg-muted text-muted-foreground'
     : delta.up === k.goodUp ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300'
     : 'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300';
+  const pill = showPill && (
+    <span className={cn('num inline-flex h-5 flex-none items-center gap-[3px] whitespace-nowrap rounded-md px-1.5 text-[11px] font-semibold', pillTone)}>
+      {quiet ? delta.text : `${delta.up ? '▲' : '▼'} ${delta.text}`}
+    </span>
+  );
 
   return (
     <>
@@ -31,13 +41,9 @@ function SummaryCell({ item: k }) {
           <span className="truncate text-[12px] font-medium text-muted-foreground">{k.label}</span>
           {k.help && <DashHelpTip text={k.help} label={`O que é "${k.label}"?`} />}
         </div>
-        {showPill && (
-          <span className={cn('num inline-flex h-5 flex-none items-center gap-[3px] whitespace-nowrap rounded-md px-1.5 text-[11px] font-semibold', pillTone)}>
-            {quiet ? delta.text : `${delta.up ? '▲' : '▼'} ${delta.text}`}
-          </span>
-        )}
+        {!stacked && pill}
       </div>
-      <div className="mt-2 flex items-baseline gap-1.5">
+      <div className={cn('mt-2', k.flag && 'flex flex-wrap items-baseline gap-x-1.5 gap-y-1')}>
         <span className={cn('num text-[32px] font-semibold leading-none tracking-tight', k.muted && 'text-muted-foreground')}>{k.value}</span>
         {k.flag && (
           <span className="rounded-[5px] bg-amber-500/[0.12] px-[5px] py-0.5 text-[10px] font-bold uppercase tracking-[0.06em] text-amber-700 dark:bg-amber-500/20 dark:text-amber-300">
@@ -45,12 +51,13 @@ function SummaryCell({ item: k }) {
           </span>
         )}
       </div>
+      {stacked && pill && <div className="mt-1.5 flex">{pill}</div>}
       {k.sub && <div className="num mt-1 truncate text-[11.5px] text-muted-foreground">{k.sub}</div>}
     </>
   );
 }
 
-export function DashSummaryBand({ items }) {
+export function DashSummaryBand({ items, stackPillsOnMobile = false }) {
   const list = items || [];
   return (
     <>
@@ -80,7 +87,7 @@ export function DashSummaryBand({ items }) {
       <section className="grid grid-cols-2 gap-3 md:hidden">
         {list.map((k) => (
           <div key={k.key} className="rounded-2xl border border-border bg-card p-4 shadow-card">
-            <SummaryCell item={k} />
+            <SummaryCell item={k} stacked={stackPillsOnMobile} />
           </div>
         ))}
       </section>

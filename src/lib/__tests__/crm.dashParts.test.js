@@ -36,6 +36,32 @@ describe('DashSummaryBand', () => {
     expect(html).toContain('= 0 p.p.');
     expect(html).toContain('Sem base antes de agosto de 2026');
   });
+
+  it('item do Operacional sem etiqueta: a linha do valor é a de antes, sem flex', () => {
+    const html = render(createElement(DashSummaryBand, {
+      items: [{ key: 'a', label: 'Meta diária', value: '82%', goodUp: true, delta: { up: true, text: '+8 p.p.' } }]
+    }));
+    expect(html).toContain('<div class="mt-2"><span class="num text-[32px]');
+    expect(html).not.toContain('items-baseline');
+  });
+
+  it('com etiqueta, a linha do valor quebra em vez de vazar da célula', () => {
+    const html = render(createElement(DashSummaryBand, {
+      items: [{ key: 'ag', label: 'Agendamentos', value: '19', goodUp: true, flag: 'incompleto' }]
+    }));
+    expect(html).toContain('class="mt-2 flex flex-wrap items-baseline gap-x-1.5 gap-y-1"');
+  });
+
+  it('stackPillsOnMobile: no celular o rótulo fica sozinho e a pílula desce para baixo do valor', () => {
+    const item = { key: 'l', label: 'Leads novos', value: '56', sub: 'cadastrados no mês', goodUp: true, delta: { up: true, text: '12%' } };
+    const split = (html) => [html.slice(0, html.indexOf('md:hidden')), html.slice(html.indexOf('md:hidden'))];
+    const [, plainMobile] = split(render(createElement(DashSummaryBand, { items: [item] })));
+    expect(plainMobile.indexOf('▲ 12%')).toBeLessThan(plainMobile.indexOf('>56<'));
+    const [desk, mobile] = split(render(createElement(DashSummaryBand, { items: [item], stackPillsOnMobile: true })));
+    expect(desk.indexOf('▲ 12%')).toBeLessThan(desk.indexOf('>56<'));
+    expect(mobile.indexOf('▲ 12%')).toBeGreaterThan(mobile.indexOf('>56<'));
+    expect(mobile.indexOf('▲ 12%')).toBeLessThan(mobile.indexOf('cadastrados no mês'));
+  });
 });
 
 describe('DashHighlights', () => {

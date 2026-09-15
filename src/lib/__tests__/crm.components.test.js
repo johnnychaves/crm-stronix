@@ -4,6 +4,7 @@ import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { CrmSection, CrmCard, DashedNote, DeltaPill, ScopeTag } from '../../views/dashboard/CrmParts.jsx';
 import { CrmToolbar } from '../../views/dashboard/CrmToolbar.jsx';
+import { MonthControl } from '../../views/dashboard/OperacionalToolbar.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -47,5 +48,25 @@ describe('peças do CRM', () => {
     expect(html).toContain('aria-label="Pessoa"');
     expect(html).toContain('Pró-rata: mesmos 14 primeiros dias de agosto');
     expect(html).toContain('há filtro ativo');
+    // No celular o mês fica à vista, compacto; na barra larga, o controle padrão.
+    expect(html).toContain('<span class="truncate">Setembro 2026</span>');
+    expect(html).toContain('min-w-[150px]');
+  });
+
+  it('controle de mês compacto: rótulo curto no botão, sem o "em andamento"; sem compact, o de antes', () => {
+    const noop = () => {};
+    const props = {
+      monthKey: '2026-09', onMonth: noop, canPrev: true, canNext: false, onPrev: noop, onNext: noop,
+      monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }, { key: '2026-08', label: 'Agosto 2026' }]
+    };
+    const compact = render(createElement(MonthControl, { ...props, compact: true }));
+    expect(compact).toContain('<span class="truncate">Setembro 2026</span>');
+    expect(compact).not.toContain('em andamento');
+    expect(compact).toContain('w-full');
+    expect(compact).not.toContain('min-w-[150px]');
+    const regular = render(createElement(MonthControl, props));
+    expect(regular).toContain('min-w-[150px]');
+    expect(regular).not.toContain('truncate');
+    expect(regular).not.toContain('w-full');
   });
 });

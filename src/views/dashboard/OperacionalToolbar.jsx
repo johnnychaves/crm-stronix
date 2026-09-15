@@ -22,9 +22,15 @@ import { Select, SelectContent, SelectItem, SelectValue } from '../../components
 import { Checkbox } from '../../components/ui/checkbox.jsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.jsx';
 
-export function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPrev, onNext }) {
+// Rótulo do mês escolhido sem o " · em andamento", para o botão estreito.
+const shortMonthLabel = (options, key) =>
+  String((options || []).find((o) => o.key === key)?.label || '').replace(/ · em andamento$/, '');
+
+// `compact`: ocupa a largura toda da linha do celular, com o rótulo curto e
+// truncado no botão. Sem ele, o controle de sempre.
+export function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPrev, onNext, compact = false }) {
   return (
-    <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card p-[3px]">
+    <div className={cn('flex items-center gap-0.5 rounded-xl border border-border bg-card p-[3px]', compact && 'h-10 w-full justify-between')}>
       <button
         type="button"
         onClick={onPrev}
@@ -39,9 +45,13 @@ export function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext
           <button
             type="button"
             aria-label="Mês de competência"
-            className="num flex h-[30px] min-w-[150px] items-center justify-center rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+            className={cn(
+              'num flex h-[30px]',
+              compact ? 'min-w-0 flex-1' : 'min-w-[150px]',
+              'items-center justify-center rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40'
+            )}
           >
-            <SelectValue />
+            {compact ? <span className="truncate">{shortMonthLabel(monthOptions, monthKey)}</span> : <SelectValue />}
           </button>
         </SelectPrimitive.Trigger>
         <SelectContent position="popper">
