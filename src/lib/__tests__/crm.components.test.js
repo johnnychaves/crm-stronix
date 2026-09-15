@@ -144,10 +144,23 @@ describe('canais e safra', () => {
     expect(html).toContain('Safra de setembro');
     expect(html).toContain('os 56 leads cadastrados no mês, acompanhados até hoje');
     expect(html).toContain('−40 não agendaram');
-    expect(html).toContain('−4 não compareceram');
+    // No mês em andamento, quem agendou pra mais adiante soma em "Agendaram":
+    // a queda até comparecer é de quem ainda não veio, mesmo sendo a menor.
+    expect(html).toContain('−4 ainda não vieram');
+    expect(html).not.toContain('não compareceram');
     expect(html).toContain('29% da safra');
     expect(html).toContain('Seguem em jogo');
     expect(html).toContain('ainda está viva');
+  });
+
+  it('mês fechado: a queda até comparecer é de quem não compareceu', () => {
+    const html = render(createElement(CohortMilestones, {
+      cohort: { leads: 56, sched: 16, came: 12, enrolled: 10, lost: 6, open: 40 },
+      monthName: 'agosto',
+      running: false
+    }));
+    expect(html).toContain('−4 não compareceram');
+    expect(html).not.toContain('ainda não vieram');
   });
 
   it('safra sem queda em nenhuma passagem: sem leitura embaixo dos marcos', () => {

@@ -31,11 +31,13 @@ export function CohortMilestones({ cohort, monthName, running }) {
   const cameDrop = cohort.sched - cohort.came;
   // No mês em andamento, quem agendou pra mais adiante ainda soma em
   // "Agendaram" (README §4): a queda até comparecer pode ser só a visita ou a
-  // aula que ainda não chegou, não uma falta de verdade.
+  // aula que ainda não chegou, não uma falta de verdade. Por isso essa queda
+  // diz "ainda não vieram" em todo mês em andamento; a leitura própria só
+  // entra quando ela é a maior queda.
   const runningSecondBigger = running && cameDrop > schedDrop;
   const passages = [
     { name: 'Agendaram', count: cohort.sched, prev: leads, bar: 'bg-brand-500', gone: 'não agendaram' },
-    { name: 'Compareceram', count: cohort.came, prev: cohort.sched, bar: 'bg-brand-600', gone: runningSecondBigger ? 'ainda não vieram' : 'não compareceram' }
+    { name: 'Compareceram', count: cohort.came, prev: cohort.sched, bar: 'bg-brand-600', gone: running ? 'ainda não vieram' : 'não compareceram' }
   ];
   const outcome = [
     { name: 'Matricularam', count: cohort.enrolled, bar: 'bg-success dark:bg-[#0E9F6E]' },
