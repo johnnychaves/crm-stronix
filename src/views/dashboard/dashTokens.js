@@ -5,6 +5,7 @@
 // stroke="currentColor".
 export const DASH_TONES = {
   brand:   { dot: 'bg-brand-600',   strong: 'bg-brand-600',   stroke: 'text-brand-600',   text: 'text-brand-700',   soft: 'bg-brand-50',   darkText: 'dark:text-brand-300',   darkSoft: 'dark:bg-brand-500/10' },
+  accent:  { dot: 'bg-accent-500',  strong: 'bg-accent-500',  stroke: 'text-accent-500',  text: 'text-accent-600',  soft: 'bg-accent-50',  darkText: 'dark:text-accent-400',  darkSoft: 'dark:bg-accent-500/10' },
   amber:   { dot: 'bg-amber-500',   strong: 'bg-amber-500',   stroke: 'text-amber-500',   text: 'text-amber-700',   soft: 'bg-amber-50',   darkText: 'dark:text-amber-300',   darkSoft: 'dark:bg-amber-500/10' },
   violet:  { dot: 'bg-violet-500',  strong: 'bg-violet-500',  stroke: 'text-violet-500',  text: 'text-violet-700',  soft: 'bg-violet-50',  darkText: 'dark:text-violet-300',  darkSoft: 'dark:bg-violet-500/10' },
   emerald: { dot: 'bg-emerald-500', strong: 'bg-emerald-500', stroke: 'text-emerald-500', text: 'text-emerald-700', soft: 'bg-emerald-50', darkText: 'dark:text-emerald-300', darkSoft: 'dark:bg-emerald-500/10' },
@@ -22,6 +23,10 @@ export const BREAKDOWN_PALETTE = [
   'bg-slate-400 dark:bg-slate-600',
   'bg-success'
 ];
+
+// Cores das perdas por motivo no CRM: a sequência da cápsula de quebra mais o
+// azul claro para o sexto motivo (LOSS_COLORS do handoff do CRM).
+export const LOSS_PALETTE = [...BREAKDOWN_PALETTE, 'bg-brand-300 dark:bg-brand-400'];
 
 // Iniciais para os monogramas quadrados do mockup (te-av / opc-av / cf-mono).
 export function dashInitials(name) {
