@@ -52,11 +52,16 @@ export const enrollmentsOf = (leads, { start, end, inScope }) => unique(leads).f
 });
 
 // Perdas: quem está em Perda hoje e não é cliente, com lostAt em [start, end),
-// por motivo. Perda sem motivo entra em "Sem motivo".
+// por motivo. Perda sem motivo entra em "Sem motivo". A lista vai junto, para a
+// etapa da perda sair dos mesmos leads (lossStagesOf).
 export function lossesOf(leads, { start, end, inScope }) {
   const list = unique(leads).filter((l) =>
     deriveLeadBucket(l) === 'perda' && inWindow(lostAtOf(l), start, end) && inScope(l));
-  return { total: list.length, reasons: rankCounts(countBy(list, (l) => String(l.lossReason || '').trim() || 'Sem motivo')) };
+  return {
+    total: list.length,
+    reasons: rankCounts(countBy(list, (l) => String(l.lossReason || '').trim() || 'Sem motivo')),
+    leads: list
+  };
 }
 
 // Desfecho de um lead da safra no instante asOf. Vale a primeira matrícula: o

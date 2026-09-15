@@ -121,6 +121,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
   });
   // O primeiro contato olha o mês do cadastro e o seguinte, até o corte.
   const limit = Math.min(asOf.getTime(), monthRange(addMonthsToKey(monthKey, 1)).end.getTime());
+  const losses = lossesOf(fresh(src.lost), { start, end, inScope: scope.inScope });
 
   return {
     ...base,
@@ -138,8 +139,9 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
       open: cohortLeads.length - enrolled - lost,
       conv: pct(enrolled, cohortLeads.length)
     },
-    losses: lossesOf(fresh(src.lost), { start, end, inScope: scope.inScope }),
-    lossStages: stageBase ? lossStagesOf({ moves: cache.moves, start, end, inScope: scope.inScope, leadOf }) : null,
+    losses,
+    // A etapa da perda sai dos mesmos leads do card de perdas.
+    lossStages: stageBase ? lossStagesOf({ lostLeads: losses.leads, moves: cache.moves, start, end }) : null,
     firstContact: firstContactOf(cohortLeads, { contactTimes: cache.contactTimes, limit }),
     daysToEnroll: daysToEnrollOf(enrollments),
     passage: funnelId && stageBase ? stagePassageOf({

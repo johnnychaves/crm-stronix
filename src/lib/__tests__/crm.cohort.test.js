@@ -68,10 +68,10 @@ describe('perdas do mês', () => {
       { id: 'e', status: 'Perda', lostAt: D(8, 30), lossReason: 'Preço' },
       { id: 'f', status: 'Perda', isConverted: true, lostAt: D(9, 6), lossReason: 'Preço' }
     ];
-    expect(lossesOf(leads, { ...SEP, inScope: all })).toEqual({
-      total: 3,
-      reasons: [{ name: 'Preço', count: 2 }, { name: 'Sem motivo', count: 1 }]
-    });
+    const r = lossesOf(leads, { ...SEP, inScope: all });
+    expect(r).toMatchObject({ total: 3, reasons: [{ name: 'Preço', count: 2 }, { name: 'Sem motivo', count: 1 }] });
+    // A lista vai junto: a etapa da perda sai dos mesmos leads.
+    expect(r.leads.map((l) => l.id)).toEqual(['a', 'b', 'c']);
   });
 });
 

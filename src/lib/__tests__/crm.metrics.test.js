@@ -119,7 +119,8 @@ describe('metricsOf', () => {
   });
 
   it('perdas, etapa da perda, primeiro contato e dias até a matrícula', () => {
-    expect(team.losses).toEqual({ total: 1, reasons: [{ name: 'Preço', count: 1 }] });
+    expect(team.losses).toMatchObject({ total: 1, reasons: [{ name: 'Preço', count: 1 }] });
+    expect(team.losses.leads.map((l) => l.id)).toEqual(['s3']);
     expect(team.lossStages).toEqual([{ name: 'Contato feito', count: 1 }]);
     expect(team.firstContact).toEqual({ total: 5, h1: 1, h24: 1, over: 2, none: 1, median: 1560 });
     expect(team.daysToEnroll).toEqual({ total: 2, buckets: [0, 1, 0, 0, 1, 0], median: 16 });

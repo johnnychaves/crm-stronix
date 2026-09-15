@@ -136,16 +136,18 @@ export function stagePassageOf({
   return { rows: out, worst };
 }
 
-// Etapa em que o lead foi perdido: o fromStatus das trocas para Perda do mês.
-export function lossStagesOf({ moves, start, end, inScope, leadOf }) {
+// Etapa em que o lead foi perdido (spec §4), para os mesmos leads perdidos do
+// card de perdas (lossesOf): o fromStatus da última troca do lead para Perda
+// dentro de [start, end). Sem troca gravada no mês, "Sem etapa". Assim os dois
+// blocos do card, por motivo e por etapa, somam o mesmo total.
+export function lossStagesOf({ lostLeads, moves, start, end }) {
   const map = new Map();
-  moves.forEach((list, leadId) => {
-    if (!inScope(leadOf(leadId))) return;
-    list.forEach((m) => {
-      if (m.toStatus !== 'Perda' || m.createdAt < start || m.createdAt >= end) return;
-      const name = String(m.fromStatus || '').trim() || 'Sem etapa';
-      map.set(name, (map.get(name) || 0) + 1);
-    });
+  (lostLeads || []).forEach((l) => {
+    const last = (moves.get(l.id) || [])
+      .filter((m) => m.toStatus === 'Perda' && m.createdAt >= start && m.createdAt < end)
+      .pop();
+    const name = String(last?.fromStatus || '').trim() || 'Sem etapa';
+    map.set(name, (map.get(name) || 0) + 1);
   });
   return rankCounts(map);
 }

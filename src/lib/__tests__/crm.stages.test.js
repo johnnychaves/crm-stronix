@@ -184,11 +184,25 @@ describe('passagem: entrada pelo cadastro e trocas que não contam', () => {
 });
 
 describe('etapa da perda', () => {
-  it('o fromStatus das trocas para Perda do mês, no recorte', () => {
-    expect(lossStagesOf({ moves: MOVES, start: MONTH.start, end: MONTH.end, inScope: all, leadOf }))
+  const lost = (ids) => ids.map((id) => leadOf(id));
+
+  it('dos mesmos leads perdidos do card, o fromStatus da troca para Perda do mês', () => {
+    expect(lossStagesOf({ lostLeads: lost(['a', 'b']), moves: MOVES, start: MONTH.start, end: MONTH.end }))
       .toEqual([{ name: 'Agendado', count: 1 }, { name: 'Contato feito', count: 1 }]);
-    expect(lossStagesOf({ moves: MOVES, start: MONTH.start, end: MONTH.end, inScope: (l) => l.consultantId === 'diego', leadOf }))
+    expect(lossStagesOf({ lostLeads: lost(['b']), moves: MOVES, start: MONTH.start, end: MONTH.end }))
       .toEqual([{ name: 'Contato feito', count: 1 }]);
+  });
+
+  it('vale a última troca para Perda do mês; sem ela, Sem etapa, e os dois blocos do card somam o mesmo total', () => {
+    const moves = movesByLead([
+      M('p1', 'p', 'Contato feito', 'Perda', 3),
+      M('p2', 'p', 'Perda', 'Contato feito', 4),
+      M('p3', 'p', 'Agendado', 'Perda', 6),
+      { ...M('q1', 'q', 'Negociação', 'Perda', 1), createdAt: new Date(2026, 7, 28, 10) }
+    ]);
+    const r = lossStagesOf({ lostLeads: [{ id: 'p' }, { id: 'q' }, { id: 'r' }], moves, start: MONTH.start, end: MONTH.end });
+    expect(r).toEqual([{ name: 'Sem etapa', count: 2 }, { name: 'Agendado', count: 1 }]);
+    expect(r.reduce((sum, x) => sum + x.count, 0)).toBe(3);
   });
 });
 
