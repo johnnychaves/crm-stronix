@@ -78,6 +78,7 @@ import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { ReferralLandingScreen } from './views/public/ReferralLandingScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
 import { DashboardOperacionalView } from './views/dashboard/DashboardOperacionalView.jsx';
+import { DashboardCrmView } from './views/dashboard/DashboardCrmView.jsx';
 import { DashboardComingSoonView } from './views/dashboard/DashboardComingSoonView.jsx';
 import { KanbanView } from './views/KanbanView.jsx';
 import { AppointmentTrackingView } from './views/AppointmentTrackingView.jsx';
@@ -1698,7 +1699,10 @@ useEffect(() => {
                   contato de hoje). As interações vão sem filtro: as regras já deixam
                   qualquer membro ler. */}
               {resolvedTab === 'dashOperacional' && <DashboardOperacionalView appUser={appUser} usersList={usersList} liveLeads={metaLeads} interactions={interactions} db={db} listenersActive={listenersActive} />}
-              {resolvedTab === 'dashCrm' && <DashboardComingSoonView page="crm" onNavigate={changeTab} />}
+              {/* CRM: o funil de leads por mês, a mesma tela para todos. A mesma
+                  base ao vivo do Operacional (metaLeads e as interações do mês),
+                  mais funis e etapas para o filtro de funil e a passagem. */}
+              {resolvedTab === 'dashCrm' && <DashboardCrmView usersList={usersList} liveLeads={metaLeads} interactions={interactions} db={db} listenersActive={listenersActive} funnels={funnels} statuses={statuses} />}
               {resolvedTab === 'dashGerencial' && <DashboardComingSoonView page="gerencial" onNavigate={changeTab} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
