@@ -39,7 +39,7 @@ import {
   chunk, leadIdsForRenewal
 } from '../lib/operacional/queries.js';
 // Busca dos meses e memória da sessão, divididas com o CRM (monthSources.js).
-import { colRef, mapHistory, serverDocs, loadCurrentLeads, loadMonth, carteiraDaSessao, mesesDaSessao } from './monthSources.js';
+import { colRef, mapHistory, serverDocs, loadCurrentLeads, loadMonth, leadsPorIdDaSessao, mesesDaSessao } from './monthSources.js';
 
 export function useOperacionalSources({ db, enabled = true, now, monthKeys, liveInteractions, liveLeads, contracts, appUser }) {
   const currentKey = monthKeyOf(now);
@@ -160,10 +160,10 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
   // --- leads da carteira (responsável atual), por id, em lotes de 30. Sempre do
   // servidor: a conferência por contagem só enxerga exclusão, e uma troca de
   // responsável ficaria congelada no cache. Uma vez por id na sessão: o que já
-  // foi lido (carteiraDaSessao) entra como semente e não é buscado de novo.
+  // foi lido (leadsPorIdDaSessao) entra como semente e não é buscado de novo.
   // Resposta que veio do cache do aparelho (sem rede) não entra na memória: a
   // próxima montagem tenta de novo.
-  const [seed] = useState(() => new Map(carteiraDaSessao.get(appId)));
+  const [seed] = useState(() => new Map(leadsPorIdDaSessao.get(appId)));
   const [fetchedLeads, setFetchedLeads] = useState(seed);
   const askedRef = useRef(new Set());
   useEffect(() => {
@@ -178,8 +178,8 @@ export function useOperacionalSources({ db, enabled = true, now, monthKeys, live
       serverDocs(q)
         .then((snapDocs) => {
           const docs = snapDocs.map(normalizeLeadDoc);
-          if (!carteiraDaSessao.has(tenant)) carteiraDaSessao.set(tenant, new Map());
-          docs.forEach((l) => carteiraDaSessao.get(tenant).set(l.id, l));
+          if (!leadsPorIdDaSessao.has(tenant)) leadsPorIdDaSessao.set(tenant, new Map());
+          docs.forEach((l) => leadsPorIdDaSessao.get(tenant).set(l.id, l));
           setFetchedLeads((prev) => {
             const next = new Map(prev);
             docs.forEach((l) => next.set(l.id, l));

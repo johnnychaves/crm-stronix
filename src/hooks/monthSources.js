@@ -81,8 +81,12 @@ export async function loadMonth(db, key, closed) {
   return { closed, interactions, leadsCreated, history };
 }
 
-// Leads buscados por id e entradas de mês já lidos nesta sessão do navegador,
-// por academia (appId). Ficam fora do estado dos hooks porque as telas
-// desmontam ao trocar de aba, e cada abertura leria tudo de novo.
-export const carteiraDaSessao = new Map();
+// Memória da sessão do navegador, por academia (appId). Fica fora do estado
+// dos hooks porque as telas desmontam ao trocar de aba, e cada abertura leria
+// tudo de novo.
+// - leadsPorIdDaSessao: os leads buscados por id pelo Operacional (a carteira
+//   de renovação) e pelo CRM (os leads citados por agendamento e por troca de
+//   etapa que não estão em nenhuma lista).
+// - mesesDaSessao: as entradas de mês já lidas.
+export const leadsPorIdDaSessao = new Map();
 export const mesesDaSessao = new Map();

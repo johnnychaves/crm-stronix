@@ -14,8 +14,15 @@
 //
 // Leads citados por agendamento ou por troca de etapa que não estão em
 // nenhuma lista são buscados por id, do servidor, uma vez por sessão, na
-// mesma memória da carteira do Operacional. Quem não existe mais fica como
-// desconhecido e conta em Outros.
+// mesma memória de leads por id do Operacional (leadsPorIdDaSessao). Quem não
+// existe mais fica como desconhecido e conta em Outros.
+//
+// Limites conhecidos:
+// - matrícula ou perda que acontece com a tela aberta só aparece na próxima
+//   abertura. O bloco "Agora" é ao vivo;
+// - a importação de planilha que promove um lead com data antiga só aparece
+//   no mês corrente depois de recarregar a página, porque a busca incremental
+//   parte da mais nova já vista.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { documentId, query, where } from 'firebase/firestore';
@@ -32,7 +39,7 @@ import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, currentFieldWindow, newestTimeOf,
   failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById
 } from '../lib/crm/queries.js';
-import { colRef, serverDocs, cachedOrServer, loadMonth, loadCurrentLeads, carteiraDaSessao, mesesDaSessao } from './monthSources.js';
+import { colRef, serverDocs, cachedOrServer, loadMonth, loadCurrentLeads, leadsPorIdDaSessao, mesesDaSessao } from './monthSources.js';
 
 const mapAula = (d) => {
   const data = d.data();
@@ -217,7 +224,7 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
   // do servidor. `fetched` guarda null para quem não existe mais ou cuja busca
   // falhou nesta montagem (conta como desconhecido). A memória da sessão só
   // guarda os achados, e a próxima montagem tenta os outros de novo.
-  const [fetched, setFetched] = useState(() => new Map(carteiraDaSessao.get(appId)));
+  const [fetched, setFetched] = useState(() => new Map(leadsPorIdDaSessao.get(appId)));
   const askedRef = useRef(new Set());
   const missing = useMemo(() => {
     const known = new Set(fetched.keys());
@@ -243,8 +250,8 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
       serverDocs(query(colRef(db, LEADS_PATH), where(documentId(), 'in', part)))
         .then((docs) => {
           const found = docs.map(normalizeLeadDoc);
-          if (!carteiraDaSessao.has(tenant)) carteiraDaSessao.set(tenant, new Map());
-          found.forEach((l) => carteiraDaSessao.get(tenant).set(l.id, l));
+          if (!leadsPorIdDaSessao.has(tenant)) leadsPorIdDaSessao.set(tenant, new Map());
+          found.forEach((l) => leadsPorIdDaSessao.get(tenant).set(l.id, l));
           settle(part, found);
         })
         .catch((e) => {
