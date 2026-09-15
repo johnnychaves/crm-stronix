@@ -58,6 +58,14 @@ describe('agendamentos do mês', () => {
     expect(appointmentsOf(list, { ...WIN, leadOf: of, inScope: all }))
       .toEqual({ total: 1, came: 0, missed: 0, pending: 1, decided: 0, rate: null });
   });
+
+  it('cliente que virou cliente sem contrato (só convertedAt, sem clienteSince) também fica fora depois da matrícula', () => {
+    const people = new Map([['v', lead('v', { convertedAt: { toDate: () => D(3, 10) } })]]);
+    const of = (id) => people.get(id) || { id, unknown: true };
+    const list = [R('x1', { leadId: 'v', status: 'attended', createdAt: D(9, 1), scheduledFor: D(9, 8) })];
+    expect(appointmentsOf(list, { ...WIN, leadOf: of, inScope: all }))
+      .toEqual({ total: 0, came: 0, missed: 0, pending: 0, decided: 0, rate: null });
+  });
 });
 
 describe('marcos da safra', () => {

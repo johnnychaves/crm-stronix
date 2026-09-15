@@ -9,7 +9,7 @@ import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus } from '../aulas.js';
 import { getSafeDateOrNull } from '../dates.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { pct, rankCounts } from './stats.js';
-import { clienteSinceOf, firstEnrolledAtOf } from './cohort.js';
+import { firstEnrolledAtOf } from './cohort.js';
 
 const inWindow = (d, start, end) => d instanceof Date && d >= start && d < end;
 
@@ -89,7 +89,8 @@ export function effectiveStatus(r, visitOutcomes, lead = null) {
 // Agendamentos do mês (spec §4, faixa): scheduledFor em [start, end), sem os
 // cancelados. Pessoa e funil saem do lead do registro. Um reagendamento move o
 // registro, então ele não conta duas vezes. O agendamento com data a partir
-// da primeira matrícula (clienteSince) não é funil de lead e fica fora: a aula
+// da primeira matrícula (firstEnrolledAtOf, como na safra: quem virou cliente
+// sem contrato só tem o convertedAt) não é funil de lead e fica fora: a aula
 // de upgrade e o registro de visita reaproveitado, que guarda o createdAt de
 // quando a pessoa ainda era lead (upsertScheduledAppointment acha o registro
 // em aberto e só troca a data). O que foi marcado depois da matrícula também
@@ -107,8 +108,8 @@ export function appointmentsOf(records, { start, end, leadOf, inScope, visitOutc
     const status = effectiveStatus(r, visitOutcomes, lead);
     if (status === AULA_STATUS.CANCELLED) return;
     if (!inScope(lead)) return;
-    const since = clienteSinceOf(lead);
-    if (since && r.scheduledFor >= since) return;
+    const enrolledAt = firstEnrolledAtOf(lead);
+    if (enrolledAt && r.scheduledFor >= enrolledAt) return;
     if (status === AULA_STATUS.ATTENDED) came += 1;
     else if (status === AULA_STATUS.NO_SHOW) missed += 1;
     else pending += 1;
