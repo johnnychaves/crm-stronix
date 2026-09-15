@@ -28,90 +28,18 @@
 // sempre do servidor e uma vez por id na sessão do navegador.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { collection, documentId, getCountFromServer, getDocsFromCache, onSnapshot, query, where } from 'firebase/firestore';
-import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
-import { specToConstraints, getDocsWithAuthRetry } from './usePagedLeads.js';
+import { documentId, onSnapshot, query, where } from 'firebase/firestore';
+import { appId, LEADS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
+import { specToConstraints } from './usePagedLeads.js';
 import { normalizeLeadDoc } from '../lib/leads.js';
-import { getSafeDate } from '../lib/dates.js';
-import { monthRange, monthKeyOf, addMonthsToKey } from '../lib/operacional/month.js';
+import { monthRange, monthKeyOf } from '../lib/operacional/month.js';
 import {
-  interactionsInMonthSpec, leadsCreatedInMonthSpec, goalHistorySinceSpec, goalHistoryInMonthSpec,
-  loadWithCountCheck, retryWithBackoff, retryDelayMs, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry,
-  shouldRememberMonthEntry, monthsFromSession, currentMonthLeadsWindow, mergeNewLeads,
-  docsFromServerOrThrow, newestCreatedAtOf, leadsWindowSince, monthHistory,
+  goalHistorySinceSpec, retryWithBackoff, retryDelayMs, monthEntryFits, shouldStoreMonthEntry, failedMonthEntry,
+  shouldRememberMonthEntry, monthsFromSession, mergeNewLeads, leadsWindowSince, monthHistory,
   chunk, leadIdsForRenewal
 } from '../lib/operacional/queries.js';
-
-const colRef = (db, path) => collection(db, 'artifacts', appId, 'public', 'data', path);
-
-const mapInteraction = (d) => {
-  const data = d.data();
-  return { id: d.id, ...data, createdAt: getSafeDate(data.createdAt) };
-};
-
-const mapHistory = (d) => d.data();
-
-// Busca que precisa do servidor: resposta do cache do aparelho é falha.
-const serverDocs = async (q) => docsFromServerOrThrow(await getDocsWithAuthRetry(q));
-
-// Consulta de mês fechado: cache local conferido pela contagem do servidor.
-const cachedOrServer = (q, mapDoc) => loadWithCountCheck({
-  fromCache: async () => (await getDocsFromCache(q)).docs.map(mapDoc),
-  fromServer: async () => (await serverDocs(q)).map(mapDoc),
-  countOnServer: async () => (await getCountFromServer(q)).data().count
-}).then((r) => r.docs);
-
-// Com a regra antiga do histórico publicada (cada um lê só o próprio), a
-// consulta do mês inteiro é negada. O mês fica sem histórico (null) e quem
-// cobre é a assinatura dos docs da pessoa (historyScope 'own').
-const unlessDenied = (promise) => promise.catch((e) => {
-  if (e?.code === 'permission-denied') return null;
-  throw e;
-});
-
-// Leads criados no mês corrente, direto do servidor, na janela da busca: o mês
-// inteiro na primeira vez; depois, só desde a âncora (leadsWindowSince), menos
-// a folga. Devolve junto o instante da busca.
-async function loadCurrentLeads(db, key, since = null) {
-  const { from, to } = currentMonthLeadsWindow(key, since);
-  const q = query(colRef(db, LEADS_PATH), ...specToConstraints(leadsCreatedInMonthSpec(from, to)));
-  const fetchedAt = Date.now();
-  const leads = (await serverDocs(q)).map(normalizeLeadDoc);
-  return { leads, fetchedAt };
-}
-
-// Uma tentativa de carga do mês. Aberto: só os leads criados, direto do
-// servidor (interações e histórico vêm ao vivo). Fechado: interações, leads
-// criados e histórico, pelo cache conferido.
-async function loadMonth(db, key, closed) {
-  if (!closed) {
-    const { leads, fetchedAt } = await loadCurrentLeads(db, key);
-    return {
-      closed, interactions: null, leadsCreated: leads, history: null, fetchedAt,
-      newestCreatedAt: newestCreatedAtOf(leads)
-    };
-  }
-  const { start, end } = monthRange(key);
-  const [from, to] = [start.getTime(), end.getTime()];
-  const qL = query(colRef(db, LEADS_PATH), ...specToConstraints(leadsCreatedInMonthSpec(from, to)));
-  const qI = query(colRef(db, INTERACTIONS_PATH), ...specToConstraints(interactionsInMonthSpec(from, to)));
-  const qH = query(
-    colRef(db, DAILY_GOAL_HISTORY_PATH),
-    ...specToConstraints(goalHistoryInMonthSpec(`${key}-01`, `${addMonthsToKey(key, 1)}-01`))
-  );
-  const [interactions, leadsCreated, history] = await Promise.all([
-    cachedOrServer(qI, mapInteraction),
-    cachedOrServer(qL, normalizeLeadDoc),
-    unlessDenied(cachedOrServer(qH, mapHistory))
-  ]);
-  return { closed, interactions, leadsCreated, history };
-}
-
-// Leads da carteira e entradas de mês já lidos nesta sessão do navegador, por
-// academia (appId). Ficam fora do estado do hook porque a tela desmonta ao
-// trocar de aba, e cada abertura leria tudo de novo.
-const carteiraDaSessao = new Map();
-const mesesDaSessao = new Map();
+// Busca dos meses e memória da sessão, divididas com o CRM (monthSources.js).
+import { colRef, mapHistory, serverDocs, loadCurrentLeads, loadMonth, carteiraDaSessao, mesesDaSessao } from './monthSources.js';
 
 export function useOperacionalSources({ db, enabled = true, now, monthKeys, liveInteractions, liveLeads, contracts, appUser }) {
   const currentKey = monthKeyOf(now);
