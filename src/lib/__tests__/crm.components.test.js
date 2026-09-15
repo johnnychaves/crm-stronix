@@ -1,3 +1,5 @@
+// Render das peças da tela do CRM, sem jsdom (renderToString). As tasks
+// seguintes acrescentam blocos a este arquivo.
 import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
@@ -91,5 +93,18 @@ describe('peças do CRM', () => {
   it('sexta cor das perdas: o azul claro do handoff, mais claro no escuro', () => {
     expect(LOSS_PALETTE).toHaveLength(6);
     expect(LOSS_PALETTE[5]).toBe('bg-brand-300 dark:bg-brand-200');
+  });
+
+  it('barra do CRM sem pessoa nem funil: botão "Filtros do CRM", sem o ponto de filtro ativo', () => {
+    const noop = () => {};
+    const html = render(createElement(CrmToolbar, {
+      monthKey: '2026-08', monthOptions: [{ key: '2026-08', label: 'Agosto 2026' }], onMonth: noop,
+      canPrev: true, canNext: true, onPrev: noop, onNext: noop,
+      compareOn: false, onCompareOn: noop, compareKey: '2026-07', compareOptions: [], onCompare: noop,
+      person: 'all', people: [], onPerson: noop, funnel: 'all', funnels: [], onFunnel: noop, note: 'Mês fechado'
+    }));
+    expect(html).toContain('aria-label="Filtros do CRM"');
+    expect(html).not.toContain('há filtro ativo');
+    expect(html).not.toContain('size-1.5 rounded-full bg-brand-600');
   });
 });

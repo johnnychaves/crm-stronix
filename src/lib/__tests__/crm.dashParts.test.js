@@ -92,4 +92,46 @@ describe('DashHighlights', () => {
   it('sem item, nada', () => {
     expect(render(createElement(DashHighlights, { items: [] }))).toBe('');
   });
+
+  it('destaque do CRM pior: veredito e cor de pior', () => {
+    const html = render(createElement(DashHighlights, {
+      fit: true,
+      items: [{ text: 'Indicação converteu 20%, a melhor taxa entre os canais', delta: '−8 p.p.', tone: 'bad', verdict: 'pior que agosto', rank: 0 }]
+    }));
+    expect(html).toContain('pior que agosto');
+    expect(html).toContain('bg-rose-50');
+    expect(html).toContain('text-rose-700');
+    expect(html).toContain('lucide-arrow-down');
+    expect(html).not.toContain('bg-emerald-50');
+    expect(html).not.toContain('piorou');
+  });
+
+  it('tom desconhecido cai no neutro', () => {
+    const html = render(createElement(DashHighlights, {
+      fit: true,
+      items: [{ text: 'Canal sem mudança', delta: '= 0 p.p.', tone: 'estranho', verdict: 'igual a agosto', rank: 1 }]
+    }));
+    expect(html).toContain('bg-slate-400');
+    expect(html).toContain('text-muted-foreground');
+    expect(html).toContain('lucide-minus');
+    expect(html).not.toContain('bg-rose-50');
+    expect(html).not.toContain('bg-emerald-50');
+  });
+
+  it('carrossel do celular pelo rank, o pior primeiro; a grade larga na ordem recebida', () => {
+    const items = [
+      { text: 'Destaque bom', delta: '▲ 5%', tone: 'good', verdict: 'melhor que agosto', rank: 2 },
+      { text: 'Destaque ruim', delta: '▼ 5%', tone: 'bad', verdict: 'pior que agosto', rank: 0 },
+      { text: 'Destaque igual', delta: '= 0%', tone: 'flat', verdict: 'igual a agosto', rank: 1 }
+    ];
+    const html = render(createElement(DashHighlights, { fit: true, items }));
+    const cut = html.indexOf('snap-x');
+    const at = (part) => ['Destaque bom', 'Destaque ruim', 'Destaque igual'].map((t) => part.indexOf(t));
+    const [goodWide, badWide, flatWide] = at(html.slice(0, cut));
+    expect(goodWide).toBeLessThan(badWide);
+    expect(badWide).toBeLessThan(flatWide);
+    const [goodPhone, badPhone, flatPhone] = at(html.slice(cut));
+    expect(badPhone).toBeLessThan(flatPhone);
+    expect(flatPhone).toBeLessThan(goodPhone);
+  });
 });
