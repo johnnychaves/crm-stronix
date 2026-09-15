@@ -126,7 +126,20 @@ describe('tela do CRM (render)', () => {
     const failedCtx = { ...ctx, months: { ...ctx.months, '2026-08': { failed: true } } };
     const cur = metricsOf(failedCtx, { monthKey: '2026-08' });
     const html = render(createElement(CrmDashboard, { ...props('2026-08', 'agosto'), cur, team: { rows: [], others: null } }));
-    expect(html).toContain('>Origem</h3>');
+    expect(html).toContain('Os números de agosto não carregaram');
+    expect(html).toContain('Origem, funil, pessoas e velocidade voltam quando o mês carregar.');
     expect(html).toContain('A carteira agora só existe no mês em andamento');
+    expect(html).not.toContain('>Origem</h3>');
+    expect(html).not.toContain('Nenhum lead cadastrado neste mês.');
+  });
+
+  it('mês sem fonte ainda: cartão de carregando no lugar das quatro seções', () => {
+    const html = render(createElement(CrmDashboard, props('2026-07', 'julho')));
+    expect(html).toContain('Carregando os números de julho');
+    expect(html).toContain('Os cards aparecem assim que os dados chegarem.');
+    expect(html).not.toContain('>Origem</h3>');
+    expect(html).not.toContain('>Funil</h3>');
+    expect(html).not.toContain('>Pessoas</h3>');
+    expect(html).not.toContain('>Velocidade</h3>');
   });
 });
