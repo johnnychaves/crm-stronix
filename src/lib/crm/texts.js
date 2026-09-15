@@ -99,7 +99,7 @@ export function summaryItems({ cur, cmp, series, compareOn, shownName }) {
     {
       key: 'leads', label: 'Leads novos', goodUp: true, tone: 'brand', showNone: true, help: HELP.leads,
       value: num(cur.leads),
-      sub: top ? `${top.name} lidera com ${fmtNum(top.leads)}` : 'nenhum lead no período',
+      sub: cur.leads == null ? waiting : (top ? `${top.name} lidera com ${fmtNum(top.leads)}` : 'nenhum lead no período'),
       delta: d(cur.leads, cmp?.leads, 'pct'), emptySeries: empty, ...sparkOf(series.leads, fmtNum)
     },
     {

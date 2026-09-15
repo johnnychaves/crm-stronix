@@ -83,9 +83,19 @@ describe('faixa de resumo', () => {
     const cur = metricsOf(failedCtx, { monthKey: '2026-08' });
     const items = summaryItems({ cur, cmp: null, series: noSeries, compareOn: false, shownName: 'agosto' });
     expect(items.map((i) => i.value)).toEqual(['—', '—', '—', '—', '—']);
+    expect(items[0].sub).toBe('não carregou');
     expect(items[1].sub).toBe('não carregou');
     expect(items[3].sub).toBe('não carregou');
     expect(items[4].sub).toBe('não carregou');
+  });
+
+  it('mês sem fonte ainda: "carregando" nas cinco sub-linhas; mês carregado sem lead diz que não houve lead', () => {
+    const cur = metricsOf(ctx, { monthKey: '2026-07' });
+    const items = summaryItems({ cur, cmp: null, series: noSeries, compareOn: false, shownName: 'julho' });
+    expect(items.map((i) => i.value)).toEqual(['—', '—', '—', '—', '—']);
+    expect(items.map((i) => i.sub)).toEqual(['carregando', 'carregando', 'carregando', 'carregando', 'carregando']);
+    const empty = summaryItems({ cur: metricsOf(ctx, { monthKey: '2026-08' }), cmp: null, series: noSeries, compareOn: false, shownName: 'agosto' });
+    expect(empty[0]).toMatchObject({ value: '0', sub: 'nenhum lead no período' });
   });
 });
 
