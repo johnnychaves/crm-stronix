@@ -145,11 +145,15 @@ const hasOpenAppointment = (lead) =>
 // corte, um agendamento em aberto no próprio lead, que cobre a aula marcada
 // para depois dos meses carregados. Com corte (safra acompanhada até um
 // instante antes de agora) o espelho do lead fica de fora, porque ele é o
-// retrato de hoje. Compareceu: tem registro attended com data até asOf. Quem
-// compareceu também agendou. O status da visita é o efetivo, com o espelho do
-// lead da safra e o desfecho da linha do tempo (effectiveStatus). O registro
-// marcado na primeira matrícula do lead ou depois dela fica fora, como em
-// appointmentsOf: a aula de quem já matriculou (upgrade) não é funil de lead.
+// retrato de hoje. Compareceu: tem registro attended com data até asOf e antes
+// da primeira matrícula. Quem compareceu também agendou. O status da visita é
+// o efetivo, com o espelho do lead da safra e o desfecho da linha do tempo
+// (effectiveStatus). O registro marcado na primeira matrícula do lead ou
+// depois dela fica fora, como em appointmentsOf: a aula de quem já matriculou
+// (upgrade) não é funil de lead. O registro de visita reaproveitado depois da
+// matrícula (upsertScheduledAppointment só troca a data) guarda o createdAt de
+// quando a pessoa era lead e segue valendo no agendou, mas a data dele já é a
+// da visita nova: por isso o compareceu também pede a data antes da matrícula.
 export function cohortMilestones(cohort, { asOf, cut, recordsByLead, visitOutcomes = null }) {
   let sched = 0;
   let came = 0;
@@ -158,7 +162,8 @@ export function cohortMilestones(cohort, { asOf, cut, recordsByLead, visitOutcom
     const recs = (recordsByLead.get(l.id) || [])
       .filter((r) => !(enrolledAt && bookedAt(r) && bookedAt(r) >= enrolledAt))
       .map((r) => ({ r, status: effectiveStatus(r, visitOutcomes, l) }));
-    const attended = recs.some(({ r, status }) => status === AULA_STATUS.ATTENDED && r.scheduledFor && r.scheduledFor <= asOf);
+    const attended = recs.some(({ r, status }) => status === AULA_STATUS.ATTENDED && r.scheduledFor
+      && r.scheduledFor <= asOf && !(enrolledAt && r.scheduledFor >= enrolledAt));
     const booked = attended
       || recs.some(({ r, status }) => status !== AULA_STATUS.CANCELLED && bookedAt(r) && bookedAt(r) <= asOf)
       || (!cut && hasOpenAppointment(l));

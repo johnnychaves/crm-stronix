@@ -109,6 +109,21 @@ describe('marcos da safra', () => {
     ];
     expect(cohortMilestones(leads, { asOf, cut: true, recordsByLead: recs })).toEqual({ sched: 1, came: 1 });
   });
+
+  it('registro de visita reaproveitado depois da matrícula: agendou pela visita de antes, não compareceu pela de depois', () => {
+    // Cadastrado em 18/08, faltou à visita de 20/08 e matriculou em 05/09. O
+    // mesmo registro (upsertScheduledAppointment só troca a data) virou a
+    // visita de 20/09, e nessa ele veio.
+    const rec = R('rv', { leadId: 'w', type: 'visita', createdAt: D(8, 18, 11), scheduledFor: D(9, 20, 18) });
+    const w = {
+      id: 'w', createdAt: D(8, 18), convertedAt: D(9, 5), clienteSince: D(9, 5),
+      appointmentScheduledFor: D(9, 20, 18), appointmentOutcome: 'attended'
+    };
+    const mark = (id, outcome, at) => ({ id, leadId: 'w', type: 'daily_goal_done', dailyGoalCategory: 'visita_hoje', appointmentOutcome: outcome, createdAt: at });
+    const marks = visitOutcomesByLead([mark('g1', 'no_show', D(8, 20, 19)), mark('g2', 'attended', D(9, 20, 19))]);
+    expect(cohortMilestones([w], { asOf: D(9, 25), cut: false, recordsByLead: recordsByLeadOf([rec]), visitOutcomes: marks }))
+      .toEqual({ sched: 1, came: 0 });
+  });
 });
 
 describe('desfecho da visita pela linha do tempo', () => {
