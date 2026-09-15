@@ -1,0 +1,106 @@
+import { describe, it, expect } from 'vitest';
+import { newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf, convertedAtOf } from '../crm/cohort.js';
+
+const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
+const TS = (date) => ({ toDate: () => date });
+const SEP = { start: D(9, 1, 0), end: D(10, 1, 0) };
+const all = () => true;
+
+describe('leads novos', () => {
+  it('cadastro no mês, sem importado, sem data ausente e sem repetir', () => {
+    const leads = [
+      { id: 'a', createdAt: D(9, 2) },
+      { id: 'a', createdAt: D(9, 2) },
+      { id: 'b', createdAt: D(8, 31) },
+      { id: 'c', createdAt: D(9, 3), createdAtMissing: true },
+      { id: 'd', createdAt: D(9, 4), importBatchId: 'lote', source: 'Importação NextFit' },
+      { id: 'e', createdAt: D(9, 5), importBatchId: 'lote', source: 'Instagram' }
+    ];
+    expect(newLeadsOf(leads, { ...SEP, inScope: all }).map((l) => l.id)).toEqual(['a', 'e']);
+  });
+
+  it('respeita o recorte', () => {
+    const leads = [{ id: 'a', createdAt: D(9, 2), consultantId: 'ana' }, { id: 'b', createdAt: D(9, 2), consultantId: 'diego' }];
+    expect(newLeadsOf(leads, { ...SEP, inScope: (l) => l.consultantId === 'ana' }).map((l) => l.id)).toEqual(['a']);
+  });
+});
+
+describe('matrículas do mês', () => {
+  it('convertedAt no mês (Timestamp ou Date), sem importado e sem carimbo ausente', () => {
+    const leads = [
+      { id: 'a', convertedAt: TS(D(9, 3)), createdAt: D(8, 1) },
+      { id: 'b', convertedAt: D(9, 30, 23), createdAt: D(9, 1) },
+      { id: 'c', convertedAt: D(10, 1, 0), createdAt: D(9, 1) },
+      { id: 'd', convertedAt: D(9, 5), createdAt: D(9, 1), importSource: 'planilha', source: 'Importação' },
+      { id: 'e', status: 'Venda', createdAt: D(9, 2) }
+    ];
+    expect(enrollmentsOf(leads, { ...SEP, inScope: all }).map((l) => l.id)).toEqual(['a', 'b']);
+    expect(convertedAtOf(leads[0])).toEqual(D(9, 3));
+  });
+});
+
+describe('perdas do mês', () => {
+  it('quem está em Perda hoje, com lostAt no mês, por motivo', () => {
+    const leads = [
+      { id: 'a', status: 'Perda', lostAt: TS(D(9, 2)), lossReason: 'Preço' },
+      { id: 'b', status: 'Perda', lostAt: D(9, 3), lossReason: 'Preço' },
+      { id: 'c', status: 'Perda', lostAt: D(9, 4), lossReason: '' },
+      { id: 'd', status: 'Contato feito', lostAt: D(9, 4), lossReason: 'Preço' },
+      { id: 'e', status: 'Perda', lostAt: D(8, 30), lossReason: 'Preço' },
+      { id: 'f', status: 'Perda', isConverted: true, lostAt: D(9, 6), lossReason: 'Preço' }
+    ];
+    expect(lossesOf(leads, { ...SEP, inScope: all })).toEqual({
+      total: 3,
+      reasons: [{ name: 'Preço', count: 2 }, { name: 'Sem motivo', count: 1 }]
+    });
+  });
+});
+
+describe('desfecho da safra', () => {
+  it('matriculou até o instante, perdeu até o instante, ou segue em jogo', () => {
+    const asOf = D(9, 14);
+    expect(outcomeAt({ convertedAt: D(9, 10) }, asOf)).toBe('enrolled');
+    expect(outcomeAt({ convertedAt: D(9, 20) }, asOf)).toBe('open');
+    expect(outcomeAt({ status: 'Perda', lostAt: TS(D(9, 5)) }, asOf)).toBe('lost');
+    expect(outcomeAt({ status: 'Perda', lostAt: D(9, 20) }, asOf)).toBe('open');
+    expect(outcomeAt({ status: 'Contato feito' }, asOf)).toBe('open');
+  });
+});
+
+describe('canais', () => {
+  it('origem do cadastro com a matrícula até o instante, do maior volume para o menor', () => {
+    const asOf = D(9, 14);
+    const cohort = [
+      { id: 'a', source: 'Instagram', convertedAt: D(9, 5) },
+      { id: 'b', source: 'Instagram' },
+      { id: 'c', source: 'Indicação', convertedAt: D(9, 6) },
+      { id: 'd', source: '' },
+      { id: 'e', source: 'Instagram', convertedAt: D(9, 20) }
+    ];
+    expect(channelsOf(cohort, asOf)).toEqual([
+      { name: 'Instagram', leads: 3, enrolled: 1 },
+      { name: 'Indicação', leads: 1, enrolled: 1 },
+      { name: 'Sem origem', leads: 1, enrolled: 0 }
+    ]);
+  });
+});
+
+describe('dias até a matrícula', () => {
+  it('dias inteiros do cadastro à matrícula, nas seis faixas, com a mediana', () => {
+    const list = [
+      { createdAt: D(9, 1, 10), convertedAt: D(9, 1, 18) },
+      { createdAt: D(9, 1, 10), convertedAt: D(9, 3, 9) },
+      { createdAt: D(9, 1, 10), convertedAt: D(9, 6, 10) },
+      { createdAt: D(8, 1, 10), convertedAt: D(9, 12, 10) },
+      { createdAt: D(9, 1, 10), convertedAt: D(9, 2, 10), createdAtMissing: true }
+    ];
+    const r = daysToEnrollOf(list);
+    expect(r.total).toBe(4);
+    expect(r.buckets).toEqual([2, 0, 1, 0, 0, 1]);
+    expect(r.median).toBe(3);
+  });
+
+  it('sem matrícula: nada nas faixas e sem mediana', () => {
+    expect(daysToEnrollOf([])).toEqual({ total: 0, median: null, buckets: [0, 0, 0, 0, 0, 0] });
+  });
+});
