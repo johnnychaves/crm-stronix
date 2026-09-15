@@ -29,6 +29,20 @@ describe('agendamentos do mês', () => {
     expect(appointmentsOf(recs, { ...WIN, leadOf, inScope: (l) => l.consultantId === 'diego' }))
       .toMatchObject({ total: 1, missed: 1, rate: 0 });
   });
+
+  it('agendamento marcado depois de a pessoa virar cliente não é funil de lead (aula de upgrade)', () => {
+    const people = new Map([
+      ['k', lead('k', { clienteSince: { toDate: () => D(8, 20) } })],
+      ['n', lead('n', { clienteSince: D(9, 10) })]
+    ]);
+    const of = (id) => people.get(id) || { id, unknown: true };
+    const list = [
+      R('u1', { leadId: 'k', status: 'attended', createdAt: D(9, 1), scheduledFor: D(9, 3) }),
+      R('u2', { leadId: 'n', status: 'attended', createdAt: D(8, 30), scheduledFor: D(9, 2) })
+    ];
+    expect(appointmentsOf(list, { ...WIN, leadOf: of, inScope: all }))
+      .toEqual({ total: 1, came: 1, missed: 0, pending: 0, decided: 1, rate: 100 });
+  });
 });
 
 describe('marcos da safra', () => {

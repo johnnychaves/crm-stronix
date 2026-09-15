@@ -5,12 +5,15 @@
 import { AULA_STATUS, isAulaRecord } from '../aulas.js';
 import { getSafeDateOrNull } from '../dates.js';
 import { pct, rankCounts } from './stats.js';
+import { clienteSinceOf } from './cohort.js';
 
 const inWindow = (d, start, end) => d instanceof Date && d >= start && d < end;
 
 // Agendamentos do mês (spec §4, faixa): scheduledFor em [start, end), sem os
 // cancelados. Pessoa e funil saem do lead do registro. Um reagendamento move o
-// registro, então ele não conta duas vezes.
+// registro, então ele não conta duas vezes. O agendamento marcado depois de a
+// pessoa virar cliente (a aula de upgrade, por exemplo) não é funil de lead e
+// fica fora.
 export function appointmentsOf(records, { start, end, leadOf, inScope }) {
   let came = 0;
   let missed = 0;
@@ -20,7 +23,10 @@ export function appointmentsOf(records, { start, end, leadOf, inScope }) {
     if (!r?.id || seen.has(r.id)) return;
     seen.add(r.id);
     if (r.status === AULA_STATUS.CANCELLED || !inWindow(r.scheduledFor, start, end)) return;
-    if (!inScope(leadOf(r.leadId))) return;
+    const lead = leadOf(r.leadId);
+    if (!inScope(lead)) return;
+    const since = clienteSinceOf(lead);
+    if (since && bookedAt(r) >= since) return;
     if (r.status === AULA_STATUS.ATTENDED) came += 1;
     else if (r.status === AULA_STATUS.NO_SHOW) missed += 1;
     else pending += 1;

@@ -75,6 +75,19 @@ describe('passagem entre etapas', () => {
     expect(row(T(15, 12))).toMatchObject({ entered: 1, advanced: 1 });
     expect(row(T(3, 12))).toMatchObject({ entered: 1, advanced: 0 });
   });
+
+  it('o avanço por matrícula olha a primeira matrícula: o retorno de ex-cliente não conta', () => {
+    const people = new Map([
+      ['volta', { id: 'volta', createdAt: T(1, 9), convertedAt: T(12), clienteSince: new Date(2026, 2, 5) }],
+      ['nova', { id: 'nova', createdAt: T(1, 9), clienteSince: T(12) }]
+    ]);
+    const rowOf = (id) => stagePassageOf({
+      moves: movesByLead([M(`${id}1`, id, 'Novo lead', 'Negociação', 3)]),
+      funnelId: 'ven', defaultFunnelId: 'ven', stages: STAGES, ...MONTH, ownerOk: all, leadOf: (x) => people.get(x)
+    }).rows.find((x) => x.name === 'Negociação');
+    expect(rowOf('volta')).toMatchObject({ entered: 1, advanced: 0 });
+    expect(rowOf('nova')).toMatchObject({ entered: 1, advanced: 1 });
+  });
 });
 
 describe('etapa da perda', () => {

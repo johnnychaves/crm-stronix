@@ -15,6 +15,17 @@ const inWindow = (d, start, end) => d instanceof Date && d >= start && d < end;
 export const convertedAtOf = (l) => getSafeDateOrNull(l?.convertedAt);
 export const lostAtOf = (l) => getSafeDateOrNull(l?.lostAt);
 
+// Primeira matrícula. O clienteSince é carimbado uma vez só, na primeira
+// matrícula (contractsWrites.js), e o convertedAt é regravado a cada matrícula
+// nova, inclusive a de quem volta. A mais antiga das duas é a primeira conversão.
+export const clienteSinceOf = (l) => getSafeDateOrNull(l?.clienteSince);
+export function firstEnrolledAtOf(l) {
+  const conv = convertedAtOf(l);
+  const since = clienteSinceOf(l);
+  if (conv && since) return conv < since ? conv : since;
+  return conv || since || null;
+}
+
 // Tira repetido por id, mantendo o primeiro.
 function unique(list) {
   const seen = new Set();
@@ -31,9 +42,14 @@ function unique(list) {
 export const newLeadsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) =>
   !l.createdAtMissing && inWindow(l.createdAt, start, end) && !isImportCreatedLead(l) && inScope(l));
 
-// Matrículas: convertedAt em [start, end), sem os importados.
-export const enrollmentsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) =>
-  inWindow(convertedAtOf(l), start, end) && !isImportCreatedLead(l) && inScope(l));
+// Matrículas: convertedAt em [start, end), sem os importados e sem quem já era
+// cliente antes do mês. O retorno de ex-cliente regrava o convertedAt, mas não
+// é matrícula nova: é o mesmo corte do "entraram" do Operacional, que ignora
+// quem tem contrato anterior (salesInWindow).
+export const enrollmentsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) => {
+  const since = clienteSinceOf(l);
+  return inWindow(convertedAtOf(l), start, end) && !(since && since < start) && !isImportCreatedLead(l) && inScope(l);
+});
 
 // Perdas: quem está em Perda hoje e não é cliente, com lostAt em [start, end),
 // por motivo. Perda sem motivo entra em "Sem motivo".
@@ -43,9 +59,10 @@ export function lossesOf(leads, { start, end, inScope }) {
   return { total: list.length, reasons: rankCounts(countBy(list, (l) => String(l.lossReason || '').trim() || 'Sem motivo')) };
 }
 
-// Desfecho de um lead da safra no instante asOf.
+// Desfecho de um lead da safra no instante asOf. Vale a primeira matrícula: o
+// retorno de quem já foi cliente não empurra a conversão para depois.
 export function outcomeAt(lead, asOf) {
-  const conv = convertedAtOf(lead);
+  const conv = firstEnrolledAtOf(lead);
   if (conv && conv <= asOf) return 'enrolled';
   const lost = lostAtOf(lead);
   if (deriveLeadBucket(lead) === 'perda' && lost && lost <= asOf) return 'lost';

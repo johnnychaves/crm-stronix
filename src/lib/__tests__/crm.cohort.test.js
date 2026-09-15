@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf, convertedAtOf } from '../crm/cohort.js';
+import {
+  newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf, convertedAtOf, clienteSinceOf, firstEnrolledAtOf
+} from '../crm/cohort.js';
 
 const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
 const TS = (date) => ({ toDate: () => date });
@@ -37,6 +39,23 @@ describe('matrículas do mês', () => {
     expect(enrollmentsOf(leads, { ...SEP, inScope: all }).map((l) => l.id)).toEqual(['a', 'b']);
     expect(convertedAtOf(leads[0])).toEqual(D(9, 3));
   });
+
+  it('o retorno de ex-cliente regrava convertedAt mas não é matrícula nova; a primeira matrícula no mês entra', () => {
+    const leads = [
+      { id: 'volta', convertedAt: D(9, 10), clienteSince: D(3, 5), createdAt: D(3, 1) },
+      { id: 'nova', convertedAt: D(9, 12), clienteSince: TS(D(9, 12)), createdAt: D(8, 20) },
+      { id: 'legado', convertedAt: D(9, 14), createdAt: D(9, 1) }
+    ];
+    expect(enrollmentsOf(leads, { ...SEP, inScope: all }).map((l) => l.id)).toEqual(['nova', 'legado']);
+  });
+
+  it('primeira matrícula: a mais antiga entre convertedAt e clienteSince', () => {
+    expect(firstEnrolledAtOf({ convertedAt: D(9, 10), clienteSince: TS(D(3, 5)) })).toEqual(D(3, 5));
+    expect(firstEnrolledAtOf({ convertedAt: TS(D(9, 10)) })).toEqual(D(9, 10));
+    expect(firstEnrolledAtOf({ clienteSince: D(3, 5) })).toEqual(D(3, 5));
+    expect(firstEnrolledAtOf({})).toBeNull();
+    expect(clienteSinceOf({ clienteSince: TS(D(3, 5)) })).toEqual(D(3, 5));
+  });
 });
 
 describe('perdas do mês', () => {
@@ -64,6 +83,11 @@ describe('desfecho da safra', () => {
     expect(outcomeAt({ status: 'Perda', lostAt: TS(D(9, 5)) }, asOf)).toBe('lost');
     expect(outcomeAt({ status: 'Perda', lostAt: D(9, 20) }, asOf)).toBe('open');
     expect(outcomeAt({ status: 'Contato feito' }, asOf)).toBe('open');
+  });
+
+  it('quem voltou depois conta pela primeira matrícula, não pelo retorno', () => {
+    expect(outcomeAt({ convertedAt: D(9, 10), clienteSince: D(3, 5) }, D(3, 20))).toBe('enrolled');
+    expect(outcomeAt({ convertedAt: D(9, 10), clienteSince: D(3, 25) }, D(3, 20))).toBe('open');
   });
 });
 

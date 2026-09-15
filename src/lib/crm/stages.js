@@ -9,7 +9,7 @@ import { deriveLeadBucket } from '../leadDerived.js';
 import { getSafeDateOrNull } from '../dates.js';
 import { isItemInFunnel } from '../funnels.js';
 import { median, rankCounts } from './stats.js';
-import { convertedAtOf } from './cohort.js';
+import { firstEnrolledAtOf } from './cohort.js';
 
 // A troca anterior ao registro (só o texto "Movido para a etapa [X]") não tem
 // toStatus e fica de fora.
@@ -60,7 +60,7 @@ export function stagePassageOf({ moves, funnelId, defaultFunnelId, stages, start
         const next = list[idx + 1];
         const byMove = Boolean(next) && next.createdAt <= asOf && (isConvertedStatusName(next.toStatus)
           || (sameFunnel(next.funnelId) && (orderOf.get(next.toStatus) ?? -1) > orderOf.get(m.toStatus)));
-        const conv = convertedAtOf(lead);
+        const conv = firstEnrolledAtOf(lead);
         const byEnroll = Boolean(conv) && conv > m.createdAt && conv <= asOf;
         if (byMove || byEnroll) entry.advanced += 1;
       }
