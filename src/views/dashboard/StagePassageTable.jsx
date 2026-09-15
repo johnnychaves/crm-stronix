@@ -7,7 +7,7 @@
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { pct } from '../../lib/crm/stats.js';
-import { fmtDuration } from '../../lib/crm/format.js';
+import { fmtDuration, plural } from '../../lib/crm/format.js';
 import { ChartMark } from './ChartMark.jsx';
 import { CrmCard, DashedNote, ScopeTag, Swatch } from './CrmParts.jsx';
 
@@ -19,8 +19,9 @@ const STAY = 'bg-slate-400/25';
 const pctLabel = (v) => (v == null ? '—' : `${v}%`);
 
 function Row({ r, maxEntered }) {
-  // A perda conta à parte das entradas do mês (quem entrou antes e se perdeu
-  // agora também conta), então a barra limita cada trecho ao que sobra.
+  // Desde a Decisão 16 do plano, "perderam" conta só as entradas do mês que
+  // se perderam a partir da etapa (quem entrou antes não soma aqui), então
+  // lost já cabe dentro de entered; os Math.min abaixo são só uma proteção.
   const adv = r.entered ? Math.min(r.advanced, r.entered) : 0;
   const lost = r.entered ? Math.min(r.lost, r.entered - adv) : 0;
   const stay = Math.max(0, r.entered - adv - lost);
@@ -29,13 +30,14 @@ function Row({ r, maxEntered }) {
   const lostPct = pct(r.lost, r.entered);
   const staying = Math.max(0, r.entered - r.advanced - r.lost);
   const lostHigh = r.entered > 0 && r.lost / r.entered >= 0.2;
-  const tip = `${r.name}: ${fmtNum(r.entered)} entraram, ${fmtNum(r.advanced)} avançaram, ${fmtNum(r.lost)} se perderam, ${fmtNum(staying)} seguem na etapa. Mediana de ${fmtDuration(r.medianMin)} na etapa.`;
+  const tipBase = `${r.name}: ${plural(r.entered, 'entrou', 'entraram')}, ${plural(r.advanced, 'avançou', 'avançaram')}, ${plural(r.lost, 'se perdeu', 'se perderam')}, ${plural(staying, 'segue', 'seguem')} na etapa.`;
+  const tip = r.medianMin == null ? tipBase : `${tipBase} Mediana de ${fmtDuration(r.medianMin)} na etapa.`;
   return (
     <>
       <div className={cn(GRID, 'hidden h-10 border-t md:grid', RULE)}>
         <div className="min-w-0">
           <div className="truncate text-[12.5px] font-semibold">{r.name}</div>
-          <div className="num text-[10.5px] text-muted-foreground">{`${fmtNum(r.entered)} entraram`}</div>
+          <div className="num text-[10.5px] text-muted-foreground">{plural(r.entered, 'entrou', 'entraram')}</div>
         </div>
         <ChartMark
           tip={tip}
@@ -53,7 +55,7 @@ function Row({ r, maxEntered }) {
       <div className={cn('border-t py-2.5 md:hidden', RULE)}>
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate text-[12.5px] font-semibold">{r.name}</span>
-          <span className="num flex-none text-[11px] text-muted-foreground">{`${fmtNum(r.entered)} entraram`}</span>
+          <span className="num flex-none text-[11px] text-muted-foreground">{plural(r.entered, 'entrou', 'entraram')}</span>
         </div>
         <div className="num mt-0.5 text-[11.5px] text-muted-foreground">
           {`avançaram ${pctLabel(advPct)} · perderam ${pctLabel(lostPct)} · mediana ${fmtDuration(r.medianMin)}`}
@@ -67,7 +69,6 @@ export function StagePassageTable({ passage, needFunnel, hasBase, funnelName, mo
   // since: no primeiro mês da gravação, o dia em que ela começou (a base do mês é parcial).
   const hint = needFunnel ? 'escolha um funil' : `funil ${funnelName} · movimentos gravados ${since ? `desde ${since}` : `em ${monthName}`}`;
   const rows = passage?.rows || [];
-  const ok = !needFunnel && hasBase && Boolean(passage);
   const maxEntered = Math.max(1, ...rows.map((r) => r.entered));
   let empty = null;
   if (needFunnel) {
@@ -84,7 +85,10 @@ export function StagePassageTable({ passage, needFunnel, hasBase, funnelName, mo
         text="A troca de etapa passou a ser gravada em setembro de 2026. Antes disso não existe base para dizer quantos avançaram ou se perderam em cada etapa, e inventar o número seria pior que não mostrar."
       />
     );
-  } else if (!ok || rows.length === 0) {
+  } else if (!passage || rows.every((r) => r.entered === 0)) {
+    // Mês real sem nenhuma troca de etapa gravada mostra a nota vazia, não
+    // uma tabela de linhas zeradas (que hoje só aparecia quando passage vinha
+    // null, por falha).
     empty = <DashedNote title="Nenhuma troca de etapa gravada neste mês." />;
   }
   return (
@@ -102,9 +106,12 @@ export function StagePassageTable({ passage, needFunnel, hasBase, funnelName, mo
           </div>
           {rows.map((r) => <Row key={r.name} r={r} maxEntered={maxEntered} />)}
           <div className="mt-3 flex flex-wrap items-center gap-x-3.5 gap-y-1.5">
-            <Swatch className="bg-brand-600">avançou</Swatch>
-            <Swatch className={LOST}>perdeu</Swatch>
-            <Swatch className={STAY}>segue na etapa</Swatch>
+            {/* A legenda de cor só faz sentido onde a barra existe (md e acima). */}
+            <div className="hidden flex-wrap items-center gap-x-3.5 gap-y-1.5 md:flex">
+              <Swatch className="bg-brand-600">avançou</Swatch>
+              <Swatch className={LOST}>perdeu</Swatch>
+              <Swatch className={STAY}>segue na etapa</Swatch>
+            </div>
             {passage.worst && (
               <span className="num text-[11px] text-muted-foreground">
                 {`Maior vazamento: ${passage.worst.name}, ${fmtNum(passage.worst.lost)} ${passage.worst.lost === 1 ? 'perdido' : 'perdidos'} de ${fmtNum(passage.worst.entered)}.`}
