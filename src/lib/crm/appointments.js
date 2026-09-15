@@ -63,19 +63,36 @@ function mirrorStatusOf(r, lead) {
   return at && at.getTime() === r.scheduledFor.getTime() ? outcomeToAulaStatus(lead.appointmentOutcome) : null;
 }
 
+// Desfecho desfeito: o agendamento do lead (appointmentScheduledFor) é o
+// mesmo instante do registro e o desfecho do lead está vazio. O único caminho
+// que limpa o desfecho e mantém o instante é o desfazer
+// (clearAppointmentOutcome, em appointmentOutcome.js), e ele não apaga a
+// marca do dia na linha do tempo: a visita volta a esperar o desfecho. O
+// agendamento novo também nasce sem desfecho, com o lead e o registro já na
+// data nova, e o status do registro vale do mesmo jeito. "Reagendado" segue
+// pela linha do tempo.
+const EMPTY_OUTCOMES = new Set([undefined, null, '']);
+function undoneOnLead(r, lead) {
+  if (!lead || !EMPTY_OUTCOMES.has(lead.appointmentOutcome)) return false;
+  const at = getSafeDateOrNull(lead.appointmentScheduledFor);
+  return Boolean(at) && at.getTime() === r.scheduledFor.getTime();
+}
+
 // Status que vale nas contas. A visita que segue "agendada" no registro
 // assume o desfecho do espelho do lead do mesmo agendamento (mirrorStatusOf).
-// Sem ele, o último desfecho do lead registrado na linha do tempo no dia
-// marcado ou no seguinte (do início do dia marcado até dois dias depois, em
-// horário local), para a correção ganhar: "Veio" no dia, corrigido para
-// "Faltou" no dia seguinte, conta como falta. Sem desfecho nessa janela, fica
-// como está. O cancelamento registrado em outro dia não aparece e o registro
-// segue "agendada": limite conhecido até o app gravar o desfecho no próprio
-// registro.
+// Com o espelho do mesmo agendamento sem desfecho, fica como está
+// (undoneOnLead). Sem nenhum dos dois, o último desfecho do lead registrado na
+// linha do tempo no dia marcado ou no seguinte (do início do dia marcado até
+// dois dias depois, em horário local), para a correção ganhar: "Veio" no dia,
+// corrigido para "Faltou" no dia seguinte, conta como falta. Sem desfecho
+// nessa janela, fica como está. O cancelamento registrado em outro dia não
+// aparece e o registro segue "agendada": limite conhecido até o app gravar o
+// desfecho no próprio registro.
 export function effectiveStatus(r, visitOutcomes, lead = null) {
   if (isAulaRecord(r) || r.status !== AULA_STATUS.AGENDADA || !(r.scheduledFor instanceof Date)) return r.status;
   const mirror = mirrorStatusOf(r, lead);
   if (mirror) return mirror;
+  if (undoneOnLead(r, lead)) return r.status;
   if (!visitOutcomes) return r.status;
   const d = r.scheduledFor;
   const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();

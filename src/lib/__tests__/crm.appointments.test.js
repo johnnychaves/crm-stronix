@@ -212,12 +212,23 @@ describe('desfecho corrigido no espelho do lead', () => {
       .toBe('no_show');
   });
 
-  it('sem veio ou não veio no espelho, decide a linha do tempo; o cancelamento limpa a data e segue por ela', () => {
-    expect(effectiveStatus(V('1'), marks, mirror({ appointmentOutcome: null }))).toBe('no_show');
+  it('reagendado no espelho, ou espelho sem desfecho de outro agendamento, decide a linha do tempo; o cancelamento limpa a data e segue por ela', () => {
     expect(effectiveStatus(V('1'), marks, mirror({ appointmentOutcome: 'rescheduled' }))).toBe('no_show');
+    expect(effectiveStatus(V('1'), marks, mirror({ appointmentScheduledFor: D(9, 10, 18), appointmentOutcome: null }))).toBe('no_show');
+    expect(effectiveStatus(V('1'), marks, mirror({ appointmentScheduledFor: null, appointmentOutcome: null }))).toBe('no_show');
     const cancelled = visitOutcomesByLead([G('g3', 'v1', 'cancelled', D(9, 3, 8))]);
     expect(effectiveStatus(V('1'), cancelled, mirror({ appointmentScheduledFor: null, appointmentOutcome: 'cancelled' })))
       .toBe('cancelled');
+  });
+
+  it('desfecho desfeito: o espelho do mesmo agendamento sem desfecho deixa a visita esperando, mesmo com a marca antiga do dia', () => {
+    // Desfazer (clearAppointmentOutcome) limpa só o lead: a marca "não veio" do dia continua na linha do tempo.
+    ['', null, undefined].forEach((outcome) =>
+      expect(effectiveStatus(V('1'), marks, mirror({ appointmentOutcome: outcome }))).toBe('agendada'));
+    const undone = mirror({ appointmentOutcome: null });
+    const of = (id) => (id === 'v1' ? undone : { id, unknown: true });
+    expect(appointmentsOf([V('1')], { ...WIN, leadOf: of, inScope: all, visitOutcomes: marks }))
+      .toEqual({ total: 1, came: 0, missed: 0, pending: 1, decided: 0, rate: null });
   });
 
   it('aula não usa o espelho: o desfecho dela já vai para o registro', () => {
