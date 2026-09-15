@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { metricsOf, crmDelta, bestChannelOf, buildCrmHighlights, seriesOf, OTHERS_ID } from '../crm/metrics.js';
+import { metricsOf, crmDelta, bestChannelOf, buildCrmHighlights, seriesOf, loadedRunStart, OTHERS_ID } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
 
 const NOW = new Date(2026, 8, 14, 12, 0);
@@ -307,5 +307,55 @@ describe('seriesOf', () => {
       .toEqual([{ key: '2026-08', value: 4 }, { key: '2026-09', value: 5 }]);
     expect(seriesOf(ctx, { monthKey: '2026-09', pick: (m) => m.appts?.total ?? null, apptsBased: true }))
       .toEqual([{ key: '2026-09', value: 2 }]);
+  });
+});
+
+describe('começo seguro da passagem', () => {
+  const NOW27 = new Date(2027, 8, 14, 12, 0);
+  const Y = (y, m, d, h = 10) => new Date(y, m - 1, d, h);
+  const empty = () => ({ interactions: [], leadsCreated: [], converted: [], lost: [], aulas: [] });
+  const monthsOf = (keys) => Object.fromEntries(keys.map((k) => [k, empty()]));
+  // Setembro de 2027 em andamento contra outubro de 2026: a tela carrega os
+  // seis meses da tendência e o comparado com o mês seguinte a ele (crmMonthKeys).
+  const LOADED = ['2026-10', '2026-11', '2027-04', '2027-05', '2027-06', '2027-07', '2027-08', '2027-09'];
+  const ctxOf = (months, leads) => ({
+    now: NOW27, users: USERS, funnels: FUNNELS, statuses: STATUSES, liveLeads: [],
+    leadsById: new Map(leads.map((l) => [l.id, l])), months
+  });
+
+  it('a sequência contínua de meses carregados e sem falha que termina no mês corrente', () => {
+    expect(loadedRunStart(monthsOf(LOADED), '2027-09')).toEqual(new Date(2027, 3, 1));
+    const withFail = { ...monthsOf(['2027-06', '2027-08', '2027-09']), '2027-07': { ...empty(), failed: true } };
+    expect(loadedRunStart(withFail, '2027-09')).toEqual(new Date(2027, 7, 1));
+    // Mês corrente ausente ou que falhou: a sequência fica vazia e ninguém entra pelo cadastro.
+    expect(loadedRunStart(monthsOf(['2027-08']), '2027-09')).toEqual(new Date(2027, 9, 1));
+    expect(loadedRunStart({ '2027-09': { ...empty(), failed: true } }, '2027-09')).toEqual(new Date(2027, 9, 1));
+  });
+
+  it('a troca de um mês fora da carga não faz a primeira troca carregada medir desde o cadastro', () => {
+    // Cadastrado em 01/10/2026; a troca de 20/03/2027 ficou fora da carga.
+    const x = L('x', { createdAt: Y(2026, 10, 1), status: 'Negociação' });
+    const months = monthsOf(LOADED);
+    months['2027-09'].interactions = [MV('x2', 'x', 'Contato feito', 'Negociação', Y(2027, 9, 5))];
+    const m = metricsOf(ctxOf(months, [x]), { monthKey: '2027-09', funnelId: 'ven' });
+    // Sem a regra, a saída de Contato feito media 339 dias desde o cadastro.
+    expect(m.passage.rows.find((r) => r.name === 'Contato feito').medianMin).toBeNull();
+  });
+
+  it('o comparado sem os meses seguintes carregados não inventa a etapa de nascimento', () => {
+    // Cadastrado em 03/10/2026 em Novo lead; a troca para Contato feito, em
+    // janeiro de 2027, ficou fora da carga, e o lead já está em Contato feito.
+    const y = L('y', { createdAt: Y(2026, 10, 3), status: 'Contato feito' });
+    const cut = comparisonCut('2027-09', '2026-10', NOW27);
+    const entered = (months) => metricsOf(ctxOf(months, [y]), { monthKey: '2026-10', funnelId: 'ven', cutEnd: cut })
+      .passage.rows.map((r) => [r.name, r.entered]);
+    const months = monthsOf(LOADED);
+    months['2026-10'].leadsCreated = [y];
+    expect(entered(months)).toEqual([['Novo lead', 0], ['Contato feito', 0]]);
+    // Com a carga contínua desde outubro, a troca de janeiro aparece e ele entra pela etapa em que nasceu.
+    const full = monthsOf(['2026-12', '2027-01', '2027-02', '2027-03', ...LOADED]);
+    full['2026-10'].leadsCreated = [y];
+    full['2027-01'].interactions = [MV('y1', 'y', 'Novo lead', 'Contato feito', Y(2027, 1, 15))];
+    expect(entered(full)).toEqual([['Novo lead', 1], ['Contato feito', 0]]);
   });
 });

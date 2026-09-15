@@ -7,7 +7,7 @@
 //   leadsById = a versão mais nova de cada lead conhecido (useCrmSources).
 
 import { fmtNum } from '../format.js';
-import { monthRange, effectiveEnd, isCurrentMonthKey, addMonthsToKey } from '../operacional/month.js';
+import { monthRange, effectiveEnd, isCurrentMonthKey, addMonthsToKey, monthKeyOf } from '../operacional/month.js';
 import { pct } from './stats.js';
 import { fmtDuration, fmtDays } from './format.js';
 import {
@@ -42,6 +42,27 @@ function newestRecordsOf(months) {
     });
   });
   return out;
+}
+
+// Começo seguro da passagem pelo cadastro: o início da sequência contínua de
+// meses carregados e sem falha que termina no mês corrente, andando para trás
+// a partir dele. Quem foi cadastrado a partir desse instante tem todas as
+// trocas de etapa nos meses carregados, então a primeira troca carregada é
+// mesmo a primeira da vida dele. Quem foi cadastrado antes pode ter trocado de
+// etapa num mês fora da carga: o comparado de 8 a 12 meses atrás entra só com
+// o mês seguinte a ele, e a partir de 2027 o mês mais antigo carregado passa
+// de setembro de 2026. Mês corrente ausente ou que falhou: a sequência fica
+// vazia e o início é o fim do mês corrente, que não deixa ninguém entrar pelo
+// cadastro.
+export function loadedRunStart(months, currentKey) {
+  const limit = Object.keys(months || {}).length;
+  let first = null;
+  let key = currentKey;
+  for (let i = 0; i < limit && months[key] && !months[key].failed; i++) {
+    first = key;
+    key = addMonthsToKey(key, -1);
+  }
+  return first ? monthRange(first).start : monthRange(currentKey).end;
 }
 
 function cacheOf(ctx) {
@@ -152,6 +173,11 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
   const nextSrc = ctx.months?.[addMonthsToKey(monthKey, 1)];
   const contactOk = asOf.getTime() <= monthEnd.getTime() || Boolean(nextSrc && !nextSrc.failed);
   const losses = lossesOf(fresh(src.lost), { start, end, inScope: scope.inScope });
+  // A entrada pelo cadastro e a mediana desde o cadastro valem para quem foi
+  // cadastrado depois do início do registro das trocas e dentro dos meses
+  // carregados que chegam ao mês corrente (loadedRunStart).
+  const runStart = loadedRunStart(ctx.months, monthKeyOf(ctx.now));
+  const trackingSince = runStart > STAGE_TRACKING_SINCE ? runStart : STAGE_TRACKING_SINCE;
 
   return {
     ...base,
@@ -186,7 +212,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
       leadOf,
       // A função recorta funil e pessoa pelo funil de nascimento.
       newLeads: fresh(src.leadsCreated),
-      trackingSince: STAGE_TRACKING_SINCE
+      trackingSince
     }) : null
   };
 }

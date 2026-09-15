@@ -52,7 +52,8 @@ export function movesByLead(interactions) {
 // - mediana: nas saídas do mês, o tempo desde a entrada na etapa, que é a
 //   troca anterior, quando foi ela que levou o lead para a etapa, ou, na
 //   primeira troca real de quem foi cadastrado a partir de trackingSince, o
-//   cadastro. Quem foi cadastrado antes pode ter trocado de etapa sem registro.
+//   cadastro. Quem foi cadastrado antes pode ter trocado de etapa sem registro
+//   ou num mês fora da carga (metrics.js, loadedRunStart).
 // Troca que não muda nada (mesma etapa e mesmo funil, com o padrão no lugar do
 // funil vazio) é ignorada em tudo. `ownerOk` recorta entraram, avançaram e
 // perderam pela pessoa; a mediana é da academia inteira, porque mediana não
