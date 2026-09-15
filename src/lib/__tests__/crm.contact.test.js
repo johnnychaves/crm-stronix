@@ -12,6 +12,11 @@ describe('interação que conta como contato', () => {
     expect(isContactInteraction({ type: 'status_change' })).toBe(true);
     expect(isContactInteraction({ type: 'daily_goal_done' })).toBe(true);
   });
+
+  it('a troca de responsável é registro administrativo, não contato; a troca de etapa antiga, sem toStatus, segue contando', () => {
+    expect(isContactInteraction({ type: 'status_change', text: 'Responsável alterado de [Ana] para [Diego].' })).toBe(false);
+    expect(isContactInteraction({ type: 'status_change', text: 'Movido para a etapa [Contato feito] via Kanban.' })).toBe(true);
+  });
 });
 
 describe('índice de contatos por lead', () => {
@@ -50,6 +55,13 @@ describe('tempo até o primeiro contato', () => {
     expect(firstContactOf(cohort, { contactTimes, limit }).median).toBe(1440.5);
     // Com mais dois sem contato, o meio cai num sem contato: não há mediana.
     expect(firstContactOf([...cohort, lead('g'), lead('h')], { contactTimes, limit }).median).toBeNull();
+  });
+
+  it('dos sem contato, os que já tinham mais de 24 horas no limite', () => {
+    const recent = { id: 'recente', createdAt: T(10, 11) };
+    const old = { id: 'antigo', createdAt: T(7, 12) };
+    expect(firstContactOf([lead('a'), recent, old], { contactTimes, limit: T(10, 12).getTime() }))
+      .toMatchObject({ total: 3, h1: 1, none: 2, noneLate: 1 });
   });
 
   it('com o limite mais longe, a interação passa a contar', () => {

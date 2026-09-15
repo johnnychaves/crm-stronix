@@ -211,10 +211,13 @@ export function buildCrmHighlights(cur, cmp, { cmpName }) {
   const fc = cur.firstContact;
   const pfc = cmp.firstContact;
   if (fc?.total > 0 && pfc) {
-    const late = fc.over + fc.none;
+    // Passaram de 24 horas: o primeiro contato veio depois de 24 horas, ou o
+    // lead segue sem contato e já tinha mais de 24 horas no limite. O lead de
+    // poucas horas sem contato ainda está no prazo.
+    const late = fc.over + fc.noneLate;
     add(
       `${fmtNum(late)} dos ${fmtNum(fc.total)} leads ${late === 1 ? 'passou' : 'passaram'} de 24 horas sem primeiro contato`,
-      crmDelta(late, pfc.over + pfc.none, { kind: 'pct' }),
+      crmDelta(late, pfc.over + pfc.noneLate, { kind: 'pct' }),
       true
     );
   }
