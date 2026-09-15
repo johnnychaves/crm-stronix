@@ -41,12 +41,26 @@ describe('meses a carregar', () => {
     expect(crmMonthKeys({ monthKey: '2026-09', compareOn: false, compareKey: '2025-09', currentKey: '2026-09' }))
       .not.toContain('2025-09');
   });
+
+  it('atravessa o ano, e o comparado dentro dos seis meses não acrescenta nada', () => {
+    expect(crmMonthKeys({ monthKey: '2027-01', compareOn: true, compareKey: '2026-12', currentKey: '2027-01' }))
+      .toEqual(['2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01']);
+    expect(crmMonthKeys({ monthKey: '2026-12', compareOn: true, compareKey: '2026-10', currentKey: '2027-01' }))
+      .toEqual(['2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01']);
+  });
+
+  it('chave malformada não prende o laço: cada trecho tem no máximo 36 meses', () => {
+    const keys = crmMonthKeys({ monthKey: '2026-09', compareOn: false, compareKey: null, currentKey: 'xx' });
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.length).toBeLessThanOrEqual(6 + 36);
+  });
 });
 
 describe('busca incremental do mês corrente', () => {
   it('instante mais novo do campo, em Timestamp ou Date', () => {
     expect(newestTimeOf([{ convertedAt: TS(D(9, 3)) }, { convertedAt: D(9, 5) }, {}], 'convertedAt')).toBe(D(9, 5).getTime());
     expect(newestTimeOf([], 'lostAt')).toBeNull();
+    expect(newestTimeOf([{ lostAt: { seconds: 100 } }, { lostAt: { seconds: 50 } }], 'lostAt')).toBe(100000);
   });
 
   it('sem âncora, o mês inteiro; com âncora, desde ela menos a folga, limitada ao instante da busca', () => {
@@ -96,6 +110,15 @@ describe('entrada do mês corrente', () => {
     expect(shouldRememberCrmEntry(null, { closed: true, converted: [], lost: [], aulas: [] })).toBe(true);
     expect(shouldRememberCrmEntry({ closed: true }, { closed: false, converted: [], lost: [], aulas: [] })).toBe(false);
   });
+
+  it('entrada sem fetchedAt: a busca nova ganha', () => {
+    const noStamp = { closed: false, converted: [{ id: 'a', v: 1 }], lost: [], aulas: [{ id: 'r1' }] };
+    const next = mergeCrmCurrent(noStamp, {
+      converted: [{ id: 'a', v: 2, convertedAt: new Date(200) }], lost: [], aulas: [{ id: 'r2' }], fetchedAt: 400
+    });
+    expect(next.converted).toEqual([{ id: 'a', v: 2, convertedAt: new Date(200) }]);
+    expect(next).toMatchObject({ aulas: [{ id: 'r2' }], fetchedAt: 400, newestConvertedAt: 200 });
+  });
 });
 
 describe('leads a buscar por id e a versão mais nova de cada lead', () => {
@@ -126,5 +149,24 @@ describe('leads a buscar por id e a versão mais nova de cada lead', () => {
     expect(map.get('b').v).toBe('por id');
     expect(map.get('c').v).toBe('vivo');
     expect(map.has('q')).toBe(false);
+  });
+
+  it('registro sem leadId e registro cancelado não pedem a busca do dono', () => {
+    const aulas = [{ id: 'r1' }, { id: 'r2', leadId: 'k', status: 'cancelled' }, { id: 'r3', leadId: 'j', status: 'agendada' }];
+    expect(referencedLeadIds({ '2026-09': { aulas, interactions: [] } }, new Set())).toEqual(['j']);
+  });
+
+  it('no mesmo mês, a cópia de matrícula ganha da de perda; o lead ao vivo ganha do mês corrente', () => {
+    const map = mergeLeadsById({
+      months: {
+        '2026-08': { leadsCreated: [], lost: [{ id: 'x', v: 'perdido' }], converted: [{ id: 'x', v: 'matriculado' }] },
+        '2026-09': { leadsCreated: [{ id: 'y', v: 'mês' }], lost: [], converted: [] }
+      },
+      currentKey: '2026-09',
+      fetched: new Map(),
+      liveLeads: [{ id: 'y', v: 'vivo' }]
+    });
+    expect(map.get('x').v).toBe('matriculado');
+    expect(map.get('y').v).toBe('vivo');
   });
 });

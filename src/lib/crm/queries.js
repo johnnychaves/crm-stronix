@@ -3,9 +3,12 @@
 // (range e orderBy no mesmo campo): índice automático do Firestore, nada a
 // publicar. Os três campos são Timestamp, conferido em produção em 14/09/2026.
 
-import { monthWindowSpec, NEW_LEADS_SLACK_MS, unionById, shouldStoreMonthEntry } from '../operacional/queries.js';
-import { monthRange, addMonthsToKey } from '../operacional/month.js';
+import {
+  monthWindowSpec, unionById, shouldStoreMonthEntry, currentMonthLeadsWindow, leadsWindowSince
+} from '../operacional/queries.js';
+import { addMonthsToKey } from '../operacional/month.js';
 import { getSafeDateOrNull } from '../dates.js';
+import { AULA_STATUS } from '../aulas.js';
 
 export const convertedInMonthSpec = (startMs, endMs) => monthWindowSpec('convertedAt', startMs, endMs);
 export const lostInMonthSpec = (startMs, endMs) => monthWindowSpec('lostAt', startMs, endMs);
@@ -18,11 +21,15 @@ export const aulasInMonthSpec = (startMs, endMs) => monthWindowSpec('scheduledFo
 // entram os meses do exibido até o corrente. O comparado, quando é cortado
 // (mês exibido em andamento), entra com o mês seguinte a ele, porque o
 // agendamento marcado antes do corte pode ser para uma data do mês seguinte;
-// quando não é cortado, entra com os meses até o corrente.
+// quando não é cortado, entra com os meses até o corrente. Cada trecho tem no
+// máximo 36 meses, para uma chave malformada não prender o laço; o pior caso
+// da tela (11 meses para trás contra o mesmo mês do ano anterior) dá 24.
+const MAX_SPAN_MONTHS = 36;
 export function crmMonthKeys({ monthKey, compareOn, compareKey, currentKey }) {
   const keys = new Set();
   const span = (from, to) => {
-    for (let k = from; k <= to; k = addMonthsToKey(k, 1)) keys.add(k);
+    let k = from;
+    for (let i = 0; i < MAX_SPAN_MONTHS && k <= to; i++, k = addMonthsToKey(k, 1)) keys.add(k);
   };
   span(addMonthsToKey(monthKey, -5), monthKey);
   span(monthKey, currentKey);
@@ -47,15 +54,10 @@ export function newestTimeOf(list, field) {
 
 // Janela da busca incremental do mês corrente para um campo: desde a âncora
 // (o mais novo já devolvido pelo servidor, limitado ao instante da busca, menos
-// a folga) até o fim do mês. Sem âncora, o mês inteiro. Mesma regra dos leads
-// criados do Operacional (currentMonthLeadsWindow e leadsWindowSince).
-export function currentFieldWindow(key, newest, fetchedAt) {
-  const { start, end } = monthRange(key);
-  let anchor = null;
-  if (Number.isFinite(newest)) anchor = Number.isFinite(fetchedAt) ? Math.min(newest, fetchedAt) : newest;
-  const from = anchor == null ? start.getTime() : Math.max(start.getTime(), anchor - NEW_LEADS_SLACK_MS);
-  return { from, to: end.getTime() };
-}
+// a folga) até o fim do mês. Sem âncora, o mês inteiro. É a regra dos leads
+// criados do Operacional, reusada daqui para não haver duas.
+export const currentFieldWindow = (key, newest, fetchedAt) =>
+  currentMonthLeadsWindow(key, leadsWindowSince({ newestCreatedAt: newest, fetchedAt }));
 
 // Busca que falhou em todas as tentativas: o mês entra vazio e marcado, para
 // a tela não ficar presa carregando.
@@ -92,12 +94,14 @@ export function mergeCrmCurrent(entry, fresh) {
 
 // Leads citados pelos meses carregados (agendamentos e trocas de etapa
 // gravadas) que não estão em `known`. A tela precisa do dono e do funil deles
-// (Decisão 7). Em ordem, para a busca ser estável.
+// (Decisão 7). O registro sem leadId e o cancelado ficam fora: nenhuma conta
+// procura o dono deles, e o `loading` esperaria essa busca à toa. Em ordem,
+// para a busca ser estável.
 export function referencedLeadIds(months, known) {
   const ids = new Set();
   Object.values(months || {}).forEach((m) => {
     (m.aulas || []).forEach((r) => {
-      if (r?.leadId && !known.has(r.leadId)) ids.add(r.leadId);
+      if (r?.leadId && r.status !== AULA_STATUS.CANCELLED && !known.has(r.leadId)) ids.add(r.leadId);
     });
     (m.interactions || []).forEach((i) => {
       if (i?.type === 'status_change' && typeof i.toStatus === 'string' && i.leadId && !known.has(i.leadId)) ids.add(i.leadId);
