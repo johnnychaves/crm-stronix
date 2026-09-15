@@ -66,7 +66,7 @@ export function LossCard({ losses, lossStages, stageBase, monthName }) {
         <div className="flex-1 px-[18px] py-4">
           <Eyebrow>Motivo mais comum</Eyebrow>
           <div className="mt-1.5 flex items-center gap-2.5">
-            <span className="num font-display text-[32px] font-bold leading-[0.9] text-accent-500 dark:text-accent-400">{fmtNum(leader.count)}</span>
+            <span className="num font-display text-[32px] font-bold leading-[0.9] text-accent-600 dark:text-accent-400">{fmtNum(leader.count)}</span>
             <div className="min-w-0">
               <div className="truncate text-[14px] font-semibold">{leader.name}</div>
               <div className="num text-[11.5px] text-muted-foreground">{`${fmtNum(leader.count)} de ${fmtNum(total)} · ${leader.pct}%`}</div>
