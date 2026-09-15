@@ -105,6 +105,10 @@ export function mergeCrmCurrent(entry, fresh) {
   };
 }
 
+// Todos os meses pedidos já estão na saída do hook, inclusive o que falhou
+// (entra vazio e marcado). É o `loading` da tela e a trava da busca por id.
+export const crmMonthsReady = (monthKeys, months) => (monthKeys || []).every((k) => Boolean(months?.[k]));
+
 // Leads citados pelos meses carregados (agendamentos e trocas de etapa
 // gravadas) que não estão em `known`. A tela precisa do dono e do funil deles
 // (Decisão 7). O registro sem leadId e o cancelado ficam fora: nenhuma conta

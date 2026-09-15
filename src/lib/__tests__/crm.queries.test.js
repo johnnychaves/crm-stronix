@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, crmMonthKeys, newestTimeOf, currentFieldWindow,
   failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
-  liveOutcomeSignal
+  liveOutcomeSignal, crmMonthsReady
 } from '../crm/queries.js';
 import { NEW_LEADS_SLACK_MS } from '../operacional/queries.js';
 
@@ -204,5 +204,15 @@ describe('sinal de matrícula ou perda feita com a tela aberta', () => {
     expect(liveOutcomeSignal([])).toBe(0);
     expect(liveOutcomeSignal(undefined)).toBe(0);
     expect(liveOutcomeSignal([S('Contato feito', D(9, 3))])).toBe(0);
+  });
+});
+
+describe('meses prontos', () => {
+  it('só com todos os meses pedidos na saída, inclusive o que falhou; lista vazia está pronta', () => {
+    const months = { '2026-08': {}, '2026-09': { failed: true } };
+    expect(crmMonthsReady(['2026-08', '2026-09'], months)).toBe(true);
+    expect(crmMonthsReady(['2026-07', '2026-08', '2026-09'], months)).toBe(false);
+    expect(crmMonthsReady([], {})).toBe(true);
+    expect(crmMonthsReady(undefined, undefined)).toBe(true);
   });
 });

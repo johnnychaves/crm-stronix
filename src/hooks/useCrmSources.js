@@ -47,7 +47,7 @@ import {
 import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, currentFieldWindow, newestTimeOf,
   failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
-  liveOutcomeSignal
+  liveOutcomeSignal, crmMonthsReady
 } from '../lib/crm/queries.js';
 import { colRef, serverDocs, cachedOrServer, loadMonth, loadCurrentLeads, leadsPorIdDaSessao, mesesDaSessao } from './monthSources.js';
 
@@ -289,19 +289,23 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
   }, [monthKeys, shared, crm, currentKey, liveLeads, liveInteractions]);
 
   // --- leads citados que não estão em lista nenhuma, por id, em lotes de 30,
-  // do servidor. `fetched` guarda null para quem não existe mais ou cuja busca
-  // falhou nesta montagem (conta como desconhecido). A memória da sessão só
-  // guarda os achados, e a próxima montagem tenta os outros de novo.
+  // do servidor, com nova tentativa. Só começa com todos os meses carregados:
+  // antes disso, o lead que ainda vai chegar na lista de um mês seria buscado
+  // à toa. `fetched` guarda null para quem não existe mais ou cuja busca
+  // falhou em todas as tentativas nesta montagem (conta como desconhecido). A
+  // memória da sessão só guarda os achados, e a próxima montagem tenta os
+  // outros de novo.
   const [fetched, setFetched] = useState(() => new Map(leadsPorIdDaSessao.get(appId)));
   const askedRef = useRef(new Set());
   const missing = useMemo(() => {
+    if (!crmMonthsReady(monthKeys, months)) return [];
     const known = new Set(fetched.keys());
     (liveLeads || []).forEach((l) => known.add(l.id));
     Object.values(months).forEach((m) => {
       [m.leadsCreated, m.converted, m.lost].forEach((list) => (list || []).forEach((l) => known.add(l.id)));
     });
     return referencedLeadIds(months, known);
-  }, [fetched, liveLeads, months]);
+  }, [fetched, liveLeads, months, monthKeys]);
   useEffect(() => {
     if (!db || !enabled) return undefined;
     const tenant = appId;
@@ -315,7 +319,7 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
       return next;
     });
     chunk(ids).forEach((part) => {
-      serverDocs(query(colRef(db, LEADS_PATH), where(documentId(), 'in', part)))
+      retryWithBackoff(() => serverDocs(query(colRef(db, LEADS_PATH), where(documentId(), 'in', part))))
         .then((docs) => {
           const found = docs.map(normalizeLeadDoc);
           if (!leadsPorIdDaSessao.has(tenant)) leadsPorIdDaSessao.set(tenant, new Map());
@@ -332,8 +336,11 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
 
   return useMemo(() => {
     const failedKeys = (monthKeys || []).filter((k) => months[k]?.failed);
-    const loading = (monthKeys || []).some((k) => !months[k]) || missing.length > 0;
+    // Só os meses: a busca por id roda com a tela já no lugar e não a apaga a
+    // cada matrícula feita ao vivo. Até ela voltar, o lead citado conta como
+    // desconhecido.
+    const loading = !crmMonthsReady(monthKeys, months);
     const leadsById = mergeLeadsById({ months, currentKey, fetched, liveLeads });
     return { months, leadsById, loading, failedKeys };
-  }, [monthKeys, months, missing, currentKey, fetched, liveLeads]);
+  }, [monthKeys, months, currentKey, fetched, liveLeads]);
 }
