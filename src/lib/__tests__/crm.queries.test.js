@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, crmMonthKeys, newestTimeOf, currentFieldWindow,
-  failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById
+  failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor
 } from '../crm/queries.js';
 import { NEW_LEADS_SLACK_MS } from '../operacional/queries.js';
 
@@ -53,6 +53,19 @@ describe('meses a carregar', () => {
     const keys = crmMonthKeys({ monthKey: '2026-09', compareOn: false, compareKey: null, currentKey: 'xx' });
     expect(keys.length).toBeGreaterThan(0);
     expect(keys.length).toBeLessThanOrEqual(6 + 36);
+  });
+});
+
+describe('aulas de mês fechado que vêm do servidor', () => {
+  it('só os dois meses anteriores ao corrente; o corrente e os mais antigos não', () => {
+    const cur = '2026-09';
+    expect(['2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((k) => aulasFromServerFor(k, cur)))
+      .toEqual([false, true, true, false, false]);
+  });
+
+  it('atravessa o ano', () => {
+    expect(['2026-10', '2026-11', '2026-12', '2027-01'].map((k) => aulasFromServerFor(k, '2027-01')))
+      .toEqual([false, true, true, false]);
   });
 });
 

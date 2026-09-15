@@ -8,9 +8,12 @@
 // Parte do CRM, por mês: leads por convertedAt, leads por lostAt e registros
 // de stronix_aulas por scheduledFor, as três de campo único (índice
 // automático). Mês fechado: cache do aparelho conferido por contagem no
-// servidor. Mês corrente: do servidor; na volta à tela, matrículas e perdas
-// vêm pela busca incremental e os agendamentos vêm inteiros, porque o desfecho
-// muda o registro sem mudar nenhuma data (crm/queries.js, mergeCrmCurrent).
+// servidor, menos as aulas dos dois meses anteriores ao corrente, que vêm do
+// servidor uma vez por sessão (crm/queries.js, aulasFromServerFor): o desfecho
+// e a conversão mudam o registro sem mudar a data, e a contagem não vê isso.
+// Mês corrente: do servidor; na volta à tela, matrículas e perdas vêm pela
+// busca incremental e os agendamentos vêm inteiros, porque o desfecho muda o
+// registro sem mudar nenhuma data (crm/queries.js, mergeCrmCurrent).
 //
 // Leads citados por agendamento ou por troca de etapa que não estão em
 // nenhuma lista são buscados por id, do servidor, uma vez por sessão, na
@@ -37,7 +40,7 @@ import {
 } from '../lib/operacional/queries.js';
 import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, currentFieldWindow, newestTimeOf,
-  failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById
+  failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor
 } from '../lib/crm/queries.js';
 import { colRef, serverDocs, cachedOrServer, loadMonth, loadCurrentLeads, leadsPorIdDaSessao, mesesDaSessao } from './monthSources.js';
 
@@ -71,8 +74,10 @@ async function loadCrmCurrent(db, key, entry = null) {
   return { converted, lost, aulas, fetchedAt };
 }
 
-// Uma tentativa de carga da parte do CRM de um mês.
-async function loadCrmMonth(db, key, closed) {
+// Uma tentativa de carga da parte do CRM de um mês. Com `aulasFromServer`, as
+// aulas do mês fechado vêm do servidor em vez do cache conferido
+// (aulasFromServerFor).
+async function loadCrmMonth(db, key, closed, { aulasFromServer = false } = {}) {
   if (!closed) {
     const fresh = await loadCrmCurrent(db, key);
     return {
@@ -84,10 +89,11 @@ async function loadCrmMonth(db, key, closed) {
   }
   const { start, end } = monthRange(key);
   const [from, to] = [start.getTime(), end.getTime()];
+  const qAulas = aulasQuery(db, aulasInMonthSpec(from, to));
   const [converted, lost, aulas] = await Promise.all([
     cachedOrServer(leadsQuery(db, convertedInMonthSpec(from, to)), normalizeLeadDoc),
     cachedOrServer(leadsQuery(db, lostInMonthSpec(from, to)), normalizeLeadDoc),
-    cachedOrServer(aulasQuery(db, aulasInMonthSpec(from, to)), mapAula)
+    aulasFromServer ? serverDocs(qAulas).then((docs) => docs.map(mapAula)) : cachedOrServer(qAulas, mapAula)
   ]);
   return { closed, converted, lost, aulas };
 }
@@ -184,7 +190,7 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
       if (crmLoadingRef.current.has(slot)) return;
       crmLoadingRef.current.add(slot);
       if (!closed) crmRefreshedRef.current.add(key);
-      retryWithBackoff(() => loadCrmMonth(db, key, closed))
+      retryWithBackoff(() => loadCrmMonth(db, key, closed, { aulasFromServer: aulasFromServerFor(key, currentKey) }))
         .catch((e) => {
           console.error('crm fontes', key, e);
           return failedCrmEntry(closed);

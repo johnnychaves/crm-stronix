@@ -16,6 +16,18 @@ export const lostInMonthSpec = (startMs, endMs) => monthWindowSpec('lostAt', sta
 // intervalo de scheduledFor pede índice composto e falha com FAILED_PRECONDITION.
 export const aulasInMonthSpec = (startMs, endMs) => monthWindowSpec('scheduledFor', startMs, endMs);
 
+// Aulas de mês fechado que vêm do servidor, e não do cache conferido por
+// contagem. A contagem só enxerga registro entrando ou saindo da janela de
+// scheduledFor. O desfecho (status, outcomeAt) e a conversão (converted, que
+// markConvertingAula grava na matrícula, às vezes semanas depois) mudam o
+// registro sem mudar a data, e o cache do aparelho ficaria com a versão velha:
+// o número mudaria de aparelho para aparelho. Valem os dois meses anteriores
+// ao corrente, uma vez por sessão (a entrada vai para a memória). Os mais
+// antigos seguem com a contagem, e a conversão gravada depois numa aula deles
+// pode não chegar enquanto o cache tiver a versão velha: limite aceito.
+export const aulasFromServerFor = (key, currentKey) =>
+  key >= addMonthsToKey(currentKey, -2) && key < currentKey;
+
 // Meses que a tela precisa, em ordem (Decisão 5 do plano). A tendência pede os
 // 6 meses até o exibido. A safra de mês fechado é acompanhada até hoje, então
 // entram os meses do exibido até o corrente. O comparado, quando é cortado
