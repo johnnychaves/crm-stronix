@@ -45,6 +45,11 @@ A spec e o handoff foram aprovados pelo Johnny. Onde eles divergem, ou onde o c�
 10. **Série com pessoa filtrada:** a pessoa tem os mesmos seis meses da equipe. O texto "Três meses de base para esta pessoa" do mockup existia porque o mockup só tinha três meses de dados.
 11. **Nota "sem base no sistema" da barra:** sai. O sistema não tem como saber se um mês "existia"; mês sem dado mostra os deltas como "sem base" pela conta.
 12. **Carregando:** o fio de progresso e a opacidade de 35% repetem o código do Operacional (barra com `animate-pulse`), para as duas telas irmãs carregarem igual.
+13. **Desfecho da visita:** o app não grava o desfecho da visita no registro de `stronix_aulas` (`applyOutcomeToAula` só vale para aula, e a visita fica "agendada" para sempre). O CRM lê o desfecho da visita da interação `daily_goal_done` de `visita_hoje` registrada no dia marcado ou no seguinte; cancelamento registrado em outro dia não aparece. Gravar o desfecho no próprio registro fica sugerido como PR separada.
+14. **Retorno de ex-cliente:** a matrícula de quem volta regrava `convertedAt`, mas não é matrícula nova. Fica fora quem já era cliente antes do mês (`clienteSince`), como no "entraram" do Operacional, e a safra usa a primeira conversão.
+15. **Agendamentos completos só a partir de setembro de 2026:** as visitas só têm registro desde 18/08/2026, então agosto também é marcado como incompleto.
+16. **Passagem entre etapas:** lead cadastrado depois do início da gravação (14/09/2026, 18h10) entra na etapa em que nasceu, e "perderam" conta só as entradas do mês que se perderam a partir da etapa. A primeira etapa passa a ter entradas e a perda nunca passa de 100%. A etapa da perda usa os mesmos leads do card de motivos, com "Sem etapa" para perda sem troca gravada.
+17. **Custo no pior caso:** navegar 11 meses para trás comparando com o mesmo mês do ano anterior carrega de 17 a 24 meses (uns 13 a 19 mil documentos num aparelho sem cache; depois, só contagens). O caso comum continua sendo 6 meses.
 
 ## Mapa de arquivos
 
@@ -3432,6 +3437,13 @@ describe('passagem entre etapas e perdas', () => {
       .toContain('A passagem entre etapas começa em setembro de 2026');
   });
 
+  it('no primeiro mês da gravação, a dica diz desde quando', () => {
+    const html = render(createElement(StagePassageTable, {
+      passage, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro', since: '14 de setembro'
+    }));
+    expect(html).toContain('funil Vendas · movimentos gravados desde 14 de setembro');
+  });
+
   it('perdas: motivo mais comum, participação e etapa da perda', () => {
     const html = render(createElement(LossCard, {
       losses: { total: 17, reasons: [{ name: 'Sem interesse', count: 7 }, { name: 'Preço', count: 5 }, { name: 'Não responde', count: 5 }] },
@@ -3530,8 +3542,9 @@ function Row({ r, maxEntered }) {
   );
 }
 
-export function StagePassageTable({ passage, needFunnel, hasBase, funnelName, monthName, academyMedian = false }) {
-  const hint = needFunnel ? 'escolha um funil' : `funil ${funnelName} · movimentos gravados em ${monthName}`;
+export function StagePassageTable({ passage, needFunnel, hasBase, funnelName, monthName, academyMedian = false, since = null }) {
+  // since: no primeiro mês da gravação, o dia em que ela começou (a base do mês é parcial).
+  const hint = needFunnel ? 'escolha um funil' : `funil ${funnelName} · movimentos gravados ${since ? `desde ${since}` : `em ${monthName}`}`;
   const rows = passage?.rows || [];
   const ok = !needFunnel && hasBase && Boolean(passage);
   const maxEntered = Math.max(1, ...rows.map((r) => r.entered));
@@ -4484,7 +4497,7 @@ const shortOf = (key) => SHORT[Number(key.slice(5, 7)) - 1];
 
 const HELP = {
   leads: 'Leads cadastrados no mês, pela data de cadastro. O filtro de pessoa usa o dono do lead e o de funil, o funil em que ele está.',
-  appts: 'Visitas e aulas experimentais marcadas para o mês, sem as canceladas. Conta pela data do agendamento, não pela data do cadastro do lead.',
+  appts: 'Visitas e aulas experimentais marcadas para o mês, sem as canceladas. No mês em andamento, entram só as de data já passada. Conta pela data do agendamento, não pela data do cadastro do lead.',
   attend: 'Quem veio ÷ quem veio mais quem faltou, entre os agendamentos com data já passada. Agendamento sem desfecho registrado fica fora da conta e aparece na linha de baixo.',
   enroll: 'Leads que viraram cliente no mês, de qualquer safra. É o resultado do mês, não a conversão da turma que entrou no mês.',
   conv: 'Dos leads cadastrados no mês, quantos já matricularam. No mês em andamento ela ainda sobe: quem segue em jogo pode fechar depois. A comparação pró-rata mede a safra do outro mês com a mesma idade.'
@@ -4554,7 +4567,7 @@ export function summaryItems({ cur, cmp, series, compareOn, shownName }) {
   const da = (a, b, kind) => (compareOn ? (apptsOk ? crmDelta(a, b, { kind }) : { none: true, text: 'sem base' }) : null);
   const flag = cur.apptsBase ? null : 'incompleto';
   const empty = 'Sem base para a tendência';
-  const apptsEmpty = addMonthsToKey(cur.monthKey, -5) < APPTS_COMPLETE_MONTH ? 'Sem base antes de agosto de 2026' : empty;
+  const apptsEmpty = addMonthsToKey(cur.monthKey, -5) < APPTS_COMPLETE_MONTH ? 'Sem base antes de setembro de 2026' : empty;
   const top = (cur.channels || [])[0];
   const a = cur.appts;
   const c = cur.cohort;
@@ -4608,6 +4621,7 @@ export function summaryItems({ cur, cmp, series, compareOn, shownName }) {
 // saem de src/lib/crm/texts.js.
 import { crmDelta } from '../../lib/crm/metrics.js';
 import { channelRead, summaryItems, scopeNote } from '../../lib/crm/texts.js';
+import { STAGE_TRACKING_MONTH } from '../../lib/crm/scope.js';
 import { DashSummaryBand } from './DashSummaryBand.jsx';
 import { DashHighlights } from './DashHighlights.jsx';
 import { CrmSection, DashedNote } from './CrmParts.jsx';
@@ -4634,7 +4648,7 @@ export function CrmDashboard({
         <div className="px-4 md:px-8 pt-[18px]"><DashHighlights items={highlights} fit /></div>
       )}
       <div className="flex flex-col gap-[22px] px-4 md:px-8 pb-8 pt-5">
-        <DashSummaryBand items={summaryItems({ cur, cmp, series, compareOn, shownName })} />
+        <DashSummaryBand items={summaryItems({ cur, cmp, series, compareOn, shownName })} stackPillsOnMobile />
 
         <CrmSection title="Origem" question="de onde vêm os leads?" note={scope}>
           <ChannelTable rows={cur.channels} cohortConv={cur.cohort?.conv ?? null} read={channelRead(cur)} />
@@ -4652,6 +4666,7 @@ export function CrmDashboard({
                 funnelName={funnelName}
                 monthName={shownName}
                 academyMedian={Boolean(person)}
+                since={cur.monthKey === STAGE_TRACKING_MONTH ? '14 de setembro' : null}
               />
               <LossCard losses={cur.losses} lossStages={cur.lossStages} stageBase={cur.stageBase} monthName={shownName} />
             </div>
@@ -4776,8 +4791,10 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
 
   const curLoaded = useMemo(() => metricsOf(ctx, { monthKey, userId, funnelId }), [ctx, monthKey, userId, funnelId]);
   const cmpLoaded = useMemo(
-    () => (compareOn ? metricsOf(ctx, { monthKey: cmpKey, userId, funnelId, cutEnd: comparisonCut(monthKey, cmpKey, now) }) : null),
-    [compareOn, ctx, cmpKey, userId, funnelId, monthKey, now]
+    // Corte pró-rata só com o mês exibido em andamento. Mês fechado compara
+    // inteiro, e as duas safras são acompanhadas até agora.
+    () => (compareOn ? metricsOf(ctx, { monthKey: cmpKey, userId, funnelId, cutEnd: monthKey === currentKey ? comparisonCut(monthKey, cmpKey, now) : null }) : null),
+    [compareOn, ctx, cmpKey, userId, funnelId, monthKey, currentKey, now]
   );
   const seriesLoaded = useMemo(() => {
     const s = (pick, apptsBased = false) => seriesOf(ctx, { monthKey, userId, funnelId, pick, apptsBased });
@@ -4831,9 +4848,9 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
   const changeMonth = (k) => { setMonthKey(k); setCompareKey(null); };
   // Clicar na linha da pessoa filtra; clicar de novo na mesma linha limpa.
   const pickPerson = (id) => setPerson((p) => (p === id ? 'all' : id));
-  const failedNames = [monthKey, ...(compareOn ? [cmpKey] : [])]
-    .filter((k) => sources.failedKeys.includes(k))
-    .map((k) => monthName(k, monthKey));
+  // Qualquer mês carregado que falhou avisa: a safra do mês exibido também
+  // depende dos meses seguintes (matrículas, perdas e agendamentos).
+  const failedNames = sources.failedKeys.map((k) => monthName(k, monthKey));
 
   return (
     <TooltipProvider delayDuration={150}>
@@ -5003,7 +5020,7 @@ O CRM mede o funil de leads por mês de competência, do cadastro até a matríc
 - **Contas:** `src/lib/crm/`, puras e testadas. Uma função calcula tudo, `metricsOf(ctx, { monthKey, userId, funnelId, cutEnd })`. A equipe é a soma das pessoas e de Outros, e nenhuma taxa nem mediana é guardada.
 - **Recortes:** pessoa é o dono do lead hoje (`consultantId`). Funil é o do lead, e "Todos os funis" deixa de fora Renovações, Vencidos e Upgrade. Importado não conta como lead novo nem como matrícula. Professores são sempre da academia inteira.
 - **Carga:** `src/hooks/useCrmSources.js`. Ele divide com o Operacional a carga e a memória de sessão dos meses (`src/hooks/monthSources.js`): mexeu num, confira o outro. As consultas do CRM (leads por `convertedAt`, leads por `lostAt` e `stronix_aulas` por `scheduledFor`) são de campo único, sem índice para publicar. Aula e visita se separam no navegador (`isAulaRecord`), nunca por `where` no `type`.
-- **Bases que começam tarde:** a passagem entre etapas e a etapa da perda só existem a partir de setembro de 2026 (`STAGE_TRACKING_MONTH`), e os agendamentos antes de agosto de 2026 são incompletos (`APPTS_COMPLETE_MONTH`). As duas datas moram em `src/lib/crm/scope.js`.
+- **Bases que começam tarde:** a passagem entre etapas e a etapa da perda só existem a partir de setembro de 2026 (`STAGE_TRACKING_MONTH`), e os agendamentos antes de setembro de 2026 são incompletos (`APPTS_COMPLETE_MONTH`), porque as visitas só têm registro desde 18/08/2026. O desfecho da visita ainda não é gravado no registro de `stronix_aulas`: o CRM o lê da interação `daily_goal_done` de `visita_hoje` do dia marcado ou do seguinte. As duas datas moram em `src/lib/crm/scope.js`.
 - **Troca de etapa:** a passagem lê a interação `status_change` com `fromStatus`, `toStatus` e `funnelId` (`stageChangeFields`, em `src/lib/stageMove.js`). Um caminho novo que mude a etapa de um lead precisa gravar esses campos, senão o movimento some da passagem.
 ```
 
