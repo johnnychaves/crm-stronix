@@ -153,6 +153,52 @@ describe('desfecho da visita pela linha do tempo', () => {
   });
 });
 
+describe('desfecho corrigido no espelho do lead', () => {
+  const G = (id, leadId, outcome, at) => ({
+    id, leadId, type: 'daily_goal_done', dailyGoalCategory: 'visita_hoje', appointmentOutcome: outcome, createdAt: at
+  });
+  const at = D(9, 3, 18);
+  const V = (id) => R(id, { leadId: 'v1', type: 'visita', scheduledFor: at });
+  // A Agenda do dia gravou "não veio" com a marca do dia. A correção para
+  // "veio" mudou só o lead, porque a marca do dia já existia.
+  const marks = visitOutcomesByLead([G('g1', 'v1', 'no_show', D(9, 3, 19))]);
+  const mirror = (over) => lead('v1', { appointmentScheduledFor: { toDate: () => new Date(at) }, ...over });
+
+  it('a correção no espelho do mesmo agendamento ganha da marca antiga da linha do tempo', () => {
+    expect(effectiveStatus(V('1'), marks, mirror({ appointmentOutcome: 'attended' }))).toBe('attended');
+    const came = visitOutcomesByLead([G('g2', 'v1', 'attended', D(9, 3, 19))]);
+    expect(effectiveStatus(V('1'), came, mirror({ appointmentOutcome: 'no_show' }))).toBe('no_show');
+    expect(effectiveStatus(V('1'), null, mirror({ appointmentOutcome: 'attended' }))).toBe('attended');
+  });
+
+  it('espelho de outra data não vale: o lead já está em outro agendamento', () => {
+    expect(effectiveStatus(V('1'), marks, mirror({ appointmentScheduledFor: D(9, 10, 18), appointmentOutcome: 'attended' })))
+      .toBe('no_show');
+  });
+
+  it('sem veio ou não veio no espelho, decide a linha do tempo; o cancelamento limpa a data e segue por ela', () => {
+    expect(effectiveStatus(V('1'), marks, mirror({ appointmentOutcome: null }))).toBe('no_show');
+    expect(effectiveStatus(V('1'), marks, mirror({ appointmentOutcome: 'rescheduled' }))).toBe('no_show');
+    const cancelled = visitOutcomesByLead([G('g3', 'v1', 'cancelled', D(9, 3, 8))]);
+    expect(effectiveStatus(V('1'), cancelled, mirror({ appointmentScheduledFor: null, appointmentOutcome: 'cancelled' })))
+      .toBe('cancelled');
+  });
+
+  it('aula não usa o espelho: o desfecho dela já vai para o registro', () => {
+    expect(effectiveStatus(R('a', { leadId: 'v1', scheduledFor: at }), null, mirror({ appointmentOutcome: 'attended' })))
+      .toBe('agendada');
+  });
+
+  it('agendamentos do mês usam o lead do registro, e os marcos, o lead da safra', () => {
+    const fixed = mirror({ appointmentOutcome: 'attended' });
+    const of = (id) => (id === 'v1' ? fixed : { id, unknown: true });
+    expect(appointmentsOf([V('1')], { ...WIN, leadOf: of, inScope: all, visitOutcomes: marks }))
+      .toEqual({ total: 1, came: 1, missed: 0, pending: 0, decided: 1, rate: 100 });
+    expect(cohortMilestones([fixed], { asOf: D(9, 14, 12), cut: true, recordsByLead: recordsByLeadOf([V('1')]), visitOutcomes: marks }))
+      .toEqual({ sched: 1, came: 1 });
+  });
+});
+
 describe('professores', () => {
   const recs = [
     R('1', { status: 'attended', professorId: 'p1', professorName: 'Paula Nunes', modality: 'Funcional', converted: true }),

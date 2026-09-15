@@ -2,8 +2,8 @@
 // Aula e visita se separam por isAulaRecord, nunca por where no `type`: o
 // registro antigo não tem o campo (src/lib/aulas.js). Os registros chegam com
 // scheduledFor e createdAt em Date (o hook converte). O desfecho da visita vem
-// da linha do tempo (visitOutcomesByLead), porque o app ainda não o grava no
-// registro.
+// do espelho do lead, quando ele é do mesmo agendamento, ou da linha do tempo
+// (effectiveStatus), porque o app ainda não o grava no registro.
 
 import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus } from '../aulas.js';
 import { getSafeDateOrNull } from '../dates.js';
@@ -49,15 +49,34 @@ export function visitOutcomesByLead(interactions) {
   return map;
 }
 
+// Desfecho que o próprio lead guarda para o registro: vale quando o
+// agendamento do lead (appointmentScheduledFor) é o mesmo instante do registro
+// e o desfecho é "veio" ou "não veio". Todo desfecho grava o lead, mas a
+// Agenda do dia só grava a marca na linha do tempo quando ainda não há uma do
+// dia, e desfazer limpa só o lead: a correção ("não veio" e depois "veio")
+// chega ao lead e não à linha do tempo. O cancelamento limpa o
+// appointmentScheduledFor e segue pela linha do tempo.
+const MIRROR_OUTCOMES = new Set(['attended', 'no_show']);
+function mirrorStatusOf(r, lead) {
+  if (!MIRROR_OUTCOMES.has(lead?.appointmentOutcome)) return null;
+  const at = getSafeDateOrNull(lead.appointmentScheduledFor);
+  return at && at.getTime() === r.scheduledFor.getTime() ? outcomeToAulaStatus(lead.appointmentOutcome) : null;
+}
+
 // Status que vale nas contas. A visita que segue "agendada" no registro
-// assume o último desfecho do lead registrado no dia marcado ou no seguinte
-// (do início do dia marcado até dois dias depois, em horário local), para a
-// correção ganhar: "Veio" no dia, corrigido para "Faltou" no dia seguinte,
-// conta como falta. Sem desfecho nessa janela, fica como está. O cancelamento
-// registrado em outro dia não aparece e o registro segue "agendada": limite
-// conhecido até o app gravar o desfecho no próprio registro.
-export function effectiveStatus(r, visitOutcomes) {
-  if (!visitOutcomes || isAulaRecord(r) || r.status !== AULA_STATUS.AGENDADA || !(r.scheduledFor instanceof Date)) return r.status;
+// assume o desfecho do espelho do lead do mesmo agendamento (mirrorStatusOf).
+// Sem ele, o último desfecho do lead registrado na linha do tempo no dia
+// marcado ou no seguinte (do início do dia marcado até dois dias depois, em
+// horário local), para a correção ganhar: "Veio" no dia, corrigido para
+// "Faltou" no dia seguinte, conta como falta. Sem desfecho nessa janela, fica
+// como está. O cancelamento registrado em outro dia não aparece e o registro
+// segue "agendada": limite conhecido até o app gravar o desfecho no próprio
+// registro.
+export function effectiveStatus(r, visitOutcomes, lead = null) {
+  if (isAulaRecord(r) || r.status !== AULA_STATUS.AGENDADA || !(r.scheduledFor instanceof Date)) return r.status;
+  const mirror = mirrorStatusOf(r, lead);
+  if (mirror) return mirror;
+  if (!visitOutcomes) return r.status;
   const d = r.scheduledFor;
   const from = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
   const to = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 2).getTime();
@@ -81,9 +100,9 @@ export function appointmentsOf(records, { start, end, leadOf, inScope, visitOutc
     if (!r?.id || seen.has(r.id)) return;
     seen.add(r.id);
     if (!inWindow(r.scheduledFor, start, end)) return;
-    const status = effectiveStatus(r, visitOutcomes);
-    if (status === AULA_STATUS.CANCELLED) return;
     const lead = leadOf(r.leadId);
+    const status = effectiveStatus(r, visitOutcomes, lead);
+    if (status === AULA_STATUS.CANCELLED) return;
     if (!inScope(lead)) return;
     const since = clienteSinceOf(lead);
     if (since && bookedAt(r) >= since) return;
@@ -123,10 +142,10 @@ const hasOpenAppointment = (lead) =>
 // para depois dos meses carregados. Com corte (safra acompanhada até um
 // instante antes de agora) o espelho do lead fica de fora, porque ele é o
 // retrato de hoje. Compareceu: tem registro attended com data até asOf. Quem
-// compareceu também agendou. O status da visita é o efetivo, com o desfecho
-// da linha do tempo (effectiveStatus). O registro marcado na primeira
-// matrícula do lead ou depois dela fica fora, como em appointmentsOf: a aula
-// de quem já matriculou (upgrade) não é funil de lead.
+// compareceu também agendou. O status da visita é o efetivo, com o espelho do
+// lead da safra e o desfecho da linha do tempo (effectiveStatus). O registro
+// marcado na primeira matrícula do lead ou depois dela fica fora, como em
+// appointmentsOf: a aula de quem já matriculou (upgrade) não é funil de lead.
 export function cohortMilestones(cohort, { asOf, cut, recordsByLead, visitOutcomes = null }) {
   let sched = 0;
   let came = 0;
@@ -134,7 +153,7 @@ export function cohortMilestones(cohort, { asOf, cut, recordsByLead, visitOutcom
     const enrolledAt = firstEnrolledAtOf(l);
     const recs = (recordsByLead.get(l.id) || [])
       .filter((r) => !(enrolledAt && bookedAt(r) && bookedAt(r) >= enrolledAt))
-      .map((r) => ({ r, status: effectiveStatus(r, visitOutcomes) }));
+      .map((r) => ({ r, status: effectiveStatus(r, visitOutcomes, l) }));
     const attended = recs.some(({ r, status }) => status === AULA_STATUS.ATTENDED && r.scheduledFor && r.scheduledFor <= asOf);
     const booked = attended
       || recs.some(({ r, status }) => status !== AULA_STATUS.CANCELLED && bookedAt(r) && bookedAt(r) <= asOf)
