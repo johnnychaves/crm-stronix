@@ -6,7 +6,7 @@ import { cn } from '../../lib/utils.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { SettingsPanel, SettingsSectionHeader } from '../../components/ui/SettingsCard.jsx';
 import { PanelNote, SettingsBtn } from './settingsBits.jsx';
-import { zapIntegrationState, ZAP_STATE, ZAP_STATE_LABEL } from '../../lib/zapIntegration.js';
+import { zapIntegrationState, zapConnectionFields, ZAP_STATE, ZAP_STATE_LABEL } from '../../lib/zapIntegration.js';
 
 // Integração com o Stronizap — o admin gera aqui a chave que o Stronizap usa
 // para reconhecer quem é o contato por trás de um telefone. O estado vem
@@ -15,8 +15,9 @@ import { zapIntegrationState, ZAP_STATE, ZAP_STATE_LABEL } from '../../lib/zapIn
 //
 // A chave em claro só existe no navegador entre o "Gerar" e o admin sair da
 // tela — nunca é persistida aqui, e o servidor não guarda outra cópia dela.
-
-const ZAP_ENDPOINT = 'https://crm-stronix.vercel.app/api/zap';
+//
+// Acima da chave ficam o endereço e o identificador, os outros dois campos que
+// o Stronizap pede, na ordem do formulário de lá (ver zapConnectionFields).
 
 const STATE_TONE = {
   [ZAP_STATE.DESCONECTADO]: 'bg-amber-500',
@@ -53,6 +54,7 @@ function ZapIntegrationSection({ db, appUser }) {
   }, [db, tenantId]);
 
   const state = zapIntegrationState(zap);
+  const campos = zapConnectionFields(tenantId);
 
   const authHeader = async () => ({
     'Content-Type': 'application/json',
@@ -120,21 +122,46 @@ function ZapIntegrationSection({ db, appUser }) {
     <div className="flex flex-col gap-5">
       <SettingsSectionHeader
         title="Stronizap"
-        hint="A chave que conecta este CRM ao atendimento por WhatsApp."
+        hint="No Stronizap, abra Configurações → Stronilead e preencha os três campos com os dados abaixo, na mesma ordem."
       />
+
+      <SettingsPanel
+        title="Endereço e identificador"
+        hint="O endereço é o mesmo para todas as academias. O identificador é o desta academia."
+      >
+        <div className="px-5 pb-4 flex flex-col gap-3">
+          {campos.map((campo) => (
+            <div key={campo.id} className="flex flex-col gap-1.5">
+              <span className="text-[11.5px] font-semibold text-muted-foreground">{campo.label}</span>
+              <div className="flex items-center gap-2">
+                <span className="flex-1 text-[12px] text-muted-foreground truncate num p-2.5 rounded-[10px] bg-muted/60 border border-border">
+                  {campo.value}
+                </span>
+                <SettingsBtn
+                  size={34}
+                  icon={<Copy size={13} />}
+                  onClick={() => copy(campo.value, `${campo.label} copiado!`)}
+                  disabled={!campo.value}
+                >
+                  Copiar
+                </SettingsBtn>
+              </div>
+            </div>
+          ))}
+        </div>
+      </SettingsPanel>
 
       <SettingsPanel
         icon={<PlugZap size={16} />}
         title="Chave de conexão"
-        hint="O Stronizap usa esta chave para reconhecer os contatos desta academia."
+        hint="O terceiro campo do Stronizap. É com ela que o Stronizap reconhece os contatos desta academia."
         action={
           state === ZAP_STATE.CONECTADO ? (
             <SettingsBtn kind="danger" size={36} onClick={revoke} disabled={busy}>Revogar</SettingsBtn>
           ) : null
         }
-        padded
       >
-        <div className="flex flex-col gap-4">
+        <div className="px-5 pb-5 flex flex-col gap-4">
           <div className="flex items-center gap-2">
             <span className={cn('size-[7px] rounded-full shrink-0', STATE_TONE[state])} />
             <span className={cn('text-[12.5px] font-semibold', STATE_TEXT_TONE[state])}>
@@ -176,22 +203,8 @@ function ZapIntegrationSection({ db, appUser }) {
             </div>
           )}
         </div>
-      </SettingsPanel>
-
-      <SettingsPanel
-        title="Endereço para o Stronizap"
-        hint="Informe este endereço na configuração do Stronizap, junto com a chave."
-      >
-        <div className="px-5 pb-4 flex items-center gap-2">
-          <span className="flex-1 text-[12px] text-muted-foreground truncate num p-2.5 rounded-[10px] bg-muted/60 border border-border">
-            {ZAP_ENDPOINT}
-          </span>
-          <SettingsBtn size={34} icon={<Copy size={13} />} onClick={() => copy(ZAP_ENDPOINT, 'Endereço copiado!')}>
-            Copiar
-          </SettingsBtn>
-        </div>
         <PanelNote>
-          A chave nunca fica salva aqui em texto puro — só um hash. Se você revogar ou perder a chave, gere uma nova e atualize no Stronizap.
+          A chave nunca fica salva aqui em texto puro, só um hash. Se você revogar ou perder a chave, gere uma nova e atualize no Stronizap.
         </PanelNote>
       </SettingsPanel>
     </div>
