@@ -12,7 +12,7 @@ import { pct } from './stats.js';
 import { fmtDuration, fmtDays } from './format.js';
 import { OTHERS_ID, STAGE_TRACKING_MONTH, APPTS_COMPLETE_MONTH, makeScope, leadFunnelsOf, funnelStagesOf } from './scope.js';
 import { newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf } from './cohort.js';
-import { appointmentsOf, recordsByLeadOf, cohortMilestones, professorsOf } from './appointments.js';
+import { appointmentsOf, recordsByLeadOf, cohortMilestones, professorsOf, visitOutcomesByLead } from './appointments.js';
 import { contactTimesByLead, firstContactOf } from './contact.js';
 import { movesByLead, stagePassageOf, lossStagesOf, pipelineNowOf } from './stages.js';
 
@@ -36,6 +36,7 @@ function cacheOf(ctx) {
       professors: new Map(),
       moves: movesByLead(interactions),
       contactTimes: contactTimesByLead(interactions),
+      visitOutcomes: visitOutcomesByLead(interactions),
       recordsByLead: recordsByLeadOf(loaded.flatMap((m) => m.aulas || [])),
       leadFunnels: leadFunnelsOf(ctx.funnels)
     };
@@ -106,7 +107,9 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
   const outcomes = cohortLeads.map((l) => outcomeAt(l, asOf));
   const enrolled = outcomes.filter((o) => o === 'enrolled').length;
   const lost = outcomes.filter((o) => o === 'lost').length;
-  const miles = cohortMilestones(cohortLeads, { asOf, cut: Boolean(cutEnd), recordsByLead: cache.recordsByLead });
+  const miles = cohortMilestones(cohortLeads, {
+    asOf, cut: Boolean(cutEnd), recordsByLead: cache.recordsByLead, visitOutcomes: cache.visitOutcomes
+  });
   // O primeiro contato olha o mês do cadastro e o seguinte, até o corte.
   const limit = Math.min(asOf.getTime(), monthRange(addMonthsToKey(monthKey, 1)).end.getTime());
 
@@ -114,7 +117,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
     ...base,
     leads: cohortLeads.length,
     channels: channelsOf(cohortLeads, asOf),
-    appts: appointmentsOf(src.aulas, { start, end, leadOf, inScope: scope.inScope }),
+    appts: appointmentsOf(src.aulas, { start, end, leadOf, inScope: scope.inScope, visitOutcomes: cache.visitOutcomes }),
     enroll: enrollments.length,
     fromCohort: enrollments.filter((l) => cohortIds.has(l.id)).length,
     cohort: {

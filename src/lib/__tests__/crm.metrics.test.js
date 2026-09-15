@@ -88,6 +88,21 @@ describe('metricsOf', () => {
     ]);
   });
 
+  it('o desfecho da visita vem da interação da Meta e da tela de Visitas', () => {
+    const withVisit = makeCtx();
+    const sep = withVisit.months['2026-09'];
+    withVisit.months['2026-09'] = {
+      ...sep,
+      aulas: [...sep.aulas, A('r5', 's5', 'agendada', D(9, 10, 18), D(9, 8), { type: 'visita' })],
+      interactions: [...sep.interactions, {
+        id: 'g1', leadId: 's5', type: 'daily_goal_done', dailyGoalCategory: 'visita_hoje', appointmentOutcome: 'attended', createdAt: D(9, 10, 19)
+      }]
+    };
+    const m = metricsOf(withVisit, { monthKey: '2026-09' });
+    expect(m.appts).toEqual({ total: 3, came: 2, missed: 1, pending: 0, decided: 3, rate: 67 });
+    expect(m.cohort).toMatchObject({ sched: 4, came: 2 });
+  });
+
   it('a equipe é a soma das pessoas e de Outros', () => {
     const parts = ['ana', 'diego', OTHERS_ID].map((userId) => metricsOf(ctx, { monthKey: '2026-09', userId }));
     const sum = (pick) => parts.reduce((a, m) => a + pick(m), 0);

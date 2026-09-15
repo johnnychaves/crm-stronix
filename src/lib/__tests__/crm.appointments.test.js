@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { appointmentsOf, recordsByLeadOf, cohortMilestones, professorsOf } from '../crm/appointments.js';
+import {
+  appointmentsOf, recordsByLeadOf, cohortMilestones, professorsOf, visitOutcomesByLead, effectiveStatus
+} from '../crm/appointments.js';
 
 const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
 const WIN = { start: D(9, 1, 0), end: D(9, 14, 12) };
@@ -65,6 +67,67 @@ describe('marcos da safra', () => {
 
   it('no corte pró-rata o agendamento em aberto do lead não conta, porque ele é o de hoje', () => {
     expect(cohortMilestones(cohort, { asOf, cut: true, recordsByLead: byLead })).toEqual({ sched: 3, came: 1 });
+  });
+
+  it('um agendamento nunca é marcado depois da própria data: vale a mais cedo entre createdAt e scheduledFor', () => {
+    // O backfill gravou createdAt no dia em que rodou, depois da data marcada.
+    const late = recordsByLeadOf([R('9', { leadId: 'z', status: 'no_show', scheduledFor: D(8, 8), createdAt: D(8, 18) })]);
+    expect(cohortMilestones([{ id: 'z' }], { asOf: D(8, 15), cut: true, recordsByLead: late })).toEqual({ sched: 1, came: 0 });
+  });
+});
+
+describe('desfecho da visita pela linha do tempo', () => {
+  const G = (id, leadId, outcome, at, category = 'visita_hoje') => ({
+    id, leadId, type: 'daily_goal_done', dailyGoalCategory: category, appointmentOutcome: outcome, createdAt: at
+  });
+  const outcomes = visitOutcomesByLead([
+    G('g1', 'v1', 'attended', D(9, 3, 19)),
+    G('g1', 'v1', 'attended', D(9, 3, 19)),
+    G('g0', 'v1', 'no_show', D(9, 3, 20), 'aula_hoje'),
+    G('g2', 'v2', 'no_show', D(9, 4, 9)),
+    G('g9', 'v2', 'attended', D(9, 1)),
+    G('g3', 'v3', 'attended', D(9, 6)),
+    G('g4', 'v4', 'cancelled', D(9, 3, 8)),
+    G('g5', 'v5', 'rescheduled', D(9, 3, 19)),
+    G('g6', 'au', 'attended', D(9, 3, 19)),
+    { id: 'g7', leadId: 'v6', type: 'note', dailyGoalCategory: 'visita_hoje', appointmentOutcome: 'attended', createdAt: D(9, 3, 19) },
+    G('g8', 'v6', 'attended', null)
+  ]);
+  const V = (id, leadId) => R(id, { leadId, type: 'visita', scheduledFor: D(9, 3, 18) });
+  const recs = [V('1', 'v1'), V('2', 'v2'), V('3', 'v3'), V('4', 'v4'), V('5', 'v5'), R('6', { leadId: 'au', scheduledFor: D(9, 3, 18) })];
+  const people = new Map(['v1', 'v2', 'v3', 'v4', 'v5', 'au'].map((id) => [id, lead(id)]));
+  const of = (id) => people.get(id) || { id, unknown: true };
+
+  it('só visita_hoje com desfecho que fecha a visita, em ordem, sem repetir e sem data inválida', () => {
+    expect(outcomes.get('v1')).toEqual([{ at: D(9, 3, 19).getTime(), status: 'attended' }]);
+    expect(outcomes.get('v2')).toEqual([{ at: D(9, 1).getTime(), status: 'attended' }, { at: D(9, 4, 9).getTime(), status: 'no_show' }]);
+    expect(outcomes.has('v5')).toBe(false);
+    expect(outcomes.has('v6')).toBe(false);
+  });
+
+  it('veio no dia, faltou no dia seguinte, desfecho três dias depois não conta, cancelada sai da conta, aula não muda', () => {
+    expect(recs.map((r) => effectiveStatus(r, outcomes)))
+      .toEqual(['attended', 'no_show', 'agendada', 'cancelled', 'agendada', 'agendada']);
+    expect(appointmentsOf(recs, { ...WIN, leadOf: of, inScope: all, visitOutcomes: outcomes }))
+      .toEqual({ total: 5, came: 1, missed: 1, pending: 3, decided: 2, rate: 50 });
+  });
+
+  it('a janela vai do início do dia marcado até dois dias depois, em horário local', () => {
+    const at = (d, h, min = 0) => visitOutcomesByLead([G('x', 'v1', 'attended', new Date(2026, 8, d, h, min))]);
+    expect(effectiveStatus(V('1', 'v1'), at(3, 0))).toBe('attended');
+    expect(effectiveStatus(V('1', 'v1'), at(4, 23, 59))).toBe('attended');
+    expect(effectiveStatus(V('1', 'v1'), at(5, 0))).toBe('agendada');
+    expect(effectiveStatus(V('1', 'v1'), at(2, 23, 59))).toBe('agendada');
+  });
+
+  it('sem os desfechos da linha do tempo, vale o status do registro', () => {
+    expect(appointmentsOf(recs, { ...WIN, leadOf: of, inScope: all })).toMatchObject({ total: 6, came: 0, pending: 6 });
+  });
+
+  it('marcos da safra: a visita que veio conta como comparecimento e a cancelada não é agendamento', () => {
+    const cohort = ['v1', 'v2', 'v4'].map((id) => ({ id }));
+    expect(cohortMilestones(cohort, { asOf: D(9, 14, 12), cut: false, recordsByLead: recordsByLeadOf(recs), visitOutcomes: outcomes }))
+      .toEqual({ sched: 2, came: 1 });
   });
 });
 
