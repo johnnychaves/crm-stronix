@@ -95,7 +95,8 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
       defaultFunnelId: scope.defaultFunnelId,
       stages: funnelId ? funnelStagesOf(ctx.statuses, funnelId, scope.defaultFunnelId) : [],
       ownerOk: scope.ownerOk,
-      funnelOk: scope.funnelOk
+      funnelOk: scope.funnelOk,
+      now: ctx.now
     }) : null
   };
   if (!src) {

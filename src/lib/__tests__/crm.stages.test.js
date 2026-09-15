@@ -247,4 +247,18 @@ describe('carteira agora', () => {
     expect(r.total).toBe(4);
     expect(r.noNext).toBe(2);
   });
+
+  it('sem próximo contato deixa fora quem foi cadastrado há menos de 24 horas: a Meta ainda o mostra como Novo lead 24h', () => {
+    const base = { status: 'Novo lead', funnelId: 'ven', consultantId: 'ana', nextFollowUp: null };
+    const list = [
+      { ...base, id: 'novo', createdAt: T(15, 1) },
+      { ...base, id: 'velho', createdAt: T(13, 12) },
+      // Sem data de cadastro, o normalizeLeadDoc põe "agora", e a Meta não o cobre.
+      { ...base, id: 'sem-data', createdAt: T(15, 11), createdAtMissing: true }
+    ];
+    const r = pipelineNowOf(list, {
+      funnelId: null, funnels: FUNNELS, defaultFunnelId: 'ven', stages: [], ownerOk: all, funnelOk: all, now: T(15, 12)
+    });
+    expect(r).toMatchObject({ total: 3, noNext: 2 });
+  });
 });

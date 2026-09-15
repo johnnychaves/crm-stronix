@@ -12,6 +12,8 @@ import { isImportCreatedLead } from '../operacional/routine.js';
 import { median, rankCounts } from './stats.js';
 import { firstEnrolledAtOf } from './cohort.js';
 
+const DAY_MS = 86400000;
+
 // A troca anterior ao registro (só o texto "Movido para a etapa [X]") não tem
 // toStatus e fica de fora.
 export const isStageMove = (i) =>
@@ -156,8 +158,13 @@ export function lossStagesOf({ lostLeads, moves, start, end }) {
 // instante. Com um funil, por etapa na ordem do funil, com a etapa que não
 // está mais nele no fim; sem funil, por funil de lead, e quem está num funil
 // que não existe mais em "Sem funil". Sem próximo contato: em jogo sem
-// nextFollowUp, que por isso não aparece na Meta Diária de ninguém.
-export function pipelineNowOf(liveLeads, { funnelId, funnels, defaultFunnelId, stages, ownerOk, funnelOk }) {
+// nextFollowUp, que por isso não aparece na Meta Diária de ninguém. O lead
+// cadastrado há menos de 24 horas de `now` fica fora dessa conta, porque a
+// Meta ainda o cobre como "Novo lead 24h" (dailyGoal.js). O lead sem data de
+// cadastro fica dentro: a Meta não o cobre.
+export function pipelineNowOf(liveLeads, { funnelId, funnels, defaultFunnelId, stages, ownerOk, funnelOk, now = null }) {
+  const coveredByMeta = (l) => now instanceof Date && !l.createdAtMissing && l.createdAt instanceof Date
+    && now.getTime() - l.createdAt.getTime() < DAY_MS;
   const open = [];
   const seen = new Set();
   (liveLeads || []).forEach((l) => {
@@ -180,5 +187,9 @@ export function pipelineNowOf(liveLeads, { funnelId, funnels, defaultFunnelId, s
     const rest = open.filter((l) => !placed.has(l.id)).length;
     if (rest > 0) rows.push({ id: null, name: 'Sem funil', count: rest });
   }
-  return { total: open.length, rows, noNext: open.filter((l) => !getSafeDateOrNull(l.nextFollowUp)).length };
+  return {
+    total: open.length,
+    rows,
+    noNext: open.filter((l) => !getSafeDateOrNull(l.nextFollowUp) && !coveredByMeta(l)).length
+  };
 }
