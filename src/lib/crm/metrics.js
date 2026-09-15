@@ -224,8 +224,8 @@ export function buildCrmHighlights(cur, cmp, { cmpName }) {
 }
 
 // Tendência dos `months` meses até o exibido. Mês sem valor fica fora. Nos
-// números de agendamento, os meses antes de agosto de 2026 também saem
-// (histórico incompleto), e a série encurta.
+// números de agendamento, os meses antes de setembro de 2026 também saem
+// (histórico incompleto, APPTS_COMPLETE_MONTH), e a série encurta.
 export function seriesOf(ctx, { monthKey, userId = null, funnelId = null, pick, months = 6, apptsBased = false }) {
   const keys = [];
   for (let i = months - 1; i >= 0; i--) keys.push(addMonthsToKey(monthKey, -i));

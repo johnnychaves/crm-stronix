@@ -133,7 +133,7 @@ describe('metricsOf', () => {
       ['Contato feito', 2, 1, 1, 2880]
     ]);
     const aug = metricsOf(ctx, { monthKey: '2026-08', funnelId: 'ven' });
-    expect(aug).toMatchObject({ stageBase: false, passage: null, lossStages: null, apptsBase: true });
+    expect(aug).toMatchObject({ stageBase: false, passage: null, lossStages: null, apptsBase: false });
   });
 
   it('carteira agora só no mês em andamento e sem corte', () => {
@@ -237,11 +237,11 @@ describe('destaques', () => {
 });
 
 describe('seriesOf', () => {
-  it('seis meses até o exibido, sem os meses sem fonte; agendamento só desde agosto de 2026', () => {
+  it('seis meses até o exibido, sem os meses sem fonte; agendamento só desde setembro de 2026', () => {
     const ctx = makeCtx();
     expect(seriesOf(ctx, { monthKey: '2026-09', pick: (m) => m.leads }))
       .toEqual([{ key: '2026-08', value: 4 }, { key: '2026-09', value: 5 }]);
     expect(seriesOf(ctx, { monthKey: '2026-09', pick: (m) => m.appts?.total ?? null, apptsBased: true }))
-      .toEqual([{ key: '2026-08', value: 1 }, { key: '2026-09', value: 2 }]);
+      .toEqual([{ key: '2026-09', value: 2 }]);
   });
 });

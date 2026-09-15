@@ -13,8 +13,11 @@ export { OTHERS_ID };
 export const STAGE_TRACKING_MONTH = '2026-09';
 
 // O histórico de agendamentos (stronix_aulas) só fica completo a partir de
-// agosto de 2026. Antes disso agendamentos e comparecimento são parciais.
-export const APPTS_COMPLETE_MONTH = '2026-08';
+// setembro de 2026. As aulas estão completas desde a segunda quinzena de
+// julho, mas as visitas só têm registro desde 18/08/2026 (PR #177); antes,
+// só as 18 da carga inicial. Antes disso agendamentos e comparecimento são
+// parciais.
+export const APPTS_COMPLETE_MONTH = '2026-09';
 
 // Funis de cliente (Renovações, Vencidos e Upgrade) ficam fora do CRM. O de
 // Indicações é funil de lead e entra. O discriminador é a flag systemKind,
