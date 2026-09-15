@@ -12,7 +12,7 @@ import { useCrmSources } from '../../hooks/useCrmSources.js';
 import { monthKeyOf, addMonthsToKey, comparisonCut, compareOptions, monthLabel } from '../../lib/operacional/month.js';
 import { metricsOf, buildCrmHighlights, seriesOf, OTHERS_ID } from '../../lib/crm/metrics.js';
 import { crmMonthKeys } from '../../lib/crm/queries.js';
-import { leadFunnelsOf } from '../../lib/crm/scope.js';
+import { leadFunnelsOf, APPTS_COMPLETE_MONTH } from '../../lib/crm/scope.js';
 import { monthName } from '../../lib/crm/format.js';
 import { regimeTexts } from '../../lib/crm/texts.js';
 import { cn } from '../../lib/utils.js';
@@ -102,11 +102,17 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
     ? { cur: curLoaded, cmp: cmpLoaded, series: seriesLoaded, team: teamLoaded }
     : lastGood;
 
-  const shownName = monthLabel(monthKey, { capitalized: false, withYear: false });
-  const cmpName = monthName(cmpKey, monthKey);
+  // O cabeçalho e a barra descrevem o que está escolhido, mesmo enquanto carrega.
+  const pickedName = monthLabel(monthKey, { capitalized: false, withYear: false });
   const { subline, note } = regimeTexts({
-    running: cur.running, compareOn, dayN: now.getDate(), shownName, cmpName, apptsPartial: !cur.apptsBase
+    running: monthKey === currentKey, compareOn, dayN: now.getDate(), shownName: pickedName,
+    cmpName: monthName(cmpKey, monthKey), apptsPartial: monthKey < APPTS_COMPLETE_MONTH
   });
+  // O corpo, sob o véu enquanto o mês novo carrega, fala do retrato que está
+  // nele, então os nomes saem de cur e cmp. Com o mês novo pronto, são os
+  // mesmos da escolha.
+  const shownName = monthLabel(cur.monthKey, { capitalized: false, withYear: false });
+  const cmpName = cmp ? monthName(cmp.monthKey, cur.monthKey) : monthName(cmpKey, monthKey);
   const highlights = useMemo(
     () => (compareOn ? buildCrmHighlights(cur, cmp, { cmpName }) : []),
     [compareOn, cur, cmp, cmpName]
