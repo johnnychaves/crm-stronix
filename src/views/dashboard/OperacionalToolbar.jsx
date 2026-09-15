@@ -1,6 +1,8 @@
 // Barra fixa de controles do Operacional: mês de competência, comparativo e
-// filtro de pessoa. Porta o handoff (linhas 86 a 129) — usado pela tela
-// DashboardOperacionalView (Task 12).
+// filtro de pessoa. Porta o handoff do Operacional (linhas 86 a 129) e é
+// usada pela tela DashboardOperacionalView. Os três controles (MonthControl,
+// CompareControl e PersonControl) também servem à barra do CRM
+// (CrmToolbar.jsx), que acrescenta o funil.
 //
 // O trigger dos três <Select> usa o primitivo Radix direto
 // (SelectPrimitive.Trigger asChild) em vez do SelectTrigger do shadcn: aquele
@@ -22,9 +24,15 @@ import { Select, SelectContent, SelectItem, SelectValue } from '../../components
 import { Checkbox } from '../../components/ui/checkbox.jsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.jsx';
 
-function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPrev, onNext }) {
+// Rótulo do mês escolhido sem o " · em andamento", para o botão estreito.
+const shortMonthLabel = (options, key) =>
+  String((options || []).find((o) => o.key === key)?.label || '').replace(/ · em andamento$/, '');
+
+// `compact`: ocupa a largura toda da linha do celular, com o rótulo curto e
+// truncado no botão. Sem ele, o controle de sempre.
+export function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPrev, onNext, compact = false }) {
   return (
-    <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card p-[3px]">
+    <div className={cn('flex items-center gap-0.5 rounded-xl border border-border bg-card p-[3px]', compact && 'h-10 w-full justify-between')}>
       <button
         type="button"
         onClick={onPrev}
@@ -39,9 +47,13 @@ function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPre
           <button
             type="button"
             aria-label="Mês de competência"
-            className="num flex h-[30px] min-w-[150px] items-center justify-center rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+            className={cn(
+              'num flex h-[30px]',
+              compact ? 'min-w-0 flex-1' : 'min-w-[150px]',
+              'items-center justify-center rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40'
+            )}
           >
-            <SelectValue />
+            {compact ? <span className="truncate">{shortMonthLabel(monthOptions, monthKey)}</span> : <SelectValue />}
           </button>
         </SelectPrimitive.Trigger>
         <SelectContent position="popper">
@@ -63,7 +75,7 @@ function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPre
   );
 }
 
-function CompareControl({ compareOn, onCompareOn, compareKey, compareOptions, onCompare }) {
+export function CompareControl({ compareOn, onCompareOn, compareKey, compareOptions, onCompare }) {
   return (
     <div
       className={cn(
@@ -107,7 +119,7 @@ function CompareControl({ compareOn, onCompareOn, compareKey, compareOptions, on
   );
 }
 
-function PersonControl({ person, people, onPerson }) {
+export function PersonControl({ person, people, onPerson }) {
   const active = person !== 'all';
   return (
     <Select value={person} onValueChange={onPerson}>
@@ -139,9 +151,11 @@ export function OperacionalToolbar(props) {
   // A área que rola no App tem recuo interno (p-4 md:p-8, App.jsx:1666), e o
   // sticky respeita esse recuo: com top-0 a barra grudava 16/32px abaixo do
   // topo e o conteúdo aparecia por cima dela. O top negativo do mesmo tamanho
-  // faz a barra encostar no cabeçalho do App.
+  // faz a barra encostar no cabeçalho do App. No escuro o bg-card é 2% de
+  // branco, translúcido, e os cards apareciam através da barra ao rolar: ela
+  // usa a cor efetiva do cabeçalho (2% de branco sobre o ink-950), opaca.
   return (
-    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06]">
+    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06] dark:bg-[#0D1226]">
       <div className="hidden items-center gap-2.5 md:flex">
         <MonthControl {...props} />
         <CompareControl {...props} />

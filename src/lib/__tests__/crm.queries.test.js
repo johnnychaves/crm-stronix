@@ -1,0 +1,300 @@
+import { describe, it, expect } from 'vitest';
+import {
+  convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, clienteSinceInMonthSpec, crmMonthKeys, newestTimeOf, currentFieldWindow,
+  failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
+  liveOutcomeSignal, crmMonthsReady, outcomeRefreshNeeded, OUTCOME_CLOCK_SLACK_MS, acceptsFreshAulas, withFreshAulas
+} from '../crm/queries.js';
+import { NEW_LEADS_SLACK_MS } from '../operacional/queries.js';
+
+const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
+const TS = (date) => ({ toDate: () => date });
+
+describe('consultas do CRM', () => {
+  it('são de campo único: range e orderBy no mesmo campo, sem igualdade', () => {
+    const specs = [convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, clienteSinceInMonthSpec];
+    specs.map((f) => f(0, 10)).forEach((s) => {
+      expect(new Set(s.wheres.map((w) => w.field))).toEqual(new Set([s.orderBy.field]));
+      expect(s.wheres.map((w) => w.op)).toEqual(['>=', '<']);
+    });
+    expect(specs.map((f) => f(0, 10).orderBy.field)).toEqual(['convertedAt', 'lostAt', 'scheduledFor', 'clienteSince']);
+  });
+});
+
+describe('meses a carregar', () => {
+  it('mês corrente contra o anterior: os seis meses da tendência', () => {
+    expect(crmMonthKeys({ monthKey: '2026-09', compareOn: true, compareKey: '2026-08', currentKey: '2026-09' }))
+      .toEqual(['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09']);
+  });
+
+  it('mês corrente contra o mesmo mês do ano anterior: entram o comparado, que é cortado, e o mês seguinte a ele', () => {
+    // O agendamento marcado antes do corte pode ser para uma data do mês seguinte.
+    expect(crmMonthKeys({ monthKey: '2026-09', compareOn: true, compareKey: '2025-09', currentKey: '2026-09' }))
+      .toEqual(['2025-09', '2025-10', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09']);
+  });
+
+  it('mês fechado: do mais antigo da tendência até o corrente, e do comparado até o corrente', () => {
+    expect(crmMonthKeys({ monthKey: '2026-07', compareOn: true, compareKey: '2026-06', currentKey: '2026-09' }))
+      .toEqual(['2026-02', '2026-03', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09']);
+    expect(crmMonthKeys({ monthKey: '2026-07', compareOn: true, compareKey: '2025-07', currentKey: '2026-09' })[0]).toBe('2025-07');
+  });
+
+  it('sem comparar, o comparado não entra', () => {
+    expect(crmMonthKeys({ monthKey: '2026-09', compareOn: false, compareKey: '2025-09', currentKey: '2026-09' }))
+      .not.toContain('2025-09');
+  });
+
+  it('atravessa o ano, e o comparado dentro dos seis meses não acrescenta nada', () => {
+    expect(crmMonthKeys({ monthKey: '2027-01', compareOn: true, compareKey: '2026-12', currentKey: '2027-01' }))
+      .toEqual(['2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01']);
+    expect(crmMonthKeys({ monthKey: '2026-12', compareOn: true, compareKey: '2026-10', currentKey: '2027-01' }))
+      .toEqual(['2026-07', '2026-08', '2026-09', '2026-10', '2026-11', '2026-12', '2027-01']);
+  });
+
+  it('chave malformada não prende o laço: cada trecho tem no máximo 36 meses', () => {
+    const keys = crmMonthKeys({ monthKey: '2026-09', compareOn: false, compareKey: null, currentKey: 'xx' });
+    expect(keys.length).toBeGreaterThan(0);
+    expect(keys.length).toBeLessThanOrEqual(6 + 36);
+  });
+});
+
+describe('aulas de mês fechado que vêm do servidor', () => {
+  it('só os dois meses anteriores ao corrente; o corrente e os mais antigos não', () => {
+    const cur = '2026-09';
+    expect(['2026-06', '2026-07', '2026-08', '2026-09', '2026-10'].map((k) => aulasFromServerFor(k, cur)))
+      .toEqual([false, true, true, false, false]);
+  });
+
+  it('atravessa o ano', () => {
+    expect(['2026-10', '2026-11', '2026-12', '2027-01'].map((k) => aulasFromServerFor(k, '2027-01')))
+      .toEqual([false, true, true, false]);
+  });
+
+  it('a busca ao vivo relê as aulas do mês anterior: entram só na entrada de mês fechado que já carregou e não falhou', () => {
+    // A matrícula de 03/09 marca a aula de 28/08 como a que converteu (markConvertingAula).
+    const aug = { closed: true, converted: [{ id: 'a' }], lost: [], aulas: [{ id: 'r1', status: 'attended', converted: false }] };
+    const fresh = [{ id: 'r1', status: 'attended', converted: true }];
+    expect(acceptsFreshAulas(aug)).toBe(true);
+    expect(withFreshAulas(aug, fresh)).toEqual({ ...aug, aulas: fresh });
+    const open = { closed: false, converted: [], lost: [], aulas: [], fetchedAt: 1 };
+    [null, undefined, failedCrmEntry(true), open].forEach((e) => {
+      expect(acceptsFreshAulas(e)).toBe(false);
+      expect(withFreshAulas(e, fresh)).toBe(e);
+    });
+  });
+
+  it('das releituras que se cruzam vale a que começou por último, mesmo que termine antes', () => {
+    const aug = { closed: true, converted: [], lost: [], aulas: [{ id: 'r1', converted: false }] };
+    const stale = [{ id: 'r1', converted: false }];
+    const fresh = [{ id: 'r1', converted: true }];
+    // A2 começou em 200 e terminou primeiro, com a aula já convertida. A1
+    // começou em 100, ficou nas novas tentativas e chegou depois.
+    const afterA2 = withFreshAulas(aug, fresh, 200);
+    expect(afterA2).toEqual({ ...aug, aulas: fresh, aulasReadAt: 200 });
+    expect(acceptsFreshAulas(afterA2, 100)).toBe(false);
+    expect(withFreshAulas(afterA2, stale, 100)).toBe(afterA2);
+    // A que começou depois da aplicada entra.
+    expect(withFreshAulas(afterA2, stale, 300)).toEqual({ ...aug, aulas: stale, aulasReadAt: 300 });
+    // Sem instante, a pergunta antes de reler: só a regra do mês fechado carregado e sem falha.
+    expect(acceptsFreshAulas(afterA2)).toBe(true);
+  });
+});
+
+describe('busca incremental do mês corrente', () => {
+  it('instante mais novo do campo, em Timestamp ou Date', () => {
+    expect(newestTimeOf([{ convertedAt: TS(D(9, 3)) }, { convertedAt: D(9, 5) }, {}], 'convertedAt')).toBe(D(9, 5).getTime());
+    expect(newestTimeOf([], 'lostAt')).toBeNull();
+    expect(newestTimeOf([{ lostAt: { seconds: 100 } }, { lostAt: { seconds: 50 } }], 'lostAt')).toBe(100000);
+  });
+
+  it('sem âncora, o mês inteiro; com âncora, desde ela menos a folga, limitada ao instante da busca', () => {
+    const start = D(9, 1, 0).getTime();
+    const end = D(10, 1, 0).getTime();
+    expect(currentFieldWindow('2026-09', null, null)).toEqual({ from: start, to: end });
+    const anchor = D(9, 10).getTime();
+    expect(currentFieldWindow('2026-09', anchor, D(9, 12).getTime()).from).toBe(anchor - NEW_LEADS_SLACK_MS);
+    expect(currentFieldWindow('2026-09', D(9, 20).getTime(), anchor).from).toBe(anchor - NEW_LEADS_SLACK_MS);
+    expect(currentFieldWindow('2026-09', start, null).from).toBe(start);
+  });
+});
+
+describe('entrada do mês corrente', () => {
+  const entry = {
+    closed: false, converted: [{ id: 'a', v: 1 }], lost: [{ id: 'x' }], aulas: [{ id: 'r1', status: 'agendada' }],
+    fetchedAt: 100, newestConvertedAt: 50, newestLostAt: 40
+  };
+
+  it('matrículas e perdas unidas por id, agendamentos trocados pelos da busca mais nova', () => {
+    const fresh = {
+      converted: [{ id: 'a', v: 2, convertedAt: new Date(200) }, { id: 'b', convertedAt: new Date(300) }],
+      lost: [],
+      aulas: [{ id: 'r1', status: 'attended' }],
+      fetchedAt: 400
+    };
+    const next = mergeCrmCurrent(entry, fresh);
+    expect(next.converted).toEqual([{ id: 'a', v: 2, convertedAt: new Date(200) }, { id: 'b', convertedAt: new Date(300) }]);
+    expect(next.lost).toEqual([{ id: 'x' }]);
+    expect(next.aulas).toEqual([{ id: 'r1', status: 'attended' }]);
+    expect(next).toMatchObject({ fetchedAt: 400, newestConvertedAt: 300, newestLostAt: 40 });
+  });
+
+  it('busca mais antiga que chega depois só acrescenta; mês fechado e entrada que falhou ficam como estão', () => {
+    const old = mergeCrmCurrent(entry, { converted: [{ id: 'a', v: 0 }, { id: 'c' }], lost: [], aulas: [], fetchedAt: 50 });
+    expect(old.converted).toEqual([{ id: 'a', v: 1 }, { id: 'c' }]);
+    expect(old.aulas).toEqual(entry.aulas);
+    expect(old.fetchedAt).toBe(100);
+    const closed = { ...entry, closed: true };
+    expect(mergeCrmCurrent(closed, { converted: [], lost: [], aulas: [], fetchedAt: 500 })).toBe(closed);
+    const failed = failedCrmEntry(false);
+    expect(mergeCrmCurrent(failed, { converted: [], lost: [], aulas: [], fetchedAt: 500 })).toBe(failed);
+  });
+
+  it('entrada que falhou não vai para a memória da sessão; o mês só anda de aberto para fechado', () => {
+    expect(shouldRememberCrmEntry(null, failedCrmEntry(true))).toBe(false);
+    expect(shouldRememberCrmEntry(null, { closed: true, converted: [], lost: [], aulas: [] })).toBe(true);
+    expect(shouldRememberCrmEntry({ closed: true }, { closed: false, converted: [], lost: [], aulas: [] })).toBe(false);
+  });
+
+  it('entrada sem fetchedAt: a busca nova ganha', () => {
+    const noStamp = { closed: false, converted: [{ id: 'a', v: 1 }], lost: [], aulas: [{ id: 'r1' }] };
+    const next = mergeCrmCurrent(noStamp, {
+      converted: [{ id: 'a', v: 2, convertedAt: new Date(200) }], lost: [], aulas: [{ id: 'r2' }], fetchedAt: 400
+    });
+    expect(next.converted).toEqual([{ id: 'a', v: 2, convertedAt: new Date(200) }]);
+    expect(next).toMatchObject({ aulas: [{ id: 'r2' }], fetchedAt: 400, newestConvertedAt: 200 });
+  });
+});
+
+describe('leads a buscar por id e a versão mais nova de cada lead', () => {
+  const months = {
+    '2026-08': {
+      leadsCreated: [{ id: 'a', v: 'criado' }], converted: [{ id: 'b', v: 'ago' }], lost: [],
+      aulas: [{ id: 'r1', leadId: 'z' }], interactions: []
+    },
+    '2026-09': {
+      leadsCreated: [], converted: [{ id: 'a', v: 'set' }], lost: [],
+      aulas: [{ id: 'r2', leadId: 'a' }],
+      interactions: [
+        { leadId: 'y', type: 'status_change', toStatus: 'Contato feito' },
+        { leadId: 'w', type: 'status_change', text: 'Movido para a etapa [X] via Kanban.' },
+        { leadId: 'v', type: 'note' }
+      ]
+    }
+  };
+
+  it('só os citados por agendamento ou por troca de etapa gravada que ninguém conhece', () => {
+    expect(referencedLeadIds(months, new Set(['a', 'b']))).toEqual(['y', 'z']);
+  });
+
+  it('meses fechados em ordem, depois os buscados por id, o mês corrente e os ao vivo', () => {
+    const fetched = new Map([['b', { id: 'b', v: 'por id' }], ['a', { id: 'a', v: 'por id' }], ['q', null]]);
+    const map = mergeLeadsById({ months, currentKey: '2026-09', fetched, liveLeads: [{ id: 'c', v: 'vivo' }] });
+    expect(map.get('a').v).toBe('set');
+    expect(map.get('b').v).toBe('por id');
+    expect(map.get('c').v).toBe('vivo');
+    expect(map.has('q')).toBe(false);
+  });
+
+  it('registro sem leadId e registro cancelado não pedem a busca do dono', () => {
+    const aulas = [{ id: 'r1' }, { id: 'r2', leadId: 'k', status: 'cancelled' }, { id: 'r3', leadId: 'j', status: 'agendada' }];
+    expect(referencedLeadIds({ '2026-09': { aulas, interactions: [] } }, new Set())).toEqual(['j']);
+  });
+
+  it('no mesmo mês, a cópia de matrícula ganha da de perda; o lead ao vivo ganha do mês corrente', () => {
+    const map = mergeLeadsById({
+      months: {
+        '2026-08': { leadsCreated: [], lost: [{ id: 'x', v: 'perdido' }], converted: [{ id: 'x', v: 'matriculado' }] },
+        '2026-09': { leadsCreated: [{ id: 'y', v: 'mês' }], lost: [], converted: [] }
+      },
+      currentKey: '2026-09',
+      fetched: new Map(),
+      liveLeads: [{ id: 'y', v: 'vivo' }]
+    });
+    expect(map.get('x').v).toBe('matriculado');
+    expect(map.get('y').v).toBe('vivo');
+  });
+});
+
+describe('sinal de matrícula ou perda feita com a tela aberta', () => {
+  const S = (toStatus, at, over = {}) => ({ leadId: 'x', type: 'status_change', toStatus, createdAt: at, ...over });
+
+  it('o instante mais novo entre as trocas para Perda ou para etapa com nome de matrícula', () => {
+    expect(liveOutcomeSignal([
+      S('Perda', D(9, 3)),
+      S('Matriculado', TS(D(9, 5))),
+      S('Venda', D(9, 4)),
+      S('Contato feito', D(9, 9)),
+      { leadId: 'x', type: 'note', toStatus: 'Perda', createdAt: D(9, 10) },
+      { leadId: 'x', type: 'status_change', text: 'Responsável alterado de [Ana] para [Diego].', createdAt: D(9, 11) },
+      S('Perda', null)
+    ])).toBe(D(9, 5).getTime());
+  });
+
+  it('sem nenhuma, 0', () => {
+    expect(liveOutcomeSignal([])).toBe(0);
+    expect(liveOutcomeSignal(undefined)).toBe(0);
+    expect(liveOutcomeSignal([S('Contato feito', D(9, 3))])).toBe(0);
+  });
+});
+
+describe('busca ao vivo depois de matrícula ou perda', () => {
+  // Instante da busca do mês corrente, no relógio do aparelho (Date.now() em loadCrmCurrent).
+  const F = D(9, 10, 12).getTime();
+  const MIN = 60 * 1000;
+  const entry = { closed: false, converted: [], lost: [], aulas: [], fetchedAt: F };
+  const fresh = (fetchedAt, over = {}) => ({ converted: [], lost: [], aulas: [], fetchedAt, ...over });
+
+  it('troca mais nova que os dados da entrada pede a busca; a folga de 2 minutos cobre o relógio do aparelho', () => {
+    expect(OUTCOME_CLOCK_SLACK_MS).toBe(2 * MIN);
+    expect(outcomeRefreshNeeded(F + 1000, entry)).toBe(true);
+    expect(outcomeRefreshNeeded(F - MIN, entry)).toBe(true);
+    expect(outcomeRefreshNeeded(F - 2 * MIN, entry)).toBe(false);
+  });
+
+  it('sem entrada, entrada que falhou, de mês fechado ou sem instante de busca, ou sem sinal: nada a buscar', () => {
+    expect(outcomeRefreshNeeded(F + 1000, null)).toBe(false);
+    expect(outcomeRefreshNeeded(F + 1000, undefined)).toBe(false);
+    expect(outcomeRefreshNeeded(F + 1000, failedCrmEntry(false))).toBe(false);
+    expect(outcomeRefreshNeeded(F + 1000, { ...entry, closed: true })).toBe(false);
+    expect(outcomeRefreshNeeded(F + 1000, { ...entry, fetchedAt: undefined })).toBe(false);
+    expect(outcomeRefreshNeeded(0, entry)).toBe(false);
+  });
+
+  it('página recarregada: as trocas do mês que chegam depois da primeira busca, e são mais velhas que ela, não pedem outra', () => {
+    expect(outcomeRefreshNeeded(D(9, 9, 18).getTime(), entry)).toBe(false);
+  });
+
+  it('matrícula feita em outro aparelho enquanto a tela abria: vale assim que a entrada chega', () => {
+    // A troca de 12h chegou antes da entrada, cuja busca começou 30 segundos antes dela.
+    expect(outcomeRefreshNeeded(F, null)).toBe(false);
+    expect(outcomeRefreshNeeded(F, { ...entry, fetchedAt: F - 30 * 1000 })).toBe(true);
+  });
+
+  it('sem laço: a busca feita por um sinal marca a entrada, o mesmo sinal não pede outra e um sinal novo pede', () => {
+    const s = F + 1000;
+    // A busca ao vivo começa 2 segundos depois do sinal: só com a folga, o
+    // mesmo sinal pediria outra busca a cada volta, por 2 minutos.
+    const after = mergeCrmCurrent(entry, fresh(s + 2000, { outcomeSignal: s }));
+    expect(outcomeRefreshNeeded(s, { ...after, outcomeSignal: undefined })).toBe(true);
+    expect(after.outcomeSignal).toBe(s);
+    expect(outcomeRefreshNeeded(s, after)).toBe(false);
+    expect(outcomeRefreshNeeded(s + 5000, after)).toBe(true);
+  });
+
+  it('a marca do sinal coberto só anda para frente, e a busca sem sinal não a apaga', () => {
+    const e1 = mergeCrmCurrent(entry, fresh(F + 9000, { outcomeSignal: F + 8000 }));
+    const e2 = mergeCrmCurrent(e1, fresh(F + 5000, { outcomeSignal: F + 4000 }));
+    expect(e2.outcomeSignal).toBe(F + 8000);
+    expect(mergeCrmCurrent(e2, fresh(F + 20000)).outcomeSignal).toBe(F + 8000);
+    expect(mergeCrmCurrent(entry, fresh(F + 20000))).not.toHaveProperty('outcomeSignal');
+  });
+});
+
+describe('meses prontos', () => {
+  it('só com todos os meses pedidos na saída, inclusive o que falhou; lista vazia está pronta', () => {
+    const months = { '2026-08': {}, '2026-09': { failed: true } };
+    expect(crmMonthsReady(['2026-08', '2026-09'], months)).toBe(true);
+    expect(crmMonthsReady(['2026-07', '2026-08', '2026-09'], months)).toBe(false);
+    expect(crmMonthsReady([], {})).toBe(true);
+    expect(crmMonthsReady(undefined, undefined)).toBe(true);
+  });
+});

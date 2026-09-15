@@ -1,26 +1,22 @@
-// Abas CRM e Gerencial da Visão geral, por enquanto só com o aviso "Em breve".
-// O CRM vai reunir lead e funil; o Gerencial volta com um papel novo. A tela
-// antiga do Gerencial (DashboardGerencialView) saiu do menu e fica no código
-// como base para os dois. Mesmo cabeçalho do Operacional, que anula o padding
-// do App, e o cartão tracejado que o Operacional usa para "não disponível".
+// Aba Gerencial da Visão geral, por enquanto só com o aviso "Em breve": ela
+// volta com um papel novo. Lead e funil estão no CRM; a rotina, a base de
+// clientes e a renovação, no Operacional. A tela antiga do Gerencial
+// (DashboardGerencialView) saiu do menu e fica no código como base. Mesmo
+// cabeçalho do Operacional, que anula o padding do App, e o cartão tracejado
+// que o Operacional usa para "não disponível".
 import { ArrowRight } from 'lucide-react';
 import { Button } from '../../components/ui/button.jsx';
 
 const PAGES = {
-  crm: {
-    title: 'CRM',
-    subline: 'Leads, funil e conversão, mês a mês.',
-    note: 'Enquanto isso, a rotina, a base de clientes e a renovação estão no Operacional.'
-  },
   gerencial: {
     title: 'Gerencial',
     subline: 'A tela está sendo refeita e volta com um papel novo.',
-    note: 'Lead e funil vão para o CRM. A rotina, a base de clientes e a renovação já estão no Operacional.'
+    note: 'Lead e funil estão no CRM. A rotina, a base de clientes e a renovação estão no Operacional.'
   }
 };
 
 export function DashboardComingSoonView({ page, onNavigate }) {
-  const p = PAGES[page] || PAGES.crm;
+  const p = PAGES[page] || PAGES.gerencial;
   return (
     <div className="-m-4 md:-m-8 font-sans">
       <header className="bg-card px-4 md:px-8 pb-4 pt-5">
