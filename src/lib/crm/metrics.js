@@ -59,7 +59,7 @@ export function metricsOf(ctx, { monthKey, userId = null, funnelId = null, cutEn
 
 // Professores: da academia inteira, iguais para qualquer pessoa e funil.
 function professorsOfMonth(cache, src, { monthKey, start, end }) {
-  if (!src) return null;
+  if (!src || src.failed) return null;
   const key = `${monthKey}|${end.getTime()}`;
   if (!cache.professors.has(key)) cache.professors.set(key, professorsOf(src.aulas, { start, end }));
   return cache.professors.get(key);
@@ -99,7 +99,10 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
       now: ctx.now
     }) : null
   };
-  if (!src) {
+  // Mês sem fonte, ou que falhou em todas as tentativas: sem número. O que
+  // falhou segue com fonte (a tela não fica esperando) e marcado, para a tela
+  // mostrar "—" com o aviso em vez de zeros; a tendência pula ele.
+  if (!src || src.failed) {
     return {
       ...base, leads: null, channels: [], appts: null, enroll: null, fromCohort: null, cohort: null,
       losses: null, lossStages: null, firstContact: null, daysToEnroll: null, passage: null
@@ -120,8 +123,12 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
   const miles = cohortMilestones(cohortLeads, {
     asOf, cut: asOf.getTime() < ctx.now.getTime(), recordsByLead: cache.recordsByLead, visitOutcomes: cache.visitOutcomes
   });
-  // O primeiro contato olha o mês do cadastro e o seguinte, até o corte.
+  // O primeiro contato olha o mês do cadastro e o seguinte, até o corte. Se a
+  // safra passa do fim do mês e o seguinte não carregou ou falhou, fica sem
+  // número em vez de menor.
   const limit = Math.min(asOf.getTime(), monthRange(addMonthsToKey(monthKey, 1)).end.getTime());
+  const nextSrc = ctx.months?.[addMonthsToKey(monthKey, 1)];
+  const contactOk = asOf.getTime() <= monthEnd.getTime() || Boolean(nextSrc && !nextSrc.failed);
   const losses = lossesOf(fresh(src.lost), { start, end, inScope: scope.inScope });
 
   return {
@@ -143,7 +150,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
     losses,
     // A etapa da perda sai dos mesmos leads do card de perdas.
     lossStages: stageBase ? lossStagesOf({ lostLeads: losses.leads, moves: cache.moves, start, end }) : null,
-    firstContact: firstContactOf(cohortLeads, { contactTimes: cache.contactTimes, limit }),
+    firstContact: contactOk ? firstContactOf(cohortLeads, { contactTimes: cache.contactTimes, limit }) : null,
     daysToEnroll: daysToEnrollOf(enrollments),
     passage: funnelId && stageBase ? stagePassageOf({
       moves: cache.moves,
@@ -165,6 +172,15 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
 const comma = (v) => String(v).replace('.', ',');
 const ZERO = { pct: '0%', pp: '0 p.p.', min: '0 min', days: '0 dias' };
 
+// Diferença que o texto mostraria como zero é "igual": a duração sai em
+// minutos inteiros e os dias com uma casa. Contagem e taxa: abaixo de 0,05.
+function isFlat(diff, kind) {
+  const abs = Math.abs(diff);
+  if (kind === 'min') return Math.round(abs) === 0;
+  if (kind === 'days') return Math.round(abs * 10) === 0;
+  return abs < 0.05;
+}
+
 // Diferença entre o mês e o comparado no formato do handoff: contagem em %
 // ("12,5%"), taxa em pontos ("+8 p.p."), duração ("40 min") e dias ("1,5
 // dias"). Sem um dos lados, ou contagem comparada com zero: "sem base".
@@ -172,7 +188,7 @@ export function crmDelta(cur, prev, { kind = 'pct' } = {}) {
   if (cur == null || prev == null) return { none: true, text: 'sem base' };
   if (kind === 'pct' && prev === 0) return { none: true, text: 'sem base' };
   const diff = kind === 'pct' ? ((cur - prev) / prev) * 100 : cur - prev;
-  if (Math.abs(diff) < 0.05) return { flat: true, value: 0, text: `= ${ZERO[kind]}` };
+  if (isFlat(diff, kind)) return { flat: true, value: 0, text: `= ${ZERO[kind]}` };
   const abs = Math.abs(diff);
   let text;
   if (kind === 'pct') text = `${comma(Math.round(abs * 10) / 10)}%`;
@@ -184,10 +200,11 @@ export function crmDelta(cur, prev, { kind = 'pct' } = {}) {
 
 // O canal de melhor conversão da safra, entre os que trouxeram ao menos 5
 // leads: com menos, uma matrícula decide a taxa.
+const MIN_CHANNEL_LEADS = 5;
 export function bestChannelOf(m) {
   return (m?.channels || [])
     .map((c) => ({ ...c, conv: pct(c.enrolled, c.leads) }))
-    .filter((c) => c.leads >= 5 && c.conv != null)
+    .filter((c) => c.leads >= MIN_CHANNEL_LEADS && c.conv != null)
     .sort((a, b) => b.conv - a.conv || b.leads - a.leads)[0] || null;
 }
 
@@ -222,12 +239,14 @@ export function buildCrmHighlights(cur, cmp, { cmpName }) {
       true
     );
   }
+  // O comparado só vale com amostra comparável: o mesmo canal, com ao menos 5
+  // leads também lá. Sem isso o destaque de canal sai.
   const best = bestChannelOf(cur);
-  if (best) {
-    const prev = (cmp.channels || []).find((c) => c.name === best.name);
+  const prev = best && (cmp.channels || []).find((c) => c.name === best.name);
+  if (best && prev && prev.leads >= MIN_CHANNEL_LEADS) {
     add(
       `${best.name} converteu ${best.conv}%, a melhor taxa entre os canais`,
-      crmDelta(best.conv, prev ? pct(prev.enrolled, prev.leads) : null, { kind: 'pp' }),
+      crmDelta(best.conv, pct(prev.enrolled, prev.leads), { kind: 'pp' }),
       false
     );
   }

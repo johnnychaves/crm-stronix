@@ -191,6 +191,32 @@ describe('metricsOf', () => {
     expect(jul).toMatchObject({ hasSource: false, leads: null, appts: null, cohort: null, now: null, apptsBase: false, stageBase: false });
   });
 
+  it('mês que falhou fica com fonte, marcado e sem número, e a tendência pula ele', () => {
+    const withFail = makeCtx();
+    withFail.months['2026-07'] = { failed: true, interactions: [], leadsCreated: [], converted: [], lost: [], aulas: [] };
+    expect(metricsOf(withFail, { monthKey: '2026-07' })).toMatchObject({
+      hasSource: true, failed: true, leads: null, appts: null, enroll: null, cohort: null,
+      losses: null, lossStages: null, firstContact: null, daysToEnroll: null, professors: null
+    });
+    expect(seriesOf(withFail, { monthKey: '2026-09', pick: (m) => m.leads }).map((p) => p.key)).toEqual(['2026-08', '2026-09']);
+    // O retrato de agora vem dos leads ao vivo e continua no mês em andamento que
+    // falhou. Um objeto de meses novo zera o cache do ctx.
+    withFail.months = { ...withFail.months, '2026-09': { ...withFail.months['2026-09'], failed: true } };
+    expect(metricsOf(withFail, { monthKey: '2026-09' })).toMatchObject({ failed: true, leads: null, now: { total: 5 } });
+  });
+
+  it('o primeiro contato fica sem número quando a safra passa do fim do mês e o mês seguinte não carregou ou falhou', () => {
+    const noSep = makeCtx();
+    delete noSep.months['2026-09'];
+    expect(metricsOf(noSep, { monthKey: '2026-08' }).firstContact).toBeNull();
+    const failedSep = makeCtx();
+    failedSep.months['2026-09'] = { ...failedSep.months['2026-09'], failed: true };
+    expect(metricsOf(failedSep, { monthKey: '2026-08' }).firstContact).toBeNull();
+    // Com o corte dentro do mês, o mês seguinte não faz falta.
+    expect(metricsOf(noSep, { monthKey: '2026-08', cutEnd: D(8, 14, 12) }).firstContact).toMatchObject({ total: 4 });
+    expect(metricsOf(makeCtx(), { monthKey: '2026-08' }).firstContact).toMatchObject({ total: 4 });
+  });
+
   it('mesmo ctx e mesmo recorte devolvem o mesmo objeto', () => {
     expect(metricsOf(ctx, { monthKey: '2026-09' })).toBe(team);
   });
@@ -211,6 +237,12 @@ describe('crmDelta', () => {
     expect(crmDelta(5, 5)).toEqual({ flat: true, value: 0, text: '= 0%' });
     expect(crmDelta(30, 30, { kind: 'pp' })).toMatchObject({ flat: true, text: '= 0 p.p.' });
   });
+
+  it('duração e dias que arredondam a zero no texto são iguais', () => {
+    expect(crmDelta(130.3, 130.1, { kind: 'min' })).toEqual({ flat: true, value: 0, text: '= 0 min' });
+    expect(crmDelta(130.6, 130, { kind: 'min' })).toMatchObject({ up: true, text: '1 min' });
+    expect(crmDelta(6.04, 6, { kind: 'days' })).toEqual({ flat: true, value: 0, text: '= 0 dias' });
+  });
 });
 
 describe('destaques', () => {
@@ -222,6 +254,19 @@ describe('destaques', () => {
     expect(bestChannelOf(cur)).toBeNull();
     expect(bestChannelOf({ channels: [{ name: 'Site', leads: 5, enrolled: 2 }, { name: 'Instagram', leads: 9, enrolled: 1 }] }))
       .toMatchObject({ name: 'Site', conv: 40 });
+  });
+
+  it('o canal só é comparado quando o mesmo canal também trouxe ao menos 5 leads no comparado', () => {
+    const month = (channels) => ({ hasSource: true, firstContact: null, channels });
+    const site = { name: 'Site', leads: 5, enrolled: 2 };
+    expect(buildCrmHighlights(month([site]), month([site]), { cmpName: 'agosto' })).toEqual([{
+      text: 'Site converteu 40%, a melhor taxa entre os canais',
+      delta: '= 0 p.p.',
+      tone: 'flat',
+      verdict: 'igual a agosto',
+      rank: 1
+    }]);
+    expect(buildCrmHighlights(month([site]), month([{ name: 'Site', leads: 1, enrolled: 1 }]), { cmpName: 'agosto' })).toEqual([]);
   });
 
   it('leads acima de 24 horas sem contato, com veredito e o pior primeiro no celular', () => {
