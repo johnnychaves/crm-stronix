@@ -10,6 +10,8 @@ import { MonthControl, OperacionalToolbar } from '../../views/dashboard/Operacio
 import { LOSS_PALETTE } from '../../views/dashboard/dashTokens.js';
 import { ChannelTable } from '../../views/dashboard/ChannelTable.jsx';
 import { CohortMilestones } from '../../views/dashboard/CohortMilestones.jsx';
+import { StagePassageTable } from '../../views/dashboard/StagePassageTable.jsx';
+import { LossCard } from '../../views/dashboard/LossCard.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -142,5 +144,63 @@ describe('canais e safra', () => {
     expect(html).toContain('29% da safra');
     expect(html).toContain('Seguem em jogo');
     expect(html).toContain('ainda está viva');
+  });
+});
+
+describe('passagem entre etapas e perdas', () => {
+  const passage = {
+    rows: [
+      { name: 'Novo lead', entered: 47, advanced: 38, lost: 5, medianMin: 240 },
+      { name: 'Contato feito', entered: 38, advanced: 16, lost: 9, medianMin: 5760 }
+    ],
+    worst: { name: 'Contato feito', entered: 38, advanced: 16, lost: 9 }
+  };
+
+  it('com funil e base: linhas, porcentagens, mediana e maior vazamento', () => {
+    const html = render(createElement(StagePassageTable, {
+      passage, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro', academyMedian: true
+    }));
+    expect(html).toContain('funil Vendas · movimentos gravados em setembro');
+    expect(html).toContain('Contato feito: 38 entraram, 16 avançaram, 9 se perderam, 13 seguem na etapa. Mediana de 4 dias na etapa.');
+    expect(html).toContain('42%');
+    expect(html).toContain('Maior vazamento: Contato feito, 9 perdidos de 38.');
+    expect(html).toContain('mediana da academia');
+  });
+
+  it('sem funil e sem base: o cartão explica', () => {
+    expect(render(createElement(StagePassageTable, { passage: null, needFunnel: true, hasBase: true, funnelName: '', monthName: 'setembro' })))
+      .toContain('Escolha um funil para ver a passagem entre etapas');
+    expect(render(createElement(StagePassageTable, { passage: null, needFunnel: false, hasBase: false, funnelName: 'Vendas', monthName: 'julho' })))
+      .toContain('A passagem entre etapas começa em setembro de 2026');
+  });
+
+  it('no primeiro mês da gravação, a dica diz desde quando', () => {
+    const html = render(createElement(StagePassageTable, {
+      passage, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro', since: '14 de setembro'
+    }));
+    expect(html).toContain('funil Vendas · movimentos gravados desde 14 de setembro');
+  });
+
+  it('perdas: motivo mais comum, participação e etapa da perda', () => {
+    const html = render(createElement(LossCard, {
+      losses: { total: 17, reasons: [{ name: 'Sem interesse', count: 7 }, { name: 'Preço', count: 5 }, { name: 'Não responde', count: 5 }] },
+      lossStages: [{ name: 'Contato feito', count: 7 }, { name: 'Novo lead', count: 4 }],
+      stageBase: true,
+      monthName: 'setembro'
+    }));
+    expect(html).toContain('17 leads perdidos em setembro');
+    expect(html).toContain('Sem interesse');
+    expect(html).toContain('7 de 17 · 41%');
+    expect(html).toContain('Perdidos na etapa Contato feito: 7 de 11');
+  });
+
+  it('perdas sem base de etapa e mês sem perda', () => {
+    const noBase = render(createElement(LossCard, {
+      losses: { total: 2, reasons: [{ name: 'Preço', count: 2 }] }, lossStages: null, stageBase: false, monthName: 'julho'
+    }));
+    expect(noBase).toContain('Em julho os motivos estão completos, a etapa não tem base.');
+    const empty = render(createElement(LossCard, { losses: { total: 0, reasons: [] }, lossStages: [], stageBase: true, monthName: 'setembro' }));
+    expect(empty).toContain('Nenhum lead perdido neste mês.');
+    expect(empty).toContain('nenhuma perda registrada');
   });
 });
