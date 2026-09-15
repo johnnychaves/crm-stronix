@@ -149,6 +149,35 @@ describe('canais e safra', () => {
     expect(html).toContain('Seguem em jogo');
     expect(html).toContain('ainda está viva');
   });
+
+  it('safra sem queda em nenhuma passagem: sem leitura embaixo dos marcos', () => {
+    const html = render(createElement(CohortMilestones, {
+      cohort: { leads: 10, sched: 10, came: 10, enrolled: 6, lost: 0, open: 4 },
+      monthName: 'setembro',
+      running: true
+    }));
+    expect(html).not.toContain('A maior queda da safra');
+  });
+
+  it('mês em andamento com a queda maior em comparecer: "ainda não vieram" e leitura própria', () => {
+    const html = render(createElement(CohortMilestones, {
+      cohort: { leads: 20, sched: 18, came: 5, enrolled: 3, lost: 1, open: 14 },
+      monthName: 'setembro',
+      running: true
+    }));
+    expect(html).toContain('−13 ainda não vieram');
+    expect(html).not.toContain('não compareceram');
+    expect(html).toContain('A maior queda da safra, por enquanto, é entre agendar e comparecer. Parte de quem agendou ainda tem a visita ou a aula pela frente.');
+  });
+
+  it('ninguém da safra segue em jogo: leitura fixa de que a conversão não muda mais', () => {
+    const html = render(createElement(CohortMilestones, {
+      cohort: { leads: 10, sched: 8, came: 5, enrolled: 6, lost: 4, open: 0 },
+      monthName: 'agosto',
+      running: false
+    }));
+    expect(html).toContain('Ninguém da safra de agosto segue em jogo, então a conversão dela não deve mais mudar.');
+  });
 });
 
 describe('passagem entre etapas e perdas', () => {
@@ -166,9 +195,11 @@ describe('passagem entre etapas e perdas', () => {
     }));
     expect(html).toContain('funil Vendas · movimentos gravados em setembro');
     expect(html).toContain('Contato feito: 38 entraram, 16 avançaram, 9 se perderam, 13 seguem na etapa. Mediana de 4 dias na etapa.');
-    expect(html).toContain('42%');
+    expect(html).toContain('>42%<');
     expect(html).toContain('Maior vazamento: Contato feito, 9 perdidos de 38.');
     expect(html).toContain('mediana da academia');
+    // A legenda de cor só faz sentido onde a barra existe (md e acima).
+    expect(html).toContain('hidden flex-wrap items-center gap-x-3.5 gap-y-1.5 md:flex');
   });
 
   it('sem funil e sem base: o cartão explica', () => {
@@ -185,17 +216,57 @@ describe('passagem entre etapas e perdas', () => {
     expect(html).toContain('funil Vendas · movimentos gravados desde 14 de setembro');
   });
 
+  it('com funil e base mas nenhuma entrada no mês: nota vazia, não a tabela de zeros', () => {
+    const zeroPassage = { rows: [{ name: 'Novo lead', entered: 0, advanced: 0, lost: 0, medianMin: null }], worst: null };
+    const html = render(createElement(StagePassageTable, {
+      passage: zeroPassage, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro'
+    }));
+    expect(html).toContain('Nenhuma troca de etapa gravada neste mês.');
+    expect(html).not.toContain('Etapa</span>');
+  });
+
+  it('formas no singular: 1 entrou, 1 avançou, 1 se perdeu, 1 segue', () => {
+    const singular = {
+      rows: [
+        { name: 'Etapa A', entered: 1, advanced: 0, lost: 0, medianMin: 30 },
+        { name: 'Etapa B', entered: 2, advanced: 1, lost: 0, medianMin: 30 },
+        { name: 'Etapa C', entered: 2, advanced: 0, lost: 1, medianMin: 30 }
+      ],
+      worst: null
+    };
+    const html = render(createElement(StagePassageTable, {
+      passage: singular, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro'
+    }));
+    expect(html).toContain('1 entrou');
+    expect(html).toContain('1 avançou');
+    expect(html).toContain('1 se perdeu');
+    expect(html).toContain('1 segue');
+    expect(html).not.toContain('1 entraram');
+    expect(html).not.toContain('1 avançaram');
+    expect(html).not.toContain('1 se perderam');
+    expect(html).not.toContain('1 seguem');
+  });
+
+  it('sem mediana na etapa: o tooltip e o aria não falam da mediana', () => {
+    const noMedian = { rows: [{ name: 'Sem mediana', entered: 4, advanced: 2, lost: 1, medianMin: null }], worst: null };
+    const html = render(createElement(StagePassageTable, {
+      passage: noMedian, needFunnel: false, hasBase: true, funnelName: 'Vendas', monthName: 'setembro'
+    }));
+    expect(html).toContain('Sem mediana: 4 entraram, 2 avançaram, 1 se perdeu, 1 segue na etapa.');
+    expect(html).not.toContain('Mediana de');
+  });
+
   it('perdas: motivo mais comum, participação e etapa da perda', () => {
     const html = render(createElement(LossCard, {
       losses: { total: 17, reasons: [{ name: 'Sem interesse', count: 7 }, { name: 'Preço', count: 5 }, { name: 'Não responde', count: 5 }] },
-      lossStages: [{ name: 'Contato feito', count: 7 }, { name: 'Novo lead', count: 4 }],
+      lossStages: [{ name: 'Contato feito', count: 7 }, { name: 'Novo lead', count: 10 }],
       stageBase: true,
       monthName: 'setembro'
     }));
     expect(html).toContain('17 leads perdidos em setembro');
     expect(html).toContain('Sem interesse');
     expect(html).toContain('7 de 17 · 41%');
-    expect(html).toContain('Perdidos na etapa Contato feito: 7 de 11');
+    expect(html).toContain('Perdidos na etapa Contato feito: 7 de 17');
   });
 
   it('perdas sem base de etapa e mês sem perda', () => {
@@ -220,7 +291,7 @@ describe('pessoas e professores', () => {
       person: null, personName: null, onPick: () => {}, onClear: () => {}
     }));
     expect(html).toContain('clique numa linha para filtrar a tela por essa pessoa');
-    expect(html).toContain('Filtrar a tela por Ana Ribeiro');
+    expect(html).toContain('Ana Ribeiro: 18 leads, 6 agendamentos, comparecimento 83%, 11 matrículas, conversão da safra 22%, primeiro contato 42 min. Filtrar a tela por essa pessoa.');
     expect(html).toContain('Gestor');
     expect(html).toContain('42 min');
     expect(html).toContain('5 h');
@@ -270,6 +341,15 @@ describe('velocidade e carteira agora', () => {
     expect(html).toContain('text-emerald-700');
     expect(html).toContain('Até 1 hora: 21 leads de 56 (38%)');
     expect(html).toContain('Sem contato');
+  });
+
+  it('primeiro contato sem o mês seguinte: nota tracejada, sem pílula de diferença', () => {
+    const html = render(createElement(FirstContactCard, { fc: null, delta: { up: false, text: '40 min' } }));
+    expect(html).toContain('Tempo até o primeiro contato');
+    expect(html).toContain('do cadastro até a primeira interação da equipe');
+    expect(html).toContain('Falta o mês seguinte ao do cadastro para medir o primeiro contato.');
+    expect(html).not.toContain('40 min');
+    expect(html).not.toContain('Nenhum lead cadastrado neste mês.');
   });
 
   it('dias até a matrícula: histograma e leitura', () => {

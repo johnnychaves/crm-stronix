@@ -7,7 +7,7 @@
 import { Users } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
-import { fmtDuration } from '../../lib/crm/format.js';
+import { fmtDuration, plural } from '../../lib/crm/format.js';
 import { dashInitials } from './dashTokens.js';
 import { CrmCard, ReadText } from './CrmParts.jsx';
 
@@ -20,6 +20,7 @@ const OTHERS_SUB = 'fora da equipe ou sem responsável';
 const roleOf = (user) => (user.role === 'admin' ? 'Gestor' : 'Consultor');
 const pctText = (v) => (v == null ? '—' : `${v}%`);
 const numText = (v) => (v == null ? '—' : fmtNum(v));
+const leadsText = (v) => (v == null ? '—' : plural(v, 'lead', 'leads'));
 
 const valuesOf = (m) => ({
   leads: m?.leads ?? null,
@@ -30,8 +31,14 @@ const valuesOf = (m) => ({
   fc: m?.firstContact?.median ?? null
 });
 
+// O aria-label do botão da linha troca todo o conteúdo visual pro leitor de
+// tela, então precisa levar os números junto — só o nome deixaria a pessoa
+// cega pra tabela sem saber o que está filtrando.
+const count = (v, one, many) => (v == null ? `sem dado de ${many}` : plural(v, one, many));
+const rowLabel = (name, v) => `${name}: ${count(v.leads, 'lead', 'leads')}, ${count(v.appts, 'agendamento', 'agendamentos')}, comparecimento ${v.attend == null ? 'sem dado' : `${v.attend}%`}, ${count(v.enroll, 'matrícula', 'matrículas')}, conversão da safra ${v.conv == null ? 'sem dado' : `${v.conv}%`}, primeiro contato ${v.fc == null ? 'sem dado' : fmtDuration(v.fc)}. Filtrar a tela por essa pessoa.`;
+
 const mobileLine = (v) =>
-  `${numText(v.leads)} leads · ${numText(v.appts)} agend. · compar. ${pctText(v.attend)} · ${numText(v.enroll)} matr. · 1º contato ${fmtDuration(v.fc)}`;
+  `${leadsText(v.leads)} · ${numText(v.appts)} agend. · compar. ${pctText(v.attend)} · ${numText(v.enroll)} matr. · 1º contato ${fmtDuration(v.fc)}`;
 
 function Avatar({ name, others = false }) {
   return (
@@ -106,24 +113,28 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
               <span>Conversão da safra</span>
               <span className="text-right">1º contato</span>
             </div>
-            {list.map(({ user, m }) => (
-              <button
-                key={user.id}
-                type="button"
-                onClick={() => onPick(user.id)}
-                aria-label={`Filtrar a tela por ${user.name || 'Sem nome'}`}
-                aria-pressed={person === user.id}
-                className={cn(
-                  GRID,
-                  'h-[52px] w-full cursor-pointer rounded-lg border-t text-left outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
-                  RULE,
-                  person === user.id && 'bg-brand-50 dark:bg-brand-500/10'
-                )}
-              >
-                <Who name={user.name || 'Sem nome'} sub={roleOf(user)} />
-                <Cells v={valuesOf(m)} />
-              </button>
-            ))}
+            {list.map(({ user, m }) => {
+              const v = valuesOf(m);
+              const name = user.name || 'Sem nome';
+              return (
+                <button
+                  key={user.id}
+                  type="button"
+                  onClick={() => onPick(user.id)}
+                  aria-label={rowLabel(name, v)}
+                  aria-pressed={person === user.id}
+                  className={cn(
+                    GRID,
+                    'h-[52px] w-full cursor-pointer rounded-lg border-t text-left outline-none hover:bg-muted/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
+                    RULE,
+                    person === user.id && 'bg-brand-50 dark:bg-brand-500/10'
+                  )}
+                >
+                  <Who name={name} sub={roleOf(user)} />
+                  <Cells v={v} />
+                </button>
+              );
+            })}
             {showOthers && (
               <div className={cn(GRID, 'h-[52px] border-t', RULE)}>
                 <Who name="Outros" sub={OTHERS_SUB} others />
@@ -133,19 +144,26 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
           </div>
         </div>
 
-        <div className="flex flex-col gap-[9px] md:hidden">
+        <div className="flex flex-col gap-px md:hidden">
           {list.map(({ user, m }) => {
             const v = valuesOf(m);
+            const name = user.name || 'Sem nome';
+            const selected = person === user.id;
             return (
               <button
                 key={user.id}
                 type="button"
                 onClick={() => onPick(user.id)}
-                className="flex w-full items-center gap-2.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                aria-label={rowLabel(name, v)}
+                aria-pressed={selected}
+                className={cn(
+                  '-mx-2 flex w-full items-center gap-2.5 rounded-lg px-2 py-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                  selected && 'bg-brand-50 dark:bg-brand-500/10'
+                )}
               >
                 <Avatar name={user.name} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[12.5px] font-semibold">{user.name || 'Sem nome'}</div>
+                  <div className="truncate text-[12.5px] font-semibold">{name}</div>
                   <div className="num truncate text-[10.5px] text-muted-foreground">{mobileLine(v)}</div>
                 </div>
                 <span className="num flex-none text-[15px] font-bold">{pctText(v.conv)}</span>
@@ -153,7 +171,7 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
             );
           })}
           {showOthers && (
-            <div className="flex items-center gap-2.5">
+            <div className="-mx-2 flex items-center gap-2.5 px-2 py-1">
               <Avatar others />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[12.5px] font-semibold">Outros</div>
