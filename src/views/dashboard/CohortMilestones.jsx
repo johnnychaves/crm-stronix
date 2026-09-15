@@ -27,9 +27,15 @@ export function CohortMilestones({ cohort, monthName, running }) {
   const hint = leads === 1
     ? '1 lead cadastrado no mês, acompanhado até hoje'
     : `os ${fmtNum(leads)} leads cadastrados no mês, acompanhados até hoje`;
+  const schedDrop = leads - cohort.sched;
+  const cameDrop = cohort.sched - cohort.came;
+  // No mês em andamento, quem agendou pra mais adiante ainda soma em
+  // "Agendaram" (README §4): a queda até comparecer pode ser só a visita ou a
+  // aula que ainda não chegou, não uma falta de verdade.
+  const runningSecondBigger = running && cameDrop > schedDrop;
   const passages = [
     { name: 'Agendaram', count: cohort.sched, prev: leads, bar: 'bg-brand-500', gone: 'não agendaram' },
-    { name: 'Compareceram', count: cohort.came, prev: cohort.sched, bar: 'bg-brand-600', gone: 'não compareceram' }
+    { name: 'Compareceram', count: cohort.came, prev: cohort.sched, bar: 'bg-brand-600', gone: runningSecondBigger ? 'ainda não vieram' : 'não compareceram' }
   ];
   const outcome = [
     { name: 'Matricularam', count: cohort.enrolled, bar: 'bg-success dark:bg-[#0E9F6E]' },
@@ -37,12 +43,17 @@ export function CohortMilestones({ cohort, monthName, running }) {
     { name: 'Perdidos', count: cohort.lost, bar: 'bg-danger dark:bg-[#E11D48]' }
   ];
   const outTotal = Math.max(1, cohort.enrolled + cohort.open + cohort.lost);
-  const passageRead = leads - cohort.sched >= cohort.sched - cohort.came
+  // Sem queda nenhuma nas duas passagens, não há o que ler embaixo delas.
+  const passageRead = schedDrop === 0 && cameDrop === 0 ? null : (schedDrop >= cameDrop
     ? 'A maior queda da safra é entre cadastrar e agendar: trazer a pessoa para uma visita ou aula é o passo que menos acontece.'
-    : 'A maior queda da safra é entre agendar e comparecer: quem marca nem sempre vem.';
-  const outcomeRead = running
-    ? `A safra de ${monthName} ainda está viva: quem segue em jogo pode virar matrícula e a conversão vai subir até o mês fechar.`
-    : `A safra de ${monthName} já fechou o mês, mas quem segue em jogo ainda pode matricular, e a conversão dela continua andando.`;
+    : runningSecondBigger
+      ? 'A maior queda da safra, por enquanto, é entre agendar e comparecer. Parte de quem agendou ainda tem a visita ou a aula pela frente.'
+      : 'A maior queda da safra é entre agendar e comparecer: quem marca nem sempre vem.');
+  const outcomeRead = cohort.open === 0
+    ? `Ninguém da safra de ${monthName} segue em jogo, então a conversão dela não deve mais mudar.`
+    : running
+      ? `A safra de ${monthName} ainda está viva: quem segue em jogo pode virar matrícula e a conversão vai subir até o mês fechar.`
+      : `A safra de ${monthName} já fechou o mês, mas quem segue em jogo ainda pode matricular, e a conversão dela continua andando.`;
 
   return (
     <CrmCard title={`Safra de ${monthName}`} hint={hint} action={help}>
