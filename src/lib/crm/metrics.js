@@ -26,12 +26,31 @@ export { OTHERS_ID };
 // insumo no mesmo objeto de ctx zera o cache.
 const caches = new WeakMap();
 
+// Registros de agendamento de todos os meses carregados, sem repetir id, com a
+// cópia do mês mais novo. O registro remarcado de 30/08 para 03/09 continua na
+// lista de agosto (memória da sessão ou cache do aparelho) e contaria nos dois
+// meses. Com a cópia mais nova, a janela por scheduledFor põe cada registro no
+// mês da data atual.
+function newestRecordsOf(months) {
+  const seen = new Set();
+  const out = [];
+  Object.keys(months || {}).sort().reverse().forEach((key) => {
+    (months[key]?.aulas || []).forEach((r) => {
+      if (!r?.id || seen.has(r.id)) return;
+      seen.add(r.id);
+      out.push(r);
+    });
+  });
+  return out;
+}
+
 function cacheOf(ctx) {
   const sig = [ctx.now?.getTime(), ctx.users, ctx.funnels, ctx.statuses, ctx.liveLeads, ctx.leadsById, ctx.months];
   let cache = caches.get(ctx);
   if (!cache || cache.sig.some((v, i) => v !== sig[i])) {
     const loaded = Object.values(ctx.months || {});
     const interactions = loaded.flatMap((m) => m.interactions || []);
+    const records = newestRecordsOf(ctx.months);
     cache = {
       sig,
       results: new Map(),
@@ -39,7 +58,8 @@ function cacheOf(ctx) {
       moves: movesByLead(interactions),
       contactTimes: contactTimesByLead(interactions),
       visitOutcomes: visitOutcomesByLead(interactions),
-      recordsByLead: recordsByLeadOf(loaded.flatMap((m) => m.aulas || [])),
+      records,
+      recordsByLead: recordsByLeadOf(records),
       leadFunnels: leadFunnelsOf(ctx.funnels)
     };
     caches.set(ctx, cache);
@@ -57,11 +77,13 @@ export function metricsOf(ctx, { monthKey, userId = null, funnelId = null, cutEn
   return value;
 }
 
-// Professores: da academia inteira, iguais para qualquer pessoa e funil.
+// Professores: da academia inteira, iguais para qualquer pessoa e funil. Os
+// registros são os de todos os meses carregados, com a cópia mais nova de cada
+// um; a janela por scheduledFor escolhe os do mês.
 function professorsOfMonth(cache, src, { monthKey, start, end }) {
   if (!src || src.failed) return null;
   const key = `${monthKey}|${end.getTime()}`;
-  if (!cache.professors.has(key)) cache.professors.set(key, professorsOf(src.aulas, { start, end }));
+  if (!cache.professors.has(key)) cache.professors.set(key, professorsOf(cache.records, { start, end }));
   return cache.professors.get(key);
 }
 
@@ -135,7 +157,7 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
     ...base,
     leads: cohortLeads.length,
     channels: channelsOf(cohortLeads, asOf),
-    appts: appointmentsOf(src.aulas, { start, end, leadOf, inScope: scope.inScope, visitOutcomes: cache.visitOutcomes }),
+    appts: appointmentsOf(cache.records, { start, end, leadOf, inScope: scope.inScope, visitOutcomes: cache.visitOutcomes }),
     enroll: enrollments.length,
     fromCohort: enrollments.filter((l) => cohortIds.has(l.id)).length,
     cohort: {

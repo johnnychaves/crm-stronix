@@ -91,8 +91,9 @@ export function appointmentsOf(records, { start, end, leadOf, inScope, visitOutc
   return { total: came + missed + pending, came, missed, pending, decided, rate: pct(came, decided) };
 }
 
-// Registros por lead, sem repetir id. Serve aos marcos da safra, que olham
-// todos os meses carregados.
+// Registros por lead, sem repetir id, com a primeira cópia de cada um: quem
+// chama passa a cópia mais nova primeiro (metrics.js). Serve aos marcos da
+// safra, que olham todos os meses carregados.
 export function recordsByLeadOf(records) {
   const map = new Map();
   const seen = new Set();

@@ -217,6 +217,21 @@ describe('metricsOf', () => {
     expect(metricsOf(makeCtx(), { monthKey: '2026-08' }).firstContact).toMatchObject({ total: 4 });
   });
 
+  it('registro remarcado entre meses: vale a cópia do mês mais novo', () => {
+    const moved = makeCtx();
+    const rx = (status, at) => A('rx', 'a2', status, at, D(8, 20));
+    // Na ordem do hook, do mês mais antigo ao mais novo. Agosto ainda guarda a
+    // cópia de antes da remarcação de 30/08 para 03/09.
+    moved.months = {
+      '2026-08': { ...moved.months['2026-08'], aulas: [...moved.months['2026-08'].aulas, rx('agendada', D(8, 30))] },
+      '2026-09': { ...moved.months['2026-09'], aulas: [...moved.months['2026-09'].aulas, rx('attended', D(9, 3))] }
+    };
+    const aug = metricsOf(moved, { monthKey: '2026-08' });
+    expect(aug.appts).toMatchObject({ total: 1, came: 1, pending: 0 });
+    expect(aug.cohort).toMatchObject({ sched: 2, came: 2 });
+    expect(metricsOf(moved, { monthKey: '2026-09' }).appts).toMatchObject({ total: 3, came: 2, missed: 1 });
+  });
+
   it('mesmo ctx e mesmo recorte devolvem o mesmo objeto', () => {
     expect(metricsOf(ctx, { monthKey: '2026-09' })).toBe(team);
   });
