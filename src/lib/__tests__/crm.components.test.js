@@ -8,6 +8,8 @@ import { CrmSection, CrmCard, DashedNote, DeltaPill, ScopeTag } from '../../view
 import { CrmToolbar } from '../../views/dashboard/CrmToolbar.jsx';
 import { MonthControl, OperacionalToolbar } from '../../views/dashboard/OperacionalToolbar.jsx';
 import { LOSS_PALETTE } from '../../views/dashboard/dashTokens.js';
+import { ChannelTable } from '../../views/dashboard/ChannelTable.jsx';
+import { CohortMilestones } from '../../views/dashboard/CohortMilestones.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -106,5 +108,39 @@ describe('peças do CRM', () => {
     expect(html).toContain('aria-label="Filtros do CRM"');
     expect(html).not.toContain('há filtro ativo');
     expect(html).not.toContain('size-1.5 rounded-full bg-brand-600');
+  });
+});
+
+describe('canais e safra', () => {
+  it('canais: volume, matrícula e conversão acima da safra em verde', () => {
+    const html = render(createElement(ChannelTable, {
+      rows: [{ name: 'Instagram', leads: 22, enrolled: 3 }, { name: 'Indicação', leads: 9, enrolled: 4 }],
+      cohortConv: 18,
+      read: 'Instagram traz o volume e Indicação traz o resultado.'
+    }));
+    expect(html).toContain('Canais de origem');
+    expect(html).toContain('Instagram: 22 leads novos, 3 matricularam (14%)');
+    expect(html).toContain('44%');
+    expect(html).toContain('text-emerald-700');
+    expect(html).toContain('Instagram traz o volume');
+  });
+
+  it('canais sem lead: cartão vazio', () => {
+    expect(render(createElement(ChannelTable, { rows: [], cohortConv: null }))).toContain('Nenhum lead cadastrado neste mês.');
+  });
+
+  it('safra: passagens com a queda e o desfecho', () => {
+    const html = render(createElement(CohortMilestones, {
+      cohort: { leads: 56, sched: 16, came: 12, enrolled: 10, lost: 6, open: 40 },
+      monthName: 'setembro',
+      running: true
+    }));
+    expect(html).toContain('Safra de setembro');
+    expect(html).toContain('os 56 leads cadastrados no mês, acompanhados até hoje');
+    expect(html).toContain('−40 não agendaram');
+    expect(html).toContain('−4 não compareceram');
+    expect(html).toContain('29% da safra');
+    expect(html).toContain('Seguem em jogo');
+    expect(html).toContain('ainda está viva');
   });
 });
