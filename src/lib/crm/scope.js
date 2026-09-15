@@ -12,6 +12,10 @@ export { OTHERS_ID };
 // não há base para a passagem entre etapas nem para a etapa da perda.
 export const STAGE_TRACKING_MONTH = '2026-09';
 
+// Instante em que a gravação da troca de etapa entrou em produção (PR #208).
+// Lead cadastrado antes disso pode ter trocado de etapa sem registro.
+export const STAGE_TRACKING_SINCE = new Date(2026, 8, 14, 18, 10);
+
 // O histórico de agendamentos (stronix_aulas) só fica completo a partir de
 // setembro de 2026. As aulas estão completas desde a segunda quinzena de
 // julho, mas as visitas só têm registro desde 18/08/2026 (PR #177); antes,

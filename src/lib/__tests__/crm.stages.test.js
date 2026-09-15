@@ -90,6 +90,99 @@ describe('passagem entre etapas', () => {
   });
 });
 
+describe('passagem: entrada pelo cadastro e trocas que não contam', () => {
+  const SINCE = T(2, 0);
+  const P = (id, over = {}) => ({ id, consultantId: 'ana', funnelId: 'ven', status: 'Novo lead', createdAt: T(3, 9), ...over });
+  const PEOPLE = new Map([
+    P('n1'),
+    P('n2', { status: 'Contato feito' }),
+    P('n3', { status: 'Perda' }),
+    P('n4', { createdAt: T(1, 9), status: 'Contato feito' }),
+    P('n6', { funnelId: 'ind', status: 'Aguardando ação' }),
+    P('n7', { importBatchId: 'lote', source: 'Importação' }),
+    P('n9', { createdAtMissing: true })
+  ].map((l) => [l.id, l]));
+  const byId = (id) => PEOPLE.get(id) || { id, unknown: true };
+
+  it('o lead novo entra na etapa em que nasceu, avança ou se perde pela troca seguinte, e a mediana da primeira etapa vem do cadastro', () => {
+    const r = passage({
+      moves: movesByLead([
+        M('n2a', 'n2', 'Novo lead', 'Contato feito', 4),
+        M('n3a', 'n3', 'Novo lead', 'Perda', 5),
+        M('n4a', 'n4', 'Novo lead', 'Contato feito', 3)
+      ]),
+      leadOf: byId, newLeads: [...PEOPLE.values()], trackingSince: SINCE
+    });
+    // Novo lead: n1 segue, n2 avançou, n3 se perdeu direto da primeira etapa.
+    // n4 nasceu antes do registro, n6 em outro funil, n7 veio da importação e
+    // n9 não tem data de cadastro. Mediana: n2 (25 h) e n3 (49 h) desde o cadastro.
+    expect(table(r)).toEqual([
+      ['Novo lead', 3, 1, 1, 2220],
+      ['Contato feito', 2, 0, 0, null],
+      ['Agendado', 0, 0, 0, null],
+      ['Negociação', 0, 0, 0, null]
+    ]);
+    expect(r.worst.name).toBe('Novo lead');
+  });
+
+  it('quem foi cadastrado antes do início do registro não entra pelo cadastro', () => {
+    const one = [P('a', { createdAt: T(3, 9) })];
+    const row = (since) => passage({ moves: new Map(), leadOf: byId, newLeads: one, trackingSince: since }).rows[0];
+    expect(row(T(3, 10))).toMatchObject({ name: 'Novo lead', entered: 0 });
+    expect(row(T(3, 9))).toMatchObject({ name: 'Novo lead', entered: 1 });
+  });
+
+  it('troca para etapa menor segue na etapa, mesmo com matrícula depois', () => {
+    const x = { id: 'x', consultantId: 'ana', createdAt: T(1, 9), convertedAt: T(10) };
+    const r = passage({
+      moves: movesByLead([M('x1', 'x', 'Novo lead', 'Agendado', 3), M('x2', 'x', 'Agendado', 'Contato feito', 5)]),
+      leadOf: (id) => (id === 'x' ? x : { id, unknown: true })
+    });
+    expect(r.rows.find((row) => row.name === 'Agendado')).toMatchObject({ entered: 1, advanced: 0, lost: 0, medianMin: 2880 });
+    // A matrícula sem troca seguinte é avanço de quem estava na etapa de antes dela.
+    expect(r.rows.find((row) => row.name === 'Contato feito')).toMatchObject({ entered: 1, advanced: 1 });
+  });
+
+  it('troca entre funis com fromFunnelId: é saída do funil de origem e entrada no de destino', () => {
+    const moves = movesByLead([
+      M('y1', 'y', 'Novo lead', 'Contato feito', 3),
+      M('y2', 'y', 'Contato feito', 'Aguardando ação', 5, { funnelId: 'ind', fromFunnelId: 'ven' })
+    ]);
+    const ven = passage({ moves });
+    expect(ven.rows.find((row) => row.name === 'Contato feito')).toMatchObject({ entered: 1, advanced: 0, lost: 0, medianMin: 2880 });
+    expect(ven.rows.map((row) => row.name)).not.toContain('Aguardando ação');
+    expect(table(passage({ moves, funnelId: 'ind', stages: ['Aguardando ação'] }))).toEqual([['Aguardando ação', 1, 0, 0, null]]);
+  });
+
+  it('troca que não muda nada, nem de etapa nem de funil (com o padrão no lugar do vazio), é ignorada em tudo', () => {
+    const z = { id: 'z', consultantId: 'ana', funnelId: 'ven', status: 'Contato feito', createdAt: T(2, 9) };
+    const r = passage({
+      moves: movesByLead([
+        M('z0', 'z', 'Novo lead', 'Novo lead', 3, { fromFunnelId: null }),
+        M('z1', 'z', 'Novo lead', 'Contato feito', 5)
+      ]),
+      leadOf: (id) => (id === 'z' ? z : { id, unknown: true }), newLeads: [z], trackingSince: SINCE
+    });
+    // Nasceu em Novo lead e saiu dele 73 h depois do cadastro.
+    expect(table(r).slice(0, 2)).toEqual([
+      ['Novo lead', 1, 1, 0, 4380],
+      ['Contato feito', 1, 0, 0, null]
+    ]);
+  });
+
+  it('a perda é das entradas do mês: quem entrou na etapa antes do mês e se perdeu nele não conta', () => {
+    const r = passage({
+      moves: movesByLead([
+        { ...M('w1', 'w', 'Novo lead', 'Contato feito', 1), createdAt: new Date(2026, 7, 20, 10) },
+        M('w2', 'w', 'Contato feito', 'Perda', 4)
+      ])
+    });
+    // A saída do mês entra na mediana: 15 dias desde a entrada, em agosto.
+    expect(r.rows.find((row) => row.name === 'Contato feito')).toMatchObject({ entered: 0, lost: 0, medianMin: 21600 });
+    expect(r.worst).toBeNull();
+  });
+});
+
 describe('etapa da perda', () => {
   it('o fromStatus das trocas para Perda do mês, no recorte', () => {
     expect(lossStagesOf({ moves: MOVES, start: MONTH.start, end: MONTH.end, inScope: all, leadOf }))

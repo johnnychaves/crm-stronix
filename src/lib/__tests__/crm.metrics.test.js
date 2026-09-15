@@ -128,8 +128,10 @@ describe('metricsOf', () => {
   it('passagem só com funil escolhido e só a partir de setembro de 2026', () => {
     expect(team.passage).toBeNull();
     const ven = metricsOf(ctx, { monthKey: '2026-09', funnelId: 'ven' });
+    // Todos foram cadastrados antes de 14/09 às 18h10, quando o registro da
+    // troca entrou: ninguém entra pelo cadastro e a primeira etapa fica sem mediana.
     expect(ven.passage.rows.map((r) => [r.name, r.entered, r.advanced, r.lost, r.medianMin])).toEqual([
-      ['Novo lead', 0, 0, 0, 2160],
+      ['Novo lead', 0, 0, 0, null],
       ['Contato feito', 2, 1, 1, 2880]
     ]);
     const aug = metricsOf(ctx, { monthKey: '2026-08', funnelId: 'ven' });

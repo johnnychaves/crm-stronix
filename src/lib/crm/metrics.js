@@ -10,7 +10,9 @@ import { fmtNum } from '../format.js';
 import { monthRange, effectiveEnd, isCurrentMonthKey, addMonthsToKey } from '../operacional/month.js';
 import { pct } from './stats.js';
 import { fmtDuration, fmtDays } from './format.js';
-import { OTHERS_ID, STAGE_TRACKING_MONTH, APPTS_COMPLETE_MONTH, makeScope, leadFunnelsOf, funnelStagesOf } from './scope.js';
+import {
+  OTHERS_ID, STAGE_TRACKING_MONTH, STAGE_TRACKING_SINCE, APPTS_COMPLETE_MONTH, makeScope, leadFunnelsOf, funnelStagesOf
+} from './scope.js';
 import { newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf } from './cohort.js';
 import { appointmentsOf, recordsByLeadOf, cohortMilestones, professorsOf, visitOutcomesByLead } from './appointments.js';
 import { contactTimesByLead, firstContactOf } from './contact.js';
@@ -149,7 +151,10 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
       end,
       asOf,
       ownerOk: scope.ownerOk,
-      leadOf
+      leadOf,
+      // A função recorta funil e pessoa pelo funil de nascimento.
+      newLeads: fresh(src.leadsCreated),
+      trackingSince: STAGE_TRACKING_SINCE
     }) : null
   };
 }

@@ -8,6 +8,7 @@ import { isConvertedStatusName } from '../leads.js';
 import { deriveLeadBucket } from '../leadDerived.js';
 import { getSafeDateOrNull } from '../dates.js';
 import { isItemInFunnel } from '../funnels.js';
+import { isImportCreatedLead } from '../operacional/routine.js';
 import { median, rankCounts } from './stats.js';
 import { firstEnrolledAtOf } from './cohort.js';
 
@@ -34,46 +35,94 @@ export function movesByLead(interactions) {
   return map;
 }
 
-// Passagem entre etapas de um funil no mês [start, end), acompanhada até asOf.
-// `ownerOk` recorta entraram, avançaram e perderam pela pessoa; a mediana é da
-// academia inteira, porque mediana não soma nem se recorta (README §6).
-export function stagePassageOf({ moves, funnelId, defaultFunnelId, stages, start, end, asOf, ownerOk, leadOf }) {
-  const inMonth = (m) => m.createdAt >= start && m.createdAt < end;
+// Passagem entre etapas de um funil no mês [start, end), acompanhada até asOf
+// (spec §4). Por etapa:
+// - entraram: as trocas do mês para a etapa e os leads de `newLeads`
+//   cadastrados no mês, a partir de `trackingSince`, na etapa em que nasceram.
+//   A etapa e o funil de nascimento são a origem da primeira troca real do
+//   lead; sem troca, a etapa e o funil de hoje. Importado e lead sem data de
+//   cadastro não entram pelo cadastro, como nos leads novos;
+// - de cada entrada, a troca real seguinte do lead, até asOf, decide: para
+//   Perda, perderam; para etapa de ordem maior no mesmo funil ou com nome de
+//   matrícula, avançaram; o resto (etapa menor, outro funil) segue na etapa.
+//   Sem troca seguinte, a primeira matrícula depois da entrada é avanço.
+//   Avanço e perda são das entradas do mês e nunca passam de entraram;
+// - mediana: nas saídas do mês, o tempo desde a entrada na etapa, que é a
+//   troca anterior, quando foi ela que levou o lead para a etapa, ou, na
+//   primeira troca real de quem foi cadastrado a partir de trackingSince, o
+//   cadastro. Quem foi cadastrado antes pode ter trocado de etapa sem registro.
+// Troca que não muda nada (mesma etapa e mesmo funil, com o padrão no lugar do
+// funil vazio) é ignorada em tudo. `ownerOk` recorta entraram, avançaram e
+// perderam pela pessoa; a mediana é da academia inteira, porque mediana não
+// soma nem se recorta (README §6).
+export function stagePassageOf({
+  moves, funnelId, defaultFunnelId, stages, start, end, asOf, ownerOk, leadOf, newLeads = [], trackingSince = null
+}) {
+  const inMonth = (t) => t >= start && t < end;
   const sameFunnel = (id) => id === funnelId || (!id && funnelId === defaultFunnelId);
+  const effFunnel = (id) => id || defaultFunnelId || null;
+  const fromFunnelOf = (m) => (m.fromFunnelId !== undefined ? m.fromFunnelId : m.funnelId);
+  const changes = (m) => m.fromStatus !== m.toStatus || effFunnel(fromFunnelOf(m)) !== effFunnel(m.funnelId);
+  const tracked = (l) => l?.createdAt instanceof Date && !l.createdAtMissing && (!trackingSince || l.createdAt >= trackingSince);
   const isLeadStage = (name) => Boolean(name) && name !== 'Perda' && !isConvertedStatusName(name);
+
+  // Só as trocas reais de cada lead, em ordem.
+  const real = new Map();
+  moves.forEach((list, leadId) => {
+    const kept = list.filter(changes);
+    if (kept.length) real.set(leadId, kept);
+  });
+
   const names = [...(stages || [])];
-  moves.forEach((list) => list.forEach((m) => {
-    if (inMonth(m) && sameFunnel(m.funnelId) && isLeadStage(m.toStatus) && !names.includes(m.toStatus)) names.push(m.toStatus);
+  real.forEach((list) => list.forEach((m) => {
+    if (inMonth(m.createdAt) && sameFunnel(m.funnelId) && isLeadStage(m.toStatus) && !names.includes(m.toStatus)) names.push(m.toStatus);
   }));
   const orderOf = new Map(names.map((n, i) => [n, i]));
   const rows = new Map(names.map((n) => [n, { entered: 0, advanced: 0, lost: 0, durations: [] }]));
 
-  moves.forEach((list, leadId) => {
+  // Uma entrada na etapa, no instante `at`. A troca real seguinte, até asOf,
+  // decide o destino; sem ela, só a primeira matrícula depois da entrada.
+  const enter = (row, stage, at, next, lead) => {
+    row.entered += 1;
+    if (next && next.createdAt <= asOf) {
+      if (next.toStatus === 'Perda') row.lost += 1;
+      else if (isConvertedStatusName(next.toStatus)
+        || (sameFunnel(next.funnelId) && (orderOf.get(next.toStatus) ?? -1) > orderOf.get(stage))) row.advanced += 1;
+      return;
+    }
+    const enrolled = firstEnrolledAtOf(lead);
+    if (enrolled && enrolled > at && enrolled <= asOf) row.advanced += 1;
+  };
+
+  // Entrada pelo cadastro.
+  const seenNew = new Set();
+  (newLeads || []).forEach((l) => {
+    if (!l?.id || seenNew.has(l.id)) return;
+    seenNew.add(l.id);
+    if (!tracked(l) || !inMonth(l.createdAt) || isImportCreatedLead(l) || !ownerOk(l)) return;
+    const first = (real.get(l.id) || [])[0];
+    const stage = first ? first.fromStatus : l.status;
+    const row = sameFunnel(first ? fromFunnelOf(first) : l.funnelId) ? rows.get(stage) : null;
+    if (row) enter(row, stage, l.createdAt, first, l);
+  });
+
+  // Entrada pela troca, e a saída, que dá o tempo na etapa.
+  real.forEach((list, leadId) => {
     const lead = leadOf(leadId);
     const mine = ownerOk(lead);
     list.forEach((m, idx) => {
-      if (!inMonth(m)) return;
-      // Entrada na etapa.
+      if (!inMonth(m.createdAt)) return;
       const entry = sameFunnel(m.funnelId) ? rows.get(m.toStatus) : null;
-      if (entry && mine) {
-        entry.entered += 1;
-        const next = list[idx + 1];
-        const byMove = Boolean(next) && next.createdAt <= asOf && (isConvertedStatusName(next.toStatus)
-          || (sameFunnel(next.funnelId) && (orderOf.get(next.toStatus) ?? -1) > orderOf.get(m.toStatus)));
-        const conv = firstEnrolledAtOf(lead);
-        const byEnroll = Boolean(conv) && conv > m.createdAt && conv <= asOf;
-        if (byMove || byEnroll) entry.advanced += 1;
-      }
-      // Saída da etapa: perda e tempo na etapa.
-      const fromFunnel = m.fromFunnelId !== undefined ? m.fromFunnelId : m.funnelId;
-      const exit = sameFunnel(fromFunnel) ? rows.get(m.fromStatus) : null;
+      if (entry && mine) enter(entry, m.toStatus, m.createdAt, list[idx + 1], lead);
+      const exit = sameFunnel(fromFunnelOf(m)) ? rows.get(m.fromStatus) : null;
       if (!exit) return;
-      if (m.toStatus === 'Perda' && mine) exit.lost += 1;
-      const prev = list.slice(0, idx).reverse().find((x) => x.toStatus === m.fromStatus && sameFunnel(x.funnelId));
-      const firstStage = orderOf.get(m.fromStatus) === 0;
-      const enteredAt = prev
-        ? prev.createdAt
-        : (firstStage && lead?.createdAt instanceof Date && !lead.createdAtMissing ? lead.createdAt : null);
+      const prev = list[idx - 1];
+      let enteredAt = null;
+      if (prev) {
+        if (prev.toStatus === m.fromStatus && sameFunnel(prev.funnelId)) enteredAt = prev.createdAt;
+      } else if (tracked(lead)) {
+        enteredAt = lead.createdAt;
+      }
       if (enteredAt && m.createdAt >= enteredAt) exit.durations.push((m.createdAt - enteredAt) / 60000);
     });
   });
