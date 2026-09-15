@@ -115,8 +115,9 @@ const hasOpenAppointment = (lead) =>
 // Marcos da safra no instante asOf (spec §4, "Funil por marcos"). Agendou: tem
 // registro não cancelado marcado até asOf, de qualquer mês carregado, ou, sem
 // corte, um agendamento em aberto no próprio lead, que cobre a aula marcada
-// para depois dos meses carregados. No corte pró-rata o espelho do lead fica
-// de fora porque ele é o retrato de hoje. Compareceu: tem registro attended
+// para depois dos meses carregados. Com corte (safra acompanhada até um
+// instante antes de agora) o espelho do lead fica de fora, porque ele é o
+// retrato de hoje. Compareceu: tem registro attended
 // com data até asOf. Quem compareceu também agendou. O status da visita é o
 // efetivo, com o desfecho da linha do tempo (effectiveStatus).
 export function cohortMilestones(cohort, { asOf, cut, recordsByLead, visitOutcomes = null }) {

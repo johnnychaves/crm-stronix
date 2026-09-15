@@ -16,8 +16,9 @@ export const aulasInMonthSpec = (startMs, endMs) => monthWindowSpec('scheduledFo
 // Meses que a tela precisa, em ordem (Decisão 5 do plano). A tendência pede os
 // 6 meses até o exibido. A safra de mês fechado é acompanhada até hoje, então
 // entram os meses do exibido até o corrente. O comparado, quando é cortado
-// (mês exibido em andamento), entra sozinho; quando não é, com os meses até o
-// corrente.
+// (mês exibido em andamento), entra com o mês seguinte a ele, porque o
+// agendamento marcado antes do corte pode ser para uma data do mês seguinte;
+// quando não é cortado, entra com os meses até o corrente.
 export function crmMonthKeys({ monthKey, compareOn, compareKey, currentKey }) {
   const keys = new Set();
   const span = (from, to) => {
@@ -26,8 +27,10 @@ export function crmMonthKeys({ monthKey, compareOn, compareKey, currentKey }) {
   span(addMonthsToKey(monthKey, -5), monthKey);
   span(monthKey, currentKey);
   if (compareOn && compareKey) {
-    if (monthKey === currentKey) keys.add(compareKey);
-    else span(compareKey, currentKey);
+    if (monthKey === currentKey) {
+      keys.add(compareKey);
+      keys.add(addMonthsToKey(compareKey, 1));
+    } else span(compareKey, currentKey);
   }
   return [...keys].sort();
 }

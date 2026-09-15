@@ -25,9 +25,10 @@ describe('meses a carregar', () => {
       .toEqual(['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09']);
   });
 
-  it('mês corrente contra o mesmo mês do ano anterior: o comparado entra sozinho, porque é cortado', () => {
+  it('mês corrente contra o mesmo mês do ano anterior: entram o comparado, que é cortado, e o mês seguinte a ele', () => {
+    // O agendamento marcado antes do corte pode ser para uma data do mês seguinte.
     expect(crmMonthKeys({ monthKey: '2026-09', compareOn: true, compareKey: '2025-09', currentKey: '2026-09' }))
-      .toEqual(['2025-09', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09']);
+      .toEqual(['2025-09', '2025-10', '2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09']);
   });
 
   it('mês fechado: do mais antigo da tendência até o corrente, e do comparado até o corrente', () => {

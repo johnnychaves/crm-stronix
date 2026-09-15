@@ -158,6 +158,30 @@ describe('metricsOf', () => {
     expect(metricsOf(ctx, { monthKey: '2026-08' }).cohort).toMatchObject({ leads: 4, enrolled: 2, conv: 50 });
   });
 
+  it('com corte, a safra vai até o corte mesmo quando ele cai no fim do mês comparado', () => {
+    const end = D(9, 1, 0);
+    const m = metricsOf(ctx, { monthKey: '2026-08', cutEnd: end });
+    expect(m.asOf).toEqual(end);
+    // o1 matriculou em 08/09, depois do corte: segue em jogo.
+    expect(m.cohort).toMatchObject({ leads: 4, enrolled: 1, open: 3 });
+  });
+
+  it('o espelho em aberto do lead é o retrato de hoje: vale quando a safra vai até agora e sai quando ela é cortada antes', () => {
+    const mirrored = makeCtx();
+    const mirror = { appointmentScheduledFor: { toDate: () => D(10, 2) } };
+    mirrored.leadsById = new Map([...mirrored.leadsById, ['a3', { ...a3, ...mirror }], ['s5', { ...s5, ...mirror }]]);
+    const sched = (monthKey, cutEnd = null) => metricsOf(mirrored, { monthKey, cutEnd }).cohort.sched;
+    // Mês em andamento: o fim efetivo é agora, e a safra vai até agora.
+    expect(sched('2026-09')).toBe(4);
+    // O corte sai do instante, não de haver cutEnd: cortar em agora é não cortar.
+    expect(sched('2026-09', NOW)).toBe(4);
+    // Mês fechado sem corte: até agora.
+    expect(sched('2026-08')).toBe(2);
+    // Com corte antes de agora, inclusive no fim do mês comparado: sem o retrato de hoje.
+    expect(sched('2026-08', D(9, 1, 0))).toBe(1);
+    expect(sched('2026-08', D(8, 14, 12))).toBe(1);
+  });
+
   it('mês sem fonte fica sem número; as marcas de base seguem as datas', () => {
     const jul = metricsOf(ctx, { monthKey: '2026-07' });
     expect(jul).toMatchObject({ hasSource: false, leads: null, appts: null, cohort: null, now: null, apptsBase: false, stageBase: false });

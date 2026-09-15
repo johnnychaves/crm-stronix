@@ -66,7 +66,11 @@ function professorsOfMonth(cache, src, { monthKey, start, end }) {
 function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
   const { start, end: monthEnd } = monthRange(monthKey);
   const end = cutEnd || effectiveEnd(monthKey, ctx.now);
-  const asOf = end < monthEnd ? end : ctx.now;
+  // Com corte (comparado de um mês em andamento), a safra é acompanhada até o
+  // corte, mesmo quando ele cai no fim do mês comparado (dia 31 contra mês de
+  // 30 dias, ou outubro contra fevereiro). Sem corte, até o fim efetivo ou
+  // agora. A tela passa o corte só quando o mês exibido está em andamento.
+  const asOf = cutEnd ? cutEnd : (end < monthEnd ? end : ctx.now);
   const running = isCurrentMonthKey(monthKey, ctx.now);
   const src = ctx.months?.[monthKey] || null;
   const scope = makeScope({ users: ctx.users, funnels: ctx.funnels, userId, funnelId });
@@ -107,8 +111,11 @@ function computeMetrics(ctx, cache, { monthKey, userId, funnelId, cutEnd }) {
   const outcomes = cohortLeads.map((l) => outcomeAt(l, asOf));
   const enrolled = outcomes.filter((o) => o === 'enrolled').length;
   const lost = outcomes.filter((o) => o === 'lost').length;
+  // O espelho do lead é o retrato de agora: vale só quando a safra vai até
+  // agora. O corte sai do instante, e não do fim < fim do mês, que no mês em
+  // andamento daria corte e tiraria o agendamento em aberto.
   const miles = cohortMilestones(cohortLeads, {
-    asOf, cut: Boolean(cutEnd), recordsByLead: cache.recordsByLead, visitOutcomes: cache.visitOutcomes
+    asOf, cut: asOf.getTime() < ctx.now.getTime(), recordsByLead: cache.recordsByLead, visitOutcomes: cache.visitOutcomes
   });
   // O primeiro contato olha o mês do cadastro e o seguinte, até o corte.
   const limit = Math.min(asOf.getTime(), monthRange(addMonthsToKey(monthKey, 1)).end.getTime());
