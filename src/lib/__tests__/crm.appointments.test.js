@@ -74,6 +74,20 @@ describe('marcos da safra', () => {
     const late = recordsByLeadOf([R('9', { leadId: 'z', status: 'no_show', scheduledFor: D(8, 8), createdAt: D(8, 18) })]);
     expect(cohortMilestones([{ id: 'z' }], { asOf: D(8, 15), cut: true, recordsByLead: late })).toEqual({ sched: 1, came: 0 });
   });
+
+  it('agendamento marcado na primeira matrícula ou depois dela não é funil de lead (aula de upgrade)', () => {
+    const recs = recordsByLeadOf([
+      R('u1', { leadId: 'm', status: 'attended', createdAt: D(9, 6), scheduledFor: D(9, 8) }),
+      R('u2', { leadId: 'n', status: 'attended', createdAt: D(9, 1), scheduledFor: D(9, 3) }),
+      R('u3', { leadId: 'p', status: 'agendada', createdAt: D(9, 5, 10), scheduledFor: D(9, 12) })
+    ]);
+    const leads = [
+      { id: 'm', convertedAt: { toDate: () => D(9, 5) } },
+      { id: 'n', convertedAt: D(9, 5) },
+      { id: 'p', clienteSince: D(9, 5, 10) }
+    ];
+    expect(cohortMilestones(leads, { asOf, cut: true, recordsByLead: recs })).toEqual({ sched: 1, came: 1 });
+  });
 });
 
 describe('desfecho da visita pela linha do tempo', () => {
@@ -118,6 +132,14 @@ describe('desfecho da visita pela linha do tempo', () => {
     expect(effectiveStatus(V('1', 'v1'), at(4, 23, 59))).toBe('attended');
     expect(effectiveStatus(V('1', 'v1'), at(5, 0))).toBe('agendada');
     expect(effectiveStatus(V('1', 'v1'), at(2, 23, 59))).toBe('agendada');
+  });
+
+  it('vale o último desfecho da janela: "Veio" no dia corrigido para "Faltou" no dia seguinte', () => {
+    const fixed = visitOutcomesByLead([
+      G('c2', 'v1', 'no_show', D(9, 4, 9)),
+      G('c1', 'v1', 'attended', D(9, 3, 19))
+    ]);
+    expect(effectiveStatus(V('1', 'v1'), fixed)).toBe('no_show');
   });
 
   it('sem os desfechos da linha do tempo, vale o status do registro', () => {
