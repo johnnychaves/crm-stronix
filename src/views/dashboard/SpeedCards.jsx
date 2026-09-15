@@ -19,8 +19,8 @@ const BAR_MAX_PX = 88;
 
 function BigNumber({ value, delta }) {
   return (
-    <div className="flex items-end gap-3">
-      <span className="num font-display text-[34px] font-bold leading-[0.9] tracking-[-0.02em]">{value}</span>
+    <div className="flex flex-wrap items-end gap-3 gap-y-1">
+      <span className="num whitespace-nowrap font-display text-[34px] font-bold leading-[0.9] tracking-[-0.02em]">{value}</span>
       <span className="pb-[3px] text-[11.5px] text-muted-foreground">de mediana</span>
       {delta && <span className="ml-auto"><DeltaPill delta={delta} lowerBetter /></span>}
     </div>
@@ -28,10 +28,21 @@ function BigNumber({ value, delta }) {
 }
 
 export function FirstContactCard({ fc, delta }) {
-  const total = fc?.total || 0;
   const help = <DashHelpTip text={FC_HELP} label="Como o tempo até o primeiro contato é medido" />;
   const title = 'Tempo até o primeiro contato';
   const hint = 'do cadastro até a primeira interação da equipe';
+  // fc null (diferente de total 0): a safra passou do fim do mês e o mês
+  // seguinte ainda não carregou ou falhou, então não existe como medir.
+  if (fc == null) {
+    return (
+      <CrmCard title={title} hint={hint} action={help}>
+        <div className="p-[18px]">
+          <DashedNote text="Falta o mês seguinte ao do cadastro para medir o primeiro contato." />
+        </div>
+      </CrmCard>
+    );
+  }
+  const total = fc.total || 0;
   if (!total) {
     return (
       <CrmCard title={title} hint={hint} action={help}>
@@ -111,7 +122,7 @@ export function DaysToEnrollCard({ dte, delta }) {
               </span>
               <ChartMark
                 tip={`${b.name} dias entre cadastro e matrícula: ${fmtNum(counts[i])} de ${plural(total, 'matrícula', 'matrículas')} (${pct(counts[i], total)}%)`}
-                className={cn('block w-full min-h-[3px] rounded-t-md', i <= 2 ? 'bg-brand-600' : 'bg-brand-300 dark:bg-brand-400')}
+                className={cn('block w-full min-h-[3px] rounded-t-md', i <= 2 ? 'bg-brand-600' : 'bg-brand-300 dark:bg-brand-200')}
                 style={{ height: `${Math.round((counts[i] / max) * BAR_MAX_PX)}px` }}
               />
               <span className="num whitespace-nowrap text-[10.5px] text-muted-foreground">{i === DAYS_BUCKETS.length - 1 ? b.name : `${b.name} d`}</span>
