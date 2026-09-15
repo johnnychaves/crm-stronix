@@ -15,6 +15,8 @@
 // servidor, menos as aulas dos dois meses anteriores ao corrente, que vêm do
 // servidor uma vez por sessão (crm/queries.js, aulasFromServerFor): o desfecho
 // e a conversão mudam o registro sem mudar a data, e a contagem não vê isso.
+// As do mês anterior ainda são relidas a cada matrícula ou perda feita com a
+// tela aberta (abaixo).
 // Mês corrente: do servidor; na volta à tela, matrículas e perdas vêm pela
 // busca incremental e os agendamentos vêm inteiros, porque o desfecho muda o
 // registro sem mudar nenhuma data (crm/queries.js, mergeCrmCurrent).
@@ -28,10 +30,13 @@
 // (liveInteractions) e, quando ela é mais nova que os dados do mês corrente
 // (crm/queries.js, outcomeRefreshNeeded), as buscas do mês corrente rodam de
 // novo, desde as âncoras: matrículas, perdas e leads criados, mais os
-// agendamentos do mês. Custo por matrícula ou perda: as três buscas
+// agendamentos do mês. As aulas do mês anterior também são relidas do
+// servidor, porque a matrícula marca a aula que converteu (markConvertingAula)
+// e ela costuma ser desse mês. Custo por matrícula ou perda: as três buscas
 // incrementais, que leem só o que mudou desde a última busca (poucas
-// leituras), e os agendamentos do mês inteiros (até uns 60 documentos, o
-// mesmo de uma abertura da tela), porque loadCrmCurrent sempre os relê.
+// leituras), e as aulas do mês corrente e do anterior inteiras (uns 120
+// documentos, cerca de 60 de cada mês), porque loadCrmCurrent sempre relê as
+// do mês.
 //
 // Limites conhecidos:
 // - a importação de planilha que promove um lead com data antiga só aparece
@@ -49,7 +54,7 @@ import { appId, LEADS_PATH, AULAS_PATH } from '../lib/firebase.js';
 import { specToConstraints } from './usePagedLeads.js';
 import { normalizeLeadDoc } from '../lib/leads.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
-import { monthRange, monthKeyOf } from '../lib/operacional/month.js';
+import { monthRange, monthKeyOf, addMonthsToKey } from '../lib/operacional/month.js';
 import {
   retryWithBackoff, monthEntryFits, shouldStoreMonthEntry, shouldRememberMonthEntry, failedMonthEntry,
   monthsFromSession, leadsWindowSince, mergeNewLeads, chunk, unionById
@@ -57,7 +62,7 @@ import {
 import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, clienteSinceInMonthSpec, currentFieldWindow, newestTimeOf,
   failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
-  liveOutcomeSignal, crmMonthsReady, outcomeRefreshNeeded
+  liveOutcomeSignal, crmMonthsReady, outcomeRefreshNeeded, acceptsFreshAulas, withFreshAulas
 } from '../lib/crm/queries.js';
 import { colRef, serverDocs, cachedOrServer, loadMonth, loadCurrentLeads, leadsPorIdDaSessao, mesesDaSessao } from './monthSources.js';
 
@@ -76,17 +81,23 @@ const mapAula = (d) => {
 const leadsQuery = (db, spec) => query(colRef(db, LEADS_PATH), ...specToConstraints(spec));
 const aulasQuery = (db, spec) => query(colRef(db, AULAS_PATH), ...specToConstraints(spec));
 
+// Agendamentos do mês inteiros, do servidor: o desfecho e a conversão mudam o
+// registro sem mudar a data, e o cache do aparelho não vê isso.
+const loadAulasFromServer = (db, key) => {
+  const { start, end } = monthRange(key);
+  return serverDocs(aulasQuery(db, aulasInMonthSpec(start.getTime(), end.getTime()))).then((docs) => docs.map(mapAula));
+};
+
 // Mês corrente, do servidor. Com a entrada da memória, matrículas e perdas vêm
 // desde as âncoras dela; sem, o mês inteiro. Os agendamentos vêm sempre inteiros.
 async function loadCrmCurrent(db, key, entry = null) {
-  const { start, end } = monthRange(key);
   const winC = currentFieldWindow(key, entry?.newestConvertedAt, entry?.fetchedAt);
   const winL = currentFieldWindow(key, entry?.newestLostAt, entry?.fetchedAt);
   const fetchedAt = Date.now();
   const [converted, lost, aulas] = await Promise.all([
     serverDocs(leadsQuery(db, convertedInMonthSpec(winC.from, winC.to))).then((docs) => docs.map(normalizeLeadDoc)),
     serverDocs(leadsQuery(db, lostInMonthSpec(winL.from, winL.to))).then((docs) => docs.map(normalizeLeadDoc)),
-    serverDocs(aulasQuery(db, aulasInMonthSpec(start.getTime(), end.getTime()))).then((docs) => docs.map(mapAula))
+    loadAulasFromServer(db, key)
   ]);
   return { converted, lost, aulas, fetchedAt };
 }
@@ -106,12 +117,11 @@ async function loadCrmMonth(db, key, closed, { aulasFromServer = false } = {}) {
   }
   const { start, end } = monthRange(key);
   const [from, to] = [start.getTime(), end.getTime()];
-  const qAulas = aulasQuery(db, aulasInMonthSpec(from, to));
   const [converted, firstEnrolled, lost, aulas] = await Promise.all([
     cachedOrServer(leadsQuery(db, convertedInMonthSpec(from, to)), normalizeLeadDoc),
     cachedOrServer(leadsQuery(db, clienteSinceInMonthSpec(from, to)), normalizeLeadDoc),
     cachedOrServer(leadsQuery(db, lostInMonthSpec(from, to)), normalizeLeadDoc),
-    aulasFromServer ? serverDocs(qAulas).then((docs) => docs.map(mapAula)) : cachedOrServer(qAulas, mapAula)
+    aulasFromServer ? loadAulasFromServer(db, key) : cachedOrServer(aulasQuery(db, aulasInMonthSpec(from, to)), mapAula)
   ]);
   // A primeira matrícula também entra pelo clienteSince, porque o retorno de
   // ex-cliente regrava o convertedAt. As duas listas se unem por id.
@@ -236,9 +246,13 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
   // --- matrícula e perda feitas com a tela aberta, no mês corrente. O sinal é
   // o instante da troca de etapa mais nova para Perda ou matrícula
   // (liveOutcomeSignal). Quando ele é mais novo que os dados da entrada do mês
-  // corrente (outcomeRefreshNeeded), as buscas incrementais do mês corrente
-  // rodam de novo: a do CRM e a dos leads criados, porque o lead criado com a
-  // tela aberta sai dos ao vivo quando matricula ou perde e sumiria da safra.
+  // corrente (outcomeRefreshNeeded), as buscas do mês corrente rodam de novo:
+  // a do CRM; a dos leads criados, porque o lead criado com a tela aberta sai
+  // dos ao vivo quando matricula ou perde e sumiria da safra; e a das aulas do
+  // mês anterior, do servidor, porque a matrícula marca a aula que converteu
+  // (markConvertingAula), que costuma ser do mês anterior, e o resto da tela
+  // só lê esse mês uma vez por sessão. Elas entram só na entrada do mês
+  // anterior que já carregou e não falhou (withFreshAulas).
   // O instante da busca do mês corrente, lido do estado, entra nas
   // dependências: o sinal que chegou antes da entrada é tratado assim que ela
   // chega, e o que chegou durante uma busca, quando ela termina. Enquanto a
@@ -273,6 +287,18 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
         })
         .catch((e) => console.error('crm matrícula ou perda ao vivo', key, e))
         .finally(() => crmInFlightRef.current.delete(key));
+      const prevKey = addMonthsToKey(key, -1);
+      if (acceptsFreshAulas(crmMemory.get(prevKey))) {
+        retryWithBackoff(() => loadAulasFromServer(db, prevKey))
+          .then((aulas) => {
+            if (crmMemory.has(prevKey)) crmMemory.set(prevKey, withFreshAulas(crmMemory.get(prevKey), aulas));
+            setCrm((prev) => {
+              const next = withFreshAulas(prev[prevKey], aulas);
+              return next === prev[prevKey] ? prev : { ...prev, [prevKey]: next };
+            });
+          })
+          .catch((e) => console.error('crm aulas do mês anterior ao vivo', prevKey, e));
+      }
       const sharedMemory = mesesDaSessao.get(tenant);
       const sharedEntry = sharedMemory?.get(key);
       if (!sharedEntry || sharedEntry.closed || sharedEntry.failed) return;

@@ -30,11 +30,20 @@ export const clienteSinceInMonthSpec = (startMs, endMs) => monthWindowSpec('clie
 // markConvertingAula grava na matrícula, às vezes semanas depois) mudam o
 // registro sem mudar a data, e o cache do aparelho ficaria com a versão velha:
 // o número mudaria de aparelho para aparelho. Valem os dois meses anteriores
-// ao corrente, uma vez por sessão (a entrada vai para a memória). Os mais
-// antigos seguem com a contagem, e a conversão gravada depois numa aula deles
-// pode não chegar enquanto o cache tiver a versão velha: limite aceito.
+// ao corrente, uma vez por sessão (a entrada vai para a memória). O mês
+// anterior ainda é relido a cada matrícula ou perda feita com a tela aberta
+// (useCrmSources), porque a matrícula marca a aula que converteu e ela
+// costuma ser dele. Os mais antigos seguem com a contagem, e a conversão
+// gravada depois numa aula deles pode não chegar enquanto o cache tiver a
+// versão velha: limite aceito.
 export const aulasFromServerFor = (key, currentKey) =>
   key >= addMonthsToKey(currentKey, -2) && key < currentKey;
+
+// Aulas do mês anterior relidas pela busca ao vivo: entram só na entrada de
+// mês fechado que já carregou e não falhou. A que falhou é buscada inteira de
+// novo na próxima abertura, e a do mês corrente tem a busca própria.
+export const acceptsFreshAulas = (entry) => Boolean(entry?.closed) && !entry.failed;
+export const withFreshAulas = (entry, aulas) => (acceptsFreshAulas(entry) ? { ...entry, aulas } : entry);
 
 // Meses que a tela precisa, em ordem (Decisão 5 do plano). A tendência pede os
 // 6 meses até o exibido. A safra de mês fechado é acompanhada até hoje, então

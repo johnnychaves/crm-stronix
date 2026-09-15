@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, clienteSinceInMonthSpec, crmMonthKeys, newestTimeOf, currentFieldWindow,
   failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
-  liveOutcomeSignal, crmMonthsReady, outcomeRefreshNeeded, OUTCOME_CLOCK_SLACK_MS
+  liveOutcomeSignal, crmMonthsReady, outcomeRefreshNeeded, OUTCOME_CLOCK_SLACK_MS, acceptsFreshAulas, withFreshAulas
 } from '../crm/queries.js';
 import { NEW_LEADS_SLACK_MS } from '../operacional/queries.js';
 
@@ -67,6 +67,19 @@ describe('aulas de mês fechado que vêm do servidor', () => {
   it('atravessa o ano', () => {
     expect(['2026-10', '2026-11', '2026-12', '2027-01'].map((k) => aulasFromServerFor(k, '2027-01')))
       .toEqual([false, true, true, false]);
+  });
+
+  it('a busca ao vivo relê as aulas do mês anterior: entram só na entrada de mês fechado que já carregou e não falhou', () => {
+    // A matrícula de 03/09 marca a aula de 28/08 como a que converteu (markConvertingAula).
+    const aug = { closed: true, converted: [{ id: 'a' }], lost: [], aulas: [{ id: 'r1', status: 'attended', converted: false }] };
+    const fresh = [{ id: 'r1', status: 'attended', converted: true }];
+    expect(acceptsFreshAulas(aug)).toBe(true);
+    expect(withFreshAulas(aug, fresh)).toEqual({ ...aug, aulas: fresh });
+    const open = { closed: false, converted: [], lost: [], aulas: [], fetchedAt: 1 };
+    [null, undefined, failedCrmEntry(true), open].forEach((e) => {
+      expect(acceptsFreshAulas(e)).toBe(false);
+      expect(withFreshAulas(e, fresh)).toBe(e);
+    });
   });
 });
 
