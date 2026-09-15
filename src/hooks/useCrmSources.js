@@ -31,7 +31,12 @@
 // Limites conhecidos:
 // - a importação de planilha que promove um lead com data antiga só aparece
 //   no mês corrente depois de recarregar a página, porque a busca incremental
-//   parte da mais nova já vista.
+//   parte da mais nova já vista;
+// - os leads das listas de mês fechado (criados, matriculados e perdidos)
+//   podem vir do cache do aparelho, então uma troca de responsável feita
+//   depois não chega a eles, a não ser que o lead também esteja entre os ao
+//   vivo, no mês corrente ou nos buscados por id (mergeLeadsById). É o mesmo
+//   limite do Operacional.
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { documentId, query, where } from 'firebase/firestore';
