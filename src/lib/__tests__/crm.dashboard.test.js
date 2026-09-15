@@ -5,7 +5,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { metricsOf, seriesOf } from '../crm/metrics.js';
-import { regimeTexts, channelRead, summaryItems, scopeNote } from '../crm/texts.js';
+import { regimeTexts, channelRead, summaryItems, scopeNote, joinPt } from '../crm/texts.js';
 import { CrmDashboard } from '../../views/dashboard/CrmDashboard.jsx';
 
 const NOW = new Date(2026, 8, 14, 12, 0);
@@ -31,6 +31,17 @@ const ctx = {
 };
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 const noSeries = { leads: [], appts: [], attend: [], enroll: [], conv: [] };
+
+describe('lista de meses do aviso', () => {
+  it('um nome sozinho, dois com "e", três ou mais com vírgulas e "e" antes do último', () => {
+    expect(joinPt([])).toBe('');
+    expect(joinPt(undefined)).toBe('');
+    expect(joinPt(['abril'])).toBe('abril');
+    expect(joinPt(['abril', 'maio'])).toBe('abril e maio');
+    expect(joinPt(['abril', 'maio', 'junho'])).toBe('abril, maio e junho');
+    expect(joinPt(['abril', 'maio', 'junho', 'julho de 2025'])).toBe('abril, maio, junho e julho de 2025');
+  });
+});
 
 describe('textos do regime', () => {
   it('mês em andamento comparando, sem comparar, fechado e com agendamento incompleto', () => {

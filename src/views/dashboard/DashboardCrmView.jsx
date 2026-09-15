@@ -14,7 +14,7 @@ import { metricsOf, buildCrmHighlights, seriesOf, OTHERS_ID } from '../../lib/cr
 import { crmMonthKeys } from '../../lib/crm/queries.js';
 import { leadFunnelsOf, APPTS_COMPLETE_MONTH } from '../../lib/crm/scope.js';
 import { monthName } from '../../lib/crm/format.js';
-import { regimeTexts } from '../../lib/crm/texts.js';
+import { regimeTexts, joinPt } from '../../lib/crm/texts.js';
 import { cn } from '../../lib/utils.js';
 import { CrmToolbar } from './CrmToolbar.jsx';
 import { CrmDashboard } from './CrmDashboard.jsx';
@@ -152,7 +152,7 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
           note={note}
         />
         {failedNames.length > 0 && (
-          <Notice>{`Não foi possível carregar os dados de ${failedNames.join(' e ')}. Recarregue a página para tentar de novo.`}</Notice>
+          <Notice>{`Não foi possível carregar os dados de ${joinPt(failedNames)}. Recarregue a página para tentar de novo.`}</Notice>
         )}
         <div className="relative">
           {sources.loading && (

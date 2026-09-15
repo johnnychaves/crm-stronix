@@ -44,6 +44,14 @@ export function regimeTexts({ running, compareOn, dayN, shownName, cmpName, appt
 // Nota do recorte, à direita do título de cada seção.
 export const scopeNote = (personName, funnelName) => `${personName || 'Equipe toda'} · ${funnelName || 'Todos os funis'}`;
 
+// Nomes em lista corrida, para o aviso de mês que não carregou: "abril",
+// "abril e maio", "abril, maio e junho".
+export function joinPt(names) {
+  const list = names || [];
+  if (list.length <= 1) return list[0] || '';
+  return `${list.slice(0, -1).join(', ')} e ${list[list.length - 1]}`;
+}
+
 // Leitura da tabela de canais: quem traz volume e quem traz resultado.
 export function channelRead(m) {
   const rows = m?.channels || [];
