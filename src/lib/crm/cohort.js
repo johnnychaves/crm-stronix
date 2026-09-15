@@ -26,6 +26,32 @@ export function firstEnrolledAtOf(l) {
   return conv || since || null;
 }
 
+// Matrícula importada nunca é matrícula (spec §4; o Operacional também não
+// conta contrato importado, isImportedContract). O lead criado pela importação
+// já sai por isImportCreatedLead. Sobra o lead que já existia no CRM e que a
+// importação promoveu a cliente: ela grava nele o clienteSince (e o
+// convertedAt) com a data da planilha, ou com a hora dela quando a linha não
+// tem data (clientImport.js). Os carimbos da importação (importBatchId,
+// importSource e importedBy, mais o importedAt) também vão para o cliente que
+// já tinha matrícula de verdade, então sozinhos não decidem. Conta como
+// importada a primeira matrícula de lead carimbado que ficou antes do cadastro
+// no CRM (a data da planilha; sem data de cadastro real, esse teste não vale)
+// ou a até uma hora do importedAt (a hora da importação, na linha sem data).
+// Limites: a data da planilha depois do cadastro no CRM segue contando como
+// matrícula no mês dela, porque nenhum campo a separa de uma matrícula feita
+// no app; e a hora da linha sem data é a da revisão da importação, então a
+// revisão que ficou aberta mais de uma hora antes de gravar escapa da regra.
+const IMPORT_TIME_SLACK_MS = 60 * 60 * 1000;
+export function isImportedEnrollment(l) {
+  if (!(l?.importBatchId || l?.importSource || l?.importedBy)) return false;
+  const first = firstEnrolledAtOf(l);
+  if (!first) return false;
+  const created = l.createdAtMissing ? null : getSafeDateOrNull(l.createdAt);
+  if (created && first < created) return true;
+  const importedAt = getSafeDateOrNull(l.importedAt);
+  return Boolean(importedAt) && Math.abs(first.getTime() - importedAt.getTime()) <= IMPORT_TIME_SLACK_MS;
+}
+
 // Tira repetido por id, mantendo o primeiro.
 function unique(list) {
   const seen = new Set();
@@ -42,13 +68,14 @@ function unique(list) {
 export const newLeadsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) =>
   !l.createdAtMissing && inWindow(l.createdAt, start, end) && !isImportCreatedLead(l) && inScope(l));
 
-// Matrículas: a primeira matrícula (firstEnrolledAtOf) em [start, end), sem os
-// importados. O retorno de ex-cliente regrava o convertedAt, mas não é
-// matrícula nova e não conta no mês dele. A primeira segue no mês dela, que a
-// carga acha pelo clienteSince (useCrmSources). É o mesmo corte do "entraram"
-// do Operacional, que ignora quem tem contrato anterior (salesInWindow).
+// Matrículas: a primeira matrícula (firstEnrolledAtOf) em [start, end), sem o
+// lead criado pela importação e sem a matrícula importada
+// (isImportedEnrollment). O retorno de ex-cliente regrava o convertedAt, mas
+// não é matrícula nova e não conta no mês dele. A primeira segue no mês dela,
+// que a carga acha pelo clienteSince (useCrmSources). É o mesmo corte do
+// "entraram" do Operacional, que ignora quem tem contrato anterior (salesInWindow).
 export const enrollmentsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) =>
-  inWindow(firstEnrolledAtOf(l), start, end) && !isImportCreatedLead(l) && inScope(l));
+  inWindow(firstEnrolledAtOf(l), start, end) && !isImportCreatedLead(l) && !isImportedEnrollment(l) && inScope(l));
 
 // Perdas: quem está em Perda hoje e não é cliente, com lostAt em [start, end),
 // por motivo. Perda sem motivo entra em "Sem motivo". A lista vai junto, para a
@@ -99,10 +126,12 @@ export const DAYS_BUCKETS = [
 ];
 
 // Dias inteiros do cadastro à primeira matrícula das matrículas do mês. O
-// retorno regrava o convertedAt e esticaria a conta até a volta.
+// retorno regrava o convertedAt e esticaria a conta até a volta. A matrícula
+// importada fica fora, como em enrollmentsOf: a data da planilha antes do
+// cadastro daria 0 dias.
 export function daysToEnrollOf(enrollments) {
   const days = (enrollments || [])
-    .filter((l) => !l.createdAtMissing && l.createdAt instanceof Date && firstEnrolledAtOf(l))
+    .filter((l) => !l.createdAtMissing && l.createdAt instanceof Date && firstEnrolledAtOf(l) && !isImportedEnrollment(l))
     .map((l) => Math.max(0, Math.floor((firstEnrolledAtOf(l) - l.createdAt) / DAY_MS)));
   return {
     total: days.length,

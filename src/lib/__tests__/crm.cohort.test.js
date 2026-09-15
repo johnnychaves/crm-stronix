@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
-  newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf, convertedAtOf, clienteSinceOf, firstEnrolledAtOf
+  newLeadsOf, enrollmentsOf, lossesOf, outcomeAt, channelsOf, daysToEnrollOf, convertedAtOf, clienteSinceOf, firstEnrolledAtOf,
+  isImportedEnrollment
 } from '../crm/cohort.js';
 
 const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
@@ -63,6 +64,53 @@ describe('matrículas do mês', () => {
     const MAR = { start: D(3, 1, 0), end: D(4, 1, 0) };
     expect(enrollmentsOf([volta], { ...MAR, inScope: all }).map((l) => l.id)).toEqual(['volta']);
     expect(enrollmentsOf([volta], { ...SEP, inScope: all })).toEqual([]);
+  });
+});
+
+describe('matrícula importada', () => {
+  // A importação carimba todo lead que ela toca (clientImport.js e clientImportWrites.js).
+  const STAMPS = { importBatchId: 'lote', importSource: 'nextfit', importedBy: 'uid-admin' };
+  const MAR = { start: D(3, 1, 0), end: D(4, 1, 0) };
+  const at = (d, h, min) => new Date(2026, 8, d, h, min);
+
+  it('data da planilha antes do cadastro no CRM: fora das matrículas e dos dias até a matrícula', () => {
+    // Cadastrado no CRM em 20/09; a planilha diz que o contrato começou em 10/09.
+    const l = { id: 'p', createdAt: D(9, 20), convertedAt: TS(D(9, 10, 0)), clienteSince: TS(D(9, 10, 0)), importedAt: TS(D(9, 25)), ...STAMPS };
+    expect(isImportedEnrollment(l)).toBe(true);
+    expect(enrollmentsOf([l], { ...SEP, inScope: all })).toEqual([]);
+    expect(daysToEnrollOf([l])).toEqual({ total: 0, median: null, buckets: [0, 0, 0, 0, 0, 0] });
+  });
+
+  it('linha sem data: a matrícula a poucos minutos do importedAt fica fora', () => {
+    // Sem data na planilha, clienteSince e convertedAt ficam com a hora da importação.
+    const l = { id: 's', createdAt: D(3, 1), convertedAt: TS(at(4, 10, 0)), clienteSince: TS(at(4, 10, 0)), importedAt: TS(at(4, 10, 7)), ...STAMPS };
+    expect(isImportedEnrollment(l)).toBe(true);
+    expect(enrollmentsOf([l], { ...SEP, inScope: all })).toEqual([]);
+    expect(daysToEnrollOf([l]).total).toBe(0);
+  });
+
+  it('matrícula de verdade no app, carimbada meses depois por uma importação, continua contando', () => {
+    const l = { id: 'r', createdAt: D(3, 1), convertedAt: TS(D(3, 5)), clienteSince: TS(D(3, 5)), importedAt: TS(D(9, 4)), ...STAMPS };
+    expect(isImportedEnrollment(l)).toBe(false);
+    expect(enrollmentsOf([l], { ...MAR, inScope: all }).map((x) => x.id)).toEqual(['r']);
+    expect(daysToEnrollOf([l])).toEqual({ total: 1, median: 4, buckets: [0, 0, 1, 0, 0, 0] });
+  });
+
+  it('lead sem carimbo de importação não muda, mesmo com a matrícula antes do cadastro', () => {
+    const l = { id: 'n', createdAt: D(9, 20), convertedAt: D(9, 10) };
+    expect(isImportedEnrollment(l)).toBe(false);
+    expect(enrollmentsOf([l], { ...SEP, inScope: all }).map((x) => x.id)).toEqual(['n']);
+    expect(daysToEnrollOf([l])).toMatchObject({ total: 1, median: 0 });
+  });
+
+  it('qualquer um dos três carimbos basta; sem data de cadastro real, só vale a hora da importação', () => {
+    ['importBatchId', 'importSource', 'importedBy'].forEach((k) =>
+      expect(isImportedEnrollment({ createdAt: D(9, 20), convertedAt: D(9, 10), [k]: 'x' })).toBe(true));
+    // createdAtMissing: o normalizeLeadDoc põe "agora" no createdAt, que não serve de régua.
+    const missing = { createdAt: D(9, 20), createdAtMissing: true, convertedAt: D(9, 10), clienteSince: D(9, 10), ...STAMPS };
+    expect(isImportedEnrollment({ ...missing, importedAt: TS(D(9, 25)) })).toBe(false);
+    expect(isImportedEnrollment({ ...missing, importedAt: TS(at(10, 10, 40)) })).toBe(true);
+    expect(isImportedEnrollment({ ...missing, importedAt: TS(at(10, 11, 30)) })).toBe(false);
   });
 });
 
