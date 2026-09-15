@@ -22,7 +22,7 @@ import { Select, SelectContent, SelectItem, SelectValue } from '../../components
 import { Checkbox } from '../../components/ui/checkbox.jsx';
 import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/popover.jsx';
 
-function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPrev, onNext }) {
+export function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPrev, onNext }) {
   return (
     <div className="flex items-center gap-0.5 rounded-xl border border-border bg-card p-[3px]">
       <button
@@ -63,7 +63,7 @@ function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext, onPre
   );
 }
 
-function CompareControl({ compareOn, onCompareOn, compareKey, compareOptions, onCompare }) {
+export function CompareControl({ compareOn, onCompareOn, compareKey, compareOptions, onCompare }) {
   return (
     <div
       className={cn(
@@ -107,7 +107,7 @@ function CompareControl({ compareOn, onCompareOn, compareKey, compareOptions, on
   );
 }
 
-function PersonControl({ person, people, onPerson }) {
+export function PersonControl({ person, people, onPerson }) {
   const active = person !== 'all';
   return (
     <Select value={person} onValueChange={onPerson}>
