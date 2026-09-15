@@ -9,6 +9,7 @@ import {
 import { addMonthsToKey } from '../operacional/month.js';
 import { getSafeDateOrNull } from '../dates.js';
 import { AULA_STATUS } from '../aulas.js';
+import { isConvertedStatusName } from '../leads.js';
 
 export const convertedInMonthSpec = (startMs, endMs) => monthWindowSpec('convertedAt', startMs, endMs);
 export const lostInMonthSpec = (startMs, endMs) => monthWindowSpec('lostAt', startMs, endMs);
@@ -141,4 +142,20 @@ export function mergeLeadsById({ months, currentKey, fetched, liveLeads }) {
   putMonth(months?.[currentKey]);
   (liveLeads || []).forEach(put);
   return map;
+}
+
+// Sinal de matrícula ou perda feita com a tela aberta: o maior createdAt (ms)
+// entre as trocas de etapa (status_change) para Perda ou para etapa com nome
+// de matrícula, nas interações ao vivo. A troca é gravada no mesmo lote que o
+// lead (logInteraction e a matrícula), então quando ela chega a matrícula ou a
+// perda já está no servidor. Sem nenhuma, 0.
+export function liveOutcomeSignal(interactions) {
+  let newest = 0;
+  (interactions || []).forEach((i) => {
+    if (i?.type !== 'status_change' || typeof i.toStatus !== 'string') return;
+    if (i.toStatus !== 'Perda' && !isConvertedStatusName(i.toStatus)) return;
+    const t = getSafeDateOrNull(i.createdAt)?.getTime();
+    if (Number.isFinite(t) && t > newest) newest = t;
+  });
+  return newest;
 }

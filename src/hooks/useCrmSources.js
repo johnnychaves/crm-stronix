@@ -20,9 +20,15 @@
 // mesma memória de leads por id do Operacional (leadsPorIdDaSessao). Quem não
 // existe mais fica como desconhecido e conta em Outros.
 //
+// Matrícula e perda feitas com a tela aberta: a troca de etapa chega ao vivo
+// (liveInteractions) e as buscas do mês corrente rodam de novo, desde as
+// âncoras: matrículas, perdas e leads criados, mais os agendamentos do mês.
+// Custo por matrícula ou perda: as três buscas incrementais, que leem só o que
+// mudou desde a última busca (poucas leituras), e os agendamentos do mês
+// inteiros (até uns 60 documentos, o mesmo de uma abertura da tela), porque
+// loadCrmCurrent sempre os relê.
+//
 // Limites conhecidos:
-// - matrícula ou perda que acontece com a tela aberta só aparece na próxima
-//   abertura. O bloco "Agora" é ao vivo;
 // - a importação de planilha que promove um lead com data antiga só aparece
 //   no mês corrente depois de recarregar a página, porque a busca incremental
 //   parte da mais nova já vista.
@@ -40,7 +46,8 @@ import {
 } from '../lib/operacional/queries.js';
 import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, currentFieldWindow, newestTimeOf,
-  failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor
+  failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
+  liveOutcomeSignal
 } from '../lib/crm/queries.js';
 import { colRef, serverDocs, cachedOrServer, loadMonth, loadCurrentLeads, leadsPorIdDaSessao, mesesDaSessao } from './monthSources.js';
 
@@ -100,6 +107,11 @@ async function loadCrmMonth(db, key, closed, { aulasFromServer = false } = {}) {
 
 // Memória de sessão da parte do CRM, por academia (appId).
 const crmMesesDaSessao = new Map();
+
+// Espera entre a troca de etapa chegar ao vivo e a busca do mês corrente. Junta
+// numa busca só as trocas que chegam em rajada (perda em massa no Kanban) e dá
+// tempo à conversão da aula, que a matrícula grava logo depois do lote.
+const OUTCOME_REFRESH_DELAY_MS = 2000;
 
 export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteractions, liveLeads }) {
   const currentKey = monthKeyOf(now);
@@ -201,6 +213,56 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
     return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- crm entra só como guarda de "já carregado"
   }, [db, enabled, monthKeys, currentKey]);
+
+  // --- matrícula e perda feitas com a tela aberta, no mês corrente. O sinal é
+  // o instante da troca de etapa mais nova para Perda ou matrícula
+  // (liveOutcomeSignal). Quando ele cresce em relação ao último tratado, as
+  // buscas incrementais do mês corrente rodam de novo: a do CRM e a dos leads
+  // criados, porque o lead criado com a tela aberta sai dos ao vivo quando
+  // matricula ou perde e sumiria da safra. As entradas saem da memória da
+  // sessão, não do estado, para não depender de closure velha. Na montagem só
+  // guarda o sinal: o refresh da montagem já cobre o que veio antes. Entrada
+  // do mês corrente que ainda não chegou ou falhou: nada a fazer.
+  const outcomeSignal = useMemo(() => liveOutcomeSignal(liveInteractions), [liveInteractions]);
+  const handledSignalRef = useRef(null);
+  useEffect(() => {
+    if (!db || !enabled) return undefined;
+    if (handledSignalRef.current === null) {
+      handledSignalRef.current = outcomeSignal;
+      return undefined;
+    }
+    if (outcomeSignal <= handledSignalRef.current) return undefined;
+    const tenant = appId;
+    const key = currentKey;
+    const timer = setTimeout(() => {
+      const crmMemory = crmMesesDaSessao.get(tenant);
+      const entry = crmMemory?.get(key);
+      if (!entry || entry.closed || entry.failed) return;
+      handledSignalRef.current = outcomeSignal;
+      retryWithBackoff(() => loadCrmCurrent(db, key, entry))
+        .then((fresh) => {
+          if (crmMemory.has(key)) crmMemory.set(key, mergeCrmCurrent(crmMemory.get(key), fresh));
+          setCrm((prev) => {
+            const next = mergeCrmCurrent(prev[key], fresh);
+            return next === prev[key] ? prev : { ...prev, [key]: next };
+          });
+        })
+        .catch((e) => console.error('crm matrícula ou perda ao vivo', key, e));
+      const sharedMemory = mesesDaSessao.get(tenant);
+      const sharedEntry = sharedMemory?.get(key);
+      if (!sharedEntry || sharedEntry.closed || sharedEntry.failed) return;
+      retryWithBackoff(() => loadCurrentLeads(db, key, leadsWindowSince(sharedEntry)))
+        .then(({ leads, fetchedAt }) => {
+          if (sharedMemory.has(key)) sharedMemory.set(key, mergeNewLeads(sharedMemory.get(key), leads, fetchedAt));
+          setShared((prev) => {
+            const next = mergeNewLeads(prev[key], leads, fetchedAt);
+            return next === prev[key] ? prev : { ...prev, [key]: next };
+          });
+        })
+        .catch((e) => console.error('crm leads novos ao vivo', key, e));
+    }, OUTCOME_REFRESH_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [db, enabled, currentKey, outcomeSignal]);
 
   // --- meses no formato de ctx.months: só os que têm as duas partes valendo.
   const months = useMemo(() => {

@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, crmMonthKeys, newestTimeOf, currentFieldWindow,
-  failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor
+  failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
+  liveOutcomeSignal
 } from '../crm/queries.js';
 import { NEW_LEADS_SLACK_MS } from '../operacional/queries.js';
 
@@ -181,5 +182,27 @@ describe('leads a buscar por id e a versão mais nova de cada lead', () => {
     });
     expect(map.get('x').v).toBe('matriculado');
     expect(map.get('y').v).toBe('vivo');
+  });
+});
+
+describe('sinal de matrícula ou perda feita com a tela aberta', () => {
+  const S = (toStatus, at, over = {}) => ({ leadId: 'x', type: 'status_change', toStatus, createdAt: at, ...over });
+
+  it('o instante mais novo entre as trocas para Perda ou para etapa com nome de matrícula', () => {
+    expect(liveOutcomeSignal([
+      S('Perda', D(9, 3)),
+      S('Matriculado', TS(D(9, 5))),
+      S('Venda', D(9, 4)),
+      S('Contato feito', D(9, 9)),
+      { leadId: 'x', type: 'note', toStatus: 'Perda', createdAt: D(9, 10) },
+      { leadId: 'x', type: 'status_change', text: 'Responsável alterado de [Ana] para [Diego].', createdAt: D(9, 11) },
+      S('Perda', null)
+    ])).toBe(D(9, 5).getTime());
+  });
+
+  it('sem nenhuma, 0', () => {
+    expect(liveOutcomeSignal([])).toBe(0);
+    expect(liveOutcomeSignal(undefined)).toBe(0);
+    expect(liveOutcomeSignal([S('Contato feito', D(9, 3))])).toBe(0);
   });
 });
