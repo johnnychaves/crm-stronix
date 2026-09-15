@@ -45,6 +45,19 @@ describe('agendamentos do mês', () => {
     expect(appointmentsOf(list, { ...WIN, leadOf: of, inScope: all }))
       .toEqual({ total: 1, came: 1, missed: 0, pending: 0, decided: 1, rate: 100 });
   });
+
+  it('registro de visita reaproveitado por quem já era cliente fica fora, mesmo com o createdAt de quando era lead', () => {
+    // upsertScheduledAppointment acha o registro de visita em aberto e só troca
+    // a data: o createdAt continua o de quando a pessoa ainda era lead.
+    const people = new Map([['c', lead('c', { clienteSince: D(9, 5) })]]);
+    const of = (id) => people.get(id) || { id, unknown: true };
+    const list = [
+      R('v1', { leadId: 'c', type: 'visita', createdAt: D(8, 20), scheduledFor: D(9, 8) }),
+      R('v2', { leadId: 'c', type: 'visita', createdAt: D(8, 20), scheduledFor: D(9, 4) })
+    ];
+    expect(appointmentsOf(list, { ...WIN, leadOf: of, inScope: all }))
+      .toEqual({ total: 1, came: 0, missed: 0, pending: 1, decided: 0, rate: null });
+  });
 });
 
 describe('marcos da safra', () => {
