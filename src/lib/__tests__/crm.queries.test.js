@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, crmMonthKeys, newestTimeOf, currentFieldWindow,
+  convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, clienteSinceInMonthSpec, crmMonthKeys, newestTimeOf, currentFieldWindow,
   failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
   liveOutcomeSignal, crmMonthsReady
 } from '../crm/queries.js';
@@ -11,12 +11,12 @@ const TS = (date) => ({ toDate: () => date });
 
 describe('consultas do CRM', () => {
   it('são de campo único: range e orderBy no mesmo campo, sem igualdade', () => {
-    [convertedInMonthSpec(0, 10), lostInMonthSpec(0, 10), aulasInMonthSpec(0, 10)].forEach((s) => {
+    const specs = [convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, clienteSinceInMonthSpec];
+    specs.map((f) => f(0, 10)).forEach((s) => {
       expect(new Set(s.wheres.map((w) => w.field))).toEqual(new Set([s.orderBy.field]));
       expect(s.wheres.map((w) => w.op)).toEqual(['>=', '<']);
     });
-    expect([convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec].map((f) => f(0, 10).orderBy.field))
-      .toEqual(['convertedAt', 'lostAt', 'scheduledFor']);
+    expect(specs.map((f) => f(0, 10).orderBy.field)).toEqual(['convertedAt', 'lostAt', 'scheduledFor', 'clienteSince']);
   });
 });
 

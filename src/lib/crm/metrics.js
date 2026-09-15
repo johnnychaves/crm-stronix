@@ -4,6 +4,8 @@
 //
 // ctx = { now, users, funnels, statuses, liveLeads, leadsById, months }
 //   months[chave] = { interactions, leadsCreated, converted, lost, aulas, failed? }
+//   converted = por convertedAt e, no mês fechado, também por clienteSince (a
+//   primeira matrícula de quem voltou depois).
 //   leadsById = a versão mais nova de cada lead conhecido (useCrmSources).
 
 import { fmtNum } from '../format.js';

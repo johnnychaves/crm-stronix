@@ -56,6 +56,14 @@ describe('matrículas do mês', () => {
     expect(firstEnrolledAtOf({})).toBeNull();
     expect(clienteSinceOf({ clienteSince: TS(D(3, 5)) })).toEqual(D(3, 5));
   });
+
+  it('conta pela primeira matrícula: com a primeira em março e o retorno em setembro, conta em março e não em setembro', () => {
+    // O retorno regravou o convertedAt; o clienteSince ficou na primeira matrícula.
+    const volta = { id: 'volta', convertedAt: D(9, 10), clienteSince: TS(D(3, 5)), createdAt: D(2, 20) };
+    const MAR = { start: D(3, 1, 0), end: D(4, 1, 0) };
+    expect(enrollmentsOf([volta], { ...MAR, inScope: all }).map((l) => l.id)).toEqual(['volta']);
+    expect(enrollmentsOf([volta], { ...SEP, inScope: all })).toEqual([]);
+  });
 });
 
 describe('perdas do mês', () => {
@@ -126,5 +134,10 @@ describe('dias até a matrícula', () => {
 
   it('sem matrícula: nada nas faixas e sem mediana', () => {
     expect(daysToEnrollOf([])).toEqual({ total: 0, median: null, buckets: [0, 0, 0, 0, 0, 0] });
+  });
+
+  it('conta até a primeira matrícula, não até o retorno', () => {
+    const r = daysToEnrollOf([{ createdAt: D(2, 20), convertedAt: D(9, 10), clienteSince: TS(D(3, 5)) }]);
+    expect(r).toEqual({ total: 1, median: 13, buckets: [0, 0, 0, 1, 0, 0] });
   });
 });

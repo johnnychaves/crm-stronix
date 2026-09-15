@@ -127,6 +127,21 @@ describe('metricsOf', () => {
     expect(team.daysToEnroll).toEqual({ total: 2, buckets: [0, 1, 0, 0, 1, 0], median: 16 });
   });
 
+  it('a primeira matrícula fica no mês dela mesmo depois de um retorno: conta em março, pela lista de clienteSince, e não em setembro', () => {
+    const back = makeCtx();
+    // Matriculou em 05/03 e voltou em 10/09: o retorno regravou o convertedAt.
+    const volta = L('volta', { createdAt: D(2, 20), status: 'Venda', isConverted: true, convertedAt: D(9, 10), clienteSince: D(3, 5) });
+    back.leadsById = new Map([...back.leadsById, ['volta', volta]]);
+    back.months = {
+      ...back.months,
+      // O mês fechado une por id os matriculados por convertedAt e por clienteSince (useCrmSources).
+      '2026-03': { interactions: [], leadsCreated: [], converted: [volta], lost: [], aulas: [] },
+      '2026-09': { ...back.months['2026-09'], converted: [...back.months['2026-09'].converted, volta] }
+    };
+    expect(metricsOf(back, { monthKey: '2026-03' })).toMatchObject({ enroll: 1, daysToEnroll: { total: 1, median: 13 } });
+    expect(metricsOf(back, { monthKey: '2026-09' })).toMatchObject({ enroll: 2, daysToEnroll: { total: 2, median: 16 } });
+  });
+
   it('passagem só com funil escolhido e só a partir de setembro de 2026', () => {
     expect(team.passage).toBeNull();
     const ven = metricsOf(ctx, { monthKey: '2026-09', funnelId: 'ven' });

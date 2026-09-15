@@ -1,7 +1,10 @@
 // Consultas e regras da carga do CRM (hooks/useCrmSources.js). Puras, sem SDK:
-// o hook traduz com specToConstraints. As três consultas são de campo único
-// (range e orderBy no mesmo campo): índice automático do Firestore, nada a
-// publicar. Os três campos são Timestamp, conferido em produção em 14/09/2026.
+// o hook traduz com specToConstraints. As consultas são de campo único (range
+// e orderBy no mesmo campo): índice automático do Firestore, nada a publicar.
+// convertedAt, lostAt e scheduledFor são Timestamp, conferido em produção em
+// 14/09/2026. O clienteSince também é gravado como Timestamp: a matrícula
+// grava a hora do servidor (contractsWrites.js) e a importação grava a data
+// da planilha ou a da importação (clientImport.js).
 
 import {
   monthWindowSpec, unionById, shouldStoreMonthEntry, currentMonthLeadsWindow, leadsWindowSince
@@ -16,6 +19,10 @@ export const lostInMonthSpec = (startMs, endMs) => monthWindowSpec('lostAt', sta
 // Aula e visita se separam no navegador (isAulaRecord): juntar `type` com o
 // intervalo de scheduledFor pede índice composto e falha com FAILED_PRECONDITION.
 export const aulasInMonthSpec = (startMs, endMs) => monthWindowSpec('scheduledFor', startMs, endMs);
+// Primeira matrícula no mês. O retorno de ex-cliente regrava o convertedAt, e
+// a primeira matrícula sumiria do mês dela na consulta por convertedAt. O
+// clienteSince é carimbado uma vez só, na primeira matrícula (cohort.js).
+export const clienteSinceInMonthSpec = (startMs, endMs) => monthWindowSpec('clienteSince', startMs, endMs);
 
 // Aulas de mês fechado que vêm do servidor, e não do cache conferido por
 // contagem. A contagem só enxerga registro entrando ou saindo da janela de

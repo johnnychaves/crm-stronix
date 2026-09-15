@@ -42,14 +42,13 @@ function unique(list) {
 export const newLeadsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) =>
   !l.createdAtMissing && inWindow(l.createdAt, start, end) && !isImportCreatedLead(l) && inScope(l));
 
-// Matrículas: convertedAt em [start, end), sem os importados e sem quem já era
-// cliente antes do mês. O retorno de ex-cliente regrava o convertedAt, mas não
-// é matrícula nova: é o mesmo corte do "entraram" do Operacional, que ignora
-// quem tem contrato anterior (salesInWindow).
-export const enrollmentsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) => {
-  const since = clienteSinceOf(l);
-  return inWindow(convertedAtOf(l), start, end) && !(since && since < start) && !isImportCreatedLead(l) && inScope(l);
-});
+// Matrículas: a primeira matrícula (firstEnrolledAtOf) em [start, end), sem os
+// importados. O retorno de ex-cliente regrava o convertedAt, mas não é
+// matrícula nova e não conta no mês dele. A primeira segue no mês dela, que a
+// carga acha pelo clienteSince (useCrmSources). É o mesmo corte do "entraram"
+// do Operacional, que ignora quem tem contrato anterior (salesInWindow).
+export const enrollmentsOf = (leads, { start, end, inScope }) => unique(leads).filter((l) =>
+  inWindow(firstEnrolledAtOf(l), start, end) && !isImportCreatedLead(l) && inScope(l));
 
 // Perdas: quem está em Perda hoje e não é cliente, com lostAt em [start, end),
 // por motivo. Perda sem motivo entra em "Sem motivo". A lista vai junto, para a
@@ -99,11 +98,12 @@ export const DAYS_BUCKETS = [
   { name: '31+', min: 31, max: Infinity }
 ];
 
-// Dias inteiros do cadastro à matrícula das matrículas do mês.
+// Dias inteiros do cadastro à primeira matrícula das matrículas do mês. O
+// retorno regrava o convertedAt e esticaria a conta até a volta.
 export function daysToEnrollOf(enrollments) {
   const days = (enrollments || [])
-    .filter((l) => !l.createdAtMissing && l.createdAt instanceof Date && convertedAtOf(l))
-    .map((l) => Math.max(0, Math.floor((convertedAtOf(l) - l.createdAt) / DAY_MS)));
+    .filter((l) => !l.createdAtMissing && l.createdAt instanceof Date && firstEnrolledAtOf(l))
+    .map((l) => Math.max(0, Math.floor((firstEnrolledAtOf(l) - l.createdAt) / DAY_MS)));
   return {
     total: days.length,
     median: median(days),

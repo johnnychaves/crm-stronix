@@ -6,8 +6,12 @@
 // corrente usa as interações ao vivo do App e une os leads criados ao vivo.
 //
 // Parte do CRM, por mês: leads por convertedAt, leads por lostAt e registros
-// de stronix_aulas por scheduledFor, as três de campo único (índice
-// automático). Mês fechado: cache do aparelho conferido por contagem no
+// de stronix_aulas por scheduledFor, todas de campo único (índice
+// automático). No mês fechado entra uma quarta, leads por clienteSince, unida
+// por id aos matriculados: o retorno de ex-cliente regrava o convertedAt, e
+// sem ela a primeira matrícula sumiria do mês dela. O mês corrente não
+// precisa, porque nele a primeira matrícula tem clienteSince e convertedAt no
+// mesmo instante. Mês fechado: cache do aparelho conferido por contagem no
 // servidor, menos as aulas dos dois meses anteriores ao corrente, que vêm do
 // servidor uma vez por sessão (crm/queries.js, aulasFromServerFor): o desfecho
 // e a conversão mudam o registro sem mudar a data, e a contagem não vê isso.
@@ -47,10 +51,10 @@ import { getSafeDateOrNull } from '../lib/dates.js';
 import { monthRange, monthKeyOf } from '../lib/operacional/month.js';
 import {
   retryWithBackoff, monthEntryFits, shouldStoreMonthEntry, shouldRememberMonthEntry, failedMonthEntry,
-  monthsFromSession, leadsWindowSince, mergeNewLeads, chunk
+  monthsFromSession, leadsWindowSince, mergeNewLeads, chunk, unionById
 } from '../lib/operacional/queries.js';
 import {
-  convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, currentFieldWindow, newestTimeOf,
+  convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, clienteSinceInMonthSpec, currentFieldWindow, newestTimeOf,
   failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
   liveOutcomeSignal, crmMonthsReady
 } from '../lib/crm/queries.js';
@@ -102,12 +106,15 @@ async function loadCrmMonth(db, key, closed, { aulasFromServer = false } = {}) {
   const { start, end } = monthRange(key);
   const [from, to] = [start.getTime(), end.getTime()];
   const qAulas = aulasQuery(db, aulasInMonthSpec(from, to));
-  const [converted, lost, aulas] = await Promise.all([
+  const [converted, firstEnrolled, lost, aulas] = await Promise.all([
     cachedOrServer(leadsQuery(db, convertedInMonthSpec(from, to)), normalizeLeadDoc),
+    cachedOrServer(leadsQuery(db, clienteSinceInMonthSpec(from, to)), normalizeLeadDoc),
     cachedOrServer(leadsQuery(db, lostInMonthSpec(from, to)), normalizeLeadDoc),
     aulasFromServer ? serverDocs(qAulas).then((docs) => docs.map(mapAula)) : cachedOrServer(qAulas, mapAula)
   ]);
-  return { closed, converted, lost, aulas };
+  // A primeira matrícula também entra pelo clienteSince, porque o retorno de
+  // ex-cliente regrava o convertedAt. As duas listas se unem por id.
+  return { closed, converted: unionById(converted, firstEnrolled), lost, aulas };
 }
 
 // Memória de sessão da parte do CRM, por academia (appId).
