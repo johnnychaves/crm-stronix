@@ -360,7 +360,9 @@ describe('velocidade e carteira agora', () => {
     const html = render(createElement(FirstContactCard, { fc: null, delta: { up: false, text: '40 min' } }));
     expect(html).toContain('Tempo até o primeiro contato');
     expect(html).toContain('do cadastro até a primeira interação da equipe');
-    expect(html).toContain('Falta o mês seguinte ao do cadastro para medir o primeiro contato.');
+    // Frase única vai no título da nota, como as outras notas de uma frase dos cards.
+    expect(html).toContain('text-foreground/80">Falta o mês seguinte ao do cadastro para medir o primeiro contato.</div>');
+    expect(html).not.toContain('text-foreground/80"></div>');
     expect(html).not.toContain('40 min');
     expect(html).not.toContain('Nenhum lead cadastrado neste mês.');
   });

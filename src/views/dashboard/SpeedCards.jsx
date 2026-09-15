@@ -37,7 +37,7 @@ export function FirstContactCard({ fc, delta }) {
     return (
       <CrmCard title={title} hint={hint} action={help}>
         <div className="p-[18px]">
-          <DashedNote text="Falta o mês seguinte ao do cadastro para medir o primeiro contato." />
+          <DashedNote title="Falta o mês seguinte ao do cadastro para medir o primeiro contato." />
         </div>
       </CrmCard>
     );
