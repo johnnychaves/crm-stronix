@@ -14,6 +14,8 @@ import { StagePassageTable } from '../../views/dashboard/StagePassageTable.jsx';
 import { LossCard } from '../../views/dashboard/LossCard.jsx';
 import { PeopleConversionTable } from '../../views/dashboard/PeopleConversionTable.jsx';
 import { ProfessorCard } from '../../views/dashboard/ProfessorCard.jsx';
+import { FirstContactCard, DaysToEnrollCard } from '../../views/dashboard/SpeedCards.jsx';
+import { PipelineNowCard, NoNextContactCard } from '../../views/dashboard/PipelineNowCards.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -254,5 +256,45 @@ describe('pessoas e professores', () => {
   it('professores sem aula no mês', () => {
     expect(render(createElement(ProfessorCard, { professors: { rows: [], solo: null, done: 0 }, monthName: 'julho', scoped: false })))
       .toContain('Nenhuma aula experimental realizada neste mês.');
+  });
+});
+
+describe('velocidade e carteira agora', () => {
+  it('primeiro contato: mediana, diferença e as quatro faixas', () => {
+    const html = render(createElement(FirstContactCard, {
+      fc: { total: 56, h1: 21, h24: 23, over: 5, none: 7, median: 130 },
+      delta: { up: false, text: '40 min' }
+    }));
+    expect(html).toContain('2 h 10 min');
+    expect(html).toContain('▼ 40 min');
+    expect(html).toContain('text-emerald-700');
+    expect(html).toContain('Até 1 hora: 21 leads de 56 (38%)');
+    expect(html).toContain('Sem contato');
+  });
+
+  it('dias até a matrícula: histograma e leitura', () => {
+    const html = render(createElement(DaysToEnrollCard, {
+      dte: { total: 29, median: 6, buckets: [5, 6, 8, 5, 3, 2] },
+      delta: { none: true, text: 'sem base' }
+    }));
+    expect(html).toContain('6 dias');
+    expect(html).toContain('sem base');
+    expect(html).toContain('4 a 7 dias entre cadastro e matrícula: 8 de 29 matrículas (28%)');
+    expect(html).toContain('19 das 29 matrículas fecharam em até 7 dias.');
+  });
+
+  it('carteira agora por funil e o card de sem próximo contato', () => {
+    const html = render(createElement(PipelineNowCard, {
+      now: { total: 87, noNext: 23, rows: [{ id: 'ven', name: 'Vendas', count: 72 }, { id: 'ind', name: 'Indicações', count: 15 }] },
+      funnelName: null,
+      personName: null
+    }));
+    expect(html).toContain('Em jogo por funil');
+    expect(html).toContain('87 leads abertos agora');
+    expect(html).toContain('Funil Vendas: 72 leads em jogo agora');
+    const red = render(createElement(NoNextContactCard, { count: 23, total: 87 }));
+    expect(red).toContain('Sem próximo contato');
+    expect(red).toContain('de 87 em jogo');
+    expect(red).toContain('até alguém marcar o próximo contato');
   });
 });
