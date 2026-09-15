@@ -320,6 +320,15 @@ describe('pessoas e professores', () => {
     expect(html).toContain('aria-pressed="true"');
   });
 
+  it('matrícula e conversão em verde, com a barra da conversão', () => {
+    const html = render(createElement(PeopleConversionTable, {
+      rows: [{ user: users[0], m: m() }], others: null, person: null, personName: null, onPick: () => {}, onClear: () => {}
+    }));
+    expect(html).toMatch(/text-emerald-700[^"]*">11</);
+    expect(html).toMatch(/bg-success[^"]*" style="width:22%"/);
+    expect(html).toMatch(/text-emerald-700[^"]*">22%</);
+  });
+
   it('professores: ranking, treina sozinho à parte e a etiqueta da academia', () => {
     const html = render(createElement(ProfessorCard, {
       professors: {
@@ -334,25 +343,27 @@ describe('pessoas e professores', () => {
     expect(html).toContain('4 realizadas · 1 falta · Funcional 3 · Musculação 1');
     expect(html).toContain('Treina sozinho');
     expect(html).toContain('academia inteira');
-    expect(html).toContain('2/4');
+    expect(html).toContain('Paula Nunes: 2 matrículas em 4 aulas realizadas (50%)');
   });
 
-  it('professores: a barra mostra as aulas realizadas em claro e as matrículas em escuro, na mesma escala', () => {
+  it('professores: tabela com realizadas, faltas e matrícula, e a barra da conversão em verde', () => {
     const html = render(createElement(ProfessorCard, {
       professors: {
-        rows: [{ id: 'p1', name: 'Paula Nunes', solo: false, done: 4, missed: 1, enrolled: 2, conv: 50, mods: [] }],
+        rows: [{ id: 'p1', name: 'Paula Nunes', solo: false, done: 4, missed: 1, enrolled: 2, conv: 50, mods: [{ name: 'Funcional', count: 4 }] }],
         solo: { id: null, name: 'Treina sozinho', solo: true, done: 1, missed: 0, enrolled: 1, conv: 100, mods: [] },
         done: 5
       },
       monthName: 'setembro',
       scoped: false
     }));
-    // Quem deu mais aulas vai até o fim; a parte escura é a fração que matriculou.
-    expect(html).toMatch(/bg-brand-200[^"]*" style="width:100%"/);
-    expect(html).toMatch(/bg-brand-600" style="width:50%"/);
-    expect(html).toMatch(/bg-slate-400" style="width:25%"/);
-    expect(html).toMatch(/w-\[18px\][^"]*bg-brand-200/);
-    expect(html).toContain('matricularam');
+    ['>Professor<', '>Realizadas<', '>Faltas<', '>Matrícula<'].forEach((s) => expect(html).toContain(s));
+    // A barra é a própria conversão: 2 de 4 enche metade, em verde.
+    expect(html).toMatch(/bg-success[^"]*" style="width:50%"/);
+    expect(html).toMatch(/text-emerald-700[^"]*">50%</);
+    // Treina sozinho segue cinza, como linha de referência.
+    expect(html).toMatch(/bg-slate-400" style="width:100%"/);
+    expect(html).toContain('>Funcional<');
+    expect(html).not.toContain('matricularam');
   });
 
   it('professores sem aula no mês', () => {

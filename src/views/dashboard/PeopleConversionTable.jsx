@@ -3,7 +3,8 @@
 // Com uma pessoa escolhida, a tabela reduz à linha dela e ganha o botão "Ver a
 // equipe toda". A linha Outros junta quem está fora da equipe e não filtra.
 // É uma tabela diferente da do Operacional de propósito: outras colunas e
-// outra regra de atribuição (README §2). No celular vira lista.
+// outra regra de atribuição (README §2). No celular vira lista. Matrícula e
+// conversão em verde, no mesmo formato do card de professores ao lado.
 import { Users } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
@@ -14,6 +15,8 @@ import { CrmCard, ReadText } from './CrmParts.jsx';
 const RULE = 'border-slate-100 dark:border-white/[0.06]';
 const GRID = 'grid grid-cols-[minmax(0,1fr)_44px_48px_52px_48px_116px_78px] items-center gap-2.5';
 const HEAD = 'text-[10px] font-bold uppercase tracking-[0.05em] text-muted-foreground';
+const GREEN_TEXT = 'text-emerald-700 dark:text-emerald-300';
+const GREEN_FILL = 'bg-success dark:bg-[#0E9F6E]';
 const FOOT = 'Conversão da safra: dos leads que a pessoa captou no mês, quantos já matricularam. Nunca passa de 100%, e é diferente de matrículas, que conta o que ela fechou no mês vindo de qualquer safra.';
 const OTHERS_SUB = 'fora da equipe ou sem responsável';
 
@@ -21,6 +24,8 @@ const roleOf = (user) => (user.role === 'admin' ? 'Gestor' : 'Consultor');
 const pctText = (v) => (v == null ? '—' : `${v}%`);
 const numText = (v) => (v == null ? '—' : fmtNum(v));
 const leadsText = (v) => (v == null ? '—' : plural(v, 'lead', 'leads'));
+// Verde para o número que existe; o traço de sem dado fica neutro.
+const greenIf = (v) => (v == null ? 'text-muted-foreground' : GREEN_TEXT);
 
 const valuesOf = (m) => ({
   leads: m?.leads ?? null,
@@ -71,12 +76,12 @@ function Cells({ v }) {
       <span className="num text-right text-[13px]">{numText(v.leads)}</span>
       <span className="num text-right text-[13px] text-muted-foreground">{numText(v.appts)}</span>
       <span className="num text-right text-[13px] text-muted-foreground">{pctText(v.attend)}</span>
-      <span className="num text-right text-[13px] font-semibold">{numText(v.enroll)}</span>
+      <span className={cn('num text-right text-[13px] font-semibold', greenIf(v.enroll))}>{numText(v.enroll)}</span>
       <div className="flex items-center gap-[9px]">
         <span className="relative block h-2.5 flex-1 overflow-hidden rounded-[5px] bg-muted">
-          <i className="absolute inset-y-0 left-0 rounded-[5px] bg-brand-600" style={{ width: `${Math.min(100, v.conv || 0)}%` }} />
+          <i className={cn('absolute inset-y-0 left-0 rounded-[5px]', GREEN_FILL)} style={{ width: `${Math.min(100, v.conv || 0)}%` }} />
         </span>
-        <span className="num w-[34px] text-right text-[13px] font-bold">{pctText(v.conv)}</span>
+        <span className={cn('num w-[34px] text-right text-[13px] font-bold', greenIf(v.conv))}>{pctText(v.conv)}</span>
       </div>
       <span className={cn('num text-right text-[12px]', v.fc != null && v.fc > 240 ? 'text-rose-700 dark:text-rose-300' : 'text-muted-foreground')}>
         {fmtDuration(v.fc)}
@@ -166,7 +171,7 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
                   <div className="truncate text-[12.5px] font-semibold">{name}</div>
                   <div className="num truncate text-[10.5px] text-muted-foreground">{mobileLine(v)}</div>
                 </div>
-                <span className="num flex-none text-[15px] font-bold">{pctText(v.conv)}</span>
+                <span className={cn('num flex-none text-[15px] font-bold', greenIf(v.conv))}>{pctText(v.conv)}</span>
               </button>
             );
           })}
@@ -177,7 +182,7 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
                 <div className="truncate text-[12.5px] font-semibold">Outros</div>
                 <div className="num truncate text-[10.5px] text-muted-foreground">{mobileLine(o)}</div>
               </div>
-              <span className="num flex-none text-[15px] font-bold">{pctText(o.conv)}</span>
+              <span className={cn('num flex-none text-[15px] font-bold', greenIf(o.conv))}>{pctText(o.conv)}</span>
             </div>
           )}
         </div>
