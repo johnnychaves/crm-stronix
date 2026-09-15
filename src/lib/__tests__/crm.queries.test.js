@@ -81,6 +81,22 @@ describe('aulas de mês fechado que vêm do servidor', () => {
       expect(withFreshAulas(e, fresh)).toBe(e);
     });
   });
+
+  it('das releituras que se cruzam vale a que começou por último, mesmo que termine antes', () => {
+    const aug = { closed: true, converted: [], lost: [], aulas: [{ id: 'r1', converted: false }] };
+    const stale = [{ id: 'r1', converted: false }];
+    const fresh = [{ id: 'r1', converted: true }];
+    // A2 começou em 200 e terminou primeiro, com a aula já convertida. A1
+    // começou em 100, ficou nas novas tentativas e chegou depois.
+    const afterA2 = withFreshAulas(aug, fresh, 200);
+    expect(afterA2).toEqual({ ...aug, aulas: fresh, aulasReadAt: 200 });
+    expect(acceptsFreshAulas(afterA2, 100)).toBe(false);
+    expect(withFreshAulas(afterA2, stale, 100)).toBe(afterA2);
+    // A que começou depois da aplicada entra.
+    expect(withFreshAulas(afterA2, stale, 300)).toEqual({ ...aug, aulas: stale, aulasReadAt: 300 });
+    // Sem instante, a pergunta antes de reler: só a regra do mês fechado carregado e sem falha.
+    expect(acceptsFreshAulas(afterA2)).toBe(true);
+  });
 });
 
 describe('busca incremental do mês corrente', () => {

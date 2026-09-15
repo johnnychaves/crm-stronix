@@ -39,11 +39,20 @@ export const clienteSinceInMonthSpec = (startMs, endMs) => monthWindowSpec('clie
 export const aulasFromServerFor = (key, currentKey) =>
   key >= addMonthsToKey(currentKey, -2) && key < currentKey;
 
-// Aulas do mês anterior relidas pela busca ao vivo: entram só na entrada de
-// mês fechado que já carregou e não falhou. A que falhou é buscada inteira de
-// novo na próxima abertura, e a do mês corrente tem a busca própria.
-export const acceptsFreshAulas = (entry) => Boolean(entry?.closed) && !entry.failed;
-export const withFreshAulas = (entry, aulas) => (acceptsFreshAulas(entry) ? { ...entry, aulas } : entry);
+// Aulas do mês anterior relidas do servidor (rereadPrevAulas, em
+// useCrmSources): entram só na entrada de mês fechado que já carregou e não
+// falhou. A que falhou é buscada inteira de novo na próxima abertura, e a do
+// mês corrente tem a busca própria. Duas releituras podem se cruzar: a
+// primeira ainda nas novas tentativas quando a segunda termina com a aula
+// recém-convertida. Vale a que começou por último (readAt), e a entrada guarda
+// o começo da leitura aplicada (aulasReadAt), para a lista velha não voltar
+// por cima da nova. Sem readAt vale só a regra do mês fechado carregado e sem
+// falha, que é a pergunta feita antes de reler.
+export const acceptsFreshAulas = (entry, readAt = null) => Boolean(entry?.closed) && !entry.failed
+  && !(Number.isFinite(readAt) && Number.isFinite(entry.aulasReadAt) && readAt < entry.aulasReadAt);
+export const withFreshAulas = (entry, aulas, readAt = null) => (acceptsFreshAulas(entry, readAt)
+  ? { ...entry, aulas, ...(Number.isFinite(readAt) ? { aulasReadAt: readAt } : {}) }
+  : entry);
 
 // Meses que a tela precisa, em ordem (Decisão 5 do plano). A tendência pede os
 // 6 meses até o exibido. A safra de mês fechado é acompanhada até hoje, então

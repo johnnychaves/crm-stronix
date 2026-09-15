@@ -88,6 +88,28 @@ const loadAulasFromServer = (db, key) => {
   return serverDocs(aulasQuery(db, aulasInMonthSpec(start.getTime(), end.getTime()))).then((docs) => docs.map(mapAula));
 };
 
+// Relê do servidor as aulas do mês anterior ao corrente e põe na entrada dele,
+// na memória da sessão e no estado, se ela já carregou e não falhou. Cada
+// tentativa guarda o instante em que começou: das releituras que se cruzam,
+// vale a que começou por último (withFreshAulas), e a lista velha não volta
+// por cima da nova.
+function rereadPrevAulas(db, memory, setCrm, currentKey) {
+  const key = addMonthsToKey(currentKey, -1);
+  if (!acceptsFreshAulas(memory.get(key))) return;
+  retryWithBackoff(() => {
+    const readAt = Date.now();
+    return loadAulasFromServer(db, key).then((aulas) => ({ aulas, readAt }));
+  })
+    .then(({ aulas, readAt }) => {
+      if (memory.has(key)) memory.set(key, withFreshAulas(memory.get(key), aulas, readAt));
+      setCrm((prev) => {
+        const next = withFreshAulas(prev[key], aulas, readAt);
+        return next === prev[key] ? prev : { ...prev, [key]: next };
+      });
+    })
+    .catch((e) => console.error('crm aulas do mês anterior', key, e));
+}
+
 // Mês corrente, do servidor. Com a entrada da memória, matrículas e perdas vêm
 // desde as âncoras dela; sem, o mês inteiro. Os agendamentos vêm sempre inteiros.
 async function loadCrmCurrent(db, key, entry = null) {
@@ -287,18 +309,7 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
         })
         .catch((e) => console.error('crm matrícula ou perda ao vivo', key, e))
         .finally(() => crmInFlightRef.current.delete(key));
-      const prevKey = addMonthsToKey(key, -1);
-      if (acceptsFreshAulas(crmMemory.get(prevKey))) {
-        retryWithBackoff(() => loadAulasFromServer(db, prevKey))
-          .then((aulas) => {
-            if (crmMemory.has(prevKey)) crmMemory.set(prevKey, withFreshAulas(crmMemory.get(prevKey), aulas));
-            setCrm((prev) => {
-              const next = withFreshAulas(prev[prevKey], aulas);
-              return next === prev[prevKey] ? prev : { ...prev, [prevKey]: next };
-            });
-          })
-          .catch((e) => console.error('crm aulas do mês anterior ao vivo', prevKey, e));
-      }
+      rereadPrevAulas(db, crmMemory, setCrm, key);
       const sharedMemory = mesesDaSessao.get(tenant);
       const sharedEntry = sharedMemory?.get(key);
       if (!sharedEntry || sharedEntry.closed || sharedEntry.failed) return;
