@@ -15,8 +15,9 @@
 // servidor, menos as aulas dos dois meses anteriores ao corrente, que vêm do
 // servidor uma vez por sessão (crm/queries.js, aulasFromServerFor): o desfecho
 // e a conversão mudam o registro sem mudar a data, e a contagem não vê isso.
-// As do mês anterior ainda são relidas a cada matrícula ou perda feita com a
-// tela aberta (abaixo).
+// As do mês anterior ainda são relidas a cada abertura da tela e a cada
+// matrícula ou perda feita com ela aberta (rereadPrevAulas), porque a
+// matrícula costuma marcar nele a aula que converteu (markConvertingAula).
 // Mês corrente: do servidor; na volta à tela, matrículas e perdas vêm pela
 // busca incremental e os agendamentos vêm inteiros, porque o desfecho muda o
 // registro sem mudar nenhuma data (crm/queries.js, mergeCrmCurrent).
@@ -30,13 +31,12 @@
 // (liveInteractions) e, quando ela é mais nova que os dados do mês corrente
 // (crm/queries.js, outcomeRefreshNeeded), as buscas do mês corrente rodam de
 // novo, desde as âncoras: matrículas, perdas e leads criados, mais os
-// agendamentos do mês. As aulas do mês anterior também são relidas do
-// servidor, porque a matrícula marca a aula que converteu (markConvertingAula)
-// e ela costuma ser desse mês. Custo por matrícula ou perda: as três buscas
-// incrementais, que leem só o que mudou desde a última busca (poucas
-// leituras), e as aulas do mês corrente e do anterior inteiras (uns 120
-// documentos, cerca de 60 de cada mês), porque loadCrmCurrent sempre relê as
-// do mês.
+// agendamentos do mês e as aulas do mês anterior.
+//
+// Custo de cada abertura da tela e de cada matrícula ou perda feita com ela
+// aberta: as aulas do mês corrente e as do mês anterior, inteiras e do
+// servidor, uns 120 documentos (cerca de 60 de cada mês), mais as buscas
+// incrementais, que leem só o que mudou desde a última busca (poucas leituras).
 //
 // Limites conhecidos:
 // - a importação de planilha que promove um lead com data antiga só aparece
@@ -46,7 +46,11 @@
 //   podem vir do cache do aparelho, então uma troca de responsável feita
 //   depois não chega a eles, a não ser que o lead também esteja entre os ao
 //   vivo, no mês corrente ou nos buscados por id (mergeLeadsById). É o mesmo
-//   limite do Operacional.
+//   limite do Operacional;
+// - com o relógio do aparelho mais de 2 minutos adiantado, a busca ao vivo
+//   pode perder a matrícula ou a perda feita em outro aparelho, até a próxima
+//   matrícula ou perda ou até a tela abrir de novo (crm/queries.js,
+//   OUTCOME_CLOCK_SLACK_MS).
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { documentId, query, where } from 'firebase/firestore';
@@ -231,8 +235,12 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
       const closed = key !== currentKey;
       const entry = crm[key];
       if (monthEntryFits(entry, key, currentKey)) {
-        // Mês corrente que veio da memória: matrículas e perdas novas e os
-        // agendamentos de novo, uma vez por montagem. Se falhar, fica o que já estava.
+        // Mês corrente que veio da memória: matrículas e perdas novas, os
+        // agendamentos de novo e as aulas do mês anterior, uma vez por
+        // montagem. As do mês anterior porque a matrícula feita com a tela
+        // fechada (na ficha, por exemplo) marca nele a aula que converteu, e a
+        // cópia da memória da sessão ficaria velha até recarregar a página. Se
+        // falhar, fica o que já estava.
         if (!closed && !entry.failed && !crmRefreshedRef.current.has(key)) {
           crmRefreshedRef.current.add(key);
           crmInFlightRef.current.add(key);
@@ -246,6 +254,7 @@ export function useCrmSources({ db, enabled = true, now, monthKeys, liveInteract
             })
             .catch((e) => console.error('crm mês corrente', key, e))
             .finally(() => crmInFlightRef.current.delete(key));
+          rereadPrevAulas(db, memory, setCrm, key);
         }
         return;
       }
