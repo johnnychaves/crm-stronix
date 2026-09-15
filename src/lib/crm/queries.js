@@ -96,11 +96,14 @@ const maxOf = (a, b) => {
 // 6). Matrículas e perdas se unem por id, e a busca mais recente ganha; os
 // agendamentos são trocados pelos da busca mais recente, porque o desfecho
 // muda o registro sem mudar nenhuma data e eles vêm inteiros a cada abertura.
-// Entrada ausente, de mês fechado ou que falhou fica como está.
+// A busca ao vivo traz o sinal que a disparou (outcomeSignal), e a entrada
+// guarda o maior deles (outcomeRefreshNeeded). Entrada ausente, de mês fechado
+// ou que falhou fica como está.
 export function mergeCrmCurrent(entry, fresh) {
   if (!entry || entry.closed || entry.failed) return entry;
   const newer = !Number.isFinite(entry.fetchedAt) || fresh.fetchedAt >= entry.fetchedAt;
   const join = (older, latest) => (newer ? unionById(older, latest) : unionById(latest, older));
+  const outcomeSignal = maxOf(entry.outcomeSignal, fresh.outcomeSignal);
   return {
     ...entry,
     converted: join(entry.converted, fresh.converted),
@@ -108,7 +111,8 @@ export function mergeCrmCurrent(entry, fresh) {
     aulas: newer ? fresh.aulas : entry.aulas,
     fetchedAt: newer ? fresh.fetchedAt : entry.fetchedAt,
     newestConvertedAt: maxOf(entry.newestConvertedAt, newestTimeOf(fresh.converted, 'convertedAt')),
-    newestLostAt: maxOf(entry.newestLostAt, newestTimeOf(fresh.lost, 'lostAt'))
+    newestLostAt: maxOf(entry.newestLostAt, newestTimeOf(fresh.lost, 'lostAt')),
+    ...(outcomeSignal === null ? {} : { outcomeSignal })
   };
 }
 
@@ -169,4 +173,24 @@ export function liveOutcomeSignal(interactions) {
     if (Number.isFinite(t) && t > newest) newest = t;
   });
   return newest;
+}
+
+// Folga entre o relógio do servidor, que carimba o createdAt da troca de
+// etapa, e o do aparelho, que carimba o fetchedAt da busca (Date.now() em
+// loadCrmCurrent).
+export const OUTCOME_CLOCK_SLACK_MS = 2 * 60 * 1000;
+
+// A troca do sinal (liveOutcomeSignal) pede nova busca do mês corrente quando
+// é mais nova que os dados da entrada: depois do instante da busca dela, menos
+// a folga do relógio, e depois do sinal que uma busca ao vivo já cobriu
+// (outcomeSignal, que mergeCrmCurrent guarda). Sem essa marca não haveria
+// fim: logo depois da busca que ele mesmo disparou, o sinal continua dentro da
+// folga e pediria outra busca a cada volta, até passarem os 2 minutos. Sem
+// entrada, com a entrada que falhou ou de mês fechado, ou sem sinal: nada a
+// buscar.
+export function outcomeRefreshNeeded(signal, entry) {
+  if (!entry || entry.closed || entry.failed || !Number.isFinite(entry.fetchedAt)) return false;
+  if (!Number.isFinite(signal) || signal <= 0) return false;
+  if (Number.isFinite(entry.outcomeSignal) && signal <= entry.outcomeSignal) return false;
+  return signal > entry.fetchedAt - OUTCOME_CLOCK_SLACK_MS;
 }

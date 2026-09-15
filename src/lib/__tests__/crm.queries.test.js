@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   convertedInMonthSpec, lostInMonthSpec, aulasInMonthSpec, clienteSinceInMonthSpec, crmMonthKeys, newestTimeOf, currentFieldWindow,
   failedCrmEntry, shouldRememberCrmEntry, mergeCrmCurrent, referencedLeadIds, mergeLeadsById, aulasFromServerFor,
-  liveOutcomeSignal, crmMonthsReady
+  liveOutcomeSignal, crmMonthsReady, outcomeRefreshNeeded, OUTCOME_CLOCK_SLACK_MS
 } from '../crm/queries.js';
 import { NEW_LEADS_SLACK_MS } from '../operacional/queries.js';
 
@@ -204,6 +204,59 @@ describe('sinal de matrícula ou perda feita com a tela aberta', () => {
     expect(liveOutcomeSignal([])).toBe(0);
     expect(liveOutcomeSignal(undefined)).toBe(0);
     expect(liveOutcomeSignal([S('Contato feito', D(9, 3))])).toBe(0);
+  });
+});
+
+describe('busca ao vivo depois de matrícula ou perda', () => {
+  // Instante da busca do mês corrente, no relógio do aparelho (Date.now() em loadCrmCurrent).
+  const F = D(9, 10, 12).getTime();
+  const MIN = 60 * 1000;
+  const entry = { closed: false, converted: [], lost: [], aulas: [], fetchedAt: F };
+  const fresh = (fetchedAt, over = {}) => ({ converted: [], lost: [], aulas: [], fetchedAt, ...over });
+
+  it('troca mais nova que os dados da entrada pede a busca; a folga de 2 minutos cobre o relógio do aparelho', () => {
+    expect(OUTCOME_CLOCK_SLACK_MS).toBe(2 * MIN);
+    expect(outcomeRefreshNeeded(F + 1000, entry)).toBe(true);
+    expect(outcomeRefreshNeeded(F - MIN, entry)).toBe(true);
+    expect(outcomeRefreshNeeded(F - 2 * MIN, entry)).toBe(false);
+  });
+
+  it('sem entrada, entrada que falhou, de mês fechado ou sem instante de busca, ou sem sinal: nada a buscar', () => {
+    expect(outcomeRefreshNeeded(F + 1000, null)).toBe(false);
+    expect(outcomeRefreshNeeded(F + 1000, undefined)).toBe(false);
+    expect(outcomeRefreshNeeded(F + 1000, failedCrmEntry(false))).toBe(false);
+    expect(outcomeRefreshNeeded(F + 1000, { ...entry, closed: true })).toBe(false);
+    expect(outcomeRefreshNeeded(F + 1000, { ...entry, fetchedAt: undefined })).toBe(false);
+    expect(outcomeRefreshNeeded(0, entry)).toBe(false);
+  });
+
+  it('página recarregada: as trocas do mês que chegam depois da primeira busca, e são mais velhas que ela, não pedem outra', () => {
+    expect(outcomeRefreshNeeded(D(9, 9, 18).getTime(), entry)).toBe(false);
+  });
+
+  it('matrícula feita em outro aparelho enquanto a tela abria: vale assim que a entrada chega', () => {
+    // A troca de 12h chegou antes da entrada, cuja busca começou 30 segundos antes dela.
+    expect(outcomeRefreshNeeded(F, null)).toBe(false);
+    expect(outcomeRefreshNeeded(F, { ...entry, fetchedAt: F - 30 * 1000 })).toBe(true);
+  });
+
+  it('sem laço: a busca feita por um sinal marca a entrada, o mesmo sinal não pede outra e um sinal novo pede', () => {
+    const s = F + 1000;
+    // A busca ao vivo começa 2 segundos depois do sinal: só com a folga, o
+    // mesmo sinal pediria outra busca a cada volta, por 2 minutos.
+    const after = mergeCrmCurrent(entry, fresh(s + 2000, { outcomeSignal: s }));
+    expect(outcomeRefreshNeeded(s, { ...after, outcomeSignal: undefined })).toBe(true);
+    expect(after.outcomeSignal).toBe(s);
+    expect(outcomeRefreshNeeded(s, after)).toBe(false);
+    expect(outcomeRefreshNeeded(s + 5000, after)).toBe(true);
+  });
+
+  it('a marca do sinal coberto só anda para frente, e a busca sem sinal não a apaga', () => {
+    const e1 = mergeCrmCurrent(entry, fresh(F + 9000, { outcomeSignal: F + 8000 }));
+    const e2 = mergeCrmCurrent(e1, fresh(F + 5000, { outcomeSignal: F + 4000 }));
+    expect(e2.outcomeSignal).toBe(F + 8000);
+    expect(mergeCrmCurrent(e2, fresh(F + 20000)).outcomeSignal).toBe(F + 8000);
+    expect(mergeCrmCurrent(entry, fresh(F + 20000))).not.toHaveProperty('outcomeSignal');
   });
 });
 
