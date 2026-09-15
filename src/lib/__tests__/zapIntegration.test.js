@@ -26,6 +26,13 @@ describe('dados que o Stronizap pede', () => {
     expect(STRONILEAD_URL.startsWith('https://')).toBe(true);
   });
 
+  it('é o endereço oficial, sem www', () => {
+    // stronilead.com.br é o endereço que as academias conhecem. O www responde
+    // com redirecionamento (308), e o Stronizap consulta de servidor pra
+    // servidor, então vai o endereço final direto.
+    expect(STRONILEAD_URL).toBe('https://stronilead.com.br');
+  });
+
   it('vêm com os mesmos nomes e na mesma ordem do formulário do Stronizap', () => {
     const campos = zapConnectionFields('corpo-e-movimento');
     expect(campos.map((c) => c.label)).toEqual(['Endereço do CRM', 'Identificador da academia']);
