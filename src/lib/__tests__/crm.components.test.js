@@ -337,6 +337,24 @@ describe('pessoas e professores', () => {
     expect(html).toContain('2/4');
   });
 
+  it('professores: a barra mostra as aulas realizadas em claro e as matrículas em escuro, na mesma escala', () => {
+    const html = render(createElement(ProfessorCard, {
+      professors: {
+        rows: [{ id: 'p1', name: 'Paula Nunes', solo: false, done: 4, missed: 1, enrolled: 2, conv: 50, mods: [] }],
+        solo: { id: null, name: 'Treina sozinho', solo: true, done: 1, missed: 0, enrolled: 1, conv: 100, mods: [] },
+        done: 5
+      },
+      monthName: 'setembro',
+      scoped: false
+    }));
+    // Quem deu mais aulas vai até o fim; a parte escura é a fração que matriculou.
+    expect(html).toMatch(/bg-brand-200[^"]*" style="width:100%"/);
+    expect(html).toMatch(/bg-brand-600" style="width:50%"/);
+    expect(html).toMatch(/bg-slate-400" style="width:25%"/);
+    expect(html).toMatch(/w-\[18px\][^"]*bg-brand-200/);
+    expect(html).toContain('matricularam');
+  });
+
   it('professores sem aula no mês', () => {
     expect(render(createElement(ProfessorCard, { professors: { rows: [], solo: null, done: 0 }, monthName: 'julho', scoped: false })))
       .toContain('Nenhuma aula experimental realizada neste mês.');

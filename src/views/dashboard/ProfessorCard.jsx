@@ -1,15 +1,21 @@
 // Aulas experimentais por professor (handoff do CRM, linhas 480 a 509). Da
 // academia inteira, sempre: uma aula é do professor, não do consultor. Com
 // pessoa ou funil escolhido, a etiqueta "academia inteira" diz isso na cara.
-// Treina sozinho é a linha de referência, fora do ranking.
+// Treina sozinho é a linha de referência, fora do ranking. A barra segue o
+// desenho dos canais de origem: a parte clara são as aulas realizadas e a
+// escura, as que viraram matrícula, na mesma escala (quem deu mais aulas vai
+// até o fim). Assim a barra e a conversão contam a mesma história.
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { plural } from '../../lib/crm/format.js';
 import { ChartMark } from './ChartMark.jsx';
 import { dashInitials } from './dashTokens.js';
-import { CrmCard, DashedNote, ReadText, ScopeTag } from './CrmParts.jsx';
+import { CrmCard, DashedNote, ReadText, ScopeTag, Swatch } from './CrmParts.jsx';
 
 const RULE = 'border-slate-100 dark:border-white/[0.06]';
+const VOLUME = 'bg-brand-200 dark:bg-brand-500/40';
+const SOLO_VOLUME = 'bg-slate-200 dark:bg-white/15';
+const widthOf = (v, max) => `${max > 0 ? Math.round((v / max) * 100) : 0}%`;
 
 function ProfRow({ p, max }) {
   const mods = (p.mods || []).map((x) => `${x.name} ${fmtNum(x.count)}`).join(' · ');
@@ -30,10 +36,8 @@ function ProfRow({ p, max }) {
         <div className="truncate text-[13px] font-semibold">{p.name}</div>
         <div className="num truncate text-[11px] text-muted-foreground">{sub}</div>
         <ChartMark tip={tip} className="relative mt-[5px] block h-[9px] rounded-[5px] bg-muted">
-          <i
-            className={cn('absolute inset-y-0 left-0 rounded-[5px]', p.solo ? 'bg-slate-400' : 'bg-brand-600')}
-            style={{ width: `${max > 0 ? Math.round((p.done / max) * 100) : 0}%` }}
-          />
+          <i className={cn('absolute inset-y-0 left-0 rounded-[5px]', p.solo ? SOLO_VOLUME : VOLUME)} style={{ width: widthOf(p.done, max) }} />
+          <i className={cn('absolute inset-y-0 left-0 rounded-[5px]', p.solo ? 'bg-slate-400' : 'bg-brand-600')} style={{ width: widthOf(p.enrolled, max) }} />
         </ChartMark>
       </div>
       <div className="w-14 flex-none text-right">
@@ -69,6 +73,10 @@ export function ProfessorCard({ professors, monthName, scoped }) {
         ) : (
           <>
             {all.map((p) => <ProfRow key={p.id || 'solo'} p={p} max={max} />)}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Swatch className={cn('w-[18px] rounded', VOLUME)}>aulas realizadas</Swatch>
+              <Swatch className="w-[18px] rounded bg-brand-600">matricularam</Swatch>
+            </div>
             <ReadText>{foot}</ReadText>
           </>
         )}
