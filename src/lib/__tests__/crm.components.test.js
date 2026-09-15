@@ -12,6 +12,8 @@ import { ChannelTable } from '../../views/dashboard/ChannelTable.jsx';
 import { CohortMilestones } from '../../views/dashboard/CohortMilestones.jsx';
 import { StagePassageTable } from '../../views/dashboard/StagePassageTable.jsx';
 import { LossCard } from '../../views/dashboard/LossCard.jsx';
+import { PeopleConversionTable } from '../../views/dashboard/PeopleConversionTable.jsx';
+import { ProfessorCard } from '../../views/dashboard/ProfessorCard.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -202,5 +204,55 @@ describe('passagem entre etapas e perdas', () => {
     const empty = render(createElement(LossCard, { losses: { total: 0, reasons: [] }, lossStages: [], stageBase: true, monthName: 'setembro' }));
     expect(empty).toContain('Nenhum lead perdido neste mês.');
     expect(empty).toContain('nenhuma perda registrada');
+  });
+});
+
+describe('pessoas e professores', () => {
+  const m = (over) => ({ leads: 18, appts: { total: 6, rate: 83 }, enroll: 11, cohort: { conv: 22 }, firstContact: { median: 42 }, ...over });
+  const users = [{ id: 'ana', name: 'Ana Ribeiro', role: 'consultant' }, { id: 'marcos', name: 'Marcos Lima', role: 'admin' }];
+
+  it('uma linha por pessoa, clicável, com a conversão da safra e o primeiro contato', () => {
+    const html = render(createElement(PeopleConversionTable, {
+      rows: [{ user: users[0], m: m() }, { user: users[1], m: m({ firstContact: { median: 300 } }) }],
+      others: m({ leads: 0, appts: { total: 0, rate: null }, enroll: 0 }),
+      person: null, personName: null, onPick: () => {}, onClear: () => {}
+    }));
+    expect(html).toContain('clique numa linha para filtrar a tela por essa pessoa');
+    expect(html).toContain('Filtrar a tela por Ana Ribeiro');
+    expect(html).toContain('Gestor');
+    expect(html).toContain('42 min');
+    expect(html).toContain('5 h');
+    expect(html).toContain('text-rose-700');
+    expect(html).not.toContain('fora da equipe ou sem responsável');
+  });
+
+  it('com pessoa escolhida: o botão para voltar à equipe toda', () => {
+    const html = render(createElement(PeopleConversionTable, {
+      rows: [{ user: users[0], m: m() }], others: null, person: 'ana', personName: 'Ana Ribeiro', onPick: () => {}, onClear: () => {}
+    }));
+    expect(html).toContain('Ver a equipe toda');
+    expect(html).toContain('aria-pressed="true"');
+  });
+
+  it('professores: ranking, treina sozinho à parte e a etiqueta da academia', () => {
+    const html = render(createElement(ProfessorCard, {
+      professors: {
+        rows: [{ id: 'p1', name: 'Paula Nunes', solo: false, done: 4, missed: 1, enrolled: 2, conv: 50, mods: [{ name: 'Funcional', count: 3 }, { name: 'Musculação', count: 1 }] }],
+        solo: { id: null, name: 'Treina sozinho', solo: true, done: 1, missed: 0, enrolled: 1, conv: 100, mods: [{ name: 'Musculação', count: 1 }] },
+        done: 5
+      },
+      monthName: 'setembro',
+      scoped: true
+    }));
+    expect(html).toContain('5 aulas realizadas em setembro');
+    expect(html).toContain('4 realizadas · 1 falta · Funcional 3 · Musculação 1');
+    expect(html).toContain('Treina sozinho');
+    expect(html).toContain('academia inteira');
+    expect(html).toContain('2/4');
+  });
+
+  it('professores sem aula no mês', () => {
+    expect(render(createElement(ProfessorCard, { professors: { rows: [], solo: null, done: 0 }, monthName: 'julho', scoped: false })))
+      .toContain('Nenhuma aula experimental realizada neste mês.');
   });
 });
