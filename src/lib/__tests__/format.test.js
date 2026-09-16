@@ -64,5 +64,29 @@ describe('parseValorBRL', () => {
   });
   it('lixo não numérico vira null', () => {
     expect(parseValorBRL('abc')).toBeNull();
+    expect(parseValorBRL('1.2.3')).toBeNull();
+    expect(parseValorBRL(undefined)).toBeNull();
+  });
+  it('ponto seguido de três dígitos, sem vírgula, é separador de milhar', () => {
+    expect(parseValorBRL('1.240')).toBe(1240);
+    expect(parseValorBRL('2.988')).toBe(2988);
+    expect(parseValorBRL('12.500')).toBe(12500);
+    expect(parseValorBRL('1.234.567')).toBe(1234567);
+    expect(parseValorBRL('R$ 2.988')).toBe(2988);
+  });
+  it('milhar com vírgula decimal continua como antes', () => {
+    expect(parseValorBRL('1.240,00')).toBe(1240);
+    expect(parseValorBRL('12.500,50')).toBe(12500.5);
+    expect(parseValorBRL('R$ 1.240,00')).toBe(1240);
+  });
+  it('inteiro e vírgula decimal continuam como antes', () => {
+    expect(parseValorBRL('249')).toBe(249);
+    expect(parseValorBRL('249,90')).toBe(249.9);
+  });
+  it('ponto com uma ou duas casas continua decimal', () => {
+    expect(parseValorBRL('249.9')).toBe(249.9);
+    expect(parseValorBRL('1.24')).toBe(1.24);
+    // Grupo de milhar não começa com zero: "0.500" é meio real, não quinhentos.
+    expect(parseValorBRL('0.500')).toBe(0.5);
   });
 });
