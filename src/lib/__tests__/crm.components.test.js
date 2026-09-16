@@ -342,6 +342,8 @@ describe('pessoas e professores', () => {
     expect(html).toMatch(/text-emerald-700[^"]*">11</);
     expect(html).toMatch(/bg-success[^"]*" style="width:22%"/);
     expect(html).toMatch(/text-emerald-700[^"]*">22%</);
+    // Cabeçalho curto para caber numa linha na coluna de 116px.
+    expect(html).toContain('>Conv. da safra<');
   });
 
   it('professores: ranking, treina sozinho à parte e a etiqueta da academia', () => {

@@ -115,7 +115,7 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
               <span className="text-right">Agend.</span>
               <span className="text-right">Compar.</span>
               <span className="text-right">Matr.</span>
-              <span>Conversão da safra</span>
+              <span>Conv. da safra</span>
               <span className="text-right">1º contato</span>
             </div>
             {list.map(({ user, m }) => {
