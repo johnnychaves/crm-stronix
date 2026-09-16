@@ -49,7 +49,7 @@ export function CrmDashboard({
         ) : (
           <>
             <CrmSection title="Origem" question="de onde vêm os leads?" note={scope}>
-              <ChannelTable rows={cur.channels} cohortConv={cur.cohort?.conv ?? null} read={channelRead(cur)} />
+              <ChannelTable rows={cur.channels} read={channelRead(cur)} />
             </CrmSection>
 
             <CrmSection title="Funil" question="onde os leads se perdem?" note={scope}>

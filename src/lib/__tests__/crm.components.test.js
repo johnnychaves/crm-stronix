@@ -118,7 +118,7 @@ describe('peças do CRM', () => {
 });
 
 describe('canais e safra', () => {
-  it('canais: volume, matrícula e conversão acima da safra em verde', () => {
+  it('canais: volume, matrícula e conversão', () => {
     const html = render(createElement(ChannelTable, {
       rows: [{ name: 'Instagram', leads: 22, enrolled: 3 }, { name: 'Indicação', leads: 9, enrolled: 4 }],
       cohortConv: 18,
@@ -129,6 +129,21 @@ describe('canais e safra', () => {
     expect(html).toContain('44%');
     expect(html).toContain('text-emerald-700');
     expect(html).toContain('Instagram traz o volume');
+  });
+
+  it('canais: barra em verde (leads em verde-claro, matrículas em verde), matrícula e conversão em verde', () => {
+    const html = render(createElement(ChannelTable, {
+      rows: [{ name: 'Instagram', leads: 22, enrolled: 3 }, { name: 'Indicação', leads: 9, enrolled: 4 }],
+      cohortConv: 18,
+      read: ''
+    }));
+    // Mesma escala: quem trouxe mais leads vai até o fim; 3 de 22 enche 14%.
+    expect(html).toMatch(/bg-emerald-200[^"]*" style="width:100%"/);
+    expect(html).toMatch(/bg-success[^"]*" style="width:14%"/);
+    // Matrícula e conversão verdes, também abaixo da safra (Instagram, 14% contra 18%).
+    expect(html).toMatch(/text-emerald-700[^"]*">3</);
+    expect(html).toMatch(/text-emerald-700[^"]*">14%</);
+    expect(html).toMatch(/w-\[18px\][^"]*bg-success/);
   });
 
   it('canais sem lead: cartão vazio', () => {
