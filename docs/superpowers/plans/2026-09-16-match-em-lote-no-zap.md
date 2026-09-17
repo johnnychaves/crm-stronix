@@ -15,7 +15,7 @@
 ## Convenções para todas as tarefas
 
 - Branch: `feat/match-em-lote-no-zap`. **Nunca commitar na `main`.**
-- Testes: `npx vitest run --exclude '.claude/**'`. A linha de base em 16/09/2026 é 61 arquivos e 1.303 testes passando. O `--exclude` tira as cópias do projeto em `.claude/worktrees`, que inflam a contagem.
+- Testes: `npx vitest run --exclude '.claude/**'`. A linha de base escrita aqui em 16/09/2026 (61 arquivos, 1.303 testes) ficou velha antes da execução: com o merge do #211 na main virou 71 arquivos e 1.495 testes, e no fim deste trabalho são 72 arquivos e 1.535. O `--exclude` tira as cópias do projeto em `.claude/worktrees`, que inflam a contagem.
 - Lint: `npm run lint`. Existe 1 aviso antigo no `SuperAdminView`, que não é desta mudança.
 - Commits em português, formato `tipo: descrição curta`, terminando com a linha `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 - O hook GateGuard desta máquina pode bloquear o primeiro Bash da sessão e a primeira criação ou edição de cada arquivo, pedindo "fatos" (o pedido do usuário, o que o comando faz, quem usa o arquivo). Responda os fatos em texto e repita a mesma operação.
@@ -355,7 +355,7 @@ npx vitest run --exclude '.claude/**'
 npm run lint
 ```
 
-Esperado: 1.311 testes passando (1.303 da linha de base mais 8 novos) e o lint com o aviso antigo do `SuperAdminView`, sem erro novo.
+Esperado: a suíte inteira passando (no fim deste trabalho, 1.535 testes) e o lint com o aviso antigo do `SuperAdminView`, sem erro novo.
 
 - [ ] **Passo 2: registrar no CLAUDE.md**
 
@@ -397,3 +397,16 @@ CORPO
 - [ ] A ação responde 400 para lote acima de 30 e para `phones` que não é lista
 - [ ] A resposta tem só o campo `found`
 - [ ] O `GET` continua com o mesmo comportamento, provado pelos 3 testes que já existiam
+
+---
+
+## O que mudou durante a execução
+
+O plano previa quatro tarefas. Saíram cinco, e duas cresceram. Fica registrado porque o plano é lido depois como se fosse o que aconteceu.
+
+- **Tarefa 3 ampliada.** A revisão apontou que o banco falso do teste era mais tolerante que o Firestore real, e que nada provava o isolamento entre academias nem a separação dos dois caminhos de autenticação. O banco falso passou a guardar dados por academia, a recusar id de documento inválido e consulta `in` com zero ou mais de 30 valores, e o `select` passou a projetar campos. Os testes do arquivo foram de 3 para 32.
+- **As recusas passaram a conferir a mensagem.** Seis testes passavam por coincidência: sem o desvio do `match`, a resposta cai no caminho do admin, que também devolve 401. Hoje conferem o corpo exato, e a sabotagem do desvio derruba 19 testes.
+- **Tarefa 3b, que não existia: o Sentry.** A revisão achou a chave do Zap saindo em claro nos eventos de erro. É problema anterior a este trabalho, e a varredura do Stronizap, de 15 em 15 minutos, multiplicaria. Virou tarefa própria: corte na origem e no filtro, e um verificador no CI que se sabota para provar que enxerga. O `GET` também passou a validar o identificador da academia como o `match` faz.
+- **Contagem de testes.** O plano nasceu com a linha de base errada, porque a `main` andou entre o desenho e a execução.
+
+Os commits contam a história em ordem.
