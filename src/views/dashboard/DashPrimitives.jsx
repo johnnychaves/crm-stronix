@@ -6,6 +6,7 @@
 
 import { ArrowRight, HelpCircle, Info } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
+import { fmtNum } from '../../lib/format.js';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../../components/ui/tooltip.jsx';
 import { Sparkline } from '../../components/charts/Sparkline.jsx';
 import { DASH_TONES, BREAKDOWN_PALETTE } from './dashTokens.js';
@@ -274,7 +275,16 @@ export function ConversionCard({
 // segmentada de 42px por proporção (líder rotulado por dentro quando ≥20%) e
 // legenda ranqueada. Rodapé com leitura derivada + ação opcional.
 
-export function BreakdownCard({ icon: Icon, title, sub, help, eyebrow, items, total, footText, ctaLabel, onCta, emptyText }) {
+// As três props do fim são opcionais e nasceram no Gerencial, onde a grandeza
+// é dinheiro em vez de contagem. O padrão mantém o card como sempre foi:
+//   format     formata a grandeza do herói e da legenda (o Gerencial passa o
+//              fmtMoneyShort de dashTokens.js)
+//   it.times   contagem de vendas do item, escrita como "11x" entre o rótulo e
+//              o valor na legenda
+//   leaderSub  troca o "X de Y · Z%" do herói, que no Gerencial é
+//              "11 vendas · 34% do vendido"
+// A porcentagem segue saindo de count ÷ total, que ali é valor ÷ valor.
+export function BreakdownCard({ icon: Icon, title, sub, help, eyebrow, items, total, footText, ctaLabel, onCta, emptyText, format = (n) => n, leaderSub }) {
   const rows = (items || []).map((it, i) => ({
     ...it,
     pct: total > 0 ? Math.round((it.count / total) * 100) : 0,
@@ -299,11 +309,11 @@ export function BreakdownCard({ icon: Icon, title, sub, help, eyebrow, items, to
         <>
           <div className="mt-4 font-display text-[10px] font-bold uppercase tracking-[0.11em] text-slate-400 dark:text-slate-500">{eyebrow}</div>
           <div className="flex items-center gap-2.5 mt-1.5">
-            <span className="font-display text-[34px] font-bold leading-[0.9] tracking-tight text-accent-500 num shrink-0">{leader.count}</span>
+            <span className="font-display text-[34px] font-bold leading-[0.9] tracking-tight text-accent-500 num shrink-0">{format(leader.count)}</span>
             <div className="min-w-0">
               <div className="font-display text-[15px] font-semibold leading-tight truncate">{leader.name}</div>
               <div className="text-[12px] text-slate-400 dark:text-slate-500 num">
-                {leader.count} de {total} · {leader.pct}%
+                {leaderSub || <>{leader.count} de {total} · {leader.pct}%</>}
               </div>
             </div>
           </div>
@@ -336,7 +346,8 @@ export function BreakdownCard({ icon: Icon, title, sub, help, eyebrow, items, to
                 <span className={cn('flex-1 min-w-0 truncate text-[13px]', i === 0 ? 'font-semibold text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300')}>
                   {r.name}
                 </span>
-                <span className="font-display text-[13px] font-bold num">{r.count}</span>
+                {r.times != null && <span className="num text-[11.5px] text-slate-400 dark:text-slate-500">{`${fmtNum(r.times)}x`}</span>}
+                <span className="font-display text-[13px] font-bold num">{format(r.count)}</span>
                 <span className="font-display text-[12px] text-slate-400 dark:text-slate-500 num w-8 text-right">{r.pct}%</span>
               </li>
             ))}

@@ -24,6 +24,19 @@ const valorToInput = (n) => {
   return Number.isFinite(num) ? num.toFixed(2).replace('.', ',') : '';
 };
 
+// Dinheiro de leitura de gestão, sem centavos: "R$ 78.400". O fmtBRL acima
+// continua valendo onde centavo importa (contrato, plano, PDV).
+const fmtMoney = (n) => `R$ ${Math.round(Number(n) || 0).toLocaleString('pt-BR')}`;
+
+// Dinheiro curto, para coluna estreita e legenda: "R$ 78,4 mil". Abaixo de mil
+// não abrevia, senão "R$ 0,9 mil" fica pior de ler que "R$ 900".
+const fmtMoneyShort = (n) => {
+  const v = Math.round(Number(n) || 0);
+  return v >= 1000
+    ? `R$ ${(v / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mil`
+    : `R$ ${v.toLocaleString('pt-BR')}`;
+};
+
 // Tempo relativo curto para o feed de auditoria.
 const timeAgo = (ms) => {
   if (!ms) return '';
@@ -63,4 +76,4 @@ function formatHourLabel(date) {
   if (!date) return '';
   return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
 }
-export { fmtBRL, parseValorBRL, valorToInput, fmtNum, timeAgo, humanizeAge, humanizeUntil, formatHourLabel };
+export { fmtBRL, fmtMoney, fmtMoneyShort, parseValorBRL, valorToInput, fmtNum, timeAgo, humanizeAge, humanizeUntil, formatHourLabel };

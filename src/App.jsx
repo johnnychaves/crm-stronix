@@ -79,7 +79,7 @@ import { ReferralLandingScreen } from './views/public/ReferralLandingScreen.jsx'
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
 import { DashboardOperacionalView } from './views/dashboard/DashboardOperacionalView.jsx';
 import { DashboardCrmView } from './views/dashboard/DashboardCrmView.jsx';
-import { DashboardComingSoonView } from './views/dashboard/DashboardComingSoonView.jsx';
+import { DashboardGerencialView } from './views/dashboard/DashboardGerencialView.jsx';
 import { KanbanView } from './views/KanbanView.jsx';
 import { AppointmentTrackingView } from './views/AppointmentTrackingView.jsx';
 import { LeadsView } from './views/LeadsView.jsx';
@@ -1703,7 +1703,10 @@ useEffect(() => {
                   base ao vivo do Operacional (metaLeads e as interações do mês),
                   mais funis e etapas para o filtro de funil e a passagem. */}
               {resolvedTab === 'dashCrm' && <DashboardCrmView usersList={usersList} liveLeads={metaLeads} interactions={interactions} db={db} listenersActive={listenersActive} funnels={funnels} statuses={statuses} />}
-              {resolvedTab === 'dashGerencial' && <DashboardComingSoonView page="gerencial" onNavigate={changeTab} />}
+              {/* Gerencial: o dinheiro vendido no mês, a carteira e o risco. Os contratos
+                  já chegam pelo useGeneralConfig, então a tela só busca os leads das
+                  vendas do mês, para a origem. */}
+              {resolvedTab === 'dashGerencial' && <DashboardGerencialView usersList={usersList} liveLeads={metaLeads} db={db} listenersActive={listenersActive} onNavigate={changeTab} />}
               {activeTab === 'kanban' && <KanbanView leads={leads} interactions={interactions} appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} />}
               {activeTab === 'clientes' && <ClientsView appUser={appUser} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} />}
               {/* Meta Diária (G1d): base = ativo ∪ clientes a vencer (metaLeads),
