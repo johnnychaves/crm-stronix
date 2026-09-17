@@ -11,6 +11,7 @@ import { BlindValueNote, GerencialEmpty } from '../../views/dashboard/GerencialP
 import { ExpiryRunway } from '../../views/dashboard/ExpiryRunway.jsx';
 import { ExitsCard } from '../../views/dashboard/ExitsCard.jsx';
 import { SellerRankTable } from '../../views/dashboard/SellerRankTable.jsx';
+import { GerencialToolbar, CASH_WARNING, NO_COMPARE } from '../../views/dashboard/GerencialToolbar.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -327,5 +328,44 @@ describe('SellerRankTable', () => {
     const html = render(createElement(SellerRankTable, { rows: [], read: '' }));
     expect(html).not.toContain('NaN');
     expect(html).toContain('Quem vendeu');
+  });
+});
+
+describe('barra do Gerencial', () => {
+  const noop = () => {};
+  const bar = (over) => render(createElement(GerencialToolbar, {
+    monthKey: '2026-09',
+    monthOptions: [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }, { key: '2026-08', label: 'Agosto 2026' }],
+    onMonth: noop,
+    canPrev: true,
+    canNext: false,
+    onPrev: noop,
+    onNext: noop,
+    compareOn: true,
+    onCompareOn: noop,
+    compareKey: '2026-08',
+    compareOptions: [{ key: '2026-08', label: 'Agosto 2026' }],
+    onCompare: noop,
+    ...over
+  }));
+
+  it('o aviso de que não é caixa fica na barra, sem botão de fechar', () => {
+    const html = bar();
+    expect(html).toContain(CASH_WARNING);
+    expect(html).toContain('text-amber-700');
+    expect(html).not.toContain('Fechar aviso');
+  });
+
+  it('mês e comparação aparecem quando há com o que comparar', () => {
+    const html = bar();
+    expect(html).toContain('Comparar');
+    expect(html).toContain('aria-label="Mês de competência"');
+    expect(html).not.toContain(NO_COMPARE);
+  });
+
+  it('sem mês anterior com venda, o controle sai e a frase toma o lugar', () => {
+    const html = bar({ canCompare: false });
+    expect(html).toContain(NO_COMPARE);
+    expect(html).not.toContain('Comparar');
   });
 });
