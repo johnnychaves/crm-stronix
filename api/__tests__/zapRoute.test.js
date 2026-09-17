@@ -28,6 +28,7 @@ vi.mock('../_firebaseAdmin.js', () => {
       };
       return {
         limit: (n) => ({ get: async () => resposta(filtra().slice(0, n)) }),
+        select: () => ({ get: async () => resposta(filtra()) }),
         get: async () => resposta(filtra())
       };
     },
@@ -166,6 +167,26 @@ describe('POST /api/zap com action match', () => {
     const res = resposta();
 
     await handler(pedidoMatch(['5511987654321', '5511900000000']), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ found: ['5511987654321'] });
+  });
+
+  it('identificador que não é texto responde 401 sem derrubar a função', async () => {
+    const res = resposta();
+    const pedido = pedidoMatch(['5511987654321']);
+    pedido.body.tenant = { toString: 1 };
+
+    await handler(pedido, res);
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('telefone que não é texto é ignorado, sem derrubar o lote', async () => {
+    banco.leads = [clienteAVencer];
+    const res = resposta();
+
+    await handler(pedidoMatch([{ toString: 1 }, '5511987654321']), res);
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toEqual({ found: ['5511987654321'] });
