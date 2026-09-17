@@ -112,6 +112,28 @@ describe('scrubEvent', () => {
     expect(out.request.url).toBe('/api/plans');
   });
 
+  it('mantem so os headers permitidos da requisicao', () => {
+    const event = {
+      request: {
+        url: '/api/zap',
+        headers: {
+          'x-stronizap-key': 'szk_segredo',
+          'asaas-access-token': 'token-do-webhook',
+          authorization: 'Bearer xyz',
+          cookie: 'sessao=1',
+          'content-type': 'application/json',
+          'User-Agent': 'node',
+          'x-vercel-id': 'gru1::abc'
+        }
+      }
+    };
+    expect(scrubEvent(event).request.headers).toEqual({
+      'content-type': 'application/json',
+      'User-Agent': 'node',
+      'x-vercel-id': 'gru1::abc'
+    });
+  });
+
   it('mascara breadcrumbs', () => {
     const event = { breadcrumbs: [{ message: 'buscou joao@x.com' }] };
     expect(scrubEvent(event).breadcrumbs[0].message).toBe('buscou [email]');

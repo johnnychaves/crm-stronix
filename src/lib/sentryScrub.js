@@ -33,6 +33,13 @@ export function stripQuery(url) {
   return cut === -1 ? url : url.slice(0, cut);
 }
 
+// Header de requisição só sai para o Sentry se estiver nesta lista. É lista de
+// permitidos, e não de proibidos, porque a de proibidos só conhecia
+// authorization e cookie e deixou passar a chave do Zap (x-stronizap-key) em
+// 2026-09-17. Qualquer header sensível novo teria o mesmo destino. As funções
+// da api/ usam a mesma lista na origem, em api/_sentry.js.
+export const HEADERS_PERMITIDOS = ['content-type', 'content-length', 'user-agent', 'accept', 'x-vercel-id'];
+
 // Chaves em que o SDK guarda URL dentro de span, contexto de trace e breadcrumb.
 const URL_KEYS = ['url', 'url.full', 'http.url', 'to', 'from'];
 
@@ -140,9 +147,12 @@ export function scrubEvent(event) {
     delete event.request.cookies;
     if (typeof event.request.url === 'string') event.request.url = stripQuery(event.request.url);
     delete event.request.query_string;
-    if (event.request.headers) {
-      delete event.request.headers.authorization;
-      delete event.request.headers.cookie;
+    if (event.request.headers && typeof event.request.headers === 'object') {
+      const permitidos = {};
+      for (const [nome, valor] of Object.entries(event.request.headers)) {
+        if (HEADERS_PERMITIDOS.includes(nome.toLowerCase())) permitidos[nome] = valor;
+      }
+      event.request.headers = permitidos;
     }
   }
 
