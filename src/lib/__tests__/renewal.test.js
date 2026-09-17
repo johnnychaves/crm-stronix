@@ -138,6 +138,13 @@ describe('computeDiscount', () => {
     expect(r.discountValue).toBe(150);
   });
 
+  it('ponto de milhar sem vírgula vale mil, não decimal', () => {
+    const r = computeDiscount({ listValue: 2988, mode: DISCOUNT_MODES.FINAL, input: '2.988' });
+    expect(r.finalValue).toBe(2988);
+    expect(r.hasDiscount).toBe(false);
+    expect(computeDiscount({ listValue: 1390, mode: DISCOUNT_MODES.REAIS, input: '1.000' }).finalValue).toBe(390);
+  });
+
   it('valor final vazio mantém a tabela', () => {
     expect(computeDiscount({ listValue: 1390, mode: DISCOUNT_MODES.FINAL, input: '' }).finalValue).toBe(1390);
   });

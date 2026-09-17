@@ -4,14 +4,19 @@ const fmtNum = (n) => Number(n || 0).toLocaleString('pt-BR');
 
 // Lê o valor digitado no campo de preço (plano/matrícula) e devolve número ou
 // null. Aceita vírgula ou ponto decimal, ponto de milhar e prefixo R$. Regra:
-// com vírgula, ela é o decimal e os pontos são milhar; sem vírgula, o ponto é
-// o decimal.
+// com vírgula, ela é o decimal e os pontos são milhar. Sem vírgula, pontos que
+// separam grupos de exatamente três dígitos são milhar ("2.988" vale 2988, não
+// 2,99). Com uma ou duas casas ("249.9") ou grupo que começa em zero ("0.500"),
+// o ponto é o decimal.
+const THOUSANDS_ONLY = /^-?[1-9]\d{0,2}(\.\d{3})+$/;
+
 const parseValorBRL = (input) => {
   if (typeof input === 'number') return Number.isFinite(input) ? input : null;
   if (input == null) return null;
   let s = String(input).trim().replace(/R\$/gi, '').replace(/\s/g, '');
   if (!s) return null;
   if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (THOUSANDS_ONLY.test(s)) s = s.replace(/\./g, '');
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
 };
