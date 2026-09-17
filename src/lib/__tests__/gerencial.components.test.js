@@ -13,6 +13,7 @@ import { ExitsCard } from '../../views/dashboard/ExitsCard.jsx';
 import { SellerRankTable } from '../../views/dashboard/SellerRankTable.jsx';
 import { BreakdownCard } from '../../views/dashboard/DashPrimitives.jsx';
 import { fmtMoneyShort } from '../../views/dashboard/dashTokens.js';
+import { GerencialDashboard } from '../../views/dashboard/GerencialDashboard.jsx';
 import { GerencialToolbar, CASH_WARNING, NO_COMPARE } from '../../views/dashboard/GerencialToolbar.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
@@ -436,5 +437,85 @@ describe('LapsedCard', () => {
     const html = render(createElement(LapsedCard, { count: 1 }));
     expect(html).toContain('contrato em aberto');
     expect(html).not.toContain('contratos em aberto');
+  });
+});
+
+const BODY = {
+  sold: { mix: MIX, ticket: 214, discount: { pct: 8, abs: 6800 } },
+  wallet: { items: CELLS, notes: ['A carteira soma contrato, não pessoa: 6 pessoas têm dois contratos vigentes.'] },
+  risk: { horizon: HORIZON, walletMonthly: 134200, lapsedCount: 29, blind: { count: 114, context: 'vencem no período e não entram na conta acima' } },
+  exits: { items: EXITS },
+  sellers: { rows: SELLERS, read: READ },
+  plans: {
+    items: [{ name: 'Anual Musculação', count: 26400, times: 11 }, { name: 'Mensal', count: 7500, times: 8 }],
+    total: 78400,
+    eyebrow: 'Plano que mais trouxe',
+    sub: 'por valor vendido no mês',
+    footText: 'Combinação de modalidades é um grupo próprio, não a soma das partes.'
+  },
+  sources: {
+    items: [{ name: 'Instagram', count: 29600, times: 14 }, { name: 'Indicação', count: 21300, times: 10 }],
+    total: 78400,
+    eyebrow: 'Canal que mais trouxe',
+    sub: 'por valor vendido no mês',
+    footText: 'É a origem do lead que virou contrato, não o volume de leads do canal.'
+  },
+  flags: { gymEmpty: false, monthNoSales: false },
+  texts: {
+    emptyMonth: { title: 'Nenhum contrato fechado neste mês', text: 'A carteira e o risco abaixo continuam valendo.' },
+    emptyRanking: { title: 'Sem vendas no mês, não há ranking', text: 'Troque o mês para ver o ranking.' }
+  },
+  onGoToPipeline: () => {}
+};
+
+const SECTIONS = ['Quanto vendi', 'A carteira hoje', 'Quanto posso perder', 'Quem traz receita'];
+
+describe('GerencialDashboard', () => {
+  it('as quatro seções, com a pergunta de cada uma e os cards dentro', () => {
+    const html = render(createElement(GerencialDashboard, BODY));
+    SECTIONS.forEach((title) => expect(html).toContain(`>${title}</h3>`));
+    expect(html).toContain('contratos fechados no mês');
+    expect(html).toContain('o que os contratos vigentes geram por mês');
+    expect(html).toContain('o que sai da carteira se ninguém renovar');
+    expect(html).toContain('as vendas do mês por consultor, plano e origem');
+    expect(html).toContain('De onde veio a venda');       // SoldHeroCard
+    expect(html).toContain('Contratos vigentes');          // WalletBand
+    expect(html).toContain('Vencendo nos próximos 90 dias'); // ExpiryRunway
+    expect(html).toContain('Já venceu e ninguém renovou'); // LapsedCard
+    expect(html).toContain('Saiu neste mês');              // ExitsCard
+    expect(html).toContain('Quem vendeu');                 // SellerRankTable
+    expect(html).toContain('Planos mais vendidos');
+    expect(html).toContain('Origem do lead que fechou');
+  });
+
+  it('a quebra de plano e origem sai em dinheiro, com a contagem e a linha do líder', () => {
+    const html = render(createElement(GerencialDashboard, BODY));
+    expect(html).toContain('R$ 26,4 mil');
+    expect(html).toContain('11x');
+    expect(html).toContain('11 vendas · 34% do vendido');
+    expect(html).toContain('14 vendas · 38% do vendido');
+  });
+
+  it('academia sem contrato troca o corpo inteiro: nem seção, nem card de zeros', () => {
+    const html = render(createElement(GerencialDashboard, { ...BODY, flags: { gymEmpty: true, monthNoSales: false } }));
+    expect(html).toContain('Ainda não há contratos');
+    expect(html).toContain('Ir para o pipeline');
+    SECTIONS.forEach((title) => expect(html).not.toContain(`>${title}</h3>`));
+    expect(html).not.toContain('Contratos vigentes');
+    expect(html).not.toContain('Quem vendeu');
+  });
+
+  it('mês sem venda esvazia só o herói e o ranking; carteira e risco ficam inteiros', () => {
+    const html = render(createElement(GerencialDashboard, { ...BODY, flags: { gymEmpty: false, monthNoSales: true } }));
+    expect(html).toContain('Nenhum contrato fechado neste mês');
+    expect(html).toContain('Sem vendas no mês, não há ranking');
+    expect(html).not.toContain('De onde veio a venda');
+    expect(html).not.toContain('Quem vendeu');
+    expect(html).not.toContain('Planos mais vendidos');
+    SECTIONS.forEach((title) => expect(html).toContain(`>${title}</h3>`));
+    expect(html).toContain('Contratos vigentes');
+    expect(html).toContain('Vencendo nos próximos 90 dias');
+    expect(html).toContain('26% da carteira');
+    expect(html).toContain('Saiu neste mês');
   });
 });
