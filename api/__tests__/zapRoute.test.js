@@ -137,3 +137,37 @@ describe('GET /api/zap', () => {
     expect(res.body).toEqual({ found: false });
   });
 });
+
+describe('POST /api/zap com action match', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(HOJE);
+    const gerada = generateZapKey();
+    chave = gerada.key;
+    banco.tenant = {
+      integrations: { zap: { keyHash: gerada.keyHash, keyPrefix: gerada.keyPrefix, revokedAt: null } }
+    };
+    banco.leads = [];
+    banco.config = null;
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const pedidoMatch = (phones) => ({
+    method: 'POST',
+    headers: { 'x-stronizap-key': chave },
+    body: { action: 'match', tenant: TENANT, phones }
+  });
+
+  it('devolve só os telefones que têm cadastro', async () => {
+    banco.leads = [clienteAVencer];
+    const res = resposta();
+
+    await handler(pedidoMatch(['5511987654321', '5511900000000']), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ found: ['5511987654321'] });
+  });
+});

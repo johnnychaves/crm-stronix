@@ -22,6 +22,20 @@ const LEADS_PATH = 'stronix_leads';
 const CONFIG_PATH = 'stronix_config';
 const CONFIG_GENERAL_ID = 'general';
 
+const MATCH_MAX = 30; // teto do operador `in` do Firestore
+
+const leadsCollection = (tenantId) =>
+  adminDb.collection('artifacts').doc(tenantId)
+    .collection('public').doc('data').collection(LEADS_PATH);
+
+/** Integração do tenant, ou null quando o tenant não existe ou a chave foi revogada. */
+async function loadZapIntegration(tenantId) {
+  const tenantSnap = await adminDb.collection('tenants').doc(tenantId).get();
+  const zap = tenantSnap.exists ? tenantSnap.data()?.integrations?.zap : null;
+  if (!zap?.keyHash || zap.revokedAt) return null;
+  return zap;
+}
+
 export default withSentry(async function handler(req, res) {
   if (req.method === 'POST') return handlePost(req, res);
 
@@ -43,18 +57,15 @@ export default withSentry(async function handler(req, res) {
     return;
   }
 
-  const tenantSnap = await adminDb.collection('tenants').doc(tenantId).get();
   // Tenant inexistente responde igual a chave errada: não confirmamos quais
   // academias existem para quem não tem credencial.
-  const zap = tenantSnap.exists ? tenantSnap.data()?.integrations?.zap : null;
-  if (!zap?.keyHash || zap.revokedAt || !verifyZapKey(chave, zap.keyHash)) {
+  const zap = await loadZapIntegration(tenantId);
+  if (!zap || !verifyZapKey(chave, zap.keyHash)) {
     res.status(401).json({ error: 'Credencial inválida' });
     return;
   }
 
-  const leadsRef = adminDb.collection('artifacts').doc(tenantId)
-    .collection('public').doc('data').collection(LEADS_PATH);
-  const achados = await leadsRef.where('zapMatchKey', '==', matchKey).limit(1).get();
+  const achados = await leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get();
 
   if (achados.empty) {
     res.status(200).json({ found: false });
@@ -87,6 +98,10 @@ export default withSentry(async function handler(req, res) {
 // Gera e revoga a chave de conexão do Stronizap. Ação do admin da academia,
 // pela tela de Configurações → Integrações — nunca pelo próprio Zap.
 async function handlePost(req, res) {
+  // A ação match é a única do POST que autentica pela chave do Zap. As outras
+  // duas (generate e revoke) são do admin logado e seguem exigindo ID token.
+  if (req.body?.action === 'match') return handleMatch(req, res);
+
   try {
     const auth = await verifyRequest(req);
     if (!auth || !auth.tenantId) {
@@ -133,4 +148,50 @@ async function handlePost(req, res) {
     console.error('zap POST', error);
     return res.status(500).json({ error: 'Erro interno ao alterar a integração.' });
   }
+}
+
+// Diz quais dos telefones recebidos têm cadastro nesta academia. Devolve os
+// telefones NA FORMA EM QUE CHEGARAM, para o Stronizap não precisar recalcular
+// a chave de casamento. Nada além disso sai daqui: nem nome, nem id, nem plano.
+async function handleMatch(req, res) {
+  const chave = req.headers['x-stronizap-key'];
+  const tenantId = String(req.body?.tenant ?? '').trim();
+  const phones = req.body?.phones;
+
+  if (!chave || !tenantId) {
+    return res.status(401).json({ error: 'Credencial ausente' });
+  }
+  if (!Array.isArray(phones)) {
+    return res.status(400).json({ error: 'Envie a lista de telefones em phones.' });
+  }
+  if (phones.length > MATCH_MAX) {
+    return res.status(400).json({ error: `No máximo ${MATCH_MAX} telefones por chamada.` });
+  }
+
+  const zap = await loadZapIntegration(tenantId);
+  if (!zap || !verifyZapKey(chave, zap.keyHash)) {
+    return res.status(401).json({ error: 'Credencial inválida' });
+  }
+
+  // Telefone que não vira chave válida (menos de 10 dígitos) fica fora da
+  // consulta e volta como não encontrado, sem derrubar o lote. Dois telefones
+  // podem cair na mesma chave (com e sem o nono dígito), e os dois voltam.
+  const porChave = new Map();
+  for (const phone of phones) {
+    const chaveTelefone = zapMatchKey(phone);
+    if (!chaveTelefone) continue;
+    const lista = porChave.get(chaveTelefone) || [];
+    lista.push(String(phone));
+    porChave.set(chaveTelefone, lista);
+  }
+  if (porChave.size === 0) {
+    return res.status(200).json({ found: [] });
+  }
+
+  const snap = await leadsCollection(tenantId).where('zapMatchKey', 'in', [...porChave.keys()]).get();
+  const found = new Set();
+  for (const doc of snap.docs) {
+    for (const phone of porChave.get(doc.data()?.zapMatchKey) || []) found.add(phone);
+  }
+  return res.status(200).json({ found: [...found] });
 }
