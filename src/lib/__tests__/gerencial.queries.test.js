@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { leadIdsForSales } from '../queries.js';
+import { leadIdsForSales } from '../gerencial/queries.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const c = (over) => ({ id: 'c', leadId: 'l1', createdAt: D(2026, 9, 10), startsAt: D(2026, 9, 10), ...over });

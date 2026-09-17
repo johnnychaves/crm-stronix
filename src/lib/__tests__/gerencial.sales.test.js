@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { salesOf } from '../sales.js';
-import { SALE_TYPES } from '../scope.js';
+import { salesOf } from '../gerencial/sales.js';
+import { SALE_TYPES } from '../gerencial/scope.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const start = D(2026, 9, 1);

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sellersOf, plansOf, sourcesOf } from '../people.js';
+import { sellersOf, plansOf, sourcesOf } from '../gerencial/people.js';
 
 const c = (over) => ({ id: 'c', value: 1200, durationMonths: 12, consultantId: 'u1', consultantName: 'Ana Ribeiro', planId: 'anual', planName: 'Anual Musculação', leadId: 'l1', ...over });
 

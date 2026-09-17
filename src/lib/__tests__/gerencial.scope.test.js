@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { SALE_TYPES, saleMoment, monthlyTicket, hasValue, saleTypeOf } from '../scope.js';
-import { indexContracts } from '../../operacional/base.js';
+import { SALE_TYPES, saleMoment, monthlyTicket, hasValue, saleTypeOf } from '../gerencial/scope.js';
+import { indexContracts } from '../operacional/base.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const c = (over) => ({ id: 'c1', personKey: 'p1', value: 1200, durationMonths: 12, startsAt: D(2026, 9, 1), createdAt: D(2026, 9, 1), ...over });

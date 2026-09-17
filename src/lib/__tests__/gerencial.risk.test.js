@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { expiryHorizons, expiredWithoutSuccessor, exitsInWindow } from '../risk.js';
+import { expiryHorizons, expiredWithoutSuccessor, exitsInWindow } from '../gerencial/risk.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const now = D(2026, 9, 17);
