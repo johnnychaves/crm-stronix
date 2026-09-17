@@ -1,0 +1,1215 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&amp;family=Geist:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F5F7FB; --card:#FFFFFF; --fg:#0E1A40; --fg2:#334155; --muted:#64748b; --faint:#94a3b8;
+  --border:#e2e8f0; --rule:#eef2f7; --soft:#f8fafc; --soft2:#eef0f5; --hover:#f1f5f9;
+  --brand:#2B59FF; --brand-50:#EAF0FF; --brand-100:#D6E1FF; --brand-200:#B8CCFF; --brand-300:#8FB0FF; --brand-500:#5A7FFF; --brand-700:#1C3FC4;
+  --accent:#FF6A2B; --accent-50:#FFF1EA; --accent-700:#C2410C;
+  --green:#15B981; --green-t:rgba(21,185,129,.10); --green-700:#047857;
+  --red:#F43F5E; --red-t:rgba(244,63,94,.09); --red-700:#BE123C;
+  --amber:#F59E0B; --amber-t:rgba(245,158,11,.12); --amber-700:#B45309;
+  --violet:#8B5CF6; --violet-700:#6D28D9;
+  --slate:#94a3b8; --ink:#0E1A40;
+  --shadow-card:0 1px 0 rgba(15,23,42,.04), 0 1px 2px rgba(15,23,42,.06);
+  --shadow-card-lg:0 1px 0 rgba(15,23,42,.04), 0 8px 24px -8px rgba(15,23,42,.10);
+}
+:root[data-theme="dark"]{
+  --bg:#080D22; --card:#122142; --fg:#EAEEF9; --fg2:#CBD5E1; --muted:#8A93B0; --faint:#6B7593;
+  --border:rgba(255,255,255,.08); --rule:rgba(255,255,255,.06); --soft:rgba(255,255,255,.03); --soft2:rgba(255,255,255,.07); --hover:rgba(255,255,255,.06);
+  --brand-50:rgba(43,89,255,.18); --brand-100:rgba(43,89,255,.26); --brand-200:rgba(43,89,255,.36); --brand-300:#C9D8FF; --brand-500:#5A7FFF; --brand-700:#8FB0FF;
+  --accent:#F2541A; --accent-50:rgba(242,84,26,.16); --accent-700:#FF8A52;
+  --green:#0E9F6E; --green-t:rgba(14,159,110,.18); --green-700:#34D399;
+  --red:#E11D48; --red-t:rgba(225,29,72,.18); --red-700:#FB7185;
+  --amber:#D97706; --amber-t:rgba(217,119,6,.20); --amber-700:#FBBF24;
+  --violet:#8B5CF6; --violet-700:#C4B5FD;
+  --slate:#6B7593; --ink:#EAEEF9;
+  --shadow-card:0 1px 0 rgba(0,0,0,.3), 0 1px 2px rgba(0,0,0,.4);
+  --shadow-card-lg:0 8px 24px -8px rgba(0,0,0,.6);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);font-family:'Geist',ui-sans-serif,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--brand);text-decoration:none}
+a:hover{color:var(--brand-700)}
+button,select{font-family:inherit}
+[tabindex]:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:4px}
+.num{font-variant-numeric:tabular-nums}
+.tr{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+</helmet>
+
+<section style="padding:44px;background:var(--bg);color:var(--fg);font-size:14px">
+
+  <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:24px;padding-bottom:20px;border-bottom:1px solid var(--border);margin-bottom:30px;max-width:1440px">
+    <div>
+      <div style="font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--faint)">Visão geral · Gerencial</div>
+      <h1 style="margin:6px 0 0;font-family:'Space Grotesk',sans-serif;font-size:26px;font-weight:700;letter-spacing:-.02em">A tela do dinheiro vendido</h1>
+      <p style="margin:8px 0 0;font-size:13px;color:var(--muted);max-width:1000px;line-height:1.6;text-wrap:pretty"><b style="color:var(--fg2)">Interativo:</b> troque o mês (setembro em andamento → agosto fechado), ligue e desligue a comparação, e use o seletor de academia para ver a base com os 494 contratos importados sem valor. Estados vazios, celular e tema escuro abaixo do quadro.</p>
+    </div>
+    <button onClick="{{ toggleTheme }}" style="flex:none;height:36px;padding:0 14px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--fg2);font-size:12.5px;font-weight:600;white-space:nowrap;cursor:pointer" style-hover="background:var(--hover)">{{ themeLabel }}</button>
+  </div>
+
+  <!-- ═══════════ 1440 ═══════════ -->
+  <div style="width:1440px;border-radius:20px;border:1px solid var(--border);background:var(--bg);box-shadow:var(--shadow-card-lg);overflow:hidden;display:flex">
+
+    <aside style="width:72px;flex:none;background:var(--card);border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center">
+      <div style="height:64px;display:grid;place-items:center;width:100%;border-bottom:1px solid var(--border)">
+        <svg width="22" height="22" viewBox="0 0 48 48" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF" stroke-width="4.4"></path><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF" stroke-width="4.4"></path><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B" stroke-width="4.4"></path></svg>
+      </div>
+      <nav style="display:flex;flex-direction:column;gap:6px;padding:18px 0;align-items:center">
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--brand);color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z"></path></svg></span>
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v18M12 3v12M19 3v8"></path></svg></span>
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 6v6l4 2"></path></svg></span>
+        <span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;color:var(--muted)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path></svg></span>
+      </nav>
+    </aside>
+
+    <main style="flex:1;min-width:0">
+
+      <header style="padding:20px 32px 16px;background:var(--card)">
+        <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:24px;font-weight:700;letter-spacing:-.02em">Gerencial</h2>
+        <p style="margin:5px 0 0;font-size:12.5px;color:var(--muted);line-height:1.5;max-width:860px">{{ subline }}</p>
+      </header>
+
+      <!-- Barra fixa -->
+      <div style="position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:10px;padding:10px 32px;background:var(--card);border-top:1px solid var(--rule);border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:2px;padding:3px;border-radius:12px;border:1px solid var(--border);background:var(--card)">
+          <button type="button" onClick="{{ prevMonth }}" aria-label="Mês anterior" style="width:30px;height:30px;border-radius:9px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer" style-hover="background:var(--hover);color:var(--fg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></button>
+          <select value="{{ month }}" onChange="{{ setMonth }}" aria-label="Mês de competência" style="height:30px;min-width:156px;border:0;border-radius:9px;background:transparent;color:var(--fg);font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;text-align:center;outline:none;cursor:pointer;appearance:none;padding:0 6px">
+            <sc-for list="{{ monthOptions }}" as="o" hint-placeholder-count="4">
+              <option value="{{ o.key }}">{{ o.label }}</option>
+            </sc-for>
+          </select>
+          <button type="button" onClick="{{ nextMonth }}" disabled="{{ atLatest }}" aria-label="Próximo mês" style="width:30px;height:30px;border-radius:9px;border:0;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;opacity:{{ nextOpacity }}" style-hover="background:var(--hover);color:var(--fg)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></button>
+        </div>
+
+        <sc-if value="{{ canCompare }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;height:36px;border-radius:12px;border:1px solid {{ cmpEdge }};background:{{ cmpBg }};overflow:hidden">
+          <button type="button" role="checkbox" aria-checked="{{ compareOn }}" onClick="{{ toggleCompare }}" style="display:flex;align-items:center;gap:8px;height:100%;padding:0 12px;border:0;background:transparent;cursor:pointer" style-hover="background:var(--hover)">
+            <span style="width:16px;height:16px;flex:none;border-radius:5px;border:1.5px solid {{ boxEdge }};background:{{ boxBg }};display:grid;place-items:center">
+              <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ true }}">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>
+              </sc-if>
+            </span>
+            <span style="font-size:12.5px;font-weight:600;color:{{ cmpFg }};white-space:nowrap">Comparar</span>
+          </button>
+          <sc-if value="{{ compareOn }}" hint-placeholder-val="{{ true }}">
+            <span style="width:1px;height:20px;flex:none;background:var(--border)"></span>
+            <select value="{{ compareKey }}" onChange="{{ setCompare }}" aria-label="Mês de comparação" style="height:34px;border:0;background:transparent;color:{{ cmpFg }};font-size:12.5px;font-weight:600;outline:none;cursor:pointer;appearance:none;padding:0 11px">
+              <sc-for list="{{ compareOptions }}" as="o" hint-placeholder-count="3">
+                <option value="{{ o.key }}">{{ o.label }}</option>
+              </sc-for>
+            </select>
+          </sc-if>
+        </div>
+        </sc-if>
+
+        <sc-if value="{{ cannotCompare }}" hint-placeholder-val="{{ false }}">
+          <span style="display:flex;align-items:center;gap:7px;height:36px;padding:0 12px;border-radius:12px;border:1px dashed var(--border);background:var(--soft);font-size:11.5px;color:var(--muted);white-space:nowrap">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--faint)"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 16v-4M12 8h.01"></path></svg>
+            {{ cannotCompareWhy }}
+          </span>
+        </sc-if>
+
+        
+
+        <div style="flex:1"></div>
+
+        <!-- O aviso vive na barra, não no pé da página -->
+        <span style="display:flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:9px;background:var(--amber-t);color:var(--amber-700);font-size:11.5px;font-weight:600;white-space:nowrap">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 16v-4M12 8h.01"></path></svg>
+          Valor de contrato vendido, não caixa recebido
+        </span>
+      </div>
+
+      <div style="padding:22px 32px 32px">
+
+        <sc-if value="{{ gymEmpty }}" hint-placeholder-val="{{ false }}">
+          <div style="border:1px dashed var(--border);border-radius:16px;background:var(--card);padding:56px 26px;text-align:center">
+            <div style="width:50px;height:50px;border-radius:15px;background:var(--brand-50);display:grid;place-items:center;margin:0 auto 15px;color:var(--brand)">
+              <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"></path></svg>
+            </div>
+            <div style="font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.02em">Ainda não há contratos</div>
+            <p style="margin:8px auto 0;max-width:420px;font-size:13px;color:var(--muted);line-height:1.6;text-wrap:pretty">Esta tela ganha vida na primeira matrícula registrada. Enquanto isso, o funil de leads continua no painel CRM.</p>
+            <button style="margin-top:20px;height:40px;padding:0 18px;border-radius:12px;border:0;background:var(--brand);color:#fff;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:var(--brand-700)">Ir para o pipeline</button>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ gymHasData }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;flex-direction:column;gap:24px">
+
+        <!-- ═══ 1 · QUANTO VENDI ═══ -->
+        <div>
+          <div style="display:flex;align-items:baseline;gap:11px;padding-bottom:9px;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.01em">Quanto vendi</h3>
+            <span style="font-size:12.5px;color:var(--muted)">contratos fechados no mês</span>
+          </div>
+
+          <sc-if value="{{ monthHasSales }}" hint-placeholder-val="{{ true }}">
+          <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);overflow:hidden">
+            <div style="display:flex;align-items:stretch">
+
+              <!-- herói -->
+              <div style="flex:none;width:330px;padding:20px 24px 22px;border-right:1px solid var(--rule)">
+                <div style="font-size:12px;font-weight:500;color:var(--muted)">Vendido no mês</div>
+                <div style="display:flex;align-items:flex-end;gap:10px;margin-top:9px">
+                  <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:44px;font-weight:700;letter-spacing:-.035em;line-height:.95">{{ sold }}</span>
+                  <sc-if value="{{ hasDelta }}" hint-placeholder-val="{{ true }}">
+                    <span class="num" style="display:inline-flex;align-items:center;gap:3px;height:22px;padding:0 7px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap;background:{{ soldDeltaBg }};color:{{ soldDeltaFg }};margin-bottom:5px">{{ soldDeltaArrow }} {{ soldDelta }}</span>
+                  </sc-if>
+                </div>
+                <div class="num" style="font-size:12px;color:var(--muted);margin-top:7px">{{ soldCount }} contratos</div>
+                <sc-if value="{{ hasDelta }}" hint-placeholder-val="{{ true }}">
+                  <div class="num" style="font-size:11.5px;color:var(--faint);margin-top:3px">{{ soldBaseline }}</div>
+                </sc-if>
+
+                <div style="display:flex;align-items:stretch;margin-top:20px;padding-top:16px;border-top:1px solid var(--rule)">
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Ticket mensal</div>
+                    <div class="num" style="font-size:19px;font-weight:600;letter-spacing:-.02em;margin-top:6px">{{ ticket }}</div>
+                    <div style="font-size:10.5px;color:var(--faint);margin-top:2px">média das vendas</div>
+                  </div>
+                  <span style="width:1px;flex:none;background:var(--rule);margin:0 16px"></span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-size:10.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted)">Desconto</div>
+                    <div class="num" style="font-size:19px;font-weight:600;letter-spacing:-.02em;margin-top:6px;color:{{ discFg }}">{{ discount }}</div>
+                    <div class="num" style="font-size:10.5px;color:var(--faint);margin-top:2px">{{ discountAbs }}</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- composição por tipo -->
+              <div style="flex:1;min-width:0;padding:20px 24px 22px">
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="font-size:13.5px;font-weight:600">De onde veio a venda</span>
+                  <div style="flex:1"></div>
+                  <span style="font-size:11.5px;color:var(--muted);white-space:nowrap">cada contrato entra em um tipo só</span>
+                </div>
+
+                <div role="img" aria-label="{{ mixLabel }}" style="display:flex;height:44px;margin-top:14px;border-radius:12px;overflow:hidden;background:var(--soft2)">
+                  <sc-for list="{{ mix }}" as="m" hint-placeholder-count="4">
+                    <div tabindex="0" title="{{ m.title }}" style="height:100%;display:flex;align-items:center;padding:0 10px;min-width:8px;width:{{ m.w }};background:{{ m.bg }};border-left:{{ m.edge }};cursor:help">
+                      <sc-if value="{{ m.showLabel }}" hint-placeholder-val="{{ true }}">
+                        <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:12px;font-weight:700;color:#fff;white-space:nowrap">{{ m.pct }}</span>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px 22px;margin-top:15px">
+                  <sc-for list="{{ mix }}" as="m" hint-placeholder-count="4">
+                    <div style="display:flex;align-items:center;gap:9px">
+                      <span style="width:9px;height:9px;flex:none;border-radius:3px;background:{{ m.bg }}"></span>
+                      <span class="tr" style="flex:1;min-width:0;font-size:13px;font-weight:{{ m.weight }};color:{{ m.fg }}">{{ m.label }}</span>
+                      <span class="num" style="flex:none;font-size:12.5px;color:var(--muted)">{{ m.n }}</span>
+                      <span class="num" style="flex:none;width:76px;text-align:right;font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:700">{{ m.value }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <sc-if value="{{ hasClawback }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex;align-items:center;gap:10px;margin-top:16px;padding:11px 13px;border-radius:12px;border:1px solid var(--border);background:var(--soft)">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--red-700)"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M12 8v4M12 16h.01"></path></svg>
+                    <span style="min-width:0;flex:1;font-size:12px;color:var(--fg2);line-height:1.45;text-wrap:pretty">{{ clawback }}</span>
+                  </div>
+                </sc-if>
+              </div>
+            </div>
+          </div>
+          </sc-if>
+
+          <sc-if value="{{ monthNoSales }}" hint-placeholder-val="{{ false }}">
+            <div style="border:1px dashed var(--border);border-radius:16px;background:var(--card);padding:34px 24px;text-align:center">
+              <div style="width:42px;height:42px;border-radius:13px;background:var(--soft2);display:grid;place-items:center;margin:0 auto 12px;color:var(--faint)">
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"></path></svg>
+              </div>
+              <div style="font-size:14px;font-weight:600">Nenhum contrato fechado neste mês</div>
+              <div style="font-size:12.5px;color:var(--muted);margin-top:5px;max-width:460px;margin-left:auto;margin-right:auto;line-height:1.55;text-wrap:pretty">{{ monthNoSalesWhy }} A carteira e o risco abaixo continuam valendo: eles olham os contratos vigentes, não as vendas do mês.</div>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- ═══ 2 · CARTEIRA HOJE ═══ -->
+        <div>
+          <div style="display:flex;align-items:baseline;gap:11px;padding-bottom:9px;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.01em">A carteira hoje</h3>
+            <span style="font-size:12.5px;color:var(--muted)">o que os contratos vigentes geram por mês</span>
+          </div>
+
+          <div style="display:flex;align-items:stretch;border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);overflow:hidden">
+            <sc-for list="{{ wallet }}" as="w" hint-placeholder-count="4">
+              <div style="flex:1;min-width:0;padding:17px 20px;border-left:1px solid {{ w.divider }}">
+                <div style="display:flex;align-items:center;gap:5px">
+                  <span class="tr" style="font-size:12px;font-weight:500;color:var(--muted)">{{ w.label }}</span>
+                  <sc-if value="{{ w.hasHelp }}" hint-placeholder-val="{{ false }}">
+                    <button type="button" aria-label="{{ w.helpLabel }}" title="{{ w.help }}" style="width:16px;height:16px;flex:none;border:0;border-radius:999px;background:transparent;color:var(--faint);display:grid;place-items:center;cursor:help" style-hover="background:var(--hover);color:var(--fg2)">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"></path></svg>
+                    </button>
+                  </sc-if>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:4px;margin-top:8px">
+                  <span class="num" style="font-size:28px;font-weight:600;letter-spacing:-.025em;line-height:1;color:{{ w.valueFg }}">{{ w.value }}</span>
+                  <sc-if value="{{ w.hasUnit }}" hint-placeholder-val="{{ false }}">
+                    <span class="num" style="font-size:13px;font-weight:600;color:var(--muted)">{{ w.unit }}</span>
+                  </sc-if>
+                </div>
+                <div class="num tr" style="font-size:11.5px;color:var(--muted);margin-top:5px">{{ w.sub }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <div style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px">
+            <sc-for list="{{ walletNotes }}" as="n" hint-placeholder-count="2">
+              <div style="flex:1;min-width:300px;display:flex;align-items:flex-start;gap:10px;padding:11px 14px;border:1px dashed var(--border);border-radius:14px;background:var(--soft)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px;color:var(--faint)"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 16v-4M12 8h.01"></path></svg>
+                <span style="min-width:0;flex:1;font-size:11.5px;color:var(--fg2);line-height:1.5;text-wrap:pretty">{{ n.text }}</span>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- ═══ 3 · EM RISCO ═══ -->
+        <div>
+          <div style="display:flex;align-items:baseline;gap:11px;padding-bottom:9px;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.01em">Quanto posso perder</h3>
+            <span style="font-size:12.5px;color:var(--muted)">o que sai da carteira se ninguém renovar</span>
+          </div>
+
+          <div style="display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:14px;align-items:start">
+
+            <!-- esteira de vencimento -->
+            <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:18px 20px 16px">
+              <div style="display:flex;align-items:flex-start;gap:14px">
+                <div style="min-width:0;flex:1">
+                  <span style="font-size:13.5px;font-weight:600">Vencendo nos próximos 90 dias</span>
+                  <div style="display:flex;align-items:baseline;gap:8px;margin-top:9px">
+                    <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--amber-700)">{{ risk90 }}</span>
+                    <span class="num" style="font-size:14px;font-weight:600;color:var(--amber-700)">/mês</span>
+                    <span class="num" style="font-size:12px;color:var(--muted)">em {{ risk90Count }} contratos</span>
+                  </div>
+                  <div class="num" style="font-size:12px;color:var(--fg2);margin-top:6px">{{ risk90Share }} da carteira</div>
+                </div>
+                <sc-if value="{{ hasBlind }}" hint-placeholder-val="{{ false }}">
+                  <div style="flex:none;width:168px;padding:11px 13px;border-radius:12px;border:1.5px dashed var(--border);background:var(--soft)">
+                    <div class="num" style="font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;letter-spacing:-.02em;line-height:1">{{ blindCount }}</div>
+                    <div style="font-size:11px;color:var(--fg2);font-weight:600;margin-top:4px">pessoas sem valor</div>
+                    <div style="font-size:10.5px;color:var(--muted);line-height:1.4;margin-top:3px">vencem no período e não entram na conta acima</div>
+                  </div>
+                </sc-if>
+              </div>
+
+              <div style="display:flex;flex-direction:column;gap:12px;margin-top:20px;padding-top:16px;border-top:1px solid var(--rule)">
+                <sc-for list="{{ horizon }}" as="h" hint-placeholder-count="3">
+                  <div>
+                    <div style="display:flex;align-items:baseline;gap:9px">
+                      <span style="font-size:12.5px;font-weight:600;white-space:nowrap">{{ h.label }}</span>
+                      <span class="num" style="font-size:11.5px;color:var(--muted)">{{ h.count }} contratos</span>
+                      <div style="flex:1"></div>
+                      <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700;color:{{ h.fg }}">{{ h.value }}</span>
+                      <span class="num" style="font-size:11px;color:var(--muted)">/mês</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:5px;height:16px;margin-top:6px">
+                      <span tabindex="0" role="img" title="{{ h.title }}" style="height:16px;border-radius:4px;width:{{ h.w }};background:{{ h.bg }};cursor:help"></span>
+                      <sc-if value="{{ h.hasBlind }}" hint-placeholder-val="{{ false }}">
+                        <span tabindex="0" role="img" title="{{ h.blindTitle }}" style="height:16px;border-radius:4px;width:{{ h.blindW }};border:1.5px dashed var(--slate);background:repeating-linear-gradient(135deg,var(--soft2) 0 4px,transparent 4px 8px);cursor:help"></span>
+                        <span class="num" style="flex:none;font-size:10.5px;color:var(--muted);white-space:nowrap">+{{ h.blindCount }} sem valor</span>
+                      </sc-if>
+                    </div>
+                  </div>
+                </sc-for>
+              </div>
+
+              <div style="display:flex;align-items:center;gap:14px;margin-top:15px;padding-top:12px;border-top:1px solid var(--rule)">
+                <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap"><span style="width:10px;height:10px;border-radius:3px;background:var(--amber)"></span>valor por mês em risco</span>
+                <sc-if value="{{ hasBlind }}" hint-placeholder-val="{{ false }}">
+                  <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap"><span style="width:10px;height:10px;border-radius:3px;border:1.5px dashed var(--slate);background:repeating-linear-gradient(135deg,var(--soft2) 0 4px,transparent 4px 8px)"></span>contrato importado sem valor</span>
+                </sc-if>
+              </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:14px">
+              <!-- já vencidos -->
+              <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px">
+                <div style="display:flex;align-items:baseline;gap:8px">
+                  <span style="font-size:13.5px;font-weight:600">Já venceu e ninguém renovou</span>
+                  <button type="button" aria-label="O que é &quot;já venceu e ninguém renovou&quot;?" title="Contratos que passaram do fim da vigência e não têm contrato sucessor. É um retrato de agora, não um número do mês." style="width:16px;height:16px;flex:none;border:0;border-radius:999px;background:transparent;color:var(--faint);display:grid;place-items:center;cursor:help" style-hover="background:var(--hover);color:var(--fg2)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01"></path></svg>
+                  </button>
+                </div>
+                <div style="display:flex;align-items:baseline;gap:8px;margin-top:9px">
+                  <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:28px;font-weight:700;letter-spacing:-.03em;line-height:1;color:var(--red-700)">{{ lapsed }}</span>
+                  <span style="font-size:12.5px;color:var(--muted)">contratos em aberto</span>
+                </div>
+                <div style="font-size:11.5px;color:var(--muted);margin-top:7px;line-height:1.5;text-wrap:pretty">Já saíram da carteira, então o valor por mês deles não aparece aqui. É a fila de recuperação.</div>
+              </div>
+
+              <!-- saídas do mês -->
+              <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px">
+                <div style="display:flex;align-items:baseline;gap:10px">
+                  <span style="font-size:13.5px;font-weight:600">Saiu neste mês</span>
+                  <div style="flex:1"></div>
+                  <span class="num" style="font-size:12px;color:var(--muted)">{{ exitTotal }}/mês</span>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+                  <sc-for list="{{ exits }}" as="e" hint-placeholder-count="2">
+                    <div>
+                      <div style="display:flex;align-items:baseline;gap:9px">
+                        <span style="font-size:12.5px;font-weight:600">{{ e.label }}</span>
+                        <span class="num" style="font-size:11.5px;color:var(--muted)">{{ e.count }} contratos</span>
+                        <div style="flex:1"></div>
+                        <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:13.5px;font-weight:700;color:{{ e.fg }}">{{ e.value }}</span>
+                        <span class="num" style="font-size:11px;color:var(--muted)">/mês</span>
+                      </div>
+                      <div style="height:12px;border-radius:4px;background:var(--soft2);overflow:hidden;display:flex;margin-top:5px">
+                        <span tabindex="0" role="img" title="{{ e.title }}" style="width:{{ e.w }};background:{{ e.bg }};border-radius:4px;cursor:help"></span>
+                      </div>
+                    </div>
+                  </sc-for>
+                </div>
+                <div style="font-size:11px;color:var(--faint);margin-top:12px;padding-top:10px;border-top:1px solid var(--rule);line-height:1.5">Trancamento é reversível e continua contando na carteira. Cancelamento sai.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ 4 · QUEM TRAZ RECEITA ═══ -->
+        <div>
+          <div style="display:flex;align-items:baseline;gap:11px;padding-bottom:9px;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700;letter-spacing:-.01em">Quem traz receita</h3>
+            <span style="font-size:12.5px;color:var(--muted)">as vendas do mês por consultor, plano e origem</span>
+          </div>
+
+          <sc-if value="{{ monthNoSales }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;align-items:center;gap:12px;padding:20px 22px;border:1px dashed var(--border);border-radius:16px;background:var(--soft)">
+              <span style="width:34px;height:34px;flex:none;border-radius:11px;display:grid;place-items:center;background:var(--soft2);color:var(--faint)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 3a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"></path></svg>
+              </span>
+              <div style="min-width:0;flex:1">
+                <div style="font-size:13px;font-weight:600">Sem vendas no mês, não há ranking</div>
+                <div style="font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:2px;text-wrap:pretty">Consultor, plano e origem descrevem as vendas do mês escolhido. Troque o mês para ver o ranking.</div>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ monthHasSales }}" hint-placeholder-val="{{ true }}">
+          <!-- consultores -->
+          <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);overflow:hidden">
+            <div style="display:flex;align-items:center;gap:10px;padding:14px 20px 12px">
+              <h4 style="margin:0;font-size:14px;font-weight:600">Quem vendeu</h4>
+              <div style="flex:1"></div>
+              <span style="font-size:11.5px;color:var(--muted);white-space:nowrap">o consultor dono do lead na hora da venda</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:14px;padding:0 20px 8px">
+              <span style="width:214px;flex:none;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Consultor</span>
+              <span style="flex:1;min-width:0;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Vendido no mês</span>
+              <span style="width:76px;flex:none;text-align:right;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Vendas</span>
+              <span style="width:104px;flex:none;text-align:right;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Ticket da venda</span>
+              <span style="width:104px;flex:none;text-align:right;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)">Ticket mensal</span>
+            </div>
+            <sc-for list="{{ sellers }}" as="s" hint-placeholder-count="4">
+              <div style="display:flex;align-items:center;gap:14px;padding:11px 20px;border-top:1px solid var(--rule)">
+                <div style="width:214px;flex:none;display:flex;align-items:center;gap:10px">
+                  <span class="num" style="width:18px;flex:none;font-size:11px;font-weight:700;color:var(--faint)">{{ s.rank }}</span>
+                  <span style="width:30px;height:30px;flex:none;border-radius:999px;display:grid;place-items:center;font-size:10.5px;font-weight:700;background:{{ s.avBg }};color:{{ s.avFg }}">{{ s.ini }}</span>
+                  <div style="min-width:0">
+                    <div class="tr" style="font-size:13px;font-weight:600">{{ s.name }}</div>
+                    <div class="tr" style="font-size:10.5px;color:var(--faint)">{{ s.role }}</div>
+                  </div>
+                </div>
+                <div style="flex:1;min-width:0;display:flex;align-items:center;gap:11px">
+                  <div style="flex:1;min-width:0;height:16px;border-radius:4px;background:var(--soft2);overflow:hidden;display:flex">
+                    <span tabindex="0" role="img" title="{{ s.title }}" style="width:{{ s.w }};background:{{ s.bar }};border-radius:4px;cursor:help"></span>
+                  </div>
+                  <span class="num" style="flex:none;width:82px;text-align:right;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;letter-spacing:-.02em">{{ s.value }}</span>
+                  <span class="num" style="flex:none;width:42px;text-align:right;font-size:11.5px;color:var(--muted)">{{ s.share }}</span>
+                </div>
+                <span class="num" style="width:76px;flex:none;text-align:right;font-size:13px;font-weight:600">{{ s.count }}</span>
+                <span class="num" style="width:104px;flex:none;text-align:right;font-size:13px;font-weight:600">{{ s.perSale }}</span>
+                <span class="num" style="width:104px;flex:none;text-align:right;font-size:13px;font-weight:600;color:{{ s.monthlyFg }}">{{ s.monthly }}</span>
+              </div>
+            </sc-for>
+            <div style="display:flex;align-items:flex-start;gap:9px;padding:13px 20px;border-top:1px solid var(--border);background:var(--soft)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px;color:var(--faint)"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 16v-4M12 8h.01"></path></svg>
+              <span style="min-width:0;flex:1;font-size:11.5px;color:var(--fg2);line-height:1.5;text-wrap:pretty">{{ sellerRead }}</span>
+            </div>
+          </div>
+
+          <!-- planos e origem -->
+          <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-top:14px">
+            <sc-for list="{{ breakdowns }}" as="b" hint-placeholder-count="2">
+              <div style="border:1px solid var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow-card);padding:16px 18px 18px">
+                <div style="display:flex;align-items:flex-start;gap:12px">
+                  <span style="width:34px;height:34px;flex:none;border-radius:11px;display:grid;place-items:center;background:var(--accent-50);color:var(--accent-700)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="{{ b.iconPath }}"></path></svg>
+                  </span>
+                  <div style="min-width:0;flex:1">
+                    <h4 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;letter-spacing:-.01em">{{ b.title }}</h4>
+                    <div style="font-size:11.5px;color:var(--muted);margin-top:2px">{{ b.sub }}</div>
+                  </div>
+                </div>
+
+                <div style="font-size:10px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;color:var(--faint);margin-top:16px">{{ b.eyebrow }}</div>
+                <div style="display:flex;align-items:center;gap:11px;margin-top:6px">
+                  <span class="num" style="flex:none;font-family:'Space Grotesk',sans-serif;font-size:30px;font-weight:700;line-height:.9;letter-spacing:-.025em;color:var(--accent-700)">{{ b.leaderValue }}</span>
+                  <div style="min-width:0">
+                    <div class="tr" style="font-family:'Space Grotesk',sans-serif;font-size:14.5px;font-weight:600;line-height:1.15">{{ b.leaderName }}</div>
+                    <div class="num" style="font-size:11.5px;color:var(--muted)">{{ b.leaderMeta }}</div>
+                  </div>
+                </div>
+
+                <div role="img" aria-label="{{ b.capsuleLabel }}" style="display:flex;height:42px;margin-top:14px;border-radius:12px;overflow:hidden;background:var(--soft2)">
+                  <sc-for list="{{ b.items }}" as="it" hint-placeholder-count="5">
+                    <div tabindex="0" title="{{ it.title }}" style="height:100%;display:flex;align-items:center;padding:0 8px;min-width:7px;width:{{ it.w }};background:{{ it.bg }};border-left:{{ it.edge }};cursor:help">
+                      <sc-if value="{{ it.showPct }}" hint-placeholder-val="{{ false }}">
+                        <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:11.5px;font-weight:700;color:#fff;white-space:nowrap">{{ it.pct }}</span>
+                      </sc-if>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <div style="display:flex;flex-direction:column;gap:8px;margin-top:14px">
+                  <sc-for list="{{ b.items }}" as="it" hint-placeholder-count="5">
+                    <div style="display:flex;align-items:center;gap:9px">
+                      <span style="width:9px;height:9px;flex:none;border-radius:999px;background:{{ it.bg }}"></span>
+                      <span class="tr" style="flex:1;min-width:0;font-size:13px;font-weight:{{ it.weight }};color:{{ it.fg }}">{{ it.label }}</span>
+                      <span class="num" style="flex:none;width:34px;text-align:right;font-size:11.5px;color:var(--muted)">{{ it.n }}</span>
+                      <span class="num" style="flex:none;width:72px;text-align:right;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700">{{ it.value }}</span>
+                      <span class="num" style="width:34px;flex:none;text-align:right;font-size:12px;color:var(--muted)">{{ it.pct }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+
+                <div style="display:flex;align-items:flex-start;gap:8px;margin-top:14px;padding-top:12px;border-top:1px solid var(--rule)">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;margin-top:2px;color:var(--faint)"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 16v-4M12 8h.01"></path></svg>
+                  <span style="min-width:0;flex:1;font-size:11.5px;color:var(--muted);line-height:1.5;text-wrap:pretty">{{ b.footnote }}</span>
+                </div>
+              </div>
+            </sc-for>
+          </div>
+          </sc-if>
+        </div>
+
+        </div>
+        </sc-if>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- ═══════════ ESTADOS ═══════════ -->
+  <div style="margin-top:38px;padding-top:26px;border-top:1px solid var(--border);max-width:1440px">
+    <h2 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:700">Estados e celular</h2>
+    <p style="margin:5px 0 22px;font-size:12.5px;color:var(--muted);max-width:940px">Academia sem contrato nenhum, e a quebra para 390px. Os outros estados (mês fechado, base importada, mês sem venda) você vê no quadro acima trocando os seletores.</p>
+
+    <div style="display:flex;align-items:flex-start;gap:20px;flex-wrap:wrap">
+
+      <div style="width:430px">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:9px">Academia sem nenhum contrato</div>
+        <div style="border:1px dashed var(--border);border-radius:16px;background:var(--card);padding:34px 26px;text-align:center">
+          <div style="width:46px;height:46px;border-radius:14px;background:var(--brand-50);display:grid;place-items:center;margin:0 auto 13px;color:var(--brand)">
+            <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6"></path></svg>
+          </div>
+          <div style="font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:700">Ainda não há contratos</div>
+          <p style="margin:7px auto 0;max-width:320px;font-size:12.5px;color:var(--muted);line-height:1.55">Esta tela ganha vida na primeira matrícula registrada. Enquanto isso, o funil de leads continua no painel CRM.</p>
+          <button style="margin-top:17px;height:38px;padding:0 17px;border-radius:12px;border:0;background:var(--brand);color:#fff;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:var(--brand-700)">Ir para o pipeline</button>
+        </div>
+        <p style="margin:10px 0 0;font-size:12px;color:var(--muted);line-height:1.55;text-wrap:pretty">Um painel só, no lugar dos quatro grupos: nem cabeçalho de seção, nem card de zeros. O CTA aponta para onde o dado nasce, em vez de deixar o gestor numa tela morta. <b>Escolha "Unidade Nova" no seletor de academia</b> para ver ao vivo — e "Maio 2026" para o caso diferente, de mês sem venda com carteira cheia.</p>
+      </div>
+
+      <div style="width:390px">
+        <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:9px">Celular · 390px</div>
+        <div style="border:1px solid var(--border);border-radius:20px;background:var(--bg);overflow:hidden;box-shadow:var(--shadow-card-lg)">
+          <div style="padding:16px 16px 13px;background:var(--card);border-bottom:1px solid var(--border)">
+            <h3 style="margin:0;font-family:'Space Grotesk',sans-serif;font-size:19px;font-weight:700;letter-spacing:-.02em">Gerencial</h3>
+            <p style="margin:4px 0 0;font-size:11.5px;color:var(--muted);line-height:1.45">1 a 17 de setembro contra os 17 primeiros dias de agosto</p>
+            <div style="display:flex;align-items:center;gap:2px;padding:3px;border-radius:12px;border:1px solid var(--border);margin-top:12px">
+              <span style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--muted)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"></path></svg></span>
+              <span class="num" style="flex:1;text-align:center;font-size:13px;font-weight:600">Setembro 2026</span>
+              <span style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:var(--faint)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"></path></svg></span>
+            </div>
+            <div style="display:flex;align-items:center;gap:7px;margin-top:8px;padding:8px 10px;border-radius:10px;background:var(--amber-t)">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex:none;color:var(--amber-700)"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zM12 16v-4M12 8h.01"></path></svg>
+              <span style="font-size:11px;font-weight:600;color:var(--amber-700);line-height:1.35">Valor de contrato vendido, não caixa recebido</span>
+            </div>
+          </div>
+
+          <div style="padding:14px 16px;display:flex;flex-direction:column;gap:12px">
+            <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:14px">
+              <div style="font-size:11.5px;font-weight:500;color:var(--muted)">Vendido no mês</div>
+              <div style="display:flex;align-items:flex-end;gap:8px;margin-top:7px">
+                <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:32px;font-weight:700;letter-spacing:-.03em;line-height:.95">R$ 78.400</span>
+                <span class="num" style="display:inline-flex;align-items:center;gap:3px;height:20px;padding:0 6px;border-radius:6px;font-size:11px;font-weight:600;background:var(--green-t);color:var(--green-700);margin-bottom:4px">▲ 9%</span>
+              </div>
+              <div class="num" style="font-size:11.5px;color:var(--muted);margin-top:6px">42 contratos · ticket R$ 214/mês</div>
+              <div style="display:flex;height:34px;margin-top:12px;border-radius:10px;overflow:hidden">
+                <span style="width:44%;background:var(--brand)"></span>
+                <span style="width:38%;background:var(--green);border-left:2px solid var(--card)"></span>
+                <span style="width:13%;background:var(--violet);border-left:2px solid var(--card)"></span>
+                <span style="width:5%;background:var(--slate);border-left:2px solid var(--card)"></span>
+              </div>
+              <div style="display:flex;flex-wrap:wrap;gap:7px 13px;margin-top:10px">
+                <span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:3px;background:var(--brand)"></span><span class="num" style="font-size:11px;color:var(--fg2)">Nova 21 · R$ 34,7 mil</span></span>
+                <span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:3px;background:var(--green)"></span><span class="num" style="font-size:11px;color:var(--fg2)">Renov. 14 · R$ 29,8 mil</span></span>
+                <span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:3px;background:var(--violet)"></span><span class="num" style="font-size:11px;color:var(--fg2)">Upgrade 5 · R$ 10,4 mil</span></span>
+                <span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="width:8px;height:8px;border-radius:3px;background:var(--slate)"></span><span class="num" style="font-size:11px;color:var(--fg2)">Retorno 2 · R$ 3,5 mil</span></span>
+              </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+              <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:12px 13px">
+                <div class="tr" style="font-size:11px;font-weight:500;color:var(--muted)">Carteira hoje</div>
+                <div style="display:flex;align-items:baseline;gap:3px;margin-top:6px">
+                  <span class="num" style="font-size:21px;font-weight:600;letter-spacing:-.025em;line-height:1">R$ 134,2 mil</span>
+                </div>
+                <div class="num" style="font-size:10.5px;color:var(--muted);margin-top:4px">por mês · 628 contratos</div>
+              </div>
+              <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:12px 13px">
+                <div class="tr" style="font-size:11px;font-weight:500;color:var(--muted)">Em risco · 90 dias</div>
+                <div style="display:flex;align-items:baseline;gap:3px;margin-top:6px">
+                  <span class="num" style="font-size:21px;font-weight:600;letter-spacing:-.025em;line-height:1;color:var(--amber-700)">R$ 34,3 mil</span>
+                </div>
+                <div class="num" style="font-size:10.5px;color:var(--muted);margin-top:4px">por mês · 26% da carteira</div>
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:14px">
+              <div style="font-size:12.5px;font-weight:600;margin-bottom:12px">Vencendo nos próximos 90 dias</div>
+              <div style="display:flex;flex-direction:column;gap:11px">
+                <div>
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font-size:12px;font-weight:600">Em 30 dias</span>
+                    <div style="flex:1"></div>
+                    <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:var(--amber-700)">R$ 13.100</span>
+                    <span class="num" style="font-size:10.5px;color:var(--muted)">/mês</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:5px;margin-top:5px">
+                    <span style="height:14px;border-radius:4px;width:74%;background:var(--amber)"></span>
+                    <span style="height:14px;border-radius:4px;width:14%;border:1.5px dashed var(--slate);background:repeating-linear-gradient(135deg,var(--soft2) 0 4px,transparent 4px 8px)"></span>
+                  </div>
+                  <div class="num" style="font-size:10px;color:var(--muted);margin-top:3px">63 contratos · +41 sem valor</div>
+                </div>
+                <div>
+                  <div style="display:flex;align-items:baseline;gap:8px">
+                    <span style="font-size:12px;font-weight:600">Em 60 dias</span>
+                    <div style="flex:1"></div>
+                    <span class="num" style="font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:700;color:var(--amber-700)">R$ 9.800</span>
+                    <span class="num" style="font-size:10.5px;color:var(--muted)">/mês</span>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:5px;margin-top:5px">
+                    <span style="height:14px;border-radius:4px;width:56%;background:var(--amber)"></span>
+                    <span style="height:14px;border-radius:4px;width:12%;border:1.5px dashed var(--slate);background:repeating-linear-gradient(135deg,var(--soft2) 0 4px,transparent 4px 8px)"></span>
+                  </div>
+                  <div class="num" style="font-size:10px;color:var(--muted);margin-top:3px">48 contratos · +35 sem valor</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="border:1px solid var(--border);border-radius:14px;background:var(--card);box-shadow:var(--shadow-card);padding:14px">
+              <div style="font-size:12.5px;font-weight:600;margin-bottom:11px">Quem vendeu</div>
+              <div style="display:flex;flex-direction:column;gap:10px">
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="width:28px;height:28px;flex:none;border-radius:999px;display:grid;place-items:center;font-size:10px;font-weight:700;background:var(--brand-50);color:var(--brand-700)">AR</span>
+                  <div style="min-width:0;flex:1">
+                    <div class="tr" style="font-size:12.5px;font-weight:600">Ana Ribeiro</div>
+                    <div class="num" style="font-size:10.5px;color:var(--muted)">16 vendas · R$ 1.950 por venda</div>
+                  </div>
+                  <span class="num" style="flex:none;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700">R$ 31,2 mil</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="width:28px;height:28px;flex:none;border-radius:999px;display:grid;place-items:center;font-size:10px;font-weight:700;background:var(--brand-50);color:var(--brand-700)">DS</span>
+                  <div style="min-width:0;flex:1">
+                    <div class="tr" style="font-size:12.5px;font-weight:600">Diego Santos</div>
+                    <div class="num" style="font-size:10.5px;color:var(--muted)">13 vendas · R$ 1.908 por venda</div>
+                  </div>
+                  <span class="num" style="flex:none;font-family:'Space Grotesk',sans-serif;font-size:14px;font-weight:700">R$ 24,8 mil</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p style="margin:10px 0 0;font-size:12px;color:var(--muted);line-height:1.55;text-wrap:pretty">Abaixo de 768px: uma coluna. O herói da venda mantém número, delta e a cápsula de tipos. Carteira e risco viram dois cartões pareados, porque juntos respondem "tenho X, posso perder Y". As barras de risco ficam; o que sai é a coluna de ticket mensal das tabelas, que vai para a linha de apoio.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- notas de design -->
+  <div style="margin-top:36px;padding-top:24px;border-top:1px solid var(--border);display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:26px;max-width:1440px">
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Duas moedas, nunca somadas</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">O maior risco desta tela não é gráfico, é unidade. "Vendido" é valor de contrato inteiro, uma vez; "carteira" e "risco" são valor por mês. São grandezas diferentes e alguém vai tentar somar. Por isso <b>o sufixo /mês nunca se separa do número</b>, e os dois grupos moram em blocos distintos com título próprio.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">O aviso não é nota de pé</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">"Não é caixa recebido" fica na <b>barra fixa</b>, ao lado dos controles, e acompanha a rolagem. Nota de pé de página é onde avisos vão para morrer. O número grande desta tela é dinheiro vendido, e quem olha precisa ler isso no mesmo movimento do olho.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Sem valor é trilha tracejada</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">Os 494 importados não podem entrar na soma nem desaparecer. Solução: uma <b>trilha hachurada anexa</b> à barra de risco, com contagem de pessoas e sem eixo de dinheiro, mais o cartão "N pessoas sem valor". A forma diz o que a cor não diria: isso é gente que vence, e o dinheiro ainda vai ser preenchido.</p>
+    </div>
+    <div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:6px">Ticket é a coluna que revela</div>
+      <p style="margin:0;font-size:12px;color:var(--muted);line-height:1.6;text-wrap:pretty">No ranking de consultores, o total premia quem atende mais. As duas colunas de ticket mostram <b>quem vende melhor</b>: o Marcos fecha 4 contratos com ticket mensal de R$ 125 contra R$ 232 da Ana. A barra ordena por total, mas a leitura no rodapé aponta a diferença de ticket.</p>
+    </div>
+  </div>
+
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1530,&quot;height&quot;:1400}}">
+const ICON = {
+  tag: 'M12 2H2v10l9.3 9.3a2 2 0 0 0 2.8 0l7.6-7.6a2 2 0 0 0 0-2.8zM7 7h.01',
+  route: 'M9 6a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM21 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM6 9v3a3 3 0 0 0 3 3h6a3 3 0 0 1 3 3',
+};
+
+// Um mês por chave. Contratos existem no sistema desde 06/2026, então não há
+// comparação com o ano passado e a tendência tem poucos pontos.
+const MONTHS = {
+  mai: { label: 'Maio 2026', short: 'maio', order: -1, running: false, range: 'maio inteiro' },
+  jun: { label: 'Junho 2026', short: 'junho', order: 0, running: false, range: 'junho inteiro' },
+  jul: { label: 'Julho 2026', short: 'julho', order: 1, running: false, range: 'julho inteiro' },
+  ago: { label: 'Agosto 2026', short: 'agosto', order: 2, running: false, range: 'agosto inteiro' },
+  set: { label: 'Setembro 2026', short: 'setembro', order: 3, running: true, range: '1 a 17 de setembro', elapsed: 17 },
+};
+const ORDER = ['mai', 'jun', 'jul', 'ago', 'set'];
+// Contratos existem no sistema desde 06/2026. Maio não tem venda por isso.
+const FIRST_MONTH = 'jun';
+
+// Vendas por mês. `mix` soma o total; `sellers` soma o total e a contagem.
+const SALES = {
+  mai: {
+    sold: 0, count: 0, ticket: 0, discPct: 0, discAbs: 0, prorata: null,
+    mix: [], clawCount: 0, clawValue: 0, sellers: [], plans: [], sources: [],
+  },
+  jun: {
+    sold: 54200, count: 29, ticket: 198, discPct: 11, discAbs: 6700,
+    prorata: null,
+    mix: [
+      { key: 'nova', label: 'Matrícula nova', n: 18, v: 31600 },
+      { key: 'renov', label: 'Renovação', n: 6, v: 13900 },
+      { key: 'upgrade', label: 'Upgrade', n: 3, v: 6200 },
+      { key: 'retorno', label: 'Retorno de ex-cliente', n: 2, v: 2500 },
+    ],
+    clawCount: 3, clawValue: 4200,
+    sellers: [
+      { key: 'ana', v: 20100, n: 11 },
+      { key: 'diego', v: 16800, n: 9 },
+      { key: 'larissa', v: 12100, n: 6 },
+      { key: 'marcos', v: 5200, n: 3 },
+    ],
+    plans: [
+      { label: 'Anual Musculação', n: 7, v: 17800 },
+      { label: 'Semestral Musculação', n: 6, v: 11400 },
+      { label: 'Musculação + Pilates', n: 4, v: 10600 },
+      { label: 'Trimestral Musculação', n: 6, v: 8600 },
+      { label: 'Mensal', n: 6, v: 5800 },
+    ],
+    sources: [
+      { label: 'Instagram', n: 11, v: 20400 },
+      { label: 'Indicação', n: 8, v: 14700 },
+      { label: 'Passante', n: 6, v: 11200 },
+      { label: 'Site', n: 3, v: 5600 },
+      { label: 'Outros', n: 1, v: 2300 },
+    ],
+  },
+  jul: {
+    sold: 119800, count: 66, ticket: 203, discPct: 10, discAbs: 13600,
+    prorata: null,
+    mix: [
+      { key: 'nova', label: 'Matrícula nova', n: 34, v: 55100 },
+      { key: 'renov', label: 'Renovação', n: 22, v: 44200 },
+      { key: 'upgrade', label: 'Upgrade', n: 7, v: 15300 },
+      { key: 'retorno', label: 'Retorno de ex-cliente', n: 3, v: 5200 },
+    ],
+    clawCount: 4, clawValue: 6100,
+    sellers: [
+      { key: 'ana', v: 44300, n: 24 },
+      { key: 'diego', v: 36900, n: 20 },
+      { key: 'larissa', v: 27200, n: 15 },
+      { key: 'marcos', v: 11400, n: 7 },
+    ],
+    plans: [
+      { label: 'Anual Musculação', n: 17, v: 40200 },
+      { label: 'Semestral Musculação', n: 15, v: 27600 },
+      { label: 'Musculação + Pilates', n: 9, v: 23100 },
+      { label: 'Trimestral Musculação', n: 13, v: 17300 },
+      { label: 'Mensal', n: 12, v: 11600 },
+    ],
+    sources: [
+      { label: 'Instagram', n: 24, v: 44600 },
+      { label: 'Indicação', n: 17, v: 32100 },
+      { label: 'Passante', n: 13, v: 24300 },
+      { label: 'Site', n: 8, v: 13200 },
+      { label: 'Outros', n: 4, v: 5600 },
+    ],
+  },
+  ago: {
+    sold: 128400, count: 71, ticket: 208, discPct: 9, discAbs: 12700,
+    // No mês em andamento a comparação é pró-rata: os mesmos dias do outro mês.
+    prorata: { 17: { sold: 71900, count: 39, ticket: 206, discPct: 9 } },
+    mix: [
+      { key: 'nova', label: 'Matrícula nova', n: 35, v: 57200 },
+      { key: 'renov', label: 'Renovação', n: 25, v: 49800 },
+      { key: 'upgrade', label: 'Upgrade', n: 8, v: 16900 },
+      { key: 'retorno', label: 'Retorno de ex-cliente', n: 3, v: 4500 },
+    ],
+    clawCount: 3, clawValue: 4800,
+    sellers: [
+      { key: 'ana', v: 47600, n: 26 },
+      { key: 'diego', v: 39100, n: 21 },
+      { key: 'larissa', v: 29300, n: 16 },
+      { key: 'marcos', v: 12400, n: 8 },
+    ],
+    plans: [
+      { label: 'Anual Musculação', n: 18, v: 43100 },
+      { label: 'Semestral Musculação', n: 16, v: 29800 },
+      { label: 'Musculação + Pilates', n: 10, v: 24600 },
+      { label: 'Trimestral Musculação', n: 14, v: 18400 },
+      { label: 'Mensal', n: 13, v: 12500 },
+    ],
+    sources: [
+      { label: 'Instagram', n: 26, v: 47900 },
+      { label: 'Indicação', n: 18, v: 34600 },
+      { label: 'Passante', n: 14, v: 25800 },
+      { label: 'Site', n: 9, v: 14300 },
+      { label: 'Outros', n: 4, v: 5800 },
+    ],
+  },
+  set: {
+    sold: 78400, count: 42, ticket: 214, discPct: 8, discAbs: 6800,
+    prorata: null,
+    mix: [
+      { key: 'nova', label: 'Matrícula nova', n: 21, v: 34700 },
+      { key: 'renov', label: 'Renovação', n: 14, v: 29800 },
+      { key: 'upgrade', label: 'Upgrade', n: 5, v: 10400 },
+      { key: 'retorno', label: 'Retorno de ex-cliente', n: 2, v: 3500 },
+    ],
+    clawCount: 2, clawValue: 3100,
+    sellers: [
+      { key: 'ana', v: 31200, n: 16 },
+      { key: 'diego', v: 24800, n: 13 },
+      { key: 'larissa', v: 16400, n: 9 },
+      { key: 'marcos', v: 6000, n: 4 },
+    ],
+    plans: [
+      { label: 'Anual Musculação', n: 11, v: 26400 },
+      { label: 'Semestral Musculação', n: 9, v: 17100 },
+      { label: 'Musculação + Pilates', n: 6, v: 16200 },
+      { label: 'Trimestral Musculação', n: 8, v: 11200 },
+      { label: 'Mensal', n: 8, v: 7500 },
+    ],
+    sources: [
+      { label: 'Instagram', n: 14, v: 29600 },
+      { label: 'Indicação', n: 10, v: 21300 },
+      { label: 'Passante', n: 8, v: 15900 },
+      { label: 'Site', n: 6, v: 8100 },
+      { label: 'Outros', n: 4, v: 3500 },
+    ],
+  },
+};
+
+const PEOPLE = {
+  ana: { name: 'Ana Ribeiro', ini: 'AR', role: 'Consultora' },
+  diego: { name: 'Diego Santos', ini: 'DS', role: 'Consultor' },
+  larissa: { name: 'Larissa Moura', ini: 'LM', role: 'Consultora' },
+  marcos: { name: 'Marcos Lima', ini: 'ML', role: 'Gestor · também vende' },
+};
+
+// Duração média do plano vendido por consultor, para o ticket mensal.
+const AVG_MONTHS = { ana: 8.4, diego: 7.9, larissa: 7.1, marcos: 12 };
+
+// Estado da base por academia. `blind` = contratos importados sem valor.
+const GYMS = {
+  a: {
+    label: 'Unidade Centro', hasSales: true,
+    wallet: { count: 628, monthly: 134200, ticket: 214, lockedCount: 19, lockedMonthly: 4100, overlap: 6 },
+    blindTotal: 0,
+    horizon: [
+      { label: 'Em 30 dias', count: 63, v: 13100, blind: 0 },
+      { label: 'Em 60 dias', count: 48, v: 9800, blind: 0 },
+      { label: 'Em 90 dias', count: 57, v: 11400, blind: 0 },
+    ],
+    lapsed: 29,
+    exits: [
+      { label: 'Cancelamentos', count: 7, v: 1480, tone: 'red' },
+      { label: 'Trancamentos', count: 4, v: 820, tone: 'amber' },
+    ],
+  },
+  b: {
+    label: 'Unidade Moinhos', hasSales: true,
+    wallet: { count: 1122, monthly: 134200, ticket: 214, lockedCount: 19, lockedMonthly: 4100, overlap: 6, blind: 494 },
+    blindTotal: 494,
+    horizon: [
+      { label: 'Em 30 dias', count: 63, v: 13100, blind: 41 },
+      { label: 'Em 60 dias', count: 48, v: 9800, blind: 35 },
+      { label: 'Em 90 dias', count: 57, v: 11400, blind: 38 },
+    ],
+    lapsed: 29,
+    exits: [
+      { label: 'Cancelamentos', count: 7, v: 1480, tone: 'red' },
+      { label: 'Trancamentos', count: 4, v: 820, tone: 'amber' },
+    ],
+  },
+  c: { label: 'Unidade Nova', hasSales: false, empty: true },
+};
+
+const MIX_TONE = {
+  nova: 'var(--brand)',
+  renov: 'var(--green)',
+  upgrade: 'var(--violet)',
+  retorno: 'var(--slate)',
+};
+
+const brl = (n) => 'R$ ' + Number(n).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+const brlShort = (n) => n >= 1000
+  ? 'R$ ' + (n / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' mil'
+  : 'R$ ' + n;
+const br = (n) => Number(n).toLocaleString('pt-BR');
+
+class Component extends DCLogic {
+  state = { theme: 'light', month: 'set', compare: null, compareOn: true, gym: 'a' };
+
+  componentDidMount() { this.applyTheme(); }
+  componentDidUpdate() { this.applyTheme(); }
+  applyTheme() {
+    const t = this.state.theme === 'dark' ? 'dark' : 'light';
+    if (document.documentElement.dataset.theme !== t) document.documentElement.dataset.theme = t;
+  }
+
+  step(dir) {
+    const i = ORDER.indexOf(this.state.month) + dir;
+    if (i < 0 || i >= ORDER.length) return;
+    this.setState({ month: ORDER[i], compare: null });
+  }
+
+  renderVals() {
+    const s = this.state;
+    const dark = s.theme === 'dark';
+    const M = MONTHS[s.month];
+    const G = GYMS[s.gym];
+    const gymEmpty = Boolean(G.empty);
+    const cmpOn = s.compareOn;
+
+    // A base padrão é o mês anterior COM venda: maio nunca serve de comparativo.
+    const iCur = ORDER.indexOf(s.month);
+    let autoKey = null;
+    for (let i = iCur - 1; i >= 0; i--) {
+      if (SALES[ORDER[i]] && SALES[ORDER[i]].count > 0) { autoKey = ORDER[i]; break; }
+    }
+    const cmpKey = s.compare || autoKey;
+    const cmpOptions = gymEmpty ? [] : ORDER
+      .filter(k => MONTHS[k].order < M.order && SALES[k] && SALES[k].count > 0)
+      .slice().reverse()
+      .map(k => ({ key: k, label: MONTHS[k].label }));
+    const CMP = cmpKey ? MONTHS[cmpKey] : null;
+
+    const cur = gymEmpty ? null : SALES[s.month];
+    // Academia sem contrato nenhum ≠ mês sem venda. O primeiro troca o corpo
+    // inteiro; o segundo esvazia só os blocos que descrevem a venda do mês.
+    const monthNoSales = !gymEmpty && Boolean(cur) && cur.count === 0;
+    const monthHasSales = !gymEmpty && Boolean(cur) && cur.count > 0;
+    // Pró-rata: no mês em andamento o comparado usa os mesmos dias.
+    const baseSales = (monthHasSales && cmpKey && SALES[cmpKey] && SALES[cmpKey].count > 0)
+      ? (M.running && SALES[cmpKey].prorata && SALES[cmpKey].prorata[M.elapsed]
+          ? SALES[cmpKey].prorata[M.elapsed]
+          : SALES[cmpKey])
+      : null;
+
+    const pct = (v, t) => (t > 0 ? Math.round((v / t) * 100) : 0);
+    const deltaPct = (v, b) => (b > 0 ? Math.round(((v - b) / b) * 100) : 0);
+
+    const soldD = (cur && baseSales) ? deltaPct(cur.sold, baseSales.sold) : 0;
+    const soldUp = soldD >= 0;
+
+    // ── mix por tipo de venda
+    const mixTotal = monthHasSales ? cur.mix.reduce((a, b) => a + b.v, 0) : 1;
+    const mix = monthHasSales ? cur.mix.map((m, i) => {
+      const p = pct(m.v, mixTotal);
+      return {
+        label: m.label,
+        n: br(m.n) + (m.n === 1 ? ' venda' : ' vendas'),
+        value: brlShort(m.v),
+        pct: p + '%',
+        w: p + '%',
+        bg: MIX_TONE[m.key],
+        edge: i === 0 ? '0' : '2px solid var(--card)',
+        weight: i === 0 ? '600' : '400',
+        fg: i === 0 ? 'var(--fg)' : 'var(--fg2)',
+        showLabel: p >= 12,
+        title: m.label + ': ' + br(m.n) + ' contratos · ' + brl(m.v) + ' · ' + p + '% do vendido',
+      };
+    }) : [];
+
+    // ── carteira: contrato, não pessoa
+    const W = G.wallet || {};
+    const wallet = gymEmpty ? [] : [
+      {
+        label: 'Contratos vigentes',
+        value: br(W.count), hasUnit: false, unit: '',
+        sub: G.blindTotal ? br(G.blindTotal) + ' deles importados sem valor' : 'inclui os ' + br(W.lockedCount) + ' trancados',
+        valueFg: 'var(--fg)',
+        hasHelp: true,
+        helpLabel: 'O que é "contratos vigentes"?',
+        help: 'Contratos com vigência em curso hoje. A carteira soma contrato, não pessoa: quem tem dois contratos vigentes conta duas vezes.',
+      },
+      {
+        label: 'Valor por mês',
+        value: brl(W.monthly), hasUnit: true, unit: '/mês',
+        sub: 'soma dos tickets mensais vigentes',
+        valueFg: 'var(--fg)',
+        hasHelp: true,
+        helpLabel: 'O que é "valor por mês"?',
+        help: 'Soma do ticket mensal de cada contrato vigente. Não é caixa recebido nem previsão de recebimento: é o que os contratos valem por mês.',
+      },
+      {
+        label: 'Ticket mensal médio',
+        value: brl(W.ticket), hasUnit: true, unit: '/mês',
+        sub: 'valor por mês ÷ contratos com valor',
+        valueFg: 'var(--fg)',
+        hasHelp: false, helpLabel: '', help: '',
+      },
+      {
+        label: 'Trancados',
+        value: br(W.lockedCount), hasUnit: false, unit: '',
+        sub: brl(W.lockedMonthly) + '/mês · contam na carteira',
+        valueFg: 'var(--amber-700)',
+        hasHelp: true,
+        helpLabel: 'O que é "trancados"?',
+        help: 'Contrato trancado segue vigente e continua na carteira, porque volta a valer quando o cliente destranca. A contagem fica à parte para não parecer receita ativa.',
+      },
+    ];
+
+    const walletNotes = gymEmpty ? [] : [
+      { text: 'A carteira soma contrato, não pessoa: ' + br(W.overlap) + ' pessoas têm dois contratos vigentes ao mesmo tempo, então o número de contratos é maior que o de gente.' },
+    ].concat(G.blindTotal ? [
+      { text: br(G.blindTotal) + ' contratos vieram de um sistema antigo sem o valor. Entram na contagem de contratos e no risco, e nunca somam no valor por mês. Preencher o valor deles em Contratos corrige a carteira.' },
+    ] : []);
+
+    // ── risco: esteira de vencimento
+    const H = G.horizon || [];
+    const riskV = H.reduce((a, b) => a + b.v, 0);
+    const riskC = H.reduce((a, b) => a + b.count, 0);
+    const blindH = H.reduce((a, b) => a + (b.blind || 0), 0);
+    const hMax = Math.max.apply(null, H.map(h => h.v).concat([1]));
+    const blindMax = Math.max.apply(null, H.map(h => h.blind || 0).concat([1]));
+
+    const horizon = H.map(h => ({
+      label: h.label,
+      count: br(h.count),
+      value: brl(h.v),
+      fg: 'var(--amber-700)',
+      w: Math.max(Math.round((h.v / hMax) * 74), 4) + '%',
+      bg: 'var(--amber)',
+      title: h.label + ': ' + br(h.count) + ' contratos valendo ' + brl(h.v) + ' por mês',
+      hasBlind: (h.blind || 0) > 0,
+      blindW: Math.max(Math.round(((h.blind || 0) / blindMax) * 16), 4) + '%',
+      blindCount: br(h.blind || 0),
+      blindTitle: h.label + ': mais ' + br(h.blind || 0) + ' contratos importados sem valor. Contam como pessoas que vencem, não entram no valor por mês.',
+    }));
+
+    const exitMax = Math.max.apply(null, (G.exits || []).map(e => e.v).concat([1]));
+    const exits = (G.exits || []).map(e => ({
+      label: e.label,
+      count: br(e.count),
+      value: brl(e.v),
+      fg: e.tone === 'red' ? 'var(--red-700)' : 'var(--amber-700)',
+      bg: e.tone === 'red' ? 'var(--red)' : 'var(--amber)',
+      w: Math.max(Math.round((e.v / exitMax) * 100), 4) + '%',
+      title: e.label + ': ' + br(e.count) + ' contratos, ' + brl(e.v) + ' por mês',
+    }));
+
+    // ── quem vendeu: o ticket é a coluna que revela
+    const sellerMax = monthHasSales ? Math.max.apply(null, cur.sellers.map(x => x.v).concat([1])) : 1;
+    const sellers = monthHasSales ? cur.sellers.map((x, i) => {
+      const p = PEOPLE[x.key];
+      const monthly = Math.round(x.v / x.n / AVG_MONTHS[x.key]);
+      return {
+        rank: String(i + 1),
+        name: p.name, ini: p.ini, role: p.role,
+        avBg: 'var(--brand-50)', avFg: 'var(--brand-700)',
+        value: brlShort(x.v),
+        share: pct(x.v, cur.sold) + '%',
+        count: br(x.n),
+        perSale: brl(Math.round(x.v / x.n)),
+        monthly: brl(monthly) + '/mês',
+        monthlyFg: i === 0 ? 'var(--fg)' : 'var(--fg2)',
+        w: Math.max(Math.round((x.v / sellerMax) * 100), 3) + '%',
+        bar: i === 0 ? 'var(--brand)' : 'var(--brand-200)',
+        title: p.name + ': ' + brl(x.v) + ' em ' + br(x.n) + ' vendas · ' + pct(x.v, cur.sold) + '% do vendido no mês',
+      };
+    }) : [];
+
+    let sellerRead = '';
+    if (monthHasSales) {
+      const byMonthly = cur.sellers.map(x => ({
+        key: x.key,
+        m: Math.round(x.v / x.n / AVG_MONTHS[x.key]),
+      })).sort((a, b) => b.m - a.m);
+      const top = byMonthly[0], low = byMonthly[byMonthly.length - 1];
+      sellerRead = 'O total premia quem atende mais. No ticket mensal, '
+        + PEOPLE[top.key].name.split(' ')[0] + ' fecha a ' + brl(top.m)
+        + ' por mês de contrato e ' + PEOPLE[low.key].name.split(' ')[0] + ' a ' + brl(low.m)
+        + '. Quem vende plano longo aparece menos no total e mais aqui.';
+    }
+
+    // ── planos e origem
+    const makeBreak = (rows, o) => {
+      const total = rows.reduce((a, b) => a + b.v, 0);
+      const PAL = dark
+        ? ['var(--accent)', 'var(--brand-500)', '#94a3b8', '#475569', 'var(--green)']
+        : ['var(--accent)', 'var(--brand)', '#0E1A40', '#94a3b8', 'var(--green)'];
+      const items = rows.map((r, i) => {
+        const p = pct(r.v, total);
+        return {
+          label: r.label,
+          n: br(r.n) + 'x',
+          value: brlShort(r.v),
+          pct: p + '%',
+          w: p + '%',
+          bg: PAL[i % PAL.length],
+          edge: i === 0 ? '0' : '2px solid var(--card)',
+          weight: i === 0 ? '600' : '400',
+          fg: i === 0 ? 'var(--fg)' : 'var(--fg2)',
+          showPct: p >= 18,
+          title: r.label + ': ' + brl(r.v) + ' em ' + br(r.n) + ' vendas · ' + p + '% do vendido',
+        };
+      });
+      const lead = rows[0];
+      return {
+        title: o.title, sub: o.sub, eyebrow: o.eyebrow,
+        iconPath: o.iconPath,
+        leaderValue: brlShort(lead.v),
+        leaderName: lead.label,
+        leaderMeta: br(lead.n) + ' vendas · ' + pct(lead.v, total) + '% do vendido',
+        capsuleLabel: 'Participação: ' + items.map(x => x.label + ' ' + x.pct).join(', '),
+        items,
+        footnote: o.footnote,
+      };
+    };
+
+    const breakdowns = monthHasSales ? [
+      makeBreak(cur.plans, {
+        title: 'Planos mais vendidos',
+        sub: 'por valor vendido no mês',
+        eyebrow: 'Plano que mais trouxe',
+        iconPath: ICON.tag,
+        footnote: 'Combinação de modalidades é um grupo próprio, não a soma das partes: "Musculação + Pilates" não entra em nenhum dos dois isolados.',
+      }),
+      makeBreak(cur.sources, {
+        title: 'Origem do lead que fechou',
+        sub: 'por valor vendido no mês',
+        eyebrow: 'Canal que mais trouxe',
+        iconPath: ICON.route,
+        footnote: 'É a origem do lead que virou contrato, não o volume de leads do canal. Quanto cada canal gera em leads fica no painel CRM.',
+      }),
+    ] : [];
+
+    return {
+      subline: gymEmpty
+        ? 'Nenhum contrato registrado nesta unidade.'
+        : (cmpOn && CMP && baseSales
+            ? (M.running
+                ? M.range + ' comparado com os ' + M.elapsed + ' primeiros dias de ' + CMP.short + '. O mês está em andamento, então a comparação é pró-rata.'
+                : M.range + ' comparado com ' + CMP.short + '. Mês fechado.')
+            : (M.running
+                ? M.range + '. O mês está em andamento e ainda vai receber vendas.'
+                : M.range + '. Mês fechado.')),
+
+      month: s.month,
+      setMonth: (e) => this.setState({ month: e.target.value, compare: null }),
+      monthOptions: ORDER.slice().reverse().map(k => ({
+        key: k, label: MONTHS[k].label + (MONTHS[k].running ? ' · em andamento' : ''),
+      })),
+      prevMonth: () => this.step(-1),
+      nextMonth: () => this.step(1),
+      atLatest: s.month === ORDER[ORDER.length - 1],
+      nextOpacity: s.month === ORDER[ORDER.length - 1] ? '.35' : '1',
+
+      // Sem mês anterior com venda não há o que comparar: o controle sai e o
+      // motivo entra no lugar. É o histórico curto aparecendo na interface.
+      canCompare: !gymEmpty && cmpOptions.length > 0,
+      cannotCompare: !gymEmpty && cmpOptions.length === 0,
+      cannotCompareWhy: 'Não há mês anterior com venda para comparar',
+      compareOn: cmpOn,
+      toggleCompare: () => this.setState(x => ({ compareOn: !x.compareOn })),
+      compareKey: cmpKey || '',
+      setCompare: (e) => this.setState({ compare: e.target.value }),
+      compareOptions: cmpOptions,
+      cmpEdge: cmpOn ? 'var(--brand)' : 'var(--border)',
+      cmpBg: cmpOn ? 'var(--brand-50)' : 'var(--card)',
+      cmpFg: cmpOn ? 'var(--brand-700)' : 'var(--fg2)',
+      boxEdge: cmpOn ? 'var(--brand)' : 'var(--border)',
+      boxBg: cmpOn ? 'var(--brand)' : 'transparent',
+
+      gym: s.gym,
+      setGym: (e) => this.setState({ gym: e.target.value }),
+
+      gymEmpty,
+      gymHasData: !gymEmpty,
+      monthNoSales,
+      monthHasSales,
+      monthNoSalesWhy: MONTHS[s.month].order < MONTHS[FIRST_MONTH].order
+        ? 'Os contratos existem no sistema desde junho de 2026, então este mês não tem venda registrada.'
+        : 'Nenhum contrato foi fechado no período.',
+
+      sold: monthHasSales ? brl(cur.sold) : 'R$ 0',
+      soldCount: monthHasSales ? br(cur.count) : '0',
+      hasDelta: cmpOn && Boolean(baseSales),
+      soldDelta: Math.abs(soldD) + '%',
+      soldDeltaArrow: soldUp ? '▲' : '▼',
+      soldDeltaBg: soldUp ? 'var(--green-t)' : 'var(--red-t)',
+      soldDeltaFg: soldUp ? 'var(--green-700)' : 'var(--red-700)',
+      soldBaseline: baseSales && CMP
+        ? brl(baseSales.sold) + ' em ' + br(baseSales.count) + ' contratos'
+          + (M.running ? ' nos mesmos dias de ' + CMP.short : ' em ' + CMP.short)
+        : '',
+      ticket: monthHasSales ? brl(cur.ticket) + '/mês' : '—',
+      discount: monthHasSales ? cur.discPct + '%' : '—',
+      discountAbs: monthHasSales ? brl(cur.discAbs) + ' abaixo da tabela' : '',
+      discFg: monthHasSales && cur.discPct >= 12 ? 'var(--amber-700)' : 'var(--fg)',
+
+      mix,
+      mixLabel: monthHasSales ? 'Tipos de venda: ' + mix.map(m => m.label + ' ' + m.pct).join(', ') : '',
+      hasClawback: Boolean(monthHasSales && cur.clawCount),
+      clawback: monthHasSales
+        ? br(cur.clawCount) + (cur.clawCount === 1 ? ' venda deste mês já foi cancelada' : ' vendas deste mês já foram canceladas')
+          + ', somando ' + brl(cur.clawValue) + '. O valor continua no total do mês, porque o contrato foi fechado aqui.'
+        : '',
+
+      wallet: wallet.map((w, i) => ({ ...w, divider: i === 0 ? 'transparent' : 'var(--rule)' })),
+      walletNotes,
+
+      risk90: brl(riskV),
+      risk90Count: br(riskC),
+      risk90Share: pct(riskV, W.monthly || 1) + '%',
+      hasBlind: blindH > 0,
+      blindCount: br(blindH),
+      horizon,
+      lapsed: br(G.lapsed || 0),
+      exitTotal: brl((G.exits || []).reduce((a, b) => a + b.v, 0)),
+      exits,
+
+      sellers,
+      sellerRead,
+      breakdowns,
+
+      themeLabel: dark ? 'Tema claro' : 'Tema escuro',
+      toggleTheme: () => this.setState({ theme: dark ? 'light' : 'dark' }),
+    };
+  }
+}
+
+</script>
+</body>
+</html>

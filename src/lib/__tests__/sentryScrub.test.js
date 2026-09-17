@@ -39,6 +39,12 @@ describe('maskSensitive', () => {
     expect(maskSensitive(42)).toBe(42);
     expect(maskSensitive(null)).toBe(null);
   });
+
+  it('mascara a chave do zap', () => {
+    const chave = `szk_${'a1b2'.repeat(12)}`; // 48 hex, formato de generateZapKey
+    expect(maskSensitive(`erro com a chave ${chave} invalida`))
+      .toBe('erro com a chave [chave] invalida');
+  });
 });
 
 describe('scrubDeep', () => {
@@ -101,6 +107,24 @@ describe('scrubEvent', () => {
     expect(scrubEvent(event).exception.values[0].value).toBe('lead [email] falhou');
   });
 
+  it('apaga vars dos frames da excecao', () => {
+    const event = {
+      exception: {
+        values: [{
+          value: 'erro',
+          stacktrace: {
+            frames: [
+              { function: 'handleMatch', vars: { chave: 'szk_x', phones: ['5511987654321'] } },
+              { function: 'outraFuncao', vars: { x: 1 } }
+            ]
+          }
+        }]
+      }
+    };
+    const frames = scrubEvent(event).exception.values[0].stacktrace.frames;
+    expect(frames.every((f) => !('vars' in f))).toBe(true);
+  });
+
   it('mascara a mensagem solta', () => {
     expect(scrubEvent({ message: 'tel 11987654321' }).message).toBe('tel [telefone]');
   });
@@ -110,6 +134,28 @@ describe('scrubEvent', () => {
     const out = scrubEvent(event);
     expect(out.request.data).toBeUndefined();
     expect(out.request.url).toBe('/api/plans');
+  });
+
+  it('mantem so os headers permitidos da requisicao', () => {
+    const event = {
+      request: {
+        url: '/api/zap',
+        headers: {
+          'x-stronizap-key': 'szk_segredo',
+          'asaas-access-token': 'token-do-webhook',
+          authorization: 'Bearer xyz',
+          cookie: 'sessao=1',
+          'content-type': 'application/json',
+          'User-Agent': 'node',
+          'x-vercel-id': 'gru1::abc'
+        }
+      }
+    };
+    expect(scrubEvent(event).request.headers).toEqual({
+      'content-type': 'application/json',
+      'User-Agent': 'node',
+      'x-vercel-id': 'gru1::abc'
+    });
   });
 
   it('mascara breadcrumbs', () => {
@@ -207,7 +253,20 @@ describe('scrubBreadcrumb', () => {
     expect(out.data.to).toBe('https://app.com/');
   });
 
+  it('corta o http.query em breadcrumb de pedido do backend', () => {
+    const crumb = { category: 'http', data: { 'http.query': '?phone=5511987654321' } };
+    expect(scrubBreadcrumb(crumb).data).not.toHaveProperty('http.query');
+  });
+
   it('devolve o breadcrumb nulo sem quebrar', () => {
     expect(scrubBreadcrumb(null)).toBe(null);
+  });
+
+  it('devolve null em vez de derrubar quem chamou quando data tem getter que lança', () => {
+    const crumb = {
+      category: 'fetch',
+      get data() { throw new Error('boom'); }
+    };
+    expect(scrubBreadcrumb(crumb)).toBe(null);
   });
 });

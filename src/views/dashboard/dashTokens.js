@@ -36,3 +36,8 @@ export function dashInitials(name) {
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
+
+// Dinheiro do Gerencial mora em lib/format.js, junto com o resto da
+// formatação, e é reexportado aqui para os componentes da tela importarem de
+// um lugar só.
+export { fmtMoney, fmtMoneyShort } from '../../lib/format.js';
