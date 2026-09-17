@@ -8,6 +8,7 @@ import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { SoldHeroCard } from '../../views/dashboard/SoldHeroCard.jsx';
 import { WalletBand } from '../../views/dashboard/WalletBand.jsx';
 import { BlindValueNote, GerencialEmpty } from '../../views/dashboard/GerencialParts.jsx';
+import { ExpiryRunway } from '../../views/dashboard/ExpiryRunway.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -163,5 +164,60 @@ describe('GerencialEmpty', () => {
     expect(html).toContain('Esta tela ganha vida na primeira matrícula registrada. Enquanto isso, o funil de leads continua no painel CRM.');
     expect(html).toContain('Ir para o pipeline');
     expect(html).toContain('<button type="button"');
+  });
+});
+
+// Esteira de vencimento da Unidade Moinhos: 168 contratos com valor e 114
+// importados sem valor, contra uma carteira de R$ 134.200 por mês.
+const HORIZON = [
+  { days: 30, label: 'Em 30 dias', count: 63, v: 13100, blind: 41 },
+  { days: 60, label: 'Em 60 dias', count: 48, v: 9800, blind: 35 },
+  { days: 90, label: 'Em 90 dias', count: 57, v: 11400, blind: 38 }
+];
+const CLEAN = HORIZON.map((h) => ({ ...h, blind: 0 }));
+
+describe('ExpiryRunway', () => {
+  it('o total, a contagem e a fatia da carteira saem da própria esteira', () => {
+    const html = render(createElement(ExpiryRunway, { horizon: HORIZON, walletMonthly: 134200 }));
+    expect(html).toContain('R$ 34.300');
+    expect(html).toContain('em 168 contratos');
+    expect(html).toContain('26% da carteira'); // 34.300 de 134.200
+  });
+
+  it('sem carteira não inventa fatia: a linha some em vez de mostrar 0%', () => {
+    const html = render(createElement(ExpiryRunway, { horizon: HORIZON }));
+    expect(html).not.toContain('da carteira');
+  });
+
+  it('cada barra e cada trilha tracejada é focável, com a dica do handoff', () => {
+    const html = render(createElement(ExpiryRunway, { horizon: HORIZON, walletMonthly: 134200 }));
+    expect(html.match(/tabindex="0"/g)).toHaveLength(6);
+    expect(html).toContain('aria-label="Em 30 dias: 63 contratos valendo R$ 13.100 por mês"');
+    expect(html).toContain('aria-label="Em 30 dias: mais 41 contratos importados sem valor. Contam como pessoas que vencem, não entram no valor por mês."');
+  });
+
+  it('a trilha tracejada tem eixo próprio: a largura segue a contagem, não o dinheiro', () => {
+    const html = render(createElement(ExpiryRunway, { horizon: HORIZON, walletMonthly: 134200 }));
+    // Barra sólida: 13.100 é o teto e ocupa 74%; 9.800 fica em 55%.
+    expect(html).toContain('width:74%');
+    expect(html).toContain('width:55%');
+    // Trilha: 41 é o teto e ocupa 16%; 35 fica em 14%.
+    expect(html).toContain('width:16%');
+    expect(html).toContain('width:14%');
+  });
+
+  it('a contagem sem valor aparece escrita ao lado da trilha e no cartão do topo', () => {
+    const html = render(createElement(ExpiryRunway, { horizon: HORIZON, walletMonthly: 134200 }));
+    expect(html).toContain('+41 sem valor');
+    expect(html).toContain('114');
+    expect(html).toContain('vencem no período e não entram na conta acima');
+  });
+
+  it('sem contrato sem valor, somem a trilha, o cartão e o item de legenda', () => {
+    const html = render(createElement(ExpiryRunway, { horizon: CLEAN, walletMonthly: 134200 }));
+    expect(html.match(/tabindex="0"/g)).toHaveLength(3);
+    expect(html).not.toContain('sem valor');
+    expect(html).not.toContain('contrato importado');
+    expect(html).toContain('valor por mês em risco');
   });
 });
