@@ -9,7 +9,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "verificar:sentry": "node scripts/verificar-vazamento-sentry.mjs"
+    "verificar:sentry": "node scripts/verificar-vazamento-sentry.js"
   },
   "dependencies": {
     "@sentry/node": "^10.69.0",
