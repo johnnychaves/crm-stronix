@@ -8,7 +8,8 @@
     "build": "vite build && rm -f dist/assets/*.map",
     "lint": "eslint .",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "verificar:sentry": "node scripts/verificar-vazamento-sentry.mjs"
   },
   "dependencies": {
     "@sentry/node": "^10.69.0",
