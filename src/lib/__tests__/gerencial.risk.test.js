@@ -73,3 +73,20 @@ describe('exitsInWindow', () => {
     expect(r.total).toBe(0);
   });
 });
+
+// Regra descoberta na ligação da tela: o cartão diz "o que sai da carteira se
+// ninguém renovar", então quem já renovou não pode contar como risco.
+describe('expiryHorizons e quem já renovou', () => {
+  const D2 = (y, m, d) => new Date(y, m - 1, d);
+  const hoje = D2(2026, 9, 17);
+  const base = { id: 'a', personKey: 'p', value: 1200, durationMonths: 12, startsAt: D2(2025, 10, 1), endsAt: D2(2026, 10, 1), pauses: [] };
+
+  it('contrato com renovação ligada sai do risco', () => {
+    const list = [base, { ...base, id: 'b', renewedFromId: 'a', startsAt: D2(2026, 10, 1), endsAt: D2(2027, 10, 1) }];
+    expect(expiryHorizons(list, hoje)[0].count).toBe(0);
+  });
+
+  it('contrato sem sucessor continua no risco', () => {
+    expect(expiryHorizons([base], hoje)[0].count).toBe(1);
+  });
+});

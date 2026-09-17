@@ -4,12 +4,7 @@
 // só depois este arquivo.
 
 import { monthLabel } from '../operacional/month.js';
-
-// Dinheiro sem centavos, do mesmo jeito que o fmtMoney da view
-// (src/views/dashboard/dashTokens.js) formata: "R$ 78.400". Repetido aqui, em
-// vez de importado da view, para este módulo continuar puro e independente
-// de src/views/.
-const money = (n) => `R$ ${Math.round(Number(n) || 0).toLocaleString('pt-BR')}`;
+import { fmtMoney as money } from '../format.js';
 
 // Barra e cabeçalho (§6). Sem mês comparado (nenhum mês anterior com venda),
 // o controle de comparação nem existe na barra: nada de pró-rata nem de mês

@@ -37,16 +37,7 @@ export function dashInitials(name) {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-// Dinheiro do Gerencial, sem centavos: "R$ 78.400". A tela é leitura de gestão,
-// não extrato, e o handoff mostra todos os valores arredondados. O fmtBRL de
-// lib/format.js continua valendo onde centavo importa (contrato, plano, PDV).
-export const fmtMoney = (n) => `R$ ${Math.round(Number(n) || 0).toLocaleString('pt-BR')}`;
-
-// Dinheiro curto, para coluna estreita e legenda: "R$ 78,4 mil". Abaixo de mil
-// não abrevia, senão "R$ 0,9 mil" fica pior de ler que "R$ 900".
-export const fmtMoneyShort = (n) => {
-  const v = Math.round(Number(n) || 0);
-  return v >= 1000
-    ? `R$ ${(v / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} mil`
-    : `R$ ${v.toLocaleString('pt-BR')}`;
-};
+// Dinheiro do Gerencial mora em lib/format.js, junto com o resto da
+// formatação, e é reexportado aqui para os componentes da tela importarem de
+// um lugar só.
+export { fmtMoney, fmtMoneyShort } from '../../lib/format.js';

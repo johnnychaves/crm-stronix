@@ -7,12 +7,25 @@ import { hasValue, monthlyTicket, inWindow } from './scope.js';
 const DAY = 24 * 60 * 60 * 1000;
 export const HORIZON_DAYS = [30, 60, 90];
 
+// Sucessor: a renovação ligada ou outro contrato da pessoa que começa depois
+// deste. Mesma ideia de src/lib/operacional/renewal.js, simplificada porque
+// aqui só importa existir ou não.
+function hasSuccessor(c, index) {
+  if ((index.byRenewedFrom.get(c.id) || []).length) return true;
+  return (index.byPerson.get(c.personKey) || []).some((o) => o !== c && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
+}
+
 // Só contrato vigente vence. Trancado não: o fim dele anda quando reativar.
 export function expiryHorizons(contracts, t) {
   const edges = HORIZON_DAYS.map((d) => new Date(t.getTime() + d * DAY));
   const rows = HORIZON_DAYS.map((days) => ({ days, label: `Em ${days} dias`, count: 0, v: 0, blind: 0 }));
+  const index = indexContracts(contracts || []);
   (contracts || []).forEach((c) => {
     if (contractStateAt(c, t) !== 'vigente' || !c.endsAt) return;
+    // Quem já tem sucessor não vai sair da carteira: renovação assinada antes
+    // do fim tira o contrato do risco, senão o cartão cobraria um contato que
+    // já foi feito.
+    if (hasSuccessor(c, index)) return;
     const i = edges.findIndex((edge) => c.endsAt < edge);
     if (i < 0) return;
     if (hasValue(c)) {
@@ -25,13 +38,6 @@ export function expiryHorizons(contracts, t) {
   return rows;
 }
 
-// Sucessor: a renovação ligada ou outro contrato da pessoa que começa depois
-// deste. Mesma ideia de src/lib/operacional/renewal.js, simplificada porque
-// aqui só importa existir ou não.
-function hasSuccessor(c, index) {
-  if ((index.byRenewedFrom.get(c.id) || []).length) return true;
-  return (index.byPerson.get(c.personKey) || []).some((o) => o !== c && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
-}
 
 export function expiredWithoutSuccessor(contracts, t) {
   const index = indexContracts(contracts || []);
