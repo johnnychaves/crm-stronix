@@ -235,6 +235,28 @@ describe('GET /api/zap', () => {
     expect(res.statusCode).toBe(200);
     expect(res.body).toMatchObject({ found: true, leadId: 'c1' });
   });
+
+  it('identificador repetido na query (a Vercel entrega lista) responde 401', async () => {
+    const res = resposta();
+    const p = pedido();
+    p.query.tenant = [TENANT, OUTRA];
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+
+  it('identificador com espaço responde 401: não existe mais o .trim()', async () => {
+    const res = resposta();
+    const p = pedido();
+    p.query.tenant = ' academia-teste ';
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
 });
 
 describe('POST /api/zap com action match', () => {
