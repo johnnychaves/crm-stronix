@@ -18,17 +18,19 @@ vi.mock('../_firebaseAdmin.js', () => {
   const ref = (caminho) => ({
     collection: (nome) => ref([...caminho, nome]),
     doc: (id) => ref([...caminho, id]),
-    where: (campo, _op, valor) => ({
-      limit: (n) => ({
-        get: async () => {
-          const docs = banco.leads
-            .filter((l) => l[campo] === valor)
-            .slice(0, n)
-            .map(({ id, ...dados }) => ({ id, data: () => dados }));
-          return { empty: docs.length === 0, docs };
-        }
-      })
-    }),
+    where: (campo, op, valor) => {
+      const filtra = () =>
+        banco.leads.filter((l) => (op === 'in' ? valor.includes(l[campo]) : l[campo] === valor));
+      const paraDocs = (linhas) => linhas.map(({ id, ...dados }) => ({ id, data: () => dados }));
+      const resposta = (linhas) => {
+        const docs = paraDocs(linhas);
+        return { empty: docs.length === 0, docs };
+      };
+      return {
+        limit: (n) => ({ get: async () => resposta(filtra().slice(0, n)) }),
+        get: async () => resposta(filtra())
+      };
+    },
     get: async () => {
       if (caminho[0] === 'tenants') return snapshot(banco.tenant);
       if (caminho.at(-2) === 'stronix_config') return snapshot(banco.config);
