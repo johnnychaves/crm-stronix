@@ -195,6 +195,46 @@ describe('GET /api/zap', () => {
     expect(res.statusCode).toBe(401);
     expect(res.body.found).toBeUndefined();
   });
+
+  it('identificador com barra no GET responde 401 sem chegar ao banco', async () => {
+    const res = resposta();
+    const p = pedido();
+    p.query.tenant = 'academia/teste';
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+
+  it('identificador com maiúscula no GET responde 401 mesmo que a academia exista assim', async () => {
+    const chaveDela = academia('Academia-Teste');
+    banco.leads['Academia-Teste'] = [clienteAVencer];
+    const res = resposta();
+    const p = pedido();
+    p.headers['x-stronizap-key'] = chaveDela;
+    p.query.tenant = 'Academia-Teste';
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+
+  it('identificador de 64 caracteres é aceito no GET', async () => {
+    const limite = 'a'.repeat(64);
+    const chaveDela = academia(limite);
+    banco.leads[limite] = [clienteAVencer];
+    const res = resposta();
+    const p = pedido();
+    p.headers['x-stronizap-key'] = chaveDela;
+    p.query.tenant = limite;
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ found: true, leadId: 'c1' });
+  });
 });
 
 describe('POST /api/zap com action match', () => {
@@ -409,6 +449,21 @@ describe('POST /api/zap com action match', () => {
 
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+
+  it('identificador de 64 caracteres é aceito no match', async () => {
+    const limite = 'a'.repeat(64);
+    const chaveDela = academia(limite);
+    banco.leads[limite] = [clienteAVencer];
+    const res = resposta();
+    const p = pedidoMatch(['5511987654321']);
+    p.headers['x-stronizap-key'] = chaveDela;
+    p.body.tenant = limite;
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ found: ['5511987654321'] });
   });
 
   it('a resposta tem só a lista, sem nenhum outro campo', async () => {

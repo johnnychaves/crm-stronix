@@ -52,11 +52,18 @@ export default withSentry(async function handler(req, res) {
   }
 
   const chave = req.headers['x-stronizap-key'];
-  const tenantId = String(req.query.tenant ?? '').trim();
+  const tenantId = req.query.tenant;
   const matchKey = zapMatchKey(req.query.phone);
 
   if (!chave || !tenantId) {
     res.status(401).json({ error: 'Credencial ausente' });
+    return;
+  }
+  // Mesmo formato do match. Fora dele responde igual a chave errada, e nunca
+  // chega ao Firestore: "a/b" viraria caminho aninhado e lançaria erro antes
+  // da autenticação.
+  if (typeof tenantId !== 'string' || !TENANT_RE.test(tenantId)) {
+    res.status(401).json({ error: 'Credencial inválida' });
     return;
   }
   if (!matchKey) {
