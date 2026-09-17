@@ -9,6 +9,7 @@ import { SoldHeroCard } from '../../views/dashboard/SoldHeroCard.jsx';
 import { WalletBand } from '../../views/dashboard/WalletBand.jsx';
 import { BlindValueNote, GerencialEmpty } from '../../views/dashboard/GerencialParts.jsx';
 import { ExpiryRunway } from '../../views/dashboard/ExpiryRunway.jsx';
+import { ExitsCard } from '../../views/dashboard/ExitsCard.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -219,5 +220,54 @@ describe('ExpiryRunway', () => {
     expect(html).not.toContain('sem valor');
     expect(html).not.toContain('contrato importado');
     expect(html).toContain('valor por mês em risco');
+  });
+});
+
+const EXITS = [
+  { kind: 'cancelamento', label: 'Cancelamentos', count: 7, v: 1480 },
+  { kind: 'trancamento', label: 'Trancamentos', count: 4, v: 820 }
+];
+
+describe('ExitsCard', () => {
+  it('o total sai da soma das duas saídas', () => {
+    const html = render(createElement(ExitsCard, { items: EXITS }));
+    expect(html).toContain('R$ 2.300/mês');
+  });
+
+  it('cada saída traz rótulo, contagem e valor escritos, além da cor', () => {
+    const html = render(createElement(ExitsCard, { items: EXITS }));
+    expect(html).toContain('Cancelamentos');
+    expect(html).toContain('7 contratos');
+    expect(html).toContain('R$ 1.480');
+    expect(html).toContain('Trancamentos');
+    expect(html).toContain('4 contratos');
+    expect(html).toContain('R$ 820');
+  });
+
+  it('cancelamento em vermelho, trancamento em âmbar, cada barra focável e com dica', () => {
+    const html = render(createElement(ExitsCard, { items: EXITS }));
+    expect(html.match(/tabindex="0"/g)).toHaveLength(2);
+    expect(html).toContain('aria-label="Cancelamentos: 7 contratos, R$ 1.480 por mês"');
+    expect(html).toContain('text-rose-700');
+    expect(html).toContain('text-amber-700');
+    expect(html).toContain('bg-amber-500');
+  });
+
+  it('a barra maior enche a trilha e a menor fica na proporção do valor', () => {
+    const html = render(createElement(ExitsCard, { items: EXITS }));
+    expect(html).toContain('width:100%');
+    expect(html).toContain('width:55%'); // 820 de 1.480
+  });
+
+  it('diz que trancamento continua na carteira e cancelamento sai', () => {
+    const html = render(createElement(ExitsCard, { items: EXITS }));
+    expect(html).toContain('Trancamento é reversível e continua contando na carteira. Cancelamento sai.');
+  });
+
+  it('mês sem saída nenhuma mostra os zeros, sem quebrar a largura', () => {
+    const html = render(createElement(ExitsCard, { items: EXITS.map((e) => ({ ...e, count: 0, v: 0 })) }));
+    expect(html).toContain('R$ 0/mês');
+    expect(html).toContain('0 contratos');
+    expect(html).not.toContain('NaN');
   });
 });
