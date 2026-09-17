@@ -38,5 +38,8 @@ jobs:
       - name: Testes
         run: npm run test
 
+      - name: Sentry não recebe chave nem telefone
+        run: npm run verificar:sentry
+
       - name: Build
         run: npm run build

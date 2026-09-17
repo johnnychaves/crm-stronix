@@ -9,6 +9,11 @@
 // de um número longo, como um timestamp em milissegundos.
 
 const PATTERNS = [
+  // Chave do Zap: szk_ + 48 hex (api/_zapAuth.js, PREFIX + randomBytes(24) em
+  // hex). Alfabeto de 16 símbolos e prefixo próprio, então o padrão não pega
+  // nada que não seja a própria chave. Primeiro da lista, antes até do CPF,
+  // pela mesma razão do CPF vir primeiro: quanto mais específico, mais cedo.
+  [/\bszk_[0-9a-f]{48}\b/g, '[chave]'],
   [/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g, '[cpf]'],
   [/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, '[email]'],
   // O caractere anterior é capturado e reemitido em vez de usar lookbehind.
@@ -33,6 +38,16 @@ export function stripQuery(url) {
   return cut === -1 ? url : url.slice(0, cut);
 }
 
+// Header de requisição só sai para o Sentry se estiver nesta lista. É lista de
+// permitidos, e não de proibidos, porque a de proibidos só conhecia
+// authorization e cookie e deixou passar a chave do Zap (x-stronizap-key) em
+// 2026-09-17. Qualquer header sensível novo teria o mesmo destino. No front
+// ela é a única trava (o SDK do browser não tem opção de origem equivalente).
+// Nas funções da api/ ela virou a segunda camada, dentro do scrubEvent: a
+// origem (api/_sentry.js) desliga os headers de requisição por completo,
+// porque a lista `allow` do SDK não filtrou evento de erro nesta versão.
+export const HEADERS_PERMITIDOS = ['content-type', 'content-length', 'user-agent', 'accept', 'x-vercel-id'];
+
 // Chaves em que o SDK guarda URL dentro de span, contexto de trace e breadcrumb.
 const URL_KEYS = ['url', 'url.full', 'http.url', 'to', 'from'];
 
@@ -42,6 +57,10 @@ function stripUrlsIn(bag) {
     if (typeof bag[key] === 'string') bag[key] = stripQuery(bag[key]);
   }
   delete bag['url.query'];
+  // Mesma coisa, com o nome que a instrumentação http do backend usa: a
+  // query do GET (?tenant=...&phone=...) trafega aqui num breadcrumb de
+  // pedido, não só em request.url.
+  delete bag['http.query'];
   return bag;
 }
 
@@ -121,6 +140,12 @@ export function scrubEvent(event) {
   if (Array.isArray(event.exception?.values)) {
     for (const entry of event.exception.values) {
       if (typeof entry.value === 'string') entry.value = maskSensitive(entry.value);
+      // Variável local é o que a função tinha na mão no momento do erro: a
+      // chave do Zap e os telefones do lote, no handleMatch. dataCollection
+      // trava isso na origem (stackFrameVariables: false, em api/_sentry.js),
+      // mas quem ligar includeLocalVariables sem saber disso traria tudo de
+      // volta — por isso a segunda camada apaga de novo aqui.
+      for (const frame of entry.stacktrace?.frames ?? []) delete frame.vars;
     }
   }
 
@@ -140,9 +165,12 @@ export function scrubEvent(event) {
     delete event.request.cookies;
     if (typeof event.request.url === 'string') event.request.url = stripQuery(event.request.url);
     delete event.request.query_string;
-    if (event.request.headers) {
-      delete event.request.headers.authorization;
-      delete event.request.headers.cookie;
+    if (event.request.headers && typeof event.request.headers === 'object') {
+      const permitidos = {};
+      for (const [nome, valor] of Object.entries(event.request.headers)) {
+        if (HEADERS_PERMITIDOS.includes(nome.toLowerCase())) permitidos[nome] = valor;
+      }
+      event.request.headers = permitidos;
     }
   }
 
@@ -172,14 +200,23 @@ export function scrubEvent(event) {
 // beforeBreadcrumb do Sentry: devolver null descarta a migalha. Aqui nada é
 // descartado, só redigido — a trilha de cliques é o que explica o erro.
 export function scrubBreadcrumb(crumb) {
-  if (!crumb) return crumb;
+  // O SDK chama este hook sem try/catch: se algo aqui dentro lançar (um
+  // getter exótico em crumb.data, por exemplo — scrubDeep percorre com
+  // Object.entries, que dispara getter), a exceção sobe e derruba quem
+  // chamou. Falha fechada de propósito: descarta a migalha em vez de
+  // arriscar propagar o erro (ou pior, o dado que a migalha carregava).
+  try {
+    if (!crumb) return crumb;
 
-  if (typeof crumb.message === 'string') {
-    const fromDom = String(crumb.category || '').startsWith('ui.');
-    crumb.message = maskSensitive(fromDom ? redactDomAttrs(crumb.message) : crumb.message);
+    if (typeof crumb.message === 'string') {
+      const fromDom = String(crumb.category || '').startsWith('ui.');
+      crumb.message = maskSensitive(fromDom ? redactDomAttrs(crumb.message) : crumb.message);
+    }
+
+    if (crumb.data) crumb.data = stripUrlsIn(scrubDeep(crumb.data));
+
+    return crumb;
+  } catch {
+    return null;
   }
-
-  if (crumb.data) crumb.data = stripUrlsIn(scrubDeep(crumb.data));
-
-  return crumb;
 }
