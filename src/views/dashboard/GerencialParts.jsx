@@ -1,6 +1,7 @@
 // Peças soltas da tela Gerencial: a nota tracejada dos contratos sem valor
-// (handoff, linhas 304 a 310) e o painel único da academia que ainda não tem
-// contrato nenhum (linhas 137 a 146).
+// (handoff, linhas 304 a 310), o cartão do que já venceu sem ninguém renovar
+// (linhas 341 a 357) e o painel único da academia que ainda não tem contrato
+// nenhum (linhas 137 a 146).
 //
 // Contrato sem valor se distingue por FORMA, nunca por tom: borda tracejada,
 // fundo neutro e a contagem escrita (README §1). Ele é gente de verdade que
@@ -8,6 +9,9 @@
 import { FileText } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
+import { DashHelpTip } from './DashPrimitives.jsx';
+
+const CARD = 'rounded-2xl border border-border bg-card shadow-card';
 
 // Cartão tracejado ao lado do total de risco: quantas pessoas vencem no período
 // sem valor gravado. `context` diz por que elas não entram na conta ao lado.
@@ -18,6 +22,30 @@ export function BlindValueNote({ count, context, className }) {
       <div className="mt-1 text-[11px] font-semibold text-foreground/80">pessoas sem valor</div>
       <div className="mt-[3px] text-[10.5px] leading-[1.4] text-muted-foreground">{context}</div>
     </div>
+  );
+}
+
+// Contratos que passaram do fim da vigência e não ganharam sucessor. É um
+// retrato de agora, não um número do mês: por isso não tem comparação nem
+// valor por mês, e a nota diz que eles já saíram da carteira.
+export function LapsedCard({ count }) {
+  return (
+    <section className={cn(CARD, 'px-[18px] py-4')}>
+      <div className="flex items-baseline gap-2">
+        <span className="text-[13.5px] font-semibold">Já venceu e ninguém renovou</span>
+        <DashHelpTip
+          text="Contratos que passaram do fim da vigência e não têm contrato sucessor. É um retrato de agora, não um número do mês."
+          label='O que é "Já venceu e ninguém renovou"?'
+        />
+      </div>
+      <div className="mt-[9px] flex flex-wrap items-baseline gap-2">
+        <span className="num font-display text-[28px] font-bold leading-none tracking-[-0.03em] text-rose-700 dark:text-rose-400">{fmtNum(count)}</span>
+        <span className="text-[12.5px] text-muted-foreground">{Number(count) === 1 ? 'contrato em aberto' : 'contratos em aberto'}</span>
+      </div>
+      <p className="mt-[7px] text-pretty text-[11.5px] leading-[1.5] text-muted-foreground">
+        Já saíram da carteira, então o valor por mês deles não aparece aqui. É a fila de recuperação.
+      </p>
+    </section>
   );
 }
 

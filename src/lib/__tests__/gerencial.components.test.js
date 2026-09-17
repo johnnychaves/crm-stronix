@@ -7,7 +7,7 @@ import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { SoldHeroCard } from '../../views/dashboard/SoldHeroCard.jsx';
 import { WalletBand } from '../../views/dashboard/WalletBand.jsx';
-import { BlindValueNote, GerencialEmpty } from '../../views/dashboard/GerencialParts.jsx';
+import { BlindValueNote, GerencialEmpty, LapsedCard } from '../../views/dashboard/GerencialParts.jsx';
 import { ExpiryRunway } from '../../views/dashboard/ExpiryRunway.jsx';
 import { ExitsCard } from '../../views/dashboard/ExitsCard.jsx';
 import { SellerRankTable } from '../../views/dashboard/SellerRankTable.jsx';
@@ -417,5 +417,24 @@ describe('BreakdownCard servindo dinheiro', () => {
     expect(html).toContain('>11</span>');
     expect(html).toContain('>9</span>');
     expect(html).not.toContain('x</span>');
+  });
+});
+
+describe('LapsedCard', () => {
+  it('a fila de recuperação em vermelho, com a dica de que é retrato de agora', () => {
+    const html = render(createElement(LapsedCard, { count: 29 }));
+    expect(html).toContain('Já venceu e ninguém renovou');
+    expect(html).toContain('>29<');
+    expect(html).toContain('contratos em aberto');
+    expect(html).toContain('text-rose-700');
+    expect(html).toContain('dark:text-rose-400');
+    expect(html).toContain('aria-label="O que é &quot;Já venceu e ninguém renovou&quot;?"');
+    expect(html).toContain('Já saíram da carteira, então o valor por mês deles não aparece aqui. É a fila de recuperação.');
+  });
+
+  it('um contrato só não vira "1 contratos"', () => {
+    const html = render(createElement(LapsedCard, { count: 1 }));
+    expect(html).toContain('contrato em aberto');
+    expect(html).not.toContain('contratos em aberto');
   });
 });
