@@ -6,6 +6,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { SoldHeroCard } from '../../views/dashboard/SoldHeroCard.jsx';
+import { WalletBand } from '../../views/dashboard/WalletBand.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -88,5 +89,56 @@ describe('SoldHeroCard', () => {
     const html = render(createElement(SoldHeroCard, { mix: [], ticket: 0, discount: { pct: 0, abs: 0 } }));
     expect(html).toContain('R$ 0');
     expect(html).toContain('0 contratos');
+  });
+});
+
+// Carteira de setembro na Unidade Centro: 628 contratos, R$ 134.200/mês.
+const CELLS = [
+  { key: 'count', label: 'Contratos vigentes', value: 628, sub: 'inclui os 19 trancados', help: 'Contratos com vigência em curso hoje.' },
+  { key: 'monthly', label: 'Valor por mês', value: 134200, money: true, unit: '/mês', sub: 'soma dos tickets mensais vigentes', help: 'Soma do ticket mensal de cada contrato vigente.' },
+  { key: 'ticket', label: 'Ticket mensal médio', value: 214, money: true, unit: '/mês', sub: 'valor por mês ÷ contratos com valor' },
+  { key: 'locked', label: 'Trancados', value: 19, tone: 'amber', sub: 'R$ 4.100/mês · contam na carteira', help: 'Contrato trancado segue vigente.' }
+];
+
+describe('WalletBand', () => {
+  it('as quatro células trazem rótulo, número e linha de apoio', () => {
+    const html = render(createElement(WalletBand, { items: CELLS, notes: [] }));
+    expect(html).toContain('Contratos vigentes');
+    expect(html).toContain('>628<');
+    expect(html).toContain('R$ 134.200');
+    expect(html).toContain('R$ 214');
+    expect(html).toContain('valor por mês ÷ contratos com valor');
+    expect(html).toContain('R$ 4.100/mês · contam na carteira');
+  });
+
+  it('o sufixo /mês é elemento à parte, e a célula de contagem não ganha sufixo', () => {
+    const html = render(createElement(WalletBand, { items: CELLS, notes: [] }));
+    expect(html).toContain('R$ 134.200</span>');
+    expect(html).toContain('>/mês</span>');
+    expect(html).not.toContain('628</span><span class="num text-[13px]');
+  });
+
+  it('a dica só existe na célula que tem texto de ajuda, com o rótulo no aria-label', () => {
+    const html = render(createElement(WalletBand, { items: CELLS, notes: [] }));
+    expect(html).toContain('aria-label="O que é &quot;Contratos vigentes&quot;?"');
+    expect(html).toContain('aria-label="O que é &quot;Trancados&quot;?"');
+    expect(html).not.toContain('aria-label="O que é &quot;Ticket mensal médio&quot;?"');
+  });
+
+  it('trancado fica em âmbar, o resto fica neutro', () => {
+    const html = render(createElement(WalletBand, { items: CELLS, notes: [] }));
+    expect(html).toContain('text-amber-700');
+    expect(html.match(/text-amber-700/g)).toHaveLength(1);
+  });
+
+  it('as notas viram cartões tracejados, e sem nota nenhuma o bloco some', () => {
+    const withNotes = render(createElement(WalletBand, {
+      items: CELLS,
+      notes: ['A carteira soma contrato, não pessoa: 6 pessoas têm dois contratos vigentes ao mesmo tempo, então o número de contratos é maior que o de gente.']
+    }));
+    expect(withNotes).toContain('6 pessoas têm dois contratos vigentes');
+    expect(withNotes).toContain('border-dashed');
+    const bare = render(createElement(WalletBand, { items: CELLS, notes: [] }));
+    expect(bare).not.toContain('border-dashed');
   });
 });
