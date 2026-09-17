@@ -329,7 +329,7 @@ describe('POST /api/zap com action match', () => {
     await handler(p, res);
 
     expect(res.statusCode).toBe(401);
-    expect(res.body.found).toBeUndefined();
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
   });
 
   it('chave revogada responde 401', async () => {
@@ -339,6 +339,7 @@ describe('POST /api/zap com action match', () => {
     await handler(pedidoMatch(['5511987654321']), res);
 
     expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
   });
 
   it('chave de uma academia não lê os leads de outra', async () => {
@@ -351,12 +352,13 @@ describe('POST /api/zap com action match', () => {
     await handler(p, res);
 
     expect(res.statusCode).toBe(401);
-    expect(res.body.found).toBeUndefined();
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
   });
 
   it('identificador que não é texto responde 401 sem derrubar a função', async () => {
-    // O banco falso lança erro com id que não é texto, como o SDK real. Se a
-    // checagem de tipo for para depois do acesso ao banco, este teste quebra.
+    // O banco falso lança erro com id que não é texto, como o SDK real, então se a
+    // checagem de tipo for para depois do acesso ao banco este teste quebra. A
+    // mensagem exata prova que quem recusou foi o match, e não o caminho do admin.
     const res = resposta();
     const p = pedidoMatch(['5511987654321']);
     p.body.tenant = { toString: 1 };
@@ -364,6 +366,7 @@ describe('POST /api/zap com action match', () => {
     await handler(p, res);
 
     expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
   });
 
   it('identificador com barra responde 401 sem chegar ao banco', async () => {
@@ -374,6 +377,7 @@ describe('POST /api/zap com action match', () => {
     await handler(p, res);
 
     expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
   });
 
   it('identificador com maiúscula responde 401 mesmo que a academia exista assim', async () => {
@@ -388,6 +392,23 @@ describe('POST /api/zap com action match', () => {
     await handler(p, res);
 
     expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+
+  it('identificador longo demais responde 401 mesmo que a academia exista assim', async () => {
+    // 65 caracteres: o banco falso aceitaria. Quem recusa é o limite da regra de formato.
+    const longo = 'a'.repeat(65);
+    const chaveDela = academia(longo);
+    banco.leads[longo] = [clienteAVencer];
+    const res = resposta();
+    const p = pedidoMatch(['5511987654321']);
+    p.headers['x-stronizap-key'] = chaveDela;
+    p.body.tenant = longo;
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
   });
 
   it('a resposta tem só a lista, sem nenhum outro campo', async () => {
