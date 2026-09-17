@@ -61,3 +61,18 @@ O CRM mede o funil de leads por mês de competência, do cadastro até a matríc
 - **Bases que começam tarde:** a passagem entre etapas e a etapa da perda só existem a partir de setembro de 2026 (`STAGE_TRACKING_MONTH`), e os agendamentos antes de setembro de 2026 são incompletos (`APPTS_COMPLETE_MONTH`), porque as visitas só têm registro desde 18/08/2026. As duas datas moram em `src/lib/crm/scope.js`.
 - **Desfecho da visita:** ainda não é gravado no registro de `stronix_aulas`. O CRM usa o desfecho do espelho do lead (`appointmentOutcome`) quando ele é da mesma visita e, senão, a última interação `daily_goal_done` de `visita_hoje` do dia marcado ou do seguinte. Gravar o desfecho no próprio registro fica para uma PR separada.
 - **Troca de etapa:** a passagem lê a interação `status_change` com `fromStatus`, `toStatus` e `funnelId` (`stageChangeFields`, em `src/lib/stageMove.js`). Um caminho novo que mude a etapa de um lead precisa gravar esses campos, senão o movimento some da passagem.
+
+## Dashboard Gerencial (Visão geral → Gerencial)
+
+A tela do dinheiro vendido: quanto a academia vendeu no mês, quanto a carteira vale por mês, o que está para sair e quem vende. Spec em `docs/superpowers/specs/2026-09-17-dashboard-gerencial-design.md`, handoff visual em `docs/superpowers/specs/handoff-gerencial/` e plano em `docs/superpowers/plans/2026-09-17-dashboard-gerencial-tela.md`.
+
+- **Não é financeiro.** Todo número é valor de contrato vendido. O sistema não guarda pagamento, parcela nem inadimplência, e a barra da tela diz isso em um chip fixo. Quem confere o que entrou na conta é o financeiro, fora do CRM.
+- **Contas:** `src/lib/gerencial/`, puras e testadas, com uma função de entrada, `metricsOf(ctx, { monthKey, cutEnd })`. Nenhum percentual é gravado: ticket médio, fatia da carteira em risco e participação de cada consultor saem da conta a cada leitura.
+- **Duas moedas que nunca se somam:** a venda é o valor do contrato inteiro; a carteira e o risco são valor por mês (`value ÷ durationMonths`). O sufixo `/mês` anda colado ao número por isso.
+- **A venda conta pela data do fechamento** (`createdAt`, com `startsAt` de reserva), nunca pelo início da vigência. Renovação assinada antes conta no mês do esforço, igual ao Operacional e à comissão. Cada contrato entra em um tipo só, nesta ordem: renovação, upgrade, matrícula nova, retorno de ex-cliente.
+- **Cancelado depois continua na venda do mês,** com a marca de quanto foi cancelado. O número de um mês fechado não muda quando alguém cancela hoje.
+- **Trancado fica dentro da carteira,** porque volta a valer quando o cliente destranca, e aparece com a contagem à parte. Trancado não vence: o fim da vigência anda na reativação.
+- **A carteira soma contrato, não pessoa.** Contrato paralelo é permitido, então quem tem dois vigentes conta duas vezes, e a tela diz quantas pessoas estão nessa situação.
+- **Contrato sem valor** (os 494 importados da STRONIX) entra na contagem de contratos e no risco de vencimento, e nunca no dinheiro. Ele também fica fora do denominador do ticket médio. Na tela se distingue por forma, com hachura e borda tracejada, nunca por cor.
+- **Carga:** a tela não abre consulta de contrato nenhuma, porque a coleção inteira já chega assinada pelo `useGeneralConfig` (`src/App.jsx`). A única leitura é a dos docs de lead das vendas do mês (`src/hooks/useGerencialLeads.js`), que serve só à origem, em lotes de 30 e uma vez por id na sessão.
+- **Histórico curto:** contrato só existe no sistema desde junho de 2026. Mês sem venda não entra na lista de comparação, e sem nenhum mês anterior com venda o controle Comparar sai da barra.
