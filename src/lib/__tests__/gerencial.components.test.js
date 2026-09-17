@@ -11,6 +11,8 @@ import { BlindValueNote, GerencialEmpty } from '../../views/dashboard/GerencialP
 import { ExpiryRunway } from '../../views/dashboard/ExpiryRunway.jsx';
 import { ExitsCard } from '../../views/dashboard/ExitsCard.jsx';
 import { SellerRankTable } from '../../views/dashboard/SellerRankTable.jsx';
+import { BreakdownCard } from '../../views/dashboard/DashPrimitives.jsx';
+import { fmtMoneyShort } from '../../views/dashboard/dashTokens.js';
 import { GerencialToolbar, CASH_WARNING, NO_COMPARE } from '../../views/dashboard/GerencialToolbar.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
@@ -367,5 +369,53 @@ describe('barra do Gerencial', () => {
     const html = bar({ canCompare: false });
     expect(html).toContain(NO_COMPARE);
     expect(html).not.toContain('Comparar');
+  });
+});
+
+describe('BreakdownCard servindo dinheiro', () => {
+  const MONEY = {
+    title: 'Planos mais vendidos',
+    sub: 'por valor vendido no mês',
+    eyebrow: 'Plano que mais trouxe',
+    items: [
+      { name: 'Anual Musculação', count: 26400, times: 11 },
+      { name: 'Semestral Musculação', count: 17100, times: 9 }
+    ],
+    total: 78400,
+    format: fmtMoneyShort,
+    leaderSub: '11 vendas · 34% do vendido'
+  };
+
+  it('formata a grandeza, escreve a contagem em "11x" e troca a linha do herói', () => {
+    const html = render(createElement(BreakdownCard, MONEY));
+    expect(html).toContain('R$ 26,4 mil');
+    expect(html).toContain('R$ 17,1 mil');
+    expect(html).toContain('11x');
+    expect(html).toContain('9x');
+    expect(html).toContain('11 vendas · 34% do vendido');
+    expect(html).not.toContain('26.400 de 78.400');
+  });
+
+  it('a porcentagem continua saindo de count ÷ total, que aqui é valor ÷ valor', () => {
+    const html = render(createElement(BreakdownCard, MONEY));
+    expect(html).toContain('34%'); // 26.400 de 78.400
+    expect(html).toContain('22%'); // 17.100 de 78.400
+  });
+
+  it('chamada antiga, sem as props novas, renderiza como antes', () => {
+    const html = render(createElement(BreakdownCard, {
+      title: 'Motivos de perda',
+      sub: '32 perdas',
+      eyebrow: 'Motivo mais comum',
+      items: [{ name: 'Preço', count: 11 }, { name: 'Sumiu', count: 9 }],
+      total: 32,
+      emptyText: 'vazio'
+    }));
+    // A linha do herói segue montada em nós separados, e o <!-- --> é a marca
+    // que o SSR deixa entre eles: se a estrutura mudar, isto quebra.
+    expect(html).toContain('11<!-- --> de <!-- -->32<!-- --> · <!-- -->34<!-- -->%');
+    expect(html).toContain('>11</span>');
+    expect(html).toContain('>9</span>');
+    expect(html).not.toContain('x</span>');
   });
 });
