@@ -15,7 +15,7 @@ let started = false;
 //
 //  - corpo do pedido: quem corta é a integração http logo abaixo
 //    (`maxIncomingRequestBodySize: 'none'`), não o `httpBodies` — medido que
-//    em 10.69 esse campo só é lido pelo transporte do tRPC. O `httpBodies`
+//    em 10.69 esse campo só é lido pelo middleware do tRPC. O `httpBodies`
 //    vazio continua aqui por documentar a intenção e por segurança se uma
 //    versão futura voltar a lê-lo, mas hoje ele não impede nada nas funções
 //    da api/.
@@ -42,6 +42,11 @@ let started = false;
 // Nada disso substitui o scrubEvent/scrubBreadcrumb como segunda camada: são
 // a rede de segurança para quando uma trava de origem se revelar, como as de
 // header e query, sem efeito nesta versão do SDK.
+
+// Opções da integração http, exportadas para o teste conferir o valor, e não só
+// o nome da integração.
+export const HTTP_OPTIONS = { maxIncomingRequestBodySize: 'none' };
+
 export const SENTRY_OPTIONS = {
   environment: process.env.VERCEL_ENV || 'development',
   release: process.env.VERCEL_GIT_COMMIT_SHA || undefined,
@@ -53,13 +58,17 @@ export const SENTRY_OPTIONS = {
     urlQueryParams: false,
     stackFrameVariables: false,
   },
-  // Corta o corpo do pedido de entrada na origem — é esta opção que vale
-  // nesta versão do SDK para uma função da api/, não dataCollection.httpBodies.
-  integrations: [Sentry.httpIntegration({ maxIncomingRequestBodySize: 'none' })],
+  integrations: [Sentry.httpIntegration(HTTP_OPTIONS)],
   // Sem tracing no backend: custo de cold start sem ganho, o objetivo aqui
   // é erro, não performance.
   tracesSampleRate: 0,
   beforeSend: scrubEvent,
+  // Sem tracesSampleRate isto não dispara evento nenhum hoje, mas quem ligar
+  // rastreamento sem saber que existe beforeSend levaria a query do GET
+  // (spans e contexts.trace) sem limpeza — o mesmo motivo que o front trata
+  // em src/lib/sentry.js. scrubEvent já cuida de transação (bloco de spans
+  // e contexts.trace), então é a mesma função dos dois lados.
+  beforeSendTransaction: scrubEvent,
   beforeBreadcrumb: scrubBreadcrumb,
 };
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SENTRY_OPTIONS, endpointTag } from '../_sentry.js';
+import { SENTRY_OPTIONS, HTTP_OPTIONS, endpointTag } from '../_sentry.js';
 import { scrubEvent, scrubBreadcrumb } from '../../src/lib/sentryScrub.js';
 
 describe('SENTRY_OPTIONS das funções da api', () => {
@@ -14,13 +14,18 @@ describe('SENTRY_OPTIONS das funções da api', () => {
     });
   });
 
-  it('desliga o corpo do pedido na integração http', () => {
+  it('desliga o corpo do pedido na integração http, com o valor certo', () => {
     const http = SENTRY_OPTIONS.integrations?.find((i) => i.name === 'Http');
     expect(http).toBeDefined();
+    expect(HTTP_OPTIONS.maxIncomingRequestBodySize).toBe('none');
   });
 
   it('passa todo evento pelo scrubEvent', () => {
     expect(SENTRY_OPTIONS.beforeSend).toBe(scrubEvent);
+  });
+
+  it('passa toda transação pelo scrubEvent também', () => {
+    expect(SENTRY_OPTIONS.beforeSendTransaction).toBe(scrubEvent);
   });
 
   it('passa todo breadcrumb pelo scrubBreadcrumb', () => {

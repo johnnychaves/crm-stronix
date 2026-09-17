@@ -200,14 +200,23 @@ export function scrubEvent(event) {
 // beforeBreadcrumb do Sentry: devolver null descarta a migalha. Aqui nada é
 // descartado, só redigido — a trilha de cliques é o que explica o erro.
 export function scrubBreadcrumb(crumb) {
-  if (!crumb) return crumb;
+  // O SDK chama este hook sem try/catch: se algo aqui dentro lançar (um
+  // getter exótico em crumb.data, por exemplo — scrubDeep percorre com
+  // Object.entries, que dispara getter), a exceção sobe e derruba quem
+  // chamou. Falha fechada de propósito: descarta a migalha em vez de
+  // arriscar propagar o erro (ou pior, o dado que a migalha carregava).
+  try {
+    if (!crumb) return crumb;
 
-  if (typeof crumb.message === 'string') {
-    const fromDom = String(crumb.category || '').startsWith('ui.');
-    crumb.message = maskSensitive(fromDom ? redactDomAttrs(crumb.message) : crumb.message);
+    if (typeof crumb.message === 'string') {
+      const fromDom = String(crumb.category || '').startsWith('ui.');
+      crumb.message = maskSensitive(fromDom ? redactDomAttrs(crumb.message) : crumb.message);
+    }
+
+    if (crumb.data) crumb.data = stripUrlsIn(scrubDeep(crumb.data));
+
+    return crumb;
+  } catch {
+    return null;
   }
-
-  if (crumb.data) crumb.data = stripUrlsIn(scrubDeep(crumb.data));
-
-  return crumb;
 }

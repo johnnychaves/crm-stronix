@@ -2,9 +2,9 @@
 // que a chave do Zap e o telefone do lead não saem das funções da api/ —
 // e prova que a própria verificação enxergaria se saíssem.
 //
-//   node scripts/verificar-vazamento-sentry.mjs
-//   node scripts/verificar-vazamento-sentry.mjs --round=normal     (só a rodada limpa)
-//   node scripts/verificar-vazamento-sentry.mjs --round=sabotagem  (só a rodada vazante)
+//   node scripts/verificar-vazamento-sentry.js
+//   node scripts/verificar-vazamento-sentry.js --round=normal     (só a rodada limpa)
+//   node scripts/verificar-vazamento-sentry.js --round=sabotagem  (só a rodada vazante)
 //
 // Por que não confiar só no beforeSend (a versão anterior deste script, e o
 // que ela deixava passar):
@@ -27,7 +27,14 @@
 //     SENTRY_DSN para o ingest falso (init preguiçoso, igual produção), sobe
 //     um handler no formato do handleMatch/GET (chave no header, telefones
 //     no corpo ou na query, tudo em variável local, erro depois de um
-//     await) e faz as chamadas através do processo auxiliar.
+//     await) e faz as chamadas através do processo auxiliar. O erro nasce em
+//     dois formatos, e os dois precisam existir: dentro de uma função
+//     auxiliar (imita o Firestore fora do ar, uma lib) e direto no próprio
+//     handler (única forma de a variável local do handler — chave, telefones
+//     — estar na pilha quando o V8 captura; um erro nascido dentro da
+//     auxiliar não carrega isso, porque o handler está suspenso no await
+//     quando o throw acontece, e uma sabotagem que só cobrisse esse formato
+//     passaria "limpo" mesmo vazando variável local de verdade).
 //   - auxiliar (--aux): ingest falso do Sentry em 127.0.0.1 (devolve cada
 //     envelope ao pai por IPC) e o cliente http que chama a "função" da
 //     rodada — separado de propósito, para o pedido de saída não virar
@@ -156,14 +163,33 @@ async function rodarRodada(variante) {
     // Configuração deliberadamente vazante — o que o repositório tinha ANTES
     // da correção desta revisão. Se a verificação não pegar isso, ela não
     // prova nada na rodada normal.
-    SENTRY_OPTIONS.dataCollection = { ...SENTRY_OPTIONS.dataCollection, httpHeaders: { request: true, response: false } };
+    SENTRY_OPTIONS.dataCollection = {
+      ...SENTRY_OPTIONS.dataCollection,
+      httpHeaders: { request: true, response: false },
+      // Sem isto, a sabotagem provava header, corpo e query, mas não
+      // variável local: uma revisão trocou só estas duas linhas (deixando
+      // header e corpo desligados) e o script disse "limpo" mesmo com
+      // variável local vazando de verdade — ver revisao-sabotagem-vars.js.
+      stackFrameVariables: true,
+    };
+    SENTRY_OPTIONS.includeLocalVariables = true; // liga a captura em si; dataCollection só permite ou bloqueia
     delete SENTRY_OPTIONS.integrations; // sem o maxIncomingRequestBodySize: 'none': corpo volta a vazar
-    delete SENTRY_OPTIONS.beforeSend; // sem a segunda camada: nem header nem query são cortados
+    delete SENTRY_OPTIONS.beforeSend; // sem a segunda camada: nem header, corpo, query nem variável local são cortados
   }
 
   // Handler no formato do handleMatch/GET de produção: chave no header,
   // telefones em variável local (corpo no POST, query no GET), erro depois
   // de um await — como o Firestore fora do ar derrubaria de verdade.
+  //
+  // O erro nasce de dois jeitos, escolhido por chamada com o header
+  // x-verificacao-modo-throw (plumbing só desta verificação, não existe em
+  // produção):
+  //   - "lib" (padrão): lança dentro de bancoIndisponivel(), imitando erro
+  //     vindo de dentro de uma dependência.
+  //   - "handler": lança direto aqui, depois de um await que suspende e
+  //     retoma o PRÓPRIO handler — só assim chave/tenantId/telefone(s) estão
+  //     de verdade na pilha quando o V8 captura variável local. Ver o
+  //     comentário de arquitetura no topo do arquivo.
   async function bancoIndisponivel() {
     await new Promise((ok) => setImmediate(ok));
     throw new Error('Firestore indisponível (simulado)');
@@ -171,10 +197,15 @@ async function rodarRodada(variante) {
 
   async function handlerSimulado(req, res) {
     const chave = req.headers['x-stronizap-key'];
+    const direto = req.headers['x-verificacao-modo-throw'] === 'handler';
     if (req.method === 'GET') {
       const tenantId = req.query.tenant;
       const phone = req.query.phone;
       if (!chave || !tenantId) return res.status(401).json({ error: 'Credencial ausente' });
+      if (direto) {
+        await new Promise((ok) => setImmediate(ok));
+        throw new Error(`Firestore indisponível (simulado, direto no handler) ${String(phone).length}`);
+      }
       await bancoIndisponivel();
       return res.status(200).json({ found: false, phone });
     }
@@ -182,6 +213,10 @@ async function rodarRodada(variante) {
     const phones = req.body?.phones;
     if (!chave || !tenantId || !Array.isArray(phones)) {
       return res.status(401).json({ error: 'Credencial ausente' });
+    }
+    if (direto) {
+      await new Promise((ok) => setImmediate(ok));
+      throw new Error(`Firestore indisponível (simulado, direto no handler) ${phones.length}`);
     }
     await bancoIndisponivel();
     return res.status(200).json({ found: [] });
@@ -215,11 +250,16 @@ async function rodarRodada(variante) {
 
   const corpoMatch = { action: 'match', tenant: TENANT, phones: [TEL_BODY], marca: CORPO_MARCA };
   const headersPadrao = { 'x-stronizap-key': CHAVE, 'content-type': 'application/json', 'user-agent': 'verificar-vazamento-sentry' };
+  // R2 a R4 lançam direto no handler (formato "handler"): é o único jeito de
+  // telefone(s) e chave estarem na pilha para a variável local vazar. R1
+  // mantém o formato "lib" original (dentro de bancoIndisponivel), para os
+  // dois formatos continuarem cobertos.
+  const headersDireto = { ...headersPadrao, 'x-verificacao-modo-throw': 'handler' };
   const sequencia = [
-    { rotulo: 'R1 fria (Sentry.init acontece aqui) — POST match', metodo: 'POST', caminho: '/api/zap', corpo: corpoMatch, headers: headersPadrao },
-    { rotulo: 'R2 quente — POST match', metodo: 'POST', caminho: '/api/zap', corpo: corpoMatch, headers: headersPadrao },
-    { rotulo: 'R3 quente — GET com telefone na query', metodo: 'GET', caminho: `/api/zap${QUERY_GET}`, headers: headersPadrao },
-    { rotulo: 'R4 quente — POST match de novo', metodo: 'POST', caminho: '/api/zap', corpo: corpoMatch, headers: headersPadrao },
+    { rotulo: 'R1 fria (Sentry.init acontece aqui) — POST match, erro dentro de uma lib', metodo: 'POST', caminho: '/api/zap', corpo: corpoMatch, headers: headersPadrao },
+    { rotulo: 'R2 quente — POST match, erro direto no handler', metodo: 'POST', caminho: '/api/zap', corpo: corpoMatch, headers: headersDireto },
+    { rotulo: 'R3 quente — GET com telefone na query, erro direto no handler', metodo: 'GET', caminho: `/api/zap${QUERY_GET}`, headers: headersDireto },
+    { rotulo: 'R4 quente — POST match de novo, erro direto no handler', metodo: 'POST', caminho: '/api/zap', corpo: corpoMatch, headers: headersDireto },
   ];
 
   console.log(`\n===== rodada ${variante} =====`);
@@ -253,7 +293,9 @@ async function rodarRodada(variante) {
 
   console.log(`chamadas: ${sequencia.length} | envelopes recebidos: ${envelopes.length} | eventos de erro: ${eventos.length}`);
   eventos.forEach(({ evento }, i) => {
-    console.log(`  evento ${i + 1}: request.url=${JSON.stringify(evento.request?.url)} | headers=${JSON.stringify(Object.keys(evento.request?.headers || {}))} | request.data=${evento.request?.data === undefined ? 'ausente' : 'PRESENTE'}`);
+    const framesComVars = (evento.exception?.values || []).flatMap((ex) =>
+      (ex.stacktrace?.frames || []).filter((f) => f.vars).map((f) => `${f.function}{${Object.keys(f.vars).join(',')}}`));
+    console.log(`  evento ${i + 1}: request.url=${JSON.stringify(evento.request?.url)} | headers=${JSON.stringify(Object.keys(evento.request?.headers || {}))} | request.data=${evento.request?.data === undefined ? 'ausente' : 'PRESENTE'} | frames com vars=${JSON.stringify(framesComVars)}`);
   });
   console.log(`marcas encontradas no texto cru dos envelopes: ${achados.length ? JSON.stringify(achados) : 'nenhuma'}`);
 

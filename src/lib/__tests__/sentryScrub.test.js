@@ -261,4 +261,12 @@ describe('scrubBreadcrumb', () => {
   it('devolve o breadcrumb nulo sem quebrar', () => {
     expect(scrubBreadcrumb(null)).toBe(null);
   });
+
+  it('devolve null em vez de derrubar quem chamou quando data tem getter que lança', () => {
+    const crumb = {
+      category: 'fetch',
+      get data() { throw new Error('boom'); }
+    };
+    expect(scrubBreadcrumb(crumb)).toBe(null);
+  });
 });
