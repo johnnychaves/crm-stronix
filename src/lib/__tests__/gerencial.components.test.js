@@ -316,10 +316,13 @@ describe('SellerRankTable', () => {
     expect(html).toContain('aria-label="Ana Ribeiro: R$ 31.200 em 16 vendas · 40% do vendido no mês"');
   });
 
-  it('no celular o ticket mensal desce para a linha de apoio', () => {
+  it('no celular o ticket mensal desce para a linha de apoio, e ela não corta', () => {
     const html = render(createElement(SellerRankTable, { rows: SELLERS, read: READ }));
     expect(html).toContain('16 vendas · R$ 1.950 por venda · R$ 232/mês');
     expect(html).toContain('md:hidden');
+    // Truncar essa linha esconderia o ticket mensal, que é o número que desce
+    // para cá: ela quebra em duas linhas em vez de cortar.
+    expect(html).not.toContain('num truncate text-[10.5px]');
   });
 
   it('a leitura do rodapé aponta a diferença em texto', () => {

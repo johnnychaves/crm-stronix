@@ -88,7 +88,8 @@ export function SellerRankTable({ rows, read }) {
           <span className={AVATAR}>{dashInitials(r.name)}</span>
           <div className="min-w-0 flex-1">
             <div className="truncate text-[12.5px] font-semibold">{r.name}</div>
-            <div className="num truncate text-[10.5px] text-muted-foreground">
+            {/* Sem truncate: é aqui que o ticket mensal aparece no celular, e cortar a linha esconderia justamente ele. */}
+            <div className="num text-[10.5px] leading-snug text-muted-foreground">
               {`${plural(r.count, 'venda', 'vendas')} · ${fmtMoney(r.perSale)} por venda · ${fmtMoney(r.monthly)}/mês`}
             </div>
           </div>
