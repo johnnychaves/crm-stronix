@@ -10,6 +10,7 @@ import { WalletBand } from '../../views/dashboard/WalletBand.jsx';
 import { BlindValueNote, GerencialEmpty } from '../../views/dashboard/GerencialParts.jsx';
 import { ExpiryRunway } from '../../views/dashboard/ExpiryRunway.jsx';
 import { ExitsCard } from '../../views/dashboard/ExitsCard.jsx';
+import { SellerRankTable } from '../../views/dashboard/SellerRankTable.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -269,5 +270,62 @@ describe('ExitsCard', () => {
     expect(html).toContain('R$ 0/mês');
     expect(html).toContain('0 contratos');
     expect(html).not.toContain('NaN');
+  });
+});
+
+// As quatro pessoas de setembro: somam os R$ 78.400 e os 42 contratos do mês.
+const SELLERS = [
+  { id: 'ana', name: 'Ana Ribeiro', role: 'Consultora', count: 16, value: 31200, perSale: 1950, monthly: 232 },
+  { id: 'diego', name: 'Diego Santos', role: 'Consultor', count: 13, value: 24800, perSale: 1908, monthly: 241 },
+  { id: 'larissa', name: 'Larissa Moura', role: 'Consultora', count: 9, value: 16400, perSale: 1822, monthly: 257 },
+  { id: 'marcos', name: 'Marcos Lima', role: 'Gestor · também vende', count: 4, value: 6000, perSale: 1500, monthly: 125 }
+];
+const READ = 'O total premia quem atende mais. No ticket mensal, Larissa fecha a R$ 257 por mês de contrato e Marcos a R$ 125.';
+
+describe('SellerRankTable', () => {
+  it('a participação de cada pessoa sai do vendido das linhas, sem vir pronta', () => {
+    const html = render(createElement(SellerRankTable, { rows: SELLERS, read: READ }));
+    expect(html).toContain('40%'); // 31.200 de 78.400
+    expect(html).toContain('8%'); //   6.000 de 78.400
+  });
+
+  it('as duas colunas de ticket existem e trazem o número de cada pessoa', () => {
+    const html = render(createElement(SellerRankTable, { rows: SELLERS, read: READ }));
+    expect(html).toContain('Ticket da venda');
+    expect(html).toContain('Ticket mensal');
+    expect(html).toContain('R$ 1.950');
+    expect(html).toContain('R$ 232');
+    expect(html).toContain('R$ 125');
+  });
+
+  it('nome, posto e monograma de cada pessoa, na ordem recebida', () => {
+    const html = render(createElement(SellerRankTable, { rows: SELLERS, read: READ }));
+    expect(html).toContain('Ana Ribeiro');
+    expect(html).toContain('Gestor · também vende');
+    expect(html).toContain('>AR<');
+    expect(html.indexOf('Ana Ribeiro')).toBeLessThan(html.indexOf('Marcos Lima'));
+  });
+
+  it('uma barra focável por pessoa, com a dica do vendido', () => {
+    const html = render(createElement(SellerRankTable, { rows: SELLERS, read: READ }));
+    expect(html.match(/tabindex="0"/g)).toHaveLength(4);
+    expect(html).toContain('aria-label="Ana Ribeiro: R$ 31.200 em 16 vendas · 40% do vendido no mês"');
+  });
+
+  it('no celular o ticket mensal desce para a linha de apoio', () => {
+    const html = render(createElement(SellerRankTable, { rows: SELLERS, read: READ }));
+    expect(html).toContain('16 vendas · R$ 1.950 por venda · R$ 232/mês');
+    expect(html).toContain('md:hidden');
+  });
+
+  it('a leitura do rodapé aponta a diferença em texto', () => {
+    const html = render(createElement(SellerRankTable, { rows: SELLERS, read: READ }));
+    expect(html).toContain('No ticket mensal, Larissa fecha a R$ 257 por mês de contrato');
+  });
+
+  it('sem linha nenhuma, não divide por zero', () => {
+    const html = render(createElement(SellerRankTable, { rows: [], read: '' }));
+    expect(html).not.toContain('NaN');
+    expect(html).toContain('Quem vendeu');
   });
 });
