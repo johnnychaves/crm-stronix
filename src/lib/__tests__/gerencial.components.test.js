@@ -7,6 +7,7 @@ import { renderToString } from 'react-dom/server';
 import { TooltipProvider } from '../../components/ui/tooltip.jsx';
 import { SoldHeroCard } from '../../views/dashboard/SoldHeroCard.jsx';
 import { WalletBand } from '../../views/dashboard/WalletBand.jsx';
+import { BlindValueNote, GerencialEmpty } from '../../views/dashboard/GerencialParts.jsx';
 
 const render = (el) => renderToString(createElement(TooltipProvider, null, el));
 
@@ -140,5 +141,27 @@ describe('WalletBand', () => {
     expect(withNotes).toContain('border-dashed');
     const bare = render(createElement(WalletBand, { items: CELLS, notes: [] }));
     expect(bare).not.toContain('border-dashed');
+  });
+});
+
+describe('BlindValueNote', () => {
+  it('conta as pessoas sem valor e se distingue pela forma, não pelo tom', () => {
+    const html = render(createElement(BlindValueNote, { count: 114, context: 'vencem no período e não entram na conta acima' }));
+    expect(html).toContain('114');
+    expect(html).toContain('pessoas sem valor');
+    expect(html).toContain('vencem no período e não entram na conta acima');
+    expect(html).toContain('border-dashed');
+    expect(html).not.toContain('amber');
+    expect(html).not.toContain('rose');
+  });
+});
+
+describe('GerencialEmpty', () => {
+  it('um painel só, com as frases do handoff e o caminho para o pipeline', () => {
+    const html = render(createElement(GerencialEmpty, { onGoToPipeline: () => {} }));
+    expect(html).toContain('Ainda não há contratos');
+    expect(html).toContain('Esta tela ganha vida na primeira matrícula registrada. Enquanto isso, o funil de leads continua no painel CRM.');
+    expect(html).toContain('Ir para o pipeline');
+    expect(html).toContain('<button type="button"');
   });
 });
