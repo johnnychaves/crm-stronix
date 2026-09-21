@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   DEFAULT_FUNNEL_ID, SYSTEM_FUNNEL_IDS, REFERRAL_SOURCE_ID,
-  setupStageId, toSetupWrites,
+  setupStageId, toSetupWrites, planDefaultFunnel, planNegociacaoStages,
 } from '../funnelSetup.js';
 import { ALL_FUNNELS_ID } from '../funnels.js';
 import { planUpgradeSetupOps } from '../upgradeFunnel.js';
@@ -108,5 +108,105 @@ describe('toSetupWrites', () => {
 
   it('etapa sem funil é erro', () => {
     expect(() => toSetupWrites({ createStages: [{ name: 'X' }] }, 'ts')).toThrow(/sem funil/);
+  });
+});
+
+describe('planDefaultFunnel (passo 1 da migração de funis)', () => {
+  it('um padrão só: mantém e não grava nada', () => {
+    expect(planDefaultFunnel([{ id: 'a', isDefault: true }, { id: 'b' }])).toEqual({
+      defaultId: 'a', create: null, promoteId: null, demoteIds: [],
+    });
+  });
+
+  it('vários padrões: fica o criado primeiro e os outros são rebaixados', () => {
+    const plan = planDefaultFunnel([
+      { id: 'novo', isDefault: true, createdAt: { seconds: 200 }, order: 0 },
+      { id: 'velho', isDefault: true, createdAt: { seconds: 100 }, order: 5 },
+    ]);
+    expect(plan.defaultId).toBe('velho');
+    expect(plan.demoteIds).toEqual(['novo']);
+    expect(plan.create).toBeNull();
+  });
+
+  it('vários padrões com a mesma data: desempata pela menor ordem', () => {
+    const plan = planDefaultFunnel([
+      { id: 'b', isDefault: true, createdAt: { seconds: 100 }, order: 3 },
+      { id: 'a', isDefault: true, createdAt: { seconds: 100 }, order: 1 },
+    ]);
+    expect(plan.defaultId).toBe('a');
+  });
+
+  it('padrão sem data perde para o que tem data', () => {
+    const plan = planDefaultFunnel([
+      { id: 'semData', isDefault: true },
+      { id: 'comData', isDefault: true, createdAt: { toMillis: () => 5 } },
+    ]);
+    expect(plan.defaultId).toBe('comData');
+  });
+
+  it('nenhum padrão: promove o funil próprio de menor ordem, nunca um de sistema', () => {
+    const plan = planDefaultFunnel([
+      { id: 'sis', systemKind: 'referral', order: 0 },
+      { id: 'b', order: 3 },
+      { id: 'c', order: 1 },
+    ]);
+    expect(plan).toEqual({ defaultId: 'c', create: null, promoteId: 'c', demoteIds: [] });
+  });
+
+  it('nenhum funil próprio: cria o Comercial com o id fixo', () => {
+    const esperado = {
+      defaultId: DEFAULT_FUNNEL_ID,
+      create: { name: 'Comercial', order: 0, isDefault: true },
+      promoteId: null,
+      demoteIds: [],
+    };
+    expect(planDefaultFunnel([])).toEqual(esperado);
+    expect(planDefaultFunnel(null)).toEqual(esperado);
+    expect(planDefaultFunnel([{ id: 'sis', systemKind: 'expired', order: 99 }])).toEqual(esperado);
+  });
+});
+
+describe('planNegociacaoStages (passo 4 da migração de funis)', () => {
+  it('cria a Negociação no funil próprio que não tem, na última posição', () => {
+    const writes = planNegociacaoStages({
+      funnels: [{ id: 'f1' }],
+      statuses: [{ id: 's1', funnelId: 'f1', name: 'Novo' }, { id: 's2', funnelId: 'f1', name: 'Visita' }],
+    });
+    expect(writes).toEqual([{
+      collection: 'statuses',
+      id: 'f1--etapa-negociacao',
+      data: { name: 'Negociação', color: 'purple', order: 2, funnelId: 'f1', isSystem: true },
+    }]);
+  });
+
+  it('pula o funil que já tem Negociação, com espaço ou maiúscula', () => {
+    const writes = planNegociacaoStages({
+      funnels: [{ id: 'f1' }],
+      statuses: [{ id: 's1', funnelId: 'f1', name: '  NEGOCIAÇÃO ' }],
+    });
+    expect(writes).toEqual([]);
+  });
+
+  it('pula todo funil de sistema', () => {
+    const writes = planNegociacaoStages({
+      funnels: [
+        { id: 'i', systemKind: 'referral' },
+        { id: 'v', systemKind: 'expired' },
+        { id: 'r', systemKind: 'renewal' },
+        { id: 'u', systemKind: 'upgrade' },
+      ],
+      statuses: [],
+    });
+    expect(writes).toEqual([]);
+  });
+
+  it('rodar duas vezes sobre o mesmo estado dá os mesmos ids', () => {
+    const estado = { funnels: [{ id: 'f1' }, { id: 'f2' }], statuses: [] };
+    expect(planNegociacaoStages(estado).map((w) => w.id)).toEqual(planNegociacaoStages(estado).map((w) => w.id));
+  });
+
+  it('funil sem id e entrada vazia não quebram', () => {
+    expect(planNegociacaoStages({ funnels: [{ name: 'sem id' }], statuses: [] })).toEqual([]);
+    expect(planNegociacaoStages()).toEqual([]);
   });
 });
