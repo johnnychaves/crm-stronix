@@ -4,7 +4,8 @@
 // instance for the whole app.
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
+import { persistenceKind } from './authPersistence.js';
 import { getStorage } from 'firebase/storage';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { initAppCheck } from './appCheck.js';
@@ -33,6 +34,46 @@ const app = initializeApp(firebaseConfig);
 initAppCheck(app);
 
 export const auth = getAuth(app);
+
+// Onde o login grava a sessão (ver authPersistence.js). O getAuth acima NÃO
+// muda: ele já procura a sessão no IndexedDB, no localStorage e no
+// sessionStorage, e migra quem estiver logado hoje sem deslogar ninguém.
+const PERSISTENCE_BY_KIND = {
+  indexedDB: indexedDBLocalPersistence,
+  local: browserLocalPersistence,
+  session: browserSessionPersistence,
+};
+
+// Teste por abertura real, num banco próprio. Nunca abre o banco do SDK, que é
+// apagado e recriado quando aberto sem a estrutura esperada. O teto de 1,5 s
+// evita que um IndexedDB travado segure o login.
+let indexedDbCheck = null;
+function indexedDbWorks() {
+  if (!indexedDbCheck) {
+    indexedDbCheck = new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 1500);
+      const done = (ok) => { clearTimeout(timer); resolve(ok); };
+      try {
+        const name = 'stronilead-teste-idb';
+        const req = indexedDB.open(name);
+        req.onsuccess = () => {
+          try { req.result.close(); indexedDB.deleteDatabase(name); } catch { /* noop */ }
+          done(true);
+        };
+        req.onerror = () => done(false);
+        req.onblocked = () => done(false);
+      } catch {
+        done(false);
+      }
+    });
+  }
+  return indexedDbCheck;
+}
+
+export async function persistenceFor(remember) {
+  const indexedDbOk = remember ? await indexedDbWorks() : false;
+  return PERSISTENCE_BY_KIND[persistenceKind({ remember, indexedDbOk })];
+}
 
 // Firebase Storage — fotos de lead/cliente. O bucket já vem no firebaseConfig
 // (storageBucket). Upload/leitura são client-side pelo SDK; ver src/lib/leadPhoto.js.

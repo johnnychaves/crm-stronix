@@ -5,8 +5,7 @@ import {
   onAuthStateChanged,
   signInWithCustomToken,
   signOut,
-  setPersistence,
-  browserLocalPersistence
+  setPersistence
 } from 'firebase/auth';
 
 import {
@@ -30,6 +29,7 @@ import {
   appId,
   DEFAULT_TENANT_ID,
   setTenantId,
+  persistenceFor,
   LEADS_PATH,
   INTERACTIONS_PATH,
   USERS_PATH,
@@ -1297,8 +1297,12 @@ useEffect(() => {
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.returnToken) {
-        try { await setPersistence(auth, browserLocalPersistence); } catch { /* ignore */ }
+        // Primeiro volta à conta do super-admin, ainda na sessão desta aba, e só
+        // depois leva a conta para o armazenamento que as outras abas vigiam. Na
+        // ordem inversa a conta do cliente passaria por lá e as outras abas
+        // entrariam como o cliente por um instante.
         await signInWithCustomToken(auth, data.returnToken);
+        try { await setPersistence(auth, await persistenceFor(true)); } catch { /* ignore */ }
       } else {
         // Retorno indisponível (claim já expirado): sai com segurança para o login.
         await signOut(auth);
