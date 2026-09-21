@@ -33,7 +33,7 @@ function LoginScreen({ authSetupError, urlTenant }) {
     // "Manter conectado" grava no mesmo lugar que o getAuth vigia (IndexedDB),
     // senão abrir outra aba derruba esta. Desmarcado, a sessão fica só nesta
     // aba. Falha aqui não bloqueia o login.
-    await setPersistence(auth, await persistenceFor(remember)).catch(() => {});
+    await persistenceFor(remember).then((p) => setPersistence(auth, p)).catch(() => {});
     const normalizedEmail = email.trim().toLowerCase();
     await signInWithEmailAndPassword(auth, normalizedEmail, password);
   } catch (err) {

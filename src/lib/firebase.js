@@ -37,34 +37,62 @@ export const auth = getAuth(app);
 
 // Onde o login grava a sessão (ver authPersistence.js). O getAuth acima NÃO
 // muda: ele já procura a sessão no IndexedDB, no localStorage e no
-// sessionStorage, e migra quem estiver logado hoje sem deslogar ninguém.
+// sessionStorage, e migra quem estiver logado hoje. Só uma aba do código
+// antigo, aberta antes do deploy, ainda pode cair uma última vez: o F5 resolve.
 const PERSISTENCE_BY_KIND = {
   indexedDB: indexedDBLocalPersistence,
   local: browserLocalPersistence,
   session: browserSessionPersistence,
 };
 
-// Teste por abertura real, num banco próprio. Nunca abre o banco do SDK, que é
+// Teste real de escrita, num banco próprio: abre, grava e apaga um valor, como
+// o _isAvailable() do IndexedDB no SDK. Só abrir não prova nada: há navegador
+// que abre e recusa a gravação, e nesse caso o getAuth já caiu para o
+// localStorage. Nunca abre o banco do SDK (firebaseLocalStorageDb), que é
 // apagado e recriado quando aberto sem a estrutura esperada. O teto de 1,5 s
-// evita que um IndexedDB travado segure o login.
+// evita que um IndexedDB travado segure o login. Só o "funciona" fica guardado:
+// uma falha passageira é testada de novo no próximo login.
 let indexedDbCheck = null;
 function indexedDbWorks() {
   if (!indexedDbCheck) {
     indexedDbCheck = new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), 1500);
-      const done = (ok) => { clearTimeout(timer); resolve(ok); };
+      const name = 'stronilead-teste-idb';
+      let db = null;
+      let settled = false;
+      // Responde uma vez só e, em qualquer saída, fecha e apaga o banco de teste.
+      const done = (ok) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { db?.close(); indexedDB.deleteDatabase(name); } catch { /* noop */ }
+        resolve(ok);
+      };
+      const timer = setTimeout(() => done(false), 1500);
       try {
-        const name = 'stronilead-teste-idb';
-        const req = indexedDB.open(name);
+        const req = indexedDB.open(name, 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore('t'); };
         req.onsuccess = () => {
-          try { req.result.close(); indexedDB.deleteDatabase(name); } catch { /* noop */ }
-          done(true);
+          db = req.result;
+          if (settled) { db.close(); return; } // abriu depois do teto
+          try {
+            const tx = db.transaction('t', 'readwrite');
+            tx.oncomplete = () => done(true);
+            tx.onerror = () => done(false);
+            tx.onabort = () => done(false);
+            tx.objectStore('t').put('1', 'k');
+            tx.objectStore('t').delete('k');
+          } catch {
+            done(false);
+          }
         };
         req.onerror = () => done(false);
         req.onblocked = () => done(false);
       } catch {
         done(false);
       }
+    }).then((ok) => {
+      if (!ok) indexedDbCheck = null;
+      return ok;
     });
   }
   return indexedDbCheck;
