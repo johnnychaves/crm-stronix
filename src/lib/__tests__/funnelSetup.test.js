@@ -11,6 +11,8 @@ import { ALL_FUNNELS_ID } from '../funnels.js';
 import { planUpgradeSetupOps } from '../upgradeFunnel.js';
 import { planReferralSetupOps } from '../referrals.js';
 import { planRenewalSetupOps } from '../renewalFunnel.js';
+import { planExpiredSetupOps } from '../expiredFunnel.js';
+import { normalize } from '../globalSearch.js';
 
 describe('ids fixos', () => {
   it('são estes e não mudam (mudar cria um segundo funil em toda academia)', () => {
@@ -208,5 +210,89 @@ describe('planNegociacaoStages (passo 4 da migração de funis)', () => {
   it('funil sem id e entrada vazia não quebram', () => {
     expect(planNegociacaoStages({ funnels: [{ name: 'sem id' }], statuses: [] })).toEqual([]);
     expect(planNegociacaoStages()).toEqual([]);
+  });
+});
+
+// Banco falso com a semântica do setDoc(..., { merge: true }).
+const emptyDb = () => ({ funnels: new Map(), statuses: new Map(), sources: new Map() });
+const applyWrite = (db, w) => {
+  const col = db[w.collection];
+  col.set(w.id, { ...(col.get(w.id) || {}), ...w.data, id: w.id });
+};
+const view = (db) => ({
+  funnels: [...db.funnels.values()],
+  statuses: [...db.statuses.values()],
+  sources: [...db.sources.values()],
+});
+// Academia como fica depois da migração de funis: o Comercial padrão.
+const baseDb = () => {
+  const db = emptyDb();
+  applyWrite(db, { collection: 'funnels', id: DEFAULT_FUNNEL_ID, data: { name: 'Comercial', order: 0, isDefault: true } });
+  return db;
+};
+
+const SYSTEM_KINDS = [
+  { kind: 'referral', plan: planReferralSetupOps, entries: 1 },
+  { kind: 'expired', plan: planExpiredSetupOps, entries: 1 },
+  { kind: 'renewal', plan: planRenewalSetupOps, entries: 0 },
+  { kind: 'upgrade', plan: planUpgradeSetupOps, entries: 1 },
+];
+
+describe.each(SYSTEM_KINDS)('duas abas configurando o funil $kind ao mesmo tempo', ({ kind, plan, entries }) => {
+  const writesA = toSetupWrites(plan(view(baseDb())), 'ts');
+
+  for (let p = 0; p <= writesA.length; p += 1) {
+    for (const ordem of ['resto de A primeiro', 'B primeiro']) {
+      it(`B lê depois de ${p} gravação(ões) de A, ${ordem}: sobra um funil só`, () => {
+        const db = baseDb();
+        writesA.slice(0, p).forEach((w) => applyWrite(db, w));
+        const writesB = toSetupWrites(plan(view(db)), 'ts');
+        const restoA = writesA.slice(p);
+        const sequencia = ordem === 'B primeiro' ? [...writesB, ...restoA] : [...restoA, ...writesB];
+        sequencia.forEach((w) => applyWrite(db, w));
+
+        const funis = [...db.funnels.values()].filter((f) => f.systemKind === kind);
+        expect(funis).toHaveLength(1);
+        expect(funis[0].id).toBe(SYSTEM_FUNNEL_IDS[kind]);
+
+        const etapas = [...db.statuses.values()].filter((s) => s.funnelId === funis[0].id);
+        expect(etapas.filter((s) => s.isEntry)).toHaveLength(entries);
+        const nomes = etapas.map((s) => normalize(s.name).trim());
+        expect(new Set(nomes).size).toBe(nomes.length);
+
+        if (kind === 'referral') {
+          expect(nomes.filter((n) => n === 'negociacao')).toHaveLength(1);
+          const origens = [...db.sources.values()].filter((s) => normalize(s.name).includes('indica'));
+          expect(origens).toHaveLength(1);
+        }
+      });
+    }
+  }
+});
+
+describe('duas abas rodando a migração de funis numa academia nova', () => {
+  it('as duas criam o mesmo Comercial e a mesma Negociação', () => {
+    const db = emptyDb();
+    const a = planDefaultFunnel(view(db).funnels);
+    const b = planDefaultFunnel(view(db).funnels);
+    expect(a.defaultId).toBe(DEFAULT_FUNNEL_ID);
+    expect(b.defaultId).toBe(DEFAULT_FUNNEL_ID);
+    for (const s of [a, b]) applyWrite(db, { collection: 'funnels', id: s.defaultId, data: s.create });
+    expect(db.funnels.size).toBe(1);
+
+    const negA = planNegociacaoStages(view(db));
+    const negB = planNegociacaoStages(view(db));
+    [...negA, ...negB].forEach((w) => applyWrite(db, w));
+    const negociacoes = [...db.statuses.values()].filter((s) => s.funnelId === DEFAULT_FUNNEL_ID && s.name === 'Negociação');
+    expect(negociacoes).toHaveLength(1);
+  });
+
+  it('a aba atrasada não põe Negociação nos funis de sistema que a outra já criou', () => {
+    const db = baseDb();
+    applyWrite(db, { collection: 'statuses', id: `${DEFAULT_FUNNEL_ID}--etapa-negociacao`, data: { name: 'Negociação', funnelId: DEFAULT_FUNNEL_ID } });
+    for (const { plan } of SYSTEM_KINDS) {
+      toSetupWrites(plan(view(db)), 'ts').forEach((w) => applyWrite(db, w));
+    }
+    expect(planNegociacaoStages(view(db))).toEqual([]);
   });
 });
