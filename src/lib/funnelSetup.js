@@ -4,8 +4,8 @@
 // cada aba criava o seu.
 //
 // Id publicado não muda nunca: trocar um id aqui cria um segundo funil em toda
-// academia. Puro: sem React e sem Firestore (a gravação fica em
-// funnelSetupWrites.js).
+// academia. Sem React e sem gravar no Firestore: a gravação fica em
+// funnelSetupWrites.js.
 
 import { isSystemFunnel } from './funnels.js';
 import { normalize } from './globalSearch.js';
@@ -31,6 +31,9 @@ export const setupStageId = (funnelId, stage) =>
 
 // Plano de um funil de sistema (plan*SetupOps) → gravações com id fixo.
 // ts é o carimbo de hora de quem executa (serverTimestamp() no app).
+// renameStages (Vencidos) fica de fora de propósito: quem chama usa updateDoc,
+// que falha se a etapa sumiu. Criar de novo pelo id recriaria a etapa sem
+// funnelId, e ela cairia no funil padrão pelo fallback de isItemInFunnel.
 export function toSetupWrites(plan, ts) {
   const writes = [];
   let newFunnelId = null;
@@ -51,6 +54,14 @@ export function toSetupWrites(plan, ts) {
   if (plan?.createSource) {
     writes.push({ collection: 'sources', id: REFERRAL_SOURCE_ID, data: { ...plan.createSource, createdAt: ts } });
   }
+
+  // Um nome novo que vire o mesmo id de outro fundiria duas etapas num doc só.
+  const vistos = new Set();
+  for (const w of writes) {
+    const chave = `${w.collection}/${w.id}`;
+    if (vistos.has(chave)) throw new Error(`id repetido no plano: ${chave}`);
+    vistos.add(chave);
+  }
   return writes;
 }
 
@@ -69,9 +80,9 @@ const createdAtMs = (f) => {
 // - um padrão: mantém;
 // - vários: fica o criado primeiro (empate pela menor ordem) e os outros são
 //   rebaixados;
-// - nenhum: promove o funil PRÓPRIO de menor ordem (funil de sistema nunca vira
-//   padrão, senão o fallback de isItemInFunnel despejaria nele os leads sem
-//   funnelId);
+// - nenhum: promove o funil PRÓPRIO de menor ordem, porque um funil de sistema
+//   como padrão receberia pelo fallback de isItemInFunnel os leads sem funnelId
+//   (quando já existe padrão, ele é mantido como está, igual a antes);
 // - nenhum funil próprio: cria o Comercial com o id fixo.
 export function planDefaultFunnel(funnels) {
   const list = Array.isArray(funnels) ? funnels : [];

@@ -111,6 +111,11 @@ describe('toSetupWrites', () => {
   it('etapa sem funil é erro', () => {
     expect(() => toSetupWrites({ createStages: [{ name: 'X' }] }, 'ts')).toThrow(/sem funil/);
   });
+
+  it('duas etapas do mesmo plano com o mesmo id é erro, não uma coluna sumindo', () => {
+    const plan = { createStages: [{ name: 'Em contato', funnelId: 'f1' }, { name: 'Em-contato', funnelId: 'f1' }] };
+    expect(() => toSetupWrites(plan, 'ts')).toThrow(/id repetido/);
+  });
 });
 
 describe('planDefaultFunnel (passo 1 da migração de funis)', () => {
@@ -230,6 +235,10 @@ const baseDb = () => {
   applyWrite(db, { collection: 'funnels', id: DEFAULT_FUNNEL_ID, data: { name: 'Comercial', order: 0, isDefault: true } });
   return db;
 };
+// Estado comparável sem depender da ordem de inserção do Map.
+const state = (db) => Object.fromEntries(Object.entries(db).map(([k, m]) => [k, Object.fromEntries(m)]));
+// Banco com as n primeiras gravações de uma lista aplicadas sobre a base.
+const at = (writes, n) => { const d = baseDb(); writes.slice(0, n).forEach((w) => applyWrite(d, w)); return d; };
 
 const SYSTEM_KINDS = [
   { kind: 'referral', plan: planReferralSetupOps, entries: 1 },
@@ -238,8 +247,20 @@ const SYSTEM_KINDS = [
   { kind: 'upgrade', plan: planUpgradeSetupOps, entries: 1 },
 ];
 
+describe('ids das etapas semeadas', () => {
+  it('também não mudam (vêm do nome da etapa)', () => {
+    const ids = SYSTEM_KINDS.flatMap(({ plan }) => toSetupWrites(plan(view(baseDb())), 'ts'))
+      .filter((w) => w.collection === 'statuses').map((w) => w.id).sort();
+    expect(ids).toEqual([
+      'funil-sistema-indicacoes--entrada', 'funil-sistema-indicacoes--etapa-negociacao',
+      'funil-sistema-upgrade--entrada', 'funil-sistema-vencidos--entrada', 'funil-sistema-vencidos--etapa-em-contato',
+    ]);
+  });
+});
+
 describe.each(SYSTEM_KINDS)('duas abas configurando o funil $kind ao mesmo tempo', ({ kind, plan, entries }) => {
   const writesA = toSetupWrites(plan(view(baseDb())), 'ts');
+  const sozinha = state(at(writesA, writesA.length));
 
   for (let p = 0; p <= writesA.length; p += 1) {
     for (const ordem of ['resto de A primeiro', 'B primeiro']) {
@@ -265,6 +286,20 @@ describe.each(SYSTEM_KINDS)('duas abas configurando o funil $kind ao mesmo tempo
           const origens = [...db.sources.values()].filter((s) => normalize(s.name).includes('indica'));
           expect(origens).toHaveLength(1);
         }
+
+        expect(state(db)).toEqual(sozinha);
+      });
+    }
+  }
+
+  // Leitura rasgada: B lê os funis num instante e as etapas/origens em outro.
+  for (let i = 0; i <= writesA.length; i += 1) {
+    for (let j = 0; j <= writesA.length; j += 1) {
+      it(`B lê os funis depois de ${i} e as etapas depois de ${j} gravação(ões) de A: mesmo estado final`, () => {
+        const writesB = toSetupWrites(plan({ ...view(at(writesA, j)), funnels: view(at(writesA, i)).funnels }), 'ts');
+        const db = baseDb();
+        [...writesA, ...writesB].forEach((w) => applyWrite(db, w));
+        expect(state(db)).toEqual(sozinha);
       });
     }
   }
@@ -294,5 +329,14 @@ describe('duas abas rodando a migração de funis numa academia nova', () => {
       toSetupWrites(plan(view(db)), 'ts').forEach((w) => applyWrite(db, w));
     }
     expect(planNegociacaoStages(view(db))).toEqual([]);
+  });
+
+  it('B lê depois do Comercial de A: mantém e não grava', () => {
+    expect(planDefaultFunnel(view(baseDb()).funnels)).toEqual({ defaultId: DEFAULT_FUNNEL_ID, create: null, promoteId: null, demoteIds: [] });
+  });
+
+  it('duas abas sem padrão promovem o mesmo funil, mesmo com ordem empatada', () => {
+    const funis = [{ id: 'b', order: 0 }, { id: 'a', order: 0 }];
+    expect(planDefaultFunnel(funis).promoteId).toBe(planDefaultFunnel([...funis]).promoteId);
   });
 });
