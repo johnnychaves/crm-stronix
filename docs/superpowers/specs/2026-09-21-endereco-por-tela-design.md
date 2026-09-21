@@ -207,7 +207,7 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 **Funis em dobro.** As cinco configurações de funil do primeiro login de gestor (`App.jsx:878-1276`) passam a gravar com id fixo:
 
 - `src/lib/funnelSetup.js` (puro): `DEFAULT_FUNNEL_ID = 'funil-padrao'`, `SYSTEM_FUNNEL_IDS` (`funil-sistema-indicacoes`, `-upgrade`, `-renovacoes`, `-vencidos`), `REFERRAL_SOURCE_ID`, `setupStageId(funnelId, stage)`, `toSetupWrites(plan, ts)`, `planDefaultFunnel(funnels)` e `planNegociacaoStages({ funnels, statuses })`.
-- `setDoc(..., { merge: true })` no lugar de `addDoc`. A repetição cai no mesmo documento em qualquer combinação de abas, computadores e gestores. Não precisa de regra nova do Firestore.
+- No lugar de `addDoc`, uma gravação que só cria: uma transação confere se o documento com aquele id já existe e só grava se não existir. A repetição cai no mesmo documento em qualquer combinação de abas, computadores e gestores, e a aba atrasada não sobrescreve nada, nem uma edição que o gestor tenha feito no meio. Custa algumas leituras uma vez na vida de cada academia. Sem internet a configuração falha sem carimbar e roda de novo na próxima carga. Não precisa de regra nova do Firestore.
 - Cada execução congela a academia no início (`const tenant = appId`). Se a conta mudar no meio, a execução falha sem carimbar, em vez de gravar na academia errada.
 - O passo que põe "Negociação" em todo funil passa a ignorar funis de sistema.
 - Os planos atuais (`plan*SetupOps`) e os testes deles não mudam.

@@ -4,7 +4,7 @@
 
 **Goal:** Abrir uma segunda aba deixa de deslogar a primeira, e a configuração de funis do primeiro login de gestor deixa de criar funis e etapas em dobro quando duas abas (ou dois gestores) rodam juntas.
 
-**Architecture:** Duas correções independentes, sem tocar em tela. (1) O login com "Manter conectado" passa a gravar a sessão no IndexedDB, o mesmo lugar que o `getAuth` vigia; a escolha é uma função pura (`src/lib/authPersistence.js`) mais a fiação em `src/lib/firebase.js`. (2) As cinco configurações de funil em `src/App.jsx` passam a gravar com id fixo via `setDoc(..., { merge: true })`; o que gravar sai de um módulo puro novo (`src/lib/funnelSetup.js`) e o como gravar de `src/lib/funnelSetupWrites.js`. Cada execução congela a academia no início.
+**Architecture:** Duas correções independentes, sem tocar em tela. (1) O login com "Manter conectado" passa a gravar a sessão no IndexedDB, o mesmo lugar que o `getAuth` vigia; a escolha é uma função pura (`src/lib/authPersistence.js`) mais a fiação em `src/lib/firebase.js`. (2) As cinco configurações de funil em `src/App.jsx` passam a gravar com id fixo, numa transação que só cria o doc se ele ainda não existir; o que gravar sai de um módulo puro novo (`src/lib/funnelSetup.js`) e o como gravar de `src/lib/funnelSetupWrites.js`. Cada execução congela a academia no início.
 
 **Tech Stack:** React 19 + Vite, Firebase JS SDK 12.11 (`firebase/auth` 1.12.2, `firebase/firestore`), vitest 4 em node (sem jsdom), eslint 9 com react-hooks v7.
 
@@ -25,7 +25,7 @@
 | `src/App.jsx` | "Sair da visualização" na ordem nova; cinco configurações de funil com id fixo e academia congelada | Modificar |
 | `src/lib/funnelSetup.js` | Ids fixos e planos puros (`setupStageId`, `toSetupWrites`, `planDefaultFunnel`, `planNegociacaoStages`) | Criar |
 | `src/lib/__tests__/funnelSetup.test.js` | Testes, incluindo a convergência de duas abas | Criar |
-| `src/lib/funnelSetupWrites.js` | Grava os planos com `setDoc` merge numa academia congelada | Criar |
+| `src/lib/funnelSetupWrites.js` | Grava os planos só criando (transação), numa academia congelada | Criar |
 | `CLAUDE.md` | Duas regras novas em "Convenções gerais" | Modificar |
 
 ---
@@ -887,7 +887,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 **Files:**
 - Create: `src/lib/funnelSetupWrites.js`
 
-Sem teste unitário: é só `setDoc`, que não roda em node sem o Firebase. O que ele grava já está coberto pelas Tasks 3 a 5.
+Sem teste unitário: é só a transação do Firestore, que não roda em node sem o Firebase. O que ele grava já está coberto pelas Tasks 3 a 5.
 
 - [ ] **Step 1: Criar o arquivo**
 
@@ -903,7 +903,7 @@ Sem teste unitário: é só `setDoc`, que não roda em node sem o Firebase. O qu
 // Firestore nega e a execução falha sem carimbar, em vez de gravar na academia
 // nova com o plano calculado na anterior.
 
-import { collection, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, runTransaction, serverTimestamp } from 'firebase/firestore';
 import { db, FUNNELS_PATH, STATUSES_PATH, SOURCES_PATH } from './firebase.js';
 import { toSetupWrites } from './funnelSetup.js';
 
@@ -912,10 +912,17 @@ const PATH_BY_COLLECTION = { funnels: FUNNELS_PATH, statuses: STATUSES_PATH, sou
 export const tenantCol = (tenant, path) => collection(db, 'artifacts', tenant, 'public', 'data', path);
 export const tenantDoc = (tenant, path, id) => doc(db, 'artifacts', tenant, 'public', 'data', path, id);
 
-// setDoc com merge: a segunda aba que gravar a mesma coisa cai no mesmo doc.
+// Só cria. A transação confere se o doc do id fixo já existe e, se existir, não
+// mexe: a segunda aba (ou um notebook que acordou com a gravação na fila) nunca
+// sobrescreve o que a primeira gravou, nem uma edição do gestor feita no meio.
+// Custa uma leitura por doc, uma vez na vida de cada academia. Sem internet a
+// transação falha, a configuração não carimba e roda de novo na próxima carga.
 export async function writeSetupWrites(tenant, writes) {
   for (const w of writes) {
-    await setDoc(tenantDoc(tenant, PATH_BY_COLLECTION[w.collection], w.id), w.data, { merge: true });
+    const ref = tenantDoc(tenant, PATH_BY_COLLECTION[w.collection], w.id);
+    await runTransaction(db, async (tx) => {
+      if (!(await tx.get(ref)).exists()) tx.set(ref, w.data);
+    });
   }
 }
 
@@ -965,18 +972,21 @@ No IIFE da migração de funis, trocar o trecho que vai de `// Passo 1: garantir
         const tenant = appId;
 
         // Passo 1: garantir EXATAMENTE um funil default. O Comercial criado tem
-        // id fixo, então duas abas rodando juntas gravam no mesmo documento.
+        // id fixo e só é criado se ainda não existir, então duas abas rodando
+        // juntas caem no mesmo documento.
         const funnelsSnap = await getDocs(tenantCol(tenant, FUNNELS_PATH));
         const step1 = planDefaultFunnel(funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         if (step1.create) {
-          await setDoc(
-            tenantDoc(tenant, FUNNELS_PATH, step1.defaultId),
-            { ...step1.create, createdAt: serverTimestamp() },
-            { merge: true }
-          );
+          await writeSetupWrites(tenant, [{
+            collection: 'funnels',
+            id: step1.defaultId,
+            data: { ...step1.create, createdAt: serverTimestamp() },
+          }]);
         }
         if (step1.promoteId) {
-          await setDoc(tenantDoc(tenant, FUNNELS_PATH, step1.promoteId), { isDefault: true }, { merge: true });
+          // updateDoc, não setDoc: se o funil foi apagado no meio, falha em vez
+          // de recriar um doc sem nome marcado como padrão.
+          await updateDoc(tenantDoc(tenant, FUNNELS_PATH, step1.promoteId), { isDefault: true });
         }
         if (step1.demoteIds.length) {
           await commitOpsInChunks(
@@ -1206,7 +1216,7 @@ Expected: exatamente cinco linhas, todas `const tenant = appId;`.
 - [ ] **Step 7: Lint, testes e build**
 
 Run: `npm run lint && npx vitest run && npm run build`
-Expected: lint com 0 erros (o aviso antigo continua); todos os testes verdes (1675 da base + 3 da Task 1 + 54 do `funnelSetup.test.js` = 1732); build termina sem erro.
+Expected: lint com 0 erros (o aviso antigo continua); todos os testes verdes (1675 da base + 3 da Task 1 + 112 do `funnelSetup.test.js`, já com o teste de convergência reforçado na revisão = 1790); build termina sem erro.
 
 - [ ] **Step 8: Commit das Tasks 7 e 8**
 
@@ -1215,7 +1225,7 @@ git add src/App.jsx
 git commit -m "fix(funis): configuração do primeiro login grava com id fixo
 
 As cinco configurações de funil (padrão, Indicações, Vencidos,
-Renovações e Upgrade) passam a gravar com setDoc merge e id fixo. Duas
+Renovações e Upgrade) passam a gravar com id fixo, só criando. Duas
 abas, dois computadores ou dois gestores rodando juntos caem no mesmo
 documento. Cada execução congela a academia no início, e a Negociação
 deixa de entrar em funil de sistema.
