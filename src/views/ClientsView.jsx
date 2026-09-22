@@ -9,7 +9,7 @@ import { deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { cn } from '@/lib/utils';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
-import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../components/nav/AppLink.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
 
@@ -73,7 +73,6 @@ function ContractRingAvatar({ name, status, photoUrl = null }) {
 
 function ClientsView({ appUser, usersList, db }) {
   const { contractThresholdDays } = useGeneralConfig();
-  const { openProfile } = useLeadProfile();
   const isAdmin = isAdminUser(appUser);
 
   const [filterOpen, setFilterOpen] = useState(false);
@@ -335,9 +334,9 @@ function ClientsView({ appUser, usersList, db }) {
               const consultantFirst = (c.consultantName || '').trim().split(/\s+/)[0] || '';
               const hasValue = Number.isFinite(Number(c.currentContractValue)) && c.currentContractValue != null;
               return (
-                <div
+                <LeadLink
                   key={c.id}
-                  onClick={() => openProfile(c.id)}
+                  leadId={c.id}
                   className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.8fr_1.2fr_0.9fr_0.9fr] md:items-center px-5 py-[11px] border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
                 >
                   {/* Cliente */}
@@ -377,7 +376,7 @@ function ClientsView({ appUser, usersList, db }) {
                   <div className="md:text-right text-[12px] tabular-nums text-slate-500 dark:text-neutral-400 whitespace-nowrap">
                     {endsAt ? endsAt.toLocaleDateString('pt-BR') : '—'}
                   </div>
-                </div>
+                </LeadLink>
               );
             })
           )}
