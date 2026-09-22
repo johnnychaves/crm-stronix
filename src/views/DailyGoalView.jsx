@@ -249,7 +249,7 @@ function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOu
         {/* NextUp deriva de pendingBySlug (categoria sempre pendente). O campo
             appointmentOutcome no doc pode estar stale de um agendamento anterior,
             por isso não condicionamos o botão a ele. */}
-        <Btn kind="success" icon={<CheckCircle size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'attended', slug, e)}>Compareceu</Btn>
+        <Btn kind="success" icon={<CheckCircle size={13} />} onClick={() => onOutcome && onOutcome(task, 'attended', slug)}>Compareceu</Btn>
       </div>
     </div>
   );
@@ -384,9 +384,13 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
         <Avatar name={task.name} size={40} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
+            {/* draggable={false}: a camada do ::after é da âncora, então sem
+                isto arrastar em qualquer ponto do cabeçalho arrastaria o
+                endereço da ficha para outra aba ou para um campo de texto. */}
             <LeadLink
               leadId={task.id}
               stretched
+              draggable={false}
               className="font-semibold text-[14px] text-slate-900 dark:text-white truncate outline-none after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-brand-500/40"
             >
               {task.name}
@@ -465,7 +469,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
             leadId={task.id}
             tabIndex={-1}
             title="Abrir ficha"
-            aria-label="Abrir ficha"
+            aria-label={`Abrir ficha de ${task.name}`}
             className="relative z-10 w-8 h-8 grid place-items-center rounded-lg transition text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06]"
           >
             <MoreHorizontal size={16} />
@@ -475,22 +479,22 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
 
       <div className="px-3.5 pb-3 pt-1 flex items-center justify-between gap-2 flex-wrap">
         <div className="flex items-center gap-1.5">
-          <Btn kind="soft" icon={<WhatsappGlyph size={14} />} onClick={(e) => { e.stopPropagation(); onWhatsapp && onWhatsapp(task); }}>WhatsApp</Btn>
-          <IconBtn icon={<Phone size={15} />} title="Ligar" onClick={(e) => { e.stopPropagation(); onCall && onCall(task); }} />
+          <Btn kind="soft" icon={<WhatsappGlyph size={14} />} onClick={() => onWhatsapp && onWhatsapp(task)}>WhatsApp</Btn>
+          <IconBtn icon={<Phone size={15} />} title="Ligar" onClick={() => onCall && onCall(task)} />
           {!isAppt && (
-            <IconBtn icon={<Calendar size={15} />} title="Adiar p/ amanhã" onClick={(e) => onSnooze && onSnooze(task, e)} />
+            <IconBtn icon={<Calendar size={15} />} title="Adiar p/ amanhã" onClick={() => onSnooze && onSnooze(task)} />
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {isAppt ? (
             <>
-              <Btn kind="success" icon={<Check size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'attended', slug, e)}>Compareceu</Btn>
-              <Btn kind="secondary" icon={<X size={13} />} onClick={(e) => onOutcome && onOutcome(task, 'no_show', slug, e)}>Não veio</Btn>
-              <Btn kind="soft" onClick={(e) => { e.stopPropagation(); onReschedule && onReschedule(task, slug); }}>Remarcou</Btn>
-              <Btn kind="soft" onClick={(e) => onOutcome && onOutcome(task, 'cancelled', slug, e)}>Cancelou</Btn>
+              <Btn kind="success" icon={<Check size={13} />} onClick={() => onOutcome && onOutcome(task, 'attended', slug)}>Compareceu</Btn>
+              <Btn kind="secondary" icon={<X size={13} />} onClick={() => onOutcome && onOutcome(task, 'no_show', slug)}>Não veio</Btn>
+              <Btn kind="soft" onClick={() => onReschedule && onReschedule(task, slug)}>Remarcou</Btn>
+              <Btn kind="soft" onClick={() => onOutcome && onOutcome(task, 'cancelled', slug)}>Cancelou</Btn>
             </>
           ) : (
-            <Btn kind="primary" icon={<Check size={14} />} onClick={(e) => { e.stopPropagation(); onGoalDone && onGoalDone(task, slug, '', e); }}>Concluir</Btn>
+            <Btn kind="primary" icon={<Check size={14} />} onClick={() => onGoalDone && onGoalDone(task, slug, '')}>Concluir</Btn>
           )}
         </div>
       </div>
@@ -514,9 +518,12 @@ export function DoneCard({ lead, onReschedule }) {
       <Avatar name={lead.name} size={28} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
+          {/* draggable={false}: mesma razão do TaskCard — a camada cobre o
+              card inteiro e sem isto o card vira um endereço arrastável. */}
           <LeadLink
             leadId={lead.id}
             stretched
+            draggable={false}
             className="font-medium text-[13px] text-slate-800 dark:text-slate-100 line-through decoration-slate-400/60 truncate outline-none after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-brand-500/40"
           >
             {lead.name}
@@ -552,7 +559,7 @@ export function TomorrowApptRow({ lead, when }) {
   return (
     <LeadLink
       leadId={lead.id}
-      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition text-left"
+      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition"
     >
       <Avatar name={lead.name} size={38} />
       <div className="min-w-0 flex-1">
@@ -1147,8 +1154,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     prevProgress.current = progress;
   }, [progress, total, volumeCount, volumeTarget, recordGoalHit]);
 
-  const handleSnooze = async (lead, e) => {
-    e.stopPropagation();
+  const handleSnooze = async (lead) => {
     if (!window.confirm("Adiar o contato deste lead para amanhã?")) return;
     try {
       const tomorrow = new Date();
@@ -1168,8 +1174,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     } catch(err) { console.error(err); toast.error('Não foi possível adiar o lead. Tente novamente.'); }
   };
 
-  const handleOutcome = async (lead, outcome, categorySlug, e) => {
-    if (e) e.stopPropagation();
+  const handleOutcome = async (lead, outcome, categorySlug) => {
     if (!APPOINTMENT_OUTCOMES.includes(outcome)) return;
     const meta = getAppointmentOutcomeMeta(outcome);
     // Auto-move "Compareceu" em visita/aula → fase Negociação no mesmo funil.
@@ -1261,8 +1266,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     }
   };
 
-  const handleGoalDone = async (lead, categorySlug, note, e) => {
-    if (e) e.stopPropagation();
+  const handleGoalDone = async (lead, categorySlug, note) => {
     if (!Object.values(DAILY_GOAL_CATEGORIES).includes(categorySlug)) return;
     // Renovação: concluir abre o popup de desfecho (Renovou/Não vai
     // renovar/Reagendar) em vez do window.confirm genérico — a gravação

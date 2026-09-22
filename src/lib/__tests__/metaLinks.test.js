@@ -67,7 +67,7 @@ describe('Meta diária', () => {
 
   it('TaskCard: WhatsApp, Ligar, Adiar e Concluir continuam botões', () => {
     const html = taskCard();
-    for (const rotulo of ['WhatsApp', 'Concluir']) {
+    for (const rotulo of ['WhatsApp', 'title="Ligar"', 'title="Adiar p/ amanhã"', 'Concluir']) {
       const i = html.indexOf(rotulo);
       expect(html.lastIndexOf('<button', i)).toBeGreaterThan(html.lastIndexOf('<a ', i));
     }
@@ -89,6 +89,17 @@ describe('Meta diária', () => {
     // No <button> o React respeita a ordem das props, e class vem depois de
     // title, então de novo a tag inteira.
     expect(html.slice(b, html.indexOf('>', i))).toContain('relative z-10');
+  });
+
+  it('os containers não voltam a ter onClick', () => {
+    // O renderToString não mostra handler, então a trava é olhar o elemento.
+    // Com onClick no container o clique abriria a ficha duas vezes e o voltar
+    // do navegador passaria a exigir dois cliques. Nenhum dos dois usa hook,
+    // então dá para chamá-los como função.
+    const card = TaskCard({ task: TASK, slug: 'novo_24h', now: new Date('2026-09-22T10:00:00') });
+    expect(card.props.children[0].props.onClick).toBeUndefined();
+    const done = DoneCard({ lead: { ...TASK }, onReschedule: () => {} });
+    expect(done.props.onClick).toBeUndefined();
   });
 
   it('prévia de amanhã: a linha é link para a ficha', () => {
@@ -121,8 +132,11 @@ describe('visão Equipe', () => {
   it('a prospecção sem lead fica sem link e sem hover de link', () => {
     const html = detalhe();
     const i = html.indexOf('Ligação');
-    const abertura = html.lastIndexOf('<span', i);
-    expect(html.slice(abertura, i)).not.toContain('href');
+    // A âncora é o <li>, que contém o wrapper inteiro. Subir só até o <span>
+    // mais próximo pegaria o span interno do texto, que nunca tem href e
+    // deixaria o teste passar mesmo se o wrapper voltasse a ser <a href>.
+    const li = html.lastIndexOf('<li', i);
+    expect(html.slice(li, i)).not.toContain('<a ');
     expect(html).not.toContain('group-enabled:');
   });
 });

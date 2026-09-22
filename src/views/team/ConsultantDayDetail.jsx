@@ -81,7 +81,7 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                 <ul className="space-y-1">
                   {c.itens.map(({ lead, done, text, critical }) => (
                     <li key={lead.id}>
-                      <LeadLink leadId={lead.id} className="w-full flex items-center gap-2 text-left group">
+                      <LeadLink leadId={lead.id} className="w-full flex items-center gap-2 group">
                         <i
                           className={cn('size-[7px] rounded-full shrink-0', done ? 'bg-success' : critical ? 'bg-danger' : 'bg-brand-200 dark:bg-brand-500/50')}
                           aria-hidden="true"
@@ -152,11 +152,11 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                   <li key={`${a.leadId || 'sem'}-${i}`}>
                     {/* Ação cujo lead saiu da base não vira link. */}
                     {a.leadId ? (
-                      <LeadLink leadId={a.leadId} className="w-full flex items-center gap-2 text-left group">
+                      <LeadLink leadId={a.leadId} className="w-full flex items-center gap-2 group">
                         {conteudo}
                       </LeadLink>
                     ) : (
-                      <span className="w-full flex items-center gap-2 text-left group cursor-default">
+                      <span className="w-full flex items-center gap-2 group cursor-default">
                         {conteudo}
                       </span>
                     )}

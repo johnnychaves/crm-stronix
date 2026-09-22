@@ -92,11 +92,11 @@ A contagem é cumulativa: o número da última coluna é o que `npx vitest run` 
 | base | branch `claude/rotas-pr3-ctrl-clique` em `a751863` | | | | 100 arquivos, 2066 testes |
 | T1 | Card do Pipeline e a setinha (mais 2 testes dos ajustes da revisão) | | 11 | 1 | 101, 2077 |
 | T2 | Listas de Leads, Clientes, Aulas e Visitas | | 5 | 1 | 102, 2082 |
-| T3 | Meta diária e visão Equipe | | 9 | 1 | 103, 2091 |
-| T4 | Busca global e sino | | 7 | 1 | 104, 2098 |
-| T5 | Ficha e indicações | | 5 | 1 | 105, 2103 |
-| T6 | Varredura, documentação, verificação final e corpo do PR | T1 a T5 | 2 | 1 | 106, 2105 |
-| **Total** | | | **39** | **6** | **106 arquivos, 2105 testes** |
+| T3 | Meta diária e visão Equipe (mais 1 teste dos ajustes da revisão) | | 10 | 1 | 103, 2092 |
+| T4 | Busca global e sino | | 7 | 1 | 104, 2099 |
+| T5 | Ficha e indicações | | 5 | 1 | 105, 2104 |
+| T6 | Varredura, documentação, verificação final e corpo do PR | T1 a T5 | 2 | 1 | 106, 2106 |
+| **Total** | | | **40** | **6** | **106 arquivos, 2106 testes** |
 
 As tarefas T1 a T5 são independentes entre si (arquivos diferentes) e podem rodar em qualquer ordem. A T6 é a última.
 
@@ -895,6 +895,15 @@ EOF
 
 Aqui o link esticado pode ficar: nem o cabeçalho do `TaskCard` nem o corpo do `DoneCard` têm `title`, então a camada por cima não apaga tooltip nenhum. O container ganha `relative` (é ele que o `after:inset-0` usa de referência) e perde o `onClick`, senão o clique empilha duas entradas no histórico. Os botões de dentro ganham `relative z-10`, senão ficam por baixo da camada e param de responder.
 
+**Ajustes da revisão de qualidade (22/09, depois do commit da Task 3).** O código e o teste finais diferem do escrito nos Steps abaixo nestes seis pontos:
+
+- O teste da ação de prospecção sem lead subia até o `<span` mais próximo, que é o span interno do texto e nunca tem `href`. Ele passava mesmo com a regressão. A âncora agora é o `<li>`, que contém o wrapper inteiro, e a asserção procura `<a `. Comprovado sabotando o código: com o wrapper virando link de verdade, o teste falha.
+- Um teste novo trava o risco principal do padrão esticado: os dois containers não podem voltar a ter `onClick`, senão o clique empilha duas entradas e o voltar do navegador passa a exigir dois cliques. O `renderToString` não mostra handler, então ele chama `TaskCard` e `DoneCard` como função (nenhum dos dois usa hook) e olha o elemento.
+- O teste dos botões do rodapé conferia dois dos quatro que o nome prometia. Ligar e Adiar são `IconBtn` e ficariam sem guarda; agora os quatro entram no laço.
+- Os dois links esticados ganham `draggable={false}`. Como o `::after` é da âncora, arrastar em qualquer ponto do cabeçalho do `TaskCard` ou do corpo do `DoneCard` viraria arrasto do endereço da ficha. O card do Kanban já resolveu isso na T1.
+- O atalho do canto ganha `aria-label={`Abrir ficha de ${task.name}`}`, mesma saída da revisão da T1. Sem o nome, quem navega por lista de links ouve "Abrir ficha" repetido em cada card. O `title` continua sendo o tooltip do mouse.
+- Os `e.stopPropagation()` do rodapé do `TaskCard` saíram, junto com o `e` que eles pediam em `handleSnooze`, `handleOutcome` e `handleGoalDone`. Eles existiam por causa de um `onClick` de cabeçalho que nunca foi ancestral do rodapé e agora nem existe. O `text-left` que veio dos `<button>` antigos também saiu: só o botão centraliza texto por padrão, em `<a>` e em `<span>` a classe não faz nada.
+
 - [ ] **Step 1: Escrever o teste que falha**
 
 Criar `src/lib/__tests__/metaLinks.test.js`:
@@ -1435,7 +1444,7 @@ Depois:
 npx vitest run src/lib/__tests__/metaLinks.test.js
 ```
 
-Esperado: `Test Files  1 passed (1)` e `Tests  9 passed (9)`.
+Esperado: `Test Files  1 passed (1)` e `Tests  10 passed (10)`.
 
 - [ ] **Step 13: Suíte inteira e lint**
 
@@ -1443,7 +1452,7 @@ Esperado: `Test Files  1 passed (1)` e `Tests  9 passed (9)`.
 npx vitest run && npm run lint
 ```
 
-Esperado: `Test Files  103 passed (103)`, `Tests  2089 passed (2089)`, lint com `✖ 1 problem (0 errors, 1 warning)`.
+Esperado: `Test Files  103 passed (103)`, `Tests  2092 passed (2092)`, lint com `✖ 1 problem (0 errors, 1 warning)`.
 
 - [ ] **Step 14: Commit**
 
@@ -2473,6 +2482,16 @@ erros (segue o mesmo aviso antigo do `SuperAdminView.jsx`). Build e
 - [ ] Meta: no card concluído, Remarcar não abre a ficha e o resto abre.
 - [ ] Prévia de amanhã e as duas listas da visão Equipe abrem a ficha.
 - [ ] Na Equipe, ação de prospecção sem lead continua sem clique.
+- [ ] No iPhone e no Android, segurar o dedo no corpo do card da Meta mostra a
+      prévia do link e o menu de abrir em nova aba. É comportamento novo do
+      celular, herdado do link esticado: conferir se atrapalha a rolagem. O
+      toque simples tem que abrir a ficha na mesma tela.
+- [ ] Lead com id que não serve para endereço: o cabeçalho do card e o corpo do
+      card concluído continuam com cara de clicável (`cursor-pointer`) e o
+      atalho do canto continua com cara de botão, mas nada abre, porque o
+      `LeadLink` vira `<span>` e joga fora `title` e `aria-label`. É a mesma
+      troca aceita na T1 para o Kanban; na prática é card que já não abria
+      ficha nenhuma.
 
 **Busca e sino**
 - [ ] Busca: clique simples abre e limpa o campo; Ctrl+clique e botão do meio
