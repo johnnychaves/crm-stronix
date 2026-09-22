@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap } from 'lucide-react';
 
 import {
@@ -58,13 +59,15 @@ import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey }
 import { recordGoalHit as recordGoalHitDoc, goalHitKeyToRecord } from './lib/dailyGoalHistory.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
-import { useProfileLead } from './hooks/useProfileLead.js';
+import { useRouteScroll } from './hooks/useRouteScroll.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { planReferralSetupOps } from './lib/referrals.js';
 import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
 import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
 import { IDLE_RUN, runStatusFor, settleRun, EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor } from './lib/setupRun.js';
+import { parseAppPath, routeDecision, hrefFor, screenKey, documentTitle } from './lib/routes.js';
+import { screenState, sessionKeyFor, loginTenantSlug } from './lib/appShell.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
@@ -87,7 +90,7 @@ import { KanbanView } from './views/KanbanView.jsx';
 import { AppointmentTrackingView } from './views/AppointmentTrackingView.jsx';
 import { LeadsView } from './views/LeadsView.jsx';
 import { ClientsView } from './views/ClientsView.jsx';
-import { LeadProfileView } from './views/LeadProfileView.jsx';
+import { LeadProfileRoute } from './views/LeadProfileRoute.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
@@ -106,14 +109,16 @@ import { SuperConsole } from './views/console/SuperConsole.jsx';
 import { SupportCenterModal } from './modals/SupportCenterModal.jsx';
 import { countUnreadForClient } from './lib/ticketThread.js';
 import { AppErrorBoundary } from './components/ErrorBoundary.jsx';
+import { RouteRedirect } from './components/RouteRedirect.jsx';
 import { setSentryUser, clearSentryUser } from './lib/sentry.js';
 
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
 // ==========================================
 export default function App() {
-  // Roteamento mínimo por query-param (app single-page, sem react-router):
-  // /?invite=<token>&t=<tenantId> abre a tela pública de aceite de convite.
+  // Rotas públicas, decididas uma vez aqui e fora das telas do app logado
+  // (src/lib/routes.js). /?invite=<token>&t=<tenantId> abre o aceite de
+  // convite. Por isso invite, t e ref nunca podem virar parâmetro de tela.
   const [invite] = useState(() => {
     try {
       const p = new URLSearchParams(window.location.search);
@@ -123,8 +128,8 @@ export default function App() {
     }
   });
   // /i/<slug>?ref=<idDoCliente> abre a página PÚBLICA de indicação (fase 2).
-  // O segmento "i" é reservado: tem 1 letra e slugs reais têm 3+ (TENANT_ID_RE
-  // do provisionamento), então o getTenantSlug abaixo nunca colide com ele.
+  // O segmento "i" é palavra reservada (src/lib/tenantSlug.js): nenhuma
+  // academia pode ter esse identificador.
   const [referralRoute] = useState(() => {
     try {
       const m = String(window.location.pathname || '').match(/^\/i\/([a-z0-9][a-z0-9-]{0,63})\/?$/i);
@@ -146,24 +151,6 @@ export default function App() {
   );
 }
 
-// Lê o slug da academia da URL: primeiro o PATH (stronilead.com.br/<slug>) e,
-// como compatibilidade com links antigos, o HASH (#<slug>, #/slug, #/t/slug).
-// Retorna '' se não houver/for inválido.
-function getTenantSlug() {
-  const re = /^[a-z0-9][a-z0-9-]{0,63}$/;
-  try {
-    // 1) path-based: /<slug>
-    const seg = String(window.location.pathname || '').replace(/^\/+/, '').split('/')[0].trim().toLowerCase();
-    if (re.test(seg)) return seg;
-    // 2) fallback: hash
-    const raw = String(window.location.hash || '').replace(/^#\/?(t\/)?/i, '').trim().toLowerCase();
-    const h = raw.split(/[/?#&]/)[0];
-    return re.test(h) ? h : '';
-  } catch {
-    return '';
-  }
-}
-
 function AppInner() {
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [appUser, setAppUser] = useState(null);
@@ -176,29 +163,48 @@ function AppInner() {
   // banner de contagem regressiva. null quando não há trial ativo.
   const [trialEndsAtMs, setTrialEndsAtMs] = useState(null);
   const [billingDue, setBillingDue] = useState(null); // { dueAtMs, overdue, invoiceUrl } | null
-  // Academia identificada pela URL (#<slug>) — só para exibir a MARCA no login.
+  // Academia identificada pelo endereço, só para exibir a MARCA no login.
   // NÃO controla acesso (isso continua sendo o claim tenantId + as rules).
-  // Formato: { slug, loading? , found?, displayName? }. Init lazy a partir do hash.
+  // Formato: { slug, loading? , found?, displayName? }.
   const [urlTenant, setUrlTenant] = useState(() => {
-    const slug = getTenantSlug();
+    const slug = loginTenantSlug(window.location);
     return slug ? { slug, loading: true } : null;
   });
+  // Nome da academia da sessão, lido do doc tenants/{id} no login. Vai no
+  // título da aba.
+  const [tenantDisplayName, setTenantDisplayName] = useState('');
 
-  const [activeTab, setActiveTab] = useState('dashboard');
-  // 'dashboard' é um SENTINEL (estado inicial e pós-logout): a Visão geral abre
-  // no Operacional para todo mundo. CRM e Gerencial estão "Em breve".
-  const resolvedTab = activeTab === 'dashboard' ? 'dashOperacional' : activeTab;
+  // O endereço manda na tela (src/lib/routes.js). Nada disto é estado: a tela,
+  // a ficha e a subaba do super-admin saem do endereço a cada render, e
+  // routeDecision diz se o endereço vale para esta sessão. Quando não vale, a
+  // tela de destino já é desenhada neste render (shown) e o <RouteRedirect>
+  // troca o endereço com replace. Assim a tela barrada nunca pisca e nenhum
+  // effect lê o endereço para dar setState.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const route = useMemo(() => parseAppPath(location.pathname), [location.pathname]);
+  const decision = routeDecision(route, appUser, { search: location.search });
+  const shown = decision.kind === 'redirect' && decision.target ? decision.target : route;
+  // activeTab, resolvedTab, profileLeadId e superTab continuam com os nomes de
+  // sempre (src/lib/appShell.js). 'dashboard' é o endereço curto /<academia> e
+  // abre o Operacional. Com a ficha aberta, activeTab é a tela de onde ela foi
+  // aberta (menu aceso e título da origem), ou 'ficha' quando ela foi aberta
+  // direto numa aba nova.
+  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab } = screenState(shown, location.state, appUser);
   // As três abas da Visão geral. O grupo do menu fica aberto enquanto uma
   // delas está ativa; fora delas, vale o toggle do usuário.
   const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashCrm' || resolvedTab === 'dashGerencial';
-  // Ficha-página (lead/cliente): id em foco. A ficha SOBREPÕE o conteúdo da
-  // aba ativa (não troca activeTab), então o "Voltar" só limpa este id e a
-  // aba reaparece sozinha.
-  const [profileLeadId, setProfileLeadId] = useState(null);
+  // Academia da sessão para montar endereços. Vem do claim, nunca do endereço.
+  const sessionTenant = appUser && !appUser.superAdminOnly ? appUser.tenantId : null;
+  // Chave da sessão da ficha: sair e entrar, ou o "Acessar como", refazem a
+  // leitura da ficha na academia certa mesmo com o mesmo id no endereço.
+  const sessionKey = sessionKeyFor(appUser);
+  // Rolagem do conteúdo por entrada do histórico: voltar devolve a posição.
+  const contentScrollRef = useRef(null);
+  const onContentScroll = useRouteScroll(contentScrollRef);
   // Aba-alvo ao abrir Configurações de fora (ex.: link "Regras gerais" do Perfil).
   // SettingsView remonta ao entrar na view e aplica este initialTab no mount.
   const [settingsTab, setSettingsTab] = useState('users');
-  const [superTab, setSuperTab] = useState('overview'); // sub-seção do super-admin (no menu lateral)
   const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
   const [ticketModalOpen, setTicketModalOpen] = useState(false); // abrir chamado de suporte (cliente)
   // Tickets de suporte do tenant (badge da sidebar + Central de Suporte).
@@ -250,10 +256,10 @@ function AppInner() {
     }
   }, [isDarkMode]);
 
-  // Resolve a academia do hash da URL (#<slug>) para exibir o nome na tela de
-  // login. Público (pré-auth) via /api/tenant-resolve. Roda uma vez no mount.
+  // Resolve a academia do endereço para exibir o nome na tela de login.
+  // Público (pré-auth) via /api/tenant-resolve. Roda uma vez no mount.
   useEffect(() => {
-    const slug = getTenantSlug();
+    const slug = loginTenantSlug(window.location);
     if (!slug) return;
     let alive = true;
     fetch(`/api/tenant-resolve?slug=${encodeURIComponent(slug)}`)
@@ -263,22 +269,14 @@ function AppInner() {
     return () => { alive = false; };
   }, []);
 
-  // Mantém a URL (/<slug>) em sincronia com o tenant real após o login — cada
-  // academia fica com um link próprio e bookmarkável (stronilead.com.br/<slug>).
-  // O acesso vem do claim; se a URL apontava para outra academia, é apenas
-  // corrigida (sem bloquear ninguém). replaceState não recarrega a página.
+  // Título da aba: "<Tela> · <Academia> · STRONILEAD". Na ficha, só "Ficha",
+  // nunca o nome da pessoa, porque o título fica no histórico do navegador.
+  // Antes do login continua "<Academia> · STRONILEAD".
+  const titleScreen = appUser && !appUser.superAdminOnly && !tenantBlock ? (fichaOpen ? 'ficha' : resolvedTab) : null;
+  const titleTenant = appUser ? (appUser.superAdminOnly ? '' : tenantDisplayName) : (urlTenant?.displayName || '');
   useEffect(() => {
-    if (appUser && !appUser.superAdminOnly && appUser.tenantId) {
-      if (getTenantSlug() !== appUser.tenantId) {
-        try { window.history.replaceState(null, '', '/' + appUser.tenantId + window.location.search); } catch { /* noop */ }
-      }
-    }
-  }, [appUser]);
-
-  // Título da aba do navegador: nome da academia (quando resolvido) + STRONILEAD.
-  useEffect(() => {
-    document.title = urlTenant?.displayName ? `${urlTenant.displayName} · STRONILEAD` : 'STRONILEAD';
-  }, [urlTenant]);
+    document.title = documentTitle({ screen: titleScreen, tenantName: titleTenant });
+  }, [titleScreen, titleTenant]);
 
   const [leads, setLeads] = useState([]);
   const [interactions, setInteractions] = useState([]);
@@ -365,6 +363,10 @@ function AppInner() {
   const renewalSetupDone = setupFlagFor(setupFlags, 'renewal', setupTenant);
   const upgradeSetupDone = setupFlagFor(setupFlags, 'upgrade', setupTenant);
   const [loadingData, setLoadingData] = useState(true);
+  // Academia cujos contratos já chegaram. A ficha espera por eles, e não só
+  // pelo loadingData, que vira false com os leads ativos: sem isso, a ficha de
+  // um cliente aberta direto numa aba nova mostraria a aba Contratos vazia.
+  const [contractsTenant, setContractsTenant] = useState(null);
   // Já baixamos os dados ao menos uma vez nesta sessão? Serve pra reassinar
   // (volta da ociosidade) sem piscar a tela de carregando por cima de um dado
   // que já está na mão.
@@ -376,12 +378,6 @@ function AppInner() {
   // pelo botão dentro de LeadsView (que recebe `onAddLeadClick` via prop).
   // O modal mora aqui em App pra ficar acessível de qualquer aba.
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
-
-  // Após criar o lead, abrimos a ficha-página dele automaticamente. Como o
-  // `addDoc` retorna só o ref, esperamos o lead aparecer em `leads` via
-  // onSnapshot (geralmente <100ms). justCreatedLeadId é o ID alvo; ao chegar,
-  // viramos profileLeadId (abre a LeadProfileView).
-  const [justCreatedLeadId, setJustCreatedLeadId] = useState(null);
 
   // Contexto do Sentry: qual academia e qual papel, para saber quem está
   // sofrendo sem mandar nome nem e-mail para fora. Um effect só, em vez de
@@ -408,6 +404,7 @@ function AppInner() {
       setAppUser(null);
       setTenantBlock(null);
       setTrialEndsAtMs(null);
+      setTenantDisplayName('');
       setIsAuthChecking(false);
       return;
     }
@@ -495,16 +492,19 @@ function AppInner() {
           setTenantBlock(block);
           setTrialEndsAtMs(trialMs);
           setBillingDue(billingWarn);
+          setTenantDisplayName(tData?.displayName || tenantId);
         } catch (statusErr) {
           console.warn('Falha ao ler status do tenant; liberando acesso.', statusErr);
           setTenantBlock(null);
           setTrialEndsAtMs(null);
           setBillingDue(null);
+          setTenantDisplayName(tenantId);
         }
       } else {
         setTenantBlock(null);
         setTrialEndsAtMs(null);
         setBillingDue(null);
+        setTenantDisplayName('');
       }
 
       // Super-admin SEM tenant: não tem claim de tenant, então NÃO pode (nem
@@ -774,6 +774,7 @@ useEffect(() => {
     (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setContratos(data);
+      setContractsTenant(configTenant);
     },
     onSnapErr('contratos')
   );
@@ -856,19 +857,6 @@ useEffect(() => {
       }
     } catch { /* ignore */ }
   }, [selectedFunnelId, appUser]);
-
-  // Quando um lead é criado pelo AddLeadModal global, ele guarda o ID em
-  // justCreatedLeadId. Aqui esperamos o doc aparecer em `leads` (via
-  // onSnapshot) e abrimos o perfil dele automaticamente.
-  useEffect(() => {
-    if (!justCreatedLeadId) return;
-    const lead = (leads || []).find(l => l.id === justCreatedLeadId);
-    if (lead) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reage à chegada assíncrona do lead via onSnapshot; abrir a ficha só quando o doc aparece exige effect.
-      setProfileLeadId(lead.id);
-      setJustCreatedLeadId(null);
-    }
-  }, [justCreatedLeadId, leads]);
 
   // Garante que selectedFunnelId é sempre válido (cai para o default se sumir).
   // O sentinel ALL_FUNNELS_ID é sempre válido — não cai no fallback.
@@ -1284,24 +1272,31 @@ useEffect(() => {
   }
 
   setAppUser(null);
-  setActiveTab('dashboard');
 };
 
-  // Trocar de aba SEMPRE fecha a ficha-página aberta (senão o gate profileLead
-  // continuaria sobrepondo o conteúdo e a navegação parecia "travada").
-  const changeTab = (tab) => { setActiveTab(tab); setProfileLeadId(null); setIsMobileMenuOpen(false); }
-  // Abre a ficha-página de um lead/cliente (sobrepõe o conteúdo da aba ativa);
-  // lembra a aba de origem para o "Voltar". closeProfile volta para ela.
+  // Trocar de tela é trocar de endereço. Clicar na tela em que já se está troca
+  // a entrada atual em vez de empilhar outra (senão o voltar parece não fazer
+  // nada). extra leva a subaba do super-admin: { superTab: 'plans' }.
+  const changeTab = (tab, extra) => {
+    const href = hrefFor(sessionTenant, tab, extra);
+    if (href) navigate(href, { replace: href === location.pathname });
+    setIsMobileMenuOpen(false);
+  };
+  // Tela de onde a próxima ficha é aberta. Vai no state da navegação (só o id
+  // da tela, nunca dado da pessoa) para o menu continuar aceso e o título
+  // continuar o da origem. Numa ficha aberta direto não há origem.
+  const profileFrom = activeTab === 'ficha' ? null : activeTab;
+  // Abrir a ficha empilha o endereço /<academia>/ficha/<id>, e o Voltar da ficha
+  // é o voltar do navegador (LeadProfileRoute). A mesma ficha não empilha de
+  // novo. Continua memoizado: o KanbanCard é memo e recebe esta função.
   const openProfile = useCallback((leadId) => {
-    if (leadId) setProfileLeadId(leadId);
-  }, []);
-  const closeProfile = useCallback(() => { setProfileLeadId(null); }, []);
-  const leadProfileValue = useMemo(() => ({ openProfile }), [openProfile]);
-  // Lead/cliente em foco na ficha-página (G1-flip): assina o DOC ÚNICO por id
-  // (useProfileLead, onSnapshot ao vivo) em vez de achar no prop global — assim a
-  // ficha de cliente/perda abre mesmo com o prop reduzido a 'ativo' no flip.
-  // profileLoading cobre o instante da 1ª leitura (evita piscar a aba por baixo).
-  const { lead: profileLead, loading: profileLoading } = useProfileLead({ db, leadId: profileLeadId });
+    const href = hrefFor(sessionTenant, 'ficha', { leadId });
+    if (!href) return;
+    navigate(href, { replace: href === location.pathname, state: profileFrom ? { from: profileFrom } : null });
+  }, [navigate, sessionTenant, location.pathname, profileFrom]);
+  // Endereço da ficha, para os links que abrem em outra aba (LeadLink).
+  const leadHref = useCallback((leadId) => hrefFor(sessionTenant, 'ficha', { leadId }), [sessionTenant]);
+  const leadProfileValue = useMemo(() => ({ openProfile, leadHref, from: profileFrom }), [openProfile, leadHref, profileFrom]);
   // Abre Configurações já numa aba específica (sidebar e link "Regras gerais" do Perfil).
   const openSettingsTab = (tab) => { setSettingsTab(tab); changeTab('settings'); };
 
@@ -1402,12 +1397,6 @@ useEffect(() => {
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
 
-  // Super-admin sem tenant entra direto na tela "Organizações" (única que vê).
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- redireciona o superadmin-only para sua única aba ao montar/resolver o appUser.
-    if (appUser?.superAdminOnly) setActiveTab('superadmin');
-  }, [appUser]);
-
   if (isAuthChecking) {
     return (
       <div className="min-h-screen bg-paper-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-4">
@@ -1440,6 +1429,10 @@ useEffect(() => {
   return (
     <GeneralConfigContext.Provider value={generalConfigValue}>
     <LeadProfileContext.Provider value={leadProfileValue}>
+    {/* Endereço que não vale para esta sessão: a tela de destino já está
+        desenhada abaixo, e isto só troca o endereço (replace) e mostra o
+        aviso. A key nova a cada endereço dá uma troca por endereço barrado. */}
+    {decision.kind === 'redirect' && <RouteRedirect key={location.key} to={decision.to} notice={decision.notice} />}
     <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
       {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />}
 
@@ -1508,12 +1501,12 @@ useEffect(() => {
                     label="Organizações"
                     active={activeTab === 'superadmin'}
                     open={activeTab === 'superadmin'}
-                    onToggle={() => { changeTab('superadmin'); setSuperTab('overview'); }}
+                    onToggle={() => changeTab('superadmin', { superTab: 'overview' })}
                   >
-                    <SidebarSubItem label="Visão Geral" active={activeTab === 'superadmin' && superTab === 'overview'} onClick={() => { changeTab('superadmin'); setSuperTab('overview'); }} />
-                    <SidebarSubItem label="Clientes" active={activeTab === 'superadmin' && superTab === 'clients'} onClick={() => { changeTab('superadmin'); setSuperTab('clients'); }} />
-                    <SidebarSubItem label="Financeiro" active={activeTab === 'superadmin' && superTab === 'finance'} onClick={() => { changeTab('superadmin'); setSuperTab('finance'); }} />
-                    <SidebarSubItem label="Planos" active={activeTab === 'superadmin' && superTab === 'plans'} onClick={() => { changeTab('superadmin'); setSuperTab('plans'); }} />
+                    <SidebarSubItem label="Visão Geral" active={activeTab === 'superadmin' && superTab === 'overview'} onClick={() => changeTab('superadmin', { superTab: 'overview' })} />
+                    <SidebarSubItem label="Clientes" active={activeTab === 'superadmin' && superTab === 'clients'} onClick={() => changeTab('superadmin', { superTab: 'clients' })} />
+                    <SidebarSubItem label="Financeiro" active={activeTab === 'superadmin' && superTab === 'finance'} onClick={() => changeTab('superadmin', { superTab: 'finance' })} />
+                    <SidebarSubItem label="Planos" active={activeTab === 'superadmin' && superTab === 'plans'} onClick={() => changeTab('superadmin', { superTab: 'plans' })} />
                   </SidebarGroup>
                 )}
               </div>
@@ -1549,6 +1542,7 @@ useEffect(() => {
               {activeTab === 'profile' && 'Perfil da academia'}
               {activeTab === 'billing' && 'Plano & faturas'}
               {activeTab === 'superadmin' && (({ overview: 'Visão Geral', clients: 'Clientes', finance: 'Financeiro', plans: 'Planos' }[superTab] || 'Organizações') + ' · Super-admin')}
+              {activeTab === 'ficha' && 'Ficha'}
             </h2>
           </div>
           {!appUser.superAdminOnly && (
@@ -1629,13 +1623,31 @@ useEffect(() => {
           </div>
         )}
 
-        <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
+        <div ref={contentScrollRef} onScroll={onContentScroll} className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
           {/* Envolve só o conteúdo, não o shell: view que quebra não leva
-              junto a barra lateral nem o cabeçalho. */}
-          <AppErrorBoundary>
-          {appUser.superAdminOnly ? (
+              junto a barra lateral nem o cabeçalho. A key é a tela mostrada:
+              trocar de tela limpa a tela de erro, sem precisar do "Tentar de novo". */}
+          <AppErrorBoundary key={screenKey(shown)}>
+          {fichaOpen ? (
+            // A ficha vem antes do loadingData: a leitura do documento começa na
+            // hora, mas ela só aparece pronta depois dos catálogos e dos
+            // contratos (dataReady). "Não encontrada" e erro não esperam a carga.
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
-              <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />
+              <LeadProfileRoute
+                key={profileLeadId ?? 'sem-id'}
+                leadId={profileLeadId}
+                tenantId={appUser.tenantId}
+                sessionKey={sessionKey}
+                dataReady={!loadingData && (contractsTenant === appUser.tenantId || loadError)}
+                listenersActive={listenersActive}
+                db={db}
+                appUser={appUser}
+                statuses={statuses}
+                tags={tags}
+                lossReasons={lossReasons}
+                usersList={usersList}
+                funnels={funnels}
+              />
             </div>
           ) : loadingData ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
@@ -1643,22 +1655,6 @@ useEffect(() => {
             </div>
           ) : (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full transition-all duration-300">
-              {profileLead ? (
-                <LeadProfileView
-                  key={profileLead.id}
-                  lead={profileLead}
-                  onBack={closeProfile}
-                  appUser={appUser}
-                  statuses={statuses}
-                  tags={tags}
-                  lossReasons={lossReasons}
-                  usersList={usersList}
-                  db={db}
-                  funnels={funnels}
-                />
-              ) : (profileLeadId && profileLoading) ? (
-                <div className="grid place-items-center h-full py-24 text-[13px] text-slate-400 dark:text-neutral-500 animate-pulse">Carregando ficha…</div>
-              ) : (<>
               {/* Operacional: a mesma tela para todos os perfis, por mês de
                   competência. Base ao vivo = metaLeads (ativos, clientes a vencer e
                   contato de hoje). As interações vão sem filtro: as regras já deixam
@@ -1688,7 +1684,6 @@ useEffect(() => {
               {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
               {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
-              </>)}
             </div>
           )}
           </AppErrorBoundary>
@@ -1696,8 +1691,8 @@ useEffect(() => {
       </main>
 
       {/* Quick-add lead, alcançável de qualquer aba pelo botão do menu lateral
-          ou pelo botão da LeadsView. Ao salvar, abrimos automaticamente o
-          perfil do lead recém-criado (via justCreatedLeadId → useEffect). */}
+          ou pelo botão da LeadsView. O "Ver ficha" abre na hora a ficha do lead
+          recém-criado, porque ela lê o documento pelo id. */}
       {isAddLeadModalOpen && (
         <AddLeadModal
           dores={dores}
@@ -1709,7 +1704,7 @@ useEffect(() => {
           db={db}
           funnels={funnels}
           selectedFunnelId={selectedFunnelId}
-          onCreated={(newLeadId) => setJustCreatedLeadId(newLeadId)}
+          onCreated={openProfile}
         />
       )}
       {consoleOpen && appUser?.superAdmin && (
