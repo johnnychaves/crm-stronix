@@ -13,7 +13,7 @@ function DayRail({ rail, teamSize, onPick }) {
         <div className="text-[9.5px] font-bold uppercase tracking-[0.06em] text-slate-500 dark:text-slate-400 whitespace-nowrap">Dia do mês</div>
         <div className="text-[10.5px] text-slate-400 dark:text-slate-500 whitespace-nowrap num">quantos bateram, de {teamSize}</div>
       </div>
-      <div className="flex-1 flex gap-1 overflow-x-auto thin-scroll snap-x">
+      <div className="flex-1 flex gap-1 overflow-x-auto overscroll-x-contain thin-scroll snap-x">
         {rail.map((d) => {
           // Cor PROPORCIONAL ao time, não por contagem fixa: com corte em 4, uma
           // academia de 10 consultores pintaria de verde um dia em que só 4

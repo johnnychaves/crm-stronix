@@ -230,7 +230,7 @@ const PhaseChanger = ({ lead, db = null, funnels = [], statuses = [], onConfirm,
       </div>
 
       {/* Stepper do pipeline */}
-      <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4 overflow-x-auto thin-scroll">
+      <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4 overflow-x-auto overscroll-x-contain thin-scroll">
         <div className="flex min-w-[440px]">
           {LINEAR.map((s, i) => (
             <PhaseNode

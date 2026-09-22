@@ -807,7 +807,7 @@ function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listener
   const renderComposer = () => (
     <section className="rounded-2xl border border-border bg-card shadow-card">
       {/* Tabs */}
-      <div className="px-4 pt-3 flex items-center gap-1 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto thin-scroll">
+      <div className="px-4 pt-3 flex items-center gap-1 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto overscroll-x-contain thin-scroll">
         {[
           { id: 'note',     label: 'Anotação',   icon: <MessageCircle size={13} /> },
           { id: 'whatsapp', label: 'WhatsApp',   icon: <MessageCircle size={13} /> },

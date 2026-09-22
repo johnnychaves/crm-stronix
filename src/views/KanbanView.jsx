@@ -1425,7 +1425,7 @@ const handleKanbanMouseMove = (e) => {
           onMouseUp={stopKanbanPan}
           onMouseLeave={stopKanbanPan}
           className={cn(
-            'flex-1 min-h-0 overflow-x-auto overflow-y-hidden custom-scrollbar select-none px-4 md:px-7 pt-5 pb-6',
+            'flex-1 min-h-0 overflow-x-auto overscroll-x-contain overflow-y-hidden custom-scrollbar select-none px-4 md:px-7 pt-5 pb-6',
             isPanning ? 'cursor-grabbing' : 'cursor-grab'
           )}
         >

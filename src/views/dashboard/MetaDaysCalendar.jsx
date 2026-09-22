@@ -88,7 +88,7 @@ export function MetaDaysCalendar({ cells, teamSize, person }) {
         <span className="text-[13.5px] font-semibold">Dias de meta</span>
       </div>
 
-      <div className="mt-3.5 overflow-x-auto snap-x">
+      <div className="mt-3.5 overflow-x-auto overscroll-x-contain snap-x">
         <div
           className="grid w-full max-md:w-[var(--cal-w)] gap-1.5"
           style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`, '--cal-w': `${gridWidth}px` }}

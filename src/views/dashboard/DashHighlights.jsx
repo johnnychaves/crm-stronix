@@ -57,7 +57,7 @@ export function DashHighlights({ items, fit = false }) {
       >
         {list.map((h, i) => <HighlightCard key={i} h={h} />)}
       </div>
-      <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto md:hidden">
+      <div className="flex snap-x snap-mandatory gap-3 overflow-x-auto overscroll-x-contain md:hidden">
         {mobileOrder.map((h, i) => (
           <div key={i} className="w-[260px] flex-none snap-start">
             <HighlightCard h={h} />

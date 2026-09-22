@@ -200,7 +200,7 @@ function PhasePicker({ funnels, funnelId, onFunnel, statuses, status, onStatus }
           // Stepper do pipeline — mesmo padrão da mudança de fase no perfil do aluno
           // (components/profile/PhaseChanger · PhaseNode): nós numerados conectados,
           // a etapa escolhida destacada com o tom da fase e as anteriores "passadas".
-          <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4 overflow-x-auto thin-scroll">
+          <div className="rounded-xl border border-slate-200 dark:border-white/[0.06] bg-slate-50/60 dark:bg-white/[0.02] p-4 overflow-x-auto overscroll-x-contain thin-scroll">
             <div className="flex min-w-[440px]">
               {phases.map((s, i) => {
                 const t = getTone(phaseToneName(s.name, statuses));
