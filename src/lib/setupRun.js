@@ -27,6 +27,13 @@ export function runStatusFor(run, tenantId) {
   return run.status;
 }
 
+// Fim de uma execução: só grava se a vaga ainda é da academia dessa execução.
+// Uma execução atrasada da academia anterior (o "Acessar como" trocou a conta
+// no meio) não apaga o estado da academia atual.
+export function settleRun(prev, tenant, status) {
+  return prev?.tenant === tenant ? { tenant, status } : prev;
+}
+
 // Marcas de "já configurado" antes de o config de qualquer academia chegar.
 export const EMPTY_SETUP_FLAGS = Object.freeze({
   tenant: null,

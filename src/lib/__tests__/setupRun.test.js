@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  IDLE_RUN, runStatusFor,
+  IDLE_RUN, runStatusFor, settleRun,
   EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor,
 } from '../setupRun.js';
 
@@ -54,6 +54,21 @@ describe('runStatusFor', () => {
   it('run ausente não quebra', () => {
     expect(runStatusFor(null, 'academia-a')).toBe('idle');
     expect(runStatusFor(undefined, 'academia-a')).toBe('idle');
+  });
+});
+
+describe('settleRun', () => {
+  it('execução atrasada de outra academia não mexe na vaga', () => {
+    const prev = { tenant: 'b', status: 'running' };
+    expect(settleRun(prev, 'a', 'error')).toBe(prev);
+  });
+
+  it('grava o fim quando a vaga ainda é da academia da execução', () => {
+    expect(settleRun({ tenant: 'a', status: 'running' }, 'a', 'done')).toEqual({ tenant: 'a', status: 'done' });
+  });
+
+  it('vaga que nunca rodou fica como está', () => {
+    expect(settleRun(IDLE_RUN, 'a', 'done')).toBe(IDLE_RUN);
   });
 });
 
@@ -152,6 +167,12 @@ describe('setupFlagFor', () => {
     expect(setupFlagFor(flagsA, 'funnels', '')).toBe(null);
   });
 
+  it('marcas sem academia não casam com sessão sem academia', () => {
+    expect(setupFlagFor(setupFlagsFromConfig(null, { funnelsSetupDoneAt: 1 }), 'funnels', null)).toBe(null);
+    expect(setupFlagFor(setupFlagsFromConfig(undefined, { funnelsSetupDoneAt: 1 }), 'funnels', undefined)).toBe(null);
+    expect(setupFlagFor(setupFlagsFromConfig('', { funnelsSetupDoneAt: 1 }), 'funnels', '')).toBe(null);
+  });
+
   it('EMPTY_SETUP_FLAGS dá null para tudo', () => {
     for (const key of SETUP_KEYS) {
       expect(setupFlagFor(EMPTY_SETUP_FLAGS, key, 'academia-a')).toBe(null);
@@ -203,6 +224,12 @@ describe('troca de academia pelo "Acessar como", sem recarregar', () => {
     expect(afterConfig).toEqual({ status: 'idle', funnelsSetupDone: false });
     expect(canRun(afterConfig)).toBe(true);
 
+    // Volta para A antes de B rodar: a vaga ainda guarda a execução de A, então
+    // A aparece pronta e não roda de novo, mesmo com as marcas de B na mão.
+    const backToABeforeB = view(runA, flagsB, 'academia-a');
+    expect(backToABeforeB).toEqual({ status: 'done', funnelsSetupDone: null });
+    expect(canRun(backToABeforeB)).toBe(false);
+
     // B roda e termina.
     const runB = { tenant: 'academia-b', status: 'done' };
     expect(view(runB, flagsB, 'academia-b').status).toBe('done');
@@ -214,7 +241,32 @@ describe('troca de academia pelo "Acessar como", sem recarregar', () => {
     const backToA = view(runB, flagsA, 'academia-a');
     expect(backToA).toEqual({ status: 'idle', funnelsSetupDone: true });
     expect(canRun(backToA)).toBe(false);
-    expect(runStatusFor({ tenant: 'academia-a', status: 'done' }, 'academia-a')).toBe('done');
+  });
+
+  it('a execução atrasada de A termina depois da troca e não apaga a de B', () => {
+    // A começa a rodar e a conta troca para B no meio.
+    const runA = { tenant: 'academia-a', status: 'running' };
+    expect(runStatusFor(runA, 'academia-b')).toBe('idle');
+
+    // B começa a rodar na mesma vaga.
+    const runB = { tenant: 'academia-b', status: 'running' };
+
+    // A execução de A falha por causa da troca (a regra nega a academia antiga)
+    // e só então chega ao fim. A vaga é de B e fica como está.
+    expect(settleRun(runB, 'academia-a', 'idle')).toBe(runB);
+    expect(settleRun(runB, 'academia-a', 'done')).toBe(runB);
+    expect(runStatusFor(settleRun(runB, 'academia-a', 'idle'), 'academia-b')).toBe('running');
+
+    // B termina normalmente.
+    expect(runStatusFor(settleRun(runB, 'academia-b', 'done'), 'academia-b')).toBe('done');
+  });
+
+  it('A falha pela troca antes de B começar e roda de novo quando for assumida outra vez', () => {
+    const runA = { tenant: 'academia-a', status: 'running' };
+    // A vaga ainda é de A: a falha pela troca devolve A a 'idle', não a 'error'.
+    const settled = settleRun(runA, 'academia-a', 'idle');
+    expect(settled).toEqual({ tenant: 'academia-a', status: 'idle' });
+    expect(runStatusFor(settled, 'academia-a')).toBe('idle');
   });
 
   it('um erro em A não trava a máquina de B', () => {
