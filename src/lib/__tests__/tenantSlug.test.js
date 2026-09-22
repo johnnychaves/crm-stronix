@@ -3,6 +3,7 @@ import {
   TENANT_SLUG_READ_RE, TENANT_SLUG_CREATE_RE, RESERVED_TENANT_SLUGS,
   isReservedTenantSlug, tenantSlugProblem,
 } from '../tenantSlug.js';
+import { FIRST_LEVEL_SEGMENTS } from '../routes.js';
 
 // As cinco academias de produção, conferidas em 21/09/2026. Se alguma palavra
 // reservada nova bater com uma delas, o link dessa academia quebra.
@@ -83,5 +84,12 @@ describe('tenantSlugProblem', () => {
 
   it('palavra reservada curta demais para criar cai no formato', () => {
     expect(tenantSlugProblem('i')).toBe('formato');
+  });
+});
+
+describe('guarda das telas', () => {
+  it('todo primeiro segmento de tela está reservado (tela nova sem reserva quebra aqui)', () => {
+    expect(FIRST_LEVEL_SEGMENTS.length).toBeGreaterThan(0);
+    for (const seg of FIRST_LEVEL_SEGMENTS) expect(isReservedTenantSlug(seg), seg).toBe(true);
   });
 });
