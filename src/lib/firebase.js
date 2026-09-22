@@ -4,7 +4,8 @@
 // instance for the whole app.
 
 import { initializeApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
+import { persistenceKind } from './authPersistence.js';
 import { getStorage } from 'firebase/storage';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { initAppCheck } from './appCheck.js';
@@ -33,6 +34,74 @@ const app = initializeApp(firebaseConfig);
 initAppCheck(app);
 
 export const auth = getAuth(app);
+
+// Onde o login grava a sessão (ver authPersistence.js). O getAuth acima NÃO
+// muda: ele já procura a sessão no IndexedDB, no localStorage e no
+// sessionStorage, e migra quem estiver logado hoje. Só uma aba do código
+// antigo, aberta antes do deploy, ainda pode cair uma última vez: o F5 resolve.
+const PERSISTENCE_BY_KIND = {
+  indexedDB: indexedDBLocalPersistence,
+  local: browserLocalPersistence,
+  session: browserSessionPersistence,
+};
+
+// Teste real de escrita, num banco próprio: abre, grava e apaga um valor, como
+// o _isAvailable() do IndexedDB no SDK. Só abrir não prova nada: há navegador
+// que abre e recusa a gravação, e nesse caso o getAuth já caiu para o
+// localStorage. Nunca abre o banco do SDK (firebaseLocalStorageDb), que é
+// apagado e recriado quando aberto sem a estrutura esperada. O teto de 1,5 s
+// evita que um IndexedDB travado segure o login. Só o "funciona" fica guardado:
+// uma falha passageira é testada de novo no próximo login.
+let indexedDbCheck = null;
+function indexedDbWorks() {
+  if (!indexedDbCheck) {
+    indexedDbCheck = new Promise((resolve) => {
+      const name = 'stronilead-teste-idb';
+      let db = null;
+      let settled = false;
+      // Responde uma vez só e, em qualquer saída, fecha e apaga o banco de teste.
+      const done = (ok) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { db?.close(); indexedDB.deleteDatabase(name); } catch { /* noop */ }
+        resolve(ok);
+      };
+      const timer = setTimeout(() => done(false), 1500);
+      try {
+        const req = indexedDB.open(name, 1);
+        req.onupgradeneeded = () => { req.result.createObjectStore('t'); };
+        req.onsuccess = () => {
+          db = req.result;
+          if (settled) { db.close(); return; } // abriu depois do teto
+          try {
+            const tx = db.transaction('t', 'readwrite');
+            tx.oncomplete = () => done(true);
+            tx.onerror = () => done(false);
+            tx.onabort = () => done(false);
+            tx.objectStore('t').put('1', 'k');
+            tx.objectStore('t').delete('k');
+          } catch {
+            done(false);
+          }
+        };
+        req.onerror = () => done(false);
+        req.onblocked = () => done(false);
+      } catch {
+        done(false);
+      }
+    }).then((ok) => {
+      if (!ok) indexedDbCheck = null;
+      return ok;
+    });
+  }
+  return indexedDbCheck;
+}
+
+export async function persistenceFor(remember) {
+  const indexedDbOk = remember ? await indexedDbWorks() : false;
+  return PERSISTENCE_BY_KIND[persistenceKind({ remember, indexedDbOk })];
+}
 
 // Firebase Storage — fotos de lead/cliente. O bucket já vem no firebaseConfig
 // (storageBucket). Upload/leitura são client-side pelo SDK; ver src/lib/leadPhoto.js.

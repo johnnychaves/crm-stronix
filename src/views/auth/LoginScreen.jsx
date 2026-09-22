@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
-import { signInWithEmailAndPassword, sendPasswordResetEmail, setPersistence, browserLocalPersistence, browserSessionPersistence } from 'firebase/auth';
-import { auth } from '../../lib/firebase.js';
+import { signInWithEmailAndPassword, sendPasswordResetEmail, setPersistence } from 'firebase/auth';
+import { auth, persistenceFor } from '../../lib/firebase.js';
 import { AlertTriangle, ArrowRight, Building2, Calendar, Check, CheckCircle, Eye, EyeOff, Lock, Mail, Shield, TrendingUp, Zap } from 'lucide-react';
 import { SurgeMark, StronileadWordmark } from '../../components/brand/SurgeMark.jsx';
 
@@ -30,9 +30,10 @@ function LoginScreen({ authSetupError, urlTenant }) {
   setLoading(true);
 
   try {
-    // "Manter conectado": local (padrão do Firebase = comportamento atual)
-    // quando marcado; sessão quando desmarcado. Falha aqui não bloqueia o login.
-    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence).catch(() => {});
+    // "Manter conectado" grava no mesmo lugar que o getAuth vigia (IndexedDB),
+    // senão abrir outra aba derruba esta. Desmarcado, a sessão fica só nesta
+    // aba. Falha aqui não bloqueia o login.
+    await persistenceFor(remember).then((p) => setPersistence(auth, p)).catch(() => {});
     const normalizedEmail = email.trim().toLowerCase();
     await signInWithEmailAndPassword(auth, normalizedEmail, password);
   } catch (err) {
