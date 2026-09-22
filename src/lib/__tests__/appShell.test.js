@@ -4,7 +4,10 @@
 
 import { describe, it, expect } from 'vitest';
 import { parseAppPath } from '../routes.js';
-import { fichaOrigin, screenState, sessionKeyFor, loginTenantSlug } from '../appShell.js';
+import {
+  fichaOrigin, screenState, sessionKeyFor, loginTenantSlug,
+  loginBrand, logoutDestination, returnToFrom, savedFunnelKey, readSavedFunnel,
+} from '../appShell.js';
 
 const T = 'stronix-crm-app';
 const consultor = { id: 'u1', authUid: 'uid-1', role: 'consultor', tenantId: T };
@@ -113,5 +116,85 @@ describe('loginTenantSlug', () => {
     expect(loginTenantSlug({ pathname: '/', hash: '#pipeline' })).toBeNull();
     expect(loginTenantSlug({ pathname: '/', hash: '#ab c' })).toBeNull();
     expect(loginTenantSlug({})).toBeNull();
+  });
+});
+
+describe('loginBrand', () => {
+  it('sem academia no endereço, sem marca', () => {
+    expect(loginBrand(null, { slug: T, found: true, displayName: 'STRONIX' })).toBeNull();
+  });
+
+  it('carregando até a resposta daquela academia chegar', () => {
+    expect(loginBrand(T, null)).toEqual({ slug: T, loading: true });
+    expect(loginBrand(T, { slug: 'outra', found: true, displayName: 'Outra' })).toEqual({ slug: T, loading: true });
+  });
+
+  it('com a resposta da mesma academia, a resposta', () => {
+    const r = { slug: T, found: true, displayName: 'STRONIX' };
+    expect(loginBrand(T, r)).toBe(r);
+    expect(loginBrand('xyz', { slug: 'xyz', found: false })).toEqual({ slug: 'xyz', found: false });
+  });
+});
+
+describe('logoutDestination', () => {
+  it('membro volta para o login da própria academia', () => {
+    expect(logoutDestination(consultor)).toBe(`/${T}`);
+    expect(logoutDestination(gestor)).toBe(`/${T}`);
+  });
+
+  it('super-admin puro e sessão assumida vão para o login geral', () => {
+    expect(logoutDestination({ id: 'x', superAdminOnly: true, tenantId: null })).toBe('/');
+    expect(logoutDestination({ ...gestor, tenantId: 'academia-shape-one', impersonating: true })).toBe('/');
+  });
+
+  it('sem sessão, login geral', () => {
+    expect(logoutDestination(null)).toBe('/');
+  });
+});
+
+describe('returnToFrom', () => {
+  const assumida = { ...gestor, tenantId: 'academia-shape-one', impersonating: true };
+
+  it('guarda a academia assumida e o endereço de onde o super-admin entrou', () => {
+    expect(returnToFrom({ viewing: { id: 'academia-shape-one' }, returnPath: `/${T}/super-admin/clientes` }, assumida))
+      .toEqual({ fromTenant: 'academia-shape-one', path: `/${T}/super-admin/clientes` });
+    expect(returnToFrom({ returnPath: '/' }, assumida)).toEqual({ fromTenant: 'academia-shape-one', path: '/' });
+  });
+
+  it('entrada antiga sem returnPath não tem volta', () => {
+    expect(returnToFrom({ viewing: { id: 'academia-shape-one' } }, assumida)).toBeNull();
+    expect(returnToFrom(null, assumida)).toBeNull();
+  });
+
+  it('só aceita caminho do próprio site', () => {
+    expect(returnToFrom({ returnPath: '//evil.example/x' }, assumida)).toBeNull();
+    expect(returnToFrom({ returnPath: 'https://evil.example/' }, assumida)).toBeNull();
+    expect(returnToFrom({ returnPath: '/\\evil.example' }, assumida)).toBeNull();
+    expect(returnToFrom({ returnPath: 42 }, assumida)).toBeNull();
+  });
+
+  it('sem academia na sessão não há volta', () => {
+    expect(returnToFrom({ returnPath: `/${T}` }, null)).toBeNull();
+  });
+});
+
+describe('funil salvo', () => {
+  const storage = (data) => ({ getItem: (k) => (k in data ? data[k] : null) });
+
+  it('a chave é por academia', () => {
+    expect(savedFunnelKey('academia-shape-one')).toBe('crm-selected-funnel:academia-shape-one');
+  });
+
+  it('lê o funil salvo da academia certa', () => {
+    const s = storage({ 'crm-selected-funnel:academia-shape-one': 'f-shape', [`crm-selected-funnel:${T}`]: 'f-stronix' });
+    expect(readSavedFunnel(s, 'academia-shape-one')).toBe('f-shape');
+    expect(readSavedFunnel(s, T)).toBe('f-stronix');
+  });
+
+  it('nada salvo, sem academia ou armazenamento bloqueado dá null', () => {
+    expect(readSavedFunnel(storage({}), T)).toBeNull();
+    expect(readSavedFunnel(storage({ x: 'y' }), '')).toBeNull();
+    expect(readSavedFunnel({ getItem: () => { throw new Error('bloqueado'); } }, T)).toBeNull();
+    expect(readSavedFunnel(null, T)).toBeNull();
   });
 });

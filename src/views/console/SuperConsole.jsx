@@ -1141,7 +1141,8 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
       const res = await fetch('/api/impersonate', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ tenantId: t.id }) });
       const data = await res.json();
       if (!res.ok) { setErr(data.error || 'Não foi possível entrar.'); setBusy(false); return; }
-      try { sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ viewing: { id: t.id, name: data.tenantName || t.displayName } })); } catch { /* ignore */ }
+      // returnPath: o "Sair da visualização" volta para este endereço.
+      try { sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ viewing: { id: t.id, name: data.tenantName || t.displayName }, returnPath: window.location.pathname })); } catch { /* ignore */ }
       try { await setPersistence(auth, browserSessionPersistence); } catch { /* ignore */ }
       await signInWithCustomToken(auth, data.token);
     } catch (e) { console.error('enterAs', e); setErr('Falha ao entrar como a organização.'); setBusy(false); }

@@ -67,7 +67,10 @@ import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
 import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
 import { IDLE_RUN, runStatusFor, settleRun, EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor } from './lib/setupRun.js';
 import { parseAppPath, routeDecision, hrefFor, screenKey, documentTitle } from './lib/routes.js';
-import { screenState, sessionKeyFor, loginTenantSlug } from './lib/appShell.js';
+import {
+  screenState, sessionKeyFor, loginTenantSlug,
+  loginBrand, logoutDestination, returnToFrom, savedFunnelKey, readSavedFunnel,
+} from './lib/appShell.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
@@ -156,6 +159,9 @@ function AppInner() {
   const [appUser, setAppUser] = useState(null);
   const [authSetupError, setAuthSetupError] = useState('');
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  // Saindo (Sair, ou fim da visualização sem volta): a página vai recarregar no
+  // login. Até lá, nada de tela de login nem de /api/tenant-resolve.
+  const [leaving, setLeaving] = useState(false);
   // Bloqueio da academia: 'suspended' | 'trial_expired' | null. Lido do doc
   // /tenants/{id} no login (regra permite leitura ao próprio tenant).
   const [tenantBlock, setTenantBlock] = useState(null);
@@ -163,13 +169,13 @@ function AppInner() {
   // banner de contagem regressiva. null quando não há trial ativo.
   const [trialEndsAtMs, setTrialEndsAtMs] = useState(null);
   const [billingDue, setBillingDue] = useState(null); // { dueAtMs, overdue, invoiceUrl } | null
-  // Academia identificada pelo endereço, só para exibir a MARCA no login.
-  // NÃO controla acesso (isso continua sendo o claim tenantId + as rules).
-  // Formato: { slug, loading? , found?, displayName? }.
-  const [urlTenant, setUrlTenant] = useState(() => {
-    const slug = loginTenantSlug(window.location);
-    return slug ? { slug, loading: true } : null;
-  });
+  // Resposta do /api/tenant-resolve para a MARCA da academia na tela de login:
+  // { slug, found, displayName? }. NÃO controla acesso (isso continua sendo o
+  // claim tenantId + as rules). A marca mostrada (urlTenant) é derivada abaixo.
+  const [resolvedBrand, setResolvedBrand] = useState(null);
+  // Volta do "Sair da visualização": { fromTenant, path, key }. routeDecision
+  // leva ao endereço do "Acessar como", só na entrada do histórico `key`.
+  const [returnTo, setReturnTo] = useState(null);
   // Nome da academia da sessão, lido do doc tenants/{id} no login. Vai no
   // título da aba.
   const [tenantDisplayName, setTenantDisplayName] = useState('');
@@ -183,7 +189,7 @@ function AppInner() {
   const location = useLocation();
   const navigate = useNavigate();
   const route = useMemo(() => parseAppPath(location.pathname), [location.pathname]);
-  const decision = routeDecision(route, appUser, { search: location.search });
+  const decision = routeDecision(route, appUser, { search: location.search, returnTo: returnTo?.key === location.key ? returnTo : null });
   const shown = decision.kind === 'redirect' && decision.target ? decision.target : route;
   // activeTab, resolvedTab, profileLeadId e superTab continuam com os nomes de
   // sempre (src/lib/appShell.js). 'dashboard' é o endereço curto /<academia> e
@@ -256,18 +262,22 @@ function AppInner() {
     }
   }, [isDarkMode]);
 
-  // Resolve a academia do endereço para exibir o nome na tela de login.
-  // Público (pré-auth) via /api/tenant-resolve. Roda uma vez no mount.
+  // Marca da academia na tela de login. O /api/tenant-resolve só é chamado
+  // quando a tela de login vai aparecer: com sessão, o nome vem do doc
+  // tenants/{id} que o login já lê (tenantDisplayName), e o F5 de quem já está
+  // logado deixa de gastar a cota por IP da recepção. Enquanto a resposta não
+  // chega, a marca fica "carregando" (loginBrand), sem setState no effect.
+  const loginSlug = !isAuthChecking && !appUser && !leaving ? loginTenantSlug(location) : null;
   useEffect(() => {
-    const slug = loginTenantSlug(window.location);
-    if (!slug) return;
+    if (!loginSlug) return undefined;
     let alive = true;
-    fetch(`/api/tenant-resolve?slug=${encodeURIComponent(slug)}`)
+    fetch(`/api/tenant-resolve?slug=${encodeURIComponent(loginSlug)}`)
       .then(r => r.json())
-      .then(d => { if (alive) setUrlTenant(d?.found ? { slug, found: true, displayName: d.displayName } : { slug, found: false }); })
-      .catch(() => { if (alive) setUrlTenant({ slug, found: false }); });
+      .then(d => { if (alive) setResolvedBrand(d?.found ? { slug: loginSlug, found: true, displayName: d.displayName } : { slug: loginSlug, found: false }); })
+      .catch(() => { if (alive) setResolvedBrand({ slug: loginSlug, found: false }); });
     return () => { alive = false; };
-  }, []);
+  }, [loginSlug]);
+  const urlTenant = loginBrand(loginSlug, resolvedBrand);
 
   // Título da aba: "<Tela> · <Academia> · STRONILEAD". Na ficha, só "Ficha",
   // nunca o nome da pessoa, porque o título fica no histórico do navegador.
@@ -321,13 +331,11 @@ function AppInner() {
     () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores }),
     [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores]
   );
-  // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
-  // tenant ainda não foi resolvido (appId = default), o que é correto para o
-  // tenant #1; para outros tenants, um id de funil "estranho" é auto-corrigido
-  // pelo effect de validação de funil (cai no default).
-  const [selectedFunnelId, setSelectedFunnelId] = useState(() => {
-    try { return localStorage.getItem(`crm-selected-funnel:${appId}`) || null; } catch { return null; }
-  });
+  // Seleção de funil persistida POR ACADEMIA (savedFunnelKey). Começa vazia: a
+  // academia só é conhecida no login, e é lá que o funil salvo é lido
+  // (readSavedFunnel, logo depois do setTenantId). Sem nada salvo, o effect de
+  // validação de funil escolhe o padrão.
+  const [selectedFunnelId, setSelectedFunnelId] = useState(null);
   // Configuração de funis do primeiro login de gestor: cinco máquinas em cadeia
   // (funis, Indicações, Vencidos, Renovações, Upgrade). Cada execução guarda
   // de qual academia é ({ tenant, status }), e o status que vale é derivado
@@ -446,6 +454,10 @@ function AppInner() {
         return;
       }
       setTenantId(tenantId || DEFAULT_TENANT_ID);
+      // Funil escolhido no Pipeline, salvo por academia. Só aqui se sabe qual é
+      // a academia; lida antes disso, a chave era a da academia padrão e o F5
+      // perdia a escolha em toda academia que não é a STRONIX.
+      setSelectedFunnelId(readSavedFunnel(localStorage, tenantId || DEFAULT_TENANT_ID));
 
       // Status da academia (suspensão / trial expirado). Best-effort: se o doc
       // /tenants/{id} não existir (tenant legado) ou a leitura falhar, libera o
@@ -853,7 +865,7 @@ useEffect(() => {
   useEffect(() => {
     try {
       if (selectedFunnelId) {
-        localStorage.setItem(`crm-selected-funnel:${appId}`, selectedFunnelId);
+        localStorage.setItem(savedFunnelKey(appId), selectedFunnelId);
       }
     } catch { /* ignore */ }
   }, [selectedFunnelId, appUser]);
@@ -1232,8 +1244,25 @@ useEffect(() => {
   const [exitingImpersonation, setExitingImpersonation] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza a partir do sessionStorage (fonte externa) ao trocar de usuário.
   useEffect(() => { setImpersonation(readImpersonation()); }, [appUser]);
+  // Sai da conta e recarrega a página no destino. A recarga zera a ficha, as
+  // listas em memória, a academia do módulo (appId) e as configurações de
+  // funil: num computador de recepção, quem entra depois não vê nada da sessão
+  // anterior. O await garante que a sessão já saiu do navegador antes da recarga.
+  const leaveTo = async (destino) => {
+    setLeaving(true);
+    try { await signOut(auth); } catch (e) { console.error('Erro ao sair do sistema', e); }
+    try { sessionStorage.removeItem(IMPERSONATION_KEY); } catch { /* ignore */ }
+    window.location.replace(destino);
+  };
+
   const stopImpersonation = async () => {
     setExitingImpersonation(true);
+    // Endereço de onde o super-admin entrou na visualização (returnPath, gravado
+    // no "Acessar como"). Sem ele, a volta cai na tela inicial da academia.
+    const back = returnToFrom(readImpersonation(), appUser);
+    // Vale só nesta entrada do histórico: depois do replace da volta, a key muda
+    // e o caminho guardado deixa de mandar.
+    setReturnTo(back && { ...back, key: location.key });
     try { sessionStorage.removeItem(IMPERSONATION_KEY); } catch { /* ignore */ }
     try {
       // Pede o token de retorno on-demand (autorizado pelo claim impersonatedBy da
@@ -1253,26 +1282,23 @@ useEffect(() => {
         await signInWithCustomToken(auth, data.returnToken);
         try { await setPersistence(auth, await persistenceFor(true)); } catch { /* ignore */ }
       } else {
-        // Retorno indisponível (claim já expirado): sai com segurança para o login.
-        await signOut(auth);
+        // Retorno indisponível (claim já expirado): sai com segurança para o
+        // login geral, e não para o da academia que estava sendo vista.
+        await leaveTo('/');
+        return;
       }
     } catch (e) {
       console.error('stopImpersonation', e);
-      try { await signOut(auth); } catch { /* ignore */ }
+      await leaveTo('/');
+      return;
     }
     setImpersonation(null);
     setExitingImpersonation(false);
   };
 
-  const handleLogout = async () => {
-  try {
-    await signOut(auth);
-  } catch (e) {
-    console.error('Erro ao sair do sistema', e);
-  }
-
-  setAppUser(null);
-};
+  // Sair: login da própria academia para membro, login geral para o super-admin
+  // puro e para quem está vendo outra academia (logoutDestination).
+  const handleLogout = () => leaveTo(logoutDestination(appUser));
 
   // Trocar de tela é trocar de endereço. Clicar na tela em que já se está troca
   // a entrada atual em vez de empilhar outra (senão o voltar parece não fazer
@@ -1397,7 +1423,7 @@ useEffect(() => {
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
 
-  if (isAuthChecking) {
+  if (isAuthChecking || leaving) {
     return (
       <div className="min-h-screen bg-paper-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-4">
         <Activity className="w-12 h-12 text-brand-600 mb-4 animate-pulse" />
@@ -1423,7 +1449,14 @@ useEffect(() => {
   // a interface principal. (O SuperAdminView antigo segue como fallback p/ super-admin
   // que também é membro de um tenant; o botão "beta" continua lá pra eles.)
   if (appUser.superAdminOnly) {
-    return <SuperConsole appUser={appUser} onClose={handleLogout} />;
+    // O Console não tem endereços nesta entrega: a barra fica em "/", para não
+    // mostrar a academia da visualização de onde o super-admin acabou de sair.
+    return (
+      <>
+        {decision.kind === 'redirect' && <RouteRedirect key={location.key} to={decision.to} notice={decision.notice} />}
+        <SuperConsole appUser={appUser} onClose={handleLogout} />
+      </>
+    );
   }
 
   return (

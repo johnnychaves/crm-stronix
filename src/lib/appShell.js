@@ -3,7 +3,7 @@
 // telas e a decisão de rota moram em routes.js; aqui fica só o que é da casca
 // do App: qual tela o menu acende, qual ficha está aberta e a chave da sessão.
 
-import { HOME_SCREEN, SCREENS, canAccess, parseAppPath } from './routes.js';
+import { HOME_SCREEN, SCREENS, canAccess, hrefFor, parseAppPath } from './routes.js';
 import { TENANT_SLUG_READ_RE, isReservedTenantSlug } from './tenantSlug.js';
 
 const isScreenId = (id) => typeof id === 'string' && Object.prototype.hasOwnProperty.call(SCREENS, id);
@@ -57,4 +57,41 @@ export function loginTenantSlug({ pathname = '', hash = '' } = {}) {
   const raw = String(hash || '').replace(/^#\/?(t\/)?/i, '').trim().toLowerCase();
   const slug = raw.split(/[/?#&]/)[0];
   return TENANT_SLUG_READ_RE.test(slug) && !isReservedTenantSlug(slug) ? slug : null;
+}
+
+// Marca da academia na tela de login: nada sem academia no endereço, "carregando"
+// até a resposta do /api/tenant-resolve daquela academia chegar, e a resposta
+// só quando ela é da academia do endereço de agora.
+export function loginBrand(slug, resolved) {
+  if (!slug) return null;
+  if (resolved && resolved.slug === slug) return resolved;
+  return { slug, loading: true };
+}
+
+// Para onde o Sair leva, com recarga da página: o login da própria academia
+// para quem é membro, e o login geral (/) para o super-admin puro e para quem
+// está vendo outra academia pelo "Acessar como".
+export function logoutDestination(appUser) {
+  if (!appUser || appUser.superAdminOnly || appUser.impersonating || !appUser.tenantId) return '/';
+  return hrefFor(appUser.tenantId, HOME_SCREEN) || '/';
+}
+
+// Volta do "Sair da visualização": o endereço gravado no "Acessar como"
+// (returnPath) e a academia assumida, que é a do endereço no momento da volta.
+// routeDecision só usa quando o endereço ainda é da academia assumida e o
+// caminho é da academia da sessão. Só aceita caminho do próprio site.
+export function returnToFrom(record, appUser) {
+  const path = record && typeof record === 'object' ? record.returnPath : null;
+  const fromTenant = appUser?.tenantId || null;
+  if (!fromTenant || typeof path !== 'string') return null;
+  if (!path.startsWith('/') || path.startsWith('//') || path.includes('\\')) return null;
+  return { fromTenant, path };
+}
+
+// Funil escolhido no Pipeline, salvo por academia no navegador.
+export const savedFunnelKey = (tenantId) => `crm-selected-funnel:${tenantId}`;
+
+export function readSavedFunnel(storage, tenantId) {
+  if (!tenantId) return null;
+  try { return storage?.getItem(savedFunnelKey(tenantId)) || null; } catch { return null; }
 }
