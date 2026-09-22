@@ -14,7 +14,6 @@ import {
   doc,
   getDoc,
   setDoc,
-  addDoc,
   serverTimestamp,
   getDocs,
   query,
@@ -62,6 +61,8 @@ import { useProfileLead } from './hooks/useProfileLead.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { planReferralSetupOps } from './lib/referrals.js';
+import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
+import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
@@ -894,64 +895,39 @@ useEffect(() => {
 
     (async () => {
       try {
-        // Passo 1: garantir EXATAMENTE um funil default
-        const funnelsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH));
-        const allFunnels = funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-        const defaults = allFunnels.filter(f => f.isDefault === true);
+        // Academia congelada no início: toda leitura e gravação desta execução
+        // vai para ela, mesmo que a conta troque no meio (ver funnelSetupWrites.js).
+        const tenant = appId;
 
-        let defaultFunnel = null;
-
-        if (defaults.length === 0) {
-          if (allFunnels.length === 0) {
-            // Sem nenhum funil → cria o "Comercial" como default
-            const ref = await addDoc(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH), {
-              name: 'Comercial',
-              order: 0,
-              isDefault: true,
-              createdAt: serverTimestamp()
-            });
-            defaultFunnel = { id: ref.id, name: 'Comercial', order: 0, isDefault: true };
-          } else {
-            // Há funis mas nenhum é default → promove o de menor order
-            const sorted = [...allFunnels].sort((a, b) => (a.order || 0) - (b.order || 0));
-            const promote = sorted[0];
-            await setDoc(
-              doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, promote.id),
-              { isDefault: true },
-              { merge: true }
-            );
-            defaultFunnel = { ...promote, isDefault: true };
-          }
-        } else if (defaults.length === 1) {
-          defaultFunnel = defaults[0];
-        } else {
-          // Múltiplos isDefault → manter o criado primeiro (createdAt mais antigo),
-          // empate por menor order. Demove os outros.
-          const getTs = (f) => {
-            const c = f.createdAt;
-            if (!c) return Number.POSITIVE_INFINITY;
-            if (typeof c.toMillis === 'function') return c.toMillis();
-            if (c.seconds) return c.seconds * 1000;
-            return Number(c) || Number.POSITIVE_INFINITY;
-          };
-          const sorted = [...defaults].sort((a, b) => {
-            const ta = getTs(a);
-            const tb = getTs(b);
-            if (ta !== tb) return ta - tb;
-            return (a.order || 0) - (b.order || 0);
-          });
-          defaultFunnel = sorted[0];
-          const demoteOps = sorted.slice(1).map(f => ({
-            ref: doc(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH, f.id),
-            data: { isDefault: false }
-          }));
-          if (demoteOps.length) await commitOpsInChunks(db, demoteOps, 400);
+        // Passo 1: garantir EXATAMENTE um funil default. O Comercial criado tem
+        // id fixo e só é criado se ainda não existir, então duas abas rodando
+        // juntas caem no mesmo documento.
+        const funnelsSnap = await getDocs(tenantCol(tenant, FUNNELS_PATH));
+        const step1 = planDefaultFunnel(funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        if (step1.create) {
+          await writeSetupWrites(tenant, [{
+            collection: 'funnels',
+            id: step1.defaultId,
+            data: { ...step1.create, createdAt: serverTimestamp() },
+          }]);
+        }
+        if (step1.promoteId) {
+          // updateDoc, não setDoc: se o funil foi apagado no meio, falha em vez
+          // de recriar um doc sem nome marcado como padrão.
+          await updateDoc(tenantDoc(tenant, FUNNELS_PATH, step1.promoteId), { isDefault: true });
+        }
+        if (step1.demoteIds.length) {
+          await commitOpsInChunks(
+            db,
+            step1.demoteIds.map(id => ({ ref: tenantDoc(tenant, FUNNELS_PATH, id), data: { isDefault: false } })),
+            400
+          );
         }
 
-        const defaultId = defaultFunnel.id;
+        const defaultId = step1.defaultId;
 
         // Passo 2: backfill statuses sem funnelId
-        const statusesSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH));
+        const statusesSnap = await getDocs(tenantCol(tenant, STATUSES_PATH));
         const statusOps = [];
         statusesSnap.forEach(d => {
           const data = d.data();
@@ -962,7 +938,7 @@ useEffect(() => {
         if (statusOps.length) await commitOpsInChunks(db, statusOps, 400);
 
         // Passo 3: backfill leads sem funnelId
-        const leadsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH));
+        const leadsSnap = await getDocs(tenantCol(tenant, LEADS_PATH));
         const leadOps = [];
         leadsSnap.forEach(d => {
           const data = d.data();
@@ -972,30 +948,18 @@ useEffect(() => {
         });
         if (leadOps.length) await commitOpsInChunks(db, leadOps, 400);
 
-        // Passo 4: garantir que TODO funil tem a etapa de sistema "Negociação"
-        // (criada como protegida; FunnelsSection bloqueia edit/delete por nome).
-        const statusesAfter = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH));
-        const statusesByFunnel = new Map();
-        statusesAfter.forEach(d => {
-          const s = { id: d.id, ...d.data() };
-          if (!statusesByFunnel.has(s.funnelId)) statusesByFunnel.set(s.funnelId, []);
-          statusesByFunnel.get(s.funnelId).push(s);
-        });
-        const allFunnelIds = (await getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)))
-          .docs.map(d => d.id);
-        for (const fId of allFunnelIds) {
-          const stagesInFunnel = statusesByFunnel.get(fId) || [];
-          const hasNegociacao = stagesInFunnel.some(s => (s.name || '').trim().toLowerCase() === 'negociação');
-          if (!hasNegociacao) {
-            await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
-              name: 'Negociação',
-              color: 'purple',
-              order: stagesInFunnel.length,
-              funnelId: fId,
-              isSystem: true
-            });
-          }
-        }
+        // Passo 4: garantir que todo funil PRÓPRIO tem a etapa de sistema
+        // "Negociação". Funil de sistema cuida das próprias etapas, e uma aba
+        // atrasada não pode enfiar Negociação em Vencidos ou Upgrade. Id fixo:
+        // duas abas caem na mesma etapa.
+        const [statusesAfter, funnelsAfter] = await Promise.all([
+          getDocs(tenantCol(tenant, STATUSES_PATH)),
+          getDocs(tenantCol(tenant, FUNNELS_PATH)),
+        ]);
+        await writeSetupWrites(tenant, planNegociacaoStages({
+          funnels: funnelsAfter.docs.map(d => ({ id: d.id, ...d.data() })),
+          statuses: statusesAfter.docs.map(d => ({ id: d.id, ...d.data() })),
+        }));
 
         // Define seleção inicial se ainda não houver
         setSelectedFunnelId(prev => prev || defaultId);
@@ -1004,7 +968,7 @@ useEffect(() => {
         // impede a varredura completa de leads em toda carga futura. merge:true
         // pra não encostar nos demais campos da config.
         await setDoc(
-          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          tenantDoc(tenant, CONFIG_PATH, CONFIG_GENERAL_ID),
           { funnelsSetupDoneAt: serverTimestamp() },
           { merge: true }
         );
@@ -1042,13 +1006,15 @@ useEffect(() => {
 
     (async () => {
       try {
+        // Academia congelada no início (ver funnelSetupWrites.js).
+        const tenant = appId;
         // Snapshots frescos por getDocs (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot. Três leituras pequenas,
         // uma única vez por tenant na vida.
         const [funnelsSnap, statusesSnap, sourcesSnap] = await Promise.all([
-          getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)),
-          getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH)),
-          getDocs(collection(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH))
+          getDocs(tenantCol(tenant, FUNNELS_PATH)),
+          getDocs(tenantCol(tenant, STATUSES_PATH)),
+          getDocs(tenantCol(tenant, SOURCES_PATH))
         ]);
         const plan = planReferralSetupOps({
           funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
@@ -1056,32 +1022,12 @@ useEffect(() => {
           sources: sourcesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
         });
 
-        let newFunnelId = null;
-        if (plan.createFunnel) {
-          const ref = await addDoc(
-            collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
-            { ...plan.createFunnel, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
-          );
-          newFunnelId = ref.id;
-        }
-        for (const stage of plan.createStages) {
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
-            ...stage,
-            // Etapas planejadas junto com o funil novo vêm sem funnelId — o id
-            // só existe depois do addDoc acima.
-            funnelId: stage.funnelId || newFunnelId
-          });
-        }
-        if (plan.createSource) {
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', SOURCES_PATH), {
-            ...plan.createSource,
-            createdAt: serverTimestamp()
-          });
-        }
+        // Id fixo no funil, nas etapas e na origem: duas abas caem no mesmo doc.
+        await writeSetupPlan(tenant, plan);
 
         // Carimba a flag própria — impede qualquer leitura nas cargas futuras.
         await setDoc(
-          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          tenantDoc(tenant, CONFIG_PATH, CONFIG_GENERAL_ID),
           { referralSetupDoneAt: serverTimestamp() },
           { merge: true }
         );
@@ -1113,42 +1059,27 @@ useEffect(() => {
 
     (async () => {
       try {
+        // Academia congelada no início (ver funnelSetupWrites.js).
+        const tenant = appId;
         // Snapshots frescos por getDocs (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot.
         const [funnelsSnap, statusesSnap] = await Promise.all([
-          getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)),
-          getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH))
+          getDocs(tenantCol(tenant, FUNNELS_PATH)),
+          getDocs(tenantCol(tenant, STATUSES_PATH))
         ]);
         const plan = planExpiredSetupOps({
           funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
           statuses: statusesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
         });
 
-        let newFunnelId = null;
-        if (plan.createFunnel) {
-          const ref = await addDoc(
-            collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
-            { ...plan.createFunnel, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
-          );
-          newFunnelId = ref.id;
-        }
-        for (const stage of plan.createStages) {
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
-            ...stage,
-            // Etapas planejadas junto com o funil novo vêm sem funnelId — o id
-            // só existe depois do addDoc acima.
-            funnelId: stage.funnelId || newFunnelId
-          });
-        }
+        // Id fixo no funil e nas etapas: duas abas caem no mesmo doc.
+        await writeSetupPlan(tenant, plan);
         for (const ren of (plan.renameStages || [])) {
-          await updateDoc(
-            doc(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH, ren.id),
-            { name: ren.name }
-          );
+          await updateDoc(tenantDoc(tenant, STATUSES_PATH, ren.id), { name: ren.name });
         }
 
         await setDoc(
-          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          tenantDoc(tenant, CONFIG_PATH, CONFIG_GENERAL_ID),
           { expiredFunnelSetupV2DoneAt: serverTimestamp() },
           { merge: true }
         );
@@ -1183,24 +1114,20 @@ useEffect(() => {
 
     (async () => {
       try {
+        // Academia congelada no início (ver funnelSetupWrites.js).
+        const tenant = appId;
         // Snapshot fresco por getDocs (não o prop): elimina a corrida com a
         // assinatura ao vivo ainda vazia no boot.
-        const funnelsSnap = await getDocs(
-          collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)
-        );
+        const funnelsSnap = await getDocs(tenantCol(tenant, FUNNELS_PATH));
         const plan = planRenewalSetupOps({
           funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
         });
 
-        if (plan.createFunnel) {
-          await addDoc(
-            collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
-            { ...plan.createFunnel, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
-          );
-        }
+        // Id fixo no funil: duas abas caem no mesmo doc.
+        await writeSetupPlan(tenant, plan);
 
         await setDoc(
-          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          tenantDoc(tenant, CONFIG_PATH, CONFIG_GENERAL_ID),
           { renewalFunnelSetupDoneAt: serverTimestamp() },
           { merge: true }
         );
@@ -1233,36 +1160,24 @@ useEffect(() => {
 
     (async () => {
       try {
+        // Academia congelada no início (ver funnelSetupWrites.js).
+        const tenant = appId;
         // Snapshots frescos por getDocs (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot.
         const [funnelsSnap, statusesSnap] = await Promise.all([
-          getDocs(collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH)),
-          getDocs(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH))
+          getDocs(tenantCol(tenant, FUNNELS_PATH)),
+          getDocs(tenantCol(tenant, STATUSES_PATH))
         ]);
         const plan = planUpgradeSetupOps({
           funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
           statuses: statusesSnap.docs.map(d => ({ id: d.id, ...d.data() }))
         });
 
-        let newFunnelId = null;
-        if (plan.createFunnel) {
-          const ref = await addDoc(
-            collection(db, 'artifacts', appId, 'public', 'data', FUNNELS_PATH),
-            { ...plan.createFunnel, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }
-          );
-          newFunnelId = ref.id;
-        }
-        for (const stage of plan.createStages) {
-          await addDoc(collection(db, 'artifacts', appId, 'public', 'data', STATUSES_PATH), {
-            ...stage,
-            // Etapa planejada junto com o funil novo vem sem funnelId — o id só
-            // existe depois do addDoc acima.
-            funnelId: stage.funnelId || newFunnelId
-          });
-        }
+        // Id fixo no funil e na entrada: duas abas caem no mesmo doc.
+        await writeSetupPlan(tenant, plan);
 
         await setDoc(
-          doc(db, 'artifacts', appId, 'public', 'data', CONFIG_PATH, CONFIG_GENERAL_ID),
+          tenantDoc(tenant, CONFIG_PATH, CONFIG_GENERAL_ID),
           { upgradeFunnelSetupDoneAt: serverTimestamp() },
           { merge: true }
         );
