@@ -1019,7 +1019,7 @@ useEffect(() => {
       try {
         // Academia congelada no início (ver funnelSetupWrites.js).
         const tenant = appId;
-        // Snapshots frescos por getDocs (não os props): elimina a corrida com
+        // Snapshots frescos por getDocsFromServer (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot. Três leituras pequenas,
         // uma única vez por tenant na vida.
         const [funnelsSnap, statusesSnap, sourcesSnap] = await Promise.all([
@@ -1072,7 +1072,7 @@ useEffect(() => {
       try {
         // Academia congelada no início (ver funnelSetupWrites.js).
         const tenant = appId;
-        // Snapshots frescos por getDocs (não os props): elimina a corrida com
+        // Snapshots frescos por getDocsFromServer (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot.
         const [funnelsSnap, statusesSnap] = await Promise.all([
           getDocsFromServer(tenantCol(tenant, FUNNELS_PATH)),
@@ -1127,7 +1127,7 @@ useEffect(() => {
       try {
         // Academia congelada no início (ver funnelSetupWrites.js).
         const tenant = appId;
-        // Snapshot fresco por getDocs (não o prop): elimina a corrida com a
+        // Snapshot fresco por getDocsFromServer (não o prop): elimina a corrida com a
         // assinatura ao vivo ainda vazia no boot.
         const funnelsSnap = await getDocsFromServer(tenantCol(tenant, FUNNELS_PATH));
         const plan = planRenewalSetupOps({
@@ -1173,7 +1173,7 @@ useEffect(() => {
       try {
         // Academia congelada no início (ver funnelSetupWrites.js).
         const tenant = appId;
-        // Snapshots frescos por getDocs (não os props): elimina a corrida com
+        // Snapshots frescos por getDocsFromServer (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot.
         const [funnelsSnap, statusesSnap] = await Promise.all([
           getDocsFromServer(tenantCol(tenant, FUNNELS_PATH)),
