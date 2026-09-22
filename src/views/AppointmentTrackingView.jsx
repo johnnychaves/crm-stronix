@@ -657,8 +657,9 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                   <LeadLink
                     key={l.id}
                     leadId={l.id}
+                    draggable={false}
                     className={cn(
-                      'grid grid-cols-1 gap-2 md:gap-0 md:items-center px-5 py-3 border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors',
+                      'grid grid-cols-1 gap-2 md:gap-0 md:items-center px-5 py-3 border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors outline-none focus-visible:bg-slate-50 dark:focus-visible:bg-white/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
                       isAula ? 'md:grid-cols-[1.5fr_0.95fr_1fr_1fr_1.3fr_0.85fr]' : 'md:grid-cols-[1.5fr_0.95fr_1fr_1.3fr_0.85fr]'
                     )}
                   >

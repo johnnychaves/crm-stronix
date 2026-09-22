@@ -337,7 +337,8 @@ function ClientsView({ appUser, usersList, db }) {
                 <LeadLink
                   key={c.id}
                   leadId={c.id}
-                  className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.8fr_1.2fr_0.9fr_0.9fr] md:items-center px-5 py-[11px] border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
+                  draggable={false}
+                  className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.8fr_1.2fr_0.9fr_0.9fr] md:items-center px-5 py-[11px] border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors outline-none focus-visible:bg-slate-50 dark:focus-visible:bg-white/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
                 >
                   {/* Cliente */}
                   <div className="flex items-center gap-[11px] min-w-0">

@@ -2464,6 +2464,10 @@ erros (segue o mesmo aviso antigo do `SuperAdminView.jsx`). Build e
 **Listas, Meta e Equipe**
 - [ ] Linha de Leads, Clientes, Aulas e Visitas: clique abre, Ctrl+clique abre
       em outra aba.
+- [ ] No iPhone e no Android, segurar o dedo na linha de Aulas e de Visitas
+      mostra a prévia do link e o menu de abrir em nova aba. É comportamento
+      novo do celular, herdado de a linha inteira ser link: conferir se
+      atrapalha a rolagem da lista.
 - [ ] Meta: nome e corpo do card abrem a ficha; WhatsApp, Ligar, Adiar,
       Concluir, Compareceu, Não veio, Remarcou e Cancelou NÃO abrem.
 - [ ] Meta: no card concluído, Remarcar não abre a ficha e o resto abre.

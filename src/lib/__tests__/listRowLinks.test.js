@@ -22,6 +22,7 @@ const { ClientsView } = await import('../../views/ClientsView.jsx');
 const { AppointmentTrackingView } = await import('../../views/AppointmentTrackingView.jsx');
 
 const TENANT = 'acad';
+const HREF = '/acad/ficha/abc123';
 const profile = {
   openProfile: () => {},
   leadHref: (leadId) => hrefFor(TENANT, 'ficha', { leadId }),
@@ -42,48 +43,71 @@ function render(element) {
       createElement(LeadProfileContext.Provider, { value: profile }, element)));
 }
 
+// A tag de abertura do <a> que leva à ficha, e só ela: quem for conferir
+// classe precisa olhar o link, nunca um <div> de dentro da linha.
+function tagDoLink(html) {
+  const i = html.indexOf(`href="${HREF}"`);
+  expect(i).toBeGreaterThan(-1);
+  return html.slice(html.lastIndexOf('<a ', i), html.indexOf('>', i));
+}
+
 const listaProps = {
   interactions: [], appUser, statuses: [], usersList: [], funnels: [],
   selectedFunnelId: null, setSelectedFunnelId: () => {}, db: {},
 };
 
+const GRADE_AULA = 'md:grid-cols-[1.5fr_0.95fr_1fr_1fr_1.3fr_0.85fr]';
+const GRADE_VISITA = 'md:grid-cols-[1.5fr_0.95fr_1fr_1.3fr_0.85fr]';
+
 describe('linhas das listas', () => {
   it('Todos os leads: a linha é um link para a ficha', () => {
     h.items = [lead()];
     const html = render(createElement(LeadsView, listaProps));
-    expect(html).toContain('href="/acad/ficha/abc123"');
+    expect(html).toContain(`href="${HREF}"`);
     expect(html).toContain('Ana Lima');
   });
 
-  it('Todos os leads: a linha mantém a grade e o fundo de hover', () => {
+  it('Todos os leads: a linha inteira é o link, com grade, hover e anel de foco', () => {
     h.items = [lead()];
-    const html = render(createElement(LeadsView, listaProps));
-    const i = html.indexOf('href="/acad/ficha/abc123"');
-    const linha = html.slice(html.lastIndexOf('<a ', i), i + 400);
-    expect(linha).toContain('grid grid-cols-1');
-    expect(linha).toContain('hover:bg-slate-50');
+    const tag = tagDoLink(render(createElement(LeadsView, listaProps)));
+    expect(tag).toContain('grid grid-cols-1');
+    expect(tag).toContain('md:grid-cols-[1.7fr_1.15fr_1.25fr_0.75fr]');
+    expect(tag).toContain('hover:bg-slate-50');
+    expect(tag).toContain('focus-visible:ring-inset');
   });
 
-  it('Clientes: a linha é um link para a ficha', () => {
+  it('Clientes: a linha inteira é o link, com grade, hover e anel de foco', () => {
     h.items = [lead({ lifecycleStage: 'cliente' })];
     const html = render(createElement(ClientsView, listaProps));
-    expect(html).toContain('href="/acad/ficha/abc123"');
     expect(html).toContain('Ana Lima');
+    const tag = tagDoLink(html);
+    expect(tag).toContain('grid grid-cols-1');
+    expect(tag).toContain('md:grid-cols-[1.8fr_1.2fr_0.9fr_0.9fr]');
+    expect(tag).toContain('hover:bg-slate-50');
+    expect(tag).toContain('focus-visible:ring-inset');
   });
 
-  it('Aulas: a linha é um link para a ficha', () => {
+  it('Aulas: a linha inteira é o link, na grade que tem a coluna do professor', () => {
     h.items = [lead({ appointmentType: 'aula_experimental', appointmentScheduledFor: new Date() })];
-    const html = render(createElement(AppointmentTrackingView, {
+    const tag = tagDoLink(render(createElement(AppointmentTrackingView, {
       appUser, usersList: [], db: {}, appointmentType: 'aula_experimental',
-    }));
-    expect(html).toContain('href="/acad/ficha/abc123"');
+    })));
+    expect(tag).toContain('grid grid-cols-1');
+    expect(tag).toContain(GRADE_AULA);
+    expect(tag).not.toContain(GRADE_VISITA);
+    expect(tag).toContain('hover:bg-slate-50');
+    expect(tag).toContain('focus-visible:ring-inset');
   });
 
-  it('Visitas: a linha é um link para a ficha', () => {
+  it('Visitas: a linha inteira é o link, na grade sem a coluna do professor', () => {
     h.items = [lead({ appointmentType: 'visita', appointmentScheduledFor: new Date() })];
-    const html = render(createElement(AppointmentTrackingView, {
+    const tag = tagDoLink(render(createElement(AppointmentTrackingView, {
       appUser, usersList: [], db: {}, appointmentType: 'visita',
-    }));
-    expect(html).toContain('href="/acad/ficha/abc123"');
+    })));
+    expect(tag).toContain('grid grid-cols-1');
+    expect(tag).toContain(GRADE_VISITA);
+    expect(tag).not.toContain(GRADE_AULA);
+    expect(tag).toContain('hover:bg-slate-50');
+    expect(tag).toContain('focus-visible:ring-inset');
   });
 });
