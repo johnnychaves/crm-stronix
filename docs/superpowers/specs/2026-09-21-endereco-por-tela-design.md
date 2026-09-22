@@ -93,12 +93,12 @@ Telas-folha (pipeline, clientes, meta-diaria, configuracoes, perfil-da-academia,
 Um módulo só, sem React, sem Firebase, testável em node. Ele concentra o que hoje as seis frentes do desenho propuseram em quatro arquivos:
 
 - `SCREENS`: id da tela (os mesmos valores de `activeTab`) para segmento, título e trava (`gestor`, `superAdmin`).
-- `parseAppPath(pathname)` → `{ tenantSlug, screen, leadId, superTab, rest }`. Decodifica segmento por segmento. Segmento malformado invalida só a si mesmo.
-- `hrefFor(tenantId, screen, { leadId, superTab })`. Aceita qualquer `tenantId` não vazio, com `encodeURIComponent`, para uma academia com id fora do padrão nunca perder o menu. `hrefFor(t, 'dashOperacional')` devolve `/<t>`.
+- `parseAppPath(pathname)` → `{ pathname, tenantSlug, screen, leadId, superTab, rest, unknown }`. Decodifica segmento por segmento. Segmento malformado invalida só a si mesmo.
+- `hrefFor(tenantId, screen, { leadId, superTab })`. Aceita qualquer `tenantId` não vazio, com `encodeURIComponent`, para o link nunca sair quebrado; academia com id fora do formato de leitura fica sempre no Operacional, porque o endereço não relê o id (hoje nenhuma está nesse caso, e a validação do provisionamento impede criar outra). `hrefFor(t, 'dashOperacional')` devolve `/<t>`.
 - `isValidLeadId(id)`: a regra do Firestore com teto de 128 caracteres. Rejeita vazio, `/`, `.`, `..`, `__x__` e caractere de controle. É o único validador de id do app.
 - `routeDecision(route, appUser, { search, returnTo })` → `{ kind: 'ok' }` ou `{ kind: 'redirect', to, target, notice }`.
 - `canGoBackInApp(historyState)`: `idx` inteiro maior que zero.
-- `backTarget({ historyIdx, isClient, tenantId })`: `-1` ou o endereço de reserva.
+- `backTarget({ historyState, isClient, tenantId })`: `{ type: 'back' }` ou `{ type: 'replace', href }` com o endereço de reserva.
 - `screenKey(route)`, `documentTitle({ screen, tenantName })`, `routeTemplate(pathname)` e `scrollActionFor(...)`.
 
 ### `src/lib/tenantSlug.js` (novo, puro)
@@ -126,7 +126,7 @@ A cada render do app logado, `routeDecision` avalia nesta ordem e para na primei
 
 A tela de destino já é desenhada no mesmo render (`shown = decision.target`), então a tela proibida nunca pisca. Um `<RouteRedirect key={location.key} to notice/>` troca o endereço com `replace` num effect e mostra o aviso. O toast e o navigate não são setState do componente, e o lint aceita (conferido no validador do plugin 7.0.1). No dev o StrictMode mostra o aviso duas vezes; uma trava por ref no effect resolve se incomodar.
 
-Se o id da academia do claim não relê como a academia do endereço, a decisão devolve `ok` para não entrar em laço. Hoje as cinco academias estão no formato.
+Se o id da academia do claim não relê como a academia do endereço, a decisão devolve `ok` a partir da regra 2, para não entrar em laço. Hoje as cinco academias estão no formato. Quando a regra 4 corrige a academia e o endereço corrigido cai numa tela de gestor ou num endereço desconhecido, o aviso sai no mesmo redirect: o destino de todo redirect é aceito de primeira. A volta da visualização (regra 3) só vale na entrada do histórico em que ela foi pedida e enquanto o endereço ainda é da academia que estava assumida.
 
 O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e o `history.state` do roteador.
 
@@ -143,7 +143,7 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 - Vira um componente de rota, `src/views/LeadProfileRoute.jsx`, com `key` pelo id do endereço. Ele só existe dentro do app logado, então nada da ficha sobrevive ao logout.
 - `useProfileLead({ db, leadId, sessionKey, active })` → `{ status, lead, retry }`, com status `invalid`, `waiting`, `loading`, `ready`, `missing`, `deleted` ou `error`. A `sessionKey` sai só do `appUser` (`${tenantId}:${authUid || id}`), nunca do `firebaseUser`, porque este muda antes do `appId`. O "Tentar de novo" incrementa uma tentativa. Sai o `setLoading(true)` síncrono com eslint-disable.
 - `active = listenersActive`: a ficha e a linha do tempo (`useLeadTimeline`) obedecem ao portão de ociosidade de 15 minutos e mantêm o último estado. Uma ficha esquecida numa aba deixa de ficar assinada a noite toda.
-- A leitura do documento começa na hora, mas a ficha só aparece com `ready` e `!loadingData`, com um `ProfileSkeleton` no lugar. Assim ela não mostra cliente sem contrato nem etapa sem cor enquanto os catálogos chegam. "Não encontrada" e erro aparecem sem esperar.
+- A leitura do documento começa na hora, mas a ficha só aparece pronta depois dos catálogos e dos contratos da academia (`ready`, `!loadingData` e os contratos já chegados), com um `ProfileSkeleton` no lugar. Assim ela não mostra cliente sem contrato nem etapa sem cor enquanto os catálogos chegam. "Não encontrada" e erro aparecem sem esperar. Sem internet, doc ausente que só o cache respondeu mostra o erro, e não "Não encontrada".
 - Painéis, com `Button` do shadcn e tokens semânticos:
   - `missing` e `invalid`: "Ficha não encontrada", "Essa pessoa pode ter sido excluída, ou o link é de outra academia.", botão "Ir para o início".
   - `deleted`: "Essa ficha foi excluída", "Alguém da equipe excluiu esse cadastro enquanto ele estava aberto.", botões "Voltar" e "Ir para o início".
@@ -186,7 +186,7 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 
 ### Sentry
 
-- Continua `Sentry.browserTracingIntegration()`, agora com `beforeStartSpan: (o) => ({ ...o, name: routeTemplate(window.location.pathname) })`. Os moldes usam `/:tenant/...` e `/:tenant/ficha/:leadId`, sem dado real, então ir no cabeçalho de amostragem não é problema. A integração específica do React Router não entra, porque exige `<Routes>`.
+- Continua `Sentry.browserTracingIntegration()`, agora com `beforeStartSpan: (o) => ({ ...o, name: routeTemplate(o.name) })`. O `o.name` é o caminho da página no pageload e o de destino na navegação. `window.location.pathname` não serve, porque o SDK chama o gancho antes de o endereço trocar e daria a tela de antes. Os moldes usam `/:tenant/...` e `/:tenant/ficha/:leadId`, sem dado real, então ir no cabeçalho de amostragem não é problema. A integração específica do React Router não entra, porque exige `<Routes>`.
 - Segunda camada em `src/lib/sentryScrub.js`, obrigatória porque o SDK grava o nome cru no escopo e em vários campos:
   - `scrubLeadPath` troca `/ficha/<id>` por `/ficha/:leadId`, sem distinguir maiúscula;
   - uma varredura final do evento inteiro (pulando `sdkProcessingMetadata`) no fim do `scrubEvent` e do `scrubBreadcrumb`;
@@ -217,14 +217,14 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 ### Custo de leitura
 
 - Ficha e linha do tempo obedecem ao portão de ociosidade (acima).
-- O pool de renovação e o contato de hoje só disparam depois de o config da academia chegar. Hoje eles buscam duas vezes em academia com marcos próprios, a cada F5 e a cada aba nova.
+- O pool de renovação e o contato de hoje esperarem o config da academia fica para uma tarefa separada, fora deste PR: a primeira tentativa abria uma janela em que a Meta podia gravar meta batida antes da hora. Hoje eles buscam duas vezes em academia com marcos próprios, a cada F5 e a cada aba nova.
 - `/api/tenant-resolve` só na tela de login (acima).
 - Antes do merge do PR 2, medir no preview as leituras de abrir 5 fichas em abas pela busca e pôr o número na PR.
 
 ### Consertos pequenos que o F5 frequente exige
 
 - **Funil salvo.** Hoje o Pipeline volta ao funil padrão no F5 em toda academia que não é a STRONIX, porque a chave do localStorage é lida com o `appId` padrão. O conserto relê a chave no callback do login, logo depois do `setTenantId`.
-- **Gesto de voltar do trackpad e do iPhone.** `overscroll-x-contain` no board do Pipeline, no `FunnelTabs` e nas tabelas com rolagem lateral, para o gesto não trocar de tela.
+- **Gesto de voltar do trackpad e do iPhone.** `overscroll-x-contain` no board do Pipeline e em todo rolador horizontal (tabelas, abas da ficha e dos cadastros), para o gesto não trocar de tela. O `FunnelTabs` não rola para o lado: o excedente vai para o menu "+N". Uma varredura nos testes cobra a classe de todo `overflow-x-auto`.
 
 ## Entrega em três PRs
 
@@ -234,7 +234,7 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 
 ## Testes automáticos (node, sem jsdom)
 
-- `routes.test.js`: cada endereço da tabela; ida e volta `hrefFor`/`parseAppPath` para todas as telas e para ids com espaço, acento e `%`; segmento malformado; filhos desconhecidos; `rest` da entrega 2; cada regra da decisão de rota por papel (consultor, gestor, super-admin membro, sessão assumida, super-admin puro), incluindo palavra reservada, raiz, outra academia, caixa, `returnPath` e ausência de laço; `canGoBackInApp`; `backTarget`; `documentTitle`; `routeTemplate`; `scrollActionFor`; textos sem travessão.
+- `routes.test.js` e `routes.decision.test.js`: cada endereço da tabela; ida e volta `hrefFor`/`parseAppPath` para todas as telas e para ids com espaço, acento e `%`; segmento malformado; filhos desconhecidos; `rest` da entrega 2; cada regra da decisão de rota por papel (consultor, gestor, super-admin membro, sessão assumida, super-admin puro), incluindo palavra reservada, raiz, outra academia, caixa, `returnPath` e ausência de laço; `canGoBackInApp`; `backTarget`; `documentTitle`; `routeTemplate`; `scrollActionFor`; textos sem travessão.
 - Contrato do `idx`: com `UNSAFE_createBrowserHistory` e um `window` falso, provar que a carga grava `idx` 0, o push soma 1 e o replace mantém.
 - `tenantSlug.test.js`: formato, reservadas e a guarda de que toda tela de primeiro nível está reservada.
 - `authPersistence.test.js`: as três combinações.
@@ -242,8 +242,8 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 - `sentryScrub.test.js`: request.url, transaction, migalhas de navegação, `url.path`, span do documento, Referer, mensagem de erro, varredura final sem cortar stacktrace e com referência circular, `scrubSpan` do INP e LCP; o que não pode mudar (`/pipeline`, `/leads/aulas`, o slug).
 - `sentryInit.test.js`: fiação dos ganchos (`beforeSend`, `beforeSendTransaction`, `beforeSendSpan`, `beforeBreadcrumb`, `beforeStartSpan`).
 - Estados puros da ficha: `nextProfileSnap`, `profileStatusFor`, `resolveFichaView`.
-- `appLink.test.js` com `renderToString` sob `MemoryRouter`: href certo, `LeadLink` com id inválido vira `<span>`, `LeadLink` leva o state, `SidebarItem` com `href` é `<a aria-current="page">` e sem `href` é `<button>`.
-- `npm run lint` sem eslint-disable novo. Saem dois (o do `useProfileLead` e o do `justCreatedLeadId`).
+- `appLink.test.js` com `renderToString` sob `MemoryRouter`: href certo, `LeadLink` com id inválido vira `<span>` e `LeadLink` leva o state. `menuLinks.test.js`: `SidebarItem` com `href` é `<a aria-current="page">` e sem `href` é `<button>`.
+- `npm run lint` sem eslint-disable novo. Saem três (o do `useProfileLead`, o do `justCreatedLeadId` e o do effect que forçava a tela do super-admin).
 
 ## Conferência manual no preview da Vercel
 
@@ -284,10 +284,9 @@ Nunca com o dev local apontado para a produção.
 - Qualquer `history.replaceState` cru apaga o `idx`. Todo replace passa pelo `navigate`.
 - Voltar do navegador com modal aberto dentro de uma tela ou da ficha desmonta a tela e perde o que foi digitado. Antes o voltar saía do app inteiro, então não piora, mas passa a acontecer dentro do app.
 - Depois de uma troca de conta, entradas antigas do histórico são reescritas para a academia atual quando o voltar chega nelas.
-- O Sentry ignora navegação por replace, então depois do aviso de gestor um erro sai com o nome da tela anterior. É diagnóstico, não privacidade.
+- Todo push e todo replace com endereço, inclusive o do aviso de rota, vira transação de navegação no Sentry. O nome sai do destino (`options.name`), porque o SDK chama o gancho antes de o endereço trocar.
 - Cada troca de tela vira transação de navegação amostrada a 10%. Olhar a cota depois de uns dias.
 - "Acessar como" continua derrubando as outras abas do super-admin, e Ctrl+clique durante a visualização abre o login. Nada disso muda nesta entrega.
-- Sem internet, uma ficha fora do cache pode aparecer como não encontrada.
 
 ## Documentação a atualizar
 

@@ -7,8 +7,9 @@ Space Grotesk nos títulos, Geist no corpo).
 
 ## Stack
 
-- **Frontend:** React 19 + Vite + Tailwind CSS v4 + lucide-react. Toda a UI vive
-  em `src/App.jsx` (single-file, navegação por abas — **sem react-router**).
+- **Frontend:** React 19 + Vite + Tailwind CSS v4 + lucide-react + React Router 7.
+  A casca vive em `src/App.jsx`. Cada tela tem endereço próprio, sem `<Routes>`:
+  a tabela de telas e a decisão de rota moram em `src/lib/routes.js`.
 - **Backend:** funções **serverless da Vercel** em `api/` (Firebase Admin SDK).
 - **Dados/Auth:** Firebase (Firestore + Authentication).
 - **Deploy:** Vercel (auto-deploy no push para `main`). Regras do Firestore são
@@ -70,7 +71,10 @@ scripts/                  Utilitários Admin (rodar fora do app)
   migrate-tenant-private.js  Move perfil/WhatsApp do dono para o subdoc privado
                              `/tenants/{id}/private/profile` (simula sem `--apply`)
 src/
-  App.jsx                 Toda a UI (single-file)
+  App.jsx                 Casca do app: login, menu, decisão de rota e telas
+  lib/routes.js           Endereço de cada tela (tabela, leitura, links, decisão)
+  lib/tenantSlug.js       Formato e palavras reservadas do identificador da academia
+  lib/appShell.js         O que a casca do App tira do endereço e da sessão
   lib/                    firebase.js, leads.js, funnels.js, dates.js, constants.js, auth.js
 firestore.rules           Regras de isolamento por tenant (publicar manual)
 ```
@@ -107,7 +111,9 @@ Pela UI (recomendado): logado como super-admin → **Organizações → Nova
 organização**. Preencha nome, slug, dados do admin, plano e dias de teste.
 O endpoint `POST /api/provision-tenant`:
 
-1. Valida o slug (único, `[a-z0-9-]`, 3–40 chars).
+1. Valida o slug (único, 3 a 40 caracteres em `[a-z0-9-]`, começando e terminando
+   com letra ou número, e fora das palavras reservadas de `src/lib/tenantSlug.js`,
+   que são as telas do app).
 2. Cria o admin no Firebase Auth + claim `tenantId`.
 3. Cria o registro em `tenants/{slug}` (status, plano, trial, settings).
 4. Cria o doc do admin em `stronix_users`.
