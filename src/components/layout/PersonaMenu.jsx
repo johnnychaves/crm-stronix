@@ -4,11 +4,16 @@ import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent,
   DropdownMenuItem, DropdownMenuSeparator,
 } from '../ui/dropdown-menu.jsx';
+import { AppLink } from '../nav/AppLink.jsx';
 
 // Menu da conta no canto superior direito (ícone de persona). Reúne o perfil da
 // academia + Plano & faturas (só para o admin) e o logout. Consultor vê apenas
 // a própria identidade + Sair. Super-admin puro não tem academia → sem perfil.
-function PersonaMenu({ appUser, isAdmin, onProfile, onBilling, onLogout, onHelp, onToggleTheme, isDarkMode }) {
+// Perfil da academia e Plano & faturas são links (profileHref e billingHref,
+// montados pelo App com a academia da sessão): Ctrl+clique abre em outra aba.
+// O item do menu empresta o papel e o foco ao link (asChild) e fecha o menu no
+// clique. Enter pelo teclado abre na mesma aba.
+function PersonaMenu({ appUser, isAdmin, profileHref, billingHref, onLogout, onHelp, onToggleTheme, isDarkMode }) {
   const superOnly = !!appUser?.superAdminOnly;
   const role = superOnly ? 'Super-admin' : isAdmin ? 'Acesso Master' : 'Consultor';
   const RoleIcon = superOnly ? Shield : isAdmin ? Shield : User;
@@ -32,15 +37,23 @@ function PersonaMenu({ appUser, isAdmin, onProfile, onBilling, onLogout, onHelp,
             </div>
           </div>
         </div>
-        {isAdmin && !superOnly && (
+        {isAdmin && !superOnly && (profileHref || billingHref) && (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={onProfile} className="cursor-pointer">
-              <Building2 className="size-4 text-slate-500" /> Perfil da academia
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={onBilling} className="cursor-pointer">
-              <CreditCard className="size-4 text-slate-500" /> Plano &amp; faturas
-            </DropdownMenuItem>
+            {profileHref && (
+              <DropdownMenuItem asChild className="cursor-pointer">
+                <AppLink to={profileHref}>
+                  <Building2 className="size-4 text-slate-500" /> Perfil da academia
+                </AppLink>
+              </DropdownMenuItem>
+            )}
+            {billingHref && (
+              <DropdownMenuItem asChild className="cursor-pointer">
+                <AppLink to={billingHref}>
+                  <CreditCard className="size-4 text-slate-500" /> Plano &amp; faturas
+                </AppLink>
+              </DropdownMenuItem>
+            )}
           </>
         )}
         {/* No celular o header não comporta 🎓 + tema + sino, então esses dois

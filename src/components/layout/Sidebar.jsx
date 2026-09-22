@@ -1,4 +1,6 @@
 import { ChevronDown } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { AppLink } from '../nav/AppLink.jsx';
 
 // Elementos "só expandido" da sidebar: no desktop o trilho recolhido os
 // esconde; hover (ou foco de teclado via :has(:focus-visible)) revela.
@@ -7,28 +9,54 @@ import { ChevronDown } from 'lucide-react';
 const SIDEBAR_EXPANDED_ONLY =
   'transition-opacity duration-200 md:opacity-0 md:group-hover/sidebar:opacity-100 md:group-has-[:focus-visible]/sidebar:opacity-100';
 
-function SidebarItem({ icon, label, active, badge, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`group relative w-full h-11 pl-3.5 pr-3 rounded-xl flex items-center gap-3 text-[13.5px] font-medium transition-all ${active
-        ? 'bg-brand-600 text-white shadow-[0_6px_16px_-6px_rgba(43,89,255,.65)]'
-        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-300 dark:hover:bg-white/[0.06] dark:hover:text-white'}`}
-    >
+// Item do menu. Com `href` é um link de verdade: Ctrl+clique, botão do meio e
+// "Abrir em nova aba" funcionam, e a tela atual leva aria-current="page".
+// `onNavigate` roda só quando o clique troca de tela nesta aba (o App fecha o
+// menu do celular por ele). Sem `href` continua botão, para o que abre janela
+// em vez de trocar de tela (Suporte). Link e botão têm a mesma aparência.
+function SidebarItem({ icon, label, active, badge, href, onNavigate, onClick }) {
+  const className = cn(
+    'group relative w-full h-11 pl-3.5 pr-3 rounded-xl flex items-center gap-3 text-[13.5px] font-medium transition-all',
+    active
+      ? 'bg-brand-600 text-white shadow-[0_6px_16px_-6px_rgba(43,89,255,.65)]'
+      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-300 dark:hover:bg-white/[0.06] dark:hover:text-white'
+  );
+  const content = (
+    <>
       {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-accent-500" />}
       <span className={active ? 'text-white' : 'text-gray-400 group-hover:text-brand-600 dark:text-neutral-500 dark:group-hover:text-white transition-colors'}>{icon}</span>
-      <span className={`flex-1 text-left whitespace-nowrap tracking-tight ${SIDEBAR_EXPANDED_ONLY}`}>{label}</span>
+      <span className={cn('flex-1 text-left whitespace-nowrap tracking-tight', SIDEBAR_EXPANDED_ONLY)}>{label}</span>
       {badge != null && (
-        <span className={`text-[10.5px] font-bold px-1.5 h-[18px] rounded-md min-w-[18px] grid place-items-center tabular-nums shrink-0 ${active ? 'bg-white/20 text-white' : 'bg-accent-500/12 text-accent-600 dark:bg-accent-500/15 dark:text-accent-400'} ${SIDEBAR_EXPANDED_ONLY}`}>{badge}</span>
+        <span
+          className={cn(
+            'text-[10.5px] font-bold px-1.5 h-[18px] rounded-md min-w-[18px] grid place-items-center tabular-nums shrink-0',
+            active ? 'bg-white/20 text-white' : 'bg-accent-500/12 text-accent-600 dark:bg-accent-500/15 dark:text-accent-400',
+            SIDEBAR_EXPANDED_ONLY
+          )}
+        >
+          {badge}
+        </span>
       )}
-      {/* Ponto de notificação do trilho recolhido — o badge acima some junto
-          com os rótulos; o ponto faz o caminho inverso no hover. */}
+      {/* Ponto de notificação do trilho recolhido. O selo acima some junto
+          com os rótulos, e o ponto faz o caminho inverso no hover. */}
       {badge != null && (
         <span
           aria-hidden="true"
           className="hidden md:block absolute top-2 left-[26px] size-2 rounded-full bg-accent-500 pointer-events-none transition-opacity duration-200 md:group-hover/sidebar:opacity-0 md:group-has-[:focus-visible]/sidebar:opacity-0"
         />
       )}
+    </>
+  );
+  if (href) {
+    return (
+      <AppLink to={href} onNavigate={onNavigate} aria-current={active ? 'page' : undefined} className={className}>
+        {content}
+      </AppLink>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      {content}
     </button>
   );
 }
@@ -62,14 +90,31 @@ function SidebarGroup({ icon, label, active, open, onToggle, children }) {
   );
 }
 
-function SidebarSubItem({ label, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`group w-full flex items-center gap-2.5 pl-3 pr-2.5 h-9 rounded-lg text-[13px] font-medium transition-all ${active ? 'bg-brand-600 text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-white'}`}
-    >
-      <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${active ? 'bg-white' : 'bg-gray-300 group-hover:bg-brand-500 dark:bg-neutral-600'}`} />
+// Sub-item de um grupo do menu. Mesma regra do SidebarItem: com `href` é
+// link, sem `href` é botão, e os dois têm a mesma aparência.
+function SidebarSubItem({ label, active, href, onNavigate, onClick }) {
+  const className = cn(
+    'group w-full flex items-center gap-2.5 pl-3 pr-2.5 h-9 rounded-lg text-[13px] font-medium transition-all',
+    active
+      ? 'bg-brand-600 text-white'
+      : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-neutral-400 dark:hover:bg-white/[0.06] dark:hover:text-white'
+  );
+  const content = (
+    <>
+      <span className={cn('w-1.5 h-1.5 rounded-full shrink-0', active ? 'bg-white' : 'bg-gray-300 group-hover:bg-brand-500 dark:bg-neutral-600')} />
       <span className="tracking-tight truncate">{label}</span>
+    </>
+  );
+  if (href) {
+    return (
+      <AppLink to={href} onNavigate={onNavigate} aria-current={active ? 'page' : undefined} className={className}>
+        {content}
+      </AppLink>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      {content}
     </button>
   );
 }
