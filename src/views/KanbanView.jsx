@@ -25,7 +25,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { FollowUpIcon } from '../components/ui/Badges.jsx';
-import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../components/nav/AppLink.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
 import { AlertCircle, ArrowRightLeft, ArrowUpRight, Ban, Check, CheckCircle, SlidersHorizontal, TrendingUp, Users } from 'lucide-react';
@@ -117,7 +117,8 @@ const PERDA_BUCKETS = [LIFECYCLE_BUCKETS.PERDA];
 // mesmas linhas, o que muda é a cor.
 // React.memo: durante o drag só o card arrastado muda de prop (isDragging);
 // os demais não re-renderizam. Handlers vêm estáveis (useCallback) do pai.
-const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, lastDate, onDragStart, onDragEnd, onOpenProfile, onMoveRequest }) {
+// Exportado para o teste em node conferir os links do card sem montar a tela.
+export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, lastDate, onDragStart, onDragEnd, onMoveRequest }) {
   const isWon = lead.status === 'Venda';
   const isLost = lead.status === 'Perda';
   const hasFollowUp = lead.nextFollowUp instanceof Date && !isNaN(lead.nextFollowUp.getTime());
@@ -157,7 +158,6 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
       draggable
       onDragStart={(e) => onDragStart(e, lead.id)}
       onDragEnd={onDragEnd}
-      onClick={() => onOpenProfile(lead.id)}
       className={cn(
         // shrink-0: sem isto o card (filho flex do container flex-col da coluna)
         // encolhe verticalmente pra caber quando a lista cresce, em vez de a
@@ -169,7 +169,16 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
         isLost && !isDragging && 'opacity-[.72]'
       )}
     >
-      <div className="px-[11px] pt-2.5 pb-[9px]">
+      {/* O link ENVOLVE o conteúdo em vez de esticar uma camada por cima: com
+          uma camada, os tooltips dos chips, do motivo da perda e do consultor
+          parariam de aparecer. draggable={false} deixa o arrasto com o
+          <article>, então a imagem arrastada continua sendo o card e o arrasto
+          não leva a URL. */}
+      <LeadLink
+        leadId={lead.id}
+        draggable={false}
+        className="block px-[11px] pt-2.5 pb-[9px] cursor-grab active:cursor-grabbing outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+      >
         <div className="flex items-center gap-2">
           <span aria-hidden="true" className="size-1.5 rounded-full shrink-0" style={{ background: accent.border }} />
           {/* O nome NUNCA muda de cor: é identidade. Urgência é trabalho da
@@ -244,16 +253,25 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
             ))}
           </div>
         )}
-      </div>
+      </LeadLink>
 
       <div className={cn(
         'flex items-center gap-1.5 border-t border-[#e8ecf3] dark:border-neutral-800 px-[11px] py-1.5 text-[11px]',
         FOOTER_TONE[footerTone]
       )}>
         {lead.consultantName && <InitialsAvatar name={lead.consultantName} size={17} textSize={8} />}
-        <span className="flex-1 min-w-0 truncate text-slate-500 dark:text-neutral-400" title={lead.consultantName ? `Consultor: ${lead.consultantName}` : undefined}>
+        {/* Segundo link do card, para o lado esquerdo do rodapé também abrir a
+            ficha. Fora da ordem do Tab: o teclado para uma vez por card, no
+            link de cima. */}
+        <LeadLink
+          leadId={lead.id}
+          draggable={false}
+          tabIndex={-1}
+          className="flex-1 min-w-0 truncate text-slate-500 dark:text-neutral-400 cursor-grab active:cursor-grabbing outline-none"
+          title={lead.consultantName ? `Consultor: ${lead.consultantName}` : undefined}
+        >
           {lead.consultantName || 'Sem responsável'}
-        </span>
+        </LeadLink>
 
         {/* Ações no rodapé — nunca sobrepostas ao conteúdo. No hover cedem o
             espaço do nome; em telas de toque ficam sempre visíveis. */}
@@ -261,23 +279,29 @@ const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDragging, las
           <button
             type="button"
             data-no-pan="true"
-            onClick={(e) => { e.stopPropagation(); onMoveRequest(lead); }}
+            onClick={() => onMoveRequest(lead)}
             title="Mover para outra etapa"
             aria-label="Mover lead para outra etapa"
             className="size-[25px] grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition-colors"
           >
             <ArrowRightLeft className="size-3" />
           </button>
-          <button
-            type="button"
+          {/* Clique simples aqui abre a ficha em OUTRA GUIA e o Pipeline fica
+              intacto nesta. É assim que o consultor abre vários cards sem sair
+              do quadro. Ctrl+clique e botão do meio abrem a guia em segundo
+              plano, coisa que nenhum site consegue forçar num clique comum. */}
+          <LeadLink
+            leadId={lead.id}
+            draggable={false}
             data-no-pan="true"
-            onClick={(e) => { e.stopPropagation(); onOpenProfile(lead.id); }}
-            title="Abrir perfil"
-            aria-label="Abrir perfil do lead"
+            target="_blank"
+            rel="noopener"
+            title="Abrir ficha em outra guia"
+            aria-label="Abrir ficha em outra guia"
             className="size-[25px] grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition-colors"
           >
             <ArrowUpRight className="size-3" />
-          </button>
+          </LeadLink>
         </span>
 
         <span className={cn(
@@ -298,7 +322,7 @@ const KanbanColumn = memo(function KanbanColumn({
   name, color, special, columnLeads, note = null, isHovered, totalCount = null,
   draggingLeadId, interactionIndex, hasMore = false, onLoadMore = null, loadingMore = false,
   onColumnDragOver, onColumnDragLeave, onDropLead,
-  onDragStart, onDragEnd, onOpenProfile, onMoveRequest,
+  onDragStart, onDragEnd, onMoveRequest,
 }) {
   const accent = getKanbanColumnAccent(color);
   const isWinCol = special === 'win';
@@ -380,7 +404,6 @@ const KanbanColumn = memo(function KanbanColumn({
                 lastDate={lastInteractionDateOf(lead, interactionIndex)}
                 onDragStart={onDragStart}
                 onDragEnd={onDragEnd}
-                onOpenProfile={onOpenProfile}
                 onMoveRequest={onMoveRequest}
               />
             ))}
@@ -411,7 +434,6 @@ const KanbanColumn = memo(function KanbanColumn({
 
 function KanbanView({ leads, interactions, appUser, statuses, usersList, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
   const toast = useToast();
-  const { openProfile } = useLeadProfile();
   const [moveLead, setMoveLead] = useState(null); // lead com o menu "Mover" aberto (toque/teclado)
   // Filtro de responsáveis multi-seleção: conjunto vazio = toda a equipe. Abre
   // na carteira do próprio consultor (o gestor abre na equipe inteira) e daí em
@@ -1450,7 +1472,6 @@ const handleKanbanMouseMove = (e) => {
                 onDropLead={onDropLead}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
-                onOpenProfile={openProfile}
                 onMoveRequest={onMoveRequest}
               />
             ))}
@@ -1471,7 +1492,6 @@ const handleKanbanMouseMove = (e) => {
               onDropLead={onDropLead}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
-              onOpenProfile={openProfile}
               onMoveRequest={onMoveRequest}
             />
 
@@ -1499,7 +1519,6 @@ const handleKanbanMouseMove = (e) => {
               onDropLead={onDropLead}
               onDragStart={handleDragStart}
               onDragEnd={handleDragEnd}
-              onOpenProfile={openProfile}
               onMoveRequest={onMoveRequest}
             />
           </div>
