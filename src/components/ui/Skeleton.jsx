@@ -112,6 +112,46 @@ function SettingsSkeleton() {
   );
 }
 
+// Esqueleto da ficha, no desenho da LeadProfileView (Voltar, cartão do
+// cabeçalho com avatar e as quatro células, abas e a linha do tempo), para a
+// troca não pular. Aparece enquanto o doc do lead ou os catálogos da academia
+// ainda não chegaram.
+function ProfileSkeleton() {
+  return (
+    <div role="status" aria-busy="true" className="animate-fade-in max-w-[1160px] mx-auto w-full">
+      <span className="sr-only">Carregando ficha…</span>
+      <Skeleton className="h-8 w-20 mb-3" rounded="rounded-lg" />
+      <div className="rounded-2xl border border-border bg-card shadow-card p-5 sm:p-6 mb-5">
+        <div className="flex items-start gap-4 sm:gap-5">
+          <Skeleton className="size-16 shrink-0" rounded="rounded-full" />
+          <div className="flex-1 min-w-0 flex flex-col gap-2 pt-1">
+            <Skeleton className="h-3 w-24" rounded="rounded-md" />
+            <Skeleton className="h-7 w-64 max-w-full" rounded="rounded-lg" />
+          </div>
+        </div>
+        <div className="mt-5 grid grid-cols-2 md:grid-cols-4 gap-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="flex flex-col gap-1.5">
+              <Skeleton className="h-2.5 w-16" rounded="rounded" />
+              <Skeleton className="h-4 w-28 max-w-full" rounded="rounded-md" />
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-4 h-11 border-b border-border mb-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-4 w-24" rounded="rounded-md" />
+        ))}
+      </div>
+      <div className="rounded-2xl border border-border bg-card shadow-card p-5 flex flex-col gap-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-10" rounded="rounded-xl" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ViewSkeleton({ activeTab }) {
   switch (activeTab) {
     case 'kanban': return <KanbanSkeleton />;
@@ -125,4 +165,4 @@ function ViewSkeleton({ activeTab }) {
       return <DashboardSkeleton />;
   }
 }
-export { Skeleton, DashboardSkeleton, KanbanSkeleton, LeadsSkeleton, DailyGoalSkeleton, SettingsSkeleton, ViewSkeleton };
+export { Skeleton, DashboardSkeleton, KanbanSkeleton, LeadsSkeleton, DailyGoalSkeleton, SettingsSkeleton, ProfileSkeleton, ViewSkeleton };
