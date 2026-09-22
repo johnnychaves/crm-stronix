@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
 import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap } from 'lucide-react';
 
 import {
@@ -58,13 +59,18 @@ import { computeDailyGoalSlots, buildInteractionsByLead, slotTotals, dgDateKey }
 import { recordGoalHit as recordGoalHitDoc, goalHitKeyToRecord } from './lib/dailyGoalHistory.js';
 import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
-import { useProfileLead } from './hooks/useProfileLead.js';
+import { useRouteScroll } from './hooks/useRouteScroll.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { planReferralSetupOps } from './lib/referrals.js';
 import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
 import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
 import { IDLE_RUN, runStatusFor, settleRun, EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor } from './lib/setupRun.js';
+import { parseAppPath, routeDecision, hrefFor, screenKey, documentTitle } from './lib/routes.js';
+import {
+  screenState, sessionKeyFor, loginTenantSlug,
+  loginBrand, logoutDestination, returnToFrom, savedFunnelKey, readSavedFunnel,
+} from './lib/appShell.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
@@ -87,7 +93,7 @@ import { KanbanView } from './views/KanbanView.jsx';
 import { AppointmentTrackingView } from './views/AppointmentTrackingView.jsx';
 import { LeadsView } from './views/LeadsView.jsx';
 import { ClientsView } from './views/ClientsView.jsx';
-import { LeadProfileView } from './views/LeadProfileView.jsx';
+import { LeadProfileRoute } from './views/LeadProfileRoute.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
@@ -106,14 +112,16 @@ import { SuperConsole } from './views/console/SuperConsole.jsx';
 import { SupportCenterModal } from './modals/SupportCenterModal.jsx';
 import { countUnreadForClient } from './lib/ticketThread.js';
 import { AppErrorBoundary } from './components/ErrorBoundary.jsx';
+import { RouteRedirect } from './components/RouteRedirect.jsx';
 import { setSentryUser, clearSentryUser } from './lib/sentry.js';
 
 // ==========================================
 // COMPONENTE PRINCIPAL (APP)
 // ==========================================
 export default function App() {
-  // Roteamento mínimo por query-param (app single-page, sem react-router):
-  // /?invite=<token>&t=<tenantId> abre a tela pública de aceite de convite.
+  // Rotas públicas, decididas uma vez aqui e fora das telas do app logado
+  // (src/lib/routes.js). /?invite=<token>&t=<tenantId> abre o aceite de
+  // convite. Por isso invite, t e ref nunca podem virar parâmetro de tela.
   const [invite] = useState(() => {
     try {
       const p = new URLSearchParams(window.location.search);
@@ -123,8 +131,8 @@ export default function App() {
     }
   });
   // /i/<slug>?ref=<idDoCliente> abre a página PÚBLICA de indicação (fase 2).
-  // O segmento "i" é reservado: tem 1 letra e slugs reais têm 3+ (TENANT_ID_RE
-  // do provisionamento), então o getTenantSlug abaixo nunca colide com ele.
+  // O segmento "i" é palavra reservada (src/lib/tenantSlug.js): nenhuma
+  // academia pode ter esse identificador.
   const [referralRoute] = useState(() => {
     try {
       const m = String(window.location.pathname || '').match(/^\/i\/([a-z0-9][a-z0-9-]{0,63})\/?$/i);
@@ -146,29 +154,14 @@ export default function App() {
   );
 }
 
-// Lê o slug da academia da URL: primeiro o PATH (stronilead.com.br/<slug>) e,
-// como compatibilidade com links antigos, o HASH (#<slug>, #/slug, #/t/slug).
-// Retorna '' se não houver/for inválido.
-function getTenantSlug() {
-  const re = /^[a-z0-9][a-z0-9-]{0,63}$/;
-  try {
-    // 1) path-based: /<slug>
-    const seg = String(window.location.pathname || '').replace(/^\/+/, '').split('/')[0].trim().toLowerCase();
-    if (re.test(seg)) return seg;
-    // 2) fallback: hash
-    const raw = String(window.location.hash || '').replace(/^#\/?(t\/)?/i, '').trim().toLowerCase();
-    const h = raw.split(/[/?#&]/)[0];
-    return re.test(h) ? h : '';
-  } catch {
-    return '';
-  }
-}
-
 function AppInner() {
   const [firebaseUser, setFirebaseUser] = useState(null);
   const [appUser, setAppUser] = useState(null);
   const [authSetupError, setAuthSetupError] = useState('');
   const [isAuthChecking, setIsAuthChecking] = useState(true);
+  // Saindo (Sair, ou fim da visualização sem volta): a página vai recarregar no
+  // login. Até lá, nada de tela de login nem de /api/tenant-resolve.
+  const [leaving, setLeaving] = useState(false);
   // Bloqueio da academia: 'suspended' | 'trial_expired' | null. Lido do doc
   // /tenants/{id} no login (regra permite leitura ao próprio tenant).
   const [tenantBlock, setTenantBlock] = useState(null);
@@ -176,29 +169,47 @@ function AppInner() {
   // banner de contagem regressiva. null quando não há trial ativo.
   const [trialEndsAtMs, setTrialEndsAtMs] = useState(null);
   const [billingDue, setBillingDue] = useState(null); // { dueAtMs, overdue, invoiceUrl } | null
-  // Academia identificada pela URL (#<slug>) — só para exibir a MARCA no login.
-  // NÃO controla acesso (isso continua sendo o claim tenantId + as rules).
-  // Formato: { slug, loading? , found?, displayName? }. Init lazy a partir do hash.
-  const [urlTenant, setUrlTenant] = useState(() => {
-    const slug = getTenantSlug();
-    return slug ? { slug, loading: true } : null;
-  });
+  // Resposta do /api/tenant-resolve para a MARCA da academia na tela de login:
+  // { slug, found, displayName? }. NÃO controla acesso (isso continua sendo o
+  // claim tenantId + as rules). A marca mostrada (urlTenant) é derivada abaixo.
+  const [resolvedBrand, setResolvedBrand] = useState(null);
+  // Volta do "Sair da visualização": { fromTenant, path, key }. routeDecision
+  // leva ao endereço do "Acessar como", só na entrada do histórico `key`.
+  const [returnTo, setReturnTo] = useState(null);
+  // Nome da academia da sessão, lido do doc tenants/{id} no login. Vai no
+  // título da aba.
+  const [tenantDisplayName, setTenantDisplayName] = useState('');
 
-  const [activeTab, setActiveTab] = useState('dashboard');
-  // 'dashboard' é um SENTINEL (estado inicial e pós-logout): a Visão geral abre
-  // no Operacional para todo mundo. CRM e Gerencial estão "Em breve".
-  const resolvedTab = activeTab === 'dashboard' ? 'dashOperacional' : activeTab;
+  // O endereço manda na tela (src/lib/routes.js). Nada disto é estado: a tela,
+  // a ficha e a subaba do super-admin saem do endereço a cada render, e
+  // routeDecision diz se o endereço vale para esta sessão. Quando não vale, a
+  // tela de destino já é desenhada neste render (shown) e o <RouteRedirect>
+  // troca o endereço com replace. Assim a tela barrada nunca pisca e nenhum
+  // effect lê o endereço para dar setState.
+  const location = useLocation();
+  const navigate = useNavigate();
+  const route = useMemo(() => parseAppPath(location.pathname), [location.pathname]);
+  const decision = routeDecision(route, appUser, { search: location.search, returnTo: returnTo?.key === location.key ? returnTo : null });
+  const shown = decision.kind === 'redirect' && decision.target ? decision.target : route;
+  // activeTab, resolvedTab, profileLeadId e superTab continuam com os nomes de
+  // sempre (src/lib/appShell.js). 'dashboard' é o endereço curto /<academia> e
+  // abre o Operacional. Com a ficha aberta, activeTab é a tela de onde ela foi
+  // aberta (menu aceso e título da origem), ou 'ficha' quando ela foi aberta
+  // direto numa aba nova.
+  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab } = screenState(shown, location.state, appUser);
   // As três abas da Visão geral. O grupo do menu fica aberto enquanto uma
   // delas está ativa; fora delas, vale o toggle do usuário.
   const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashCrm' || resolvedTab === 'dashGerencial';
-  // Ficha-página (lead/cliente): id em foco. A ficha SOBREPÕE o conteúdo da
-  // aba ativa (não troca activeTab), então o "Voltar" só limpa este id e a
-  // aba reaparece sozinha.
-  const [profileLeadId, setProfileLeadId] = useState(null);
-  // Aba-alvo ao abrir Configurações de fora (ex.: link "Regras gerais" do Perfil).
-  // SettingsView remonta ao entrar na view e aplica este initialTab no mount.
-  const [settingsTab, setSettingsTab] = useState('users');
-  const [superTab, setSuperTab] = useState('overview'); // sub-seção do super-admin (no menu lateral)
+  // Academia da sessão para montar endereços. Vem do claim, nunca do endereço.
+  const sessionTenant = appUser && !appUser.superAdminOnly ? appUser.tenantId : null;
+  // Chave da sessão da ficha: sair e entrar, ou o "Acessar como", refazem a
+  // leitura da ficha na academia certa mesmo com o mesmo id no endereço.
+  const sessionKey = sessionKeyFor(appUser);
+  // Rolagem do conteúdo por entrada do histórico: voltar devolve a posição. A
+  // chave é a da tela mostrada (a mesma da key do AppErrorBoundary), e não a do
+  // endereço: num endereço barrado as duas diferem por um render.
+  const contentScrollRef = useRef(null);
+  const onContentScroll = useRouteScroll(contentScrollRef, screenKey(shown));
   const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
   const [ticketModalOpen, setTicketModalOpen] = useState(false); // abrir chamado de suporte (cliente)
   // Tickets de suporte do tenant (badge da sidebar + Central de Suporte).
@@ -230,7 +241,14 @@ function AppInner() {
   const { seenIds, lastSeenReferralsAt, markAllSeen } = useNotificationsSeen({ db, appUser });
   // Leads/clientes que passaram pra carteira desta pessoa (grupo do sino).
   const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly });
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Menu do celular: aberto enquanto o endereço for o mesmo em que ele abriu
+  // (location.key). Qualquer troca de endereço fecha o menu sozinha, inclusive
+  // o voltar do navegador e o replace de um aviso de rota, sem effect. Os links
+  // do menu zeram a chave no clique (onNavigate), então voltar até a entrada
+  // onde ele abriu não o reabre.
+  const [drawerKey, setDrawerKey] = useState(null);
+  const isMobileMenuOpen = drawerKey !== null && drawerKey === location.key;
+  const closeDrawer = () => setDrawerKey(null);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
   // Accordion "Visão geral" (Operacional / Gerencial) — split do dashboard.
@@ -250,35 +268,31 @@ function AppInner() {
     }
   }, [isDarkMode]);
 
-  // Resolve a academia do hash da URL (#<slug>) para exibir o nome na tela de
-  // login. Público (pré-auth) via /api/tenant-resolve. Roda uma vez no mount.
+  // Marca da academia na tela de login. O /api/tenant-resolve só é chamado
+  // quando a tela de login vai aparecer: com sessão, o nome vem do doc
+  // tenants/{id} que o login já lê (tenantDisplayName), e o F5 de quem já está
+  // logado deixa de gastar a cota por IP da recepção. Enquanto a resposta não
+  // chega, a marca fica "carregando" (loginBrand), sem setState no effect.
+  const loginSlug = !isAuthChecking && !appUser && !leaving ? loginTenantSlug(location) : null;
   useEffect(() => {
-    const slug = getTenantSlug();
-    if (!slug) return;
+    if (!loginSlug) return undefined;
     let alive = true;
-    fetch(`/api/tenant-resolve?slug=${encodeURIComponent(slug)}`)
+    fetch(`/api/tenant-resolve?slug=${encodeURIComponent(loginSlug)}`)
       .then(r => r.json())
-      .then(d => { if (alive) setUrlTenant(d?.found ? { slug, found: true, displayName: d.displayName } : { slug, found: false }); })
-      .catch(() => { if (alive) setUrlTenant({ slug, found: false }); });
+      .then(d => { if (alive) setResolvedBrand(d?.found ? { slug: loginSlug, found: true, displayName: d.displayName } : { slug: loginSlug, found: false }); })
+      .catch(() => { if (alive) setResolvedBrand({ slug: loginSlug, found: false }); });
     return () => { alive = false; };
-  }, []);
+  }, [loginSlug]);
+  const urlTenant = loginBrand(loginSlug, resolvedBrand);
 
-  // Mantém a URL (/<slug>) em sincronia com o tenant real após o login — cada
-  // academia fica com um link próprio e bookmarkável (stronilead.com.br/<slug>).
-  // O acesso vem do claim; se a URL apontava para outra academia, é apenas
-  // corrigida (sem bloquear ninguém). replaceState não recarrega a página.
+  // Título da aba: "<Tela> · <Academia> · STRONILEAD". Na ficha, só "Ficha",
+  // nunca o nome da pessoa, porque o título fica no histórico do navegador.
+  // Antes do login continua "<Academia> · STRONILEAD".
+  const titleScreen = appUser && !appUser.superAdminOnly && !tenantBlock ? (fichaOpen ? 'ficha' : resolvedTab) : null;
+  const titleTenant = appUser ? (appUser.superAdminOnly ? '' : tenantDisplayName) : (urlTenant?.displayName || '');
   useEffect(() => {
-    if (appUser && !appUser.superAdminOnly && appUser.tenantId) {
-      if (getTenantSlug() !== appUser.tenantId) {
-        try { window.history.replaceState(null, '', '/' + appUser.tenantId + window.location.search); } catch { /* noop */ }
-      }
-    }
-  }, [appUser]);
-
-  // Título da aba do navegador: nome da academia (quando resolvido) + STRONILEAD.
-  useEffect(() => {
-    document.title = urlTenant?.displayName ? `${urlTenant.displayName} · STRONILEAD` : 'STRONILEAD';
-  }, [urlTenant]);
+    document.title = documentTitle({ screen: titleScreen, tenantName: titleTenant });
+  }, [titleScreen, titleTenant]);
 
   const [leads, setLeads] = useState([]);
   const [interactions, setInteractions] = useState([]);
@@ -323,13 +337,11 @@ function AppInner() {
     () => ({ modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores }),
     [modalities, trialClassOptions, units, metaWeekdays, slaOverdueDays, dailyVolumeTarget, planos, contratos, contractThresholdDays, renewalCheckpoints, renewalGraceDays, professores, dores]
   );
-  // Seleção de funil persistida POR TENANT (a chave inclui o appId). No init o
-  // tenant ainda não foi resolvido (appId = default), o que é correto para o
-  // tenant #1; para outros tenants, um id de funil "estranho" é auto-corrigido
-  // pelo effect de validação de funil (cai no default).
-  const [selectedFunnelId, setSelectedFunnelId] = useState(() => {
-    try { return localStorage.getItem(`crm-selected-funnel:${appId}`) || null; } catch { return null; }
-  });
+  // Seleção de funil persistida POR ACADEMIA (savedFunnelKey). Começa vazia: a
+  // academia só é conhecida no login, e é lá que o funil salvo é lido
+  // (readSavedFunnel, logo depois do setTenantId). Sem nada salvo, o effect de
+  // validação de funil escolhe o padrão.
+  const [selectedFunnelId, setSelectedFunnelId] = useState(null);
   // Configuração de funis do primeiro login de gestor: cinco máquinas em cadeia
   // (funis, Indicações, Vencidos, Renovações, Upgrade). Cada execução guarda
   // de qual academia é ({ tenant, status }), e o status que vale é derivado
@@ -365,6 +377,10 @@ function AppInner() {
   const renewalSetupDone = setupFlagFor(setupFlags, 'renewal', setupTenant);
   const upgradeSetupDone = setupFlagFor(setupFlags, 'upgrade', setupTenant);
   const [loadingData, setLoadingData] = useState(true);
+  // Academia cujos contratos já chegaram. A ficha espera por eles, e não só
+  // pelo loadingData, que vira false com os leads ativos: sem isso, a ficha de
+  // um cliente aberta direto numa aba nova mostraria a aba Contratos vazia.
+  const [contractsTenant, setContractsTenant] = useState(null);
   // Já baixamos os dados ao menos uma vez nesta sessão? Serve pra reassinar
   // (volta da ociosidade) sem piscar a tela de carregando por cima de um dado
   // que já está na mão.
@@ -376,12 +392,6 @@ function AppInner() {
   // pelo botão dentro de LeadsView (que recebe `onAddLeadClick` via prop).
   // O modal mora aqui em App pra ficar acessível de qualquer aba.
   const [isAddLeadModalOpen, setIsAddLeadModalOpen] = useState(false);
-
-  // Após criar o lead, abrimos a ficha-página dele automaticamente. Como o
-  // `addDoc` retorna só o ref, esperamos o lead aparecer em `leads` via
-  // onSnapshot (geralmente <100ms). justCreatedLeadId é o ID alvo; ao chegar,
-  // viramos profileLeadId (abre a LeadProfileView).
-  const [justCreatedLeadId, setJustCreatedLeadId] = useState(null);
 
   // Contexto do Sentry: qual academia e qual papel, para saber quem está
   // sofrendo sem mandar nome nem e-mail para fora. Um effect só, em vez de
@@ -408,6 +418,7 @@ function AppInner() {
       setAppUser(null);
       setTenantBlock(null);
       setTrialEndsAtMs(null);
+      setTenantDisplayName('');
       setIsAuthChecking(false);
       return;
     }
@@ -449,6 +460,10 @@ function AppInner() {
         return;
       }
       setTenantId(tenantId || DEFAULT_TENANT_ID);
+      // Funil escolhido no Pipeline, salvo por academia. Só aqui se sabe qual é
+      // a academia; lida antes disso, a chave era a da academia padrão e o F5
+      // perdia a escolha em toda academia que não é a STRONIX.
+      setSelectedFunnelId(readSavedFunnel(localStorage, tenantId || DEFAULT_TENANT_ID));
 
       // Status da academia (suspensão / trial expirado). Best-effort: se o doc
       // /tenants/{id} não existir (tenant legado) ou a leitura falhar, libera o
@@ -495,16 +510,19 @@ function AppInner() {
           setTenantBlock(block);
           setTrialEndsAtMs(trialMs);
           setBillingDue(billingWarn);
+          setTenantDisplayName(tData?.displayName || tenantId);
         } catch (statusErr) {
           console.warn('Falha ao ler status do tenant; liberando acesso.', statusErr);
           setTenantBlock(null);
           setTrialEndsAtMs(null);
           setBillingDue(null);
+          setTenantDisplayName(tenantId);
         }
       } else {
         setTenantBlock(null);
         setTrialEndsAtMs(null);
         setBillingDue(null);
+        setTenantDisplayName('');
       }
 
       // Super-admin SEM tenant: não tem claim de tenant, então NÃO pode (nem
@@ -774,6 +792,7 @@ useEffect(() => {
     (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setContratos(data);
+      setContractsTenant(configTenant);
     },
     onSnapErr('contratos')
   );
@@ -852,23 +871,10 @@ useEffect(() => {
   useEffect(() => {
     try {
       if (selectedFunnelId) {
-        localStorage.setItem(`crm-selected-funnel:${appId}`, selectedFunnelId);
+        localStorage.setItem(savedFunnelKey(appId), selectedFunnelId);
       }
     } catch { /* ignore */ }
   }, [selectedFunnelId, appUser]);
-
-  // Quando um lead é criado pelo AddLeadModal global, ele guarda o ID em
-  // justCreatedLeadId. Aqui esperamos o doc aparecer em `leads` (via
-  // onSnapshot) e abrimos o perfil dele automaticamente.
-  useEffect(() => {
-    if (!justCreatedLeadId) return;
-    const lead = (leads || []).find(l => l.id === justCreatedLeadId);
-    if (lead) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- reage à chegada assíncrona do lead via onSnapshot; abrir a ficha só quando o doc aparece exige effect.
-      setProfileLeadId(lead.id);
-      setJustCreatedLeadId(null);
-    }
-  }, [justCreatedLeadId, leads]);
 
   // Garante que selectedFunnelId é sempre válido (cai para o default se sumir).
   // O sentinel ALL_FUNNELS_ID é sempre válido — não cai no fallback.
@@ -1244,8 +1250,25 @@ useEffect(() => {
   const [exitingImpersonation, setExitingImpersonation] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect -- sincroniza a partir do sessionStorage (fonte externa) ao trocar de usuário.
   useEffect(() => { setImpersonation(readImpersonation()); }, [appUser]);
+  // Sai da conta e recarrega a página no destino. A recarga zera a ficha, as
+  // listas em memória, a academia do módulo (appId) e as configurações de
+  // funil: num computador de recepção, quem entra depois não vê nada da sessão
+  // anterior. O await garante que a sessão já saiu do navegador antes da recarga.
+  const leaveTo = async (destino) => {
+    setLeaving(true);
+    try { await signOut(auth); } catch (e) { console.error('Erro ao sair do sistema', e); }
+    try { sessionStorage.removeItem(IMPERSONATION_KEY); } catch { /* ignore */ }
+    window.location.replace(destino);
+  };
+
   const stopImpersonation = async () => {
     setExitingImpersonation(true);
+    // Endereço de onde o super-admin entrou na visualização (returnPath, gravado
+    // no "Acessar como"). Sem ele, a volta cai na tela inicial da academia.
+    const back = returnToFrom(readImpersonation(), appUser);
+    // Vale só nesta entrada do histórico: depois do replace da volta, a key muda
+    // e o caminho guardado deixa de mandar.
+    setReturnTo(back && { ...back, key: location.key });
     try { sessionStorage.removeItem(IMPERSONATION_KEY); } catch { /* ignore */ }
     try {
       // Pede o token de retorno on-demand (autorizado pelo claim impersonatedBy da
@@ -1265,45 +1288,59 @@ useEffect(() => {
         await signInWithCustomToken(auth, data.returnToken);
         try { await setPersistence(auth, await persistenceFor(true)); } catch { /* ignore */ }
       } else {
-        // Retorno indisponível (claim já expirado): sai com segurança para o login.
-        await signOut(auth);
+        // Retorno indisponível (claim já expirado): sai com segurança para o
+        // login geral, e não para o da academia que estava sendo vista.
+        await leaveTo('/');
+        return;
       }
     } catch (e) {
       console.error('stopImpersonation', e);
-      try { await signOut(auth); } catch { /* ignore */ }
+      await leaveTo('/');
+      return;
     }
     setImpersonation(null);
     setExitingImpersonation(false);
   };
 
-  const handleLogout = async () => {
-  try {
-    await signOut(auth);
-  } catch (e) {
-    console.error('Erro ao sair do sistema', e);
-  }
+  // Sair: login da própria academia para membro, login geral para o super-admin
+  // puro e para quem está vendo outra academia (logoutDestination).
+  const handleLogout = () => leaveTo(logoutDestination(appUser));
 
-  setAppUser(null);
-  setActiveTab('dashboard');
-};
-
-  // Trocar de aba SEMPRE fecha a ficha-página aberta (senão o gate profileLead
-  // continuaria sobrepondo o conteúdo e a navegação parecia "travada").
-  const changeTab = (tab) => { setActiveTab(tab); setProfileLeadId(null); setIsMobileMenuOpen(false); }
-  // Abre a ficha-página de um lead/cliente (sobrepõe o conteúdo da aba ativa);
-  // lembra a aba de origem para o "Voltar". closeProfile volta para ela.
+  // Trocar de tela é trocar de endereço. Clicar na tela em que já se está troca
+  // a entrada atual em vez de empilhar outra (senão o voltar parece não fazer
+  // nada). extra leva a subaba do super-admin: { superTab: 'plans' }.
+  const changeTab = (tab, extra) => {
+    const href = hrefFor(sessionTenant, tab, extra);
+    if (href) navigate(href, { replace: href === location.pathname });
+    closeDrawer();
+  };
+  // Tela de onde a próxima ficha é aberta. Vai no state da navegação (só o id
+  // da tela, nunca dado da pessoa) para o menu continuar aceso e o título
+  // continuar o da origem. Numa ficha aberta direto não há origem.
+  const profileFrom = activeTab === 'ficha' ? null : activeTab;
+  // Abrir a ficha empilha o endereço /<academia>/ficha/<id>, e o Voltar da ficha
+  // é o voltar do navegador (LeadProfileRoute). A mesma ficha não empilha de
+  // novo. Continua memoizado: o KanbanCard é memo e recebe esta função.
   const openProfile = useCallback((leadId) => {
-    if (leadId) setProfileLeadId(leadId);
-  }, []);
-  const closeProfile = useCallback(() => { setProfileLeadId(null); }, []);
-  const leadProfileValue = useMemo(() => ({ openProfile }), [openProfile]);
-  // Lead/cliente em foco na ficha-página (G1-flip): assina o DOC ÚNICO por id
-  // (useProfileLead, onSnapshot ao vivo) em vez de achar no prop global — assim a
-  // ficha de cliente/perda abre mesmo com o prop reduzido a 'ativo' no flip.
-  // profileLoading cobre o instante da 1ª leitura (evita piscar a aba por baixo).
-  const { lead: profileLead, loading: profileLoading } = useProfileLead({ db, leadId: profileLeadId });
-  // Abre Configurações já numa aba específica (sidebar e link "Regras gerais" do Perfil).
-  const openSettingsTab = (tab) => { setSettingsTab(tab); changeTab('settings'); };
+    const href = hrefFor(sessionTenant, 'ficha', { leadId });
+    if (!href) return;
+    navigate(href, { replace: href === location.pathname, state: profileFrom ? { from: profileFrom } : null });
+  }, [navigate, sessionTenant, location.pathname, profileFrom]);
+  // Endereço da ficha, para os links que abrem em outra aba (LeadLink).
+  const leadHref = useCallback((leadId) => hrefFor(sessionTenant, 'ficha', { leadId }), [sessionTenant]);
+  const leadProfileValue = useMemo(() => ({ openProfile, leadHref, from: profileFrom }), [openProfile, leadHref, profileFrom]);
+  // Endereço dos itens do menu, do menu da conta e do aviso de mensalidade.
+  // Sai da academia da sessão (claim), nunca da barra de endereço.
+  const menuHref = (screen, extra) => hrefFor(sessionTenant, screen, extra);
+  // "Configurar agora" da novidade abre Configurações já em Metas e ritmo. A
+  // seção vai no state da navegação (SettingsView lê location.state.secao), e
+  // o menu, sem state, abre em Equipe e acessos. Com Configurações já aberta
+  // nada muda, igual a antes: a seção no endereço é da entrega 2.
+  const openGoalSettings = () => {
+    const href = menuHref('settings');
+    if (href) navigate(href, { state: { secao: 'general' }, replace: href === location.pathname });
+    closeDrawer();
+  };
 
   // ── Badge de pendências da Meta Diária no menu lateral ──────────────────
   // dayKey vira na meia-noite (timeout re-armado a cada virada) para o badge
@@ -1402,13 +1439,7 @@ useEffect(() => {
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
 
-  // Super-admin sem tenant entra direto na tela "Organizações" (única que vê).
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- redireciona o superadmin-only para sua única aba ao montar/resolver o appUser.
-    if (appUser?.superAdminOnly) setActiveTab('superadmin');
-  }, [appUser]);
-
-  if (isAuthChecking) {
+  if (isAuthChecking || leaving) {
     return (
       <div className="min-h-screen bg-paper-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-4">
         <Activity className="w-12 h-12 text-brand-600 mb-4 animate-pulse" />
@@ -1434,14 +1465,25 @@ useEffect(() => {
   // a interface principal. (O SuperAdminView antigo segue como fallback p/ super-admin
   // que também é membro de um tenant; o botão "beta" continua lá pra eles.)
   if (appUser.superAdminOnly) {
-    return <SuperConsole appUser={appUser} onClose={handleLogout} />;
+    // O Console não tem endereços nesta entrega: a barra fica em "/", para não
+    // mostrar a academia da visualização de onde o super-admin acabou de sair.
+    return (
+      <>
+        {decision.kind === 'redirect' && <RouteRedirect key={location.key} to={decision.to} notice={decision.notice} />}
+        <SuperConsole appUser={appUser} onClose={handleLogout} />
+      </>
+    );
   }
 
   return (
     <GeneralConfigContext.Provider value={generalConfigValue}>
     <LeadProfileContext.Provider value={leadProfileValue}>
+    {/* Endereço que não vale para esta sessão: a tela de destino já está
+        desenhada abaixo, e isto só troca o endereço (replace) e mostra o
+        aviso. A key nova a cada endereço dá uma troca por endereço barrado. */}
+    {decision.kind === 'redirect' && <RouteRedirect key={location.key} to={decision.to} notice={decision.notice} />}
     <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
-      {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />}
+      {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={closeDrawer} />}
 
       {/* Desktop: trilho recolhido (só ícones) que expande por cima do
           conteúdo no hover ou foco de teclado. Mobile: drawer como antes. */}
@@ -1456,10 +1498,13 @@ useEffect(() => {
               <StronileadWordmark className="text-[16px] text-gray-900 dark:text-white" />
             </span>
           </div>
-          <button className="md:hidden text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white p-1 shrink-0" onClick={() => setIsMobileMenuOpen(false)}><X className="w-5 h-5" /></button>
+          <button className="md:hidden text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white p-1 shrink-0" onClick={closeDrawer}><X className="w-5 h-5" /></button>
         </div>
 
-        {/* Navegação */}
+        {/* Navegação. Cada tela é um link de verdade: Ctrl+clique, botão do
+            meio e "Abrir em nova aba" funcionam. onNavigate fecha o menu do
+            celular quando o clique troca de tela nesta aba. Os acordeões
+            (Visão geral, Leads, Organizações) e o Suporte continuam botão. */}
         <nav className="flex-1 px-3 pt-5 pb-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
           {!appUser.superAdminOnly && (
             <>
@@ -1472,13 +1517,13 @@ useEffect(() => {
                   open={overviewMenuOpen || isDashTab}
                   onToggle={() => setOverviewMenuOpen(o => !o)}
                 >
-                  <SidebarSubItem label="Operacional" active={resolvedTab === 'dashOperacional'} onClick={() => changeTab('dashOperacional')} />
-                  <SidebarSubItem label="CRM" active={resolvedTab === 'dashCrm'} onClick={() => changeTab('dashCrm')} />
-                  <SidebarSubItem label="Gerencial" active={resolvedTab === 'dashGerencial'} onClick={() => changeTab('dashGerencial')} />
+                  <SidebarSubItem label="Operacional" href={menuHref('dashOperacional')} onNavigate={closeDrawer} active={resolvedTab === 'dashOperacional'} />
+                  <SidebarSubItem label="CRM" href={menuHref('dashCrm')} onNavigate={closeDrawer} active={resolvedTab === 'dashCrm'} />
+                  <SidebarSubItem label="Gerencial" href={menuHref('dashGerencial')} onNavigate={closeDrawer} active={resolvedTab === 'dashGerencial'} />
                 </SidebarGroup>
-                <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
-                <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} active={activeTab === 'clientes'} onClick={() => changeTab('clientes')} />
-                <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
+                <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />
+                <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />
+                <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />
                 <SidebarGroup
                   icon={<Users className="w-[18px] h-[18px]" />}
                   label="Leads"
@@ -1486,9 +1531,9 @@ useEffect(() => {
                   open={leadsMenuOpen}
                   onToggle={() => setLeadsMenuOpen(o => !o)}
                 >
-                  <SidebarSubItem label="Todos os leads" active={activeTab === 'leads'} onClick={() => changeTab('leads')} />
-                  <SidebarSubItem label="Aulas experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
-                  <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
+                  <SidebarSubItem label="Todos os leads" href={menuHref('leads')} onNavigate={closeDrawer} active={activeTab === 'leads'} />
+                  <SidebarSubItem label="Aulas experimentais" href={menuHref('aulas')} onNavigate={closeDrawer} active={activeTab === 'aulas'} />
+                  <SidebarSubItem label="Visitas" href={menuHref('visitas')} onNavigate={closeDrawer} active={activeTab === 'visitas'} />
                 </SidebarGroup>
                 <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" badge={ticketsUnread > 0 ? ticketsUnread : null} active={false} onClick={() => setTicketModalOpen(true)} />
               </div>
@@ -1500,7 +1545,7 @@ useEffect(() => {
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
                 {!appUser.superAdminOnly && isAdminUser(appUser) && (
-                  <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" active={activeTab === 'settings'} onClick={() => openSettingsTab('users')} />
+                  <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" href={menuHref('settings')} onNavigate={closeDrawer} active={activeTab === 'settings'} />
                 )}
                 {appUser?.superAdmin && (
                   <SidebarGroup
@@ -1508,12 +1553,12 @@ useEffect(() => {
                     label="Organizações"
                     active={activeTab === 'superadmin'}
                     open={activeTab === 'superadmin'}
-                    onToggle={() => { changeTab('superadmin'); setSuperTab('overview'); }}
+                    onToggle={() => changeTab('superadmin', { superTab: 'overview' })}
                   >
-                    <SidebarSubItem label="Visão Geral" active={activeTab === 'superadmin' && superTab === 'overview'} onClick={() => { changeTab('superadmin'); setSuperTab('overview'); }} />
-                    <SidebarSubItem label="Clientes" active={activeTab === 'superadmin' && superTab === 'clients'} onClick={() => { changeTab('superadmin'); setSuperTab('clients'); }} />
-                    <SidebarSubItem label="Financeiro" active={activeTab === 'superadmin' && superTab === 'finance'} onClick={() => { changeTab('superadmin'); setSuperTab('finance'); }} />
-                    <SidebarSubItem label="Planos" active={activeTab === 'superadmin' && superTab === 'plans'} onClick={() => { changeTab('superadmin'); setSuperTab('plans'); }} />
+                    <SidebarSubItem label="Visão Geral" href={menuHref('superadmin', { superTab: 'overview' })} onNavigate={closeDrawer} active={activeTab === 'superadmin' && superTab === 'overview'} />
+                    <SidebarSubItem label="Clientes" href={menuHref('superadmin', { superTab: 'clients' })} onNavigate={closeDrawer} active={activeTab === 'superadmin' && superTab === 'clients'} />
+                    <SidebarSubItem label="Financeiro" href={menuHref('superadmin', { superTab: 'finance' })} onNavigate={closeDrawer} active={activeTab === 'superadmin' && superTab === 'finance'} />
+                    <SidebarSubItem label="Planos" href={menuHref('superadmin', { superTab: 'plans' })} onNavigate={closeDrawer} active={activeTab === 'superadmin' && superTab === 'plans'} />
                   </SidebarGroup>
                 )}
               </div>
@@ -1534,7 +1579,7 @@ useEffect(() => {
         )}
         <header className="h-16 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10 shrink-0">
           <div className="flex items-center min-w-0">
-            <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setIsMobileMenuOpen(true)}><Menu className="w-6 h-6" /></button>
+            <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setDrawerKey(location.key)}><Menu className="w-6 h-6" /></button>
             <h2 className="font-display text-xl font-bold text-gray-900 dark:text-white capitalize truncate tracking-tight">
               {resolvedTab === 'dashOperacional' && 'Operacional'}
               {resolvedTab === 'dashCrm' && 'CRM'}
@@ -1549,6 +1594,7 @@ useEffect(() => {
               {activeTab === 'profile' && 'Perfil da academia'}
               {activeTab === 'billing' && 'Plano & faturas'}
               {activeTab === 'superadmin' && (({ overview: 'Visão Geral', clients: 'Clientes', finance: 'Financeiro', plans: 'Planos' }[superTab] || 'Organizações') + ' · Super-admin')}
+              {activeTab === 'ficha' && 'Ficha'}
             </h2>
           </div>
           {!appUser.superAdminOnly && (
@@ -1598,8 +1644,8 @@ useEffect(() => {
             <PersonaMenu
               appUser={appUser}
               isAdmin={!appUser.superAdminOnly && isAdminUser(appUser)}
-              onProfile={() => changeTab('profile')}
-              onBilling={() => changeTab('billing')}
+              profileHref={menuHref('profile')}
+              billingHref={menuHref('billing')}
               onLogout={handleLogout}
               onHelp={!appUser.superAdminOnly ? () => setTutorialsOpen(true) : null}
               onToggleTheme={() => setIsDarkMode(!isDarkMode)}
@@ -1617,7 +1663,7 @@ useEffect(() => {
             dueAtMs={billingDue.dueAtMs}
             overdue={billingDue.overdue}
             invoiceUrl={billingDue.invoiceUrl}
-            onOpenBilling={() => changeTab('billing')}
+            billingHref={menuHref('billing')}
           />
         )}
 
@@ -1629,13 +1675,31 @@ useEffect(() => {
           </div>
         )}
 
-        <div className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
+        <div ref={contentScrollRef} onScroll={onContentScroll} className="flex-1 overflow-x-hidden overflow-y-auto p-4 md:p-8 relative custom-scrollbar">
           {/* Envolve só o conteúdo, não o shell: view que quebra não leva
-              junto a barra lateral nem o cabeçalho. */}
-          <AppErrorBoundary>
-          {appUser.superAdminOnly ? (
+              junto a barra lateral nem o cabeçalho. A key é a tela mostrada:
+              trocar de tela limpa a tela de erro, sem precisar do "Tentar de novo". */}
+          <AppErrorBoundary key={screenKey(shown)}>
+          {fichaOpen ? (
+            // A ficha vem antes do loadingData: a leitura do documento começa na
+            // hora, mas ela só aparece pronta depois dos catálogos e dos
+            // contratos (dataReady). "Não encontrada" e erro não esperam a carga.
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
-              <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />
+              <LeadProfileRoute
+                key={profileLeadId ?? 'sem-id'}
+                leadId={profileLeadId}
+                tenantId={appUser.tenantId}
+                sessionKey={sessionKey}
+                dataReady={!loadingData && (contractsTenant === appUser.tenantId || loadError)}
+                listenersActive={listenersActive}
+                db={db}
+                appUser={appUser}
+                statuses={statuses}
+                tags={tags}
+                lossReasons={lossReasons}
+                usersList={usersList}
+                funnels={funnels}
+              />
             </div>
           ) : loadingData ? (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full">
@@ -1643,22 +1707,6 @@ useEffect(() => {
             </div>
           ) : (
             <div className="max-w-[1400px] 2xl:max-w-[1600px] mx-auto w-full h-full transition-all duration-300">
-              {profileLead ? (
-                <LeadProfileView
-                  key={profileLead.id}
-                  lead={profileLead}
-                  onBack={closeProfile}
-                  appUser={appUser}
-                  statuses={statuses}
-                  tags={tags}
-                  lossReasons={lossReasons}
-                  usersList={usersList}
-                  db={db}
-                  funnels={funnels}
-                />
-              ) : (profileLeadId && profileLoading) ? (
-                <div className="grid place-items-center h-full py-24 text-[13px] text-slate-400 dark:text-neutral-500 animate-pulse">Carregando ficha…</div>
-              ) : (<>
               {/* Operacional: a mesma tela para todos os perfis, por mês de
                   competência. Base ao vivo = metaLeads (ativos, clientes a vencer e
                   contato de hoje). As interações vão sem filtro: as regras já deixam
@@ -1684,11 +1732,10 @@ useEffect(() => {
                   atalho de presença, hoje exclusividade da Meta Diária). */}
               {activeTab === 'aulas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={location.state?.secao ?? 'users'} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
               {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
-              </>)}
             </div>
           )}
           </AppErrorBoundary>
@@ -1696,8 +1743,8 @@ useEffect(() => {
       </main>
 
       {/* Quick-add lead, alcançável de qualquer aba pelo botão do menu lateral
-          ou pelo botão da LeadsView. Ao salvar, abrimos automaticamente o
-          perfil do lead recém-criado (via justCreatedLeadId → useEffect). */}
+          ou pelo botão da LeadsView. O "Ver ficha" abre na hora a ficha do lead
+          recém-criado, porque ela lê o documento pelo id. */}
       {isAddLeadModalOpen && (
         <AddLeadModal
           dores={dores}
@@ -1709,14 +1756,14 @@ useEffect(() => {
           db={db}
           funnels={funnels}
           selectedFunnelId={selectedFunnelId}
-          onCreated={(newLeadId) => setJustCreatedLeadId(newLeadId)}
+          onCreated={openProfile}
         />
       )}
       {consoleOpen && appUser?.superAdmin && (
         <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
       )}
       {ticketModalOpen && <SupportCenterModal appUser={appUser} tickets={tickets} onClose={() => setTicketModalOpen(false)} />}
-      <WhatsNewModal appUser={appUser} onConfigure={() => openSettingsTab('general')} />
+      <WhatsNewModal appUser={appUser} onConfigure={openGoalSettings} />
       <WalkthroughModal appUser={appUser} />
       <HelpCenterModal
         open={tutorialsOpen}

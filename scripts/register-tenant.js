@@ -13,6 +13,7 @@
 
 import process from 'node:process';
 import admin from 'firebase-admin';
+import { TENANT_SLUG_READ_RE, isReservedTenantSlug } from '../src/lib/tenantSlug.js';
 
 const tenantId = (process.argv[2] || '').trim();
 const displayName = (process.argv[3] || '').trim();
@@ -20,6 +21,14 @@ const primaryAdminEmail = (process.argv[4] || '').trim().toLowerCase();
 
 if (!tenantId || !displayName) {
   console.error('Uso: node scripts/register-tenant.js <tenantId> <displayName> [primaryAdminEmail]');
+  process.exit(1);
+}
+
+// O id vira o endereço da academia (stronilead.com.br/<id>). Fora do formato de
+// leitura o endereço não abre a academia, e palavra reservada abre uma tela.
+// A regra mora em src/lib/tenantSlug.js.
+if (!TENANT_SLUG_READ_RE.test(tenantId) || isReservedTenantSlug(tenantId)) {
+  console.error(`Identificador "${tenantId}" inválido ou reservado. Use minúsculas, números e hífen, fora da lista de src/lib/tenantSlug.js.`);
   process.exit(1);
 }
 

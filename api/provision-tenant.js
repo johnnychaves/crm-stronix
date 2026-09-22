@@ -6,6 +6,7 @@ import { sanitizeProfile } from './_profile.js';
 import { writeTenantPrivate } from './_tenantPrivate.js';
 import { passwordTooShort, passwordTooShortError } from './_auth.js';
 import { withSentry } from './_sentry.js';
+import { tenantSlugProblem } from '../src/lib/tenantSlug.js';
 
 const USERS_PATH = 'stronix_users';
 const SOURCES_PATH = 'stronix_sources';
@@ -14,8 +15,6 @@ const MODALITIES_PATH = 'stronix_modalities';
 const CONFIG_PATH = 'stronix_config';
 const CONFIG_GENERAL_ID = 'general';
 
-// slug do tenant: minúsculas, números e hífen; 3–40 chars; sem hífen nas pontas.
-const TENANT_ID_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const INVITE_TTL_DAYS = 7;
 
@@ -174,10 +173,17 @@ export default withSentry(async function handler(req, res) {
             : 'Campos obrigatórios: tenantId, displayName, adminEmail, adminPassword, adminName.'
         });
       }
-      if (!TENANT_ID_RE.test(slug)) {
+      // Formato e palavras reservadas moram em src/lib/tenantSlug.js, a mesma
+      // regra que o app usa para ler o endereço. Palavra reservada (pipeline,
+      // console...) viraria um endereço que abre uma tela, não a academia.
+      const slugProblem = tenantSlugProblem(slug);
+      if (slugProblem === 'formato') {
         return res.status(400).json({
           error: 'Identificador inválido. Use minúsculas, números e hífen (3–40 caracteres).'
         });
+      }
+      if (slugProblem === 'reservado') {
+        return res.status(400).json({ error: `O identificador "${slug}" é usado pelo sistema. Escolha outro.` });
       }
       const normalizedEmail = String(adminEmail).trim().toLowerCase();
       if (!EMAIL_RE.test(normalizedEmail)) {

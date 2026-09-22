@@ -49,12 +49,25 @@ export function stripQuery(url) {
 export const HEADERS_PERMITIDOS = ['content-type', 'content-length', 'user-agent', 'accept', 'x-vercel-id'];
 
 // Chaves em que o SDK guarda URL dentro de span, contexto de trace e breadcrumb.
-const URL_KEYS = ['url', 'url.full', 'http.url', 'to', 'from'];
+// url.path é o caminho da tela, que o SDK grava no contexto de toda transação
+// de navegação. lcp.url é a maior imagem da tela no pageload: com a foto do
+// cliente, é o endereço do Storage com o token de download na query.
+const URL_KEYS = ['url', 'url.full', 'url.path', 'http.url', 'to', 'from', 'lcp.url'];
+
+// Seletor do elemento que o SDK anexa às medidas de LCP (lcp.element) e de
+// CLS (cls.source.1, cls.source.2...). Leva title e alt do elemento, e o
+// Avatar põe o nome do cliente no alt.
+function isDomSelectorKey(key) {
+  return key === 'lcp.element' || key.startsWith('cls.source.');
+}
 
 function stripUrlsIn(bag) {
   if (!bag || typeof bag !== 'object') return bag;
   for (const key of URL_KEYS) {
     if (typeof bag[key] === 'string') bag[key] = stripQuery(bag[key]);
+  }
+  for (const key of Object.keys(bag)) {
+    if (isDomSelectorKey(key) && typeof bag[key] === 'string') bag[key] = redactDomAttrs(bag[key]);
   }
   delete bag['url.query'];
   // Mesma coisa, com o nome que a instrumentação http do backend usa: a
@@ -75,6 +88,43 @@ const DOM_ATTR_RE = /\[(title|alt|aria-label)="[^"]*"\]/g;
 export function redactDomAttrs(text) {
   if (typeof text !== 'string') return text;
   return text.replace(DOM_ATTR_RE, '[$1="[redigido]"]');
+}
+
+// O endereço da ficha leva o id do lead (/<academia>/ficha/<id>). O SDK copia
+// o caminho cru para request.url, para o nome da transação no escopo (que vai
+// em todo erro), para as migalhas de navegação e para url.path. A troca usa a
+// mesma marca do molde de rota (routeTemplate), então é idempotente e a URL
+// limpa agrupa igual à transação. Não distingue maiúscula, porque o endereço
+// também é lido sem distinguir. Para em espaço e aspas para não comer o resto
+// da frase quando o caminho aparece numa mensagem de erro.
+const LEAD_PATH_RE = /(\/ficha\/)[^/?#\s"'<>]+/gi;
+
+export function scrubLeadPath(text) {
+  if (typeof text !== 'string' || !text) return text;
+  return text.replace(LEAD_PATH_RE, '$1:leadId');
+}
+
+// Rede final: troca o id da ficha em qualquer texto do evento, inclusive em
+// campo que o SDK venha a acrescentar sem avisar (url.path entrou assim).
+// Não usa scrubDeep porque ele para em MAX_DEPTH níveis e apagaria os frames
+// do stacktrace. Pula sdkProcessingMetadata: ali ficam objetos vivos do SDK
+// (escopo, span), que ele mesmo apaga antes do envio. O WeakSet segura
+// referência circular. Só grava quando o texto muda, para não tropeçar em
+// objeto congelado que não tinha nada a trocar.
+export function scrubLeadPathsDeep(node, seen = new WeakSet()) {
+  if (!node || typeof node !== 'object' || seen.has(node) || ArrayBuffer.isView(node)) return node;
+  seen.add(node);
+  for (const key of Object.keys(node)) {
+    if (key === 'sdkProcessingMetadata') continue;
+    const value = node[key];
+    if (typeof value === 'string') {
+      const clean = scrubLeadPath(value);
+      if (clean !== value) node[key] = clean;
+    } else if (value && typeof value === 'object') {
+      scrubLeadPathsDeep(value, seen);
+    }
+  }
+  return node;
 }
 
 export function maskSensitive(value) {
@@ -194,7 +244,18 @@ export function scrubEvent(event) {
     stripUrlsIn(event.contexts.trace.attributes);
   }
 
-  return event;
+  // Por último, a rede do id da ficha no evento inteiro: event.transaction,
+  // request.url, migalhas, contexto de trace e o que mais vier.
+  // Ao contrário da migalha e da span, aqui a falha não pode descartar nada: o
+  // erro é justamente o que o Sentry existe para mostrar, e as camadas de cima
+  // já limparam url, query, header e corpo. Se a varredura final lançar (um
+  // getter exótico em algum campo que o SDK acrescentou), o evento vai como
+  // está.
+  try {
+    return scrubLeadPathsDeep(event);
+  } catch {
+    return event;
+  }
 }
 
 // beforeBreadcrumb do Sentry: devolver null descarta a migalha. Aqui nada é
@@ -215,8 +276,46 @@ export function scrubBreadcrumb(crumb) {
 
     if (crumb.data) crumb.data = stripUrlsIn(scrubDeep(crumb.data));
 
-    return crumb;
+    // Migalha de navegação leva o endereço de origem e de destino (from/to).
+    return scrubLeadPathsDeep(crumb);
   } catch {
     return null;
+  }
+}
+
+// Campos que a span leva quando a limpeza falha: só identificação e tempo.
+const SPAN_SHELL_KEYS = ['span_id', 'trace_id', 'parent_span_id', 'start_timestamp', 'timestamp', 'op', 'origin', 'status'];
+
+function spanShell(span) {
+  const shell = { description: '[redigido]', data: {} };
+  for (const key of SPAN_SHELL_KEYS) {
+    try {
+      const value = span[key];
+      if (typeof value === 'string' || typeof value === 'number') shell[key] = value;
+    } catch {
+      // campo que não dá para ler fica de fora
+    }
+  }
+  return shell;
+}
+
+// beforeSendSpan do Sentry. A span do INP sai num envelope só dela e não passa
+// pelo beforeSend nem pelo beforeSendTransaction. A descrição dela é o seletor
+// do elemento tocado (com o alt do Avatar, que é o nome do cliente) e
+// data.transaction é o caminho da tela. O SDK também passa por aqui cada span
+// de transação antes do beforeSendTransaction, o que não atrapalha, porque a
+// limpeza é idempotente. Nunca devolve null: com null o SDK manda a span
+// ORIGINAL, sem limpeza. Na falha devolve uma casca sem descrição e sem data.
+export function scrubSpan(span) {
+  if (!span || typeof span !== 'object') return span;
+  try {
+    if (typeof span.description === 'string') {
+      span.description = maskSensitive(redactDomAttrs(span.description));
+      if (span.description.includes('://')) span.description = stripQuery(span.description);
+    }
+    stripUrlsIn(span.data);
+    return scrubLeadPathsDeep(span);
+  } catch {
+    return spanShell(span);
   }
 }

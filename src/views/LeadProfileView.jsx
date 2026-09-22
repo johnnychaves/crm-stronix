@@ -108,11 +108,15 @@ function TabCount({ n, active }) {
   );
 }
 
-function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
+// onBack é o Voltar da rota (voltar do navegador, ou a lista quando a ficha
+// abriu direto numa aba nova). onDeleteStart e onDeleteFailed avisam a rota
+// para trocar a ficha por "Excluindo a ficha…" e devolver se a exclusão falhar.
+// listenersActive é o portão de ociosidade do App, repassado à linha do tempo.
+function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
   // Timeline por query própria (G2): histórico COMPLETO do lead (índice #10),
   // ao vivo. Antes vinha do prop global filtrado por leadId — que pós-G2 é só o
   // mês corrente. A ficha remonta por lead (key), então o hook não reseta.
-  const interactions = useLeadTimeline({ db, leadId: lead?.id });
+  const interactions = useLeadTimeline({ db, leadId: lead?.id, active: listenersActive });
   const toast = useToast();
   const { openProfile } = useLeadProfile();
   const isReadOnly = !canEditLead(appUser);
@@ -215,6 +219,9 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
 
   const handleDelete = async () => {
     if (!window.confirm("Excluir este lead permanentemente? Não dá pra desfazer.")) return;
+    // A rota troca a ficha por "Excluindo a ficha…" até terminar. Sem isso, o
+    // aviso de doc apagado chega antes do fim e a tela piscaria "excluída".
+    onDeleteStart?.();
     setLoading(true);
     try {
       // Apaga as interações ligadas ao lead (senão ficam órfãs na coleção).
@@ -233,6 +240,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
       onBack();
     } catch (e) {
       console.error(e);
+      onDeleteFailed?.();
       toast.error('Erro ao excluir o lead. Tente novamente.');
       setLoading(false);
     }
@@ -799,7 +807,7 @@ function LeadProfileView({ lead, onBack, appUser, statuses, tags, lossReasons, u
   const renderComposer = () => (
     <section className="rounded-2xl border border-border bg-card shadow-card">
       {/* Tabs */}
-      <div className="px-4 pt-3 flex items-center gap-1 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto thin-scroll">
+      <div className="px-4 pt-3 flex items-center gap-1 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto overscroll-x-contain thin-scroll">
         {[
           { id: 'note',     label: 'Anotação',   icon: <MessageCircle size={13} /> },
           { id: 'whatsapp', label: 'WhatsApp',   icon: <MessageCircle size={13} /> },

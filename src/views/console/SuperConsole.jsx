@@ -4,6 +4,7 @@ import { passwordTooShort, MIN_PASSWORD_LENGTH } from '../../lib/passwordPolicy.
 import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { planLabel, auditActionLabel, IMPERSONATION_KEY } from '../../lib/superadmin.js';
+import { tenantSlugProblem } from '../../lib/tenantSlug.js';
 import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete, isCpfComplete, isValidCpf } from '../../lib/brazilLookups.js';
 import { ticketMessages, isUnreadForSupport, nextMessageState } from '../../lib/ticketThread.js';
 import { Icon } from './consoleIcons.jsx';
@@ -625,7 +626,9 @@ function NewTenantPanel({ plans, onClose, onDone }) {
 
   const save = async () => {
     if (!f.displayName.trim()) { setErr('Informe o nome da academia.'); return; }
-    if (!/^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/.test(f.tenantId)) { setErr('Identificador inválido: 3–40 caracteres, minúsculas, números e hífen.'); return; }
+    const slugProblem = tenantSlugProblem(f.tenantId);
+    if (slugProblem === 'formato') { setErr('Identificador inválido: 3–40 caracteres, minúsculas, números e hífen.'); return; }
+    if (slugProblem === 'reservado') { setErr('Esse identificador é usado pelo sistema. Escolha outro.'); return; }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.adminEmail.trim())) { setErr('Informe um e-mail válido para o responsável.'); return; }
     if (f.mode === 'password') {
       if (!f.adminName.trim()) { setErr('Informe o nome do gestor.'); return; }
@@ -1138,7 +1141,8 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
       const res = await fetch('/api/impersonate', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ tenantId: t.id }) });
       const data = await res.json();
       if (!res.ok) { setErr(data.error || 'Não foi possível entrar.'); setBusy(false); return; }
-      try { sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ viewing: { id: t.id, name: data.tenantName || t.displayName } })); } catch { /* ignore */ }
+      // returnPath: o "Sair da visualização" volta para este endereço.
+      try { sessionStorage.setItem(IMPERSONATION_KEY, JSON.stringify({ viewing: { id: t.id, name: data.tenantName || t.displayName }, returnPath: window.location.pathname })); } catch { /* ignore */ }
       try { await setPersistence(auth, browserSessionPersistence); } catch { /* ignore */ }
       await signInWithCustomToken(auth, data.token);
     } catch (e) { console.error('enterAs', e); setErr('Falha ao entrar como a organização.'); setBusy(false); }

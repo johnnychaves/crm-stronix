@@ -128,7 +128,7 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
         </div>
 
         {/* Abas */}
-        <div className="shrink-0 flex gap-1 px-4 py-2.5 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto thin-scroll">
+        <div className="shrink-0 flex gap-1 px-4 py-2.5 border-b border-slate-100 dark:border-white/[0.05] overflow-x-auto overscroll-x-contain thin-scroll">
           {TABS.map((t) => {
             const active = t.id === tab;
             const done = t.done(form);

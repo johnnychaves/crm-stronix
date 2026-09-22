@@ -107,7 +107,7 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
   return (
     <CrmCard title="Conversão por pessoa" hint={person ? personName : 'clique numa linha para filtrar a tela por essa pessoa'} action={action}>
       <div className="px-[18px] pb-4 pt-2.5">
-        <div className="hidden overflow-x-auto md:block">
+        <div className="hidden overflow-x-auto overscroll-x-contain md:block">
           <div className="min-w-[560px]">
             <div className={cn(GRID, 'h-[26px]', HEAD)}>
               <span>Pessoa</span>

@@ -2,6 +2,7 @@ import { adminDb, admin } from './_firebaseAdmin.js';
 import { dataCollection } from './_auth.js';
 import { checkRateLimit, clientIp } from './_rateLimit.js';
 import { withSentry } from './_sentry.js';
+import { TENANT_SLUG_READ_RE, isReservedTenantSlug } from '../src/lib/tenantSlug.js';
 import {
   onlyDigits,
   buildLeadSearchFields,
@@ -28,7 +29,8 @@ import {
 //     resposta de sucesso igual pra não vazar quem é aluno), funil Indicações
 //     → etapa de entrada, consultor herdado do CLIENTE dono do link.
 
-const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+// Mesma regra de leitura do endereço do app (src/lib/tenantSlug.js).
+const SLUG_RE = TENANT_SLUG_READ_RE;
 const LEADS_PATH = 'stronix_leads';
 const INTERACTIONS_PATH = 'stronix_interactions';
 const FUNNELS_PATH = 'stronix_funnels';
@@ -41,6 +43,15 @@ export default withSentry(async function handler(req, res) {
     return res.status(405).json({ error: 'Método não permitido' });
   }
 
+  const slug = String(req.query?.slug || '').trim().toLowerCase();
+
+  // Palavra reservada (pipeline, api, console...) nunca é academia: é alguém
+  // que abriu /pipeline sem o nome da academia. Responde na hora, sem gastar
+  // o limitador por IP e sem ler o banco.
+  if (isReservedTenantSlug(slug)) {
+    return res.status(200).json({ found: false });
+  }
+
   // Endpoint público — limita enumeração de slugs por IP (limite generoso, é
   // chamado a cada abertura da tela de login). Fail-open se a checagem falhar.
   const rl = await checkRateLimit(`tenant-resolve:${clientIp(req)}`, { limit: 60, windowMs: 5 * 60 * 1000 });
@@ -48,7 +59,6 @@ export default withSentry(async function handler(req, res) {
     return res.status(429).json({ error: 'Muitas requisições. Aguarde um momento.' });
   }
 
-  const slug = String(req.query?.slug || '').trim().toLowerCase();
   if (!slug || !SLUG_RE.test(slug)) {
     return res.status(400).json({ error: 'Slug inválido.' });
   }

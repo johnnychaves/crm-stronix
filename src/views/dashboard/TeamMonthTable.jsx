@@ -123,7 +123,7 @@ export function TeamMonthTable({ rows, others, total, running, onPick }) {
   return (
     <>
       <div className="hidden overflow-hidden rounded-2xl border border-border bg-card shadow-card md:block">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto overscroll-x-contain">
           <div className="min-w-[860px]">
             <div className={cn('flex items-center gap-3.5 border-b px-[18px] py-[11px]', RULE, SOFT)}>
               <span className={cn('w-[206px] flex-none', HEAD)}>Pessoa</span>

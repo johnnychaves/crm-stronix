@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Clock, CreditCard, Eye, LogOut } from 'lucide-react';
+import { AppLink } from '../nav/AppLink.jsx';
 
 // Banner de contagem regressiva do período de teste (mostrado ao cliente quando
 // a academia está em trial ATIVO). Fica âmbar (urgência) quando faltam <= 3 dias.
@@ -28,7 +29,10 @@ function TrialBanner({ endsAtMs }) {
 // Aviso de vencimento da mensalidade (mostrado só ao ADMIN da academia quando a
 // próxima cobrança vence em <= 7 dias, ou já venceu). Brand (7–4 dias) →
 // âmbar (<= 3 dias) → rose (vencida; o acesso é cortado após 3 dias de carência).
-function PaymentDueBanner({ dueAtMs, overdue, invoiceUrl, onOpenBilling }) {
+// Com fatura em aberto, o link é o de pagar, fora do app. Sem fatura, "Ver
+// faturas" é link para Plano e faturas (billingHref, montado pelo App com a
+// academia da sessão), então Ctrl+clique abre em outra aba.
+function PaymentDueBanner({ dueAtMs, overdue, invoiceUrl, billingHref }) {
   const DAY = 24 * 60 * 60 * 1000;
   // Snapshot do "agora" no mount (render puro; o banner remonta a cada navegação).
   const [nowMs] = useState(Date.now);
@@ -56,9 +60,9 @@ function PaymentDueBanner({ dueAtMs, overdue, invoiceUrl, onOpenBilling }) {
       <span>{msg}</span>
       {invoiceUrl ? (
         <a href={invoiceUrl} target="_blank" rel="noreferrer" className="font-semibold underline underline-offset-2 hover:opacity-80">Pagar fatura</a>
-      ) : (
-        <button onClick={onOpenBilling} className="font-semibold underline underline-offset-2 hover:opacity-80">Ver faturas</button>
-      )}
+      ) : billingHref ? (
+        <AppLink to={billingHref} className="font-semibold underline underline-offset-2 hover:opacity-80">Ver faturas</AppLink>
+      ) : null}
     </div>
   );
 }
