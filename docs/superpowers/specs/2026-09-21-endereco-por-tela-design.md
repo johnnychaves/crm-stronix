@@ -51,6 +51,7 @@ Ficam para depois, sem data:
 8. Console do super-admin sem endereços nesta entrega. Voltar do navegador não fecha janelas nesta entrega.
 9. Título da aba na ficha: só "Ficha", sem o nome do lead, porque o título fica no histórico do navegador da recepção.
 10. Nome, telefone, CPF e texto de busca nunca vão para o endereço.
+11. A setinha do canto do card do Pipeline abre a ficha em OUTRA GUIA no clique simples (decisão de 22/09/2026, depois do teste do PR 2). O clique no corpo do card continua abrindo na mesma guia. Ctrl+clique ou botão do meio na setinha abre a guia em segundo plano, e é assim que se dispara vários cards sem sair do Pipeline: nenhum site consegue forçar segundo plano num clique comum.
 
 ## Endereços
 
@@ -163,7 +164,7 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 - **Menu:** `SidebarItem` e `SidebarSubItem` com `href` viram `AppLink` com `aria-current="page"`. Sem `href` continuam botão (Suporte). Os acordeões continuam botão.
 - **PersonaMenu:** Perfil da academia e Plano e faturas com `DropdownMenuItem asChild` mais `AppLink`.
 - **Menu do celular:** `isMobileMenuOpen = drawerKey === location.key`. Abrir grava a key atual. O `onNavigate` dos itens zera. Assim o voltar do navegador fecha o menu e não o reabre.
-- **Card do Pipeline:** o link envolve o bloco de cima e o lado esquerdo do rodapé, com `draggable={false}`. Mover e Abrir ficam fora do link. O `article` perde o `onClick` e continua sendo o que se arrasta. Os tooltips do card (motivo da perda, chips, consultor) continuam funcionando.
+- **Card do Pipeline:** o link envolve o bloco de cima e o lado esquerdo do rodapé, com `draggable={false}`. Mover e Abrir ficam fora do link. O `article` perde o `onClick` e continua sendo o que se arrasta. Os tooltips do card (motivo da perda, chips, consultor) continuam funcionando. A setinha do rodapé vira um link com `target="_blank"` e `rel="noopener"` (decisão 11), com o rótulo dizendo que abre em outra guia.
 - **TaskCard e DoneCard da Meta:** o nome vira link esticado (`after:absolute after:inset-0`), o container perde o `onClick` e ganha `relative`, e os botões internos ganham `relative z-10`.
 - **Listas** (Leads, Clientes, Aulas, Visitas), prévia de amanhã, listas da visão Equipe, aba Indicações e "Indicado por": `LeadLink` direto. No `ConsultantDayDetail`, `group-enabled:group-hover:` vira `group-hover:` no ramo com link.
 - **Busca global:** a escolha sai do `onMouseDown`. O mousedown só faz `preventDefault` com `button === 0`. O resultado vira `LeadLink` com `tabIndex={-1}` e `onNavigate` que fecha e limpa. Enter abre na mesma aba.
