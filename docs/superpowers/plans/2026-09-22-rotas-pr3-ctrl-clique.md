@@ -90,13 +90,13 @@ A contagem é cumulativa: o número da última coluna é o que `npx vitest run` 
 | Tarefa | O que entrega | Depende de | Testes novos | Arquivos de teste novos | Suíte no fim |
 |---|---|---|---|---|---|
 | base | branch `claude/rotas-pr3-ctrl-clique` em `a751863` | | | | 100 arquivos, 2066 testes |
-| T1 | Card do Pipeline e a setinha | | 9 | 1 | 101, 2075 |
-| T2 | Listas de Leads, Clientes, Aulas e Visitas | | 5 | 1 | 102, 2080 |
-| T3 | Meta diária e visão Equipe | | 9 | 1 | 103, 2089 |
-| T4 | Busca global e sino | | 7 | 1 | 104, 2096 |
-| T5 | Ficha e indicações | | 5 | 1 | 105, 2101 |
-| T6 | Varredura, documentação, verificação final e corpo do PR | T1 a T5 | 2 | 1 | 106, 2103 |
-| **Total** | | | **37** | **6** | **106 arquivos, 2103 testes** |
+| T1 | Card do Pipeline e a setinha (mais 2 testes dos ajustes da revisão) | | 11 | 1 | 101, 2077 |
+| T2 | Listas de Leads, Clientes, Aulas e Visitas | | 5 | 1 | 102, 2082 |
+| T3 | Meta diária e visão Equipe | | 9 | 1 | 103, 2091 |
+| T4 | Busca global e sino | | 7 | 1 | 104, 2098 |
+| T5 | Ficha e indicações | | 5 | 1 | 105, 2103 |
+| T6 | Varredura, documentação, verificação final e corpo do PR | T1 a T5 | 2 | 1 | 106, 2105 |
+| **Total** | | | **39** | **6** | **106 arquivos, 2105 testes** |
 
 As tarefas T1 a T5 são independentes entre si (arquivos diferentes) e podem rodar em qualquer ordem. A T6 é a última.
 
@@ -116,10 +116,20 @@ O card do Pipeline é o ponto mais delicado do PR, porque ele é arrastável, te
 - Mover e a setinha ficam FORA do link;
 - a setinha abre em outra guia no clique simples.
 
-Duas coisas mudam de comportamento e ficam assim de propósito:
+Três coisas mudam de comportamento e ficam assim de propósito:
+
+- **Sem "Manter conectado", a guia nova da setinha cai no login.** A sessão de quem entra com a caixa desmarcada mora no `sessionStorage` (`persistenceKind` devolve `session`, e o login grava em `browserSessionPersistence`), e guia aberta por link nasce com esse armazenamento vazio. Tirar o `rel="noopener"` não muda nada: quem zera é o `target="_blank"`, e o Chrome aplica noopener sozinho em link desde a versão 88. Aceito, porque é a decisão 7 do spec aparecendo aqui: quem pediu para não ficar conectado está pedindo isso. O time entra com "Manter conectado", e ali a guia nova abre a ficha direto. Vai para o checklist manual (T6, Step 6).
 
 - **Dois pedaços do rodapé deixam de abrir a ficha.** O `onClick` cobria o card inteiro e o link do rodapé cobre só o nome do consultor, então saem da conta o avatar de iniciais (irmão anterior do link) e o número da direita, valor da venda ou dias de silêncio (irmão posterior). O número já era inalcançável na prática, porque some justamente no hover e no toque (`group-hover:hidden`, `group-focus-within:hidden`, `pointer-coarse:hidden`). A perda real é o avatar de 17px, e ali do lado é onde ficam as ações. Vai para o checklist manual do corpo do PR (T6, Step 6).
 - **Id que não serve para endereço perde o tooltip junto com o link.** O ramo sem href do `LeadLink` devolve `<span className={className}>{children}</span>` e joga fora o resto das props, então num card com id quebrado o `title` do consultor some do HTML. Guardar o tooltip exigiria mexer no `AppLink.jsx`, que é arquivo do PR 2 e está fora do escopo deste. Fica anotado no spec (T6, Step 4); na prática é card que já não abria ficha nenhuma.
+
+**Ajustes da revisão de qualidade (22/09, depois do commit da Task 1).** O código final do card difere do escrito nos Steps abaixo nestes cinco pontos:
+
+- A setinha ganha `pointer-coarse:hidden`. No toque ela ficava sempre visível e um toque passou a abrir guia nova do navegador, com o app carregando do zero e sem o Voltar. Abrir vários cards é uso de mouse, e no toque o corpo do card já abre a ficha.
+- `group-focus-within:flex` e `group-focus-within:hidden` do rodapé viram `group-has-[:focus-visible]:flex` e `group-has-[:focus-visible]:hidden`. Depois do clique o foco fica no link, e o card ficava travado mostrando as ações e escondendo o valor ou os dias sem contato. Com foco visível o teclado continua abrindo as ações. O `has-[:focus-visible]` já era usado em `src/App.jsx`, e o CSS gerado confirma a variante.
+- O link do corpo ganha `rounded-t-[10px]`: o anel de foco era quadrado dentro de um card arredondado e o `overflow-hidden` do `<article>` cortava os cantos.
+- O link do nome do consultor ganha um `aria-label` que começa pelo texto da tela e termina no destino ("Bruno Souza, abrir ficha de Ana Lima"). Sem ele o leitor de tela anuncia um link chamado "Sem responsável" que não diz para onde vai; e um rótulo que trocasse o nome do consultor pelo destino apagaria da leitura quem é o dono do lead. O `title` continua sendo o tooltip do mouse.
+- O `data-no-pan` da setinha continua onde está, com comentário dizendo que é redundância proposital, a mesma do botão Mover ao lado.
 
 - [ ] **Step 1: Escrever o teste que falha**
 
@@ -2343,7 +2353,7 @@ Depois:
 npx vitest run && npm run lint && npm run build && npm run verificar:sentry
 ```
 
-Esperado: `Test Files  106 passed (106)`, `Tests  2103 passed (2103)`, lint com `✖ 1 problem (0 errors, 1 warning)`, build sem erro e o verificador do Sentry verde.
+Esperado: `Test Files  106 passed (106)`, `Tests  2105 passed (2105)`, lint com `✖ 1 problem (0 errors, 1 warning)`, build sem erro e o verificador do Sentry verde.
 
 Conferir também que a camada do link esticado da Meta compila:
 
@@ -2435,10 +2445,21 @@ erros (segue o mesmo aviso antigo do `SuperAdminView.jsx`). Build e
 - [ ] **A setinha abre outra guia no clique simples**, e com Ctrl+clique a guia
       abre em segundo plano (dá para disparar três ou quatro cards seguidos sem
       sair do Pipeline).
+- [ ] Entrar SEM "Manter conectado" e clicar na setinha: a guia nova pede
+      login. É o esperado (decisão 7 do spec, a sessão vive só naquela aba).
+      Entrar COM "Manter conectado" e repetir: a guia nova abre a ficha direto.
+      Confirmar que ninguém do time trabalha com a caixa desmarcada.
+- [ ] Depois de clicar na setinha, ou de dar Ctrl+clique no corpo, tirar o
+      mouse do card: ele volta ao normal, mostrando o valor ou os dias sem
+      contato, em vez de ficar travado com as ações à mostra.
+- [ ] Com o Tab, ao parar no card as ações aparecem e o anel de foco segue o
+      canto arredondado do card, sem corte.
 - [ ] Mover abre o menu e não navega.
 - [ ] Rolar o quadro até a borda e insistir no trackpad não troca de tela.
 - [ ] No iPad e no Android, segurar o card para arrastar não abre prévia nem
       menu de link.
+- [ ] No iPad e no Android a setinha não aparece no rodapé do card (só o
+      Mover), e o toque no corpo abre a ficha na mesma tela.
 
 **Listas, Meta e Equipe**
 - [ ] Linha de Leads, Clientes, Aulas e Visitas: clique abre, Ctrl+clique abre
@@ -2465,10 +2486,13 @@ erros (segue o mesmo aviso antigo do `SuperAdminView.jsx`). Build e
 
 ## Observação
 
-Depois de um Ctrl+clique num card do Pipeline, o card de origem fica com o foco
-no link e, por causa do `group-focus-within` que já existia, mostra as ações e
-esconde o valor até o próximo clique fora. Se incomodar na prática, o conserto é
-uma linha de classe e vale um PR à parte.
+Cada guia aberta pela setinha paga um carregamento inteiro do app e abre as
+próprias assinaturas, e a ficha não obedece ao portão de ociosidade. O volume
+cresce com o uso que a setinha incentiva, então vale olhar o gráfico de leitura
+depois que o time pegar o hábito.
+
+Sem "Manter conectado" a guia nova pede login, porque a sessão fica presa
+àquela aba. É a decisão 7 do spec e está no checklist acima.
 ```
 
 - [ ] **Step 7: Commit**

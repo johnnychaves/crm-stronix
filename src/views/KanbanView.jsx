@@ -177,7 +177,7 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
       <LeadLink
         leadId={lead.id}
         draggable={false}
-        className="block px-[11px] pt-2.5 pb-[9px] cursor-grab active:cursor-grabbing outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+        className="block rounded-t-[10px] px-[11px] pt-2.5 pb-[9px] cursor-grab active:cursor-grabbing outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
       >
         <div className="flex items-center gap-2">
           <span aria-hidden="true" className="size-1.5 rounded-full shrink-0" style={{ background: accent.border }} />
@@ -262,20 +262,30 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
         {lead.consultantName && <InitialsAvatar name={lead.consultantName} size={17} textSize={8} />}
         {/* Segundo link do card, para o lado esquerdo do rodapé também abrir a
             ficha. Fora da ordem do Tab: o teclado para uma vez por card, no
-            link de cima. */}
+            link de cima. O aria-label começa pelo texto que está na tela e só
+            depois diz para onde vai: sem ele, quem usa leitor de tela ouve um
+            link chamado "Sem responsável", que não leva a lugar nenhum pelo
+            nome; e sem o nome do consultor dentro dele, some da leitura quem é
+            o dono do lead. O title continua sendo o tooltip do mouse. */}
         <LeadLink
           leadId={lead.id}
           draggable={false}
           tabIndex={-1}
           className="flex-1 min-w-0 truncate text-slate-500 dark:text-neutral-400 cursor-grab active:cursor-grabbing outline-none"
           title={lead.consultantName ? `Consultor: ${lead.consultantName}` : undefined}
+          aria-label={`${lead.consultantName || 'Sem responsável'}, abrir ficha de ${lead.name}`}
         >
           {lead.consultantName || 'Sem responsável'}
         </LeadLink>
 
         {/* Ações no rodapé — nunca sobrepostas ao conteúdo. No hover cedem o
-            espaço do nome; em telas de toque ficam sempre visíveis. */}
-        <span className="shrink-0 hidden group-hover:flex group-focus-within:flex pointer-coarse:flex items-center gap-0.5">
+            espaço do nome; em telas de toque ficam sempre visíveis.
+            has-[:focus-visible] e não focus-within: depois de um clique de
+            mouse no link o foco FICA no link, e com focus-within o card
+            continuava mostrando as ações e escondendo o valor até a pessoa
+            clicar em outro lugar. O teclado continua abrindo as ações, porque
+            aí o foco é visível. */}
+        <span className="shrink-0 hidden group-hover:flex group-has-[:focus-visible]:flex pointer-coarse:flex items-center gap-0.5">
           <button
             type="button"
             data-no-pan="true"
@@ -289,7 +299,14 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
           {/* Clique simples aqui abre a ficha em OUTRA GUIA e o Pipeline fica
               intacto nesta. É assim que o consultor abre vários cards sem sair
               do quadro. Ctrl+clique e botão do meio abrem a guia em segundo
-              plano, coisa que nenhum site consegue forçar num clique comum. */}
+              plano, coisa que nenhum site consegue forçar num clique comum.
+              pointer-coarse:hidden porque abrir vários cards é coisa de mouse:
+              no celular e no tablet um toque aqui sairia do app para uma guia
+              nova, com o app carregando do zero e sem o Voltar. Ali o toque no
+              corpo do card já abre a ficha na mesma tela.
+              O data-no-pan é redundante (o <article> já tem, e o pan procura
+              com closest), e fica de propósito: é a mesma defesa do botão
+              Mover ao lado, e ninguém precisa ir conferir o ancestral. */}
           <LeadLink
             leadId={lead.id}
             draggable={false}
@@ -298,14 +315,14 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
             rel="noopener"
             title="Abrir ficha em outra guia"
             aria-label="Abrir ficha em outra guia"
-            className="size-[25px] grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition-colors"
+            className="size-[25px] pointer-coarse:hidden grid place-items-center rounded-[7px] text-slate-400 hover:bg-[#EAF0FF] hover:text-brand-600 dark:hover:bg-brand-500/15 dark:hover:text-brand-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 transition-colors"
           >
             <ArrowUpRight className="size-3" />
           </LeadLink>
         </span>
 
         <span className={cn(
-          'shrink-0 font-semibold tabular-nums group-hover:hidden group-focus-within:hidden pointer-coarse:hidden',
+          'shrink-0 font-semibold tabular-nums group-hover:hidden group-has-[:focus-visible]:hidden pointer-coarse:hidden',
           wonValue ? 'text-[#0F9D6E] dark:text-emerald-300' : SILENCE_TONE[silence.tone]
         )}>
           {wonValue || silence.text}

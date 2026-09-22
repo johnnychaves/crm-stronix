@@ -12,6 +12,9 @@ import { hrefFor } from '../routes.js';
 
 // O KanbanView importa src/lib/firebase.js, que inicializa o Firebase ao ser
 // importado e quebra em node. O card não usa nada disso.
+// A lista abaixo é escrita à mão e precisa crescer junto: import novo de
+// firebase.js em qualquer arquivo da árvore do KanbanView derruba este teste
+// com um erro que não aponta a causa (algo indefinido virando função).
 vi.mock('../firebase.js', () => ({
   appId: 'acad', LEADS_PATH: 'leads', INTERACTIONS_PATH: 'inter', db: {}, auth: {}, storage: {},
 }));
@@ -82,6 +85,10 @@ describe('card do Pipeline', () => {
     const tag = html.slice(abertura, html.indexOf('>', i));
     expect(tag).toContain('tabindex="-1"');
     expect(tag).toContain('href="/acad/ficha/abc123"');
+    // Sem isto, o leitor de tela anuncia um link chamado "Sem responsável".
+    // O nome do consultor abre o rótulo porque é o texto que está na tela e é
+    // informação do card, não só área de clique.
+    expect(tag).toContain('aria-label="Bruno Souza, abrir ficha de Ana Lima"');
   });
 
   it('os links do card não são arrastáveis, e o card é', () => {
@@ -118,11 +125,32 @@ describe('card do Pipeline', () => {
     expect(html).toContain('aria-label="Abrir ficha em outra guia"');
   });
 
+  it('a setinha some no toque, onde guia nova é o pior dos mundos', () => {
+    const html = render();
+    const i = html.indexOf('target="_blank"');
+    const abertura = html.lastIndexOf('<a ', i);
+    const tag = html.slice(abertura, html.indexOf('>', i));
+    expect(tag).toContain('pointer-coarse:hidden');
+  });
+
+  it('as ações aparecem por foco visível, não por focus-within', () => {
+    const html = render();
+    // focus-within deixava o card travado no estado de hover depois do clique
+    // de mouse, porque o foco fica no link.
+    expect(html).not.toContain('group-focus-within');
+    expect(html).toContain('group-has-[:focus-visible]:flex');
+    expect(html).toContain('group-has-[:focus-visible]:hidden');
+  });
+
   it('Mover continua botão', () => {
     const html = render();
     expect(html).toContain('aria-label="Mover lead para outra etapa"');
     const i = html.indexOf('aria-label="Mover lead para outra etapa"');
     expect(html.lastIndexOf('<button', i)).toBeGreaterThan(html.lastIndexOf('<a ', i));
+    // E o botão está FORA do link do corpo. Sem isto, o teste acima continuaria
+    // verde com o <button> dentro do <a>, que é HTML inválido e transforma o
+    // clique em Mover num clique de link.
+    expect(html.indexOf('</a>')).toBeLessThan(html.indexOf('<button'));
   });
 
   it('id que não serve para endereço vira texto sem link', () => {
