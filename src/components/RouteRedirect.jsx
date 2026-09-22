@@ -17,7 +17,9 @@ export function RouteRedirect({ to, notice }) {
   const toast = useToast();
 
   useEffect(() => {
-    const message = notice ? ROUTE_NOTICES[notice] : null;
+    // Só as chaves do próprio ROUTE_NOTICES: 'toString' e afins vêm do protótipo.
+    const known = notice && Object.prototype.hasOwnProperty.call(ROUTE_NOTICES, notice);
+    const message = known ? ROUTE_NOTICES[notice] : null;
     if (message) toast.warning(message);
     navigate(to, { replace: true });
   }, [to, notice, navigate, toast]);

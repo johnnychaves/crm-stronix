@@ -60,6 +60,12 @@ describe('RouteRedirect', () => {
     expect(m.navigate).toHaveBeenCalledWith('/acad', { replace: true });
   });
 
+  it('nome herdado do protótipo não vira aviso', () => {
+    mountAndCommit({ to: '/acad', notice: 'toString' });
+    expect(m.toast.warning).not.toHaveBeenCalled();
+    expect(m.navigate).toHaveBeenCalledWith('/acad', { replace: true });
+  });
+
   it('o effect depende do destino e do aviso', () => {
     mountAndCommit({ to: '/acad', notice: 'nao-encontrada' });
     expect(m.deps).toEqual(['/acad', 'nao-encontrada', m.navigate, m.toast]);

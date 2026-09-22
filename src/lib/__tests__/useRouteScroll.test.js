@@ -160,6 +160,8 @@ function ScrollProbe({ el }) {
   return useRouteScroll({ current: el });
 }
 
+// A memória de posições é do módulo do hook e passa de um teste para outro.
+// Por isso cada teste usa chaves de entrada só dele (m1, p1, r1...).
 describe('useRouteScroll', () => {
   let cleanup;
 
@@ -217,6 +219,32 @@ describe('useRouteScroll', () => {
     const onFichaA = renderAt('/acad/ficha/A', 'f1', 'POP', el);
     scrollBy(onFichaA, el, 500);
     renderAt('/acad/ficha/B', 'f2', 'PUSH', el);
+    expect(el.scrollTop).toBe(0);
+  });
+
+  it('clicar de novo na tela troca a entrada e a posição vai junto', () => {
+    const el = fakeScroller();
+    const onClientes = renderAt('/acad/clientes', 'r1', 'POP', el);
+    scrollBy(onClientes, el, 700);
+    renderAt('/acad/clientes', 'r2', 'REPLACE', el);
+    renderAt('/acad/ficha/A', 'r3', 'PUSH', el);
+    expect(el.scrollTop).toBe(0);
+    renderAt('/acad/clientes', 'r2', 'POP', el);
+    expect(el.scrollTop).toBe(700);
+  });
+
+  it('ir para outra tela no meio de uma restauração para as tentativas', () => {
+    const el = fakeScroller();
+    const onClientes = renderAt('/acad/clientes', 'c1', 'POP', el);
+    scrollBy(onClientes, el, 2000);
+    renderAt('/acad/ficha/A', 'c2', 'PUSH', el);
+    el.contentHeight = 800;
+    renderAt('/acad/clientes', 'c1', 'POP', el);
+    expect(el.scrollTop).toBe(200);
+    expect(frames.pending()).toBe(1);
+    renderAt('/acad/pipeline', 'c3', 'PUSH', el);
+    expect(frames.pending()).toBe(0);
+    expect(el.listenerCount()).toBe(0);
     expect(el.scrollTop).toBe(0);
   });
 

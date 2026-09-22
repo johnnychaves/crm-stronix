@@ -62,7 +62,7 @@ export function restoreWhenTall(el, top, timeoutMs = RESTORE_TIMEOUT_MS) {
 }
 
 // useRouteScroll(ref) devolve o onScroll do div que rola. A primeira passada
-// (montagem) só registra a tela, sem mexer na rolagem.
+// (montagem) só registra a tela e a posição, sem mexer na rolagem.
 export function useRouteScroll(ref) {
   const location = useLocation();
   const navigationType = useNavigationType();
@@ -74,7 +74,7 @@ export function useRouteScroll(ref) {
     const prevScreenKey = prevKeyRef.current;
     prevKeyRef.current = key;
     const el = ref.current;
-    if (!el || prevScreenKey === null) return undefined;
+    if (!el) return undefined;
 
     const action = scrollActionFor({ navigationType, prevScreenKey, screenKey: key });
     if (action === 'top') {
@@ -82,6 +82,10 @@ export function useRouteScroll(ref) {
       return undefined;
     }
     if (action === 'restore') return restoreWhenTall(el, memory.recall(locationKey));
+    // Sem mexer na rolagem, a entrada nova já nasce com a posição de agora. O
+    // <Link> para a mesma tela faz replace e cria uma entrada com key nova: sem
+    // isto, voltar a ela depois levaria ao topo.
+    memory.remember(locationKey, el.scrollTop);
     return undefined;
   }, [ref, navigationType, key, locationKey]);
 
