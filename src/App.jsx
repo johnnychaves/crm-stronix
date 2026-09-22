@@ -208,9 +208,6 @@ function AppInner() {
   // Rolagem do conteúdo por entrada do histórico: voltar devolve a posição.
   const contentScrollRef = useRef(null);
   const onContentScroll = useRouteScroll(contentScrollRef);
-  // Aba-alvo ao abrir Configurações de fora (ex.: link "Regras gerais" do Perfil).
-  // SettingsView remonta ao entrar na view e aplica este initialTab no mount.
-  const [settingsTab, setSettingsTab] = useState('users');
   const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
   const [ticketModalOpen, setTicketModalOpen] = useState(false); // abrir chamado de suporte (cliente)
   // Tickets de suporte do tenant (badge da sidebar + Central de Suporte).
@@ -242,7 +239,14 @@ function AppInner() {
   const { seenIds, lastSeenReferralsAt, markAllSeen } = useNotificationsSeen({ db, appUser });
   // Leads/clientes que passaram pra carteira desta pessoa (grupo do sino).
   const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly });
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Menu do celular: aberto enquanto o endereço for o mesmo em que ele abriu
+  // (location.key). Qualquer troca de endereço fecha o menu sozinha, inclusive
+  // o voltar do navegador e o replace de um aviso de rota, sem effect. Os links
+  // do menu zeram a chave no clique (onNavigate), então voltar até a entrada
+  // onde ele abriu não o reabre.
+  const [drawerKey, setDrawerKey] = useState(null);
+  const isMobileMenuOpen = drawerKey !== null && drawerKey === location.key;
+  const closeDrawer = () => setDrawerKey(null);
   // Accordion "Leads" no menu lateral (Todos os leads / Aulas / Visitas).
   const [leadsMenuOpen, setLeadsMenuOpen] = useState(false);
   // Accordion "Visão geral" (Operacional / Gerencial) — split do dashboard.
@@ -1306,7 +1310,7 @@ useEffect(() => {
   const changeTab = (tab, extra) => {
     const href = hrefFor(sessionTenant, tab, extra);
     if (href) navigate(href, { replace: href === location.pathname });
-    setIsMobileMenuOpen(false);
+    closeDrawer();
   };
   // Tela de onde a próxima ficha é aberta. Vai no state da navegação (só o id
   // da tela, nunca dado da pessoa) para o menu continuar aceso e o título
@@ -1323,8 +1327,18 @@ useEffect(() => {
   // Endereço da ficha, para os links que abrem em outra aba (LeadLink).
   const leadHref = useCallback((leadId) => hrefFor(sessionTenant, 'ficha', { leadId }), [sessionTenant]);
   const leadProfileValue = useMemo(() => ({ openProfile, leadHref, from: profileFrom }), [openProfile, leadHref, profileFrom]);
-  // Abre Configurações já numa aba específica (sidebar e link "Regras gerais" do Perfil).
-  const openSettingsTab = (tab) => { setSettingsTab(tab); changeTab('settings'); };
+  // Endereço dos itens do menu, do menu da conta e do aviso de mensalidade.
+  // Sai da academia da sessão (claim), nunca da barra de endereço.
+  const menuHref = (screen, extra) => hrefFor(sessionTenant, screen, extra);
+  // "Configurar agora" da novidade abre Configurações já em Metas e ritmo. A
+  // seção vai no state da navegação (SettingsView lê location.state.secao), e
+  // o menu, sem state, abre em Equipe e acessos. Com Configurações já aberta
+  // nada muda, igual a antes: a seção no endereço é da entrega 2.
+  const openGoalSettings = () => {
+    const href = menuHref('settings');
+    if (href) navigate(href, { state: { secao: 'general' }, replace: href === location.pathname });
+    closeDrawer();
+  };
 
   // ── Badge de pendências da Meta Diária no menu lateral ──────────────────
   // dayKey vira na meia-noite (timeout re-armado a cada virada) para o badge
@@ -1467,7 +1481,7 @@ useEffect(() => {
         aviso. A key nova a cada endereço dá uma troca por endereço barrado. */}
     {decision.kind === 'redirect' && <RouteRedirect key={location.key} to={decision.to} notice={decision.notice} />}
     <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
-      {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={() => setIsMobileMenuOpen(false)} />}
+      {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={closeDrawer} />}
 
       {/* Desktop: trilho recolhido (só ícones) que expande por cima do
           conteúdo no hover ou foco de teclado. Mobile: drawer como antes. */}
@@ -1482,10 +1496,13 @@ useEffect(() => {
               <StronileadWordmark className="text-[16px] text-gray-900 dark:text-white" />
             </span>
           </div>
-          <button className="md:hidden text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white p-1 shrink-0" onClick={() => setIsMobileMenuOpen(false)}><X className="w-5 h-5" /></button>
+          <button className="md:hidden text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white p-1 shrink-0" onClick={closeDrawer}><X className="w-5 h-5" /></button>
         </div>
 
-        {/* Navegação */}
+        {/* Navegação. Cada tela é um link de verdade: Ctrl+clique, botão do
+            meio e "Abrir em nova aba" funcionam. onNavigate fecha o menu do
+            celular quando o clique troca de tela nesta aba. Os acordeões
+            (Visão geral, Leads, Organizações) e o Suporte continuam botão. */}
         <nav className="flex-1 px-3 pt-5 pb-4 overflow-y-auto overflow-x-hidden custom-scrollbar">
           {!appUser.superAdminOnly && (
             <>
@@ -1498,13 +1515,13 @@ useEffect(() => {
                   open={overviewMenuOpen || isDashTab}
                   onToggle={() => setOverviewMenuOpen(o => !o)}
                 >
-                  <SidebarSubItem label="Operacional" active={resolvedTab === 'dashOperacional'} onClick={() => changeTab('dashOperacional')} />
-                  <SidebarSubItem label="CRM" active={resolvedTab === 'dashCrm'} onClick={() => changeTab('dashCrm')} />
-                  <SidebarSubItem label="Gerencial" active={resolvedTab === 'dashGerencial'} onClick={() => changeTab('dashGerencial')} />
+                  <SidebarSubItem label="Operacional" href={menuHref('dashOperacional')} onNavigate={closeDrawer} active={resolvedTab === 'dashOperacional'} />
+                  <SidebarSubItem label="CRM" href={menuHref('dashCrm')} onNavigate={closeDrawer} active={resolvedTab === 'dashCrm'} />
+                  <SidebarSubItem label="Gerencial" href={menuHref('dashGerencial')} onNavigate={closeDrawer} active={resolvedTab === 'dashGerencial'} />
                 </SidebarGroup>
-                <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" active={activeTab === 'kanban'} onClick={() => changeTab('kanban')} />
-                <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} active={activeTab === 'clientes'} onClick={() => changeTab('clientes')} />
-                <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} active={activeTab === 'dailyGoal'} onClick={() => changeTab('dailyGoal')} />
+                <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />
+                <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />
+                <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />
                 <SidebarGroup
                   icon={<Users className="w-[18px] h-[18px]" />}
                   label="Leads"
@@ -1512,9 +1529,9 @@ useEffect(() => {
                   open={leadsMenuOpen}
                   onToggle={() => setLeadsMenuOpen(o => !o)}
                 >
-                  <SidebarSubItem label="Todos os leads" active={activeTab === 'leads'} onClick={() => changeTab('leads')} />
-                  <SidebarSubItem label="Aulas experimentais" active={activeTab === 'aulas'} onClick={() => changeTab('aulas')} />
-                  <SidebarSubItem label="Visitas" active={activeTab === 'visitas'} onClick={() => changeTab('visitas')} />
+                  <SidebarSubItem label="Todos os leads" href={menuHref('leads')} onNavigate={closeDrawer} active={activeTab === 'leads'} />
+                  <SidebarSubItem label="Aulas experimentais" href={menuHref('aulas')} onNavigate={closeDrawer} active={activeTab === 'aulas'} />
+                  <SidebarSubItem label="Visitas" href={menuHref('visitas')} onNavigate={closeDrawer} active={activeTab === 'visitas'} />
                 </SidebarGroup>
                 <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" badge={ticketsUnread > 0 ? ticketsUnread : null} active={false} onClick={() => setTicketModalOpen(true)} />
               </div>
@@ -1526,7 +1543,7 @@ useEffect(() => {
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
                 {!appUser.superAdminOnly && isAdminUser(appUser) && (
-                  <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" active={activeTab === 'settings'} onClick={() => openSettingsTab('users')} />
+                  <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" href={menuHref('settings')} onNavigate={closeDrawer} active={activeTab === 'settings'} />
                 )}
                 {appUser?.superAdmin && (
                   <SidebarGroup
@@ -1536,10 +1553,10 @@ useEffect(() => {
                     open={activeTab === 'superadmin'}
                     onToggle={() => changeTab('superadmin', { superTab: 'overview' })}
                   >
-                    <SidebarSubItem label="Visão Geral" active={activeTab === 'superadmin' && superTab === 'overview'} onClick={() => changeTab('superadmin', { superTab: 'overview' })} />
-                    <SidebarSubItem label="Clientes" active={activeTab === 'superadmin' && superTab === 'clients'} onClick={() => changeTab('superadmin', { superTab: 'clients' })} />
-                    <SidebarSubItem label="Financeiro" active={activeTab === 'superadmin' && superTab === 'finance'} onClick={() => changeTab('superadmin', { superTab: 'finance' })} />
-                    <SidebarSubItem label="Planos" active={activeTab === 'superadmin' && superTab === 'plans'} onClick={() => changeTab('superadmin', { superTab: 'plans' })} />
+                    <SidebarSubItem label="Visão Geral" href={menuHref('superadmin', { superTab: 'overview' })} onNavigate={closeDrawer} active={activeTab === 'superadmin' && superTab === 'overview'} />
+                    <SidebarSubItem label="Clientes" href={menuHref('superadmin', { superTab: 'clients' })} onNavigate={closeDrawer} active={activeTab === 'superadmin' && superTab === 'clients'} />
+                    <SidebarSubItem label="Financeiro" href={menuHref('superadmin', { superTab: 'finance' })} onNavigate={closeDrawer} active={activeTab === 'superadmin' && superTab === 'finance'} />
+                    <SidebarSubItem label="Planos" href={menuHref('superadmin', { superTab: 'plans' })} onNavigate={closeDrawer} active={activeTab === 'superadmin' && superTab === 'plans'} />
                   </SidebarGroup>
                 )}
               </div>
@@ -1560,7 +1577,7 @@ useEffect(() => {
         )}
         <header className="h-16 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10 shrink-0">
           <div className="flex items-center min-w-0">
-            <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setIsMobileMenuOpen(true)}><Menu className="w-6 h-6" /></button>
+            <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setDrawerKey(location.key)}><Menu className="w-6 h-6" /></button>
             <h2 className="font-display text-xl font-bold text-gray-900 dark:text-white capitalize truncate tracking-tight">
               {resolvedTab === 'dashOperacional' && 'Operacional'}
               {resolvedTab === 'dashCrm' && 'CRM'}
@@ -1625,8 +1642,8 @@ useEffect(() => {
             <PersonaMenu
               appUser={appUser}
               isAdmin={!appUser.superAdminOnly && isAdminUser(appUser)}
-              onProfile={() => changeTab('profile')}
-              onBilling={() => changeTab('billing')}
+              profileHref={menuHref('profile')}
+              billingHref={menuHref('billing')}
               onLogout={handleLogout}
               onHelp={!appUser.superAdminOnly ? () => setTutorialsOpen(true) : null}
               onToggleTheme={() => setIsDarkMode(!isDarkMode)}
@@ -1644,7 +1661,7 @@ useEffect(() => {
             dueAtMs={billingDue.dueAtMs}
             overdue={billingDue.overdue}
             invoiceUrl={billingDue.invoiceUrl}
-            onOpenBilling={() => changeTab('billing')}
+            billingHref={menuHref('billing')}
           />
         )}
 
@@ -1713,7 +1730,7 @@ useEffect(() => {
                   atalho de presença, hoje exclusividade da Meta Diária). */}
               {activeTab === 'aulas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={settingsTab} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={location.state?.secao ?? 'users'} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
               {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
@@ -1744,7 +1761,7 @@ useEffect(() => {
         <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
       )}
       {ticketModalOpen && <SupportCenterModal appUser={appUser} tickets={tickets} onClose={() => setTicketModalOpen(false)} />}
-      <WhatsNewModal appUser={appUser} onConfigure={() => openSettingsTab('general')} />
+      <WhatsNewModal appUser={appUser} onConfigure={openGoalSettings} />
       <WalkthroughModal appUser={appUser} />
       <HelpCenterModal
         open={tutorialsOpen}
