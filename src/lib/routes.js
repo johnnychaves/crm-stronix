@@ -14,6 +14,7 @@
 //   (src/lib/tenantSlug.js). O tenantSlug.test.js quebra se faltar.
 
 import { TENANT_SLUG_READ_RE, isReservedTenantSlug } from './tenantSlug.js';
+import { isAdminUser } from './leads.js';
 
 const own = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -202,4 +203,151 @@ export function hrefFor(tenantId, screen, opts = {}) {
 // instalada do react-router.
 export function canGoBackInApp(historyState) {
   return Number.isInteger(historyState?.idx) && historyState.idx > 0;
+}
+
+// Quem pode ver cada tela. Repete as travas que o App já faz no render
+// (isAdminUser nas telas de gestor, appUser.superAdmin no super-admin). Tela
+// sem trava, e id que não é tela, passam.
+export function canAccess(screen, appUser) {
+  if (!own(SCREENS, screen)) return true;
+  const def = SCREENS[screen];
+  if (def.gestor) return isAdminUser(appUser);
+  if (def.superAdmin) return appUser?.superAdmin === true;
+  return true;
+}
+
+// Avisos da troca de endereço. O App mostra com toast.warning.
+export const ROUTE_NOTICES = Object.freeze({
+  'so-gestor': 'Essa tela é só do gestor.',
+  'nao-encontrada': 'Não achamos essa tela. Abrimos o Operacional.',
+});
+
+const OK = Object.freeze({ kind: 'ok' });
+
+// `path` é sempre um caminho limpo, que começa com uma barra só (o navigate do
+// React Router recusa //host como destino externo). O alvo é a tela que o App
+// desenha já neste render, antes de o endereço trocar.
+function redirectTo(path, { search = '', notice = null } = {}) {
+  const r = parseAppPath(path);
+  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab }, notice };
+}
+
+const joinPath = (base, raw) => (raw.length ? `${base}/${raw.join('/')}` : base);
+
+// Regras 6 e 7, sobre um endereço que já é da academia da sessão.
+function accessRedirect(route, appUser, home) {
+  if (route.screen && !canAccess(route.screen, appUser)) {
+    return redirectTo(home, { notice: SCREENS[route.screen].gestor ? 'so-gestor' : null });
+  }
+  if (route.unknown) return redirectTo(home, { notice: 'nao-encontrada' });
+  return null;
+}
+
+// Regra 4, a volta da visualização. Só vale enquanto o endereço ainda é da
+// academia que estava assumida, e o caminho guardado é da academia da sessão e
+// abre de primeira. Sem isso, o caminho guardado prenderia a pessoa nele.
+function returnPathFor(route, appUser, returnTo) {
+  const from = returnTo?.fromTenant;
+  if (typeof from !== 'string' || from === '' || from === appUser.tenantId) return null;
+  if (route.tenantSlug !== from || typeof returnTo.path !== 'string') return null;
+  const path = `/${rawSegments(returnTo.path).join('/')}`;
+  return routeDecision(parseAppPath(path), appUser).kind === 'ok' ? path : null;
+}
+
+// Regra 5: o endereço não é da academia da sessão. Devolve o caminho corrigido,
+// ou null quando o endereço já é dela. Os segmentos depois da academia vão
+// crus, do jeito que chegaram, para o id da ficha não mudar.
+function sessionPathFor(route, tenantId, home) {
+  const raw = rawSegments(route.pathname);
+  if (raw.length === 0) return home;
+  if (route.tenantSlug === tenantId) {
+    // Mesma academia com outra caixa (/STRONIX/...): troca só o slug.
+    return decodeSegment(raw[0]) === tenantId ? null : joinPath(home, raw.slice(1));
+  }
+  // Tela sem academia (/pipeline, /ficha/<id>): põe a academia na frente.
+  if (route.tenantSlug === null) return route.unknown ? home : joinPath(home, raw);
+  // Outra academia: a tela vem junto, a ficha e o super-admin não, porque são
+  // dados da outra academia.
+  const keepsScreen = route.screen && route.screen !== 'ficha' && route.screen !== 'superadmin';
+  return keepsScreen ? joinPath(home, raw.slice(1)) : home;
+}
+
+// O que fazer com o endereço atual nesta sessão. Roda a cada render do app
+// logado e para na primeira regra que se aplica:
+// 1. sem sessão: ok (o login aparece em qualquer endereço e volta para ele);
+// 2. super-admin puro: o console só existe em '/';
+// 3. sessão assumida ("Acessar como") com o endereço de outra academia: vai
+//    para a tela inicial da assumida;
+// 4. volta da visualização: vai para o caminho guardado na entrada;
+// 5. endereço sem a academia da sessão: corrige o slug, sem aviso;
+// 6. tela que a sessão não vê: tela inicial, com aviso se for de gestor;
+// 7. endereço desconhecido: tela inicial, com aviso.
+// A regra 5 já sai com as regras 6 e 7 aplicadas ao endereço corrigido, então o
+// destino de todo redirect é aceito de primeira: nada pisca e nada entra em
+// laço. Devolve { kind: 'ok' } ou { kind: 'redirect', to, target, notice }.
+export function routeDecision(route, appUser, opts = {}) {
+  const { search = '', returnTo = null } = opts || {};
+  if (!appUser) return OK;
+  if (appUser.superAdminOnly) return route.pathname === '/' ? OK : redirectTo('/');
+  const tenantId = appUser.tenantId;
+  const home = hrefFor(tenantId, HOME_SCREEN);
+  // Trava contra laço: academia cujo id não relê como ela mesma (fora do
+  // formato ou palavra reservada) não é mandada pelo endereço. Sem isso, o
+  // redirect cairia nele mesmo para sempre. Vale para as regras 3 a 7.
+  if (!home || parseAppPath(home).tenantSlug !== tenantId) return OK;
+  if (appUser.impersonating && route.tenantSlug !== tenantId) return redirectTo(home);
+  const back = returnPathFor(route, appUser, returnTo);
+  if (back) return redirectTo(back);
+  const fixed = sessionPathFor(route, tenantId, home);
+  if (fixed !== null) return accessRedirect(parseAppPath(fixed), appUser, home) ?? redirectTo(fixed, { search });
+  return accessRedirect(route, appUser, home) ?? OK;
+}
+
+// Voltar da ficha: pelo navegador quando há tela do app antes dela nesta aba;
+// senão, troca a entrada por Clientes (cliente) ou Pipeline (lead).
+export function backTarget({ historyState, isClient, tenantId } = {}) {
+  if (canGoBackInApp(historyState)) return { type: 'back' };
+  return { type: 'replace', href: hrefFor(tenantId, isClient ? 'clientes' : 'kanban') };
+}
+
+// Chave da tela mostrada, para a key do AppErrorBoundary e para a rolagem.
+// /<academia> e /visao-geral/operacional são a mesma tela, o `rest` e a subaba
+// do super-admin não trocam a chave (o SuperAdminView não remonta nem refaz a
+// busca a cada subaba), outra ficha troca.
+export function screenKey(route) {
+  const screen = route?.screen;
+  if (screen === 'ficha') return `ficha:${route.leadId}`;
+  if (screen === HOME_SCREEN || screen === 'dashOperacional') return 'dashOperacional';
+  return screen || 'dashboard';
+}
+
+// Título da aba do navegador: tela primeiro, para distinguir várias abas.
+// Nunca leva nome de lead, porque o histórico do navegador guarda o título.
+export function documentTitle({ screen, tenantName } = {}) {
+  const parts = [];
+  if (own(SCREENS, screen)) parts.push(SCREENS[screen].title);
+  if (tenantName) parts.push(tenantName);
+  parts.push('STRONILEAD');
+  return parts.join(' · ');
+}
+
+// Molde do endereço para o Sentry: '/:tenant' no lugar da academia e ':leadId'
+// no lugar do id da ficha. O `rest` fica de fora. Nunca devolve dado real.
+export function routeTemplate(pathname) {
+  const r = parseAppPath(pathname);
+  if (rawSegments(r.pathname).length === 0) return '/';
+  const prefix = r.tenantSlug ? '/:tenant' : '';
+  if (r.unknown || !r.screen) return `${prefix}/*`;
+  if (r.screen === 'ficha') return `${prefix}/ficha/:leadId`;
+  if (r.screen === 'superadmin') return `${prefix}/super-admin/${SUPER_TABS[r.superTab]}`;
+  const segs = SCREENS[r.screen].segs;
+  return segs.length ? `${prefix}/${segs.join('/')}` : prefix;
+}
+
+// Rolagem do container compartilhado. Outra tela por push ou replace: topo.
+// Voltar ou avançar para outra tela: devolve a posição daquela entrada. Mesma
+// tela, ou a primeira tela da aba: não mexe.
+export function scrollActionFor({ navigationType, prevScreenKey, screenKey: key } = {}) {
+  if (prevScreenKey == null || prevScreenKey === key) return 'none';
+  return navigationType === 'POP' ? 'restore' : 'top';
 }
