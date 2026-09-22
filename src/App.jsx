@@ -205,9 +205,11 @@ function AppInner() {
   // Chave da sessão da ficha: sair e entrar, ou o "Acessar como", refazem a
   // leitura da ficha na academia certa mesmo com o mesmo id no endereço.
   const sessionKey = sessionKeyFor(appUser);
-  // Rolagem do conteúdo por entrada do histórico: voltar devolve a posição.
+  // Rolagem do conteúdo por entrada do histórico: voltar devolve a posição. A
+  // chave é a da tela mostrada (a mesma da key do AppErrorBoundary), e não a do
+  // endereço: num endereço barrado as duas diferem por um render.
   const contentScrollRef = useRef(null);
-  const onContentScroll = useRouteScroll(contentScrollRef);
+  const onContentScroll = useRouteScroll(contentScrollRef, screenKey(shown));
   const [consoleOpen, setConsoleOpen] = useState(false); // overlay do novo Console dark (super-admin)
   const [ticketModalOpen, setTicketModalOpen] = useState(false); // abrir chamado de suporte (cliente)
   // Tickets de suporte do tenant (badge da sidebar + Central de Suporte).

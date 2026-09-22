@@ -5,11 +5,13 @@
 // faria depois do commit.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createScrollMemory, restoreWhenTall, useRouteScroll } from '../../hooks/useRouteScroll.js';
+import { parseAppPath, screenKey } from '../routes.js';
 
 const m = vi.hoisted(() => ({
   location: { pathname: '/', key: 'default' },
   navigationType: 'POP',
-  prevRef: null,
+  refs: [],
+  refIndex: 0,
   layoutEffect: null,
 }));
 
@@ -17,9 +19,12 @@ vi.mock('react', async (importOriginal) => {
   const actual = await importOriginal();
   return {
     ...actual,
+    // Um ref por chamada, na ordem em que o hook pede, igual ao React: os dois
+    // refs do hook (tela anterior e restauração em curso) não podem ser o mesmo.
     useRef: (initial) => {
-      if (!m.prevRef) m.prevRef = { current: initial };
-      return m.prevRef;
+      const i = m.refIndex++;
+      if (!m.refs[i]) m.refs[i] = { current: initial };
+      return m.refs[i];
     },
     useCallback: (fn) => fn,
     useLayoutEffect: (effect) => {
@@ -145,6 +150,30 @@ describe('restoreWhenTall', () => {
     expect(el.listenerCount()).toBe(0);
   });
 
+  it('avisa o fim por qualquer motivo: chegou, cresceu tarde, estourou o tempo, a pessoa rolou', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const fim = vi.fn();
+
+    restoreWhenTall(fakeScroller(), 900, 1500, fim);
+    expect(fim).toHaveBeenCalledTimes(1);
+
+    const crescendo = fakeScroller({ contentHeight: 800 });
+    restoreWhenTall(crescendo, 900, 1500, fim);
+    expect(fim).toHaveBeenCalledTimes(1);
+    crescendo.contentHeight = 5000;
+    frames.runNext();
+    expect(fim).toHaveBeenCalledTimes(2);
+
+    restoreWhenTall(fakeScroller({ contentHeight: 800 }), 900, 1500, fim);
+    vi.advanceTimersByTime(1500);
+    expect(fim).toHaveBeenCalledTimes(3);
+
+    const rolado = fakeScroller({ contentHeight: 800 });
+    restoreWhenTall(rolado, 900, 1500, fim);
+    rolado.fire('wheel');
+    expect(fim).toHaveBeenCalledTimes(4);
+  });
+
   it('sem requestAnimationFrame, volta o quanto dá e não quebra', () => {
     vi.stubGlobal('requestAnimationFrame', undefined);
     const el = fakeScroller({ contentHeight: 800 });
@@ -155,9 +184,9 @@ describe('restoreWhenTall', () => {
 });
 
 // Faz as vezes do componente que usa o hook: o React chamaria esta função a
-// cada render.
+// cada render. A chave da tela vem de fora, como no App (screenKey(shown)).
 function ScrollProbe({ el }) {
-  return useRouteScroll({ current: el });
+  return useRouteScroll({ current: el }, screenKey(parseAppPath(m.location.pathname)));
 }
 
 // A memória de posições é do módulo do hook e passa de um teste para outro.
@@ -170,6 +199,8 @@ describe('useRouteScroll', () => {
   function renderAt(pathname, key, navigationType, el) {
     m.location = { pathname, key };
     m.navigationType = navigationType;
+    // Cada render pede os refs de novo, na mesma ordem: a fila volta ao começo.
+    m.refIndex = 0;
     const onScroll = ScrollProbe({ el });
     cleanup?.();
     cleanup = m.layoutEffect();
@@ -182,7 +213,8 @@ describe('useRouteScroll', () => {
   }
 
   beforeEach(() => {
-    m.prevRef = null;
+    m.refs = [];
+    m.refIndex = 0;
     cleanup = undefined;
   });
 
@@ -246,6 +278,39 @@ describe('useRouteScroll', () => {
     expect(frames.pending()).toBe(0);
     expect(el.listenerCount()).toBe(0);
     expect(el.scrollTop).toBe(0);
+  });
+
+  it('a rolagem cortada durante a restauração não apaga a posição da entrada', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const el = fakeScroller();
+    const onClientes = renderAt('/acad/clientes', 'd1', 'POP', el);
+    scrollBy(onClientes, el, 2000);
+    renderAt('/acad/ficha/A', 'd2', 'PUSH', el);
+    // A lista ainda não chegou: o navegador corta o scrollTop e manda o evento
+    // de rolagem com o valor cortado.
+    el.contentHeight = 800;
+    const onVolta = renderAt('/acad/clientes', 'd1', 'POP', el);
+    expect(el.scrollTop).toBe(200);
+    onVolta({ currentTarget: el });
+    // E a lista demora mais que o teto: a restauração desiste no meio.
+    vi.advanceTimersByTime(1500);
+    el.contentHeight = 5000;
+    renderAt('/acad/pipeline', 'd3', 'PUSH', el);
+    renderAt('/acad/clientes', 'd1', 'POP', el);
+    expect(el.scrollTop).toBe(2000);
+  });
+
+  it('terminada a restauração, a rolagem da pessoa volta a ser guardada', () => {
+    const el = fakeScroller();
+    const onClientes = renderAt('/acad/clientes', 'e1', 'POP', el);
+    scrollBy(onClientes, el, 700);
+    renderAt('/acad/ficha/A', 'e2', 'PUSH', el);
+    const onVolta = renderAt('/acad/clientes', 'e1', 'POP', el);
+    expect(el.scrollTop).toBe(700);
+    scrollBy(onVolta, el, 1200);
+    renderAt('/acad/ficha/A', 'e3', 'PUSH', el);
+    renderAt('/acad/clientes', 'e1', 'POP', el);
+    expect(el.scrollTop).toBe(1200);
   });
 
   it('sem o div montado (tela de login), não faz nada', () => {

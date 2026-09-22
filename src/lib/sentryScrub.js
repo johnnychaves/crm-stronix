@@ -246,7 +246,16 @@ export function scrubEvent(event) {
 
   // Por último, a rede do id da ficha no evento inteiro: event.transaction,
   // request.url, migalhas, contexto de trace e o que mais vier.
-  return scrubLeadPathsDeep(event);
+  // Ao contrário da migalha e da span, aqui a falha não pode descartar nada: o
+  // erro é justamente o que o Sentry existe para mostrar, e as camadas de cima
+  // já limparam url, query, header e corpo. Se a varredura final lançar (um
+  // getter exótico em algum campo que o SDK acrescentou), o evento vai como
+  // está.
+  try {
+    return scrubLeadPathsDeep(event);
+  } catch {
+    return event;
+  }
 }
 
 // beforeBreadcrumb do Sentry: devolver null descarta a migalha. Aqui nada é

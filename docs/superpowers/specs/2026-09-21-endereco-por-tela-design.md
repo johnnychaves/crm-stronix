@@ -180,7 +180,7 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 
 ### Rolagem, erro e título
 
-- `useRouteScroll(ref)` no container compartilhado (`App.jsx:1667`). Ir para outra tela vai ao topo. Voltar ou avançar devolve a posição daquela entrada, tentando por até 1,5 s enquanto o conteúdo carrega ou até a pessoa rolar. Na mesma tela, não mexe. Containers internos (colunas da Meta, board do Pipeline) não são restaurados nesta entrega.
+- `useRouteScroll(ref, screenKey(shown))` no container compartilhado (`App.jsx:1667`), com a mesma chave de tela da key do `AppErrorBoundary`, para o endereço barrado não dar uma resposta de cada lado. Ir para outra tela vai ao topo. Voltar ou avançar devolve a posição daquela entrada, tentando por até 1,5 s enquanto o conteúdo carrega ou até a pessoa rolar. Na mesma tela, não mexe. Containers internos (colunas da Meta, board do Pipeline) não são restaurados nesta entrega.
 - `<AppErrorBoundary key={screenKey(shown)}>`: trocar de tela limpa a tela de erro.
 - Título: `<Tela> · <Academia> · STRONILEAD`. Na ficha, `Ficha · <Academia> · STRONILEAD`. Antes do login, igual a hoje.
 

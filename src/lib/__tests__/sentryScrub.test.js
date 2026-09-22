@@ -401,6 +401,30 @@ describe('scrubEvent: id do lead no endereço', () => {
     expect(out.transaction).toBe('/stronix-crm-app/pipeline');
   });
 
+  it('varredura final que lança não descarta o evento, e o que as camadas de cima limparam continua limpo', () => {
+    const event = {
+      // Primeira chave de propósito: a rede final estoura antes de qualquer
+      // campo, então o que sobra no evento é só o trabalho das camadas de cima.
+      contexts: { runtime: { get name() { throw new Error('boom'); } } },
+      message: 'falhou para joao.silva@academia.com.br',
+      request: {
+        url: 'https://stronilead.com.br/stronix-crm-app/pipeline?invite=abc&phone=5511987654321',
+        data: { cpf: '123.456.789-01' },
+        cookies: { sessao: 'x' },
+        query_string: 'invite=abc',
+        headers: { Referer: 'https://stronilead.com.br/s/ficha/Ab12', 'User-Agent': 'x' }
+      }
+    };
+    const out = scrubEvent(event);
+    expect(out).toBe(event);
+    expect(out.request.url).toBe('https://stronilead.com.br/stronix-crm-app/pipeline');
+    expect(out.request.data).toBeUndefined();
+    expect(out.request.cookies).toBeUndefined();
+    expect(out.request.query_string).toBeUndefined();
+    expect(out.request.headers).toEqual({ 'User-Agent': 'x' });
+    expect(out.message).toBe('falhou para [email]');
+  });
+
   it('redige o seletor do LCP e do CLS e tira o token da foto do cliente', () => {
     const event = {
       type: 'transaction',
