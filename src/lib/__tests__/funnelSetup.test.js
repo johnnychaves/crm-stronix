@@ -218,7 +218,9 @@ describe('planNegociacaoStages (passo 4 da migração de funis)', () => {
   });
 });
 
-// Banco falso com a semântica do setDoc(..., { merge: true }).
+// Banco falso com merge: é o caso mais exigente. Com os mesmos dados por id (o
+// que o teste de estado final garante), dá o mesmo resultado que a gravação que
+// só cria, usada em produção (funnelSetupWrites.js).
 const emptyDb = () => ({ funnels: new Map(), statuses: new Map(), sources: new Map() });
 const applyWrite = (db, w) => {
   const col = db[w.collection];
