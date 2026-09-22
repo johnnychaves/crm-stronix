@@ -199,7 +199,7 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 **Logout da primeira aba.** Conferido no `@firebase/auth` 1.12.2: o `getAuth` vigia o IndexedDB e o login com "Manter conectado" grava no localStorage. A aba nova move a sessão para o IndexedDB e apaga do localStorage, e a primeira aba lê o localStorage vazio e desloga. A correção:
 
 - `src/lib/authPersistence.js` (puro): `persistenceKind({ remember, indexedDbOk })`.
-- `persistenceFor(remember)` em `src/lib/firebase.js`: com "Manter conectado", `indexedDBLocalPersistence`, ou `browserLocalPersistence` se o IndexedDB não abrir (teste por abertura real, num banco próprio). Sem a opção, `browserSessionPersistence`.
+- `persistenceFor(remember)` em `src/lib/firebase.js`: com "Manter conectado", `indexedDBLocalPersistence`, ou `browserLocalPersistence` se o IndexedDB não funcionar (o teste abre, grava e apaga um valor num banco próprio, como o SDK faz). Sem a opção, `browserSessionPersistence`.
 - O `getAuth` não muda. Quem já está logado continua logado depois do deploy, porque o SDK procura a sessão nos três armazenamentos e migra.
 - No "Sair da visualização", primeiro `signInWithCustomToken` e só depois `setPersistence`. Na ordem de hoje, a conta do cliente passaria pelo armazenamento que as outras abas vigiam.
 - Efeito novo e esperado: uma aba parada no login entra sozinha quando outra aba loga.
@@ -208,6 +208,7 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 
 - `src/lib/funnelSetup.js` (puro): `DEFAULT_FUNNEL_ID = 'funil-padrao'`, `SYSTEM_FUNNEL_IDS` (`funil-sistema-indicacoes`, `-upgrade`, `-renovacoes`, `-vencidos`), `REFERRAL_SOURCE_ID`, `setupStageId(funnelId, stage)`, `toSetupWrites(plan, ts)`, `planDefaultFunnel(funnels)` e `planNegociacaoStages({ funnels, statuses })`.
 - No lugar de `addDoc`, uma gravação que só cria: uma transação confere se o documento com aquele id já existe e só grava se não existir. A repetição cai no mesmo documento em qualquer combinação de abas, computadores e gestores, e a aba atrasada não sobrescreve nada, nem uma edição que o gestor tenha feito no meio. Custa algumas leituras uma vez na vida de cada academia. Sem internet a configuração falha sem carimbar e roda de novo na próxima carga. Não precisa de regra nova do Firestore.
+- As leituras da configuração vêm sempre do servidor (`getDocsFromServer`), para não planejar em cima de cache velho.
 - Cada execução congela a academia no início (`const tenant = appId`). Se a conta mudar no meio, a execução falha sem carimbar, em vez de gravar na academia errada.
 - O passo que põe "Negociação" em todo funil passa a ignorar funis de sistema.
 - Os planos atuais (`plan*SetupOps`) e os testes deles não mudam.

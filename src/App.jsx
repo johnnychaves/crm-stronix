@@ -961,8 +961,9 @@ useEffect(() => {
           getDocsFromServer(tenantCol(tenant, FUNNELS_PATH)),
         ]);
         const funnelsForNeg = funnelsAfter.docs.map(d => ({ id: d.id, ...d.data() }));
-        // Gravação por transação não aparece na hora na leitura local: o Comercial
-        // recém-criado entra pelo id que o passo 1 já conhece.
+        // Por garantia: se a leitura do servidor ainda não trouxer o Comercial
+        // criado no passo 1, ele entra pelo id que o passo 1 já conhece. Sem
+        // isso, o Comercial ficaria sem Negociação para sempre.
         if (step1.create && !funnelsForNeg.some(f => f.id === defaultId)) {
           funnelsForNeg.push({ id: defaultId, ...step1.create });
         }
