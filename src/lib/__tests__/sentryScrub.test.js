@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { maskSensitive, scrubDeep, isNoise, scrubEvent, stripQuery, scrubBreadcrumb } from '../sentryScrub.js';
+import {
+  maskSensitive, scrubDeep, isNoise, scrubEvent, stripQuery, scrubBreadcrumb,
+  scrubLeadPath, scrubLeadPathsDeep, scrubSpan
+} from '../sentryScrub.js';
 
 describe('maskSensitive', () => {
   it('mascara CPF formatado', () => {
@@ -268,5 +271,200 @@ describe('scrubBreadcrumb', () => {
       get data() { throw new Error('boom'); }
     };
     expect(scrubBreadcrumb(crumb)).toBe(null);
+  });
+});
+
+// Com endereço por tela, a ficha vira /<academia>/ficha/<id do lead>. O id não
+// pode sair para o Sentry em campo nenhum. As formas abaixo são as que o SDK
+// 10.69 produz de verdade (request.url, nome da transação no escopo, migalha
+// de navegação, url.path, span do documento, span do INP e medidas de LCP).
+const ID = 'Ab12Cd34Ef56Gh78Ij90';
+const FICHA = `/stronix-crm-app/ficha/${ID}`;
+
+describe('scrubLeadPath', () => {
+  it('troca o id da ficha pela marca :leadId e mantém o resto', () => {
+    expect(scrubLeadPath(`https://stronilead.com.br${FICHA}?x=1`))
+      .toBe('https://stronilead.com.br/stronix-crm-app/ficha/:leadId?x=1');
+  });
+
+  it('é idempotente e não mexe no molde de rota', () => {
+    expect(scrubLeadPath('/:tenant/ficha/:leadId')).toBe('/:tenant/ficha/:leadId');
+    expect(scrubLeadPath(scrubLeadPath(FICHA))).toBe('/stronix-crm-app/ficha/:leadId');
+  });
+
+  it('não distingue maiúscula', () => {
+    expect(scrubLeadPath('/S/FICHA/Ab12')).toBe('/S/FICHA/:leadId');
+  });
+
+  it('para em espaço e aspas quando o caminho está no meio de uma frase', () => {
+    expect(scrubLeadPath('falhou ao abrir /s/ficha/Ab12 agora')).toBe('falhou ao abrir /s/ficha/:leadId agora');
+    expect(scrubLeadPath('href="/s/ficha/Ab12" quebrou')).toBe('href="/s/ficha/:leadId" quebrou');
+  });
+
+  it('pega id com caractere codificado', () => {
+    expect(scrubLeadPath('/s/ficha/Jos%C3%A9%2050%25')).toBe('/s/ficha/:leadId');
+  });
+
+  it('deixa as outras telas, o slug e o que não é texto como estão', () => {
+    expect(scrubLeadPath('/stronix-crm-app/pipeline')).toBe('/stronix-crm-app/pipeline');
+    expect(scrubLeadPath('/s/leads/aulas')).toBe('/s/leads/aulas');
+    expect(scrubLeadPath('/s/fichas/x')).toBe('/s/fichas/x');
+    expect(scrubLeadPath('/stronix-crm-app')).toBe('/stronix-crm-app');
+    expect(scrubLeadPath(null)).toBe(null);
+    expect(scrubLeadPath(42)).toBe(42);
+  });
+});
+
+describe('scrubLeadPathsDeep', () => {
+  it('troca em campo que não está em lista nenhuma, em qualquer profundidade', () => {
+    const event = { contexts: { qualquer: { a: { b: { c: { d: { e: { f: FICHA } } } } } } } };
+    expect(scrubLeadPathsDeep(event).contexts.qualquer.a.b.c.d.e.f).toBe('/stronix-crm-app/ficha/:leadId');
+  });
+
+  it('aguenta referência circular', () => {
+    const node = { url: FICHA };
+    node.self = node;
+    expect(() => scrubLeadPathsDeep(node)).not.toThrow();
+    expect(node.url).toBe('/stronix-crm-app/ficha/:leadId');
+  });
+
+  it('não entra no sdkProcessingMetadata, que guarda objeto vivo do SDK', () => {
+    const vivo = { url: FICHA };
+    const event = { sdkProcessingMetadata: { normalizedRequest: vivo } };
+    scrubLeadPathsDeep(event);
+    expect(event.sdkProcessingMetadata.normalizedRequest).toBe(vivo);
+    expect(vivo.url).toBe(FICHA);
+  });
+
+  it('não grava em objeto congelado quando não há nada a trocar', () => {
+    const congelado = Object.freeze({ url: '/stronix-crm-app/pipeline' });
+    expect(() => scrubLeadPathsDeep({ congelado })).not.toThrow();
+  });
+});
+
+describe('scrubEvent: id do lead no endereço', () => {
+  it('tira o id e a query do request.url', () => {
+    const event = { request: { url: `https://stronilead.com.br${FICHA}?invite=x` } };
+    expect(scrubEvent(event).request.url).toBe('https://stronilead.com.br/stronix-crm-app/ficha/:leadId');
+  });
+
+  it('troca o id no nome da transação que o SDK copia para todo erro', () => {
+    expect(scrubEvent({ transaction: FICHA }).transaction).toBe('/stronix-crm-app/ficha/:leadId');
+    expect(scrubEvent({ transaction: '/:tenant/ficha/:leadId' }).transaction).toBe('/:tenant/ficha/:leadId');
+  });
+
+  it('troca o id nas migalhas de navegação guardadas no evento', () => {
+    const event = { breadcrumbs: [{ category: 'navigation', data: { from: '/s/pipeline', to: '/s/ficha/Ab12' } }] };
+    const crumb = scrubEvent(event).breadcrumbs[0];
+    expect(crumb.data.to).toBe('/s/ficha/:leadId');
+    expect(crumb.data.from).toBe('/s/pipeline');
+  });
+
+  it('limpa url.path e url.full no contexto da transação', () => {
+    const event = {
+      type: 'transaction',
+      contexts: { trace: { data: { 'url.path': '/s/ficha/Ab12', 'url.full': 'https://stronilead.com.br/s/ficha/Ab12?invite=abc' } } }
+    };
+    const data = scrubEvent(event).contexts.trace.data;
+    expect(data['url.path']).toBe('/s/ficha/:leadId');
+    expect(data['url.full']).toBe('https://stronilead.com.br/s/ficha/:leadId');
+  });
+
+  it('limpa a descrição da span do documento', () => {
+    const event = { type: 'transaction', spans: [{ op: 'browser.request', description: 'https://stronilead.com.br/s/ficha/Ab12?invite=abc' }] };
+    expect(scrubEvent(event).spans[0].description).toBe('https://stronilead.com.br/s/ficha/:leadId');
+  });
+
+  it('não deixa sair o Referer, que numa aba aberta pela ficha leva o endereço dela', () => {
+    const event = { request: { url: 'https://stronilead.com.br/s/pipeline', headers: { Referer: 'https://stronilead.com.br/s/ficha/Ab12', 'User-Agent': 'x' } } };
+    expect(scrubEvent(event).request.headers).toEqual({ 'User-Agent': 'x' });
+  });
+
+  it('troca o id na mensagem da exceção e mantém os frames inteiros', () => {
+    const event = {
+      exception: {
+        values: [{
+          value: 'falhou ao abrir /s/ficha/Ab12 agora',
+          stacktrace: { frames: [{ filename: 'https://stronilead.com.br/assets/index.js', function: 'abrir', lineno: 10 }] }
+        }]
+      }
+    };
+    const entry = scrubEvent(event).exception.values[0];
+    expect(entry.value).toBe('falhou ao abrir /s/ficha/:leadId agora');
+    expect(entry.stacktrace.frames[0]).toEqual({ filename: 'https://stronilead.com.br/assets/index.js', function: 'abrir', lineno: 10 });
+  });
+
+  it('mantém o slug da academia e as outras telas', () => {
+    const event = { request: { url: 'https://stronilead.com.br/stronix-crm-app/leads/aulas' }, transaction: '/stronix-crm-app/pipeline' };
+    const out = scrubEvent(event);
+    expect(out.request.url).toBe('https://stronilead.com.br/stronix-crm-app/leads/aulas');
+    expect(out.transaction).toBe('/stronix-crm-app/pipeline');
+  });
+
+  it('redige o seletor do LCP e do CLS e tira o token da foto do cliente', () => {
+    const event = {
+      type: 'transaction',
+      contexts: {
+        trace: {
+          data: {
+            'lcp.element': 'div > img[alt="Maria Souza"]',
+            'lcp.url': 'https://firebasestorage.googleapis.com/v0/b/b/o/tenants%2Fs%2Fleads%2FAb12%2Favatar.jpg?alt=media&token=t',
+            'cls.source.1': 'div.card > span[title="Maria Souza"]'
+          }
+        }
+      }
+    };
+    const data = scrubEvent(event).contexts.trace.data;
+    expect(data['lcp.element']).toBe('div > img[alt="[redigido]"]');
+    expect(data['lcp.url']).toBe('https://firebasestorage.googleapis.com/v0/b/b/o/tenants%2Fs%2Fleads%2FAb12%2Favatar.jpg');
+    expect(data['cls.source.1']).toBe('div.card > span[title="[redigido]"]');
+  });
+});
+
+describe('scrubBreadcrumb: id do lead no endereço', () => {
+  it('troca o id no destino da navegação e deixa a origem', () => {
+    const crumb = { category: 'navigation', data: { from: '/s/pipeline', to: '/s/ficha/Ab12' } };
+    const out = scrubBreadcrumb(crumb);
+    expect(out.data.to).toBe('/s/ficha/:leadId');
+    expect(out.data.from).toBe('/s/pipeline');
+  });
+});
+
+describe('scrubSpan', () => {
+  it('limpa a span do INP: nome do cliente no seletor e caminho da tela', () => {
+    const span = { op: 'ui.interaction.click', description: 'body > div > span[title="Maria Souza"]', data: { transaction: '/s/ficha/Ab12' } };
+    const out = scrubSpan(span);
+    expect(out).toBe(span);
+    expect(out.description).toBe('body > div > span[title="[redigido]"]');
+    expect(out.data.transaction).toBe('/s/ficha/:leadId');
+  });
+
+  it('tira query e id da span que descreve uma URL', () => {
+    const out = scrubSpan({ op: 'browser.request', description: 'https://stronilead.com.br/s/ficha/Ab12?invite=abc', data: { 'url.full': 'https://stronilead.com.br/s/ficha/Ab12?invite=abc' } });
+    expect(out.description).toBe('https://stronilead.com.br/s/ficha/:leadId');
+    expect(out.data['url.full']).toBe('https://stronilead.com.br/s/ficha/:leadId');
+  });
+
+  it('redige o seletor e a URL do LCP que vêm em span', () => {
+    const out = scrubSpan({ op: 'ui.webvital.lcp', description: 'div > img[alt="Maria Souza"]', data: { 'lcp.element': 'img[alt="Maria Souza"]', 'lcp.url': 'https://x.com/a.jpg?token=t' } });
+    expect(out.description).toBe('div > img[alt="[redigido]"]');
+    expect(out.data['lcp.element']).toBe('img[alt="[redigido]"]');
+    expect(out.data['lcp.url']).toBe('https://x.com/a.jpg');
+  });
+
+  it('devolve o que recebeu quando não é objeto', () => {
+    expect(scrubSpan(null)).toBe(null);
+    expect(scrubSpan(undefined)).toBe(undefined);
+  });
+
+  it('nunca devolve null nem lança: na falha sai uma casca sem descrição e sem data', () => {
+    const span = {
+      span_id: 's1',
+      trace_id: 't1',
+      op: 'ui.interaction.click',
+      get description() { throw new Error('boom'); }
+    };
+    const out = scrubSpan(span);
+    expect(out).toEqual({ span_id: 's1', trace_id: 't1', op: 'ui.interaction.click', description: '[redigido]', data: {} });
   });
 });
