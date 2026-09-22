@@ -6,19 +6,23 @@
 //
 // A ficha (LeadProfileView) remonta por lead (key={lead.id}), então o hook não
 // precisa resetar entre leads. Sem flag de loading → sem sync-setState no efeito.
+//
+// `active` é o portão de ociosidade do App (15 minutos sem ninguém mexer).
+// Desligado, a assinatura cai e a lista fica como estava; religado, assina de
+// novo. Uma ficha esquecida numa aba deixa de ficar assinada a noite toda.
 
 import { useState, useEffect } from 'react';
 import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import { appId, INTERACTIONS_PATH } from '../lib/firebase.js';
 import { getSafeDate } from '../lib/dates.js';
 
-// useLeadTimeline({ db, leadId }) -> interactions[] (mesma forma do prop antigo:
-// { id, ...data, createdAt: Date }), ordenadas por createdAt desc.
-export function useLeadTimeline({ db, leadId }) {
+// useLeadTimeline({ db, leadId, active }) -> interactions[] (mesma forma do prop
+// antigo: { id, ...data, createdAt: Date }), ordenadas por createdAt desc.
+export function useLeadTimeline({ db, leadId, active = true }) {
   const [interactions, setInteractions] = useState([]);
 
   useEffect(() => {
-    if (!db || !leadId) return undefined;
+    if (!db || !leadId || !active) return undefined;
     const ref = collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH);
     const q = query(ref, where('leadId', '==', leadId), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(
@@ -37,7 +41,7 @@ export function useLeadTimeline({ db, leadId }) {
       }
     );
     return () => unsub();
-  }, [db, leadId]);
+  }, [db, leadId, active]);
 
   return interactions;
 }
