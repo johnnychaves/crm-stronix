@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import * as Sentry from '@sentry/react'
+import { BrowserRouter } from 'react-router'
 import { initSentry } from './lib/sentry.js'
 import App from './App.jsx'
 import './index.css'
@@ -16,6 +17,11 @@ ReactDOM.createRoot(document.getElementById('root'), {
   onRecoverableError: Sentry.reactErrorHandler(),
 }).render(
   <React.StrictMode>
-    <App />
+    {/* Troca de tela síncrona, como era antes do roteador: sem
+        startTransition, o clique duplo não empilha duas entradas e a
+        rolagem e o redirect leem o endereço já trocado. */}
+    <BrowserRouter useTransitions={false}>
+      <App />
+    </BrowserRouter>
   </React.StrictMode>,
 )
