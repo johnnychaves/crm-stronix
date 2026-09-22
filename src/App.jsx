@@ -64,6 +64,7 @@ import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } fro
 import { planReferralSetupOps } from './lib/referrals.js';
 import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
 import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
+import { IDLE_RUN, runStatusFor, settleRun, EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor } from './lib/setupRun.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
@@ -329,24 +330,40 @@ function AppInner() {
   const [selectedFunnelId, setSelectedFunnelId] = useState(() => {
     try { return localStorage.getItem(`crm-selected-funnel:${appId}`) || null; } catch { return null; }
   });
-  const [funnelsMigrationStatus, setFunnelsMigrationStatus] = useState('idle');
-  // Marcador de que a semeadura/backfill de funis já rodou nesta academia.
-  // Vem do doc de config (que já é assinado — custo zero de leitura). null =
-  // config ainda não chegou. Sem ele, a migração relia a coleção INTEIRA de
-  // leads em toda carga de admin só pra concluir que não havia nada a fazer
-  // (auditoria de 28/07/2026: ~400 leituras por carga, jogadas fora).
-  const [funnelsSetupDone, setFunnelsSetupDone] = useState(null);
-  // Semeadura do funil de INDICAÇÕES (sistema). Flag própria porque
-  // funnelsSetupDoneAt já está carimbado nos tenants antigos — este passo
-  // precisa rodar uma vez em todos, novos e existentes.
-  const [referralMigrationStatus, setReferralMigrationStatus] = useState('idle');
-  const [referralSetupDone, setReferralSetupDone] = useState(null);
-  const [expiredSetupDone, setExpiredSetupDone] = useState(null);
-  const [expiredFunnelStatus, setExpiredFunnelStatus] = useState('idle');
-  const [renewalSetupDone, setRenewalSetupDone] = useState(null);
-  const [renewalFunnelStatus, setRenewalFunnelStatus] = useState('idle');
-  const [upgradeSetupDone, setUpgradeSetupDone] = useState(null);
-  const [upgradeFunnelStatus, setUpgradeFunnelStatus] = useState('idle');
+  // Configuração de funis do primeiro login de gestor: cinco máquinas em cadeia
+  // (funis, Indicações, Vencidos, Renovações, Upgrade). Cada execução guarda
+  // de qual academia é ({ tenant, status }), e o status que vale é derivado
+  // logo abaixo para a academia atual. O "Acessar como" troca de academia sem
+  // recarregar a página, e um 'done' da anterior travaria a próxima até o F5
+  // (src/lib/setupRun.js).
+  const [funnelsRun, setFunnelsRun] = useState(IDLE_RUN);
+  const [referralRun, setReferralRun] = useState(IDLE_RUN);
+  const [expiredRun, setExpiredRun] = useState(IDLE_RUN);
+  const [renewalRun, setRenewalRun] = useState(IDLE_RUN);
+  const [upgradeRun, setUpgradeRun] = useState(IDLE_RUN);
+  // Marcas de que cada configuração já rodou nesta academia. Vêm do doc de
+  // config, que já é assinado e não custa leitura, junto com a academia de
+  // onde vieram. A marca derivada logo abaixo é null enquanto o config desta
+  // academia não chega. Sem a marca de funis, a migração relia a coleção
+  // INTEIRA de leads em toda carga de admin só pra concluir que não havia nada
+  // a fazer (auditoria de 28/07/2026: ~400 leituras por carga, jogadas fora).
+  // Indicações tem marca própria (referralSetupDoneAt) porque
+  // funnelsSetupDoneAt já está carimbado nos tenants antigos, e esse passo
+  // precisa rodar uma vez em todos.
+  const [setupFlags, setSetupFlags] = useState(EMPTY_SETUP_FLAGS);
+  // O que vale para a academia atual. Estado de outra academia conta como
+  // parado ('idle') e como config ainda não chegada (null).
+  const setupTenant = appUser?.tenantId || null;
+  const funnelsMigrationStatus = runStatusFor(funnelsRun, setupTenant);
+  const referralMigrationStatus = runStatusFor(referralRun, setupTenant);
+  const expiredFunnelStatus = runStatusFor(expiredRun, setupTenant);
+  const renewalFunnelStatus = runStatusFor(renewalRun, setupTenant);
+  const upgradeFunnelStatus = runStatusFor(upgradeRun, setupTenant);
+  const funnelsSetupDone = setupFlagFor(setupFlags, 'funnels', setupTenant);
+  const referralSetupDone = setupFlagFor(setupFlags, 'referral', setupTenant);
+  const expiredSetupDone = setupFlagFor(setupFlags, 'expired', setupTenant);
+  const renewalSetupDone = setupFlagFor(setupFlags, 'renewal', setupTenant);
+  const upgradeSetupDone = setupFlagFor(setupFlags, 'upgrade', setupTenant);
   const [loadingData, setLoadingData] = useState(true);
   // Já baixamos os dados ao menos uma vez nesta sessão? Serve pra reassinar
   // (volta da ociosidade) sem piscar a tela de carregando por cima de um dado
@@ -626,6 +643,9 @@ useEffect(() => {
   const leadsRef = collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH);
   const interactionsRef = collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH);
   const usersRef = collection(db, 'artifacts', appId, 'public', 'data', USERS_PATH);
+  // Academia desta assinatura. As marcas de "já configurado" saem com ela, para
+  // a academia assumida pelo "Acessar como" não herdar as da anterior.
+  const configTenant = appId;
 
   // FLIP (G1-flip): a assinatura ao vivo carrega SÓ os leads ATIVOS (pipeline
   // vivo). É onde a leitura cai — clientes e perdas não entram mais na coleção
@@ -782,15 +802,12 @@ useEffect(() => {
       setRenewalCheckpoints(normalizeRenewalCheckpoints(data?.renewalCheckpoints));
       setRenewalGraceDays(normalizeRenewalGraceDays(data?.renewalGraceDays));
       // Doc inexistente (academia nova, antes do provision gravar) conta como
-      // "não semeado" — a migração roda e carimba.
-      setFunnelsSetupDone(!!data?.funnelsSetupDoneAt);
-      setReferralSetupDone(!!data?.referralSetupDoneAt);
-      // v2: a chave mudou para o provisionamento rodar uma vez a mais e renomear a
-      // etapa de entrada de 'Vencido' para 'Aguardando contato'. Ela é protegida,
-      // então ninguém consegue arrumar pela tela.
-      setExpiredSetupDone(!!data?.expiredFunnelSetupV2DoneAt);
-      setRenewalSetupDone(!!data?.renewalFunnelSetupDoneAt);
-      setUpgradeSetupDone(!!data?.upgradeFunnelSetupDoneAt);
+      // "não semeado": a migração roda e carimba. O Vencidos lê a chave v2
+      // (expiredFunnelSetupV2DoneAt): ela mudou para o provisionamento rodar
+      // uma vez a mais e renomear a etapa de entrada de 'Vencido' para
+      // 'Aguardando contato'. Ela é protegida, então ninguém consegue arrumar
+      // pela tela.
+      setSetupFlags(setupFlagsFromConfig(configTenant, data));
     },
     () => { setTrialClassOptions([1, 2, 3]); setMetaWeekdays([1, 2, 3, 4, 5]); setSlaOverdueDays(3); setDailyVolumeTarget(0); setContractThresholdDays(30); setRenewalCheckpoints([90, 60, 30]); }
   );
@@ -879,6 +896,14 @@ useEffect(() => {
   // Migração idempotente: cria funil "Comercial" default e backfill de funnelId em leads/statuses
   useEffect(() => {
     if (!appUser || !isAdminUser(appUser)) return;
+    // Academia desta execução, congelada aqui: é a chave do estado da máquina e
+    // o destino de toda leitura e gravação, mesmo que a conta troque no meio
+    // (ver funnelSetupWrites.js e setupRun.js).
+    const tenant = appUser.tenantId;
+    // Janela da troca de conta: o appId já é da academia nova e o appUser ainda
+    // é o antigo. Não começa nada aqui; o effect roda de novo quando chega o
+    // appUser novo (appUser está nas deps).
+    if (appId !== tenant) return;
     if (loadingData) return;
     if (funnelsMigrationStatus !== 'idle') return;
     // Config ainda não chegou: espera. Sem ela não dá pra saber se já semeou.
@@ -887,21 +912,19 @@ useEffect(() => {
     // — o effect de fallback logo acima já resolve pelo `funnels` em memória.
     if (funnelsSetupDone) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
-      setFunnelsMigrationStatus('done');
+      setFunnelsRun({ tenant, status: 'done' });
       return;
     }
 
     // Gatilho one-shot da migração idempotente (guardado por status !== 'idle').
-    setFunnelsMigrationStatus('running');
+    setFunnelsRun({ tenant, status: 'running' });
 
     (async () => {
       try {
-        // Academia congelada no início: toda leitura e gravação desta execução
-        // vai para ela, mesmo que a conta troque no meio (ver funnelSetupWrites.js).
-        // As leituras da configuração vêm sempre do servidor: um cache velho
-        // planejaria criar de novo um funil que já existe com id antigo, e sem
-        // internet a configuração falha sem carimbar em vez de planejar no escuro.
-        const tenant = appId;
+        // As leituras da configuração vêm sempre do servidor: um cache
+        // velho planejaria criar de novo um funil que já existe com id antigo, e
+        // sem internet a configuração falha sem carimbar em vez de planejar no
+        // escuro.
 
         // Passo 1: garantir EXATAMENTE um funil default. O Comercial criado tem
         // id fixo e só é criado se ainda não existir, então duas abas rodando
@@ -985,10 +1008,13 @@ useEffect(() => {
           { merge: true }
         );
 
-        setFunnelsMigrationStatus('done');
+        setFunnelsRun(prev => settleRun(prev, tenant, 'done'));
       } catch (err) {
         console.error('Erro na migração de funis', err);
-        setFunnelsMigrationStatus('error');
+        // Falha causada pela troca de conta no meio (a regra nega a academia
+        // antiga) volta a 'idle': a academia roda de novo quando for assumida
+        // outra vez. Falha de verdade, na mesma sessão, fica 'error'.
+        setFunnelsRun(prev => settleRun(prev, tenant, appId === tenant ? 'error' : 'idle'));
       }
     })();
   }, [appUser, funnels, loadingData, funnelsMigrationStatus, funnelsSetupDone]);
@@ -1002,6 +1028,10 @@ useEffect(() => {
   // isItemInFunnel despejaria os leads sem funnelId nele).
   useEffect(() => {
     if (!appUser || !isAdminUser(appUser)) return;
+    // Academia desta execução, congelada aqui: chave do estado e destino das
+    // gravações (ver funnelSetupWrites.js e setupRun.js).
+    const tenant = appUser.tenantId;
+    if (appId !== tenant) return;
     if (loadingData) return;
     if (funnelsMigrationStatus !== 'done') return;
     if (referralMigrationStatus !== 'idle') return;
@@ -1009,17 +1039,15 @@ useEffect(() => {
     if (referralSetupDone === null) return;
     if (referralSetupDone) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
-      setReferralMigrationStatus('done');
+      setReferralRun({ tenant, status: 'done' });
       return;
     }
 
     // Gatilho one-shot (guardado por status !== 'idle').
-    setReferralMigrationStatus('running');
+    setReferralRun({ tenant, status: 'running' });
 
     (async () => {
       try {
-        // Academia congelada no início (ver funnelSetupWrites.js).
-        const tenant = appId;
         // Snapshots frescos por getDocsFromServer (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot. Três leituras pequenas,
         // uma única vez por tenant na vida.
@@ -1044,10 +1072,10 @@ useEffect(() => {
           { merge: true }
         );
 
-        setReferralMigrationStatus('done');
+        setReferralRun(prev => settleRun(prev, tenant, 'done'));
       } catch (err) {
         console.error('Erro na migração do funil de indicações', err);
-        setReferralMigrationStatus('error');
+        setReferralRun(prev => settleRun(prev, tenant, appId === tenant ? 'error' : 'idle'));
       }
     })();
   }, [appUser, loadingData, funnelsMigrationStatus, referralMigrationStatus, referralSetupDone]);
@@ -1057,22 +1085,24 @@ useEffect(() => {
   // juntas no primeiro login de admin de uma academia nova.
   useEffect(() => {
     if (!appUser || !isAdminUser(appUser)) return;
+    // Academia desta execução, congelada aqui: chave do estado e destino das
+    // gravações (ver funnelSetupWrites.js e setupRun.js).
+    const tenant = appUser.tenantId;
+    if (appId !== tenant) return;
     if (loadingData) return;
     if (referralMigrationStatus !== 'done') return;
     if (expiredFunnelStatus !== 'idle') return;
     if (expiredSetupDone === null) return;
     if (expiredSetupDone) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
-      setExpiredFunnelStatus('done');
+      setExpiredRun({ tenant, status: 'done' });
       return;
     }
 
-    setExpiredFunnelStatus('running');
+    setExpiredRun({ tenant, status: 'running' });
 
     (async () => {
       try {
-        // Academia congelada no início (ver funnelSetupWrites.js).
-        const tenant = appId;
         // Snapshots frescos por getDocsFromServer (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot.
         const [funnelsSnap, statusesSnap] = await Promise.all([
@@ -1096,10 +1126,10 @@ useEffect(() => {
           { merge: true }
         );
 
-        setExpiredFunnelStatus('done');
+        setExpiredRun(prev => settleRun(prev, tenant, 'done'));
       } catch (err) {
         console.error('Erro no provisionamento do funil de vencidos', err);
-        setExpiredFunnelStatus('error');
+        setExpiredRun(prev => settleRun(prev, tenant, appId === tenant ? 'error' : 'idle'));
       }
     })();
   }, [appUser, loadingData, referralMigrationStatus, expiredFunnelStatus, expiredSetupDone]);
@@ -1112,22 +1142,24 @@ useEffect(() => {
   // dos marcos de renovação), então não há etapa nenhuma para criar.
   useEffect(() => {
     if (!appUser || !isAdminUser(appUser)) return;
+    // Academia desta execução, congelada aqui: chave do estado e destino das
+    // gravações (ver funnelSetupWrites.js e setupRun.js).
+    const tenant = appUser.tenantId;
+    if (appId !== tenant) return;
     if (loadingData) return;
     if (expiredFunnelStatus !== 'done') return;
     if (renewalFunnelStatus !== 'idle') return;
     if (renewalSetupDone === null) return;
     if (renewalSetupDone) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
-      setRenewalFunnelStatus('done');
+      setRenewalRun({ tenant, status: 'done' });
       return;
     }
 
-    setRenewalFunnelStatus('running');
+    setRenewalRun({ tenant, status: 'running' });
 
     (async () => {
       try {
-        // Academia congelada no início (ver funnelSetupWrites.js).
-        const tenant = appId;
         // Snapshot fresco por getDocsFromServer (não o prop): elimina a corrida com a
         // assinatura ao vivo ainda vazia no boot.
         const funnelsSnap = await getDocsFromServer(tenantCol(tenant, FUNNELS_PATH));
@@ -1144,10 +1176,10 @@ useEffect(() => {
           { merge: true }
         );
 
-        setRenewalFunnelStatus('done');
+        setRenewalRun(prev => settleRun(prev, tenant, 'done'));
       } catch (err) {
         console.error('Erro no provisionamento do funil de renovações', err);
-        setRenewalFunnelStatus('error');
+        setRenewalRun(prev => settleRun(prev, tenant, appId === tenant ? 'error' : 'idle'));
       }
     })();
   }, [appUser, loadingData, expiredFunnelStatus, renewalFunnelStatus, renewalSetupDone]);
@@ -1158,22 +1190,24 @@ useEffect(() => {
   // nasce; as demais a academia cria em Configurações.
   useEffect(() => {
     if (!appUser || !isAdminUser(appUser)) return;
+    // Academia desta execução, congelada aqui: chave do estado e destino das
+    // gravações (ver funnelSetupWrites.js e setupRun.js).
+    const tenant = appUser.tenantId;
+    if (appId !== tenant) return;
     if (loadingData) return;
     if (renewalFunnelStatus !== 'done') return;
     if (upgradeFunnelStatus !== 'idle') return;
     if (upgradeSetupDone === null) return;
     if (upgradeSetupDone) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- encerra a máquina de estados; guardado por status !== 'idle'.
-      setUpgradeFunnelStatus('done');
+      setUpgradeRun({ tenant, status: 'done' });
       return;
     }
 
-    setUpgradeFunnelStatus('running');
+    setUpgradeRun({ tenant, status: 'running' });
 
     (async () => {
       try {
-        // Academia congelada no início (ver funnelSetupWrites.js).
-        const tenant = appId;
         // Snapshots frescos por getDocsFromServer (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot.
         const [funnelsSnap, statusesSnap] = await Promise.all([
@@ -1194,10 +1228,10 @@ useEffect(() => {
           { merge: true }
         );
 
-        setUpgradeFunnelStatus('done');
+        setUpgradeRun(prev => settleRun(prev, tenant, 'done'));
       } catch (err) {
         console.error('Erro no provisionamento do funil de upgrade', err);
-        setUpgradeFunnelStatus('error');
+        setUpgradeRun(prev => settleRun(prev, tenant, appId === tenant ? 'error' : 'idle'));
       }
     })();
   }, [appUser, loadingData, renewalFunnelStatus, upgradeFunnelStatus, upgradeSetupDone]);
