@@ -20,7 +20,7 @@ import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
-import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../components/nav/AppLink.jsx';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../lib/professores.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
@@ -335,7 +335,8 @@ function DgSection({ slug, tasks, render }) {
 
 // Renders a single (lead × categorySlug) task card.
 // Same lead with two pending categories renders TWICE — once per slug — with independent actions per main's per-category status model.
-function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, onOpen, onSnooze, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
+// Exportado para o teste em node conferir os links sem montar a tela inteira.
+export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, onSnooze, onOutcome, onReschedule, onGoalDone, onWhatsapp, onCall }) {
   const m = DG_CATEGORY_META[slug];
   if (!m) return null;
   const t = COLOR_TONES[m.color];
@@ -377,11 +378,19 @@ function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, 
 
   return (
     <div className="task-card group bg-white dark:bg-white/[0.03] rounded-xl border border-slate-200/80 dark:border-white/[0.06] shadow-card hover:shadow-card-lg hover:border-slate-300 dark:hover:border-white/10 transition fade-in">
-      <div className="p-3.5 flex items-start gap-3 cursor-pointer" onClick={() => onOpen && onOpen(task)}>
+      {/* relative: é este cabeçalho que a camada do link esticado cobre. O
+          onClick saiu, senão o clique empilharia duas entradas no histórico. */}
+      <div className="relative p-3.5 flex items-start gap-3 cursor-pointer">
         <Avatar name={task.name} size={40} />
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
-            <span className="font-semibold text-[14px] text-slate-900 dark:text-white truncate">{task.name}</span>
+            <LeadLink
+              leadId={task.id}
+              stretched
+              className="font-semibold text-[14px] text-slate-900 dark:text-white truncate outline-none after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-brand-500/40"
+            >
+              {task.name}
+            </LeadLink>
             {isHot && (
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-300">
                 <Flame size={11} /> Quente
@@ -450,7 +459,17 @@ function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, 
           <div className={`w-8 h-8 grid place-items-center rounded-lg ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
             <Icon size={15} />
           </div>
-          <IconBtn icon={<MoreHorizontal size={16} />} title="Mais" onClick={(e) => { e.stopPropagation(); onOpen && onOpen(task); }} />
+          {/* relative z-10: sem isto ele fica por baixo da camada do link
+              esticado e para de responder. */}
+          <LeadLink
+            leadId={task.id}
+            tabIndex={-1}
+            title="Abrir ficha"
+            aria-label="Abrir ficha"
+            className="relative z-10 w-8 h-8 grid place-items-center rounded-lg transition text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06]"
+          >
+            <MoreHorizontal size={16} />
+          </LeadLink>
         </div>
       </div>
 
@@ -479,24 +498,29 @@ function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE_DAYS, 
   );
 }
 
-function DoneCard({ lead, onOpen, onReschedule }) {
+export function DoneCard({ lead, onReschedule }) {
   const firstDoneSlug = (lead.categorySlugs || []).find(s => lead.categoryStatus?.[s]);
   const outcomeMeta = lead.appointmentOutcome ? getAppointmentOutcomeMeta(lead.appointmentOutcome) : null;
   const apptSlug = (lead.categorySlugs || []).find(
     s => s === DAILY_GOAL_CATEGORIES.VISITA_HOJE || s === DAILY_GOAL_CATEGORIES.AULA_HOJE
   );
+  // relative: base da camada do link esticado. Sem o onClick do container o
+  // clique simples empilha uma entrada só no histórico.
   return (
-    <div
-      onClick={() => onOpen && onOpen(lead)}
-      className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/60 dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/[0.05] cursor-pointer hover:bg-white dark:hover:bg-white/[0.04] transition"
-    >
+    <div className="relative flex items-center gap-3 px-3 py-2.5 rounded-xl bg-white/60 dark:bg-white/[0.02] border border-slate-200/70 dark:border-white/[0.05] cursor-pointer hover:bg-white dark:hover:bg-white/[0.04] transition">
       <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300 grid place-items-center pop">
         <Check size={13} />
       </div>
       <Avatar name={lead.name} size={28} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-[13px] text-slate-800 dark:text-slate-100 line-through decoration-slate-400/60 truncate">{lead.name}</span>
+          <LeadLink
+            leadId={lead.id}
+            stretched
+            className="font-medium text-[13px] text-slate-800 dark:text-slate-100 line-through decoration-slate-400/60 truncate outline-none after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-brand-500/40"
+          >
+            {lead.name}
+          </LeadLink>
           {firstDoneSlug && <DgCategoryChip slug={firstDoneSlug} />}
         </div>
         {outcomeMeta ? (
@@ -508,15 +532,43 @@ function DoneCard({ lead, onOpen, onReschedule }) {
       {apptSlug && onReschedule && (
         <button
           type="button"
-          onClick={(e) => { e.stopPropagation(); onReschedule(lead, apptSlug); }}
+          onClick={() => onReschedule(lead, apptSlug)}
           title="Remarcar agendamento"
-          className="w-7 h-7 grid place-items-center rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] transition shrink-0"
+          className="relative z-10 w-7 h-7 grid place-items-center rounded-md text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] transition shrink-0"
         >
           <RefreshCw size={13} />
         </button>
       )}
       <ChevronRight size={16} className="text-slate-400" />
     </div>
+  );
+}
+
+// Uma linha da prévia de amanhã. É link de verdade, como as outras entradas da
+// ficha, e fica num componente próprio para o teste em node conseguir
+// renderizá-la sem montar a Meta inteira.
+export function TomorrowApptRow({ lead, when }) {
+  const { Icon, label } = dgApptTypeMeta(lead);
+  return (
+    <LeadLink
+      leadId={lead.id}
+      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition text-left"
+    >
+      <Avatar name={lead.name} size={38} />
+      <div className="min-w-0 flex-1">
+        <div className="text-[14px] font-semibold text-slate-900 dark:text-white truncate">{lead.name}</div>
+        <div className="text-[12px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5 flex-wrap">
+          <span className="inline-flex items-center gap-1"><Icon size={12} /> {label}</span>
+          {lead.whatsapp && (
+            <>
+              <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/20" />
+              <span className="num">{lead.whatsapp}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <span className="num text-[12.5px] font-semibold text-slate-600 dark:text-slate-300 shrink-0">{formatHourLabel(when)}</span>
+    </LeadLink>
   );
 }
 
@@ -878,7 +930,6 @@ function ViewTab({ active, icon, label, onClick }) {
 
 function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, listenersActive = true }) {
   const toast = useToast();
-  const { openProfile } = useLeadProfile();
   const [filter, setFilter] = useState('all');
   const [view, setView] = useState('mine'); // 'mine' | 'team' (team = só gestor)
   const [now, setNow] = useState(() => new Date());
@@ -1569,7 +1620,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       slug={slug}
       now={now}
       slaOverdueDays={slaOverdueDays}
-      onOpen={(t) => openProfile(t.id)}
       onSnooze={handleSnooze}
       onOutcome={handleOutcome}
       onReschedule={(t, s) => setRescheduleTarget({ lead: t, categorySlug: s })}
@@ -1670,32 +1720,9 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
                     <p className="text-[12px] text-slate-500 dark:text-slate-400">
                       Prévia do dia seguinte. <span className="font-medium text-slate-600 dark:text-slate-300">Não conta na meta de hoje</span>.
                     </p>
-                    {tomorrowAppts.map(({ lead, when }) => {
-                      const { Icon, label } = dgApptTypeMeta(lead);
-                      return (
-                        <button
-                          key={lead.id}
-                          type="button"
-                          onClick={() => openProfile(lead.id)}
-                          className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition text-left"
-                        >
-                          <Avatar name={lead.name} size={38} />
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[14px] font-semibold text-slate-900 dark:text-white truncate">{lead.name}</div>
-                            <div className="text-[12px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5 flex-wrap">
-                              <span className="inline-flex items-center gap-1"><Icon size={12} /> {label}</span>
-                              {lead.whatsapp && (
-                                <>
-                                  <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/20" />
-                                  <span className="num">{lead.whatsapp}</span>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                          <span className="num text-[12.5px] font-semibold text-slate-600 dark:text-slate-300 shrink-0">{formatHourLabel(when)}</span>
-                        </button>
-                      );
-                    })}
+                    {tomorrowAppts.map(({ lead, when }) => (
+                      <TomorrowApptRow key={lead.id} lead={lead} when={when} />
+                    ))}
                   </>
                 )
               ) : totalSlots === 0 ? (
@@ -1772,7 +1799,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
                   <DoneCard
                     key={lead.id}
                     lead={lead}
-                    onOpen={(l) => openProfile(l.id)}
                     onReschedule={(l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
                   />
                 ))
