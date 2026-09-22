@@ -16,6 +16,7 @@ import {
   setDoc,
   serverTimestamp,
   getDocs,
+  getDocsFromServer,
   query,
   where,
   updateDoc
@@ -897,12 +898,15 @@ useEffect(() => {
       try {
         // Academia congelada no início: toda leitura e gravação desta execução
         // vai para ela, mesmo que a conta troque no meio (ver funnelSetupWrites.js).
+        // As leituras da configuração vêm sempre do servidor: um cache velho
+        // planejaria criar de novo um funil que já existe com id antigo, e sem
+        // internet a configuração falha sem carimbar em vez de planejar no escuro.
         const tenant = appId;
 
         // Passo 1: garantir EXATAMENTE um funil default. O Comercial criado tem
         // id fixo e só é criado se ainda não existir, então duas abas rodando
         // juntas caem no mesmo documento.
-        const funnelsSnap = await getDocs(tenantCol(tenant, FUNNELS_PATH));
+        const funnelsSnap = await getDocsFromServer(tenantCol(tenant, FUNNELS_PATH));
         const step1 = planDefaultFunnel(funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         if (step1.create) {
           await writeSetupWrites(tenant, [{
@@ -927,7 +931,7 @@ useEffect(() => {
         const defaultId = step1.defaultId;
 
         // Passo 2: backfill statuses sem funnelId
-        const statusesSnap = await getDocs(tenantCol(tenant, STATUSES_PATH));
+        const statusesSnap = await getDocsFromServer(tenantCol(tenant, STATUSES_PATH));
         const statusOps = [];
         statusesSnap.forEach(d => {
           const data = d.data();
@@ -938,7 +942,7 @@ useEffect(() => {
         if (statusOps.length) await commitOpsInChunks(db, statusOps, 400);
 
         // Passo 3: backfill leads sem funnelId
-        const leadsSnap = await getDocs(tenantCol(tenant, LEADS_PATH));
+        const leadsSnap = await getDocsFromServer(tenantCol(tenant, LEADS_PATH));
         const leadOps = [];
         leadsSnap.forEach(d => {
           const data = d.data();
@@ -953,16 +957,23 @@ useEffect(() => {
         // atrasada não pode enfiar Negociação em Vencidos ou Upgrade. Id fixo:
         // duas abas caem na mesma etapa.
         const [statusesAfter, funnelsAfter] = await Promise.all([
-          getDocs(tenantCol(tenant, STATUSES_PATH)),
-          getDocs(tenantCol(tenant, FUNNELS_PATH)),
+          getDocsFromServer(tenantCol(tenant, STATUSES_PATH)),
+          getDocsFromServer(tenantCol(tenant, FUNNELS_PATH)),
         ]);
+        const funnelsForNeg = funnelsAfter.docs.map(d => ({ id: d.id, ...d.data() }));
+        // Gravação por transação não aparece na hora na leitura local: o Comercial
+        // recém-criado entra pelo id que o passo 1 já conhece.
+        if (step1.create && !funnelsForNeg.some(f => f.id === defaultId)) {
+          funnelsForNeg.push({ id: defaultId, ...step1.create });
+        }
         await writeSetupWrites(tenant, planNegociacaoStages({
-          funnels: funnelsAfter.docs.map(d => ({ id: d.id, ...d.data() })),
+          funnels: funnelsForNeg,
           statuses: statusesAfter.docs.map(d => ({ id: d.id, ...d.data() })),
         }));
 
         // Define seleção inicial se ainda não houver
-        setSelectedFunnelId(prev => prev || defaultId);
+        // Só mexe na seleção da tela se a conta não trocou no meio da execução.
+        if (appId === tenant) setSelectedFunnelId(prev => prev || defaultId);
 
         // Carimba no doc de config que esta academia já foi semeada. É o que
         // impede a varredura completa de leads em toda carga futura. merge:true
@@ -1012,9 +1023,9 @@ useEffect(() => {
         // as assinaturas ao vivo ainda vazias no boot. Três leituras pequenas,
         // uma única vez por tenant na vida.
         const [funnelsSnap, statusesSnap, sourcesSnap] = await Promise.all([
-          getDocs(tenantCol(tenant, FUNNELS_PATH)),
-          getDocs(tenantCol(tenant, STATUSES_PATH)),
-          getDocs(tenantCol(tenant, SOURCES_PATH))
+          getDocsFromServer(tenantCol(tenant, FUNNELS_PATH)),
+          getDocsFromServer(tenantCol(tenant, STATUSES_PATH)),
+          getDocsFromServer(tenantCol(tenant, SOURCES_PATH))
         ]);
         const plan = planReferralSetupOps({
           funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
@@ -1064,8 +1075,8 @@ useEffect(() => {
         // Snapshots frescos por getDocs (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot.
         const [funnelsSnap, statusesSnap] = await Promise.all([
-          getDocs(tenantCol(tenant, FUNNELS_PATH)),
-          getDocs(tenantCol(tenant, STATUSES_PATH))
+          getDocsFromServer(tenantCol(tenant, FUNNELS_PATH)),
+          getDocsFromServer(tenantCol(tenant, STATUSES_PATH))
         ]);
         const plan = planExpiredSetupOps({
           funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
@@ -1118,7 +1129,7 @@ useEffect(() => {
         const tenant = appId;
         // Snapshot fresco por getDocs (não o prop): elimina a corrida com a
         // assinatura ao vivo ainda vazia no boot.
-        const funnelsSnap = await getDocs(tenantCol(tenant, FUNNELS_PATH));
+        const funnelsSnap = await getDocsFromServer(tenantCol(tenant, FUNNELS_PATH));
         const plan = planRenewalSetupOps({
           funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() }))
         });
@@ -1165,8 +1176,8 @@ useEffect(() => {
         // Snapshots frescos por getDocs (não os props): elimina a corrida com
         // as assinaturas ao vivo ainda vazias no boot.
         const [funnelsSnap, statusesSnap] = await Promise.all([
-          getDocs(tenantCol(tenant, FUNNELS_PATH)),
-          getDocs(tenantCol(tenant, STATUSES_PATH))
+          getDocsFromServer(tenantCol(tenant, FUNNELS_PATH)),
+          getDocsFromServer(tenantCol(tenant, STATUSES_PATH))
         ]);
         const plan = planUpgradeSetupOps({
           funnels: funnelsSnap.docs.map(d => ({ id: d.id, ...d.data() })),
