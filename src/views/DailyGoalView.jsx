@@ -523,7 +523,7 @@ export function DoneCard({ lead, onReschedule }) {
       <Avatar name={lead.name} size={28} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          {/* draggable={false}: mesma razão do TaskCard — a camada cobre o
+          {/* draggable={false}: mesma razão do TaskCard, a camada cobre o
               card inteiro e sem isto o card vira um endereço arrastável. */}
           <LeadLink
             leadId={lead.id}
