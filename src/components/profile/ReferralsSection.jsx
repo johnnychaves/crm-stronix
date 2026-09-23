@@ -6,7 +6,7 @@ import { deriveLeadState, getTone } from '../../lib/leadState.js';
 import { isClientLead } from '../../lib/leads.js';
 import { getSafeDateOrNull } from '../../lib/dates.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
-import { useLeadProfile } from '../../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../nav/AppLink.jsx';
 import { StateRingAvatar } from '../ui/StateRingAvatar.jsx';
 
 const fmtDia = (d) => {
@@ -30,7 +30,6 @@ function SummaryBlock({ label, value, accent }) {
 // isClientLead) — desfazer uma Venda reflete aqui sozinho.
 export function ReferralsSection({ items, loading }) {
   const { contractThresholdDays } = useGeneralConfig();
-  const { openProfile } = useLeadProfile();
   const summary = useMemo(() => summarizeReferrals(items || []), [items]);
   const now = new Date();
 
@@ -76,9 +75,8 @@ export function ReferralsSection({ items, loading }) {
             const convertido = aluno ? fmtDia(l.convertedAt) : null;
             return (
               <li key={l.id}>
-                <button
-                  type="button"
-                  onClick={() => openProfile(l.id)}
+                <LeadLink
+                  leadId={l.id}
                   className="w-full flex items-center gap-3 px-5 sm:px-8 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] transition"
                 >
                   <StateRingAvatar name={l.name} toneName={state.tone} splitHex={state.key === 'a_vencer' ? '#10B981' : null} size={34} />
@@ -99,7 +97,7 @@ export function ReferralsSection({ items, loading }) {
                   <span className={cn('text-[10.5px] font-semibold px-2 py-0.5 rounded-lg shrink-0 whitespace-nowrap', tone.soft, tone.text, tone.darkSoft, tone.darkText)}>
                     {state.label}
                   </span>
-                </button>
+                </LeadLink>
               </li>
             );
           })}
