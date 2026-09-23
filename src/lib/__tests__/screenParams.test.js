@@ -427,3 +427,66 @@ describe('contrato do contexto do Pipeline e de Clientes', () => {
     expect(ler('clientes', '?plano=Clube%2B', ctx)).toEqual({ status: [], resp: [] });
   });
 });
+
+describe('contrato do contexto de Todos os leads e da Meta', () => {
+  // A tela passa as etapas como FUNÇÃO do funil escolhido, porque a lista de
+  // etapas depende do funil e o funil é lido antes da fase na mesma passada.
+  const porFunil = { f1: [{ id: 's1', name: 'Novo' }], f2: [{ id: 's9', name: 'Cobrança' }] };
+  const lea = {
+    users, funis, situacoes, podeResp: true, respPadrao: [], funilPadrao: 'f1',
+    etapas: (fid) => porFunil[fid] || [],
+  };
+
+  it('a fase é peneirada contra as etapas do funil que veio na mesma query', () => {
+    expect(ler('leads', '?funil=f1&fase=s1', lea).stage).toEqual(['Novo']);
+    expect(ler('leads', '?funil=f2&fase=s1', lea).stage).toEqual([]);
+    expect(ler('leads', '?funil=f2&fase=s9', lea).stage).toEqual(['Cobrança']);
+  });
+
+  it('venda e perda valem em qualquer funil, porque não são etapa cadastrada', () => {
+    expect(ler('leads', `?funil=f2&fase=${FASE_VENDA},${FASE_PERDA}`, lea).stage).toEqual(['Venda', 'Perda']);
+  });
+
+  it('trocar de funil e limpar a fase cabem numa navegação só', () => {
+    const antes = ler('leads', '?funil=f1&fase=s1&atraso=1', lea);
+    expect(montar('leads', { ...antes, funnel: 'f2', stage: [] }, lea)).toBe('?funil=f2&atraso=1');
+  });
+
+  it('fase de um funil que não é mais o escolhido some sozinha na montagem', () => {
+    expect(montar('leads', { funnel: 'f2', stage: ['Novo'], resp: [], overdue: false, hot: false }, lea)).toBe('?funil=f2');
+  });
+
+  it('quente e atraso convivem com a fase, na ordem da tabela', () => {
+    expect(montar('leads', { funnel: 'f1', stage: ['Novo'], resp: ['u1'], overdue: true, hot: true }, lea))
+      .toBe('?funil=f1&fase=s1&resp=u1&atraso=1&quente=1');
+  });
+
+  it('o responsável de Todos os leads também é de gestor', () => {
+    const consultor = { ...lea, podeResp: false };
+    expect(ler('leads', '?resp=u1', consultor).resp).toEqual([]);
+  });
+
+  it('etapa cadastrada com o nome de uma coluna terminal não rouba o código dela', () => {
+    // O catálogo de etapas é livre, e a tela já trata as duas como a mesma
+    // opção (o filtro guarda o NOME). No endereço o nome vira sempre o código
+    // curto, que não some quando a etapa é apagada.
+    const comVenda = { ...lea, etapas: () => [{ id: 'sX', name: 'Venda' }] };
+    expect(montar('leads', { funnel: 'f1', stage: ['Venda'], resp: [], overdue: false, hot: false }, comVenda))
+      .toBe(`?funil=f1&fase=${FASE_VENDA}`);
+    expect(ler('leads', `?funil=f1&fase=${FASE_VENDA}`, comVenda).stage).toEqual(['Venda']);
+    expect(ler('leads', '?funil=f1&fase=sX', comVenda).stage).toEqual(['Venda']);
+  });
+
+  it('a categoria da Meta cobre as sete do dia, e cada uma volta pelo mesmo código', () => {
+    const sete = ['novo_24h', 'visita_hoje', 'aula_hoje', 'contato_hoje', 'atrasado', 'renovacao', 'vencido'];
+    for (const slug of sete) {
+      expect(ler('dailyGoal', `?cat=${slug}`, {}).cat, slug).toBe(slug);
+      expect(volta('dailyGoal', `?cat=${slug}`, {}), slug).toBe(`?cat=${slug}`);
+    }
+  });
+
+  it('a visão Equipe da Meta ficou fora desta entrega e não tem parâmetro', () => {
+    expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat']);
+    expect(ler('dailyGoal', '?visao=equipe&dia=14', {})).toEqual({ cat: 'all' });
+  });
+});
