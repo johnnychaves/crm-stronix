@@ -361,4 +361,57 @@ describe('sub-tela na decisão de rota', () => {
     expect(routeTemplate(`/${T}/configuracoes/catalogos`)).toBe('/:tenant/configuracoes');
     expect(routeTemplate(`/${T}/ficha/AbC/contratos`)).toBe('/:tenant/ficha/:leadId');
   });
+
+  it('a seção e a aba não trocam a chave da tela, então nada remonta', () => {
+    const chaves = [`/${T}/configuracoes`, `/${T}/configuracoes/equipe`, `/${T}/configuracoes/catalogos`];
+    for (const p of chaves) expect(screenKey(parseAppPath(p)), p).toBe('settings');
+    const daFicha = [`/${T}/ficha/AbC`, `/${T}/ficha/AbC/crm`, `/${T}/ficha/AbC/contratos`];
+    for (const p of daFicha) expect(screenKey(parseAppPath(p)), p).toBe('ficha:AbC');
+  });
+
+  it('a aba da ficha sobrevive ao mascaramento do id no Sentry', () => {
+    expect(routeTemplate(`/${T}/ficha/AbC/indicacoes`)).toBe('/:tenant/ficha/:leadId');
+  });
+
+  it('o título da aba do navegador continua sem a sub-tela e sem nome de gente', () => {
+    expect(documentTitle({ screen: 'settings', tenantName: 'STRONIX' })).toBe('Configurações · STRONIX · STRONILEAD');
+    expect(documentTitle({ screen: 'ficha', tenantName: 'STRONIX' })).toBe('Ficha · STRONIX · STRONILEAD');
+  });
+
+  it('a academia corrigida leva a aba da ficha junto', () => {
+    expect(decide('/ficha/AbC/contratos', consultor)).toEqual(
+      casa(`/${T}/ficha/AbC/contratos`, { screen: 'ficha', leadId: 'AbC', sub: 'contratos' }),
+    );
+  });
+
+  it('o item do menu aponta para a tela-mãe, e o endereço com seção continua sendo a mesma tela', () => {
+    // O item do menu é um AppLink para /configuracoes. Quem está em
+    // /configuracoes/catalogos continua na tela `settings`, então o item fica
+    // aceso (activeTab) e o clique nele é a volta ao estado zero da tela.
+    for (const p of [`/${T}/configuracoes`, `/${T}/configuracoes/catalogos`]) {
+      expect(parseAppPath(p).screen, p).toBe('settings');
+    }
+  });
+});
+
+describe('query nos redirects, decidido de propósito', () => {
+  it('a correção de academia leva o filtro junto quando a tela continua a mesma', () => {
+    expect(decide('/outra/clientes', admin, { search: '?sit=ativo&resp=u1' })).toEqual(
+      casa(`/${T}/clientes?sit=ativo&resp=u1`, { screen: 'clientes' }),
+    );
+    expect(decide('/pipeline', consultor, { search: '?funil=f2&atraso=1' })).toEqual(
+      casa(`/${T}/pipeline?funil=f2&atraso=1`, { screen: 'kanban' }),
+    );
+  });
+
+  it('quem cai na tela inicial por trava ou por endereço desconhecido perde a query', () => {
+    expect(decide(`/${T}/configuracoes`, consultor, { search: '?sit=ativo' })).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'so-gestor'));
+    expect(decide(`/${T}/visao-geral/xyz`, consultor, { search: '?mes=2026-08' })).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'nao-encontrada'));
+  });
+
+  it('a ficha de outra academia vira a tela inicial e o filtro que sobra é inofensivo, porque tudo é saneado contra a sessão', () => {
+    expect(decide('/outra/ficha/AbC', consultor, { search: '?pessoa=u-de-outra' })).toEqual(
+      casa(`/${T}?pessoa=u-de-outra`, { screen: 'dashboard' }),
+    );
+  });
 });

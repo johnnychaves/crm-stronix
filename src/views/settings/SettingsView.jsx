@@ -31,23 +31,8 @@ import { ZapIntegrationSection } from './ZapIntegrationSection.jsx';
 // trilho, o roteamento e os dados compartilhados.
 // ==========================================
 
-// Mapa do tab antigo (App.jsx ainda navega por ele) para o destino novo.
-const LEGACY_TABS = {
-  users: 'team',
-  transfer: 'transfer',
-  general: 'pace',
-  statuses: 'funnels',
-  tags: 'catalogs',
-  sources: 'catalogs',
-  plans: 'catalogs',
-  lossReasons: 'catalogs',
-  dores: 'catalogs'
-};
-
-const LEGACY_FOCUS = { tags: 'tags', sources: 'sources', plans: 'plans', lossReasons: 'loss', dores: 'dores' };
-
 function SettingsView({
-  initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons,
+  section, onSection, db, statuses, sources, usersList, appUser, tags, lossReasons,
   dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays
 }) {
   // Fonte de leads das Configurações (G1-flip): TODOS os buckets por query
@@ -63,8 +48,12 @@ function SettingsView({
 
   const { slaOverdueDays } = useGeneralConfig();
 
-  const [section, setSection] = useState(() => LEGACY_TABS[initialTab] || 'overview');
-  const [focus, setFocus] = useState(() => LEGACY_FOCUS[initialTab] || null);
+  // A seção vem do endereço (/configuracoes/<secao>), então trocar de seção é
+  // navegar. Antes ela era lida uma vez só no inicializador do useState, e por
+  // isso o "Configurar agora" de uma novidade não trocava a seção com a tela
+  // já aberta. O `focus` continua aqui: ele aponta um item dentro da seção, é
+  // apagado assim que a seção o usa, e não tem o que fazer num link.
+  const [focus, setFocus] = useState(null);
 
   const setup = useMemo(() => buildSetupState({
     funnels, statuses, sources, modalities, planos, lossReasons,
@@ -73,9 +62,9 @@ function SettingsView({
 
   // Atalhos da Visão geral: trocam a seção e, quando dá, apontam o item citado.
   const goTo = useCallback((next, focusId = null) => {
-    setSection(next);
     setFocus(focusId);
-  }, []);
+    onSection(next);
+  }, [onSection]);
   const clearFocus = useCallback(() => setFocus(null), []);
 
   const catalogTotal = (tags || []).length + (sources || []).length + (planos || []).length
@@ -90,6 +79,13 @@ function SettingsView({
   // condição é só o claim. É trava de tela, não de permissão: as regras já
   // deixam o admin criar lead e contrato um a um.
   const canImport = Boolean(appUser?.impersonating) || import.meta.env.DEV;
+  // Seção que a tela realmente desenha. O endereço pede uma seção, mas
+  // Importar clientes só existe na sessão assumida do super console: sem ela,
+  // /configuracoes/importacao deixaria o lado direito em branco. Cai na seção
+  // padrão, do mesmo jeito calado que uma sub-tela desconhecida cai na
+  // tela-mãe. O endereço não é reescrito: ele se acerta no primeiro clique do
+  // trilho.
+  const secao = section === 'import' && !canImport ? 'team' : section;
 
   const groups = [
     {
@@ -130,7 +126,7 @@ function SettingsView({
       label={item.label}
       count={item.count}
       attention={setup.attention[item.id]}
-      active={section === item.id}
+      active={secao === item.id}
       onClick={() => goTo(item.id)}
     />
   );
@@ -152,7 +148,7 @@ function SettingsView({
       </aside>
 
       <div className="flex-1 min-w-0">
-        {section === 'overview' && (
+        {secao === 'overview' && (
           <OverviewSection
             setup={setup}
             leads={leads}
@@ -164,44 +160,44 @@ function SettingsView({
             onNavigate={goTo}
           />
         )}
-        {section === 'team' && (
+        {secao === 'team' && (
           <TeamAccessSection
             db={db} appUser={appUser} usersList={usersList} leads={leads}
             focusId={focus} onFocusHandled={clearFocus}
           />
         )}
-        {section === 'transfer' && (
+        {secao === 'transfer' && (
           <TransferSection db={db} usersList={usersList} appUser={appUser} leads={leads} />
         )}
-        {section === 'referral-owners' && (
+        {secao === 'referral-owners' && (
           <ReferralOwnersSection db={db} leads={leads} funnels={funnels} statuses={statuses} appUser={appUser} />
         )}
-        {section === 'import' && canImport && (
+        {secao === 'import' && canImport && (
           <ImportClientsSection db={db} appUser={appUser} usersList={usersList} funnels={funnels} planos={planos} />
         )}
-        {section === 'pace' && (
+        {secao === 'pace' && (
           <PaceSection db={db} usersList={usersList} metaWeekdays={metaWeekdays} />
         )}
-        {section === 'sched' && (
+        {secao === 'sched' && (
           <SchedulingSection
             db={db} modalities={modalities} units={units}
             trialClassOptions={trialClassOptions} leads={leads}
           />
         )}
-        {section === 'funnels' && (
+        {secao === 'funnels' && (
           <FunnelsSection
             db={db} funnels={funnels} statuses={statuses} leads={leads}
             focusId={focus} onFocusHandled={clearFocus}
           />
         )}
-        {section === 'catalogs' && (
+        {secao === 'catalogs' && (
           <CatalogsSection
             db={db} tags={tags} sources={sources} planos={planos}
             lossReasons={lossReasons} dores={dores} modalities={modalities} leads={leads}
             focusId={focus} onFocusHandled={clearFocus}
           />
         )}
-        {section === 'zap' && (
+        {secao === 'zap' && (
           <ZapIntegrationSection db={db} appUser={appUser} />
         )}
       </div>

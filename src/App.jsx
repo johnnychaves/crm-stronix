@@ -197,7 +197,10 @@ function AppInner() {
   // abre o Operacional. Com a ficha aberta, activeTab é a tela de onde ela foi
   // aberta (menu aceso e título da origem), ou 'ficha' quando ela foi aberta
   // direto numa aba nova.
-  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab } = screenState(shown, location.state, appUser);
+  // `sub` é a seção das Configurações ou a aba da ficha, já com o padrão da
+  // tela quando o endereço não traz segmento. Ela NÃO entra na screenKey: o
+  // AppErrorBoundary e a rolagem não podem remontar a cada troca de seção.
+  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab, sub } = screenState(shown, location.state, appUser);
   // As três abas da Visão geral. O grupo do menu fica aberto enquanto uma
   // delas está ativa; fora delas, vale o toggle do usuário.
   const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashCrm' || resolvedTab === 'dashGerencial';
@@ -1338,13 +1341,21 @@ useEffect(() => {
   // busca global aparecem em qualquer tela, e fora das telas de lista o
   // endereço não tem funil, então ali vale o guardado, como sempre valeu.
   const entryFunnelId = funnelFromSearch(resolvedTab, location.search, { funis: funnels, funilPadrao: selectedFunnelId });
-  // "Configurar agora" da novidade abre Configurações já em Metas e ritmo. A
-  // seção vai no state da navegação (SettingsView lê location.state.secao), e
-  // o menu, sem state, abre em Equipe e acessos. Com Configurações já aberta
-  // nada muda, igual a antes: a seção no endereço é da entrega 2.
+  // Trocar de seção das Configurações ou de aba da ficha é trocar o endereço.
+  // Quem já está na tela troca a entrada atual, porque sub-tela não é tela: o
+  // voltar continua levando à tela anterior, e na ficha ele continua levando à
+  // lista. Quem vem de outra tela empilha, senão o "Configurar agora" de uma
+  // novidade apagaria do histórico a tela em que a pessoa estava. O state vai
+  // explícito porque o navigate não o repassa sozinho, e é nele que vive a
+  // origem da ficha.
+  const goToSub = (screen, subId, extra) => {
+    const href = hrefFor(sessionTenant, screen, { sub: subId, ...extra });
+    if (href) navigate(href, { replace: shown.screen === screen, state: location.state });
+  };
+  // "Configurar agora" da novidade abre Configurações já em Metas e ritmo, e
+  // agora troca a seção com a tela já aberta, porque a seção está no endereço.
   const openGoalSettings = () => {
-    const href = menuHref('settings');
-    if (href) navigate(href, { state: { secao: 'general' }, replace: href === location.pathname });
+    goToSub('settings', 'pace');
     closeDrawer();
   };
 
@@ -1694,6 +1705,8 @@ useEffect(() => {
               <LeadProfileRoute
                 key={profileLeadId ?? 'sem-id'}
                 leadId={profileLeadId}
+                tab={sub}
+                onTab={(id) => goToSub('ficha', id, { leadId: profileLeadId })}
                 tenantId={appUser.tenantId}
                 sessionKey={sessionKey}
                 dataReady={!loadingData && (contractsTenant === appUser.tenantId || loadError)}
@@ -1738,7 +1751,7 @@ useEffect(() => {
                   atalho de presença, hoje exclusividade da Meta Diária). */}
               {activeTab === 'aulas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView initialTab={location.state?.secao ?? 'users'} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
               {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}

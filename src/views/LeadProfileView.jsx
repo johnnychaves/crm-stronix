@@ -112,7 +112,7 @@ function TabCount({ n, active }) {
 // abriu direto numa aba nova). onDeleteStart e onDeleteFailed avisam a rota
 // para trocar a ficha por "Excluindo a ficha…" e devolver se a exclusão falhar.
 // listenersActive é o portão de ociosidade do App, repassado à linha do tempo.
-function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
+function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFailed, listenersActive = true, appUser, statuses, tags, lossReasons, usersList, db, funnels }) {
   // Timeline por query própria (G2): histórico COMPLETO do lead (índice #10),
   // ao vivo. Antes vinha do prop global filtrado por leadId — que pós-G2 é só o
   // mês corrente. A ficha remonta por lead (key), então o hook não reseta.
@@ -147,9 +147,6 @@ function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listener
 
   // Composer tab — drives which form is shown in the activity Composer card.
   const [composerTab, setComposerTab] = useState('note');
-
-  // Aba ativa da ficha (timeline | crm | contratos | referrals).
-  const [activeProfileTab, setActiveProfileTab] = useState('timeline');
 
   // Foto do cliente: menu (galeria/câmera) + gravação. No perfil não há botão
   // Salvar — escolheu/capturou, sobe pro Storage e grava na hora.
@@ -659,6 +656,12 @@ function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listener
 
   // Ciclo de vida (cliente) p/ os selos do cabeçalho e a aba Indicações.
   const isClient = lead.lifecycleStage === 'cliente' || isLeadConverted(lead);
+  // Aba ativa da ficha, vinda do endereço. A aba Indicações só existe para
+  // cliente, então um link dela numa ficha de lead abre a Linha do tempo. Não é
+  // redirect de propósito: se a pessoa é cliente só se sabe depois de o
+  // documento carregar, e um redirect ali trocaria o endereço toda vez que a
+  // ficha demora.
+  const activeProfileTab = tab === 'referrals' && !isClient ? 'timeline' : (tab || 'timeline');
   // Funil UPGRADE (lib/upgradeFunnel.js): é o único funil que um cliente pode
   // ocupar, e a etapa dele mora em upgradeStageId, não em status.
   const upgradeFunnel = getUpgradeFunnel(safeFunnels);
@@ -878,7 +881,7 @@ function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listener
                       {upgradeFunnel
                         ? 'Aqui você coloca o cliente no funil Upgrade ou muda a etapa dele lá. A matrícula e o contrato ficam na '
                         : 'O funil Upgrade ainda não foi criado nesta academia: ele nasce quando um gestor abre o app. A matrícula e o contrato ficam na '}
-                      <button type="button" onClick={() => setActiveProfileTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
+                      <button type="button" onClick={() => onTab('contratos')} className="font-semibold underline underline-offset-2">aba Contratos</button>.
                     </div>
                   </div>
                 )}
@@ -1383,7 +1386,7 @@ function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listener
       </section>
 
       {/* ===== Abas ===== */}
-      <Tabs value={activeProfileTab} onValueChange={setActiveProfileTab}>
+      <Tabs value={activeProfileTab} onValueChange={onTab}>
         <TabsList variant="line" className="gap-1 border-b border-slate-200 dark:border-white/[0.08] w-full justify-start rounded-none p-0 h-11">
           <TabsTrigger
             value="timeline"
@@ -1576,7 +1579,7 @@ function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listener
                       <span className="num text-[11px] font-bold px-1.5 h-[18px] grid place-items-center rounded-md bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">{upcomingAppointments.length}</span>
                     )}
                   </div>
-                  <Btn kind="soft" size="sm" icon={<Plus size={13} />} onClick={() => { setActiveProfileTab('crm'); setComposerTab('schedule'); }}>Agendar</Btn>
+                  <Btn kind="soft" size="sm" icon={<Plus size={13} />} onClick={() => { onTab('crm'); setComposerTab('schedule'); }}>Agendar</Btn>
                 </div>
                 <div className="p-4">
                   {upcomingAppointments.length === 0 ? (
