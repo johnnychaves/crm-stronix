@@ -386,12 +386,16 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
           <div className="flex items-center gap-2 min-w-0 flex-wrap">
             {/* draggable={false}: a camada do ::after é da âncora, então sem
                 isto arrastar em qualquer ponto do cabeçalho arrastaria o
-                endereço da ficha para outra aba ou para um campo de texto. */}
+                endereço da ficha para outra aba ou para um campo de texto.
+                after:rounded-t-xl, e não rounded-xl: aqui a camada cobre só o
+                bloco de cima do card, então arredondar os quatro cantos deixa
+                dois cantinhos mortos na divisa com o rodapé e desenha canto
+                arredondado do anel de foco no meio do card. */}
             <LeadLink
               leadId={task.id}
               stretched
               draggable={false}
-              className="font-semibold text-[14px] text-slate-900 dark:text-white truncate outline-none after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-brand-500/40"
+              className="font-semibold text-[14px] text-slate-900 dark:text-white truncate outline-none after:rounded-t-xl focus-visible:after:ring-2 focus-visible:after:ring-brand-500/40"
             >
               {task.name}
             </LeadLink>
@@ -468,8 +472,9 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
           <LeadLink
             leadId={task.id}
             tabIndex={-1}
+            draggable={false}
             title="Abrir ficha"
-            aria-label={`Abrir ficha de ${task.name}`}
+            aria-label={`Abrir ficha de ${task.name || 'lead sem nome'}`}
             className="relative z-10 w-8 h-8 grid place-items-center rounded-lg transition text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06]"
           >
             <MoreHorizontal size={16} />
@@ -553,13 +558,16 @@ export function DoneCard({ lead, onReschedule }) {
 
 // Uma linha da prévia de amanhã. É link de verdade, como as outras entradas da
 // ficha, e fica num componente próprio para o teste em node conseguir
-// renderizá-la sem montar a Meta inteira.
+// renderizá-la sem montar a Meta inteira. A âncora é a linha inteira, então
+// draggable={false}, senão arrastar em qualquer ponto dela arrastaria o
+// endereço da ficha para outra aba ou para um campo de texto.
 export function TomorrowApptRow({ lead, when }) {
   const { Icon, label } = dgApptTypeMeta(lead);
   return (
     <LeadLink
       leadId={lead.id}
-      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition"
+      draggable={false}
+      className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200/80 dark:border-white/[0.06] bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/10 transition outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
     >
       <Avatar name={lead.name} size={38} />
       <div className="min-w-0 flex-1">

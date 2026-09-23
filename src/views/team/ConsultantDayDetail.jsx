@@ -1,6 +1,7 @@
 import { LeadLink } from '../../components/nav/AppLink.jsx';
 import { DG_CATEGORY_ORDER, DG_CATEGORY_META, overdueDaysOf } from '../../lib/dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES, getLeadAppointmentDate, getLeadAppointmentType } from '../../lib/leads.js';
+import { isValidLeadId } from '../../lib/routes.js';
 import { cn } from '../../lib/utils.js';
 
 const fmtHora = (d) => d instanceof Date
@@ -81,7 +82,15 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                 <ul className="space-y-1">
                   {c.itens.map(({ lead, done, text, critical }) => (
                     <li key={lead.id}>
-                      <LeadLink leadId={lead.id} className="w-full flex items-center gap-2 group">
+                      {/* draggable={false}: a âncora é a linha inteira, então
+                          sem isto arrastar em qualquer ponto dela arrastaria o
+                          endereço da ficha para outra aba ou para um campo de
+                          texto. */}
+                      <LeadLink
+                        leadId={lead.id}
+                        draggable={false}
+                        className="w-full flex items-center gap-2 group rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+                      >
                         <i
                           className={cn('size-[7px] rounded-full shrink-0', done ? 'bg-success' : critical ? 'bg-danger' : 'bg-brand-200 dark:bg-brand-500/50')}
                           aria-hidden="true"
@@ -133,14 +142,19 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                 // Lead que já saiu da base ativa não resolve nome: mostra o
                 // tipo da ação, que é o que o sistema tem.
                 const temNome = Boolean(a.leadName) && a.leadName !== '—';
-                // A cor de hover deixa de depender de group-enabled: ":enabled"
-                // só existe em controle de formulário, nunca num <a>.
+                // Mesma pergunta que o LeadLink faz por dentro, feita uma vez
+                // só: assim a cor de hover e o wrapper nunca discordam. Com
+                // `a.leadId` a linha azulava no hover mesmo quando o id não
+                // servia para endereço e o LeadLink virava <span>.
+                // A cor de hover também deixa de depender de group-enabled:
+                // ":enabled" só existe em controle de formulário, nunca num <a>.
+                const ehLink = isValidLeadId(a.leadId);
                 const conteudo = (
                   <>
                     <i className="size-[7px] rounded-full bg-accent-500 shrink-0" aria-hidden="true" />
                     <span className={cn(
                       'flex-1 min-w-0 truncate text-[12px] transition',
-                      a.leadId && 'group-hover:text-brand-600 dark:group-hover:text-brand-400',
+                      ehLink && 'group-hover:text-brand-600 dark:group-hover:text-brand-400',
                       !temNome && 'text-slate-500 dark:text-slate-400'
                     )}>
                       {temNome ? a.leadName : a.label}
@@ -150,9 +164,14 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                 );
                 return (
                   <li key={`${a.leadId || 'sem'}-${i}`}>
-                    {/* Ação cujo lead saiu da base não vira link. */}
-                    {a.leadId ? (
-                      <LeadLink leadId={a.leadId} className="w-full flex items-center gap-2 group">
+                    {/* Ação cujo lead saiu da base não vira link. draggable={false}
+                        porque a âncora é a linha inteira. */}
+                    {ehLink ? (
+                      <LeadLink
+                        leadId={a.leadId}
+                        draggable={false}
+                        className="w-full flex items-center gap-2 group rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+                      >
                         {conteudo}
                       </LeadLink>
                     ) : (

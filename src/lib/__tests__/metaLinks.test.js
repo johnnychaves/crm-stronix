@@ -53,7 +53,19 @@ describe('Meta diária', () => {
   });
 
   it('TaskCard: o cabeçalho é o ancestral posicionado do link', () => {
-    expect(taskCard()).toContain('class="relative p-3.5 flex items-start gap-3 cursor-pointer"');
+    // Só o que importa: `relative` e o padding que identifica o cabeçalho.
+    // Prender a lista inteira de classes quebraria o teste a cada reordenação
+    // de utilitário Tailwind, sem nenhuma mudança de comportamento.
+    expect(taskCard()).toMatch(/class="relative [^"]*p-3\.5/);
+  });
+
+  it('TaskCard: a camada esticada arredonda só os cantos de cima', () => {
+    // A camada cobre o cabeçalho, não o card inteiro. Com after:rounded-xl
+    // sobram dois cantinhos mortos na divisa com o rodapé e o anel de foco
+    // desenha canto arredondado no meio do card.
+    const html = taskCard();
+    expect(html).toContain('after:rounded-t-xl');
+    expect(html).not.toContain('after:rounded-xl');
   });
 
   it('TaskCard: o atalho do canto abre a ficha por cima do link esticado', () => {
@@ -62,7 +74,34 @@ describe('Meta diária', () => {
     expect(i).toBeGreaterThan(-1);
     // A tag inteira: o class sai depois do title no HTML renderizado.
     const abertura = html.lastIndexOf('<a ', i);
-    expect(html.slice(abertura, html.indexOf('>', i))).toContain('relative z-10');
+    const tag = html.slice(abertura, html.indexOf('>', i));
+    expect(tag).toContain('relative z-10');
+    // Sem isto o leitor de tela anuncia um link sem nome nenhum, porque o
+    // conteúdo é só o ícone de reticências.
+    expect(tag).toContain('aria-label="Abrir ficha de Ana Lima"');
+  });
+
+  it('TaskCard: lead sem nome não vira "Abrir ficha de undefined"', () => {
+    const html = render(createElement(TaskCard, {
+      task: { ...TASK, name: '' }, slug: 'novo_24h', now: new Date('2026-09-22T10:00:00'),
+    }));
+    expect(html).toContain('aria-label="Abrir ficha de lead sem nome"');
+  });
+
+  it('os links da Meta não são arrastáveis', () => {
+    // A camada esticada é da âncora, então sem draggable={false} arrastar em
+    // qualquer ponto do card arrastaria o endereço da ficha para outra aba ou
+    // para um campo de texto.
+    expect(taskCard().match(/draggable="false"/g)).toHaveLength(2);
+    expect(doneCard().match(/draggable="false"/g)).toHaveLength(1);
+  });
+
+  it('TaskCard: id que não serve para endereço vira texto sem link', () => {
+    const html = render(createElement(TaskCard, {
+      task: { ...TASK, id: 'a/b' }, slug: 'novo_24h', now: new Date('2026-09-22T10:00:00'),
+    }));
+    expect(html).not.toContain('<a ');
+    expect(html).toContain('Ana Lima');
   });
 
   it('TaskCard: WhatsApp, Ligar, Adiar e Concluir continuam botões', () => {
@@ -97,18 +136,25 @@ describe('Meta diária', () => {
     // do navegador passaria a exigir dois cliques. Nenhum dos dois usa hook,
     // então dá para chamá-los como função.
     const card = TaskCard({ task: TASK, slug: 'novo_24h', now: new Date('2026-09-22T10:00:00') });
-    expect(card.props.children[0].props.onClick).toBeUndefined();
+    // Pelo className, não pela posição: inserir qualquer elemento antes do
+    // cabeçalho moveria children[0] e o teste seguiria verde sem conferir nada.
+    const cabecalho = card.props.children.find(
+      (f) => typeof f?.props?.className === 'string' && f.props.className.startsWith('relative p-3.5')
+    );
+    expect(cabecalho).toBeDefined();
+    expect(cabecalho.props.onClick).toBeUndefined();
     const done = DoneCard({ lead: { ...TASK }, onReschedule: () => {} });
     expect(done.props.onClick).toBeUndefined();
   });
 
-  it('prévia de amanhã: a linha é link para a ficha', () => {
+  it('prévia de amanhã: a linha é link para a ficha e não é arrastável', () => {
     const html = render(createElement(TomorrowApptRow, {
       lead: { id: 'abc123', name: 'Ana Lima', whatsapp: '11999990000' },
       when: new Date('2026-09-23T09:00:00'),
     }));
     expect(html).toContain('href="/acad/ficha/abc123"');
     expect(html).toContain('Ana Lima');
+    expect(html).toContain('draggable="false"');
   });
 });
 
@@ -127,6 +173,23 @@ describe('visão Equipe', () => {
     const html = detalhe();
     expect(html).toContain('href="/acad/ficha/abc123"');
     expect(html.match(/href="\/acad\/ficha\/abc123"/g).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('as linhas da carteira e da prospecção não são arrastáveis', () => {
+    // A âncora é a linha inteira nos dois lados, então sem isto arrastar em
+    // qualquer ponto dela arrastaria o endereço da ficha.
+    const html = detalhe();
+    expect(html.match(/draggable="false"/g)).toHaveLength(2);
+  });
+
+  it('id que não serve para endereço não vira link nem azula no hover', () => {
+    const html = render(createElement(ConsultantDayDetail, {
+      row: { ...row, processed: [], prospAcoes: [{ leadId: 'a/b', leadName: 'Ana Lima', label: 'Mensagem', at: new Date('2026-09-22T09:00:00') }] },
+      slaOverdueDays: 3,
+    }));
+    expect(html).not.toContain('<a ');
+    expect(html).toContain('Ana Lima');
+    expect(html).not.toContain('group-hover:text-brand-600');
   });
 
   it('a prospecção sem lead fica sem link e sem hover de link', () => {
