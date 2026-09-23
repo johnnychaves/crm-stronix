@@ -1,6 +1,7 @@
-import { useLeadProfile } from '../../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../../components/nav/AppLink.jsx';
 import { DG_CATEGORY_ORDER, DG_CATEGORY_META, overdueDaysOf } from '../../lib/dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES, getLeadAppointmentDate, getLeadAppointmentType } from '../../lib/leads.js';
+import { isValidLeadId } from '../../lib/routes.js';
 import { cn } from '../../lib/utils.js';
 
 const fmtHora = (d) => d instanceof Date
@@ -40,8 +41,6 @@ function metaDoLead(lead, slug, slaOverdueDays) {
 // supõe que a prospecção não tem nome de lead, mas tem:
 // listVolumeActionsInRange devolve leadId e leadName desde a PR C.
 function ConsultantDayDetail({ row, slaOverdueDays }) {
-  const { openProfile } = useLeadProfile();
-
   const porCategoria = DG_CATEGORY_ORDER.map((slug) => {
     const itens = (row.processed || [])
       .filter((l) => l.categorySlugs.includes(slug))
@@ -81,31 +80,44 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                 </div>
                 <div className="h-px bg-slate-200 dark:bg-white/[0.08] my-1.5" />
                 <ul className="space-y-1">
-                  {c.itens.map(({ lead, done, text, critical }) => (
-                    <li key={lead.id}>
-                      <button
-                        type="button"
-                        onClick={() => openProfile(lead.id)}
-                        className="w-full flex items-center gap-2 text-left group"
-                      >
-                        <i
-                          className={cn('size-[7px] rounded-full shrink-0', done ? 'bg-success' : critical ? 'bg-danger' : 'bg-brand-200 dark:bg-brand-500/50')}
-                          aria-hidden="true"
-                        />
-                        {/* Concluído recua: é lista de trabalho, não relatório —
-                            o olho tem que cair no que falta. */}
-                        <span className={cn(
-                          'flex-1 min-w-0 truncate text-[12px] transition group-hover:text-brand-600 dark:group-hover:text-brand-400',
-                          done && 'line-through opacity-55'
-                        )}>
-                          {lead.name || 'Sem nome'}
-                        </span>
-                        <span className={cn('shrink-0 text-[10.5px] num', critical ? 'text-rose-700 dark:text-rose-300 font-semibold' : 'text-slate-400 dark:text-slate-500')}>
-                          {text}
-                        </span>
-                      </button>
-                    </li>
-                  ))}
+                  {c.itens.map(({ lead, done, text, critical }) => {
+                    // Mesma pergunta que o LeadLink faz por dentro, igual ao
+                    // ramo da prospecção: cobre o id quebrado, que é o caso
+                    // real. Fora do Provider o LeadLink ainda degrada sozinho.
+                    // Sem isto o nome azula no hover mesmo quando o LeadLink
+                    // vira <span> e nada abre.
+                    const ehLink = isValidLeadId(lead.id);
+                    return (
+                      <li key={lead.id}>
+                        {/* draggable={false}: a âncora é a linha inteira, então
+                            sem isto arrastar em qualquer ponto dela arrastaria o
+                            endereço da ficha para outra aba ou para um campo de
+                            texto. */}
+                        <LeadLink
+                          leadId={lead.id}
+                          draggable={false}
+                          className="w-full flex items-center gap-2 group rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+                        >
+                          <i
+                            className={cn('size-[7px] rounded-full shrink-0', done ? 'bg-success' : critical ? 'bg-danger' : 'bg-brand-200 dark:bg-brand-500/50')}
+                            aria-hidden="true"
+                          />
+                          {/* Concluído recua: é lista de trabalho, não
+                              relatório, o olho tem que cair no que falta. */}
+                          <span className={cn(
+                            'flex-1 min-w-0 truncate text-[12px] transition',
+                            ehLink && 'group-hover:text-brand-600 dark:group-hover:text-brand-400',
+                            done && 'line-through opacity-55'
+                          )}>
+                            {lead.name || 'Sem nome'}
+                          </span>
+                          <span className={cn('shrink-0 text-[10.5px] num', critical ? 'text-rose-700 dark:text-rose-300 font-semibold' : 'text-slate-400 dark:text-slate-500')}>
+                            {text}
+                          </span>
+                        </LeadLink>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ))}
@@ -139,23 +151,44 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                 // Lead que já saiu da base ativa não resolve nome: mostra o
                 // tipo da ação, que é o que o sistema tem.
                 const temNome = Boolean(a.leadName) && a.leadName !== '—';
+                // Mesma pergunta que o LeadLink faz por dentro, feita uma vez
+                // só: cobre o id quebrado, que é o caso real. Fora do Provider
+                // o LeadLink ainda degrada sozinho. Com `a.leadId` a linha
+                // azulava no hover mesmo quando o id não servia para endereço
+                // e o LeadLink virava <span>.
+                // A cor de hover também deixa de depender de group-enabled:
+                // ":enabled" só existe em controle de formulário, nunca num <a>.
+                const ehLink = isValidLeadId(a.leadId);
+                const conteudo = (
+                  <>
+                    <i className="size-[7px] rounded-full bg-accent-500 shrink-0" aria-hidden="true" />
+                    <span className={cn(
+                      'flex-1 min-w-0 truncate text-[12px] transition',
+                      ehLink && 'group-hover:text-brand-600 dark:group-hover:text-brand-400',
+                      !temNome && 'text-slate-500 dark:text-slate-400'
+                    )}>
+                      {temNome ? a.leadName : a.label}
+                    </span>
+                    <span className="shrink-0 text-[10.5px] num text-slate-400 dark:text-slate-500">{fmtHora(a.at)}</span>
+                  </>
+                );
                 return (
                   <li key={`${a.leadId || 'sem'}-${i}`}>
-                    <button
-                      type="button"
-                      disabled={!a.leadId}
-                      onClick={() => a.leadId && openProfile(a.leadId)}
-                      className="w-full flex items-center gap-2 text-left group disabled:cursor-default"
-                    >
-                      <i className="size-[7px] rounded-full bg-accent-500 shrink-0" aria-hidden="true" />
-                      <span className={cn(
-                        'flex-1 min-w-0 truncate text-[12px] transition group-enabled:group-hover:text-brand-600 dark:group-enabled:group-hover:text-brand-400',
-                        !temNome && 'text-slate-500 dark:text-slate-400'
-                      )}>
-                        {temNome ? a.leadName : a.label}
+                    {/* Ação cujo lead saiu da base não vira link. draggable={false}
+                        porque a âncora é a linha inteira. */}
+                    {ehLink ? (
+                      <LeadLink
+                        leadId={a.leadId}
+                        draggable={false}
+                        className="w-full flex items-center gap-2 group rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+                      >
+                        {conteudo}
+                      </LeadLink>
+                    ) : (
+                      <span className="w-full flex items-center gap-2 group cursor-default">
+                        {conteudo}
                       </span>
-                      <span className="shrink-0 text-[10.5px] num text-slate-400 dark:text-slate-500">{fmtHora(a.at)}</span>
-                    </button>
+                    )}
                     <span className="block pl-[15px] text-[10.5px] text-slate-400 dark:text-slate-500">
                       {temNome ? a.label : 'lead fora da base ativa'}
                     </span>

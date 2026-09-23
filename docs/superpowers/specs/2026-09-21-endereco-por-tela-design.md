@@ -51,6 +51,9 @@ Ficam para depois, sem data:
 8. Console do super-admin sem endereços nesta entrega. Voltar do navegador não fecha janelas nesta entrega.
 9. Título da aba na ficha: só "Ficha", sem o nome do lead, porque o título fica no histórico do navegador da recepção.
 10. Nome, telefone, CPF e texto de busca nunca vão para o endereço.
+11. A setinha do canto do card do Pipeline abre a ficha em OUTRA GUIA no clique simples (decisão de 22/09/2026, depois do teste do PR 2). O clique no corpo do card continua abrindo na mesma guia. Ctrl+clique ou botão do meio na setinha abre a guia em segundo plano, e é assim que se dispara vários cards sem sair do Pipeline: nenhum site consegue forçar segundo plano num clique comum. Duas consequências, aceitas junto com a decisão:
+    - **Sem "Manter conectado", a guia nova cai no login.** É a decisão 7 aparecendo aqui. Quem entra com a caixa desmarcada tem a sessão gravada no `sessionStorage` do navegador (`persistenceKind` devolve `session`), e guia nova nasce com esse armazenamento vazio, tanto faz o `rel="noopener"`, porque quem zera é o `target="_blank"`. Medido em Chrome: aba aberta por link não herda nada. Fica assim de propósito: quem pediu para não ficar conectado está pedindo exatamente isso. Com "Manter conectado" marcado, que é o caso do time, a guia nova abre a ficha direto.
+    - **No toque a setinha não aparece.** Abrir vários cards é uso de mouse. No celular e no tablet um toque na setinha levaria para fora do app, com o app carregando do zero na guia nova e sem o Voltar. Ali o toque no corpo do card já abre a ficha na mesma tela, então nada se perde.
 
 ## Endereços
 
@@ -157,19 +160,19 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 ### Links
 
 - `src/components/nav/AppLink.jsx`: por cima do `<Link>` do React Router, que só intercepta o clique esquerdo sem modificador. `onNavigate` roda só quando o clique vira navegação nesta aba (fechar sino, busca e menu do celular).
-- `LeadLink`: lê do `LeadProfileContext` o `leadHref` e o `from`, e passa `state={{ from }}`. Id inválido vira `<span>`.
+- `LeadLink`: lê do `LeadProfileContext` o `leadHref` e o `from`, e passa `state={{ from }}`. Id inválido vira `<span>` com `className`, `title` e os filhos.
 - O `LeadProfileContext` ganha `leadHref` e `from`. Não se cria contexto novo, porque o arquivo atual já tem a exceção do react-refresh.
 - O `AppInner` monta os seus links direto com `hrefFor(appUser.tenantId, ...)`. Hook que lê contexto não enxerga o Provider do próprio componente.
 - **Menu:** `SidebarItem` e `SidebarSubItem` com `href` viram `AppLink` com `aria-current="page"`. Sem `href` continuam botão (Suporte). Os acordeões continuam botão.
 - **PersonaMenu:** Perfil da academia e Plano e faturas com `DropdownMenuItem asChild` mais `AppLink`.
 - **Menu do celular:** `isMobileMenuOpen = drawerKey === location.key`. Abrir grava a key atual. O `onNavigate` dos itens zera. Assim o voltar do navegador fecha o menu e não o reabre.
-- **Card do Pipeline:** o link envolve o bloco de cima e o lado esquerdo do rodapé, com `draggable={false}`. Mover e Abrir ficam fora do link. O `article` perde o `onClick` e continua sendo o que se arrasta. Os tooltips do card (motivo da perda, chips, consultor) continuam funcionando.
-- **TaskCard e DoneCard da Meta:** o nome vira link esticado (`after:absolute after:inset-0`), o container perde o `onClick` e ganha `relative`, e os botões internos ganham `relative z-10`.
-- **Listas** (Leads, Clientes, Aulas, Visitas), prévia de amanhã, listas da visão Equipe, aba Indicações e "Indicado por": `LeadLink` direto. No `ConsultantDayDetail`, `group-enabled:group-hover:` vira `group-hover:` no ramo com link.
+- **Card do Pipeline:** são DOIS links com o mesmo destino, um em volta do bloco de cima e outro no nome do consultor do rodapé, os dois com `draggable={false}` (implementado assim em 22/09; um link só exigiria tirar as ações do fluxo com `position: absolute`, o que mudaria a altura do card no hover). O do rodapé leva `tabIndex={-1}`, e um `aria-label` que começa pelo nome do consultor e termina no destino. Mover e a setinha ficam fora do link. O `article` perde o `onClick` e continua sendo o que se arrasta. Os tooltips do card (motivo da perda, chips, consultor) continuam funcionando porque estão DENTRO dos links, e id que não serve para endereço vira `<span>` que guarda `className`, `title` e os filhos, então o tooltip sobrevive e o `aria-label` não. Dois pedaços do rodapé deixaram de abrir a ficha, de propósito: o avatar de iniciais do consultor e o número da direita, que é onde ficam as ações (o número já sumia no hover). A setinha do rodapé vira um link com `target="_blank"` e `rel="noopener"` (decisão 11), com o rótulo dizendo que abre em outra guia, `pointer-coarse:hidden` para sumir no toque e `tabIndex={-1}` como o do consultor: os três links do card levam à mesma ficha, então o Tab para uma vez só, no link de cima, e segue para o botão Mover, que aparece porque o link está focado. As ações do rodapé passam a aparecer com `group-has-[:focus-visible]:` no lugar de `group-focus-within:`: depois de um clique de mouse o foco fica no link, e com `focus-within` o card ficava travado mostrando as ações e escondendo o valor até a pessoa clicar em outro lugar.
+- **TaskCard e DoneCard da Meta:** o nome vira link esticado (`after:absolute after:inset-0`), o container perde o `onClick` e ganha `relative`, e os botões internos ganham `relative z-10`. Os dois links esticados também levam `draggable={false}`: a camada do `::after` é da âncora, então sem isso arrastar em qualquer ponto do cabeçalho viraria arrasto do endereço da ficha.
+- **Listas** (Leads, Clientes, Aulas, Visitas), prévia de amanhã, listas da visão Equipe, aba Indicações e "Indicado por": `LeadLink` direto. No `ConsultantDayDetail`, `group-enabled:group-hover:` vira `group-hover:` no ramo com link. Três blocos viraram componente de módulo para o teste em node conseguir renderizá-los sem montar a tela inteira: `SearchResultRow` (busca), `TomorrowApptRow` (prévia de amanhã) e `NotificationRow` (sino, antes `Row`). `KanbanCard`, `TaskCard` e `DoneCard` passaram a ser exportados pelo mesmo motivo.
 - **Busca global:** a escolha sai do `onMouseDown`. O mousedown só faz `preventDefault` com `button === 0`. O resultado vira `LeadLink` com `tabIndex={-1}` e `onNavigate` que fecha e limpa. Enter abre na mesma aba.
 - **Sino:** "Passaram para você" e "Indicações que chegaram pelo link" viram link. As novidades continuam abrindo a Central de ajuda.
 - Continuam botão: "Ir para o pipeline" do Gerencial (um teste exige `<button>` sem Router), "Configurar agora", Cadastrar lead, Suporte, Central de ajuda, Sair, Acessar como, Voltar e Excluir da ficha.
-- O `openProfile` continua memoizado, porque o `KanbanCard` é `memo`.
+- O `openProfile` continua memoizado, agora porque ele entra no valor memoizado do `LeadProfileContext`: se mudasse a cada render, todo mundo que lê o contexto renderizaria de novo.
 
 ### Configurações
 
@@ -230,7 +233,7 @@ O `replaceState` cru de `App.jsx:263-273` sai. Ele apagava o resto do caminho e 
 
 1. **Várias abas sem susto.** Persistência do login e funis com id fixo. Não toca em tela.
 2. **Endereços.** Peça de rotas, `routes.js`, `tenantSlug.js` e validação no provisionamento, decisão de rota, login e saída, ficha por endereço, menu e PersonaMenu como links, menu do celular, Configurações, rolagem, erro, título, Sentry, custo de leitura, consertos pequenos e documentação.
-3. **Ctrl+clique em tudo que abre ficha.** Card do Pipeline, listas, Meta, visão Equipe, busca, sino, Indicações e "Indicado por".
+3. **Ctrl+clique em tudo que abre ficha.** Card do Pipeline, listas, Meta, visão Equipe, busca, sino, Indicações e "Indicado por". Entregue em 22/09/2026, com a setinha do card abrindo em outra guia (decisão 11) e uma varredura no CI cobrando que nenhum arquivo de `src/views`, `src/components`, `src/modals`, `src/hooks` e `src/contexts` volte a abrir ficha por `onClick`.
 
 ## Testes automáticos (node, sem jsdom)
 

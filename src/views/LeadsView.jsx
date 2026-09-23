@@ -13,7 +13,7 @@ import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
 import { StatusBadge } from '../components/ui/Badges.jsx';
 import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
-import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../components/nav/AppLink.jsx';
 
 // Cor da etapa (para chip de fase e dot). Venda/Perda mapeiam para os mesmos
 // tokens usados no Kanban; as demais vêm da cor configurada da etapa.
@@ -24,7 +24,6 @@ const statusColorOf = (name, statuses) =>
 
 function LeadsView({ interactions, appUser, statuses, usersList, funnels, selectedFunnelId, setSelectedFunnelId, db }) {
   const toast = useToast();
-  const { openProfile } = useLeadProfile();
   const isAdmin = isAdminUser(appUser);
 
   // Fonte dos leads (G1a): query própria em vez do prop global. allLeadsQuerySpec
@@ -335,10 +334,11 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
               const isHot = isHotLeadFromDate(l, lastInteractionDateOf(l, interactionIndex));
               const consultantFirst = (l.consultantName || '').trim().split(/\s+/)[0] || '';
               return (
-                <div
+                <LeadLink
                   key={l.id}
-                  onClick={() => openProfile(l.id)}
-                  className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.7fr_1.15fr_1.25fr_0.75fr] md:items-center px-5 py-[11px] border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
+                  leadId={l.id}
+                  draggable={false}
+                  className="grid grid-cols-1 gap-2 md:gap-0 md:grid-cols-[1.7fr_1.15fr_1.25fr_0.75fr] md:items-center px-5 py-[11px] border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors outline-none focus-visible:bg-slate-50 dark:focus-visible:bg-white/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
                 >
                   {/* Lead */}
                   <div className="flex items-center gap-[11px] min-w-0">
@@ -381,7 +381,7 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
                   <div className="md:text-right text-[12px] text-slate-500 dark:text-neutral-400 tabular-nums whitespace-nowrap">
                     {l.createdAt?.toLocaleDateString('pt-BR') || ''}
                   </div>
-                </div>
+                </LeadLink>
               );
             })
           )}

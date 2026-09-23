@@ -3,7 +3,7 @@ import { Bell, Handshake, Sparkles, ArrowRight, UserRoundPlus } from 'lucide-rea
 import { cn } from '../../lib/utils.js';
 import { ANNOUNCEMENTS } from '../../lib/announcements.js';
 import { buildNotificationFeed } from '../../lib/notifications.js';
-import { useLeadProfile } from '../../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../nav/AppLink.jsx';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover.jsx';
 
 // Sino do header: novidades do sistema, indicações que chegaram pelo link e
@@ -33,13 +33,13 @@ function GroupLabel({ children }) {
   );
 }
 
-function Row({ icon, tone, title, subtitle, time, unread, action, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="relative w-full flex items-start gap-2.5 px-3.5 py-2.5 text-left transition hover:bg-slate-50 dark:hover:bg-white/[0.04]"
-    >
+// Uma linha do sino. Com leadId é link de verdade: Ctrl+clique abre a ficha em
+// outra aba e o sino continua aberto, então dá para abrir várias. Sem leadId
+// continua botão, que é o caso da novidade abrindo a Central de ajuda.
+export function NotificationRow({ icon, tone, title, subtitle, time, unread, action, onClick, leadId = null, onNavigate }) {
+  const classes = 'relative w-full flex items-start gap-2.5 px-3.5 py-2.5 text-left transition hover:bg-slate-50 dark:hover:bg-white/[0.04]';
+  const conteudo = (
+    <>
       {unread && <span className="absolute left-1 top-1/2 -translate-y-1/2 size-1.5 rounded-full bg-brand-600 dark:bg-brand-400" />}
       <span className={cn('size-8 rounded-[10px] grid place-items-center shrink-0', tone)}>{icon}</span>
       <span className="min-w-0 flex-1">
@@ -52,13 +52,26 @@ function Row({ icon, tone, title, subtitle, time, unread, action, onClick }) {
         )}
         {time && <span className="block text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">{time}</span>}
       </span>
+    </>
+  );
+
+  if (leadId) {
+    return (
+      <LeadLink leadId={leadId} onNavigate={onNavigate} className={classes}>
+        {conteudo}
+      </LeadLink>
+    );
+  }
+
+  return (
+    <button type="button" onClick={onClick} className={classes}>
+      {conteudo}
     </button>
   );
 }
 
 export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSeenReferralsAt, onMarkAllSeen, onOpenArticle }) {
   const [open, setOpen] = useState(false);
-  const { openProfile } = useLeadProfile();
 
   const { news, referrals, handoffs, unreadCount } = useMemo(
     () => buildNotificationFeed({
@@ -118,7 +131,7 @@ export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSe
 
           {news.length > 0 && <GroupLabel>Novidades do sistema</GroupLabel>}
           {news.map((n) => (
-            <Row
+            <NotificationRow
               key={n.id}
               icon={<Sparkles size={15} />}
               tone="bg-indigo-50 text-indigo-600 dark:bg-indigo-500/12 dark:text-indigo-300"
@@ -136,7 +149,7 @@ export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSe
 
           {handoffs.length > 0 && <GroupLabel>Passaram para você</GroupLabel>}
           {handoffs.map((h) => (
-            <Row
+            <NotificationRow
               key={h.id}
               icon={<UserRoundPlus size={15} />}
               tone="bg-brand-50 text-brand-600 dark:bg-brand-500/12 dark:text-brand-300"
@@ -146,13 +159,14 @@ export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSe
               time={relTime(h.at)}
               unread={h.unread}
               action="Abrir ficha"
-              onClick={() => { setOpen(false); openProfile(h.id); }}
+              leadId={h.id}
+              onNavigate={() => setOpen(false)}
             />
           ))}
 
           {referrals.length > 0 && <GroupLabel>Indicações que chegaram pelo link</GroupLabel>}
           {referrals.map((r) => (
-            <Row
+            <NotificationRow
               key={r.id}
               icon={<Handshake size={15} />}
               tone="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/12 dark:text-emerald-300"
@@ -161,7 +175,8 @@ export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSe
                 .filter(Boolean).join(' · ') || null}
               time={relTime(r.at)}
               unread={r.unread}
-              onClick={() => { setOpen(false); openProfile(r.id); }}
+              leadId={r.id}
+              onNavigate={() => setOpen(false)}
             />
           ))}
         </div>

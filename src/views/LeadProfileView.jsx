@@ -24,7 +24,7 @@ import { buildSchedulePatch } from '../lib/schedulePatch.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
-import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../components/nav/AppLink.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
 import { StatusBadge, TagBadge } from '../components/ui/Badges.jsx';
@@ -118,7 +118,6 @@ function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listener
   // mês corrente. A ficha remonta por lead (key), então o hook não reseta.
   const interactions = useLeadTimeline({ db, leadId: lead?.id, active: listenersActive });
   const toast = useToast();
-  const { openProfile } = useLeadProfile();
   const isReadOnly = !canEditLead(appUser);
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
   // notas/interações e agendar na timeline de QUALQUER lead (base compartilhada,
@@ -1219,13 +1218,16 @@ function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listener
                 {(lead.referredById || lead.referredByName) ? (
                   <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
                     <Handshake size={11} />
-                    <button
-                      type="button"
-                      onClick={() => lead.referredById && openProfile(lead.referredById)}
+                    {/* draggable={false}: sem isto arrastar o texto arrastaria
+                        o endereço da ficha para outra aba ou para um campo de
+                        texto, e um clique com tremida não abriria nada. */}
+                    <LeadLink
+                      leadId={lead.referredById}
+                      draggable={false}
                       className={cn('hover:underline', !lead.referredById && 'pointer-events-none')}
                     >
                       Indicado por {lead.referredByName || 'cliente'}
-                    </button>
+                    </LeadLink>
                     {!isReadOnly && (
                       <button
                         type="button"

@@ -5,6 +5,7 @@ import { searchPeople, onlyDigits } from '../../lib/globalSearch.js';
 import { useLeadSearch } from '../../hooks/useLeadSearch.js';
 import { deriveLeadState, getTone } from '../../lib/leadState.js';
 import { useLeadProfile } from '../../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../nav/AppLink.jsx';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { StateRingAvatar } from '../ui/StateRingAvatar.jsx';
 
@@ -34,6 +35,44 @@ function HighlightedName({ name, range }) {
       <mark className="bg-brand-100 dark:bg-brand-500/30 text-inherit rounded-[3px] font-semibold">{name.slice(s, e)}</mark>
       {name.slice(e)}
     </>
+  );
+}
+
+// Uma linha do resultado. O conteúdo é um link de verdade, então Ctrl+clique e
+// botão do meio abrem a ficha em outra aba e a lista continua aberta com o
+// texto digitado, para dar para abrir várias. O mousedown só segura o foco no
+// campo: quem escolhe é o clique do link. Antes a escolha acontecia no
+// mousedown, e a lista sumia antes de o clique chegar.
+export function SearchResultRow({ row, active, onHover, onNavigate }) {
+  const lead = row.lead;
+  const sub = row.matchKind === 'cpf'
+    ? `CPF ${fmtCpf(lead.cpf)}`
+    : (fmtPhone(lead.whatsapp) || row.state.hint);
+  return (
+    <li
+      role="option"
+      aria-selected={active}
+      onMouseEnter={onHover}
+      onMouseDown={(e) => { if (e.button === 0) e.preventDefault(); }}
+    >
+      <LeadLink
+        leadId={lead.id}
+        tabIndex={-1}
+        onNavigate={onNavigate}
+        className={cn('flex items-center gap-3 px-2.5 py-2 rounded-xl cursor-pointer', active && 'bg-slate-100 dark:bg-white/[0.05]')}
+      >
+        <StateRingAvatar name={lead.name} toneName={row.state.tone} splitHex={row.splitHex} size={30} photoUrl={lead.photoUrl} />
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] text-gray-900 dark:text-white truncate">
+            <HighlightedName name={lead.name || 'Sem nome'} range={row.matchRange} />
+          </div>
+          <div className="text-[11.5px] text-slate-400 truncate">{sub}</div>
+        </div>
+        <span className={cn('text-[10.5px] font-semibold px-2 py-0.5 rounded-lg shrink-0 whitespace-nowrap', row.tone.soft, row.tone.text, row.tone.darkSoft, row.tone.darkText)}>
+          {row.state.label}
+        </span>
+      </LeadLink>
+    </li>
   );
 }
 
@@ -115,11 +154,16 @@ export function GlobalSearch({ onAddLead, db }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Fecha e limpa a barra. Roda só no clique que abre a ficha nesta aba: com
+  // Ctrl+clique ou botão do meio a lista continua aberta.
+  const close = useCallback(() => { setQuery(''); setOpen(false); setMobileOpen(false); }, []);
+
+  // Só o Enter ainda navega por aqui. O clique do mouse é do link.
   const pick = useCallback((lead) => {
     if (!lead) return;
     openProfile(lead.id);
-    setQuery(''); setOpen(false); setMobileOpen(false);
-  }, [openProfile]);
+    close();
+  }, [openProfile, close]);
 
   const onInputKeyDown = (e) => {
     if (!showDropdown || rows.length === 0) {
@@ -184,33 +228,15 @@ export function GlobalSearch({ onAddLead, db }) {
         </div>
       ) : (
         <ul id="global-search-list" role="listbox" className="max-h-[380px] overflow-y-auto p-1.5 custom-scrollbar">
-          {rows.map((r, i) => {
-            const lead = r.lead;
-            const sub = r.matchKind === 'cpf'
-              ? `CPF ${fmtCpf(lead.cpf)}`
-              : (fmtPhone(lead.whatsapp) || r.state.hint);
-            return (
-              <li
-                key={lead.id}
-                role="option"
-                aria-selected={i === activeIndex}
-                onMouseEnter={() => setActiveIndex(i)}
-                onMouseDown={(e) => { e.preventDefault(); pick(lead); }}
-                className={cn('flex items-center gap-3 px-2.5 py-2 rounded-xl cursor-pointer', i === activeIndex && 'bg-slate-100 dark:bg-white/[0.05]')}
-              >
-                <StateRingAvatar name={lead.name} toneName={r.state.tone} splitHex={r.splitHex} size={30} photoUrl={lead.photoUrl} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-[13px] text-gray-900 dark:text-white truncate">
-                    <HighlightedName name={lead.name || 'Sem nome'} range={r.matchRange} />
-                  </div>
-                  <div className="text-[11.5px] text-slate-400 truncate">{sub}</div>
-                </div>
-                <span className={cn('text-[10.5px] font-semibold px-2 py-0.5 rounded-lg shrink-0 whitespace-nowrap', r.tone.soft, r.tone.text, r.tone.darkSoft, r.tone.darkText)}>
-                  {r.state.label}
-                </span>
-              </li>
-            );
-          })}
+          {rows.map((r, i) => (
+            <SearchResultRow
+              key={r.lead.id}
+              row={r}
+              active={i === activeIndex}
+              onHover={() => setActiveIndex(i)}
+              onNavigate={close}
+            />
+          ))}
         </ul>
       )}
     </div>

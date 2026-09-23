@@ -156,6 +156,21 @@ describe('LeadLink', () => {
     expect(m.linkProps).toHaveLength(0);
   });
 
+  it('o texto sem link guarda o tooltip, senão o nome truncado fica ilegível', () => {
+    // É o "Consultor: X" do rodapé do card do Pipeline: sem href não abre
+    // ficha nenhuma, mas o nome continua cortado em 112px na tela.
+    const html = render(createElement(LeadLink, {
+      leadId: 'a/b', className: 'truncate', title: 'Consultor: Bruno Souza',
+    }, 'Bruno Souza'));
+    expect(html).toBe('<span class="truncate" title="Consultor: Bruno Souza">Bruno Souza</span>');
+  });
+
+  it('o title continua chegando ao <a> quando o endereço existe', () => {
+    const html = render(createElement(LeadLink, { leadId: 'abc123', title: 'Consultor: Bruno Souza' }, 'Bruno Souza'));
+    expect(html).toContain('title="Consultor: Bruno Souza"');
+    expect(html).toContain('href="/acad/ficha/abc123"');
+  });
+
   it('fora do Provider vira texto sem link', () => {
     const html = renderToString(
       createElement(MemoryRouter, null, createElement(LeadLink, { leadId: 'abc123' }, 'Ana')));

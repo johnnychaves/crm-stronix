@@ -38,15 +38,18 @@ export function AppLink({ to, onNavigate, onClick, stretched = false, className,
 // Link para a ficha do lead ou cliente. O endereço e a tela de origem vêm do
 // LeadProfileContext, e a origem vai no state da navegação (só o id da tela,
 // nunca dado da pessoa). Id que não serve para endereço vira texto sem link,
-// e fora do Provider também.
-export function LeadLink({ leadId, children, className, ...rest }) {
+// e fora do Provider também. Nesse texto sem link só sobrevivem className,
+// title e os filhos: o title vai junto porque nome truncado sem tooltip fica
+// ilegível (é o "Consultor: X" do rodapé do card do Pipeline). O resto das
+// props é de âncora e não tem o que fazer num <span>.
+export function LeadLink({ leadId, children, className, title, ...rest }) {
   const { leadHref, from } = useLeadProfile();
   const href = leadHref?.(leadId) ?? null;
 
-  if (!href) return <span className={className}>{children}</span>;
+  if (!href) return <span className={className} title={title}>{children}</span>;
 
   return (
-    <AppLink {...rest} to={href} state={{ from: from ?? null }} className={className}>
+    <AppLink {...rest} to={href} state={{ from: from ?? null }} className={className} title={title}>
       {children}
     </AppLink>
   );

@@ -9,7 +9,7 @@ import { collection, query, where, getCountFromServer } from 'firebase/firestore
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
 import { getTrialPassNote, isPassActive } from '../lib/freePass.js';
 import { cn } from '@/lib/utils';
-import { useLeadProfile } from '../contexts/LeadProfileContext.jsx';
+import { LeadLink } from '../components/nav/AppLink.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
@@ -121,7 +121,6 @@ const fromDateInput = (s) => {
 };
 
 function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
-  const { openProfile } = useLeadProfile();
   const { professores } = useGeneralConfig();
   const isAdmin = isAdminUser(appUser);
   const isAula = appointmentType === 'aula_experimental';
@@ -655,11 +654,12 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                 const sitLabel = getSituacaoLabel(att.key);
                 const sitTitle = att.key === 'pending' ? 'Agendado · aguardando desfecho' : sitLabel;
                 return (
-                  <div
+                  <LeadLink
                     key={l.id}
-                    onClick={() => openProfile(l.id)}
+                    leadId={l.id}
+                    draggable={false}
                     className={cn(
-                      'grid grid-cols-1 gap-2 md:gap-0 md:items-center px-5 py-3 border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors',
+                      'grid grid-cols-1 gap-2 md:gap-0 md:items-center px-5 py-3 border-b border-slate-100 dark:border-neutral-800 last:border-b-0 cursor-pointer bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors outline-none focus-visible:bg-slate-50 dark:focus-visible:bg-white/[0.03] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
                       isAula ? 'md:grid-cols-[1.5fr_0.95fr_1fr_1fr_1.3fr_0.85fr]' : 'md:grid-cols-[1.5fr_0.95fr_1fr_1.3fr_0.85fr]'
                     )}
                   >
@@ -756,7 +756,7 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                         </span>
                       )}
                     </div>
-                  </div>
+                  </LeadLink>
                 );
               })
             )}
