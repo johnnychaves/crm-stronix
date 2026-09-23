@@ -3,6 +3,8 @@ import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Download
 import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isAdminUser, isLeadConverted } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useScreenParams } from '../hooks/useScreenParams.js';
+import { diaAoLimparPeriodo } from '../lib/screenParams.js';
 import { appointmentsInWindowQuerySpec } from '../lib/leadQueries.js';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { collection, query, where, getCountFromServer } from 'firebase/firestore';
@@ -115,6 +117,11 @@ const getSituacaoLabel = (attKey) =>
       : attKey === 'rescheduled' ? 'Remarcado'
         : 'Agendado';
 
+// Visitas não têm filtro de professor, então o valor nunca vem da tabela.
+// Uma constante no módulo evita um array novo a cada render, que invalidaria
+// os useMemo da lista à toa.
+const SEM_PROFESSOR = [];
+
 const fromDateInput = (s) => {
   const [y, m, d] = String(s || '').split('-').map(Number);
   return y && m && d ? new Date(y, m - 1, d) : null;
@@ -146,15 +153,32 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
     ? 'As aulas agendadas pela Linha do Tempo e Meta Diária aparecem aqui.'
     : 'As visitas agendadas pela Linha do Tempo e Meta Diária aparecem aqui.';
 
-  // Atalho de dia e período personalizado são mutuamente exclusivos.
-  const [dayTab, setDayTab] = useState('today'); // 'today' | 'yesterday' | 'tomorrow' | null
-  const [range, setRange] = useState(null); // { start: Date, end: Date } | null
+  // Atalho de dia, período, responsável e professor vêm do endereço. O atalho
+  // de dia e o período continuam mutuamente exclusivos, e o período ganha:
+  // período torto (data que não existe, fim antes do início, mais de 30 dias,
+  // metade do par) cai fora inteiro e a tela abre no atalho padrão, sem erro.
+  // O botão de filtros é de gestor, então responsável e professor num link
+  // aberto por consultor são ignorados.
+  const paramsCtx = useMemo(() => ({
+    users: usersList,
+    podeResp: isAdmin,
+    respPadrao: [],
+    professores,
+    temAndamento: isAula,
+  }), [usersList, isAdmin, professores, isAula]);
+  const [{ day: dayTab, de, ate, resp: respFilter, prof: profFilter = SEM_PROFESSOR }, setParams] =
+    useScreenParams(isAula ? 'aulas' : 'visitas', paramsCtx);
+  // A tela trabalha com Date; o endereço guarda AAAA-MM-DD.
+  const range = useMemo(
+    () => (de && ate ? { start: fromDateInput(de), end: fromDateInput(ate) } : null),
+    [de, ate],
+  );
   const [rangeOpen, setRangeOpen] = useState(false);
-  const [draftStart, setDraftStart] = useState('');
-  const [draftEnd, setDraftEnd] = useState('');
+  // Rascunho dos dois campos do popover. Começa com o período do endereço só
+  // como semente: quem digita manda, e o filtro de verdade é o do endereço.
+  const [draftStart, setDraftStart] = useState(() => de || '');
+  const [draftEnd, setDraftEnd] = useState(() => ate || '');
   const [rangeErr, setRangeErr] = useState('');
-  const [respFilter, setRespFilter] = useState([]); // vazio = toda a equipe
-  const [profFilter, setProfFilter] = useState([]); // ids de professor + SOLO_TRAINING (só Aulas)
   const [filterOpen, setFilterOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
   const [exportOpen, setExportOpen] = useState(false);
@@ -348,11 +372,12 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
     return parts.join(' · ') || `${filtered.length} de ${typeTotal ?? typeLeads.length} ${pluralLabel}`;
   }, [hasActiveFilters, filtered.length, typeLeads.length, typeTotal, respFilter, profFilter, isAula, usersList, pluralLabel]);
 
-  const pickDayTab = (id) => {
-    setDayTab(id);
-    setRange(null);
-  };
+  const pickDayTab = (id) => setParams({ day: id, de: null, ate: null });
 
+  // As três recusas continuam aparecendo no popover, com a mesma mensagem: é
+  // aqui que a pessoa digita, e o aviso é o que ensina o limite. São as mesmas
+  // três do módulo puro, senão o popover aceitaria uma data que o endereço joga
+  // fora em seguida. O que vem pelo endereço não avisa nada, só cai no padrão.
   const applyRange = () => {
     const start = fromDateInput(draftStart);
     const end = fromDateInput(draftEnd);
@@ -360,21 +385,21 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
     if (end.getTime() < start.getTime()) { setRangeErr('O fim precisa ser depois do início.'); return; }
     if ((end.getTime() - start.getTime()) / DAY_MS > 30) { setRangeErr('Período máximo de 30 dias.'); return; }
     setRangeErr('');
-    setRange({ start, end });
-    setDayTab(null);
     setRangeOpen(false);
+    setParams({ de: draftStart, ate: draftEnd, day: null });
   };
 
+  // Limpar apaga o período e devolve a aba de dia. Qual dia fica de pé é regra
+  // do módulo puro (diaAoLimparPeriodo), para ser testável em node.
   const clearRange = () => {
     setDraftStart('');
     setDraftEnd('');
     setRangeErr('');
-    setRange(null);
-    if (!dayTab) setDayTab('today');
+    setParams((v) => ({ de: null, ate: null, day: diaAoLimparPeriodo(v.day) }));
   };
 
   const toggleResp = (id) => {
-    setRespFilter(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+    setParams((v) => ({ resp: v.resp.includes(id) ? v.resp.filter(x => x !== id) : [...v.resp, id] }));
   };
 
   return (
@@ -529,7 +554,7 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                     <span className="text-[12.5px] font-bold text-gray-900 dark:text-white">Filtros</span>
                     <button
                       type="button"
-                      onClick={() => { setRespFilter([]); setProfFilter([]); }}
+                      onClick={() => setParams({ resp: [], prof: [] })}
                       className="text-[11.5px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
                     >
                       Limpar
@@ -541,7 +566,7 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                     </div>
                     <button
                       type="button"
-                      onClick={() => setRespFilter([])}
+                      onClick={() => setParams({ resp: [] })}
                       className={cn(
                         'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
                         respFilter.length === 0 ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
@@ -588,7 +613,10 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                           <button
                             key={p.id}
                             type="button"
-                            onClick={() => setProfFilter(prev => prev.includes(p.id) ? prev.filter(x => x !== p.id) : [...prev, p.id])}
+                            onClick={() => setParams((v) => {
+                              const atual = v.prof || SEM_PROFESSOR;
+                              return { prof: atual.includes(p.id) ? atual.filter(x => x !== p.id) : [...atual, p.id] };
+                            })}
                             className={cn(
                               'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
                               selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
@@ -601,7 +629,10 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                       })}
                       <button
                         type="button"
-                        onClick={() => setProfFilter(prev => prev.includes(SOLO_TRAINING) ? prev.filter(x => x !== SOLO_TRAINING) : [...prev, SOLO_TRAINING])}
+                        onClick={() => setParams((v) => {
+                          const atual = v.prof || SEM_PROFESSOR;
+                          return { prof: atual.includes(SOLO_TRAINING) ? atual.filter(x => x !== SOLO_TRAINING) : [...atual, SOLO_TRAINING] };
+                        })}
                         className={cn(
                           'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
                           profFilter.includes(SOLO_TRAINING) ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'

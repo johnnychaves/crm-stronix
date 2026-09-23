@@ -221,7 +221,7 @@ const cat = param(
   (v) => (v && v !== 'all' && own(CODIGO_POR_CAT, v) ? CODIGO_POR_CAT[v] : null),
 );
 
-// Um dia em milissegundos, para o teto de 30 dias do período. As datas são
+// Um dia em milissegundos, para o teto de largura do período. As datas são
 // lidas em UTC de propósito: só interessa a distância entre elas, e assim o
 // horário de verão não muda a conta.
 const DIA_MS = 24 * 60 * 60 * 1000;
@@ -231,13 +231,22 @@ const emUTC = (s) => {
   return new Date(t).getUTCDate() === d ? t : NaN;
 };
 
+// O dia que fica de pé quando a pessoa limpa o período. Com período ativo o dia
+// é nulo (o período ganha), então cai em Hoje; sem período, a aba onde a pessoa
+// está continua acesa. Mora aqui, e não dentro da tela, porque componente em
+// JSX não é renderizado nos testes em node, e assim a regra tem teste.
+export const diaAoLimparPeriodo = (day) => day || 'today';
+
 // Regra que cruza dois parâmetros de Aulas e Visitas: o par de datas ganha do
 // atalho de dia, e período torto (data que não existe, fim antes do início,
-// mais de 30 dias, metade do par) cai fora inteiro, sem erro na tela.
+// mais de 30 dias, metade do par) cai fora inteiro, sem erro na tela. São as
+// mesmas três recusas do popover da tela, para os dois lados negarem a mesma
+// coisa.
 function ajustaPeriodo(valores) {
   const ini = valores.de ? emUTC(valores.de) : NaN;
   const fim = valores.ate ? emUTC(valores.ate) : NaN;
-  const vale = Number.isFinite(ini) && Number.isFinite(fim) && fim >= ini && (fim - ini) / DIA_MS <= 30;
+  const vale = Number.isFinite(ini) && Number.isFinite(fim) && fim >= ini
+    && (fim - ini) / DIA_MS <= 30;
   if (!vale) return { ...valores, de: null, ate: null };
   return { ...valores, day: null };
 }

@@ -27,8 +27,14 @@ export function useScreenParams(screen, ctx) {
   const setParams = useCallback((patch) => {
     const escolha = typeof patch === 'function' ? patch(values) : patch;
     const next = { ...values, ...escolha };
-    navigate(pathname + screenParamsQuery(screen, next, ctx), { replace: true, state });
-  }, [values, ctx, navigate, pathname, state, screen]);
+    const query = screenParamsQuery(screen, next, ctx);
+    // Clique que não muda o recorte não navega. Clicar na aba de dia que já
+    // está acesa, em "Toda a equipe" sem ninguém escolhido ou em "Limpar" sem
+    // nada para limpar daria um replace com chave nova e um render da árvore
+    // inteira à toa.
+    if (query === search) return;
+    navigate(pathname + query, { replace: true, state });
+  }, [values, ctx, navigate, pathname, search, state, screen]);
 
   return [values, setParams];
 }

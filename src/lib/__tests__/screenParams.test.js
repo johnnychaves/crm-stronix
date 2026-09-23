@@ -3,6 +3,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   readScreenParams, screenParamsQuery, funnelFromSearch, SCREEN_PARAM_NAMES, FASE_VENDA, FASE_PERDA,
+  diaAoLimparPeriodo,
 } from '../screenParams.js';
 import { CONTRACT_STATUS } from '../contracts.js';
 import { SOLO_TRAINING } from '../professores.js';
@@ -274,10 +275,20 @@ describe('dia e período de Aulas e Visitas', () => {
     expect(ler('aulas', '?de=2026-09-01&ate=2026-10-02', aulas).de).toBeNull();
   });
 
+  it('a distância até hoje não é peneirada: o período de janeiro passado abre', () => {
+    // Só a largura tem teto. Antes da entrega o gestor digitava qualquer janela
+    // de 30 dias, em qualquer distância, e a tela abria; com o filtro no
+    // endereço isso continua valendo.
+    expect(ler('aulas', '?de=2026-01-05&ate=2026-01-30', aulas).de).toBe('2026-01-05');
+    expect(ler('aulas', '?de=2027-09-01&ate=2027-09-30', aulas).ate).toBe('2027-09-30');
+  });
+
   it('professor aceita os do catálogo e o treina sozinho, e some para quem não filtra', () => {
     expect(ler('aulas', `?prof=p1,${SOLO_TRAINING}`, aulas).prof).toEqual(['p1', SOLO_TRAINING]);
     expect(ler('aulas', '?prof=p9', aulas).prof).toEqual([]);
+    expect(ler('aulas', '?prof=p1,apagado', aulas).prof).toEqual(['p1']);
     expect(ler('aulas', '?prof=p1', { ...aulas, podeResp: false }).prof).toEqual([]);
+    expect(volta('aulas', `?prof=p1,${SOLO_TRAINING}`, aulas)).toBe(`?prof=p1,${SOLO_TRAINING}`);
   });
 });
 
@@ -488,5 +499,54 @@ describe('contrato do contexto de Todos os leads e da Meta', () => {
   it('a visão Equipe da Meta ficou fora desta entrega e não tem parâmetro', () => {
     expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat']);
     expect(ler('dailyGoal', '?visao=equipe&dia=14', {})).toEqual({ cat: 'all' });
+  });
+});
+
+describe('contrato do contexto de Aulas e Visitas', () => {
+  const aulas = { users, podeResp: true, respPadrao: [], professores: [{ id: 'p1' }, { id: 'p2' }], temAndamento: true };
+  const visitas = { users, podeResp: true, respPadrao: [], temAndamento: false };
+
+  it('o atalho de dia padrão é hoje e não é escrito', () => {
+    expect(ler('visitas', '', visitas)).toEqual({ day: 'today', de: null, ate: null, resp: [] });
+    expect(montar('visitas', ler('visitas', '', visitas), visitas)).toBe('');
+  });
+
+  it('escolher um dia apaga o período, e escolher período apaga o dia', () => {
+    // As duas navegações que a tela faz: clicar numa aba de dia e aplicar o
+    // período no popover. Cada uma escreve um lado do par e apaga o outro na
+    // mesma escrita, então o endereço nunca fica com os dois.
+    const comPeriodo = ler('aulas', '?de=2026-09-01&ate=2026-09-10', aulas);
+    expect(montar('aulas', { ...comPeriodo, day: 'yesterday', de: null, ate: null }, aulas)).toBe('?dia=ontem');
+    const comDia = ler('aulas', '?dia=ontem', aulas);
+    expect(montar('aulas', { ...comDia, day: null, de: '2026-09-01', ate: '2026-09-10' }, aulas))
+      .toBe('?de=2026-09-01&ate=2026-09-10');
+  });
+
+  it('limpar o período devolve hoje, e guarda a aba de dia quando havia uma', () => {
+    // Com período ativo o dia é nulo (o período ganha), então cai em Hoje; sem
+    // período, a aba onde a pessoa está continua acesa.
+    expect(diaAoLimparPeriodo(null)).toBe('today');
+    expect(diaAoLimparPeriodo('ongoing')).toBe('ongoing');
+    expect(diaAoLimparPeriodo('yesterday')).toBe('yesterday');
+    const v = ler('aulas', '?de=2026-09-01&ate=2026-09-10&resp=u1', aulas);
+    expect(montar('aulas', { ...v, de: null, ate: null, day: diaAoLimparPeriodo(v.day) }, aulas)).toBe('?resp=u1');
+  });
+
+  it('o consultor não é recortado por responsável nem por professor', () => {
+    // O botão de filtros inteiro é de gestor nesta tela, então um link de
+    // gestor não pode prender o consultor num recorte que ele não vê nem
+    // consegue limpar. Vale nas duas direções: some na leitura e some na
+    // montagem, então o primeiro clique dele já limpa o endereço.
+    const consultor = { ...aulas, podeResp: false };
+    const v = ler('aulas', '?resp=u1&prof=p1&dia=ontem', consultor);
+    expect([v.resp, v.prof, v.day]).toEqual([[], [], 'yesterday']);
+    expect(montar('aulas', { ...v, resp: ['u1'], prof: ['p1'] }, consultor)).toBe('?dia=ontem');
+    const semResp = ler('visitas', '?resp=u1&dia=ontem', { ...visitas, podeResp: false });
+    expect([semResp.resp, semResp.day]).toEqual([[], 'yesterday']);
+  });
+
+  it('professor e responsável juntos, na ordem da tabela', () => {
+    expect(montar('aulas', { day: 'today', de: null, ate: null, resp: ['u1'], prof: ['p1', SOLO_TRAINING] }, aulas))
+      .toBe(`?resp=u1&prof=p1,${SOLO_TRAINING}`);
   });
 });
