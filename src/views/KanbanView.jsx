@@ -16,6 +16,7 @@ import { getUpgradeFunnel, projectUpgradeLeads } from '../lib/upgradeFunnel.js';
 import { getRenewalFunnel, renewalColumnsFromCheckpoints, splitRenewalForBoard } from '../lib/renewalFunnel.js';
 import { renewalDecline, renewalDeclineStamp, renewalUndoDecline, daysToExpiryOf } from '../lib/renewalGoal.js';
 import { useFunnelCounts } from '../hooks/useFunnelCounts.js';
+import { useScreenParams } from '../hooks/useScreenParams.js';
 import { bucketByFunnelQuerySpec, wonInMonthQuerySpec, LIFECYCLE_BUCKETS, expiredClientsQuerySpec, upgradeClientsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH, appId } from '../lib/firebase.js';
 import { fmtBRL } from '../lib/format.js';
@@ -455,14 +456,25 @@ const KanbanColumn = memo(function KanbanColumn({
   );
 });
 
-function KanbanView({ leads, interactions, appUser, statuses, usersList, lossReasons, db, funnels, selectedFunnelId, setSelectedFunnelId }) {
+function KanbanView({ leads, interactions, appUser, statuses, usersList, lossReasons, db, funnels, selectedFunnelId: savedFunnelId, setSelectedFunnelId: rememberFunnel }) {
   const toast = useToast();
   const [moveLead, setMoveLead] = useState(null); // lead com o menu "Mover" aberto (toque/teclado)
-  // Filtro de responsáveis multi-seleção: conjunto vazio = toda a equipe. Abre
-  // na carteira do próprio consultor (o gestor abre na equipe inteira) e daí em
-  // diante é ele quem manda — regra em lib/kanban.js.
-  const [respFilter, setRespFilter] = useState(() => defaultRespFilterFor(appUser));
-  const [onlyOverdue, setOnlyOverdue] = useState(false);
+  // Funil, responsáveis e atraso vêm do endereço: F5 mantém, o link abre igual
+  // e cada aba pode estar num recorte diferente. Sem funil no endereço vale o
+  // último funil usado, que o App guarda por academia no navegador.
+  // Responsável: conjunto vazio é toda a equipe, e sem nada no endereço vale o
+  // padrão do papel (a carteira do consultor, a equipe do gestor), regra em
+  // lib/kanban.js. Aqui a seção Responsável é de todos, então o parâmetro vale
+  // para qualquer papel.
+  const paramsCtx = useMemo(() => ({
+    users: usersList,
+    funis: funnels,
+    funilPadrao: savedFunnelId,
+    podeResp: true,
+    respPadrao: defaultRespFilterFor(appUser),
+  }), [usersList, funnels, savedFunnelId, appUser]);
+  const [{ funnel, resp: respFilter, overdue: onlyOverdue }, setParams] = useScreenParams('kanban', paramsCtx);
+  const selectedFunnelId = funnel;
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
   // Lead aguardando matrícula no ContractModal (caminho de Venda do Kanban).
   const [matriculaLead, setMatriculaLead] = useState(null);
@@ -1287,15 +1299,16 @@ const handleKanbanMouseMove = (e) => {
   }, [usersList, appUser]);
 
   const toggleResp = (id) => {
-    setRespFilter(prev => (prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]));
+    setParams((v) => ({ resp: v.resp.includes(id) ? v.resp.filter(x => x !== id) : [...v.resp, id] }));
   };
 
   // "Limpar" devolve a tela ao estado de abertura do papel — para o consultor
   // isso é a própria carteira, não a equipe inteira.
-  const clearFilters = () => {
-    setRespFilter(defaultRespFilterFor(appUser));
-    setOnlyOverdue(false);
-  };
+  const clearFilters = () => setParams({ resp: defaultRespFilterFor(appUser), overdue: false });
+
+  // Trocar de funil guarda a escolha no navegador (é ela que vale quando o
+  // link não traz funil) e escreve no endereço.
+  const pickFunnel = (id) => { rememberFunnel(id); setParams({ funnel: id }); };
 
   return (
     <>
@@ -1308,7 +1321,7 @@ const handleKanbanMouseMove = (e) => {
             funnels={funnels}
             counts={funnelCounts}
             selectedId={selectedFunnelId}
-            onSelect={setSelectedFunnelId}
+            onSelect={pickFunnel}
           />
 
           {filterSummary && (
@@ -1361,7 +1374,7 @@ const handleKanbanMouseMove = (e) => {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setRespFilter([])}
+                    onClick={() => setParams({ resp: [] })}
                     className={cn(
                       'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
                       respFilter.length === 0 ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
@@ -1410,7 +1423,7 @@ const handleKanbanMouseMove = (e) => {
                     type="button"
                     role="switch"
                     aria-checked={onlyOverdue}
-                    onClick={() => setOnlyOverdue(o => !o)}
+                    onClick={() => setParams((v) => ({ overdue: !v.overdue }))}
                     className="w-full flex items-center justify-between gap-2.5"
                   >
                     <span className="inline-flex items-center gap-2 text-[12.5px] font-semibold text-gray-900 dark:text-white">

@@ -3,6 +3,7 @@ import { GraduationCap, Layers, Phone, SlidersHorizontal, Check, X } from 'lucid
 import { isClientLead, isAdminUser } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useScreenParams } from '../hooks/useScreenParams.js';
 import { clientsAllQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
@@ -76,8 +77,15 @@ function ClientsView({ appUser, usersList, db }) {
   const isAdmin = isAdminUser(appUser);
 
   const [filterOpen, setFilterOpen] = useState(false);
-  const [statusFilters, setStatusFilters] = useState([]);     // situação do contrato (multi)
-  const [consultantFilters, setConsultantFilters] = useState([]); // responsável (multi)
+  // Situação e responsável vêm do endereço. O filtro de responsável só vale
+  // para quem vê a seção na bolha, que aqui é o gestor: um link de gestor
+  // aberto por consultor mostra a lista inteira, em vez de prender num recorte
+  // que ele não teria como limpar. O filtro de plano fica fora desta entrega,
+  // porque o dado guarda o nome do plano e não o id.
+  const paramsCtx = useMemo(() => ({
+    users: usersList, situacoes: STATUS_OPTIONS, podeResp: isAdmin, respPadrao: [],
+  }), [usersList, isAdmin]);
+  const [{ status: statusFilters, resp: consultantFilters }, setParams] = useScreenParams('clientes', paramsCtx);
   const [planFilters, setPlanFilters] = useState([]);         // plano (multi)
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
 
@@ -140,13 +148,13 @@ function ClientsView({ appUser, usersList, db }) {
 
   const visible = filtered.slice(0, visibleCount);
 
-  const toggleStatus = (s) => setStatusFilters(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-  const toggleConsultant = (id) => setConsultantFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleStatus = (s) => setParams((v) => ({ status: v.status.includes(s) ? v.status.filter(x => x !== s) : [...v.status, s] }));
+  const toggleConsultant = (id) => setParams((v) => ({ resp: v.resp.includes(id) ? v.resp.filter(x => x !== id) : [...v.resp, id] }));
   const togglePlan = (p) => setPlanFilters(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
 
   const filterCount = statusFilters.length + consultantFilters.length + planFilters.length;
   const hasActiveFilters = filterCount > 0;
-  const clearAllFilters = () => { setStatusFilters([]); setConsultantFilters([]); setPlanFilters([]); };
+  const clearAllFilters = () => { setPlanFilters([]); setParams({ status: [], resp: [] }); };
 
   // Chips de filtros ativos (removem individualmente).
   const activeChips = [];

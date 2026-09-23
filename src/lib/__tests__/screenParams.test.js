@@ -382,3 +382,48 @@ describe('contrato do contexto dos três dashboards', () => {
     expect(ler('dashboard', q, dash)).toEqual(ler('dashOperacional', q, dash));
   });
 });
+
+describe('contrato do contexto do Pipeline e de Clientes', () => {
+  const kanban = { users, funis, podeResp: true, respPadrao: ['u2'], funilPadrao: 'f1' };
+  const gestorNoKanban = { ...kanban, respPadrao: [] };
+
+  it('o consultor abre na própria carteira e o gestor na equipe, sem nada no endereço', () => {
+    expect(ler('kanban', '', kanban).resp).toEqual(['u2']);
+    expect(ler('kanban', '', gestorNoKanban).resp).toEqual([]);
+  });
+
+  it('o consultor que abre o board para a equipe inteira fica com isso no endereço', () => {
+    expect(montar('kanban', { ...ler('kanban', '', kanban), resp: [] }, kanban)).toBe('?funil=f1&resp=');
+  });
+
+  it('limpar devolve o board ao padrão do papel, e o endereço só guarda o funil', () => {
+    const limpo = { funnel: 'f1', resp: ['u2'], overdue: false };
+    expect(montar('kanban', limpo, kanban)).toBe('?funil=f1');
+  });
+
+  it('o Pipeline não tem fase, situação nem quente no endereço', () => {
+    expect(ler('kanban', '?fase=s1&sit=ativo&quente=1', kanban)).toEqual({ funnel: 'f1', resp: ['u2'], overdue: false });
+  });
+
+  it('Clientes junta situação e responsável na mesma query, na ordem da tabela', () => {
+    const ctx = { users, situacoes, podeResp: true, respPadrao: [] };
+    expect(montar('clientes', { status: ['ativo', 'a_vencer'], resp: ['u1'] }, ctx)).toBe('?sit=ativo,a_vencer&resp=u1');
+  });
+
+  it('link de gestor aberto por consultor mostra a lista inteira em Clientes', () => {
+    const consultor = { users, situacoes, podeResp: false, respPadrao: [] };
+    const v = ler('clientes', '?sit=ativo&resp=u1', consultor);
+    expect(v).toEqual({ status: ['ativo'], resp: [] });
+    expect(montar('clientes', v, consultor)).toBe('?sit=ativo');
+  });
+
+  it('sem contrato é uma situação de tela, não de contrato, e passa pelo endereço', () => {
+    const ctx = { users, situacoes, podeResp: true, respPadrao: [] };
+    expect(ler('clientes', '?sit=sem_contrato', ctx).status).toEqual(['sem_contrato']);
+  });
+
+  it('o filtro de plano não existe no endereço nesta entrega', () => {
+    const ctx = { users, situacoes, podeResp: true, respPadrao: [] };
+    expect(ler('clientes', '?plano=Clube%2B', ctx)).toEqual({ status: [], resp: [] });
+  });
+});

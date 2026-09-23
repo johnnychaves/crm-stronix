@@ -67,6 +67,7 @@ import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
 import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
 import { IDLE_RUN, runStatusFor, settleRun, EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor } from './lib/setupRun.js';
 import { parseAppPath, routeDecision, hrefFor, screenKey, documentTitle } from './lib/routes.js';
+import { funnelFromSearch } from './lib/screenParams.js';
 import {
   screenState, sessionKeyFor, loginTenantSlug,
   loginBrand, logoutDestination, returnToFrom, savedFunnelKey, readSavedFunnel,
@@ -1332,6 +1333,11 @@ useEffect(() => {
   // Endereço dos itens do menu, do menu da conta e do aviso de mensalidade.
   // Sai da academia da sessão (claim), nunca da barra de endereço.
   const menuHref = (screen, extra) => hrefFor(sessionTenant, screen, extra);
+  // Funil em que o cadastro rápido nasce: o do endereço quando a tela de lista
+  // traz um, e senão o último funil usado. O "Novo lead" do cabeçalho e o da
+  // busca global aparecem em qualquer tela, e fora das telas de lista o
+  // endereço não tem funil, então ali vale o guardado, como sempre valeu.
+  const entryFunnelId = funnelFromSearch(resolvedTab, location.search, { funis: funnels, funilPadrao: selectedFunnelId });
   // "Configurar agora" da novidade abre Configurações já em Metas e ritmo. A
   // seção vai no state da navegação (SettingsView lê location.state.secao), e
   // o menu, sem state, abre em Equipe e acessos. Com Configurações já aberta
@@ -1755,7 +1761,7 @@ useEffect(() => {
           tags={tags}
           db={db}
           funnels={funnels}
-          selectedFunnelId={selectedFunnelId}
+          selectedFunnelId={entryFunnelId}
           onCreated={openProfile}
         />
       )}
