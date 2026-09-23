@@ -20,6 +20,7 @@ import { monthSubline } from '../../lib/gerencial/texts.js';
 import { dashboardProps } from '../../lib/gerencial/viewModel.js';
 import { GerencialToolbar } from './GerencialToolbar.jsx';
 import { GerencialDashboard } from './GerencialDashboard.jsx';
+import { useScreenParams } from '../../hooks/useScreenParams.js';
 
 const roleOf = (user) => (user?.role === 'admin' ? 'Gestor · também vende' : 'Consultor');
 
@@ -35,9 +36,6 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
   }, []);
 
   const currentKey = monthKeyOf(now);
-  const [monthKey, setMonthKey] = useState(currentKey);
-  const [compareOn, setCompareOn] = useState(true);
-  const [compareKey, setCompareKey] = useState(null); // null = o mês anterior com venda
 
   // A lista inteira de uma vez: a pausa do contrato trancado que ganhou
   // sucessor só fecha olhando os outros contratos da pessoa (base.js).
@@ -55,14 +53,21 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
     return set;
   }, [contracts]);
 
+  // Mês e comparativo vêm do endereço. O mês da comparação passa pela mesma
+  // peneira da barra: só mês que teve venda antes do mês exibido. Um
+  // comparar-com fora dela cai no padrão, que é o mês anterior com venda.
+  const paramsCtx = useMemo(() => ({
+    currentKey,
+    mesesComparaveis: (k) => [...saleMonths].filter((m) => m < k).sort().reverse(),
+  }), [currentKey, saleMonths]);
+  const [{ monthKey, compareOn, compareKey }, setParams] = useScreenParams('dashGerencial', paramsCtx);
+
   const earlierWithSales = useMemo(
     () => [...saleMonths].filter((k) => k < monthKey).sort().reverse(),
     [saleMonths, monthKey]
   );
   const canCompare = earlierWithSales.length > 0;
-  const cmpKey = canCompare
-    ? (compareKey && earlierWithSales.includes(compareKey) ? compareKey : earlierWithSales[0])
-    : null;
+  const cmpKey = canCompare ? (compareKey || earlierWithSales[0]) : null;
   const comparing = compareOn && Boolean(cmpKey);
 
   const monthKeys = useMemo(
@@ -95,7 +100,7 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
     [currentKey]
   );
   const cmpOptions = earlierWithSales.map((k) => ({ key: k, label: monthLabel(k) }));
-  const changeMonth = (k) => { setMonthKey(k); setCompareKey(null); };
+  const changeMonth = (k) => setParams({ monthKey: k, compareKey: null });
 
   const subline = monthSubline({
     running: cur.running, elapsed: now.getDate(), monthKey, compareOn: comparing, cmpKey
@@ -112,8 +117,8 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
           monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
           canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
           canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}
-          compareOn={compareOn} onCompareOn={setCompareOn}
-          compareKey={cmpKey || ''} compareOptions={cmpOptions} onCompare={setCompareKey}
+          compareOn={compareOn} onCompareOn={(v) => setParams({ compareOn: v })}
+          compareKey={cmpKey || ''} compareOptions={cmpOptions} onCompare={(k) => setParams({ compareKey: k })}
           canCompare={canCompare}
         />
         <GerencialDashboard {...props} onGoToPipeline={() => onNavigate?.('kanban')} />

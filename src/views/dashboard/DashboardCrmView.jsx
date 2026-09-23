@@ -18,6 +18,7 @@ import { regimeTexts, joinPt } from '../../lib/crm/texts.js';
 import { cn } from '../../lib/utils.js';
 import { CrmToolbar } from './CrmToolbar.jsx';
 import { CrmDashboard } from './CrmDashboard.jsx';
+import { useScreenParams } from '../../hooks/useScreenParams.js';
 
 // Aviso sob a barra, quando algum mês não carregou (mesmo do Operacional).
 function Notice({ children }) {
@@ -38,17 +39,15 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
   }, []);
 
   const currentKey = monthKeyOf(now);
-  const [monthKey, setMonthKey] = useState(currentKey);
-  const [compareOn, setCompareOn] = useState(true);
-  const [compareKey, setCompareKey] = useState(null); // null = mês anterior
-  const [person, setPerson] = useState('all');
-  const [funnel, setFunnel] = useState('all');
-
   const users = useMemo(() => (usersList || []).filter((u) => u?.id), [usersList]);
   const leadFunnels = useMemo(() => leadFunnelsOf(funnels), [funnels]);
-  // Pessoa ou funil que saiu da lista (usuário removido, funil apagado) vale "todos".
-  const userId = person !== 'all' && users.some((u) => u.id === person) ? person : null;
-  const funnelId = funnel !== 'all' && leadFunnels.some((f) => f.id === funnel) ? funnel : null;
+  // Mês, comparativo, pessoa e funil vêm do endereço. Pessoa ou funil que saiu
+  // da lista (usuário removido, funil apagado) já chega como "todos", que é o
+  // mesmo saneamento de antes, agora no módulo puro.
+  const paramsCtx = useMemo(() => ({ currentKey, users, funis: leadFunnels }), [currentKey, users, leadFunnels]);
+  const [{ monthKey, compareOn, compareKey, person, funnel }, setParams] = useScreenParams('dashCrm', paramsCtx);
+  const userId = person === 'all' ? null : person;
+  const funnelId = funnel === 'all' ? null : funnel;
   const cmpKey = compareKey || addMonthsToKey(monthKey, -1);
   // A lista de meses vai até 11 meses atrás; a seta não passa dela.
   const oldestKey = addMonthsToKey(currentKey, -11);
@@ -127,9 +126,9 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
   const people = users.map((u) => ({ id: u.id, name: u.name || 'Sem nome' }));
   const personUser = userId ? users.find((u) => u.id === userId) : null;
   const funnelObj = funnelId ? leadFunnels.find((f) => f.id === funnelId) : null;
-  const changeMonth = (k) => { setMonthKey(k); setCompareKey(null); };
+  const changeMonth = (k) => setParams({ monthKey: k, compareKey: null });
   // Clicar na linha da pessoa filtra; clicar de novo na mesma linha limpa.
-  const pickPerson = (id) => setPerson((p) => (p === id ? 'all' : id));
+  const pickPerson = (id) => setParams((v) => ({ person: v.person === id ? 'all' : id }));
   // Qualquer mês carregado que falhou avisa: a safra do mês exibido também
   // depende dos meses seguintes (matrículas, perdas e agendamentos).
   const failedNames = sources.failedKeys.map((k) => monthName(k, monthKey));
@@ -145,10 +144,10 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
           monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
           canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
           canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}
-          compareOn={compareOn} onCompareOn={setCompareOn}
-          compareKey={cmpKey} compareOptions={cmpOptions} onCompare={setCompareKey}
-          person={userId || 'all'} people={people} onPerson={setPerson}
-          funnel={funnelId || 'all'} funnels={leadFunnels} onFunnel={setFunnel}
+          compareOn={compareOn} onCompareOn={(v) => setParams({ compareOn: v })}
+          compareKey={cmpKey} compareOptions={cmpOptions} onCompare={(k) => setParams({ compareKey: k })}
+          person={userId || 'all'} people={people} onPerson={(id) => setParams({ person: id })}
+          funnel={funnelId || 'all'} funnels={leadFunnels} onFunnel={(id) => setParams({ funnel: id })}
           note={note}
         />
         {failedNames.length > 0 && (
@@ -174,7 +173,7 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
               funnelId={funnelId}
               funnelName={funnelObj?.name || ''}
               onPick={pickPerson}
-              onClear={() => setPerson('all')}
+              onClear={() => setParams({ person: 'all' })}
             />
           </div>
         </div>

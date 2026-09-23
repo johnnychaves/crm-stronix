@@ -28,6 +28,7 @@ import { BaseBridge } from './BaseBridge.jsx';
 import { RenewalOutcomeBar } from './RenewalOutcomeBar.jsx';
 import { MilestoneBars } from './MilestoneBars.jsx';
 import { TeamMonthTable } from './TeamMonthTable.jsx';
+import { useScreenParams } from '../../hooks/useScreenParams.js';
 
 // Padrões fora do componente: um array novo a cada render mudaria os memos.
 const DEFAULT_WEEKDAYS = [1, 2, 3, 4, 5];
@@ -302,10 +303,12 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
   }, []);
 
   const currentKey = monthKeyOf(now);
-  const [monthKey, setMonthKey] = useState(currentKey);
-  const [compareOn, setCompareOn] = useState(true);
-  const [compareKey, setCompareKey] = useState(null); // null = mês anterior
-  const [person, setPerson] = useState('all');
+  const users = useMemo(() => (usersList || []).filter((u) => u?.id), [usersList]);
+  // Mês, comparativo e pessoa vêm do endereço: F5 mantém, o link abre igual e
+  // cada aba pode estar num recorte diferente. Pessoa que saiu da equipe e mês
+  // fora da janela de 12 meses caem no padrão, sem aviso (src/lib/screenParams.js).
+  const paramsCtx = useMemo(() => ({ currentKey, users }), [currentKey, users]);
+  const [{ monthKey, compareOn, compareKey, person }, setParams] = useScreenParams('dashOperacional', paramsCtx);
   const userId = person === 'all' ? null : person;
   const cmpKey = compareKey || addMonthsToKey(monthKey, -1);
   // A lista de meses vai até 11 meses atrás; a seta não passa dela.
@@ -323,7 +326,6 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
   // A lista inteira de uma vez: a pausa do contrato trancado que ganhou
   // sucessor só fecha olhando os outros contratos da pessoa.
   const contracts = useMemo(() => normalizeContracts(contratos), [contratos]);
-  const users = useMemo(() => (usersList || []).filter((u) => u?.id), [usersList]);
   const personUser = userId ? users.find((u) => u.id === userId) || null : null;
 
   const sources = useOperacionalSources({
@@ -488,7 +490,9 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
   );
   const cmpOptions = compareOptions(monthKey).map((k) => ({ key: k, label: monthLabel(k) }));
   const people = users.map((u) => ({ id: u.id, name: u.name || 'Sem nome' }));
-  const changeMonth = (k) => { setMonthKey(k); setCompareKey(null); };
+  // Trocar de mês zera o mês da comparação, como sempre zerou. É uma navegação
+  // só: os dois parâmetros trocam juntos.
+  const changeMonth = (k) => setParams({ monthKey: k, compareKey: null });
 
   // Alvo 0 não é alvo pequeno: o card de prospecção sai e a Rotina troca de trilhas.
   const prospOff = Boolean(cur.prosp && !cur.prosp.on);
@@ -514,9 +518,9 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
           monthKey={monthKey} monthOptions={monthOptions} onMonth={changeMonth}
           canPrev={monthKey > oldestKey} onPrev={() => { if (monthKey > oldestKey) changeMonth(addMonthsToKey(monthKey, -1)); }}
           canNext={monthKey < currentKey} onNext={() => { if (monthKey < currentKey) changeMonth(addMonthsToKey(monthKey, 1)); }}
-          compareOn={compareOn} onCompareOn={setCompareOn}
-          compareKey={cmpKey} compareOptions={cmpOptions} onCompare={setCompareKey}
-          person={person} people={people} onPerson={setPerson}
+          compareOn={compareOn} onCompareOn={(v) => setParams({ compareOn: v })}
+          compareKey={cmpKey} compareOptions={cmpOptions} onCompare={(k) => setParams({ compareKey: k })}
+          person={person} people={people} onPerson={(id) => setParams({ person: id })}
           note={note}
         />
         {failedNames.length > 0 && (
@@ -621,7 +625,7 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
               {team && (
                 <section>
                   <SectionTitle title="Equipe no mês" question="clique numa linha para filtrar a tela por essa pessoa" />
-                  <TeamMonthTable rows={team.rows} others={team.others} total={cur} running={running} onPick={setPerson} />
+                  <TeamMonthTable rows={team.rows} others={team.others} total={cur} running={running} onPick={(id) => setParams({ person: id })} />
                 </section>
               )}
             </div>

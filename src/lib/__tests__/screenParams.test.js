@@ -318,3 +318,67 @@ describe('ida e volta de tudo', () => {
     expect(volta('dailyGoal', '?cat=vencido&mes=2026-08&invite=x', {})).toBe('?cat=vencido');
   });
 });
+
+describe('contrato do contexto dos três dashboards', () => {
+  // A tela monta a lista de meses com 12 opções a partir do mês corrente
+  // (Array.from({length: 12}, (_, i) => addMonthsToKey(currentKey, -i))) e a
+  // seta trava em addMonthsToKey(currentKey, -11). O endereço obedece à mesma
+  // janela, senão um link abriria um mês que o seletor não sabe mostrar.
+  it('a janela do mês do endereço é a mesma lista de 12 meses da barra', () => {
+    const doze = Array.from({ length: 12 }, (_, i) => {
+      const [a, m] = HOJE.split('-').map(Number);
+      const d = new Date(a, m - 1 - i, 1);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    });
+    for (const m of doze) expect(ler('dashOperacional', `?mes=${m}`, dash).monthKey, m).toBe(m);
+    const antesDaLista = doze[doze.length - 1];
+    expect(ler('dashOperacional', `?mes=${antesDaLista}`, dash).monthKey).toBe(antesDaLista);
+  });
+
+  it('trocar de mês limpa o mês da comparação, como a barra já fazia', () => {
+    const v = ler('dashOperacional', '?mes=2026-08&comparar-com=2026-07', dash);
+    expect(montar('dashOperacional', { ...v, monthKey: '2026-06', compareKey: null }, dash)).toBe('?mes=2026-06');
+  });
+
+  it('o Gerencial sem nenhum mês com venda não escreve comparativo nenhum', () => {
+    const ctx = { currentKey: HOJE, mesesComparaveis: () => [] };
+    expect(ler('dashGerencial', '?comparar-com=2026-07', ctx).compareKey).toBeNull();
+    expect(montar('dashGerencial', { monthKey: HOJE, compareOn: true, compareKey: '2026-07' }, ctx)).toBe('');
+  });
+
+  it('o Gerencial não tem filtro de pessoa, e um pessoa no endereço dele é ignorado', () => {
+    expect(ler('dashGerencial', '?pessoa=u1', { currentKey: HOJE })).toEqual({ monthKey: HOJE, compareOn: true, compareKey: null });
+  });
+
+  it('o funil do CRM é o recorte do dashboard e não conhece o último funil usado', () => {
+    const ctx = { ...dash, funis, funilPadrao: 'f2' };
+    expect(ler('dashCrm', '', ctx).funnel).toBe('all');
+    expect(montar('dashCrm', ler('dashCrm', '', ctx), ctx)).toBe('');
+  });
+
+  it('desligar o comparativo e escolher pessoa cabem na mesma query', () => {
+    expect(montar('dashCrm', { monthKey: HOJE, compareOn: false, compareKey: null, person: 'u1', funnel: 'all' }, { ...dash, funis }))
+      .toBe('?comparar=0&pessoa=u1');
+  });
+
+  it('clicar na linha da pessoa e clicar de novo limpa: os dois estados cabem no endereço', () => {
+    const ctx = { ...dash, funis };
+    const escolhida = { ...ler('dashCrm', '', ctx), person: 'u2' };
+    expect(montar('dashCrm', escolhida, ctx)).toBe('?pessoa=u2');
+    expect(montar('dashCrm', { ...escolhida, person: 'all' }, ctx)).toBe('');
+  });
+
+  it('pessoa desligada no meio da sessão some do endereço na próxima escolha', () => {
+    const antes = { ...dash, users: [...users, { id: 'u9' }] };
+    const depois = dash;
+    const v = ler('dashOperacional', '?pessoa=u9', antes);
+    expect(v.person).toBe('u9');
+    expect(montar('dashOperacional', v, depois)).toBe('');
+    expect(ler('dashOperacional', '?pessoa=u9', depois).person).toBe('all');
+  });
+
+  it('o endereço curto da academia e o endereço longo do Operacional leem igual', () => {
+    const q = '?mes=2026-08&comparar=0&pessoa=u1';
+    expect(ler('dashboard', q, dash)).toEqual(ler('dashOperacional', q, dash));
+  });
+});
