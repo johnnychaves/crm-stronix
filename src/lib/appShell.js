@@ -30,12 +30,20 @@ export function screenState(shown, locationState, appUser) {
   const activeTab = fichaOpen
     ? (fichaOrigin(locationState, appUser) ?? 'ficha')
     : (shown?.screen ?? HOME_SCREEN);
+  // Sub-tela da tela mostrada (seção das Configurações, aba da ficha). Sem
+  // segmento no endereço vale o padrão da tabela, e tela sem sub-tela devolve
+  // null. Sai do `shown`, igual ao resto, então não existe estado espelhado.
+  // O `isScreenId` da linha 9 é o mesmo guarda do `fichaOrigin`: indexar
+  // SCREENS direto devolveria o construtor herdado do Object para um
+  // `screen: 'constructor'` que viesse do alvo de um redirect.
+  const def = isScreenId(shown?.screen) ? SCREENS[shown.screen] : null;
   return {
     fichaOpen,
     profileLeadId: fichaOpen ? (shown.leadId ?? null) : null,
     activeTab,
     resolvedTab: activeTab === HOME_SCREEN ? 'dashOperacional' : activeTab,
     superTab: shown?.superTab ?? 'overview',
+    sub: def?.subs ? (shown.sub ?? def.subPadrao) : null,
   };
 }
 

@@ -14,7 +14,7 @@ const assumida = { id: 'u5', role: 'admin', tenantId: 'academia-teste', imperson
 const legado = { id: 'u9', role: 'admin', tenantId: 'Academia_Legada' };
 
 const decide = (path, user, opts) => routeDecision(parseAppPath(path), user, opts);
-const casa = (to, target, notice = null) => ({ kind: 'redirect', to, target: { leadId: null, superTab: null, ...target }, notice });
+const casa = (to, target, notice = null) => ({ kind: 'redirect', to, target: { leadId: null, superTab: null, sub: null, ...target }, notice });
 
 describe('canAccess', () => {
   it('telas de gestor só para quem é admin', () => {
@@ -143,7 +143,7 @@ describe('routeDecision 5: endereço sem a academia da sessão', () => {
   it('outra academia: mantém a tela e descarta ficha e super-admin', () => {
     expect(decide('/outra/pipeline', consultor)).toEqual(casa(`/${T}/pipeline`, { screen: 'kanban' }));
     expect(decide('/outra/leads/aulas', consultor)).toEqual(casa(`/${T}/leads/aulas`, { screen: 'aulas' }));
-    expect(decide('/outra/configuracoes/equipe', admin)).toEqual(casa(`/${T}/configuracoes/equipe`, { screen: 'settings' }));
+    expect(decide('/outra/configuracoes/equipe', admin)).toEqual(casa(`/${T}/configuracoes/equipe`, { screen: 'settings', sub: 'team' }));
     expect(decide('/outra/ficha/AbC', consultor)).toEqual(casa(`/${T}`, { screen: 'dashboard' }));
     expect(decide('/outra/super-admin/planos', superMembro)).toEqual(casa(`/${T}`, { screen: 'dashboard' }));
     expect(decide('/outra', consultor, { search: '?x=1' })).toEqual(casa(`/${T}?x=1`, { screen: 'dashboard' }));
@@ -220,7 +220,7 @@ describe('routeDecision: trava contra laço', () => {
           const [path] = d.to.split('?');
           expect(decide(path, user, { returnTo }), rotulo).toEqual({ kind: 'ok' });
           const destino = parseAppPath(path);
-          expect(d.target, rotulo).toEqual({ screen: destino.screen, leadId: destino.leadId, superTab: destino.superTab });
+          expect(d.target, rotulo).toEqual({ screen: destino.screen, leadId: destino.leadId, superTab: destino.superTab, sub: destino.sub });
           if (d.target.screen) expect(canAccess(d.target.screen, user), rotulo).toBe(true);
         }
       }
@@ -321,5 +321,44 @@ describe('scrollActionFor', () => {
     expect(scrollActionFor({ navigationType: 'PUSH', prevScreenKey: 'kanban', screenKey: 'kanban' })).toBe('none');
     expect(scrollActionFor({ navigationType: 'POP', prevScreenKey: 'kanban', screenKey: 'kanban' })).toBe('none');
     expect(scrollActionFor({ navigationType: 'POP', prevScreenKey: null, screenKey: 'kanban' })).toBe('none');
+  });
+});
+
+describe('sub-tela na decisão de rota', () => {
+  it('a correção de academia leva a sub-tela no destino e no alvo desenhado', () => {
+    expect(decide(`/outra/configuracoes/catalogos`, admin)).toEqual(
+      casa(`/${T}/configuracoes/catalogos`, { screen: 'settings', sub: 'catalogs' }),
+    );
+    expect(decide('/configuracoes/equipe', admin)).toEqual(
+      casa(`/${T}/configuracoes/equipe`, { screen: 'settings', sub: 'team' }),
+    );
+  });
+
+  it('sub-tela desconhecida abre a tela-mãe, com a query e sem aviso', () => {
+    expect(decide(`/${T}/configuracoes/xyz`, admin, { search: '?sit=ativo' })).toEqual(
+      casa(`/${T}/configuracoes?sit=ativo`, { screen: 'settings' }),
+    );
+    expect(decide(`/${T}/ficha/AbC/xyz`, consultor)).toEqual(
+      casa(`/${T}/ficha/AbC`, { screen: 'ficha', leadId: 'AbC' }),
+    );
+  });
+
+  it('a trava de tela ganha da sub-tela: consultor em Configurações continua caindo no Operacional com aviso', () => {
+    expect(decide(`/${T}/configuracoes/xyz`, consultor)).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'so-gestor'));
+  });
+
+  it('endereço com sub-tela conhecida é aceito de primeira', () => {
+    expect(decide(`/${T}/configuracoes/funis`, admin)).toEqual({ kind: 'ok' });
+    expect(decide(`/${T}/ficha/AbC/contratos`, consultor)).toEqual({ kind: 'ok' });
+  });
+
+  it('a sub-tela não entra na screenKey, senão trocar de seção remontaria a tela', () => {
+    expect(screenKey(parseAppPath(`/${T}/configuracoes/catalogos`))).toBe('settings');
+    expect(screenKey(parseAppPath(`/${T}/ficha/AbC/contratos`))).toBe('ficha:AbC');
+  });
+
+  it('a sub-tela continua fora do molde do Sentry', () => {
+    expect(routeTemplate(`/${T}/configuracoes/catalogos`)).toBe('/:tenant/configuracoes');
+    expect(routeTemplate(`/${T}/ficha/AbC/contratos`)).toBe('/:tenant/ficha/:leadId');
   });
 });

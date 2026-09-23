@@ -17,7 +17,7 @@ const superMembro = { id: 'u3', authUid: 'uid-3', role: 'admin', tenantId: T, su
 describe('screenState', () => {
   it('tela comum: o menu acende a tela do endereço e não há ficha', () => {
     const s = screenState(parseAppPath(`/${T}/pipeline`), null, consultor);
-    expect(s).toEqual({ fichaOpen: false, profileLeadId: null, activeTab: 'kanban', resolvedTab: 'kanban', superTab: 'overview' });
+    expect(s).toEqual({ fichaOpen: false, profileLeadId: null, activeTab: 'kanban', resolvedTab: 'kanban', superTab: 'overview', sub: null });
   });
 
   it('endereço curto da academia abre o Operacional', () => {
@@ -44,6 +44,14 @@ describe('screenState', () => {
     const s = screenState(parseAppPath(`/${T}/ficha/..`), null, consultor);
     expect(s.fichaOpen).toBe(true);
     expect(s.profileLeadId).toBeNull();
+  });
+
+  it('a sub-tela sai do endereço e cai no padrão da tela quando não vem', () => {
+    expect(screenState(parseAppPath(`/${T}/configuracoes/catalogos`), null, gestor).sub).toBe('catalogs');
+    expect(screenState(parseAppPath(`/${T}/configuracoes`), null, gestor).sub).toBe('team');
+    expect(screenState(parseAppPath(`/${T}/ficha/AbC/contratos`), null, consultor).sub).toBe('contratos');
+    expect(screenState(parseAppPath(`/${T}/ficha/AbC`), null, consultor).sub).toBe('timeline');
+    expect(screenState(parseAppPath(`/${T}/pipeline`), null, consultor).sub).toBeNull();
   });
 
   it('subaba do super-admin vem do endereço', () => {

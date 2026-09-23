@@ -74,6 +74,7 @@ describe('parseAppPath', () => {
     for (const p of ['/', '']) {
       expect(parseAppPath(p)).toEqual({
         pathname: p, tenantSlug: null, screen: null, leadId: null, superTab: null, rest: [], unknown: false,
+        sub: null, subUnknown: false,
       });
     }
   });
@@ -345,5 +346,87 @@ describe('contrato do idx com o react-router instalado', () => {
     historico(w); // a página carrega de novo na mesma entrada
     expect(w.history.state.idx).toBe(1);
     expect(w.history.state.usr).toEqual({ from: 'kanban' });
+  });
+});
+
+describe('sub-tela no caminho', () => {
+  it('Configurações lê as dez seções e devolve o id interno', () => {
+    const pares = [
+      ['visao-geral', 'overview'], ['equipe', 'team'], ['transferencia', 'transfer'],
+      ['indicacoes', 'referral-owners'], ['importacao', 'import'], ['ritmo', 'pace'],
+      ['agenda', 'sched'], ['funis', 'funnels'], ['catalogos', 'catalogs'], ['stronizap', 'zap'],
+    ];
+    for (const [seg, id] of pares) {
+      const r = parseAppPath(`/${T}/configuracoes/${seg}`);
+      expect([r.screen, r.sub, r.subUnknown], seg).toEqual(['settings', id, false]);
+    }
+  });
+
+  it('a ficha lê as quatro abas', () => {
+    const pares = [['linha-do-tempo', 'timeline'], ['crm', 'crm'], ['contratos', 'contratos'], ['indicacoes', 'referrals']];
+    for (const [seg, id] of pares) {
+      const r = parseAppPath(`/${T}/ficha/AbC/${seg}`);
+      expect([r.screen, r.leadId, r.sub], seg).toEqual(['ficha', 'AbC', id]);
+    }
+  });
+
+  it('sem sub-tela no endereço, sub é null e subUnknown é false', () => {
+    for (const p of [`/${T}/configuracoes`, `/${T}/ficha/AbC`]) {
+      const r = parseAppPath(p);
+      expect([r.sub, r.subUnknown], p).toEqual([null, false]);
+    }
+  });
+
+  it('segmento de sub-tela ignora caixa, como o de tela', () => {
+    expect(parseAppPath(`/${T}/configuracoes/EQUIPE`).sub).toBe('team');
+    expect(parseAppPath(`/${T}/ficha/AbC/Contratos`).sub).toBe('contratos');
+  });
+
+  it('sub-tela desconhecida e segmento a mais marcam subUnknown, sem virar endereço desconhecido', () => {
+    for (const p of [`/${T}/configuracoes/xyz`, `/${T}/configuracoes/equipe/demais`, `/${T}/ficha/AbC/xyz`, `/${T}/ficha/AbC/crm/demais`]) {
+      const r = parseAppPath(p);
+      expect([r.sub, r.subUnknown, r.unknown], p).toEqual([null, true, false]);
+    }
+  });
+
+  it('tela sem tabela de sub-tela continua ignorando o resto calado', () => {
+    const r = parseAppPath(`/${T}/pipeline/a/b`);
+    expect([r.screen, r.rest, r.sub, r.subUnknown, r.unknown]).toEqual(['kanban', ['a', 'b'], null, false, false]);
+  });
+
+  it('o rest cru continua como era, para o id da ficha nunca ser reescrito', () => {
+    expect(parseAppPath(`/${T}/configuracoes/equipe`).rest).toEqual(['equipe']);
+    expect(parseAppPath(`/${T}/ficha/AbC/contratos`).rest).toEqual(['contratos']);
+  });
+
+  it('hrefFor monta a sub-tela e cai na tela-mãe quando o valor não existe', () => {
+    expect(hrefFor(T, 'settings', { sub: 'catalogs' })).toBe(`/${T}/configuracoes/catalogos`);
+    expect(hrefFor(T, 'settings', { sub: 'team' })).toBe(`/${T}/configuracoes/equipe`);
+    expect(hrefFor(T, 'settings')).toBe(`/${T}/configuracoes`);
+    expect(hrefFor(T, 'settings', { sub: 'xyz' })).toBe(`/${T}/configuracoes`);
+    expect(hrefFor(T, 'ficha', { leadId: 'AbC', sub: 'contratos' })).toBe(`/${T}/ficha/AbC/contratos`);
+    expect(hrefFor(T, 'ficha', { leadId: 'AbC', sub: 'xyz' })).toBe(`/${T}/ficha/AbC`);
+    expect(hrefFor(T, 'kanban', { sub: 'equipe' })).toBe(`/${T}/pipeline`);
+  });
+
+  it('ida e volta: todo segmento montado relê como o mesmo id', () => {
+    for (const id of Object.keys(SCREENS.settings.subs)) {
+      expect(parseAppPath(hrefFor(T, 'settings', { sub: id })).sub, id).toBe(id);
+    }
+    for (const id of Object.keys(SCREENS.ficha.subs)) {
+      expect(parseAppPath(hrefFor(T, 'ficha', { leadId: 'AbC', sub: id })).sub, id).toBe(id);
+    }
+  });
+
+  it('a tabela de sub-telas é congelada e o padrão de cada uma existe nela', () => {
+    for (const id of ['settings', 'ficha']) {
+      expect(Object.isFrozen(SCREENS[id].subs), id).toBe(true);
+      expect(Object.keys(SCREENS[id].subs), id).toContain(SCREENS[id].subPadrao);
+    }
+  });
+
+  it('nenhuma outra tela tem sub-tela nesta entrega', () => {
+    const comSub = Object.keys(SCREENS).filter((id) => SCREENS[id].subs);
+    expect(comSub.sort()).toEqual(['ficha', 'settings']);
   });
 });
