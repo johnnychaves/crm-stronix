@@ -261,8 +261,9 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
       )}>
         {lead.consultantName && <InitialsAvatar name={lead.consultantName} size={17} textSize={8} />}
         {/* Segundo link do card, para o lado esquerdo do rodapé também abrir a
-            ficha. Fora da ordem do Tab: o teclado para uma vez por card, no
-            link de cima. O aria-label começa pelo texto que está na tela e só
+            ficha. Fora da ordem do Tab, como a setinha: os três links do card
+            levam ao mesmo lugar, então o teclado para uma vez só, no link de
+            cima. O aria-label começa pelo texto que está na tela e só
             depois diz para onde vai: sem ele, quem usa leitor de tela ouve um
             link chamado "Sem responsável", que não leva a lugar nenhum pelo
             nome; e sem o nome do consultor dentro dele, some da leitura quem é
@@ -306,11 +307,16 @@ export const KanbanCard = memo(function KanbanCard({ lead, columnColor, isDraggi
               corpo do card já abre a ficha na mesma tela.
               O data-no-pan é redundante (o <article> já tem, e o pan procura
               com closest), e fica de propósito: é a mesma defesa do botão
-              Mover ao lado, e ninguém precisa ir conferir o ancestral. */}
+              Mover ao lado, e ninguém precisa ir conferir o ancestral.
+              tabIndex={-1} pelo mesmo motivo do link do consultor: é o terceiro
+              caminho para a MESMA ficha, e sem ele o Tab pararia três vezes em
+              cada card. Quem usa teclado abre em outra guia pelo link de cima,
+              com Ctrl+Enter. */}
           <LeadLink
             leadId={lead.id}
             draggable={false}
             data-no-pan="true"
+            tabIndex={-1}
             target="_blank"
             rel="noopener"
             title="Abrir ficha em outra guia"

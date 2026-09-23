@@ -46,7 +46,7 @@
 
 Onde o spec e o desenho deixavam duas saídas, ou onde a revisão do desenho mandou trocar de saída, valeu o que está aqui. A T6 põe o spec e o `CLAUDE.md` em dia com isso.
 
-1. **Card do Pipeline: dois links que envolvem, e não uma camada que estica.** O link esticado (`after:absolute after:inset-0`) cobre o card inteiro e rouba o hit-test: os tooltips dos chips truncados em 112px, o do motivo da perda e o de "Consultor: X" parariam de aparecer, e todo hover do card mostraria o nome. A revisão do desenho mandou envolver. A saída que não mexe em uma linha de layout é ter DOIS `LeadLink` no card: um em volta do bloco de cima (nome, compromisso e chips) e outro no nome do consultor do rodapé. Os dois têm o mesmo destino, os `title` continuam dentro deles (menos no card de id quebrado, que vira `<span>` e perde o tooltip junto com o link) e o rodapé segue sendo uma linha flex com os mesmos filhos na mesma ordem. O do rodapé leva `tabIndex={-1}`, para o Tab parar uma vez por card. A alternativa do desenho (um link só, com as ações tiradas do fluxo por `position: absolute`) mudaria a altura do card no hover e não foi adotada.
+1. **Card do Pipeline: dois links que envolvem, e não uma camada que estica.** O link esticado (`after:absolute after:inset-0`) cobre o card inteiro e rouba o hit-test: os tooltips dos chips truncados em 112px, o do motivo da perda e o de "Consultor: X" parariam de aparecer, e todo hover do card mostraria o nome. A revisão do desenho mandou envolver. A saída que não mexe em uma linha de layout é ter DOIS `LeadLink` no card: um em volta do bloco de cima (nome, compromisso e chips) e outro no nome do consultor do rodapé. Os dois têm o mesmo destino, os `title` continuam dentro deles (e no card de id quebrado o `<span>` guarda o `title`, ajuste feito na revisão) e o rodapé segue sendo uma linha flex com os mesmos filhos na mesma ordem. O do rodapé leva `tabIndex={-1}`, e a setinha também: os três links do card levam à mesma ficha, então o Tab para uma vez só, no link de cima. A alternativa do desenho (um link só, com as ações tiradas do fluxo por `position: absolute`) mudaria a altura do card no hover e não foi adotada.
 2. **O `<article>` perde o `onClick` e continua sendo quem arrasta.** Com o link também chamando o `navigate`, o clique empilharia duas entradas e o voltar do navegador precisaria de dois cliques. Os links levam `draggable={false}`: pela especificação do HTML quem arrasta é o primeiro ancestral com `draggable` verdadeiro, então a imagem arrastada continua sendo o card e o arrasto não leva a URL (soltar em outra aba abriria a ficha).
 3. **A setinha abre em outra guia (decisão 11 do Johnny).** `target="_blank"` e `rel="noopener"`, com `title` e `aria-label` dizendo isso. O `AppLink` já não chama `onNavigate` quando o `target` não é `_self`, e o `Link` do React Router não intercepta clique com `target`, então o Pipeline fica intacto na guia atual. Ctrl+clique ou botão do meio na setinha abre a guia em segundo plano: nenhum site consegue forçar segundo plano num clique comum.
 4. **O `e.stopPropagation()` do botão Mover sai.** Ele existia só para o clique não subir até o `onClick` do `<article>`, que deixa de existir.
@@ -57,7 +57,7 @@ Onde o spec e o desenho deixavam duas saídas, ou onde a revisão do desenho man
 9. **O `ReferrerPicker` não vira link.** Ele escolhe um indicador e não navega. O resultado da escolha aparece na ficha como "Indicado por", e esse sim vira link.
 10. **"Ir para o pipeline" do Gerencial continua `<button>`.** O `gerencial.components.test.js` renderiza o componente com `renderToString` SEM Router e exige `<button type="button"`. Virar link quebraria o teste e faria uma folha depender do roteador.
 11. **`group-enabled:group-hover:` não vale em `<a>`.** No `ConsultantDayDetail`, a prospecção usava `:enabled`, que só existe em controle de formulário. No ramo com link a classe vira `group-hover:`, e no ramo sem lead o hover sai de vez (hoje ele também não acontece, porque o botão está `disabled`).
-12. **O `openProfile` do contexto continua vivo em dois lugares:** no `App.jsx` (definição e "Ver ficha" do cadastro) e na busca global (Enter). Uma varredura no CI (T6) cobra que nenhum outro arquivo de `src/views` ou `src/components` volte a usá-lo.
+12. **O `openProfile` do contexto continua vivo em dois lugares:** no `App.jsx` (definição e "Ver ficha" do cadastro) e na busca global (Enter). Uma varredura no CI (T6) cobra que nenhum outro arquivo de `src/views`, `src/components`, `src/modals`, `src/hooks` e `src/contexts` volte a usá-lo (as três últimas pastas entraram na revisão).
 13. **Sem mudança no `src/App.jsx`.** O `LeadProfileContext` já entrega `leadHref` e `from` desde o PR 2, e nenhuma das telas convertidas recebe prop do App para isso.
 
 ## Mapa de arquivos
@@ -121,7 +121,7 @@ Três coisas mudam de comportamento e ficam assim de propósito:
 - **Sem "Manter conectado", a guia nova da setinha cai no login.** A sessão de quem entra com a caixa desmarcada mora no `sessionStorage` (`persistenceKind` devolve `session`, e o login grava em `browserSessionPersistence`), e guia aberta por link nasce com esse armazenamento vazio. Tirar o `rel="noopener"` não muda nada: quem zera é o `target="_blank"`, e o Chrome aplica noopener sozinho em link desde a versão 88. Aceito, porque é a decisão 7 do spec aparecendo aqui: quem pediu para não ficar conectado está pedindo isso. O time entra com "Manter conectado", e ali a guia nova abre a ficha direto. Vai para o checklist manual (T6, Step 6).
 
 - **Dois pedaços do rodapé deixam de abrir a ficha.** O `onClick` cobria o card inteiro e o link do rodapé cobre só o nome do consultor, então saem da conta o avatar de iniciais (irmão anterior do link) e o número da direita, valor da venda ou dias de silêncio (irmão posterior). O número já era inalcançável na prática, porque some justamente no hover e no toque (`group-hover:hidden`, `group-focus-within:hidden`, `pointer-coarse:hidden`). A perda real é o avatar de 17px, e ali do lado é onde ficam as ações. Vai para o checklist manual do corpo do PR (T6, Step 6).
-- **Id que não serve para endereço perde o tooltip junto com o link.** O ramo sem href do `LeadLink` devolve `<span className={className}>{children}</span>` e joga fora o resto das props, então num card com id quebrado o `title` do consultor some do HTML. Guardar o tooltip exigiria mexer no `AppLink.jsx`, que é arquivo do PR 2 e está fora do escopo deste. Fica anotado no spec (T6, Step 4); na prática é card que já não abria ficha nenhuma.
+- **Id que não serve para endereço perdia o tooltip junto com o link, e a revisão trouxe o tooltip de volta.** O ramo sem href do `LeadLink` devolvia `<span className={className}>{children}</span>` e jogava fora o resto das props, então num card com id quebrado o `title` do consultor sumia do HTML. Ficou anotado como troca aceita até a revisão final do PR, que achou barato passar o `title` adiante: hoje o `<span>` guarda `className`, `title` e os filhos. O `aria-label` continua ficando para trás, e ali não faz falta, porque sem link não há o que anunciar.
 
 **Ajustes da revisão de qualidade (22/09, depois do commit da Task 1).** O código final do card difere do escrito nos Steps abaixo nestes cinco pontos:
 
@@ -2329,7 +2329,7 @@ No spec, o item `- **Card do Pipeline:**` da seção "Links". Antes:
 Depois:
 
 ```md
-- **Card do Pipeline:** são DOIS links com o mesmo destino, um em volta do bloco de cima e outro no nome do consultor do rodapé, os dois com `draggable={false}` (implementado assim em 22/09; um link só exigiria tirar as ações do fluxo com `position: absolute`, o que mudaria a altura do card no hover). O do rodapé leva `tabIndex={-1}`, para o Tab parar uma vez por card. Mover e a setinha ficam fora do link. O `article` perde o `onClick` e continua sendo o que se arrasta. Os tooltips do card (motivo da perda, chips, consultor) continuam funcionando porque estão DENTRO dos links, com uma exceção: id que não serve para endereço vira `<span>` e leva o `title` junto, porque o ramo sem href do `LeadLink` só repassa `className` e os filhos. Dois pedaços do rodapé deixaram de abrir a ficha, de propósito: o avatar de iniciais do consultor e o número da direita, que é onde ficam as ações (o número já sumia no hover). A setinha do rodapé vira um link com `target="_blank"` e `rel="noopener"` (decisão 11), com o rótulo dizendo que abre em outra guia.
+- **Card do Pipeline:** são DOIS links com o mesmo destino, um em volta do bloco de cima e outro no nome do consultor do rodapé, os dois com `draggable={false}` (implementado assim em 22/09; um link só exigiria tirar as ações do fluxo com `position: absolute`, o que mudaria a altura do card no hover). O do rodapé leva `tabIndex={-1}`, e um `aria-label` que começa pelo nome do consultor e termina no destino. Mover e a setinha ficam fora do link. O `article` perde o `onClick` e continua sendo o que se arrasta. Os tooltips do card (motivo da perda, chips, consultor) continuam funcionando porque estão DENTRO dos links, e id que não serve para endereço vira `<span>` que guarda `className`, `title` e os filhos, então o tooltip sobrevive e o `aria-label` não. Dois pedaços do rodapé deixaram de abrir a ficha, de propósito: o avatar de iniciais do consultor e o número da direita, que é onde ficam as ações (o número já sumia no hover). A setinha do rodapé vira um link com `target="_blank"` e `rel="noopener"` (decisão 11), com o rótulo dizendo que abre em outra guia, `pointer-coarse:hidden` para sumir no toque e `tabIndex={-1}` como o do consultor: os três links do card levam à mesma ficha, então o Tab para uma vez só, no link de cima, e segue para o botão Mover, que aparece porque o link está focado.
 ```
 
 Na mesma seção, o item `- **Listas**`. Antes:
@@ -2411,8 +2411,8 @@ aberta, com o texto digitado. Clique simples continua fechando.
   por cima.** Com a camada, os tooltips dos chips truncados, do motivo da perda
   e de "Consultor: X" parariam de aparecer, e todo hover do card mostraria o
   nome. São dois links com o mesmo destino: um no bloco de cima e outro no nome
-  do consultor. O do rodapé fica fora da ordem do Tab, então o teclado continua
-  parando uma vez por card.
+  do consultor. O do rodapé fica fora da ordem do Tab, como a setinha, então o
+  teclado para uma vez por card, no link de cima.
 - **O `<article>` perdeu o `onClick` e continua sendo quem se arrasta.** Com os
   dois (link e container) navegando, o clique empilharia duas entradas e o
   voltar do navegador precisaria de dois cliques. Os links levam
@@ -2428,7 +2428,8 @@ aberta, com o texto digitado. Clique simples continua fechando.
 - Continuam botão: Mover do card, as ações da Meta, o lápis do vínculo de
   indicação, as novidades do sino, "Cadastrar novo lead" e "Ir para o pipeline"
   do Gerencial.
-- Uma varredura no CI cobra que nenhuma tela volte a abrir ficha por `onClick`.
+- Uma varredura no CI cobra que nenhum arquivo de `src/views`, `src/components`,
+  `src/modals`, `src/hooks` e `src/contexts` volte a abrir ficha por `onClick`.
 
 ## Testes
 
@@ -2495,9 +2496,9 @@ erros (segue o mesmo aviso antigo do `SuperAdminView.jsx`). Build e
 - [ ] Lead com id que não serve para endereço: o cabeçalho do card e o corpo do
       card concluído continuam com cara de clicável (`cursor-pointer`) e o
       atalho do canto continua com cara de botão, mas nada abre, porque o
-      `LeadLink` vira `<span>` e joga fora `title` e `aria-label`. É a mesma
-      troca aceita na T1 para o Kanban; na prática é card que já não abria
-      ficha nenhuma.
+      `LeadLink` vira `<span>`. O tooltip continua (o `<span>` guarda o
+      `title`); o `aria-label` fica para trás, e sem link não há o que
+      anunciar. Na prática é card que já não abria ficha nenhuma.
 
 **Busca e sino**
 - [ ] Busca: clique simples abre e limpa o campo; Ctrl+clique e botão do meio

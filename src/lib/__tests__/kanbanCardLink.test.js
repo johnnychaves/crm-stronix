@@ -119,6 +119,19 @@ describe('card do Pipeline', () => {
     expect(setinha).toContain('rel="noopener"');
   });
 
+  it('a setinha fica fora da ordem do Tab, e o link de cima dentro', () => {
+    const html = render();
+    // Os três links do card levam à mesma ficha. O Tab para uma vez só, no
+    // link de cima; os dois do rodapé saem da ordem. Sem isto, cada card
+    // custaria três paradas de teclado para chegar no card seguinte.
+    const i = html.indexOf('target="_blank"');
+    const setinha = html.slice(html.lastIndexOf('<a ', i), html.indexOf('>', i));
+    expect(setinha).toContain('tabindex="-1"');
+    expect(primeiroLink(html)).not.toContain('tabindex');
+    // Dois links fora da ordem (consultor e setinha), de três no card.
+    expect(html.match(/tabindex="-1"/g)).toHaveLength(2);
+  });
+
   it('o rótulo da setinha avisa que abre em outra guia', () => {
     const html = render();
     expect(html).toContain('title="Abrir ficha em outra guia"');
