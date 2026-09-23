@@ -116,7 +116,10 @@ describe('Meta diária', () => {
     const html = doneCard();
     expect(html).toContain('href="/acad/ficha/abc123"');
     expect(html).toContain('after:absolute after:inset-0');
-    expect(html).toContain('relative flex items-center gap-3');
+    // Pelo `relative` e pelo gap, não pela lista inteira de classes: prender o
+    // prefixo literal quebraria o teste a cada reordenação de utilitário
+    // Tailwind, sem nenhuma mudança de comportamento.
+    expect(html).toMatch(/class="relative [^"]*flex items-center gap-3/);
   });
 
   it('DoneCard: Remarcar continua botão por cima do link', () => {
@@ -184,7 +187,13 @@ describe('visão Equipe', () => {
 
   it('id que não serve para endereço não vira link nem azula no hover', () => {
     const html = render(createElement(ConsultantDayDetail, {
-      row: { ...row, processed: [], prospAcoes: [{ leadId: 'a/b', leadName: 'Ana Lima', label: 'Mensagem', at: new Date('2026-09-22T09:00:00') }] },
+      // A carteira entra com o mesmo id quebrado: é o lado que tinha a cor de
+      // hover fixa, então sem ele o teste só exercita a prospecção.
+      row: {
+        ...row,
+        processed: [{ ...TASK, id: 'a/b' }],
+        prospAcoes: [{ leadId: 'a/b', leadName: 'Ana Lima', label: 'Mensagem', at: new Date('2026-09-22T09:00:00') }],
+      },
       slaOverdueDays: 3,
     }));
     expect(html).not.toContain('<a ');

@@ -80,35 +80,44 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                 </div>
                 <div className="h-px bg-slate-200 dark:bg-white/[0.08] my-1.5" />
                 <ul className="space-y-1">
-                  {c.itens.map(({ lead, done, text, critical }) => (
-                    <li key={lead.id}>
-                      {/* draggable={false}: a âncora é a linha inteira, então
-                          sem isto arrastar em qualquer ponto dela arrastaria o
-                          endereço da ficha para outra aba ou para um campo de
-                          texto. */}
-                      <LeadLink
-                        leadId={lead.id}
-                        draggable={false}
-                        className="w-full flex items-center gap-2 group rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
-                      >
-                        <i
-                          className={cn('size-[7px] rounded-full shrink-0', done ? 'bg-success' : critical ? 'bg-danger' : 'bg-brand-200 dark:bg-brand-500/50')}
-                          aria-hidden="true"
-                        />
-                        {/* Concluído recua: é lista de trabalho, não relatório —
-                            o olho tem que cair no que falta. */}
-                        <span className={cn(
-                          'flex-1 min-w-0 truncate text-[12px] transition group-hover:text-brand-600 dark:group-hover:text-brand-400',
-                          done && 'line-through opacity-55'
-                        )}>
-                          {lead.name || 'Sem nome'}
-                        </span>
-                        <span className={cn('shrink-0 text-[10.5px] num', critical ? 'text-rose-700 dark:text-rose-300 font-semibold' : 'text-slate-400 dark:text-slate-500')}>
-                          {text}
-                        </span>
-                      </LeadLink>
-                    </li>
-                  ))}
+                  {c.itens.map(({ lead, done, text, critical }) => {
+                    // Mesma pergunta que o LeadLink faz por dentro, igual ao
+                    // ramo da prospecção: cobre o id quebrado, que é o caso
+                    // real. Fora do Provider o LeadLink ainda degrada sozinho.
+                    // Sem isto o nome azula no hover mesmo quando o LeadLink
+                    // vira <span> e nada abre.
+                    const ehLink = isValidLeadId(lead.id);
+                    return (
+                      <li key={lead.id}>
+                        {/* draggable={false}: a âncora é a linha inteira, então
+                            sem isto arrastar em qualquer ponto dela arrastaria o
+                            endereço da ficha para outra aba ou para um campo de
+                            texto. */}
+                        <LeadLink
+                          leadId={lead.id}
+                          draggable={false}
+                          className="w-full flex items-center gap-2 group rounded-md outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40"
+                        >
+                          <i
+                            className={cn('size-[7px] rounded-full shrink-0', done ? 'bg-success' : critical ? 'bg-danger' : 'bg-brand-200 dark:bg-brand-500/50')}
+                            aria-hidden="true"
+                          />
+                          {/* Concluído recua: é lista de trabalho, não
+                              relatório, o olho tem que cair no que falta. */}
+                          <span className={cn(
+                            'flex-1 min-w-0 truncate text-[12px] transition',
+                            ehLink && 'group-hover:text-brand-600 dark:group-hover:text-brand-400',
+                            done && 'line-through opacity-55'
+                          )}>
+                            {lead.name || 'Sem nome'}
+                          </span>
+                          <span className={cn('shrink-0 text-[10.5px] num', critical ? 'text-rose-700 dark:text-rose-300 font-semibold' : 'text-slate-400 dark:text-slate-500')}>
+                            {text}
+                          </span>
+                        </LeadLink>
+                      </li>
+                    );
+                  })}
                 </ul>
               </div>
             ))}
@@ -143,9 +152,10 @@ function ConsultantDayDetail({ row, slaOverdueDays }) {
                 // tipo da ação, que é o que o sistema tem.
                 const temNome = Boolean(a.leadName) && a.leadName !== '—';
                 // Mesma pergunta que o LeadLink faz por dentro, feita uma vez
-                // só: assim a cor de hover e o wrapper nunca discordam. Com
-                // `a.leadId` a linha azulava no hover mesmo quando o id não
-                // servia para endereço e o LeadLink virava <span>.
+                // só: cobre o id quebrado, que é o caso real. Fora do Provider
+                // o LeadLink ainda degrada sozinho. Com `a.leadId` a linha
+                // azulava no hover mesmo quando o id não servia para endereço
+                // e o LeadLink virava <span>.
                 // A cor de hover também deixa de depender de group-enabled:
                 // ":enabled" só existe em controle de formulário, nunca num <a>.
                 const ehLink = isValidLeadId(a.leadId);

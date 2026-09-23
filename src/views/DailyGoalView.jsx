@@ -395,7 +395,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
               leadId={task.id}
               stretched
               draggable={false}
-              className="font-semibold text-[14px] text-slate-900 dark:text-white truncate outline-none after:rounded-t-xl focus-visible:after:ring-2 focus-visible:after:ring-brand-500/40"
+              className="font-semibold text-[14px] text-slate-900 dark:text-white truncate outline-none after:rounded-t-xl focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-brand-500/40"
             >
               {task.name}
             </LeadLink>
@@ -529,7 +529,7 @@ export function DoneCard({ lead, onReschedule }) {
             leadId={lead.id}
             stretched
             draggable={false}
-            className="font-medium text-[13px] text-slate-800 dark:text-slate-100 line-through decoration-slate-400/60 truncate outline-none after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-brand-500/40"
+            className="font-medium text-[13px] text-slate-800 dark:text-slate-100 line-through decoration-slate-400/60 truncate outline-none after:rounded-xl focus-visible:after:ring-2 focus-visible:after:ring-inset focus-visible:after:ring-brand-500/40"
           >
             {lead.name}
           </LeadLink>

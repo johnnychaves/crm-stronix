@@ -92,11 +92,11 @@ A contagem é cumulativa: o número da última coluna é o que `npx vitest run` 
 | base | branch `claude/rotas-pr3-ctrl-clique` em `a751863` | | | | 100 arquivos, 2066 testes |
 | T1 | Card do Pipeline e a setinha (mais 2 testes dos ajustes da revisão) | | 11 | 1 | 101, 2077 |
 | T2 | Listas de Leads, Clientes, Aulas e Visitas | | 5 | 1 | 102, 2082 |
-| T3 | Meta diária e visão Equipe (mais 1 teste dos ajustes da revisão) | | 10 | 1 | 103, 2092 |
-| T4 | Busca global e sino | | 7 | 1 | 104, 2099 |
-| T5 | Ficha e indicações | | 5 | 1 | 105, 2104 |
-| T6 | Varredura, documentação, verificação final e corpo do PR | T1 a T5 | 2 | 1 | 106, 2106 |
-| **Total** | | | **40** | **6** | **106 arquivos, 2106 testes** |
+| T3 | Meta diária e visão Equipe (mais 7 testes dos ajustes da revisão) | | 16 | 1 | 103, 2098 |
+| T4 | Busca global e sino | | 7 | 1 | 104, 2105 |
+| T5 | Ficha e indicações | | 5 | 1 | 105, 2110 |
+| T6 | Varredura, documentação, verificação final e corpo do PR | T1 a T5 | 2 | 1 | 106, 2112 |
+| **Total** | | | **46** | **6** | **106 arquivos, 2112 testes** |
 
 As tarefas T1 a T5 são independentes entre si (arquivos diferentes) e podem rodar em qualquer ordem. A T6 é a última.
 
@@ -1444,7 +1444,7 @@ Depois:
 npx vitest run src/lib/__tests__/metaLinks.test.js
 ```
 
-Esperado: `Test Files  1 passed (1)` e `Tests  10 passed (10)`.
+Esperado: `Test Files  1 passed (1)` e `Tests  16 passed (16)`.
 
 - [ ] **Step 13: Suíte inteira e lint**
 
@@ -1452,7 +1452,7 @@ Esperado: `Test Files  1 passed (1)` e `Tests  10 passed (10)`.
 npx vitest run && npm run lint
 ```
 
-Esperado: `Test Files  103 passed (103)`, `Tests  2092 passed (2092)`, lint com `✖ 1 problem (0 errors, 1 warning)`.
+Esperado: `Test Files  103 passed (103)`, `Tests  2098 passed (2098)`, lint com `✖ 1 problem (0 errors, 1 warning)`.
 
 - [ ] **Step 14: Commit**
 
@@ -1957,7 +1957,7 @@ Esperado: `Test Files  1 passed (1)` e `Tests  7 passed (7)`.
 npx vitest run && npm run lint
 ```
 
-Esperado: `Test Files  104 passed (104)`, `Tests  2096 passed (2096)`, lint com `✖ 1 problem (0 errors, 1 warning)`.
+Esperado: `Test Files  104 passed (104)`, `Tests  2105 passed (2105)`, lint com `✖ 1 problem (0 errors, 1 warning)`.
 
 - [ ] **Step 12: Commit**
 
@@ -2215,7 +2215,7 @@ Esperado: `Test Files  1 passed (1)` e `Tests  5 passed (5)`.
 npx vitest run && npm run lint
 ```
 
-Esperado: `Test Files  105 passed (105)`, `Tests  2101 passed (2101)`, lint com `✖ 1 problem (0 errors, 1 warning)`.
+Esperado: `Test Files  105 passed (105)`, `Tests  2110 passed (2110)`, lint com `✖ 1 problem (0 errors, 1 warning)`.
 
 - [ ] **Step 7: Commit**
 
@@ -2362,7 +2362,7 @@ Depois:
 npx vitest run && npm run lint && npm run build && npm run verificar:sentry
 ```
 
-Esperado: `Test Files  106 passed (106)`, `Tests  2105 passed (2105)`, lint com `✖ 1 problem (0 errors, 1 warning)`, build sem erro e o verificador do Sentry verde.
+Esperado: `Test Files  106 passed (106)`, `Tests  2112 passed (2112)`, lint com `✖ 1 problem (0 errors, 1 warning)`, build sem erro e o verificador do Sentry verde.
 
 Conferir também que a camada do link esticado da Meta compila:
 
@@ -2432,8 +2432,8 @@ aberta, com o texto digitado. Clique simples continua fechando.
 
 ## Testes
 
-37 testes novos em 6 arquivos, todos em node com `renderToString` sob
-`MemoryRouter`, sem jsdom. Suíte: **106 arquivos, 2103 testes**. Lint com 0
+46 testes novos em 6 arquivos, todos em node com `renderToString` sob
+`MemoryRouter`, sem jsdom. Suíte: **106 arquivos, 2112 testes**. Lint com 0
 erros (segue o mesmo aviso antigo do `SuperAdminView.jsx`). Build e
 `verificar:sentry` verdes.
 
@@ -2480,6 +2480,12 @@ erros (segue o mesmo aviso antigo do `SuperAdminView.jsx`). Build e
 - [ ] Meta: nome e corpo do card abrem a ficha; WhatsApp, Ligar, Adiar,
       Concluir, Compareceu, Não veio, Remarcou e Cancelou NÃO abrem.
 - [ ] Meta: no card concluído, Remarcar não abre a ficha e o resto abre.
+- [ ] Meta: o telefone e a observação do card não são mais selecionáveis com o
+      mouse, porque a camada esticada cobre o cabeçalho inteiro. Antes o
+      arrasto de seleção também abria a ficha, então não é uma perda limpa,
+      mas copiar o número a partir do card deixou de existir: o caminho agora é
+      o botão WhatsApp, o botão Ligar ou a ficha. Conferir se alguém do time
+      usava o copiar e colar dali.
 - [ ] Prévia de amanhã e as duas listas da visão Equipe abrem a ficha.
 - [ ] Na Equipe, ação de prospecção sem lead continua sem clique.
 - [ ] No iPhone e no Android, segurar o dedo no corpo do card da Meta mostra a
