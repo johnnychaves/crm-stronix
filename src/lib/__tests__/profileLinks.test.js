@@ -59,6 +59,14 @@ describe('ficha', () => {
     expect(html).toContain('Carla Dias');
   });
 
+  it('"Indicado por" não é arrastável', () => {
+    // Sem draggable={false} arrastar o texto leva o endereço da ficha para
+    // outra aba ou para um campo de texto, e o clique com tremida não abre.
+    const html = ficha();
+    const i = html.indexOf('Indicado por');
+    expect(html.slice(html.lastIndexOf('<a ', i), i)).toContain('draggable="false"');
+  });
+
   it('indicação sem id fica texto sem link', () => {
     const html = ficha({ ...LEAD, referredById: null });
     const i = html.indexOf('Indicado por');
@@ -75,8 +83,8 @@ describe('ficha', () => {
 });
 
 describe('aba Indicações', () => {
-  const lista = () => render(createElement(ReferralsSection, {
-    items: [{ id: 'zzz999', name: 'Carla Dias', referredAt: new Date('2026-09-10') }],
+  const lista = (id = 'zzz999') => render(createElement(ReferralsSection, {
+    items: [{ id, name: 'Carla Dias', referredAt: new Date('2026-09-10') }],
     loading: false,
   }));
 
@@ -86,11 +94,23 @@ describe('aba Indicações', () => {
     expect(html).toContain('Carla Dias');
   });
 
-  it('a linha mantém as classes de antes', () => {
+  it('a linha inteira é o link, com hover, anel de foco e sem arrasto', () => {
+    // A âncora é a linha inteira: sem draggable={false} arrastar em qualquer
+    // ponto dela leva o endereço para outra aba, e o clique com tremida não
+    // abre a ficha.
     const html = lista();
     const i = html.indexOf('href="/acad/ficha/zzz999"');
     const linha = html.slice(html.lastIndexOf('<a ', i), i + 300);
     expect(linha).toContain('w-full flex items-center gap-3');
     expect(linha).toContain('hover:bg-slate-50');
+    expect(linha).toContain('draggable="false"');
+    expect(linha).toContain('focus-visible:ring-inset');
+  });
+
+  it('id que não serve para endereço vira linha sem link e sem hover', () => {
+    const html = lista('a/b');
+    expect(html).not.toContain('<a ');
+    expect(html).not.toContain('hover:bg-slate-50');
+    expect(html).toContain('Carla Dias');
   });
 });

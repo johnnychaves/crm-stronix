@@ -1218,8 +1218,12 @@ function LeadProfileView({ lead, onBack, onDeleteStart, onDeleteFailed, listener
                 {(lead.referredById || lead.referredByName) ? (
                   <span className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold px-2 py-1 rounded-md bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
                     <Handshake size={11} />
+                    {/* draggable={false}: sem isto arrastar o texto arrastaria
+                        o endereço da ficha para outra aba ou para um campo de
+                        texto, e um clique com tremida não abriria nada. */}
                     <LeadLink
                       leadId={lead.referredById}
+                      draggable={false}
                       className={cn('hover:underline', !lead.referredById && 'pointer-events-none')}
                     >
                       Indicado por {lead.referredByName || 'cliente'}

@@ -6,6 +6,7 @@ import { deriveLeadState, getTone } from '../../lib/leadState.js';
 import { isClientLead } from '../../lib/leads.js';
 import { getSafeDateOrNull } from '../../lib/dates.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
+import { isValidLeadId } from '../../lib/routes.js';
 import { LeadLink } from '../nav/AppLink.jsx';
 import { StateRingAvatar } from '../ui/StateRingAvatar.jsx';
 
@@ -73,11 +74,23 @@ export function ReferralsSection({ items, loading }) {
             const aluno = isClientLead(l);
             const quando = fmtDia(l.referredAt) || fmtDia(l.createdAt);
             const convertido = aluno ? fmtDia(l.convertedAt) : null;
+            // Mesma pergunta que o LeadLink faz por dentro, igual ao
+            // ConsultantDayDetail: sem isto a linha realçaria no hover mesmo
+            // quando o LeadLink vira <span> e nada abre.
+            const ehLink = isValidLeadId(l.id);
             return (
               <li key={l.id}>
+                {/* draggable={false}: a âncora é a linha inteira, então sem isto
+                    arrastar em qualquer ponto dela arrastaria o endereço da
+                    ficha para outra aba ou para um campo de texto, e um clique
+                    com tremida viraria arrasto e não abriria nada. */}
                 <LeadLink
                   leadId={l.id}
-                  className="w-full flex items-center gap-3 px-5 sm:px-8 py-3 text-left hover:bg-slate-50 dark:hover:bg-white/[0.03] transition"
+                  draggable={false}
+                  className={cn(
+                    'w-full flex items-center gap-3 px-5 sm:px-8 py-3 transition outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
+                    ehLink && 'hover:bg-slate-50 dark:hover:bg-white/[0.03]',
+                  )}
                 >
                   <StateRingAvatar name={l.name} toneName={state.tone} splitHex={state.key === 'a_vencer' ? '#10B981' : null} size={34} />
                   <div className="min-w-0 flex-1">
