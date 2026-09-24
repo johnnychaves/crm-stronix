@@ -129,7 +129,7 @@ A rolagem restaurada passa a valer também para os containers que rolam por dent
 
 - `screenParams.test.js`: por tela, leitura e montagem de cada parâmetro, ida e volta, ausente é padrão, valor inválido cai no padrão, `resp` nos três estados, exclusividade entre `dia` e `de`/`ate`, teto de 30 dias, e a garantia de que o padrão nunca é escrito no endereço.
 - Testes de saneamento com contexto: pessoa que saiu, funil apagado, etapa que mudou de código, mês fora da janela, mês de comparação sem venda no Gerencial.
-- `routes.test.js` ganha as sub-telas (seção das Configurações, aba da ficha) e a garantia de que elas ficam fora do `screenKey`.
+- `routes.test.js` ganha as sub-telas (seção das Configurações, aba da ficha), e a garantia de que elas ficam fora do `screenKey` vive no `routes.decision.test.js`, que testa a função pura, e no `filtrosNoEndereco.sweep.test.js`, que congela a montagem do `App.jsx`.
 - Teste de que o filtro de responsável é ignorado para quem não vê o controle.
 - `filtrosNoEndereco.sweep.test.js`: a varredura que cobra o padrão de toda tela nova. Nenhuma view lê a query, nenhuma guarda em estado o que virou parâmetro, nenhum parâmetro entra em `key`, a troca de filtro é replace com o state repassado, e nenhum `navigate` de `src/` grava state próprio num replace que pode ser a primeira entrada, porque é disso que o Voltar da ficha depende.
 - `sentryScrub.test.js` ganha a query de filtro: id de colega e id de funil saem da URL, da migalha de navegação e de `url.path` antes de o evento sair do navegador.

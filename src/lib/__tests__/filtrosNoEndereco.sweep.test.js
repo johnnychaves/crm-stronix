@@ -1,8 +1,9 @@
 // Filtro de tela mora no endereço, e só lá. Esta varredura cobra isso de toda
-// tela, inclusive das que forem criadas depois: nenhuma view lê a query direto,
-// nenhuma guarda em estado o que agora é parâmetro, e nenhum parâmetro entra
-// numa key de componente (key com filtro faz a tela remontar e reler a coleção
-// inteira a cada clique, o que não quebra nada e não aparece no console).
+// tela, inclusive das que forem criadas depois: ninguém que desenha tela lê a
+// query direto, nenhuma view guarda em estado o que agora é parâmetro, e nem
+// view nem App.jsx põem parâmetro ou sub-tela numa key de componente (key com
+// filtro faz a tela remontar e reler a coleção inteira a cada clique, o que
+// não quebra nada e não aparece no console).
 import { describe, it, expect } from 'vitest';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -26,6 +27,13 @@ function sourceFiles(dir) {
 }
 
 const views = sourceFiles(join(SRC, 'views')).map((f) => [relative(SRC, f), readFileSync(f, 'utf8')]);
+// As cinco pastas que desenham tela, no mesmo molde do leadLinkSweep: um
+// `useSearchParams` num componente ou num hook cria uma segunda fonte da
+// verdade tão ruim quanto um dentro da view. O App.jsx fica de fora porque é
+// ele quem lê `location.search`, para o convite e para o `funnelFromSearch`.
+const telas = ['views', 'components', 'modals', 'hooks', 'contexts']
+  .flatMap((pasta) => sourceFiles(join(SRC, pasta)))
+  .map((f) => [relative(SRC, f), readFileSync(f, 'utf8')]);
 // `src/` inteiro, para a regra do navigate: o state da ficha nasce fora das
 // views (App.jsx e o LeadLink).
 const fontes = sourceFiles(SRC).map((f) => [relative(SRC, f), readFileSync(f, 'utf8')]);
@@ -39,9 +47,12 @@ const semComentarios = (texto) => texto.replace(/\/\*[\s\S]*?\*\//g, '').replace
 
 describe('varredura dos filtros no endereço', () => {
   it('nenhuma tela lê a query direto: quem lê é o screenParams, pelo hook', () => {
-    for (const [nome, texto] of views) {
-      expect(texto.includes('location.search'), nome).toBe(false);
-      expect(texto.includes('useSearchParams'), nome).toBe(false);
+    // Pelo código, sem os comentários: um comentário futuro que cite
+    // `location.search` para explicar a regra não pode deixar o CI vermelho.
+    for (const [nome, texto] of telas) {
+      const codigo = semComentarios(texto);
+      expect(codigo.includes('location.search'), nome).toBe(false);
+      expect(codigo.includes('useSearchParams'), nome).toBe(false);
     }
   });
 
@@ -52,7 +63,14 @@ describe('varredura dos filtros no endereço', () => {
       'setMonthKey', 'setCompareOn', 'setCompareKey', 'setPerson', 'setFunnel',
       'setRespFilter', 'setOnlyOverdue', 'setStatusFilters', 'setConsultantFilters',
       'setOverdueOnly', 'setHotOnly', 'setDayTab', 'setProfFilter', 'setActiveProfileTab',
+      'setSection',
     ];
+    // A categoria da Meta diária também virou parâmetro, e mesmo assim o
+    // `setFilter` dela NÃO é cobrado por esta lista, de propósito: o nome é
+    // genérico demais. Hoje o `DailyGoalView` chama assim o atalho que escreve
+    // no endereço e o `SuperConsole` tem um estado próprio com o mesmo nome,
+    // que não é filtro de tela. Quem desconfiar da categoria confere à mão que
+    // o `setFilter` do `DailyGoalView` continua escrevendo no endereço.
     // Palavra inteira: `setFunnelDialog` e `setFunnelName` da seção de Funis
     // contêm `setFunnel` como pedaço e não são filtro de tela nenhum.
     for (const [nome, texto] of views) {
@@ -67,12 +85,20 @@ describe('varredura dos filtros no endereço', () => {
     // `mes`, `cat`) aparecem como pedaço de outras palavras e dariam alarme
     // falso (`m.de` do Console, `d.day` da régua de dias da visão Equipe, que
     // ficou fora desta entrega).
+    // `funnel`, `person` e `sub` são os nomes de VARIÁVEL que as telas usam ao
+    // desestruturar o hook, e são os erros mais caros: `key={funnel}` no
+    // Kanban ou `key={person}` num dashboard remonta a tela e relê a coleção a
+    // cada troca de filtro. `funil` e `pessoa` são nomes de query e nunca
+    // aparecem como variável, então ficam na lista só por garantia.
     const alvos = [
       'monthKey', 'compareKey', 'compareOn', 'respFilter', 'statusFilters', 'consultantFilters',
       'profFilter', 'overdueOnly', 'onlyOverdue', 'hotOnly', 'dayTab', 'selectedFunnelId',
       'funnelId', 'funil', 'resp', 'atraso', 'quente', 'fase', 'pessoa', 'comparar',
+      'funnel', 'person', 'sub',
     ];
-    for (const [nome, texto] of views) {
+    // O App.jsx entra junto: é ele que monta a chave da tela, e é ali que a
+    // sub-tela entraria sem ninguém ver.
+    for (const [nome, texto] of [...views, ['App.jsx', app]]) {
       for (const linha of texto.split('\n')) {
         if (!linha.includes('key={')) continue;
         for (const p of alvos) {
@@ -131,7 +157,11 @@ describe('varredura dos filtros no endereço', () => {
   });
 
   it('a chave da tela continua saindo só da tela mostrada', () => {
-    expect(app.includes('screenKey(shown)')).toBe(true);
+    // Congeladas as duas montagens, e não só a função pura: somar a sub-tela
+    // aqui remonta a tela inteira a cada troca de seção das Configurações ou
+    // de aba da ficha, e perde a rolagem junto.
+    expect(app.includes('<AppErrorBoundary key={screenKey(shown)}>')).toBe(true);
+    expect(app.includes('useRouteScroll(contentScrollRef, screenKey(shown))')).toBe(true);
     for (const trecho of app.split('\n').filter((l) => l.includes('screenKey('))) {
       expect(trecho.includes('search'), trecho.trim()).toBe(false);
     }
@@ -141,6 +171,9 @@ describe('varredura dos filtros no endereço', () => {
     for (const tela of Object.keys(SCREEN_PARAM_NAMES)) {
       expect(Object.prototype.hasOwnProperty.call(SCREENS, tela), tela).toBe(true);
     }
+    // A afirmação positiva vem antes: sem ela, os dois apelidos sumindo da
+    // tabela deixariam `undefined` igual a `undefined` e o teste passaria.
+    expect(SCREEN_PARAM_NAMES.dashboard).toContain('mes');
     expect(SCREEN_PARAM_NAMES.dashboard).toEqual(SCREEN_PARAM_NAMES.dashOperacional);
   });
 });

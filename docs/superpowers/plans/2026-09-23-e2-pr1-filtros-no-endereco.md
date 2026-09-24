@@ -3424,8 +3424,10 @@ npm run build
 # Esperado: build sem erro
 git grep -nE "eslint-disable" -- src/lib/screenParams.js src/hooks/useScreenParams.js
 # Esperado: nada. Zero eslint-disable novo.
-git diff --stat main -- api/ firestore.rules firestore.indexes.json
+git diff --stat origin/main -- api/ firestore.rules firestore.indexes.json
 # Esperado: nada. Nenhuma função nova na Vercel, nenhuma regra e nenhum índice.
+# É origin/main, e não main: o main local do worktree está velho e devolveria
+# quatro arquivos de api/ que são da entrega 1.
 ```
 
 Conferir que o Sentry continua limpo, já que a query passa a ter conteúdo:
