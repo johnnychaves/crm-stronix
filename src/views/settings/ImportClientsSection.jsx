@@ -231,7 +231,12 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
       const now = new Date();
       const parsed = file.rows.map((r) => parseRow(r, mapping, r.__row, now));
       const { kept, duplicates } = dedupeInFile(parsed);
-      const enrich = (c) => enrichCandidate(c, { usersList: consultants, professores, planos, planMap });
+      // Só vale a escolha de plano que ainda aparece em Ajustes e aponta para
+      // um plano que existe: o catálogo pode mudar no meio do assistente.
+      const liveKeys = new Set(planNames.map((p) => p.key));
+      const effectivePlanMap = Object.fromEntries(Object.entries(planMap)
+        .filter(([k, v]) => liveKeys.has(k) && (planos || []).some((p) => p.id === v)));
+      const enrich = (c) => enrichCandidate(c, { usersList: consultants, professores, planos, planMap: effectivePlanMap });
       const keptEnriched = kept.map(enrich);
       const index = await lookupExisting({ db, candidates: keptEnriched });
       const base = [...keptEnriched, ...duplicates.map(enrich)]
@@ -356,7 +361,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
               onClick={downloadTemplateNow}
               icon={generating ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
             >
-              {generating ? 'Gerando...' : 'Baixar modelo'}
+              {generating ? 'Gerando…' : 'Baixar modelo'}
             </SettingsBtn>
           </div>
           <div className="px-5 pb-5">
@@ -390,7 +395,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
                       <div className="min-w-0"><div className="text-[13px] font-semibold truncate">{p.label}</div><div className="text-[11px] text-muted-foreground num">{p.count} {p.count === 1 ? 'linha' : 'linhas'}</div></div>
                       <span className="text-muted-foreground text-[12px]">→</span>
                       <Select value={planMap[p.key] || AUTO} onValueChange={(v) => setPlanMapKey(p.key, v)}>
-                        <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                        <SelectTrigger className="w-full" aria-label={`Plano do catálogo para ${p.label}`}><SelectValue /></SelectTrigger>
                         <SelectContent>
                           <SelectItem value={AUTO}>Manter como texto</SelectItem>
                           {(planos || []).map((pl) => <SelectItem key={pl.id} value={pl.id}>{pl.name} · {pl.durationMonths} {Number(pl.durationMonths) === 1 ? 'mês' : 'meses'}</SelectItem>)}
