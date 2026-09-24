@@ -443,6 +443,21 @@ describe('scrubEvent: id do lead no endereço', () => {
     expect(data['lcp.url']).toBe('https://firebasestorage.googleapis.com/v0/b/b/o/tenants%2Fs%2Fleads%2FAb12%2Favatar.jpg');
     expect(data['cls.source.1']).toBe('div.card > span[title="[redigido]"]');
   });
+
+  it('a query de filtro não chega ao Sentry, nem na URL, nem na migalha, nem em url.path', () => {
+    // A entrega 2 pôs id de colega e id de funil na query. Pela régua do
+    // projeto, id que identifica uma pessoa tem o mesmo peso do id do lead.
+    const q = '?pessoa=uid-do-colega&resp=uid1,uid2&funil=f2';
+    const event = {
+      request: { url: `https://stronilead.com.br/stronix-crm-app/clientes${q}` },
+      contexts: { trace: { data: { 'url.path': `/stronix-crm-app/clientes${q}` } } },
+    };
+    const out = scrubEvent(event);
+    expect(out.request.url).toBe('https://stronilead.com.br/stronix-crm-app/clientes');
+    expect(out.contexts.trace.data['url.path']).toBe('/stronix-crm-app/clientes');
+    const crumb = scrubBreadcrumb({ category: 'navigation', data: { from: '/stronix-crm-app/pipeline', to: `/stronix-crm-app/leads${q}` } });
+    expect(crumb.data.to).toBe('/stronix-crm-app/leads');
+  });
 });
 
 describe('scrubBreadcrumb: id do lead no endereço', () => {

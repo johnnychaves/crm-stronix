@@ -74,6 +74,7 @@ describe('parseAppPath', () => {
     for (const p of ['/', '']) {
       expect(parseAppPath(p)).toEqual({
         pathname: p, tenantSlug: null, screen: null, leadId: null, superTab: null, rest: [], unknown: false,
+        sub: null, subUnknown: false,
       });
     }
   });
@@ -345,5 +346,122 @@ describe('contrato do idx com o react-router instalado', () => {
     historico(w); // a página carrega de novo na mesma entrada
     expect(w.history.state.idx).toBe(1);
     expect(w.history.state.usr).toEqual({ from: 'kanban' });
+  });
+
+  // Por que o Voltar da ficha não leva a tela de origem nem o filtro dela para
+  // uma guia nova: no app, o push é quem grava state, e ele já sai com o idx
+  // acima de zero, onde o Voltar do navegador resolve sozinho. Um ramo de
+  // backTarget lendo `from` e `search` seria código morto. Este teste mede a
+  // biblioteca, não o app: mostra que a convenção é nossa, porque a 7.18.4
+  // aceita state numa entrada de idx 0. Ver o comentário do backTarget em
+  // routes.js.
+  it('o react-router grava state no push e aceita state num replace de idx 0', () => {
+    const w = janelaFalsa(`/${T}/pipeline`);
+    const h = historico(w);
+    // Primeira entrada da aba: idx 0 e nenhum state.
+    expect(w.history.state.idx).toBe(0);
+    expect(w.history.state.usr ?? null).toBeNull();
+    // Trocar filtro é replace com o state de agora: continua sem state e em 0.
+    h.replace(`/${T}/pipeline?funil=f2`, w.history.state.usr);
+    expect(w.history.state.idx).toBe(0);
+    expect(w.history.state.usr ?? null).toBeNull();
+    expect(canGoBackInApp(w.history.state)).toBe(false);
+    // Só o push para a ficha grava state, e ele já vem com o idx em 1.
+    h.push(`/${T}/ficha/Ab12`, { from: 'kanban', search: '?funil=f2' });
+    expect(w.history.state.usr).toEqual({ from: 'kanban', search: '?funil=f2' });
+    expect(w.history.state.idx).toBe(1);
+    expect(canGoBackInApp(w.history.state)).toBe(true);
+    // A biblioteca PERMITE o contrário: um replace com state literal na
+    // primeira entrada grava o usr e mantém o idx em 0. Quem não faz isso é o
+    // app, e é só por isso que o par "tem state, logo dá para voltar" vale.
+    // Um navigate(x, { replace: <qualquer coisa>, state: { ... } }) numa
+    // primeira entrada derrubaria a premissa. Quem cobra essa forma dentro de
+    // src/ é a varredura dos filtros no endereço, não este teste.
+    const nova = janelaFalsa(`/${T}/pipeline`);
+    historico(nova).replace(`/${T}/leads`, { from: 'kanban' });
+    expect(nova.history.state).toMatchObject({ usr: { from: 'kanban' }, idx: 0 });
+    expect(canGoBackInApp(nova.history.state)).toBe(false);
+  });
+});
+
+describe('sub-tela no caminho', () => {
+  it('Configurações lê as dez seções e devolve o id interno', () => {
+    const pares = [
+      ['visao-geral', 'overview'], ['equipe', 'team'], ['transferencia', 'transfer'],
+      ['indicacoes', 'referral-owners'], ['importacao', 'import'], ['ritmo', 'pace'],
+      ['agenda', 'sched'], ['funis', 'funnels'], ['catalogos', 'catalogs'], ['stronizap', 'zap'],
+    ];
+    for (const [seg, id] of pares) {
+      const r = parseAppPath(`/${T}/configuracoes/${seg}`);
+      expect([r.screen, r.sub, r.subUnknown], seg).toEqual(['settings', id, false]);
+    }
+  });
+
+  it('a ficha lê as quatro abas', () => {
+    const pares = [['linha-do-tempo', 'timeline'], ['crm', 'crm'], ['contratos', 'contratos'], ['indicacoes', 'referrals']];
+    for (const [seg, id] of pares) {
+      const r = parseAppPath(`/${T}/ficha/AbC/${seg}`);
+      expect([r.screen, r.leadId, r.sub], seg).toEqual(['ficha', 'AbC', id]);
+    }
+  });
+
+  it('sem sub-tela no endereço, sub é null e subUnknown é false', () => {
+    for (const p of [`/${T}/configuracoes`, `/${T}/ficha/AbC`]) {
+      const r = parseAppPath(p);
+      expect([r.sub, r.subUnknown], p).toEqual([null, false]);
+    }
+  });
+
+  it('segmento de sub-tela ignora caixa, como o de tela', () => {
+    expect(parseAppPath(`/${T}/configuracoes/EQUIPE`).sub).toBe('team');
+    expect(parseAppPath(`/${T}/ficha/AbC/Contratos`).sub).toBe('contratos');
+  });
+
+  it('sub-tela desconhecida e segmento a mais marcam subUnknown, sem virar endereço desconhecido', () => {
+    for (const p of [`/${T}/configuracoes/xyz`, `/${T}/configuracoes/equipe/demais`, `/${T}/ficha/AbC/xyz`, `/${T}/ficha/AbC/crm/demais`]) {
+      const r = parseAppPath(p);
+      expect([r.sub, r.subUnknown, r.unknown], p).toEqual([null, true, false]);
+    }
+  });
+
+  it('tela sem tabela de sub-tela continua ignorando o resto calado', () => {
+    const r = parseAppPath(`/${T}/pipeline/a/b`);
+    expect([r.screen, r.rest, r.sub, r.subUnknown, r.unknown]).toEqual(['kanban', ['a', 'b'], null, false, false]);
+  });
+
+  it('o rest cru continua como era, para o id da ficha nunca ser reescrito', () => {
+    expect(parseAppPath(`/${T}/configuracoes/equipe`).rest).toEqual(['equipe']);
+    expect(parseAppPath(`/${T}/ficha/AbC/contratos`).rest).toEqual(['contratos']);
+  });
+
+  it('hrefFor monta a sub-tela e cai na tela-mãe quando o valor não existe', () => {
+    expect(hrefFor(T, 'settings', { sub: 'catalogs' })).toBe(`/${T}/configuracoes/catalogos`);
+    expect(hrefFor(T, 'settings', { sub: 'team' })).toBe(`/${T}/configuracoes/equipe`);
+    expect(hrefFor(T, 'settings')).toBe(`/${T}/configuracoes`);
+    expect(hrefFor(T, 'settings', { sub: 'xyz' })).toBe(`/${T}/configuracoes`);
+    expect(hrefFor(T, 'ficha', { leadId: 'AbC', sub: 'contratos' })).toBe(`/${T}/ficha/AbC/contratos`);
+    expect(hrefFor(T, 'ficha', { leadId: 'AbC', sub: 'xyz' })).toBe(`/${T}/ficha/AbC`);
+    expect(hrefFor(T, 'kanban', { sub: 'equipe' })).toBe(`/${T}/pipeline`);
+  });
+
+  it('ida e volta: todo segmento montado relê como o mesmo id', () => {
+    for (const id of Object.keys(SCREENS.settings.subs)) {
+      expect(parseAppPath(hrefFor(T, 'settings', { sub: id })).sub, id).toBe(id);
+    }
+    for (const id of Object.keys(SCREENS.ficha.subs)) {
+      expect(parseAppPath(hrefFor(T, 'ficha', { leadId: 'AbC', sub: id })).sub, id).toBe(id);
+    }
+  });
+
+  it('a tabela de sub-telas é congelada e o padrão de cada uma existe nela', () => {
+    for (const id of ['settings', 'ficha']) {
+      expect(Object.isFrozen(SCREENS[id].subs), id).toBe(true);
+      expect(Object.keys(SCREENS[id].subs), id).toContain(SCREENS[id].subPadrao);
+    }
+  });
+
+  it('nenhuma outra tela tem sub-tela nesta entrega', () => {
+    const comSub = Object.keys(SCREENS).filter((id) => SCREENS[id].subs);
+    expect(comSub.sort()).toEqual(['ficha', 'settings']);
   });
 });

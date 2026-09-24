@@ -6,7 +6,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { MemoryRouter } from 'react-router';
 import { LeadProfileContext } from '../../contexts/LeadProfileContext.jsx';
-import { hrefFor } from '../routes.js';
+import { hrefFor, FICHA_TABS } from '../routes.js';
 
 // CONTRACTS_PATH entra porque a ficha o importa. Hoje ela não o usa no render,
 // mas sem ele no mock o dia em que voltar a usar quebra este teste aqui, longe
@@ -41,8 +41,9 @@ function render(element) {
 
 // authUid é o que faz a ficha renderizar em modo de edição (canEditLead). Sem
 // ele o lápis do vínculo nem aparece no HTML.
-const ficha = (lead = LEAD) => render(createElement(LeadProfileView, {
-  lead, onBack: () => {}, appUser: { id: 'u1', name: 'Bruno', role: 'admin', tenantId: 'acad', authUid: 'auth-1' },
+const ficha = (lead = LEAD, tab = undefined) => render(createElement(LeadProfileView, {
+  lead, tab, onTab: () => {},
+  onBack: () => {}, appUser: { id: 'u1', name: 'Bruno', role: 'admin', tenantId: 'acad', authUid: 'auth-1' },
   statuses: [], tags: [], lossReasons: [], usersList: [], db: {}, funnels: [],
 }));
 
@@ -79,6 +80,50 @@ describe('ficha', () => {
     const i = html.indexOf('title="Editar vínculo de indicação"');
     expect(i).toBeGreaterThan(-1);
     expect(html.lastIndexOf('<button', i)).toBeGreaterThan(html.lastIndexOf('<a ', i));
+  });
+});
+
+// As abas desenhadas, na ordem, pelo que o Radix escreve no botão: o id termina
+// em `-trigger-<value>` e o estado vem em data-state. Só a abertura da tag entra
+// na conta, para nenhum data-state de dentro do botão ser confundido com o dele.
+const abasDaFicha = (html) => html.split('<button')
+  .map((pedaco) => pedaco.slice(0, pedaco.indexOf('>')))
+  .filter((tag) => tag.includes('role="tab"'))
+  .map((tag) => ({ aba: tag.match(/-trigger-([A-Za-z-]+)"/)?.[1] ?? null, ativa: tag.includes('data-state="active"') }));
+const abaAtiva = (html) => abasDaFicha(html).find((t) => t.ativa)?.aba ?? null;
+
+// A aba da ficha vem do endereço (/ficha/<id>/<aba>), e o segmento de cada uma
+// mora em FICHA_TABS. Aqui os dois lados se encontram: a ficha renderiza com
+// cada chave da tabela e a aba que acende tem que ser aquela. Aba nova na ficha
+// sem entrada na tabela, ou o contrário, cai aqui.
+describe('abas da ficha no endereço', () => {
+  const CLIENTE = { ...LEAD, lifecycleStage: 'cliente' };
+
+  it('cada aba da tabela de endereços acende a aba de mesmo nome', () => {
+    for (const aba of Object.keys(FICHA_TABS)) {
+      // Indicações só existe na ficha de cliente.
+      expect(abaAtiva(ficha(aba === 'referrals' ? CLIENTE : LEAD, aba)), aba).toBe(aba);
+    }
+  });
+
+  it('toda aba desenhada na ficha é uma aba da tabela de endereços', () => {
+    const desenhadas = abasDaFicha(ficha(CLIENTE, 'timeline')).map((t) => t.aba);
+    expect(desenhadas.length).toBe(Object.keys(FICHA_TABS).length);
+    for (const aba of desenhadas) {
+      expect(Object.prototype.hasOwnProperty.call(FICHA_TABS, aba), aba).toBe(true);
+    }
+  });
+
+  it('sem aba no endereço, a ficha abre na Linha do tempo', () => {
+    expect(abaAtiva(ficha())).toBe('timeline');
+  });
+
+  it('link da aba Indicações num lead abre a Linha do tempo', () => {
+    // A aba Indicações não existe enquanto a pessoa não é cliente, e quem só é
+    // lead não pode ficar com a ficha sem aba acesa.
+    const html = ficha(LEAD, 'referrals');
+    expect(abaAtiva(html)).toBe('timeline');
+    expect(abasDaFicha(html).map((t) => t.aba)).not.toContain('referrals');
   });
 });
 

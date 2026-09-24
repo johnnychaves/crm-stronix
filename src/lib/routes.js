@@ -23,8 +23,31 @@ export const HOME_SCREEN = 'dashboard';
 
 const tela = (segs, title, trava = {}) => Object.freeze({ segs: Object.freeze(segs), title, ...trava });
 
+// Sub-telas: id interno para o segmento em português. Molde da subaba do
+// super-admin (SUPER_TABS, abaixo). Elas NÃO entram na screenKey nem no molde
+// do Sentry: trocar de seção ou de aba não pode remontar a tela.
+export const SETTINGS_SECTIONS = Object.freeze({
+  overview: 'visao-geral',
+  team: 'equipe',
+  transfer: 'transferencia',
+  'referral-owners': 'indicacoes',
+  import: 'importacao',
+  pace: 'ritmo',
+  sched: 'agenda',
+  funnels: 'funis',
+  catalogs: 'catalogos',
+  zap: 'stronizap',
+});
+export const FICHA_TABS = Object.freeze({
+  timeline: 'linha-do-tempo',
+  crm: 'crm',
+  contratos: 'contratos',
+  referrals: 'indicacoes',
+});
+
 // id da tela (os mesmos valores de activeTab de sempre) para os segmentos
-// depois da academia, o título da aba e a trava de acesso.
+// depois da academia, o título da aba, a trava de acesso e, onde existe, a
+// tabela de sub-telas com o padrão de quem abre sem sub-tela no endereço.
 export const SCREENS = Object.freeze({
   dashboard: tela([], 'Visão geral'),
   dashOperacional: tela(['visao-geral', 'operacional'], 'Operacional'),
@@ -36,16 +59,34 @@ export const SCREENS = Object.freeze({
   leads: tela(['leads'], 'Leads'),
   aulas: tela(['leads', 'aulas'], 'Aulas'),
   visitas: tela(['leads', 'visitas'], 'Visitas'),
-  settings: tela(['configuracoes'], 'Configurações', { gestor: true }),
+  settings: tela(['configuracoes'], 'Configurações', { gestor: true, subs: SETTINGS_SECTIONS, subPadrao: 'team' }),
   profile: tela(['perfil-da-academia'], 'Perfil da academia', { gestor: true }),
   billing: tela(['plano-e-faturas'], 'Plano e faturas', { gestor: true }),
   superadmin: tela(['super-admin'], 'Super-admin', { superAdmin: true }),
-  ficha: tela(['ficha'], 'Ficha'),
+  ficha: tela(['ficha'], 'Ficha', { subs: FICHA_TABS, subPadrao: 'timeline' }),
 });
 
 // Subabas do super-admin membro de academia: id interno para o segmento.
 export const SUPER_TABS = Object.freeze({ overview: 'visao-geral', clients: 'clientes', finance: 'financeiro', plans: 'planos' });
 const SUPER_TAB_BY_SEGMENT = Object.fromEntries(Object.entries(SUPER_TABS).map(([id, seg]) => [seg, id]));
+
+// Índice inverso das sub-telas, por tela: segmento em português para id interno.
+const SUB_BY_SEGMENT = Object.fromEntries(
+  Object.entries(SCREENS)
+    .filter(([, def]) => def.subs)
+    .map(([id, def]) => [id, Object.fromEntries(Object.entries(def.subs).map(([sub, seg]) => [seg, sub]))]),
+);
+
+// Lê o segmento de sub-tela de uma tela que tem tabela. Devolve o id interno,
+// ou marca subUnknown quando o segmento não existe ou vem segmento a mais.
+// Tela sem tabela continua ignorando o resto calado, como sempre ignorou.
+function readSub(screen, extras, out) {
+  if (!own(SUB_BY_SEGMENT, screen) || extras.length === 0) return;
+  const seg = lower(extras[0]);
+  const sub = extras.length === 1 && own(SUB_BY_SEGMENT[screen], seg) ? SUB_BY_SEGMENT[screen][seg] : null;
+  if (sub) out.sub = sub;
+  else out.subUnknown = true;
+}
 
 // Primeiro segmento de cada tela. Todos precisam estar reservados.
 export const FIRST_LEVEL_SEGMENTS = Object.freeze([
@@ -107,6 +148,7 @@ function readScreen(segs, out) {
     out.screen = 'ficha';
     out.leadId = isValidLeadId(segs[1]) ? segs[1] : null;
     out.rest = segs.slice(2);
+    readSub('ficha', out.rest, out);
     return;
   }
   if (head === 'super-admin') {
@@ -133,6 +175,7 @@ function readScreen(segs, out) {
   if (own(LEAVES, head)) {
     out.screen = LEAVES[head];
     out.rest = segs.slice(1);
+    readSub(out.screen, out.rest, out);
     return;
   }
   out.unknown = true;
@@ -145,11 +188,18 @@ function readScreen(segs, out) {
 //   não é palavra reservada. Senão fica null e o 1º segmento é lido como tela
 //   (tela sem academia, como /pipeline);
 // - ficha com id inválido ou sem id: screen 'ficha' e leadId null, que é
-//   "ficha não encontrada" e não endereço desconhecido.
+//   "ficha não encontrada" e não endereço desconhecido;
+// - sub: a seção das Configurações ou a aba da ficha, quando o endereço traz
+//   um segmento a mais que a tabela da tela conhece. Segmento desconhecido não
+//   é endereço desconhecido: vira subUnknown e a decisão de rota abre a
+//   tela-mãe com replace, sem aviso.
 export function parseAppPath(pathname) {
   const out = {
     pathname: typeof pathname === 'string' ? pathname : '',
     tenantSlug: null, screen: null, leadId: null, superTab: null, rest: [], unknown: false,
+    // Sub-tela: id interno quando o segmento existe na tabela da tela, e
+    // subUnknown quando veio segmento que ela não conhece.
+    sub: null, subUnknown: false,
   };
   const segs = rawSegments(pathname).map(decodeSegment);
   if (segs.length === 0) return out;
@@ -179,20 +229,24 @@ const encode = (s) => {
 // montar (sem academia, ficha sem id válido): quem chama não navega. Tela
 // desconhecida vira a inicial.
 export function hrefFor(tenantId, screen, opts = {}) {
-  const { leadId, superTab } = opts || {};
+  const { leadId, superTab, sub } = opts || {};
   if (typeof tenantId !== 'string' || tenantId === '') return null;
   const t = encode(tenantId);
   if (t === null) return null;
   const base = `/${t}`;
   if (!own(SCREENS, screen) || screen === HOME_SCREEN || screen === 'dashOperacional') return base;
+  // Sub-tela fora da tabela some do endereço e a tela abre no padrão dela, do
+  // mesmo jeito que a subaba do super-admin cai em visao-geral.
+  const subs = SCREENS[screen].subs;
+  const trecho = subs && own(subs, sub) ? `/${subs[sub]}` : '';
   if (screen === 'ficha') {
     const id = isValidLeadId(leadId) ? encode(leadId) : null;
-    return id === null ? null : `${base}/ficha/${id}`;
+    return id === null ? null : `${base}/ficha/${id}${trecho}`;
   }
   if (screen === 'superadmin') {
     return `${base}/super-admin/${own(SUPER_TABS, superTab) ? SUPER_TABS[superTab] : SUPER_TABS.overview}`;
   }
-  return `${base}/${SCREENS[screen].segs.join('/')}`;
+  return `${base}/${SCREENS[screen].segs.join('/')}${trecho}`;
 }
 
 // O Voltar da ficha só volta pelo navegador quando há tela do app antes dela
@@ -229,17 +283,28 @@ const OK = Object.freeze({ kind: 'ok' });
 // desenha já neste render, antes de o endereço trocar.
 function redirectTo(path, { search = '', notice = null } = {}) {
   const r = parseAppPath(path);
-  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab }, notice };
+  // O `sub` vai no alvo junto com a tela: sem ele, a correção de academia
+  // desenharia a seção padrão por um render antes de saltar para a certa.
+  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub }, notice };
 }
 
 const joinPath = (base, raw) => (raw.length ? `${base}/${raw.join('/')}` : base);
 
-// Regras 6 e 7, sobre um endereço que já é da academia da sessão.
-function accessRedirect(route, appUser, home) {
+// Regras 6, 7 e 8, sobre um endereço que já é da academia da sessão. A trava de
+// tela vem antes da sub-tela: quem não pode ver a tela vai para a inicial com
+// aviso, e não para a tela-mãe de uma seção que ele não abriria.
+function accessRedirect(route, appUser, home, { tenantId = null, search = '' } = {}) {
   if (route.screen && !canAccess(route.screen, appUser)) {
     return redirectTo(home, { notice: SCREENS[route.screen].gestor ? 'so-gestor' : null });
   }
   if (route.unknown) return redirectTo(home, { notice: 'nao-encontrada' });
+  // Regra 8: sub-tela desconhecida abre a tela-mãe, com replace e sem aviso.
+  // Erro de digitação na seção não pode punir com perda de contexto, e o aviso
+  // de "não achamos essa tela" continua só para endereço de tela.
+  if (route.subUnknown) {
+    const mae = hrefFor(tenantId, route.screen, { leadId: route.leadId });
+    if (mae) return redirectTo(mae, { search });
+  }
   return null;
 }
 
@@ -281,9 +346,10 @@ function sessionPathFor(route, tenantId, home) {
 // 4. volta da visualização: vai para o caminho guardado na entrada;
 // 5. endereço sem a academia da sessão: corrige o slug, sem aviso;
 // 6. tela que a sessão não vê: tela inicial, com aviso se for de gestor;
-// 7. endereço desconhecido: tela inicial, com aviso.
-// A regra 5 já sai com as regras 6 e 7 aplicadas ao endereço corrigido, então o
-// destino de todo redirect é aceito de primeira: nada pisca e nada entra em
+// 7. endereço desconhecido: tela inicial, com aviso;
+// 8. sub-tela desconhecida: a tela-mãe, sem aviso.
+// A regra 5 já sai com as regras 6, 7 e 8 aplicadas ao endereço corrigido, então
+// o destino de todo redirect é aceito de primeira: nada pisca e nada entra em
 // laço. Devolve { kind: 'ok' } ou { kind: 'redirect', to, target, notice }.
 export function routeDecision(route, appUser, opts = {}) {
   const { search = '', returnTo = null } = opts || {};
@@ -293,18 +359,32 @@ export function routeDecision(route, appUser, opts = {}) {
   const home = hrefFor(tenantId, HOME_SCREEN);
   // Trava contra laço: academia cujo id não relê como ela mesma (fora do
   // formato ou palavra reservada) não é mandada pelo endereço. Sem isso, o
-  // redirect cairia nele mesmo para sempre. Vale para as regras 3 a 7.
+  // redirect cairia nele mesmo para sempre. Vale para as regras 3 a 8.
   if (!home || parseAppPath(home).tenantSlug !== tenantId) return OK;
   if (appUser.impersonating && route.tenantSlug !== tenantId) return redirectTo(home);
   const back = returnPathFor(route, appUser, returnTo);
   if (back) return redirectTo(back);
   const fixed = sessionPathFor(route, tenantId, home);
-  if (fixed !== null) return accessRedirect(parseAppPath(fixed), appUser, home) ?? redirectTo(fixed, { search });
-  return accessRedirect(route, appUser, home) ?? OK;
+  const extra = { tenantId, search };
+  if (fixed !== null) return accessRedirect(parseAppPath(fixed), appUser, home, extra) ?? redirectTo(fixed, { search });
+  return accessRedirect(route, appUser, home, extra) ?? OK;
 }
 
 // Voltar da ficha: pelo navegador quando há tela do app antes dela nesta aba;
 // senão, troca a entrada por Clientes (cliente) ou Pipeline (lead).
+//
+// A tela de origem que o state da navegação carrega (`from`) não entra aqui
+// porque o ramo seria código morto: no app, state literal só nasce no caminho
+// da ficha (o `openProfile` do App.jsx e o `state` do LeadLink); o
+// `openProfile` empilha, e no único ramo em que ele faz replace (a mesma ficha
+// já aberta) o `profileFrom` é nulo, então o state gravado ali é nulo. Todo
+// push soma 1 no idx, então esta função já devolveu 'back' antes de chegar no
+// ramo do `from`. Quem garante isso é o app, não a biblioteca: medido na
+// 7.18.4 em 23/09/2026, um replace com state na primeira entrada da aba grava
+// o state com idx 0. O routes.test.js registra a medição, e quem cobra a forma
+// dentro de `src/` é a varredura dos filtros no endereço. Levar o recorte para
+// a guia nova é decisão em aberto do Johnny, no risco da ficha aberta em outra
+// guia do spec de 2026-09-23.
 export function backTarget({ historyState, isClient, tenantId } = {}) {
   if (canGoBackInApp(historyState)) return { type: 'back' };
   return { type: 'replace', href: hrefFor(tenantId, isClient ? 'clientes' : 'kanban') };

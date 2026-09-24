@@ -11,6 +11,7 @@ import { stageChangeFields } from '../lib/stageMove.js';
 import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
+import { useScreenParams } from '../hooks/useScreenParams.js';
 import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
 import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { applyOutcomeToAula, upsertScheduledAula } from '../lib/aulasWrites.js';
@@ -945,7 +946,11 @@ function ViewTab({ active, icon, label, onClick }) {
 
 function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, listenersActive = true }) {
   const toast = useToast();
-  const [filter, setFilter] = useState('all');
+  // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
+  // categoria. A visão Equipe ficou fora desta entrega e continua em estado.
+  const paramsCtx = useMemo(() => ({}), []);
+  const [{ cat: filter }, setParams] = useScreenParams('dailyGoal', paramsCtx);
+  const setFilter = (v) => setParams({ cat: v });
   const [view, setView] = useState('mine'); // 'mine' | 'team' (team = só gestor)
   const [now, setNow] = useState(() => new Date());
   const [rescheduleTarget, setRescheduleTarget] = useState(null);

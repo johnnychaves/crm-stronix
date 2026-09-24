@@ -18,6 +18,7 @@ import { FunnelsSection } from './FunnelsSection.jsx';
 import { CatalogsSection } from './CatalogsSection.jsx';
 import { ImportClientsSection } from './ImportClientsSection.jsx';
 import { ZapIntegrationSection } from './ZapIntegrationSection.jsx';
+import { settingsRailGroups, settingsSection } from '../../lib/settingsRail.js';
 
 // ==========================================
 // CONFIGURAÇÕES — sete destinos agrupados por intenção
@@ -28,26 +29,29 @@ import { ZapIntegrationSection } from './ZapIntegrationSection.jsx';
 // saiu — com sete destinos, a hierarquia resolve.
 //
 // Cada seção renderiza o próprio cabeçalho e as próprias ações; aqui ficam só o
-// trilho, o roteamento e os dados compartilhados.
+// trilho, o roteamento e os dados compartilhados. A tabela do trilho (ordem,
+// rótulo e id de cada destino) mora em src/lib/settingsRail.js, porque o id é
+// também o segmento do endereço e precisa bater com a tabela de rotas.
 // ==========================================
 
-// Mapa do tab antigo (App.jsx ainda navega por ele) para o destino novo.
-const LEGACY_TABS = {
-  users: 'team',
-  transfer: 'transfer',
-  general: 'pace',
-  statuses: 'funnels',
-  tags: 'catalogs',
-  sources: 'catalogs',
-  plans: 'catalogs',
-  lossReasons: 'catalogs',
-  dores: 'catalogs'
+// Ícone de cada destino do trilho. A ordem, os rótulos e os ids moram em
+// src/lib/settingsRail.js, que é puro e tem teste de contrato com a tabela de
+// endereços; aqui fica só o desenho. Destino novo entra nos dois lugares.
+const RAIL_ICONS = {
+  overview: <Gauge size={15} />,
+  team: <Users size={15} />,
+  transfer: <ArrowRightLeft size={15} />,
+  'referral-owners': <Handshake size={15} />,
+  import: <FileSpreadsheet size={15} />,
+  pace: <Target size={15} />,
+  sched: <CalendarClock size={15} />,
+  funnels: <Kanban size={15} />,
+  catalogs: <Library size={15} />,
+  zap: <PlugZap size={15} />,
 };
 
-const LEGACY_FOCUS = { tags: 'tags', sources: 'sources', plans: 'plans', lossReasons: 'loss', dores: 'dores' };
-
 function SettingsView({
-  initialTab, db, statuses, sources, usersList, appUser, tags, lossReasons,
+  section, onSection, db, statuses, sources, usersList, appUser, tags, lossReasons,
   dores, funnels, modalities, planos, trialClassOptions, units, metaWeekdays
 }) {
   // Fonte de leads das Configurações (G1-flip): TODOS os buckets por query
@@ -63,8 +67,12 @@ function SettingsView({
 
   const { slaOverdueDays } = useGeneralConfig();
 
-  const [section, setSection] = useState(() => LEGACY_TABS[initialTab] || 'overview');
-  const [focus, setFocus] = useState(() => LEGACY_FOCUS[initialTab] || null);
+  // A seção vem do endereço (/configuracoes/<secao>), então trocar de seção é
+  // navegar. Antes ela era lida uma vez só no inicializador do useState, e por
+  // isso o "Configurar agora" de uma novidade não trocava a seção com a tela
+  // já aberta. O `focus` continua aqui: ele aponta um item dentro da seção, é
+  // apagado assim que a seção o usa, e não tem o que fazer num link.
+  const [focus, setFocus] = useState(null);
 
   const setup = useMemo(() => buildSetupState({
     funnels, statuses, sources, modalities, planos, lossReasons,
@@ -73,9 +81,9 @@ function SettingsView({
 
   // Atalhos da Visão geral: trocam a seção e, quando dá, apontam o item citado.
   const goTo = useCallback((next, focusId = null) => {
-    setSection(next);
     setFocus(focusId);
-  }, []);
+    onSection(next);
+  }, [onSection]);
   const clearFocus = useCallback(() => setFocus(null), []);
 
   const catalogTotal = (tags || []).length + (sources || []).length + (planos || []).length
@@ -90,47 +98,29 @@ function SettingsView({
   // condição é só o claim. É trava de tela, não de permissão: as regras já
   // deixam o admin criar lead e contrato um a um.
   const canImport = Boolean(appUser?.impersonating) || import.meta.env.DEV;
+  // Seção que a tela realmente desenha e trilho desta sessão, os dois de
+  // src/lib/settingsRail.js.
+  const secao = settingsSection(section, canImport);
+  const groups = settingsRailGroups(canImport);
 
-  const groups = [
-    {
-      label: null,
-      items: [{ id: 'overview', label: 'Visão geral', icon: <Gauge size={15} /> }]
-    },
-    {
-      label: 'Pessoas',
-      items: [
-        { id: 'team', label: 'Equipe & acessos', icon: <Users size={15} />, count: (usersList || []).length },
-        { id: 'transfer', label: 'Migrar leads', icon: <ArrowRightLeft size={15} /> },
-        { id: 'referral-owners', label: 'Indicações sem dono', icon: <Handshake size={15} />, count: pendingOwnersCount || undefined },
-        ...(canImport ? [{ id: 'import', label: 'Importar clientes', icon: <FileSpreadsheet size={15} /> }] : [])
-      ]
-    },
-    {
-      label: 'Como a operação roda',
-      items: [
-        { id: 'pace', label: 'Metas & ritmo', icon: <Target size={15} /> },
-        { id: 'sched', label: 'Agendamento', icon: <CalendarClock size={15} />, count: (modalities || []).length },
-        { id: 'funnels', label: 'Funis & etapas', icon: <Kanban size={15} />, count: (funnels || []).length }
-      ]
-    },
-    {
-      label: 'Vocabulário do funil',
-      items: [{ id: 'catalogs', label: 'Catálogos', icon: <Library size={15} />, count: catalogTotal }]
-    },
-    {
-      label: 'Integrações',
-      items: [{ id: 'zap', label: 'Stronizap', icon: <PlugZap size={15} /> }]
-    }
-  ];
+  // Contagem do badge de cada destino, por id. Destino sem contagem fica sem
+  // badge, que é o que `undefined` faz no SettingsRailItem.
+  const railCounts = {
+    team: (usersList || []).length,
+    'referral-owners': pendingOwnersCount || undefined,
+    sched: (modalities || []).length,
+    funnels: (funnels || []).length,
+    catalogs: catalogTotal,
+  };
 
   const renderRailItem = (item) => (
     <SettingsRailItem
       key={item.id}
-      icon={item.icon}
+      icon={RAIL_ICONS[item.id]}
       label={item.label}
-      count={item.count}
+      count={railCounts[item.id]}
       attention={setup.attention[item.id]}
-      active={section === item.id}
+      active={secao === item.id}
       onClick={() => goTo(item.id)}
     />
   );
@@ -152,7 +142,7 @@ function SettingsView({
       </aside>
 
       <div className="flex-1 min-w-0">
-        {section === 'overview' && (
+        {secao === 'overview' && (
           <OverviewSection
             setup={setup}
             leads={leads}
@@ -164,44 +154,44 @@ function SettingsView({
             onNavigate={goTo}
           />
         )}
-        {section === 'team' && (
+        {secao === 'team' && (
           <TeamAccessSection
             db={db} appUser={appUser} usersList={usersList} leads={leads}
             focusId={focus} onFocusHandled={clearFocus}
           />
         )}
-        {section === 'transfer' && (
+        {secao === 'transfer' && (
           <TransferSection db={db} usersList={usersList} appUser={appUser} leads={leads} />
         )}
-        {section === 'referral-owners' && (
+        {secao === 'referral-owners' && (
           <ReferralOwnersSection db={db} leads={leads} funnels={funnels} statuses={statuses} appUser={appUser} />
         )}
-        {section === 'import' && canImport && (
+        {secao === 'import' && canImport && (
           <ImportClientsSection db={db} appUser={appUser} usersList={usersList} funnels={funnels} planos={planos} />
         )}
-        {section === 'pace' && (
+        {secao === 'pace' && (
           <PaceSection db={db} usersList={usersList} metaWeekdays={metaWeekdays} />
         )}
-        {section === 'sched' && (
+        {secao === 'sched' && (
           <SchedulingSection
             db={db} modalities={modalities} units={units}
             trialClassOptions={trialClassOptions} leads={leads}
           />
         )}
-        {section === 'funnels' && (
+        {secao === 'funnels' && (
           <FunnelsSection
             db={db} funnels={funnels} statuses={statuses} leads={leads}
             focusId={focus} onFocusHandled={clearFocus}
           />
         )}
-        {section === 'catalogs' && (
+        {secao === 'catalogs' && (
           <CatalogsSection
             db={db} tags={tags} sources={sources} planos={planos}
             lossReasons={lossReasons} dores={dores} modalities={modalities} leads={leads}
             focusId={focus} onFocusHandled={clearFocus}
           />
         )}
-        {section === 'zap' && (
+        {secao === 'zap' && (
           <ZapIntegrationSection db={db} appUser={appUser} />
         )}
       </div>

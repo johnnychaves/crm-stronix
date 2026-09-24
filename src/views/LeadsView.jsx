@@ -3,6 +3,7 @@ import { AlertCircle, Calendar, Check, Download, Phone, SlidersHorizontal, Users
 import { isAdminUser, normalizeLeadDoc } from '../lib/leads.js';
 import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isHotLeadFromDate } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useScreenParams } from '../hooks/useScreenParams.js';
 import { allLeadsQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
@@ -22,7 +23,7 @@ const statusColorOf = (name, statuses) =>
     : name === 'Perda' ? 'gray'
       : (statuses || []).find(s => s.name === name)?.color || 'gray';
 
-function LeadsView({ interactions, appUser, statuses, usersList, funnels, selectedFunnelId, setSelectedFunnelId, db }) {
+function LeadsView({ interactions, appUser, statuses, usersList, funnels, selectedFunnelId: savedFunnelId, setSelectedFunnelId: rememberFunnel, db }) {
   const toast = useToast();
   const isAdmin = isAdminUser(appUser);
 
@@ -38,21 +39,31 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
   });
 
   const [filterOpen, setFilterOpen] = useState(false);
-  const [statusFilters, setStatusFilters] = useState([]);
-  const [consultantFilters, setConsultantFilters] = useState([]);
-  const [overdueOnly, setOverdueOnly] = useState(false);
-  const [hotOnly, setHotOnly] = useState(false);
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
 
   const defaultFunnelId = useMemo(() => getDefaultFunnel(funnels)?.id || null, [funnels]);
 
-  // Ao trocar de funil, limpa o filtro de fase (as etapas mudam): ajuste de
-  // estado durante o render (padrão oficial do React), no lugar de um effect.
-  const [prevFunnelId, setPrevFunnelId] = useState(selectedFunnelId);
-  if (selectedFunnelId !== prevFunnelId) {
-    setPrevFunnelId(selectedFunnelId);
-    setStatusFilters([]);
-  }
+  // Funil, fase, responsável, atraso e quente vêm do endereço. A fase viaja
+  // como CÓDIGO (o id da etapa, mais venda e perda nas duas colunas terminais)
+  // e a tela recebe o nome, que é o que ela guarda: renomear a etapa em
+  // Configurações não quebra um link guardado. As etapas vão como função do
+  // funil, porque o funil é lido antes da fase na mesma passada, e é isso que
+  // apaga sozinha a fase de um funil que deixou de ser o escolhido.
+  const paramsCtx = useMemo(() => ({
+    users: usersList,
+    funis: funnels,
+    funilPadrao: savedFunnelId,
+    podeResp: isAdmin,
+    respPadrao: [],
+    etapas: (fid) => (statuses || []).filter(s => isItemInFunnel(s, fid, defaultFunnelId)),
+  }), [usersList, funnels, savedFunnelId, isAdmin, statuses, defaultFunnelId]);
+  const [{ funnel, stage: statusFilters, resp: consultantFilters, overdue: overdueOnly, hot: hotOnly }, setParams] =
+    useScreenParams('leads', paramsCtx);
+  const selectedFunnelId = funnel;
+
+  // Trocar de funil guarda a escolha no navegador e limpa a fase na mesma
+  // navegação: as etapas do funil novo são outras.
+  const pickFunnel = (id) => { rememberFunnel(id); setParams({ funnel: id, stage: [] }); };
 
   // Bubble de filtros fecha em clique fora / Esc (mesmo padrão das outras telas).
   const filterWrapRef = useRef(null);
@@ -99,15 +110,15 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
     [leads, selectedFunnelId, defaultFunnelId]
   );
 
-  const toggleStatus = (s) => setStatusFilters(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]);
-  const toggleConsultant = (id) => setConsultantFilters(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleStatus = (s) => setParams((v) => ({ stage: v.stage.includes(s) ? v.stage.filter(x => x !== s) : [...v.stage, s] }));
+  const toggleConsultant = (id) => setParams((v) => ({ resp: v.resp.includes(id) ? v.resp.filter(x => x !== id) : [...v.resp, id] }));
 
   const statusesForFunnel = (statuses || []).filter(s => isItemInFunnel(s, selectedFunnelId, defaultFunnelId));
   const phaseOptions = [...statusesForFunnel.map(s => s.name), 'Venda', 'Perda'];
 
   const filterCount = statusFilters.length + consultantFilters.length + (overdueOnly ? 1 : 0) + (hotOnly ? 1 : 0);
   const hasActiveFilters = filterCount > 0;
-  const clearAllFilters = () => { setStatusFilters([]); setConsultantFilters([]); setOverdueOnly(false); setHotOnly(false); };
+  const clearAllFilters = () => setParams({ stage: [], resp: [], overdue: false, hot: false });
 
   // EXPORTAÇÃO CSV — respeita os filtros aplicados.
   const exportToCSV = () => {
@@ -145,8 +156,8 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
 
   // Chips de filtros ativos (removem individualmente).
   const activeChips = [];
-  if (hotOnly) activeChips.push({ key: 'hot', label: '🔥 Hot leads', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', remove: () => setHotOnly(false) });
-  if (overdueOnly) activeChips.push({ key: 'overdue', label: 'Em atraso', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300', remove: () => setOverdueOnly(false) });
+  if (hotOnly) activeChips.push({ key: 'hot', label: '🔥 Hot leads', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300', remove: () => setParams({ hot: false }) });
+  if (overdueOnly) activeChips.push({ key: 'overdue', label: 'Em atraso', cls: 'bg-rose-100 text-rose-700 dark:bg-rose-500/15 dark:text-rose-300', remove: () => setParams({ overdue: false }) });
   statusFilters.forEach(s => activeChips.push({ key: `st:${s}`, label: s, cls: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300', remove: () => toggleStatus(s) }));
   consultantFilters.forEach(id => {
     const u = (usersList || []).find(x => x.id === id);
@@ -157,7 +168,7 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
     <div className="-m-4 md:-m-8 h-[calc(100vh-4rem)] flex flex-col animate-fade-in">
       {/* Header da página: abas de funil + resumo + exportar + filtro */}
       <div className="h-16 shrink-0 relative z-20 bg-white dark:bg-neutral-900 border-b border-gray-200 dark:border-neutral-800 flex items-center gap-3 md:gap-5 px-4 md:px-7">
-        <FunnelTabs funnels={funnels} counts={funnelCounts} selectedId={selectedFunnelId} onSelect={setSelectedFunnelId} />
+        <FunnelTabs funnels={funnels} counts={funnelCounts} selectedId={selectedFunnelId} onSelect={pickFunnel} />
 
         <div className="hidden md:block text-[11.5px] text-slate-500 dark:text-neutral-400 whitespace-nowrap tabular-nums shrink-0">
           <span className="font-semibold text-gray-700 dark:text-neutral-200">{filteredLeads.length}</span> de {baseLeads.length} leads
@@ -214,7 +225,7 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
                   <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">Situação</div>
                   <button
                     type="button"
-                    onClick={() => setHotOnly(v => !v)}
+                    onClick={() => setParams((v) => ({ hot: !v.hot }))}
                     className={cn('w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors', hotOnly ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5')}
                   >
                     <span className="size-6 rounded-full grid place-items-center bg-accent-50 dark:bg-accent-500/15 text-[12px] shrink-0">🔥</span>
@@ -223,7 +234,7 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
                   </button>
                   <button
                     type="button"
-                    onClick={() => setOverdueOnly(v => !v)}
+                    onClick={() => setParams((v) => ({ overdue: !v.overdue }))}
                     className={cn('w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors', overdueOnly ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5')}
                   >
                     <span className="size-6 rounded-full grid place-items-center bg-rose-100 dark:bg-rose-500/15 text-rose-700 dark:text-rose-300 shrink-0"><AlertCircle className="size-[13px]" /></span>
