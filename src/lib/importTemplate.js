@@ -7,6 +7,8 @@
 // Spec: docs/superpowers/specs/2026-09-24-modelo-planilha-importacao-design.md
 
 import { normalize } from './globalSearch.js';
+import { addMonths } from './dates.js';
+import { normalizeName } from './clientImport.js';
 
 // Cabeçalho normalizado: minúsculas, sem acento, só letras e números, espaços
 // únicos. "Início da vigência *" e "INICIO_DA_VIGENCIA" viram a mesma chave, e
@@ -83,3 +85,147 @@ export const templateMapping = (headers) => {
   });
   return Object.fromEntries(TEMPLATE_COLUMNS.map((col) => [col.field, byNorm.get(normalizeHeader(col.header)) ?? null]));
 };
+
+// ---------------------------------------------------------------------------
+// Descrição do arquivo: o que importTemplateWrite.js transforma em .xlsx
+// ---------------------------------------------------------------------------
+
+export const TEMPLATE_SHEETS = { CLIENTES: 'Clientes', AJUDA: 'Como preencher', LISTAS: 'Listas' };
+
+// Última linha com formato e validação na aba Clientes (a 1 é o cabeçalho).
+// Fica acima da maior academia: o teto de escala é de 2 a 3 mil clientes.
+export const TEMPLATE_LAST_ROW = 5001;
+
+// Listas que saem do cadastro da academia e a coluna de cada uma na aba Listas.
+const LISTS = {
+  planos: { letter: 'A', title: 'Planos' },
+  equipe: { letter: 'B', title: 'Equipe' },
+  professores: { letter: 'C', title: 'Professores' }
+};
+
+const NUMFMT = { text: '@', list: '@', date: 'dd/mm/yyyy', endDate: 'dd/mm/yyyy', money: '"R$" #,##0.00' };
+
+// Limites da data em número serial do Excel (1 = 01/01/1900, 73415 =
+// 31/12/2100). Um Date do JavaScript sai deslocado pelo fuso no ExcelJS.
+const EXCEL_DAY_MIN = 1;
+const EXCEL_DAY_MAX = 73415;
+
+const ERRORS = {
+  date: 'Digite uma data, como 15/03/2026.',
+  endDate: 'O fim precisa ser uma data igual ou depois do início, como 15/03/2026.',
+  money: 'Digite o valor em número, como 1200,00.',
+  fixed: 'Escolha uma opção da lista.',
+  loose: 'Esse nome não está na lista. Se continuar, ele é acertado na importação.'
+};
+
+// 0 → A, 25 → Z, 26 → AA.
+const columnLetter = (i) => (i < 26
+  ? String.fromCharCode(65 + i)
+  : columnLetter(Math.floor(i / 26) - 1) + String.fromCharCode(65 + (i % 26)));
+
+// Nomes para a lista suspensa: sem vazio, sem repetido pelo nome normalizado
+// (a mesma chave com que enrichCandidate casa), aparados e em ordem pt-BR.
+// Fica o primeiro que aparecer.
+export const uniqueSortedNames = (items) => {
+  const seen = new Map();
+  (items || []).forEach((x) => {
+    const name = String(x?.name ?? '').replace(/\s+/g, ' ').trim();
+    const key = normalizeName(name);
+    if (key && !seen.has(key)) seen.set(key, name);
+  });
+  return [...seen.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+};
+
+// Validação de dados de uma coluna, no formato do ExcelJS, ou null.
+function validationOf(col, letter, startLetter, lists) {
+  const base = { allowBlank: true, showErrorMessage: true };
+  if (col.kind === 'date') {
+    return { ...base, type: 'date', operator: 'between', formulae: [EXCEL_DAY_MIN, EXCEL_DAY_MAX], errorStyle: 'stop', error: ERRORS.date };
+  }
+  if (col.kind === 'endDate') {
+    // Referência relativa à linha 2: o Excel desloca para cada linha do intervalo.
+    return { ...base, type: 'custom', formulae: [`AND(ISNUMBER(${letter}2),OR(${startLetter}2="",${letter}2>=${startLetter}2))`], errorStyle: 'stop', error: ERRORS.endDate };
+  }
+  if (col.kind === 'money') {
+    return { ...base, type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], errorStyle: 'stop', error: ERRORS.money };
+  }
+  if (col.kind === 'list' && col.options) {
+    return { ...base, type: 'list', formulae: [`"${col.options.join(',')}"`], errorStyle: 'stop', error: ERRORS.fixed };
+  }
+  if (col.kind === 'list' && col.list) {
+    const { letter: listLetter, names } = lists[col.list];
+    if (!names.length) return null;
+    // Aponta para o intervalo da aba Listas: lista escrita dentro da validação
+    // tem limite de 255 caracteres no Excel.
+    return { ...base, type: 'list', formulae: [`${TEMPLATE_SHEETS.LISTAS}!$${listLetter}$2:$${listLetter}$${names.length + 1}`], errorStyle: 'warning', error: ERRORS.loose };
+  }
+  return null;
+}
+
+const pad = (n) => String(n).padStart(2, '0');
+const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const fmtDia = (d) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+const fileSlug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'academia';
+
+// Aba "Como preencher": linhas de texto e um exemplo com as nove primeiras
+// colunas. O exemplo mora nesta aba de propósito: na aba Clientes ele seria
+// importado como aluno.
+function helpOf({ tenantId, windowDays, now, lists }) {
+  const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  const end = addMonths(start, 6);
+  const plan = lists.planos.names[0] || 'Plano Semestral';
+  const consultant = lists.equipe.names[0] || '';
+  return {
+    lines: [
+      { text: 'Modelo de importação de clientes do Stronilead', bold: true },
+      { text: `Gerado para ${tenantId || 'a academia'} em ${fmtDia(now)}.` },
+      { text: '' },
+      { text: 'Quem entra na lista', bold: true },
+      { text: `Clientes com contrato ativo, trancados e quem venceu há no máximo ${windowDays} dias. Cancelados e vencidos há mais tempo ficam de fora.` },
+      { text: 'Uma linha por cliente, com o contrato atual. Quem tem dois contratos ao mesmo tempo entra com o que termina por último, e o outro é lançado depois na ficha.' },
+      { text: '' },
+      { text: 'Como preencher', bold: true },
+      { text: 'As colunas com cabeçalho laranja são obrigatórias. De CPF e WhatsApp, basta um dos dois.' },
+      { text: 'Datas no formato dia/mês/ano, como 15/03/2026.' },
+      { text: 'O valor é o total do contrato, não a mensalidade. Em branco, vale o valor do plano no Stronilead.' },
+      { text: 'Plano, consultor e professor têm lista. Se o nome não estiver nela, pode digitar: o Excel avisa e o nome é acertado na importação.' },
+      { text: 'Pare o mouse sobre o cabeçalho de cada coluna para ver o que vai nela.' },
+      { text: 'Não mude o nome das colunas nem a ordem das abas. A aba Clientes precisa continuar sendo a primeira.' },
+      { text: '' },
+      { text: 'Exemplo (não copie para a aba Clientes)', bold: true }
+    ],
+    example: {
+      headers: TEMPLATE_COLUMNS.slice(0, 9).map(templateHeaderLabel),
+      rows: [
+        ['Maria Souza', '123.456.789-09', '(71) 99999-0000', plan, fmtDia(start), fmtDia(end), '1.200,00', 'Ativo', consultant],
+        ['João Pereira', '', '(71) 98888-1234', plan, fmtDia(start), fmtDia(end), '', 'Trancado', '']
+      ]
+    }
+  };
+}
+
+// Tudo que importTemplateWrite.js precisa para montar o .xlsx, a partir do
+// que a tela de importação já tem carregado. `now` vem de quem chama.
+export function buildTemplateSpec({ planos, users, professores, windowDays, tenantId, now }) {
+  const sources = { planos, equipe: users, professores };
+  const lists = Object.fromEntries(Object.entries(LISTS).map(([id, meta]) => [id, { ...meta, names: uniqueSortedNames(sources[id]) }]));
+  const startLetter = columnLetter(TEMPLATE_COLUMNS.findIndex((c) => c.field === 'contractStartsAt'));
+  const columns = TEMPLATE_COLUMNS.map((col, i) => {
+    const letter = columnLetter(i);
+    return {
+      ...col,
+      letter,
+      label: templateHeaderLabel(col),
+      numFmt: NUMFMT[col.kind],
+      range: `${letter}2:${letter}${TEMPLATE_LAST_ROW}`,
+      validation: validationOf(col, letter, startLetter, lists)
+    };
+  });
+  return {
+    fileName: `modelo-stronilead-${fileSlug(tenantId)}-${dayKey(now)}.xlsx`,
+    sheets: TEMPLATE_SHEETS,
+    columns,
+    lists: Object.values(lists),
+    help: helpOf({ tenantId, windowDays, now, lists })
+  };
+}

@@ -8,7 +8,9 @@ import {
   normalizeHeader,
   templateHeaderLabel,
   checkTemplateHeaders,
-  templateMapping
+  templateMapping,
+  buildTemplateSpec,
+  uniqueSortedNames
 } from '../importTemplate.js';
 import { parseRow } from '../clientImport.js';
 
@@ -152,5 +154,119 @@ describe('templateMapping', () => {
     });
     expect(c.startsAt).toEqual(new Date(2026, 7, 12));
     expect(c.endsAt).toEqual(new Date(2026, 10, 12));
+  });
+});
+
+describe('uniqueSortedNames', () => {
+  it('tira repetido pelo nome normalizado, apara espaço e ordena em pt-BR', () => {
+    expect(uniqueSortedNames([{ name: 'Trimestral' }, { name: 'Ágil' }, { name: '  trimestral ' }, { name: 'Anual' }, { name: '' }, null]))
+      .toEqual(['Ágil', 'Anual', 'Trimestral']);
+  });
+});
+
+describe('buildTemplateSpec', () => {
+  const NOW = new Date(2026, 8, 24, 15, 30);
+  const spec = buildTemplateSpec({
+    planos: [{ id: 'p2', name: 'Trimestral' }, { id: 'p1', name: 'Anual' }, { id: 'p3', name: ' trimestral ' }],
+    users: [{ id: 'u2', name: 'Bia' }, { id: 'u1', name: 'Ana' }],
+    professores: [],
+    windowDays: 15,
+    tenantId: 'Academia Teste',
+    now: NOW
+  });
+  const col = (field) => spec.columns.find((c) => c.field === field);
+
+  it('nome do arquivo com a academia e o dia', () => {
+    expect(spec.fileName).toBe('modelo-stronilead-academia-teste-2026-09-24.xlsx');
+  });
+
+  it('a aba Clientes é a primeira', () => {
+    expect(spec.sheets).toEqual({ CLIENTES: 'Clientes', AJUDA: 'Como preencher', LISTAS: 'Listas' });
+    expect(Object.values(spec.sheets)[0]).toBe('Clientes');
+  });
+
+  it('listas sem nome repetido e em ordem alfabética', () => {
+    const byTitle = Object.fromEntries(spec.lists.map((l) => [l.title, l]));
+    expect(byTitle.Planos).toEqual({ letter: 'A', title: 'Planos', names: ['Anual', 'Trimestral'] });
+    expect(byTitle.Equipe.names).toEqual(['Ana', 'Bia']);
+    expect(byTitle.Professores.names).toEqual([]);
+  });
+
+  it('colunas na ordem da tabela, com letra, rótulo e intervalo até a linha 5001', () => {
+    expect(spec.columns.map((c) => c.field)).toEqual(TEMPLATE_COLUMNS.map((c) => c.field));
+    expect(spec.columns.slice(0, 3).map((c) => c.letter)).toEqual(['A', 'B', 'C']);
+    expect(col('addrCity').letter).toBe('W');
+    expect(col('name').label).toBe('Nome *');
+    expect(col('cpf').range).toBe('B2:B5001');
+  });
+
+  it('texto fica como texto, data como data e valor em reais', () => {
+    expect(col('cpf').numFmt).toBe('@');
+    expect(col('whatsapp').numFmt).toBe('@');
+    expect(col('addrCep').numFmt).toBe('@');
+    expect(col('addrNumber').numFmt).toBe('@');
+    expect(col('contractStartsAt').numFmt).toBe('dd/mm/yyyy');
+    expect(col('contractEndsAt').numFmt).toBe('dd/mm/yyyy');
+    expect(col('contractValue').numFmt).toBe('"R$" #,##0.00');
+  });
+
+  it('plano e consultor apontam para a aba Listas e só avisam', () => {
+    expect(col('planName').validation).toMatchObject({ type: 'list', formulae: ['Listas!$A$2:$A$3'], errorStyle: 'warning', allowBlank: true, showErrorMessage: true });
+    expect(col('consultantName').validation).toMatchObject({ type: 'list', formulae: ['Listas!$B$2:$B$3'], errorStyle: 'warning' });
+    expect(col('planName').validation.error).toBe('Esse nome não está na lista. Se continuar, ele é acertado na importação.');
+  });
+
+  it('lista vazia fica sem validação', () => {
+    expect(col('professorName').validation).toBeNull();
+  });
+
+  it('situação, sexo e VIP são listas fixas e travadas', () => {
+    expect(col('contractSituation').validation).toMatchObject({ type: 'list', formulae: ['"Ativo,Trancado"'], errorStyle: 'stop' });
+    expect(col('sexo').validation.formulae).toEqual(['"Masculino,Feminino,Outro"']);
+    expect(col('vip').validation.formulae).toEqual(['"Sim,Não"']);
+  });
+
+  it('datas travadas entre 1900 e 2100, em número serial do Excel', () => {
+    expect(col('contractStartsAt').validation).toMatchObject({ type: 'date', operator: 'between', formulae: [1, 73415], errorStyle: 'stop', error: 'Digite uma data, como 15/03/2026.' });
+    expect(col('birthDate').validation.type).toBe('date');
+  });
+
+  it('o fim exige data igual ou depois do início da mesma linha', () => {
+    expect(col('contractEndsAt').validation).toMatchObject({
+      type: 'custom',
+      formulae: ['AND(ISNUMBER(F2),OR(E2="",F2>=E2))'],
+      errorStyle: 'stop',
+      error: 'O fim precisa ser uma data igual ou depois do início, como 15/03/2026.'
+    });
+  });
+
+  it('valor aceita só número maior ou igual a zero', () => {
+    expect(col('contractValue').validation).toMatchObject({ type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], errorStyle: 'stop' });
+  });
+
+  it('texto livre fica sem validação', () => {
+    expect(col('name').validation).toBeNull();
+    expect(col('email').validation).toBeNull();
+  });
+
+  it('"Como preencher" traz a academia, o dia e a janela de Vencidos', () => {
+    const text = spec.help.lines.map((l) => l.text).join('\n');
+    expect(text).toContain('Gerado para Academia Teste em 24/09/2026.');
+    expect(text).toContain('venceu há no máximo 15 dias');
+    expect(text).not.toMatch(/[—–]/);
+  });
+
+  it('o exemplo usa as nove primeiras colunas e o primeiro plano da lista', () => {
+    expect(spec.help.example.headers).toEqual(spec.columns.slice(0, 9).map((c) => c.label));
+    expect(spec.help.example.rows).toHaveLength(2);
+    expect(spec.help.example.rows.every((r) => r.length === 9)).toBe(true);
+    expect(spec.help.example.rows[0][3]).toBe('Anual');
+    expect(spec.help.example.rows[0][8]).toBe('Ana');
+  });
+
+  it('sem academia no claim o arquivo e o texto não quebram', () => {
+    const s = buildTemplateSpec({ planos: [{ name: 'Mensal' }], users: [], professores: [], windowDays: 15, tenantId: null, now: NOW });
+    expect(s.fileName).toBe('modelo-stronilead-academia-2026-09-24.xlsx');
+    expect(s.help.lines[1].text).toBe('Gerado para a academia em 24/09/2026.');
   });
 });
