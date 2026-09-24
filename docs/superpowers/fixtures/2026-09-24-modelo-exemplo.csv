@@ -1,0 +1,6 @@
+Nome *;CPF *;WhatsApp *;Plano *;Início da vigência *;Fim da vigência *;Valor total do contrato;Situação do contrato;Consultor;Professor;E-mail;Data de nascimento;Sexo;Cliente desde;Objetivo;VIP;RG;CEP;Endereço;Número;Complemento;Bairro;Cidade
+Ana Teste Modelo;529.982.247-25;(71) 99999-0101;Trimestral;01/08/2026;01/11/2026;450,00;Ativo;TROCAR_CONSULTOR;;ana.modelo@example.com;05/03/1985;Feminino;10/01/2024;Emagrecer;Não;;40000-000;Rua A;10;;Centro;Salvador
+Bruno Teste Modelo;111.444.777-35;(71) 99999-0102;Plano Antigo 2019;15/07/2026;15/01/2027;900,00;Ativo;;;;;;;;;;;;;;;
+Carla Teste Modelo;987.654.321-00;(71) 99999-0103;Trimestral;01/07/2026;01/10/2026;;Trancado;TROCAR_CONSULTOR;;;;;;;;;;;;;;
+Diego Teste Modelo;456.123.789-55;(71) 99999-0104;Trimestral;15/06/2026;15/09/2026;450,00;Ativo;TROCAR_CONSULTOR;;;;;;;;;;;;;;
+Elisa Teste Modelo;321.654.987-91;TROCAR_WHATSAPP_DE_UM_LEAD;Trimestral;01/09/2026;01/12/2026;450,00;Ativo;;;;;;;;;;;;;;;
