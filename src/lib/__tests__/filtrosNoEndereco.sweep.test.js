@@ -31,9 +31,15 @@ const views = sourceFiles(join(SRC, 'views')).map((f) => [relative(SRC, f), read
 // `useSearchParams` num componente ou num hook cria uma segunda fonte da
 // verdade tão ruim quanto um dentro da view. O App.jsx fica de fora porque é
 // ele quem lê `location.search`, para o convite e para o `funnelFromSearch`.
+// O useScreenParams é o ÚNICO leitor autorizado da query, então ele sai da
+// lista pelo nome. Antes ele passava por acaso, porque escreve
+// `const { pathname, search, state } = location;` em vez de `location.search`,
+// e essa mesma escrita deixaria passar um segundo leitor.
+const LEITOR_DA_QUERY = join('hooks', 'useScreenParams.js');
 const telas = ['views', 'components', 'modals', 'hooks', 'contexts']
   .flatMap((pasta) => sourceFiles(join(SRC, pasta)))
-  .map((f) => [relative(SRC, f), readFileSync(f, 'utf8')]);
+  .map((f) => [relative(SRC, f), readFileSync(f, 'utf8')])
+  .filter(([nome]) => nome !== LEITOR_DA_QUERY);
 // `src/` inteiro, para a regra do navigate: o state da ficha nasce fora das
 // views (App.jsx e o LeadLink).
 const fontes = sourceFiles(SRC).map((f) => [relative(SRC, f), readFileSync(f, 'utf8')]);
@@ -53,6 +59,14 @@ describe('varredura dos filtros no endereço', () => {
       const codigo = semComentarios(texto);
       expect(codigo.includes('location.search'), nome).toBe(false);
       expect(codigo.includes('useSearchParams'), nome).toBe(false);
+      // A mesma leitura escrita por desestruturação: `const { search } =
+      // useLocation()` e `const { pathname, search } = location`. É assim que
+      // o próprio hook lê, então é a forma que um segundo leitor copiaria.
+      expect(
+        /\{[^}]*\bsearch\b[^}]*\}\s*=\s*(useLocation\(\)|location)/.test(codigo),
+        nome,
+      ).toBe(false);
+      expect(/useLocation\(\)\.search\b/.test(codigo), nome).toBe(false);
     }
   });
 

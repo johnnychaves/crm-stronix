@@ -4,6 +4,7 @@ import { isClientLead, isAdminUser } from '../lib/leads.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
+import { SEM_CONTRATO } from '../lib/screenParams.js';
 import { clientsAllQuerySpec } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
 import { deriveLeadContractStatus, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
@@ -15,8 +16,10 @@ import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
 
 // Status "vivo" do CLIENTE a partir do resumo denormalizado no lead. Legados
-// (Venda antiga sem contrato) não têm endsAt → 'sem_contrato'.
-const SEM_CONTRATO = 'sem_contrato';
+// (Venda antiga sem contrato) não têm endsAt → 'sem_contrato'. O sentinela vem
+// do screenParams porque é ele quem lê e escreve a situação no endereço: duas
+// escritas do mesmo literal, e um dia o filtro do endereço deixa de casar com
+// a lista sem ninguém reclamar.
 const clientStatus = (lead, now, threshold) =>
   deriveLeadContractStatus(lead, now, threshold) || SEM_CONTRATO;
 
