@@ -14,13 +14,13 @@ import { parseRow } from '../clientImport.js';
 
 const LABELS = TEMPLATE_COLUMNS.map(templateHeaderLabel);
 
-// Campos que parseRow (clientImport.js) lê de uma linha.
-const PARSE_ROW_FIELDS = [
-  'name', 'whatsapp', 'cpf', 'email', 'rg', 'birthDate', 'sexo', 'dor', 'vip', 'registeredAt',
-  'consultantName', 'professorName', 'addrStreet', 'addrNumber', 'addrComplement', 'addrNeighborhood',
-  'addrCep', 'addrCity', 'planName', 'contractSituation', 'clientSituation', 'contractStartsAt',
-  'contractEndsAt', 'contractValue'
-];
+// Campos que parseRow (clientImport.js) lê de uma linha, descobertos pelo
+// próprio parseRow: um mapeamento espião anota cada campo pedido.
+const PARSE_ROW_FIELDS = (() => {
+  const read = new Set();
+  parseRow({}, new Proxy({}, { get: (_, k) => { if (typeof k === 'string') read.add(k); return undefined; } }), 2, new Date(2026, 8, 24));
+  return [...read];
+})();
 
 // Cabeçalho da exportação de cadastro do NextFit: divide só Nome e CPF com as
 // obrigatórias do modelo.
@@ -113,6 +113,16 @@ describe('templateMapping', () => {
 
   it('coluna opcional apagada fica nula', () => {
     expect(templateMapping(LABELS.filter((h) => h !== 'Cidade')).addrCity).toBeNull();
+  });
+
+  it('com dois cabeçalhos que viram a mesma chave, vale o primeiro', () => {
+    const m = templateMapping(['NOME', ...LABELS]);
+    expect(m.name).toBe('NOME');
+  });
+
+  it('a cópia renomeada pelo leitor ("Plano * (2)") nunca toma o lugar da coluna certa', () => {
+    const m = templateMapping([...LABELS, 'Plano * (2)']);
+    expect(m.planName).toBe('Plano *');
   });
 
   it('alimenta parseRow sem ajuste nenhum', () => {
