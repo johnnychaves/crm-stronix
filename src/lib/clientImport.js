@@ -189,8 +189,20 @@ export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
   const contractSituation = contractSituationFromText(get('contractSituation'));
   if (contractSituation === CONTRACT_SITUATION.DESCONHECIDO) warnings.push('Situação do contrato desconhecida');
   const endsRaw = get('contractEndsAt');
-  const endsAt = parseImportDate(endsRaw, now);
-  if (str(endsRaw) && !endsAt) warnings.push('Data de fim ilegível');
+  const parsedEnd = parseImportDate(endsRaw, now);
+  if (str(endsRaw) && !parsedEnd) warnings.push('Data de fim ilegível');
+  const startsRaw = get('contractStartsAt');
+  const startsAt = parseImportDate(startsRaw, now);
+  // Sem início, o contrato nasce com o início calculado pelo plano
+  // (buildImportedContract). Só avisa quando a coluna existe e há fim: sem
+  // fim não nasce contrato, e o início não faz falta.
+  if (str(startsRaw) && !startsAt) warnings.push('Data de início ilegível');
+  else if (mapping?.contractStartsAt && !startsAt && parsedEnd) warnings.push('Sem data de início');
+  // Vigência invertida quebraria Renovações e Vencidos: a linha segue como a
+  // de quem não tem data de fim (cliente sem contrato, em "sem vigência").
+  const inverted = Boolean(startsAt && parsedEnd && parsedEnd.getTime() < startsAt.getTime());
+  if (inverted) warnings.push('Fim antes do início');
+  const endsAt = inverted ? null : parsedEnd;
   const value = parseValorBRL(get('contractValue'));
   return {
     rowNumber,
@@ -213,7 +225,7 @@ export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
     planName: nullify(get('planName')),
     contractSituation,
     clientSituation: clientSituationFromText(get('clientSituation')),
-    startsAt: parseImportDate(get('contractStartsAt'), now),
+    startsAt,
     endsAt,
     value: Number.isFinite(value) ? value : null,
     warnings

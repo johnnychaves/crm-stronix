@@ -266,6 +266,47 @@ describe('parseRow', () => {
     expect(c.contractSituation).toBe('desconhecido');
     expect(c.warnings).toEqual(['Situação do contrato desconhecida']);
   });
+
+  const VIGENCIA = { ...NEXTFIT_MAPPING, contractStartsAt: 'Início', contractEndsAt: 'Fim' };
+  const vigRow = (inicio, fim) => ({ __row: 3, 'Nome': 'Ana', 'CPF': '529.982.247-25', 'Início': inicio, 'Fim': fim });
+
+  it('fim antes do início vira aviso e a linha fica sem vigência', () => {
+    const c = parseRow(vigRow('12/11/2026', '12/08/2026'), VIGENCIA, 3, NOW);
+    expect(c.startsAt).toEqual(D(2026, 11, 12));
+    expect(c.endsAt).toBeNull();
+    expect(c.warnings).toEqual(['Fim antes do início']);
+  });
+
+  it('fim no mesmo dia do início é vigência válida', () => {
+    const c = parseRow(vigRow('12/08/2026', '12/08/2026'), VIGENCIA, 3, NOW);
+    expect(c.endsAt).toEqual(D(2026, 8, 12));
+    expect(c.warnings).toEqual([]);
+  });
+
+  it('coluna de início mapeada e vazia, com fim, avisa "Sem data de início"', () => {
+    const c = parseRow(vigRow('', '12/11/2026'), VIGENCIA, 3, NOW);
+    expect(c.startsAt).toBeNull();
+    expect(c.endsAt).toEqual(D(2026, 11, 12));
+    expect(c.warnings).toEqual(['Sem data de início']);
+  });
+
+  it('sem fim não cobra o início, porque não nasce contrato', () => {
+    const c = parseRow(vigRow('', ''), VIGENCIA, 3, NOW);
+    expect(c.warnings).toEqual([]);
+  });
+
+  it('data de início ilegível vira aviso e o fim continua valendo', () => {
+    const c = parseRow(vigRow('ontem', '12/11/2026'), VIGENCIA, 3, NOW);
+    expect(c.startsAt).toBeNull();
+    expect(c.endsAt).toEqual(D(2026, 11, 12));
+    expect(c.warnings).toEqual(['Data de início ilegível']);
+  });
+
+  it('fim antes do início deixa a linha como cadastro sem vigência na classificação', () => {
+    const c = { ...parseRow(vigRow('12/11/2026', '12/08/2026'), VIGENCIA, 3, NOW), consultant: null, plan: null };
+    const cls = classifyCandidate(c, { kind: 'none', lead: null, homonyms: [] }, { scope: 'padrao', now: NOW, windowDays: 15 });
+    expect(cls).toMatchObject({ outcome: 'criar', createContract: false, reason: 'Cadastro novo sem vigência' });
+  });
 });
 
 describe('isCandidateValid', () => {
