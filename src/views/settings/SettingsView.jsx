@@ -18,6 +18,7 @@ import { FunnelsSection } from './FunnelsSection.jsx';
 import { CatalogsSection } from './CatalogsSection.jsx';
 import { ImportClientsSection } from './ImportClientsSection.jsx';
 import { ZapIntegrationSection } from './ZapIntegrationSection.jsx';
+import { settingsRailGroups, settingsSection } from '../../lib/settingsRail.js';
 
 // ==========================================
 // CONFIGURAÇÕES — sete destinos agrupados por intenção
@@ -28,8 +29,26 @@ import { ZapIntegrationSection } from './ZapIntegrationSection.jsx';
 // saiu — com sete destinos, a hierarquia resolve.
 //
 // Cada seção renderiza o próprio cabeçalho e as próprias ações; aqui ficam só o
-// trilho, o roteamento e os dados compartilhados.
+// trilho, o roteamento e os dados compartilhados. A tabela do trilho (ordem,
+// rótulo e id de cada destino) mora em src/lib/settingsRail.js, porque o id é
+// também o segmento do endereço e precisa bater com a tabela de rotas.
 // ==========================================
+
+// Ícone de cada destino do trilho. A ordem, os rótulos e os ids moram em
+// src/lib/settingsRail.js, que é puro e tem teste de contrato com a tabela de
+// endereços; aqui fica só o desenho. Destino novo entra nos dois lugares.
+const RAIL_ICONS = {
+  overview: <Gauge size={15} />,
+  team: <Users size={15} />,
+  transfer: <ArrowRightLeft size={15} />,
+  'referral-owners': <Handshake size={15} />,
+  import: <FileSpreadsheet size={15} />,
+  pace: <Target size={15} />,
+  sched: <CalendarClock size={15} />,
+  funnels: <Kanban size={15} />,
+  catalogs: <Library size={15} />,
+  zap: <PlugZap size={15} />,
+};
 
 function SettingsView({
   section, onSection, db, statuses, sources, usersList, appUser, tags, lossReasons,
@@ -79,52 +98,27 @@ function SettingsView({
   // condição é só o claim. É trava de tela, não de permissão: as regras já
   // deixam o admin criar lead e contrato um a um.
   const canImport = Boolean(appUser?.impersonating) || import.meta.env.DEV;
-  // Seção que a tela realmente desenha. O endereço pede uma seção, mas
-  // Importar clientes só existe na sessão assumida do super console: sem ela,
-  // /configuracoes/importacao deixaria o lado direito em branco. Cai na seção
-  // padrão, do mesmo jeito calado que uma sub-tela desconhecida cai na
-  // tela-mãe. O endereço não é reescrito: ele se acerta no primeiro clique do
-  // trilho.
-  const secao = section === 'import' && !canImport ? 'team' : section;
+  // Seção que a tela realmente desenha e trilho desta sessão, os dois de
+  // src/lib/settingsRail.js.
+  const secao = settingsSection(section, canImport);
+  const groups = settingsRailGroups(canImport);
 
-  const groups = [
-    {
-      label: null,
-      items: [{ id: 'overview', label: 'Visão geral', icon: <Gauge size={15} /> }]
-    },
-    {
-      label: 'Pessoas',
-      items: [
-        { id: 'team', label: 'Equipe & acessos', icon: <Users size={15} />, count: (usersList || []).length },
-        { id: 'transfer', label: 'Migrar leads', icon: <ArrowRightLeft size={15} /> },
-        { id: 'referral-owners', label: 'Indicações sem dono', icon: <Handshake size={15} />, count: pendingOwnersCount || undefined },
-        ...(canImport ? [{ id: 'import', label: 'Importar clientes', icon: <FileSpreadsheet size={15} /> }] : [])
-      ]
-    },
-    {
-      label: 'Como a operação roda',
-      items: [
-        { id: 'pace', label: 'Metas & ritmo', icon: <Target size={15} /> },
-        { id: 'sched', label: 'Agendamento', icon: <CalendarClock size={15} />, count: (modalities || []).length },
-        { id: 'funnels', label: 'Funis & etapas', icon: <Kanban size={15} />, count: (funnels || []).length }
-      ]
-    },
-    {
-      label: 'Vocabulário do funil',
-      items: [{ id: 'catalogs', label: 'Catálogos', icon: <Library size={15} />, count: catalogTotal }]
-    },
-    {
-      label: 'Integrações',
-      items: [{ id: 'zap', label: 'Stronizap', icon: <PlugZap size={15} /> }]
-    }
-  ];
+  // Contagem do badge de cada destino, por id. Destino sem contagem fica sem
+  // badge, que é o que `undefined` faz no SettingsRailItem.
+  const railCounts = {
+    team: (usersList || []).length,
+    'referral-owners': pendingOwnersCount || undefined,
+    sched: (modalities || []).length,
+    funnels: (funnels || []).length,
+    catalogs: catalogTotal,
+  };
 
   const renderRailItem = (item) => (
     <SettingsRailItem
       key={item.id}
-      icon={item.icon}
+      icon={RAIL_ICONS[item.id]}
       label={item.label}
-      count={item.count}
+      count={railCounts[item.id]}
       attention={setup.attention[item.id]}
       active={secao === item.id}
       onClick={() => goTo(item.id)}

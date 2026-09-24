@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  SCREENS, parseAppPath, canAccess, routeDecision, ROUTE_NOTICES,
+  SCREENS, parseAppPath, hrefFor, canAccess, routeDecision, ROUTE_NOTICES,
   backTarget, screenKey, documentTitle, routeTemplate, scrollActionFor,
 } from '../routes.js';
 
@@ -360,6 +360,7 @@ describe('sub-tela na decisão de rota', () => {
   it('a sub-tela continua fora do molde do Sentry', () => {
     expect(routeTemplate(`/${T}/configuracoes/catalogos`)).toBe('/:tenant/configuracoes');
     expect(routeTemplate(`/${T}/ficha/AbC/contratos`)).toBe('/:tenant/ficha/:leadId');
+    expect(routeTemplate(`/${T}/ficha/AbC/indicacoes`)).toBe('/:tenant/ficha/:leadId');
   });
 
   it('a seção e a aba não trocam a chave da tela, então nada remonta', () => {
@@ -369,28 +370,18 @@ describe('sub-tela na decisão de rota', () => {
     for (const p of daFicha) expect(screenKey(parseAppPath(p)), p).toBe('ficha:AbC');
   });
 
-  it('a aba da ficha sobrevive ao mascaramento do id no Sentry', () => {
-    expect(routeTemplate(`/${T}/ficha/AbC/indicacoes`)).toBe('/:tenant/ficha/:leadId');
-  });
-
-  it('o título da aba do navegador continua sem a sub-tela e sem nome de gente', () => {
-    expect(documentTitle({ screen: 'settings', tenantName: 'STRONIX' })).toBe('Configurações · STRONIX · STRONILEAD');
-    expect(documentTitle({ screen: 'ficha', tenantName: 'STRONIX' })).toBe('Ficha · STRONIX · STRONILEAD');
-  });
-
   it('a academia corrigida leva a aba da ficha junto', () => {
     expect(decide('/ficha/AbC/contratos', consultor)).toEqual(
       casa(`/${T}/ficha/AbC/contratos`, { screen: 'ficha', leadId: 'AbC', sub: 'contratos' }),
     );
   });
 
-  it('o item do menu aponta para a tela-mãe, e o endereço com seção continua sendo a mesma tela', () => {
-    // O item do menu é um AppLink para /configuracoes. Quem está em
-    // /configuracoes/catalogos continua na tela `settings`, então o item fica
-    // aceso (activeTab) e o clique nele é a volta ao estado zero da tela.
-    for (const p of [`/${T}/configuracoes`, `/${T}/configuracoes/catalogos`]) {
-      expect(parseAppPath(p).screen, p).toBe('settings');
-    }
+  it('o item do menu aponta para a tela-mãe, sem seção', () => {
+    // O item do menu é um AppLink montado sem `sub`: ele leva ao estado zero
+    // das Configurações, e quem está numa seção continua na mesma tela, então
+    // o item fica aceso do mesmo jeito.
+    expect(hrefFor(T, 'settings')).toBe(`/${T}/configuracoes`);
+    expect(parseAppPath(`/${T}/configuracoes/catalogos`).screen).toBe('settings');
   });
 });
 

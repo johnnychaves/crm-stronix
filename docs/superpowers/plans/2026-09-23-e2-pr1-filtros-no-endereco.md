@@ -3542,6 +3542,12 @@ MSGEOF
 
 A varredura é o que impede a volta do padrão antigo em tela nova: filtro guardado em `useState`, URL lida num effect, ou nome de parâmetro dentro de uma `key`. É o mesmo tipo de teste do `leadLinkSweep.test.js` e do `overscrollGuard.test.js`, que já rodam no CI.
 
+**Vindo da revisão da Task 7, para não se perder aqui:**
+
+- O `CLAUDE.md`, na seção "Endereço de cada tela", ainda diz que Configurações abre na seção de `location.state.secao` e que "Configurar agora" navega com `state: { secao: 'general' }`. As duas frases ficaram falsas: a seção vem do endereço (`/configuracoes/<secao>`) e o "Configurar agora" navega para Metas & ritmo. Vale citar também a aba da ficha no endereço e o par `SETTINGS_SECTIONS`/`FICHA_TABS` com os testes que o cobram (`src/lib/__tests__/settingsRail.test.js` e o bloco de abas em `profileLinks.test.js`).
+- A decisão 2 da montagem (replace sempre) mudou na prática: o `goToSub` do `App.jsx` faz `replace: shown.screen === screen`. Quem já está na tela troca a entrada; quem vem de outra tela empilha, senão o "Configurar agora" apagaria do histórico a tela em que a pessoa estava. Registrar assim nas decisões.
+- Item para a conferência manual no preview: com `/ficha/<id>/indicacoes` aberto numa ficha que ainda é lead, a aba mostrada é a Linha do tempo; se a pessoa virar cliente com a ficha aberta, a aba pula sozinha para Indicações, porque o endereço não foi corrigido. É estreito e não trava nada, mas é bom ver ao vivo antes de dar como pronto.
+
 - [ ] **Step 1: Escrever a varredura e o teste da query no Sentry**
 
 Criar `src/lib/__tests__/filtrosNoEndereco.sweep.test.js`:
