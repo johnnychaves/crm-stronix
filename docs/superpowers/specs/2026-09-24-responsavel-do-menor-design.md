@@ -109,7 +109,7 @@ Todo botão de WhatsApp e de Ligar passa por `contactOf` e `whatsappHref`. Toda 
 
 **Listas**
 - Leads, Clientes e Aulas e Visitas mostram o telefone de contato, com a marca "resp." quando é do responsável.
-- A exportação de Leads (`LeadsView.jsx`) e o relatório de agendamentos (`src/lib/appointmentReport.js`) ganham as colunas "Responsável" (nome e parentesco) e "Telefone do responsável". A coluna de telefone de hoje continua com o WhatsApp do próprio lead.
+- A exportação de Leads (`LeadsView.jsx`) e o relatório de agendamentos (`src/lib/appointmentReport.js`) ganham as colunas "Responsável do aluno" (nome e parentesco) e "Telefone do responsável". O nome não é só "Responsável" porque o relatório já tem uma coluna "Responsável", que é o consultor. A coluna de telefone de hoje continua com o WhatsApp do próprio lead.
 
 **Busca global**
 - A busca remota (`src/lib/globalSearch.js`) ganha duas consultas de intervalo: `guardianPhoneDigits` pelo começo e `guardianPhoneDigitsRev` pelo final. A busca em memória (`searchPeople`) também confere os dígitos do responsável.
