@@ -374,14 +374,17 @@ export function routeDecision(route, appUser, opts = {}) {
 // senão, troca a entrada por Clientes (cliente) ou Pipeline (lead).
 //
 // A tela de origem que o state da navegação carrega (`from`) não entra aqui
-// porque o ramo seria código morto: no app, quem grava state é só o push (o
-// `openProfile` do App.jsx e o `state` do LeadLink), e push sempre soma 1 no
-// idx, então esta função já devolveu 'back' antes de chegar nele. Quem garante
-// isso é o app, não a biblioteca: medido na 7.18.4 em 23/09/2026, um replace
-// com state na primeira entrada da aba grava o state com idx 0. O
-// routes.test.js registra as duas medições. Levar o recorte para a guia nova é
-// decisão em aberto do Johnny, no risco da ficha aberta em outra guia do spec
-// de 2026-09-23.
+// porque o ramo seria código morto: no app, state literal só nasce no caminho
+// da ficha (o `openProfile` do App.jsx e o `state` do LeadLink); o
+// `openProfile` empilha, e no único ramo em que ele faz replace (a mesma ficha
+// já aberta) o `profileFrom` é nulo, então o state gravado ali é nulo. Todo
+// push soma 1 no idx, então esta função já devolveu 'back' antes de chegar no
+// ramo do `from`. Quem garante isso é o app, não a biblioteca: medido na
+// 7.18.4 em 23/09/2026, um replace com state na primeira entrada da aba grava
+// o state com idx 0. O routes.test.js registra a medição, e quem cobra a forma
+// dentro de `src/` é a varredura dos filtros no endereço. Levar o recorte para
+// a guia nova é decisão em aberto do Johnny, no risco da ficha aberta em outra
+// guia do spec de 2026-09-23.
 export function backTarget({ historyState, isClient, tenantId } = {}) {
   if (canGoBackInApp(historyState)) return { type: 'back' };
   return { type: 'replace', href: hrefFor(tenantId, isClient ? 'clientes' : 'kanban') };

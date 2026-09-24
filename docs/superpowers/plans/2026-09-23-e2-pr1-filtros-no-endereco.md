@@ -21,7 +21,7 @@
 - `redirectTo` monta o `target` com `screen`, `leadId` e `superTab` e NÃO leva o `rest` (`routes.js:230-233`). Sem levar o `sub` junto, a correção de academia desenharia a seção padrão por um render antes de saltar para a certa.
 - O helper `casa()` de `routes.decision.test.js:18` preenche `{ leadId: null, superTab: null, ...target }`. Campo novo no `target` entra ali, num lugar só.
 - `screenState` é comparado com `toEqual` exato em `appShell.test.js:20`. Campo novo entra ali também.
-- Três testes de hoje comparam objeto INTEIRO com `toEqual` e quebram assim que o objeto ganha campo: a raiz em `routes.test.js:75-77` (`parseAppPath` sem `sub`), o state do link em `appLink.test.js:138` (`{ from: 'kanban' }` sem `search`) e o alvo de todo redirect pelo `casa()`. Os três são editados no mesmo passo em que o campo nasce, e por isso aparecem no "ver a cor vermelha".
+- Dois testes de hoje comparam objeto INTEIRO com `toEqual` e quebram assim que o objeto ganha campo: a raiz em `routes.test.js:75-77` (`parseAppPath` sem `sub`) e o alvo de todo redirect pelo `casa()`. Os dois são editados no mesmo passo em que o campo nasce, e por isso aparecem no "ver a cor vermelha". O state do link em `appLink.test.js:138` (`{ from: 'kanban' }` sem `search`) ficou fora: com a T8 revertida, o campo `search` não nasce e o arquivo não muda em PR nenhum desta entrega.
 - O `describe('backTarget')` de `routes.decision.test.js:229-242` tem TRÊS testes, e o terceiro é o da academia fora do formato (`Academia_Legada`). Nenhuma tarefa mexe nele: a T8 chegou a reescrever o bloco e foi revertida.
 - `usersList` começa `[]`, vira `[appUser]` e só fica completa no `getDocs` (`App.jsx:302` e `845-848`). Funis, etapas e contratos chegam por assinatura. Todo saneamento depende desses dados, então o primeiro render de um link com filtro lê no padrão (decisão 17).
 - `useSearchParams` não é usado em lugar nenhum de `src/`, e não deve ser: medido em `node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:10931-10962`, o `setSearchParams` navega sem `state` (apaga o `from` da ficha), não é referencialmente estável, a forma funcional lê o closure do render e o padrão dele é push.
@@ -112,11 +112,11 @@ A contagem é cumulativa: o número da última coluna é o que `npx vitest run` 
 | T5 | Todos os leads e Meta diária | T2 | 9 | 0 | 107, 2198 |
 | T6 | Aulas e Visitas | T2 | 10 | 0 | 107, 2208 |
 | T7 | Configurações por seção e ficha por aba | T1 | 8 | 0 | 107, 2216 |
-| T8 | Por que o Voltar da ficha não leva o filtro (só comentário, teste e spec) | T1, T7 | 0 | 0 | 108, 2221 (medido) |
-| T9 | Varredura, documentação, verificação final e corpo do PR | T1 a T8 | 8 | 1 | 109, 2229 |
-| **Total** | | | **111** | **3** | **109 arquivos, 2229 testes** |
+| T8 | Por que o Voltar da ficha não leva o filtro (só comentário, teste e spec) | | 1 | 0 | 108, 2221 (medido) |
+| T9 | Varredura, documentação, verificação final e corpo do PR | T1 a T8 | 9 | 1 | 109, 2230 |
+| **Total** | | | **112** | **3** | **109 arquivos, 2230 testes** |
 
-T1 e T2 são independentes. T3 a T6 dependem só da T2 e são independentes entre si (arquivos diferentes). T7 depende da T1. T8 depende da T1 e da T7. T9 é a última.
+T1 e T2 são independentes. T3 a T6 dependem só da T2 e são independentes entre si (arquivos diferentes). T7 depende da T1. A T8 não depende de tarefa nenhuma: sobrou nela só comentário, teste e spec, sem código de feature. T9 é a última.
 
 ---
 
@@ -3126,9 +3126,9 @@ MSGEOF
 - Modify: `src/lib/__tests__/routes.test.js` (bloco "contrato do idx com o react-router instalado")
 - Modify: `docs/superpowers/specs/2026-09-23-filtros-no-endereco-design.md` (risco da ficha aberta em outra guia)
 
-A tarefa tinha sido escrita para o `backTarget` devolver a tela de origem com o filtro dela, com o par `from`/`search` viajando no state da navegação, do `LeadLink` ao `LeadProfileRoute`. Foi construída e revertida no mesmo dia, porque o ramo é código morto no app de hoje: quem grava state é só o push (o `openProfile` do `App.jsx` e o `state` do `LeadLink`), e o push sempre soma 1 no `idx`, então o `backTarget` devolve `'back'` antes de olhar a origem. Os replaces do app ou não mandam state (`RouteRedirect`, `LeadProfileRoute`) ou repassam o `location.state` do momento (`useScreenParams`, `goToSub` do `App.jsx`), que na primeira entrada da aba é nulo. Em guia nova o documento é outro e não há state nenhum para ler.
+A tarefa tinha sido escrita para o `backTarget` devolver a tela de origem com o filtro dela, com o par `from`/`search` viajando no state da navegação, do `LeadLink` ao `LeadProfileRoute`. Foi construída e revertida no mesmo dia, porque o ramo é código morto no app de hoje: state literal só nasce no caminho da ficha (o `openProfile` do `App.jsx` e o `state` do `LeadLink`), sempre num push, e todo push soma 1 no `idx`, então o `backTarget` devolve `'back'` antes de olhar a origem. Os replaces do app não mandam state (`RouteRedirect`, `LeadProfileRoute`), repassam o `location.state` do momento (`useScreenParams`, `goToSub` do `App.jsx`), que na primeira entrada da aba é nulo, ou mandam nulo: é o caso do único replace do `openProfile`, o da mesma ficha já aberta, onde o `profileFrom` é nulo. Em guia nova o documento é outro e não há state nenhum para ler.
 
-**Cuidado ao reabrir isso:** a premissa é convenção do app, não garantia do react-router. Medido na 7.18.4 em 23/09/2026, `h.replace('/x', { from: 'kanban' })` na primeira entrada grava `{"usr":{"from":"kanban"},"key":"...","idx":0}`. Basta um `navigate(x, { replace: true, state: { ... } })` numa primeira entrada para o par "tem state, logo dá para voltar" deixar de valer.
+**Cuidado ao reabrir isso:** a premissa é convenção do app, não garantia do react-router. Medido na 7.18.4 em 23/09/2026, `h.replace('/x', { from: 'kanban' })` na primeira entrada grava `{"usr":{"from":"kanban"},"key":"...","idx":0}`. Basta um `navigate(x, { replace: true, state: { ... } })` numa primeira entrada, ou um `replace` condicional com objeto literal no state, para o par "tem state, logo dá para voltar" deixar de valer.
 
 O que ficou no lugar da feature:
 
@@ -3136,11 +3136,11 @@ O que ficou no lugar da feature:
 - o bloco "contrato do idx com o react-router instalado" do `routes.test.js` registra as duas medições, inclusive a de que a biblioteca aceita state numa entrada de `idx` 0;
 - o risco "ficha aberta em outra guia" do spec passou a listar os dois caminhos possíveis, com o preço de cada um, para o Johnny decidir: origem e filtro no endereço da própria ficha, ou memória por academia no navegador, no molde do `savedFunnelKey`.
 
-A trava do lado do app fica com a varredura da Task 9: nenhum `navigate(` de `src/` pode passar `replace: true` junto com objeto de `state` literal.
+A trava do lado do app fica com a varredura da Task 9: fora do `openProfile` do `App.jsx`, que ela congela por texto, nenhum `navigate(` de `src/` pode passar replace que não seja `false` escrito junto com state próprio, isto é, state que não seja o `location.state` repassado, o `state` do hook ou nulo. É essa forma, e não só o `replace: true` literal, que derruba a premissa do `backTarget`.
 
 - [ ] **Step 1: Verificar e commitar**
 
-Não há código de feature aqui e a suíte não muda de tamanho.
+Não há código de feature aqui, e a suíte ganha um teste: o do contrato do idx com o react-router instalado.
 
 ```bash
 npx vitest run
@@ -3168,7 +3168,7 @@ MSGEOF
 
 A varredura é o que impede a volta do padrão antigo em tela nova: filtro guardado em `useState`, URL lida num effect, ou nome de parâmetro dentro de uma `key`. É o mesmo tipo de teste do `leadLinkSweep.test.js` e do `overscrollGuard.test.js`, que já rodam no CI.
 
-**Vindo da Task 8, antes de tudo:** a Task 8 já mexeu no spec, que aqui é da Task 9. Ela reescreveu o risco "ficha aberta em outra guia" (agora com os dois caminhos possíveis e a decisão em aberto do Johnny) e o item 1 de "Entrega em dois PRs", que passou a dizer "saneamento silencioso, sem reescrever o endereço". Ler os dois trechos antes de escrever por cima. Ela também deixou para cá uma trava: a varredura precisa cobrar que nenhum `navigate(` de `src/` passe `replace: true` junto com objeto de `state` literal, senão a premissa do `backTarget` cai.
+**Vindo da Task 8, antes de tudo:** a Task 8 já mexeu no spec, que aqui é da Task 9. Ela reescreveu o risco "ficha aberta em outra guia" (agora com os dois caminhos possíveis e a decisão em aberto do Johnny) e o item 1 de "Entrega em dois PRs", que passou a dizer "saneamento silencioso, sem reescrever o endereço". Ler os dois trechos antes de escrever por cima. Ela também deixou para cá uma trava: a varredura precisa cobrar que nenhum `navigate(` de `src/` passe replace que não seja `false` escrito junto com state próprio (nem `location.state`, nem o `state` do hook, nem nulo), senão a premissa do `backTarget` cai. A única exceção é o `openProfile` do `App.jsx`, que faz replace condicional com state literal e é seguro porque nesse ramo o `profileFrom` é nulo; a varredura pula essa chamada e um teste irmão congela o texto dela.
 
 **Vindo da revisão da Task 7, para não se perder aqui:**
 
@@ -3269,19 +3269,43 @@ describe('varredura dos filtros no endereço', () => {
     expect(hook.includes('hrefFor')).toBe(false);
   });
 
-  it('nenhum navigate de src/ grava state numa entrada que pode ser a primeira', () => {
+  // O `openProfile` do App.jsx é a única chamada com replace condicional e
+  // state próprio. Ela é segura porque no ramo do replace (a mesma ficha já
+  // aberta) o `profileFrom` é nulo, então a varredura a pula e o teste
+  // seguinte congela o texto dela.
+  const OPEN_PROFILE = "navigate(href, { replace: href === location.pathname, state: profileFrom ? { from: profileFrom } : null })";
+
+  it('nenhum navigate de src/ grava state próprio numa entrada que pode ser a primeira', () => {
     // A premissa do backTarget (ver o comentário dele em routes.js) é que só o
     // push grava state, e push sempre soma 1 no idx. O react-router NÃO garante
     // isso: medido na 7.18.4, um replace com state na primeira entrada grava o
-    // state com idx 0. Quem garante é o app, e este teste é a cobrança.
+    // state com idx 0. Quem garante é o app, e este teste é a cobrança. Por
+    // isso o replace só passa quando é `replace: false` escrito, e o state só
+    // passa quando é o `location.state` repassado, o `state` do hook ou nulo:
+    // `replace: <condição>` com objeto literal é a forma que derruba a
+    // premissa e ela não pode entrar sem ser vista.
     for (const [nome, texto] of fontes) {
       for (const trecho of texto.split('navigate(').slice(1)) {
         const chamada = trecho.slice(0, 200);
-        const temReplaceTrue = /replace:\s*true/.test(chamada);
-        const temStateLiteral = /state:\s*\{/.test(chamada);
-        expect(temReplaceTrue && temStateLiteral, `${nome}: navigate(${chamada.split('\n')[0]}`).toBe(false);
+        if (`navigate(${chamada}`.startsWith(OPEN_PROFILE)) continue;
+        // Pelo valor escrito, e não por lookahead: `/replace:\s*(?!false\b)/`
+        // parece servir e passa em tudo, porque o `\s*` volta atrás e o
+        // lookahead cai no espaço depois dos dois-pontos. Medido em 23/09/2026.
+        const replaceDito = chamada.match(/replace:\s*([\w.$]+)/)?.[1] ?? null;
+        const stateDito = chamada.match(/state:\s*([\w.$]+|\{)/)?.[1] ?? null;
+        const temReplace = replaceDito !== null && replaceDito !== 'false';
+        const temStateProprio = stateDito !== null && !['location.state', 'state', 'null'].includes(stateDito);
+        expect(temReplace && temStateProprio, `${nome}: navigate(${chamada.split('\n')[0]}`).toBe(false);
       }
     }
+  });
+
+  it('o openProfile continua gravando origem só quando a ficha veio de outra tela', () => {
+    // Mexer nestas duas linhas deixa a varredura vermelha, que é o ponto: o
+    // dia em que o `profileFrom` puder ser não nulo no ramo do replace, o
+    // backTarget precisa do ramo do `from` de volta.
+    expect(app.includes("const profileFrom = activeTab === 'ficha' ? null : activeTab;")).toBe(true);
+    expect(app.includes(OPEN_PROFILE)).toBe(true);
   });
 
   it('a chave da tela continua saindo só da tela mostrada', () => {
@@ -3302,8 +3326,9 @@ describe('varredura dos filtros no endereço', () => {
 
 ```bash
 npx vitest run src/lib/__tests__/filtrosNoEndereco.sweep.test.js
-# Esperado: 7 passed. Se alguma falhar, é tela que ficou para trás nas T3 a T7,
-# ou um navigate novo gravando state literal num replace.
+# Esperado: 8 passed. Se alguma falhar, é tela que ficou para trás nas T3 a T7,
+# ou um navigate novo gravando state próprio num replace, ou o openProfile
+# mudando de forma.
 ```
 
 A query do app passa a ter conteúdo novo: `pessoa=<uid de colega>`, `resp=<uids>`, `funil=<id>` e `fase=<id da etapa>`. Quem corta isso antes do Sentry é o `stripQuery` do `sentryScrub.js`, que já roda em `request.url`, no `url.path` e nas migalhas de navegação (`URL_KEYS` inclui `to` e `from`), e é o mesmo módulo dos dois lados. Nada muda no código; muda o que precisa continuar valendo, então isso vira teste.
@@ -3392,7 +3417,7 @@ Acrescentar também aos "Riscos conhecidos" do spec:
 
 ```bash
 npx vitest run
-# Esperado: Test Files  109 passed (109) · Tests  2229 passed (2229)
+# Esperado: Test Files  109 passed (109) · Tests  2230 passed (2230)
 npm run lint
 # Esperado: ✖ 1 problem (0 errors, 1 warning), o aviso antigo do SuperAdminView
 npm run build

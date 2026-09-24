@@ -349,13 +349,13 @@ describe('contrato do idx com o react-router instalado', () => {
   });
 
   // Por que o Voltar da ficha não leva a tela de origem nem o filtro dela para
-  // uma guia nova: NO APP, quem grava state é só o push, e o push já sai com o
-  // idx acima de zero, onde o Voltar do navegador resolve sozinho. Um ramo de
-  // backTarget lendo `from` e `search` seria código morto. A última medição
-  // deste teste mostra que isso é convenção nossa e não garantia da
-  // biblioteca: ela aceita state numa entrada de idx 0. Ver o comentário do
-  // backTarget em routes.js.
-  it('no app, state da navegação e idx maior que zero andam sempre juntos', () => {
+  // uma guia nova: no app, o push é quem grava state, e ele já sai com o idx
+  // acima de zero, onde o Voltar do navegador resolve sozinho. Um ramo de
+  // backTarget lendo `from` e `search` seria código morto. Este teste mede a
+  // biblioteca, não o app: mostra que a convenção é nossa, porque a 7.18.4
+  // aceita state numa entrada de idx 0. Ver o comentário do backTarget em
+  // routes.js.
+  it('o react-router grava state no push e aceita state num replace de idx 0', () => {
     const w = janelaFalsa(`/${T}/pipeline`);
     const h = historico(w);
     // Primeira entrada da aba: idx 0 e nenhum state.
@@ -374,8 +374,9 @@ describe('contrato do idx com o react-router instalado', () => {
     // A biblioteca PERMITE o contrário: um replace com state literal na
     // primeira entrada grava o usr e mantém o idx em 0. Quem não faz isso é o
     // app, e é só por isso que o par "tem state, logo dá para voltar" vale.
-    // Um navigate(x, { replace: true, state: { ... } }) numa primeira entrada
-    // derrubaria a premissa, e é por isso que nenhum navigate de src/ faz isso.
+    // Um navigate(x, { replace: <qualquer coisa>, state: { ... } }) numa
+    // primeira entrada derrubaria a premissa. Quem cobra essa forma dentro de
+    // src/ é a varredura dos filtros no endereço, não este teste.
     const nova = janelaFalsa(`/${T}/pipeline`);
     historico(nova).replace(`/${T}/leads`, { from: 'kanban' });
     expect(nova.history.state).toMatchObject({ usr: { from: 'kanban' }, idx: 0 });
