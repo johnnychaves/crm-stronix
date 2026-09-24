@@ -27,7 +27,9 @@ import {
   buildImportedClientWrites,
   summarizeOutcomes,
   buildReportCsv,
-  OUTCOME_LABEL
+  OUTCOME_LABEL,
+  IMPORT_LEAD_SOURCE,
+  IMPORT_SOURCE_ID
 } from '../clientImport.js';
 import { buildMatriculaWrites, computeEndsAt, CONTRACT_STATUS } from '../contracts.js';
 
@@ -578,7 +580,7 @@ describe('classifyCandidate', () => {
   });
 });
 
-const META = { importedBy: 'adminUid', importSource: 'nextfit', sourceLabel: 'NextFit', importBatchId: 'b1', now: NOW };
+const META = { importedBy: 'adminUid', importSource: 'modelo', importBatchId: 'b1', now: NOW };
 const OWNER = { consultantId: 'u1', consultantName: 'Bia Souza', consultantAuthUid: 'a1' };
 const APP_USER = { id: 'u1', name: 'Bia Souza', authUid: 'a1' };
 
@@ -647,7 +649,7 @@ describe('buildImportedClientWrites', () => {
     expect(d.lifecycleStage).toBe('cliente');
     expect(d.lifecycleBucket).toBe('cliente');
     expect(d.funnelId).toBe('f1');
-    expect(d.source).toBe('Importação NextFit');
+    expect(d.source).toBe('Importação por planilha modelo');
     expect(d.tags).toEqual(['VIP']);
     expect(d.consultantId).toBe('u1');
     expect(d.consultantAuthUid).toBe('a1');
@@ -669,7 +671,7 @@ describe('buildImportedClientWrites', () => {
     expect(d.importedBy).toBe('adminUid');
     expect(w.contract.endsAt).toEqual(D(2026, 11, 12));
     expect(w.owner).toEqual(OWNER);
-    expect(w.interactionText).toBe('Cadastro importado do NextFit. Plano Trimestral, vigência até 12/11/2026.');
+    expect(w.interactionText).toBe('Cadastro importado da planilha modelo. Plano Trimestral, vigência até 12/11/2026.');
     expect(w.warnings).toEqual([]);
   });
 
@@ -680,7 +682,7 @@ describe('buildImportedClientWrites', () => {
     expect(w.leadData.createdAt).toBe(NOW);
     expect(w.leadData.convertedAt).toBe(NOW);
     expect(w.contract).toBeNull();
-    expect(w.interactionText).toBe('Cadastro importado do NextFit. Sem vigência registrada.');
+    expect(w.interactionText).toBe('Cadastro importado da planilha modelo. Sem vigência registrada.');
     expect(w.warnings).toEqual(['Sem data histórica: conta como venda de hoje']);
   });
 
@@ -755,10 +757,11 @@ describe('buildImportedClientWrites', () => {
     expect(w.warnings).toEqual([]);
   });
 
-  it('sem preset o texto é "de planilha" e a origem "Importação por planilha"', () => {
-    const w = buildImportedClientWrites({ c: VALID, cls: { lead: null, fill: null, createContract: false }, consultant: USERS[0], funnelId: 'f1', importMeta: { ...META, sourceLabel: 'planilha', importSource: 'manual' }, now: NOW });
-    expect(w.interactionText).toBe('Cadastro importado de planilha. Sem vigência registrada.');
-    expect(w.leadData.source).toBe('Importação por planilha');
+  it('a origem gravada é a planilha modelo, e começa com "Importação"', () => {
+    const w = buildImportedClientWrites({ c: VALID, cls: { lead: null, fill: null, createContract: false }, consultant: USERS[0], funnelId: 'f1', importMeta: META, now: NOW });
+    expect(w.leadData.source).toBe(IMPORT_LEAD_SOURCE);
+    expect(w.leadData.source.startsWith('Importação')).toBe(true);
+    expect(w.leadData.importSource).toBe(IMPORT_SOURCE_ID);
   });
 });
 

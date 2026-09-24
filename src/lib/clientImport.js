@@ -1,9 +1,10 @@
-// Regra pura da IMPORTAÇÃO DE CLIENTES de outros sistemas (NextFit, Pacto,
-// Evo, SCA, Tecnofit): normalizadores, linha → candidato, dedupe no arquivo,
+// Regra pura da IMPORTAÇÃO DE CLIENTES pela planilha modelo do Stronilead
+// (importTemplate.js): normalizadores, linha → candidato, dedupe no arquivo,
 // escopo, casamento com a base, classificação e o construtor das escritas.
 // Sem React e sem Firestore: o COMO gravar fica em clientImportWrites.js
 // (padrão contracts.js / contractsWrites.js).
-// Spec: docs/superpowers/specs/2026-09-03-importacao-clientes-design.md
+// Specs: docs/superpowers/specs/2026-09-03-importacao-clientes-design.md e
+// docs/superpowers/specs/2026-09-24-modelo-planilha-importacao-design.md
 
 import { normalize, onlyDigits } from './globalSearch.js';
 import { addMonths, daysBetween, getSafeDateOrNull } from './dates.js';
@@ -572,12 +573,15 @@ const contractSummary = (contract) => (contract ? {
   currentContractStatus: contract.status
 } : {});
 
-// "do NextFit" / "de planilha": a origem sem preset não leva artigo.
-const sourcePhrase = (label) => (label === 'planilha' ? 'de planilha' : `do ${label}`);
-const sourceField = (label) => (label === 'planilha' ? 'Importação por planilha' : `Importação ${label}`);
+// Toda importação vem da planilha modelo do Stronilead. Lote antigo guarda
+// 'nextfit' ou 'manual' em importSource e continua valendo: os painéis leem só
+// a presença das marcas (importBatchId, importSource, importedBy), nunca o valor.
+export const IMPORT_SOURCE_ID = 'modelo';
+// Começa com "Importação": é o que isImportCreatedLead (operacional/routine.js) procura.
+export const IMPORT_LEAD_SOURCE = 'Importação por planilha modelo';
 
-export const buildImportInteractionText = ({ sourceLabel, contract }) =>
-  `Cadastro importado ${sourcePhrase(sourceLabel)}. ${contract
+export const buildImportInteractionText = ({ contract }) =>
+  `Cadastro importado da planilha modelo. ${contract
     ? `Plano ${contract.planName || 'sem nome'}, vigência até ${fmtDia(contract.endsAt)}.`
     : 'Sem vigência registrada.'}`;
 
@@ -622,7 +626,7 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
       modalidade: null,
       address: c.address,
       tags: c.vip ? ['VIP'] : [],
-      source: sourceField(importMeta.sourceLabel),
+      source: IMPORT_LEAD_SOURCE,
       observation: '',
       funnelId: funnelId ?? null,
       professorId: c.professorId || null,
@@ -668,7 +672,7 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
     leadName,
     leadData,
     contract,
-    interactionText: buildImportInteractionText({ sourceLabel: importMeta.sourceLabel, contract }),
+    interactionText: buildImportInteractionText({ contract }),
     owner,
     warnings
   };
