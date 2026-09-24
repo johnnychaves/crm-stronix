@@ -37,6 +37,30 @@ export const buildLeadSearchFields = ({ name, whatsapp, cpf } = {}) => {
   };
 };
 
+// Campos derivados do telefone do RESPONSÁVEL do lead menor de idade. Ficam
+// fora de buildLeadSearchFields de propósito: ela é chamada em vários pontos
+// só com nome, WhatsApp e CPF, e toda escrita que não repassasse o
+// responsável apagaria estes campos. Só quem muda o responsável (cadastro e
+// edição) chama esta, por buildGuardianPatch.
+export const buildGuardianSearchFields = (guardian) => {
+  const digits = onlyDigits(guardian?.phone);
+  return {
+    guardianPhoneDigits: digits || null,
+    guardianPhoneDigitsRev: digits ? digits.split('').reverse().join('') : null,
+    guardianZapMatchKey: zapMatchKey(guardian?.phone),
+  };
+};
+
+// Tudo o que o cadastro e a edição gravam sobre o responsável. Chave
+// desligada apaga o responsável e os derivados.
+export const buildGuardianPatch = ({ isMinor, name, phone, relationship } = {}) => {
+  const trim = (v) => String(v ?? '').trim();
+  const guardian = isMinor
+    ? { name: trim(name), phone: trim(phone), relationship: trim(relationship) || null }
+    : null;
+  return { isMinor: Boolean(isMinor), guardian, ...buildGuardianSearchFields(guardian) };
+};
+
 // Anexa lifecycleBucket a um payload de escrita de lead, derivado do ESTADO
 // RESULTANTE (lead atual + o patch). Use em todo write que toque
 // status/lifecycleStage/isConverted. Ex.: withBucket({ status: 'Perda' }, lead).
