@@ -82,5 +82,7 @@ export async function downloadTemplate(spec) {
   document.body.appendChild(a);
   a.click();
   a.remove();
-  URL.revokeObjectURL(url);
+  // Safari pode perder o download se o endereço some no mesmo instante do
+  // clique; um segundo de folga custa nada para um arquivo de 12 kB.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

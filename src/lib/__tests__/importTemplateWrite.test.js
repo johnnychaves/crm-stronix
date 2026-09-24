@@ -78,7 +78,7 @@ describe('buildTemplateBuffer', () => {
     const buf = await buildTemplateBuffer(SPEC);
     const zip = XLSX.CFB.read(new Uint8Array(buf), { type: 'array' });
     const xml = new TextDecoder().decode(XLSX.CFB.find(zip, '/xl/worksheets/sheet1.xml').content);
-    const dateRule = xml.match(/<dataValidation type="date"[^>]*sqref="E2:E5001">([\s\S]*?)<\/dataValidation>/);
+    const dateRule = xml.match(/<dataValidation\b(?=[^>]*\btype="date")[^>]*\bsqref="E2:E5001"[^>]*>([\s\S]*?)<\/dataValidation>/);
     expect(dateRule?.[1]).toBe('<formula1>1</formula1><formula2>73415</formula2>');
   });
 
