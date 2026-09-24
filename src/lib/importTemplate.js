@@ -105,10 +105,14 @@ const LISTS = {
 
 const NUMFMT = { text: '@', list: '@', date: 'dd/mm/yyyy', endDate: 'dd/mm/yyyy', money: '"R$" #,##0.00' };
 
-// Limites da data em número serial do Excel (1 = 01/01/1900, 73415 =
-// 31/12/2100). Um Date do JavaScript sai deslocado pelo fuso no ExcelJS.
-const EXCEL_DAY_MIN = 1;
-const EXCEL_DAY_MAX = 73415;
+// Limites da data: serial 1 do Excel (que ele mostra como 01/01/1900) a 73415
+// (31/12/2100). Na validação de data o ExcelJS converte Date pela hora UTC e
+// lê número como milissegundos desde 1970, então os limites vão como Date em
+// meia-noite UTC. Na fórmula da coluna Fim eles vão como o próprio serial.
+const EXCEL_SERIAL_MIN = 1;
+const EXCEL_SERIAL_MAX = 73415;
+const EXCEL_DAY_MIN = new Date(Date.UTC(1899, 11, 31));
+const EXCEL_DAY_MAX = new Date(Date.UTC(2100, 11, 31));
 
 const ERRORS = {
   date: 'Digite uma data, como 15/03/2026.',
@@ -144,7 +148,7 @@ function validationOf(col, letter, startLetter, lists) {
   }
   if (col.kind === 'endDate') {
     // Referência relativa à linha 2: o Excel desloca para cada linha do intervalo.
-    return { ...base, type: 'custom', formulae: [`AND(ISNUMBER(${letter}2),OR(${startLetter}2="",${letter}2>=${startLetter}2))`], errorStyle: 'stop', error: ERRORS.endDate };
+    return { ...base, type: 'custom', formulae: [`AND(ISNUMBER(${letter}2),${letter}2>=${EXCEL_SERIAL_MIN},${letter}2<=${EXCEL_SERIAL_MAX},OR(${startLetter}2="",${letter}2>=${startLetter}2))`], errorStyle: 'stop', error: ERRORS.endDate };
   }
   if (col.kind === 'money') {
     return { ...base, type: 'decimal', operator: 'greaterThanOrEqual', formulae: [0], errorStyle: 'stop', error: ERRORS.money };
@@ -157,7 +161,7 @@ function validationOf(col, letter, startLetter, lists) {
     if (!names.length) return null;
     // Aponta para o intervalo da aba Listas: lista escrita dentro da validação
     // tem limite de 255 caracteres no Excel.
-    return { ...base, type: 'list', formulae: [`${TEMPLATE_SHEETS.LISTAS}!$${listLetter}$2:$${listLetter}$${names.length + 1}`], errorStyle: 'warning', error: ERRORS.loose };
+    return { ...base, type: 'list', formulae: [`'${TEMPLATE_SHEETS.LISTAS}'!$${listLetter}$2:$${listLetter}$${names.length + 1}`], errorStyle: 'warning', error: ERRORS.loose };
   }
   return null;
 }
@@ -170,10 +174,13 @@ const fileSlug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9-]+/g, '-
 // Aba "Como preencher": linhas de texto e um exemplo com as nove primeiras
 // colunas. O exemplo mora nesta aba de propósito: na aba Clientes ele seria
 // importado como aluno.
-function helpOf({ tenantId, windowDays, now, lists }) {
+function helpOf({ tenantId, windowDays, now, lists, planos }) {
   const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-  const end = addMonths(start, 6);
   const plan = lists.planos.names[0] || 'Plano Semestral';
+  // A vigência do exemplo segue a duração do plano mostrado, senão um "Anual"
+  // apareceria com seis meses.
+  const planMonths = Number((planos || []).find((p) => normalizeName(p?.name) === normalizeName(plan))?.durationMonths);
+  const end = addMonths(start, planMonths > 0 ? planMonths : 6);
   const consultant = lists.equipe.names[0] || '';
   return {
     lines: [
@@ -226,6 +233,6 @@ export function buildTemplateSpec({ planos, users, professores, windowDays, tena
     sheets: TEMPLATE_SHEETS,
     columns,
     lists: Object.values(lists),
-    help: helpOf({ tenantId, windowDays, now, lists })
+    help: helpOf({ tenantId, windowDays, now, lists, planos })
   };
 }

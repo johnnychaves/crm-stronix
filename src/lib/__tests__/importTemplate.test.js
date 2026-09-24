@@ -162,6 +162,10 @@ describe('uniqueSortedNames', () => {
     expect(uniqueSortedNames([{ name: 'Trimestral' }, { name: 'Ágil' }, { name: '  trimestral ' }, { name: 'Anual' }, { name: '' }, null]))
       .toEqual(['Ágil', 'Anual', 'Trimestral']);
   });
+
+  it('nomes que só diferem no acento viram um só, o primeiro', () => {
+    expect(uniqueSortedNames([{ name: 'José' }, { name: 'Jose' }])).toEqual(['José']);
+  });
 });
 
 describe('buildTemplateSpec', () => {
@@ -211,8 +215,8 @@ describe('buildTemplateSpec', () => {
   });
 
   it('plano e consultor apontam para a aba Listas e só avisam', () => {
-    expect(col('planName').validation).toMatchObject({ type: 'list', formulae: ['Listas!$A$2:$A$3'], errorStyle: 'warning', allowBlank: true, showErrorMessage: true });
-    expect(col('consultantName').validation).toMatchObject({ type: 'list', formulae: ['Listas!$B$2:$B$3'], errorStyle: 'warning' });
+    expect(col('planName').validation).toMatchObject({ type: 'list', formulae: ["'Listas'!$A$2:$A$3"], errorStyle: 'warning', allowBlank: true, showErrorMessage: true });
+    expect(col('consultantName').validation).toMatchObject({ type: 'list', formulae: ["'Listas'!$B$2:$B$3"], errorStyle: 'warning' });
     expect(col('planName').validation.error).toBe('Esse nome não está na lista. Se continuar, ele é acertado na importação.');
   });
 
@@ -226,15 +230,15 @@ describe('buildTemplateSpec', () => {
     expect(col('vip').validation.formulae).toEqual(['"Sim,Não"']);
   });
 
-  it('datas travadas entre 1900 e 2100, em número serial do Excel', () => {
-    expect(col('contractStartsAt').validation).toMatchObject({ type: 'date', operator: 'between', formulae: [1, 73415], errorStyle: 'stop', error: 'Digite uma data, como 15/03/2026.' });
+  it('datas travadas entre 1900 e 2100, como Date em meia-noite UTC', () => {
+    expect(col('contractStartsAt').validation).toMatchObject({ type: 'date', operator: 'between', formulae: [new Date(Date.UTC(1899, 11, 31)), new Date(Date.UTC(2100, 11, 31))], errorStyle: 'stop', error: 'Digite uma data, como 15/03/2026.' });
     expect(col('birthDate').validation.type).toBe('date');
   });
 
   it('o fim exige data igual ou depois do início da mesma linha', () => {
     expect(col('contractEndsAt').validation).toMatchObject({
       type: 'custom',
-      formulae: ['AND(ISNUMBER(F2),OR(E2="",F2>=E2))'],
+      formulae: ['AND(ISNUMBER(F2),F2>=1,F2<=73415,OR(E2="",F2>=E2))'],
       errorStyle: 'stop',
       error: 'O fim precisa ser uma data igual ou depois do início, como 15/03/2026.'
     });
@@ -268,5 +272,10 @@ describe('buildTemplateSpec', () => {
     const s = buildTemplateSpec({ planos: [{ name: 'Mensal' }], users: [], professores: [], windowDays: 15, tenantId: null, now: NOW });
     expect(s.fileName).toBe('modelo-stronilead-academia-2026-09-24.xlsx');
     expect(s.help.lines[1].text).toBe('Gerado para a academia em 24/09/2026.');
+  });
+
+  it('a vigência do exemplo segue a duração do plano mostrado', () => {
+    const s = buildTemplateSpec({ planos: [{ name: 'Anual', durationMonths: 12 }], users: [], professores: [], windowDays: 15, tenantId: 'x', now: NOW });
+    expect(s.help.example.rows[0].slice(4, 6)).toEqual(['01/07/2026', '01/07/2027']);
   });
 });
