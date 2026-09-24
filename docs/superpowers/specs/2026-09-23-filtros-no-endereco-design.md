@@ -107,7 +107,7 @@ A rolagem restaurada passa a valer também para os containers que rolam por dent
 
 ## Entrega em dois PRs
 
-1. **Filtros e sub-telas no endereço.** `screenParams.js` com testes, as dez telas derivando filtro do endereço, Configurações por seção e ficha por aba, saneamento e correção silenciosa, e o `backTarget` do Voltar da ficha levando o filtro de volta quando existir.
+1. **Filtros e sub-telas no endereço.** `screenParams.js` com testes, as dez telas derivando filtro do endereço, Configurações por seção e ficha por aba, e saneamento silencioso, sem reescrever o endereço. O `backTarget` do Voltar da ficha fica como está, pelo motivo registrado no risco da ficha aberta em outra guia.
 2. **A lista viva por trás da ficha.** A ficha passa a cobrir em vez de substituir, a linha mexida é atualizada, e a rolagem restaurada cobre os containers internos.
 
 ## Testes
@@ -137,6 +137,11 @@ Sempre no preview da Vercel, nunca com o dev local apontado para a produção. O
 
 - Endereço com filtro entra no histórico do navegador do computador da recepção, inclusive id de colega. É o mesmo grau do id de lead que já existe desde a entrega 1.
 - Preservar a lista tira a atualização de graça que a remontagem dava hoje. Fora da linha mexida, o resto da lista só se atualiza no F5 ou ao trocar de filtro.
-- Ficha aberta em outra guia (a setinha do card) não tem tela de baixo: o Voltar dela continua montando Pipeline ou Clientes, agora com o filtro do endereço quando existir.
+- Ficha aberta em outra guia (a setinha do card) não tem tela de baixo e também não tem como saber o filtro da tela de onde veio. O Voltar dela continua montando Pipeline ou Clientes sem recorte, como hoje. O motivo foi medido em 23/09/2026 contra o react-router instalado: o state da navegação, que é onde a tela de origem viaja, e o `idx`, que diz se há tela do app antes, moram na mesma entrada do histórico. No app de hoje quem grava state é só o push, e o push já sai com o `idx` acima de zero, onde o Voltar do navegador devolve a lista inteira sozinho; numa guia nova o documento é outro e não existe state nenhum. (A biblioteca aceitaria state numa entrada de `idx` 0, num replace. Quem não faz isso é o app, então essa é convenção nossa e precisa continuar sendo respeitada.) Levar o recorte para lá tem dois caminhos, e os dois cobram um preço:
+
+  1. **Origem e filtro no endereço da própria ficha** (`/<academia>/ficha/<id>?de=leads&funil=f2`). Muda a linha `Ficha | nenhuma` da tabela, e o link compartilhado passa a carregar o recorte de quem mandou.
+  2. **Memória por academia no navegador**, no mesmo lugar em que o app já guarda o funil escolhido do Pipeline (`savedFunnelKey` e `readSavedFunnel`, em `src/lib/appShell.js`): a lista grava a tela e o recorte de agora, e a guia nova lê de lá. O endereço da ficha continua limpo e o link compartilhado não leva filtro de ninguém, mas a memória é compartilhada entre as abas, então duas abas em recortes diferentes podem devolver o recorte da última que mexeu.
+
+  **Decisão do Johnny, em aberto.** A medição está registrada no `routes.test.js` e explicada no comentário do `backTarget`.
 - Filtro no endereço aumenta a chance de alguém colar um link com valor estranho. O saneamento cobre, mas é código novo em dez telas, e cada tela tem a sua regra.
 - A visão Equipe da Meta continua lendo o histórico inteiro, sem recorte de mês e sem o corte de ociosidade. Ficou fora desta entrega e continua valendo como dívida.

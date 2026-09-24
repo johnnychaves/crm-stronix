@@ -347,6 +347,40 @@ describe('contrato do idx com o react-router instalado', () => {
     expect(w.history.state.idx).toBe(1);
     expect(w.history.state.usr).toEqual({ from: 'kanban' });
   });
+
+  // Por que o Voltar da ficha não leva a tela de origem nem o filtro dela para
+  // uma guia nova: NO APP, quem grava state é só o push, e o push já sai com o
+  // idx acima de zero, onde o Voltar do navegador resolve sozinho. Um ramo de
+  // backTarget lendo `from` e `search` seria código morto. A última medição
+  // deste teste mostra que isso é convenção nossa e não garantia da
+  // biblioteca: ela aceita state numa entrada de idx 0. Ver o comentário do
+  // backTarget em routes.js.
+  it('no app, state da navegação e idx maior que zero andam sempre juntos', () => {
+    const w = janelaFalsa(`/${T}/pipeline`);
+    const h = historico(w);
+    // Primeira entrada da aba: idx 0 e nenhum state.
+    expect(w.history.state.idx).toBe(0);
+    expect(w.history.state.usr ?? null).toBeNull();
+    // Trocar filtro é replace com o state de agora: continua sem state e em 0.
+    h.replace(`/${T}/pipeline?funil=f2`, w.history.state.usr);
+    expect(w.history.state.idx).toBe(0);
+    expect(w.history.state.usr ?? null).toBeNull();
+    expect(canGoBackInApp(w.history.state)).toBe(false);
+    // Só o push para a ficha grava state, e ele já vem com o idx em 1.
+    h.push(`/${T}/ficha/Ab12`, { from: 'kanban', search: '?funil=f2' });
+    expect(w.history.state.usr).toEqual({ from: 'kanban', search: '?funil=f2' });
+    expect(w.history.state.idx).toBe(1);
+    expect(canGoBackInApp(w.history.state)).toBe(true);
+    // A biblioteca PERMITE o contrário: um replace com state literal na
+    // primeira entrada grava o usr e mantém o idx em 0. Quem não faz isso é o
+    // app, e é só por isso que o par "tem state, logo dá para voltar" vale.
+    // Um navigate(x, { replace: true, state: { ... } }) numa primeira entrada
+    // derrubaria a premissa, e é por isso que nenhum navigate de src/ faz isso.
+    const nova = janelaFalsa(`/${T}/pipeline`);
+    historico(nova).replace(`/${T}/leads`, { from: 'kanban' });
+    expect(nova.history.state).toMatchObject({ usr: { from: 'kanban' }, idx: 0 });
+    expect(canGoBackInApp(nova.history.state)).toBe(false);
+  });
 });
 
 describe('sub-tela no caminho', () => {

@@ -22,7 +22,7 @@
 - O helper `casa()` de `routes.decision.test.js:18` preenche `{ leadId: null, superTab: null, ...target }`. Campo novo no `target` entra ali, num lugar só.
 - `screenState` é comparado com `toEqual` exato em `appShell.test.js:20`. Campo novo entra ali também.
 - Três testes de hoje comparam objeto INTEIRO com `toEqual` e quebram assim que o objeto ganha campo: a raiz em `routes.test.js:75-77` (`parseAppPath` sem `sub`), o state do link em `appLink.test.js:138` (`{ from: 'kanban' }` sem `search`) e o alvo de todo redirect pelo `casa()`. Os três são editados no mesmo passo em que o campo nasce, e por isso aparecem no "ver a cor vermelha".
-- O `describe('backTarget')` de `routes.decision.test.js:229-242` tem TRÊS testes, e o terceiro é o da academia fora do formato (`Academia_Legada`). A T8 reescreve o bloco inteiro, então esse teste é reescrito junto, nunca apagado.
+- O `describe('backTarget')` de `routes.decision.test.js:229-242` tem TRÊS testes, e o terceiro é o da academia fora do formato (`Academia_Legada`). Nenhuma tarefa mexe nele: a T8 chegou a reescrever o bloco e foi revertida.
 - `usersList` começa `[]`, vira `[appUser]` e só fica completa no `getDocs` (`App.jsx:302` e `845-848`). Funis, etapas e contratos chegam por assinatura. Todo saneamento depende desses dados, então o primeiro render de um link com filtro lê no padrão (decisão 17).
 - `useSearchParams` não é usado em lugar nenhum de `src/`, e não deve ser: medido em `node_modules/react-router/dist/development/chunk-OB3PAWPO.mjs:10931-10962`, o `setSearchParams` navega sem `state` (apaga o `from` da ficha), não é referencialmente estável, a forma funcional lê o closure do render e o padrão dele é push.
 - `navigate(to, { replace: true })` sem `state` APAGA o `location.state`. Toda navegação de filtro e de sub-tela deste plano passa `state: location.state` de propósito.
@@ -73,11 +73,11 @@ Onde o spec deixava duas saídas, valeu o que está aqui. A T9 põe o `CLAUDE.md
 
 | Arquivo | O que faz | Ação | Tarefa |
 |---|---|---|---|
-| `src/lib/routes.js` | `subs` em `SCREENS`, `sub`/`subUnknown` no parse, `sub` em `hrefFor` e no `target`, sub desconhecida indo para a tela-mãe | Modificar | T1 |
-| `src/lib/appShell.js` | `screenState` devolve `sub`; `fichaBack` lê origem e filtro do state | Modificar | T1, T8 |
-| `src/lib/__tests__/routes.test.js` | Sub-tela no parse e no `hrefFor` | Modificar | T1 |
-| `src/lib/__tests__/routes.decision.test.js` | `sub` no `target`, sub desconhecida, `screenKey` e `routeTemplate` sem a sub-tela, query nos redirects | Modificar | T1, T8 |
-| `src/lib/__tests__/appShell.test.js` | `sub` no `screenState` | Modificar | T1, T8 |
+| `src/lib/routes.js` | `subs` em `SCREENS`, `sub`/`subUnknown` no parse, `sub` em `hrefFor` e no `target`, sub desconhecida indo para a tela-mãe; comentário do `backTarget` na T8 | Modificar | T1, T8 |
+| `src/lib/appShell.js` | `screenState` devolve `sub` | Modificar | T1 |
+| `src/lib/__tests__/routes.test.js` | Sub-tela no parse e no `hrefFor`; as duas medições do `idx` contra o react-router instalado na T8 | Modificar | T1, T8 |
+| `src/lib/__tests__/routes.decision.test.js` | `sub` no `target`, sub desconhecida, `screenKey` e `routeTemplate` sem a sub-tela, query nos redirects | Modificar | T1 |
+| `src/lib/__tests__/appShell.test.js` | `sub` no `screenState` | Modificar | T1 |
 | `src/lib/screenParams.js` | Tabela de parâmetros por tela, leitura e montagem | Criar | T2 |
 | `src/lib/__tests__/screenParams.test.js` | O módulo puro, tela por tela | Criar | T2 |
 | `src/hooks/useScreenParams.js` | Deriva os valores no render e navega com replace | Criar | T2 |
@@ -91,11 +91,8 @@ Onde o spec deixava duas saídas, valeu o que está aqui. A T9 põe o `CLAUDE.md
 | `src/views/AppointmentTrackingView.jsx` | Dia, período, responsável e professor vindos do endereço | Modificar | T6 |
 | `src/views/settings/SettingsView.jsx` | Seção vinda do caminho, por prop | Modificar | T7 |
 | `src/views/LeadProfileView.jsx` | Aba vinda do caminho, por prop | Modificar | T7 |
-| `src/views/LeadProfileRoute.jsx` | Repassa a aba e o Voltar com filtro | Modificar | T7, T8 |
-| `src/App.jsx` | Passa `sub` e os filtros às telas, monta o link da ficha com a origem e o filtro | Modificar | T3 a T8 |
-| `src/contexts/LeadProfileContext.jsx` | Contexto leva o filtro da tela de origem | Modificar | T8 |
-| `src/components/nav/AppLink.jsx` | `LeadLink` põe origem e filtro no state | Modificar | T8 |
-| `src/lib/__tests__/appLink.test.js` | O state do `LeadLink` agora tem `search` | Modificar | T8 |
+| `src/views/LeadProfileRoute.jsx` | Repassa a aba da ficha | Modificar | T7 |
+| `src/App.jsx` | Passa `sub` e os filtros às telas | Modificar | T3 a T7 |
 | `src/lib/__tests__/sentryScrub.test.js` | A query de filtro é cortada antes de ir ao Sentry | Modificar | T9 |
 | `src/lib/__tests__/filtrosNoEndereco.sweep.test.js` | Varredura: nenhuma tela guarda filtro em estado nem lê a URL | Criar | T9 |
 | `CLAUDE.md` | Regras dos filtros no endereço | Modificar | T9 |
@@ -103,7 +100,7 @@ Onde o spec deixava duas saídas, valeu o que está aqui. A T9 põe o `CLAUDE.md
 
 ## Tarefas e contagem de testes
 
-A contagem é cumulativa: o número da última coluna é o que `npx vitest run` mostra no fim da tarefa. "Testes novos" é o SALDO: a T8 reescreve um bloco de 3 testes que já existe, então ela soma 8 e não 11.
+A contagem é cumulativa: o número da última coluna é o que `npx vitest run` mostra no fim da tarefa. As linhas da T1 à T7 são a estimativa da montagem; o medido no fim da T8 é 108 arquivos e 2221 testes, porque a T7 acabou criando `settingsRail.test.js`, que a estimativa não previa. As linhas da T8 e da T9 já saem do medido.
 
 | Tarefa | O que entrega | Depende de | Testes novos | Arquivos de teste novos | Suíte no fim |
 |---|---|---|---|---|---|
@@ -115,9 +112,9 @@ A contagem é cumulativa: o número da última coluna é o que `npx vitest run` 
 | T5 | Todos os leads e Meta diária | T2 | 9 | 0 | 107, 2198 |
 | T6 | Aulas e Visitas | T2 | 10 | 0 | 107, 2208 |
 | T7 | Configurações por seção e ficha por aba | T1 | 8 | 0 | 107, 2216 |
-| T8 | O Voltar da ficha com o filtro | T1, T7 | 9 (12 novos, 3 reescritos) | 0 | 107, 2225 |
-| T9 | Varredura, documentação, verificação final e corpo do PR | T1 a T8 | 7 | 1 | 108, 2232 |
-| **Total** | | | **114** | **2** | **108 arquivos, 2232 testes** |
+| T8 | Por que o Voltar da ficha não leva o filtro (só comentário, teste e spec) | T1, T7 | 0 | 0 | 108, 2221 (medido) |
+| T9 | Varredura, documentação, verificação final e corpo do PR | T1 a T8 | 8 | 1 | 109, 2229 |
+| **Total** | | | **111** | **3** | **109 arquivos, 2229 testes** |
 
 T1 e T2 são independentes. T3 a T6 dependem só da T2 e são independentes entre si (arquivos diferentes). T7 depende da T1. T8 depende da T1 e da T7. T9 é a última.
 
@@ -3122,407 +3119,36 @@ MSGEOF
 
 ---
 
-### Task 8: o Voltar da ficha leva o filtro de volta
+### Task 8: por que o Voltar da ficha não leva o filtro (nada a construir)
 
 **Files:**
-- Modify: `src/lib/routes.js` (`backTarget`, linhas 307-311)
-- Modify: `src/lib/appShell.js` (`fichaOrigin`, linhas 15-21)
-- Modify: `src/contexts/LeadProfileContext.jsx`
-- Modify: `src/components/nav/AppLink.jsx` (`LeadLink`)
-- Modify: `src/App.jsx` (`openProfile` e `leadProfileValue`, linhas 1322-1330; `LeadProfileRoute`, linha 1688)
-- Modify: `src/views/LeadProfileRoute.jsx` (assinatura e `goBack`, linhas 84-112)
-- Test: `src/lib/__tests__/routes.decision.test.js` (modificar)
-- Test: `src/lib/__tests__/appShell.test.js` (modificar)
-- Test: `src/lib/__tests__/appLink.test.js` (modificar: linha 138 e o valor de contexto da linha 25-29)
+- Modify: `src/lib/routes.js` (comentário do `backTarget`)
+- Modify: `src/lib/__tests__/routes.test.js` (bloco "contrato do idx com o react-router instalado")
+- Modify: `docs/superpowers/specs/2026-09-23-filtros-no-endereco-design.md` (risco da ficha aberta em outra guia)
 
-`backTarget` é o Voltar da ficha aberta sem nenhuma tela do app antes dela nesta aba: link colado, favorito e, desde o PR #219, Ctrl+clique e a setinha do card, que abrem guia nova. Hoje ele monta Pipeline ou Clientes do zero, sem filtro nenhum, e ignora que a pessoa podia ter vindo de Todos os leads, de Aulas ou da Meta.
+A tarefa tinha sido escrita para o `backTarget` devolver a tela de origem com o filtro dela, com o par `from`/`search` viajando no state da navegação, do `LeadLink` ao `LeadProfileRoute`. Foi construída e revertida no mesmo dia, porque o ramo é código morto no app de hoje: quem grava state é só o push (o `openProfile` do `App.jsx` e o `state` do `LeadLink`), e o push sempre soma 1 no `idx`, então o `backTarget` devolve `'back'` antes de olhar a origem. Os replaces do app ou não mandam state (`RouteRedirect`, `LeadProfileRoute`) ou repassam o `location.state` do momento (`useScreenParams`, `goToSub` do `App.jsx`), que na primeira entrada da aba é nulo. Em guia nova o documento é outro e não há state nenhum para ler.
 
-Com o filtro no endereço isso passa a ter conserto barato: o link da ficha já leva a tela de origem no state da navegação, e agora leva junto o filtro daquela tela. Quando o state existe, o Voltar volta para a tela certa com o recorte certo; quando não existe (guia nova, onde state não atravessa), vale a regra de sempre.
+**Cuidado ao reabrir isso:** a premissa é convenção do app, não garantia do react-router. Medido na 7.18.4 em 23/09/2026, `h.replace('/x', { from: 'kanban' })` na primeira entrada grava `{"usr":{"from":"kanban"},"key":"...","idx":0}`. Basta um `navigate(x, { replace: true, state: { ... } })` numa primeira entrada para o par "tem state, logo dá para voltar" deixar de valer.
 
-A query que vem do state é conferida antes de virar endereço: só letra, número e os separadores que a gente mesmo escreve. Assim um state forjado não vira caminho nem endereço de fora.
+O que ficou no lugar da feature:
 
-- [ ] **Step 1: Escrever os testes que falham**
+- o comentário do `backTarget` em `src/lib/routes.js` diz por que a origem não atravessa para a guia nova e que quem garante isso é o app;
+- o bloco "contrato do idx com o react-router instalado" do `routes.test.js` registra as duas medições, inclusive a de que a biblioteca aceita state numa entrada de `idx` 0;
+- o risco "ficha aberta em outra guia" do spec passou a listar os dois caminhos possíveis, com o preço de cada um, para o Johnny decidir: origem e filtro no endereço da própria ficha, ou memória por academia no navegador, no molde do `savedFunnelKey`.
 
-Primeiro, o teste que passa a falhar sozinho: o state do `LeadLink` ganha um campo, e `appLink.test.js:138` compara o objeto inteiro.
+A trava do lado do app fica com a varredura da Task 9: nenhum `navigate(` de `src/` pode passar `replace: true` junto com objeto de `state` literal.
 
-Antes (`src/lib/__tests__/appLink.test.js:25-29` e `138`):
+- [ ] **Step 1: Verificar e commitar**
 
-```js
-const profile = (from = 'kanban') => ({
-  openProfile: () => {},
-  leadHref: (leadId) => hrefFor(TENANT, 'ficha', { leadId }),
-  from,
-});
-```
-
-```js
-    expect(lastLinkProps().state).toEqual({ from: 'kanban' });
-```
-
-Depois:
-
-```js
-const profile = (from = 'kanban', search = '') => ({
-  openProfile: () => {},
-  leadHref: (leadId) => hrefFor(TENANT, 'ficha', { leadId }),
-  from,
-  search,
-});
-```
-
-```js
-    expect(lastLinkProps().state).toEqual({ from: 'kanban', search: '' });
-```
-
-E, logo depois desse teste, um que prova que o filtro viaja:
-
-```js
-  it('leva também o filtro da tela de origem, que é o que o Voltar devolve', () => {
-    render(createElement(LeadLink, { leadId: 'abc123' }, 'Ana Lima'), { value: profile('leads', '?funil=f2&atraso=1') });
-    expect(lastLinkProps().state).toEqual({ from: 'leads', search: '?funil=f2&atraso=1' });
-  });
-```
-
-Depois, substituir o bloco `describe('backTarget', ...)` de `src/lib/__tests__/routes.decision.test.js` (linhas 229-242, três testes hoje) por este:
-
-```js
-describe('backTarget', () => {
-  it('com tela do app antes: voltar do navegador', () => {
-    expect(backTarget({ historyState: { idx: 3 }, isClient: true, tenantId: T })).toEqual({ type: 'back' });
-    expect(backTarget({ historyState: { idx: 3 }, isClient: true, tenantId: T, from: 'leads', search: '?atraso=1' })).toEqual({ type: 'back' });
-  });
-
-  it('aba nova sem origem: Clientes para cliente, Pipeline para lead', () => {
-    expect(backTarget({ historyState: { idx: 0 }, isClient: true, tenantId: T })).toEqual({ type: 'replace', href: `/${T}/clientes` });
-    expect(backTarget({ historyState: null, isClient: false, tenantId: T })).toEqual({ type: 'replace', href: `/${T}/pipeline` });
-  });
-
-  it('com origem no state, volta para a tela de onde a ficha foi aberta', () => {
-    expect(backTarget({ historyState: { idx: 0 }, isClient: false, tenantId: T, from: 'leads' })).toEqual({ type: 'replace', href: `/${T}/leads` });
-    expect(backTarget({ historyState: { idx: 0 }, isClient: true, tenantId: T, from: 'aulas' })).toEqual({ type: 'replace', href: `/${T}/leads/aulas` });
-    expect(backTarget({ historyState: { idx: 0 }, isClient: false, tenantId: T, from: 'dailyGoal' })).toEqual({ type: 'replace', href: `/${T}/meta-diaria` });
-  });
-
-  it('com filtro no state, volta com o recorte de lá', () => {
-    expect(backTarget({ historyState: { idx: 0 }, isClient: true, tenantId: T, from: 'clientes', search: '?sit=ativo,a_vencer&resp=u1' }))
-      .toEqual({ type: 'replace', href: `/${T}/clientes?sit=ativo,a_vencer&resp=u1` });
-    expect(backTarget({ historyState: { idx: 0 }, isClient: false, tenantId: T, from: 'kanban', search: '?funil=f2&resp=' }))
-      .toEqual({ type: 'replace', href: `/${T}/pipeline?funil=f2&resp=` });
-  });
-
-  it('origem que não é tela, que é a própria ficha ou que não existe cai na regra de sempre', () => {
-    for (const from of ['xyz', 'ficha', 'constructor', null, 42, {}]) {
-      expect(backTarget({ historyState: { idx: 0 }, isClient: false, tenantId: T, from }), String(from))
-        .toEqual({ type: 'replace', href: `/${T}/pipeline` });
-    }
-  });
-
-  it('academia fora do formato ainda tem para onde voltar', () => {
-    expect(backTarget({ historyState: { idx: 0 }, isClient: false, tenantId: 'Academia_Legada' })).toEqual({ type: 'replace', href: '/Academia_Legada/pipeline' });
-  });
-
-  it('query torta no state é jogada fora, e o endereço nunca sai do app', () => {
-    const tortas = ['pipeline', '?a=/outro', '?a=b#c', '??', '//evil.com', `?a=${'x'.repeat(400)}`, 42, null];
-    for (const search of tortas) {
-      expect(backTarget({ historyState: { idx: 0 }, isClient: true, tenantId: T, from: 'clientes', search }), String(search))
-        .toEqual({ type: 'replace', href: `/${T}/clientes` });
-    }
-  });
-
-  it('o endereço curto da academia é destino válido de volta, com filtro', () => {
-    expect(backTarget({ historyState: { idx: 0 }, isClient: false, tenantId: T, from: 'dashboard', search: '?mes=2026-08' }))
-      .toEqual({ type: 'replace', href: `/${T}?mes=2026-08` });
-  });
-});
-```
-
-Em `src/lib/__tests__/appShell.test.js`, acrescentar `fichaBack` à lista de importações das linhas 8-10 e, ao fim do arquivo:
-
-```js
-describe('fichaBack', () => {
-  it('devolve a tela de origem e o filtro guardados no state', () => {
-    expect(fichaBack({ from: 'clientes', search: '?sit=ativo' }, consultor)).toEqual({ from: 'clientes', search: '?sit=ativo' });
-  });
-
-  it('origem que esta sessão não vê não volta, e o filtro dela vai junto', () => {
-    expect(fichaBack({ from: 'settings', search: '?x=1' }, consultor)).toEqual({ from: null, search: '' });
-    expect(fichaBack({ from: 'settings', search: '?x=1' }, gestor)).toEqual({ from: 'settings', search: '?x=1' });
-  });
-
-  it('sem state, sem origem e sem filtro', () => {
-    expect(fichaBack(null, consultor)).toEqual({ from: null, search: '' });
-    expect(fichaBack({ from: 'ficha' }, consultor)).toEqual({ from: null, search: '' });
-  });
-});
-```
-
-- [ ] **Step 2: `backTarget` aceita origem e filtro**
-
-Antes (`src/lib/routes.js:306-311`):
-
-```js
-// Voltar da ficha: pelo navegador quando há tela do app antes dela nesta aba;
-// senão, troca a entrada por Clientes (cliente) ou Pipeline (lead).
-export function backTarget({ historyState, isClient, tenantId } = {}) {
-  if (canGoBackInApp(historyState)) return { type: 'back' };
-  return { type: 'replace', href: hrefFor(tenantId, isClient ? 'clientes' : 'kanban') };
-}
-```
-
-Depois:
-
-```js
-// Query que veio do state da navegação e vai virar endereço. Só o alfabeto que
-// a gente mesmo escreve: sem barra, sem cerquilha e sem espaço, então um state
-// forjado não consegue virar caminho nem endereço de fora.
-const SAFE_SEARCH_RE = /^\?[A-Za-z0-9_\-=&,.%+:]{0,300}$/;
-const safeSearch = (search) => (typeof search === 'string' && SAFE_SEARCH_RE.test(search) ? search : '');
-
-// Voltar da ficha: pelo navegador quando há tela do app antes desta nesta aba.
-// Senão, troca a entrada pela tela de onde a ficha foi aberta, com o filtro que
-// ela tinha (os dois vêm do state da navegação, que o LeadLink grava), e sem
-// state nenhum (guia nova, link colado, favorito) vale a regra de sempre:
-// Clientes para cliente, Pipeline para lead.
-export function backTarget({ historyState, isClient, tenantId, from = null, search = '' } = {}) {
-  if (canGoBackInApp(historyState)) return { type: 'back' };
-  const screen = own(SCREENS, from) && from !== 'ficha' ? from : (isClient ? 'clientes' : 'kanban');
-  const href = hrefFor(tenantId, screen);
-  return { type: 'replace', href: href ? href + safeSearch(search) : null };
-}
-```
-
-- [ ] **Step 3: `fichaBack` no appShell**
-
-Antes (`src/lib/appShell.js:11-21`):
-
-```js
-// Tela de onde a ficha foi aberta, guardada no state da navegação
-// ({ from: 'kanban' }). Mantém o menu aceso e o título do cabeçalho da origem.
-// O state vive no histórico do navegador e pode vir de qualquer lugar, então só
-// vale tela conhecida, que não seja a ficha e que esta sessão possa ver.
-export function fichaOrigin(state, appUser) {
-  const from = state && typeof state === 'object' ? state.from : null;
-  if (!isScreenId(from) || from === 'ficha') return null;
-  return canAccess(from, appUser) ? from : null;
-}
-```
-
-Depois:
-
-```js
-// Tela de onde a ficha foi aberta, guardada no state da navegação
-// ({ from: 'kanban' }). Mantém o menu aceso e o título do cabeçalho da origem.
-// O state vive no histórico do navegador e pode vir de qualquer lugar, então só
-// vale tela conhecida, que não seja a ficha e que esta sessão possa ver.
-export function fichaOrigin(state, appUser) {
-  const from = state && typeof state === 'object' ? state.from : null;
-  if (!isScreenId(from) || from === 'ficha') return null;
-  return canAccess(from, appUser) ? from : null;
-}
-
-// O que o Voltar da ficha precisa quando não há tela do app antes dela nesta
-// aba: a tela de origem e o filtro que ela tinha. Sem origem válida, o filtro
-// também não vale, porque filtro de uma tela não quer dizer nada em outra.
-// Quem confere se a query serve para endereço é o backTarget.
-export function fichaBack(state, appUser) {
-  const from = fichaOrigin(state, appUser);
-  const search = from && state && typeof state.search === 'string' ? state.search : '';
-  return { from, search };
-}
-```
-
-- [ ] **Step 4: O link da ficha leva o filtro**
-
-Antes (`src/contexts/LeadProfileContext.jsx`, o bloco de comentário e o `NO_PROFILE`):
-
-```js
-// - from é o id da tela de onde a ficha é aberta. Vai no state da navegação
-//   para o menu continuar aceso e o cabeçalho manter o título da origem.
-// Fora do Provider, leadHref devolve null e o LeadLink vira texto sem link.
-// Espelha o padrão do GeneralConfigContext (funciona através de portais).
-const NO_PROFILE = Object.freeze({ openProfile: () => {}, leadHref: () => null, from: null });
-```
-
-Depois:
-
-```js
-// - from é o id da tela de onde a ficha é aberta. Vai no state da navegação
-//   para o menu continuar aceso e o cabeçalho manter o título da origem;
-// - search é o filtro dessa tela, no mesmo state. É ele que o Voltar da ficha
-//   usa para devolver a lista com o mesmo recorte numa aba que não tem tela
-//   do app antes da ficha.
-// Fora do Provider, leadHref devolve null e o LeadLink vira texto sem link.
-// Espelha o padrão do GeneralConfigContext (funciona através de portais).
-const NO_PROFILE = Object.freeze({ openProfile: () => {}, leadHref: () => null, from: null, search: '' });
-```
-
-Antes (`src/components/nav/AppLink.jsx`, dentro do `LeadLink`):
-
-```js
-export function LeadLink({ leadId, children, className, title, ...rest }) {
-  const { leadHref, from } = useLeadProfile();
-  const href = leadHref?.(leadId) ?? null;
-
-  if (!href) return <span className={className} title={title}>{children}</span>;
-
-  return (
-    <AppLink {...rest} to={href} state={{ from: from ?? null }} className={className} title={title}>
-      {children}
-    </AppLink>
-  );
-}
-```
-
-Depois:
-
-```js
-export function LeadLink({ leadId, children, className, title, ...rest }) {
-  const { leadHref, from, search } = useLeadProfile();
-  const href = leadHref?.(leadId) ?? null;
-
-  if (!href) return <span className={className} title={title}>{children}</span>;
-
-  return (
-    <AppLink {...rest} to={href} state={{ from: from ?? null, search: search ?? '' }} className={className} title={title}>
-      {children}
-    </AppLink>
-  );
-}
-```
-
-O comentário do `LeadLink`, logo acima, ganha uma frase: o state leva também o filtro da tela de origem, que é só o recorte da lista e nunca dado da pessoa.
-
-Antes (`src/App.jsx:1321-1331`):
-
-```js
-  // Abrir a ficha empilha o endereço /<academia>/ficha/<id>, e o Voltar da ficha
-  // é o voltar do navegador (LeadProfileRoute). A mesma ficha não empilha de
-  // novo. Continua memoizado: o KanbanCard é memo e recebe esta função.
-  const openProfile = useCallback((leadId) => {
-    const href = hrefFor(sessionTenant, 'ficha', { leadId });
-    if (!href) return;
-    navigate(href, { replace: href === location.pathname, state: profileFrom ? { from: profileFrom } : null });
-  }, [navigate, sessionTenant, location.pathname, profileFrom]);
-  // Endereço da ficha, para os links que abrem em outra aba (LeadLink).
-  const leadHref = useCallback((leadId) => hrefFor(sessionTenant, 'ficha', { leadId }), [sessionTenant]);
-  const leadProfileValue = useMemo(() => ({ openProfile, leadHref, from: profileFrom }), [openProfile, leadHref, profileFrom]);
-```
-
-Depois:
-
-```js
-  // Filtro da tela de onde a próxima ficha é aberta. Vai no state junto com a
-  // origem, para o Voltar de uma ficha aberta sem tela antes dela devolver a
-  // lista com o mesmo recorte. Só o recorte: nome, telefone e busca nunca
-  // entram no endereço, então nunca entram aqui.
-  const profileSearch = profileFrom ? location.search : '';
-  // Abrir a ficha empilha o endereço /<academia>/ficha/<id>, e o Voltar da ficha
-  // é o voltar do navegador (LeadProfileRoute). A mesma ficha não empilha de
-  // novo. Continua memoizado, mas agora a identidade troca também a cada clique
-  // de filtro, porque o filtro entrou nas dependências: numa lista filtrada, os
-  // cards memoizados do Pipeline redesenham junto. É o preço de o Voltar saber
-  // de onde a ficha foi aberta, e é redesenho de tela já montada, sem leitura.
-  const openProfile = useCallback((leadId) => {
-    const href = hrefFor(sessionTenant, 'ficha', { leadId });
-    if (!href) return;
-    navigate(href, { replace: href === location.pathname, state: profileFrom ? { from: profileFrom, search: profileSearch } : null });
-  }, [navigate, sessionTenant, location.pathname, profileFrom, profileSearch]);
-  // Endereço da ficha, para os links que abrem em outra aba (LeadLink).
-  const leadHref = useCallback((leadId) => hrefFor(sessionTenant, 'ficha', { leadId }), [sessionTenant]);
-  const leadProfileValue = useMemo(
-    () => ({ openProfile, leadHref, from: profileFrom, search: profileSearch }),
-    [openProfile, leadHref, profileFrom, profileSearch],
-  );
-```
-
-- [ ] **Step 5: A ficha usa a origem e o filtro no Voltar**
-
-Antes (`src/App.jsx:1688-1692`):
-
-```js
-              <LeadProfileRoute
-                key={profileLeadId ?? 'sem-id'}
-                leadId={profileLeadId}
-                tab={sub}
-                onTab={(id) => goToSub('ficha', id, { leadId: profileLeadId })}
-```
-
-Depois:
-
-```js
-              <LeadProfileRoute
-                key={profileLeadId ?? 'sem-id'}
-                leadId={profileLeadId}
-                tab={sub}
-                onTab={(id) => goToSub('ficha', id, { leadId: profileLeadId })}
-                back={fichaBack(location.state, appUser)}
-```
-
-Acrescentar `fichaBack` à lista de importações de `./lib/appShell.js` (`src/App.jsx:70-73`), que hoje traz `screenState`, `sessionKeyFor`, `loginTenantSlug`, `loginBrand`, `logoutDestination`, `returnToFrom`, `savedFunnelKey` e `readSavedFunnel`. O `fichaOrigin` não é importado pelo App: quem o usa é o próprio `screenState`.
-
-Antes (`src/views/LeadProfileRoute.jsx:84-87`):
-
-```js
-export function LeadProfileRoute({
-  leadId, tab, onTab, tenantId, sessionKey, dataReady, listenersActive,
-  db, appUser, statuses, tags, lossReasons, usersList, funnels,
-}) {
-```
-
-Depois:
-
-```js
-export function LeadProfileRoute({
-  leadId, tab, onTab, back, tenantId, sessionKey, dataReady, listenersActive,
-  db, appUser, statuses, tags, lossReasons, usersList, funnels,
-}) {
-```
-
-Antes (`src/views/LeadProfileRoute.jsx:104-112`):
-
-```js
-  // Voltar: o histórico é lido na hora do clique, nunca no render. Com uma tela
-  // do app antes desta, é o voltar do navegador. Aberta direto numa aba nova,
-  // troca a ficha pela lista (Clientes para cliente, Pipeline para lead).
-  const goBack = () => {
-    if (!mountedRef.current) return;
-    const target = backTarget({ historyState: window.history.state, isClient: isClientLead(lead), tenantId });
-    if (target.type === 'back') navigate(-1);
-    else if (target.href) navigate(target.href, { replace: true });
-  };
-```
-
-Depois:
-
-```js
-  // Voltar: o histórico é lido na hora do clique, nunca no render. Com uma tela
-  // do app antes desta, é o voltar do navegador. Aberta direto numa aba nova,
-  // troca a ficha pela tela de onde ela foi aberta, com o filtro que ela tinha;
-  // sem essa informação (guia nova não recebe o state), vale a regra de sempre:
-  // Clientes para cliente, Pipeline para lead.
-  const goBack = () => {
-    if (!mountedRef.current) return;
-    const target = backTarget({
-      historyState: window.history.state,
-      isClient: isClientLead(lead),
-      tenantId,
-      from: back?.from ?? null,
-      search: back?.search ?? '',
-    });
-    if (target.type === 'back') navigate(-1);
-    else if (target.href) navigate(target.href, { replace: true });
-  };
-```
-
-- [ ] **Step 6: Verificar e commitar**
+Não há código de feature aqui e a suíte não muda de tamanho.
 
 ```bash
 npx vitest run
-# Esperado: Test Files  107 passed (107) · Tests  2225 passed (2225)
+# Esperado: Test Files  108 passed (108) · Tests  2221 passed (2221)
 npm run lint
 # Esperado: ✖ 1 problem (0 errors, 1 warning)
 git add -A && git commit -m "$(cat <<'MSGEOF'
-feat: o Voltar da ficha devolve a tela de origem com o filtro dela
+docs: registrar por que o Voltar da ficha não leva o filtro para a guia nova
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
 MSGEOF
@@ -3541,6 +3167,8 @@ MSGEOF
 - Create: `/private/tmp/claude-501/-Users-johnnybittencourt-STRONIX-FIRMA-06-sistemas-stronilead--claude-worktrees-unruffled-chatterjee-6036f8/2eddd9e5-4fce-4c8d-ac5f-ba368c8db54e/scratchpad/e2-pr1-body.md`
 
 A varredura é o que impede a volta do padrão antigo em tela nova: filtro guardado em `useState`, URL lida num effect, ou nome de parâmetro dentro de uma `key`. É o mesmo tipo de teste do `leadLinkSweep.test.js` e do `overscrollGuard.test.js`, que já rodam no CI.
+
+**Vindo da Task 8, antes de tudo:** a Task 8 já mexeu no spec, que aqui é da Task 9. Ela reescreveu o risco "ficha aberta em outra guia" (agora com os dois caminhos possíveis e a decisão em aberto do Johnny) e o item 1 de "Entrega em dois PRs", que passou a dizer "saneamento silencioso, sem reescrever o endereço". Ler os dois trechos antes de escrever por cima. Ela também deixou para cá uma trava: a varredura precisa cobrar que nenhum `navigate(` de `src/` passe `replace: true` junto com objeto de `state` literal, senão a premissa do `backTarget` cai.
 
 **Vindo da revisão da Task 7, para não se perder aqui:**
 
@@ -3581,6 +3209,9 @@ function sourceFiles(dir) {
 }
 
 const views = sourceFiles(join(SRC, 'views')).map((f) => [relative(SRC, f), readFileSync(f, 'utf8')]);
+// `src/` inteiro, para a regra do navigate: o state da ficha nasce fora das
+// views (App.jsx e o LeadLink).
+const fontes = sourceFiles(SRC).map((f) => [relative(SRC, f), readFileSync(f, 'utf8')]);
 const hook = readFileSync(join(SRC, 'hooks', 'useScreenParams.js'), 'utf8');
 const app = readFileSync(join(SRC, 'App.jsx'), 'utf8');
 
@@ -3638,6 +3269,21 @@ describe('varredura dos filtros no endereço', () => {
     expect(hook.includes('hrefFor')).toBe(false);
   });
 
+  it('nenhum navigate de src/ grava state numa entrada que pode ser a primeira', () => {
+    // A premissa do backTarget (ver o comentário dele em routes.js) é que só o
+    // push grava state, e push sempre soma 1 no idx. O react-router NÃO garante
+    // isso: medido na 7.18.4, um replace com state na primeira entrada grava o
+    // state com idx 0. Quem garante é o app, e este teste é a cobrança.
+    for (const [nome, texto] of fontes) {
+      for (const trecho of texto.split('navigate(').slice(1)) {
+        const chamada = trecho.slice(0, 200);
+        const temReplaceTrue = /replace:\s*true/.test(chamada);
+        const temStateLiteral = /state:\s*\{/.test(chamada);
+        expect(temReplaceTrue && temStateLiteral, `${nome}: navigate(${chamada.split('\n')[0]}`).toBe(false);
+      }
+    }
+  });
+
   it('a chave da tela continua saindo só da tela mostrada', () => {
     expect(app.includes('screenKey(shown)')).toBe(true);
     for (const trecho of app.split('\n').filter((l) => l.includes('screenKey('))) {
@@ -3656,7 +3302,8 @@ describe('varredura dos filtros no endereço', () => {
 
 ```bash
 npx vitest run src/lib/__tests__/filtrosNoEndereco.sweep.test.js
-# Esperado: 6 passed. Se alguma falhar, é tela que ficou para trás nas T3 a T7.
+# Esperado: 7 passed. Se alguma falhar, é tela que ficou para trás nas T3 a T7,
+# ou um navigate novo gravando state literal num replace.
 ```
 
 A query do app passa a ter conteúdo novo: `pessoa=<uid de colega>`, `resp=<uids>`, `funil=<id>` e `fase=<id da etapa>`. Quem corta isso antes do Sentry é o `stripQuery` do `sentryScrub.js`, que já roda em `request.url`, no `url.path` e nas migalhas de navegação (`URL_KEYS` inclui `to` e `from`), e é o mesmo módulo dos dois lados. Nada muda no código; muda o que precisa continuar valendo, então isso vira teste.
@@ -3692,11 +3339,7 @@ Na seção "Endereço de cada tela", depois do item que começa com "**Links.**"
 - **O endereço não é reescrito na entrada.** Valor inválido é ignorado na leitura e some na primeira escolha de filtro. Corrigir na entrada exigiria effect lendo a URL para navegar, que é o padrão que esta entrega tirou do app. Como o saneamento depende de dado que chega depois (a equipe vem de uma leitura, funis e etapas de assinatura), o primeiro render de um link com filtro mostra o padrão e acerta quando o dado chega, e quem clicar noutro filtro nessa janela perde o parâmetro ainda não validado. O funil da tela de lista é derivado do endereço também fora dela (`funnelFromSearch`, no `App.jsx`), para o cadastro rápido nascer no funil do quadro e não no último funil usado.
 ```
 
-E no item que começa com "**Ficha.**", acrescentar ao fim:
-
-```markdown
-O Voltar de uma ficha sem tela do app antes dela (link colado, favorito, Ctrl+clique, setinha do card) devolve a tela de onde ela foi aberta, com o filtro que ela tinha: os dois viajam no state da navegação, gravados pelo `LeadLink`. Em guia nova o state não existe, e aí vale a regra antiga (Clientes para cliente, Pipeline para lead).
-```
+No item que começa com "**Ficha.**" não se mexe: o Voltar continua como sempre foi (voltar do navegador quando há tela do app antes; senão Clientes para cliente, Pipeline para lead). O motivo de ele não levar o filtro está no comentário do `backTarget` e no risco da ficha aberta em outra guia do spec, os dois escritos na Task 8.
 
 Na tabela "Últimas Atualizações" do `CLAUDE.md` da raiz do monorepo não se mexe: quem faz isso é o Johnny no merge.
 
@@ -3729,7 +3372,6 @@ Depois disso, acrescentar ao fim da seção "Como funciona por dentro" um bloco 
 - A fase de Todos os leads aceita lista de códigos separados por vírgula, e não um só, porque o filtro da tela sempre foi de múltipla escolha.
 - O filtro que vem do endereço continua sobrevivendo só ao redirect que mantém a tela (a correção de academia). Os outros quatro vão para outra tela e descartam, que é o que já acontecia. Quando a correção perde a tela, a query que sobra é inofensiva, porque todo parâmetro é saneado contra os dados da academia da sessão e nome desconhecido é ignorado.
 - Clicar no item do menu da tela em que já se está limpa os filtros e cria uma parada no voltar, porque o item do menu é um link e o link empilha. O item do menu é o estado zero da tela, e o voltar devolve a tela filtrada.
-- O Voltar da ficha passou a devolver a tela de ORIGEM, e não sempre Pipeline ou Clientes. Sem isso, o filtro devolvido seria o de uma tela diferente da que a pessoa estava.
 - O endereço não é reescrito na entrada. Valor inválido é ignorado na leitura e some na primeira escolha de filtro.
 - A seção Importar clientes das Configurações só existe na sessão assumida do super console. Com a seção no caminho, quem abrir `/configuracoes/importacao` sem essa sessão cai na seção padrão, calado, em vez de ver o lado direito em branco.
 
@@ -3750,7 +3392,7 @@ Acrescentar também aos "Riscos conhecidos" do spec:
 
 ```bash
 npx vitest run
-# Esperado: Test Files  108 passed (108) · Tests  2232 passed (2232)
+# Esperado: Test Files  109 passed (109) · Tests  2229 passed (2229)
 npm run lint
 # Esperado: ✖ 1 problem (0 errors, 1 warning), o aviso antigo do SuperAdminView
 npm run build
@@ -3796,7 +3438,7 @@ Entra no endereço, tela por tela:
 | Configurações | `/<academia>/configuracoes/<secao>` | nenhuma |
 | Ficha | `/<academia>/ficha/<id>/<aba>` | nenhuma |
 
-Vêm junto três consertos: a seção das Configurações passa a trocar com a tela já aberta (o "Configurar agora" de uma novidade não funcionava), a pessoa escolhida no Operacional passa a ser conferida contra a equipe (antes um id de quem saiu deixava a tela zerada com o seletor em branco), e o Voltar de uma ficha aberta por link volta para a tela de onde ela foi aberta, e não sempre para o Pipeline.
+Vêm junto dois consertos: a seção das Configurações passa a trocar com a tela já aberta (o "Configurar agora" de uma novidade não funcionava) e a pessoa escolhida no Operacional passa a ser conferida contra a equipe (antes um id de quem saiu deixava a tela zerada com o seletor em branco).
 
 Fica para o PR 2 da entrega 2: a lista viva por trás da ficha, o "carregar mais" e a rolagem preservados no voltar, e a linha da pessoa mexida atualizada na hora.
 
@@ -3820,7 +3462,7 @@ Sempre no preview da Vercel, nunca com o dev local apontado para a produção. O
 - [ ] Aulas: `?de=2026-09-01&ate=2026-10-11` (40 dias) abre no atalho Hoje, sem erro na tela. `?dia=andamento` em Visitas abre em Hoje.
 - [ ] Configurações: link direto para `/configuracoes/funis`, e "Configurar agora" de uma novidade trocando a seção com a tela já aberta.
 - [ ] Ficha: link direto para a aba Contratos; trocar de aba não recarrega a ficha e não troca a entrada do histórico.
-- [ ] Ficha aberta por Ctrl+clique numa lista filtrada: o Voltar devolve a lista com o mesmo filtro. Em guia nova (setinha do card), cai em Clientes ou Pipeline, como antes.
+- [ ] Ficha aberta na mesma aba a partir de uma lista filtrada: o Voltar devolve a lista com o filtro, porque é o voltar do navegador. Aberta em guia nova (Ctrl+clique, setinha do card), cai em Clientes ou Pipeline sem filtro, como antes.
 - [ ] `/configuracoes/xyz` abre Configurações na seção padrão, sem aviso. `/visao-geral/xyz` continua avisando "Não achamos essa tela".
 - [ ] `/configuracoes/importacao` com um gestor comum (sem "Acessar como") abre a seção padrão, com a tela desenhada. O lado direito não pode ficar em branco.
 - [ ] Abrir um link com `?pessoa=<colega>` e clicar em outro filtro no primeiro segundo: a pessoa some do endereço, porque a equipe ainda não tinha chegado. É o comportamento esperado (decisão 17), e o que se confere é que a tela continua funcionando.
