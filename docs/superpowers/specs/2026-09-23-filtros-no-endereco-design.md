@@ -1,6 +1,6 @@
 # Filtros no endereço e a lista que volta igual, entrega 2
 
-status: revisão
+status: ativo
 data: 2026-09-23
 
 ## Por que
@@ -63,7 +63,7 @@ O `funil` do CRM é o recorte daquele dashboard e não é o mesmo estado do funi
 ### Regras de leitura dos parâmetros
 
 - **Ausente é o padrão.** Nunca se escreve no endereço um valor que já é o padrão, para o link ficar curto e o F5 não gravar escolha que ninguém fez.
-- **Valor inválido ou que sumiu cai no padrão, sem aviso.** Consultor desligado, funil apagado, etapa que mudou de código, mês fora da janela de 12 meses, período maior que 30 dias em Aulas e Visitas, data invertida: a tela abre funcionando com o padrão, e o endereço é corrigido com replace. O aviso de "não achamos essa tela" continua valendo só para tela desconhecida, não para filtro.
+- **Valor inválido ou que sumiu cai no padrão, sem aviso.** Consultor desligado, funil apagado, etapa que mudou de código, mês fora da janela de 12 meses, período maior que 30 dias em Aulas e Visitas, data invertida: a tela abre funcionando com o padrão. O endereço NÃO é reescrito na entrada: o valor ruim continua na barra até a primeira escolha de filtro, e some ali. Corrigir na entrada exigiria um effect lendo a URL para navegar, que é o padrão que esta entrega existe para tirar do app. O aviso de "não achamos essa tela" continua valendo só para tela desconhecida, não para filtro.
 - **`resp` tem três estados:** ausente é o padrão do papel (o consultor abre na própria carteira, o gestor na equipe), `resp=` vazio é "todos", e com ids é a lista escolhida.
 - **`dia` e o par `de`/`ate` são exclusivos.** Vindo os dois, vale o par de datas, que é o mais específico.
 - **`comparar=0`** é a única forma escrita do comparativo, porque ligado é o padrão. `comparar-com` sem `comparar=0` escolhe o mês da comparação.
@@ -105,6 +105,21 @@ A rolagem restaurada passa a valer também para os containers que rolam por dent
 - **Nada da entrega 2 entra em `screenKey`, na key do `AppErrorBoundary` nem em key de lista.** Se entrar, cada clique de filtro recria a tela e relê a coleção inteira. Não quebra nada e não aparece no console, só na fatura.
 - O que for guardado por academia (memória de sessão, rolagem) leva a academia na chave, porque o "Acessar como" troca de academia sem recarregar a página.
 
+### Decidido na montagem do PR 1
+
+- O endereço é montado com o caminho de agora, e não com `hrefFor`: o Operacional tem dois endereços válidos (`/<academia>` e `/<academia>/visao-geral/operacional`) e trocar entre eles no meio da sessão empilharia entrada nova com a mesma chave de tela.
+- Sub-tela também usa replace. Com push, o Voltar da ficha andaria entre abas em vez de voltar para a lista. A exceção é quem chega de outra tela: aí o `goToSub` empilha, senão o "Configurar agora" de uma novidade apagaria do histórico a tela em que a pessoa estava.
+- O funil das telas de lista é escrito sempre que vale, e é a única exceção à regra "o padrão nunca é escrito": o padrão dele é o último funil usado por cada pessoa, então omitir faria o mesmo link abrir em funis diferentes para duas pessoas.
+- A fase de Todos os leads aceita lista de códigos separados por vírgula, e não um só, porque o filtro da tela sempre foi de múltipla escolha.
+- O filtro que vem do endereço continua sobrevivendo só ao redirect que mantém a tela (a correção de academia). Os outros quatro vão para outra tela e descartam, que é o que já acontecia. Quando a correção perde a tela, a query que sobra é inofensiva, porque todo parâmetro é saneado contra os dados da academia da sessão e nome desconhecido é ignorado.
+- Clicar no item do menu da tela em que já se está limpa os filtros e cria uma parada no voltar, porque o item do menu é um link e o link empilha. O item do menu é o estado zero da tela, e o voltar devolve a tela filtrada.
+- O endereço não é reescrito na entrada. Valor inválido é ignorado na leitura e some na primeira escolha de filtro.
+- A seção Importar clientes das Configurações só existe na sessão assumida do super console. Com a seção no caminho, quem abrir `/configuracoes/importacao` sem essa sessão cai na seção padrão, calado, em vez de ver o lado direito em branco.
+
+### Dívida conhecida que este PR não criou e não consertou
+
+`scrollActionFor` devolve `'none'` quando a chave da tela não muda, e nesse ramo o `useRouteScroll` grava a posição por cima, inclusive no voltar. Num push para a mesma tela isso apaga a posição guardada daquela entrada. Já é alcançável hoje pelo item Operacional do menu vindo de `/visao-geral/operacional`, e o filtro não piora nada porque usa replace, que nasce com chave nova. Fica para o PR 2, junto com a rolagem dos containers internos.
+
 ## Entrega em dois PRs
 
 1. **Filtros e sub-telas no endereço.** `screenParams.js` com testes, as dez telas derivando filtro do endereço, Configurações por seção e ficha por aba, e saneamento silencioso, sem reescrever o endereço. O `backTarget` do Voltar da ficha fica como está, pelo motivo registrado no risco da ficha aberta em outra guia.
@@ -116,6 +131,8 @@ A rolagem restaurada passa a valer também para os containers que rolam por dent
 - Testes de saneamento com contexto: pessoa que saiu, funil apagado, etapa que mudou de código, mês fora da janela, mês de comparação sem venda no Gerencial.
 - `routes.test.js` ganha as sub-telas (seção das Configurações, aba da ficha) e a garantia de que elas ficam fora do `screenKey`.
 - Teste de que o filtro de responsável é ignorado para quem não vê o controle.
+- `filtrosNoEndereco.sweep.test.js`: a varredura que cobra o padrão de toda tela nova. Nenhuma view lê a query, nenhuma guarda em estado o que virou parâmetro, nenhum parâmetro entra em `key`, a troca de filtro é replace com o state repassado, e nenhum `navigate` de `src/` grava state próprio num replace que pode ser a primeira entrada, porque é disso que o Voltar da ficha depende.
+- `sentryScrub.test.js` ganha a query de filtro: id de colega e id de funil saem da URL, da migalha de navegação e de `url.path` antes de o evento sair do navegador.
 - No PR 2: teste puro da decisão de atualizar a linha, e o restante por conferência manual no preview, porque efeito de tela não roda em node sem jsdom.
 
 ## Conferência manual no preview
@@ -144,4 +161,5 @@ Sempre no preview da Vercel, nunca com o dev local apontado para a produção. O
 
   **Decisão do Johnny, em aberto.** A medição está registrada no `routes.test.js` e explicada no comentário do `backTarget`.
 - Filtro no endereço aumenta a chance de alguém colar um link com valor estranho. O saneamento cobre, mas é código novo em dez telas, e cada tela tem a sua regra.
+- O saneamento de cada parâmetro depende de dado que chega depois do primeiro render (a equipe vem de uma leitura, funis e etapas de assinatura). Um link com `pessoa`, `funil` ou `fase` abre no padrão e acerta quando o dado chega, o que nos dashboards aparece como uma piscada. Quem clicar em outro filtro dentro dessa janela perde o parâmetro ainda não validado, que some do endereço. Corrigir isso exigiria segurar a tela até o dado chegar, o que é pior do que a piscada.
 - A visão Equipe da Meta continua lendo o histórico inteiro, sem recorte de mês e sem o corte de ociosidade. Ficou fora desta entrega e continua valendo como dívida.
