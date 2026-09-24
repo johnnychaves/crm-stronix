@@ -20,6 +20,16 @@
 - Commits em português, no formato `tipo: descrição curta`, terminando com a linha `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - Os textos de tela e do modelo vão exatamente como estão aqui. Eles já passaram pelo humanizer (sem travessão no meio da frase).
 
+## Ajustes feitos durante a execução
+
+As revisões de código mudaram alguns pontos depois que o plano foi escrito. O código commitado é o que vale; os blocos das tarefas abaixo mostram a versão original.
+
+- **Task 2:** a lista `PARSE_ROW_FIELDS` do teste passou a sair do próprio `parseRow` (um mapeamento espião com `Proxy`), e entraram dois testes de `templateMapping` (o primeiro cabeçalho repetido vale; o `"Plano * (2)"` do leitor nunca toma o lugar da coluna certa).
+- **Task 3, erro crítico corrigido:** os limites da validação de data iam como os números `1` e `73415`, e o ExcelJS lê número como milissegundos desde 1970. No arquivo isso virava 01/01/1970 00:00 a 00:01, e o Excel recusaria qualquer data real em Início, Data de nascimento e Cliente desde. Agora vão como `new Date(Date.UTC(1899, 11, 31))` e `new Date(Date.UTC(2100, 11, 31))`, que chegam ao XML como `1` e `73415`. Ler de volta com o ExcelJS não mostrava o erro, porque ele desfaz a mesma conversão.
+- **Task 3, ajustes menores:** a fórmula do Fim também confere o intervalo (`AND(ISNUMBER(F2),F2>=1,F2<=73415,OR(E2="",F2>=E2))`); o nome da aba vai entre aspas na lista (`'Listas'!$A$2:$A$3`); o exemplo da aba "Como preencher" usa a duração do plano mostrado, com seis meses de reserva; e entraram testes para nome que só difere no acento e para a duração do exemplo.
+- **Task 4:** a lista esperada no teste passa a ser `"'Listas'!$A$2:$A$3"`, e entra um teste que abre o XML do arquivo (`XLSX.CFB`, do SheetJS) e confere `<formula1>1</formula1><formula2>73415</formula2>` na validação de data. São 9 testes nesse arquivo.
+- **Task 9:** o item do CLAUDE.md sobre as datas diz que o limite vai como `Date` em meia-noite UTC, e que só o teste do XML prova isso.
+
 ## Mapa de arquivos
 
 | Arquivo | O que acontece |
