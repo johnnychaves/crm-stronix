@@ -75,7 +75,7 @@ Uma linha por cliente, com o contrato atual. O cabeçalho fica congelado na linh
 Notas sobre as células, válidas da linha 2 até a 5001:
 
 - **Texto** é o formato `@`. CPF, WhatsApp, RG, CEP e Número nunca viram número, então o zero da frente e o telefone inteiro sobrevivem.
-- **Data** usa o formato `dd/mm/yyyy` (código do Excel, que aparece como 15/03/2026) e uma validação de data entre 01/01/1900 e 31/12/2100, travada, com a mensagem "Digite uma data, como 15/03/2026." Na coluna Fim, a validação também exige que a data seja igual ou posterior ao Início da mesma linha quando ele estiver preenchido, com a mensagem "O fim precisa ser igual ou depois do início."
+- **Data** usa o formato `dd/mm/yyyy` (código do Excel, que aparece como 15/03/2026) e uma validação de data entre 01/01/1900 e 31/12/2100, travada, com a mensagem "Digite uma data, como 15/03/2026." Na coluna Fim, uma validação só exige data e, com o Início da mesma linha preenchido, data igual ou posterior a ele, com a mensagem "O fim precisa ser uma data igual ou depois do início, como 15/03/2026." Os limites vão como número serial do Excel (1 e 73415), porque um `Date` do JavaScript sai deslocado pelo fuso.
 - **Número** usa o formato `"R$" #,##0.00` (código do Excel, que num Excel em português aparece como R$ 1.234,56) e aceita decimal maior ou igual a zero, travado.
 - **Lista travada** recusa o que não está na lista.
 - **Lista com aviso** mostra "Esse nome não está na lista. Se continuar, ele é acertado na importação." e deixa passar. Aluno antigo pode estar num plano que não se vende mais. O Consultor e o Professor seguem a mesma regra pelo mesmo motivo: o erro de digitação vira aviso na revisão, e a linha não se perde.
@@ -111,7 +111,7 @@ Nome repetido (pelo nome normalizado, `normalizeName`) entra uma vez só. A orde
 
 ## Onde o botão fica
 
-No painel "1. Arquivo" da `ImportClientsSection`, ao lado da escolha de arquivo, com a frase "Sem exportação do sistema antigo? Baixe o modelo, mande para a academia e importe aqui quando ele voltar preenchido." A seção já só aparece na sessão assumida (`appUser.impersonating`), então o botão herda a trava sem mudança.
+No painel "1. Arquivo" da `ImportClientsSection`, ao lado da escolha de arquivo, com a frase "Baixe o modelo, mande para a academia e importe aqui quando ele voltar preenchido." A seção já só aparece na sessão assumida (`appUser.impersonating`), então o botão herda a trava sem mudança.
 
 - Sem nenhum plano em `planos`, o botão fica desligado, com a frase "Cadastre os planos da academia antes de baixar o modelo."
 - Enquanto o arquivo é gerado, o botão mostra "Gerando..." e fica desligado.
@@ -127,8 +127,8 @@ O modelo usa só o que a tela já tem carregado. Não entra nenhuma leitura nova
 
 | Situação | Resultado |
 |---|---|
-| Nenhum cabeçalho do modelo (uma exportação do NextFit, por exemplo) | Recusa: "Esse arquivo não é o modelo do Stronilead. Baixe o modelo e peça para a academia preencher." |
-| Tem cabeçalhos do modelo, mas falta alguma obrigatória | Recusa: "Falta a coluna Fim da vigência." Com mais de uma, lista todas. |
+| Menos de 4 das 6 colunas obrigatórias (a exportação do NextFit, por exemplo, só divide Nome e CPF com o modelo) | Recusa: "Esse arquivo não é o modelo do Stronilead. Baixe o modelo e peça para a academia preencher." |
+| 4 ou 5 das 6 obrigatórias | Recusa dizendo o que falta: "Falta a coluna Fim da vigência." Com mais de uma, "Faltam as colunas Plano e Fim da vigência." |
 | Todas as obrigatórias presentes | Segue. Coluna opcional apagada não atrapalha. |
 
 As obrigatórias do cabeçalho são Nome, CPF, WhatsApp, Plano, Início da vigência e Fim da vigência. CPF e WhatsApp precisam existir como coluna. O "pelo menos um dos dois" vale para o conteúdo de cada linha e já é a regra de `isCandidateValid`.
