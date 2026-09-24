@@ -1,17 +1,18 @@
 import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Download, FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import { SettingsSectionHeader, SettingsPanel } from '../../components/ui/SettingsCard.jsx';
-import { SettingsBtn, PanelNote, EmptyState } from './settingsBits.jsx';
+import { SettingsBtn, PanelNote } from './settingsBits.jsx';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../../components/ui/select.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { cn } from '../../lib/utils.js';
 import { readSpreadsheetFile } from '../../lib/spreadsheetRead.js';
-import { TARGET_FIELDS, TARGET_GROUP_LABEL, detectPreset, buildMapping, importSourceLabel, IMPORT_PRESETS } from '../../lib/importPresets.js';
+import { checkTemplateHeaders, templateMapping, buildTemplateSpec } from '../../lib/importTemplate.js';
+import { downloadTemplate } from '../../lib/importTemplateWrite.js';
 import {
   parseRow, dedupeInFile, enrichCandidate, distinctPlanNames, resolveMatch, classifyCandidate,
-  buildImportedClientWrites, summarizeOutcomes, buildReportCsv,
-  OUTCOME, OUTCOME_LABEL, WRITABLE_OUTCOMES, SCOPE, PLAN_AS_TEXT
+  buildImportedClientWrites, summarizeOutcomes, buildReportCsv, normalizeName,
+  OUTCOME, OUTCOME_LABEL, WRITABLE_OUTCOMES, SCOPE, IMPORT_SOURCE_ID
 } from '../../lib/clientImport.js';
 import { lookupExisting, runImport } from '../../lib/clientImportWrites.js';
 import { getDefaultFunnel, isSystemFunnel } from '../../lib/funnels.js';
@@ -20,15 +21,17 @@ import { deriveLeadState, getTone } from '../../lib/leadState.js';
 
 // ==========================================
 // IMPORTAR CLIENTES: quatro passos, só na sessão assumida do super console.
-// Spec: docs/superpowers/specs/2026-09-03-importacao-clientes-design.md
+// Specs: docs/superpowers/specs/2026-09-03-importacao-clientes-design.md e
+// docs/superpowers/specs/2026-09-24-modelo-planilha-importacao-design.md
 //
-// Arquivo → Mapeamento → Revisão (ensaio completo, sem gravar) → Importar.
-// Toda regra mora em src/lib/clientImport.js; aqui é só estado, handlers e
-// tela. Nada de useEffect: leitura do arquivo, consultas e gravação rodam nos
-// handlers dos botões, e o que é derivado sai de useMemo.
+// Arquivo (só o modelo do Stronilead) → Ajustes → Revisão (ensaio completo,
+// sem gravar) → Importar. Toda regra mora em src/lib/clientImport.js e em
+// src/lib/importTemplate.js; aqui é só estado, handlers e tela. Nada de
+// useEffect: leitura do arquivo, geração do modelo, consultas e gravação rodam
+// nos handlers dos botões, e o que é derivado sai de useMemo.
 // ==========================================
 
-const STEPS = ['Arquivo', 'Mapeamento', 'Revisão', 'Importar'];
+const STEPS = ['Arquivo', 'Ajustes', 'Revisão', 'Importar'];
 const NONE = '__none__';
 const AUTO = '__auto__';
 const UNDECIDED = '__undecided__';
@@ -126,10 +129,10 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
 
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
-  const [file, setFile] = useState(null);            // { name, headers, rows, preset }
+  const [file, setFile] = useState(null);            // { name, headers, rows }
   const [mapping, setMapping] = useState({});
-  const [planMap, setPlanMap] = useState({});        // { [nomeNormalizado]: planId | PLAN_AS_TEXT }
-  const [sourceId, setSourceId] = useState('manual');
+  const [planMap, setPlanMap] = useState({});        // { [nomeNormalizado]: planId }
+  const [generating, setGenerating] = useState(false);
   const [defaultConsultantId, setDefaultConsultantId] = useState('');
   const [scope, setScope] = useState(SCOPE.PADRAO);
   const [review, setReview] = useState(null);        // { base: [{ c, match }], now }
@@ -141,18 +144,14 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
   const defaultConsultant = consultants.find((u) => u.id === defaultConsultantId) || null;
   const windowDays = normalizeExpiredWindowDays(renewalGraceDays);
   const funnelId = getDefaultFunnel((funnels || []).filter((f) => !isSystemFunnel(f)))?.id || null;
-  // Origem escolhida no passo 2 (pré-preenchida pelo preset detectado). Vale
-  // para o carimbo importSource e para o texto da timeline: a rodada 2
-  // (relatório de contratos, sem preset) continua registrada como NextFit.
-  const sourcePreset = IMPORT_PRESETS.find((p) => p.id === sourceId) || null;
-  const sourceLabel = importSourceLabel(sourcePreset);
-
-  // Nomes de plano da planilha, para a tabela de mapeamento de planos. Lê só
-  // a coluna mapeada: não precisa do parse completo da linha.
-  const planNames = useMemo(
-    () => (file && mapping.planName ? distinctPlanNames(file.rows.map((r) => ({ planName: r[mapping.planName] }))) : []),
-    [file, mapping.planName]
-  );
+  // Nomes de plano da planilha que não batem com nenhum plano do catálogo, pela
+  // mesma chave de enrichCandidate. Quem escolheu da lista do modelo casa
+  // sozinho e não aparece aqui. Lê só a coluna do plano.
+  const planNames = useMemo(() => {
+    if (!file || !mapping.planName) return [];
+    const known = new Set((planos || []).map((p) => normalizeName(p.name)));
+    return distinctPlanNames(file.rows.map((r) => ({ planName: r[mapping.planName] }))).filter((p) => !known.has(p.key));
+  }, [file, mapping.planName, planos]);
 
   // Classificação reativa às decisões de suspeita (a revisão em si, com as
   // consultas, só roda no botão). `review.now` é o instante congelado do
@@ -180,7 +179,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
   const conflicts = results.filter((r) => r.cls.outcome === OUTCOME.CONFLITO);
   const invalids = results.filter((r) => r.cls.outcome === OUTCOME.INVALIDA);
 
-  // Mantém consultor padrão e escopo de propósito: a rodada 2 (contratos) usa os mesmos.
+  // Mantém consultor padrão e escopo de propósito: um segundo arquivo da mesma academia usa os mesmos.
   const resetAll = () => {
     if (report && !window.confirm('Descartar o relatório desta importação? Baixe o CSV antes, se precisar.')) return;
     setStep(1); setFile(null); setMapping({}); setPlanMap({}); setReview(null);
@@ -193,25 +192,38 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     setBusy(true);
     try {
       const { headers, rows } = await readSpreadsheetFile(f);
-      if (!headers.length || !rows.length) { toast.error('A planilha não tem cabeçalho ou não tem linhas.'); return; }
-      const preset = detectPreset(headers);
-      setFile({ name: f.name, headers, rows, preset });
-      setSourceId(preset?.id || 'manual');
-      setMapping(buildMapping(headers, preset));
+      const check = checkTemplateHeaders(headers);
+      if (!check.ok) { toast.error(check.message); return; }
+      if (!rows.length) { toast.error('O modelo chegou sem nenhum cliente na aba Clientes.'); return; }
+      setFile({ name: f.name, headers, rows });
+      setMapping(templateMapping(headers));
       setPlanMap({}); setReview(null); setDecisions({}); setReport(null);
       setStep(2);
-      toast.success(preset ? `${preset.label} detectado: ${rows.length} linhas.` : `${rows.length} linhas lidas. Confira o mapeamento.`);
+      toast.success(`Modelo do Stronilead: ${rows.length} ${rows.length === 1 ? 'linha' : 'linhas'}.`);
     } catch (err) {
       console.error('readSpreadsheetFile', err);
-      toast.error('Não consegui ler o arquivo. Use .xlsx ou .csv exportado do sistema.');
+      toast.error('Não consegui ler o arquivo. Suba o modelo do Stronilead, em .xlsx.');
     } finally {
       setBusy(false);
       e.target.value = '';
     }
   };
 
+  // O modelo sai com os planos, a equipe e os professores que a tela já tem.
+  const downloadTemplateNow = async () => {
+    setGenerating(true);
+    try {
+      const spec = buildTemplateSpec({ planos, users: consultants, professores, windowDays, tenantId: appUser?.tenantId, now: new Date() });
+      await downloadTemplate(spec);
+    } catch (err) {
+      console.error('downloadTemplate', err);
+      toast.error('Não deu para gerar o modelo. Tente de novo.');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   const runReview = async () => {
-    if (!mapping.name) { toast.warning('Mapeie ao menos a coluna do nome.'); return; }
     if (!defaultConsultant) { toast.warning('Escolha o consultor padrão.'); return; }
     if (!funnelId) { toast.warning('A academia não tem funil. Crie um em Funis & etapas.'); return; }
     setBusy(true);
@@ -254,8 +266,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     try {
       const importMeta = {
         importedBy: appUser?.authUid || appUser?.id || null,
-        importSource: sourceId,
-        sourceLabel,
+        importSource: IMPORT_SOURCE_ID,
         importBatchId: newBatchId(),
         now: review.now
       };
@@ -307,7 +318,6 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     URL.revokeObjectURL(url);
   };
 
-  const setMappingField = (field, header) => setMapping((m) => ({ ...m, [field]: header === NONE ? null : header }));
   const setPlanMapKey = (key, value) => setPlanMap((m) => {
     const next = { ...m };
     if (value === AUTO) delete next[key];
@@ -321,13 +331,11 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     return next;
   });
 
-  const groupedFields = ['pessoa', 'endereco', 'contrato'].map((g) => ({ id: g, label: TARGET_GROUP_LABEL[g], fields: TARGET_FIELDS.filter((f) => f.group === g) }));
-
   return (
     <div className="flex flex-col gap-5">
       <SettingsSectionHeader
         title="Importar clientes"
-        hint="Traga os alunos ativos de outro sistema de gestão. Quem já existe é promovido, não duplicado."
+        hint="Traga os alunos ativos da academia pelo modelo de planilha do Stronilead. Quem já existe é promovido, não duplicado."
       >
         {step > 1 && !busy && <SettingsBtn kind="soft" onClick={resetAll}>Recomeçar</SettingsBtn>}
       </SettingsSectionHeader>
@@ -335,7 +343,22 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
       <Stepper step={step} />
 
       {step === 1 && (
-        <SettingsPanel icon={<FileSpreadsheet size={16} />} iconTone="brand" title="1. Arquivo" hint="Exportação de clientes ou de contratos, em .xlsx ou .csv.">
+        <SettingsPanel icon={<FileSpreadsheet size={16} />} iconTone="brand" title="1. Arquivo" hint="O modelo do Stronilead preenchido pela academia.">
+          <div className="px-5 pb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="text-[12.5px] text-muted-foreground min-w-0 flex-1">
+              {(planos || []).length
+                ? 'Baixe o modelo, mande para a academia e importe aqui quando ele voltar preenchido.'
+                : 'Cadastre os planos da academia antes de baixar o modelo.'}
+            </div>
+            <SettingsBtn
+              kind="secondary"
+              disabled={generating || !(planos || []).length}
+              onClick={downloadTemplateNow}
+              icon={generating ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+            >
+              {generating ? 'Gerando...' : 'Baixar modelo'}
+            </SettingsBtn>
+          </div>
           <div className="px-5 pb-5">
             <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
             <button
@@ -346,46 +369,22 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
             >
               {busy ? <Loader2 size={22} className="mx-auto animate-spin text-brand-600" /> : <Upload size={22} className="mx-auto text-brand-600" />}
               <div className="mt-2 text-[13.5px] font-semibold">{busy ? 'Lendo a planilha…' : 'Escolher arquivo'}</div>
-              <div className="text-[12px] text-muted-foreground mt-1">NextFit é reconhecido sozinho. Outros sistemas passam pelo mapeamento manual.</div>
+              <div className="text-[12px] text-muted-foreground mt-1">Só o modelo do Stronilead é aceito.</div>
             </button>
           </div>
-          <PanelNote>A vigência (início, fim e valor) costuma vir no relatório de contratos, separado do cadastro. Suba os dois, um de cada vez: o segundo casa por CPF e só pendura o contrato.</PanelNote>
+          <PanelNote>O modelo sai com os planos, a equipe e os professores desta academia. Cadastre o que faltar antes de baixar, senão a lista suspensa sai incompleta.</PanelNote>
         </SettingsPanel>
       )}
 
       {step === 2 && file && (
         <>
-          <SettingsPanel icon={<FileSpreadsheet size={16} />} iconTone="brand" title="2. Mapeamento" hint={`${file.name} · ${file.rows.length} linhas · ${file.preset ? `preset ${file.preset.label}` : 'sem preset, mapeamento manual'}`}>
-            <div className="px-5 pb-4 flex flex-col gap-4">
-              {groupedFields.map((g) => (
-                <div key={g.id}>
-                  <div className="text-[10.5px] font-bold uppercase tracking-[0.07em] text-muted-foreground mb-2">{g.label}</div>
-                  <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                    {g.fields.map((f) => (
-                      <label key={f.id} className="flex flex-col gap-1 min-w-0">
-                        <span className={cn('text-[11.5px] font-semibold truncate', f.required && !mapping[f.id] && 'text-rose-600')}>
-                          {f.label}{f.required ? ' *' : ''}
-                        </span>
-                        <Select value={mapping[f.id] || NONE} onValueChange={(v) => setMappingField(f.id, v)}>
-                          <SelectTrigger className="w-full"><SelectValue placeholder="Sem coluna" /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value={NONE}>Sem coluna</SelectItem>
-                            {file.headers.map((h) => <SelectItem key={h} value={h}>{h}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </SettingsPanel>
-
-          <SettingsPanel title="Planos da planilha" hint="Casa cada nome com um plano do catálogo. Sem correspondência, o nome fica como texto e o contrato nasce sem plano.">
+          <SettingsPanel icon={<FileSpreadsheet size={16} />} iconTone="brand" title="2. Ajustes" hint={`${file.name} · ${file.rows.length} ${file.rows.length === 1 ? 'linha' : 'linhas'}`}>
+            <div className="px-5 pb-2 text-[11.5px] font-semibold">Planos fora do catálogo</div>
             {planNames.length === 0
-              ? <EmptyState>Nenhuma coluna de plano mapeada, ou a planilha não traz plano.</EmptyState>
+              ? <div className="px-5 pb-5 text-[12.5px] text-muted-foreground">Todos os planos da planilha estão no catálogo.</div>
               : (
                 <div className="px-5 pb-4 flex flex-col gap-2">
+                  <div className="text-[11.5px] text-muted-foreground">Nomes que a academia digitou fora da lista. Escolha o plano certo ou deixe como texto, e o contrato nasce sem plano.</div>
                   {planNames.map((p) => (
                     <div key={p.key} className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
                       <div className="min-w-0"><div className="text-[13px] font-semibold truncate">{p.label}</div><div className="text-[11px] text-muted-foreground num">{p.count} {p.count === 1 ? 'linha' : 'linhas'}</div></div>
@@ -393,8 +392,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
                       <Select value={planMap[p.key] || AUTO} onValueChange={(v) => setPlanMapKey(p.key, v)}>
                         <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value={AUTO}>Automático (mesmo nome)</SelectItem>
-                          <SelectItem value={PLAN_AS_TEXT}>Manter como texto</SelectItem>
+                          <SelectItem value={AUTO}>Manter como texto</SelectItem>
                           {(planos || []).map((pl) => <SelectItem key={pl.id} value={pl.id}>{pl.name} · {pl.durationMonths} {Number(pl.durationMonths) === 1 ? 'mês' : 'meses'}</SelectItem>)}
                         </SelectContent>
                       </Select>
@@ -404,19 +402,8 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
               )}
           </SettingsPanel>
 
-          <SettingsPanel title="Origem, consultor padrão e escopo">
-            <div className="px-5 pb-5 grid gap-4 sm:grid-cols-3">
-              <label className="flex flex-col gap-1">
-                <span className="text-[11.5px] font-semibold">Sistema de origem</span>
-                <Select value={sourceId} onValueChange={setSourceId}>
-                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {IMPORT_PRESETS.map((p) => <SelectItem key={p.id} value={p.id}>{p.label}</SelectItem>)}
-                    <SelectItem value="manual">Outro (planilha)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <span className="text-[11px] text-muted-foreground">Fica no carimbo de cada cadastro e na linha do tempo.</span>
-              </label>
+          <SettingsPanel title="Consultor padrão e escopo">
+            <div className="px-5 pb-5 grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-1">
                 <span className="text-[11.5px] font-semibold">Consultor padrão *</span>
                 <Select value={defaultConsultantId || NONE} onValueChange={(v) => setDefaultConsultantId(v === NONE ? '' : v)}>
@@ -426,7 +413,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
                     {consultants.map((u) => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <span className="text-[11px] text-muted-foreground">Recebe as linhas cujo consultor não bate com ninguém da equipe.</span>
+                <span className="text-[11px] text-muted-foreground">Recebe as linhas sem consultor ou com consultor que não bate com ninguém da equipe.</span>
               </label>
               <label className="flex flex-col gap-1">
                 <span className="text-[11.5px] font-semibold">O que entra</span>
@@ -441,7 +428,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
               </label>
             </div>
             <div className="px-5 pb-5 flex justify-end">
-              <SettingsBtn kind="primary" disabled={busy || !mapping.name || !defaultConsultant} onClick={runReview} icon={busy ? <Loader2 size={14} className="animate-spin" /> : null}>
+              <SettingsBtn kind="primary" disabled={busy || !defaultConsultant} onClick={runReview} icon={busy ? <Loader2 size={14} className="animate-spin" /> : null}>
                 {busy ? 'Consultando a base…' : 'Revisar antes de gravar'}
               </SettingsBtn>
             </div>
@@ -462,7 +449,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
                 {summary.planosForaDoCatalogo.length > 0 && <div className="text-muted-foreground">{summary.planosForaDoCatalogo.length} plano(s) fora do catálogo: {summary.planosForaDoCatalogo.join(', ')}.</div>}
                 {summary.consultoresNaoReconhecidos.length > 0 && <div className="text-muted-foreground">Consultor não reconhecido (vai para {defaultConsultant?.name}): {summary.consultoresNaoReconhecidos.join(', ')}.</div>}
                 {summary.professoresNaoReconhecidos.length > 0 && <div className="text-muted-foreground">Professor não reconhecido (fica vazio): {summary.professoresNaoReconhecidos.join(', ')}.</div>}
-                {summary.avisos > 0 && <div className="text-muted-foreground">{summary.avisos} linha(s) com aviso (CPF inválido, data ilegível, sem data histórica). Aparecem no relatório.</div>}
+                {summary.avisos > 0 && <div className="text-muted-foreground">{summary.avisos} linha(s) com aviso (CPF inválido, data ilegível, fim antes do início, sem data de início, sem data histórica). Aparecem no relatório.</div>}
               </div>
             )}
           </SettingsPanel>
@@ -514,7 +501,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
           )}
 
           <div className="flex items-center justify-between gap-3">
-            <SettingsBtn kind="soft" disabled={busy} onClick={() => { setReview(null); setDecisions({}); setStep(2); }}>Voltar ao mapeamento</SettingsBtn>
+            <SettingsBtn kind="soft" disabled={busy} onClick={() => { setReview(null); setDecisions({}); setStep(2); }}>Voltar aos ajustes</SettingsBtn>
             <SettingsBtn kind="primary" disabled={busy || summary.gravaveis === 0 || summary.suspeita > 0} onClick={runImportNow}>
               Importar {summary.gravaveis} cadastro(s)
             </SettingsBtn>
