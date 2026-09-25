@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildLeadSearchFields, buildGuardianSearchFields, buildGuardianPatch } from '../leadDerived.js';
+import { buildLeadSearchFields, buildGuardianSearchFields, buildGuardianPatch, sameContactPhone } from '../leadDerived.js';
 
 describe('buildLeadSearchFields — zapMatchKey', () => {
   it('inclui zapMatchKey (DDD + últimos 8 dígitos) quando há whatsapp', () => {
@@ -25,6 +25,26 @@ describe('buildGuardianSearchFields', () => {
     const vazio = { guardianPhoneDigits: null, guardianPhoneDigitsRev: null, guardianZapMatchKey: null };
     expect(buildGuardianSearchFields(null)).toEqual(vazio);
     expect(buildGuardianSearchFields({ name: 'Maria', phone: '' })).toEqual(vazio);
+  });
+});
+
+describe('sameContactPhone', () => {
+  it('mesmo número formatado diferente -> true', () => {
+    expect(sameContactPhone('(51) 9 9530-4633', '51995304633')).toBe(true);
+  });
+
+  it('com e sem o nono dígito -> true', () => {
+    expect(sameContactPhone('(11) 9 1234-5678', '(11) 1234-5678')).toBe(true);
+  });
+
+  it('números diferentes -> false', () => {
+    expect(sameContactPhone('(11) 9 1234-5678', '(11) 9 8765-4321')).toBe(false);
+  });
+
+  it('vazio ou curto -> false', () => {
+    expect(sameContactPhone('', '11912345678')).toBe(false);
+    expect(sameContactPhone('123', '11912345678')).toBe(false);
+    expect(sameContactPhone('11912345678', '')).toBe(false);
   });
 });
 

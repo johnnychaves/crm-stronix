@@ -264,4 +264,9 @@ describe('responsável do menor na edição', () => {
     const f = { ...readClientRegistration(menor({ birthDate: new Date(2008, 2, 12) }), HOJE), isMinor: true };
     expect(registrationGuardianIssue(f, HOJE)).toBe('Pela data, já tem 18 anos. Confira a data ou desligue a chave.');
   });
+
+  it('validação: WhatsApp do aluno igual ao do responsável não passa', () => {
+    const f = { ...readClientRegistration(menor(), HOJE), whatsapp: '(11) 9 1234-5678' };
+    expect(registrationGuardianIssue(f, HOJE)).toBe('Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.');
+  });
 });

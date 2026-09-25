@@ -37,6 +37,10 @@ export const buildLeadSearchFields = ({ name, whatsapp, cpf } = {}) => {
   };
 };
 
+// Mesmo telefone para o casamento do Stronizap (DDD + 8 últimos dígitos),
+// então pega o número com e sem o nono dígito.
+export const sameContactPhone = (a, b) => { const ka = zapMatchKey(a); return Boolean(ka) && ka === zapMatchKey(b); };
+
 // Campos derivados do telefone do RESPONSÁVEL do lead menor de idade. Ficam
 // fora de buildLeadSearchFields de propósito: ela é chamada em vários pontos
 // só com nome, WhatsApp e CPF, e toda escrita que não repassasse o

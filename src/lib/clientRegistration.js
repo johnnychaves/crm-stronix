@@ -2,7 +2,7 @@
 // e calcula o medidor de completude. Mantém o ClientRegistrationModal fino e
 // testável (padrão do repo: regra em lib + teste).
 import { fromDateInputValue, toDateInputValue } from './dates.js';
-import { buildLeadSearchFields, buildGuardianPatch } from './leadDerived.js';
+import { buildLeadSearchFields, buildGuardianPatch, sameContactPhone } from './leadDerived.js';
 import { formatCPF, formatPhone } from './masks.js';
 import { professorNameById } from './professores.js';
 import { adultSince, guardianIssue, hasPhone, isMinorNow, turnedAdult } from './guardian.js';
@@ -127,6 +127,9 @@ export function registrationGuardianIssue(form, now = new Date()) {
     now,
   });
   if (issue) return issue;
+  if (form.isMinor && sameContactPhone(form.whatsapp, form.guardianPhone)) {
+    return 'Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.';
+  }
   if (form.minorAtOpen && !form.isMinor && !hasPhone(form.whatsapp)) {
     return 'Para desligar Menor de idade, informe o WhatsApp do lead.';
   }
