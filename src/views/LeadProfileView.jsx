@@ -1355,7 +1355,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   </span>
                   {hasPhone(lead.whatsapp) && (
                     <span className="flex items-center gap-1.5 min-w-0 text-[11.5px] font-medium text-muted-foreground">
-                      <span className="num truncate">Aluno · {lead.whatsapp}</span>
+                      <span className="num whitespace-nowrap">Aluno · {lead.whatsapp}</span>
                       <button
                         type="button"
                         onClick={() => copyPhone(lead.whatsapp)}
