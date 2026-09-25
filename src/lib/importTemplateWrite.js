@@ -22,7 +22,9 @@ export async function buildTemplateBuffer(spec) {
   const wb = new ExcelJS.Workbook();
   wb.creator = 'Stronilead';
 
-  // A ordem das abas importa: a importação lê a primeira.
+  // A importação acha a aba Clientes pelo nome (spreadsheetRead.js), mas o
+  // modelo sai com ela na frente mesmo assim: é a primeira coisa que a
+  // academia vê ao abrir o arquivo.
   const ws = wb.addWorksheet(spec.sheets.CLIENTES, { views: [{ state: 'frozen', ySplit: 1 }] });
   const help = wb.addWorksheet(spec.sheets.AJUDA);
   const lists = wb.addWorksheet(spec.sheets.LISTAS, { state: 'hidden' });

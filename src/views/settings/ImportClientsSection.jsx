@@ -7,7 +7,7 @@ import { useToast } from '../../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { cn } from '../../lib/utils.js';
 import { readSpreadsheetFile } from '../../lib/spreadsheetRead.js';
-import { checkTemplateHeaders, templateMapping, buildTemplateSpec } from '../../lib/importTemplate.js';
+import { checkTemplateHeaders, templateMapping, buildTemplateSpec, TEMPLATE_SHEETS } from '../../lib/importTemplate.js';
 import { downloadTemplate } from '../../lib/importTemplateWrite.js';
 import {
   parseRow, dedupeInFile, enrichCandidate, unmatchedPlanNames, livePlanMap, resolveMatch, classifyCandidate,
@@ -195,7 +195,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
     if (!f) return;
     setBusy(true);
     try {
-      const { headers, rows } = await readSpreadsheetFile(f);
+      const { headers, rows } = await readSpreadsheetFile(f, { sheet: TEMPLATE_SHEETS.CLIENTES });
       const check = checkTemplateHeaders(headers);
       if (!check.ok) { toast.error(check.message); return; }
       if (!rows.length) { toast.error('O modelo chegou sem nenhum cliente na aba Clientes.'); return; }

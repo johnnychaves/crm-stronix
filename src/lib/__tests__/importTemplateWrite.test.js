@@ -131,3 +131,26 @@ describe('buildTemplateBuffer', () => {
     expect(c.address.cep).toBe('04567000');
   });
 });
+
+describe('leitura da aba Clientes por nome', () => {
+  it('acha "Clientes" mesmo quando a academia reordenou as abas; sem a opção, lê a primeira', async () => {
+    // Workbook à mão com "Como preencher" na frente e "Clientes" depois, para
+    // não depender de reordenar o buffer do modelo (ExcelJS não expõe um jeito
+    // direto de mover aba já criada).
+    const wb = new ExcelJS.Workbook();
+    wb.addWorksheet('Como preencher').getCell('A1').value = 'Texto de ajuda';
+    const clientes = wb.addWorksheet('Clientes');
+    SPEC.columns.map((c) => c.label).forEach((label, i) => { clientes.getCell(1, i + 1).value = label; });
+    clientes.getCell('A2').value = 'Ana Teste';
+    clientes.getCell('B2').value = '01234567890';
+
+    const file = asFile(await wb.xlsx.writeBuffer());
+
+    const byName = await readSpreadsheetFile(file, { sheet: 'Clientes' });
+    expect(byName.sheetName).toBe('Clientes');
+    expect(checkTemplateHeaders(byName.headers).ok).toBe(true);
+
+    const noOption = await readSpreadsheetFile(file);
+    expect(noOption.sheetName).toBe('Como preencher');
+  });
+});
