@@ -47,11 +47,17 @@ function HighlightedName({ name, range }) {
 export function SearchResultRow({ row, active, onHover, onNavigate }) {
   const lead = row.lead;
   const contato = contactOf(lead);
+  // Achou pelo telefone: mostra o número do PRÓPRIO lead, mesmo sendo menor
+  // com responsável, porque foi esse número que casou com a busca. "resp.: …"
+  // só entra quando o que casou não foi o telefone do aluno (nome, CPF, ou o
+  // telefone do responsável, matchKind 'guardian').
   const sub = row.matchKind === 'cpf'
     ? `CPF ${fmtCpf(lead.cpf)}`
-    : contato.viaGuardian
-      ? `resp.: ${contactLabel(contato)}`
-      : (fmtPhone(lead.whatsapp) || row.state.hint);
+    : row.matchKind === 'phone'
+      ? (fmtPhone(lead.whatsapp) || row.state.hint)
+      : contato.viaGuardian
+        ? `resp.: ${contactLabel(contato)}`
+        : (fmtPhone(lead.whatsapp) || row.state.hint);
   return (
     <li
       role="option"

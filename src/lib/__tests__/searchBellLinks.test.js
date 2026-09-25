@@ -43,6 +43,18 @@ function linhaDaBusca() {
   return { lead: LEAD, matchKind: 'phone', matchRange: null, state, tone: getTone(state.tone), splitHex: null };
 }
 
+// Menor com responsável: o próprio WhatsApp existe, mas quem o consultor chama
+// é a mãe (contactOf().viaGuardian).
+const MENOR = {
+  id: 'kid1', name: 'Pedro Souza', whatsapp: '11999990000', status: 'Novo', createdAt: new Date('2026-09-20'),
+  isMinor: true, guardian: { name: 'Maria Souza', phone: '11912345678', relationship: 'Mãe' },
+};
+
+function linhaDoMenor(matchKind) {
+  const state = deriveLeadState(MENOR, new Date(), 30);
+  return { lead: MENOR, matchKind, matchRange: null, state, tone: getTone(state.tone), splitHex: null };
+}
+
 function render(element) {
   return renderToString(
     createElement(MemoryRouter, { initialEntries: ['/acad/pipeline'] },
@@ -96,6 +108,21 @@ describe('busca global', () => {
     ultimoLink().onClick(click({ ctrlKey: true }));
     ultimoLink().onClick(click({ button: 1 }));
     expect(onNavigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('achou o menor pelo telefone: mostra o número do próprio menor, não o do responsável', () => {
+    const html = render(createElement(SearchResultRow, {
+      row: linhaDoMenor('phone'), active: false, onHover: () => {}, onNavigate: () => {},
+    }));
+    expect(html).toContain('(11) 9 9999-0000');
+    expect(html).not.toContain('resp.:');
+  });
+
+  it('achou o menor pelo nome: mostra o contato do responsável', () => {
+    const html = render(createElement(SearchResultRow, {
+      row: linhaDoMenor('name'), active: false, onHover: () => {}, onNavigate: () => {},
+    }));
+    expect(html).toContain('resp.: Maria Souza (mãe)');
   });
 });
 
