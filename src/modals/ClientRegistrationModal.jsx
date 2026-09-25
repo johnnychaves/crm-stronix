@@ -1,14 +1,17 @@
 import { useMemo, useState } from 'react';
 import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
-import { User, MapPin, Phone, Briefcase, Users, Calendar, IdCard, Mail, Check, Pencil } from 'lucide-react';
+import { User, MapPin, Phone, Briefcase, Users, Calendar, IdCard, Mail, Check, Pencil, Baby } from 'lucide-react';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { isClientLead } from '../lib/leads.js';
 import { lookupCep, isCepComplete, isValidCpf, isCpfComplete } from '../lib/brazilLookups.js';
 import { formatCPF, formatPhone } from '../lib/masks.js';
 import {
   MARITAL_STATUS_OPTIONS, readClientRegistration, buildClientRegistrationPatch, computeCompleteness,
-  ownerChangeFor, ownerChangeNote,
+  ownerChangeFor, ownerChangeNote, registrationGuardianIssue,
 } from '../lib/clientRegistration.js';
+import { GUARDIAN_RELATIONSHIPS } from '../lib/guardian.js';
+import { phoneNoticeLines } from '../lib/phoneNotice.js';
+import { useGuardianMatches } from '../hooks/useGuardianMatches.js';
 import { logInteraction } from '../lib/interactions.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -18,6 +21,7 @@ import { Avatar } from '../components/ui/Avatar.jsx';
 import { Field, StyledInput, StyledSelect } from '../components/ui/Field.jsx';
 import { TagsInput } from '../components/ui/TagsInput.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
+import { Switch } from '../components/ui/switch.jsx';
 
 const SOURCES = ['Instagram', 'Indicação', 'Site', 'WhatsApp', 'Facebook', 'Google', 'Passou na porta', 'Outro'];
 
@@ -54,6 +58,13 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
   const cpfInvalid = isCpfComplete(form.cpf) && !isValidCpf(form.cpf);
   const tagSuggestions = (tags || []).map((t) => t.name);
 
+  const guardianDigits = String(form.guardianPhone || '').replace(/\D/g, '');
+  const guardianMatches = useGuardianMatches({ db, phoneDigits: form.isMinor ? guardianDigits : '', excludeId: lead.id });
+  const guardianNotice = phoneNoticeLines({ field: 'guardian', ...guardianMatches });
+  const adultNote = form.adultSince
+    ? `Fez 18 anos em ${form.adultSince.split('-').reverse().join('/')}.`
+    : null;
+
   const onCepBlur = async () => {
     if (!isCepComplete(form.cep)) return;
     setCepBusy(true);
@@ -65,6 +76,8 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
 
   const handleSave = async () => {
     if (!form.name.trim()) { toast.warning('Informe o nome.'); return; }
+    const guardianError = registrationGuardianIssue(form);
+    if (guardianError) { setTab('identidade'); toast.warning(guardianError); return; }
     setLoading(true);
     try {
       const patch = buildClientRegistrationPatch(form, { usersList, professores });
@@ -148,7 +161,31 @@ function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, 
           {tab === 'identidade' && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2"><Field label="Nome completo" required><StyledInput icon={<User size={15} />} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nome e sobrenome" /></Field></div>
-              <Field label="WhatsApp" required><StyledInput icon={<Phone size={15} />} inputMode="numeric" value={form.whatsapp} onChange={(e) => set('whatsapp', formatPhone(e.target.value))} placeholder="(51) 9 0000-0000" /></Field>
+              <Field label={form.isMinor ? 'WhatsApp do aluno' : 'WhatsApp'} required={!form.isMinor}><StyledInput icon={<Phone size={15} />} inputMode="numeric" value={form.whatsapp} onChange={(e) => set('whatsapp', formatPhone(e.target.value))} placeholder="(51) 9 0000-0000" /></Field>
+              <div className="sm:col-span-2 flex flex-col gap-3 rounded-xl border border-border p-3">
+                <label className="flex items-center justify-between gap-3 cursor-pointer">
+                  <span className="flex items-center gap-2.5 min-w-0">
+                    <span className="size-8 rounded-lg grid place-items-center shrink-0 bg-brand-50 text-brand-600 dark:bg-brand-500/12 dark:text-brand-300"><Baby size={16} /></span>
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-semibold text-foreground leading-tight">Menor de idade</span>
+                      <span className="block text-[11.5px] text-muted-foreground">{adultNote || 'O contato passa a ser o responsável'}</span>
+                    </span>
+                  </span>
+                  <Switch checked={form.isMinor} onCheckedChange={(on) => set('isMinor', on)} />
+                </label>
+                {form.isMinor && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2"><Field label="Nome do responsável" required><StyledInput icon={<Users size={15} />} value={form.guardianName} onChange={(e) => set('guardianName', e.target.value)} placeholder="Nome de quem responde pelo aluno" /></Field></div>
+                    <Field label="Telefone do responsável" required><StyledInput icon={<Phone size={15} />} inputMode="numeric" value={form.guardianPhone} onChange={(e) => set('guardianPhone', formatPhone(e.target.value))} placeholder="(51) 9 0000-0000" /></Field>
+                    <Field label="Parentesco"><StyledSelect value={form.guardianRelation} onChange={(e) => set('guardianRelation', e.target.value)}><option value="">Selecione…</option>{GUARDIAN_RELATIONSHIPS.map((r) => <option key={r}>{r}</option>)}</StyledSelect></Field>
+                    {guardianNotice.length > 0 && (
+                      <div className="sm:col-span-2 flex flex-col gap-0.5 text-[11.5px] text-muted-foreground">
+                        {guardianNotice.map((linha) => <span key={linha}>{linha}</span>)}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               <Field label="CPF" error={cpfInvalid ? 'CPF inválido' : undefined}><StyledInput icon={<IdCard size={15} />} inputMode="numeric" value={form.cpf} onChange={(e) => set('cpf', formatCPF(e.target.value))} placeholder="000.000.000-00" /></Field>
               <Field label="RG"><StyledInput value={form.rg} onChange={(e) => set('rg', e.target.value)} placeholder="Documento de identidade" /></Field>
               <Field label="Data de nascimento"><StyledInput type="date" icon={<Calendar size={15} />} value={form.birthDate} onChange={(e) => set('birthDate', e.target.value)} /></Field>
