@@ -11,9 +11,15 @@ export const formatCPF = (v) => {
   return d;
 };
 
-// Telefone: (51) 9 0000-0000 (máx. 11 dígitos).
+// Telefone: (51) 9 0000-0000 (máx. 11 dígitos). Número colado com +55 na
+// frente (ex.: "+55 51 99530-4633") tem mais de 11 dígitos — sem tirar o 55,
+// o corte em 11 cortava o final do número de verdade. Só tira quando sobra
+// mais que 11: com exatamente 11, "55" na frente é o DDD de Santa Maria, não
+// o país (mesma regra de api/_zapPhone.js).
 export const formatPhone = (v) => {
-  const d = String(v || '').replace(/\D/g, '').slice(0, 11);
+  let d = String(v || '').replace(/\D/g, '');
+  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+  d = d.slice(0, 11);
   if (d.length <= 2) return d.length ? `(${d}` : '';
   if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3, 7)}-${d.slice(7)}`;

@@ -19,4 +19,11 @@ describe('formatPhone', () => {
     expect(formatPhone('51995304633')).toBe('(51) 9 9530-4633');
     expect(formatPhone('')).toBe('');
   });
+
+  it('tira o 55 de DDI colado (mais de 11 dígitos), sem mexer no DDD 55', () => {
+    expect(formatPhone('+55 51 99530-4633')).toBe('(51) 9 9530-4633');
+    expect(formatPhone('5551995304633')).toBe('(51) 9 9530-4633');
+    expect(formatPhone('51995304633')).toBe('(51) 9 9530-4633');
+    expect(formatPhone('5133224455')).toBe('(51) 3 3224-455');
+  });
 });

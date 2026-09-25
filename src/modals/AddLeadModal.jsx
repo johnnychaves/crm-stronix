@@ -43,7 +43,12 @@ import { getTone, phaseToneName } from '../lib/leadState.js';
 const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
 // (51) 9 9530-4633
 const fmtPhone = (raw) => {
-  const d = onlyDigits(raw).slice(0, 11);
+  let d = onlyDigits(raw);
+  // Número colado com +55 na frente tem mais de 11 dígitos — sem tirar o 55,
+  // o corte em 11 cortava o final do número de verdade. Com exatamente 11,
+  // "55" na frente é o DDD de Santa Maria, não o país.
+  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+  d = d.slice(0, 11);
   if (d.length <= 2) return d;
   if (d.length <= 3) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3)}`;
@@ -449,9 +454,6 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const filled = [nameOk, contactOk, !!form.source, !!form.status, dorOk].filter(Boolean).length
     + ((form.tags.length || form.observation.trim()) ? 1 : 0);
   const pct = Math.round((filled / 6) * 100);
-  // A data de nascimento mora em "Detalhes"; se ficasse fechado, o aviso de
-  // maioridade não teria como ser corrigido. Sem effect: é derivado no render.
-  const detailsOpen = more || adultByDate;
 
   const reset = () => {
     setForm(blankForm());
@@ -672,7 +674,12 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                             <span className="block text-[11.5px] text-muted-foreground">O contato passa a ser o responsável</span>
                           </span>
                         </span>
-                        <Switch checked={form.isMinor} onCheckedChange={(on) => set({ isMinor: on })} />
+                        <Switch checked={form.isMinor} onCheckedChange={(on) => {
+                          set({ isMinor: on });
+                          // Data já mostra 18+: abre "Detalhes" para o nascimento
+                          // aparecer, sem depender de effect nem de forçar o render.
+                          if (on && turnedAdult({ isMinor: true, birthDate: fromDateInputValue(form.birthDate) })) setMore(true);
+                        }} />
                       </label>
                       {form.isMinor && (
                         <>
@@ -686,7 +693,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                               placeholder="(51) 9 0000-0000"
                               className={guardianTooShort ? '!border-amber-400' : ''} />
                             {guardianTooShort && (
-                              <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto — inclua DDD + 9 dígitos.</div>
+                              <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto. Inclua DDD + 9 dígitos.</div>
                             )}
                           </div>
                           <div>
@@ -724,7 +731,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                             <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.</span>
                           </div>
                         ) : phoneTooShort ? (
-                          <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto — inclua DDD + 9 dígitos.</div>
+                          <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto. Inclua DDD + 9 dígitos.</div>
                         ) : ownNotice.length > 0 ? (
                           <div className="mt-1.5 text-[11.5px] text-muted-foreground">{ownNotice[0]}</div>
                         ) : phoneDigits.length >= 10 && !ownMatches.pending && !dupLoading ? (
@@ -825,14 +832,18 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                         <TagToggles tags={tags} selected={form.tags} onToggle={toggleTag} />
                       </div>
 
-                      <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={detailsOpen} className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 dark:text-brand-300 hover:underline">
-                        <ChevronDown size={14} className={cn('transition', detailsOpen && 'rotate-180')} /> {detailsOpen ? 'Ocultar dados adicionais' : 'Adicionar nascimento, CPF, sexo e e-mail'}
+                      <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more} className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 dark:text-brand-300 hover:underline">
+                        <ChevronDown size={14} className={cn('transition', more && 'rotate-180')} /> {more ? 'Ocultar dados adicionais' : 'Adicionar nascimento, CPF, sexo e e-mail'}
                       </button>
-                      {detailsOpen && (
+                      {more && (
                         <div className="grid sm:grid-cols-2 gap-3.5 fade-in">
                           <div>
                             <Label hint="opcional">Nascimento</Label>
-                            <IconInput type="date" icon={<Calendar size={15} />} value={form.birthDate} onChange={(e) => set({ birthDate: e.target.value })} />
+                            <IconInput type="date" icon={<Calendar size={15} />} value={form.birthDate} onChange={(e) => {
+                              const v = e.target.value;
+                              set({ birthDate: v });
+                              if (form.isMinor && turnedAdult({ isMinor: true, birthDate: fromDateInputValue(v) })) setMore(true);
+                            }} />
                           </div>
                           <div>
                             <Label hint="opcional">CPF</Label>
