@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { auth } from '../../lib/firebase.js';
-import { passwordTooShort, passwordTooShortError } from '../../lib/passwordPolicy.js';
+import { passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
 import { Check, AlertTriangle, User, Lock, EyeOff, Eye, ArrowRight } from 'lucide-react';
 import { SurgeMark, StronileadWordmark } from '../../components/brand/SurgeMark.jsx';
 
@@ -23,7 +23,8 @@ function AcceptInviteScreen({ token, tenantId }) {
     if (loading) return;
     setError('');
     if (!name.trim()) { setError('Informe seu nome.'); return; }
-    if (passwordTooShort(password)) { setError(passwordTooShortError()); return; }
+    const passwordProblem = passwordPolicyError(password);
+    if (passwordProblem) { setError(passwordProblem); return; }
     setLoading(true);
     try {
       const res = await fetch('/api/invite-accept', {
@@ -93,13 +94,14 @@ function AcceptInviteScreen({ token, tenantId }) {
                 <span className="text-[12.5px] font-semibold text-gray-700 dark:text-neutral-300">Senha</span>
                 <div className={fieldWrap}>
                   <span className="pl-3.5 text-gray-400 dark:text-neutral-500"><Lock className="w-[17px] h-[17px]" /></span>
-                  <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="mín. 6 caracteres" className={inputClass} required />
+                  <input type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="Crie sua senha" className={inputClass} required />
                   <span className="pr-2">
                     <button type="button" onClick={() => setShowPass(s => !s)} className="w-9 h-9 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-neutral-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition">
                       {showPass ? <EyeOff className="w-[17px] h-[17px]" /> : <Eye className="w-[17px] h-[17px]" />}
                     </button>
                   </span>
                 </div>
+                <span className="mt-1.5 block text-[12px] text-gray-500 dark:text-neutral-400">{PASSWORD_RULE_TEXT}</span>
               </label>
               <button type="submit" disabled={loading} className="w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold inline-flex items-center justify-center gap-2 transition active:scale-[.99] disabled:opacity-90">
                 {loading ? (<><span className="w-4 h-4 rounded-full border-2 border-white/40 border-t-white spin"></span> Criando…</>) : (<>Aceitar convite <ArrowRight className="w-4 h-4" /></>)}

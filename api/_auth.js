@@ -1,5 +1,6 @@
 import { adminDb, adminAuth } from './_firebaseAdmin.js';
 import { targetVerdict, targetVerdictError, TARGET_NO_ACCOUNT } from '../src/lib/tenantGuard.js';
+import { passwordRejectedByFirebase, PASSWORD_REJECTED_ERROR } from '../src/lib/passwordPolicy.js';
 
 // Helpers de autorização/coleções compartilhados pelos endpoints admin.
 // Centraliza a lógica de "é admin do tenant?" para não divergir entre arquivos
@@ -15,7 +16,18 @@ export const usersCollection = (tenantId) => dataCollection(tenantId, USERS_PATH
 // Regra de senha: mora em src/lib/passwordPolicy.js e é repassada aqui para os
 // endpoints não precisarem saber que o arquivo vive do outro lado. O front
 // importa do mesmo lugar, então os dois nunca divergem.
-export { MIN_PASSWORD_LENGTH, passwordTooShort, passwordTooShortError } from '../src/lib/passwordPolicy.js';
+export { passwordPolicyError } from '../src/lib/passwordPolicy.js';
+
+// Recusa da política de senha pelo Firebase no createUser/updateUser, pronta
+// para responder: null quando o erro é outro, ou { status, error }. Sem isso a
+// recusa virava "Erro interno", porque o SDK a entrega como auth/internal-error.
+// Só acontece se a política do console ficar mais dura que a regra do app, e o
+// log diz o que alinhar. A mensagem do Firebase lista as exigências, não a senha.
+export function passwordRejection(err, where) {
+  if (!passwordRejectedByFirebase(err)) return null;
+  console.error(`${where}: o Firebase recusou uma senha que passou em src/lib/passwordPolicy.js. Alinhe o arquivo com a política do console.`, err?.message);
+  return { status: 400, error: PASSWORD_REJECTED_ERROR };
+}
 
 // A regra pura de "este alvo é do meu tenant?" mora em src/lib/tenantGuard.js,
 // e é reexportada aqui pelo mesmo motivo da política de senha: os endpoints não
