@@ -16,7 +16,7 @@ import handler from '../zap.js';
 // `select` devolve só os campos pedidos. Um fake mais tolerante que produção
 // deixa passar exatamente o erro que importa. E tudo fica guardado por
 // academia, para dar para provar que a chave de uma não lê a outra.
-const banco = vi.hoisted(() => ({ tenants: {}, leads: {}, config: {}, gravacoes: [] }));
+const banco = vi.hoisted(() => ({ tenants: {}, leads: {}, config: {}, gravacoes: [], falhaEm: null }));
 // Quem está logado no CRM (verifyRequest) e se é admin (isTenantAdmin).
 const sessao = vi.hoisted(() => ({ auth: null, admin: false }));
 
@@ -42,6 +42,13 @@ vi.mock('../_firebaseAdmin.js', () => {
     },
     where: (campo, op, valor) => {
       const linhas = () => {
+        // Simula a consulta recusada pelo Firestore (índice desligado no
+        // console, por exemplo) só no campo que o teste pediu. Igual ao SDK de
+        // servidor: código gRPC numérico (9 é FAILED_PRECONDITION) e o valor
+        // da consulta dentro da mensagem.
+        if (banco.falhaEm === campo) {
+          throw Object.assign(new Error(`9 FAILED_PRECONDITION: consulta em ${campo} == ${valor} recusada`), { code: 9 });
+        }
         if (op === 'in' && (!Array.isArray(valor) || valor.length === 0 || valor.length > 30)) {
           throw new Error(`consulta in com ${Array.isArray(valor) ? valor.length : 0} valores`);
         }
@@ -97,6 +104,22 @@ const clienteAVencer = {
   zapMatchKey: zapMatchKey(TELEFONE)
 };
 
+// Mãe de menores, sem cadastro próprio. Como o Zap manda o número dela.
+const MAE = '5511912345678';
+const guardiaoDaMae = { name: 'Maria Souza', phone: '(11) 9 1234-5678', relationship: 'Mãe' };
+const menorDe = (id, name, extra = {}) => ({
+  id,
+  name,
+  lifecycleStage: 'lead',
+  status: 'Novo',
+  isMinor: true,
+  guardian: guardiaoDaMae,
+  guardianZapMatchKey: zapMatchKey(MAE),
+  birthDate: ts(new Date(2015, 4, 10)),
+  createdAt: ts(new Date(2026, 7, 1)),
+  ...extra
+});
+
 let chave;
 
 function zerarBanco() {
@@ -104,6 +127,7 @@ function zerarBanco() {
   banco.leads = {};
   banco.config = {};
   banco.gravacoes = [];
+  banco.falhaEm = null;
   sessao.auth = null;
   sessao.admin = false;
 }
@@ -257,12 +281,119 @@ describe('GET /api/zap', () => {
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'Credencial inválida' });
   });
+
+  const pedidoDaMae = () => { const p = pedido(); p.query.phone = MAE; return p; };
+
+  it('mãe sem cadastro: cartão do tipo responsável com os dois filhos em ordem de nome', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza'), menorDe('k2', 'Ana Souza')];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ found: true, kind: 'responsavel', name: 'Maria Souza' });
+    expect(Object.keys(res.body).sort()).toEqual(['found', 'kind', 'name', 'wards']);
+    expect(res.body.wards.map((w) => w.name)).toEqual(['Ana Souza', 'Pedro Souza']);
+    expect(res.body.wards[0]).toMatchObject({ kind: 'lead', relationship: 'Mãe' });
+  });
+
+  it('mãe que também é cliente: o cartão dela, com os filhos em wards', async () => {
+    banco.leads[TENANT] = [{ ...clienteAVencer, zapMatchKey: zapMatchKey(MAE) }, menorDe('k1', 'Pedro Souza')];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.body).toMatchObject({ found: true, kind: 'cliente', leadId: 'c1' });
+    expect(res.body.wards.map((w) => w.leadId)).toEqual(['k1']);
+  });
+
+  it('cartão sem filhos não ganha a chave wards', async () => {
+    banco.leads[TENANT] = [clienteAVencer];
+    const res = resposta();
+    await handler(pedido(), res);
+    expect('wards' in res.body).toBe(false);
+  });
+
+  it('quem fez 18 com WhatsApp próprio sai da lista; sem ninguém, found false', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza', { birthDate: ts(new Date(2008, 0, 1)), whatsapp: '(11) 9 5555-4444' })];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.body).toEqual({ found: false });
+  });
+
+  it('quem fez 18 sem WhatsApp próprio continua na lista', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza', { birthDate: ts(new Date(2008, 0, 1)) })];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.body.wards.map((w) => w.leadId)).toEqual(['k1']);
+  });
+
+  it('o próprio dono do número não aparece como filho dele mesmo', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza', { zapMatchKey: zapMatchKey(MAE) })];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.body).toMatchObject({ found: true, kind: 'lead', leadId: 'k1' });
+    expect('wards' in res.body).toBe(false);
+  });
+
+  it('cartão só do responsável também sai com o cache privado de 2 minutos', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza')];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.body.kind).toBe('responsavel');
+    expect(res.headers['cache-control']).toBe('private, max-age=120');
+  });
+
+  it('menor que já é cliente vem em wards com o cartão de cliente e o parentesco', async () => {
+    // Contrato do clienteAVencer, sem o número próprio: quem responde é a mãe.
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza', {
+      ...clienteAVencer, id: 'k1', name: 'Pedro Souza', zapMatchKey: undefined, currentPlanName: 'Musculação Kids'
+    })];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.body.kind).toBe('responsavel');
+    const [pedro] = res.body.wards;
+    expect(pedro).toMatchObject({ leadId: 'k1', kind: 'cliente', contractStatus: 'ativo', planName: 'Musculação Kids', relationship: 'Mãe' });
+    expect(pedro).toHaveProperty('daysLeft');
+    expect(pedro).toHaveProperty('contractEndsAt');
+    expect('found' in pedro).toBe(false);
+  });
+
+  it('busca dos menores falhando não derruba o cartão do dono do número', async () => {
+    banco.leads[TENANT] = [clienteAVencer, { ...menorDe('k1', 'Pedro Souza'), guardianZapMatchKey: zapMatchKey(TELEFONE) }];
+    banco.falhaEm = 'guardianZapMatchKey';
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = resposta();
+    await handler(pedido(), res);
+    // Avisa que a busca falhou com o código do erro, e nada que leve o
+    // telefone: nem a mensagem do Firestore, nem os dígitos.
+    expect(erro).toHaveBeenCalledWith('zap: busca dos menores falhou', 9);
+    const registrado = JSON.stringify(erro.mock.calls);
+    expect(registrado).not.toContain(zapMatchKey(TELEFONE));
+    expect(registrado).not.toContain(TELEFONE);
+    erro.mockRestore();
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ found: true, kind: 'cliente', leadId: 'c1' });
+    expect('wards' in res.body).toBe(false);
+  });
+
+  it('nome do responsável vem do menor cadastrado por último', async () => {
+    banco.leads[TENANT] = [
+      menorDe('k1', 'Pedro Souza', { guardian: { ...guardiaoDaMae, name: 'Maria' }, createdAt: ts(new Date(2026, 5, 1)) }),
+      menorDe('k2', 'Ana Souza', { guardian: { ...guardiaoDaMae, name: 'Maria Souza Lima' }, createdAt: ts(new Date(2026, 7, 20)) })
+    ];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.body.name).toBe('Maria Souza Lima');
+  });
 });
 
 describe('POST /api/zap com action match', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(HOJE);
     zerarBanco();
     chave = academia(TENANT);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   const pedidoMatch = (phones) => ({
@@ -495,6 +626,37 @@ describe('POST /api/zap com action match', () => {
     await handler(pedidoMatch(['5511987654321']), res);
 
     expect(Object.keys(res.body)).toEqual(['found']);
+  });
+
+  it('telefone de responsável de menor conta como encontrado', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza')];
+    const res = resposta();
+    await handler(pedidoMatch([MAE, '5511900000000']), res);
+    expect(res.body).toEqual({ found: [MAE] });
+  });
+
+  it('responsável de quem fez 18 com WhatsApp próprio não conta', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza', { birthDate: ts(new Date(2008, 0, 1)), whatsapp: '(11) 9 5555-4444' })];
+    const res = resposta();
+    await handler(pedidoMatch([MAE]), res);
+    expect(res.body).toEqual({ found: [] });
+  });
+
+  it('busca dos responsáveis falhando não derruba o lote: dono do número continua encontrado', async () => {
+    banco.leads[TENANT] = [clienteAVencer, menorDe('k1', 'Pedro Souza')];
+    banco.falhaEm = 'guardianZapMatchKey';
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = resposta();
+
+    await handler(pedidoMatch([TELEFONE, MAE]), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ found: [TELEFONE] });
+    expect(erro).toHaveBeenCalledWith('zap: busca dos responsáveis no match falhou', 9);
+    const registrado = JSON.stringify(erro.mock.calls);
+    expect(registrado).not.toContain(MAE);
+    expect(registrado).not.toContain(TELEFONE);
+    erro.mockRestore();
   });
 });
 

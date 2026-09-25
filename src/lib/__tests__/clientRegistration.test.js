@@ -6,6 +6,7 @@ import {
   computeCompleteness,
   ownerChangeFor,
   ownerChangeNote,
+  registrationGuardianIssue,
 } from '../clientRegistration.js';
 import { classifyInteraction } from '../timeline.js';
 import { buildLeadSearchFields } from '../leadDerived.js';
@@ -186,5 +187,86 @@ describe('dor e modalidade', () => {
     const form = readClientRegistration({ dor: 'X', modalidade: 'Y' });
     expect(form.dor).toBe('X');
     expect(form.modalidade).toBe('Y');
+  });
+});
+
+describe('responsável do menor na edição', () => {
+  const HOJE = new Date(2026, 8, 24, 10, 0);
+  const MAE = { name: 'Maria Souza', phone: '(11) 9 1234-5678', relationship: 'Mãe' };
+  const menor = (extra = {}) => ({
+    id: 'k1', name: 'Pedro Souza', whatsapp: '', isMinor: true, guardian: MAE,
+    birthDate: new Date(2015, 4, 10), ...extra,
+  });
+
+  it('lê a chave e o responsável de um menor', () => {
+    const f = readClientRegistration(menor(), HOJE);
+    expect(f.isMinor).toBe(true);
+    expect(f.minorAtOpen).toBe(true);
+    expect(f.adultSince).toBe('');
+    expect(f.guardianName).toBe('Maria Souza');
+    expect(f.guardianPhone).toBe('(11) 9 1234-5678');
+    expect(f.guardianRelation).toBe('Mãe');
+  });
+
+  it('quem fez 18 abre com a chave desligada e a data dos 18', () => {
+    const f = readClientRegistration(menor({ birthDate: new Date(2008, 2, 12) }), HOJE);
+    expect(f.isMinor).toBe(false);
+    expect(f.minorAtOpen).toBe(false);
+    expect(f.adultSince).toBe('2026-03-12');
+  });
+
+  it('chave ligada: o patch grava o responsável', () => {
+    const patch = buildClientRegistrationPatch(readClientRegistration(menor(), HOJE));
+    expect(patch.isMinor).toBe(true);
+    expect(patch.guardian).toEqual(MAE);
+    expect(patch.guardianZapMatchKey).toBe('1112345678');
+  });
+
+  it('chave desligada à mão: o patch apaga o responsável', () => {
+    const form = { ...readClientRegistration(menor({ whatsapp: '(11) 9 5555-4444' }), HOJE), isMinor: false };
+    const patch = buildClientRegistrationPatch(form);
+    expect(patch.isMinor).toBe(false);
+    expect(patch.guardian).toBeNull();
+    expect(patch.guardianZapMatchKey).toBeNull();
+  });
+
+  it('fez 18 com WhatsApp próprio: salvar tira o responsável', () => {
+    const form = readClientRegistration(menor({ birthDate: new Date(2008, 2, 12), whatsapp: '(11) 9 5555-4444' }), HOJE);
+    expect(buildClientRegistrationPatch(form).guardian).toBeNull();
+  });
+
+  it('fez 18 sem WhatsApp próprio: salvar mantém o responsável guardado', () => {
+    const form = readClientRegistration(menor({ birthDate: new Date(2008, 2, 12) }), HOJE);
+    const patch = buildClientRegistrationPatch(form);
+    expect('guardian' in patch).toBe(false);
+    expect('isMinor' in patch).toBe(false);
+    expect('guardianZapMatchKey' in patch).toBe(false);
+  });
+
+  it('lead que nunca foi menor: o patch grava a chave desligada', () => {
+    const patch = buildClientRegistrationPatch(readClientRegistration({ id: 'a', name: 'Ana', whatsapp: '(11) 9 1111-2222' }, HOJE));
+    expect(patch.isMinor).toBe(false);
+    expect(patch.guardian).toBeNull();
+  });
+
+  it('validação: bloco do responsável e WhatsApp exigido só ao desligar a chave', () => {
+    const aberto = readClientRegistration(menor(), HOJE);
+    expect(registrationGuardianIssue(aberto, HOJE)).toBeNull();
+    expect(registrationGuardianIssue({ ...aberto, guardianName: '' }, HOJE)).toBe('Informe o nome do responsável.');
+    expect(registrationGuardianIssue({ ...aberto, isMinor: false }, HOJE))
+      .toBe('Para desligar Menor de idade, informe o WhatsApp do lead.');
+    expect(registrationGuardianIssue({ ...aberto, isMinor: false, whatsapp: '(11) 9 5555-4444' }, HOJE)).toBeNull();
+    const semTelefone = readClientRegistration({ id: 'a', name: 'Importado', whatsapp: '' }, HOJE);
+    expect(registrationGuardianIssue(semTelefone, HOJE)).toBeNull();
+  });
+
+  it('validação: ligar a chave com data de quem já tem 18 não passa', () => {
+    const f = { ...readClientRegistration(menor({ birthDate: new Date(2008, 2, 12) }), HOJE), isMinor: true };
+    expect(registrationGuardianIssue(f, HOJE)).toBe('Pela data, já tem 18 anos. Confira a data ou desligue a chave.');
+  });
+
+  it('validação: WhatsApp do aluno igual ao do responsável não passa', () => {
+    const f = { ...readClientRegistration(menor(), HOJE), whatsapp: '(11) 9 1234-5678' };
+    expect(registrationGuardianIssue(f, HOJE)).toBe('Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.');
   });
 });

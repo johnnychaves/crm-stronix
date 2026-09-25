@@ -2,9 +2,10 @@
 // e calcula o medidor de completude. Mantém o ClientRegistrationModal fino e
 // testável (padrão do repo: regra em lib + teste).
 import { fromDateInputValue, toDateInputValue } from './dates.js';
-import { buildLeadSearchFields } from './leadDerived.js';
+import { buildLeadSearchFields, buildGuardianPatch, sameContactPhone } from './leadDerived.js';
 import { formatCPF, formatPhone } from './masks.js';
 import { professorNameById } from './professores.js';
+import { adultSince, guardianIssue, hasPhone, isMinorNow, turnedAdult } from './guardian.js';
 
 export const MARITAL_STATUS_OPTIONS = [
   'Solteiro(a)', 'Casado(a)', 'União estável', 'Divorciado(a)', 'Viúvo(a)', 'Outro',
@@ -17,9 +18,11 @@ const nullify = (v) => (str(v) ? str(v) : null);
 const mapOrNull = (obj) => (Object.values(obj).some((v) => str(v)) ? obj : null);
 
 // lead (documento) -> form do modal.
-export function readClientRegistration(lead = {}) {
+export function readClientRegistration(lead = {}, now = new Date()) {
   const a = lead.address || {};
   const e = lead.emergencyContact || {};
+  const g = lead.guardian || {};
+  const minor = isMinorNow(lead, now);
   return {
     name: lead.name || '',
     whatsapp: formatPhone(lead.whatsapp || ''),
@@ -30,6 +33,16 @@ export function readClientRegistration(lead = {}) {
     email: lead.email || '',
     dor: lead.dor || '',
     modalidade: lead.modalidade || '',
+    isMinor: minor,
+    // Estado da chave ao abrir: desligar uma chave que estava ligada passa a
+    // exigir o WhatsApp do lead.
+    minorAtOpen: minor,
+    // Data em que fez 18 anos ('yyyy-mm-dd'), só para quem tinha a chave
+    // ligada e já passou da idade. A tela mostra a nota com ela.
+    adultSince: turnedAdult(lead, now) ? toDateInputValue(adultSince(lead.birthDate)) : '',
+    guardianName: g.name || '',
+    guardianPhone: formatPhone(g.phone || ''),
+    guardianRelation: g.relationship || '',
     cep: a.cep || '', street: a.street || '', number: a.number || '',
     complement: a.complement || '', neighborhood: a.neighborhood || '',
     city: a.city || '', state: a.state || '',
@@ -75,6 +88,18 @@ export function buildClientRegistrationPatch(form, { usersList, professores } = 
     // Dual-write: campos de busca recomputados a partir do que será gravado.
     ...buildLeadSearchFields({ name: str(form.name), whatsapp: str(form.whatsapp), cpf: nullify(form.cpf) }),
   };
+  // Responsável do menor. Quem fez 18 anos sem WhatsApp próprio segue com o
+  // responsável como contato: o patch não toca no responsável, e a ficha
+  // continua pedindo o número.
+  const semWhatsappProprio = !hasPhone(form.whatsapp);
+  if (form.isMinor || !(form.adultSince && semWhatsappProprio)) {
+    Object.assign(patch, buildGuardianPatch({
+      isMinor: form.isMinor,
+      name: form.guardianName,
+      phone: form.guardianPhone,
+      relationship: form.guardianRelation,
+    }));
+  }
   // Reatribuição de consultor: qualquer membro da equipe pode passar a bola,
   // e os três campos vão JUNTOS (consultantAuthUid é a chave de permissão e a
   // regra do Firestore exige o par id+authUid andando junto).
@@ -87,6 +112,28 @@ export function buildClientRegistrationPatch(form, { usersList, professores } = 
     }
   }
   return patch;
+}
+
+// O que impede salvar a parte do responsável na edição, ou null. Além do
+// bloco (mesma regra do cadastro), desligar uma chave que estava ligada exige
+// o WhatsApp do lead. Fora desse caso a edição não exige WhatsApp, para não
+// travar lead importado sem telefone.
+export function registrationGuardianIssue(form, now = new Date()) {
+  const issue = guardianIssue({
+    isMinor: form.isMinor,
+    name: form.guardianName,
+    phone: form.guardianPhone,
+    birthDate: fromDateInputValue(form.birthDate),
+    now,
+  });
+  if (issue) return issue;
+  if (form.isMinor && sameContactPhone(form.whatsapp, form.guardianPhone)) {
+    return 'Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.';
+  }
+  if (form.minorAtOpen && !form.isMinor && !hasPhone(form.whatsapp)) {
+    return 'Para desligar Menor de idade, informe o WhatsApp do lead.';
+  }
+  return null;
 }
 
 // Troca de responsável: compara o dono ATUAL do lead com o que o patch vai

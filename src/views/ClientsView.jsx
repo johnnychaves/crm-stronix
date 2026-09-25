@@ -14,6 +14,7 @@ import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
+import { ContactPhone } from '../components/profile/ContactPhone.jsx';
 
 // Status "vivo" do CLIENTE a partir do resumo denormalizado no lead. Legados
 // (Venda antiga sem contrato) não têm endsAt → 'sem_contrato'. O sentinela vem
@@ -357,7 +358,7 @@ function ClientsView({ appUser, usersList, db }) {
                     <div className="min-w-0">
                       <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{c.name}</div>
                       <div className="mt-px flex items-center gap-1.5 text-[11.5px] text-slate-500 dark:text-neutral-400 tabular-nums">
-                        <span className="inline-flex items-center gap-1"><Phone className="size-[11px]" /> {c.whatsapp}</span>
+                        <span className="inline-flex items-center gap-1"><Phone className="size-[11px]" /> <ContactPhone lead={c} /></span>
                         {consultantFirst && (
                           <>
                             <span className="size-1 rounded-full bg-slate-300 dark:bg-white/20" />

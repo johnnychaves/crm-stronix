@@ -2,14 +2,18 @@ import { useState, useEffect, useRef } from 'react';
 import {
   UserPlus, MessageCircle, Megaphone, Globe, DoorOpen, Camera, Calendar, IdCard, Mail,
   ChevronDown, Check, Plus, Zap, AlertTriangle, CheckCircle2, Users, X, Kanban, HeartPulse, Dumbbell,
-  Handshake, LockKeyhole,
+  Handshake, LockKeyhole, Baby, Phone,
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
 import { getLeadOwnershipFields } from '../lib/leads.js';
 import { useDuplicateLead, findDuplicateLeadRemote } from '../hooks/useDuplicateLead.js';
 import { logInteraction } from '../lib/interactions.js';
-import { buildLeadSearchFields, deriveLeadBucket } from '../lib/leadDerived.js';
+import { buildLeadSearchFields, buildGuardianPatch, deriveLeadBucket, sameContactPhone } from '../lib/leadDerived.js';
+import { phoneDigits as extractPhoneDigits } from '../lib/masks.js';
+import { GUARDIAN_RELATIONSHIPS, guardianIssue, turnedAdult } from '../lib/guardian.js';
+import { phoneNoticeLines } from '../lib/phoneNotice.js';
+import { useGuardianMatches } from '../hooks/useGuardianMatches.js';
 import { fromDateInputValue } from '../lib/dates.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
 import { getReferralFunnel, getReferralEntryStage, isReferralFunnel, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
@@ -38,9 +42,10 @@ import { getTone, phaseToneName } from '../lib/leadState.js';
 
 // ---------- helpers de apresentação ----------
 const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
-// (51) 9 9530-4633
+// (51) 9 9530-4633. Dígitos e regra do DDI vêm de phoneDigits (src/lib/masks.js);
+// só a formatação de exibição é própria daqui (difere de formatPhone p/ input parcial).
 const fmtPhone = (raw) => {
-  const d = onlyDigits(raw).slice(0, 11);
+  const d = extractPhoneDigits(raw);
   if (d.length <= 2) return d;
   if (d.length <= 3) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3)}`;
@@ -280,7 +285,9 @@ function PreviewCard({ form, statusObj, sources, tags }) {
               {form.name || <span className="text-slate-300 dark:text-slate-600">Nome do lead</span>}
             </div>
             <div className="text-[12px] text-slate-500 dark:text-slate-400 num">
-              {form.whatsapp ? fmtPhone(form.whatsapp) : '(00) 0 0000-0000'}
+              {form.isMinor && form.guardianPhone
+                ? `${fmtPhone(form.guardianPhone)} · resp.`
+                : (form.whatsapp ? fmtPhone(form.whatsapp) : '(00) 0 0000-0000')}
             </div>
           </div>
         </div>
@@ -356,6 +363,10 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const blankForm = () => ({
     name: '',
     whatsapp: '',
+    isMinor: false,
+    guardianName: '',
+    guardianPhone: '',
+    guardianRelation: '',
     source: initialIsReferral ? 'Indicação' : (sources?.[0]?.name || ''),
     funnelId: initialFunnelId,
     status: initialIsReferral ? referralEntry.name : (initialStatuses?.[0]?.name || ''),
@@ -405,13 +416,39 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   const phoneTooShort = phoneDigits.length > 0 && phoneDigits.length < 10;
   // Dup-check remoto (G1-flip / PR F): query em whatsappDigits, cobre todos os
   // buckets (cliente/perda também) em vez de varrer o prop global 'ativo'.
-  const { duplicate } = useDuplicateLead({ db, phoneDigits });
+  const { duplicate, loading: dupLoading } = useDuplicateLead({ db, phoneDigits });
+  const guardianDigits = onlyDigits(form.guardianPhone);
+  const guardianTooShort = guardianDigits.length > 0 && guardianDigits.length < 10;
+  // O aluno não pode ter o mesmo número do responsável: recria o problema que
+  // a feature resolve (whatsappDigits/zapMatchKey do menor viram os da mãe).
+  const sameAsGuardian = form.isMinor && sameContactPhone(form.whatsapp, form.guardianPhone);
+  // Avisos que nunca barram: número de um responsável no campo do lead (o dono
+  // do número já é o useDuplicateLead quem acha, por isso withOwner: false) e
+  // número de alguém, dono ou responsável, no campo do responsável.
+  const ownMatches = useGuardianMatches({ db, phoneDigits, withOwner: false });
+  const guardianMatches = useGuardianMatches({ db, phoneDigits: form.isMinor ? guardianDigits : '' });
+  const ownNotice = duplicate ? [] : phoneNoticeLines({ field: 'own', ...ownMatches });
+  const guardianNotice = phoneNoticeLines({ field: 'guardian', ...guardianMatches });
+  const guardianError = guardianIssue({
+    isMinor: form.isMinor,
+    name: form.guardianName,
+    phone: form.guardianPhone,
+    birthDate: fromDateInputValue(form.birthDate),
+  });
+  // Mensagem de maioridade calculada direto da data, sem depender da ordem de
+  // checagem nem da redação de guardianError (que pode voltar outro motivo
+  // primeiro, como nome vazio).
+  const adultByDate = form.isMinor && turnedAdult({ isMinor: true, birthDate: fromDateInputValue(form.birthDate) });
+  // Com a chave ligada o WhatsApp do aluno é opcional, mas, preenchido, precisa
+  // estar completo.
+  const ownPhoneOk = form.isMinor ? (phoneDigits.length === 0 || phoneDigits.length >= 10) : phoneDigits.length >= 10;
+  const contactOk = form.isMinor ? guardianDigits.length >= 10 : phoneDigits.length >= 10;
   const nameOk = form.name.trim().length > 1;
   const dorOk = form.dor.trim().length > 0;
-  const canSubmit = nameOk && phoneDigits.length >= 10 && !duplicate && !!form.funnelId && dorOk && (!isReferral || !!referrer);
+  const canSubmit = nameOk && ownPhoneOk && !guardianError && !duplicate && !sameAsGuardian && !!form.funnelId && dorOk && (!isReferral || !!referrer);
 
-  // barra de progresso — 6 sinais
-  const filled = [nameOk, phoneDigits.length >= 10, !!form.source, !!form.status, dorOk].filter(Boolean).length
+  // barra de progresso: 6 sinais
+  const filled = [nameOk, contactOk, !!form.source, !!form.status, dorOk].filter(Boolean).length
     + ((form.tags.length || form.observation.trim()) ? 1 : 0);
   const pct = Math.round((filled / 6) * 100);
 
@@ -470,6 +507,12 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
           referredByName: isReferral && referrer ? (referrer.name || null) : null,
           ...getLeadOwnershipFields(appUser),
           ...buildLeadSearchFields({ name: form.name, whatsapp: form.whatsapp, cpf: form.cpf }),
+          ...buildGuardianPatch({
+            isMinor: form.isMinor,
+            name: form.guardianName,
+            phone: form.guardianPhone,
+            relationship: form.guardianRelation,
+          }),
           lifecycleBucket: deriveLeadBucket({ status: form.status }),
           lastInteractionAt: null,
           interactionsCount: 0,
@@ -562,12 +605,12 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                 </div>
 
                 <div className="relative mt-4 rounded-2xl bg-white/80 dark:bg-white/[0.04] border border-slate-200/80 dark:border-white/[0.07] p-3.5 backdrop-blur-sm">
-                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500"><Users size={13} /> Responsável</div>
+                  <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500"><Users size={13} /> Consultor</div>
                   <div className="flex items-center gap-2.5 mt-2.5">
                     <Avatar name={consultantName} size={34} />
                     <div className="min-w-0">
                       <div className="text-[13px] font-semibold truncate">{consultantName}</div>
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">Responsável pelo cadastro</div>
+                      <div className="text-[11px] text-slate-500 dark:text-slate-400 truncate">Quem faz o cadastro</div>
                     </div>
                   </div>
                   <p className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-2.5 leading-relaxed">Será atribuído a você e somará na sua <strong className="text-slate-700 dark:text-slate-200 font-semibold">Meta diária</strong>.</p>
@@ -604,24 +647,91 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                 <div className="flex-1 min-h-0 overflow-y-auto thin-scroll px-5 sm:px-7 py-5 space-y-6">
                   {/* 1 — quem é */}
                   <section>
-                    <SectionTitle n="1" title="Quem é" desc="Nome e WhatsApp são obrigatórios" />
+                    <SectionTitle n="1" title="Quem é" desc={form.isMinor ? 'Nome do aluno e contato do responsável' : 'Nome e WhatsApp são obrigatórios'} />
                     <div className="grid sm:grid-cols-2 gap-3.5">
                       <div className="sm:col-span-2">
                         <Label required>Nome do lead</Label>
                         <IconInput inputRef={nameRef} icon={<UserPlus size={16} />} value={form.name} onChange={(e) => set({ name: e.target.value })} placeholder="Nome completo" />
                       </div>
+                      <label className={cn(
+                        'sm:col-span-2 flex items-center justify-between gap-3 rounded-xl border p-3 cursor-pointer transition',
+                        form.isMinor
+                          ? 'border-brand-300 bg-brand-50/70 dark:border-brand-500/30 dark:bg-brand-500/[0.07]'
+                          : 'border-border bg-card hover:border-slate-300 dark:hover:border-white/15'
+                      )}>
+                        <span className="flex items-center gap-2.5 min-w-0">
+                          <span className={cn(
+                            'size-9 rounded-lg grid place-items-center shrink-0 transition',
+                            form.isMinor ? 'bg-brand-600 text-white' : 'bg-brand-50 text-brand-600 dark:bg-brand-500/12 dark:text-brand-300'
+                          )}>
+                            <Baby size={17} />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-[13px] font-semibold text-foreground leading-tight">Menor de idade</span>
+                            <span className="block text-[11.5px] text-muted-foreground">O contato passa a ser o responsável</span>
+                          </span>
+                        </span>
+                        <Switch checked={form.isMinor} onCheckedChange={(on) => {
+                          set({ isMinor: on });
+                          // Data já mostra 18+: abre "Detalhes" para o nascimento
+                          // aparecer, sem depender de effect nem de forçar o render.
+                          if (on && turnedAdult({ isMinor: true, birthDate: fromDateInputValue(form.birthDate) })) setMore(true);
+                        }} />
+                      </label>
+                      {form.isMinor && (
+                        <>
+                          <div className="sm:col-span-2">
+                            <Label required>Nome do responsável</Label>
+                            <IconInput icon={<Users size={16} />} value={form.guardianName} onChange={(e) => set({ guardianName: e.target.value })} placeholder="Nome de quem responde pelo aluno" />
+                          </div>
+                          <div>
+                            <Label required hint="com DDD + 9 dígitos">Telefone do responsável</Label>
+                            <IconInput type="tel" inputMode="numeric" icon={<Phone size={16} />} value={fmtPhone(form.guardianPhone)} onChange={(e) => set({ guardianPhone: fmtPhone(e.target.value) })}
+                              placeholder="(51) 9 0000-0000"
+                              className={guardianTooShort ? '!border-amber-400' : ''} />
+                            {guardianTooShort && (
+                              <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto. Inclua DDD + 9 dígitos.</div>
+                            )}
+                          </div>
+                          <div>
+                            <Label hint="opcional">Parentesco</Label>
+                            <Select value={form.guardianRelation} onChange={(e) => set({ guardianRelation: e.target.value })} aria-label="Parentesco">
+                              <option value="">Selecione…</option>
+                              {GUARDIAN_RELATIONSHIPS.map((r) => <option key={r} value={r}>{r}</option>)}
+                            </Select>
+                          </div>
+                          {guardianNotice.length > 0 && (
+                            <div className="sm:col-span-2 flex flex-col gap-0.5 text-[11.5px] text-muted-foreground">
+                              {guardianNotice.map((linha) => <span key={linha}>{linha}</span>)}
+                            </div>
+                          )}
+                          {adultByDate && (
+                            <div className="sm:col-span-2 flex items-start gap-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">
+                              <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Pela data, já tem 18 anos. Confira a data ou desligue a chave.</span>
+                            </div>
+                          )}
+                        </>
+                      )}
                       <div className="sm:col-span-2">
-                        <Label required hint={duplicate ? '' : 'com DDD + 9 dígitos'}>WhatsApp</Label>
-                        <IconInput type="tel" inputMode="numeric" icon={<MessageCircle size={16} />} value={fmtPhone(form.whatsapp)} onChange={(e) => set({ whatsapp: e.target.value })}
+                        <Label required={!form.isMinor} hint={duplicate ? '' : (form.isMinor ? 'opcional' : 'com DDD + 9 dígitos')}>
+                          {form.isMinor ? 'WhatsApp do aluno' : 'WhatsApp'}
+                        </Label>
+                        <IconInput type="tel" inputMode="numeric" icon={<MessageCircle size={16} />} value={fmtPhone(form.whatsapp)} onChange={(e) => set({ whatsapp: fmtPhone(e.target.value) })}
                           placeholder="(51) 9 0000-0000"
-                          className={duplicate ? '!border-rose-400 focus:!ring-rose-400/15' : (phoneTooShort ? '!border-amber-400' : '')} />
+                          className={duplicate ? '!border-rose-400 focus:!ring-rose-400/15' : ((phoneTooShort || sameAsGuardian) ? '!border-amber-400' : '')} />
                         {duplicate ? (
                           <div className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-rose-600 dark:text-rose-400">
                             <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Já existe: <strong>{duplicate.name}</strong>{duplicate.consultantName ? ` · ${duplicate.consultantName}` : ''}{duplicate.status ? ` (${duplicate.status})` : ''}</span>
                           </div>
+                        ) : sameAsGuardian ? (
+                          <div className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">
+                            <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.</span>
+                          </div>
                         ) : phoneTooShort ? (
-                          <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto — inclua DDD + 9 dígitos.</div>
-                        ) : phoneDigits.length >= 10 ? (
+                          <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto. Inclua DDD + 9 dígitos.</div>
+                        ) : ownNotice.length > 0 ? (
+                          <div className="mt-1.5 text-[11.5px] text-muted-foreground">{ownNotice[0]}</div>
+                        ) : phoneDigits.length >= 10 && !ownMatches.pending && !dupLoading ? (
                           <div className="mt-1.5 flex items-center gap-1.5 text-[11.5px] text-emerald-600 dark:text-emerald-400"><Check size={13} /> Número válido e disponível.</div>
                         ) : null}
                       </div>
@@ -719,7 +829,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                         <TagToggles tags={tags} selected={form.tags} onToggle={toggleTag} />
                       </div>
 
-                      <button type="button" onClick={() => setMore((m) => !m)} className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 dark:text-brand-300 hover:underline">
+                      <button type="button" onClick={() => setMore((m) => !m)} aria-expanded={more} className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 dark:text-brand-300 hover:underline">
                         <ChevronDown size={14} className={cn('transition', more && 'rotate-180')} /> {more ? 'Ocultar dados adicionais' : 'Adicionar nascimento, CPF, sexo e e-mail'}
                       </button>
                       {more && (

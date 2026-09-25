@@ -46,12 +46,12 @@ function visita(overrides = {}) {
 describe('getReportColumns', () => {
   it('Aulas: inclui Professor, Modalidade e Passe', () => {
     const cols = getReportColumns(true).map((c) => c.key);
-    expect(cols).toEqual(['nome', 'telefone', 'objetivo', 'dataMarcada', 'professor', 'modalidade', 'passe', 'desfecho', 'responsavel']);
+    expect(cols).toEqual(['nome', 'telefone', 'responsavelAluno', 'telefoneResponsavel', 'objetivo', 'dataMarcada', 'professor', 'modalidade', 'passe', 'desfecho', 'responsavel']);
   });
 
   it('Visitas: sem Professor/Modalidade/Passe', () => {
     const cols = getReportColumns(false).map((c) => c.key);
-    expect(cols).toEqual(['nome', 'telefone', 'objetivo', 'dataMarcada', 'desfecho', 'responsavel']);
+    expect(cols).toEqual(['nome', 'telefone', 'responsavelAluno', 'telefoneResponsavel', 'objetivo', 'dataMarcada', 'desfecho', 'responsavel']);
   });
 });
 
@@ -163,6 +163,8 @@ describe('buildReportRows', () => {
     expect(rows[0]).toEqual({
       nome: 'Carlos Lima',
       telefone: '(51) 9 1234-5678',
+      responsavelAluno: '—',
+      telefoneResponsavel: '—',
       objetivo: 'Condicionamento',
       dataMarcada: expect.any(String),
       desfecho: 'Compareceu',
@@ -175,6 +177,17 @@ describe('buildReportRows', () => {
     const rows = buildReportRows([bare], { isAula: true, now: NOW });
     expect(rows[0].objetivo).toBe('—');
     expect(rows[0].responsavel).toBe('—');
+  });
+
+  it('menor: colunas do responsável preenchidas; adulto: travessão', () => {
+    const MAE = { name: 'Maria Souza', phone: '(11) 9 1234-5678', relationship: 'Mãe' };
+    const kid = aula({ id: 'k', name: 'Pedro', isMinor: true, guardian: MAE, birthDate: new Date(2015, 4, 10) });
+    const adulto = aula({ id: 'a', name: 'Ana', appointmentScheduledFor: new Date(2026, 6, 11, 18, 0) });
+    const [rKid, rAdulto] = buildReportRows([kid, adulto], { isAula: true, now: NOW });
+    expect(rKid.responsavelAluno).toBe('Maria Souza (mãe)');
+    expect(rKid.telefoneResponsavel).toBe('(11) 9 1234-5678');
+    expect(rAdulto.responsavelAluno).toBe('—');
+    expect(rAdulto.telefoneResponsavel).toBe('—');
   });
 });
 
@@ -222,6 +235,16 @@ describe('buildReportHtml', () => {
     expect(html).toContain('<title>Aulas experimentais</title>');
     expect(html).toContain('01/07/2026 – 15/07/2026');
     expect(html).toContain('<td>Ana</td>');
+  });
+
+  it('imprime na horizontal (mais colunas cabem sem quebrar o cabeçalho)', () => {
+    const html = buildReportHtml({
+      title: 'X',
+      subheading: '',
+      columns: [{ key: 'nome', label: 'Nome' }],
+      rows: [{ nome: 'Ana' }],
+    });
+    expect(html).toContain('size: landscape');
   });
 
   it('escapa HTML nos valores (evita quebrar o markup)', () => {

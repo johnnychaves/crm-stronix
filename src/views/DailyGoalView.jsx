@@ -19,9 +19,11 @@ import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
 import { expiredLabel, expiredSortKey } from '../lib/expiredGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
 import { cn } from '../lib/utils.js';
+import { contactOf, telHref, whatsappHref } from '../lib/guardian.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
+import { ContactPhone } from '../components/profile/ContactPhone.jsx';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../lib/professores.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
@@ -227,7 +229,7 @@ function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOu
         <Avatar name={task.name} size={40} />
         <div className="min-w-0 flex-1">
           <div className="font-semibold text-[14px] truncate">{task.name}</div>
-          <div className="text-[12px] text-slate-500 dark:text-slate-400 num">{task.whatsapp}</div>
+          <div className="text-[12px] text-slate-500 dark:text-slate-400 truncate"><ContactPhone lead={task} showName /></div>
         </div>
         {appointmentLabel && (
           <div className={`px-2.5 py-1 rounded-lg text-[11.5px] font-semibold whitespace-nowrap ${t.soft} ${t.text} ${t.darkSoft} ${t.darkText}`}>
@@ -407,7 +409,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
             )}
           </div>
           <div className="flex items-center gap-2 mt-0.5 text-[12px] text-slate-500 dark:text-slate-400 num flex-wrap">
-            <span>{task.whatsapp}</span>
+            <ContactPhone lead={task} showName />
             {task.source && (
               <>
                 <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/20"></span>
@@ -575,10 +577,10 @@ export function TomorrowApptRow({ lead, when }) {
         <div className="text-[14px] font-semibold text-slate-900 dark:text-white truncate">{lead.name}</div>
         <div className="text-[12px] text-slate-500 dark:text-slate-400 inline-flex items-center gap-1.5 flex-wrap">
           <span className="inline-flex items-center gap-1"><Icon size={12} /> {label}</span>
-          {lead.whatsapp && (
+          {contactOf(lead).phone && (
             <>
               <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-white/20" />
-              <span className="num">{lead.whatsapp}</span>
+              <ContactPhone lead={lead} showName />
             </>
           )}
         </div>
@@ -687,7 +689,12 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">{title}</h3>
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{lead.name} · <span className="num">{lead.whatsapp}</span></p>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{lead.name}</p>
+              {contactOf(lead).phone && (
+                <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 min-w-0">
+                  <ContactPhone lead={lead} showName />
+                </p>
+              )}
             </div>
           </div>
 
@@ -1549,13 +1556,13 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   };
 
   const handleWhatsapp = (lead) => {
-    const num = String(lead.whatsapp || '').replace(/\D/g, '');
-    if (num) window.open(`https://wa.me/${num}`, '_blank', 'noopener,noreferrer');
+    const href = whatsappHref(contactOf(lead).phone);
+    if (href) window.open(href, '_blank', 'noopener,noreferrer');
   };
 
   const handleCall = (lead) => {
-    const num = String(lead.whatsapp || '').replace(/\D/g, '');
-    if (num) window.location.href = `tel:${num}`;
+    const href = telHref(contactOf(lead).phone);
+    if (href) window.location.href = href;
   };
 
   // Per-slug pending tasks. A lead with two pending categories renders TWICE — once per slug — preserving main's per-category status model.

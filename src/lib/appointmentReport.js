@@ -5,6 +5,7 @@
 import { getLeadAppointmentDate, getAppointmentOutcomeMeta } from './leads.js';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from './professores.js';
 import { getTrialPassNote } from './freePass.js';
+import { contactLabel, contactOf } from './guardian.js';
 
 const DAY_MS = 86400000;
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -31,13 +32,18 @@ const outcomeLabel = (lead) => {
   return meta ? meta.label : 'Agendado';
 };
 
-// Colunas do relatório (Nome, Objetivo/Dor, Data marcada, [Aulas: Professor,
-// Modalidade, Passe], Desfecho, Responsável) — mesma ordem usada no CSV e na
-// tabela impressa.
+// Colunas do relatório (Nome, Telefone, Responsável do aluno, Telefone do
+// responsável, Objetivo/Dor, Data marcada, [Aulas: Professor, Modalidade,
+// Passe], Desfecho, Responsável) — mesma ordem usada no CSV e na tabela
+// impressa.
 export function getReportColumns(isAula) {
   const cols = [
     { key: 'nome', label: 'Nome' },
     { key: 'telefone', label: 'Telefone' },
+    // "Responsável do aluno" e não só "Responsável": a coluna Responsável, no
+    // fim, é o consultor.
+    { key: 'responsavelAluno', label: 'Responsável do aluno' },
+    { key: 'telefoneResponsavel', label: 'Telefone do responsável' },
     { key: 'objetivo', label: 'Objetivo/Dor' },
     { key: 'dataMarcada', label: 'Data marcada' },
   ];
@@ -90,9 +96,16 @@ export function buildReportRows(leads, { isAula = false, filters = {}, now = new
       const row = {
         nome: lead.name || '',
         telefone: lead.whatsapp || '—',
+        responsavelAluno: '—',
+        telefoneResponsavel: '—',
         objetivo: lead.dor || '—',
         dataMarcada: fmtDataMarcada(d),
       };
+      const contato = contactOf(lead, now);
+      if (contato.viaGuardian) {
+        row.responsavelAluno = contactLabel(contato) || '—';
+        row.telefoneResponsavel = contato.phone;
+      }
       if (isAula) {
         row.professor = lead.appointmentSoloTraining ? SOLO_TRAINING_LABEL : (lead.appointmentProfessorName || '—');
         row.modalidade = lead.appointmentModality || '—';
@@ -147,7 +160,7 @@ export function buildReportHtml({ title, subheading, columns, rows }) {
   th { background: #f1f5f9; font-weight: 700; }
   tr:nth-child(even) td { background: #f8fafc; }
   .empty { padding: 24px; text-align: center; color: #94a3b8; font-size: 12px; }
-  @media print { body { margin: 12px; } }
+  @media print { body { margin: 12px; } @page { size: landscape; } }
 </style>
 </head>
 <body>

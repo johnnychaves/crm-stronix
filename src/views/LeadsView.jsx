@@ -15,6 +15,8 @@ import { Btn } from '../components/ui/Btn.jsx';
 import { StatusBadge } from '../components/ui/Badges.jsx';
 import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
+import { ContactPhone } from '../components/profile/ContactPhone.jsx';
+import { contactLabel, contactOf } from '../lib/guardian.js';
 
 // Cor da etapa (para chip de fase e dot). Venda/Perda mapeiam para os mesmos
 // tokens usados no Kanban; as demais vêm da cor configurada da etapa.
@@ -135,12 +137,18 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
     };
     // Separador ';' — o Excel pt-BR usa ponto-e-vírgula como separador de lista.
     const SEP = ';';
-    const headers = ['Nome', 'WhatsApp', 'Origem', 'Indicado por', 'Fase do Funil', 'Consultor', 'Data Cadastro', 'Observação', 'Motivo Perda'];
-    const csvRows = filteredLeads.map(l => [
-      l.name, l.whatsapp, l.source, l.referredByName, l.status, l.consultantName,
-      l.createdAt ? l.createdAt.toLocaleDateString('pt-BR') : '',
-      l.observation, l.lossReason
-    ].map(csvCell).join(SEP));
+    const headers = ['Nome', 'WhatsApp', 'Responsável do aluno', 'Telefone do responsável', 'Origem', 'Indicado por', 'Fase do Funil', 'Consultor', 'Data Cadastro', 'Observação', 'Motivo Perda'];
+    const csvRows = filteredLeads.map(l => {
+      const contato = contactOf(l);
+      return [
+        l.name, l.whatsapp,
+        contato.viaGuardian ? contactLabel(contato) : '',
+        contato.viaGuardian ? contato.phone : '',
+        l.source, l.referredByName, l.status, l.consultantName,
+        l.createdAt ? l.createdAt.toLocaleDateString('pt-BR') : '',
+        l.observation, l.lossReason
+      ].map(csvCell).join(SEP);
+    });
 
     const csvContent = [headers.map(csvCell).join(SEP), ...csvRows].join('\r\n');
     const blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' }); // BOM força o Excel a ler UTF-8
@@ -360,7 +368,7 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
                         {isHot && <span className="text-[10px] shrink-0" title="Lead com atividade recente ou agendamento próximo" aria-label="Lead quente">🔥</span>}
                       </div>
                       <div className="mt-px flex items-center gap-1.5 text-[11.5px] text-slate-500 dark:text-neutral-400 tabular-nums">
-                        <span className="inline-flex items-center gap-1"><Phone className="size-[11px]" /> {l.whatsapp}</span>
+                        <span className="inline-flex items-center gap-1"><Phone className="size-[11px]" /> <ContactPhone lead={l} /></span>
                         {consultantFirst && (
                           <>
                             <span className="size-1 rounded-full bg-slate-300 dark:bg-white/20" />
