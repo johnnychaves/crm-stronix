@@ -23,7 +23,7 @@ const hasGuardian = (lead) => Boolean(lead?.guardian) && hasPhone(lead.guardian.
 // da data (ano/mês/dia) saem do fuso horário do ambiente que roda esta
 // função. A data de nascimento é salva à meia-noite local do Brasil (03:00Z),
 // então no servidor (Vercel, UTC) o dia do calendário está certo, mas a
-// virada pra adulto acontece às 21h de Brasília da véspera — aceito pela
+// virada pra adulto acontece às 21h de Brasília da véspera, aceito pela
 // spec, a mesma noção de "hoje" de api/_zapStrip.js.
 export function adultSince(birthDate) {
   const d = getSafeDateOrNull(birthDate);

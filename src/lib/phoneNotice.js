@@ -20,15 +20,26 @@ const situacao = (lead) =>
 // número como responsável (quem já não o tem como contato é filtrado aqui).
 export function phoneNoticeLines({ field, owner, wards = [], now = new Date() }) {
   const filhos = wards.filter((w) => contactOf(w, now).viaGuardian);
-  const quem = firstName(filhos[0]?.guardian?.name) || 'Essa pessoa';
+  const nomesFilhos = nomes(filhos);
+  // Caso raro: o menor tem o telefone do responsável como o próprio WhatsApp
+  // (cadastro antigo) e é ele mesmo o "owner" achado pelo whatsappDigits.
+  // Nesse caso a linha do responsável não soma nada, só a linha do menor.
+  const ownerEhFilho = Boolean(owner) && filhos.some((f) => f.id === owner.id);
   const linhas = [];
-  if (field === 'guardian' && owner) {
+  if (field === 'guardian' && owner && !ownerEhFilho) {
     linhas.push(`Esse é o telefone de ${owner.name}, ${situacao(owner)}.`);
   }
-  if (filhos.length > 0) {
-    linhas.push(field === 'guardian'
-      ? `${quem} já é responsável de ${nomes(filhos)}.`
-      : `Esse telefone é de ${quem}, responsável de ${nomes(filhos)}.`);
+  if (nomesFilhos) {
+    const quem = firstName(filhos[0]?.guardian?.name);
+    if (field === 'guardian') {
+      linhas.push(quem
+        ? `${quem} já é responsável de ${nomesFilhos}.`
+        : `Já é responsável de ${nomesFilhos}.`);
+    } else {
+      linhas.push(quem
+        ? `Esse telefone é de ${quem}, responsável de ${nomesFilhos}.`
+        : `Esse telefone é do responsável de ${nomesFilhos}.`);
+    }
   }
   return linhas;
 }

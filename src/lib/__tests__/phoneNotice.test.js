@@ -39,4 +39,41 @@ describe('phoneNoticeLines', () => {
     const adulto = filho('Ana Souza', { birthDate: new Date(2008, 0, 1), whatsapp: '(11) 9 5555-4444' });
     expect(phoneNoticeLines({ field: 'guardian', owner: null, wards: [adulto], now: HOJE })).toEqual([]);
   });
+
+  it('dono e menores juntos: as duas linhas, dono primeiro', () => {
+    const owner = { id: 'm', name: 'Maria Silva', lifecycleStage: 'cliente' };
+    expect(phoneNoticeLines({ field: 'guardian', owner, wards: [filho('Ana Souza')], now: HOJE })).toEqual([
+      'Esse é o telefone de Maria Silva, cliente.',
+      'Maria já é responsável de Ana.',
+    ]);
+  });
+
+  it('dono sem etapa nem lifecycle: "lead" sem complemento', () => {
+    const owner = { id: 'm', name: 'Maria Silva' };
+    expect(phoneNoticeLines({ field: 'guardian', owner, wards: [], now: HOJE }))
+      .toEqual(['Esse é o telefone de Maria Silva, lead.']);
+  });
+
+  it('campo do responsável sem o nome do responsável: sem sujeito', () => {
+    const semNome = filho('Ana Souza', { guardian: { ...MAE, name: '' } });
+    expect(phoneNoticeLines({ field: 'guardian', owner: null, wards: [semNome], now: HOJE }))
+      .toEqual(['Já é responsável de Ana.']);
+  });
+
+  it('campo do próprio lead sem o nome do responsável', () => {
+    const semNome = filho('Ana Souza', { guardian: { ...MAE, name: '' } });
+    expect(phoneNoticeLines({ field: 'own', owner: null, wards: [semNome], now: HOJE }))
+      .toEqual(['Esse telefone é do responsável de Ana.']);
+  });
+
+  it('dono que também é um dos menores: só a linha do menor', () => {
+    const owner = { id: 'Ana Souza', name: 'Ana Souza', lifecycleStage: 'cliente' };
+    expect(phoneNoticeLines({ field: 'guardian', owner, wards: [filho('Ana Souza')], now: HOJE }))
+      .toEqual(['Maria já é responsável de Ana.']);
+  });
+
+  it('campo do próprio lead com menor que já fez 18 e tem WhatsApp próprio: sem aviso', () => {
+    const adulto = filho('Ana Souza', { birthDate: new Date(2008, 0, 1), whatsapp: '(11) 9 5555-4444' });
+    expect(phoneNoticeLines({ field: 'own', owner: null, wards: [adulto], now: HOJE })).toEqual([]);
+  });
 });
