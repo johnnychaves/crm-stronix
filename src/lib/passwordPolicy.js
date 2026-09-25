@@ -8,11 +8,13 @@
 // recusa chegava na tela como "Erro interno".
 //
 // Política em vigor, lida em GET identitytoolkit.googleapis.com/v2/passwordPolicy
-// (a mesma leitura que o SDK do navegador faz): 8 caracteres ou mais, com
+// (a mesma leitura que o SDK do navegador faz): de 8 a 4096 caracteres, com
 // letra minúscula, letra maiúscula, número e um dos símbolos de
-// PASSWORD_SYMBOLS. A conferência abaixo é a do SDK: letra e número pela faixa
-// ASCII, então letra com acento não conta, e símbolo só da lista, então +, = e
-// espaço não contam. O teto de 4096 caracteres fica por conta do Firebase.
+// PASSWORD_SYMBOLS. A conferência abaixo é a do SDK: tamanho pelo .length,
+// letra e número pela faixa ASCII, então letra com acento não conta, e símbolo
+// só da lista, então +, = e espaço não contam. Quem dá a palavra final é o
+// servidor do Firebase; se ele discordar desta cópia, a recusa vira
+// PASSWORD_REJECTED_ERROR.
 //
 // Módulo PURO e sem dependências de propósito: é importado pelo front (telas
 // que pedem senha) e pelas funções serverless em api/, para os dois nunca
@@ -23,6 +25,7 @@
 // passwordRejectedByFirebase), mas as telas deixam de avisar antes de enviar.
 
 export const MIN_PASSWORD_LENGTH = 8;
+export const MAX_PASSWORD_LENGTH = 4096;
 
 // allowedNonAlphanumericCharacters da política do Firebase.
 export const PASSWORD_SYMBOLS = '^$*.[]{}()?"!@#%&/\\,><\':;|_~`-';
@@ -34,25 +37,33 @@ export const PASSWORD_RULE_TEXT =
   `Use ${MIN_PASSWORD_LENGTH} caracteres ou mais, com letra maiúscula, letra minúscula, número e ${SYMBOL_EXAMPLE}.`;
 
 // Resposta para quando o Firebase recusa uma senha que a regra daqui aceitou.
-// Só acontece se a política do console mudar sem este arquivo mudar junto, e
-// aí não dá para saber o que faltou. Por isso a mensagem pede uma senha mais
-// forte em vez de listar o que falta.
-export const PASSWORD_REJECTED_ERROR =
-  `Essa senha não foi aceita. Tente uma mais longa, com letra maiúscula, letra minúscula, número e ${SYMBOL_EXAMPLE}.`;
+// Só acontece se a política do console mudar sem este arquivo mudar junto. O
+// Firebase diz o que faltou, em inglês, e o log do servidor mostra isso. Como a
+// regra daqui já exige as quatro classes, o desvio provável é o console ter
+// subido o mínimo, então a frase pede uma senha mais longa.
+export const PASSWORD_REJECTED_ERROR = 'O sistema recusou essa senha. Tente uma senha mais longa.';
 
 const isLower = (c) => c >= 'a' && c <= 'z';
 const isUpper = (c) => c >= 'A' && c <= 'Z';
 const isDigit = (c) => c >= '0' && c <= '9';
 const isSymbol = (c) => PASSWORD_SYMBOLS.includes(c);
+// Letras acentuadas do Latin-1 (Á, Ç, Õ...), que o Firebase não conta como letra.
+const ACCENTED_UPPER = /[À-ÖØ-Þ]/;
+const ACCENTED_LOWER = /[ß-öø-ÿ]/;
 
 // A frase com o que falta na senha, ou null quando ela serve.
 export function passwordPolicyError(password) {
   const s = typeof password === 'string' ? password : '';
+  // O teto vem antes de percorrer o texto: o convite é rota pública.
+  if (s.length > MAX_PASSWORD_LENGTH) {
+    return `A senha pode ter no máximo ${MAX_PASSWORD_LENGTH} caracteres.`;
+  }
   const chars = s.split('');
   const missing = [];
   if (s.length < MIN_PASSWORD_LENGTH) missing.push(`${MIN_PASSWORD_LENGTH} caracteres ou mais`);
-  if (!chars.some(isLower)) missing.push('letra minúscula');
-  if (!chars.some(isUpper)) missing.push('letra maiúscula');
+  // Quem digitou "Érica" está vendo a maiúscula, então a frase diz "sem acento".
+  if (!chars.some(isLower)) missing.push(ACCENTED_LOWER.test(s) ? 'letra minúscula sem acento' : 'letra minúscula');
+  if (!chars.some(isUpper)) missing.push(ACCENTED_UPPER.test(s) ? 'letra maiúscula sem acento' : 'letra maiúscula');
   if (!chars.some(isDigit)) missing.push('número');
   if (!chars.some(isSymbol)) missing.push(SYMBOL_EXAMPLE);
   if (!missing.length) return null;

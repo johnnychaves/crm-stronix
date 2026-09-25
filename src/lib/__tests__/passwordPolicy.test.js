@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { FirebaseAuthError } from 'firebase-admin/auth';
 import {
   MIN_PASSWORD_LENGTH,
+  MAX_PASSWORD_LENGTH,
   PASSWORD_SYMBOLS,
   PASSWORD_REJECTED_ERROR,
   passwordPolicyError,
@@ -22,8 +23,17 @@ const SIMBOLOS_DO_FIREBASE = [
 ];
 
 describe('passwordPolicy: a regra do Firebase', () => {
-  it('pede 8 caracteres ou mais', () => {
+  it('pede de 8 a 4096 caracteres', () => {
     expect(MIN_PASSWORD_LENGTH).toBe(8);
+    expect(MAX_PASSWORD_LENGTH).toBe(4096);
+  });
+
+  // O convite é rota pública: senha gigante é recusada pelo tamanho, antes de
+  // percorrer o texto.
+  it('recusa senha acima do teto do Firebase', () => {
+    const noTeto = 'Aa1!' + 'a'.repeat(MAX_PASSWORD_LENGTH - 4);
+    expect(passwordPolicyError(noTeto)).toBeNull();
+    expect(passwordPolicyError(noTeto + 'a')).toBe('A senha pode ter no máximo 4096 caracteres.');
   });
 
   it('conta como símbolo exatamente a lista do Firebase', () => {
@@ -62,9 +72,14 @@ describe('passwordPolicy: a regra do Firebase', () => {
   // O Firebase confere letra e número pela faixa ASCII e símbolo pela lista
   // dele. Letra com acento não é maiúscula nem minúscula, e +, = e espaço não
   // são símbolo. Aceitar aqui o que o Firebase recusa é o defeito de 2026-09-25.
-  it('letra com acento não conta como letra', () => {
-    expect(passwordPolicyError('Ágil@2026')).toBe('A senha precisa ter letra maiúscula.');
-    expect(passwordPolicyError('ÁGIL@2026é')).toBe('A senha precisa ter letra minúscula.');
+  // Quem digitou "Érica" está vendo a maiúscula, então a frase diz "sem acento".
+  it('letra com acento não conta como letra, e a frase avisa', () => {
+    expect(passwordPolicyError('Érica@2026')).toBe('A senha precisa ter letra maiúscula sem acento.');
+    expect(passwordPolicyError('ÁGIL@2026é')).toBe('A senha precisa ter letra minúscula sem acento.');
+  });
+
+  it('sem letra acentuada, a frase não fala em acento', () => {
+    expect(passwordPolicyError('academia@2026')).toBe('A senha precisa ter letra maiúscula.');
   });
 
   it('símbolo fora da lista do Firebase não conta', () => {
@@ -96,14 +111,18 @@ describe('passwordPolicy: recusa do Firebase', () => {
   });
 
   it('não confunde com outros erros', () => {
+    // O código sozinho não basta: auth/internal-error também é o de falha de verdade.
+    expect(passwordRejectedByFirebase({ code: 'auth/internal-error', message: 'An internal error has occurred.' })).toBe(false);
     expect(passwordRejectedByFirebase({ code: 'auth/email-already-exists', message: 'The email address is already in use by another account.' })).toBe(false);
     expect(passwordRejectedByFirebase(new Error('deadline exceeded'))).toBe(false);
     expect(passwordRejectedByFirebase(null)).toBe(false);
     expect(passwordRejectedByFirebase(undefined)).toBe(false);
   });
 
+  // A regra do app já exige as quatro classes, então o desvio provável é o
+  // console subir o mínimo. A frase pede uma senha mais longa.
   it('a mensagem da recusa diz o que tentar, sem falar em erro interno', () => {
-    expect(PASSWORD_REJECTED_ERROR).toMatch(/maiúscula/);
+    expect(PASSWORD_REJECTED_ERROR).toBe('O sistema recusou essa senha. Tente uma senha mais longa.');
     expect(PASSWORD_REJECTED_ERROR).not.toMatch(/interno|Firebase/i);
   });
 });

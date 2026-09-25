@@ -10,10 +10,12 @@
 //
 // Uso (mesmas credenciais Admin das funções api/):
 //   node --env-file=.env.local scripts/create-super-admin.js <email> <senha>
-//   (senha: mínimo 6 caracteres)
+//   (senha: a regra do app, em src/lib/passwordPolicy.js, que espelha a
+//   política do Firebase e vale também aqui, pelo Admin SDK)
 
 import process from 'node:process';
 import admin from 'firebase-admin';
+import { passwordPolicyError } from '../src/lib/passwordPolicy.js';
 
 const email = (process.argv[2] || '').trim().toLowerCase();
 const password = process.argv[3] || '';
@@ -22,8 +24,9 @@ if (!email || !password) {
   console.error('Uso: node scripts/create-super-admin.js <email> <senha>');
   process.exit(1);
 }
-if (password.length < 6) {
-  console.error('A senha precisa ter ao menos 6 caracteres.');
+const passwordProblem = passwordPolicyError(password);
+if (passwordProblem) {
+  console.error(passwordProblem);
   process.exit(1);
 }
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { auth } from '../../lib/firebase.js';
-import { passwordPolicyError } from '../../lib/passwordPolicy.js';
+import { passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
 import { IMPERSONATION_KEY, slugify, planLabel, tenantSeatLabel, tenantHealth, lastActivityLabel, auditActionLabel } from '../../lib/superadmin.js';
 import { timeAgo } from '../../lib/format.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
@@ -299,8 +299,8 @@ function SuperAdminView({ tab, onOpenConsole }) {
             <Field label="E-mail do admin">
               <StyledInput type="email" placeholder="admin@organizacao.com" value={form.adminEmail} onChange={e => setField('adminEmail', e.target.value)} required />
             </Field>
-            <Field label="Senha temporária" hint="maiúscula, minúscula, número e símbolo">
-              <StyledInput type="text" placeholder="mín. 8 caracteres" value={form.adminPassword} onChange={e => setField('adminPassword', e.target.value)} required />
+            <Field label="Senha temporária" hint={PASSWORD_RULE_TEXT}>
+              <StyledInput type="text" placeholder="repasse ao gestor por canal seguro" value={form.adminPassword} onChange={e => setField('adminPassword', e.target.value)} required />
             </Field>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { FirebaseAuthError } from 'firebase-admin/auth';
 import handler from '../provision-tenant.js';
 import { PASSWORD_REJECTED_ERROR } from '../../src/lib/passwordPolicy.js';
+import { recusaDaPolitica } from './_recusaDaPolitica.js';
 
 // O provisionamento é a autoridade sobre o identificador da academia: é o
 // único ponto que cria tenants/{id}. Palavra reservada (pipeline, console...)
@@ -10,23 +10,6 @@ import { PASSWORD_REJECTED_ERROR } from '../../src/lib/passwordPolicy.js';
 
 const banco = vi.hoisted(() => ({ tenants: {}, leituras: [] }));
 const contas = vi.hoisted(() => ({ createUser: vi.fn() }));
-
-// Resposta do Firebase ao createUser com a senha "dorinhavianna", copiada do
-// log da Vercel de 2026-09-25. O SDK monta o erro com fromServerError, igual
-// aqui, e o código sai auth/internal-error: ele não conhece esse erro.
-const RECUSA_DA_POLITICA = {
-  error: {
-    code: 400,
-    message: 'PASSWORD_DOES_NOT_MEET_REQUIREMENTS : Missing password requirements: [Password must contain an upper case character, Password must contain a numeric character, Password must contain a non-alphanumeric character]',
-    errors: [{
-      message: 'PASSWORD_DOES_NOT_MEET_REQUIREMENTS : Missing password requirements: [Password must contain an upper case character, Password must contain a numeric character, Password must contain a non-alphanumeric character]',
-      domain: 'global',
-      reason: 'invalid',
-    }],
-  },
-};
-const recusaDaPolitica = () =>
-  FirebaseAuthError.fromServerError(RECUSA_DA_POLITICA.error.message, undefined, RECUSA_DA_POLITICA);
 
 vi.mock('../_firebaseAdmin.js', () => {
   const ref = (caminho) => ({
