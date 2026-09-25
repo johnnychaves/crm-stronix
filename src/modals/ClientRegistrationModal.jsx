@@ -83,8 +83,16 @@ function RegistrationForm({ lead, appUser, db, usersList, tags, onClose }) {
   const tagSuggestions = (tags || []).map((t) => t.name);
 
   const guardianDigits = String(form.guardianPhone || '').replace(/\D/g, '');
+  const guardianTooShort = guardianDigits.length > 0 && guardianDigits.length < 10;
   const guardianMatches = useGuardianMatches({ db, phoneDigits: form.isMinor ? guardianDigits : '', excludeId: lead.id });
   const guardianNotice = phoneNoticeLines({ field: 'guardian', ...guardianMatches });
+  // O WhatsApp do aluno pode ser o número de um responsável de outro menor
+  // (irmãos, ou o próprio adulto que cadastra os filhos). Não barra, só avisa,
+  // igual ao cadastro. withOwner: false porque o dono do número, se houver, já
+  // é outro cuidado (edição de cadastro não faz dup-check de dono aqui).
+  const studentDigits = String(form.whatsapp || '').replace(/\D/g, '');
+  const ownMatches = useGuardianMatches({ db, phoneDigits: studentDigits, excludeId: lead.id, withOwner: false });
+  const ownNotice = phoneNoticeLines({ field: 'own', ...ownMatches });
   // O aluno não pode ter o mesmo número do responsável: recria o problema que
   // a feature resolve (whatsappDigits/zapMatchKey do menor viram os da mãe).
   // O salvamento continua bloqueado por registrationGuardianIssue; aqui é só
@@ -199,15 +207,17 @@ function RegistrationForm({ lead, appUser, db, usersList, tags, onClose }) {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2"><Field label="Nome completo" required><StyledInput icon={<User size={15} />} value={form.name} onChange={(e) => set('name', e.target.value)} placeholder="Nome e sobrenome" /></Field></div>
             <div>
-              <Field label={form.isMinor ? 'WhatsApp do aluno' : 'WhatsApp'} required={!form.isMinor}>
+              <Field label={form.isMinor ? 'WhatsApp do aluno' : 'WhatsApp'} required={!form.isMinor} hint={form.isMinor ? 'opcional' : undefined}>
                 <StyledInput icon={<Phone size={15} />} inputMode="numeric" value={form.whatsapp} onChange={(e) => set('whatsapp', formatPhone(e.target.value))}
                   placeholder="(51) 9 0000-0000" className={sameAsGuardian ? '!border-amber-400' : ''} />
               </Field>
-              {sameAsGuardian && (
+              {sameAsGuardian ? (
                 <div className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">
                   <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.</span>
                 </div>
-              )}
+              ) : ownNotice.length > 0 ? (
+                <div className="mt-1.5 text-[11.5px] text-muted-foreground">{ownNotice[0]}</div>
+              ) : null}
             </div>
             <div className="sm:col-span-2 flex flex-col gap-3 rounded-xl border border-border p-3">
               <label className="flex items-center justify-between gap-3 cursor-pointer">
@@ -223,7 +233,15 @@ function RegistrationForm({ lead, appUser, db, usersList, tags, onClose }) {
               {form.isMinor && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2"><Field label="Nome do responsável" required><StyledInput icon={<Users size={15} />} value={form.guardianName} onChange={(e) => set('guardianName', e.target.value)} placeholder="Nome de quem responde pelo aluno" /></Field></div>
-                  <Field label="Telefone do responsável" required><StyledInput icon={<Phone size={15} />} inputMode="numeric" value={form.guardianPhone} onChange={(e) => set('guardianPhone', formatPhone(e.target.value))} placeholder="(51) 9 0000-0000" /></Field>
+                  <div>
+                    <Field label="Telefone do responsável" required>
+                      <StyledInput icon={<Phone size={15} />} inputMode="numeric" value={form.guardianPhone} onChange={(e) => set('guardianPhone', formatPhone(e.target.value))}
+                        placeholder="(51) 9 0000-0000" className={guardianTooShort ? '!border-amber-400' : ''} />
+                    </Field>
+                    {guardianTooShort && (
+                      <div className="mt-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">Número incompleto. Inclua DDD + 9 dígitos.</div>
+                    )}
+                  </div>
                   <Field label="Parentesco"><StyledSelect value={form.guardianRelation} onChange={(e) => set('guardianRelation', e.target.value)}><option value="">Selecione…</option>{GUARDIAN_RELATIONSHIPS.map((r) => <option key={r}>{r}</option>)}</StyledSelect></Field>
                   {guardianNotice.length > 0 && (
                     <div className="sm:col-span-2 flex flex-col gap-0.5 text-[11.5px] text-muted-foreground">
