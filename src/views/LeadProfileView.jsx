@@ -9,12 +9,8 @@ import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered } from '../lib/stageMove.js';
 import { isAdminUser, canEditLead, isLeadConverted } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
-// `firstName` vem com alias: o componente já tem uma const `firstName` (nome
-// do próprio lead, usada nos textos do composer) e as duas não podem
-// coexistir sem sombra — dentro da função, `firstName` do módulo ficaria
-// inacessível a partir da declaração local, mesmo em closures definidas antes
-// dela no arquivo (a const é hoisted para o topo do escopo da função).
-import { contactLabel, contactOf, firstName as contactFirstName, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
+// firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
+import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
 import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
@@ -605,11 +601,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     if (!canTimeline) { toast.warning('Você não tem permissão para registrar interações neste lead.'); return; }
     const msg = note.trim();
     if (!msg) { toast.warning('Escreva a mensagem antes de enviar.'); return; }
+    const href = whatsappHref(contact.phone, msg);
+    if (!href) { toast.warning('Lead sem WhatsApp cadastrado.'); return; }
     setLoading(true);
     try {
       // Open WhatsApp Web with the typed message
-      const href = whatsappHref(contact.phone, msg);
-      if (href) window.open(href, '_blank', 'noopener,noreferrer');
+      window.open(href, '_blank', 'noopener,noreferrer');
       // Log the outbound message in the timeline
       await logInteraction(db, lead, appUser, {
         text: `📲 Mensagem WhatsApp enviada: ${msg}`,
@@ -1201,7 +1198,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 <span className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate">· {profileState.hint}</span>
               </div>
               {/* name + edit */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center flex-wrap gap-2 gap-y-1">
                 <h1 className="font-display text-[26px] sm:text-[28px] font-bold tracking-tight leading-none truncate">{lead.name}</h1>
                 {isMinorNow(lead) && (
                   <span className="shrink-0 inline-flex items-center h-[20px] px-2 rounded-md text-[10.5px] font-bold uppercase tracking-[.05em] bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
@@ -1284,7 +1281,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                     {referralWaHref && (
                       <DropdownMenuItem asChild className="cursor-pointer">
                         <a href={referralWaHref} target="_blank" rel="noopener noreferrer">
-                          <MessageCircle className="size-4 text-emerald-600 dark:text-emerald-400" /> Enviar pro cliente
+                          <MessageCircle className="size-4 text-emerald-600 dark:text-emerald-400" /> {contact.viaGuardian ? 'Enviar pro responsável' : 'Enviar pro cliente'}
                         </a>
                       </DropdownMenuItem>
                     )}
@@ -1335,11 +1332,45 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           {/* Faixa de metadados: quatro células rotuladas, separadas por régua. */}
           <div className="mt-5 pt-4 border-t border-slate-100 dark:border-white/[0.05] grid grid-cols-2 lg:grid-cols-4 gap-y-3 divide-x divide-slate-100 dark:divide-white/[0.06]">
             <MetaCell label={contact.viaGuardian ? 'Contato (responsável)' : 'Contato'}>
-              <div className="min-w-0 flex flex-col gap-0.5">
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <span className="num truncate">
-                    {contact.viaGuardian ? `${contactLabel(contact)} · ` : ''}{contact.phone || '—'}
+              {contact.viaGuardian ? (
+                <div className="min-w-0 flex flex-col gap-0.5">
+                  {/* O número nunca trunca: é o dado que o consultor precisa
+                      discar, e "(mãe)" pode ceder espaço antes dele. */}
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="num whitespace-nowrap">{contact.phone || '—'}</span>
+                    {contact.phone && (
+                      <button
+                        type="button"
+                        onClick={() => copyPhone(contact.phone)}
+                        title="Copiar número do responsável"
+                        aria-label="Copiar número do responsável"
+                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    )}
                   </span>
+                  <span className="truncate text-[11.5px] font-medium text-muted-foreground" title={contactLabel(contact)}>
+                    {contactLabel(contact)}
+                  </span>
+                  {hasPhone(lead.whatsapp) && (
+                    <span className="flex items-center gap-1.5 min-w-0 text-[11.5px] font-medium text-muted-foreground">
+                      <span className="num truncate">Aluno · {lead.whatsapp}</span>
+                      <button
+                        type="button"
+                        onClick={() => copyPhone(lead.whatsapp)}
+                        title="Copiar número do aluno"
+                        aria-label="Copiar número do aluno"
+                        className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                      >
+                        <Copy size={12} />
+                      </button>
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <span className="num truncate">{contact.phone || '—'}</span>
                   {contact.phone && (
                     <button
                       type="button"
@@ -1351,22 +1382,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                       <Copy size={12} />
                     </button>
                   )}
-                </span>
-                {contact.viaGuardian && lead.whatsapp && (
-                  <span className="flex items-center gap-1.5 min-w-0 text-[11.5px] font-medium text-muted-foreground">
-                    <span className="num truncate">Aluno · {lead.whatsapp}</span>
-                    <button
-                      type="button"
-                      onClick={() => copyPhone(lead.whatsapp)}
-                      title="Copiar número do aluno"
-                      aria-label="Copiar número do aluno"
-                      className="shrink-0 size-5 grid place-items-center rounded text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
-                    >
-                      <Copy size={12} />
-                    </button>
-                  </span>
-                )}
-              </div>
+                </>
+              )}
             </MetaCell>
 
             <MetaCell label="Consultor resp.">
@@ -1413,9 +1430,19 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             </MetaCell>
           </div>
           {contact.missingOwnPhone && (
-            <p className="mt-3 text-[12px] font-medium text-amber-700 dark:text-amber-300">
-              Fez 18 anos. Cadastre o WhatsApp próprio.
-            </p>
+            <div className="mt-3 flex items-center flex-wrap gap-2">
+              <p className="text-[12px] font-medium text-amber-700 dark:text-amber-300">
+                Fez 18 anos. Cadastre o WhatsApp próprio.
+              </p>
+              {!isReadOnly && (
+                <button
+                  onClick={() => setIsEditing(true)}
+                  className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 px-2 py-1 rounded-md border border-dashed border-slate-300 dark:border-white/15 transition"
+                >
+                  Editar cadastro
+                </button>
+              )}
+            </div>
           )}
         </div>
       </section>
