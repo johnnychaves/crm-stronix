@@ -40,7 +40,7 @@ Rodar o mesmo arquivo de novo dá "sem alteração", como já acontece hoje.
 
 Nome: `modelo-stronilead-<identificador da academia>-<aaaa-mm-dd>.xlsx`.
 
-Três abas, nesta ordem. A ordem importa: `readSpreadsheetFile` lê a primeira aba.
+Três abas, nesta ordem. A importação lê a aba Clientes pelo nome (`readSpreadsheetFile(file, { sheet })`) e só cai na primeira aba quando não acha esse nome, então a ordem não importa para ler. O modelo sai com Clientes em primeiro para quem abre o arquivo.
 
 ### Aba "Clientes"
 
@@ -91,7 +91,7 @@ Texto curto, em frases diretas, com:
 - uma linha por cliente. Quem tem dois contratos ao mesmo tempo entra com o que termina por último, e o outro é registrado depois na ficha. Isso segue o `dedupeInFile`, que já fica com a linha de fim mais recente;
 - as colunas laranja são obrigatórias, com CPF ou WhatsApp, pelo menos um dos dois;
 - o valor é o total do contrato, não a mensalidade;
-- não mudar o nome das colunas;
+- não mudar o nome das colunas nem o da aba Clientes;
 - plano, consultor ou professor fora da lista podem ser digitados, o Excel avisa e o nome é acertado na importação;
 - duas linhas de exemplo, com dados fictícios. O exemplo mora nesta aba de propósito, porque na aba Clientes ele seria importado como aluno.
 
@@ -141,7 +141,7 @@ Saem a grade de mapeamento de colunas e o seletor de origem. Ficam:
 
 - o consultor padrão (obrigatório, como hoje);
 - a escolha de quem entra (ativos e vencidos recentes, ou todos);
-- a tabela de planos, agora mostrando só os nomes da planilha que não casaram com o catálogo. Quando todos casam, ela diz "Todos os planos da planilha estão no catálogo." O mapeamento por plano e o "manter como texto" continuam iguais.
+- a tabela de planos, agora mostrando só os nomes da planilha que não casaram com o catálogo. Quando todos casam, ela diz "Todos os planos da planilha estão no catálogo." Cada nome pode ir para um plano do catálogo ou ficar como texto, e aí o contrato nasce sem plano. Para um nome fora do catálogo, "Automático" e "Manter como texto" davam o mesmo resultado, então a tela mostra uma opção só, "Manter como texto". Uma escolha só vale enquanto o nome continua fora do catálogo e o plano escolhido ainda existe (`livePlanMap`), porque o catálogo pode mudar no meio do assistente.
 
 A lista de passos passa a ser Arquivo, Ajustes, Revisão, Importar.
 
@@ -156,8 +156,9 @@ Entram em `parseRow`, ao lado do "Data de fim ilegível" que já existe:
 | Aviso | Quando | O que acontece com a linha |
 |---|---|---|
 | Fim antes do início | as duas datas legíveis e o fim anterior ao início | `parseRow` zera o fim e a linha segue como a de quem não tem data de fim: a pessoa entra sem contrato, e o relatório conta a linha em "sem vigência". Vigência invertida quebraria Renovações e Vencidos. |
-| Sem data de início | célula de início vazia | o contrato nasce com o início calculado pelo plano (fim menos a duração), como `buildImportedContract` já faz, com `startsAtInferred: true`. Com plano fora do catálogo, sem duração conhecida, o contrato nasce sem início, também como hoje. |
+| Sem data de início | célula de início vazia e data de fim presente | o contrato nasce com o início calculado pelo plano (fim menos a duração), como `buildImportedContract` já faz, com `startsAtInferred: true`. Com plano fora do catálogo, sem duração conhecida, o contrato nasce sem início, também como hoje. |
 | Data de início ilegível | célula de início com conteúdo que não vira data | o mesmo que "Sem data de início". |
+| Sem plano | coluna Plano vazia e data de fim presente | o contrato nasce sem plano, como já acontecia; o aviso mostra que a coluna obrigatória ficou em branco. |
 
 ### O que sai do código
 
