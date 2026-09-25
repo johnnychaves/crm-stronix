@@ -858,7 +858,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               <textarea
                 value={note}
                 onChange={e => setNote(e.target.value)}
-                placeholder={`Mensagem para ${firstName}...`}
+                placeholder={`Mensagem para ${contact.viaGuardian ? contactFirstName(contact.name) : firstName}...`}
                 rows={3}
                 className="w-full rounded-lg bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/[0.07] focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 outline-none text-[13px] p-3 placeholder:text-slate-400 transition resize-none"
               />
