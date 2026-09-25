@@ -140,7 +140,13 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [report, setReport] = useState(null);        // { results, summary, failedFromRow, error, batchId }
 
-  const consultants = usersList || [];
+  // Quem pode ser dono do lead importado: gente ATIVA da equipe e com login
+  // vinculado (mesmo filtro do cadastro de cliente). Dono sem authUid não
+  // consegue editar o próprio lead, e quem saiu deixaria o lead órfão.
+  const consultants = useMemo(
+    () => (usersList || []).filter((u) => u?.id && u.name && u.authUid && u.active !== false && !u.superAdminOnly),
+    [usersList]
+  );
   const defaultConsultant = consultants.find((u) => u.id === defaultConsultantId) || null;
   const windowDays = normalizeExpiredWindowDays(renewalGraceDays);
   const funnelId = getDefaultFunnel((funnels || []).filter((f) => !isSystemFunnel(f)))?.id || null;
