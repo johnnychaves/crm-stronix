@@ -1,9 +1,10 @@
-// Regra pura da IMPORTAÇÃO DE CLIENTES de outros sistemas (NextFit, Pacto,
-// Evo, SCA, Tecnofit): normalizadores, linha → candidato, dedupe no arquivo,
+// Regra pura da IMPORTAÇÃO DE CLIENTES pela planilha modelo do Stronilead
+// (importTemplate.js): normalizadores, linha → candidato, dedupe no arquivo,
 // escopo, casamento com a base, classificação e o construtor das escritas.
 // Sem React e sem Firestore: o COMO gravar fica em clientImportWrites.js
 // (padrão contracts.js / contractsWrites.js).
-// Spec: docs/superpowers/specs/2026-09-03-importacao-clientes-design.md
+// Specs: docs/superpowers/specs/2026-09-03-importacao-clientes-design.md e
+// docs/superpowers/specs/2026-09-24-modelo-planilha-importacao-design.md
 
 import { normalize, onlyDigits } from './globalSearch.js';
 import { addMonths, daysBetween, getSafeDateOrNull } from './dates.js';
@@ -189,8 +190,26 @@ export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
   const contractSituation = contractSituationFromText(get('contractSituation'));
   if (contractSituation === CONTRACT_SITUATION.DESCONHECIDO) warnings.push('Situação do contrato desconhecida');
   const endsRaw = get('contractEndsAt');
-  const endsAt = parseImportDate(endsRaw, now);
-  if (str(endsRaw) && !endsAt) warnings.push('Data de fim ilegível');
+  const parsedEnd = parseImportDate(endsRaw, now);
+  if (str(endsRaw) && !parsedEnd) warnings.push('Data de fim ilegível');
+  const startsRaw = get('contractStartsAt');
+  const startsAt = parseImportDate(startsRaw, now);
+  // Sem início, o contrato nasce com o início calculado pelo plano
+  // (buildImportedContract). Só avisa quando a coluna existe e há fim: sem
+  // fim não nasce contrato, e o início não faz falta.
+  if (str(startsRaw) && !startsAt) warnings.push('Data de início ilegível');
+  else if (mapping?.contractStartsAt && !startsAt && parsedEnd) warnings.push('Sem data de início');
+  // Vigência invertida quebraria Renovações e Vencidos: a linha segue como a
+  // de quem não tem data de fim (cliente sem contrato, em "sem vigência").
+  const inverted = Boolean(startsAt && parsedEnd && parsedEnd.getTime() < startsAt.getTime());
+  if (inverted) warnings.push('Fim antes do início');
+  const endsAt = inverted ? null : parsedEnd;
+  const planName = nullify(get('planName'));
+  // Plano é obrigatória no modelo, mas célula vazia passa em silêncio e o
+  // contrato nasce com planId nulo (e valor 0 se Valor também estiver vazio).
+  // Só avisa quando a coluna existe e vai nascer contrato: sem vigência, a
+  // ausência do plano não muda nada.
+  if (mapping?.planName && !planName && endsAt) warnings.push('Sem plano');
   const value = parseValorBRL(get('contractValue'));
   return {
     rowNumber,
@@ -210,10 +229,10 @@ export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
     address: hasAddress ? address : null,
     consultantName: nullify(get('consultantName')),
     professorName: nullify(get('professorName')),
-    planName: nullify(get('planName')),
+    planName,
     contractSituation,
     clientSituation: clientSituationFromText(get('clientSituation')),
-    startsAt: parseImportDate(get('contractStartsAt'), now),
+    startsAt,
     endsAt,
     value: Number.isFinite(value) ? value : null,
     warnings
@@ -269,6 +288,24 @@ export const distinctPlanNames = (candidates) => {
     else map.set(key, { key, label: str(c.planName), count: 1 });
   });
   return [...map.values()].sort((a, b) => b.count - a.count);
+};
+
+// Nomes de plano da planilha que não casam com nenhum plano do catálogo, pela
+// mesma chave de enrichCandidate. `header` é o cabeçalho real da coluna do
+// plano. Quem escolheu da lista do modelo casa sozinho e não aparece aqui.
+export const unmatchedPlanNames = (rows, header, planos) => {
+  if (!header) return [];
+  const known = new Set((planos || []).map((p) => normalizeName(p.name)));
+  return distinctPlanNames((rows || []).map((r) => ({ planName: r?.[header] }))).filter((p) => !known.has(p.key));
+};
+
+// Escolhas de plano feitas em Ajustes que ainda valem: o nome continua fora do
+// catálogo e o plano escolhido ainda existe. O catálogo pode mudar no meio do
+// assistente.
+export const livePlanMap = (planMap, planNames, planos) => {
+  const liveKeys = new Set((planNames || []).map((p) => p.key));
+  return Object.fromEntries(Object.entries(planMap || {})
+    .filter(([k, v]) => liveKeys.has(k) && (planos || []).some((p) => p.id === v)));
 };
 
 // ---------------------------------------------------------------------------
@@ -560,12 +597,15 @@ const contractSummary = (contract) => (contract ? {
   currentContractStatus: contract.status
 } : {});
 
-// "do NextFit" / "de planilha": a origem sem preset não leva artigo.
-const sourcePhrase = (label) => (label === 'planilha' ? 'de planilha' : `do ${label}`);
-const sourceField = (label) => (label === 'planilha' ? 'Importação por planilha' : `Importação ${label}`);
+// Toda importação vem da planilha modelo do Stronilead. Lote antigo guarda
+// 'nextfit' ou 'manual' em importSource e continua valendo: os painéis leem só
+// a presença das marcas (importBatchId, importSource, importedBy), nunca o valor.
+export const IMPORT_SOURCE_ID = 'modelo';
+// Começa com "Importação": é o que isImportCreatedLead (operacional/routine.js) procura.
+export const IMPORT_LEAD_SOURCE = 'Importação por planilha modelo';
 
-export const buildImportInteractionText = ({ sourceLabel, contract }) =>
-  `Cadastro importado ${sourcePhrase(sourceLabel)}. ${contract
+export const buildImportInteractionText = ({ contract }) =>
+  `Cadastro importado da planilha modelo. ${contract
     ? `Plano ${contract.planName || 'sem nome'}, vigência até ${fmtDia(contract.endsAt)}.`
     : 'Sem vigência registrada.'}`;
 
@@ -610,7 +650,7 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
       modalidade: null,
       address: c.address,
       tags: c.vip ? ['VIP'] : [],
-      source: sourceField(importMeta.sourceLabel),
+      source: IMPORT_LEAD_SOURCE,
       observation: '',
       funnelId: funnelId ?? null,
       professorId: c.professorId || null,
@@ -656,7 +696,7 @@ export const buildImportedClientWrites = ({ c, cls, consultant, funnelId, import
     leadName,
     leadData,
     contract,
-    interactionText: buildImportInteractionText({ sourceLabel: importMeta.sourceLabel, contract }),
+    interactionText: buildImportInteractionText({ contract }),
     owner,
     warnings
   };

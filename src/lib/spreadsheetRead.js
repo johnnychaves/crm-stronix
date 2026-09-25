@@ -7,6 +7,11 @@
 // `cellDates: true` faz célula de data virar Date; `raw: true` preserva número
 // e Date em vez de texto formatado. Texto de data em CSV chega como string e o
 // parseImportDate (clientImport.js) resolve.
+//
+// Segundo argumento opcional `{ sheet }`: lê a aba com esse nome exato quando
+// ela existe no workbook, senão cai na primeira. Sem a opção, lê sempre a
+// primeira. Existe porque a academia pode reordenar as abas do modelo, e a
+// importação não pode passar a recusar o arquivo por causa disso.
 
 const loadXlsx = async () => {
   const mod = await import('xlsx');
@@ -42,14 +47,14 @@ const decodeUtf8OrNull = (buf) => {
   }
 };
 
-export async function readSpreadsheetFile(file) {
+export async function readSpreadsheetFile(file, { sheet } = {}) {
   const XLSX = await loadXlsx();
   const buf = await file.arrayBuffer();
   const text = isZip(new Uint8Array(buf)) ? null : decodeUtf8OrNull(buf);
   const wb = text != null
     ? XLSX.read(text, { type: 'string', cellDates: true, raw: true })
     : XLSX.read(buf, { type: 'array', cellDates: true, raw: true });
-  const sheetName = wb.SheetNames[0];
+  const sheetName = sheet && wb.SheetNames.includes(sheet) ? sheet : wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
   if (!ws) throw new Error('Planilha sem aba.');
   const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });

@@ -3,6 +3,8 @@
 status: revisão
 data: 2026-09-03
 
+> A entrada desta importação mudou em 2026-09-24: o modelo de planilha do Stronilead é o único formato aceito, e o reconhecimento do NextFit, o mapeamento manual de colunas e a rodada dupla saíram. Ver `2026-09-24-modelo-planilha-importacao-design.md`. As regras de gravação abaixo continuam valendo.
+
 Uma academia que chega ao Stronilead já tem alunos matriculados em outro
 sistema de gestão (NextFit, Pacto, Evo, SCA, Tecnofit). Hoje não existe
 caminho para trazer esses cadastros. Cada aluno teria de ser digitado como
