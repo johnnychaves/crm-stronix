@@ -10,6 +10,7 @@ import { getLeadOwnershipFields } from '../lib/leads.js';
 import { useDuplicateLead, findDuplicateLeadRemote } from '../hooks/useDuplicateLead.js';
 import { logInteraction } from '../lib/interactions.js';
 import { buildLeadSearchFields, buildGuardianPatch, deriveLeadBucket, sameContactPhone } from '../lib/leadDerived.js';
+import { phoneDigits as extractPhoneDigits } from '../lib/masks.js';
 import { GUARDIAN_RELATIONSHIPS, guardianIssue, turnedAdult } from '../lib/guardian.js';
 import { phoneNoticeLines } from '../lib/phoneNotice.js';
 import { useGuardianMatches } from '../hooks/useGuardianMatches.js';
@@ -41,18 +42,10 @@ import { getTone, phaseToneName } from '../lib/leadState.js';
 
 // ---------- helpers de apresentação ----------
 const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
-// (51) 9 9530-4633
+// (51) 9 9530-4633. Dígitos e regra do DDI vêm de phoneDigits (src/lib/masks.js);
+// só a formatação de exibição é própria daqui (difere de formatPhone p/ input parcial).
 const fmtPhone = (raw) => {
-  const text = String(raw || '');
-  let d = onlyDigits(text);
-  // Número colado com +55 na frente vira 13 dígitos, ou 12 com o "+" ainda
-  // no texto colando DDI num fixo. Datilografar nunca chega nisso de uma vez
-  // só, porque o campo já corta em 11 a cada tecla, então só um "colar" cai
-  // aqui. Com exatamente 11 dígitos e sem "+", "55" na frente é o DDD de
-  // Santa Maria, não o país: 12 dígitos SEM "+" também é esse caso (DDD 55 e
-  // mais um dígito perdido na digitação), então não tira nada.
-  if (d.startsWith('55') && (d.length === 13 || (text.trim().startsWith('+') && d.length > 11))) d = d.slice(2);
-  d = d.slice(0, 11);
+  const d = extractPhoneDigits(raw);
   if (d.length <= 2) return d;
   if (d.length <= 3) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
   if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3)}`;
