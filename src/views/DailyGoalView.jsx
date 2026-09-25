@@ -689,7 +689,12 @@ function RescheduleModal({ lead, categorySlug, currentDate, currentType, flow = 
             </div>
             <div className="min-w-0 flex-1">
               <h3 className="text-[16px] font-semibold text-slate-900 dark:text-white">{title}</h3>
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{lead.name} · <ContactPhone lead={lead} showName /></p>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">{lead.name}</p>
+              {contactOf(lead).phone && (
+                <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5 min-w-0">
+                  <ContactPhone lead={lead} showName />
+                </p>
+              )}
             </div>
           </div>
 
