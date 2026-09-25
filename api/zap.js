@@ -253,6 +253,9 @@ async function handleMatch(req, res) {
     return res.status(200).json({ found: [] });
   }
 
+  // A busca dos responsáveis não pode derrubar o lote inteiro: se ela falhar
+  // (índice desligado no console, por exemplo), o match segue só com os donos.
+  // O log leva só o código do erro, nunca telefone nem mensagem do Firestore.
   const chaves = [...porMatchKey.keys()];
   const [snap, snapMenores] = await Promise.all([
     leadsCollection(tenantId).where('zapMatchKey', 'in', chaves).select('zapMatchKey').get(),
@@ -260,6 +263,10 @@ async function handleMatch(req, res) {
       .where('guardianZapMatchKey', 'in', chaves)
       .select('guardianZapMatchKey', 'isMinor', 'guardian', 'birthDate', 'whatsapp')
       .get()
+      .catch((e) => {
+        console.error('zap: busca dos responsáveis no match falhou', e?.code ?? 'sem código');
+        return null;
+      })
   ]);
   const found = new Set();
   for (const doc of snap.docs) {
@@ -267,7 +274,7 @@ async function handleMatch(req, res) {
   }
   // Responsável conta como cadastro enquanto é o contato do menor.
   const agora = new Date();
-  for (const doc of snapMenores.docs) {
+  for (const doc of snapMenores ? snapMenores.docs : []) {
     const menor = leadDoDoc(doc);
     if (!contactOf(menor, agora).viaGuardian) continue;
     for (const phone of porMatchKey.get(menor.guardianZapMatchKey) || []) found.add(phone);

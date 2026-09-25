@@ -641,6 +641,23 @@ describe('POST /api/zap com action match', () => {
     await handler(pedidoMatch([MAE]), res);
     expect(res.body).toEqual({ found: [] });
   });
+
+  it('busca dos responsáveis falhando não derruba o lote: dono do número continua encontrado', async () => {
+    banco.leads[TENANT] = [clienteAVencer, menorDe('k1', 'Pedro Souza')];
+    banco.falhaEm = 'guardianZapMatchKey';
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const res = resposta();
+
+    await handler(pedidoMatch([TELEFONE, MAE]), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ found: [TELEFONE] });
+    expect(erro).toHaveBeenCalledWith('zap: busca dos responsáveis no match falhou', 9);
+    const registrado = JSON.stringify(erro.mock.calls);
+    expect(registrado).not.toContain(MAE);
+    expect(registrado).not.toContain(TELEFONE);
+    erro.mockRestore();
+  });
 });
 
 describe('POST /api/zap com generate e revoke', () => {
