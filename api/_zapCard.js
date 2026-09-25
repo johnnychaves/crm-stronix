@@ -1,7 +1,9 @@
 // Monta o cartão de contexto que o Stronizap exibe. A lista de campos é
 // FECHADA de propósito: nada entra por espalhamento do documento do lead, pra
 // não vazar CPF, endereço, valor de contrato ou situação de pagamento numa
-// tela de chat.
+// tela de chat. O cartão do responsável (`buildGuardianCard`) é o único que
+// leva um dado de outra pessoa: o nome de quem responde pelo menor, digitado
+// no cadastro do menor.
 import { deriveLeadContractStatus } from '../src/lib/contracts.js';
 import { getLeadAppointmentType, getLeadAppointmentDate } from '../src/lib/leads.js';
 import { getSafeDateOrNull } from '../src/lib/dates.js';
@@ -49,4 +51,33 @@ export function buildZapCard(lead, now = new Date(), checkpoints = DEFAULT_RENEW
   }
 
   return card;
+}
+
+const createdMs = (lead) => getSafeDateOrNull(lead?.createdAt)?.getTime() ?? 0;
+const byName = (a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'pt-BR');
+
+// Menor dentro de `wards`: o cartão de sempre, sem `found` (quem está no
+// cartão é o responsável) e com o parentesco de quem responde por ele.
+export function buildZapWard(lead, now = new Date(), checkpoints = DEFAULT_RENEWAL_CHECKPOINTS) {
+  const card = buildZapCard(lead, now, checkpoints);
+  delete card.found;
+  card.relationship = lead.guardian?.relationship ?? null;
+  return card;
+}
+
+export function buildZapWards(minors, now = new Date(), checkpoints = DEFAULT_RENEWAL_CHECKPOINTS) {
+  return minors.map((m) => buildZapWard(m, now, checkpoints)).sort(byName);
+}
+
+// Quem escreveu não tem cadastro próprio, mas responde por menores. O nome é o
+// que foi digitado no menor cadastrado por último: irmãos podem ter o nome da
+// mãe escrito de jeitos diferentes, e vale o mais recente.
+export function buildGuardianCard(minors, now = new Date(), checkpoints = DEFAULT_RENEWAL_CHECKPOINTS) {
+  const maisRecente = [...minors].sort((a, b) => createdMs(b) - createdMs(a))[0];
+  return {
+    found: true,
+    kind: 'responsavel',
+    name: maisRecente?.guardian?.name ?? null,
+    wards: buildZapWards(minors, now, checkpoints),
+  };
 }

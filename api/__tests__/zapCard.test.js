@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildZapCard } from '../_zapCard.js';
+import { buildZapCard, buildZapWard, buildGuardianCard } from '../_zapCard.js';
 
 const HOJE = new Date(2026, 8, 8, 10, 0);
 
@@ -117,5 +117,33 @@ describe('buildZapCard', () => {
         'planName', 'strip'
       ]);
     });
+  });
+});
+
+describe('cartão do responsável', () => {
+  const MAE = { name: 'Maria Souza', phone: '(11) 9 1234-5678', relationship: 'Mãe' };
+  const pedro = {
+    id: 'k1', name: 'Pedro Souza', lifecycleStage: 'lead', status: 'Novo', source: 'Instagram',
+    consultantName: 'Bruno', isMinor: true, guardian: MAE, cpf: '12345678900',
+    createdAt: new Date(2026, 7, 1),
+  };
+  const ana = { ...pedro, id: 'k2', name: 'Ana Souza', guardian: { ...MAE, name: 'Maria S.' }, createdAt: new Date(2026, 8, 1) };
+
+  it('menor em wards: cartão de lead sem found, com parentesco, e sem campo fora da lista', () => {
+    const w = buildZapWard(pedro, HOJE);
+    expect(w).toMatchObject({ leadId: 'k1', kind: 'lead', name: 'Pedro Souza', stage: 'Novo', relationship: 'Mãe' });
+    expect('found' in w).toBe(false);
+    expect(Object.keys(w).sort()).toEqual([
+      'appointment', 'consultantName', 'kind', 'lastInteractionAt', 'leadId', 'name', 'relationship', 'source', 'stage', 'strip',
+    ]);
+  });
+
+  it('só menores: tipo responsável, nome do menor cadastrado por último, menores em ordem de nome', () => {
+    const card = buildGuardianCard([pedro, ana], HOJE);
+    expect(card.found).toBe(true);
+    expect(card.kind).toBe('responsavel');
+    expect(card.name).toBe('Maria S.');
+    expect(card.wards.map((w) => w.name)).toEqual(['Ana Souza', 'Pedro Souza']);
+    expect(Object.keys(card).sort()).toEqual(['found', 'kind', 'name', 'wards']);
   });
 });
