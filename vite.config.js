@@ -67,6 +67,10 @@ export default defineConfig({
           // SheetJS só entra pelo import() da importação de clientes: chunk
           // próprio, baixado sob demanda. No 'vendor' ele iria para todo mundo.
           if (id.includes('/xlsx/')) return 'xlsx';
+          // ExcelJS só entra pelo import() do "Baixar modelo" do super console
+          // (src/lib/importTemplateWrite.js). São 930 kB: no 'vendor' iria para
+          // todo mundo.
+          if (id.includes('/exceljs/')) return 'exceljs';
           return 'vendor';
         },
       },

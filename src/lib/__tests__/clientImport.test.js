@@ -16,6 +16,8 @@ import {
   isCandidateValid,
   dedupeInFile,
   distinctPlanNames,
+  unmatchedPlanNames,
+  livePlanMap,
   enrichCandidate,
   isInScope,
   resolveMatch,
@@ -27,7 +29,9 @@ import {
   buildImportedClientWrites,
   summarizeOutcomes,
   buildReportCsv,
-  OUTCOME_LABEL
+  OUTCOME_LABEL,
+  IMPORT_LEAD_SOURCE,
+  IMPORT_SOURCE_ID
 } from '../clientImport.js';
 import { buildMatriculaWrites, computeEndsAt, CONTRACT_STATUS } from '../contracts.js';
 
@@ -266,6 +270,62 @@ describe('parseRow', () => {
     expect(c.contractSituation).toBe('desconhecido');
     expect(c.warnings).toEqual(['Situação do contrato desconhecida']);
   });
+
+  const VIGENCIA = { ...NEXTFIT_MAPPING, contractStartsAt: 'Início', contractEndsAt: 'Fim' };
+  const vigRow = (inicio, fim) => ({ __row: 3, 'Nome': 'Ana', 'CPF': '529.982.247-25', 'Início': inicio, 'Fim': fim, 'Contrato': 'Trimestral' });
+
+  it('fim antes do início vira aviso e a linha fica sem vigência', () => {
+    const c = parseRow(vigRow('12/11/2026', '12/08/2026'), VIGENCIA, 3, NOW);
+    expect(c.startsAt).toEqual(D(2026, 11, 12));
+    expect(c.endsAt).toBeNull();
+    expect(c.warnings).toEqual(['Fim antes do início']);
+  });
+
+  it('fim no mesmo dia do início é vigência válida', () => {
+    const c = parseRow(vigRow('12/08/2026', '12/08/2026'), VIGENCIA, 3, NOW);
+    expect(c.endsAt).toEqual(D(2026, 8, 12));
+    expect(c.warnings).toEqual([]);
+  });
+
+  it('coluna de início mapeada e vazia, com fim, avisa "Sem data de início"', () => {
+    const c = parseRow(vigRow('', '12/11/2026'), VIGENCIA, 3, NOW);
+    expect(c.startsAt).toBeNull();
+    expect(c.endsAt).toEqual(D(2026, 11, 12));
+    expect(c.warnings).toEqual(['Sem data de início']);
+  });
+
+  it('sem fim não cobra o início, porque não nasce contrato', () => {
+    const c = parseRow(vigRow('', ''), VIGENCIA, 3, NOW);
+    expect(c.warnings).toEqual([]);
+  });
+
+  it('data de início ilegível vira aviso e o fim continua valendo', () => {
+    const c = parseRow(vigRow('ontem', '12/11/2026'), VIGENCIA, 3, NOW);
+    expect(c.startsAt).toBeNull();
+    expect(c.endsAt).toEqual(D(2026, 11, 12));
+    expect(c.warnings).toEqual(['Data de início ilegível']);
+  });
+
+  it('fim antes do início deixa a linha como cadastro sem vigência na classificação', () => {
+    const c = { ...parseRow(vigRow('12/11/2026', '12/08/2026'), VIGENCIA, 3, NOW), consultant: null, plan: null };
+    const cls = classifyCandidate(c, { kind: 'none', lead: null, homonyms: [] }, { scope: 'padrao', now: NOW, windowDays: 15 });
+    expect(cls).toMatchObject({ outcome: 'criar', createContract: false, reason: 'Cadastro novo sem vigência' });
+  });
+
+  it('coluna de plano mapeada, vazia e com vigência: avisa "Sem plano"', () => {
+    const c = parseRow({ ...vigRow('12/08/2026', '12/11/2026'), 'Contrato': '' }, VIGENCIA, 3, NOW);
+    expect(c.warnings).toEqual(['Sem plano']);
+  });
+
+  it('plano vazio sem data de fim não avisa: sem fim não nasce contrato', () => {
+    const c = parseRow({ ...vigRow('12/08/2026', ''), 'Contrato': '' }, VIGENCIA, 3, NOW);
+    expect(c.warnings).toEqual([]);
+  });
+
+  it('plano preenchido não avisa', () => {
+    const c = parseRow(vigRow('12/08/2026', '12/11/2026'), VIGENCIA, 3, NOW);
+    expect(c.warnings).toEqual([]);
+  });
 });
 
 describe('isCandidateValid', () => {
@@ -357,6 +417,37 @@ describe('enrichCandidate', () => {
     expect(byMap.plan).toBe(PLANOS[1]);
     const forcedText = enrichCandidate({ planName: 'Trimestral' }, { usersList: USERS, professores: PROFS, planos: PLANOS, planMap: { trimestral: '__text__' } });
     expect(forcedText.plan).toBeNull();
+  });
+});
+
+describe('unmatchedPlanNames', () => {
+  it('agrupa por nome normalizado, ignora quem já está no catálogo (acento, caixa, espaço) e mantém a contagem', () => {
+    const rows = [{ Plano: 'Plano Ouro' }, { Plano: ' PLANO OURO ' }, { Plano: 'TRIMESTRAL  ' }, { Plano: ' trimestral' }, { Plano: 'plano prata' }];
+    expect(unmatchedPlanNames(rows, 'Plano', PLANOS)).toEqual([
+      { key: 'plano ouro', label: 'Plano Ouro', count: 2 },
+      { key: 'plano prata', label: 'plano prata', count: 1 }
+    ]);
+  });
+
+  it('sem cabeçalho da coluna devolve lista vazia', () => {
+    expect(unmatchedPlanNames([{ Plano: 'Plano Ouro' }], null, PLANOS)).toEqual([]);
+    expect(unmatchedPlanNames([{ Plano: 'Plano Ouro' }], undefined, PLANOS)).toEqual([]);
+  });
+});
+
+describe('livePlanMap', () => {
+  const NAMES = [{ key: 'plano ouro', label: 'Plano Ouro', count: 2 }];
+
+  it('mantém a escolha cujo nome ainda está fora do catálogo e cujo plano ainda existe', () => {
+    expect(livePlanMap({ 'plano ouro': 'pl1' }, NAMES, PLANOS)).toEqual({ 'plano ouro': 'pl1' });
+  });
+
+  it('descarta a chave cujo nome passou a bater com o catálogo (o catálogo mudou no meio do assistente)', () => {
+    expect(livePlanMap({ 'plano ouro': 'pl1', trimestral: 'pl1' }, NAMES, PLANOS)).toEqual({ 'plano ouro': 'pl1' });
+  });
+
+  it('descarta a escolha que aponta para um plano apagado do catálogo', () => {
+    expect(livePlanMap({ 'plano ouro': 'apagado' }, NAMES, PLANOS)).toEqual({});
   });
 });
 
@@ -537,7 +628,7 @@ describe('classifyCandidate', () => {
   });
 });
 
-const META = { importedBy: 'adminUid', importSource: 'nextfit', sourceLabel: 'NextFit', importBatchId: 'b1', now: NOW };
+const META = { importedBy: 'adminUid', importSource: 'modelo', importBatchId: 'b1', now: NOW };
 const OWNER = { consultantId: 'u1', consultantName: 'Bia Souza', consultantAuthUid: 'a1' };
 const APP_USER = { id: 'u1', name: 'Bia Souza', authUid: 'a1' };
 
@@ -606,7 +697,7 @@ describe('buildImportedClientWrites', () => {
     expect(d.lifecycleStage).toBe('cliente');
     expect(d.lifecycleBucket).toBe('cliente');
     expect(d.funnelId).toBe('f1');
-    expect(d.source).toBe('Importação NextFit');
+    expect(d.source).toBe('Importação por planilha modelo');
     expect(d.tags).toEqual(['VIP']);
     expect(d.consultantId).toBe('u1');
     expect(d.consultantAuthUid).toBe('a1');
@@ -628,7 +719,7 @@ describe('buildImportedClientWrites', () => {
     expect(d.importedBy).toBe('adminUid');
     expect(w.contract.endsAt).toEqual(D(2026, 11, 12));
     expect(w.owner).toEqual(OWNER);
-    expect(w.interactionText).toBe('Cadastro importado do NextFit. Plano Trimestral, vigência até 12/11/2026.');
+    expect(w.interactionText).toBe('Cadastro importado da planilha modelo. Plano Trimestral, vigência até 12/11/2026.');
     expect(w.warnings).toEqual([]);
   });
 
@@ -639,7 +730,7 @@ describe('buildImportedClientWrites', () => {
     expect(w.leadData.createdAt).toBe(NOW);
     expect(w.leadData.convertedAt).toBe(NOW);
     expect(w.contract).toBeNull();
-    expect(w.interactionText).toBe('Cadastro importado do NextFit. Sem vigência registrada.');
+    expect(w.interactionText).toBe('Cadastro importado da planilha modelo. Sem vigência registrada.');
     expect(w.warnings).toEqual(['Sem data histórica: conta como venda de hoje']);
   });
 
@@ -714,10 +805,11 @@ describe('buildImportedClientWrites', () => {
     expect(w.warnings).toEqual([]);
   });
 
-  it('sem preset o texto é "de planilha" e a origem "Importação por planilha"', () => {
-    const w = buildImportedClientWrites({ c: VALID, cls: { lead: null, fill: null, createContract: false }, consultant: USERS[0], funnelId: 'f1', importMeta: { ...META, sourceLabel: 'planilha', importSource: 'manual' }, now: NOW });
-    expect(w.interactionText).toBe('Cadastro importado de planilha. Sem vigência registrada.');
-    expect(w.leadData.source).toBe('Importação por planilha');
+  it('a origem gravada é a planilha modelo, e começa com "Importação"', () => {
+    const w = buildImportedClientWrites({ c: VALID, cls: { lead: null, fill: null, createContract: false }, consultant: USERS[0], funnelId: 'f1', importMeta: META, now: NOW });
+    expect(w.leadData.source).toBe(IMPORT_LEAD_SOURCE);
+    expect(w.leadData.source.startsWith('Importação')).toBe(true);
+    expect(w.leadData.importSource).toBe(IMPORT_SOURCE_ID);
   });
 });
 
