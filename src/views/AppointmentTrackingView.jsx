@@ -16,6 +16,7 @@ import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn } from '../components/ui/Btn.jsx';
 import { AppointmentExportModal } from '../modals/AppointmentExportModal.jsx';
+import { ContactPhone } from '../components/profile/ContactPhone.jsx';
 
 // Janela de confirmação rápida: da hora marcada até 15min depois. Fora dela o
 // atalho continua clicável (sempre editável — decisão do Johnny), só perde o
@@ -700,7 +701,7 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                       <div className="min-w-0">
                         <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{l.name}</div>
                         <div className="mt-px flex items-center gap-1.5 text-[11.5px] text-slate-500 dark:text-neutral-400 tabular-nums">
-                          <span className="inline-flex items-center gap-1"><Phone className="size-[11px]" /> {l.whatsapp}</span>
+                          <span className="inline-flex items-center gap-1"><Phone className="size-[11px]" /> <ContactPhone lead={l} /></span>
                           {isAdmin && consultantFirst && (
                             <>
                               <span className="size-1 rounded-full bg-slate-300 dark:bg-white/20" />
