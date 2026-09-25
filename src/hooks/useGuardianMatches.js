@@ -2,6 +2,10 @@
 // que o têm como responsável (guardianPhoneDigits). Serve aos avisos do
 // cadastro e da edição, que nunca barram. Igualdade num campo só, então o
 // índice é o automático, igual ao useDuplicateLead.
+// A resposta é guardada junto com a chave que a pediu (derive-in-render): o
+// effect só escreve no fim da consulta assíncrona (dentro do setTimeout),
+// nunca de forma síncrona no corpo dele, então não há setState dentro do
+// effect em si — só na sua callback assíncrona.
 import { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
@@ -11,13 +15,12 @@ const MIN_DIGITS = 10;
 const VAZIO = { owner: null, wards: [] };
 
 export function useGuardianMatches({ db, phoneDigits, excludeId = null, debounceMs = 300 }) {
-  const [matches, setMatches] = useState(VAZIO);
+  const ativo = Boolean(db) && typeof phoneDigits === 'string' && phoneDigits.length >= MIN_DIGITS;
+  const chave = ativo ? `${phoneDigits}|${excludeId ?? ''}` : null;
+  const [achado, setAchado] = useState({ chave: null, ...VAZIO });
 
   useEffect(() => {
-    if (!db || !phoneDigits || phoneDigits.length < MIN_DIGITS) {
-      setMatches(VAZIO);
-      return;
-    }
+    if (!chave) return undefined;
     let cancelled = false;
     const t = setTimeout(async () => {
       try {
@@ -28,17 +31,20 @@ export function useGuardianMatches({ db, phoneDigits, excludeId = null, debounce
         ]);
         if (cancelled) return;
         const fora = (l) => l.id !== excludeId;
-        setMatches({
+        setAchado({
+          chave,
           owner: donos.docs.map(normalizeLeadDoc).find(fora) || null,
           wards: menores.docs.map(normalizeLeadDoc).filter(fora),
         });
       } catch (e) {
         console.error('useGuardianMatches', e);
-        if (!cancelled) setMatches(VAZIO);
+        if (!cancelled) setAchado({ chave, ...VAZIO });
       }
     }, debounceMs);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [db, phoneDigits, excludeId, debounceMs]);
+  }, [db, chave, phoneDigits, excludeId, debounceMs]);
 
-  return matches;
+  // A resposta só vale para o telefone que a pediu: trocou ou apagou o número,
+  // o aviso antigo some no mesmo render, sem setState dentro do effect.
+  return chave && achado.chave === chave ? { owner: achado.owner, wards: achado.wards } : VAZIO;
 }
