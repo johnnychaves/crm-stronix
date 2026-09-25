@@ -351,7 +351,32 @@ describe('searchCandidateSpecs — candidatos da busca remota (G1b)', () => {
     expect(cpf.wheres[0]).toEqual({ field: 'cpfDigits', op: '>=', value: '119' });
   });
 
-  it('nome E dígitos juntos geram os dois conjuntos (2 + 3 = 5 specs)', () => {
-    expect(searchCandidateSpecs('ana 123')).toHaveLength(5);
+  it('nome E dígitos juntos geram os dois conjuntos (2 + 5 = 7 specs)', () => {
+    expect(searchCandidateSpecs('ana 123')).toHaveLength(7);
+  });
+});
+
+describe('busca pelo telefone do responsável', () => {
+  const HOJE = new Date(2026, 8, 24, 10, 0);
+  const MAE = { name: 'Maria Souza', phone: '(11) 9 1234-5678', relationship: 'Mãe' };
+
+  it('acha o menor pelo telefone do responsável, com matchKind guardian', () => {
+    const pedro = { id: 'k', name: 'Pedro Souza', whatsapp: '', isMinor: true, guardian: MAE, birthDate: new Date(2015, 4, 10) };
+    const { results } = searchPeople([pedro], '91234', { now: HOJE });
+    expect(results).toHaveLength(1);
+    expect(results[0].matchKind).toBe('guardian');
+  });
+
+  it('não acha quem fez 18 e tem WhatsApp próprio pelo telefone antigo do responsável', () => {
+    const adulto = { id: 'a', name: 'Ana Souza', whatsapp: '(11) 9 5555-4444', isMinor: true, guardian: MAE, birthDate: new Date(2008, 0, 1) };
+    expect(searchPeople([adulto], '91234', { now: HOJE }).results).toHaveLength(0);
+  });
+
+  it('specs de dígitos incluem os campos do responsável', () => {
+    const specs = searchCandidateSpecs('912', 20);
+    const g = specs.find((s) => s.wheres[0].field === 'guardianPhoneDigits');
+    const gRev = specs.find((s) => s.wheres[0].field === 'guardianPhoneDigitsRev');
+    expect(g.wheres[0]).toEqual({ field: 'guardianPhoneDigits', op: '>=', value: '912' });
+    expect(gRev.wheres[0]).toEqual({ field: 'guardianPhoneDigitsRev', op: '>=', value: '219' });
   });
 });

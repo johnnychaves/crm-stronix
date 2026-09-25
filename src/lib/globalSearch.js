@@ -4,6 +4,8 @@
 // tamanho caractere a caractere para que a posição do trecho encontrado no
 // nome normalizado aponte para a mesma posição no nome original (destaque).
 
+import { contactOf } from './guardian.js';
+
 export const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
 
 // minúsculas + sem acento, 1 char -> 1 char (índices preservados).
@@ -16,9 +18,9 @@ export const normalize = (s) =>
 const NAME_MIN = 2;   // busca por nome dispara a partir de 2 caracteres
 const DIGITS_MIN = 3; // telefone/CPF só a partir de 3 dígitos (abaixo é ruído)
 
-// searchPeople(leads, query, { limit }) -> { results, total }.
-// Cada result: { lead, matchKind: 'name'|'phone'|'cpf', matchRange:[s,e]|null }.
-export function searchPeople(leads, query, { limit = 8 } = {}) {
+// searchPeople(leads, query, { limit, now }) -> { results, total }.
+// Cada result: { lead, matchKind: 'name'|'phone'|'cpf'|'guardian', matchRange:[s,e]|null }.
+export function searchPeople(leads, query, { limit = 8, now = new Date() } = {}) {
   const qNorm = normalize(String(query || '').trim());
   const qDigits = onlyDigits(query);
   const nameOn = qNorm.length >= NAME_MIN;
@@ -55,6 +57,10 @@ export function searchPeople(leads, query, { limit = 8 } = {}) {
       if (onlyDigits(lead && lead.whatsapp).includes(qDigits)) { tier = 2; matchKind = 'phone'; }
       // camada 3: dígitos do CPF
       else if (onlyDigits(lead && lead.cpf).includes(qDigits)) { tier = 3; matchKind = 'cpf'; }
+      // camada 4: dígitos do telefone do responsável, só enquanto ele é o contato
+      else if (contactOf(lead, now).viaGuardian && onlyDigits(lead.guardian.phone).includes(qDigits)) {
+        tier = 4; matchKind = 'guardian';
+      }
     }
 
     if (tier >= 0) matched.push({ lead, tier, matchKind, matchRange });
@@ -83,6 +89,7 @@ export function searchPeople(leads, query, { limit = 8 } = {}) {
 //   - telefone: range em whatsappDigits (prefixo) + range em whatsappDigitsRev
 //                 (sufixo = últimos dígitos digitados).
 //   - cpf:      range em cpfDigits (prefixo).
+//   - responsável: range em guardianPhoneDigits (prefixo) + guardianPhoneDigitsRev (sufixo).
 // '' é um code point alto da BMP: [q, q+'') captura todo prefixo de q.
 // Mesmos limiares de searchPeople (nome ≥2, dígitos ≥3). Sem query aplicável → [].
 const SEARCH_HIGH = '';
@@ -128,6 +135,22 @@ export const searchCandidateSpecs = (query, pageSize = 20) => {
         { field: 'cpfDigits', op: '<', value: qDigits + SEARCH_HIGH },
       ],
       orderBy: { field: 'cpfDigits', dir: 'asc' },
+      limit: pageSize,
+    });
+    specs.push({
+      wheres: [
+        { field: 'guardianPhoneDigits', op: '>=', value: qDigits },
+        { field: 'guardianPhoneDigits', op: '<', value: qDigits + SEARCH_HIGH },
+      ],
+      orderBy: { field: 'guardianPhoneDigits', dir: 'asc' },
+      limit: pageSize,
+    });
+    specs.push({
+      wheres: [
+        { field: 'guardianPhoneDigitsRev', op: '>=', value: rev },
+        { field: 'guardianPhoneDigitsRev', op: '<', value: rev + SEARCH_HIGH },
+      ],
+      orderBy: { field: 'guardianPhoneDigitsRev', dir: 'asc' },
       limit: pageSize,
     });
   }

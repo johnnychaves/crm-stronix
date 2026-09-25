@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Search, X, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { searchPeople, onlyDigits } from '../../lib/globalSearch.js';
+import { contactLabel, contactOf } from '../../lib/guardian.js';
 import { useLeadSearch } from '../../hooks/useLeadSearch.js';
 import { deriveLeadState, getTone } from '../../lib/leadState.js';
 import { useLeadProfile } from '../../contexts/LeadProfileContext.jsx';
@@ -45,9 +46,12 @@ function HighlightedName({ name, range }) {
 // mousedown, e a lista sumia antes de o clique chegar.
 export function SearchResultRow({ row, active, onHover, onNavigate }) {
   const lead = row.lead;
+  const contato = contactOf(lead);
   const sub = row.matchKind === 'cpf'
     ? `CPF ${fmtCpf(lead.cpf)}`
-    : (fmtPhone(lead.whatsapp) || row.state.hint);
+    : contato.viaGuardian
+      ? `resp.: ${contactLabel(contato)}`
+      : (fmtPhone(lead.whatsapp) || row.state.hint);
   return (
     <li
       role="option"
