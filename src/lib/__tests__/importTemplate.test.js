@@ -12,7 +12,7 @@ import {
   buildTemplateSpec,
   uniqueSortedNames
 } from '../importTemplate.js';
-import { parseRow } from '../clientImport.js';
+import { parseRow, enrichCandidate } from '../clientImport.js';
 
 const LABELS = TEMPLATE_COLUMNS.map(templateHeaderLabel);
 
@@ -277,5 +277,26 @@ describe('buildTemplateSpec', () => {
   it('a vigência do exemplo segue a duração do plano mostrado', () => {
     const s = buildTemplateSpec({ planos: [{ name: 'Anual', durationMonths: 12 }], users: [], professores: [], windowDays: 15, tenantId: 'x', now: NOW });
     expect(s.help.example.rows[0].slice(4, 6)).toEqual(['01/07/2026', '01/07/2027']);
+  });
+
+  // A promessa central do modelo: quem escolhe um nome QUE ESTÁ NA LISTA nunca
+  // cai em "fora do catálogo" na importação. Acento, caixa, espaço e duplicata
+  // não podem furar essa garantia em nenhuma das três listas.
+  it('todo nome escolhido na lista casa na importação', () => {
+    const planos = [{ id: 'p1', name: 'Trimestral' }, { id: 'p2', name: 'Plano Família' }, { id: 'p3', name: ' trimestral ' }];
+    const users = [{ id: 'u1', name: 'José Silva', authUid: 'a1' }, { id: 'u2', name: 'jose silva', authUid: 'a2' }];
+    const professores = [{ id: 'pr1', name: 'Duda' }];
+    const spec = buildTemplateSpec({ planos, users, professores, windowDays: 15, tenantId: 'academia', now: NOW });
+    const FIELD_BY_TITLE = { Planos: 'planName', Equipe: 'consultantName', Professores: 'professorName' };
+
+    spec.lists.forEach((list) => {
+      const field = FIELD_BY_TITLE[list.title];
+      list.names.forEach((name) => {
+        const c = enrichCandidate({ [field]: name }, { usersList: users, professores, planos, planMap: {} });
+        if (field === 'planName') expect(c.plan, name).not.toBeNull();
+        if (field === 'consultantName') expect(c.consultant, name).not.toBeNull();
+        if (field === 'professorName') expect(c.professorId, name).not.toBeNull();
+      });
+    });
   });
 });
