@@ -18,6 +18,7 @@ describe('ContactPhone', () => {
     const out = html({ lead: { name: 'Pedro', whatsapp: '', isMinor: true, guardian: MAE } });
     expect(out).toContain('(11) 9 1234-5678');
     expect(out).toContain('resp.');
+    expect(out).toContain('telefone do responsável');
   });
 
   it('showName: nome e parentesco antes do número', () => {

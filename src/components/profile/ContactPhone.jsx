@@ -9,11 +9,14 @@ export function ContactPhone({ lead, showName = false, className, now }) {
   if (!c.phone) return null;
   const quem = c.viaGuardian ? contactLabel(c) : '';
   return (
-    <span className={cn('num', className)} title={c.viaGuardian ? `Telefone de ${quem}, responsável` : undefined}>
+    <span className={cn(className)} title={c.viaGuardian ? `Telefone de ${quem}, responsável` : undefined}>
       {showName && c.viaGuardian && <>{quem} · </>}
-      {c.phone}
+      <span className="num">{c.phone}</span>
       {c.viaGuardian && (
-        <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">resp.</span>
+        <span className="ml-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+          <span aria-hidden="true">resp.</span>
+          <span className="sr-only"> (telefone do responsável)</span>
+        </span>
       )}
     </span>
   );
