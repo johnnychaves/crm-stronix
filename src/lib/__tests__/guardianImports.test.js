@@ -25,7 +25,8 @@ const IMPORT_RE = /\b(?:import|export)\b[^'"`;]*?\bfrom\s*['"]([^'"]+)['"]|\bimp
 // Remove bloco /* */, linha inteira de comentário e comentário de fim de
 // linha. O guard `[^:'"\`]` antes de `//` evita apagar um `https://` dentro
 // de string (o caractere antes do `//` seria `:`, que fica de fora da
-// classe negada), guardian.js não tem nenhum, mas o teste de baixo cobre.
+// classe negada) — guardian.js tem um, em whatsappHref, e o teste de baixo
+// cobre o caso também.
 const stripComments = (text) => text
   .replace(/\/\*[\s\S]*?\*\//g, '')
   .replace(/^\s*\/\/.*$/gm, '')
