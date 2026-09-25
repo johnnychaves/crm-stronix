@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { auth, db } from '../../lib/firebase.js';
-import { passwordTooShort, MIN_PASSWORD_LENGTH } from '../../lib/passwordPolicy.js';
+import { passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
 import { collection, onSnapshot, doc, getDoc, setDoc, addDoc, deleteDoc, serverTimestamp, arrayUnion } from 'firebase/firestore';
 import { signInWithCustomToken, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { planLabel, auditActionLabel, IMPERSONATION_KEY } from '../../lib/superadmin.js';
@@ -632,7 +632,8 @@ function NewTenantPanel({ plans, onClose, onDone }) {
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.adminEmail.trim())) { setErr('Informe um e-mail válido para o responsável.'); return; }
     if (f.mode === 'password') {
       if (!f.adminName.trim()) { setErr('Informe o nome do gestor.'); return; }
-      if (passwordTooShort(f.adminPassword)) { setErr(`A senha temporária precisa de ao menos ${MIN_PASSWORD_LENGTH} caracteres.`); return; }
+      const passwordProblem = passwordPolicyError(f.adminPassword);
+      if (passwordProblem) { setErr(passwordProblem); return; }
     }
     if (cpfErr) { setErr('O CPF do responsável é inválido. Corrija antes de criar.'); return; }
     setSaving(true); setErr('');
@@ -825,8 +826,9 @@ function NewTenantPanel({ plans, onClose, onDone }) {
                 </label>
               </div>
               {f.mode === 'password' && (
-                <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Senha temporária (mín. 6 caracteres)</span>
+                <label style={{ display: 'grid', gap: 6 }}><span className="muted" style={{ fontSize: 12 }}>Senha temporária</span>
                   <input style={FLAG_INPUT} value={f.adminPassword} onChange={(e) => set('adminPassword', e.target.value)} placeholder="repasse ao gestor por canal seguro" />
+                  <span className="muted" style={{ fontSize: 11 }}>{PASSWORD_RULE_TEXT}</span>
                 </label>
               )}
             </div>

@@ -1,6 +1,6 @@
 import { adminAuth, adminDb, admin } from './_firebaseAdmin.js';
 import { checkRateLimit, clientIp } from './_rateLimit.js';
-import { passwordTooShort, passwordTooShortError } from './_auth.js';
+import { passwordPolicyError, passwordRejection } from './_auth.js';
 import { getSeatUsage, canAddSeat } from './_plans.js';
 import { syncSubscriptionValue } from './_asaas.js';
 import { withSentry } from './_sentry.js';
@@ -41,8 +41,9 @@ export default withSentry(async function handler(req, res) {
     if (!slug || !cleanToken) {
       return res.status(400).json({ error: 'Convite inválido.' });
     }
-    if (passwordTooShort(password)) {
-      return res.status(400).json({ error: passwordTooShortError() });
+    const passwordProblem = passwordPolicyError(password);
+    if (passwordProblem) {
+      return res.status(400).json({ error: passwordProblem });
     }
     const normalizedName = String(name || '').trim();
     if (!normalizedName) {
@@ -105,6 +106,8 @@ export default withSentry(async function handler(req, res) {
           error: 'Já existe uma conta com esse e-mail. Faça login normalmente ou contate o administrador.'
         });
       }
+      const rejected = passwordRejection(err, 'invite-accept');
+      if (rejected) return res.status(rejected.status).json({ error: rejected.error });
       throw err;
     }
 

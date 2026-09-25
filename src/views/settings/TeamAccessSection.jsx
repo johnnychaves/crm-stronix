@@ -5,6 +5,7 @@ import { auth, appId, LEADS_PATH, PROFESSORS_PATH, USERS_PATH } from '../../lib/
 import { commitOpsInChunks } from '../../lib/funnels.js';
 import { isClientLead } from '../../lib/leads.js';
 import { professorModalityNames } from '../../lib/professores.js';
+import { generateTemporaryPassword, passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
 import { cn } from '../../lib/utils.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
@@ -52,14 +53,6 @@ const emptyForm = { name: '', email: '', password: '', shiftStart: '', shiftEnd:
 
 const normalizeEmail = (v) => String(v || '').trim().toLowerCase();
 const normalizeUid = (v) => String(v || '').trim();
-
-// Senha temporária legível: sem caracteres ambíguos (0/O, 1/l).
-const generatePassword = () => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
-  const buf = new Uint32Array(12);
-  window.crypto.getRandomValues(buf);
-  return Array.from(buf, n => chars[n % chars.length]).join('');
-};
 
 function MemberAvatar({ name, size = 32 }) {
   return (
@@ -172,7 +165,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const users = useMemo(() => usersList || [], [usersList]);
   const consultantCount = users.filter(u => u.role !== 'admin').length;
 
-  const openCreate = () => { setForm({ ...emptyForm, password: generatePassword() }); setMemberDialog({ mode: 'create' }); };
+  const openCreate = () => { setForm({ ...emptyForm, password: generateTemporaryPassword() }); setMemberDialog({ mode: 'create' }); };
   const openEdit = (user) => {
     setForm({
       name: user.name || '',
@@ -189,7 +182,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   useEffect(() => {
     if (!focusId) return;
     if (focusId === 'new') {
-      setForm({ ...emptyForm, password: generatePassword() });
+      setForm({ ...emptyForm, password: generateTemporaryPassword() });
       setMemberDialog({ mode: 'create' });
       onFocusHandled?.();
       return;
@@ -212,6 +205,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       toast.warning('Preencha nome, e-mail e senha temporária.');
       return;
     }
+    const passwordProblem = passwordPolicyError(form.password);
+    if (passwordProblem) { toast.warning(passwordProblem); return; }
     if (!appUser?.authUid) { toast.error('Sessão sem authUid. Reentre no sistema.'); return; }
 
     setSaving(true);
@@ -243,6 +238,12 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const updateMember = async () => {
     const target = memberDialog?.user;
     if (!target) return;
+    // A senha é conferida antes de gravar o cadastro. Se fosse recusada só no
+    // fim, o resto das alterações já estaria salvo com o formulário aberto.
+    if (form.password.trim()) {
+      const passwordProblem = passwordPolicyError(form.password);
+      if (passwordProblem) { toast.warning(passwordProblem); return; }
+    }
     setSaving(true);
     try {
       const newName = form.name.trim();
@@ -566,7 +567,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
 
         <DialogField
           label={memberDialog?.mode === 'edit' ? 'Nova senha (opcional)' : 'Senha temporária'}
-          hint={memberDialog?.mode === 'edit' ? 'Em branco mantém a senha atual.' : 'Mínimo de 6 caracteres.'}
+          hint={memberDialog?.mode === 'edit' ? `Em branco mantém a senha atual. ${PASSWORD_RULE_TEXT}` : PASSWORD_RULE_TEXT}
         >
           <div className="flex gap-2">
             <input
@@ -574,10 +575,10 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
               type="text"
               value={form.password}
               onChange={e => setForm({ ...form, password: e.target.value })}
-              placeholder={memberDialog?.mode === 'edit' ? 'Deixe em branco para não alterar' : 'Mín. 6 caracteres'}
+              placeholder={memberDialog?.mode === 'edit' ? 'Deixe em branco para não alterar' : 'Digite ou clique em Gerar'}
               required={memberDialog?.mode === 'create'}
             />
-            <SettingsBtn size={36} type="button" onClick={() => setForm({ ...form, password: generatePassword() })}>Gerar</SettingsBtn>
+            <SettingsBtn size={36} type="button" onClick={() => setForm({ ...form, password: generateTemporaryPassword() })}>Gerar</SettingsBtn>
           </div>
         </DialogField>
 

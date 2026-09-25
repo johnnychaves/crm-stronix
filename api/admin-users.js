@@ -10,8 +10,8 @@ import {
   TARGET_OK,
   TARGET_FOREIGN,
   TARGET_SUPERADMIN,
-  passwordTooShort,
-  passwordTooShortError
+  passwordPolicyError,
+  passwordRejection
 } from './_auth.js';
 import { withSentry } from './_sentry.js';
 
@@ -53,8 +53,9 @@ async function handleCreate(req, res) {
         .json({ error: 'Campos obrigatórios: name, email, password.' });
     }
 
-    if (passwordTooShort(password)) {
-      return res.status(400).json({ error: passwordTooShortError() });
+    const passwordProblem = passwordPolicyError(password);
+    if (passwordProblem) {
+      return res.status(400).json({ error: passwordProblem });
     }
 
     const isAdmin = await isTenantAdmin(auth.tenantId, auth.uid);
@@ -94,6 +95,8 @@ async function handleCreate(req, res) {
           .status(409)
           .json({ error: 'Já existe uma conta com esse e-mail no Firebase Auth.' });
       }
+      const rejected = passwordRejection(err, 'admin-create-user');
+      if (rejected) return res.status(rejected.status).json({ error: rejected.error });
       throw err;
     }
 
@@ -138,8 +141,9 @@ async function handleSetPassword(req, res) {
         .json({ error: 'Campos obrigatórios: targetAuthUid, password.' });
     }
 
-    if (passwordTooShort(password)) {
-      return res.status(400).json({ error: passwordTooShortError() });
+    const passwordProblem = passwordPolicyError(password);
+    if (passwordProblem) {
+      return res.status(400).json({ error: passwordProblem });
     }
 
     const isAdmin = await isTenantAdmin(auth.tenantId, auth.uid);
@@ -164,7 +168,13 @@ async function handleSetPassword(req, res) {
       return res.status(404).json({ error: 'Usuário não encontrado neste tenant.' });
     }
 
-    await adminAuth.updateUser(targetAuthUid, { password });
+    try {
+      await adminAuth.updateUser(targetAuthUid, { password });
+    } catch (err) {
+      const rejected = passwordRejection(err, 'admin-set-password');
+      if (rejected) return res.status(rejected.status).json({ error: rejected.error });
+      throw err;
+    }
     return res.status(200).json({ ok: true });
   } catch (error) {
     console.error('admin-set-password', error);

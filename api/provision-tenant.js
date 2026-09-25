@@ -4,7 +4,7 @@ import { loadPlans } from './_plans.js';
 import { logAudit } from './_audit.js';
 import { sanitizeProfile } from './_profile.js';
 import { writeTenantPrivate } from './_tenantPrivate.js';
-import { passwordTooShort, passwordTooShortError } from './_auth.js';
+import { passwordPolicyError, passwordRejection } from './_auth.js';
 import { withSentry } from './_sentry.js';
 import { tenantSlugProblem } from '../src/lib/tenantSlug.js';
 
@@ -189,8 +189,9 @@ export default withSentry(async function handler(req, res) {
       if (!EMAIL_RE.test(normalizedEmail)) {
         return res.status(400).json({ error: 'E-mail do responsável inválido.' });
       }
-      if (!inviteMode && passwordTooShort(adminPassword)) {
-        return res.status(400).json({ error: passwordTooShortError() });
+      const passwordProblem = inviteMode ? null : passwordPolicyError(adminPassword);
+      if (passwordProblem) {
+        return res.status(400).json({ error: passwordProblem });
       }
 
       // Plano validado contra o CATÁLOGO DINÂMICO (plans/), com fallback aos 3
@@ -249,6 +250,8 @@ export default withSentry(async function handler(req, res) {
           if (err?.code === 'auth/email-already-exists') {
             return res.status(409).json({ error: 'Já existe uma conta com esse e-mail no Firebase Auth.' });
           }
+          const rejected = passwordRejection(err, 'provision-tenant');
+          if (rejected) return res.status(rejected.status).json({ error: rejected.error });
           throw err;
         }
         // claim de tenant no admin

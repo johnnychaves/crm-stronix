@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { FirebaseAuthError } from 'firebase-admin/auth';
 import handler from '../provision-tenant.js';
+import { PASSWORD_REJECTED_ERROR } from '../../src/lib/passwordPolicy.js';
 
 // O provisionamento é a autoridade sobre o identificador da academia: é o
 // único ponto que cria tenants/{id}. Palavra reservada (pipeline, console...)
@@ -7,6 +9,24 @@ import handler from '../provision-tenant.js';
 // qualquer leitura.
 
 const banco = vi.hoisted(() => ({ tenants: {}, leituras: [] }));
+const contas = vi.hoisted(() => ({ createUser: vi.fn() }));
+
+// Resposta do Firebase ao createUser com a senha "dorinhavianna", copiada do
+// log da Vercel de 2026-09-25. O SDK monta o erro com fromServerError, igual
+// aqui, e o código sai auth/internal-error: ele não conhece esse erro.
+const RECUSA_DA_POLITICA = {
+  error: {
+    code: 400,
+    message: 'PASSWORD_DOES_NOT_MEET_REQUIREMENTS : Missing password requirements: [Password must contain an upper case character, Password must contain a numeric character, Password must contain a non-alphanumeric character]',
+    errors: [{
+      message: 'PASSWORD_DOES_NOT_MEET_REQUIREMENTS : Missing password requirements: [Password must contain an upper case character, Password must contain a numeric character, Password must contain a non-alphanumeric character]',
+      domain: 'global',
+      reason: 'invalid',
+    }],
+  },
+};
+const recusaDaPolitica = () =>
+  FirebaseAuthError.fromServerError(RECUSA_DA_POLITICA.error.message, undefined, RECUSA_DA_POLITICA);
 
 vi.mock('../_firebaseAdmin.js', () => {
   const ref = (caminho) => ({
@@ -20,7 +40,7 @@ vi.mock('../_firebaseAdmin.js', () => {
   });
   return {
     adminDb: ref([]),
-    adminAuth: {},
+    adminAuth: contas,
     admin: { firestore: { FieldValue: { serverTimestamp: () => 'agora' } } },
     // Só o super-admin chega ao POST.
     verifyRequest: async () => ({ uid: 'super-1', superAdmin: true }),
@@ -78,5 +98,45 @@ describe('POST /api/provision-tenant: identificador', () => {
     await handler(pedido('academia-nova'), res);
     expect(res.statusCode).toBe(409);
     expect(banco.leituras).toEqual(['plans', 'tenants/academia-nova']);
+  });
+});
+
+// Modo "Senha manual" do Console. A política de senha do Firebase vale também
+// para o createUser do Admin SDK, e a recusa dele chegava na tela como "Erro
+// interno ao provisionar organização.".
+const pedidoComSenha = (adminPassword) => ({
+  method: 'POST',
+  headers: { authorization: 'Bearer x' },
+  body: {
+    tenantId: 'dorinha-vianna', displayName: 'Dorinha Vianna',
+    adminEmail: 'dono@academia.com', adminName: 'Dorinha', adminPassword,
+  },
+});
+
+describe('POST /api/provision-tenant: senha manual', () => {
+  beforeEach(() => {
+    banco.tenants = {};
+    banco.leituras = [];
+    contas.createUser.mockReset();
+    contas.createUser.mockRejectedValue(recusaDaPolitica());
+  });
+
+  it('senha só de minúsculas é recusada com a regra, antes de criar a conta', async () => {
+    const res = resposta();
+    await handler(pedidoComSenha('dorinhavianna'), res);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toBe('A senha precisa ter letra maiúscula, número e símbolo (como ! @ # $).');
+    expect(contas.createUser).not.toHaveBeenCalled();
+    expect(banco.leituras).toEqual([]);
+  });
+
+  it('recusa do Firebase a uma senha que a regra do app aceitou vira 400, não erro interno', async () => {
+    // É o que acontece se a política mudar no console e src/lib/passwordPolicy.js
+    // ficar para trás.
+    const res = resposta();
+    await handler(pedidoComSenha('Academia@2026'), res);
+    expect(contas.createUser).toHaveBeenCalledTimes(1);
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toBe(PASSWORD_REJECTED_ERROR);
   });
 });
