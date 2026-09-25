@@ -160,7 +160,7 @@ export function buildReportHtml({ title, subheading, columns, rows }) {
   th { background: #f1f5f9; font-weight: 700; }
   tr:nth-child(even) td { background: #f8fafc; }
   .empty { padding: 24px; text-align: center; color: #94a3b8; font-size: 12px; }
-  @media print { body { margin: 12px; } }
+  @media print { body { margin: 12px; } @page { size: landscape; } }
 </style>
 </head>
 <body>

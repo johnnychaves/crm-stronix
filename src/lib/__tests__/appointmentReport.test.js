@@ -237,6 +237,16 @@ describe('buildReportHtml', () => {
     expect(html).toContain('<td>Ana</td>');
   });
 
+  it('imprime na horizontal (mais colunas cabem sem quebrar o cabeçalho)', () => {
+    const html = buildReportHtml({
+      title: 'X',
+      subheading: '',
+      columns: [{ key: 'nome', label: 'Nome' }],
+      rows: [{ nome: 'Ana' }],
+    });
+    expect(html).toContain('size: landscape');
+  });
+
   it('escapa HTML nos valores (evita quebrar o markup)', () => {
     const html = buildReportHtml({
       title: 'X',
