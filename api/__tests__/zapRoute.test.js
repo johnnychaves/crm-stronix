@@ -16,7 +16,7 @@ import handler from '../zap.js';
 // `select` devolve só os campos pedidos. Um fake mais tolerante que produção
 // deixa passar exatamente o erro que importa. E tudo fica guardado por
 // academia, para dar para provar que a chave de uma não lê a outra.
-const banco = vi.hoisted(() => ({ tenants: {}, leads: {}, config: {}, gravacoes: [] }));
+const banco = vi.hoisted(() => ({ tenants: {}, leads: {}, config: {}, gravacoes: [], falhaEm: null }));
 // Quem está logado no CRM (verifyRequest) e se é admin (isTenantAdmin).
 const sessao = vi.hoisted(() => ({ auth: null, admin: false }));
 
@@ -42,6 +42,9 @@ vi.mock('../_firebaseAdmin.js', () => {
     },
     where: (campo, op, valor) => {
       const linhas = () => {
+        // Simula a consulta recusada pelo Firestore (índice desligado no
+        // console, por exemplo) só no campo que o teste pediu.
+        if (banco.falhaEm === campo) throw new Error(`consulta em ${campo} recusada`);
         if (op === 'in' && (!Array.isArray(valor) || valor.length === 0 || valor.length > 30)) {
           throw new Error(`consulta in com ${Array.isArray(valor) ? valor.length : 0} valores`);
         }
@@ -120,6 +123,7 @@ function zerarBanco() {
   banco.leads = {};
   banco.config = {};
   banco.gravacoes = [];
+  banco.falhaEm = null;
   sessao.auth = null;
   sessao.admin = false;
 }
@@ -321,6 +325,39 @@ describe('GET /api/zap', () => {
     const res = resposta();
     await handler(pedidoDaMae(), res);
     expect(res.body).toMatchObject({ found: true, kind: 'lead', leadId: 'k1' });
+    expect('wards' in res.body).toBe(false);
+  });
+
+  it('cartão só do responsável também sai com o cache privado de 2 minutos', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza')];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.body.kind).toBe('responsavel');
+    expect(res.headers['cache-control']).toBe('private, max-age=120');
+  });
+
+  it('menor que já é cliente vem em wards com o cartão de cliente e o parentesco', async () => {
+    // Contrato do clienteAVencer, sem o número próprio: quem responde é a mãe.
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza', {
+      ...clienteAVencer, id: 'k1', name: 'Pedro Souza', zapMatchKey: undefined, currentPlanName: 'Musculação Kids'
+    })];
+    const res = resposta();
+    await handler(pedidoDaMae(), res);
+    expect(res.body.kind).toBe('responsavel');
+    const [pedro] = res.body.wards;
+    expect(pedro).toMatchObject({ leadId: 'k1', kind: 'cliente', contractStatus: 'ativo', planName: 'Musculação Kids', relationship: 'Mãe' });
+    expect(pedro).toHaveProperty('daysLeft');
+    expect(pedro).toHaveProperty('contractEndsAt');
+    expect('found' in pedro).toBe(false);
+  });
+
+  it('busca dos menores falhando não derruba o cartão do dono do número', async () => {
+    banco.leads[TENANT] = [clienteAVencer, { ...menorDe('k1', 'Pedro Souza'), guardianZapMatchKey: zapMatchKey(TELEFONE) }];
+    banco.falhaEm = 'guardianZapMatchKey';
+    const res = resposta();
+    await handler(pedido(), res);
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ found: true, kind: 'cliente', leadId: 'c1' });
     expect('wards' in res.body).toBe(false);
   });
 

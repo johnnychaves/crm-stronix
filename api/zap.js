@@ -104,17 +104,21 @@ export default withSentry(async function handler(req, res) {
     return;
   }
 
-  // O dono do número e os menores que o têm como responsável, juntos.
+  // O dono do número e os menores que o têm como responsável, juntos. A busca
+  // dos menores não pode derrubar o cartão do dono: se ela falhar (índice
+  // desligado no console, por exemplo), o cartão sai sem os menores.
   const [achados, menoresSnap] = await Promise.all([
     leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get(),
     leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get()
+      .catch(() => null)
   ]);
+  const menoresDocs = menoresSnap ? menoresSnap.docs : [];
 
   const agora = new Date();
   const dono = achados.empty ? null : leadDoDoc(achados.docs[0]);
   // Só quem ainda tem o responsável como contato (menor, ou que fez 18 sem
   // WhatsApp próprio), e nunca o próprio dono do número.
-  const menores = menoresSnap.docs
+  const menores = menoresDocs
     .map(leadDoDoc)
     .filter((m) => m.id !== dono?.id && contactOf(m, agora).viaGuardian);
 
