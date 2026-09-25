@@ -158,7 +158,7 @@ Se o Stronilead subir antes, o Stronizap de hoje mostra a mãe com a etiqueta "C
 
 - Link do cartão do Stronizap para a ficha no Stronilead. O cartão não tem link hoje, para ninguém. Se entrar, vai num PR próprio, para todos os cartões.
 - O formulário público de indicação continua pedindo o WhatsApp de quem foi indicado. Se for criança, o consultor liga a chave depois, pela edição.
-- A importação por planilha não ganha colunas de responsável. Atenção para quem mexer nela: hoje o apelido de coluna `responsavel` cai em `consultantName` (`src/lib/importPresets.js`).
+- A importação por planilha (o modelo do Stronilead) não ganha colunas de responsável. Atenção para quem mexer nela: ela preenche o WhatsApp do lead que ainda não tem, então uma linha com o telefone da mãe daria ao menor o número do responsável sem passar pela trava `sameContactPhone`.
 - O contrato não ganha titular nem pagador.
 - A data de nascimento não liga a chave. Só desliga.
 - Nenhum aviso no sino quando alguém faz 18 anos.
