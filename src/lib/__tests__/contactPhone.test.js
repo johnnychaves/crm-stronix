@@ -24,6 +24,14 @@ describe('ContactPhone', () => {
   it('showName: nome e parentesco antes do número', () => {
     const out = html({ lead: { name: 'Pedro', isMinor: true, guardian: MAE }, showName: true });
     expect(out).toContain('Maria Souza (mãe)');
+    expect(out).toContain('(11) 9 1234-5678');
+    expect(out).toContain('resp.');
+    expect(out).toContain('telefone do responsável');
+  });
+
+  it('showName: telefone e marca ficam num bloco que não trunca', () => {
+    const out = html({ lead: { name: 'Pedro', isMinor: true, guardian: MAE }, showName: true });
+    expect(out).toMatch(/<span class="shrink-0 whitespace-nowrap"><span class="num">\(11\) 9 1234-5678<\/span>/);
   });
 
   it('sem telefone nenhum: não desenha nada', () => {
