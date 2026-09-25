@@ -43,8 +43,12 @@ vi.mock('../_firebaseAdmin.js', () => {
     where: (campo, op, valor) => {
       const linhas = () => {
         // Simula a consulta recusada pelo Firestore (índice desligado no
-        // console, por exemplo) só no campo que o teste pediu.
-        if (banco.falhaEm === campo) throw new Error(`consulta em ${campo} recusada`);
+        // console, por exemplo) só no campo que o teste pediu. Igual ao SDK de
+        // servidor: código gRPC numérico (9 é FAILED_PRECONDITION) e o valor
+        // da consulta dentro da mensagem.
+        if (banco.falhaEm === campo) {
+          throw Object.assign(new Error(`9 FAILED_PRECONDITION: consulta em ${campo} == ${valor} recusada`), { code: 9 });
+        }
         if (op === 'in' && (!Array.isArray(valor) || valor.length === 0 || valor.length > 30)) {
           throw new Error(`consulta in com ${Array.isArray(valor) ? valor.length : 0} valores`);
         }
@@ -354,8 +358,16 @@ describe('GET /api/zap', () => {
   it('busca dos menores falhando não derruba o cartão do dono do número', async () => {
     banco.leads[TENANT] = [clienteAVencer, { ...menorDe('k1', 'Pedro Souza'), guardianZapMatchKey: zapMatchKey(TELEFONE) }];
     banco.falhaEm = 'guardianZapMatchKey';
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
     const res = resposta();
     await handler(pedido(), res);
+    // Avisa que a busca falhou com o código do erro, e nada que leve o
+    // telefone: nem a mensagem do Firestore, nem os dígitos.
+    expect(erro).toHaveBeenCalledWith('zap: busca dos menores falhou', 9);
+    const registrado = JSON.stringify(erro.mock.calls);
+    expect(registrado).not.toContain(zapMatchKey(TELEFONE));
+    expect(registrado).not.toContain(TELEFONE);
+    erro.mockRestore();
     expect(res.statusCode).toBe(200);
     expect(res.body).toMatchObject({ found: true, kind: 'cliente', leadId: 'c1' });
     expect('wards' in res.body).toBe(false);

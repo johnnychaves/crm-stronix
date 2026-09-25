@@ -106,11 +106,16 @@ export default withSentry(async function handler(req, res) {
 
   // O dono do número e os menores que o têm como responsável, juntos. A busca
   // dos menores não pode derrubar o cartão do dono: se ela falhar (índice
-  // desligado no console, por exemplo), o cartão sai sem os menores.
+  // desligado no console, por exemplo), o cartão sai sem os menores. O log
+  // leva só o código do erro: a mensagem do Firestore pode trazer o valor da
+  // consulta, que é o telefone.
   const [achados, menoresSnap] = await Promise.all([
     leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get(),
     leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get()
-      .catch(() => null)
+      .catch((e) => {
+        console.error('zap: busca dos menores falhou', e?.code ?? 'sem código');
+        return null;
+      })
   ]);
   const menoresDocs = menoresSnap ? menoresSnap.docs : [];
 
