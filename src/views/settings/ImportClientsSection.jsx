@@ -10,8 +10,8 @@ import { readSpreadsheetFile } from '../../lib/spreadsheetRead.js';
 import { checkTemplateHeaders, templateMapping, buildTemplateSpec } from '../../lib/importTemplate.js';
 import { downloadTemplate } from '../../lib/importTemplateWrite.js';
 import {
-  parseRow, dedupeInFile, enrichCandidate, distinctPlanNames, resolveMatch, classifyCandidate,
-  buildImportedClientWrites, summarizeOutcomes, buildReportCsv, normalizeName,
+  parseRow, dedupeInFile, enrichCandidate, unmatchedPlanNames, livePlanMap, resolveMatch, classifyCandidate,
+  buildImportedClientWrites, summarizeOutcomes, buildReportCsv,
   OUTCOME, OUTCOME_LABEL, WRITABLE_OUTCOMES, SCOPE, IMPORT_SOURCE_ID
 } from '../../lib/clientImport.js';
 import { lookupExisting, runImport } from '../../lib/clientImportWrites.js';
@@ -150,14 +150,12 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
   const defaultConsultant = consultants.find((u) => u.id === defaultConsultantId) || null;
   const windowDays = normalizeExpiredWindowDays(renewalGraceDays);
   const funnelId = getDefaultFunnel((funnels || []).filter((f) => !isSystemFunnel(f)))?.id || null;
-  // Nomes de plano da planilha que não batem com nenhum plano do catálogo, pela
-  // mesma chave de enrichCandidate. Quem escolheu da lista do modelo casa
-  // sozinho e não aparece aqui. Lê só a coluna do plano.
-  const planNames = useMemo(() => {
-    if (!file || !mapping.planName) return [];
-    const known = new Set((planos || []).map((p) => normalizeName(p.name)));
-    return distinctPlanNames(file.rows.map((r) => ({ planName: r[mapping.planName] }))).filter((p) => !known.has(p.key));
-  }, [file, mapping.planName, planos]);
+  // Nomes de plano da planilha que não batem com nenhum plano do catálogo.
+  // Regra em src/lib/clientImport.js.
+  const planNames = useMemo(
+    () => unmatchedPlanNames(file?.rows, mapping.planName, planos),
+    [file, mapping.planName, planos]
+  );
 
   // Classificação reativa às decisões de suspeita (a revisão em si, com as
   // consultas, só roda no botão). `review.now` é o instante congelado do
@@ -238,10 +236,8 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
       const parsed = file.rows.map((r) => parseRow(r, mapping, r.__row, now));
       const { kept, duplicates } = dedupeInFile(parsed);
       // Só vale a escolha de plano que ainda aparece em Ajustes e aponta para
-      // um plano que existe: o catálogo pode mudar no meio do assistente.
-      const liveKeys = new Set(planNames.map((p) => p.key));
-      const effectivePlanMap = Object.fromEntries(Object.entries(planMap)
-        .filter(([k, v]) => liveKeys.has(k) && (planos || []).some((p) => p.id === v)));
+      // um plano que existe: regra em src/lib/clientImport.js.
+      const effectivePlanMap = livePlanMap(planMap, planNames, planos);
       const enrich = (c) => enrichCandidate(c, { usersList: consultants, professores, planos, planMap: effectivePlanMap });
       const keptEnriched = kept.map(enrich);
       const index = await lookupExisting({ db, candidates: keptEnriched });

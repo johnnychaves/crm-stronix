@@ -16,6 +16,8 @@ import {
   isCandidateValid,
   dedupeInFile,
   distinctPlanNames,
+  unmatchedPlanNames,
+  livePlanMap,
   enrichCandidate,
   isInScope,
   resolveMatch,
@@ -400,6 +402,37 @@ describe('enrichCandidate', () => {
     expect(byMap.plan).toBe(PLANOS[1]);
     const forcedText = enrichCandidate({ planName: 'Trimestral' }, { usersList: USERS, professores: PROFS, planos: PLANOS, planMap: { trimestral: '__text__' } });
     expect(forcedText.plan).toBeNull();
+  });
+});
+
+describe('unmatchedPlanNames', () => {
+  it('agrupa por nome normalizado, ignora quem já está no catálogo (acento, caixa, espaço) e mantém a contagem', () => {
+    const rows = [{ Plano: 'Plano Ouro' }, { Plano: ' PLANO OURO ' }, { Plano: 'TRIMESTRAL  ' }, { Plano: ' trimestral' }, { Plano: 'plano prata' }];
+    expect(unmatchedPlanNames(rows, 'Plano', PLANOS)).toEqual([
+      { key: 'plano ouro', label: 'Plano Ouro', count: 2 },
+      { key: 'plano prata', label: 'plano prata', count: 1 }
+    ]);
+  });
+
+  it('sem cabeçalho da coluna devolve lista vazia', () => {
+    expect(unmatchedPlanNames([{ Plano: 'Plano Ouro' }], null, PLANOS)).toEqual([]);
+    expect(unmatchedPlanNames([{ Plano: 'Plano Ouro' }], undefined, PLANOS)).toEqual([]);
+  });
+});
+
+describe('livePlanMap', () => {
+  const NAMES = [{ key: 'plano ouro', label: 'Plano Ouro', count: 2 }];
+
+  it('mantém a escolha cujo nome ainda está fora do catálogo e cujo plano ainda existe', () => {
+    expect(livePlanMap({ 'plano ouro': 'pl1' }, NAMES, PLANOS)).toEqual({ 'plano ouro': 'pl1' });
+  });
+
+  it('descarta a chave cujo nome passou a bater com o catálogo (o catálogo mudou no meio do assistente)', () => {
+    expect(livePlanMap({ 'plano ouro': 'pl1', trimestral: 'pl1' }, NAMES, PLANOS)).toEqual({ 'plano ouro': 'pl1' });
+  });
+
+  it('descarta a escolha que aponta para um plano apagado do catálogo', () => {
+    expect(livePlanMap({ 'plano ouro': 'apagado' }, NAMES, PLANOS)).toEqual({});
   });
 });
 

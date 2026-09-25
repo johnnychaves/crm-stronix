@@ -284,6 +284,24 @@ export const distinctPlanNames = (candidates) => {
   return [...map.values()].sort((a, b) => b.count - a.count);
 };
 
+// Nomes de plano da planilha que não casam com nenhum plano do catálogo, pela
+// mesma chave de enrichCandidate. `header` é o cabeçalho real da coluna do
+// plano. Quem escolheu da lista do modelo casa sozinho e não aparece aqui.
+export const unmatchedPlanNames = (rows, header, planos) => {
+  if (!header) return [];
+  const known = new Set((planos || []).map((p) => normalizeName(p.name)));
+  return distinctPlanNames((rows || []).map((r) => ({ planName: r?.[header] }))).filter((p) => !known.has(p.key));
+};
+
+// Escolhas de plano feitas em Ajustes que ainda valem: o nome continua fora do
+// catálogo e o plano escolhido ainda existe. O catálogo pode mudar no meio do
+// assistente.
+export const livePlanMap = (planMap, planNames, planos) => {
+  const liveKeys = new Set((planNames || []).map((p) => p.key));
+  return Object.fromEntries(Object.entries(planMap || {})
+    .filter(([k, v]) => liveKeys.has(k) && (planos || []).some((p) => p.id === v)));
+};
+
 // ---------------------------------------------------------------------------
 // Enriquecimento: consultor, professor e plano por nome normalizado
 // ---------------------------------------------------------------------------
