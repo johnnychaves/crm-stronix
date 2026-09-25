@@ -196,7 +196,7 @@ function helpOf({ tenantId, windowDays, now, lists, planos }) {
       { text: 'Datas no formato dia/mês/ano, como 15/03/2026.' },
       { text: 'O valor é o total do contrato, não a mensalidade. Em branco, vale o valor do plano no Stronilead.' },
       { text: 'Plano, consultor e professor têm lista. Se o nome não estiver nela, pode digitar: o Excel avisa e o nome é acertado na importação.' },
-      { text: 'Pare o mouse sobre o cabeçalho de cada coluna para ver o que vai nela.' },
+      { text: 'Pare o mouse sobre o cabeçalho das colunas principais para ver o que vai nelas.' },
       { text: 'Não mude o nome das colunas nem o nome da aba Clientes.' },
       { text: '' },
       { text: 'Exemplo (não copie para a aba Clientes)', bold: true }
