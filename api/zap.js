@@ -1,6 +1,10 @@
 // Ponte com o Stronizap. Um sentido só nesta Parte A: o Zap pergunta quem é a
 // pessoa por trás de um telefone e recebe o cartão de contexto.
 //
+// O GET procura também os menores que têm aquele telefone como responsável
+// (`guardianZapMatchKey`), e o `match` conta o número do responsável como
+// cadastro enquanto ele é o contato do menor.
+//
 // Autenticação por chave emitida no Stronilead (Configurações → Integrações),
 // guardada aqui só como hash em tenants/{id}.integrations.zap.keyHash.
 //
@@ -13,7 +17,8 @@ import { withSentry } from './_sentry.js';
 import { isTenantAdmin } from './_auth.js';
 import { generateZapKey, verifyZapKey } from './_zapAuth.js';
 import { zapMatchKey } from './_zapPhone.js';
-import { buildZapCard } from './_zapCard.js';
+import { buildZapCard, buildGuardianCard, buildZapWards } from './_zapCard.js';
+import { contactOf } from '../src/lib/guardian.js';
 
 const LEADS_PATH = 'stronix_leads';
 // Config geral da academia (mesmo doc que PaceSection.jsx grava em
@@ -24,6 +29,26 @@ const CONFIG_PATH = 'stronix_config';
 const CONFIG_GENERAL_ID = 'general';
 
 const MATCH_MAX = 30; // teto do operador `in` do Firestore
+
+// Menores por responsável lidos por consulta. Irmãos de verdade passam longe
+// disso; o teto só impede um número muito compartilhado de pesar a rota.
+const WARDS_MAX = 10;
+
+// Campos de data que os módulos puros esperam como Date. O Firestore devolve
+// Timestamp.
+const DATE_FIELDS = [
+  'currentContractStartsAt', 'currentContractEndsAt',
+  'appointmentScheduledFor', 'nextFollowUp', 'lastInteractionAt',
+  'birthDate', 'createdAt'
+];
+
+const leadDoDoc = (doc) => {
+  const lead = { id: doc.id, ...doc.data() };
+  for (const campo of DATE_FIELDS) {
+    if (lead[campo]?.toDate) lead[campo] = lead[campo].toDate();
+  }
+  return lead;
+};
 
 // Mesmo formato de identificador que tenant-resolve.js aceita. Validar antes de
 // ir ao Firestore impede que "a/b" vire caminho aninhado e que um objeto no
@@ -79,24 +104,26 @@ export default withSentry(async function handler(req, res) {
     return;
   }
 
-  const achados = await leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get();
+  // O dono do número e os menores que o têm como responsável, juntos.
+  const [achados, menoresSnap] = await Promise.all([
+    leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get(),
+    leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get()
+  ]);
 
-  if (achados.empty) {
+  const agora = new Date();
+  const dono = achados.empty ? null : leadDoDoc(achados.docs[0]);
+  // Só quem ainda tem o responsável como contato (menor, ou que fez 18 sem
+  // WhatsApp próprio), e nunca o próprio dono do número.
+  const menores = menoresSnap.docs
+    .map(leadDoDoc)
+    .filter((m) => m.id !== dono?.id && contactOf(m, agora).viaGuardian);
+
+  if (!dono && menores.length === 0) {
     res.status(200).json({ found: false });
     return;
   }
 
-  const doc = achados.docs[0];
-  const lead = { id: doc.id, ...doc.data() };
-  // Firestore devolve Timestamp; os módulos puros esperam Date.
-  for (const campo of [
-    'currentContractStartsAt', 'currentContractEndsAt',
-    'appointmentScheduledFor', 'nextFollowUp', 'lastInteractionAt'
-  ]) {
-    if (lead[campo]?.toDate) lead[campo] = lead[campo].toDate();
-  }
-
-  // Marcos de renovação da academia. Só lê depois de achar o lead — em
+  // Marcos de renovação da academia. Só lê depois de achar alguém: em
   // 'found: false' não há faixa pra montar, então não vale o custo da
   // consulta. Doc inexistente (academia nunca abriu Configurações → Metas &
   // ritmo) ou campo ausente/malformado: buildZapCard/buildZapStrip caem no
@@ -105,8 +132,16 @@ export default withSentry(async function handler(req, res) {
     .collection('public').doc('data').collection(CONFIG_PATH).doc(CONFIG_GENERAL_ID).get();
   const renewalCheckpoints = configSnap.exists ? configSnap.data()?.renewalCheckpoints : undefined;
 
+  let card;
+  if (dono) {
+    card = buildZapCard(dono, agora, renewalCheckpoints);
+    if (menores.length > 0) card.wards = buildZapWards(menores, agora, renewalCheckpoints);
+  } else {
+    card = buildGuardianCard(menores, agora, renewalCheckpoints);
+  }
+
   res.setHeader('Cache-Control', 'private, max-age=120');
-  res.status(200).json(buildZapCard(lead, new Date(), renewalCheckpoints));
+  res.status(200).json(card);
 });
 
 // Gera e revoga a chave de conexão do Stronizap (ação do admin da academia, pela
@@ -209,13 +244,24 @@ async function handleMatch(req, res) {
     return res.status(200).json({ found: [] });
   }
 
-  const snap = await leadsCollection(tenantId)
-    .where('zapMatchKey', 'in', [...porMatchKey.keys()])
-    .select('zapMatchKey')
-    .get();
+  const chaves = [...porMatchKey.keys()];
+  const [snap, snapMenores] = await Promise.all([
+    leadsCollection(tenantId).where('zapMatchKey', 'in', chaves).select('zapMatchKey').get(),
+    leadsCollection(tenantId)
+      .where('guardianZapMatchKey', 'in', chaves)
+      .select('guardianZapMatchKey', 'isMinor', 'guardian', 'birthDate', 'whatsapp')
+      .get()
+  ]);
   const found = new Set();
   for (const doc of snap.docs) {
     for (const phone of porMatchKey.get(doc.data()?.zapMatchKey) || []) found.add(phone);
+  }
+  // Responsável conta como cadastro enquanto é o contato do menor.
+  const agora = new Date();
+  for (const doc of snapMenores.docs) {
+    const menor = leadDoDoc(doc);
+    if (!contactOf(menor, agora).viaGuardian) continue;
+    for (const phone of porMatchKey.get(menor.guardianZapMatchKey) || []) found.add(phone);
   }
   return res.status(200).json({ found: [...found] });
 }
