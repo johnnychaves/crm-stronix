@@ -272,7 +272,7 @@ describe('parseRow', () => {
   });
 
   const VIGENCIA = { ...NEXTFIT_MAPPING, contractStartsAt: 'Início', contractEndsAt: 'Fim' };
-  const vigRow = (inicio, fim) => ({ __row: 3, 'Nome': 'Ana', 'CPF': '529.982.247-25', 'Início': inicio, 'Fim': fim });
+  const vigRow = (inicio, fim) => ({ __row: 3, 'Nome': 'Ana', 'CPF': '529.982.247-25', 'Início': inicio, 'Fim': fim, 'Contrato': 'Trimestral' });
 
   it('fim antes do início vira aviso e a linha fica sem vigência', () => {
     const c = parseRow(vigRow('12/11/2026', '12/08/2026'), VIGENCIA, 3, NOW);
@@ -310,6 +310,21 @@ describe('parseRow', () => {
     const c = { ...parseRow(vigRow('12/11/2026', '12/08/2026'), VIGENCIA, 3, NOW), consultant: null, plan: null };
     const cls = classifyCandidate(c, { kind: 'none', lead: null, homonyms: [] }, { scope: 'padrao', now: NOW, windowDays: 15 });
     expect(cls).toMatchObject({ outcome: 'criar', createContract: false, reason: 'Cadastro novo sem vigência' });
+  });
+
+  it('coluna de plano mapeada, vazia e com vigência: avisa "Sem plano"', () => {
+    const c = parseRow({ ...vigRow('12/08/2026', '12/11/2026'), 'Contrato': '' }, VIGENCIA, 3, NOW);
+    expect(c.warnings).toEqual(['Sem plano']);
+  });
+
+  it('plano vazio sem data de fim não avisa: sem fim não nasce contrato', () => {
+    const c = parseRow({ ...vigRow('12/08/2026', ''), 'Contrato': '' }, VIGENCIA, 3, NOW);
+    expect(c.warnings).toEqual([]);
+  });
+
+  it('plano preenchido não avisa', () => {
+    const c = parseRow(vigRow('12/08/2026', '12/11/2026'), VIGENCIA, 3, NOW);
+    expect(c.warnings).toEqual([]);
   });
 });
 

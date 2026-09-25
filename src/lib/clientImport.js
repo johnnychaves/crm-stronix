@@ -204,6 +204,12 @@ export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
   const inverted = Boolean(startsAt && parsedEnd && parsedEnd.getTime() < startsAt.getTime());
   if (inverted) warnings.push('Fim antes do início');
   const endsAt = inverted ? null : parsedEnd;
+  const planName = nullify(get('planName'));
+  // Plano é obrigatória no modelo, mas célula vazia passa em silêncio e o
+  // contrato nasce com planId nulo (e valor 0 se Valor também estiver vazio).
+  // Só avisa quando a coluna existe e vai nascer contrato: sem vigência, a
+  // ausência do plano não muda nada.
+  if (mapping?.planName && !planName && endsAt) warnings.push('Sem plano');
   const value = parseValorBRL(get('contractValue'));
   return {
     rowNumber,
@@ -223,7 +229,7 @@ export const parseRow = (row, mapping, rowNumber, now = new Date()) => {
     address: hasAddress ? address : null,
     consultantName: nullify(get('consultantName')),
     professorName: nullify(get('professorName')),
-    planName: nullify(get('planName')),
+    planName,
     contractSituation,
     clientSituation: clientSituationFromText(get('clientSituation')),
     startsAt,

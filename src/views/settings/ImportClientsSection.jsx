@@ -456,7 +456,7 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
                 {summary.planosForaDoCatalogo.length > 0 && <div className="text-muted-foreground">{summary.planosForaDoCatalogo.length} plano(s) fora do catálogo: {summary.planosForaDoCatalogo.join(', ')}.</div>}
                 {summary.consultoresNaoReconhecidos.length > 0 && <div className="text-muted-foreground">Consultor não reconhecido (vai para {defaultConsultant?.name}): {summary.consultoresNaoReconhecidos.join(', ')}.</div>}
                 {summary.professoresNaoReconhecidos.length > 0 && <div className="text-muted-foreground">Professor não reconhecido (fica vazio): {summary.professoresNaoReconhecidos.join(', ')}.</div>}
-                {summary.avisos > 0 && <div className="text-muted-foreground">{summary.avisos} linha(s) com aviso (CPF inválido, data ilegível, fim antes do início, sem data de início, sem data histórica). Aparecem no relatório.</div>}
+                {summary.avisos > 0 && <div className="text-muted-foreground">{summary.avisos} linha(s) com aviso (CPF inválido, data ilegível, fim antes do início, sem data de início, sem plano, sem data histórica). Aparecem no relatório.</div>}
               </div>
             )}
           </SettingsPanel>
