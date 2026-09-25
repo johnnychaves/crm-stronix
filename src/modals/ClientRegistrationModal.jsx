@@ -11,7 +11,7 @@ import {
 } from '../lib/clientRegistration.js';
 import { GUARDIAN_RELATIONSHIPS, adultSince } from '../lib/guardian.js';
 import { sameContactPhone } from '../lib/leadDerived.js';
-import { fromDateInputValue } from '../lib/dates.js';
+import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
 import { phoneNoticeLines } from '../lib/phoneNotice.js';
 import { useGuardianMatches } from '../hooks/useGuardianMatches.js';
 import { logInteraction } from '../lib/interactions.js';
@@ -37,15 +37,15 @@ const TABS = [
 ];
 
 // Casca do Dialog. Fica fina de propósito: o Radix desmonta o conteúdo de
-// DialogContent quando fecha (Presence sem forceMount — nem o wrapper local
-// em components/ui/dialog.jsx nem o pacote passam essa prop, conferido no
-// código-fonte do @radix-ui/react-dialog), então o RegistrationForm, montado
+// DialogContent quando fecha (Presence sem forceMount, nem o wrapper local em
+// components/ui/dialog.jsx nem o pacote passam essa prop, conferido no
+// código-fonte do @radix-ui/react-dialog). Assim o RegistrationForm, montado
 // só quando o Dialog está aberto, sempre relê o lead do zero na abertura
 // seguinte. Antes, form/tab/cepBusy viviam aqui, num componente que a
-// LeadProfileView mantém montado o tempo todo (só a prop `open` muda) — por
-// isso `useState(() => readClientRegistration(lead))` só rodava uma vez na
-// vida do app: ligar Menor, salvar, reabrir, desligar pulava a exigência de
-// WhatsApp (a chave "congelada" ainda dizia que period estava ligada), o
+// LeadProfileView mantém montado o tempo todo, só a prop `open` muda, então
+// `useState(() => readClientRegistration(lead))` só rodava uma vez na vida
+// do app: ligar Menor, salvar, reabrir, desligar pulava a exigência de
+// WhatsApp (a chave congelada ainda dizia que a chave estava ligada), o
 // Cancelar não descartava nada, e o useGuardianMatches ficava consultando o
 // Firestore a cada abertura de ficha de menor mesmo com o modal fechado.
 function ClientRegistrationModal({ open, onClose, lead, appUser, db, usersList, tags }) {
@@ -90,17 +90,18 @@ function RegistrationForm({ lead, appUser, db, usersList, tags, onClose }) {
   // O salvamento continua bloqueado por registrationGuardianIssue; aqui é só
   // o aviso embaixo do campo, igual ao cadastro.
   const sameAsGuardian = form.isMinor && sameContactPhone(form.whatsapp, form.guardianPhone);
-  // form.adultSince vem congelado da leitura (a chave estava ligada quando
-  // abriu e a pessoa já tinha 18 pela data de então). Só mostra "Fez 18 anos"
-  // enquanto a data ATUAL ainda bate com maioridade; se a pessoa corrige a
-  // data para uma de menor, avisa em vez de manter a nota velha.
-  const adultSinceDate = form.adultSince ? adultSince(fromDateInputValue(form.birthDate)) : null;
-  const stillAdultByDate = Boolean(adultSinceDate) && Date.now() >= adultSinceDate.getTime();
-  const adultNote = !form.adultSince
+  // form.adultSince só diz que a chave estava ligada na leitura e a pessoa já
+  // tinha 18 pela data de então; a DATA mostrada sai do nascimento ATUAL do
+  // campo, não da congelada. Nascimento limpo não tem data pra mostrar, então
+  // não mostra nota nenhuma; corrigido pra uma data de menor, avisa (a não
+  // ser que a chave já esteja ligada de novo, aí a mensagem perde sentido).
+  const currentAdultSince = form.adultSince ? adultSince(fromDateInputValue(form.birthDate)) : null;
+  const stillAdultByDate = Boolean(currentAdultSince) && Date.now() >= currentAdultSince.getTime();
+  const adultNote = !currentAdultSince
     ? null
     : stillAdultByDate
-      ? `Fez 18 anos em ${form.adultSince.split('-').reverse().join('/')}.`
-      : 'Pela data, é menor. Ligue a chave se o contato for o responsável.';
+      ? `Fez 18 anos em ${toDateInputValue(currentAdultSince).split('-').reverse().join('/')}.`
+      : (form.isMinor ? null : 'Pela data, é menor. Ligue a chave se o contato for o responsável.');
 
   const onCepBlur = async () => {
     if (!isCepComplete(form.cep)) return;

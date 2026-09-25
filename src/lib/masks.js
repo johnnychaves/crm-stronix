@@ -12,13 +12,17 @@ export const formatCPF = (v) => {
 };
 
 // Telefone: (51) 9 0000-0000 (máx. 11 dígitos). Número colado com +55 na
-// frente (ex.: "+55 51 99530-4633") tem mais de 11 dígitos — sem tirar o 55,
-// o corte em 11 cortava o final do número de verdade. Só tira quando sobra
-// mais que 11: com exatamente 11, "55" na frente é o DDD de Santa Maria, não
-// o país (mesma regra de api/_zapPhone.js).
+// frente (ex.: "+55 51 99530-4633") vira 13 dígitos, ou 12 com o "+" ainda
+// no texto colando DDI num fixo. Datilografar nunca chega nisso de uma vez
+// só, porque o campo já corta em 11 a cada tecla, então só um "colar" cai
+// aqui. Com exatamente 11 dígitos e sem "+", "55" na frente é o DDD de Santa
+// Maria, não o país (mesma regra de api/_zapPhone.js): 12 dígitos SEM "+"
+// também é esse caso (DDD 55 e mais um dígito perdido na digitação), então
+// não tira nada.
 export const formatPhone = (v) => {
-  let d = String(v || '').replace(/\D/g, '');
-  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+  const text = String(v || '');
+  let d = text.replace(/\D/g, '');
+  if (d.startsWith('55') && (d.length === 13 || (text.trim().startsWith('+') && d.length > 11))) d = d.slice(2);
   d = d.slice(0, 11);
   if (d.length <= 2) return d.length ? `(${d}` : '';
   if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;

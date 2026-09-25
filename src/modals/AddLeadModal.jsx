@@ -43,11 +43,15 @@ import { getTone, phaseToneName } from '../lib/leadState.js';
 const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
 // (51) 9 9530-4633
 const fmtPhone = (raw) => {
-  let d = onlyDigits(raw);
-  // Número colado com +55 na frente tem mais de 11 dígitos — sem tirar o 55,
-  // o corte em 11 cortava o final do número de verdade. Com exatamente 11,
-  // "55" na frente é o DDD de Santa Maria, não o país.
-  if (d.length > 11 && d.startsWith('55')) d = d.slice(2);
+  const text = String(raw || '');
+  let d = onlyDigits(text);
+  // Número colado com +55 na frente vira 13 dígitos, ou 12 com o "+" ainda
+  // no texto colando DDI num fixo. Datilografar nunca chega nisso de uma vez
+  // só, porque o campo já corta em 11 a cada tecla, então só um "colar" cai
+  // aqui. Com exatamente 11 dígitos e sem "+", "55" na frente é o DDD de
+  // Santa Maria, não o país: 12 dígitos SEM "+" também é esse caso (DDD 55 e
+  // mais um dígito perdido na digitação), então não tira nada.
+  if (d.startsWith('55') && (d.length === 13 || (text.trim().startsWith('+') && d.length > 11))) d = d.slice(2);
   d = d.slice(0, 11);
   if (d.length <= 2) return d;
   if (d.length <= 3) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
@@ -839,11 +843,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                         <div className="grid sm:grid-cols-2 gap-3.5 fade-in">
                           <div>
                             <Label hint="opcional">Nascimento</Label>
-                            <IconInput type="date" icon={<Calendar size={15} />} value={form.birthDate} onChange={(e) => {
-                              const v = e.target.value;
-                              set({ birthDate: v });
-                              if (form.isMinor && turnedAdult({ isMinor: true, birthDate: fromDateInputValue(v) })) setMore(true);
-                            }} />
+                            <IconInput type="date" icon={<Calendar size={15} />} value={form.birthDate} onChange={(e) => set({ birthDate: e.target.value })} />
                           </div>
                           <div>
                             <Label hint="opcional">CPF</Label>
