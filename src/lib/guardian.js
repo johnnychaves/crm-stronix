@@ -1,7 +1,10 @@
 // Responsável do lead menor de idade. Regra única de quem é menor agora e de
 // quem o consultor chama, usada pela tela, pelas listas, pela busca e pela
 // api/ (cartão do Stronizap). Pura: sem React e sem Firebase. Nunca importar
-// daqui src/lib/dailyGoal.js, que puxa lucide-react e quebra a api/.
+// daqui src/lib/dailyGoal.js, que puxa lucide-react e quebra a api/, nem
+// leads.js, globalSearch.js ou leadDerived.js (ciclo de import:
+// leads.js → globalSearch.js → guardian.js). É por isso que onlyDigits é
+// local em vez de vir de globalSearch.js.
 //
 // Nada é gravado no aniversário: a regra roda toda vez que o lead é lido.
 // Spec: docs/superpowers/specs/2026-09-24-responsavel-do-menor-design.md
@@ -11,11 +14,17 @@ export const GUARDIAN_RELATIONSHIPS = Object.freeze(['Mãe', 'Pai', 'Avó', 'Av�
 
 const MIN_PHONE_DIGITS = 10;
 const onlyDigits = (v) => String(v ?? '').replace(/\D/g, '');
-const hasPhone = (v) => onlyDigits(v).length >= MIN_PHONE_DIGITS;
+// Tem telefone de verdade: 10 dígitos ou mais (DDD + número).
+export const hasPhone = (v) => onlyDigits(v).length >= MIN_PHONE_DIGITS;
 const hasGuardian = (lead) => Boolean(lead?.guardian) && hasPhone(lead.guardian.phone);
 
 // Dia em que a pessoa faz 18 anos. new Date(ano + 18, mês, dia) já leva o
-// 29 de fevereiro para 1º de março nos anos que não são bissextos.
+// 29 de fevereiro para 1º de março nos anos que não são bissextos. As partes
+// da data (ano/mês/dia) saem do fuso horário do ambiente que roda esta
+// função. A data de nascimento é salva à meia-noite local do Brasil (03:00Z),
+// então no servidor (Vercel, UTC) o dia do calendário está certo, mas a
+// virada pra adulto acontece às 21h de Brasília da véspera — aceito pela
+// spec, a mesma noção de "hoje" de api/_zapStrip.js.
 export function adultSince(birthDate) {
   const d = getSafeDateOrNull(birthDate);
   if (!d) return null;
@@ -56,7 +65,8 @@ export function contactOf(lead, now = new Date()) {
 }
 
 // "Maria Souza (mãe)". Sem parentesco, ou com "Outro", só o nome.
-export function contactLabel({ name, relationship } = {}) {
+export function contactLabel(c) {
+  const { name, relationship } = c ?? {};
   const nome = String(name ?? '').trim();
   if (!relationship || relationship === 'Outro') return nome;
   return `${nome} (${String(relationship).toLowerCase()})`;

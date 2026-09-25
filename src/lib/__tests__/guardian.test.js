@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   GUARDIAN_RELATIONSHIPS, adultSince, turnedAdult, isMinorNow, contactOf, contactLabel,
-  firstName, whatsappHref, telHref, guardianIssue,
+  firstName, whatsappHref, telHref, guardianIssue, hasPhone,
 } from '../guardian.js';
 
 const HOJE = new Date(2026, 8, 24, 10, 0);
@@ -63,6 +63,17 @@ describe('contactOf', () => {
     expect(contactOf({ name: 'Ana', whatsapp: '(51) 9 0000-1111' }, HOJE).phone).toBe('(51) 9 0000-1111');
     expect(contactOf(null, HOJE).phone).toBe('');
   });
+  it('guardião preenchido mas chave desligada: o próprio lead', () => {
+    expect(contactOf(menor({ isMinor: false, whatsapp: '(11) 9 5555-4444' }), HOJE).viaGuardian).toBe(false);
+  });
+  it('telefone do responsável curto: o próprio lead', () => {
+    expect(contactOf(menor({ guardian: { ...MAE, phone: '123' } }), HOJE).viaGuardian).toBe(false);
+  });
+  it('sem data de nascimento: o responsável, sem aviso', () => {
+    const c = contactOf(menor({ birthDate: null }), HOJE);
+    expect(c.viaGuardian).toBe(true);
+    expect(c.missingOwnPhone).toBe(false);
+  });
 });
 
 describe('textos e links', () => {
@@ -86,6 +97,13 @@ describe('textos e links', () => {
   });
   it('lista de parentesco fixa', () => {
     expect(GUARDIAN_RELATIONSHIPS).toEqual(['Mãe', 'Pai', 'Avó', 'Avô', 'Tia', 'Tio', 'Outro']);
+  });
+  it('contactLabel aceita null', () => {
+    expect(contactLabel(null)).toBe('');
+  });
+  it('hasPhone é exportado', () => {
+    expect(hasPhone('(11) 9 1234-5678')).toBe(true);
+    expect(hasPhone('123')).toBe(false);
   });
 });
 
