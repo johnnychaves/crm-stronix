@@ -88,7 +88,7 @@ describe('POST /api/admin-users: senha', () => {
 
   it('troca de senha fora da regra é recusada antes de qualquer leitura', async () => {
     const res = resposta();
-    await handler(pedido({ action: 'set-password', targetAuthUid: 'consultor-1', password: 'dorinhavianna' }), res);
+    await handler(pedido({ action: 'set-password', targetAuthUid: 'consultor-1', password: 'academianova' }), res);
     expect(res.statusCode).toBe(400);
     expect(res.body.error).toBe('A senha precisa ter letra maiúscula, número e símbolo (como ! @ # $).');
     expect(banco.leituras).toEqual([]);

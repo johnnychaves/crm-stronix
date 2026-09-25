@@ -13,7 +13,7 @@ import {
 // A regra do app espelha a política de senha do Firebase Auth do projeto, lida
 // em GET identitytoolkit.googleapis.com/v2/passwordPolicy em 2026-09-25. Ela
 // vale também para o Admin SDK: foi o createUser do provision-tenant que
-// recusou "dorinhavianna" naquele dia. Se a política mudar no console, é aqui
+// recusou uma senha só de minúsculas naquele dia. Se a política mudar no console, é aqui
 // que os números e a lista mudam junto.
 
 // allowedNonAlphanumericCharacters devolvido pelo Firebase, na ordem dele.
@@ -45,8 +45,8 @@ describe('passwordPolicy: a regra do Firebase', () => {
     expect(passwordPolicyError('Academia@2026')).toBeNull();
   });
 
-  it('recusa a senha de 2026-09-25 dizendo o que falta', () => {
-    expect(passwordPolicyError('dorinhavianna'))
+  it('recusa senha só de minúsculas, o caso de 2026-09-25, dizendo o que falta', () => {
+    expect(passwordPolicyError('academianova'))
       .toBe('A senha precisa ter letra maiúscula, número e símbolo (como ! @ # $).');
   });
 

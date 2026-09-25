@@ -106,7 +106,7 @@ describe('POST /api/provision-tenant: senha manual', () => {
 
   it('senha só de minúsculas é recusada com a regra, antes de criar a conta', async () => {
     const res = resposta();
-    await handler(pedidoComSenha('dorinhavianna'), res);
+    await handler(pedidoComSenha('academianova'), res);
     expect(res.statusCode).toBe(400);
     expect(res.body.error).toBe('A senha precisa ter letra maiúscula, número e símbolo (como ! @ # $).');
     expect(contas.createUser).not.toHaveBeenCalled();

@@ -1,7 +1,7 @@
 import { FirebaseAuthError } from 'firebase-admin/auth';
 
-// Resposta do Firebase ao createUser com a senha "dorinhavianna", copiada do
-// log da Vercel de 2026-09-25. O SDK monta o erro com fromServerError, igual
+// Resposta do Firebase ao createUser com uma senha só de minúsculas, copiada
+// do log da Vercel de 2026-09-25. O SDK monta o erro com fromServerError, igual
 // aqui, e o código sai auth/internal-error: ele não conhece esse erro.
 export const RECUSA_DA_POLITICA = {
   error: {

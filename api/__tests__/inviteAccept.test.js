@@ -77,7 +77,7 @@ describe('POST /api/invite-accept: senha', () => {
 
   it('senha fora da regra é recusada com a regra, antes de qualquer leitura', async () => {
     const res = resposta();
-    await handler(pedido('dorinhavianna'), res);
+    await handler(pedido('academianova'), res);
     expect(res.statusCode).toBe(400);
     expect(res.body.error).toBe('A senha precisa ter letra maiúscula, número e símbolo (como ! @ # $).');
     expect(banco.leituras).toEqual([]);
