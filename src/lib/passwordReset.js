@@ -144,7 +144,7 @@ export function readLoginArrival(state) {
 }
 
 // O fetch das duas ações, sem lançar: rede fora devolve status nulo.
-export async function postResetAction(body, fetchImpl = globalThis.fetch) {
+export async function postResetAction(body, fetchImpl = (...args) => fetch(...args)) {
   try {
     const r = await fetchImpl('/api/tenant-resolve', {
       method: 'POST',

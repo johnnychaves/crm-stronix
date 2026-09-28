@@ -173,4 +173,17 @@ describe('postResetAction', () => {
     expect(await postResetAction({ action: RESET_ACTION_CONFIRM }, async () => { throw new Error('offline'); }))
       .toEqual({ status: null, body: null });
   });
+
+  it('sem fetch injetado, usa o fetch global na hora da chamada', async () => {
+    const mockFetch = vi.fn(async () => ({ status: 200, json: async () => ({ ok: true }) }));
+    vi.stubGlobal('fetch', mockFetch);
+    const r = await postResetAction({ action: RESET_ACTION_REQUEST, email: 'ana@academia.com' });
+    expect(r).toEqual({ status: 200, body: { ok: true } });
+    expect(mockFetch).toHaveBeenCalledWith('/api/tenant-resolve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: RESET_ACTION_REQUEST, email: 'ana@academia.com' }),
+    });
+    vi.unstubAllGlobals();
+  });
 });
