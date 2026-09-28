@@ -1,13 +1,19 @@
 import { describe, it, expect } from 'vitest';
 import { buildZapStrip } from '../_zapStrip.js';
 
-const HOJE = new Date(2026, 8, 8, 10, 0); // 08/09/2026 10:00
+// Instante escrito no horário de Brasília. A faixa lê o dia e a hora de
+// Brasília seja qual for o fuso da máquina, então o teste diz o instante com o
+// fuso junto: new Date(2026, 8, 8, 18, 30) seria 18:30 de Brasília na máquina
+// de dev e 15:30 de Brasília no CI, que roda em UTC.
+const brt = (s) => new Date(`${s}:00-03:00`);
+
+const HOJE = brt('2026-09-08T10:00'); // 08/09/2026 10:00
 
 const cliente = (extra = {}) => ({
   lifecycleStage: 'cliente',
   currentContractStatus: 'ativo',
-  currentContractStartsAt: new Date(2025, 8, 8),
-  currentContractEndsAt: new Date(2027, 8, 8),
+  currentContractStartsAt: brt('2025-09-08T00:00'),
+  currentContractEndsAt: brt('2027-09-08T00:00'),
   ...extra
 });
 
@@ -17,33 +23,33 @@ describe('buildZapStrip', () => {
   });
 
   it('devolve visita quando há visita marcada para hoje', () => {
-    const lead = { appointmentType: 'Visita', appointmentScheduledFor: new Date(2026, 8, 8, 18, 30) };
+    const lead = { appointmentType: 'Visita', appointmentScheduledFor: brt('2026-09-08T18:30') };
     expect(buildZapStrip(lead, HOJE)).toEqual({
       kind: 'visita_hoje', tone: 'agendado', text: 'Visita hoje às 18:30'
     });
   });
 
   it('devolve aula experimental quando há aula marcada para hoje', () => {
-    const lead = { appointmentType: 'Aula', appointmentScheduledFor: new Date(2026, 8, 8, 7, 0) };
+    const lead = { appointmentType: 'Aula', appointmentScheduledFor: brt('2026-09-08T07:00') };
     expect(buildZapStrip(lead, HOJE)).toEqual({
       kind: 'aula_hoje', tone: 'agendado', text: 'Aula experimental hoje às 07:00'
     });
   });
 
   it('ignora compromisso que não é hoje', () => {
-    const lead = { appointmentType: 'Visita', appointmentScheduledFor: new Date(2026, 8, 10, 18, 30) };
+    const lead = { appointmentType: 'Visita', appointmentScheduledFor: brt('2026-09-10T18:30') };
     expect(buildZapStrip(lead, HOJE)).toBeNull();
   });
 
   it('devolve contrato vencido com a contagem de dias', () => {
-    const lead = cliente({ currentContractEndsAt: new Date(2026, 7, 31) });
+    const lead = cliente({ currentContractEndsAt: brt('2026-08-31T00:00') });
     expect(buildZapStrip(lead, HOJE)).toEqual({
       kind: 'vencido', tone: 'vencido', text: 'Contrato vencido há 8 dias'
     });
   });
 
   it('devolve marco de renovação quando o contrato entra em 30 dias', () => {
-    const lead = cliente({ currentContractEndsAt: new Date(2026, 9, 8) }); // 08/10/2026
+    const lead = cliente({ currentContractEndsAt: brt('2026-10-08T00:00') }); // 08/10/2026
     expect(buildZapStrip(lead, HOJE)).toEqual({
       kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 30 dias'
     });
@@ -54,7 +60,7 @@ describe('buildZapStrip', () => {
   // marco de 90 dias tem que acusar antes desse threshold — senão nenhum
   // marco > 30 aparece nunca, nem o padrão 90/60/30 usado aqui.
   it('devolve marco de 90 dias mesmo o contrato ainda não estando "a vencer" pelo threshold fixo do sistema', () => {
-    const lead = cliente({ currentContractEndsAt: new Date(2026, 10, 12) }); // 65 dias
+    const lead = cliente({ currentContractEndsAt: brt('2026-11-12T00:00') }); // 65 dias
     expect(buildZapStrip(lead, HOJE)).toEqual({
       kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 90 dias'
     });
@@ -64,7 +70,7 @@ describe('buildZapStrip', () => {
     // aula em 07/09 com 3 dias de validade: último dia é 09/09, hoje é 08/09.
     const lead = {
       appointmentType: 'Aula',
-      appointmentScheduledFor: new Date(2026, 8, 7, 7, 0),
+      appointmentScheduledFor: brt('2026-09-07T07:00'),
       trialClassesPlanned: 3
     };
     expect(buildZapStrip(lead, HOJE)).toEqual({
@@ -74,9 +80,9 @@ describe('buildZapStrip', () => {
 
   it('compromisso de hoje ganha do marco de renovação', () => {
     const lead = cliente({
-      currentContractEndsAt: new Date(2026, 9, 8),
+      currentContractEndsAt: brt('2026-10-08T00:00'),
       appointmentType: 'Visita',
-      appointmentScheduledFor: new Date(2026, 8, 8, 9, 0)
+      appointmentScheduledFor: brt('2026-09-08T09:00')
     });
     expect(buildZapStrip(lead, HOJE).kind).toBe('visita_hoje');
   });
@@ -86,7 +92,7 @@ describe('buildZapStrip', () => {
       // Vence em 120 dias (06/01/2027): mais longe que o maior marco padrão
       // (90), então o padrão não acusa nada. Um marco customizado de 120 já
       // cobre esse prazo.
-      const lead = cliente({ currentContractEndsAt: new Date(2027, 0, 6) });
+      const lead = cliente({ currentContractEndsAt: brt('2027-01-06T00:00') });
       expect(buildZapStrip(lead, HOJE)).toBeNull();
       expect(buildZapStrip(lead, HOJE, [120, 60])).toEqual({
         kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 120 dias'
@@ -94,7 +100,7 @@ describe('buildZapStrip', () => {
     });
 
     it('cai no padrão 90/60/30 quando os marcos não são passados', () => {
-      const lead = cliente({ currentContractEndsAt: new Date(2026, 9, 8) }); // 30 dias
+      const lead = cliente({ currentContractEndsAt: brt('2026-10-08T00:00') }); // 30 dias
       expect(buildZapStrip(lead, HOJE, undefined)).toEqual({
         kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 30 dias'
       });
@@ -106,7 +112,7 @@ describe('buildZapStrip', () => {
       ['string em vez de array', '30'],
       ['array com lixo misturado', [0, -5, NaN, 'x']]
     ])('cai no padrão 90/60/30 quando os marcos são inválidos (%s)', (_label, marcosRuins) => {
-      const lead = cliente({ currentContractEndsAt: new Date(2026, 9, 8) }); // 30 dias
+      const lead = cliente({ currentContractEndsAt: brt('2026-10-08T00:00') }); // 30 dias
       expect(buildZapStrip(lead, HOJE, marcosRuins)).toEqual({
         kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 30 dias'
       });
