@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {
   RESET_CODE_TTL_MS, RESET_CODE_MAX_ATTEMPTS, RESET_CODES_PER_DAY, RESET_WINDOW_MS,
+  isResetCodeFormat,
 } from '../src/lib/passwordReset.js';
 
 // Regras do "Esqueci a senha" que só o servidor usa: o sorteio, a impressão
@@ -16,9 +17,12 @@ export function generateResetCode(randomInt = (max) => crypto.randomInt(0, max))
 }
 
 // Chave só deste uso, derivada da chave privada do Admin, que já é
-// obrigatória. Trocar a chave privada só mata os códigos pendentes.
+// obrigatória. Trocar a chave privada só mata os códigos pendentes. Sem
+// segredo lança erro: com chave vazia ou "undefined", qualquer um refaria a
+// impressão.
 function resetKey(secret) {
-  return crypto.createHmac('sha256', String(secret)).update('stronilead:password-reset-code').digest();
+  if (typeof secret !== 'string' || !secret) throw new Error('esqueci-a-senha: falta o segredo da impressão');
+  return crypto.createHmac('sha256', secret).update('stronilead:password-reset-code').digest();
 }
 
 // A impressão que vai para o banco. HMAC com chave do servidor, e não sha256
@@ -30,10 +34,16 @@ export function hashResetCode(secret, uid, code) {
 }
 
 export function resetCodeMatches(secret, uid, code, codeHash) {
-  if (typeof codeHash !== 'string') return false;
+  // Impressão de outro formato nunca confere. O Buffer.from(..., 'hex') aceita
+  // maiúsculas e para no primeiro par inválido, ignorando o lixo que vem depois.
+  // Por isso o formato é conferido antes de decodificar.
+  if (typeof codeHash !== 'string' || !/^[0-9a-f]{64}$/.test(codeHash)) return false;
+  // Só existe código de 6 números.
+  if (!isResetCodeFormat(code)) return false;
   const esperado = Buffer.from(hashResetCode(secret, uid, code), 'hex');
   const guardado = Buffer.from(codeHash, 'hex');
-  // timingSafeEqual exige o mesmo tamanho. Impressão de outro formato nunca confere.
+  // timingSafeEqual exige o mesmo tamanho. Com o formato conferido acima os dois
+  // têm 32 bytes, e esta checagem fica como segunda trava.
   if (esperado.length !== guardado.length) return false;
   return crypto.timingSafeEqual(esperado, guardado);
 }
@@ -62,6 +72,7 @@ export function maskEmail(email) {
 // Pedido: com 5 códigos nas últimas 24 horas, recusa. Senão devolve o
 // documento novo, que escreve por cima do anterior: só o último código vale.
 export function planIssue(current, { now, codeHash, tenantId, signInMark, tokensMark }) {
+  if (!Number.isFinite(now)) throw new Error('esqueci-a-senha: relógio inválido');
   const recent = (Array.isArray(current?.requestsMs) ? current.requestsMs : [])
     .filter((t) => typeof t === 'number' && now - t < RESET_WINDOW_MS);
   if (recent.length >= RESET_CODES_PER_DAY) return { ok: false, reason: 'daily_limit' };
@@ -80,13 +91,16 @@ export function planIssue(current, { now, codeHash, tenantId, signInMark, tokens
   };
 }
 
-// Troca: reserva uma tentativa do código vivo e devolve o número dela. É essa
-// reserva que garante no máximo 5 comparações por código.
+// Troca: reserva uma tentativa do código vivo e devolve o número dela. Rodando
+// dentro da transação, e com a comparação vindo só depois de a reserva ser
+// gravada, ela garante no máximo 5 comparações por código.
 export function planReserve(current, now) {
+  if (!Number.isFinite(now)) throw new Error('esqueci-a-senha: relógio inválido');
   if (!current || typeof current.codeHash !== 'string' || current.usedAtMs != null) return { ok: false };
   if (typeof current.expiresAtMs !== 'number' || current.expiresAtMs <= now) return { ok: false };
-  const attempts = Number(current.attempts) || 0;
-  if (attempts >= RESET_CODE_MAX_ATTEMPTS) return { ok: false };
+  // Contador que não é inteiro conta como esgotado, nunca como zero.
+  const { attempts } = current;
+  if (!Number.isInteger(attempts) || attempts >= RESET_CODE_MAX_ATTEMPTS) return { ok: false };
   return {
     ok: true,
     attempt: attempts + 1,
@@ -96,9 +110,10 @@ export function planReserve(current, now) {
 }
 
 // Mata o código só se o documento ainda tiver aquele código vivo. Assim um
-// caminho atrasado nunca mata o código novo de um pedido que chegou depois.
+// caminho atrasado não mata o código novo de um pedido que chegou depois, a
+// não ser que o sorteio repita o mesmo código: a impressão sai igual.
 export function planKill(current, codeHash, now) {
-  if (!current || current.codeHash !== codeHash || current.usedAtMs != null) return null;
+  if (typeof codeHash !== 'string' || !current || current.codeHash !== codeHash || current.usedAtMs != null) return null;
   return { usedAtMs: now };
 }
 

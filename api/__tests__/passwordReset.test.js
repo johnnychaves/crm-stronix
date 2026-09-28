@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import crypto from 'node:crypto';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   generateResetCode, hashResetCode, resetCodeMatches, accountRefusal, maskEmail,
   planIssue, planReserve, planKill, marksChanged,
@@ -7,6 +8,8 @@ import { RESET_CODE_TTL_MS, RESET_WINDOW_MS } from '../../src/lib/passwordReset.
 
 const SEGREDO = 'segredo-de-teste';
 const AGORA = 1_790_000_000_000;
+
+afterEach(() => vi.restoreAllMocks());
 
 const conta = (extra = {}) => ({
   uid: 'u-ana', tenantId: 'academia-teste', superAdmin: false, disabled: false,
@@ -25,6 +28,12 @@ describe('generateResetCode', () => {
     generateResetCode((max) => { pedido = max; return 0; });
     expect(pedido).toBe(1_000_000);
   });
+
+  it('o sorteio padrão é o crypto.randomInt de 0 até 1 milhão', () => {
+    const spy = vi.spyOn(crypto, 'randomInt').mockReturnValue(7);
+    expect(generateResetCode()).toBe('000007');
+    expect(spy).toHaveBeenCalledWith(0, 1_000_000);
+  });
 });
 
 describe('impressão do código', () => {
@@ -33,6 +42,17 @@ describe('impressão do código', () => {
   it('é HMAC em hex e não contém o código', () => {
     expect(hash).toMatch(/^[0-9a-f]{64}$/);
     expect(hash).not.toContain('123456');
+  });
+
+  it('valor conhecido: chave = HMAC(segredo, rótulo), impressão = HMAC(chave, "uid:código")', () => {
+    const chave = crypto.createHmac('sha256', SEGREDO).update('stronilead:password-reset-code').digest();
+    const esperado = crypto.createHmac('sha256', chave).update('u-ana:123456').digest('hex');
+    expect(hash).toBe(esperado);
+  });
+
+  it('sem segredo lança erro, em vez de gerar impressão com chave vazia', () => {
+    expect(() => hashResetCode(undefined, 'u-ana', '123456')).toThrow('falta o segredo');
+    expect(() => hashResetCode('', 'u-ana', '123456')).toThrow('falta o segredo');
   });
 
   it('confere o código certo e recusa o errado', () => {
@@ -48,6 +68,15 @@ describe('impressão do código', () => {
   it('impressão de outro formato nunca confere', () => {
     expect(resetCodeMatches(SEGREDO, 'u-ana', '123456', 'abc')).toBe(false);
     expect(resetCodeMatches(SEGREDO, 'u-ana', '123456', null)).toBe(false);
+    // O Buffer.from(..., 'hex') para no primeiro par inválido e aceitaria lixo
+    // no fim, e também aceitaria maiúsculas. A impressão gravada é só 64 hex em minúsculas.
+    expect(resetCodeMatches(SEGREDO, 'u-ana', '123456', `${hash}zz`)).toBe(false);
+    expect(resetCodeMatches(SEGREDO, 'u-ana', '123456', hash.toUpperCase())).toBe(false);
+  });
+
+  it('código fora do formato nunca confere, nem com a impressão dele guardada', () => {
+    const hashDoCurto = hashResetCode(SEGREDO, 'u-ana', '12345');
+    expect(resetCodeMatches(SEGREDO, 'u-ana', '12345', hashDoCurto)).toBe(false);
   });
 });
 
@@ -101,6 +130,18 @@ describe('planIssue', () => {
     const atual = { requestsMs: [1, 2, 3, 4, 5].map((i) => AGORA - i * 1000) };
     expect(planIssue(atual, entrada)).toEqual({ ok: false, reason: 'daily_limit' });
   });
+
+  it('com 4 pedidos nas últimas 24 horas, aceita e fica com 5', () => {
+    const atual = { requestsMs: [1, 2, 3, 4].map((i) => AGORA - i * 1000) };
+    const plano = planIssue(atual, entrada);
+    expect(plano.ok).toBe(true);
+    expect(plano.doc.requestsMs).toEqual([...atual.requestsMs, AGORA]);
+  });
+
+  it('relógio que não é um número lança erro, em vez de gravar validade inválida', () => {
+    expect(() => planIssue(null, { ...entrada, now: NaN })).toThrow('relógio inválido');
+    expect(() => planIssue(null, { ...entrada, now: undefined })).toThrow('relógio inválido');
+  });
 });
 
 describe('planReserve', () => {
@@ -120,6 +161,22 @@ describe('planReserve', () => {
     expect(planReserve({ ...vivo, codeHash: null }, AGORA)).toEqual({ ok: false });
     expect(planReserve({ ...vivo, attempts: 5 }, AGORA)).toEqual({ ok: false });
   });
+
+  it('a quinta tentativa ainda é reservada', () => {
+    expect(planReserve({ ...vivo, attempts: 4 }, AGORA)).toMatchObject({ ok: true, attempt: 5, patch: { attempts: 5 } });
+  });
+
+  it('relógio que não é um número lança erro, em vez de deixar passar código vencido', () => {
+    const vencido = { ...vivo, expiresAtMs: AGORA - 1 };
+    expect(() => planReserve(vencido, NaN)).toThrow('relógio inválido');
+    expect(() => planReserve(vivo, undefined)).toThrow('relógio inválido');
+  });
+
+  it('contador que não é inteiro conta como esgotado, nunca como zero', () => {
+    for (const attempts of ['x', NaN, 2.5, null, undefined]) {
+      expect(planReserve({ ...vivo, attempts }, AGORA), String(attempts)).toEqual({ ok: false });
+    }
+  });
 });
 
 describe('planKill', () => {
@@ -128,6 +185,11 @@ describe('planKill', () => {
     expect(planKill({ codeHash: 'h2', usedAtMs: null }, 'h1', AGORA)).toBeNull();
     expect(planKill({ codeHash: 'h1', usedAtMs: 5 }, 'h1', AGORA)).toBeNull();
     expect(planKill(null, 'h1', AGORA)).toBeNull();
+  });
+
+  it('sem impressão em texto, não mata nada', () => {
+    expect(planKill({}, undefined, AGORA)).toBeNull();
+    expect(planKill({ codeHash: null, usedAtMs: null }, null, AGORA)).toBeNull();
   });
 });
 
