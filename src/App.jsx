@@ -112,7 +112,7 @@ import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
 import { SuperConsole } from './views/console/SuperConsole.jsx';
 import { SupportCenterModal } from './modals/SupportCenterModal.jsx';
 import { countUnreadForClient } from './lib/ticketThread.js';
-import { AppErrorBoundary } from './components/ErrorBoundary.jsx';
+import { AppErrorBoundary, ModalErrorBoundary, SilentErrorBoundary } from './components/ErrorBoundary.jsx';
 import { RouteRedirect } from './components/RouteRedirect.jsx';
 import { setSentryUser, clearSentryUser } from './lib/sentry.js';
 
@@ -241,6 +241,7 @@ function AppInner() {
   // Artigo em que a Central de ajuda abre. O sino manda o leitor direto para o
   // assunto da novidade em que ele clicou.
   const [helpArticleId, setHelpArticleId] = useState(null);
+  const closeHelpCenter = () => { setTutorialsOpen(false); setHelpArticleId(null); };
   // "Já li" do sino: ids das novidades vistas + carimbo das indicações.
   const { seenIds, lastSeenReferralsAt, markAllSeen } = useNotificationsSeen({ db, appUser });
   // Leads/clientes que passaram pra carteira desta pessoa (grupo do sino).
@@ -1597,6 +1598,12 @@ useEffect(() => {
         <header className="h-16 border-b border-gray-200 dark:border-neutral-800 bg-white dark:bg-neutral-900/80 backdrop-blur-md flex items-center justify-between px-4 md:px-8 z-10 shrink-0">
           <div className="flex items-center min-w-0">
             <button className="md:hidden mr-4 text-gray-500 dark:text-neutral-400 hover:text-gray-900 dark:hover:text-white dark:text-white p-1" onClick={() => setDrawerKey(location.key)}><Menu className="w-6 h-6" /></button>
+            {/* O cabeçalho fica fora do AppErrorBoundary: cada peça dele tem
+                proteção própria e, se quebrar, some sem levar o app junto.
+                O título leva a chave da tela, então trocar de tela troca o
+                título inteiro em vez de mexer no texto, e um título que
+                quebrou volta na tela seguinte. */}
+            <SilentErrorBoundary key={screenKey(shown)}>
             <h2 className="font-display text-xl font-bold text-gray-900 dark:text-white capitalize truncate tracking-tight">
               {resolvedTab === 'dashOperacional' && 'Operacional'}
               {resolvedTab === 'dashCrm' && 'CRM'}
@@ -1613,9 +1620,12 @@ useEffect(() => {
               {activeTab === 'superadmin' && (({ overview: 'Visão Geral', clients: 'Clientes', finance: 'Financeiro', plans: 'Planos' }[superTab] || 'Organizações') + ' · Super-admin')}
               {activeTab === 'ficha' && 'Ficha'}
             </h2>
+            </SilentErrorBoundary>
           </div>
           {!appUser.superAdminOnly && (
-            <GlobalSearch onAddLead={() => setIsAddLeadModalOpen(true)} db={db} />
+            <SilentErrorBoundary>
+              <GlobalSearch onAddLead={() => setIsAddLeadModalOpen(true)} db={db} />
+            </SilentErrorBoundary>
           )}
           <div className="flex items-center gap-2 md:gap-3">
             {!appUser.superAdminOnly && (
@@ -1648,26 +1658,30 @@ useEffect(() => {
               {isDarkMode ? <Sun className="w-5 h-5 text-yellow-400" /> : <Moon className="w-5 h-5 text-brand-600" />}
             </button>
             {!appUser.superAdminOnly && (
-              <NotificationBell
-                appUser={appUser}
-                leads={leads}
-                handoffLeads={handoffLeads}
-                seenIds={seenIds}
-                lastSeenReferralsAt={lastSeenReferralsAt}
-                onMarkAllSeen={markAllSeen}
-                onOpenArticle={(id) => { setHelpArticleId(id); setTutorialsOpen(true); }}
-              />
+              <SilentErrorBoundary>
+                <NotificationBell
+                  appUser={appUser}
+                  leads={leads}
+                  handoffLeads={handoffLeads}
+                  seenIds={seenIds}
+                  lastSeenReferralsAt={lastSeenReferralsAt}
+                  onMarkAllSeen={markAllSeen}
+                  onOpenArticle={(id) => { setHelpArticleId(id); setTutorialsOpen(true); }}
+                />
+              </SilentErrorBoundary>
             )}
-            <PersonaMenu
-              appUser={appUser}
-              isAdmin={!appUser.superAdminOnly && isAdminUser(appUser)}
-              profileHref={menuHref('profile')}
-              billingHref={menuHref('billing')}
-              onLogout={handleLogout}
-              onHelp={!appUser.superAdminOnly ? () => setTutorialsOpen(true) : null}
-              onToggleTheme={() => setIsDarkMode(!isDarkMode)}
-              isDarkMode={isDarkMode}
-            />
+            <SilentErrorBoundary>
+              <PersonaMenu
+                appUser={appUser}
+                isAdmin={!appUser.superAdminOnly && isAdminUser(appUser)}
+                profileHref={menuHref('profile')}
+                billingHref={menuHref('billing')}
+                onLogout={handleLogout}
+                onHelp={!appUser.superAdminOnly ? () => setTutorialsOpen(true) : null}
+                onToggleTheme={() => setIsDarkMode(!isDarkMode)}
+                isDarkMode={isDarkMode}
+              />
+            </SilentErrorBoundary>
           </div>
         </header>
 
@@ -1761,34 +1775,52 @@ useEffect(() => {
         </div>
       </main>
 
+      {/* Os modais daqui para baixo ficam fora do AppErrorBoundary. Cada um
+          tem proteção própria: um erro nele troca o modal pelo aviso "Essa
+          janela travou" e o resto do app fica de pé, em vez da tela branca.
+          Novidades e tour abrem sozinhos, então quebram em silêncio. */}
       {/* Quick-add lead, alcançável de qualquer aba pelo botão do menu lateral
           ou pelo botão da LeadsView. O "Ver ficha" abre na hora a ficha do lead
           recém-criado, porque ela lê o documento pelo id. */}
       {isAddLeadModalOpen && (
-        <AddLeadModal
-          dores={dores}
-          onClose={() => setIsAddLeadModalOpen(false)}
-          appUser={appUser}
-          sources={sources}
-          statuses={statuses}
-          tags={tags}
-          db={db}
-          funnels={funnels}
-          selectedFunnelId={entryFunnelId}
-          onCreated={openProfile}
-        />
+        <ModalErrorBoundary onClose={() => setIsAddLeadModalOpen(false)}>
+          <AddLeadModal
+            dores={dores}
+            onClose={() => setIsAddLeadModalOpen(false)}
+            appUser={appUser}
+            sources={sources}
+            statuses={statuses}
+            tags={tags}
+            db={db}
+            funnels={funnels}
+            selectedFunnelId={entryFunnelId}
+            onCreated={openProfile}
+          />
+        </ModalErrorBoundary>
       )}
       {consoleOpen && appUser?.superAdmin && (
-        <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
+        <ModalErrorBoundary onClose={() => setConsoleOpen(false)}>
+          <SuperConsole appUser={appUser} onClose={() => setConsoleOpen(false)} />
+        </ModalErrorBoundary>
       )}
-      {ticketModalOpen && <SupportCenterModal appUser={appUser} tickets={tickets} onClose={() => setTicketModalOpen(false)} />}
-      <WhatsNewModal appUser={appUser} onConfigure={openGoalSettings} />
-      <WalkthroughModal appUser={appUser} />
-      <HelpCenterModal
-        open={tutorialsOpen}
-        initialArticleId={helpArticleId}
-        onClose={() => { setTutorialsOpen(false); setHelpArticleId(null); }}
-      />
+      {ticketModalOpen && (
+        <ModalErrorBoundary onClose={() => setTicketModalOpen(false)}>
+          <SupportCenterModal appUser={appUser} tickets={tickets} onClose={() => setTicketModalOpen(false)} />
+        </ModalErrorBoundary>
+      )}
+      <SilentErrorBoundary>
+        <WhatsNewModal appUser={appUser} onConfigure={openGoalSettings} />
+      </SilentErrorBoundary>
+      <SilentErrorBoundary>
+        <WalkthroughModal appUser={appUser} />
+      </SilentErrorBoundary>
+      <ModalErrorBoundary open={tutorialsOpen} onClose={closeHelpCenter}>
+        <HelpCenterModal
+          open={tutorialsOpen}
+          initialArticleId={helpArticleId}
+          onClose={closeHelpCenter}
+        />
+      </ModalErrorBoundary>
     </div>
     </LeadProfileContext.Provider>
     </GeneralConfigContext.Provider>
