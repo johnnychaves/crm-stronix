@@ -97,10 +97,13 @@ export function planIssue(current, { now, codeHash, tenantId, signInMark, tokens
 export function planReserve(current, now) {
   if (!Number.isFinite(now)) throw new Error('esqueci-a-senha: relógio inválido');
   if (!current || typeof current.codeHash !== 'string' || current.usedAtMs != null) return { ok: false };
-  if (typeof current.expiresAtMs !== 'number' || current.expiresAtMs <= now) return { ok: false };
-  // Contador que não é inteiro conta como esgotado, nunca como zero.
+  // Validade que não é um número finito conta como vencida: NaN, ausente, texto
+  // e Infinity. Um !(validade > agora) sozinho deixaria passar o texto numérico
+  // e o Infinity.
+  if (!Number.isFinite(current.expiresAtMs) || current.expiresAtMs <= now) return { ok: false };
+  // Contador que não é inteiro, ou é negativo, conta como esgotado, nunca como zero.
   const { attempts } = current;
-  if (!Number.isInteger(attempts) || attempts >= RESET_CODE_MAX_ATTEMPTS) return { ok: false };
+  if (!Number.isInteger(attempts) || attempts < 0 || attempts >= RESET_CODE_MAX_ATTEMPTS) return { ok: false };
   return {
     ok: true,
     attempt: attempts + 1,

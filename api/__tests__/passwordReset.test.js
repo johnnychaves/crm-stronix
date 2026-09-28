@@ -177,6 +177,18 @@ describe('planReserve', () => {
       expect(planReserve({ ...vivo, attempts }, AGORA), String(attempts)).toEqual({ ok: false });
     }
   });
+
+  it('contador negativo conta como esgotado, em vez de dar tentativas a mais', () => {
+    expect(planReserve({ ...vivo, attempts: -1 }, AGORA)).toEqual({ ok: false });
+  });
+
+  it('validade que não é um número finito maior que agora conta como vencida', () => {
+    // NaN e Infinity passariam por uma comparação simples, e o texto numérico
+    // no futuro passaria por um > que converte o tipo.
+    for (const expiresAtMs of [NaN, Infinity, undefined, null, String(AGORA + 1000)]) {
+      expect(planReserve({ ...vivo, expiresAtMs }, AGORA), String(expiresAtMs)).toEqual({ ok: false });
+    }
+  });
 });
 
 describe('planKill', () => {
