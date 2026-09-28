@@ -2,36 +2,40 @@
 // LeadDetailsModal para serem compartilhados pela nova LeadProfileView.
 // Sem React state — só apresentação/classificação/parse de interactions.
 
+import { monthKeyOf, monthLabel } from './operacional/month.js';
+
 export const extractStageNameFromInteractionText = (text = '') => {
   const match = String(text).match(/\[([^\]]+)\]/);
   return match ? match[1].trim() : '';
 };
 
-// Agrupa eventos por janela temporal (Hoje / Ontem / Esta semana / Este mês /
-// mês-ano). Retorna [ [label, eventos[]], ... ] preservando a ordem de entrada.
+const validDate = (d) => (d instanceof Date && !isNaN(d.getTime()) ? d : null);
+
+// Agrupa eventos por mês, com o nome e o ano ("Setembro de 2026"), inclusive o
+// mês corrente. Retorna [ [label, eventos[]], ... ] preservando a ordem de
+// entrada. Os blocos eram Hoje, Ontem, Esta semana e Este mês, e a nota que
+// ficava sozinha num deles aparecia sem o dia. O dia e a hora agora vão em
+// cada linha (timelineStamp). A chave é o mês em horário LOCAL: 23h do dia 31
+// no Brasil ainda é o mês de antes.
 export const groupTimeline = (events) => {
-  const now = new Date();
-  // Chave de dia em horário LOCAL (não UTC): senão eventos da noite em fusos
-  // negativos (Brasil UTC-3) caem no dia seguinte e "Hoje/Ontem" erram.
-  const dayKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  const todayKey = dayKey(now);
-  const yKey = (() => { const y = new Date(now); y.setDate(y.getDate() - 1); return dayKey(y); })();
-  const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0, 0, 0, 0);
   const map = new Map();
-  events.forEach((e) => {
-    const d = e.createdAt instanceof Date ? e.createdAt : null;
+  (events || []).forEach((e) => {
+    const d = validDate(e.createdAt);
     if (!d) return;
-    const k = dayKey(d);
-    let label;
-    if (k === todayKey) label = 'Hoje';
-    else if (k === yKey) label = 'Ontem';
-    else if (d >= startOfWeek) label = 'Esta semana';
-    else if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) label = 'Este mês';
-    else label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+    const label = `${monthLabel(monthKeyOf(d), { withYear: false })} de ${d.getFullYear()}`;
     if (!map.has(label)) map.set(label, []);
     map.get(label).push(e);
   });
   return Array.from(map.entries());
+};
+
+const pad2 = (n) => String(n).padStart(2, '0');
+
+// Dia e hora de uma linha: "28/09 14:32". O ano fica no bloco do mês.
+export const timelineStamp = (date) => {
+  const d = validDate(date);
+  if (!d) return '';
+  return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };
 
 // Detecta eventos de CONTRATO (matrícula/renovação/cancelamento/troca de plano)
@@ -121,20 +125,6 @@ export const timelineTypeLabel = (i) => {
     case 'appointment': return /aula/i.test(t) ? 'Aula' : 'Agenda';
     default: return 'Sistema';
   }
-};
-
-// Sub-régua de DIA dentro de uma janela. Retorna [[dayKey, Date, eventos[]]...]
-// preservando a ordem de entrada (o feed já vem do mais recente pro mais antigo).
-export const groupTimelineByDay = (events) => {
-  const map = new Map();
-  (events || []).forEach((e) => {
-    const d = e.createdAt instanceof Date ? e.createdAt : null;
-    if (!d) return;
-    const k = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    if (!map.has(k)) map.set(k, { date: d, events: [] });
-    map.get(k).events.push(e);
-  });
-  return Array.from(map.entries()).map(([k, v]) => [k, v.date, v.events]);
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
