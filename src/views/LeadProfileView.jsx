@@ -46,7 +46,7 @@ import { ContractEditModal } from '../modals/ContractEditModal.jsx';
 import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
 import {
   groupTimeline,
-  groupTimelineByDay,
+  timelineStamp,
   classifyInteraction,
   parseAppointment,
   extractStageNameFromInteractionText,
@@ -957,11 +957,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // (✓✓ de leitura, duração/resultado de ligação): a FORMA do card é mantida,
   // o subelemento ausente é omitido.
   // Uma linha do REGISTRO. Quatro colunas alinhadas em todas as variantes:
-  // hora (38px) · tipo em versalete (74px) · corpo (resto) · autor (110px).
+  // dia e hora (68px) · tipo em versalete (74px) · corpo (resto) · autor (110px).
   // Cor no feed só aparece em chip de fase, selo de aula e faixa de marco —
   // todo o resto é neutro, senão vinte eventos viram um arco-íris.
   const renderTimelineEvent = (i) => {
-    const time = i.createdAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    // "28/09 14:32". O ano fica no bloco do mês.
+    const stamp = timelineStamp(i.createdAt);
     const typeLabel = timelineTypeLabel(i);
     const author = i.consultantName || 'Sistema';
     const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
@@ -1027,7 +1028,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               {fmtBRL(lead.currentContractValue)}
             </span>
           )}
-          <span className="text-[11px] num text-slate-400 dark:text-slate-500 shrink-0" title={i.createdAt?.toLocaleString('pt-BR')}>{time}</span>
+          <span className="text-[11px] num text-slate-400 dark:text-slate-500 shrink-0 whitespace-nowrap" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</span>
         </div>
       );
     }
@@ -1139,9 +1140,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     return (
       <div
         key={i.id}
-        className="grid grid-cols-[38px_74px_1fr_110px] gap-3 items-start py-1.5 border-b border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
+        className="grid grid-cols-[68px_74px_1fr_110px] gap-3 items-start py-1.5 border-b border-slate-100 dark:border-white/[0.05] hover:bg-slate-50/70 dark:hover:bg-white/[0.02] transition-colors"
       >
-        <div className="text-[11px] num text-slate-400 dark:text-slate-500 text-right pt-0.5" title={i.createdAt?.toLocaleString('pt-BR')}>{time}</div>
+        <div className="text-[11px] num text-slate-400 dark:text-slate-500 text-right whitespace-nowrap pt-0.5" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</div>
         <div className={cn('text-[9.5px] font-bold uppercase tracking-[.07em] pt-1', typeToneClass)}>{typeLabel}</div>
         <div className="min-w-0">{body}</div>
         <div className="text-[11px] text-slate-500 dark:text-slate-400 text-right truncate pt-0.5" title={author}>{author}</div>
@@ -1577,46 +1578,24 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             </div>
           ) : (
             <div className="px-8 pt-1 pb-7">
-              {groupedEvents.map(([label, events]) => {
-                const days = groupTimelineByDay(events);
-                // Grupos de um dia só (Hoje, Ontem) não repetem a sub-régua —
-                // o cabeçalho da janela já diz qual dia é.
-                const showDayRule = days.length > 1;
-                return (
-                  <section key={label} className="mb-5">
-                    <header className="sticky top-0 z-10 flex items-center gap-2 py-2 bg-card/95 backdrop-blur">
-                      <span className="text-[11px] font-semibold uppercase tracking-[.07em] text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</span>
-                      <div className="flex-1 h-px bg-slate-200/80 dark:bg-white/[0.06]" />
-                      <span className="text-[11px] num text-slate-400 dark:text-slate-500 whitespace-nowrap">
-                        {events.length} {events.length === 1 ? 'evento' : 'eventos'}
-                      </span>
-                    </header>
-
-                    {days.map(([dayKey, date, dayEvents]) => (
-                      <div key={dayKey}>
-                        {showDayRule && (
-                          <div className="flex items-center gap-2 pl-[38px] py-1.5">
-                            <span className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap num">
-                              {(() => {
-                                // "Qui 23/07" — o pt-BR devolve "qui." minúsculo.
-                                const wd = date.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
-                                return `${wd.charAt(0).toUpperCase()}${wd.slice(1)}`;
-                              })()} {date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                            </span>
-                            <div className="flex-1 h-px bg-slate-100 dark:bg-white/[0.04]" />
-                            <span className="text-[11px] num text-slate-400 dark:text-slate-500">{dayEvents.length}</span>
-                          </div>
-                        )}
-                        {dayEvents.map(renderTimelineEvent)}
-                      </div>
-                    ))}
-                  </section>
-                );
-              })}
+              {/* Um bloco por mês ("Setembro de 2026"). O dia e a hora vão em
+                  cada linha, então o bloco não precisa de régua de dia. */}
+              {groupedEvents.map(([label, events]) => (
+                <section key={label} className="mb-5">
+                  <header className="sticky top-0 z-10 flex items-center gap-2 py-2 bg-card/95 backdrop-blur">
+                    <span className="text-[11px] font-semibold uppercase tracking-[.07em] text-slate-500 dark:text-slate-400 whitespace-nowrap">{label}</span>
+                    <div className="flex-1 h-px bg-slate-200/80 dark:bg-white/[0.06]" />
+                    <span className="text-[11px] num text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                      {events.length} {events.length === 1 ? 'evento' : 'eventos'}
+                    </span>
+                  </header>
+                  {events.map(renderTimelineEvent)}
+                </section>
+              ))}
 
               {/* Marco de origem: fecha o registro com a data de cadastro. */}
               {timelineFilter === 'all' && !timelineQuery && (
-                <p className="pl-[38px] pt-1 text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
+                <p className="pl-[68px] pt-1 text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
                   Início da jornada · {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
                 </p>
               )}

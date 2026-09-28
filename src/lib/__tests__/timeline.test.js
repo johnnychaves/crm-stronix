@@ -1,11 +1,12 @@
 // Testes das regras puras da LINHA DO TEMPO (registro 1b).
 // Datas sempre em horário LOCAL, como o app grava.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   matchesTimelineFilter,
   timelineTypeLabel,
-  groupTimelineByDay,
+  groupTimeline,
+  timelineStamp,
   buildStageTransitions,
   classifyInteraction,
   TIMELINE_FILTERS
@@ -180,27 +181,74 @@ describe('eventos de indicação (type referral)', () => {
   });
 });
 
-describe('groupTimelineByDay — a sub-régua', () => {
+describe('groupTimeline: blocos por mês, com o nome e o ano', () => {
+  // Relógio parado numa sexta, 25/09/2026 às 15h. Com os blocos antigos, os
+  // eventos do primeiro teste caíam em Hoje, Ontem, Esta semana e Este mês, e
+  // uma nota sozinha no bloco ficava sem o dia.
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 8, 25, 15, 0)); });
+  afterEach(() => { vi.useRealTimers(); });
+
   const ev = (id, y, m, d, h) => ({ id, createdAt: new Date(y, m, d, h, 0) });
+  const labels = (groups) => groups.map(([label]) => label);
+  const ids = (groups) => groups.map(([, evs]) => evs.map(e => e.id));
 
-  it('agrupa por dia local preservando a ordem de entrada', () => {
-    const out = groupTimelineByDay([
-      ev('a', 2026, 6, 27, 14),
-      ev('b', 2026, 6, 27, 9),
-      ev('c', 2026, 6, 26, 18),
+  it('o mês corrente sai com o nome e o ano, sem Hoje, Ontem, Esta semana ou Este mês', () => {
+    const out = groupTimeline([
+      ev('hoje', 2026, 8, 25, 14),
+      ev('ontem', 2026, 8, 24, 10),
+      ev('semana', 2026, 8, 22, 9),
+      ev('mes', 2026, 8, 3, 18),
     ]);
-    expect(out.map(([, , evs]) => evs.map(e => e.id))).toEqual([['a', 'b'], ['c']]);
+    expect(labels(out)).toEqual(['Setembro de 2026']);
+    expect(ids(out)).toEqual([['hoje', 'ontem', 'semana', 'mes']]);
   });
 
-  it('23h e 00h do dia seguinte não caem no mesmo grupo', () => {
-    const out = groupTimelineByDay([ev('a', 2026, 6, 27, 23), ev('b', 2026, 6, 28, 0)]);
-    expect(out).toHaveLength(2);
+  it('cada mês vira um bloco, na ordem em que os eventos chegam', () => {
+    const out = groupTimeline([
+      ev('a', 2026, 8, 25, 14),
+      ev('b', 2026, 8, 2, 9),
+      ev('c', 2026, 7, 30, 16),
+      ev('d', 2026, 6, 15, 11),
+    ]);
+    expect(labels(out)).toEqual(['Setembro de 2026', 'Agosto de 2026', 'Julho de 2026']);
+    expect(ids(out)).toEqual([['a', 'b'], ['c'], ['d']]);
   });
 
-  it('ignora eventos sem data em vez de quebrar', () => {
-    const out = groupTimelineByDay([{ id: 'x', createdAt: null }, ev('a', 2026, 6, 27, 10)]);
-    expect(out).toHaveLength(1);
-    expect(out[0][2].map(e => e.id)).toEqual(['a']);
+  it('o mesmo mês de anos diferentes não se mistura', () => {
+    const out = groupTimeline([ev('a', 2026, 8, 3, 10), ev('b', 2025, 8, 20, 10)]);
+    expect(labels(out)).toEqual(['Setembro de 2026', 'Setembro de 2025']);
+  });
+
+  it('a virada do mês segue o horário local: 23h do dia 31 fica no mês de antes', () => {
+    const out = groupTimeline([ev('a', 2026, 8, 1, 0), ev('b', 2026, 7, 31, 23)]);
+    expect(labels(out)).toEqual(['Setembro de 2026', 'Agosto de 2026']);
+    expect(ids(out)).toEqual([['a'], ['b']]);
+  });
+
+  it('ignora evento sem data, ou com data inválida, em vez de quebrar', () => {
+    const out = groupTimeline([
+      { id: 'x', createdAt: null },
+      { id: 'y', createdAt: new Date('não é data') },
+      ev('a', 2026, 8, 10, 10),
+    ]);
+    expect(labels(out)).toEqual(['Setembro de 2026']);
+    expect(ids(out)).toEqual([['a']]);
+  });
+});
+
+describe('timelineStamp: o dia e a hora de cada linha', () => {
+  it('dia/mês e hora:minuto, com zero à esquerda', () => {
+    expect(timelineStamp(new Date(2026, 8, 5, 9, 7))).toBe('05/09 09:07');
+  });
+
+  it('meia-noite sai 00:00', () => {
+    expect(timelineStamp(new Date(2026, 8, 28, 0, 0))).toBe('28/09 00:00');
+  });
+
+  it('sem data válida devolve vazio', () => {
+    expect(timelineStamp(null)).toBe('');
+    expect(timelineStamp(undefined)).toBe('');
+    expect(timelineStamp(new Date('não é data'))).toBe('');
   });
 });
 
