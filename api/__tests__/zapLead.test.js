@@ -13,8 +13,10 @@ const fusoDaMaquina = vi.hoisted(() => {
 import {
   ZAP_LEAD_MESSAGES, LEAD_CREATE_LIMIT, refusal, invalidData, tenantBlocked, nationalDigits, whatsappFromZap,
   emailFromActor, findTeamMember, teamRole, catalogView, buildLeadOptions,
-  readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey
+  readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
+  zapSignupText, buildZapLead, buildZapSignupInteraction, alreadyRegisteredBody, scrubbedError
 } from '../_zapLead.js';
+import { buildNewLeadDoc } from '../../src/lib/newLead.js';
 // A máscara do Novo lead. O fixo sai dela, e não de um texto fixo aqui: a PR
 // #232 corrige a máscara de 10 dígitos, e este teste vale antes e depois dela.
 import { formatPhone } from '../../src/lib/masks.js';
@@ -399,5 +401,175 @@ describe('mesmo aluno e chave do WhatsApp do aluno', () => {
     expect(studentKey({ studentWhatsapp: '(11) 8555-4444' })).toBe('1185554444');
     expect(studentKey({ studentWhatsapp: null })).toBeNull();
     expect(studentKey(null)).toBeNull();
+  });
+});
+
+describe('zapSignupText: o texto que qualquer tela entende', () => {
+  it('com consultor responsável e canal', () => {
+    expect(zapSignupText({ actorName: 'Johnny', ownerName: 'Ana Souza', channelName: 'Recepção' }))
+      .toBe('Cadastrado pelo Stronizap por Johnny. Consultor responsável: Ana Souza. Canal Recepção.');
+  });
+
+  it('quem cadastrou ficou com o lead: sem a parte do consultor responsável', () => {
+    expect(zapSignupText({ actorName: 'Ana Souza', channelName: 'Recepção' }))
+      .toBe('Cadastrado pelo Stronizap por Ana Souza. Canal Recepção.');
+  });
+
+  it('sem canal e sem nome', () => {
+    expect(zapSignupText({ actorName: null })).toBe('Cadastrado pelo Stronizap.');
+  });
+});
+
+describe('buildZapLead: o montador do Novo lead mais as diferenças da ponte', () => {
+  const HORA = { horaDoServidor: true };
+  const LEAD = {
+    name: 'Mariana Souza', source: 'WhatsApp', dor: 'Postura', modalidade: 'Pilates',
+    funnelId: 'f-com', stage: 'Novo lead', ownerId: null, minor: null
+  };
+
+  it('adulto: o número da conversa no formato do Novo lead e o marco já contado', () => {
+    expect(buildZapLead({ lead: LEAD, phone: '5551998124471', actor: ANA, owner: ANA, serverTime: HORA })).toEqual({
+      ...buildNewLeadDoc(
+        { name: 'Mariana Souza', whatsapp: '(51) 9 9812-4471', source: 'WhatsApp', funnelId: 'f-com', status: 'Novo lead', dor: 'Postura', modalidade: 'Pilates' },
+        { owner: ANA }
+      ),
+      createdAt: HORA,
+      statusEnteredAt: HORA,
+      lastInteractionAt: HORA,
+      interactionsCount: 1
+    });
+  });
+
+  it('dono escolhido pelo gestor: o aviso de troca que acende o sino', () => {
+    expect(buildZapLead({ lead: LEAD, phone: '5551998124471', actor: JOHNNY, owner: BRUNO, serverTime: HORA })).toMatchObject({
+      consultantId: 'u-bruno', consultantName: 'Bruno Lima', consultantAuthUid: 'auth-bruno',
+      consultantChangedAt: HORA, consultantChangedByName: 'Johnny', consultantChangedByAuthUid: 'auth-johnny'
+    });
+  });
+
+  it('quem cadastrou ficou com o lead: sem aviso de troca', () => {
+    const doc = buildZapLead({ lead: LEAD, phone: '5551998124471', actor: ANA, owner: ANA, serverTime: HORA });
+    expect('consultantChangedAt' in doc).toBe(false);
+  });
+
+  it('menor: o número da conversa vira o telefone do responsável', () => {
+    const doc = buildZapLead({
+      lead: { ...LEAD, name: 'Pedro Souza', minor: { guardianName: 'Mariana Souza', relationship: 'Mãe', studentWhatsapp: null } },
+      phone: '5551998124471', actor: ANA, owner: ANA, serverTime: HORA
+    });
+    expect(doc).toMatchObject({
+      name: 'Pedro Souza', whatsapp: '', zapMatchKey: null, isMinor: true,
+      guardian: { name: 'Mariana Souza', phone: '(51) 9 9812-4471', relationship: 'Mãe' },
+      guardianZapMatchKey: '5198124471'
+    });
+  });
+
+  it('número antigo, sem o nono dígito: o lead e o responsável ganham o 9', () => {
+    expect(buildZapLead({ lead: LEAD, phone: '555181244710', actor: ANA, owner: ANA, serverTime: HORA }))
+      .toMatchObject({ whatsapp: '(51) 9 8124-4710', whatsappDigits: '51981244710', zapMatchKey: '5181244710' });
+    const menor = buildZapLead({
+      lead: { ...LEAD, name: 'Pedro Souza', minor: { guardianName: 'Mariana Souza', relationship: null, studentWhatsapp: '(51) 8555-4444' } },
+      phone: '555181244710', actor: ANA, owner: ANA, serverTime: HORA
+    });
+    expect(menor.guardian.phone).toBe('(51) 9 8124-4710');
+    expect(menor.guardianZapMatchKey).toBe('5181244710');
+    expect(menor.whatsapp).toBe('(51) 9 8555-4444');
+  });
+
+  it('menor com WhatsApp próprio: o número do aluno vai para o lead', () => {
+    const doc = buildZapLead({
+      lead: { ...LEAD, name: 'Pedro Souza', minor: { guardianName: 'Mariana Souza', relationship: null, studentWhatsapp: '11955554444' } },
+      phone: '5551998124471', actor: ANA, owner: ANA, serverTime: HORA
+    });
+    expect(doc).toMatchObject({ whatsapp: '(11) 9 5555-4444', zapMatchKey: '1155554444', guardian: { relationship: null } });
+  });
+});
+
+describe('buildZapSignupInteraction: o marco de início', () => {
+  const HORA = { horaDoServidor: true };
+
+  it('quem cadastrou ficou com o lead', () => {
+    expect(buildZapSignupInteraction({ leadId: 'L1', leadName: 'Mariana Souza', actor: ANA, owner: ANA, channelName: 'Recepção', serverTime: HORA })).toEqual({
+      leadId: 'L1',
+      leadName: 'Mariana Souza',
+      consultantName: 'Ana Souza',
+      leadConsultantId: 'u-ana',
+      leadConsultantAuthUid: 'auth-ana',
+      actorId: 'u-ana',
+      actorAuthUid: 'auth-ana',
+      type: 'zap_signup',
+      text: 'Cadastrado pelo Stronizap por Ana Souza. Canal Recepção.',
+      zapChannelName: 'Recepção',
+      createdAt: HORA
+    });
+  });
+
+  it('gestor passou para outra pessoa: o dono nos campos de segurança e no ownerName', () => {
+    const marco = buildZapSignupInteraction({ leadId: 'L1', leadName: 'Mariana Souza', actor: JOHNNY, owner: BRUNO, channelName: null, serverTime: HORA });
+    expect(marco).toMatchObject({
+      consultantName: 'Johnny', actorId: 'u-johnny', actorAuthUid: 'auth-johnny',
+      leadConsultantId: 'u-bruno', leadConsultantAuthUid: 'auth-bruno', ownerName: 'Bruno Lima',
+      zapChannelName: null, text: 'Cadastrado pelo Stronizap por Johnny. Consultor responsável: Bruno Lima.'
+    });
+    expect('volumeKind' in marco).toBe(false);
+  });
+});
+
+describe('alreadyRegisteredBody: a resposta 409', () => {
+  const CARD = { found: true, leadId: 'x' };
+  const cincoMinutos = new Date(HOJE.getTime() - 5 * 60000);
+
+  it('cadastro antigo', () => {
+    expect(alreadyRegisteredBody({ repeated: { name: 'Mariana', consultantName: 'Bruno Lima', createdAt: antes(2) }, card: CARD, now: HOJE })).toEqual({
+      error: 'ja_cadastrado', card: CARD, createdAt: antes(2).toISOString(), message: 'Esse número já estava no Stronilead.'
+    });
+  });
+
+  it('menos de 10 minutos: diz quem cuida, quando tem dono', () => {
+    expect(alreadyRegisteredBody({ repeated: { consultantName: 'Bruno Lima', createdAt: ts(cincoMinutos) }, card: CARD, now: HOJE }).message)
+      .toBe('Esse número foi cadastrado há pouco. Quem cuida é Bruno Lima.');
+    expect(alreadyRegisteredBody({ repeated: { createdAt: cincoMinutos }, card: CARD, now: HOJE }).message)
+      .toBe('Esse número foi cadastrado há pouco.');
+  });
+
+  it('menor: fala do aluno com esse responsável', () => {
+    expect(alreadyRegisteredBody({ repeated: { name: 'Pedro Souza', consultantName: 'Bruno Lima', createdAt: cincoMinutos }, card: CARD, minor: true, now: HOJE }).message)
+      .toBe('O cadastro de Pedro Souza com esse responsável foi feito há pouco. Quem cuida é Bruno Lima.');
+    expect(alreadyRegisteredBody({ repeated: { name: 'Pedro Souza', createdAt: antes(30) }, card: CARD, minor: true, now: HOJE }).message)
+      .toBe('Pedro Souza já tem cadastro no Stronilead com esse responsável.');
+  });
+
+  it('sem data de cadastro: createdAt null e o texto de cadastro antigo', () => {
+    expect(alreadyRegisteredBody({ repeated: {}, card: CARD, now: HOJE }))
+      .toMatchObject({ createdAt: null, message: 'Esse número já estava no Stronilead.' });
+  });
+});
+
+describe('scrubbedError: erro inesperado sem dado pessoal', () => {
+  it('troca a mensagem pelo código e guarda a pilha', () => {
+    const original = Object.assign(new Error('9 FAILED_PRECONDITION: zapMatchKey == 5198124471'), { code: 9 });
+    const limpo = scrubbedError('create-lead', original);
+    expect(limpo.message).toBe('zap create-lead falhou (9)');
+    expect(limpo.stack).not.toContain('5198124471');
+    expect(limpo.stack).toMatch(/\n\s+at /);
+  });
+
+  it('erro sem código leva o nome do erro', () => {
+    expect(scrubbedError('lead-options', new TypeError('x is not a function')).message)
+      .toBe('zap lead-options falhou (TypeError)');
+  });
+});
+
+describe('textos da tela', () => {
+  it('nenhum texto tem travessão', () => {
+    const textos = [];
+    const coletar = (v) => {
+      if (typeof v === 'string') textos.push(v);
+      else if (typeof v === 'function') textos.push(v('pessoa@exemplo.com'));
+      else if (v && typeof v === 'object') Object.values(v).forEach(coletar);
+    };
+    coletar(ZAP_LEAD_MESSAGES);
+    expect(textos.length).toBeGreaterThan(20);
+    expect(textos.filter((t) => t.includes('—'))).toEqual([]);
   });
 });

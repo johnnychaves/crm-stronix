@@ -10,9 +10,11 @@
 // Spec: docs/superpowers/specs/2026-09-29-cadastro-de-lead-pelo-stronizap-design.md
 import { GUARDIAN_RELATIONSHIPS, guardianIssue } from '../src/lib/guardian.js';
 import { sameContactPhone } from '../src/lib/leadDerived.js';
+import { getInteractionSecurityFields, ZAP_SIGNUP_TYPE } from '../src/lib/leads.js';
 import { formatPhone } from '../src/lib/masks.js';
 import { normalize } from '../src/lib/globalSearch.js';
-import { leadEntryFunnels } from '../src/lib/newLead.js';
+import { getSafeDateOrNull } from '../src/lib/dates.js';
+import { buildNewLeadDoc, leadEntryFunnels } from '../src/lib/newLead.js';
 import { pickDefaultFunnel } from './_referral.js';
 import { nationalPhoneDigits, zapMatchKey } from './_zapPhone.js';
 
@@ -20,6 +22,8 @@ const MINUTE_MS = 60000;
 const DAY_MS = 86400000;
 const NAME_MAX = 120;
 const CHANNEL_MAX = 80;
+// Cadastro mais novo que isto aparece como "cadastrado há pouco".
+const RECENT_MS = 10 * MINUTE_MS;
 
 // No máximo 60 cadastros por hora por academia (api/_rateLimit.js).
 export const LEAD_CREATE_LIMIT = Object.freeze({ limit: 60, windowMs: 60 * MINUTE_MS });
@@ -307,3 +311,106 @@ export const sameStudentName = (a, b) => nameKey(a) !== '' && nameKey(a) === nam
 // Chave do Zap do WhatsApp do aluno, quando ele tem um, tirada do número já
 // normalizado, como a do número da conversa.
 export const studentKey = (minor) => (minor?.studentWhatsapp ? zapMatchKey(nationalDigits(minor.studentWhatsapp)) : null);
+
+// ---------------------------------------------------------------------------
+// O que é gravado e o que é respondido
+// ---------------------------------------------------------------------------
+
+// O `text` do marco, para qualquer tela que ainda não conheça o tipo.
+export function zapSignupText({ actorName, ownerName = null, channelName = null }) {
+  return [
+    actorName ? `Cadastrado pelo Stronizap por ${actorName}.` : 'Cadastrado pelo Stronizap.',
+    ownerName ? `Consultor responsável: ${ownerName}.` : null,
+    channelName ? `Canal ${channelName}.` : null
+  ].filter(Boolean).join(' ');
+}
+
+// O lead novo do Stronizap. O corpo sai do mesmo montador do Novo lead; aqui
+// entram só as diferenças da ponte: as datas do servidor, o marco de início
+// já contado (lastInteractionAt e interactionsCount: 1, como no cadastro com
+// observação e no link de indicação) e o aviso de troca de dono quando o
+// gestor escolheu outra pessoa, que acende o "passado para você" no sino.
+export function buildZapLead({ lead, phone, actor, owner, serverTime }) {
+  const conversa = whatsappFromZap(phone);
+  const form = {
+    name: lead.name,
+    source: lead.source,
+    funnelId: lead.funnelId,
+    status: lead.stage,
+    dor: lead.dor,
+    modalidade: lead.modalidade || '',
+    ...(lead.minor
+      ? {
+          whatsapp: lead.minor.studentWhatsapp ? whatsappFromZap(lead.minor.studentWhatsapp) : '',
+          isMinor: true,
+          guardianName: lead.minor.guardianName,
+          guardianPhone: conversa,
+          guardianRelation: lead.minor.relationship || ''
+        }
+      : { whatsapp: conversa })
+  };
+  const doc = {
+    ...buildNewLeadDoc(form, { owner }),
+    createdAt: serverTime,
+    statusEnteredAt: serverTime,
+    lastInteractionAt: serverTime,
+    interactionsCount: 1
+  };
+  if (owner.id !== actor.id) {
+    doc.consultantChangedAt = serverTime;
+    doc.consultantChangedByName = actor.name ?? null;
+    doc.consultantChangedByAuthUid = actor.authUid ?? null;
+  }
+  return doc;
+}
+
+// O marco de início (type zap_signup). O autor na linha do tempo é quem
+// cadastrou (consultantName); o dono do lead vai nos campos de segurança de
+// sempre, e o ownerName só quando é outra pessoa. Sem volumeKind: o lead conta
+// na prospecção do dono pelo próprio lead, como no Novo lead.
+export function buildZapSignupInteraction({ leadId, leadName, actor, owner, channelName = null, serverTime }) {
+  const otherOwner = owner.id !== actor.id;
+  return {
+    leadId,
+    leadName: leadName || null,
+    consultantName: actor.name ?? null,
+    ...getInteractionSecurityFields({ consultantId: owner.id, consultantAuthUid: owner.authUid }, actor),
+    actorId: actor.id,
+    actorAuthUid: actor.authUid ?? null,
+    type: ZAP_SIGNUP_TYPE,
+    text: zapSignupText({ actorName: actor.name, ownerName: otherOwner ? owner.name : null, channelName }),
+    ...(otherOwner ? { ownerName: owner.name ?? null } : {}),
+    zapChannelName: channelName || null,
+    createdAt: serverTime
+  };
+}
+
+// Resposta 409: o cartão do número, a data do cadastro que já existia e o
+// texto da tela. "Há pouco" é menos de 10 minutos: foi outra pessoa, ou o
+// mesmo cadastro que teve a resposta perdida.
+export function alreadyRegisteredBody({ repeated, card, minor = false, now = new Date() }) {
+  const created = getSafeDateOrNull(repeated?.createdAt);
+  const recent = Boolean(created) && now.getTime() - created.getTime() < RECENT_MS;
+  const who = repeated?.consultantName ? ` Quem cuida é ${repeated.consultantName}.` : '';
+  const student = repeated?.name || 'Esse aluno';
+  let message;
+  if (minor) {
+    message = recent
+      ? `O cadastro de ${student} com esse responsável foi feito há pouco.${who}`
+      : `${student} já tem cadastro no Stronilead com esse responsável.`;
+  } else {
+    message = recent ? `Esse número foi cadastrado há pouco.${who}` : 'Esse número já estava no Stronilead.';
+  }
+  return { error: 'ja_cadastrado', card, createdAt: created ? created.toISOString() : null, message };
+}
+
+// Erro inesperado sem dado pessoal. A mensagem do Firestore pode trazer o
+// valor da consulta (o telefone), então ela não sobe: vai o código, ou o nome
+// do erro. A pilha fica, porque aponta arquivo e linha sem carregar dado.
+export function scrubbedError(action, err) {
+  const code = err?.code ?? err?.name ?? 'sem código';
+  const clean = new Error(`zap ${action} falhou (${code})`);
+  const frames = String(err?.stack ?? '').split('\n').filter((line) => /^\s+at /.test(line));
+  if (frames.length > 0) clean.stack = [`Error: ${clean.message}`, ...frames].join('\n');
+  return clean;
+}

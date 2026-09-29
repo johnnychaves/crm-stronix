@@ -47,4 +47,11 @@ describe('o montador do lead novo cabe na api/', () => {
     expect(pacotes).toEqual([]);
     expect(arquivos.filter((f) => PROIBIDOS.includes(f) || f.endsWith('.jsx'))).toEqual([]);
   });
+
+  it('as regras do cadastro pelo Stronizap (api/_zapLead.js) também não', () => {
+    const { arquivos, pacotes } = grafoDe(doRepo('api/_zapLead.js'));
+    expect(arquivos).toContain('src/lib/newLead.js');
+    expect(pacotes).toEqual([]);
+    expect(arquivos.filter((f) => PROIBIDOS.includes(f) || f.endsWith('.jsx'))).toEqual([]);
+  });
 });

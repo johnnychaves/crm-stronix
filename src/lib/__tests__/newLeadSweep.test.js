@@ -20,4 +20,10 @@ describe('os dois cadastros de lead usam o mesmo montador', () => {
     expect(espalhados).toEqual(['buildNewLeadDoc']);
     expect(chaves).toEqual(['createdAt', 'statusEnteredAt']);
   });
+
+  it('a ponte monta o lead novo pelo mesmo montador', () => {
+    const ponte = ler('../../../api/_zapLead.js');
+    expect(ponte).toMatch(/\.\.\.buildNewLeadDoc\(/);
+    expect(ponte).not.toMatch(/buildLeadSearchFields|buildGuardianPatch|getLeadOwnershipFields|deriveLeadBucket/);
+  });
 });
