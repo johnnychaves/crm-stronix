@@ -10,6 +10,9 @@ import {
   buildStageTransitions,
   classifyInteraction,
   contractEventOf,
+  zapSignupPillText,
+  zapSignupDetailText,
+  originLastOnTies,
   TIMELINE_FILTERS
 } from '../timeline.js';
 import {
@@ -426,5 +429,69 @@ describe('classifyInteraction: todo evento de contrato vai para o balde de contr
   it('trancamento sem plano no texto', () => {
     expect(classifyInteraction({ type: 'status_change', text: 'Contrato trancado a partir de 10/09/2026 — Viagem.' }))
       .toBe('contract');
+  });
+});
+
+describe('marco de início do cadastro pelo Stronizap (type zap_signup)', () => {
+  const MARCO = {
+    type: 'zap_signup',
+    text: 'Cadastrado pelo Stronizap por Johnny. Consultor responsável: Ana Souza. Canal Recepção.',
+    consultantName: 'Johnny',
+    ownerName: 'Ana Souza',
+    zapChannelName: 'Recepção',
+    createdAt: new Date(2026, 8, 28, 14, 32)
+  };
+
+  it('tem bucket próprio, decidido pelo type', () => {
+    expect(classifyInteraction(MARCO)).toBe('origin');
+    // Nem o texto de conversa leva o marco para outro bucket.
+    expect(classifyInteraction({ ...MARCO, text: '📲 Mensagem WhatsApp enviada: oi' })).toBe('origin');
+  });
+
+  it('entra em Marcos e em Tudo, e não em Anotações', () => {
+    expect(matchesTimelineFilter('origin', 'milestone')).toBe(true);
+    expect(matchesTimelineFilter('origin', 'all')).toBe(true);
+    expect(matchesTimelineFilter('origin', 'note')).toBe(false);
+  });
+
+  it("rótulo da coluna: 'Início'", () => {
+    expect(timelineTypeLabel({ _kind: 'origin' })).toBe('Início');
+  });
+
+  it('pílula: quem cadastrou, o dia e a hora', () => {
+    expect(zapSignupPillText(MARCO)).toBe('cadastrado pelo Stronizap por Johnny em 28/09 às 14:32');
+    expect(zapSignupPillText({ ...MARCO, consultantName: '' })).toBe('cadastrado pelo Stronizap em 28/09 às 14:32');
+    expect(zapSignupPillText({ ...MARCO, createdAt: null })).toBe('cadastrado pelo Stronizap por Johnny');
+  });
+
+  it('linha de baixo: o consultor responsável só quando é outra pessoa, e o canal', () => {
+    expect(zapSignupDetailText(MARCO)).toBe('Consultor responsável Ana Souza · canal Recepção');
+    expect(zapSignupDetailText({ ...MARCO, ownerName: undefined })).toBe('Canal Recepção');
+    expect(zapSignupDetailText({ ...MARCO, zapChannelName: null })).toBe('Consultor responsável Ana Souza');
+    expect(zapSignupDetailText({ ...MARCO, ownerName: null, zapChannelName: '' })).toBeNull();
+  });
+});
+
+describe('originLastOnTies: o marco de início embaixo de quem tem o mesmo horário', () => {
+  const as = (h, m) => new Date(2026, 8, 29, h, m);
+  const MARCO = { id: 'z1', _kind: 'origin', createdAt: as(14, 32) };
+  const NOTA = { id: 'n1', _kind: 'note', createdAt: as(14, 32) };
+  const DEPOIS = { id: 'd1', _kind: 'note', createdAt: as(15, 10) };
+  const ANTES = { id: 'a1', _kind: 'status', createdAt: as(9, 0) };
+
+  it('mesmo horário: a observação do cadastro fica acima do marco, venha na ordem que vier', () => {
+    expect(originLastOnTies([MARCO, NOTA]).map((i) => i.id)).toEqual(['n1', 'z1']);
+    expect(originLastOnTies([NOTA, MARCO]).map((i) => i.id)).toEqual(['n1', 'z1']);
+  });
+
+  it('horários diferentes seguem como vieram, do mais novo para o mais antigo', () => {
+    expect(originLastOnTies([DEPOIS, MARCO, NOTA, ANTES]).map((i) => i.id)).toEqual(['d1', 'n1', 'z1', 'a1']);
+  });
+
+  it('sem data não se junta a ninguém, e a lista original não muda', () => {
+    const semData = { id: 's1', _kind: 'note', createdAt: null };
+    const lista = [MARCO, semData, NOTA];
+    expect(originLastOnTies(lista).map((i) => i.id)).toEqual(['z1', 's1', 'n1']);
+    expect(lista.map((i) => i.id)).toEqual(['z1', 's1', 'n1']);
   });
 });

@@ -68,3 +68,18 @@ describe('tempo até o primeiro contato', () => {
     expect(firstContactOf([lead('f')], { contactTimes, limit: T(30).getTime() })).toMatchObject({ total: 1, over: 1, none: 0 });
   });
 });
+
+describe('marco do cadastro pelo Stronizap', () => {
+  const MARCO = { id: 'z1', leadId: 'a', type: 'zap_signup', text: 'Cadastrado pelo Stronizap por Ana Souza. Canal Recepção.', createdAt: T(1, 10, 1) };
+
+  it('não conta como contato', () => {
+    expect(isContactInteraction(MARCO)).toBe(false);
+  });
+
+  it('não vira o primeiro contato do lead: sem outra interação, o lead fica sem contato', () => {
+    const contactTimes = contactTimesByLead([MARCO]);
+    expect(contactTimes.has('a')).toBe(false);
+    expect(firstContactOf([{ id: 'a', createdAt: T(1, 10) }], { contactTimes, limit: T(15).getTime() }))
+      .toMatchObject({ total: 1, none: 1, h1: 0 });
+  });
+});
