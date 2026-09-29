@@ -21,6 +21,11 @@ describe('buildResetEmail', () => {
     expect(email.html).toContain('#EAF0FF');
   });
 
+  it('declara o charset UTF-8 no head, antes do corpo', () => {
+    expect(email.html).toContain('<meta charset="utf-8">');
+    expect(email.html.indexOf('<meta charset="utf-8">')).toBeLessThan(email.html.indexOf('<body'));
+  });
+
   it('nome com < ou & não quebra o HTML', () => {
     const { html } = buildResetEmail('<b>Ana</b> & Cia', '000001');
     expect(html).toContain('Olá, &lt;b&gt;Ana&lt;/b&gt;.');

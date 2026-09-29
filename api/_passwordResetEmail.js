@@ -3,9 +3,10 @@ import { RESET_CODE_TTL_MS } from '../src/lib/passwordReset.js';
 // O e-mail com o código do "Esqueci a senha". Função pura: quem manda é o
 // _mail.js. O HTML vai em tabela e com o estilo no próprio elemento, porque
 // cliente de e-mail não lê CSS de fora e o Outlook ignora largura em div. Por
-// isso as cores aparecem em hex: são o paper-50, o brand-600, o brand-50 e o
-// brand-700 do src/index.css. A marca vai em texto porque cliente de e-mail
-// costuma bloquear imagem.
+// isso as cores aparecem em hex. As da marca vêm do src/index.css: paper-50,
+// paper-200, ink-900, brand-600, brand-50 e brand-700. Os dois cinzas do texto
+// de apoio (#5B6477 e #8A93A6) são próprios do e-mail. A marca vai em texto
+// porque cliente de e-mail costuma bloquear imagem.
 
 export function escapeHtml(s) {
   return String(s)
@@ -43,6 +44,9 @@ export function buildResetEmail(name, code) {
   const html = [
     '<!doctype html>',
     '<html lang="pt-BR">',
+    // O charset vale para o HTML aberto fora do cliente de e-mail, onde não
+    // há cabeçalho MIME dizendo que é UTF-8.
+    '<head><meta charset="utf-8"></head>',
     '<body style="margin:0;padding:0;background:#F5F7FB;">',
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F7FB;">',
     '<tr><td align="center" style="padding:32px 16px;">',
