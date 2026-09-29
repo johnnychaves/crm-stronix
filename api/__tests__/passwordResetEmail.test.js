@@ -119,7 +119,7 @@ describe('buildResetEmail', () => {
   });
 
   it('não tem travessão', () => {
-    expect(email.html + email.text).not.toMatch(/[—–]/);
+    expect(email.html + email.text).not.toMatch(/[\u2014\u2013]/);
   });
 });
 

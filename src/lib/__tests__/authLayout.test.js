@@ -49,7 +49,7 @@ describe('AuthLayout', () => {
   it('o texto do painel não tem travessão', async () => {
     await montar(h(AuthLayout, null, null));
     expect(document.body.textContent).toContain('Pipeline, meta diária e agendamentos num só lugar. Sua equipe focada no que importa: fechar.');
-    expect(document.body.textContent).not.toMatch(/[—–]/);
+    expect(document.body.textContent).not.toMatch(/[\u2014\u2013]/);
   });
 
   it('a etiqueta mostra o nome da academia', async () => {
