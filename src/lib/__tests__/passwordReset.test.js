@@ -54,6 +54,13 @@ describe('resendWaitSeconds', () => {
     expect(resendWaitSeconds(0, 60_000)).toBe(0);
     expect(resendWaitSeconds(0, 90_000)).toBe(0);
   });
+
+  it('nunca passa de 60 segundos, mesmo com o envio marcado no futuro', () => {
+    // O relógio do aparelho pode ter sido mexido depois do envio.
+    expect(resendWaitSeconds(3_600_000, 0)).toBe(60);
+    expect(resendWaitSeconds(60_001, 0)).toBe(60);
+    expect(resendWaitSeconds(1, 0)).toBe(60);
+  });
 });
 
 describe('isPasswordResetPath', () => {

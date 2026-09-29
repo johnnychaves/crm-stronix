@@ -141,7 +141,8 @@ describe('varredura dos filtros no endereço', () => {
   // state próprio, { email, passwordReset }. A premissa do backTarget se mantém:
   // esse state nunca leva `from`, o replace preserva o idx, e o login lê o
   // state uma vez e o zera com `state: null`. O texto fica congelado no teste
-  // do fim, então mexer nele volta a acender a varredura.
+  // seguinte, então mexer nele volta a acender a varredura. A exceção vale só
+  // para o arquivo da tela: a mesma linha em outro arquivo continua reprovada.
   const RESET_TO_LOGIN = "navigate(loginPath, { replace: true, state: { email, passwordReset: true } })";
 
   it('nenhum navigate de src/ grava state próprio numa entrada que pode ser a primeira', () => {
@@ -157,7 +158,7 @@ describe('varredura dos filtros no endereço', () => {
       for (const trecho of texto.split('navigate(').slice(1)) {
         const chamada = trecho.slice(0, 200);
         if (`navigate(${chamada}`.startsWith(OPEN_PROFILE)) continue;
-        if (`navigate(${chamada}`.startsWith(RESET_TO_LOGIN)) continue;
+        if (nome === join('views', 'auth', 'ForgotPasswordScreen.jsx') && `navigate(${chamada}`.startsWith(RESET_TO_LOGIN)) continue;
         // Pelo valor escrito, e não por lookahead: `/replace:\s*(?!false\b)/`
         // parece servir e passa em tudo, porque o `\s*` volta atrás e o
         // lookahead cai no espaço depois dos dois-pontos. Medido em 23/09/2026.
@@ -173,8 +174,7 @@ describe('varredura dos filtros no endereço', () => {
   it('o esqueci a senha continua mandando só o e-mail e o aviso para o login', () => {
     const tela = fontes.find(([nome]) => nome === join('views', 'auth', 'ForgotPasswordScreen.jsx'))?.[1] ?? '';
     expect(tela.includes(RESET_TO_LOGIN)).toBe(true);
-    // A exceção vale para um state sem `from`, e só para esse navigate.
-    expect(RESET_TO_LOGIN.includes('from')).toBe(false);
+    // A exceção é só desse navigate: nenhum outro replace na tela.
     expect(tela.split('navigate(').filter((t) => /replace:\s*true/.test(t.slice(0, 200)))).toHaveLength(1);
   });
 

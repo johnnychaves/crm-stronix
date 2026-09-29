@@ -52,9 +52,12 @@ export function isResetCodeFormat(code) {
   return typeof code === 'string' && /^\d{6}$/.test(code);
 }
 
-// Segundos até liberar "Mandar outro código". Zero quando já pode.
+// Segundos até liberar "Mandar outro código". Zero quando já pode, e nunca mais
+// que a espera inteira: com o relógio do aparelho mexido depois do envio, um
+// envio marcado no futuro mostraria "em 3660s".
 export function resendWaitSeconds(lastSentAt, now) {
-  return Math.max(0, Math.ceil((lastSentAt + RESEND_COOLDOWN_MS - now) / 1000));
+  const wait = Math.ceil((lastSentAt + RESEND_COOLDOWN_MS - now) / 1000);
+  return Math.min(RESEND_COOLDOWN_MS / 1000, Math.max(0, wait));
 }
 
 export function isPasswordResetPath(pathname) {

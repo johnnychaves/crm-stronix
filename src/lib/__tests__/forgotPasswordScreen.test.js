@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, useLocation } from 'react-router';
+import { MemoryRouter, useLocation, useNavigationType } from 'react-router';
 import { ForgotPasswordScreen } from '../../views/auth/ForgotPasswordScreen.jsx';
 import { PASSWORD_RULE_TEXT, passwordPolicyError } from '../passwordPolicy.js';
 import {
@@ -21,11 +21,13 @@ let root = null;
 let respostas = [];
 let chamadas = [];
 
-// Fora de /recuperar-senha, mostra para onde a tela mandou e com que estado.
+// Fora de /recuperar-senha, mostra para onde a tela mandou, com que estado e se
+// a entrada do histórico foi trocada (REPLACE) ou empilhada (PUSH).
 function Palco() {
   const loc = useLocation();
+  const tipo = useNavigationType();
   if (loc.pathname === RESET_PATH) return h(ForgotPasswordScreen);
-  return h('pre', { id: 'fora' }, JSON.stringify({ path: loc.pathname, state: loc.state ?? null }));
+  return h('pre', { id: 'fora', 'data-tipo': tipo }, JSON.stringify({ path: loc.pathname, state: loc.state ?? null }));
 }
 
 async function montar(state = null) {
@@ -45,6 +47,7 @@ const botao = (rotulo) => [...document.querySelectorAll('button')].find((b) => b
 const botaoPorNome = (nome) => document.querySelector(`button[aria-label="${nome}"]`);
 const reenvio = () => [...document.querySelectorAll('button')].find((b) => b.textContent.startsWith('Mandar outro código'));
 const alerta = () => document.querySelector('[role="alert"]');
+const aviso = () => document.querySelector('[role="status"]');
 const fora = () => JSON.parse(document.getElementById('fora').textContent);
 // O que o leitor de tela junta para descrever o campo: o texto de cada id do aria-describedby.
 const descricao = (el) => (el.getAttribute('aria-describedby') ?? '').split(' ').map((id) => document.getElementById(id)?.textContent ?? '').join(' ').trim();
@@ -80,6 +83,25 @@ async function preencherPasso2(code = '123456', senha = 'Nova@Senha1', repetir =
   await escrever(campo('confirmPassword'), repetir);
 }
 
+// Só Date e setInterval são falsos, então o setTimeout do clicar segue real. O
+// relógio para numa hora fixa e só anda quando o teste manda. O afterEach
+// devolve os timers de verdade. Devolve a hora de agora, em milissegundos.
+function relogioFalso() {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+  vi.setSystemTime(new Date('2026-09-29T12:00:00Z'));
+  return Date.now();
+}
+
+// O fetch só responde quando o teste manda, na ordem dos pedidos.
+function fetchQueEspera(status = 200, corpo = { ok: true }) {
+  const fila = [];
+  const fn = vi.fn(() => new Promise((resolve) => {
+    fila.push(() => resolve({ status, json: async () => corpo }));
+  }));
+  vi.stubGlobal('fetch', fn);
+  return { fn, liberar: () => fila.shift()() };
+}
+
 beforeEach(() => {
   sessionStorage.clear();
   respostas = [];
@@ -95,6 +117,7 @@ afterEach(async () => {
   await act(async () => { root?.unmount(); });
   document.body.innerHTML = '';
   root = null;
+  vi.useRealTimers();
   vi.unstubAllGlobals();
 });
 
@@ -313,6 +336,16 @@ describe('o erro fica ligado ao campo', () => {
     expect(campo('code').hasAttribute('aria-invalid')).toBe(false);
   });
 
+  it('código recusado pelo servidor: o campo do código fica inválido', async () => {
+    lembrar();
+    respostas = [[400, { error: CODE_REFUSED_MESSAGE }]];
+    await montar();
+    await preencherPasso2();
+    await clicar(botao('Salvar senha nova'));
+    expect(campo('code').getAttribute('aria-invalid')).toBe('true');
+    expect(campo('newPassword').hasAttribute('aria-invalid')).toBe(false);
+  });
+
   it('sem erro, nenhum campo fica inválido e a descrição não leva erro', async () => {
     lembrar();
     await montar();
@@ -320,6 +353,80 @@ describe('o erro fica ligado ao campo', () => {
     expect(descricao(campo('code'))).toContain('Digite o código que mandamos para ana@academia.com');
     expect(descricao(campo('newPassword'))).toBe(PASSWORD_RULE_TEXT);
     expect(campo('confirmPassword').hasAttribute('aria-describedby')).toBe(false);
+  });
+});
+
+// Corrigido o campo, o erro dele não pode ficar na tela: a pessoa leria uma
+// frase que já não vale, e o leitor de tela continuaria dizendo "inválido".
+describe('o erro some quando a pessoa muda o campo', () => {
+  it('passo 1: o e-mail', async () => {
+    await montar();
+    await escrever(campo('email'), 'ana');
+    await clicar(botao('Enviar código'));
+    expect(document.getElementById('esqueci-email-erro')).not.toBeNull();
+    await escrever(campo('email'), 'ana@');
+    expect(document.getElementById('esqueci-email-erro')).toBeNull();
+    expect(campo('email').hasAttribute('aria-invalid')).toBe(false);
+    expect(campo('email').hasAttribute('aria-describedby')).toBe(false);
+  });
+
+  it('passo 2: o código, sem apagar o erro da senha', async () => {
+    lembrar();
+    await montar();
+    await preencherPasso2('12', 'fraca');
+    await clicar(botao('Salvar senha nova'));
+    expect(document.getElementById('esqueci-codigo-erro')).not.toBeNull();
+    expect(document.getElementById('esqueci-senha-erro')).not.toBeNull();
+    await escrever(campo('code'), '123');
+    expect(document.getElementById('esqueci-codigo-erro')).toBeNull();
+    expect(campo('code').hasAttribute('aria-invalid')).toBe(false);
+    expect(document.getElementById('esqueci-senha-erro')).not.toBeNull();
+    expect(campo('newPassword').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('passo 2: a senha nova', async () => {
+    lembrar();
+    await montar();
+    await preencherPasso2('123456', 'fraca');
+    await clicar(botao('Salvar senha nova'));
+    expect(document.getElementById('esqueci-senha-erro')).not.toBeNull();
+    await escrever(campo('newPassword'), 'Nova@Senha1');
+    expect(document.getElementById('esqueci-senha-erro')).toBeNull();
+    expect(campo('newPassword').hasAttribute('aria-invalid')).toBe(false);
+    expect(descricao(campo('newPassword'))).toBe(PASSWORD_RULE_TEXT);
+  });
+
+  it('passo 2: mudar a senha nova apaga também o erro de repetir senha', async () => {
+    lembrar();
+    await montar();
+    await preencherPasso2('123456', 'Nova@Senha1', 'Nova@Senha2');
+    await clicar(botao('Salvar senha nova'));
+    expect(document.getElementById('esqueci-confirma-erro')).not.toBeNull();
+    await escrever(campo('newPassword'), 'Nova@Senha2');
+    expect(document.getElementById('esqueci-confirma-erro')).toBeNull();
+    expect(campo('confirmPassword').hasAttribute('aria-invalid')).toBe(false);
+  });
+
+  it('passo 2: repetir senha', async () => {
+    lembrar();
+    await montar();
+    await preencherPasso2('123456', 'Nova@Senha1', 'Nova@Senha2');
+    await clicar(botao('Salvar senha nova'));
+    expect(document.getElementById('esqueci-confirma-erro')).not.toBeNull();
+    await escrever(campo('confirmPassword'), 'Nova@Senha1');
+    expect(document.getElementById('esqueci-confirma-erro')).toBeNull();
+    expect(campo('confirmPassword').hasAttribute('aria-invalid')).toBe(false);
+  });
+
+  it('o aviso que não é de campo não some ao digitar', async () => {
+    lembrar();
+    respostas = [[500, null]];
+    await montar();
+    await preencherPasso2();
+    await clicar(botao('Salvar senha nova'));
+    expect(alerta().textContent).toBe(SAVE_FAILED_MESSAGE);
+    await escrever(campo('code'), '654321');
+    expect(alerta().textContent).toBe(SAVE_FAILED_MESSAGE);
   });
 });
 
@@ -342,6 +449,16 @@ describe('cursor ao trocar de passo', () => {
     await enviar('Usar outro e-mail');
     expect(campo('email')).not.toBeNull();
     expect(document.activeElement).toBe(campo('email'));
+  });
+
+  it('depois do reenvio, o cursor vai para o campo do código, que acabou de ser limpo', async () => {
+    lembrar('ana@academia.com', Date.now() - 61 * 1000);
+    respostas = [[200, { ok: true }]];
+    await montar();
+    await escrever(campo('code'), '123');
+    await enviar('Mandar outro código');
+    expect(campo('code').value).toBe('');
+    expect(document.activeElement).toBe(campo('code'));
   });
 });
 
@@ -371,80 +488,397 @@ describe('mostrar senha', () => {
 
 describe('mandar outro código', () => {
   it('fica travado no primeiro minuto', async () => {
+    relogioFalso();
     lembrar();
     await montar();
     expect(reenvio().disabled).toBe(true);
-    expect(reenvio().textContent).toMatch(/^Mandar outro código em \d+s$/);
+    expect(reenvio().hasAttribute('aria-disabled')).toBe(false);
+    expect(reenvio().textContent).toBe('Mandar outro código em 60s');
   });
 
   it('depois de 1 minuto, pede de novo, limpa o código e avisa que só o último vale', async () => {
-    lembrar('ana@academia.com', Date.now() - 61 * 1000);
+    const agora = relogioFalso();
+    lembrar('ana@academia.com', agora - 61 * 1000);
     respostas = [[200, { ok: true }]];
     await montar();
     await escrever(campo('code'), '123');
     expect(reenvio().textContent).toBe('Mandar outro código');
     expect(reenvio().disabled).toBe(false);
 
+    // Passa tempo entre abrir a tela e clicar, como na vida real, sem disparar o
+    // intervalo: o relógio da tela ainda marca a hora de antes.
+    vi.setSystemTime(agora + 5000);
     await clicar(reenvio());
     expect(chamadas).toEqual([{ url: '/api/tenant-resolve', corpo: { action: 'password-reset-request', email: 'ana@academia.com' } }]);
     expect(campo('code').value).toBe('');
-    expect(document.querySelector('[role="status"]').textContent).toBe('Mandamos outro código. Só o último vale.');
+    expect(aviso().textContent).toBe('Mandamos outro código. Só o último vale.');
     expect(reenvio().textContent).toBe('Mandar outro código em 60s');
     expect(reenvio().disabled).toBe(true);
-    expect(JSON.parse(sessionStorage.getItem(MEMORIA)).sentAt).toBeGreaterThan(Date.now() - 5000);
+    expect(JSON.parse(sessionStorage.getItem(MEMORIA)).sentAt).toBe(agora + 5000);
+  });
+
+  it('o 400 vira o aviso de e-mail acima do botão, porque o passo 2 não tem campo de e-mail', async () => {
+    lembrar('ana@academia.com', Date.now() - 61 * 1000);
+    respostas = [[400, null]];
+    await montar();
+    await clicar(reenvio());
+    expect(alerta().textContent).toBe(EMAIL_INVALID_MESSAGE);
+    expect(document.getElementById('esqueci-email-erro')).toBeNull();
+  });
+
+  it('o pedido que dá certo apaga o aviso do pedido anterior que falhou', async () => {
+    lembrar('ana@academia.com', Date.now() - 61 * 1000);
+    respostas = [[429, null], [200, { ok: true }]];
+    await montar();
+    await clicar(reenvio());
+    expect(alerta().textContent).toBe(TOO_MANY_MESSAGE);
+    await clicar(reenvio());
+    expect(alerta().textContent).toBe('');
+    expect(aviso().textContent).toBe('Mandamos outro código. Só o último vale.');
   });
 });
 
-// O e-mail entra na frase do passo 2 sem espaço. Comprido, estoura a coluna de
-// 380px e causa rolagem horizontal no celular, se a linha não puder quebrar.
-describe('e-mail comprido no passo 2', () => {
+describe('o relógio da contagem', () => {
+  it('desce de 1 em 1 segundo e libera o botão no fim', async () => {
+    const agora = relogioFalso();
+    lembrar('ana@academia.com', agora - 55 * 1000);
+    await montar();
+    expect(reenvio().textContent).toBe('Mandar outro código em 5s');
+    expect(reenvio().disabled).toBe(true);
+    await act(async () => { vi.advanceTimersByTime(3000); });
+    expect(reenvio().textContent).toBe('Mandar outro código em 2s');
+    await act(async () => { vi.advanceTimersByTime(2000); });
+    expect(reenvio().textContent).toBe('Mandar outro código');
+    expect(reenvio().disabled).toBe(false);
+  });
+
+  it('para quando a pessoa sai da tela', async () => {
+    relogioFalso();
+    lembrar();
+    await montar();
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { root.unmount(); });
+    root = null;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('só anda no passo 2', async () => {
+    relogioFalso();
+    respostas = [[200, { ok: true }]];
+    await montar({ email: 'ana@academia.com' });
+    expect(vi.getTimerCount()).toBe(0);
+    await clicar(botao('Enviar código'));
+    expect(vi.getTimerCount()).toBe(1);
+    await clicar(botao('Usar outro e-mail'));
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+// Depois do erro o botão volta e a mesma tela manda o pedido de novo. Cada
+// tentativa segue o caminho inteiro, e a segunda só sai se a primeira soltou o
+// que segurava (o busy e o inFlight).
+describe('depois de um erro, os botões voltam e dá para tentar de novo', () => {
+  it('passo 1: depois do 503, o mesmo botão manda o segundo pedido e abre o passo 2', async () => {
+    respostas = [[503, { error: MAIL_OFF_MESSAGE }], [200, { ok: true }]];
+    await montar({ email: 'ana@academia.com' });
+    await clicar(botao('Enviar código'));
+    expect(alerta().textContent).toBe(MAIL_OFF_MESSAGE);
+    expect(botao('Enviar código').hasAttribute('aria-disabled')).toBe(false);
+    await clicar(botao('Enviar código'));
+    expect(chamadas).toHaveLength(2);
+    expect(texto()).toContain('Criar senha nova');
+  });
+
+  it('passo 2: depois do 500, o mesmo botão manda a segunda troca e volta para o login', async () => {
+    lembrar();
+    respostas = [[500, null], [200, { ok: true }]];
+    await montar({ tenant: ACADEMIA });
+    await preencherPasso2();
+    await clicar(botao('Salvar senha nova'));
+    expect(alerta().textContent).toBe(SAVE_FAILED_MESSAGE);
+    expect(botao('Salvar senha nova').hasAttribute('aria-disabled')).toBe(false);
+    await clicar(botao('Salvar senha nova'));
+    expect(chamadas).toHaveLength(2);
+    expect(fora().path).toBe('/academia-teste');
+  });
+
+  it('reenvio: depois do 429, os três botões voltam', async () => {
+    lembrar('ana@academia.com', Date.now() - 61 * 1000);
+    respostas = [[429, null]];
+    await montar();
+    await clicar(reenvio());
+    expect(alerta().textContent).toBe(TOO_MANY_MESSAGE);
+    for (const b of [reenvio(), botao('Usar outro e-mail'), botao('Salvar senha nova')]) {
+      expect(b.hasAttribute('aria-disabled')).toBe(false);
+    }
+    expect(reenvio().disabled).toBe(false);
+    expect(reenvio().textContent).toBe('Mandar outro código');
+  });
+});
+
+describe('respostas e entradas que faltavam', () => {
+  it('passo 1: o 429 mostra o aviso de muitas tentativas', async () => {
+    respostas = [[429, null]];
+    await montar({ email: 'ana@academia.com' });
+    await clicar(botao('Enviar código'));
+    expect(alerta().textContent).toBe(TOO_MANY_MESSAGE);
+  });
+
+  it('passo 1: o 503 sem frase do servidor cai no aviso de que não deu para enviar', async () => {
+    respostas = [[503, null]];
+    await montar({ email: 'ana@academia.com' });
+    await clicar(botao('Enviar código'));
+    expect(alerta().textContent).toBe(SEND_FAILED_MESSAGE);
+  });
+
+  it('passo 1: o e-mail com espaço nas pontas vai e fica na memória sem o espaço', async () => {
+    respostas = [[200, { ok: true }]];
+    await montar({ email: '  ana@academia.com  ' });
+    await clicar(botao('Enviar código'));
+    expect(chamadas[0].corpo.email).toBe('ana@academia.com');
+    expect(JSON.parse(sessionStorage.getItem(MEMORIA)).email).toBe('ana@academia.com');
+  });
+
+  it('"Usar outro e-mail" não deixa o que foi digitado para o próximo envio', async () => {
+    lembrar();
+    respostas = [[200, { ok: true }]];
+    await montar();
+    await preencherPasso2();
+    await clicar(botao('Usar outro e-mail'));
+    await clicar(botao('Enviar código'));
+    expect(campo('code').value).toBe('');
+    expect(campo('newPassword').value).toBe('');
+    expect(campo('confirmPassword').value).toBe('');
+  });
+
+  it('memória vencida abre o passo 1, com o e-mail que veio do login', async () => {
+    lembrar('ana@academia.com', Date.now() - 16 * 60 * 1000);
+    await montar({ email: 'bia@academia.com' });
+    expect(texto()).toContain('Esqueci a senha');
+    expect(campo('email').value).toBe('bia@academia.com');
+  });
+
+  it('confirmar apaga o aviso de código reenviado, mesmo quando a conferência da tela barra o envio', async () => {
+    lembrar('ana@academia.com', Date.now() - 61 * 1000);
+    respostas = [[200, { ok: true }]];
+    await montar();
+    await clicar(reenvio());
+    expect(aviso().textContent).toBe('Mandamos outro código. Só o último vale.');
+    await preencherPasso2('12', 'fraca');
+    await clicar(botao('Salvar senha nova'));
+    expect(chamadas).toHaveLength(1);
+    expect(aviso().textContent).toBe('');
+  });
+
+  it('o sucesso troca a entrada do histórico em vez de empilhar', async () => {
+    lembrar();
+    respostas = [[200, { ok: true }]];
+    await montar({ tenant: ACADEMIA });
+    await preencherPasso2();
+    await clicar(botao('Salvar senha nova'));
+    expect(document.getElementById('fora').dataset.tipo).toBe('REPLACE');
+  });
+
+  // O servidor responde { ok: true } no sucesso. Um 200 sem isso (corpo vazio,
+  // ilegível ou de outra coisa) não vale como sucesso.
+  const SEM_OK = [
+    ['com corpo ilegível', () => { throw new SyntaxError('Unexpected end of JSON input'); }],
+    ['com corpo vazio', () => ({})],
+    ['com ok falso', () => ({ ok: false })],
+  ];
+
+  it.each(SEM_OK)('passo 1: 200 %s não vale como código enviado', async (_nome, corpo) => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 200, json: async () => corpo() })));
+    await montar({ email: 'ana@academia.com' });
+    await clicar(botao('Enviar código'));
+    expect(texto()).toContain('Esqueci a senha');
+    expect(alerta().textContent).toBe(SEND_FAILED_MESSAGE);
+    expect(sessionStorage.getItem(MEMORIA)).toBeNull();
+  });
+
+  it.each(SEM_OK)('passo 2: 200 %s não vale como senha salva', async (_nome, corpo) => {
+    lembrar();
+    vi.stubGlobal('fetch', vi.fn(async () => ({ status: 200, json: async () => corpo() })));
+    await montar({ tenant: ACADEMIA });
+    await preencherPasso2();
+    await clicar(botao('Salvar senha nova'));
+    expect(document.getElementById('fora')).toBeNull();
+    expect(alerta().textContent).toBe(SAVE_FAILED_MESSAGE);
+    expect(sessionStorage.getItem(MEMORIA)).not.toBeNull();
+  });
+});
+
+// O gerenciador de senhas do navegador só salva a senha nova ligada ao e-mail
+// certo se o formulário tiver um campo de usuário, e o passo 2 não tem campo de e-mail.
+describe('o gerenciador de senhas', () => {
+  it('o passo 2 leva o e-mail num campo de usuário oculto, dentro do formulário das senhas', async () => {
+    lembrar('ana@academia.com');
+    await montar();
+    const usuario = campo('username');
+    expect(usuario).not.toBeNull();
+    expect(usuario.value).toBe('ana@academia.com');
+    expect(usuario.type).toBe('email');
+    expect(usuario.getAttribute('autocomplete')).toBe('username');
+    expect(usuario.readOnly).toBe(true);
+    expect(usuario.hidden).toBe(true);
+    expect(usuario.form).toBe(campo('newPassword').form);
+  });
+
+  it('o campo de usuário acompanha o e-mail que acabou de receber o código', async () => {
+    respostas = [[200, { ok: true }]];
+    await montar({ email: 'ana@academia.com' });
+    expect(campo('username')).toBeNull();
+    await clicar(botao('Enviar código'));
+    expect(campo('username').value).toBe('ana@academia.com');
+  });
+});
+
+// Só o leitor de tela muda: o formulário segue com noValidate, e quem avisa do
+// campo vazio é a própria tela.
+describe('campos obrigatórios', () => {
+  it('passo 1: o e-mail é obrigatório e o formulário segue sem a validação do navegador', async () => {
+    await montar();
+    expect(campo('email').required).toBe(true);
+    expect(document.querySelector('form').noValidate).toBe(true);
+  });
+
+  it('passo 2: código, senha nova e repetir senha são obrigatórios, e o formulário segue sem a validação do navegador', async () => {
+    lembrar();
+    await montar();
+    for (const nome of ['code', 'newPassword', 'confirmPassword']) expect(campo(nome).required, nome).toBe(true);
+    expect(document.querySelector('form').noValidate).toBe(true);
+  });
+
+  it('passo 2: com tudo vazio, quem avisa é a tela, não o navegador', async () => {
+    lembrar();
+    await montar();
+    await clicar(botao('Salvar senha nova'));
+    expect(chamadas).toEqual([]);
+    expect(texto()).toContain('Digite os 6 números do código.');
+    expect(texto()).toContain(passwordPolicyError(''));
+  });
+});
+
+describe('texto do passo 2', () => {
+  it('diz que o código vale 15 minutos e aceita até 5 tentativas', async () => {
+    lembrar();
+    await montar();
+    expect(document.getElementById('esqueci-codigo-intro').textContent)
+      .toBe('Digite o código que mandamos para ana@academia.com. Ele vale por 15 minutos e aceita até 5 tentativas.');
+  });
+
+  // O e-mail entra na frase sem espaço. Comprido, estoura a coluna de 380px e
+  // causa rolagem horizontal no celular. O break-words não serve: ele só quebra
+  // depois de a linha estourar e não reduz a largura mínima do item da grade. O
+  // wrap-anywhere reduz.
   it('a frase que traz o e-mail pode quebrar a linha dentro dele', async () => {
     lembrar('maria.fernanda.oliveira.santos@dominio-muito-comprido-da-academia.com.br');
     await montar();
     const frase = document.getElementById('esqueci-codigo-intro');
     expect(frase.textContent).toContain('maria.fernanda.oliveira.santos@dominio-muito-comprido-da-academia.com.br');
-    expect(frase.classList.contains('break-words')).toBe(true);
+    expect(frase.classList.contains('wrap-anywhere')).toBe(true);
+    expect(frase.classList.contains('break-words')).toBe(false);
   });
 });
 
-// Um clique duplo mandaria dois pedidos, e cada código pedido gasta um dos 5 do dia.
+// Enquanto espera a resposta, os botões ficam com aria-disabled e não com
+// disabled: no Chrome, o botão focado que vira disabled solta o foco no body, e
+// o foco não volta. O jsdom não reproduz essa queda (o botão continua sendo o
+// activeElement), então o teste confere a causa: o atributo. Como o aria-disabled
+// não barra o clique, quem impede o segundo pedido é o inFlight. Um clique duplo
+// mandaria dois pedidos, e cada código pedido gasta um dos 5 do dia.
 describe('enquanto espera a resposta', () => {
-  // O fetch só responde quando o teste manda.
-  function fetchQueEspera(status = 200, corpo = { ok: true }) {
-    const controle = { liberar: () => {} };
-    const fn = vi.fn(() => new Promise((resolve) => {
-      controle.liberar = () => resolve({ status, json: async () => corpo });
-    }));
-    vi.stubGlobal('fetch', fn);
-    return { fn, controle };
-  }
-
-  it('passo 1: o botão fica travado e o segundo clique não manda outro pedido', async () => {
-    const { fn, controle } = fetchQueEspera();
+  it('passo 1: o botão fica com aria-disabled, sem disabled, e o segundo clique não manda outro pedido', async () => {
+    const { fn, liberar } = fetchQueEspera();
     await montar({ email: 'ana@academia.com' });
     await clicar(botao('Enviar código'));
     const enviando = botao('Enviando…');
-    expect(enviando.disabled).toBe(true);
+    expect(enviando.getAttribute('aria-disabled')).toBe('true');
+    expect(enviando.hasAttribute('disabled')).toBe(false);
     await clicar(enviando);
     expect(fn).toHaveBeenCalledTimes(1);
-    await act(async () => { controle.liberar(); });
+    await act(async () => { liberar(); });
     expect(texto()).toContain('Criar senha nova');
   });
 
-  it('passo 2: o botão e os dois links ficam travados e o segundo clique não manda outra troca', async () => {
+  it('passo 2: o botão e os dois links ficam com aria-disabled, sem disabled, e nenhum clique faz nada', async () => {
     lembrar('ana@academia.com', Date.now() - 61 * 1000);
-    const { fn, controle } = fetchQueEspera();
+    const { fn, liberar } = fetchQueEspera();
     await montar({ tenant: ACADEMIA });
     await preencherPasso2();
     await clicar(botao('Salvar senha nova'));
     const salvando = botao('Salvando…');
-    expect(salvando.disabled).toBe(true);
-    expect(reenvio().disabled).toBe(true);
-    expect(botao('Usar outro e-mail').disabled).toBe(true);
+    for (const b of [salvando, reenvio(), botao('Usar outro e-mail')]) {
+      expect(b.getAttribute('aria-disabled')).toBe('true');
+      expect(b.hasAttribute('disabled')).toBe(false);
+    }
     await clicar(salvando);
+    await clicar(reenvio());
+    await clicar(botao('Usar outro e-mail'));
     expect(fn).toHaveBeenCalledTimes(1);
-    await act(async () => { controle.liberar(); });
+    // "Usar outro e-mail" não levou ao passo 1, não apagou a memória e não limpou os campos.
+    expect(texto()).toContain('Criar senha nova');
+    expect(sessionStorage.getItem(MEMORIA)).not.toBeNull();
+    expect(campo('newPassword').value).toBe('Nova@Senha1');
+    await act(async () => { liberar(); });
     expect(fora().path).toBe('/academia-teste');
+  });
+
+  it('mandar outro código: o botão fica com aria-disabled, sem disabled, e o clique de novo não manda outro pedido', async () => {
+    lembrar('ana@academia.com', Date.now() - 61 * 1000);
+    const { fn, liberar } = fetchQueEspera();
+    await montar();
+    await clicar(reenvio());
+    expect(reenvio().getAttribute('aria-disabled')).toBe('true');
+    expect(reenvio().hasAttribute('disabled')).toBe(false);
+    await clicar(reenvio());
+    expect(fn).toHaveBeenCalledTimes(1);
+    await act(async () => { liberar(); });
+    expect(aviso().textContent).toBe('Mandamos outro código. Só o último vale.');
+  });
+
+  // O busy só muda no render seguinte, então dois envios no mesmo instante ainda
+  // leriam busy falso. Dentro de um único act o React não renderiza entre eles.
+  it('passo 1: dois envios no mesmo instante mandam um pedido só', async () => {
+    const { fn, liberar } = fetchQueEspera();
+    await montar({ email: 'ana@academia.com' });
+    await act(async () => {
+      const form = document.querySelector('form');
+      form.requestSubmit();
+      form.requestSubmit();
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+    await act(async () => { liberar(); });
+    expect(texto()).toContain('Criar senha nova');
+  });
+
+  it('passo 2: dois envios no mesmo instante mandam uma troca só', async () => {
+    lembrar();
+    const { fn, liberar } = fetchQueEspera();
+    await montar({ tenant: ACADEMIA });
+    await preencherPasso2();
+    await act(async () => {
+      const form = document.querySelector('form');
+      form.requestSubmit();
+      form.requestSubmit();
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+    await act(async () => { liberar(); });
+    expect(fora().path).toBe('/academia-teste');
+  });
+
+  it('mandar outro código: dois cliques no mesmo instante mandam um pedido só', async () => {
+    lembrar('ana@academia.com', Date.now() - 61 * 1000);
+    const { fn, liberar } = fetchQueEspera();
+    await montar();
+    await act(async () => {
+      const b = reenvio();
+      b.click();
+      b.click();
+    });
+    expect(fn).toHaveBeenCalledTimes(1);
+    await act(async () => { liberar(); });
+    expect(aviso().textContent).toBe('Mandamos outro código. Só o último vale.');
   });
 });
 

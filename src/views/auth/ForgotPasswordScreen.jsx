@@ -6,15 +6,21 @@ import { AuthLayout, AuthTenantChip } from './AuthLayout.jsx';
 import { AuthField, AuthInput, AuthPasswordToggle } from './AuthField.jsx';
 import { PASSWORD_RULE_TEXT, passwordPolicyError } from '../../lib/passwordPolicy.js';
 import {
-  RESET_ACTION_REQUEST, RESET_ACTION_CONFIRM,
-  CODE_REFUSED_MESSAGE, EMAIL_INVALID_MESSAGE, MAIL_OFF_MESSAGE, SAVE_FAILED_MESSAGE, SEND_FAILED_MESSAGE, TOO_MANY_MESSAGE,
+  RESET_ACTION_REQUEST, RESET_ACTION_CONFIRM, RESET_CODE_TTL_MS, RESET_CODE_MAX_ATTEMPTS,
+  CODE_REFUSED_MESSAGE, EMAIL_INVALID_MESSAGE, SAVE_FAILED_MESSAGE, SEND_FAILED_MESSAGE, TOO_MANY_MESSAGE,
   normalizeResetCode, resendWaitSeconds, readResetEntry, readResetMemory, writeResetMemory, clearResetMemory,
   readResetApiError, postResetAction, loginPathFor,
 } from '../../lib/passwordReset.js';
 
 const TITLE = 'font-display text-[26px] font-semibold tracking-tight';
 const LEAD = 'text-[14px] text-gray-500 dark:text-neutral-400 mt-1.5';
-const PRIMARY = 'w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold inline-flex items-center justify-center gap-2 transition active:scale-[.99] shadow-sm shadow-brand-600/20 disabled:opacity-90 disabled:cursor-default';
+// Enquanto espera a resposta, os botões ficam com aria-disabled e não com
+// disabled: no Chrome, o botão focado que vira disabled solta o foco no body, e
+// o foco não volta. O clique que chega nesse meio tempo é barrado pelo inFlight,
+// dentro do componente. O aria-disabled:active:scale-100 tira o efeito de
+// aperto, que o disabled também não tinha.
+const PRIMARY = 'w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold inline-flex items-center justify-center gap-2 transition active:scale-[.99] shadow-sm shadow-brand-600/20 aria-disabled:opacity-90 aria-disabled:cursor-default aria-disabled:active:scale-100';
+const CODE_TTL_MINUTES = RESET_CODE_TTL_MS / 60000;
 
 // Junta os ids do aria-describedby, sem os vazios.
 const describedBy = (...ids) => ids.filter(Boolean).join(' ') || undefined;
@@ -48,6 +54,12 @@ function ForgotPasswordScreen() {
   const codeRef = useRef(null);
   const passwordRef = useRef(null);
   const confirmRef = useRef(null);
+  // Diz se há pedido em andamento. O busy só muda no render seguinte, então dois
+  // envios seguidos (dois Enter, dois cliques rápidos) ainda leriam busy falso e
+  // mandariam dois pedidos. No passo 1 cada pedido gasta um dos 5 códigos do dia
+  // e mata o anterior, e na troca gasta uma tentativa. O ref vale na hora, e o
+  // busy fica só para o visual.
+  const inFlight = useRef(false);
   const loginPath = loginPathFor(entry.tenant);
   const tenantName = entry.tenant?.displayName;
 
@@ -60,10 +72,18 @@ function ForgotPasswordScreen() {
 
   const waitSeconds = sentAt === null ? 0 : resendWaitSeconds(sentAt, now);
 
+  // O erro de um campo some quando a pessoa mexe nele.
+  const clearFieldError = (...keys) => setFieldErrors((current) => {
+    if (!keys.some((key) => current[key])) return current;
+    const next = { ...current };
+    for (const key of keys) delete next[key];
+    return next;
+  });
+
   // Pede o código. Serve ao passo 1 e ao "Mandar outro código".
   async function sendCode(target) {
     const r = await postResetAction({ action: RESET_ACTION_REQUEST, email: target });
-    if (r.status === 200) {
+    if (r.status === 200 && r.body?.ok === true) {
       const at = Date.now();
       writeResetMemory({ email: target, sentAt: at });
       setSentAt(at);
@@ -77,13 +97,14 @@ function ForgotPasswordScreen() {
       emailRef.current?.focus();
     } else if (err.status === 400) setFormError(EMAIL_INVALID_MESSAGE);
     else if (err.status === 429) setFormError(err.message || TOO_MANY_MESSAGE);
-    else if (err.status === 503) setFormError(err.message || MAIL_OFF_MESSAGE);
+    else if (err.status === 503) setFormError(err.message || SEND_FAILED_MESSAGE);
     else setFormError(SEND_FAILED_MESSAGE);
     return false;
   }
 
   async function onRequest(e) {
     e.preventDefault();
+    if (inFlight.current) return;
     const target = email.trim();
     setFormError('');
     if (!target.includes('@')) {
@@ -92,30 +113,44 @@ function ForgotPasswordScreen() {
       return;
     }
     setFieldErrors({});
+    inFlight.current = true;
     setBusy(true);
-    const ok = await sendCode(target);
-    setBusy(false);
-    if (!ok) return;
-    setEmail(target);
-    setCode('');
-    setInfo('');
-    setStep('code');
+    try {
+      const ok = await sendCode(target);
+      if (!ok) return;
+      setEmail(target);
+      setCode('');
+      setInfo('');
+      setStep('code');
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
   }
 
   async function onResend() {
+    if (inFlight.current) return;
     setFormError('');
     setInfo('');
+    inFlight.current = true;
     setBusy(true);
-    const ok = await sendCode(email);
-    setBusy(false);
-    if (!ok) return;
-    setCode('');
-    setFieldErrors({});
-    setInfo('Mandamos outro código. Só o último vale.');
+    try {
+      const ok = await sendCode(email);
+      if (!ok) return;
+      setCode('');
+      setFieldErrors({});
+      setInfo('Mandamos outro código. Só o último vale.');
+      // O campo do código acabou de ser limpo, e é nele que a pessoa digita.
+      codeRef.current?.focus();
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
   }
 
   async function onConfirm(e) {
     e.preventDefault();
+    if (inFlight.current) return;
     const errors = {};
     if (code.length !== 6) errors.code = 'Digite os 6 números do código.';
     const problem = passwordPolicyError(password);
@@ -132,26 +167,38 @@ function ForgotPasswordScreen() {
       return;
     }
 
+    inFlight.current = true;
     setBusy(true);
-    const r = await postResetAction({ action: RESET_ACTION_CONFIRM, email, code, newPassword: password });
-    if (r.status === 200) {
-      clearResetMemory();
-      navigate(loginPath, { replace: true, state: { email, passwordReset: true } });
-      return;
+    let saved = false;
+    try {
+      const r = await postResetAction({ action: RESET_ACTION_CONFIRM, email, code, newPassword: password });
+      if (r.status === 200 && r.body?.ok === true) {
+        saved = true;
+        clearResetMemory();
+        // Roda mesmo se a pessoa saiu da tela durante a espera, e é de propósito:
+        // a senha já mudou, e o login precisa do e-mail e do aviso.
+        navigate(loginPath, { replace: true, state: { email, passwordReset: true } });
+        return;
+      }
+      const err = readResetApiError(r.status, r.body);
+      if (err.status === 400 && err.passwordIssue) {
+        setFieldErrors({ password: err.passwordIssue });
+        passwordRef.current?.focus();
+      } else if (err.status === 400) {
+        setFieldErrors({ code: CODE_REFUSED_MESSAGE });
+        codeRef.current?.focus();
+      } else if (err.status === 429) setFormError(err.message || TOO_MANY_MESSAGE);
+      else setFormError(SAVE_FAILED_MESSAGE);
+    } finally {
+      inFlight.current = false;
+      // Na saída o busy fica ligado até a tela sumir, para o botão não piscar.
+      if (!saved) setBusy(false);
     }
-    const err = readResetApiError(r.status, r.body);
-    if (err.status === 400 && err.passwordIssue) {
-      setFieldErrors({ password: err.passwordIssue });
-      passwordRef.current?.focus();
-    } else if (err.status === 400) {
-      setFieldErrors({ code: CODE_REFUSED_MESSAGE });
-      codeRef.current?.focus();
-    } else if (err.status === 429) setFormError(err.message || TOO_MANY_MESSAGE);
-    else setFormError(SAVE_FAILED_MESSAGE);
-    setBusy(false);
   }
 
   function onOtherEmail() {
+    // Com pedido em andamento o botão só parece travado, e o clique não faz nada.
+    if (inFlight.current) return;
     clearResetMemory();
     setStep('email');
     setSentAt(null);
@@ -187,8 +234,9 @@ function ForgotPasswordScreen() {
                 name="email"
                 type="email"
                 autoFocus
+                required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); clearFieldError('email'); }}
                 placeholder="voce@academia.com.br"
                 autoComplete="username"
                 aria-invalid={fieldErrors.email ? true : undefined}
@@ -196,7 +244,7 @@ function ForgotPasswordScreen() {
               />
             </AuthField>
             <FormAlert message={formError} />
-            <button type="submit" disabled={busy} className={PRIMARY}>
+            <button type="submit" aria-disabled={busy || undefined} className={PRIMARY}>
               {busy ? <><Spinner /> Enviando…</> : 'Enviar código'}
             </button>
           </div>
@@ -208,10 +256,13 @@ function ForgotPasswordScreen() {
         </form>
       ) : (
         <form key="code" onSubmit={onConfirm} noValidate>
+          {/* O gerenciador de senhas usa este campo para saber de qual conta é a
+              senha nova e salvá-la ligada ao e-mail certo. */}
+          <input type="email" name="username" autoComplete="username" value={email} readOnly hidden />
           {header('Criar senha nova', (
             <>
-              <p id="esqueci-codigo-intro" className={cn(LEAD, 'break-words')}>
-                Digite o código que mandamos para <strong className="font-semibold text-gray-700 dark:text-neutral-200">{email}</strong>. Ele vale por 15 minutos e aceita até 5 tentativas.
+              <p id="esqueci-codigo-intro" className={cn(LEAD, 'wrap-anywhere')}>
+                Digite o código que mandamos para <strong className="font-semibold text-gray-700 dark:text-neutral-200">{email}</strong>. Ele vale por {CODE_TTL_MINUTES} minutos e aceita até {RESET_CODE_MAX_ATTEMPTS} tentativas.
               </p>
               <p className="mt-2 text-[12.5px] text-gray-500 dark:text-neutral-400">
                 Se esse e-mail tiver conta no Stronilead, o código chega em alguns minutos. Confira também o spam.
@@ -226,8 +277,9 @@ function ForgotPasswordScreen() {
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 autoFocus
+                required
                 value={code}
-                onChange={(e) => setCode(normalizeResetCode(e.target.value))}
+                onChange={(e) => { setCode(normalizeResetCode(e.target.value)); clearFieldError('code'); }}
                 placeholder="000000"
                 className="font-mono tracking-[0.3em]"
                 aria-invalid={fieldErrors.code ? true : undefined}
@@ -246,8 +298,10 @@ function ForgotPasswordScreen() {
                 ref={passwordRef}
                 name="newPassword"
                 type={showPass ? 'text' : 'password'}
+                required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                // A igualdade das duas senhas depende desta também, então o erro de repetir sai junto.
+                onChange={(e) => { setPassword(e.target.value); clearFieldError('password', 'confirm'); }}
                 autoComplete="new-password"
                 aria-invalid={fieldErrors.password ? true : undefined}
                 aria-describedby={describedBy('esqueci-senha-regra', fieldErrors.password && 'esqueci-senha-erro')}
@@ -259,8 +313,9 @@ function ForgotPasswordScreen() {
                 ref={confirmRef}
                 name="confirmPassword"
                 type={showPass ? 'text' : 'password'}
+                required
                 value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
+                onChange={(e) => { setConfirm(e.target.value); clearFieldError('confirm'); }}
                 autoComplete="new-password"
                 aria-invalid={fieldErrors.confirm ? true : undefined}
                 aria-describedby={describedBy(fieldErrors.confirm && 'esqueci-confirma-erro')}
@@ -268,18 +323,21 @@ function ForgotPasswordScreen() {
             </AuthField>
             <FormStatus message={info} />
             <FormAlert message={formError} />
-            <button type="submit" disabled={busy} className={PRIMARY}>
+            <button type="submit" aria-disabled={busy || undefined} className={PRIMARY}>
               {busy ? <><Spinner /> Salvando…</> : 'Salvar senha nova'}
             </button>
           </div>
           <div className="mt-6 flex flex-wrap items-center justify-between gap-3 text-[12.5px] font-semibold">
+            {/* Durante a contagem o botão está de fato indisponível, por isso disabled.
+                Enquanto espera a resposta, só aria-disabled, pelo motivo do PRIMARY. */}
             <button
               type="button"
               onClick={onResend}
-              disabled={busy || waitSeconds > 0}
+              disabled={waitSeconds > 0}
+              aria-disabled={busy || undefined}
               className={cn(
-                'hover:underline disabled:cursor-default disabled:no-underline',
-                waitSeconds > 0 ? 'text-gray-400 dark:text-neutral-500' : 'text-brand-600 dark:text-brand-400',
+                'hover:underline disabled:cursor-default disabled:no-underline aria-disabled:cursor-default aria-disabled:no-underline',
+                waitSeconds > 0 ? 'text-gray-500 dark:text-neutral-400' : 'text-brand-600 dark:text-brand-400',
               )}
             >
               {waitSeconds > 0 ? `Mandar outro código em ${waitSeconds}s` : 'Mandar outro código'}
@@ -287,8 +345,8 @@ function ForgotPasswordScreen() {
             <button
               type="button"
               onClick={onOtherEmail}
-              disabled={busy}
-              className="text-gray-700 dark:text-neutral-200 hover:underline disabled:cursor-default disabled:no-underline"
+              aria-disabled={busy || undefined}
+              className="text-gray-700 dark:text-neutral-200 hover:underline aria-disabled:cursor-default aria-disabled:no-underline"
             >
               Usar outro e-mail
             </button>
