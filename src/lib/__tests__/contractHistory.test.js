@@ -79,9 +79,19 @@ describe('contractOriginOf', () => {
     const p = K('p', { startsAt: D(2026, 3, 1), endsAt: D(2026, 4, 1), createdAt: D(2026, 3, 1) });
     const z = K('z', { startsAt: D(2026, 6, 1), endsAt: D(2027, 6, 1), createdAt: D(2026, 6, 1) });
     const o = contractOriginOf(z, [x, p, z]);
-    expect(o.previous).toBe(p);
+    expect(o.previous).toBe(x);
     expect(o.gapDays).toBeNull();
     expect(o.coverageEnd).toEqual(D(2026, 12, 31));
+  });
+
+  it('retorno depois de renovação cancelada antes de começar mostra o contrato que valeu', () => {
+    const anual = K('anual', { planName: 'Anual', startsAt: D(2025, 1, 1), endsAt: D(2025, 12, 31), createdAt: D(2025, 1, 1) });
+    const semestral = K('semestral', { planName: 'Semestral', renewedFromId: 'anual', status: 'cancelado', startsAt: D(2026, 1, 1), endsAt: D(2026, 7, 1), cancelledAt: D(2025, 12, 20), createdAt: D(2025, 12, 1) });
+    const volta = K('volta', { startsAt: D(2026, 3, 1), endsAt: D(2027, 3, 1), createdAt: D(2026, 3, 1) });
+    const o = contractOriginOf(volta, [anual, semestral, volta]);
+    expect(o.kind).toBe(CONTRACT_ORIGIN.RETORNO);
+    expect(o.previous).toBe(anual);
+    expect(o.coverageEnd).toEqual(D(2025, 12, 31));
   });
 
   it('renovação cancelada antes de começar não conta como cobertura', () => {
