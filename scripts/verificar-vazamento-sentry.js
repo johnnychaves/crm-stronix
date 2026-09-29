@@ -1,6 +1,6 @@
 // Confere, com o SDK do Sentry de verdade (não com um beforeSend espião),
-// que a chave do Zap e o telefone do lead não saem das funções da api/ —
-// e prova que a própria verificação enxergaria se saíssem.
+// que a chave do Zap, a chave do Resend e o telefone do lead não saem das
+// funções da api/, e prova que a própria verificação enxergaria se saíssem.
 //
 //   node scripts/verificar-vazamento-sentry.js
 //   node scripts/verificar-vazamento-sentry.js --round=normal     (só a rodada limpa)
@@ -59,9 +59,13 @@ const ESPERADO = 4; // uma chamada, um erro: 4 chamadas na sequência abaixo
 // Marcas exclusivas desta verificação: improvável de aparecer em outro lugar
 // do envelope por acaso, fácil de achar em texto cru.
 const CHAVE = `szk_${'f1e2d3c4'.repeat(6)}`; // 52 chars, formato de generateZapKey (api/_zapAuth.js)
-// Chave do Resend inventada (re_, 8 caracteres, sublinhado e 24 caracteres). Vai
-// no texto dos erros simulados, ver RECUSA_RESEND.
+// Chave do Resend inventada (re_, 8 caracteres, sublinhado e 24 caracteres).
+// Cada erro simulado a repete no texto, como faria uma recusa do Resend que a
+// devolvesse na mensagem. Testa a segunda camada, o mascaramento do
+// sentryScrub: a primeira, o corte na origem, está no envio (api/_mail.js) e
+// não neste handler.
 const CHAVE_RESEND = `re_a1b2c3d4_${'e5f6a7b8'.repeat(3)}`;
+const RECUSA_RESEND = `O Resend recusou a chave ${CHAVE_RESEND}`;
 const TENANT = 'academia-verificacao';
 const TEL_BODY = '5511987654321'; // telefone do lote, no corpo do POST match
 const TEL_QUERY = '5521912345678'; // telefone do GET, na query
@@ -180,12 +184,6 @@ async function rodarRodada(variante) {
     delete SENTRY_OPTIONS.integrations; // sem o maxIncomingRequestBodySize: 'none': corpo volta a vazar
     delete SENTRY_OPTIONS.beforeSend; // sem a segunda camada: nem header, corpo, query nem variável local são cortados
   }
-
-  // Texto que cada erro simulado repete, como faria uma recusa do Resend que
-  // devolvesse a chave na mensagem. Testa a segunda camada, o mascaramento do
-  // sentryScrub: a primeira, o corte na origem, está no envio (api/_mail.js) e
-  // não neste handler.
-  const RECUSA_RESEND = `O Resend recusou a chave ${CHAVE_RESEND}`;
 
   // Handler no formato do handleMatch/GET de produção: chave no header,
   // telefones em variável local (corpo no POST, query no GET), erro depois

@@ -17,9 +17,9 @@ const PATTERNS = [
   // Chave do Resend: re_ mais 16 ou mais letras, números ou sublinhados. O envio
   // (api/_mail.js) já corta a chave na origem, e este padrão é a segunda camada,
   // como o da chave do Zap. O \b na frente deixa de fora o re_ que só termina
-  // uma palavra (feature_flags_..., where_clause_...). Precisa vir antes dos
-  // padrões de número: dígitos dentro da chave não podem virar [documento] ou
-  // [telefone] e deixar o resto dela em claro.
+  // uma palavra (feature_flags_..., where_clause_...). Precisa vir antes do
+  // padrão de documento: 11 dígitos seguidos dentro da chave não podem virar
+  // [documento] e deixar o resto dela em claro.
   [/\bre_[A-Za-z0-9_]{16,}/g, '[chave]'],
   [/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g, '[cpf]'],
   [/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, '[email]'],

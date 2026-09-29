@@ -58,7 +58,7 @@ describe('maskSensitive', () => {
   });
 
   it('mascara a chave do resend inteira mesmo com 11 dígitos seguidos no meio dela', () => {
-    // Se o padrão de número rodasse antes, os dígitos virariam [documento] e o
+    // Se o padrão de documento rodasse antes, os dígitos virariam [documento] e o
     // resto da chave sairia em claro.
     expect(maskSensitive('o Resend recusou re_12345678901_abcdefghijklmnopqrstuvwx agora'))
       .toBe('o Resend recusou [chave] agora');

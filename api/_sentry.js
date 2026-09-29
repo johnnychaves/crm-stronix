@@ -47,6 +47,14 @@ let started = false;
 // o nome da integração.
 export const HTTP_OPTIONS = { maxIncomingRequestBodySize: 'none' };
 
+// O log de console fica fora do Sentry nas funções da api/. Ele leva uid,
+// academia e IP (o do "Esqueci a senha" inclusive), e no Preview o modo log do
+// envio escreve o e-mail com o código. O log da Vercel já guarda isso por 1
+// hora. As outras migalhas passam pelo scrubBreadcrumb.
+function scrubApiBreadcrumb(crumb) {
+  return crumb?.category === 'console' ? null : scrubBreadcrumb(crumb);
+}
+
 export const SENTRY_OPTIONS = {
   environment: process.env.VERCEL_ENV || 'development',
   release: process.env.VERCEL_GIT_COMMIT_SHA || undefined,
@@ -69,7 +77,7 @@ export const SENTRY_OPTIONS = {
   // em src/lib/sentry.js. scrubEvent já cuida de transação (bloco de spans
   // e contexts.trace), então é a mesma função dos dois lados.
   beforeSendTransaction: scrubEvent,
-  beforeBreadcrumb: scrubBreadcrumb,
+  beforeBreadcrumb: scrubApiBreadcrumb,
 };
 
 // Rótulo do endpoint no evento. A URL do GET carrega ?tenant=...&phone=..., e
@@ -92,23 +100,26 @@ export function withSentry(handler) {
     try {
       return await handler(req, res);
     } catch (err) {
-      if (DSN) {
-        Sentry.captureException(err, { tags: { endpoint: endpointTag(req) } });
-        // A função congela assim que responde. Sem flush explícito o evento
-        // morre no buffer e nunca chega ao Sentry.
-        await Sentry.flush(2000).catch(() => {});
-      }
+      // O captureError espera o envio e nunca lança, então o erro que sobe é
+      // sempre o do handler.
+      await captureError(err, req);
       throw err;
     }
   };
 }
 
-// Captura um erro que aconteceu depois da resposta, no waitUntil, onde o
-// withSentry não alcança. Sem DSN não faz nada. O flush espera o envio porque
-// a função congela quando o trabalho termina.
+// Manda o erro ao Sentry e espera o envio. O withSentry usa para o erro que
+// sobe antes da resposta, e a rota usa no waitUntil, que roda depois dela e
+// onde o withSentry não alcança. Sem DSN não faz nada. O flush espera o envio
+// porque a função congela quando o trabalho termina, e sem ele o evento morre
+// no buffer e nunca chega ao Sentry.
 export async function captureError(err, req) {
-  start();
-  if (!DSN) return;
-  Sentry.captureException(err, { tags: { endpoint: endpointTag(req) } });
-  await Sentry.flush(2000).catch(() => {});
+  try {
+    start();
+    if (!DSN) return;
+    Sentry.captureException(err, { tags: { endpoint: endpointTag(req) } });
+    await Sentry.flush(2000);
+  } catch {
+    // Telemetria não derruba a função.
+  }
 }
