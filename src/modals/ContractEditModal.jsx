@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Calendar, DollarSign, Pencil } from 'lucide-react';
-import { buildContractEdit, correctionNeedsReason, editListValueOf } from '../lib/contracts.js';
+import { buildContractEdit, correctionNeedsReason, editListValueOf, renewalStartProblem } from '../lib/contracts.js';
 import { commitContractPatch } from '../lib/contractsWrites.js';
 import { fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
 import { fmtBRL, parseValorBRL, valorToInput } from '../lib/format.js';
@@ -21,7 +21,12 @@ import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog.jsx'
 
 function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
   const toast = useToast();
-  const { planos } = useGeneralConfig();
+  const { planos, contratos } = useGeneralConfig();
+  // O contrato que esta renovação renova: corrigir o início pode mudar o fim
+  // dele (buildContractEdit).
+  const previous = contract?.renewedFromId
+    ? (contratos || []).find(c => c.id === contract.renewedFromId) || null
+    : null;
 
   // O plano do contrato pode ter saído do catálogo: ele continua na lista
   // para a correção não trocar o plano sem querer.
@@ -56,12 +61,21 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
   const discountReason = hasDiscount ? reason : null;
   const needsReason = correctionNeedsReason({ contract, plan, value: numericValue, hasDiscount });
 
+  // A renovação começa no mínimo dois dias depois do início do contrato que ela
+  // renova. Sem o status: a trava do trancado é para renovar, não para corrigir.
+  const startProblem = previous && startsAt
+    ? renewalStartProblem({ startsAt: previous.startsAt || previous.createdAt }, startsAt)
+    : null;
   const preview = plan && startsAt
-    ? buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason })
+    ? buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason, previous })
     : null;
   const novoFim = getSafeDateOrNull(preview?.contractPatch?.endsAt);
   const fimAtual = getSafeDateOrNull(contract?.endsAt);
   const pausedDaysTotal = Number(contract?.pausedDaysTotal) || 0;
+  // O que a correção faz com o fim do contrato anterior: encurta (a marca de
+  // quem encurtou fica) ou devolve o fim original (a marca sai).
+  const anteriorFim = getSafeDateOrNull(preview?.previousPatch?.endsAt);
+  const anteriorVolta = Boolean(anteriorFim && !preview.previousPatch.shortenedById);
 
   const onChangePlan = (id) => {
     setPlanId(id);
@@ -79,10 +93,12 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
     if (!startsAt) { toast.warning('Informe a data de início.'); return; }
     if (!Number.isFinite(numericValue) || numericValue < 0) { toast.warning('Informe um valor válido.'); return; }
     if (needsReason && !reason) { toast.warning('Escolha o motivo do desconto.'); return; }
+    if (startProblem) { toast.warning(startProblem); return; }
 
     setSubmitting(true);
     try {
-      const built = buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason });
+      const built = buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason, previous });
+      // O fim novo do contrato anterior vai no mesmo batch.
       await commitContractPatch({
         db,
         lead,
@@ -90,7 +106,9 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
         contractId: contract?.id || lead?.currentContractId,
         contractPatch: built.contractPatch,
         leadPatch: built.leadPatch,
-        interactionText: built.interactionText
+        interactionText: built.interactionText,
+        previousContractId: built.previousPatch ? previous.id : null,
+        previousContractPatch: built.previousPatch || null
       });
       toast.success('Contrato corrigido.');
       onDone && onDone();
@@ -171,6 +189,12 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
             </Field>
           )}
 
+          {startProblem && (
+            <p className="rounded-[10px] border border-rose-300/60 bg-rose-500/[0.07] dark:border-rose-500/40 dark:bg-rose-500/10 px-3 py-2.5 text-[12px] font-semibold text-rose-700 dark:text-rose-300 text-pretty">
+              {startProblem}
+            </p>
+          )}
+
           <div className="rounded-[10px] bg-slate-50 dark:bg-white/[0.03] px-3 py-2.5 text-[12px] leading-[1.5] text-slate-600 dark:text-slate-300 text-pretty">
             {novoFim ? (
               <>
@@ -179,6 +203,11 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
                   <span className="num"> (era {fimAtual.toLocaleDateString('pt-BR')})</span>
                 )}.
                 {pausedDaysTotal > 0 && <> Os {pausedDaysTotal} dias já trancados seguem contados.</>}
+                {anteriorFim && (
+                  <>
+                    {' '}O contrato anterior{previous?.planName ? ` (${previous.planName})` : ''} {anteriorVolta ? 'volta' : 'passa'} a terminar em <span className="num font-semibold text-slate-900 dark:text-white">{anteriorFim.toLocaleDateString('pt-BR')}</span>.
+                  </>
+                )}
                 {' '}Isto corrige o registro. Não cria contrato novo nem mexe nos marcos de renovação.
               </>
             ) : 'Escolha plano e data de início para ver a nova vigência.'}
