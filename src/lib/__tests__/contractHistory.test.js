@@ -188,6 +188,15 @@ describe('historyStatusOf e runningPredecessorOf', () => {
     expect(historyStatusOf(atual, [atual], HOJE)).toBe(CONTRACT_STATUS.A_VENCER);
   });
 
+  // Renovar contrato trancado é barrado (renewalStartProblem), então trancado
+  // com renovação ligada só existe em dado antigo. Ele segue trancado, antes e
+  // depois de a renovação começar.
+  it('trancado continua trancado, mesmo com renovação ligada', () => {
+    const trancado = { ...atual, status: 'trancado', pausedAt: D(2026, 9, 1) };
+    expect(historyStatusOf(trancado, [trancado, renovacao], HOJE)).toBe(CONTRACT_STATUS.TRANCADO);
+    expect(historyStatusOf(trancado, [trancado, renovacao], D(2026, 10, 12))).toBe(CONTRACT_STATUS.TRANCADO);
+  });
+
   // No Histórico, o contrato que ainda não começou nunca está em uso nem
   // renovado, nem o emendado, que o status comum trata como ativo.
   it('a renovação que ainda não começou é agendada, mesmo emendada', () => {
@@ -223,6 +232,12 @@ describe('historyStatusOf e runningPredecessorOf', () => {
   it('runningPredecessorOf ignora o anterior cancelado', () => {
     const cancelado = { ...atual, status: 'cancelado', cancelledAt: D(2026, 9, 1) };
     expect(runningPredecessorOf(renovacao, [cancelado, renovacao], HOJE)).toBeNull();
+  });
+
+  // Contrato parado não está em uso.
+  it('runningPredecessorOf ignora o anterior trancado', () => {
+    const trancado = { ...atual, status: 'trancado', pausedAt: D(2026, 9, 1) };
+    expect(runningPredecessorOf(renovacao, [trancado, renovacao], HOJE)).toBeNull();
   });
 
   it('runningPredecessorOf: com intervalo, o anterior só vale até o fim dele', () => {

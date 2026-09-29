@@ -133,10 +133,12 @@ export const HISTORY_STATUS_LABEL = { em_uso: 'Em uso', renovado: 'Renovado' };
 // começa. Antes, o contrato em uso aparecia "A vencer" com o aluno já
 // renovado. A renovação que nunca valeu (neverTookEffect) não conta. O
 // contrato que ainda não começou é "Agendado", mesmo o emendado: no Histórico
-// ele nunca está em uso nem renovado.
+// ele nunca está em uso nem renovado. O trancado segue "Trancado" mesmo com
+// renovação ligada, que só existe em dado antigo: hoje renovar contrato
+// trancado é barrado (renewalStartProblem).
 export function historyStatusOf(contract, leadContracts, now = new Date(), thresholdDays) {
   const base = deriveContractStatus(contract, now, thresholdDays) || CONTRACT_STATUS.VENCIDO;
-  if (base === CONTRACT_STATUS.CANCELADO || base === CONTRACT_STATUS.AGENDADO) return base;
+  if (base === CONTRACT_STATUS.CANCELADO || base === CONTRACT_STATUS.TRANCADO || base === CONTRACT_STATUS.AGENDADO) return base;
   const ref = getSafeDateOrNull(now) || new Date();
   const start = getSafeDateOrNull(contract?.startsAt);
   if (start && start.getTime() > ref.getTime()) return CONTRACT_STATUS.AGENDADO;
@@ -153,13 +155,14 @@ export function historyStatusOf(contract, leadContracts, now = new Date(), thres
 }
 
 // O contrato que esta renovação continua, enquanto ele ainda vale: já começou,
-// não foi cancelado e o fim dele não passou. É o que o card mostra como "em
-// uso" enquanto a renovação não começa. Null quando ela já começou.
+// não foi cancelado nem está trancado, e o fim dele não passou. É o que o card
+// mostra como "em uso" enquanto a renovação não começa. Null quando ela já
+// começou. Contrato parado não está em uso.
 export function runningPredecessorOf(contract, leadContracts, now = new Date()) {
   if (!contract?.renewedFromId) return null;
   const list = Array.isArray(leadContracts) ? leadContracts : [];
   const prev = list.find((c) => c?.id === contract.renewedFromId);
-  if (!prev || prev.status === CONTRACT_STATUS.CANCELADO) return null;
+  if (!prev || prev.status === CONTRACT_STATUS.CANCELADO || prev.status === CONTRACT_STATUS.TRANCADO) return null;
   const ref = getSafeDateOrNull(now) || new Date();
   const prevStart = getSafeDateOrNull(prev.startsAt);
   if (prevStart && prevStart.getTime() > ref.getTime()) return null;
