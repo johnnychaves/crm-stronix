@@ -620,6 +620,19 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
     expect(renovar(D(2025, 10, 13)).previousPatch).toEqual({ endsAt: D(2025, 10, 12), originalEndsAt: D(2026, 10, 11) });
   });
 
+  // Lead velho na lista, ainda apontando para um contrato que outra renovação
+  // já encurtou. Encurtar de novo trocaria o fim original pelo fim encurtado.
+  it('contrato já encurtado por outra renovação não é encurtado de novo', () => {
+    const encurtado = { ...atual, endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' };
+    const r = renovar(D(2026, 9, 20), { doc: encurtado });
+    expect(r.previousPatch).toBeNull();
+    expect(r.previousContractId).toBeNull();
+    expect(r.contract.renewedFromId).toBe('k1');
+    // Com a renovação desfeita (shortenedById volta a null), encurta de novo.
+    expect(renovar(D(2026, 9, 20), { doc: { ...atual, originalEndsAt: null, shortenedById: null } }).previousPatch)
+      .toEqual({ endsAt: D(2026, 9, 19), originalEndsAt: D(2026, 10, 11) });
+  });
+
   it('importado sem início: o limite é a criação, como no Operacional', () => {
     const importado = { id: 'k1', startsAt: null, createdAt: D(2026, 9, 4), endsAt: D(2026, 10, 11) };
     expect(renovar(D(2026, 9, 28), { doc: importado }).previousPatch).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11) });

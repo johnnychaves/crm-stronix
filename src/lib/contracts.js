@@ -201,8 +201,12 @@ export const buildMatriculaWrites = ({
   // contrato de duração zero ou negativa. Importado pode vir sem início, e
   // aí vale a criação, como no Operacional (operacional/base.js).
   const currentStart = getSafeDateOrNull(currentDoc?.startsAt) || getSafeDateOrNull(currentDoc?.createdAt);
+  // Contrato que outra renovação já encurtou (shortenedById) não é encurtado de
+  // novo: o originalEndsAt passaria a guardar o fim encurtado, e o fim original
+  // de verdade se perderia. Isso acontece com o lead velho da lista, que ainda
+  // aponta para ele. Desfeita a renovação, a marca volta a null e ele encurta.
   const canShorten = Boolean(
-    currentDoc && join.overlaps && currentStart
+    currentDoc && !currentDoc.shortenedById && join.overlaps && currentStart
     && join.previousEndsAt.getTime() < currentEnd.getTime()
     && join.previousEndsAt.getTime() > currentStart.getTime()
   );
