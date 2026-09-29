@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="pt-BR" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cadastro de lead pelo Stronizap · mockups aprovados</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Sora:wght@500;600&family=Geist+Mono:wght@400&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #F4F5F4; color: #1A1F1C; font-family: Inter, system-ui, sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-family: Sora, Inter, sans-serif; font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  h2 { font-size: 16px; font-weight: 600; margin: 40px 0 6px; }
+  p.lead { color: #575F59; font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
+  p.nota { color: #575F59; font-size: 13px; line-height: 1.6; margin: 0 0 14px; }
+
+  /* Stronizap: tokens do tema claro (frontend/src/index.css) */
+  .zp { --a:#0E7257; --asoft:#E9F4EE; --chat:#FBFBFA; --in:#F2F4F2; --bd:#ECEDEC; --bds:#E0E2E0;
+        --ink:#1A1F1C; --ink2:#575F59; --ink3:#8B948E; --ink4:#A9B1AB;
+        font-size: 12px; line-height: 1.4; color: var(--ink); }
+  .zp .scr { position: relative; border: 1px solid var(--bds); border-radius: 12px; overflow: hidden; background: #fff; }
+  .zp .fld { height: 30px; border: 1px solid var(--bds); border-radius: 8px; background: #fff; display: flex; align-items: center;
+             justify-content: space-between; gap: 6px; padding: 0 9px; white-space: nowrap; overflow: hidden; }
+  .zp .ph { color: var(--ink4); }
+  .zp .lbl { font-size: 11px; color: var(--ink2); margin-bottom: 4px; }
+  .zp .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+  .zp .bp { background: var(--a); color: #fff; border-radius: 8px; height: 30px; padding: 0 14px; display: inline-flex; align-items: center; font-weight: 500; }
+  .zp .bgh { color: var(--ink2); height: 30px; padding: 0 10px; display: inline-flex; align-items: center; }
+  .zp .bi { background: var(--in); border-radius: 12px 12px 12px 4px; padding: 7px 10px; max-width: 80%; width: fit-content; }
+  .zp .bo { background: var(--a); color: #fff; border-radius: 12px 12px 4px 12px; padding: 7px 10px; max-width: 80%; width: fit-content; margin-left: auto; }
+  .zp .sw { width: 26px; height: 15px; border-radius: 99px; background: var(--bds); position: relative; flex: none; }
+  .zp .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: #fff; }
+  .zp .sw.on { background: var(--a); }
+  .zp .sw.on::after { left: 13px; }
+  .zp .pill { border-radius: 99px; padding: 2px 8px; font-size: 11px; font-weight: 500; }
+  .zp .neu { background: rgba(71,85,105,.10); color: #45556C; }
+  .zp .note { font-size: 11px; color: var(--ink3); }
+  .zp .dr { display: flex; justify-content: space-between; gap: 10px; }
+  .zp .dr span:first-child { color: var(--ink3); }
+  .zp .lock { display: inline-flex; align-items: center; gap: 5px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .cap { font-size: 13px; color: #575F59; margin-bottom: 6px; }
+  .pn { border: 1px solid #E0E2E0; border-radius: 12px; background: #fff; padding: 12px; display: flex; flex-direction: column; gap: 9px; }
+
+  /* Stronilead: linha do tempo da ficha (src/views/LeadProfileView.jsx) */
+  .sl { --s4:#94A3B8; --s5:#64748B; --s6:#475569; --s7:#334155; --s9:#0F172A; --s1:#F1F5F9; --s2:#E2E8F0;
+        font-size: 12px; line-height: 1.45; color: var(--s9); }
+  .sl .card { background: #fff; border: 1px solid var(--s2); border-radius: 16px; padding: 10px 16px 12px; }
+  .sl .mh { font-size: 11px; color: var(--s5); padding: 4px 0 6px; border-bottom: 1px solid var(--s2); margin-bottom: 2px; }
+  .sl .r { display: grid; grid-template-columns: 68px 74px minmax(0,1fr) 110px; gap: 12px; align-items: start; padding: 7px 0; border-bottom: 1px solid var(--s1); }
+  .sl .st { font-size: 11px; color: var(--s4); text-align: right; font-variant-numeric: tabular-nums; }
+  .sl .ty { font-size: 9.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--s4); padding-top: 3px; }
+  .sl .au { font-size: 11px; color: var(--s5); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sl .chip { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 6px; font-size: 11px; font-weight: 500; }
+  .sl .sub { font-size: 11px; color: var(--s4); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cadastro de lead pelo Stronizap</h1>
+  <p class="lead">Mockups aprovados pelo Johnny em 29/09/2026. Acompanham a spec <code>2026-09-29-cadastro-de-lead-pelo-stronizap-design.md</code>. As regras de cada estado estão na spec; aqui fica só o desenho.</p>
+
+  <!-- ============ 1. Modelo B ============ -->
+  <h2>1. Formulário no painel do contato (modelo B)</h2>
+  <p class="nota">Visão da consultora, com o formulário já aberto. A conversa fica à vista enquanto ela preenche: "Postura" e "Pilates" saíram do que a Mariana escreveu.</p>
+  <div class="zp">
+    <div class="scr" style="display:grid;grid-template-columns:minmax(0,1fr) 300px;height:520px">
+      <div style="display:flex;flex-direction:column;min-width:0">
+        <div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--bd)">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--asoft);color:#0A5240;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none;box-shadow:0 0 0 2px #fff,0 0 0 4px var(--a)">M</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-family:Sora,Inter,sans-serif;font-size:14px;font-weight:600">Mariana</div>
+            <div style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink2);white-space:nowrap;overflow:hidden">
+              <span style="width:6px;height:6px;border-radius:50%;background:#25D366;flex:none"></span>Recepção
+              <span style="color:var(--bds)">·</span>
+              <span style="width:6px;height:6px;border-radius:50%;background:#64748B;flex:none"></span>Sem cadastro
+              <span style="color:var(--bds)">·</span>
+              <span style="color:var(--a);font-weight:500">Cadastrar</span>
+            </div>
+          </div>
+        </div>
+        <div style="background:var(--chat);padding:12px;display:flex;flex-direction:column;gap:8px;flex:1">
+          <div class="bi">Oi! Vi o post de vocês no Instagram. Vocês têm pilates?</div>
+          <div class="bo">Oi, Mariana! Temos sim, de segunda a sábado. Você já fez pilates?</div>
+          <div class="bi">Nunca fiz. Quero melhorar a postura, fico o dia todo sentada.</div>
+        </div>
+        <div style="height:46px;border-top:1px solid var(--bd);display:flex;align-items:center;gap:10px;padding:0 12px">
+          <i class="ti ti-paperclip" style="font-size:16px;color:var(--ink3)"></i>
+          <div style="flex:1;height:30px;border-radius:99px;background:var(--in);display:flex;align-items:center;padding:0 12px;color:var(--ink4)">Digite uma mensagem</div>
+          <i class="ti ti-send" style="font-size:16px;color:var(--a)"></i>
+        </div>
+      </div>
+      <div style="border-left:1px solid var(--bd);display:flex;flex-direction:column;min-width:0">
+        <div style="height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 12px;border-bottom:1px solid var(--bd)"><span style="font-weight:600;font-size:13px">Perfil do contato</span><i class="ti ti-x" style="font-size:15px;color:var(--ink3)"></i></div>
+        <div style="padding:12px;text-align:center;border-bottom:1px solid var(--bd)">
+          <div style="width:44px;height:44px;border-radius:50%;background:var(--asoft);color:#0A5240;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:15px;margin:0 auto 6px">M</div>
+          <div style="font-size:14px;font-weight:600">Mariana</div>
+          <div class="mono" style="font-size:11px;color:var(--ink3)">+55 (51) 99812-4471</div>
+        </div>
+        <div style="padding:12px;display:flex;flex-direction:column;gap:9px">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span class="lock"><svg width="15" height="15" viewBox="0 0 48 48" fill="none" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF"/><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF"/><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B"/></svg><span style="font-family:'Space Grotesk',sans-serif;font-size:12.5px"><span style="color:var(--ink2);font-weight:500">STRONI</span><span style="color:#2B59FF;font-weight:700">LEAD</span></span></span>
+            <span class="pill neu">Sem cadastro</span>
+          </div>
+          <div><div class="lbl">Nome</div><div class="fld">Mariana</div></div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--ink2)"><div class="sw"></div>Quem escreve é responsável por um menor</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div><div class="lbl">Origem</div><div class="fld">WhatsApp<i class="ti ti-chevron-down ph"></i></div></div>
+            <div><div class="lbl">Dor ou necessidade</div><div class="fld" style="border-color:var(--a)">Postura<i class="ti ti-chevron-down ph"></i></div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div><div class="lbl">Modalidade</div><div class="fld">Pilates<i class="ti ti-chevron-down ph"></i></div></div>
+            <div><div class="lbl">Funil e etapa</div><div class="fld">Novo lead<i class="ti ti-chevron-down ph"></i></div></div>
+          </div>
+          <div class="note">Fica com você (Ana Souza) e soma na sua Meta diária.</div>
+          <div style="display:flex;justify-content:flex-end;gap:4px"><span class="bgh">Cancelar</span><span class="bp">Cadastrar lead</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 2. Estados ============ -->
+  <h2>2. Estados do painel</h2>
+  <p class="nota">Cada quadro mostra só a parte do painel que muda.</p>
+  <div class="zp grid2">
+
+    <div>
+      <div class="cap">1 · Antes de abrir</div>
+      <div class="pn">
+        <div style="display:flex;align-items:center;justify-content:space-between"><span class="lock"><svg width="15" height="15" viewBox="0 0 48 48" fill="none" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF"/><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF"/><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B"/></svg><span style="font-family:'Space Grotesk',sans-serif;font-size:12.5px"><span style="color:var(--ink2);font-weight:500">STRONI</span><span style="color:#2B59FF;font-weight:700">LEAD</span></span></span><span class="pill neu">Sem cadastro</span></div>
+        <div style="font-size:12px;color:var(--ink3)">Esse número não está na base.</div>
+        <div style="height:32px;border:1px solid var(--a);border-radius:8px;color:var(--a);display:flex;align-items:center;justify-content:center;gap:6px;font-weight:500"><i class="ti ti-user-plus" style="font-size:15px"></i>Cadastrar lead</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">2 · Visão do gestor</div>
+      <div class="pn">
+        <div><div class="lbl">Nome</div><div class="fld">Mariana Souza</div></div>
+        <div><div class="lbl">Consultor responsável</div><div class="fld" style="border-color:var(--a)">Ana Souza<i class="ti ti-chevron-down ph"></i></div>
+          <div style="border:1px solid var(--bds);border-radius:8px;margin-top:4px;padding:4px">
+            <div style="padding:5px 8px;color:var(--ink2)">Você (Johnny)</div>
+            <div style="padding:5px 8px;background:var(--asoft);border-radius:6px;display:flex;justify-content:space-between">Ana Souza<i class="ti ti-check" style="color:var(--a)"></i></div>
+            <div style="padding:5px 8px;color:var(--ink2)">Bruno Lima</div>
+            <div style="padding:5px 8px;color:var(--ink2)">Carla Dias</div>
+          </div>
+        </div>
+        <div class="note">Ana recebe o aviso no sino do Stronilead.</div>
+        <div style="display:flex;justify-content:flex-end;gap:4px"><span class="bgh">Cancelar</span><span class="bp">Cadastrar lead</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">3 · Menor de idade</div>
+      <div class="pn">
+        <div style="display:flex;align-items:center;gap:8px;font-size:11px"><div class="sw on"></div>Quem escreve é responsável por um menor</div>
+        <div><div class="lbl">Nome do aluno</div><div class="fld">Pedro Souza</div></div>
+        <div style="display:grid;grid-template-columns:1fr 96px;gap:8px">
+          <div><div class="lbl">Nome do responsável</div><div class="fld">Mariana Souza</div></div>
+          <div><div class="lbl">Parentesco</div><div class="fld">Mãe<i class="ti ti-chevron-down ph"></i></div></div>
+        </div>
+        <div><div class="lbl">WhatsApp do aluno, se tiver</div><div class="fld"><span class="ph mono">(51) 9 0000-0000</span></div></div>
+        <div class="note">O número desta conversa fica como telefone do responsável.</div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">4 · Depois de cadastrar</div>
+      <div class="pn">
+        <div style="font-size:11px;color:var(--ink2);padding-bottom:8px;border-bottom:1px solid var(--bd)">Cabeçalho: <span style="color:#1C3FC4">●</span> Lead · Novo lead · Ana Souza</div>
+        <div style="text-align:center"><div style="font-size:14px;font-weight:600">Mariana Souza</div><div class="note">Nome do cadastro no Stronilead. Para mudar, edite lá.</div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding-top:8px;border-top:1px solid var(--bd)"><span class="lock"><svg width="15" height="15" viewBox="0 0 48 48" fill="none" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF"/><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF"/><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B"/></svg><span style="font-family:'Space Grotesk',sans-serif;font-size:12.5px"><span style="color:var(--ink2);font-weight:500">STRONI</span><span style="color:#2B59FF;font-weight:700">LEAD</span></span></span><span class="pill" style="background:rgba(43,89,255,.10);color:#1C3FC4">Lead</span></div>
+        <div class="dr"><span>Fase</span><span>Novo lead</span></div>
+        <div class="dr"><span>Origem</span><span>WhatsApp</span></div>
+        <div class="dr"><span>Consultor</span><span>Ana Souza</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px"><span style="color:var(--ink3);display:inline-flex;gap:4px;align-items:center"><i class="ti ti-check"></i>Cadastrado agora por você</span><span style="color:var(--a);display:inline-flex;gap:3px;align-items:center">Abrir no Stronilead<i class="ti ti-external-link"></i></span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">5 · Fora da equipe do Stronilead</div>
+      <div class="pn">
+        <div style="display:flex;align-items:center;justify-content:space-between"><span class="lock"><svg width="15" height="15" viewBox="0 0 48 48" fill="none" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF"/><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF"/><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B"/></svg><span style="font-family:'Space Grotesk',sans-serif;font-size:12.5px"><span style="color:var(--ink2);font-weight:500">STRONI</span><span style="color:#2B59FF;font-weight:700">LEAD</span></span></span><span class="pill neu">Sem cadastro</span></div>
+        <div style="background:var(--in);border-radius:10px;padding:10px;display:flex;gap:8px"><i class="ti ti-user-off" style="font-size:16px;color:var(--ink3)"></i><span style="font-size:12px;color:var(--ink2)">Seu e-mail do Stronizap, <span class="mono">bia@stronix.com.br</span>, não está na equipe do Stronilead. Peça ao gestor para incluir você lá com esse mesmo e-mail.</span></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">6 · Stronilead fora do ar</div>
+      <div class="pn">
+        <div><div class="lbl">Dor ou necessidade</div><div class="fld">Postura<i class="ti ti-chevron-down ph"></i></div></div>
+        <div><div class="lbl">Funil e etapa</div><div class="fld">Comercial · Novo lead<i class="ti ti-chevron-down ph"></i></div></div>
+        <div style="background:rgba(194,85,67,.08);border-radius:10px;padding:9px 10px;color:#A2432F;font-size:12px">Não deu para falar com o Stronilead agora. O que você preencheu continua aqui.</div>
+        <div style="display:flex;justify-content:flex-end;gap:4px"><span class="bgh">Cancelar</span><span class="bp">Tentar de novo</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ 3. Marco de início ============ -->
+  <h2>3. Marco de início na ficha do Stronilead (modelo C)</h2>
+  <p class="nota">O registro fecha a linha do tempo por baixo, onde a história do lead começa. O consultor responsável só aparece quando não é quem cadastrou.</p>
+  <div class="sl">
+    <div class="card">
+      <div class="mh">Setembro de 2026</div>
+      <div class="r"><div class="st">28/09 15:10</div><div class="ty">Nota</div><div style="color:var(--s7)">Pediu horário de pilates à noite, depois das 19h.</div><div class="au">Ana Souza</div></div>
+      <div class="r" style="border-bottom:0"><div class="st">28/09 14:40</div><div class="ty" style="color:#1C3FC4">Fase</div><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><span class="chip" style="background:var(--s1);color:var(--s6)">Novo lead</span><i class="ti ti-arrow-right" style="font-size:12px;color:var(--s4)"></i><span class="chip" style="background:rgba(43,89,255,.10);color:#1C3FC4">Primeiro contato</span><span class="sub">após 0d desde o cadastro</span></div><div class="au">Ana Souza</div></div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:10px">
+        <div style="flex:1;height:1px;background:var(--s2)"></div>
+        <div style="display:flex;align-items:center;gap:8px;border:1px solid var(--s2);border-radius:99px;padding:5px 12px 5px 6px;background:#fff">
+          <span style="width:22px;height:22px;border-radius:50%;background:var(--s1);display:grid;place-items:center"><svg width="13" height="13" viewBox="0 0 240 240"><path d="M 120 30 C 70 30, 30 70, 30 120 C 30 148, 43.5 173.5, 64 190.5 C 61 201, 56.5 213, 50.5 222 C 49 224, 51 226, 53 225 C 64 222, 79 217, 92 211 C 101 213, 110 214, 120 214 C 170 214, 210 173, 210 122 C 210 71, 170 30, 120 30 Z" fill="#1A1D20"/><path d="M 138 56 L 84 132 L 116 132 L 102 184 L 156 108 L 124 108 Z" fill="#25D366" stroke="#25D366" stroke-width="8" stroke-linejoin="round"/></svg></span>
+          <span style="font-size:11.5px;color:var(--s6)"><span style="color:var(--s9);font-weight:600">Início</span> · cadastrado pelo Stronizap por Johnny em 28/09 às 14:32</span>
+        </div>
+        <div style="flex:1;height:1px;background:var(--s2)"></div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--s4);margin-top:5px">Consultor responsável Ana Souza · canal Recepção</div>
+    </div>
+  </div>
+</main>
+</body>
+</html>

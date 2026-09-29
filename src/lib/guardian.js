@@ -24,7 +24,9 @@ const hasGuardian = (lead) => Boolean(lead?.guardian) && hasPhone(lead.guardian.
 // função. A data de nascimento é salva à meia-noite local do Brasil (03:00Z),
 // então no servidor (Vercel, UTC) o dia do calendário está certo, mas a
 // virada pra adulto acontece às 21h de Brasília da véspera, aceito pela
-// spec, a mesma noção de "hoje" de api/_zapStrip.js.
+// spec. A faixa do cartão do Zap (api/_zapStrip.js) conta o dia de Brasília
+// desde 2026-09-28; esta regra ficou como estava, e trocar a hora da virada
+// é decisão à parte.
 export function adultSince(birthDate) {
   const d = getSafeDateOrNull(birthDate);
   if (!d) return null;

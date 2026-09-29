@@ -142,17 +142,26 @@ export const isLeadResolvedToday = (lead, todayStart) => {
 };
 
 // True se o texto da interaction é a observação automática gerada no
-// cadastro do lead (prefixo literal "OBSERVAÇÃO DO CADASTRO:"). Usado
-// pra (i) ignorar essas observações no contador de atividade ativa e
-// (ii) rotular o evento corretamente no feed da Dashboard.
+// cadastro do lead (prefixo literal "OBSERVAÇÃO DO CADASTRO:"). Fica fora do
+// contador de atividade ativa (abaixo) e do primeiro contato do Dashboard CRM
+// (src/lib/crm/contact.js).
 export const isRegistrationNote = (text) =>
   typeof text === 'string' && text.startsWith('OBSERVAÇÃO DO CADASTRO:');
 
+// Tipo da interação que o cadastro pelo Stronizap grava (api/zap.js, ação
+// create-lead): o marco de início na linha do tempo da ficha.
+export const ZAP_SIGNUP_TYPE = 'zap_signup';
+
+// A interação é o registro do próprio cadastro, não um contato com a pessoa:
+// a observação do Novo lead ou o marco do cadastro pelo Stronizap.
+export const isRegistrationInteraction = (i) =>
+  i?.type === ZAP_SIGNUP_TYPE || isRegistrationNote(i?.text);
+
 // True se houve qualquer interaction "ativa" hoje (mudança de fase,
 // nota, follow-up agendado, etc.) que NÃO seja 'daily_goal_done' nem
-// observação automática do cadastro. Usado para o badge "Já
-// interagido hoje" — informa o consultor que ele já tocou no lead
-// mas ainda precisa fechar a tarefa via Meta Diária.
+// registro do cadastro (a observação automática ou o marco do Stronizap).
+// Usado para o badge "Já interagido hoje", que avisa o consultor que ele já
+// tocou no lead mas ainda precisa fechar a tarefa via Meta Diária.
 export const hasActiveInteractionToday = (lead, interactions, todayStart) => {
   if (!lead || !todayStart) return false;
   return (interactions || []).some(i => {
@@ -163,7 +172,7 @@ export const hasActiveInteractionToday = (lead, interactions, todayStart) => {
     // esta exclusão, o 🎉 da conversão acenderia "Já interagido hoje" no
     // INDICADOR quando o indicado fecha matrícula.
     if (i.type === 'referral') return false;
-    if (isRegistrationNote(i.text)) return false;
+    if (isRegistrationInteraction(i)) return false;
     return true;
   });
 };

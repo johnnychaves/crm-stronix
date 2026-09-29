@@ -9,9 +9,8 @@ import { getLeadAppointmentType, getLeadAppointmentDate } from '../src/lib/leads
 import { getSafeDateOrNull } from '../src/lib/dates.js';
 import { buildZapStrip } from './_zapStrip.js';
 import { DEFAULT_RENEWAL_CHECKPOINTS } from '../src/lib/renewalGoal.js';
+import { diaDeBrasilia } from './_horarioDeBrasilia.js';
 
-const DAY_MS = 86400000;
-const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
 const iso = (d) => (d ? d.toISOString() : null);
 
 // `checkpoints` são os marcos de renovação da ACADEMIA (Configurações → Metas
@@ -42,9 +41,8 @@ export function buildZapCard(lead, now = new Date(), checkpoints = DEFAULT_RENEW
     card.planName = lead.currentPlanName ?? null;
     card.contractStatus = deriveLeadContractStatus(lead, now);
     card.contractEndsAt = iso(fim);
-    card.daysLeft = fim
-      ? Math.round((startOfDay(fim).getTime() - startOfDay(now).getTime()) / DAY_MS)
-      : null;
+    // Dias de calendário de Brasília, não do fuso do servidor (UTC na Vercel).
+    card.daysLeft = fim ? diaDeBrasilia(fim) - diaDeBrasilia(now) : null;
   } else {
     card.stage = lead.status ?? null;
     card.source = lead.source ?? null;
