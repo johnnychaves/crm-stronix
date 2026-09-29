@@ -8,21 +8,28 @@ const RESEND_URL = 'https://api.resend.com/emails';
 // Remetente quando o MAIL_FROM não vem, ou vem vazio.
 export const MAIL_FROM_PADRAO = 'Stronilead <nao-responda@stronilead.com.br>';
 
-// Como o envio está nesta função:
-// - resend: tem a chave e manda de verdade.
-// - off: sem a chave em produção. Quem depende de e-mail fica desligado.
-// - log: sem a chave fora de produção (Preview e vercel dev). O e-mail vai
-//   inteiro para o log, código incluso, para testar sem mandar nada. O
-//   Preview usa o Firebase de produção: teste só com conta de academia de teste.
+// Como o envio está neste ambiente:
+// - resend: tem a chave, sem contar espaço nas pontas, e manda de verdade.
+// - log: sem a chave, com VERCEL_ENV em preview ou development (Preview e
+//   vercel dev). O e-mail vai inteiro para o log, código incluso, para testar
+//   sem mandar nada. Isso só é seguro porque os Previews do projeto estão atrás
+//   da Vercel Authentication: sem ela, qualquer pessoa poderia pedir código
+//   para uma conta de verdade, e o dono da conta não receberia e-mail nenhum.
+//   O Preview usa o Firebase de produção: teste só com conta de academia de
+//   teste.
+// - off: sem a chave em qualquer outro caso, inclusive com VERCEL_ENV ausente
+//   ou vazio. Falha fechado: só Preview e desenvolvimento escrevem o código no
+//   log. Quem depende de e-mail fica desligado.
 export function mailStatus({ apiKey = process.env.RESEND_API_KEY, vercelEnv = process.env.VERCEL_ENV } = {}) {
-  if (apiKey) return 'resend';
-  return vercelEnv === 'production' ? 'off' : 'log';
+  if (apiKey?.trim()) return 'resend';
+  return vercelEnv === 'preview' || vercelEnv === 'development' ? 'log' : 'off';
 }
 
-// Manda o e-mail. Lança quando o Resend recusa, demora ou a rede cai: quem
-// chama decide o que fazer. Tudo que vem de fora entra por deps, com o valor
-// de verdade como padrão, para o teste não sair para a rede. Os 8 segundos
-// cabem no tempo máximo da função e contam até o fim da leitura da resposta.
+// Manda o e-mail. Lança quando o Resend recusa (o status vai em err.status),
+// demora ou a rede cai: quem chama decide o que fazer. Tudo que vem de fora
+// entra por deps, com o valor de verdade como padrão, para o teste não sair
+// para a rede. Os 8 segundos cabem no maxDuration do tenant-resolve, fixado em
+// 30 s no vercel.json, e contam até o fim da leitura da resposta.
 export async function sendMail(msg, deps = {}) {
   const {
     apiKey = process.env.RESEND_API_KEY,
@@ -42,13 +49,14 @@ export async function sendMail(msg, deps = {}) {
     return;
   }
 
-  // Chave com caractere que não cabe em cabeçalho HTTP (uma quebra de linha
-  // colada junto, por exemplo) faz o fetch lançar uma mensagem que repete o
-  // cabeçalho, chave inclusa. Montar o Headers aqui troca essa mensagem por uma
-  // fixa, e nada sai para a rede.
+  // A chave vai sem os espaços das pontas, como o mailStatus a enxerga. Chave
+  // com caractere que não cabe em cabeçalho HTTP (uma quebra de linha no meio,
+  // por exemplo) faz o fetch lançar uma mensagem que repete o cabeçalho, chave
+  // inclusa. Montar o Headers aqui troca essa mensagem por uma fixa, e nada sai
+  // para a rede.
   let headers;
   try {
-    headers = new Headers({ Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' });
+    headers = new Headers({ Authorization: `Bearer ${apiKey.trim()}`, 'Content-Type': 'application/json' });
   } catch {
     throw new Error('RESEND_API_KEY com caractere inválido');
   }
@@ -85,7 +93,9 @@ export async function sendMail(msg, deps = {}) {
       } catch {
         // Corpo sem JSON, ou que não chegou no tempo limite: fica só o status.
       }
-      throw new Error(`O Resend recusou o e-mail (${resp.status})${detalhe}`);
+      const erro = new Error(`O Resend recusou o e-mail (${resp.status})${detalhe}`);
+      erro.status = resp.status;
+      throw erro;
     }
 
     // O id acha o e-mail no painel do Resend quando alguém disser que o código

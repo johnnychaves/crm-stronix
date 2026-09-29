@@ -3,6 +3,8 @@ import { sendMail, mailStatus, MAIL_FROM_PADRAO } from '../_mail.js';
 
 const MSG = { to: 'ana@academia.com', subject: 'Assunto', html: '<p>oi</p>', text: 'oi 123456' };
 const log = () => ({ info: vi.fn() });
+// Um envio que chega ao Resend: com chave, em produção. O teste troca só o que interessa.
+const deps = (extra) => ({ apiKey: 're_x', vercelEnv: 'production', log: log(), ...extra });
 
 // Resposta cujo corpo nunca chega: o json() só rejeita quando o sinal aborta.
 const corpoTravado = ({ ok, status }) => async (_url, init) => {
@@ -17,11 +19,29 @@ const corpoTravado = ({ ok, status }) => async (_url, init) => {
 };
 
 describe('mailStatus', () => {
-  it('com a chave manda; sem a chave, desliga em produção e vai para o log fora dela', () => {
+  it('com a chave manda; sem a chave, só Preview e desenvolvimento vão para o log e o resto desliga', () => {
     expect(mailStatus({ apiKey: 're_x', vercelEnv: 'production' })).toBe('resend');
     expect(mailStatus({ apiKey: '', vercelEnv: 'production' })).toBe('off');
     expect(mailStatus({ apiKey: '', vercelEnv: 'preview' })).toBe('log');
-    expect(mailStatus({ apiKey: '', vercelEnv: '' })).toBe('log');
+    expect(mailStatus({ apiKey: '', vercelEnv: 'development' })).toBe('log');
+    expect(mailStatus({ apiKey: '', vercelEnv: '' })).toBe('off');
+    expect(mailStatus({ apiKey: '', vercelEnv: 'staging' })).toBe('off');
+  });
+
+  it('sem VERCEL_ENV no ambiente, desliga em vez de ir para o log', () => {
+    vi.stubEnv('VERCEL_ENV', undefined);
+    try {
+      expect(mailStatus({ apiKey: '' })).toBe('off');
+      expect(mailStatus({ apiKey: '', vercelEnv: undefined })).toBe('off');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('chave só com espaços conta como sem chave', () => {
+    expect(mailStatus({ apiKey: '   ', vercelEnv: 'production' })).toBe('off');
+    expect(mailStatus({ apiKey: '   ', vercelEnv: 'preview' })).toBe('log');
+    expect(mailStatus({ apiKey: '  re_x  ', vercelEnv: 'production' })).toBe('resend');
   });
 });
 
@@ -99,4 +119,95 @@ describe('sendMail', () => {
     await expect(sendMail(MSG, { apiKey: 're_x', vercelEnv: 'production', httpFetch, log: log(), timeoutMs: 30 }))
       .rejects.toThrow('O Resend recusou o e-mail (500)');
   }, 1000);
+
+  it('a recusa leva o status do Resend no erro, com a mesma mensagem', async () => {
+    const httpFetch = async () => ({ ok: false, status: 422, json: async () => ({ message: 'domínio não verificado' }) });
+    await expect(sendMail(MSG, deps({ httpFetch })))
+      .rejects.toMatchObject({ status: 422, message: 'O Resend recusou o e-mail (422): domínio não verificado' });
+  });
+
+  it('espaço nas pontas da chave não vai para o cabeçalho', async () => {
+    const httpFetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    await sendMail(MSG, deps({ apiKey: '  re_x  ', httpFetch }));
+    expect(httpFetch.mock.calls[0][1].headers.get('authorization')).toBe('Bearer re_x');
+  });
+
+  it('chave só com espaços em produção desliga o envio, sem chamar o Resend', async () => {
+    const httpFetch = vi.fn();
+    await expect(sendMail(MSG, deps({ apiKey: '   ', httpFetch })))
+      .rejects.toThrow('Envio de e-mail desligado');
+    expect(httpFetch).not.toHaveBeenCalled();
+  });
+
+  it('queda de rede lança o erro original, sem virar sucesso nem mensagem de tempo limite', async () => {
+    const queda = new TypeError('fetch failed');
+    const httpFetch = async () => { throw queda; };
+    await expect(sendMail(MSG, deps({ httpFetch }))).rejects.toBe(queda);
+  });
+
+  it('nenhum timer sobra depois do envio, em qualquer caminho', async () => {
+    vi.useFakeTimers();
+    try {
+      const caminhos = {
+        aceito: async () => ({ ok: true, status: 200, json: async () => ({ id: 'x' }) }),
+        recusa: async () => ({ ok: false, status: 500, json: async () => ({}) }),
+        rede: async () => { throw new TypeError('fetch failed'); },
+        sincrono: () => { throw new Error('boom'); },
+      };
+      for (const [nome, httpFetch] of Object.entries(caminhos)) {
+        await sendMail(MSG, deps({ httpFetch })).catch(() => {});
+        expect(vi.getTimerCount(), nome).toBe(0);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('MAIL_FROM só com espaços cai no remetente padrão', async () => {
+    const httpFetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    await sendMail(MSG, deps({ from: '   ', httpFetch }));
+    expect(JSON.parse(httpFetch.mock.calls[0][1].body).from).toBe(MAIL_FROM_PADRAO);
+  });
+
+  it('o tempo limite padrão é de 8 s', async () => {
+    vi.useFakeTimers();
+    try {
+      const httpFetch = (_url, init) => new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new Error('abortado')));
+      });
+      const envio = sendMail(MSG, { apiKey: 're_x', vercelEnv: 'production', httpFetch, log: log() });
+      const pego = envio.catch((e) => e);
+      await vi.advanceTimersByTimeAsync(7999);
+      let acabou = false;
+      pego.then(() => { acabou = true; });
+      await Promise.resolve();
+      expect(acabou).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect((await pego).message).toBe('O Resend não respondeu em 8000 ms');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('variáveis de ambiente', () => {
+  it('sem deps, lê RESEND_API_KEY, MAIL_FROM e VERCEL_ENV do ambiente', async () => {
+    vi.stubEnv('RESEND_API_KEY', 're_do_ambiente');
+    vi.stubEnv('MAIL_FROM', 'Ambiente <a@stronilead.com.br>');
+    vi.stubEnv('VERCEL_ENV', 'production');
+    const httpFetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({}) }));
+    try {
+      expect(mailStatus()).toBe('resend');
+      await sendMail(MSG, { httpFetch, log: log() });
+      const [, init] = httpFetch.mock.calls[0];
+      expect(init.headers.get('authorization')).toBe('Bearer re_do_ambiente');
+      expect(JSON.parse(init.body).from).toBe('Ambiente <a@stronilead.com.br>');
+      vi.stubEnv('RESEND_API_KEY', '');
+      expect(mailStatus()).toBe('off');
+      vi.stubEnv('VERCEL_ENV', 'preview');
+      expect(mailStatus()).toBe('log');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
