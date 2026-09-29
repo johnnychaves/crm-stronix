@@ -70,7 +70,7 @@ function walletProps(wallet) {
         key: 'locked',
         label: 'Trancados',
         value: wallet.lockedCount,
-        tone: 'amber',
+        tone: 'yellow',
         sub: `${fmtMoney(wallet.lockedMonthly)}/mês · contam na carteira`,
         help: 'Contrato trancado segue vigente e continua na carteira, porque volta a valer quando o cliente destranca. A contagem fica à parte para não parecer receita ativa.'
       }

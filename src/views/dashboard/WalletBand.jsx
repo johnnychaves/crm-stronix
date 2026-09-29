@@ -8,7 +8,7 @@
 //
 // Props:
 //   items  [{ key, label, value, money, unit, sub, help, tone }] — value é
-//          número; money manda formatar em real; tone 'amber' é o trancado
+//          número; money manda formatar em real; tone 'yellow' é o trancado
 //   notes  frases prontas do texts.js (sobreposição, importados)
 import { Info } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
@@ -35,7 +35,7 @@ export function WalletBand({ items, notes }) {
               {c.help && <DashHelpTip text={c.help} label={`O que é "${c.label}"?`} />}
             </div>
             <div className="mt-2 flex items-baseline gap-1">
-              <span className={cn('num text-[28px] font-semibold leading-none tracking-[-0.025em]', c.tone === 'amber' && 'text-amber-700 dark:text-amber-300')}>
+              <span className={cn('num text-[28px] font-semibold leading-none tracking-[-0.025em]', c.tone === 'yellow' && 'text-yellow-700 dark:text-yellow-300')}>
                 {c.money ? fmtMoney(c.value) : fmtNum(c.value)}
               </span>
               {c.unit && <span className="num text-[13px] font-semibold text-muted-foreground">{c.unit}</span>}
