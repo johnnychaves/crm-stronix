@@ -227,18 +227,29 @@ function ContractModal({
   const deltaPct = oldMonthly > 0 ? Math.round(((newMonthly - oldMonthly) / oldMonthly) * 100) : 0;
 
   // Escala comum das duas vigências: do início mais antigo ao término mais
-  // distante. A sobreposição aparece como barras que se cruzam.
+  // distante. A sobreposição aparece como barras que se cruzam. Quando a
+  // gravação encurta o atual, a barra dele para no fim novo, e o trecho até o
+  // fim de antes são os dias que ele perde. A escala continua indo até o fim de
+  // antes, para as duas barras seguirem alinhadas.
   const bars = (() => {
     if (!isRenewal || !refStart || !refEnd || !startsAt || !endsAt) return null;
     const t0 = Math.min(refStart.getTime(), startsAt.getTime());
     const t1 = Math.max(refEnd.getTime(), endsAt.getTime());
     const span = Math.max(t1 - t0, 1);
     const pos = (d) => Math.max(0, Math.min(100, ((d.getTime() - t0) / span) * 100));
+    const curEnd = shortenTo || refEnd;
     return {
-      curLeft: pos(refStart), curWidth: pos(refEnd) - pos(refStart),
+      curLeft: pos(refStart), curWidth: pos(curEnd) - pos(refStart),
+      lostLeft: pos(curEnd), lostWidth: pos(refEnd) - pos(curEnd),
       newLeft: pos(startsAt), newWidth: pos(endsAt) - pos(startsAt)
     };
   })();
+
+  // Leitura do encaixe embaixo das barras. Com o atual encurtado, diz até
+  // quando ele passa a valer.
+  const seamText = seam && shortenTo
+    ? `O contrato atual passa a terminar em ${fmtDate(shortenTo)}, ${daysLabel(seam.overlapDays)} antes do previsto.`
+    : seamLabel(seam);
 
   const pickPlan = (id) => {
     setPlanId(id);
@@ -661,13 +672,20 @@ function ContractModal({
                         <div>
                           <div className="flex items-baseline justify-between gap-2">
                             <span className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate">Atual · {lead?.currentPlanName || '—'}</span>
-                            <span className="num text-[10.5px] text-slate-400 dark:text-slate-500 flex-none">até {fmtDate(refEnd)}</span>
+                            <span className="num text-[10.5px] text-slate-400 dark:text-slate-500 flex-none">até {fmtDate(shortenTo || refEnd)}</span>
                           </div>
                           <div className="relative h-2 mt-1 rounded-full bg-slate-200/70 dark:bg-white/[0.06]">
                             {bars && (
                               <span
-                                className="absolute top-0 bottom-0 rounded-full bg-slate-300 dark:bg-slate-600"
+                                className={cn('absolute top-0 bottom-0', shortenTo ? 'rounded-l-full' : 'rounded-full', 'bg-slate-300 dark:bg-slate-600')}
                                 style={{ left: `${bars.curLeft}%`, width: `${bars.curWidth}%` }}
+                              />
+                            )}
+                            {bars && shortenTo && (
+                              <span
+                                title="Dias que o contrato atual perde"
+                                className="absolute top-0 bottom-0 rounded-r-full bg-rose-200 dark:bg-rose-500/35"
+                                style={{ left: `${bars.lostLeft}%`, width: `${bars.lostWidth}%` }}
                               />
                             )}
                           </div>
@@ -693,7 +711,7 @@ function ContractModal({
                           seam.kind === SEAM_KIND.EMENDA && 'text-emerald-700 dark:text-emerald-400',
                           seam.kind === SEAM_KIND.LACUNA && 'text-amber-700 dark:text-amber-400',
                           seam.kind === SEAM_KIND.SOBREPOSICAO && 'text-rose-700 dark:text-rose-400'
-                        )}>{seamLabel(seam)}</div>
+                        )}>{seamText}</div>
                       )}
                     </>
                   ) : (
