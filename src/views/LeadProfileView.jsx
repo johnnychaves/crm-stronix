@@ -1924,12 +1924,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                         </div>
                       </div>
 
-                      {/* Ações */}
+                      {/* Ações. O contrato que ainda não começou não tem
+                          Renovar: o modal recusa, e trocar o plano ou a data
+                          dele é pelo Corrigir. */}
                       {!isReadOnly && (
                         <div className="flex-none flex flex-col justify-center gap-2 px-[22px] py-[18px] border-l border-slate-100 dark:border-white/[0.06]">
                           {paused ? (
                             <Btn kind="success" icon={<PlayCircle size={14} />} onClick={() => openContractAction('reativar')} disabled={loading}>Reativar contrato</Btn>
-                          ) : (
+                          ) : !notStarted && (
                             <Btn kind="brand" icon={<RefreshCw size={14} />} onClick={handleRenew} disabled={loading}>Renovar contrato</Btn>
                           )}
                           <div className="flex items-center gap-0.5">

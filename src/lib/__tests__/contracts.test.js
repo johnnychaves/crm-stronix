@@ -710,11 +710,12 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
 // Só o contrato em vigor quando a renovação assume é emendado ou encurtado: na
 // véspera do início dela, se esse início já chegou, e agora, se ainda não
 // chegou. A Meta Diária e o quadro de Renovações carregam a lista uma vez por
-// dia, e o contrato pode ter sido cancelado depois. A ficha oferece renovar o
-// contrato que ainda não começou. Sem esta trava, o lead aparecia ativo com o
-// Operacional já contando o cliente fora da base. O vencido não tem exceção: a
-// renovação lançada depois do vencimento, com início antes do fim, encurta o
-// vencido (decisão do Johnny, 29/09/2026).
+// dia, e o contrato pode ter sido cancelado depois. O contrato que ainda não
+// começou chega à renovação pelo Mudar fase para Venda e pelo funil Upgrade do
+// Kanban. Sem esta trava, o lead aparecia ativo com o Operacional já contando
+// o cliente fora da base. O vencido não tem exceção: a renovação lançada
+// depois do vencimento, com início antes do fim, encurta o vencido (decisão do
+// Johnny, 29/09/2026).
 describe('buildMatriculaWrites: só contrato em vigor quando a renovação assume é emendado ou encurtado', () => {
   const plan = { id: 'p1', name: 'Anual', value: 1308, durationMonths: 12 };
   // C1, de 31/12/2025 a 31/12/2026.
