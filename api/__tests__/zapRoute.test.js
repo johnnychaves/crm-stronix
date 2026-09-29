@@ -1,4 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
+
+// A rota roda numa função da Vercel, com o processo em UTC (lá o TZ é variável
+// reservada). A máquina de desenvolvimento fica em Brasília, e teste no fuso
+// dela esconde defeito de fuso. Por isso o processo vai para UTC antes de
+// importar a rota, como em zapFuso.test.js (PR #227).
+const fusoDaMaquina = vi.hoisted(() => {
+  const antes = process.env.TZ;
+  process.env.TZ = 'UTC';
+  return antes;
+});
+
 import { generateZapKey } from '../_zapAuth.js';
 import { zapMatchKey } from '../_zapPhone.js';
 import handler from '../zap.js';
@@ -12,18 +23,53 @@ import handler from '../zap.js';
 // contato cadastrado. Um fake com `exists` como função teria aprovado o erro.
 //
 // Ele também recusa o que o Firestore real recusa: id de documento que não é
-// texto, vazio ou com barra, e consulta `in` com 0 ou mais de 30 valores. O
-// `select` devolve só os campos pedidos. Um fake mais tolerante que produção
-// deixa passar exatamente o erro que importa. E tudo fica guardado por
-// academia, para dar para provar que a chave de uma não lê a outra.
-const banco = vi.hoisted(() => ({ tenants: {}, leads: {}, config: {}, gravacoes: [], falhaEm: null }));
-// Quem está logado no CRM (verifyRequest) e se é admin (isTenantAdmin).
-const sessao = vi.hoisted(() => ({ auth: null, admin: false }));
+// texto, vazio ou com barra, consulta `in` com 0 ou mais de 30 valores,
+// leitura depois de escrita dentro da transação, create de documento que já
+// existe e update de documento que não existe. O `select` devolve só os
+// campos pedidos. Um fake mais tolerante que produção deixa passar
+// exatamente o erro que importa. E tudo fica guardado por academia, para dar
+// para provar que a chave de uma não lê a outra.
+const banco = vi.hoisted(() => ({
+  tenants: {}, leads: {}, config: {}, users: {}, catalogos: {}, interacoes: {},
+  gravacoes: [], falhaEm: null, ultimoId: 0
+}));
+// Quem está logado no CRM (verifyRequest), se é admin (isTenantAdmin) e
+// quantas vezes o caminho do login foi consultado.
+const sessao = vi.hoisted(() => ({ auth: null, admin: false, consultasDoLogin: 0 }));
+// O limitador por academia (api/_rateLimit.js): o que ele responde e com que
+// chave foi chamado.
+const limitador = vi.hoisted(() => ({ ok: true, chamadas: [] }));
 
 vi.mock('../_firebaseAdmin.js', () => {
+  // Hora do servidor. Na gravação vira um Timestamp falso, com toDate(), como
+  // o documento volta do Firestore depois do commit.
+  const HORA_DO_SERVIDOR = Object.freeze({ horaDoServidor: true });
+  const gravado = (dados) => {
+    const instante = new Date();
+    return Object.fromEntries(Object.entries(dados).map(([k, v]) =>
+      [k, v === HORA_DO_SERVIDOR ? { toDate: () => instante } : v]));
+  };
+
   const snapshot = (dados) => ({ exists: dados != null, data: () => dados ?? undefined });
 
   const idValido = (id) => typeof id === 'string' && id.length > 0 && !id.includes('/');
+
+  // A lista em memória de cada coleção da academia
+  // (artifacts/{academia}/public/data/{coleção}).
+  const LISTAS = { stronix_leads: 'leads', stronix_users: 'users', stronix_interactions: 'interacoes' };
+  const CATALOGOS = ['stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses'];
+  const listaDe = (caminho, criar = false) => {
+    const [raiz, academia, , , nome] = caminho;
+    if (raiz === 'artifacts' && caminho.length === 5) {
+      if (LISTAS[nome]) {
+        const porAcademia = banco[LISTAS[nome]];
+        if (criar && !porAcademia[academia]) porAcademia[academia] = [];
+        return porAcademia[academia] ?? [];
+      }
+      if (CATALOGOS.includes(nome)) return banco.catalogos[academia]?.[nome] ?? [];
+    }
+    throw new Error(`coleção sem fixture no teste: ${caminho.join('/')}`);
+  };
 
   // `campos` imita o select(): o documento volta só com os campos pedidos.
   const consulta = (linhas, campos = null) => {
@@ -34,9 +80,40 @@ vi.mock('../_firebaseAdmin.js', () => {
     return { empty: docs.length === 0, docs };
   };
 
+  const documento = (caminho) => {
+    if (caminho[0] === 'tenants') return snapshot(banco.tenants[caminho[1]]);
+    if (caminho.at(-2) === 'stronix_config') return snapshot(banco.config[caminho[1]]);
+    throw new Error(`caminho sem fixture no teste: ${caminho.join('/')}`);
+  };
+
+  // Escritas da transação. create recusa documento que já existe e update
+  // recusa documento que não existe, como o Firestore.
+  const existe = (caminho) => listaDe(caminho.slice(0, -1)).some((l) => l.id === caminho.at(-1));
+  const conferir = ({ tipo, caminho }) => {
+    if (tipo === 'create' && existe(caminho)) throw Object.assign(new Error('6 ALREADY_EXISTS'), { code: 6 });
+    if (tipo === 'update' && !existe(caminho)) throw Object.assign(new Error('5 NOT_FOUND'), { code: 5 });
+  };
+  const aplicar = ({ tipo, caminho, dados }) => {
+    const lista = listaDe(caminho.slice(0, -1), true);
+    const id = caminho.at(-1);
+    const i = lista.findIndex((l) => l.id === id);
+    if (tipo === 'update') lista[i] = { ...lista[i], ...gravado(dados) };
+    else if (i >= 0) lista[i] = { id, ...gravado(dados) };
+    else lista.push({ id, ...gravado(dados) });
+    banco.gravacoes.push({ caminho: caminho.join('/'), dados, tipo });
+  };
+
   const ref = (caminho) => ({
+    id: caminho.at(-1),
+    caminho,
     collection: (nome) => ref([...caminho, nome]),
-    doc: (id) => {
+    // Sem argumento, o id é gerado, como o doc() do SDK.
+    doc: (...args) => {
+      if (args.length === 0) {
+        banco.ultimoId += 1;
+        return ref([...caminho, `auto-${banco.ultimoId}`]);
+      }
+      const [id] = args;
       if (!idValido(id)) throw new Error(`id de documento inválido: ${String(id)}`);
       return ref([...caminho, id]);
     },
@@ -52,8 +129,7 @@ vi.mock('../_firebaseAdmin.js', () => {
         if (op === 'in' && (!Array.isArray(valor) || valor.length === 0 || valor.length > 30)) {
           throw new Error(`consulta in com ${Array.isArray(valor) ? valor.length : 0} valores`);
         }
-        const daAcademia = banco.leads[caminho[1]] ?? [];
-        return daAcademia.filter((l) => (op === 'in' ? valor.includes(l[campo]) : l[campo] === valor));
+        return listaDe(caminho).filter((l) => (op === 'in' ? valor.includes(l[campo]) : l[campo] === valor));
       };
       return {
         limit: (n) => ({ get: async () => consulta(linhas().slice(0, n)) }),
@@ -61,27 +137,71 @@ vi.mock('../_firebaseAdmin.js', () => {
         get: async () => consulta(linhas())
       };
     },
-    get: async () => {
-      if (caminho[0] === 'tenants') return snapshot(banco.tenants[caminho[1]]);
-      if (caminho.at(-2) === 'stronix_config') return snapshot(banco.config[caminho[1]]);
-      throw new Error(`caminho sem fixture no teste: ${caminho.join('/')}`);
-    },
+    // Coleção (caminho de tamanho ímpar) devolve a lista; documento, o snapshot.
+    get: async () => (caminho.length % 2 === 1 ? consulta(listaDe(caminho)) : documento(caminho)),
     set: async (dados, opcoes) => {
       banco.gravacoes.push({ caminho: caminho.join('/'), dados, opcoes });
     }
   });
 
+  // Uma transação de cada vez, em fila: é o efeito do isolamento serializável
+  // do Firestore. As escritas só valem juntas, no fim, e só se nenhuma for
+  // recusada. Não existe `add` numa transação: o documento novo sai de
+  // collection.doc() e é gravado com create.
+  let fila = Promise.resolve();
+  const runTransaction = (fn) => {
+    const vez = fila.then(async () => {
+      const escritas = [];
+      const tx = {};
+      const escrever = (tipo) => (alvo, dados) => { escritas.push({ tipo, caminho: alvo.caminho, dados }); return tx; };
+      Object.assign(tx, {
+        get: async (alvo) => {
+          if (escritas.length > 0) throw new Error('Firestore transactions require all reads to be executed before all writes.');
+          return alvo.get();
+        },
+        create: escrever('create'),
+        set: escrever('set'),
+        update: escrever('update')
+      });
+      const resultado = await fn(tx);
+      escritas.forEach(conferir);
+      escritas.forEach(aplicar);
+      return resultado;
+    });
+    fila = vez.catch(() => {});
+    return vez;
+  };
+
+  const adminDb = ref([]);
+  adminDb.runTransaction = runTransaction;
+
   return {
-    adminDb: ref([]),
+    adminDb,
     adminAuth: {},
-    admin: { firestore: { FieldValue: { serverTimestamp: () => 'agora' } } },
-    verifyRequest: async () => sessao.auth
+    admin: { firestore: { FieldValue: { serverTimestamp: () => HORA_DO_SERVIDOR } } },
+    verifyRequest: async () => {
+      sessao.consultasDoLogin += 1;
+      return sessao.auth;
+    }
   };
 });
 
 vi.mock('../_auth.js', () => ({
   isTenantAdmin: async () => sessao.admin
 }));
+
+vi.mock('../_rateLimit.js', () => ({
+  checkRateLimit: async (chave, opcoes) => {
+    limitador.chamadas.push({ chave, opcoes });
+    return limitador.ok ? { ok: true } : { ok: false, retryAfterMs: 60000 };
+  },
+  clientIp: () => '127.0.0.1'
+}));
+
+afterAll(() => {
+  if (fusoDaMaquina === undefined) delete process.env.TZ;
+  else process.env.TZ = fusoDaMaquina;
+});
 
 const HOJE = new Date(2026, 8, 8, 10, 0);
 const TENANT = 'academia-teste';
@@ -126,10 +246,17 @@ function zerarBanco() {
   banco.tenants = {};
   banco.leads = {};
   banco.config = {};
+  banco.users = {};
+  banco.catalogos = {};
+  banco.interacoes = {};
   banco.gravacoes = [];
   banco.falhaEm = null;
+  banco.ultimoId = 0;
   sessao.auth = null;
   sessao.admin = false;
+  sessao.consultasDoLogin = 0;
+  limitador.ok = true;
+  limitador.chamadas = [];
 }
 
 // Cria a academia com uma chave gerada e devolve a chave em claro, do jeito
@@ -156,6 +283,12 @@ const resposta = () => ({
   status(c) { this.statusCode = c; return this; },
   json(b) { this.body = b; return this; },
   setHeader(k, v) { this.headers[k.toLowerCase()] = v; }
+});
+
+describe('processo em UTC, como a função da Vercel', () => {
+  it('o fuso do processo é UTC de verdade', () => {
+    expect(new Date(2026, 0, 15).getTimezoneOffset()).toBe(0);
+  });
 });
 
 describe('GET /api/zap', () => {
