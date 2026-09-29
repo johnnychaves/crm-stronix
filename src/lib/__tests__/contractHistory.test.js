@@ -4,7 +4,6 @@
 
 import { describe, it, expect } from 'vitest';
 import { CONTRACT_ORIGIN, contractEndOf, contractOriginOf } from '../contractHistory.js';
-import { daysBetween } from '../dates.js';
 import { normalizeContracts, indexContracts } from '../operacional/base.js';
 import { saleTypeOf, SALE_TYPES } from '../gerencial/scope.js';
 
@@ -37,7 +36,7 @@ describe('contractOriginOf', () => {
     const o = contractOriginOf(d, todos);
     expect(o.kind).toBe(CONTRACT_ORIGIN.RETORNO);
     expect(o.previous).toBe(c);
-    expect(o.gapDays).toBe(daysBetween(D(2026, 5, 12), D(2026, 9, 1)) - 1);
+    expect(o.gapDays).toBe(111);
   });
 
   it('a contagem de renovações recomeça depois de um retorno', () => {
@@ -47,7 +46,7 @@ describe('contractOriginOf', () => {
   it('retorno depois de cancelamento conta o intervalo desde o cancelamento', () => {
     const cancelado = { ...c, status: 'cancelado', cancelledAt: D(2025, 8, 1) };
     const o = contractOriginOf(d, [a, b, cancelado, d]);
-    expect(o.gapDays).toBe(daysBetween(D(2025, 8, 1), D(2026, 9, 1)) - 1);
+    expect(o.gapDays).toBe(395);
   });
 
   it('contrato fechado pelo funil Upgrade, sem ligação, é upgrade', () => {
@@ -70,7 +69,50 @@ describe('contractOriginOf', () => {
   it('aceita as datas como Timestamp do Firestore', () => {
     const t1 = K('t1', { startsAt: ts(D(2025, 1, 1)), endsAt: ts(D(2025, 2, 1)), createdAt: ts(D(2025, 1, 1)) });
     const t2 = K('t2', { startsAt: ts(D(2025, 6, 1)), endsAt: ts(D(2025, 7, 1)), createdAt: ts(D(2025, 6, 1)) });
-    expect(contractOriginOf(t2, [t1, t2]).kind).toBe(CONTRACT_ORIGIN.RETORNO);
+    const o = contractOriginOf(t2, [t1, t2]);
+    expect(o.kind).toBe(CONTRACT_ORIGIN.RETORNO);
+    expect(o.gapDays).toBe(119);
+  });
+
+  it('contrato paralelo: o intervalo conta da cobertura, não da venda mais recente', () => {
+    const x = K('x', { startsAt: D(2026, 1, 1), endsAt: D(2026, 12, 31), createdAt: D(2026, 1, 1) });
+    const p = K('p', { startsAt: D(2026, 3, 1), endsAt: D(2026, 4, 1), createdAt: D(2026, 3, 1) });
+    const z = K('z', { startsAt: D(2026, 6, 1), endsAt: D(2027, 6, 1), createdAt: D(2026, 6, 1) });
+    const o = contractOriginOf(z, [x, p, z]);
+    expect(o.previous).toBe(p);
+    expect(o.gapDays).toBeNull();
+  });
+
+  it('renovação cancelada antes de começar não conta como cobertura', () => {
+    const x = K('x', { startsAt: D(2026, 1, 1), endsAt: D(2026, 12, 31), createdAt: D(2026, 1, 1) });
+    const y = K('y', { renewedFromId: 'x', status: 'cancelado', startsAt: D(2027, 1, 1), endsAt: D(2028, 1, 1), cancelledAt: D(2026, 11, 15), createdAt: D(2026, 10, 1) });
+    const z = K('z', { startsAt: D(2027, 1, 1), endsAt: D(2028, 1, 1), createdAt: D(2026, 12, 1) });
+    expect(contractOriginOf(z, [x, y, z]).gapDays).toBeNull();
+  });
+
+  it('cancelamento antes do início, mesmo depois do fim do anterior, não estende a cobertura', () => {
+    const x = K('x', { startsAt: D(2026, 1, 1), endsAt: D(2026, 12, 31), createdAt: D(2026, 1, 1) });
+    const y = K('y', { renewedFromId: 'x', status: 'cancelado', startsAt: D(2027, 1, 10), endsAt: D(2028, 1, 10), cancelledAt: D(2027, 1, 5), createdAt: D(2026, 12, 1) });
+    const z = K('z', { startsAt: D(2027, 1, 10), endsAt: D(2028, 1, 10), createdAt: D(2027, 1, 6) });
+    expect(contractOriginOf(z, [x, y, z]).gapDays).toBe(9);
+  });
+
+  it('horários diferentes no fim e no início não mudam o intervalo', () => {
+    const x = K('x', { startsAt: D(2026, 1, 10), endsAt: new Date(2026, 1, 10, 14, 0), createdAt: D(2026, 1, 10) });
+    const z = K('z', { startsAt: D(2026, 2, 12), endsAt: D(2027, 2, 12), createdAt: D(2026, 2, 12) });
+    expect(contractOriginOf(z, [x, z]).gapDays).toBe(1);
+  });
+
+  it('cancelado ainda trancado termina no cancelamento', () => {
+    const x = K('x', { status: 'cancelado', startsAt: D(2025, 2, 1), endsAt: D(2026, 2, 1), pausedAt: D(2026, 1, 20), cancelledAt: D(2026, 3, 15), createdAt: D(2025, 2, 1) });
+    const z = K('z', { startsAt: D(2026, 3, 20), endsAt: D(2027, 3, 20), createdAt: D(2026, 3, 20) });
+    expect(contractOriginOf(z, [x, z]).gapDays).toBe(4);
+  });
+
+  it('renovação com intervalo conta os dias sem contrato', () => {
+    const x = K('x', { startsAt: D(2026, 1, 1), endsAt: D(2026, 6, 1), createdAt: D(2026, 1, 1) });
+    const r = K('r', { renewedFromId: 'x', startsAt: D(2026, 6, 11), endsAt: D(2027, 6, 11), createdAt: D(2026, 6, 1) });
+    expect(contractOriginOf(r, [x, r]).gapDays).toBe(9);
   });
 });
 
@@ -78,6 +120,7 @@ describe('contractEndOf', () => {
   it('é o fim, ou o cancelamento quando ele veio antes', () => {
     expect(contractEndOf(a)).toEqual(D(2025, 2, 10));
     expect(contractEndOf({ ...a, cancelledAt: D(2025, 1, 20) })).toEqual(D(2025, 1, 20));
+    expect(contractEndOf({ ...a, status: 'cancelado', pausedAt: D(2025, 1, 20), cancelledAt: D(2025, 3, 15) })).toEqual(D(2025, 3, 15));
     expect(contractEndOf(null)).toBeNull();
   });
 });

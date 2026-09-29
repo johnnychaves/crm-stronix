@@ -89,6 +89,23 @@ export const daysBetween = (a, b) => {
   return Math.round((to.getTime() - from.getTime()) / 86400000);
 };
 
+// Meia-noite local do dia de `date`. null se a data for inválida.
+export const startOfLocalDay = (date) => {
+  const d = getSafeDateOrNull(date);
+  return d ? new Date(d.getFullYear(), d.getMonth(), d.getDate()) : null;
+};
+
+// Diferença em dias do calendário (b - a), pelo horário local. Diferente de
+// daysBetween, que conta períodos de 24 horas e arredonda: aqui 23h de um dia
+// e 1h do seguinte dão 1. É a conta da emenda, da sobreposição e do intervalo
+// entre contratos.
+export const calendarDaysBetween = (a, b) => {
+  const from = startOfLocalDay(a);
+  const to = startOfLocalDay(b);
+  if (!from || !to) return null;
+  return Math.round((to.getTime() - from.getTime()) / 86400000);
+};
+
 // Soma `n` dias a uma data. Aceita negativo. null se a data for inválida.
 export const addDays = (date, n) => {
   const base = getSafeDateOrNull(date);
