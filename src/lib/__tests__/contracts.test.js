@@ -18,7 +18,9 @@ import {
   editListValueOf,
   hasLiveContract,
   isImportedContract,
-  isImportPause
+  isImportPause,
+  isSeamlessStart,
+  renewalJoinOf
 } from '../contracts.js';
 import { DISCOUNT_MODES } from '../renewal.js';
 
@@ -479,5 +481,40 @@ describe('correctionNeedsReason: quando a correção exige o motivo do desconto'
   it('mesmo negócio, mas o contrato já tinha motivo: exige', () => {
     const comMotivo = { ...contract, discountReason: 'Fidelidade' };
     expect(correctionNeedsReason({ contract: comMotivo, plan, value: 1177.2, hasDiscount: true })).toBe(true);
+  });
+});
+
+describe('emendado: começa no dia seguinte ao fim do contrato renovado', () => {
+  it('renewalJoinOf lê emenda, intervalo e sobreposição por dia do calendário', () => {
+    const end = new Date(2026, 9, 11, 15, 32);
+    expect(renewalJoinOf(end, new Date(2026, 9, 12, 0, 0))).toEqual({ seamless: true, overlaps: false, previousEndsAt: null });
+    expect(renewalJoinOf(end, D(2026, 10, 20))).toEqual({ seamless: false, overlaps: false, previousEndsAt: null });
+    expect(renewalJoinOf(end, D(2026, 10, 11))).toEqual({ seamless: false, overlaps: true, previousEndsAt: D(2026, 10, 10) });
+    expect(renewalJoinOf(null, D(2026, 10, 11))).toEqual({ seamless: false, overlaps: false, previousEndsAt: null });
+  });
+
+  it('isSeamlessStart', () => {
+    expect(isSeamlessStart(D(2026, 10, 31), D(2026, 11, 1))).toBe(true);
+    expect(isSeamlessStart(D(2026, 12, 31), D(2027, 1, 1))).toBe(true);
+    expect(isSeamlessStart(D(2026, 10, 11), D(2026, 10, 11))).toBe(false);
+    expect(isSeamlessStart(D(2026, 10, 11), D(2026, 10, 13))).toBe(false);
+  });
+
+  it('emendado com início no futuro é ativo; sem a marca, agendado', () => {
+    expect(deriveContractStatus({ startsAt: D(2026, 8, 20), endsAt: D(2027, 8, 20), seamless: true }, NOW)).toBe(CONTRACT_STATUS.ATIVO);
+    expect(deriveContractStatus({ startsAt: D(2026, 8, 20), endsAt: D(2027, 8, 20) }, NOW)).toBe(CONTRACT_STATUS.AGENDADO);
+  });
+
+  it('emendado curto que acaba dentro da janela de aviso é a vencer', () => {
+    expect(deriveContractStatus({ startsAt: D(2026, 8, 1), endsAt: D(2026, 8, 20), seamless: true }, NOW)).toBe(CONTRACT_STATUS.A_VENCER);
+  });
+
+  it('o resumo do lead leva a marca', () => {
+    expect(deriveLeadContractStatus({
+      currentContractStatus: 'ativo',
+      currentContractStartsAt: D(2026, 8, 20),
+      currentContractEndsAt: D(2027, 8, 20),
+      currentContractSeamless: true
+    }, NOW)).toBe(CONTRACT_STATUS.ATIVO);
   });
 });

@@ -3,7 +3,7 @@
 // de Clientes, pelo caminho de "venda" do Kanban e pela categoria de
 // renovação da Meta Diária, para que a REGRA viva em um único lugar.
 
-import { addDays, addMonths, daysBetween, getSafeDateOrNull } from './dates.js';
+import { addDays, addMonths, calendarDaysBetween, daysBetween, getSafeDateOrNull } from './dates.js';
 import { fmtBRL } from './format.js';
 import { referralConvertedText } from './referrals.js';
 
@@ -59,6 +59,24 @@ export const computeEndsAt = (startsAt, durationMonths) => {
   return addMonths(startsAt, months);
 };
 
+// Como a renovação encosta no contrato que ela renova, em dias do calendário.
+// Emendada: começa no dia seguinte ao fim, e não é agendada (decisão do
+// Johnny, 28/09/2026). Sobreposta: começa no dia do fim ou antes, e o contrato
+// renovado passa a terminar na véspera do novo. Regra única do modal e da
+// gravação. Mora aqui, e não em renewal.js, porque contracts.js não pode
+// importar renewal.js (ciclo).
+export function renewalJoinOf(prevEndsAt, startsAt) {
+  const diff = calendarDaysBetween(prevEndsAt, startsAt);
+  if (diff == null) return { seamless: false, overlaps: false, previousEndsAt: null };
+  return {
+    seamless: diff === 1,
+    overlaps: diff <= 0,
+    previousEndsAt: diff <= 0 ? addDays(startsAt, -1) : null
+  };
+}
+
+export const isSeamlessStart = (prevEndsAt, startsAt) => renewalJoinOf(prevEndsAt, startsAt).seamless;
+
 // Deriva o status "vivo" do contrato a partir de { status, endsAt } + uma
 // janela de alerta (thresholdDays). Aceita tanto um doc de contrato quanto
 // o resumo denormalizado do lead, desde que tenham `status` e `endsAt`.
@@ -82,8 +100,10 @@ export const deriveContractStatus = (
   // 'ativo' e a ficha mostrava contagem regressiva de uma vigência que ainda
   // não tinha começado. Vem depois de vencido/cancelado — um contrato não pode
   // estar nos dois estados — e antes de a_vencer/ativo.
+  // O emendado (seamless) não é agendado: o cliente não fica um dia sem
+  // contrato, então segue para as regras de "A vencer" e "Ativo" pelo fim dele.
   const startsAt = getSafeDateOrNull(contractLike.startsAt);
-  if (startsAt && now.getTime() < startsAt.getTime()) return CONTRACT_STATUS.AGENDADO;
+  if (startsAt && now.getTime() < startsAt.getTime() && !contractLike.seamless) return CONTRACT_STATUS.AGENDADO;
   const days = Number(thresholdDays);
   const threshold = Number.isFinite(days) ? days : DEFAULT_CONTRACT_THRESHOLD_DAYS;
   const daysLeft = (endsAt.getTime() - now.getTime()) / 86400000;
@@ -98,7 +118,8 @@ export const deriveLeadContractStatus = (lead, refDate, thresholdDays) =>
     {
       status: lead?.currentContractStatus,
       startsAt: lead?.currentContractStartsAt,
-      endsAt: lead?.currentContractEndsAt
+      endsAt: lead?.currentContractEndsAt,
+      seamless: lead?.currentContractSeamless
     },
     refDate,
     thresholdDays
