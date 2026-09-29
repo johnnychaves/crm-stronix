@@ -80,18 +80,35 @@ const Chip = ({ tone = 'amber', children }) => (
 );
 
 function ContractModal({
-  lead,
+  lead: liveLead,
   appUser,
   db,
   mode = 'matricula',
-  currentContract = null,
-  renewedFromId = null,
+  currentContract: liveCurrentContract = null,
+  renewedFromId: liveRenewedFromId = null,
   onClose,
   onDone
 }) {
   const toast = useToast();
-  const { planos, contratos } = useGeneralConfig();
+  const { planos: livePlanos, contratos: liveContratos } = useGeneralConfig();
   const isRenewal = mode === 'renovacao';
+
+  // O que vem de fora do modal, congelado ao confirmar, como o sentUndo do
+  // ContractOutcomeModal. A escrita local chega às listas antes de o servidor
+  // confirmar: no Kanban e na Meta Diária, `contratos` já traz a renovação nova
+  // enquanto o lead da lista ainda aponta para o contrato renovado, e na ficha
+  // o lead passa para o contrato novo. Sem isto, o modal mostrava "Este
+  // contrato já foi renovado" ou a regra dos dois dias ao lado de
+  // "Salvando...". Tudo o que a tela mostra sai daqui. Se a gravação falha, o
+  // modal volta a seguir os dados de agora; se dá certo, fica assim até fechar.
+  const [sent, setSent] = useState(null);
+  const { lead, currentContract, renewedFromId, planos, contratos } = sent || {
+    lead: liveLead,
+    currentContract: liveCurrentContract,
+    renewedFromId: liveRenewedFromId,
+    planos: livePlanos,
+    contratos: liveContratos
+  };
 
   // Só planos ATIVOS entram; inativos seguem no histórico de contratos.
   const activePlans = useMemo(
@@ -241,6 +258,7 @@ function ContractModal({
     if (hasDiscount && !reason) { toast.warning('Escolha o motivo do desconto.'); return; }
 
     setSubmitting(true);
+    setSent({ lead, currentContract, renewedFromId, planos, contratos });
     try {
       await commitMatricula({
         db,
@@ -263,6 +281,7 @@ function ContractModal({
     } catch (e) {
       console.error('Erro ao registrar contrato:', e);
       toast.error('Não foi possível salvar. Tente novamente.');
+      setSent(null);
     } finally {
       setSubmitting(false);
     }
