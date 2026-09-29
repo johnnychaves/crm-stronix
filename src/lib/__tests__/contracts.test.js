@@ -12,6 +12,7 @@ import {
   buildContractResume,
   buildMatriculaWrites,
   contractDiscountOf,
+  correctionNeedsReason,
   deriveContractStatus,
   deriveLeadContractStatus,
   editListValueOf,
@@ -451,5 +452,32 @@ describe('editListValueOf: a tabela que vale na correção', () => {
 
   it('mesmo plano, mas o contrato não tem tabela gravada: usa a do plano', () => {
     expect(editListValueOf({ planId: 'p1', value: 1177.2 }, { id: 'p1', value: 1500 })).toBe(1500);
+  });
+});
+
+describe('correctionNeedsReason: quando a correção exige o motivo do desconto', () => {
+  const contract = { planId: 'p1', value: 1177.2, listValue: 1308 };
+  const plan = { id: 'p1', value: 1500 };
+
+  it('sem desconto nunca exige, mesmo com plano e valor trocados', () => {
+    expect(correctionNeedsReason({ contract, plan, value: 1177.2, hasDiscount: false })).toBe(false);
+    expect(correctionNeedsReason({ contract, plan: { id: 'p2', value: 1390 }, value: 1390, hasDiscount: false })).toBe(false);
+  });
+
+  it('mesmo plano e mesmo valor, sem motivo gravado: só a data mudou, não trava', () => {
+    expect(correctionNeedsReason({ contract, plan, value: 1177.2, hasDiscount: true })).toBe(false);
+  });
+
+  it('valor trocado com desconto: exige', () => {
+    expect(correctionNeedsReason({ contract, plan, value: 1100, hasDiscount: true })).toBe(true);
+  });
+
+  it('plano trocado com desconto: exige', () => {
+    expect(correctionNeedsReason({ contract, plan: { id: 'p2', value: 1390 }, value: 1177.2, hasDiscount: true })).toBe(true);
+  });
+
+  it('mesmo negócio, mas o contrato já tinha motivo: exige', () => {
+    const comMotivo = { ...contract, discountReason: 'Fidelidade' };
+    expect(correctionNeedsReason({ contract: comMotivo, plan, value: 1177.2, hasDiscount: true })).toBe(true);
   });
 });

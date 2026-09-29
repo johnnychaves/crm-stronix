@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Calendar, DollarSign, Pencil } from 'lucide-react';
-import { buildContractEdit, editListValueOf } from '../lib/contracts.js';
+import { buildContractEdit, correctionNeedsReason, editListValueOf } from '../lib/contracts.js';
 import { commitContractPatch } from '../lib/contractsWrites.js';
 import { fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
 import { fmtBRL, parseValorBRL, valorToInput } from '../lib/format.js';
@@ -54,11 +54,7 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
   const listValue = plan ? editListValueOf(contract, plan) : 0;
   const hasDiscount = listValue > 0 && Number.isFinite(numericValue) && listValue - numericValue > 0.005;
   const discountReason = hasDiscount ? reason : null;
-  // Motivo obrigatório só quando o negócio mudou (outro plano ou outro valor)
-  // ou quando o contrato já tinha motivo, que vem marcado. Corrigir só a data de
-  // um contrato antigo, com desconto sem motivo, não pode travar.
-  const dealChanged = plan?.id !== contract?.planId || numericValue !== (Number(contract?.value) || 0);
-  const needsReason = hasDiscount && (dealChanged || Boolean(contract?.discountReason));
+  const needsReason = correctionNeedsReason({ contract, plan, value: numericValue, hasDiscount });
 
   const preview = plan && startsAt
     ? buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason })

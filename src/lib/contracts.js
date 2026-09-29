@@ -386,6 +386,16 @@ export const editListValueOf = (contract, plan) => {
   return (samePlan && own) || Number(plan?.value) || own;
 };
 
+// Na correção, o motivo do desconto só é obrigatório quando o negócio muda
+// (outro plano ou outro valor) ou quando o contrato já tinha motivo, que vem
+// marcado. Corrigir só a data de um contrato antigo, com desconto sem motivo,
+// não pode travar.
+export const correctionNeedsReason = ({ contract, plan, value, hasDiscount }) => {
+  if (!hasDiscount) return false;
+  const dealChanged = plan?.id !== contract?.planId || value !== (Number(contract?.value) || 0);
+  return dealChanged || Boolean(contract?.discountReason);
+};
+
 // Correção de um contrato já gravado (erro de digitação em plano, valor ou
 // início). NÃO é renovação: não cria contrato novo, não mexe em marcos de
 // renovação e não recarimba conversão. Preserva os dias já trancados.
