@@ -39,22 +39,23 @@ export const timelineStamp = (date) => {
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 };
 
-// Detecta eventos de CONTRATO (matrícula/renovação/cancelamento/troca de plano)
-// pelo texto da interaction. Usado como bucket próprio na timeline. Só é
-// consultado para type='status_change' (ver classifyInteraction) — contrato
-// real é sempre gravado com esse type (contractsWrites.js); sem esse gate o
-// regex também capturava notas/conclusões de sistema que só por coincidência
-// mencionavam "renovação"/"plano" (ex: reagendamento de renovação na Meta
-// Diária, RenewalOutcomeModal.jsx), fazendo a timeline mostrar a anotação do
-// consultor como se fosse uma matrícula fechada.
+// Detecta eventos de CONTRATO (matrícula, renovação, cancelamento, trancamento,
+// reativação e correção) pelo texto da interaction. Usado como bucket próprio
+// na timeline. Só é consultado para type='status_change' (ver
+// classifyInteraction) — contrato real é sempre gravado com esse type
+// (contractsWrites.js); sem esse gate o regex também capturava notas/conclusões
+// de sistema que só por coincidência mencionavam "renovação"/"plano" (ex:
+// reagendamento de renovação na Meta Diária, RenewalOutcomeModal.jsx), fazendo
+// a timeline mostrar a anotação do consultor como se fosse uma matrícula
+// fechada.
 const CONTRACT_RE = /matrícula|matricula|renova(ç|c)ão|contrato (cancelado|trancado|reativado|corrigido)|plano /i;
 
 // Prefixo dos eventos do funil Upgrade (src/lib/stageMove.js).
 const UPGRADE_EVENT_RE = /^Upgrade: /;
 
 // Tipo do evento de contrato pelo começo do texto que o próprio app grava
-// (src/lib/contracts.js). A ordem importa: "Renovação cancelada" é
-// cancelamento, não renovação.
+// (src/lib/contracts.js). Cada texto casa com uma regra só: "Renovação
+// cancelada" cai em cancelamento, e a renovação exige "registrada".
 const CONTRACT_EVENT_RULES = [
   { kind: 'cancelamento', re: /^(contrato cancelado|renova(ç|c)ão cancelada)/i },
   { kind: 'trancamento', re: /^contrato trancado/i },
@@ -74,7 +75,10 @@ export function contractEventOf(text) {
   const t = String(text || '').trim();
   const rule = CONTRACT_EVENT_RULES.find((r) => r.re.test(t));
   if (!rule) return null;
-  const plan = t.match(/Plano (.+?)(?= \(R\$|, | — |\. |\.$|$)/);
+  // O plano vem logo depois de "— " (matrícula, renovação, cancelamento,
+  // trancamento, correção) ou de ": " (renovação cancelada). Sem isso, um
+  // texto sem plano pegaria o "Plano" de outra parte da frase.
+  const plan = t.match(/(?:— |: )Plano (.+?)(?= \(R\$|, motivo | — |\. (?:Vigência|Encerrado|O contrato)|\.$|$)/);
   const money = t.match(/\((R\$\s?[\d.,]+)\)/);
   const value = money ? parseValorBRL(money[1]) : null;
   return {

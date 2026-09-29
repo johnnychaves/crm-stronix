@@ -385,6 +385,36 @@ describe('contractEventOf: o tipo, o plano e o valor do próprio evento', () => 
     expect(contractEventOf('Fase alterada para [Plano apresentado].')).toBeNull();
     expect(contractEventOf('')).toBeNull();
   });
+
+  it.each([
+    ['Matrícula realizada — Plano Anual (R$ 1.308). Vigência até 01/09/2027.', { kind: 'matricula', planName: 'Anual', value: 1308 }],
+    ['Renovação registrada — Plano Anual (R$ 1.177,2). Vigência até 01/09/2027.', { kind: 'renovacao', planName: 'Anual', value: 1177.2 }],
+    ['Matrícula realizada — Plano Mensal. Vigência até 01/08/2026.', { kind: 'matricula', planName: 'Mensal', value: null }],
+    ['Contrato cancelado — Plano Anual.', { kind: 'cancelamento', planName: 'Anual', value: null }],
+    ['Contrato cancelado — Plano Mensal, 2x. Encerrado em 14/05/2026.', { kind: 'cancelamento', planName: 'Mensal, 2x', value: null }],
+    ['Contrato trancado a partir de 10/09/2026 — Plano Clube + Start.', { kind: 'trancamento', planName: 'Clube + Start', value: null }],
+    ['Renovação cancelada antes de começar: renovação. O contrato Plano Start volta a valer até 11/10/2026.', { kind: 'cancelamento', planName: null, value: null }],
+    ['Renovação cancelada antes de começar: Plano Clube + Flow. O contrato Plano Clube + Start volta a valer até 11/10/2026.', { kind: 'cancelamento', planName: 'Clube + Flow', value: null }]
+  ])('lê textos antigos e variações: %s', (text, expected) => {
+    expect(contractEventOf(text)).toEqual(expected);
+  });
+
+  it('todo texto de contrato gravado pelo app cai no balde de contrato e é lido', () => {
+    const textos = [
+      buildMatriculaInteractionText({ planName: 'Anual', value: 1308, endsAt: D(2027, 9, 1), isRenewal: false }),
+      buildMatriculaInteractionText({ planName: 'Anual', value: 1308, endsAt: D(2027, 9, 1), isRenewal: true }),
+      buildContractCancel({ planName: 'Anual', cancelledAt: D(2026, 5, 14), reason: 'Financeiro' }).interactionText,
+      buildContractCancel({ cancelledAt: D(2026, 5, 14) }).interactionText,
+      buildContractPause({ planName: 'Anual', pausedAt: D(2026, 9, 10), reason: 'Viagem' }).interactionText,
+      buildContractPause({ pausedAt: D(2026, 9, 10) }).interactionText,
+      buildContractResume({ contract: { pausedAt: D(2026, 9, 1), endsAt: D(2027, 1, 1) }, resumedAt: D(2026, 9, 13) }).interactionText,
+      buildContractEdit({ contract: { planName: 'Mensal', value: 149, durationMonths: 1, startsAt: D(2026, 7, 1) }, plan: { id: 'p2', name: 'Anual', value: 1390, durationMonths: 12 }, value: 1390, startsAt: D(2026, 7, 1) }).interactionText
+    ];
+    textos.forEach((text) => {
+      expect(classifyInteraction({ type: 'status_change', text }), text).toBe('contract');
+      expect(contractEventOf(text), text).not.toBeNull();
+    });
+  });
 });
 
 describe('classifyInteraction: todo evento de contrato vai para o balde de contrato', () => {
