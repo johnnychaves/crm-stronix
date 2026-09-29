@@ -26,7 +26,7 @@ export async function requestPasswordReset(email, ip, deps) {
   const account = await deps.findAccount(target);
   const refusal = accountRefusal(account);
   if (refusal) {
-    deps.log.info('esqueci-a-senha: pedido sem envio', { motivo: refusal, conta: who(account, target), ip });
+    deps.log.info('esqueci-a-senha: pedido sem envio', { motivo: refusal, conta: who(account, target), academia: account?.tenantId, ip });
     return { sent: false, reason: refusal };
   }
 
@@ -55,7 +55,7 @@ export async function requestPasswordReset(email, ip, deps) {
     // Vercel some em 1 hora. A resposta ao navegador já saiu antes, então quem
     // pediu não percebe nada. Se o killCode também falhar, essa falha só vai
     // para o log e nunca esconde o erro do envio.
-    deps.log.error('esqueci-a-senha: envio falhou', { conta: account.uid, erro: err?.message || String(err), status: err?.status });
+    deps.log.error('esqueci-a-senha: envio falhou', { conta: account.uid, academia: account.tenantId, ip, erro: err?.message || String(err), status: err?.status });
     try {
       await deps.killCode(account.uid, codeHash, deps.now());
     } catch (killErr) {
@@ -68,36 +68,40 @@ export async function requestPasswordReset(email, ip, deps) {
 }
 
 export async function confirmPasswordReset({ email, code, newPassword, ip }, deps) {
-  // Código fora do formato não gasta tentativa.
-  if (!isResetCodeFormat(code)) return { ok: false, reason: 'bad_format' };
   const target = normalizeEmail(email);
+  // Código fora do formato não gasta tentativa e não lê a conta. Só o motivo vai
+  // para o log, e nunca o que foi digitado: quem errou um número tem quase o
+  // código certo na mão.
+  if (!isResetCodeFormat(code)) return refuse(deps, 'bad_format', null, target, ip);
   const account = await deps.findAccount(target);
   const refusal = accountRefusal(account);
-  if (refusal) return refuse(deps, refusal, who(account, target), ip);
+  if (refusal) return refuse(deps, refusal, account, target, ip);
 
   // A tentativa é reservada antes de comparar: no máximo 5 comparações por
   // código, mesmo com pedidos ao mesmo tempo. O número vem da reserva, e não
   // de uma leitura anterior, que já pode estar velha.
   const reserved = await deps.reserveAttempt(account.uid, deps.now());
-  if (!reserved.ok) return refuse(deps, 'no_live_code', account.uid, ip);
+  if (!reserved.ok) return refuse(deps, 'no_live_code', account, target, ip);
   const { codeHash } = reserved.code;
 
   if (marksChanged(reserved.code, account)) {
     await deps.killCode(account.uid, codeHash, deps.now());
-    return refuse(deps, 'account_changed', account.uid, ip);
+    return refuse(deps, 'account_changed', account, target, ip);
   }
   if (!resetCodeMatches(deps.secret, account.uid, code, codeHash)) {
     if (reserved.attempt >= RESET_CODE_MAX_ATTEMPTS) await deps.killCode(account.uid, codeHash, deps.now());
-    return refuse(deps, 'wrong_code', account.uid, ip);
+    return refuse(deps, 'wrong_code', account, target, ip);
   }
 
   try {
     await deps.setPassword(account.uid, newPassword);
   } catch (err) {
     // Mesma conferência do passwordRejection (api/_auth.js): o SDK entrega a
-    // recusa da política como auth/internal-error. O código continua vivo.
+    // recusa da política como auth/internal-error. O código continua vivo. A
+    // mensagem do Firebase lista as exigências que faltaram, não a senha, e
+    // vai para o log para dizer o que alinhar com o console.
     if (!passwordRejectedByFirebase(err)) throw err;
-    deps.log.error('esqueci-a-senha: o Firebase recusou uma senha que passou em src/lib/passwordPolicy.js. Alinhe o arquivo com a política do console.', { conta: account.uid });
+    deps.log.error('esqueci-a-senha: o Firebase recusou uma senha que passou em src/lib/passwordPolicy.js. Alinhe o arquivo com a política do console.', { conta: account.uid, erro: err?.message });
     return { ok: false, reason: 'password_rejected' };
   }
 
@@ -114,7 +118,9 @@ export async function confirmPasswordReset({ email, code, newPassword, ip }, dep
   return { ok: true };
 }
 
-function refuse(deps, reason, conta, ip) {
-  deps.log.info('esqueci-a-senha: troca recusada', { motivo: reason, conta, ip });
+// Toda recusa da troca vai para o log com o motivo, a conta, a academia e o IP.
+// Sem conta, o e-mail sai mascarado e a academia fica de fora.
+function refuse(deps, reason, account, target, ip) {
+  deps.log.info('esqueci-a-senha: troca recusada', { motivo: reason, conta: who(account, target), academia: account?.tenantId, ip });
   return { ok: false, reason };
 }

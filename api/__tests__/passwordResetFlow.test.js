@@ -81,6 +81,7 @@ describe('pedido', () => {
     expect(s.enviados[0].text).toContain('Olá, Ana.');
     const doc = docs.get('u-ana');
     expect(doc.codeHash).toBe(hashResetCode(SEGREDO, 'u-ana', '123456'));
+    expect(doc.tenantId).toBe('academia-teste');
     expect(JSON.stringify(doc)).not.toContain('123456');
   });
 
@@ -117,6 +118,20 @@ describe('pedido', () => {
     expect(JSON.stringify(s.logs)).not.toContain(EMAIL);
   });
 
+  it('a recusa do pedido vai para o log com o motivo, a conta, a academia e o IP', async () => {
+    const casos = [
+      [null, 'unknown_email', 'an***@academia.com', undefined],
+      [conta({ superAdmin: true }), 'superadmin', 'u-ana', 'academia-teste'],
+      [conta({ tenantId: null }), 'no_tenant', 'u-ana', null],
+    ];
+    for (const [c, motivo, quem, academia] of casos) {
+      const { deps, s } = montar(c);
+      await requestPasswordReset(EMAIL, IP, deps);
+      expect(s.logs, motivo).toHaveLength(1);
+      expect(s.logs[0][1], motivo).toEqual({ motivo, conta: quem, academia, ip: IP });
+    }
+  });
+
   it('o sexto pedido do dia não manda e-mail, e depois de 24 horas libera', async () => {
     const { deps, s } = montar();
     s.sorteios = [1, 2, 3, 4, 5, 6, 7];
@@ -138,10 +153,11 @@ describe('pedido', () => {
     expect(docs.get('u-ana').requestsMs).toHaveLength(1);
   });
 
-  it('o log da falha de envio leva o status do Resend e não leva o código nem o e-mail', async () => {
+  it('o log da falha de envio leva a conta, a academia, o IP e o status do Resend, e não leva o código nem o e-mail', async () => {
     const { deps, s } = montar();
     deps.sendMail = async () => { throw erroDoResend(); };
     await expect(requestPasswordReset(EMAIL, IP, deps)).rejects.toMatchObject({ status: 403 });
+    expect(s.logs[0][1]).toMatchObject({ conta: 'u-ana', academia: 'academia-teste', ip: IP, status: 403 });
     const log = JSON.stringify(s.logs);
     expect(log).toContain('"status":403');
     expect(log).toContain('domínio sem verificação');
@@ -215,6 +231,58 @@ describe('troca', () => {
     expect(docs.get('u-ana').attempts).toBe(0);
   });
 
+  it('código fora do formato vai para o log só com o motivo, o e-mail mascarado e o IP, sem ler a conta', async () => {
+    const { deps, s } = montar();
+    await requestPasswordReset(EMAIL, IP, deps);
+    const findAccount = deps.findAccount;
+    let leituras = 0;
+    deps.findAccount = async (email) => { leituras += 1; return findAccount(email); };
+    const antes = s.logs.length;
+    await trocar(deps, '12345');
+    await trocar(deps, '12a456');
+    expect(leituras).toBe(0);
+    const novas = s.logs.slice(antes);
+    expect(novas.map(([, o]) => o)).toEqual([
+      { motivo: 'bad_format', conta: 'an***@academia.com', ip: IP },
+      { motivo: 'bad_format', conta: 'an***@academia.com', ip: IP },
+    ]);
+    // O que foi digitado não vai para o log: quem errou um número tem quase o
+    // código certo na mão.
+    expect(JSON.stringify(novas)).not.toContain('12345');
+    expect(JSON.stringify(novas)).not.toContain('12a456');
+  });
+
+  it('e-mail sem conta vai mascarado para o log também na troca', async () => {
+    const { deps, s } = montar(null);
+    expect(await trocar(deps, '123456')).toEqual({ ok: false, reason: 'unknown_email' });
+    expect(s.logs).toHaveLength(1);
+    expect(s.logs[0][1]).toEqual({ motivo: 'unknown_email', conta: 'an***@academia.com', ip: IP });
+    expect(JSON.stringify(s.logs)).not.toContain(EMAIL);
+  });
+
+  it('toda recusa da troca por causa da conta ou do código vai para o log com o motivo, a conta, a academia e o IP', async () => {
+    const casos = [
+      // Ninguém pediu código.
+      ['no_live_code', ({ deps }) => trocar(deps, '123456')],
+      ['wrong_code', async ({ deps }) => { await requestPasswordReset(EMAIL, IP, deps); return trocar(deps, '000000'); }],
+      ['account_changed', async ({ deps, s }) => {
+        await requestPasswordReset(EMAIL, IP, deps);
+        s.conta = { ...s.conta, tokensMark: 'Sun, 28 Sep 2026 11:00:00 GMT' };
+        return trocar(deps, '123456');
+      }],
+      ['organization_inactive', async ({ deps, s }) => {
+        await requestPasswordReset(EMAIL, IP, deps);
+        s.conta = { ...s.conta, organizationActive: false };
+        return trocar(deps, '123456');
+      }],
+    ];
+    for (const [motivo, preparar] of casos) {
+      const m = montar();
+      expect(await preparar(m), motivo).toEqual({ ok: false, reason: motivo });
+      expect(m.s.logs.at(-1)[1], motivo).toEqual({ motivo, conta: 'u-ana', academia: 'academia-teste', ip: IP });
+    }
+  });
+
   it('conta que deixou de poder é recusada sem gastar tentativa', async () => {
     const { deps, docs, s } = montar();
     await requestPasswordReset(EMAIL, IP, deps);
@@ -226,11 +294,15 @@ describe('troca', () => {
   it('recusa do Firebase à senha devolve password_rejected e deixa o código vivo', async () => {
     const { deps, docs, s } = montar();
     await requestPasswordReset(EMAIL, IP, deps);
-    s.falharSenha = recusaDaPolitica();
+    const recusa = recusaDaPolitica();
+    s.falharSenha = recusa;
     expect(await trocar(deps, '123456')).toEqual({ ok: false, reason: 'password_rejected' });
     expect(docs.get('u-ana').usedAtMs).toBeNull();
+    // O log leva a mensagem do Firebase, que lista as exigências e não a senha.
+    expect(s.logs.some(([, o]) => o?.erro === recusa.message)).toBe(true);
     s.falharSenha = null;
     expect(await trocar(deps, '123456')).toEqual({ ok: true });
+    expect(JSON.stringify(s.logs)).not.toContain(SENHA);
   });
 
   it('outro erro do Firebase sobe', async () => {
@@ -277,11 +349,14 @@ describe('troca', () => {
     expect(s.senhas).toEqual([{ uid: 'u-ana', senha: SENHA }]);
   });
 
-  it('o código nunca vai para o log', async () => {
+  it('o código e a senha nunca vão para o log', async () => {
     const { deps, s } = montar();
     await requestPasswordReset(EMAIL, IP, deps);
     await trocar(deps, '000000');
     await trocar(deps, '123456');
     expect(JSON.stringify(s.logs)).not.toContain('123456');
+    // Nem o que foi digitado errado: quem erra um número tem quase o código certo na mão.
+    expect(JSON.stringify(s.logs)).not.toContain('000000');
+    expect(JSON.stringify(s.logs)).not.toContain(SENHA);
   });
 });
