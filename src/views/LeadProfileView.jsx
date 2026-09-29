@@ -14,6 +14,7 @@ import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMin
 import { fmtBRL } from '../lib/format.js';
 import { contractDiscountOf, deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel, vigenciaRefDate } from '../lib/renewal.js';
+import { CONTRACT_ORIGIN, contractEndOf, contractOriginOf } from '../lib/contractHistory.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
 import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
@@ -57,7 +58,7 @@ import {
   TIMELINE_FILTERS,
   TIMELINE_SYSTEM_KIND
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, Link2, MessageCircle, PauseCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, Link2, LogIn, MessageCircle, PauseCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Tom do bloco de contagem, do chip e do preenchimento da régua — o estado do
 // contrato manda na cor da aba Contratos inteira.
@@ -89,6 +90,61 @@ const gapLabel = (days) => {
   const months = Math.round(days / 30.44);
   return `${months} ${months === 1 ? 'mês' : 'meses'} sem contrato`;
 };
+
+// Número curto do contrato, igual em todo o card.
+const shortContractId = (id) => String(id || '').slice(0, 8).toUpperCase();
+
+// De onde veio o contrato vigente. Renovação só quando está ligada ao contrato
+// anterior (renewedFromId). Contrato sem ligação é retorno, como no Gerencial.
+function OriginCell({ origin }) {
+  const kind = origin?.kind || CONTRACT_ORIGIN.PRIMEIRA;
+  const prev = origin?.previous || null;
+  if (kind === CONTRACT_ORIGIN.RENOVACAO) {
+    return (
+      <>
+        <CapsLabel>Renovado de</CapsLabel>
+        <div className="text-[13px] font-semibold mt-[7px] truncate">{prev?.planName || '—'}</div>
+        <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">
+          {prev ? `#${shortContractId(prev.id)} · ` : ''}{origin.ordinal}ª renovação
+        </div>
+      </>
+    );
+  }
+  if (kind === CONTRACT_ORIGIN.RETORNO || kind === CONTRACT_ORIGIN.UPGRADE) {
+    const prevEnd = contractEndOf(prev);
+    const detail = [
+      prevEnd ? `até ${prevEnd.toLocaleDateString('pt-BR')}` : null,
+      origin.gapDays ? gapLabel(origin.gapDays) : null
+    ].filter(Boolean).join(' · ');
+    const main = prev?.planName
+      ? `último: ${prev.planName}`
+      : kind === CONTRACT_ORIGIN.UPGRADE ? 'pelo funil Upgrade' : '—';
+    return (
+      <>
+        <CapsLabel>{kind === CONTRACT_ORIGIN.UPGRADE ? 'Upgrade' : 'Retorno'}</CapsLabel>
+        <div className="text-[13px] font-semibold mt-[7px] truncate" title={main}>{main}</div>
+        {detail && (
+          <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px] truncate" title={detail}>{detail}</div>
+        )}
+      </>
+    );
+  }
+  return (
+    <>
+      <CapsLabel>Renovado de</CapsLabel>
+      <div className="text-[13px] font-semibold mt-[7px]">Matrícula inicial</div>
+      <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">primeiro contrato</div>
+    </>
+  );
+}
+
+// Ícone do nó do Histórico pela origem do contrato.
+function OriginIcon({ kind }) {
+  if (kind === CONTRACT_ORIGIN.RETORNO) return <LogIn size={14} aria-hidden="true" />;
+  if (kind === CONTRACT_ORIGIN.UPGRADE) return <TrendingUp size={14} aria-hidden="true" />;
+  if (kind === CONTRACT_ORIGIN.RENOVACAO) return <RefreshCw size={14} aria-hidden="true" />;
+  return <GraduationCap size={14} aria-hidden="true" />;
+}
 
 // Célula da faixa de metadados do cabeçalho: rótulo em versalete sobre o valor.
 // Substituiu a fila de ícones — sem rótulo, "(51) 99184-2270" e "Ana Duarte"
@@ -780,11 +836,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // anteriores (repeti-lo duplicava plano, valor e vigência 42px abaixo).
   const currentContract = leadContracts.find(c => c.id === lead.currentContractId) || null;
   const pastContracts = leadContracts.filter(c => c.id !== lead.currentContractId);
-  // "3ª renovação": quantos contratos vieram antes do vigente.
-  const renewalOrdinal = pastContracts.length;
-  const renewedFrom = currentContract?.renewedFromId
-    ? leadContracts.find(c => c.id === currentContract.renewedFromId) || null
-    : null;
+  // De onde veio o contrato vigente: renovação, upgrade, retorno ou primeira
+  // matrícula, na ordem do Gerencial (lib/contractHistory.js). Antes contava
+  // qualquer contrato anterior como renovação.
+  const origin = currentContract ? contractOriginOf(currentContract, leadContracts) : null;
 
   // Estado do contrato vigente + a régua de vigência com os marcos de
   // renovação da academia (Configurações → Metas & ritmo, nunca hardcode).
@@ -1804,7 +1859,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                             </span>
                           </div>
                           <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[5px]">
-                            #{String(lead.currentContractId).slice(0, 8).toUpperCase()}{months ? ` · ${months === 1 ? '1 mês' : `${months} meses`}` : ''}
+                            #{shortContractId(lead.currentContractId)}{months ? ` · ${months === 1 ? '1 mês' : `${months} meses`}` : ''}
                           </div>
                         </div>
 
@@ -1828,20 +1883,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                         </div>
 
                         <div className="flex-1 min-w-[130px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
-                          <CapsLabel>Renovado de</CapsLabel>
-                          {renewalOrdinal > 0 ? (
-                            <>
-                              <div className="text-[13px] font-semibold mt-[7px] truncate">{renewedFrom?.planName || pastContracts[0]?.planName || '—'}</div>
-                              <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">
-                                {renewedFrom ? `#${String(renewedFrom.id).slice(0, 4).toUpperCase()} · ` : ''}{renewalOrdinal}ª renovação
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-[13px] font-semibold mt-[7px]">Matrícula inicial</div>
-                              <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">primeiro contrato</div>
-                            </>
-                          )}
+                          <OriginCell origin={origin} />
                         </div>
 
                         <div className="flex-1 min-w-[140px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
@@ -2003,7 +2045,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                           'relative z-[1] size-8 flex-none rounded-full grid place-items-center ring-4 ring-white dark:ring-[#0e1326]',
                           hTone.block, hTone.fg
                         )}>
-                          {isFirstEver ? <GraduationCap size={14} /> : <RefreshCw size={14} />}
+                          <OriginIcon kind={contractOriginOf(c, leadContracts).kind} />
                         </span>
 
                         <div className="min-w-0 flex-[1.4]">
