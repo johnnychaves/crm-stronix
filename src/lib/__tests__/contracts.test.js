@@ -716,6 +716,18 @@ describe('renewalStartProblem: quando a renovação não pode ser gravada', () =
     expect(renewalStartProblem({ status: 'ativo', startsAt: ts(D(2025, 10, 11)) }, D(2025, 10, 13))).toBeNull();
   });
 
+  // Dentro do Corrigir, mandar usar o Corrigir não ajuda: fica só a regra.
+  it('na correção, só a regra, sem a dica do Corrigir', () => {
+    const regra = 'A renovação precisa começar a partir de 13/10/2025, dois dias depois do início do contrato renovado.';
+    expect(renewalStartProblem({ startsAt: D(2025, 10, 11) }, D(2025, 10, 12), { correcting: true })).toBe(regra);
+    expect(renewalStartProblem({ startsAt: D(2025, 10, 11) }, D(2025, 10, 11), { correcting: true })).toBe(regra);
+    expect(renewalStartProblem({ startsAt: D(2025, 10, 11) }, D(2025, 10, 13), { correcting: true })).toBeNull();
+    // Na renovação, com ou sem a opção, o texto segue completo.
+    expect(renewalStartProblem({ startsAt: D(2025, 10, 11) }, D(2025, 10, 12))).toBe(cedo);
+    expect(renewalStartProblem({ startsAt: D(2025, 10, 11) }, D(2025, 10, 12), { correcting: false })).toBe(cedo);
+    expect(cedo.startsWith(`${regra} `)).toBe(true);
+  });
+
   it('sem problema devolve null', () => {
     expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2026, 10, 12))).toBeNull();
     expect(renewalStartProblem({}, D(2026, 10, 12))).toBeNull();
@@ -1043,7 +1055,7 @@ describe('buildContractEdit: renovação com o contrato anterior', () => {
     const sobrepoe = corrigir(D(2026, 9, 20), { previous: deOutra });
     expect(sobrepoe.previousPatch).toBeNull();
     expect(sobrepoe.contractPatch.seamless).toBe(false);
-    const intervalo = corrigir(D(2026, 10, 12), { previous: deOutra });
+    const intervalo = corrigir(D(2026, 10, 13), { previous: deOutra });
     expect(intervalo.previousPatch).toBeNull();
     expect(intervalo.contractPatch.seamless).toBe(false);
   });
@@ -1091,11 +1103,60 @@ describe('buildContractEdit: renovação com o contrato anterior', () => {
   it('aceita o doc cru do Firestore e grava Date', () => {
     const ts = (d) => ({ toDate: () => d });
     const cru = { ...encurtado, startsAt: ts(D(2025, 10, 11)), endsAt: ts(D(2026, 9, 27)), originalEndsAt: ts(D(2026, 10, 11)) };
-    // Mesmo início: o patch seria igual ao que já está gravado.
-    expect(corrigir(D(2026, 9, 28), { previous: cru, contract: sobreposta }).previousPatch).toBeNull();
-    const volta = corrigir(D(2026, 10, 12), { previous: cru, contract: sobreposta });
+    const gravada = { ...sobreposta, startsAt: ts(D(2026, 9, 28)), endsAt: ts(D(2027, 9, 28)) };
+    // Mesmo início, lido do Timestamp: nada a recalcular.
+    expect(corrigir(D(2026, 9, 28), { previous: cru, contract: gravada }).previousPatch).toBeNull();
+    const volta = corrigir(D(2026, 10, 12), { previous: cru, contract: gravada });
     expect(volta.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
     expect(volta.previousPatch.endsAt).toBeInstanceOf(Date);
+    // Dado desalinhado: o anterior já termina na véspera do início novo, embora
+    // a renovação diga outro início. O patch sairia igual ao gravado, então
+    // nada é gravado no anterior.
+    const desalinhada = { ...gravada, startsAt: ts(D(2026, 10, 5)) };
+    expect(corrigir(D(2026, 9, 28), { previous: cru, contract: desalinhada }).previousPatch).toBeNull();
+  });
+
+  // Só um início novo mexe na emenda. Corrigir o valor de uma renovação antiga
+  // não encurta o contrato anterior: a sobreposição antiga fica como está
+  // (decisão do Johnny, 28/09/2026).
+  describe('com o mesmo início', () => {
+    // Renovação de antes da regra: começou em 01/08/2026 com o Start valendo
+    // até 11/10/2026, sem a marca de emendada e sem encurtar o Start.
+    const antiga = { ...renovacao, startsAt: D(2026, 8, 1), endsAt: D(2027, 8, 1), seamless: undefined };
+
+    it('corrigir só o valor de uma sobreposição antiga não encurta o anterior nem marca emendada', () => {
+      const r = corrigir(D(2026, 8, 1), { contract: antiga, value: 1400 });
+      expect(r.contractPatch.value).toBe(1400);
+      expect(r.previousPatch).toBeNull();
+      expect(r.contractPatch.seamless).toBe(false);
+      expect(r.leadPatch.currentContractSeamless).toBe(false);
+    });
+
+    // O campo de data do modal dá a meia-noite, e o início gravado pode ter
+    // hora ("Começar hoje"). O mesmo dia não é mudança.
+    it('o mesmo dia com outra hora não é mudança', () => {
+      const comHora = { ...antiga, startsAt: new Date(2026, 7, 1, 14, 30) };
+      const r = corrigir(D(2026, 8, 1), { contract: comHora, value: 1400 });
+      expect(r.previousPatch).toBeNull();
+      expect(r.contractPatch.seamless).toBe(false);
+      expect(r.leadPatch.currentContractSeamless).toBe(false);
+      // A marca que a renovação já tinha também fica.
+      const marcada = corrigir(D(2026, 8, 1), { contract: { ...comHora, seamless: true } });
+      expect(marcada.previousPatch).toBeNull();
+      expect(marcada.contractPatch.seamless).toBe(true);
+    });
+
+    it('mudar o início recalcula', () => {
+      const r = corrigir(D(2026, 8, 2), { contract: antiga });
+      expect(r.previousPatch).toEqual({ endsAt: D(2026, 8, 1), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
+      expect(r.contractPatch.seamless).toBe(true);
+    });
+
+    it('renovação sem início gravado conta como mudança', () => {
+      const r = corrigir(D(2026, 9, 28), { contract: { ...renovacao, startsAt: null } });
+      expect(r.previousPatch).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
+      expect(r.contractPatch.seamless).toBe(true);
+    });
   });
 
   // O leitor da linha do tempo (contractEventOf) depende deste texto.

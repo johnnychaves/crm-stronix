@@ -95,12 +95,15 @@ const eveFitsIn = (join, prevStart, prevEnd) => Boolean(
 // cairia no próprio início, o contrato renovado não teria como ser encurtado
 // (buildMatriculaWrites) e os dois valeriam juntos. Renovar um contrato um dia
 // depois de ele começar é engano, e o Corrigir da ficha resolve.
-export function renewalStartProblem({ status, startsAt: prevStartsAt } = {}, startsAt) {
+// `correcting`: a mesma regra no Corrigir da renovação (ContractEditModal). Lá
+// o texto para na regra, porque mandar usar o Corrigir de dentro dele não ajuda.
+export function renewalStartProblem({ status, startsAt: prevStartsAt } = {}, startsAt, { correcting = false } = {}) {
   if (status === CONTRACT_STATUS.TRANCADO) return 'Este contrato está trancado. Reative o contrato antes de renovar.';
   const prevStart = getSafeDateOrNull(prevStartsAt);
   const diff = calendarDaysBetween(prevStart, startsAt);
   if (diff != null && diff <= 1) {
-    return `A renovação precisa começar a partir de ${fmtDia(addDays(prevStart, 2))}, dois dias depois do início do contrato renovado. Para trocar o plano desse contrato, use Corrigir na ficha do cliente.`;
+    const regra = `A renovação precisa começar a partir de ${fmtDia(addDays(prevStart, 2))}, dois dias depois do início do contrato renovado.`;
+    return correcting ? regra : `${regra} Para trocar o plano desse contrato, use Corrigir na ficha do cliente.`;
   }
   return null;
 }
@@ -597,18 +600,24 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
   const sameDeal = finalValue === (Number(contract?.value) || 0) && listValue === (Number(contract?.listValue) || 0);
   const priorMode = contract?.discountMode && contract.discountMode !== 'nenhum' ? contract.discountMode : null;
 
-  // Renovação corrigida: a marca de emendada e o fim do contrato renovado
-  // acompanham o início novo, com as mesmas regras da gravação da renovação
-  // (buildMatriculaWrites). Se foi esta renovação que encurtou o anterior, a
-  // conta parte do fim original dele, para o fim de verdade nunca se perder.
-  // Sobrepondo, o anterior termina na véspera do novo, e o novo conta como
-  // emendado. Sem sobrepor, o fim que esta renovação encurtou volta ao
-  // original. Não se encurta o que outra renovação encurtou, nem contrato
-  // trancado (o fim ainda anda na reativação) ou cancelado. Sem o anterior
-  // ligado, a marca fica como estava e nenhum outro contrato é gravado.
+  // Renovação com o início corrigido: a marca de emendada e o fim do contrato
+  // renovado acompanham o início novo, com as mesmas regras da gravação da
+  // renovação (buildMatriculaWrites). Se foi esta renovação que encurtou o
+  // anterior, a conta parte do fim original dele, para o fim de verdade nunca
+  // se perder. Sobrepondo, o anterior termina na véspera do novo, e o novo
+  // conta como emendado. Sem sobrepor, o fim que esta renovação encurtou volta
+  // ao original. Não se encurta o que outra renovação encurtou, nem contrato
+  // trancado (o fim ainda anda na reativação) ou cancelado.
+  // Só um início novo recalcula. O início muda por dia do calendário: o campo
+  // de data do modal dá a meia-noite, e o mesmo dia com outra hora não é
+  // mudança. Sem início gravado, conta como mudança. Com o mesmo início, ou sem
+  // o anterior ligado, a marca fica como estava e nenhum outro contrato é
+  // gravado: corrigir só o valor de uma renovação antiga não encurta a
+  // sobreposição dela (decisão do Johnny, 28/09/2026).
+  const startChanged = calendarDaysBetween(contract?.startsAt, start) !== 0;
   let seamless = Boolean(contract?.seamless);
   let previousPatch = null;
-  if (contract?.renewedFromId && previous?.id === contract.renewedFromId) {
+  if (startChanged && contract?.renewedFromId && previous?.id === contract.renewedFromId) {
     const original = getSafeDateOrNull(previous.originalEndsAt);
     const shortenedByThis = Boolean(original && previous.shortenedById && previous.shortenedById === contract.id);
     const shortenedByOther = Boolean(previous.shortenedById && previous.shortenedById !== contract.id);

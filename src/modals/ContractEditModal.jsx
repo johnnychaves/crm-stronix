@@ -63,8 +63,9 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
 
   // A renovação começa no mínimo dois dias depois do início do contrato que ela
   // renova. Sem o status: a trava do trancado é para renovar, não para corrigir.
+  // E sem a dica de usar o Corrigir, que é esta tela (correcting).
   const startProblem = previous && startsAt
-    ? renewalStartProblem({ startsAt: previous.startsAt || previous.createdAt }, startsAt)
+    ? renewalStartProblem({ startsAt: previous.startsAt || previous.createdAt }, startsAt, { correcting: true })
     : null;
   const preview = plan && startsAt
     ? buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason, previous })
