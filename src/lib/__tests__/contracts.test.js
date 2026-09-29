@@ -32,6 +32,10 @@ import { DISCOUNT_MODES } from '../renewal.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const NOW = D(2026, 7, 28);
+// "Hoje" dos testes da vigência: 29/09/2026, às 10h. Só contrato em vigor é
+// emendado ou encurtado, e isso depende do dia. Sem uma data fixa, os testes
+// com o contrato que vai até 11/10/2026 mudariam de resultado depois dessa data.
+const HOJE = new Date(2026, 8, 29, 10, 0);
 
 describe('deriveContractStatus', () => {
   it('ativo quando está em vigência e longe do fim', () => {
@@ -574,7 +578,7 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
   // O documento do contrato atual, como chega da coleção de contratos.
   const atual = { id: 'k1', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
   const renovar = (startsAt, { from = lead, doc = atual } = {}) => buildMatriculaWrites({
-    lead: from, plan, value: 1308, startsAt, mode: 'renovacao', renewedFromId: 'k1', previousContract: doc
+    lead: from, plan, value: 1308, startsAt, mode: 'renovacao', renewedFromId: 'k1', previousContract: doc, now: HOJE
   });
 
   it('começa no dia seguinte ao fim: emendada, sem encurtar o atual', () => {
@@ -703,6 +707,102 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
   });
 });
 
+// Só o contrato em vigor, ativo ou a vencer agora, é emendado ou encurtado. A
+// Meta Diária e o quadro de Renovações carregam a lista uma vez por dia, e o
+// contrato pode ter sido cancelado depois. A ficha oferece renovar o contrato
+// que ainda não começou. Sem esta trava, o lead aparecia ativo com o
+// Operacional já contando o cliente fora da base.
+describe('buildMatriculaWrites: só contrato em vigor é emendado ou encurtado', () => {
+  const plan = { id: 'p1', name: 'Anual', value: 1308, durationMonths: 12 };
+  // C1, de 31/12/2025 a 31/12/2026.
+  const c1 = { id: 'c1', status: 'ativo', startsAt: D(2025, 12, 31), endsAt: D(2026, 12, 31) };
+  // O resumo do lead veio da lista do dia e ainda diz ativo.
+  const lead = {
+    id: 'l1', name: 'Ana', consultantId: 'c1', consultantAuthUid: 'u1',
+    currentContractId: 'c1', currentContractStatus: 'ativo',
+    currentContractStartsAt: D(2025, 12, 31), currentContractEndsAt: D(2026, 12, 31)
+  };
+  const renovar = (startsAt, { doc = c1, from = lead } = {}) => buildMatriculaWrites({
+    lead: from, plan, value: 1308, startsAt, mode: 'renovacao', renewedFromId: 'c1', previousContract: doc, now: HOJE
+  });
+  const emendar = D(2027, 1, 1);
+  const cancelado = { ...c1, status: 'cancelado', cancelledAt: D(2026, 9, 29), cancelReason: 'Financeiro' };
+
+  it('em vigor, nada muda: Emendar marca emendada e Começar hoje encurta', () => {
+    const e = renovar(emendar);
+    expect(e.contract.seamless).toBe(true);
+    expect(e.leadPatch.currentContractSeamless).toBe(true);
+    expect(e.previousPatch).toBeNull();
+    const h = renovar(HOJE);
+    expect(h.previousContractId).toBe('c1');
+    expect(h.previousPatch).toEqual({ endsAt: new Date(2026, 8, 28, 10, 0), originalEndsAt: D(2026, 12, 31) });
+    expect(h.contract.seamless).toBe(true);
+  });
+
+  it('contrato cancelado depois de a lista carregar: Emendar não marca emendada', () => {
+    const r = renovar(emendar, { doc: cancelado });
+    expect(r.contract.seamless).toBe(false);
+    expect(r.leadPatch.currentContractSeamless).toBe(false);
+    expect(r.previousPatch).toBeNull();
+    expect(r.previousContractId).toBeNull();
+  });
+
+  it('contrato cancelado: Começar hoje não encurta o cancelado', () => {
+    const r = renovar(HOJE, { doc: cancelado });
+    expect(r.previousPatch).toBeNull();
+    expect(r.previousContractId).toBeNull();
+    expect(r.contract.seamless).toBe(false);
+    expect(r.leadPatch.currentContractSeamless).toBe(false);
+  });
+
+  it('contrato trancado: não encurta nem marca emendada', () => {
+    const trancado = { ...c1, status: 'trancado', pausedAt: D(2026, 9, 1) };
+    [emendar, HOJE].forEach((inicio) => {
+      const r = renovar(inicio, { doc: trancado });
+      expect(r.previousPatch).toBeNull();
+      expect(r.previousContractId).toBeNull();
+      expect(r.contract.seamless).toBe(false);
+    });
+  });
+
+  // K1 começa em 20/10, depois de um intervalo, e a ficha oferece renovar.
+  it('contrato agendado: Emendar não marca emendada, e a sobreposição não encurta', () => {
+    const k1 = { id: 'c1', status: 'ativo', startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20) };
+    const from = { ...lead, currentContractStartsAt: k1.startsAt, currentContractEndsAt: k1.endsAt };
+    const e = renovar(D(2027, 10, 21), { doc: k1, from });
+    expect(e.contract.seamless).toBe(false);
+    expect(e.leadPatch.currentContractSeamless).toBe(false);
+    const s = renovar(D(2026, 12, 1), { doc: k1, from });
+    expect(s.previousPatch).toBeNull();
+    expect(s.contract.seamless).toBe(false);
+  });
+
+  // A renovação vencida da Meta Diária passa pelo mesmo modal.
+  it('contrato vencido: não marca emendada nem encurta', () => {
+    const vencido = { ...c1, startsAt: D(2025, 9, 10), endsAt: D(2026, 9, 10) };
+    const from = { ...lead, currentContractStartsAt: vencido.startsAt, currentContractEndsAt: vencido.endsAt };
+    expect(renovar(D(2026, 9, 11), { doc: vencido, from }).contract.seamless).toBe(false);
+    expect(renovar(D(2026, 9, 5), { doc: vencido, from }).previousPatch).toBeNull();
+  });
+
+  // A emendada que ainda não começou conta como ativa: a corrente segue.
+  it('renovação emendada que ainda não começou está em vigor', () => {
+    const k2 = { id: 'c1', status: 'ativo', seamless: true, startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12) };
+    const from = { ...lead, currentContractStartsAt: k2.startsAt, currentContractEndsAt: k2.endsAt, currentContractSeamless: true };
+    expect(renovar(D(2027, 10, 13), { doc: k2, from }).contract.seamless).toBe(true);
+    expect(renovar(D(2027, 10, 13), { doc: null, from }).contract.seamless).toBe(true);
+  });
+
+  it('sem o documento, vale o resumo do lead: cancelado não marca emendada', () => {
+    const r = renovar(emendar, { doc: null, from: { ...lead, currentContractStatus: 'cancelado' } });
+    expect(r.contract.seamless).toBe(false);
+    expect(r.leadPatch.currentContractSeamless).toBe(false);
+    expect(r.previousPatch).toBeNull();
+    // Em vigor pelo resumo, marca como antes.
+    expect(renovar(emendar, { doc: null }).contract.seamless).toBe(true);
+  });
+});
+
 describe('renewalStartProblem: quando a renovação não pode ser gravada', () => {
   // Contrato renovado que começou em 11/10/2025: a renovação começa a partir de 13/10.
   const cedo = 'A renovação precisa começar a partir de 13/10/2025, dois dias depois do início do contrato renovado. Para trocar o plano desse contrato, use Corrigir na ficha do cliente.';
@@ -759,6 +859,59 @@ describe('renewalStartProblem: quando a renovação não pode ser gravada', () =
     expect(renewalStartProblem({}, D(2026, 10, 12))).toBeNull();
     expect(renewalStartProblem(undefined, D(2026, 10, 12))).toBeNull();
     expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, null)).toBeNull();
+  });
+
+  // A lista da Meta Diária e o quadro de Renovações são carregados uma vez por
+  // dia: o contrato pode ter sido cancelado depois. E a ficha oferece renovar o
+  // contrato que ainda não começou. O modal passa o status gravado no documento.
+  describe('contrato cancelado ou que ainda não começou', () => {
+    const cancelado = 'Este contrato foi cancelado. Para o cliente voltar, faça uma nova matrícula pela ficha.';
+    const naoComecou = (dia) => `Este contrato ainda não começou (começa em ${dia}). Para trocar o plano ou a data, use Corrigir na ficha do cliente.`;
+
+    it('contrato cancelado não renova, com qualquer início', () => {
+      const c1 = { status: 'cancelado', startsAt: D(2025, 12, 31) };
+      expect(renewalStartProblem(c1, D(2027, 1, 1), { now: HOJE })).toBe(cancelado);
+      expect(renewalStartProblem(c1, HOJE, { now: HOJE })).toBe(cancelado);
+      expect(renewalStartProblem(c1, D(2025, 12, 31), { now: HOJE })).toBe(cancelado);
+      expect(renewalStartProblem(c1, null, { now: HOJE })).toBe(cancelado);
+    });
+
+    it('contrato que ainda não começou não renova: trocar o plano ou a data é pelo Corrigir', () => {
+      expect(renewalStartProblem({ status: 'ativo', startsAt: D(2026, 10, 20) }, D(2027, 10, 21), { now: HOJE }))
+        .toBe(naoComecou('20/10/2026'));
+      expect(renewalStartProblem({ status: 'ativo', startsAt: D(2026, 10, 20) }, D(2026, 10, 21), { now: HOJE }))
+        .toBe(naoComecou('20/10/2026'));
+    });
+
+    // A emendada que ainda não começou conta como ativa, mas continua sendo um
+    // contrato que ainda não começou.
+    it('nem a renovação emendada que ainda não começou', () => {
+      expect(renewalStartProblem({ status: 'ativo', startsAt: D(2026, 10, 12) }, D(2027, 10, 13), { now: HOJE }))
+        .toBe(naoComecou('12/10/2026'));
+    });
+
+    it('o que já começou segue pela regra dos dois dias', () => {
+      const c1 = { status: 'ativo', startsAt: D(2026, 9, 29) };
+      expect(renewalStartProblem(c1, D(2026, 9, 30), { now: HOJE }))
+        .toBe('A renovação precisa começar a partir de 01/10/2026, dois dias depois do início do contrato renovado. Para trocar o plano desse contrato, use Corrigir na ficha do cliente.');
+      expect(renewalStartProblem(c1, D(2026, 10, 1), { now: HOJE })).toBeNull();
+    });
+
+    it('o trancado segue com o aviso dele', () => {
+      expect(renewalStartProblem({ status: 'trancado', startsAt: D(2026, 10, 20) }, D(2027, 10, 21), { now: HOJE }))
+        .toBe('Este contrato está trancado. Reative o contrato antes de renovar.');
+    });
+
+    // No Corrigir, o contrato renovado é o anterior de uma renovação que já
+    // existe. As duas travas são de renovar, não de corrigir.
+    it('na correção, cancelado e ainda não começou não contam', () => {
+      expect(renewalStartProblem({ status: 'cancelado', startsAt: D(2025, 10, 11) }, D(2026, 10, 12), { correcting: true, now: HOJE }))
+        .toBeNull();
+      expect(renewalStartProblem({ status: 'ativo', startsAt: D(2026, 10, 20) }, D(2026, 10, 25), { correcting: true, now: HOJE }))
+        .toBeNull();
+      expect(renewalStartProblem({ startsAt: D(2026, 10, 20) }, D(2026, 10, 21), { correcting: true, now: HOJE }))
+        .toBe('A renovação precisa começar a partir de 22/10/2026, dois dias depois do início do contrato renovado.');
+    });
   });
 });
 
@@ -990,7 +1143,7 @@ describe('renovação cancelada antes de começar', () => {
 
     const w = buildMatriculaWrites({
       lead, plan: { id: 'p2', name: 'Flow', value: 1500, durationMonths: 12 }, value: 1500,
-      startsAt: D(2026, 10, 5), mode: 'renovacao', renewedFromId: 'k1', previousContract: antes
+      startsAt: D(2026, 10, 5), mode: 'renovacao', renewedFromId: 'k1', previousContract: antes, now: HOJE
     });
     expect(w.previousContractId).toBe('k1');
     // Como o banco fica depois da renovação: commitMatricula grava o
@@ -1026,8 +1179,8 @@ describe('buildContractEdit: renovação com o contrato anterior', () => {
   // O Start, encurtado por esta renovação quando ela começava em 28/09.
   const encurtado = { ...anterior, endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' };
   const sobreposta = { ...renovacao, startsAt: D(2026, 9, 28), endsAt: D(2027, 9, 28) };
-  const corrigir = (startsAt, { previous = anterior, contract = renovacao, value = 1308 } = {}) =>
-    buildContractEdit({ contract, plan: plano, value, startsAt, previous });
+  const corrigir = (startsAt, { previous = anterior, contract = renovacao, value = 1308, now = HOJE } = {}) =>
+    buildContractEdit({ contract, plan: plano, value, startsAt, previous, now });
 
   it('continua emendada: nada muda no anterior', () => {
     const r = corrigir(D(2026, 10, 12));
@@ -1072,18 +1225,24 @@ describe('buildContractEdit: renovação com o contrato anterior', () => {
   });
 
   // Só se mexe no fim que esta renovação mudou. Como na gravação, o contrato
-  // que outra renovação encurtou não é encurtado de novo.
+  // que outra renovação encurtou não é encurtado de novo. Em 20/09 o anterior
+  // ainda vale até o fim gravado (27/09).
   it('anterior encurtado por outra renovação: não mexe nele, e a marca sai do fim gravado', () => {
     const deOutra = { ...encurtado, shortenedById: 'k9' };
-    const emenda = corrigir(D(2026, 9, 28), { previous: deOutra });
+    const antesDoFim = D(2026, 9, 20);
+    const emenda = corrigir(D(2026, 9, 28), { previous: deOutra, now: antesDoFim });
     expect(emenda.previousPatch).toBeNull();
     expect(emenda.contractPatch.seamless).toBe(true);
-    const sobrepoe = corrigir(D(2026, 9, 20), { previous: deOutra });
+    const sobrepoe = corrigir(D(2026, 9, 20), { previous: deOutra, now: antesDoFim });
     expect(sobrepoe.previousPatch).toBeNull();
     expect(sobrepoe.contractPatch.seamless).toBe(false);
-    const intervalo = corrigir(D(2026, 10, 13), { previous: deOutra });
+    const intervalo = corrigir(D(2026, 10, 13), { previous: deOutra, now: antesDoFim });
     expect(intervalo.previousPatch).toBeNull();
     expect(intervalo.contractPatch.seamless).toBe(false);
+    // Passado o fim gravado, o anterior não está mais em vigor e a marca não vem.
+    const depoisDoFim = corrigir(D(2026, 9, 28), { previous: deOutra });
+    expect(depoisDoFim.previousPatch).toBeNull();
+    expect(depoisDoFim.contractPatch.seamless).toBe(false);
   });
 
   // O fim do trancado ainda anda na reativação, e o do cancelado já parou.
@@ -1094,6 +1253,43 @@ describe('buildContractEdit: renovação com o contrato anterior', () => {
       expect(r.contractPatch.seamless, status).toBe(false);
       expect(r.leadPatch.currentContractSeamless, status).toBe(false);
     });
+  });
+
+  // Mesma trava da gravação: só o contrato em vigor é emendado ou encurtado.
+  it('início movido para o dia seguinte ao fim de um anterior cancelado ou trancado: não marca emendada', () => {
+    const comIntervalo = { ...renovacao, startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20), seamless: false };
+    [
+      { ...anterior, status: 'cancelado', cancelledAt: D(2026, 9, 29) },
+      { ...anterior, status: 'trancado', pausedAt: D(2026, 9, 1) }
+    ].forEach((previous) => {
+      const r = corrigir(D(2026, 10, 12), { previous, contract: comIntervalo });
+      expect(r.contractPatch.seamless, previous.status).toBe(false);
+      expect(r.leadPatch.currentContractSeamless, previous.status).toBe(false);
+      expect(r.previousPatch, previous.status).toBeNull();
+    });
+  });
+
+  it('anterior que ainda não começou: não marca emendada nem encurta', () => {
+    const agendado = { ...anterior, startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20) };
+    const depois = { ...renovacao, startsAt: D(2027, 10, 25), endsAt: D(2028, 10, 25), seamless: false };
+    expect(corrigir(D(2027, 10, 21), { previous: agendado, contract: depois }).contractPatch.seamless).toBe(false);
+    const sobrepoe = corrigir(D(2026, 12, 1), { previous: agendado, contract: depois });
+    expect(sobrepoe.previousPatch).toBeNull();
+    expect(sobrepoe.contractPatch.seamless).toBe(false);
+  });
+
+  // Hoje é 29/09. O Start ia até 11/10 e esta renovação o encurtou para 27/09,
+  // que já passou. A conta usa o fim original: pelo fim encurtado ele leria
+  // como vencido, e voltar para a emenda perderia a marca.
+  it('anterior encurtado por esta renovação, com o fim novo já passado: volta para a emenda com a marca', () => {
+    const r = corrigir(D(2026, 10, 12), { previous: encurtado, contract: sobreposta });
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
+    expect(r.contractPatch.seamless).toBe(true);
+    expect(r.leadPatch.currentContractSeamless).toBe(true);
+    // Depois do fim original também, o fim volta, mas a marca não vem.
+    const tarde = corrigir(D(2026, 10, 12), { previous: encurtado, contract: sobreposta, now: D(2026, 10, 20) });
+    expect(tarde.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
+    expect(tarde.contractPatch.seamless).toBe(false);
   });
 
   it('não encurta para antes do início do contrato anterior', () => {
@@ -1196,7 +1392,7 @@ describe('buildContractEdit: renovação com o contrato anterior', () => {
   it('renovar encurtando e corrigir para a emenda devolve o anterior como estava', () => {
     const lead = { id: 'l1', name: 'Ana', currentContractId: 'k1', currentContractEndsAt: D(2026, 10, 11) };
     const w = buildMatriculaWrites({
-      lead, plan: plano, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: anterior
+      lead, plan: plano, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: anterior, now: HOJE
     });
     const depois = { ...anterior, ...w.previousPatch, shortenedById: 'k2' };
     const r = corrigir(D(2026, 10, 12), { previous: depois, contract: { id: 'k2', ...w.contract } });

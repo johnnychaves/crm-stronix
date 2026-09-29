@@ -147,6 +147,13 @@ A regra vira a função pura `vigenciaRefDate({ status, pausedAt, cancelledAt },
 
 No modo renovação, se o contrato atual estiver `trancado` (pelo documento dele ou, sem o documento, pelo resumo do lead), o `ContractModal` mostra "Este contrato está trancado. Reative o contrato antes de renovar." e não salva. A ficha já troca Renovar por Reativar no trancado. O caminho que chega aqui é o funil Upgrade, pelo Kanban e pelo Mudar fase.
 
+### Renovar contrato fora de vigor
+
+Entrou na revisão do código (29/09/2026). A lista da Meta Diária e o quadro de Renovações carregam uma vez por dia, e o contrato podia ter sido cancelado depois: a renovação emendada deixava o lead ativo com o Operacional já contando o cliente fora da base, e a sobreposta encurtava o contrato cancelado. A ficha também oferecia renovar o contrato que ainda não começou.
+- Só o contrato em vigor, ativo ou a vencer na hora da gravação, é emendado ou encurtado, na renovação (`buildMatriculaWrites`) e na correção dela (`buildContractEdit`). O status sai do documento, quando ele é usado, senão do resumo do lead. A emendada que ainda não começou conta como em vigor.
+- O modal recusa renovar contrato cancelado ("Este contrato foi cancelado. Para o cliente voltar, faça uma nova matrícula pela ficha.") e contrato que ainda não começou ("Este contrato ainda não começou (começa em DD/MM/AAAA). Para trocar o plano ou a data, use Corrigir na ficha do cliente."). No Corrigir, essas duas travas não valem.
+- Na correção, o anterior que a própria renovação encurtou é lido pelo fim original.
+
 ### Renovações já feitas
 
 Script `scripts/backfill-contract-seamless.js`, no molde dos outros de `scripts/`. Roda por academia, com os ids na linha de comando (obrigatórios e conferidos na coleção `tenants` antes de varrer), só mostra o que faria por padrão e grava com `--apply`. A decisão mora em `src/lib/seamlessBackfill.js`, com teste.
