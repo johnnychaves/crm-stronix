@@ -533,3 +533,44 @@ describe('emendado: começa no dia seguinte ao fim do contrato renovado', () => 
     expect(renewalJoinOf(ts(D(2026, 10, 11)), ts(D(2026, 10, 12))).seamless).toBe(true);
   });
 });
+
+describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
+  const plan = { id: 'p1', name: 'Anual', value: 1308, durationMonths: 12 };
+  const lead = {
+    id: 'l1', name: 'Ana', consultantId: 'c1', consultantAuthUid: 'u1',
+    currentContractId: 'k1', currentContractStartsAt: D(2025, 10, 11), currentContractEndsAt: D(2026, 10, 11)
+  };
+  const renovar = (startsAt) => buildMatriculaWrites({ lead, plan, value: 1308, startsAt, mode: 'renovacao', renewedFromId: 'k1' });
+
+  it('começa no dia seguinte ao fim: emendada, sem encurtar o atual', () => {
+    const r = renovar(D(2026, 10, 12));
+    expect(r.contract.seamless).toBe(true);
+    expect(r.leadPatch.currentContractSeamless).toBe(true);
+    expect(r.previousPatch).toBeNull();
+    expect(r.previousContractId).toBeNull();
+  });
+
+  it('começa depois de um intervalo: não é emendada', () => {
+    const r = renovar(D(2026, 10, 20));
+    expect(r.contract.seamless).toBe(false);
+    expect(r.previousPatch).toBeNull();
+  });
+
+  it('começa antes do fim: o atual termina na véspera do novo', () => {
+    const r = renovar(D(2026, 9, 28));
+    expect(r.contract.seamless).toBe(false);
+    expect(r.previousContractId).toBe('k1');
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11) });
+  });
+
+  it('começa no próprio dia do fim também encurta', () => {
+    expect(renovar(D(2026, 10, 11)).previousPatch).toEqual({ endsAt: D(2026, 10, 10), originalEndsAt: D(2026, 10, 11) });
+  });
+
+  it('matrícula nunca é emendada nem encurta nada', () => {
+    const r = buildMatriculaWrites({ lead, plan, value: 1308, startsAt: D(2026, 10, 12) });
+    expect(r.contract.seamless).toBe(false);
+    expect(r.leadPatch.currentContractSeamless).toBe(false);
+    expect(r.previousPatch).toBeNull();
+  });
+});

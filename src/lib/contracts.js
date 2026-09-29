@@ -177,6 +177,13 @@ export const buildMatriculaWrites = ({
   const finalValue = Number.isFinite(Number(value)) ? Number(value) : (Number(plan?.value) || 0);
   const listValue = Number(plan?.value) || 0;
 
+  // Renovação: como o contrato novo encosta no atual (renewalJoinOf). A
+  // emendada conta como ativa desde já. A sobreposta encurta o atual para a
+  // véspera do novo, e o fim de antes fica guardado para a renovação poder ser
+  // desfeita (buildRenewalCancel).
+  const currentEnd = isRenewal && lead?.currentContractId ? getSafeDateOrNull(lead?.currentContractEndsAt) : null;
+  const join = currentEnd ? renewalJoinOf(currentEnd, start) : { seamless: false, overlaps: false, previousEndsAt: null };
+
   const contract = {
     leadId: lead?.id || null,
     leadName: lead?.name || null,
@@ -191,6 +198,7 @@ export const buildMatriculaWrites = ({
     cancelledAt: null,
     cancelReason: null,
     renewedFromId: renewedFromId || null,
+    seamless: join.seamless,
     // Fechou de dentro do funil Upgrade (decisão 9 do spec): a marca vem do
     // funil, não do plano. Renovação continua sendo renewedFromId; o mesmo
     // contrato pode ser os dois, e é uma venda só.
@@ -211,6 +219,7 @@ export const buildMatriculaWrites = ({
     currentContractStartsAt: start,
     currentContractEndsAt: endsAt,
     currentContractStatus: CONTRACT_STATUS.ATIVO,
+    currentContractSeamless: join.seamless,
     // Novo ciclo de contrato = marcos de renovação zerados. Vale tanto para
     // matrícula (lead novo, campos já nascem assim) quanto para renovação
     // (o ciclo anterior pode ter deixado marcos tratados/declínio gravados —
@@ -246,7 +255,11 @@ export const buildMatriculaWrites = ({
     // timeline do INDICADOR. Id e texto nascem aqui, dos campos denormalizados
     // do lead, para o batch não precisar ler doc nenhum.
     notifyReferrerId: (!isRenewal && lead?.referredById) || null,
-    referrerInteractionText: referralConvertedText(lead?.name)
+    referrerInteractionText: referralConvertedText(lead?.name),
+    // Sobreposição: o contrato atual a encurtar. O caller grava no mesmo batch
+    // e acrescenta shortenedById com o id do contrato novo.
+    previousContractId: join.overlaps ? lead.currentContractId : null,
+    previousPatch: join.overlaps ? { endsAt: join.previousEndsAt, originalEndsAt: currentEnd } : null
   };
 };
 
