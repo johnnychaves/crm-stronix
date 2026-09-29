@@ -25,10 +25,10 @@ Quem esqueceu a senha pede um código de 6 números por e-mail na tela de login,
 - **O servidor fica em duas ações novas do `api/tenant-resolve.js`**, o endpoint público que já atende a página de indicação. A lógica mora em arquivos com sublinhado, que a Vercel não publica como função. O app continua com 11 das 12 funções do plano Hobby.
 - **O pedido fica no Firestore**, num documento por conta, que guarda só uma impressão do código.
 - **Super-admin fora.** É a conta que enxerga todas as academias, e um código de 6 números por e-mail protege menos que a senha.
-- **A tela nunca revela se um e-mail tem conta.** O passo 1 responde sempre igual e no mesmo tempo, porque a resposta sai antes do trabalho, pelo `waitUntil` da Vercel. O passo 2 tem uma frase só para qualquer falha e nunca responde em menos de 2,5 s, para o tempo também não entregar quem tem conta.
+- **A tela nunca revela se um e-mail tem conta.** O passo 1 responde sempre igual e no mesmo tempo, porque a resposta sai antes do trabalho, pelo `waitUntil` da Vercel. O passo 2 tem uma frase só para qualquer falha e, passado o limitador, nunca responde em menos de 2,5 s, para o tempo também não entregar quem tem conta. O 415 e a 429 saem na hora, porque dependem só do pedido e do IP.
 - **Depois de trocar, a pessoa entra pelo login.** A troca não abre sessão.
 - **As sessões abertas caem em até 1 hora.** O Firebase não derruba uma sessão na hora, como o Stronizap faz com os sockets. A troca revoga as sessões: as chamadas ao `api/` param na hora, porque o `verifyRequest` confere a revogação, e as telas abertas voltam para o login quando o token de acesso vence, em até 1 hora. O Johnny aprovou esse prazo.
-- **Sem Turnstile.** O Stronilead não usa a Cloudflare, e o login vai direto ao Firebase (spec de segurança de 2026-08-03). A proteção fica com o limite por IP, o de 5 códigos por dia e o de 5 tentativas.
+- **Sem Turnstile.** O Stronilead não usa a Cloudflare, e o login vai direto ao Firebase (spec de segurança de 2026-08-03). A proteção fica com os limites por IP, o de 5 códigos por dia por conta, o de 5 tentativas, o teto de 50 e-mails por dia e o 415 para o corpo que não vem em JSON.
 - **Sem o Resend configurado em produção, a função fica desligada** e o resto do app segue igual.
 - **O `sendPasswordResetEmail` sai do app.**
 
@@ -84,7 +84,7 @@ A tela confere antes de mandar: sem `@`, mostra "Digite o e-mail que você usa p
 | 400 | "Confira o e-mail digitado.", embaixo do campo |
 | 429 | "Muitas tentativas. Espere alguns minutos e tente de novo." |
 | 503 | O aviso de função desligada |
-| Erro de rede ou do servidor | "Não deu para enviar agora. Tente de novo." |
+| Erro de rede ou do servidor, inclusive o 415 | "Não deu para enviar agora. Tente de novo." |
 
 Os avisos que não são de campo são o `AuthAlert` (`role="alert"`) e o `AuthStatus` (`role="status"`), em `src/views/auth/AuthNotice.jsx`, os mesmos do login. Aparecem acima do botão. As duas regiões já estão na tela, vazias, desde o primeiro render, porque o leitor de tela só anuncia o que aparece numa região que já estava na página.
 
@@ -111,7 +111,7 @@ A tela confere antes de mandar: código com 6 números ("Digite os 6 números do
 | Código errado, vencido, já usado, morto por tentativas, ou e-mail sem conta | "Código errado ou vencido. Confira o último e-mail ou peça outro código.", embaixo do campo do código |
 | Senha fora da regra (400 com `field: 'newPassword'`) | A frase do servidor, embaixo do campo da senha |
 | 429 | "Muitas tentativas. Espere alguns minutos e tente de novo." |
-| Erro de rede ou do servidor | "Não deu para salvar agora. Tente de novo." |
+| Erro de rede ou do servidor, inclusive o 415 | "Não deu para salvar agora. Tente de novo." |
 
 A senha digitada continua nos campos depois de um erro.
 
@@ -131,6 +131,8 @@ Decisões da revisão da tela, que valem para os dois passos:
 A tela guarda em `sessionStorage` (`stronilead:recuperar-senha`) o e-mail e a hora do último envio, no formato `{ email, sentAt }`. F5 no passo 2 continua no passo 2 enquanto os 15 minutos não passaram. Quando dá certo, ou quando a pessoa clica em "Usar outro e-mail", a memória é apagada. A memória vencida também é apagada, na leitura: numa recepção com computador dividido, o e-mail de quem pediu o código não pode ficar para a próxima pessoa. A senha e o código nunca vão para o `sessionStorage`. Leitura e escrita ficam dentro de `try/catch`: sem `sessionStorage`, a tela funciona e só perde a memória.
 
 A memória vence o e-mail que vem do login: quem abrir o "Esqueci a senha" na mesma aba em até 15 minutos cai no passo 2 do pedido anterior, e o "Usar outro e-mail" resolve. Aceito.
+
+O login que dá certo e o Sair apagam a memória com o `clearResetMemory`: no `LoginScreen.jsx`, logo depois do `signInWithEmailAndPassword`, e no `leaveTo` do `App.jsx`, antes da recarga. Sem isso, por até 15 minutos, a próxima pessoa no mesmo computador cairia no passo 2 com o e-mail de quem pediu antes e poderia mandar outro código para essa conta. O login que falha deixa a memória, porque a pessoa pode estar no meio da troca.
 
 ### Aviso de sucesso no login
 
@@ -162,7 +164,7 @@ Se o servidor responder 503, o passo 1 mostra: "A redefinição de senha por e-m
 - A prévia da caixa de entrada sai do começo do corpo, e o código não pode aparecer nela. Por isso o corpo abre com um trecho escondido ("Abra o e-mail para ver o código. Se não foi você que pediu, pode ignorar este e-mail.", mais um enchimento de espaços invisíveis) que ocupa esse lugar. A frase é longa de propósito: mesmo em cliente que descarta o enchimento, o código cai depois do caractere 140 do texto do corpo. O bloco leva `mso-hide:all`, para o Outlook não o mostrar no e-mail aberto.
 - A montagem só aceita código de 6 números: qualquer outra coisa lança erro.
 - Uma versão só texto leva o mesmo conteúdo, menos o trecho escondido.
-- O primeiro nome vem do cadastro da pessoa na equipe (`stronix_users`), com o nome da conta do Firebase de reserva. Sem nome, fica "Olá.". O nome passa por escape de HTML.
+- O primeiro nome vem do cadastro da pessoa na equipe (`stronix_users`), com o nome da conta do Firebase de reserva. O gestor digita esse nome, e uma primeira palavra como "https://site-falso.com" viraria link clicável num e-mail oficial. Por isso a saudação só leva a primeira palavra quando ela é nome: começa com letra e segue com letras, apóstrofo (reto ou curvo) ou hífen, até 40 caracteres (`/^\p{L}[\p{L}'’-]{0,39}$/u`, em `api/_passwordResetEmail.js`). Sem nome, ou com uma primeira palavra que não passa na regra, fica "Olá.", no HTML e no texto. O nome ainda passa por escape de HTML.
 
 ## Regras de segurança
 
@@ -212,9 +214,11 @@ No último caso, a pessoa só precisa pedir outro código.
 ### Limites
 
 - **Por conta:** no máximo 5 códigos em 24 horas corridas, contados no documento da conta. Isso dá no máximo 25 tentativas por dia em 1 milhão de combinações, e cada código manda um e-mail para a pessoa dona da conta, que percebe. O limite também protege a cota do Resend.
-- **Por IP, no pedido:** 5 a cada 15 minutos (`pw-reset-request:<ip>`).
-- **Por IP, na troca:** 10 a cada 15 minutos (`pw-reset-confirm:<ip>`). O limitador do Stronilead conta todas, inclusive a que deu certo, e essa encerra o fluxo.
-- Os dois usam o `checkRateLimit` de `api/_rateLimit.js`, com chaves próprias. As chaves por IP contam o IPv6 pelo bloco /64 (`rateKeyIp`, em `api/_passwordResetRoute.js`), porque quem recebe uma rede IPv6 tem bilhões de endereços e trocaria de IP a cada tentativa para fugir do limite. O IPv4 fica como veio, e o IPv4 mapeado no IPv6 (`::ffff:1.2.3.4`) vale o IPv4 dele, para o mesmo cliente não ganhar duas cotas. O IP inteiro continua indo para o log. A recuperação não gasta a cota por IP da marca do login (`tenant-resolve:<ip>`) nem a da indicação. O limitador falha aberto, como hoje. O limite por conta e o de tentativas não dependem dele, porque rodam em transação no documento da conta.
+- **Por IP, no pedido:** 5 a cada 15 minutos (`pw-reset-request:<ip>`) e, depois dele, 20 a cada 24 horas (`pw-reset-request-day:<ip>`). A janela de 15 minutos reinicia 96 vezes por dia e, sozinha, deixaria um IP fazer 480 pedidos em 24 horas. O pedido barrado na janela de 15 minutos não gasta a cota do dia. Os dois respondem 429 com a mesma frase.
+- **Por IP, na troca:** 10 a cada 15 minutos (`pw-reset-confirm:<ip>`). O limitador do Stronilead conta todas, inclusive a que deu certo, e essa encerra o fluxo. A 429 da troca sai na hora, sem o piso de tempo (ver "O piso de tempo").
+- **Teto de e-mails:** 50 a cada 24 horas, somando todas as academias (`RESET_MAILS_PER_DAY`, em `api/_passwordReset.js`, contado na chave `pw-reset-mail-day`). A cota grátis do Resend é de 100 e-mails por dia e é dividida com o Stronizap, que usa a mesma conta e já tem o "Esqueci a senha" em produção. O teto de 50 deixa metade para ele. O fluxo reserva a vaga depois do `accountRefusal`, para e-mail inventado não gastar o teto, e antes do `issueCode`, para o pedido sem vaga não gastar um dos 5 códigos do dia da pessoa sem mandar e-mail. Sem vaga, o motivo `mail_cap` vai para o log com a conta, a academia e o IP, e nada é emitido nem enviado. A resposta continua 200. Como a vaga vem antes do código, o pedido para uma conta que já gastou os 5 códigos do dia também gasta uma vaga.
+- **Corpo em JSON:** as duas ações respondem 415 quando o tipo do corpo não é `application/json`, em maiúsculas ou minúsculas e com ou sem `; charset=...`. O parser da Vercel transforma `application/x-www-form-urlencoded` em objeto, e um `<form method="post">` de outro site não passa por preflight. Sem o 415, a página de um atacante pediria códigos com o IP de cada visitante. O 415 sai antes de tudo: antes do limitador, antes do 200 do pedido e antes do piso da troca. Ele não diz nada sobre contas. A frase é a de falha comum de cada passo (`SEND_FAILED_MESSAGE` no pedido e `SAVE_FAILED_MESSAGE` na troca), e a tela o trata como falha comum. A tela manda `Content-Type: application/json` (`postResetAction`, em `src/lib/passwordReset.js`). O POST da indicação, no mesmo arquivo, não olha o `content-type`.
+- Todos usam o `checkRateLimit` de `api/_rateLimit.js`, com chaves próprias. As chaves por IP contam o IPv6 pelo bloco /64 (`rateKeyIp`, em `api/_passwordResetRoute.js`), porque quem recebe uma rede IPv6 tem bilhões de endereços e trocaria de IP a cada tentativa para fugir do limite. O IPv4 fica como veio, e o IPv4 mapeado no IPv6 (`::ffff:1.2.3.4`) vale o IPv4 dele, para o mesmo cliente não ganhar duas cotas. O IP inteiro continua indo para o log. A recuperação não gasta a cota por IP da marca do login (`tenant-resolve:<ip>`) nem a da indicação. O limitador falha aberto, como hoje, e o teto de e-mails falha aberto junto. O limite por conta e o de tentativas não dependem dele, porque rodam em transação no documento da conta.
 
 ### Troca da senha
 
@@ -225,8 +229,8 @@ No último caso, a pessoa só precisa pedir outro código.
 
 ### Registro
 
-- **Log da Vercel:** a conta (uid), a academia e o IP, em cada pedido e em cada troca, e o motivo de cada recusa, inclusive o `bad_format` (código que não tem 6 números). As recusas levam a conta ou, sem conta, o e-mail mascarado (`an***@academia.com`), nunca inteiro, e nesse caso a academia fica de fora. O `maskEmail` também nunca deixa a parte antes do `@` inteira: com duas letras aparece `j***@`, e com uma, `***@`. Cada troca registra `troca respondida` com o `status` e os `ms` que o trabalho levou, medidos antes do piso, sem e-mail e sem código. O código nunca vai para o log em produção.
-- **Auditoria:** toda troca que deu certo entra em `superadmin_audit`, pelo `logAudit`, como `password.reset`, com a academia e o uid, porque o log da Vercel some em 1 hora. A atividade recente do super-admin mostra "Trocou a senha pelo código · <academia>", com um `case` novo em `auditActionLabel` (`src/lib/superadmin.js`).
+- **Log da Vercel:** a conta (uid), a academia e o IP, em cada pedido e em cada troca, e o motivo de cada recusa, inclusive o `bad_format` (código que não tem 6 números) e o `mail_cap` (teto de e-mails do dia). As recusas levam a conta ou, sem conta, o e-mail mascarado (`an***@academia.com`), nunca inteiro, e nesse caso a academia fica de fora. O `maskEmail` também nunca deixa a parte antes do `@` inteira: com duas letras aparece `j***@`, e com uma, `***@`. Cada troca registra `troca respondida` com o `status` e os `ms` que o trabalho levou, medidos antes do piso, sem e-mail e sem código. O código nunca vai para o log em produção.
+- **Auditoria:** toda troca que deu certo entra em `superadmin_audit`, pelo `logAudit`, como `password.reset`, com a academia, o uid e o ambiente da Vercel (`details.ambiente`, que é o `VERCEL_ENV`, ou `null` sem ele), porque o log da Vercel some em 1 hora. O ambiente separa a troca feita no Preview, com o código lido no log, da troca feita em produção. A atividade recente do super-admin mostra "Trocou a senha pelo código · <academia>", com um `case` novo em `auditActionLabel` (`src/lib/superadmin.js`). A função recebe a entrada inteira da auditoria, e o console (`src/views/console/SuperConsole.jsx`) passa a entrada inteira nos dois lugares em que mostra a auditoria. Quem passa só o `.action` recebe um rótulo com "undefined", e o `superadminAudit.test.js` barra essa chamada em `src/views`.
 - **Sentry:** não recebe corpo, cabeçalho nem query da requisição. O `api/_sentry.js` já corta tudo isso na origem, e o `npm run verificar:sentry` confere. A chave do Resend é mascarada pelo `src/lib/sentryScrub.js` como segunda camada, e o `verificar:sentry` a planta nos erros que simula. A falha de envio vai ao Sentry: o fluxo relança o erro e a rota o captura, porque chave revogada ou domínio sem verificação quebram todo pedido e o log da Vercel some em 1 hora. Nas funções da `api/`, a migalha de console não vai ao Sentry (`scrubApiBreadcrumb`), porque o log leva uid, academia e IP e, no Preview, o e-mail com o código.
 
 ### Efeito colateral aceito
@@ -264,24 +268,26 @@ No `api/tenant-resolve.js`, o POST passa a olhar a `action` antes de seguir para
 
 **`POST /api/tenant-resolve` com `{ action: 'password-reset-request', email }`**
 
-1. Limite por IP (`pw-reset-request:<ip>`, com o IPv6 pelo bloco /64). Estourado: `429 { error: 'Muitas tentativas. Espere alguns minutos e tente de novo.' }`.
-2. E-mail em texto, com `@` e até 254 caracteres. Senão: `400 { error: 'Confira o e-mail digitado.' }`.
-3. Envio desligado: `503 { error: <aviso de função desligada> }`.
-4. Senão, responde `200 { ok: true }` na hora e entrega o pedido ao `waitUntil` do `@vercel/functions`. A Vercel mantém a função viva até o pedido terminar, dentro do tempo máximo da função. Erro dali em diante vai para o log e para o Sentry e nunca chega à tela.
+1. Corpo que não vem em JSON: `415 { error: 'Não deu para enviar agora. Tente de novo.' }`, antes de tudo (ver "Corpo em JSON", em "Limites").
+2. Limite por IP de 15 minutos (`pw-reset-request:<ip>`, com o IPv6 pelo bloco /64) e, depois dele, o do dia (`pw-reset-request-day:<ip>`). Estourado qualquer um: `429 { error: 'Muitas tentativas. Espere alguns minutos e tente de novo.' }`.
+3. E-mail em texto, com `@` e até 254 caracteres. Senão: `400 { error: 'Confira o e-mail digitado.' }`.
+4. Envio desligado: `503 { error: <aviso de função desligada> }`.
+5. Senão, responde `200 { ok: true }` na hora e entrega o pedido ao `waitUntil` do `@vercel/functions`. A Vercel mantém a função viva até o pedido terminar, dentro do tempo máximo da função. Erro dali em diante vai para o log e para o Sentry e nunca chega à tela.
 
 **`POST /api/tenant-resolve` com `{ action: 'password-reset-confirm', email, code, newPassword }`**
 
-1. Limite por IP (`pw-reset-confirm:<ip>`, com o IPv6 pelo bloco /64). Estourado: 429, com a mesma frase.
-2. `newPassword` pelo `passwordPolicyError`. Fora da regra: `400 { error: <frase>, field: 'newPassword' }`.
-3. E-mail com `@` e até 254 caracteres, pelo mesmo `isEmailFormat` do pedido, e código em texto. Senão: `400` com a frase única do item 5, sem chegar ao fluxo.
-4. Fluxo da troca, descrito abaixo.
-5. Respostas:
+1. Corpo que não vem em JSON: `415 { error: 'Não deu para salvar agora. Tente de novo.' }`, na hora.
+2. Limite por IP (`pw-reset-confirm:<ip>`, com o IPv6 pelo bloco /64). Estourado: 429, com a mesma frase, na hora.
+3. `newPassword` pelo `passwordPolicyError`. Fora da regra: `400 { error: <frase>, field: 'newPassword' }`.
+4. E-mail com `@` e até 254 caracteres, pelo mesmo `isEmailFormat` do pedido, e código em texto. Senão: `400` com a frase única do item 6, sem chegar ao fluxo.
+5. Fluxo da troca, descrito abaixo.
+6. Respostas:
    - `200 { ok: true }` quando troca;
    - `400 { error: 'Código errado ou vencido. Confira o último e-mail ou peça outro código.' }` para qualquer falha de conta ou de código, inclusive código que não tem 6 números;
    - `400 { error: PASSWORD_REJECTED_ERROR, field: 'newPassword' }` quando o Firebase recusa a senha;
    - `500 { error: 'Não deu para salvar agora. Tente de novo.' }` no resto.
 
-**O piso de tempo.** Toda resposta da troca sai no mínimo 2500 ms depois do começo do pedido (`CONFIRM_MIN_MS`, em `api/_passwordResetRoute.js`), inclusive a 400, a 429 e a 500. Sem o piso, a troca com um código qualquer demora mais quando o e-mail tem conta (leitura da equipe e transação da tentativa), e esse tempo entregaria quem tem conta sem o dono receber aviso nenhum. O relógio começa antes de qualquer trabalho, e a resposta espera o mais demorado dos dois, o trabalho ou o piso: um não soma ao outro. O piso precisa ficar acima do trabalho mais lento, e por isso cada troca registra no log quanto o trabalho levou (`ms`): um valor perto do piso pede piso maior. O pedido de código não precisa dele, porque responde antes do trabalho.
+**O piso de tempo.** Toda resposta da troca que passa pelo limitador sai no mínimo 2500 ms depois de ligado o piso (`CONFIRM_MIN_MS`, em `api/_passwordResetRoute.js`), inclusive a 400 e a 500. Sem o piso, a troca com um código qualquer demora mais quando o e-mail tem conta (leitura da equipe e transação da tentativa), e esse tempo entregaria quem tem conta sem o dono receber aviso nenhum. O 415 e a 429 saem na hora, antes de ligar o piso: dependem só do pedido e do IP e não dizem nada sobre contas. Com o piso, cada pedido barrado ocuparia a função 2,5 s em vez de uns 100 ms, e isso gasta o tempo de função do plano Hobby. O relógio do piso começa logo depois do limitador, antes de qualquer trabalho que dependa da conta, e a resposta espera o mais demorado dos dois, o trabalho ou o piso: um não soma ao outro. O piso precisa ficar acima do trabalho mais lento, e por isso cada troca registra no log quanto o trabalho levou (`ms`): um valor perto do piso pede piso maior. O pedido de código não precisa dele, porque responde antes do trabalho.
 
 O erro inesperado, de dentro ou de fora do fluxo (o limitador que lança, por exemplo), também espera o piso e vira 500. O 500 não espera o Sentry: o envio ao Sentry pode levar até 2 s (o `flush`) e roda no `waitUntil`, depois da resposta.
 
@@ -296,6 +302,7 @@ Sem banco e sem rede:
 - `accountRefusal(account | null)`: o motivo da tabela de "Quem recebe código", inclusive o `no_email`, ou `null`. Vale no pedido e na troca.
 - `isTenantActive(tenant)`: a regra da academia ativa. Suspensa ou arquivada não é, e academia sem documento (legado) é.
 - `maskEmail(email)`: `an***@academia.com`. A parte antes do `@` nunca sai inteira: com duas letras aparece `j***@`, e com uma, `***@`.
+- `RESET_MAILS_PER_DAY`: o teto de 50 e-mails por dia (ver "Teto de e-mails", em "Limites").
 
 As contas que rodam dentro das transações também moram aqui, puras: `planIssue` (o limite de 5 por dia e o documento novo), `planReserve` (a reserva da tentativa) e `planKill` (mata só o código que ainda está lá). O `_passwordResetRepo.js` as chama dentro das transações. O `marksChanged` compara as marcas guardadas com as da conta, e quem o chama é o fluxo.
 
@@ -303,7 +310,7 @@ O que a tela e o servidor dividem mora em `src/lib/passwordReset.js`, puro e sem
 
 ### Fluxo (`api/_passwordResetFlow.js`)
 
-Recebe de fora as operações de banco e de conta, o envio, o relógio, o sorteio, o segredo da impressão e o `log`. As ações usam uma instância montada com o `adminAuth`, o `adminDb`, o `logAudit` e o envio de verdade (`realResetDeps()`, em `api/_passwordResetRepo.js`). As operações de verdade são finas: cada uma é uma leitura, uma chamada ao Firebase Auth ou uma transação, e a regra de negócio fica nas funções puras.
+Recebe de fora as operações de banco e de conta, a vaga no teto de e-mails, o envio, o relógio, o sorteio, o segredo da impressão e o `log`. As ações usam uma instância montada com o `adminAuth`, o `adminDb`, o `logAudit` e o envio de verdade (`realResetDeps()`, em `api/_passwordResetRepo.js`). As operações de verdade são finas: cada uma é uma leitura, uma chamada ao Firebase Auth ou uma transação, e a regra de negócio fica nas funções puras.
 
 O `secret` do `realResetDeps()` sai da `FIREBASE_ADMIN_PRIVATE_KEY` e não é enumerável, para não sair se alguém imprimir o `deps` (log, Sentry, JSON). Por isso o `deps` vai direto ao fluxo e nunca é copiado com spread: a cópia deixa o `secret` para trás, e o fluxo falha por falta de segredo em vez de seguir sem ele. Para trocar uma chave, atribua (`deps.log = ...`).
 
@@ -312,8 +319,9 @@ O `secret` do `realResetDeps()` sai da `FIREBASE_ADMIN_PRIVATE_KEY` e não é en
 **Pedido:**
 
 1. Busca a conta pelo e-mail normalizado. Se o `accountRefusal` recusar, grava o motivo no log e para.
-2. Numa transação no documento da conta (`issueCode`), conta os pedidos das últimas 24 horas. Com 5 ou mais, para com `daily_limit` no log. Senão escreve o código novo por cima do anterior, com as marcas atuais, as tentativas zeradas e a hora deste pedido somada à lista. A transação faz pedidos simultâneos da mesma conta esperarem a vez, e nenhum passa do limite.
-3. Manda o e-mail para o endereço que a conta tem no Firebase. Se o envio falhar, o erro fica no log e o código morre na hora (`killCode`, que só mata se o documento ainda tiver aquele código), porque a pessoa dona da conta não ficou sabendo do pedido. O erro sobe: o fluxo o relança e a rota o captura no Sentry (ver "Erro depois da resposta"). O pedido continua contando no limite diário.
+2. Reserva uma vaga no teto de e-mails do dia (`reserveMailSlot`, que no `realResetDeps()` é o `checkRateLimit('pw-reset-mail-day', ...)` e devolve se há vaga). Sem vaga, grava `mail_cap` no log e para, sem emitir código.
+3. Numa transação no documento da conta (`issueCode`), conta os pedidos das últimas 24 horas. Com 5 ou mais, para com `daily_limit` no log. Senão escreve o código novo por cima do anterior, com as marcas atuais, as tentativas zeradas e a hora deste pedido somada à lista. A transação faz pedidos simultâneos da mesma conta esperarem a vez, e nenhum passa do limite.
+4. Manda o e-mail para o endereço que a conta tem no Firebase. Se o envio falhar, o erro fica no log e o código morre na hora (`killCode`, que só mata se o documento ainda tiver aquele código), porque a pessoa dona da conta não ficou sabendo do pedido. O erro sobe: o fluxo o relança e a rota o captura no Sentry (ver "Erro depois da resposta"). O pedido continua contando no limite diário da conta e no teto de e-mails.
 
 **Troca:**
 
@@ -375,43 +383,48 @@ O `captureError` nunca lança: falha do próprio Sentry vira um aviso no log da 
   - O código vai para o e-mail que a conta tem no Firebase, e não para o digitado. Conta sem e-mail no Firebase não recebe.
   - E-mail sem conta, super-admin, conta desativada, conta sem academia, conta fora da equipe, academia suspensa e limite diário não mandam nada.
   - Falha no envio mata o código, continua contando no dia e sobe o erro para a rota mandar ao Sentry.
+  - Sem vaga no teto de e-mails, o pedido não emite código, não manda e-mail e grava `mail_cap` no log. E-mail inventado e conta recusada não gastam vaga, e a vaga vem depois da recusa e antes do código.
   - Código certo troca a senha, revoga as sessões, mata o código e grava a auditoria.
   - Código errado gasta tentativa, e a quinta errada mata o código: a sexta é recusada mesmo com o código certo.
   - Código vencido, usado, trocado por outro ou com marca mudada é recusado com a mesma resposta.
   - Código com letra ou com 5 números é recusado sem gastar tentativa.
   - Recusa do Firebase à senha devolve a frase da senha e deixa o código vivo.
   - Falha ao marcar o código, revogar as sessões ou gravar a auditoria depois da troca não desfaz a troca e só vai para o log. A falha do `killCode` antes da troca também não esconde a recusa.
-  - Toda recusa vai para o log com o motivo, a conta (ou o e-mail mascarado), a academia e o IP, inclusive o `bad_format`. O código e a senha nunca vão para o log.
+  - Toda recusa vai para o log com o motivo, a conta (ou o e-mail mascarado), a academia e o IP, inclusive o `bad_format` e o `mail_cap`. O código e a senha nunca vão para o log.
 - Envio: o `sendMail` monta o pedido certo para o Resend (endereço, cabeçalho e corpo). Resposta de erro e demora viram erro com mensagem clara, e a recusa leva o `err.status`. O tempo limite vale até o fim da leitura do corpo, e nenhum timer sobra depois do envio. Chave só com espaços conta como sem chave, espaço nas pontas não vai para o cabeçalho, e chave com caractere inválido vira erro fixo, sem repetir a chave. O `mailStatus` devolve `resend`, `off` e `log`: só Preview e desenvolvimento vão para o log, e sem `VERCEL_ENV` o envio fica desligado.
-- E-mail: sai com o código e o primeiro nome, o código fica fora do assunto, e um nome com `<` ou `&` não quebra o HTML. O `<head>` declara charset, viewport e título. A prévia da caixa de entrada vem antes do código e não leva dígito, e sem o enchimento o código ainda cai depois do caractere 140. O rodapé usa `#687083`. Código que não tem 6 números faz a montagem lançar erro.
+- E-mail: sai com o código e o primeiro nome, e o código fica fora do assunto. A saudação leva o nome comum, com acento, com apóstrofo ou com hífen, e fica "Olá." com endereço de site, e-mail, número, nome vazio ou primeira palavra de mais de 40 caracteres, no HTML e no texto. Um nome com `<` ou `&` não quebra o HTML. O `<head>` declara charset, viewport e título. A prévia da caixa de entrada vem antes do código e não leva dígito, e sem o enchimento o código ainda cai depois do caractere 140. O rodapé usa `#687083`. Código que não tem 6 números faz a montagem lançar erro.
 - As ações do `tenant-resolve`, no molde do `tenantResolve.test.js`:
   - o pedido responde 200 igual, com conta ou sem, e deixa o trabalho para o `waitUntil`;
-  - o pedido responde 503 com o envio desligado, 429 no limite e 400 para e-mail inválido;
+  - o pedido responde 503 com o envio desligado, 429 no limite de 15 minutos e no do dia, e 400 para e-mail inválido. O pedido barrado na janela de 15 minutos não gasta a cota do dia;
   - a troca devolve 200, a frase única, a frase da senha com `field` e 429;
   - e-mail sem `@` ou com mais de 254 caracteres, e e-mail ou código que não é texto, recebem a frase única na troca, sem chegar ao fluxo;
-  - toda resposta da troca espera o piso de 2500 ms, inclusive a 400, a 429 e a 500, e o piso não soma ao tempo do trabalho;
+  - toda resposta da troca que passa pelo limitador espera o piso de 2500 ms, inclusive a 400 e a 500 (também a do limitador que lança), e o piso não soma ao tempo do trabalho. A 429 sai na hora, sem ligar relógio nenhum;
+  - as duas ações respondem 415 ao corpo que não vem em JSON (formulário, multipart, texto, `application/jsonp` e sem `content-type`), antes do limitador e sem trabalho, e aceitam `application/json` em maiúsculas e com `; charset`. A indicação e a ação desconhecida não olham o `content-type`;
   - o 500 não espera o Sentry, e o erro inesperado vai ao Sentry pelo `waitUntil`;
   - o `rateKeyIp` conta o IPv6 pelo bloco /64 e o IPv4 mapeado como o IPv4;
   - o `vercel.json` dá ao `tenant-resolve` tempo para o pedido inteiro, envio de até 8 segundos incluso;
   - ação desconhecida continua 405, e o GET da marca não muda.
 - Sentry: o `captureError` não faz nada sem DSN, espera o envio, nunca lança e deixa um aviso no log quando o SDK falha. O `withSentry` relança o erro do handler. O `sentryScrub` mascara a chave do Resend, e o `npm run verificar:sentry` a planta nos erros que simula.
-- Fiação: o fluxo de verdade ligado ao `realResetDeps()`, sobre um banco falso, prova que os nomes que o fluxo lê em `deps` são os que o repositório entrega e que um pedido e uma troca passam de ponta a ponta. O `secret` não aparece em `JSON.stringify` nem em `util.inspect`, e copiar o `deps` com spread faz o fluxo falhar em vez de seguir sem ele.
+- Fiação: o fluxo de verdade ligado ao `realResetDeps()`, sobre um banco falso, prova que os nomes que o fluxo lê em `deps` são os que o repositório entrega e que um pedido e uma troca passam de ponta a ponta. O `secret` não aparece em `JSON.stringify` nem em `util.inspect`, e copiar o `deps` com spread faz o fluxo falhar em vez de seguir sem ele. O `reserveMailSlot` de verdade dá 50 vagas a cada 24 horas numa contagem só, e a 51ª espera o dia virar. A auditoria grava o ambiente.
+- Integração (`api/__tests__/passwordResetIntegration.test.js`): o handler do `tenant-resolve` com a rota, o fluxo, o repositório, a impressão do código e o limitador de verdade. Só o Firebase Admin (Auth e Firestore, com transação), o `waitUntil` e a rede são falsos, e o piso roda no relógio falso. O código chega no e-mail e a troca com ele grava a senha nova. O código da conta A usado na conta B dá 400 e não troca nada. O mesmo código não vale duas vezes. O 21º pedido do mesmo IP no dia dá 429. O teto de e-mails para de mandar. O POST de formulário dá 415. Nada de código nem de senha passa pelo console.
 
 **Tela (vitest, em jsdom, no molde do `errorBoundaries.test.js`)**
 
-- O `normalizeResetCode` com espaço, hífen, letra e mais de 6 números. O `resendWaitSeconds`. A memória da aba vence depois de 15 minutos e não quebra sem `sessionStorage`. O `readResetApiError` com e sem `field`.
+- O `normalizeResetCode` com espaço, hífen, letra e mais de 6 números. O `resendWaitSeconds`. A memória da aba vence depois de 15 minutos e não quebra sem `sessionStorage`. O `readResetApiError` com e sem `field`, e com o 415.
 - A tela nova, dentro de um `MemoryRouter`:
   - o passo 1 manda o e-mail e abre o passo 2;
   - com a memória da aba, a tela abre direto no passo 2;
   - código errado mostra a frase embaixo do campo;
   - o sucesso volta para o login da academia com o e-mail e o aviso;
   - o 503 mostra o aviso de função desligada;
+  - o 415 cai no aviso comum de cada passo, sem marcar campo;
   - o foco vai para o primeiro campo com erro, o erro fica ligado ao campo e some quando a pessoa muda o campo;
   - enquanto espera a resposta, os botões ficam com `aria-disabled`, e dois envios no mesmo instante mandam um pedido só;
   - o relógio da contagem desce de 1 em 1 segundo, para quando a pessoa sai da tela e só anda no passo 2;
   - o passo 2 leva o campo de usuário oculto, e o envio nunca segue o caminho nativo do formulário.
 - O `AuthLayout`, o `AuthField` (com o `AuthInput` e o `AuthPasswordToggle`) e o `AuthNotice`: o nome do input sai só do rótulo, a região de erro já existe no primeiro render, o botão de mostrar senha diz a ação e não tem `title`, e o que a pessoa usa não fica escondido do leitor de tela.
-- O login: a volta do "Esqueci a senha" (e-mail preenchido, aviso e cursor na senha), o F5 depois da volta, a ida e a volta com as duas telas de verdade, os avisos e os erros do login, os links novos e a ausência do `sendPasswordResetEmail`. O `App` desenha a tela nova em `/recuperar-senha`.
+- O login: a volta do "Esqueci a senha" (e-mail preenchido, aviso e cursor na senha), o F5 depois da volta, a ida e a volta com as duas telas de verdade, os avisos e os erros do login, os links novos e a ausência do `sendPasswordResetEmail`. O `App` desenha a tela nova em `/recuperar-senha`. O login que dá certo apaga a memória da aba, e o que falha a deixa. O `leaveTo` do `App.jsx` a apaga antes da recarga, conferido pelo texto sem os comentários.
+- O console: nenhum arquivo de `src/views` chama o `auditActionLabel` só com o `.action` (varredura sem os comentários, em `superadminAudit.test.js`).
 
 **O que já existe:** a suíte inteira, as varreduras (`tenantSlug`, `overscrollGuard`, `protecaoDeErro`, `leadLinkSweep` e `filtrosNoEndereco`, esta com a exceção escrita para a volta do "Esqueci a senha"), o `npm run verificar:sentry`, o build e o lint no patamar de hoje.
 
@@ -419,7 +432,7 @@ O `captureError` nunca lança: falha do próprio Sentry vira um aviso no log da 
 
 - Pedir o código, pegar no `vercel logs`, trocar a senha e entrar com ela.
 - Errar o código 5 vezes e ver a sexta recusar até o código certo.
-- Pedir 6 códigos para a mesma conta e ver que o sexto não sai.
+- Pedir 6 códigos para a mesma conta e ver que o sexto não sai. O IP pede 5 a cada 15 minutos, então o sexto vai depois de 15 minutos ou de outra rede, senão quem barra é o limite por IP.
 - Pedir o código, entrar pelo login com a senha antiga e ver o código recusado.
 - Pedir o código, o gestor trocar a senha em Equipe & acessos e ver o código recusado.
 - F5 no passo 2.
@@ -431,13 +444,15 @@ O `captureError` nunca lança: falha do próprio Sentry vira um aviso no log da 
 
 - `CLAUDE.md` do Stronilead: seção "Esqueci a senha", com as regras que não se afrouxam:
   - a resposta do pedido é sempre igual e sai antes do trabalho;
-  - a troca responde no mínimo em 2500 ms;
+  - a troca responde no mínimo em 2500 ms depois do limitador, e o 415 e a 429 saem na hora;
+  - as duas ações só aceitam corpo em JSON;
   - o super-admin não recebe código;
   - o código vai para o e-mail da conta no Firebase, nunca para o digitado;
   - o banco guarda só o HMAC;
   - a tentativa é reservada antes de comparar;
   - a troca tem uma frase só para qualquer falha;
   - as duas ações moram no `tenant-resolve`, e a conta continua em 11 funções.
+- `CLAUDE.md` do Stronilead, na mesma seção: os limites, com o teto de e-mails e o motivo dele, a regra da saudação, a memória da aba que sai no login e no Sair, e a auditoria com o ambiente.
 - `CLAUDE.md` do Stronilead, nas outras seções:
   - a regra de senha, em "Convenções gerais", ganha o "Esqueci a senha" entre os caminhos que gravam senha;
   - o parágrafo do Sentry, na "Ponte com o Stronizap", passa a citar a chave do Resend, o `captureError` e a migalha de console que não vai ao Sentry;
@@ -447,24 +462,29 @@ O `captureError` nunca lança: falha do próprio Sentry vira um aviso no log da 
 
 ## Antes do deploy
 
-1. **Domínio no Resend.** Os registros foram publicados em 28/09/2026 no DNS da Vercel, que é quem responde pelo `stronilead.com.br`: DKIM em `resend._domainkey`, MX e SPF em `send` (região `sa-east-1`) e DMARC em `_dmarc`. Falta ver o domínio como verificado no painel do Resend.
+1. **Domínio no Resend.** Os registros foram publicados em 28/09/2026 no DNS da Vercel, que é quem responde pelo `stronilead.com.br`: DKIM em `resend._domainkey`, MX e SPF em `send` (região `sa-east-1`) e DMARC em `_dmarc`. O domínio precisa aparecer como verificado no painel do Resend antes do merge. Se não aparecer, todo pedido recebe 200, o Resend recusa o envio e o código morre na hora, com o erro no Sentry. Cada tentativa ainda conta no limite diário da conta e gasta uma vaga do teto de e-mails.
 2. **Chave.** A `RESEND_API_KEY` foi cadastrada na Vercel em 28/09/2026, só em Production e como Sensitive. A chave deve ter só permissão de envio, e só para o `stronilead.com.br`.
 3. **Teste no Preview**, pela lista de "Na mão".
 4. **Merge.** A Vercel publica. Nada a publicar no console do Firebase, nas rules ou nos índices.
 5. **Conferir de verdade:** pedir um código para uma conta de gestor, não o super-admin, e ver o e-mail chegar na caixa de entrada, não no spam.
-6. **Decisão do Johnny.** O risco do e-mail de conta nunca verificado, descrito em "Riscos", precisa de decisão antes do deploy.
+6. **Decisão do Johnny.** O risco do e-mail de conta nunca verificado, descrito em "Riscos", continua em aberto e precisa de decisão antes do deploy.
 
-Sem a chave em produção, o deploy funciona igual: a tela mostra o aviso de função desligada e nada mais muda.
+A `RESEND_API_KEY` já está em Production. Por isso o merge põe a função no ar: a partir dele, o código sai por e-mail para as contas de produção. O aviso de função desligada só aparece se a chave sair de lá.
 
 ## Critérios de aceitação
 
 - [ ] "Esqueci a senha" e "Recuperar acesso" abrem a tela nova com o e-mail do login preenchido e a etiqueta da academia
 - [ ] O passo 1 responde igual e no mesmo tempo para e-mail com conta, sem conta, de super-admin, de conta desativada, de conta fora da equipe e de academia suspensa
-- [ ] A troca responde no mínimo em 2,5 s em todos os casos
+- [ ] A troca responde no mínimo em 2,5 s em todos os casos que passam pelo limitador, e a 429 e o 415 saem na hora
 - [ ] O código chega de `nao-responda@stronilead.com.br`, vale 15 minutos e só o último vale
 - [ ] O código vai para o e-mail da conta, nunca para o digitado
 - [ ] A quinta tentativa errada mata o código
 - [ ] O sexto pedido do mesmo dia não manda e-mail
+- [ ] O mesmo IP faz no máximo 20 pedidos de código a cada 24 horas
+- [ ] O "Esqueci a senha" manda no máximo 50 e-mails a cada 24 horas, somando todas as academias
+- [ ] Um formulário de outro site recebe 415 e não manda e-mail
+- [ ] O login que dá certo e o Sair apagam a memória da aba
+- [ ] A auditoria da troca guarda o ambiente, e o console mostra "Trocou a senha pelo código"
 - [ ] Entrar pelo login com a senha antiga depois de pedir o código mata o código
 - [ ] O gestor trocar a senha em Equipe & acessos depois do pedido mata o código
 - [ ] Trocar a senha revoga as sessões: as chamadas ao `api/` param na hora, e as telas abertas voltam ao login em até 1 hora
@@ -479,15 +499,19 @@ Sem a chave em produção, o deploy funciona igual: a tela mostra o aviso de fun
 
 **E-mail de login que não é caixa de verdade.** Se a academia cadastrou consultor com e-mail inventado, o código não chega. A saída é a de hoje: o gestor define a senha.
 
-**E-mail de conta nunca verificado.** O Firebase nunca confirmou o e-mail dessas contas. Se o gestor cadastrou um e-mail inventado, quem criar essa caixa de correio depois pode pedir o código e tomar a conta. A decisão fica com o Johnny antes do deploy.
+**E-mail de conta nunca verificado.** O Firebase nunca confirmou o e-mail dessas contas. Se o gestor cadastrou um e-mail inventado, quem criar essa caixa de correio depois pode pedir o código e tomar a conta. A decisão continua em aberto e fica com o Johnny antes do deploy. O link antigo do Firebase (`sendPasswordResetEmail`) tinha o mesmo risco.
 
-**Cota do Resend.** O plano grátis manda 100 e-mails por dia e 3.000 por mês, na conta inteira, e aceita 3 domínios. Se o Stronizap e o Gestão 360 estão na mesma conta, os três sistemas dividem a cota, e o `stronilead.com.br` é o terceiro domínio. O limite de 5 por conta segura abuso de uma conta só. Passar da cota com uso normal exigiria o plano pago.
+**Quem saiu da academia e só teve a senha trocada.** A senha nova que o gestor define em Equipe & acessos mata o código pendente, mas a conta e o cadastro na equipe continuam. A pessoa que saiu pede outro código para o e-mail dela e cria uma senha nova sozinha. Para tirar o acesso, o gestor usa "Excluir acesso", que apaga a conta no Firebase Auth e o cadastro. Isso precisa ser avisado aos gestores.
+
+**"E-mail de login" da tela da equipe.** O campo muda só o cadastro no Firestore, e não o e-mail do Firebase Auth. O código vai para o e-mail do Auth, e o login também usa esse. Quem teve o e-mail corrigido nessa tela continua recebendo o código no e-mail antigo, e o pedido feito com o e-mail novo não manda nada.
+
+**Cota do Resend.** O plano grátis manda 100 e-mails por dia e 3.000 por mês, na conta inteira, e aceita 3 domínios. A conta é a mesma do Stronizap, que já tem o "Esqueci a senha" em produção. Se o Gestão 360 também estiver nela, os três sistemas dividem a cota, e o `stronilead.com.br` é o terceiro domínio. O teto de 50 e-mails por dia do Stronilead deixa metade para o Stronizap, e o limite de 5 por conta segura abuso de uma conta só. O teto também vira alvo. Com o e-mail de uma conta que passa na recusa e três IPs (20 pedidos por IP a cada 24 horas), alguém gasta as 50 vagas, porque o pedido para uma conta que já gastou os 5 códigos do dia também gasta vaga. Até o dia virar, ninguém recebe código, e a saída é a de hoje: o gestor define a senha. Passar da cota com uso normal exigiria o plano pago.
 
 **Resend fora do ar.** O código morre, a falha vai para o log e a pessoa pede de novo mais tarde ou pede ao gestor.
 
 **O `waitUntil` depende do contexto que a Vercel monta.** Se ele não chegar à função, o pedido pode ser cortado antes de mandar o e-mail. O teste no Preview confere isso antes do merge.
 
-**Tempo da troca.** A frase da troca é a mesma para qualquer falha, mas conta que existe passa por mais leituras antes da recusa (a equipe e a transação da tentativa), e esse tempo entregaria quem tem conta sem o dono receber aviso nenhum. O piso de 2500 ms cobre isso: toda resposta da troca sai no mínimo nele, e o trabalho e o piso não se somam. O piso só protege enquanto ficar acima do trabalho mais lento, e por isso cada troca registra no log quanto o trabalho levou (`ms`). A medição no Preview, com uma conta que existe e um código errado, confere a folga antes do merge, e um `ms` perto do piso pede piso maior. Descobrir contas por esse caminho ainda exigiria pedir um código antes, o que manda um e-mail de verdade para a pessoa dona da conta, e esbarraria nos limites por IP e por conta.
+**Tempo da troca.** A frase da troca é a mesma para qualquer falha, mas conta que existe passa por mais leituras antes da recusa (a equipe e a transação da tentativa), e esse tempo entregaria quem tem conta sem o dono receber aviso nenhum. O piso de 2500 ms cobre isso: toda resposta da troca que passa pelo limitador sai no mínimo nele, e o trabalho e o piso não se somam. O 415 e a 429 saem na hora, porque dependem só do pedido e do IP. O piso só protege enquanto ficar acima do trabalho mais lento, e por isso cada troca registra no log quanto o trabalho levou (`ms`). A medição no Preview, com uma conta que existe e um código errado, confere a folga antes do merge, e um `ms` perto do piso pede piso maior. Descobrir contas por esse caminho ainda exigiria pedir um código antes, o que manda um e-mail de verdade para a pessoa dona da conta, e esbarraria nos limites por IP e por conta.
 
 **Marca que não muda.** Se alguma mudança de conta não mexer nas duas marcas, o código sobrevive a ela. Ainda assim, só vale para quem tem o código, que chegou na caixa da pessoa dona da conta. O teste na mão confere o caso da senha trocada pelo gestor.
 
@@ -495,11 +519,11 @@ Sem a chave em produção, o deploy funciona igual: a tela mostra o aviso de fun
 
 **Senha recusada pelo Firebase na quinta tentativa.** A tentativa já foi gasta quando o Firebase recusa a senha, então na quinta o código se esgota, mesmo sendo o certo. A tela e a rota conferem a senha antes, pelo `passwordPolicyError`, então isso só acontece se a política do console divergir do `src/lib/passwordPolicy.js`, e o log avisa. Aceito.
 
-**O limitador por IP falha aberto.** Se a checagem do limitador falhar, ninguém é barrado por IP. Com os e-mails de vários membros da equipe conhecidos, dá para gastar a cota diária do Resend, dividida com o Stronizap, sem esbarrar no limite por conta: cada conta aceita 5 códigos por dia, e cada código é um e-mail.
+**O limitador falha aberto.** Se a checagem do limitador falhar, ninguém é barrado por IP, e o teto de e-mails também deixa passar. Com os e-mails de vários membros da equipe conhecidos, dá para gastar a cota diária do Resend, dividida com o Stronizap, sem esbarrar no limite por conta: cada conta aceita 5 códigos por dia, e cada código é um e-mail.
 
 **Prévia pela parte só texto.** O trecho escondido que segura a prévia só existe no HTML. O cliente de e-mail que monta a prévia da caixa de entrada pela parte só texto ainda mostra o código.
 
-**Preview com dados de produção.** No modo `log`, o código de uma conta real aparece em texto no log da Vercel. Só quem tem acesso ao projeto na Vercel lê esse log, e essa pessoa já tem a chave do Admin. O modo só existe com `VERCEL_ENV` igual a `preview` ou `development`, e os Previews do projeto estão atrás da Vercel Authentication (conferido em 28/09/2026). O teste na mão usa só conta de academia de teste.
+**Preview com dados de produção.** No modo `log`, o código de uma conta real aparece em texto no log da Vercel. Só quem tem acesso ao projeto na Vercel lê esse log, e essa pessoa já tem a chave do Admin. Isso vale enquanto o projeto não tiver log drain: com um, o modo `log` do Preview manda o código para fora da Vercel, para o serviço que recebe o log. O modo só existe com `VERCEL_ENV` igual a `preview` ou `development`, e os Previews do projeto estão atrás da Vercel Authentication (conferido em 28/09/2026). O teste na mão usa só conta de academia de teste.
 
 ## Fora deste passo
 
