@@ -6,7 +6,7 @@ import { ArrowRight, Check, Lock, Mail } from 'lucide-react';
 import { AuthLayout, AuthTenantChip } from './AuthLayout.jsx';
 import { AuthField, AuthInput, AuthPasswordToggle } from './AuthField.jsx';
 import { AuthAlert, AuthStatus } from './AuthNotice.jsx';
-import { RESET_PATH, PASSWORD_SAVED_MESSAGE, TOO_MANY_MESSAGE, readLoginArrival, resetLinkState } from '../../lib/passwordReset.js';
+import { RESET_PATH, PASSWORD_SAVED_MESSAGE, TOO_MANY_MESSAGE, readLoginArrival, resetLinkState, clearResetMemory } from '../../lib/passwordReset.js';
 
 // O que a pessoa lê quando o Firebase recusa a entrada. O código do erro fica só
 // no console.
@@ -76,6 +76,10 @@ function LoginScreen({ authSetupError, urlTenant }) {
       await persistenceFor(remember).then((p) => setPersistence(auth, p)).catch(() => {});
       const normalizedEmail = email.trim().toLowerCase();
       await signInWithEmailAndPassword(auth, normalizedEmail, password);
+      // Quem entrou não está mais no meio do "Esqueci a senha". Num computador
+      // dividido, a memória da aba levaria a próxima pessoa ao passo 2 com o
+      // e-mail desta conta. O login que falha deixa a memória como está.
+      clearResetMemory();
     } catch (err) {
       console.error(err);
       setError(loginErrorMessage(err?.code));

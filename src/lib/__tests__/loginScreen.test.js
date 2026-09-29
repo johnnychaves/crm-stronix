@@ -359,6 +359,52 @@ describe('erro de entrada do login', () => {
   });
 });
 
+// Num computador dividido, a memória da aba levaria a próxima pessoa ao passo 2
+// com o e-mail de quem pediu antes, por até 15 minutos, e ela poderia mandar
+// outro código para essa conta.
+describe('a memória do "Esqueci a senha" sai no login e no Sair', () => {
+  const lembrar = () => sessionStorage.setItem(MEMORIA, JSON.stringify({ email: 'ana@academia.com', sentAt: Date.now() }));
+
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+  afterEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('o login que dá certo apaga a memória da aba', async () => {
+    lembrar();
+    signInWithEmailAndPassword.mockResolvedValueOnce({ user: { uid: 'u-bia' } });
+    await montar();
+    await escrever(campoEmail(), 'bia@academia.com');
+    await escrever(campoSenha(), 'Senha@Certa1');
+    await clicar(botao('Entrar'));
+    expect(signInWithEmailAndPassword).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(MEMORIA)).toBeNull();
+  });
+
+  it('o login que falha deixa a memória, porque a pessoa pode estar no meio da troca', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    lembrar();
+    await montar();
+    await entrarComSenhaErrada();
+    expect(regiaoDoErro().textContent).toBe('E-mail ou senha inválidos.');
+    expect(sessionStorage.getItem(MEMORIA)).not.toBeNull();
+  });
+
+  // O App é grande demais para montar num teste, então o Sair é conferido pelo
+  // texto, sem os comentários: a linha comentada tem o mesmo texto e não liga nada.
+  it('o Sair apaga a memória antes de recarregar a página', () => {
+    const app = semComentarios(fonte('../../App.jsx'));
+    const inicio = app.indexOf('const leaveTo = async (destino) => {');
+    expect(inicio).toBeGreaterThan(-1);
+    const corpo = app.slice(inicio, app.indexOf('\n  };', inicio));
+    const limpa = corpo.indexOf('clearResetMemory();');
+    expect(limpa).toBeGreaterThan(-1);
+    expect(limpa).toBeLessThan(corpo.indexOf('window.location.replace(destino);'));
+  });
+});
+
 describe('links para o "Esqueci a senha"', () => {
   it('"Esqueci a senha" leva o e-mail digitado e a academia achada', async () => {
     await montar({ urlTenant: { slug: 'academia-teste', found: true, displayName: 'Academia Teste' } });
