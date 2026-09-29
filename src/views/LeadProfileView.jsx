@@ -48,6 +48,7 @@ import {
   groupTimeline,
   timelineStamp,
   classifyInteraction,
+  contractEventOf,
   parseAppointment,
   extractStageNameFromInteractionText,
   buildStageTransitions,
@@ -68,6 +69,11 @@ const CONTRACT_TONE = {
   [CONTRACT_STATUS.VENCIDO]: { block: 'bg-slate-500/10 dark:bg-slate-400/15', fg: 'text-slate-600 dark:text-slate-300', fill: 'bg-slate-400' },
   [CONTRACT_STATUS.CANCELADO]: { block: 'bg-rose-500/10 dark:bg-rose-500/15', fg: 'text-rose-700 dark:text-rose-400', fill: 'bg-rose-500' }
 };
+
+// Eventos de contrato que ganham faixa de destaque na linha do tempo: os que
+// mudam a situação do cliente. Trancamento, reativação e correção seguem como
+// linha comum do tipo "Contrato".
+const CONTRACT_MILESTONE_KINDS = new Set(['matricula', 'renovacao', 'cancelamento']);
 
 // Rótulo em versalete das células. Sempre no tom `muted`: a 9.5px ele faz
 // trabalho estrutural, é o que faz a faixa ler como células.
@@ -970,8 +976,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     const author = i.consultantName || 'Sistema';
     const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
     const stageName = i._kind === 'status' ? extractStageNameFromInteractionText(i.text) : '';
-    const isContract = i._kind === 'contract';
-    const contractCancel = isContract && /cancel/i.test(i.text || '');
+    // O evento de contrato vem do próprio texto: tipo, plano e valor dele, e não
+    // os do contrato de hoje (contractEventOf, em lib/timeline.js).
+    const contractEvent = i._kind === 'contract' ? contractEventOf(i.text) : null;
+    const isContract = Boolean(contractEvent && CONTRACT_MILESTONE_KINDS.has(contractEvent.kind));
+    const contractCancel = contractEvent?.kind === 'cancelamento';
     const lowerText = String(i.text || '').toLowerCase();
     // Perda: o status_change que encerra a oportunidade não traz etapa entre
     // colchetes — vem como "Lead perdido. Motivo: ...".
@@ -1007,15 +1016,16 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         ? `Oportunidade encerrada${lossReason ? ` · ${lossReason}` : ''}`
         : isWin
           ? 'Virou cliente — etapa Venda'
-          : contractCancel ? 'Contrato cancelado'
-            : /renova/i.test(i.text || '') ? 'Contrato renovado'
-              : (lead.currentPlanName || 'Matrícula fechada');
+          : contractCancel
+            ? (/^renova/i.test(cleanBody) ? 'Renovação cancelada' : 'Contrato cancelado')
+            : contractEvent?.kind === 'renovacao' ? 'Contrato renovado'
+              : (contractEvent?.planName || 'Matrícula fechada');
 
       const subtitle = isWin ? `Fase alterada por ${author}` : cleanBody;
 
-      // Valor só na matrícula, e só se o contrato realmente tiver valor.
-      const showValue = isContract && !contractCancel && lead.currentContractValue != null
-        && Number.isFinite(Number(lead.currentContractValue));
+      // Valor só na matrícula e na renovação, e o do próprio evento.
+      const eventValue = isContract && !contractCancel ? contractEvent.value : null;
+      const showValue = eventValue != null;
 
       return (
         <div key={i.id} className={cn('flex items-center gap-3 border-t-2 px-3.5 py-2.5 my-1', band.ring, band.bg)}>
@@ -1028,7 +1038,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           </div>
           {showValue && (
             <span className="font-display text-[17px] font-bold text-emerald-700 dark:text-emerald-300 num shrink-0">
-              {fmtBRL(lead.currentContractValue)}
+              {fmtBRL(eventValue)}
             </span>
           )}
           <span className="text-[11px] num text-slate-400 dark:text-slate-500 shrink-0 whitespace-nowrap" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</span>
