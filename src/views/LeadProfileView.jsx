@@ -12,9 +12,11 @@ import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
 import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
 import { fmtBRL } from '../lib/format.js';
-import { contractDiscountOf, deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
-import { contractVigencia, daysBetween, missedCheckpointsLabel, vigenciaRefDate } from '../lib/renewal.js';
-import { CONTRACT_ORIGIN, contractOriginOf } from '../lib/contractHistory.js';
+import { contractDiscountOf, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
+import { SEAM_KIND, computeSeam, contractVigencia, daysBetween, missedCheckpointsLabel, vigenciaRefDate } from '../lib/renewal.js';
+import {
+  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, runningPredecessorOf
+} from '../lib/contractHistory.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
 import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
@@ -68,7 +70,10 @@ const CONTRACT_TONE = {
   [CONTRACT_STATUS.ATIVO]: { block: 'bg-emerald-500/10 dark:bg-emerald-500/15', fg: 'text-emerald-700 dark:text-emerald-400', fill: 'bg-emerald-500' },
   [CONTRACT_STATUS.A_VENCER]: { block: 'bg-amber-500/12 dark:bg-amber-500/16', fg: 'text-amber-700 dark:text-amber-400', fill: 'bg-amber-500' },
   [CONTRACT_STATUS.VENCIDO]: { block: 'bg-slate-500/10 dark:bg-slate-400/15', fg: 'text-slate-600 dark:text-slate-300', fill: 'bg-slate-400' },
-  [CONTRACT_STATUS.CANCELADO]: { block: 'bg-rose-500/10 dark:bg-rose-500/15', fg: 'text-rose-700 dark:text-rose-400', fill: 'bg-rose-500' }
+  [CONTRACT_STATUS.CANCELADO]: { block: 'bg-rose-500/10 dark:bg-rose-500/15', fg: 'text-rose-700 dark:text-rose-400', fill: 'bg-rose-500' },
+  // Selos do Histórico (lib/contractHistory.js).
+  [HISTORY_STATUS.EM_USO]: { block: 'bg-emerald-500/10 dark:bg-emerald-500/15', fg: 'text-emerald-700 dark:text-emerald-400', fill: 'bg-emerald-500' },
+  [HISTORY_STATUS.RENOVADO]: { block: 'bg-slate-500/10 dark:bg-slate-400/15', fg: 'text-slate-600 dark:text-slate-300', fill: 'bg-slate-400' }
 };
 
 // Eventos de contrato que ganham faixa de destaque na linha do tempo: os que
@@ -1829,6 +1834,18 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 const closedAt = getSafeDateOrNull(currentContract?.createdAt);
                 const months = Number(currentContract?.durationMonths) || 0;
                 const value = lead.currentContractValue;
+                // Contrato que ainda não começou, com o anterior em uso: a
+                // régua não marca hoje e a faixa diz qual contrato vale agora.
+                const notStarted = Boolean(curStartsAt && curStartsAt.getTime() > Date.now());
+                const inUse = notStarted ? runningPredecessorOf(currentContract, leadContracts, new Date()) : null;
+                const inUseEnd = contractEndOf(inUse);
+                const seamlessNow = Boolean(currentContract?.seamless || lead.currentContractSeamless);
+                const inUseGap = inUse && inUseEnd && curStartsAt ? computeSeam(inUseEnd, curStartsAt) : null;
+                const inUseNote = inUse && inUseEnd
+                  ? seamlessNow
+                    ? `Continua o contrato em uso (${inUse.planName || 'Plano'}, até ${inUseEnd.toLocaleDateString('pt-BR')})`
+                    : `Contrato em uso: ${inUse.planName || 'Plano'}, até ${inUseEnd.toLocaleDateString('pt-BR')}${inUseGap?.kind === SEAM_KIND.LACUNA ? ` · ${inUseGap.gapDays} ${inUseGap.gapDays === 1 ? 'dia' : 'dias'} sem contrato entre os dois` : ''}`
+                  : null;
                 return (
                   <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
                     <div className="flex items-stretch flex-wrap">
@@ -1971,7 +1988,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                           ></span>
                         ))}
                         {/* O marcador de hoje só existe dentro da vigência. */}
-                        {!scheduled && (
+                        {!notStarted && (
                           <span
                             className="absolute top-0 w-[3px] h-4 -translate-x-1/2 rounded-sm bg-slate-900 dark:bg-white"
                             style={{ left: `${vigencia?.elapsedPct ?? 0}%` }}
@@ -1979,10 +1996,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                         )}
                       </div>
                       <span className={cn('num text-[11.5px] font-semibold flex-none', tone.fg)}>{curEndsAt.toLocaleDateString('pt-BR')}</span>
-                      {scheduled && (
+                      {(scheduled || inUseNote) && (
                         <>
                           <span className="w-px h-4 flex-none bg-slate-200 dark:bg-white/[0.08]"></span>
-                          <span className={cn('text-[11.5px] font-semibold flex-none', tone.fg)}>A vigência ainda não começou</span>
+                          <span className={cn('text-[11.5px] font-semibold', tone.fg)}>{inUseNote || 'A vigência ainda não começou'}</span>
                         </>
                       )}
                       {paused && (
@@ -2025,7 +2042,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                     </p>
                   </div>
                 ) : pastContracts.map((c, i) => {
-                  const hStatus = deriveContractStatus(c, new Date(), contractThresholdDays) || CONTRACT_STATUS.VENCIDO;
+                  // "Em uso" e "Renovado" no contrato que já tem renovação
+                  // ligada. Antes ele aparecia "A vencer" com o aluno renovado.
+                  const hStatus = historyStatusOf(c, leadContracts, new Date(), contractThresholdDays);
                   const hTone = CONTRACT_TONE[hStatus] || CONTRACT_TONE[CONTRACT_STATUS.VENCIDO];
                   const hStart = getSafeDateOrNull(c.startsAt);
                   const hEnd = getSafeDateOrNull(c.endsAt);
@@ -2085,7 +2104,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
                         <span className="w-[88px] flex-none flex justify-end">
                           <span className={cn('inline-flex items-center h-5 px-2 rounded-md text-[10px] font-bold uppercase tracking-[.05em] whitespace-nowrap', hTone.block, hTone.fg)}>
-                            {CONTRACT_STATUS_LABEL[hStatus]}
+                            {CONTRACT_STATUS_LABEL[hStatus] || HISTORY_STATUS_LABEL[hStatus]}
                           </span>
                         </span>
                       </div>
