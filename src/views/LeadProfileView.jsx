@@ -2032,11 +2032,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   const hMonths = Number(c.durationMonths)
                     || (hStart && hEnd ? Math.max(1, Math.round(daysBetween(hStart, hEnd) / 30.44)) : 0);
                   const hOrigin = contractOriginOf(c, leadContracts);
-                  // A lacuna aparece ACIMA do nó: o intervalo entre o fim deste
-                  // contrato e o início do próximo (mais novo) — inclusive o vigente.
+                  // A lacuna aparece ACIMA do nó: os dias sem contrato antes do
+                  // próximo contrato (mais novo), pela mesma conta da célula de
+                  // origem (fim da cobertura anterior, em dias do calendário).
                   const newer = i === 0 ? currentContract : pastContracts[i - 1];
-                  const rawGap = hEnd && newer ? daysBetween(hEnd, getSafeDateOrNull(newer.startsAt)) : null;
-                  const gapDays = rawGap != null && rawGap > 1 ? rawGap - 1 : 0;
+                  const newerOrigin = !newer ? null
+                    : newer === currentContract ? contractOrigin : contractOriginOf(newer, leadContracts);
+                  const gapDays = newerOrigin?.gapDays || 0;
                   const isFirstEver = i === pastContracts.length - 1;
                   return (
                     <div key={c.id}>
