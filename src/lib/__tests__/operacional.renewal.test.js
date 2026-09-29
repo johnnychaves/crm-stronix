@@ -270,3 +270,40 @@ describe('dono por predicado', () => {
     expect(upcomingExpirations(contracts, { ...args, now: D(2026, 9, 11) })).toEqual({ d30: 0, d60: 1, d90: 0 });
   });
 });
+
+// Renovação antecipada com "Começar hoje" em 28/09: o contrato que vencia em
+// 11/10 passou a terminar na véspera (27/09, na mesma hora) e guardou o fim de
+// antes em originalEndsAt. O vencimento continua sendo 11/10.
+describe('renovação antecipada que encurtou o contrato', () => {
+  const monthOf = (y, m) => ({ start: new Date(y, m - 1, 1), end: new Date(y, m, 1), graceDays: 15 });
+  const OCT = monthOf(2026, 10);
+  const encurtado = {
+    id: 'k1', leadId: 'P', consultantId: 'ana', status: 'ativo', startsAt: D(2025, 10, 11), createdAt: D(2025, 10, 11),
+    endsAt: D(2026, 9, 27, 15), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2'
+  };
+  const renovacao = {
+    id: 'k2', leadId: 'P', consultantId: 'ana', status: 'ativo', renewedFromId: 'k1',
+    startsAt: D(2026, 9, 28, 15), endsAt: D(2027, 9, 28, 15), createdAt: D(2026, 9, 28, 15)
+  };
+  const list = normalizeContracts([encurtado, renovacao]);
+  const cohortOf = (win, asOf) => renewalCohort(list, { ...win, asOf, leadsById: new Map() })
+    .map((r) => [r.contract.id, r.outcome, r.when]);
+
+  it('fica na coorte do mês em que ia vencer e conta como renovado antes', () => {
+    expect(cohortOf(SEP, D(2026, 10, 20))).toEqual([]);
+    expect(cohortOf(OCT, D(2026, 10, 20))).toEqual([['k1', 'renew', 'antes']]);
+  });
+
+  it('no corte de antes da renovação existir, ainda estava pendente no mês em que ia vencer', () => {
+    expect(cohortOf(OCT, D(2026, 9, 20))).toEqual([['k1', 'pending', null]]);
+  });
+
+  it('os marcos contam do vencimento: nada em junho, e o de 30 dias em setembro, feito pela renovação', () => {
+    const args = { checkpoints: [90, 60, 30], interactions: [], leadsById: new Map() };
+    const JUN = monthOf(2026, 6);
+    // Pelo fim encurtado, o marco de 90 dias cairia em 29/06, num mês já fechado.
+    expect(milestones(list, { ...args, ...JUN, asOf: D(2026, 10, 20) }).map((m) => m.total)).toEqual([0, 0, 0]);
+    expect(milestones(list, { ...args, ...SEP, asOf: D(2026, 10, 20) }))
+      .toEqual([{ days: 90, total: 0, done: 0, pct: null }, { days: 60, total: 0, done: 0, pct: null }, { days: 30, total: 1, done: 1, pct: 100 }]);
+  });
+});

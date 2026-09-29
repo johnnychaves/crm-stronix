@@ -217,4 +217,14 @@ describe('leadIdsForRenewal', () => {
     const ids = leadIdsForRenewal(contracts, { monthKeys: ['2026-04', '2026-09'], known: new Set(['D']) });
     expect(ids.sort()).toEqual(['A', 'B']);
   });
+
+  // A coorte e os marcos contam do fim previsto: o contrato encurtado por uma
+  // renovação antecipada entra pela data em que ia vencer.
+  it('contrato encurtado entra pelo fim previsto, não pelo fim encurtado', () => {
+    const D = (y, m, d) => new Date(y, m - 1, d);
+    const encurtado = normalizeContract({
+      id: 'e', leadId: 'E', startsAt: D(2025, 10, 11), endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: 'r'
+    });
+    expect(leadIdsForRenewal([encurtado], { monthKeys: ['2026-10'] })).toEqual(['E']);
+  });
 });
