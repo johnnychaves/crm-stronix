@@ -1,5 +1,5 @@
 ---
-status: revisão
+status: ativo
 data: 2026-09-28
 sistemas: Stronilead
 ---
