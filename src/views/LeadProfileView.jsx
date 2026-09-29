@@ -12,7 +12,7 @@ import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
 import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
 import { fmtBRL } from '../lib/format.js';
-import { deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
+import { contractDiscountOf, deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel, vigenciaRefDate } from '../lib/renewal.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
@@ -1757,11 +1757,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   ? Math.max(0, daysBetween(curPausedAt, todayStart) || 0)
                   : 0;
                 const missed = scheduled || paused ? null : missedCheckpointsLabel(vigencia?.missedCount);
-                // Desconto do contrato. Contrato antigo não tem discountValue:
-                // aí a diferença para a tabela é o que sobrou de registro.
+                // Desconto = tabela menos o valor fechado, a mesma conta do
+                // Gerencial (contractDiscountOf). O discountValue gravado não é
+                // lido: depois de uma correção ele mostrava o desconto antigo.
                 const listValue = Number(currentContract?.listValue) || 0;
-                const discount = Number(currentContract?.discountValue)
-                  || Math.max(listValue - (Number(lead.currentContractValue) || 0), 0);
+                const discount = currentContract ? contractDiscountOf(currentContract) : 0;
                 const discountReason = currentContract?.discountReason || null;
                 const closedBy = currentContract?.consultantName || lead.consultantName;
                 const closedAt = getSafeDateOrNull(currentContract?.createdAt);

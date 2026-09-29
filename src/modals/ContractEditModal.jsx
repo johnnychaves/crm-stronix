@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
 import { Calendar, DollarSign, Pencil } from 'lucide-react';
-import { buildContractEdit } from '../lib/contracts.js';
+import { buildContractEdit, editListValueOf } from '../lib/contracts.js';
 import { commitContractPatch } from '../lib/contractsWrites.js';
 import { fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
 import { fmtBRL, parseValorBRL, valorToInput } from '../lib/format.js';
+import { DISCOUNT_REASONS } from '../lib/renewal.js';
+import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Field, StyledInput, StyledSelect } from '../components/ui/Field.jsx';
@@ -14,13 +16,14 @@ import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog.jsx'
 // corrente do histórico e contava uma renovação a mais.
 //
 // NÃO é renovação nem matrícula: não cria contrato, não mexe nos marcos de
-// renovação e não recarimba a conversão. Só conserta o registro.
+// renovação e não recarimba a conversão. Só conserta o registro. O desconto é
+// recalculado junto, e valor abaixo da tabela pede o motivo, como na matrícula.
 
 function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
   const toast = useToast();
   const { planos } = useGeneralConfig();
 
-  // O plano do contrato pode ter saído do catálogo — ele continua na lista
+  // O plano do contrato pode ter saído do catálogo: ele continua na lista
   // para a correção não trocar o plano sem querer.
   const options = useMemo(() => {
     const ativos = (planos || [])
@@ -40,14 +43,20 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
   const [planId, setPlanId] = useState(contract?.planId || options[0]?.id || '');
   const [value, setValue] = useState(valorToInput(contract?.value));
   const [startStr, setStartStr] = useState(toDateInputValue(getSafeDateOrNull(contract?.startsAt) || new Date()));
+  const [reason, setReason] = useState(contract?.discountReason || null);
   const [submitting, setSubmitting] = useState(false);
 
   const plan = options.find(p => p.id === planId) || null;
   const startsAt = fromDateInputValue(startStr);
   const numericValue = parseValorBRL(value);
+  // A tabela que vale na correção (editListValueOf): a do contrato quando o
+  // plano não muda. Valor abaixo dela é desconto e pede motivo.
+  const listValue = plan ? editListValueOf(contract, plan) : 0;
+  const hasDiscount = listValue > 0 && Number.isFinite(numericValue) && listValue - numericValue > 0.005;
+  const discountReason = hasDiscount ? reason : null;
 
   const preview = plan && startsAt
-    ? buildContractEdit({ contract, plan, value: numericValue, startsAt })
+    ? buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason })
     : null;
   const novoFim = getSafeDateOrNull(preview?.contractPatch?.endsAt);
   const fimAtual = getSafeDateOrNull(contract?.endsAt);
@@ -65,10 +74,11 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
     if (!plan) { toast.warning('Selecione um plano.'); return; }
     if (!startsAt) { toast.warning('Informe a data de início.'); return; }
     if (!Number.isFinite(numericValue) || numericValue < 0) { toast.warning('Informe um valor válido.'); return; }
+    if (hasDiscount && !reason) { toast.warning('Escolha o motivo do desconto.'); return; }
 
     setSubmitting(true);
     try {
-      const built = buildContractEdit({ contract, plan, value: numericValue, startsAt });
+      const built = buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason });
       await commitContractPatch({
         db,
         lead,
@@ -118,7 +128,7 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Valor (R$)" hint={plan && Number(plan.value) !== numericValue ? `Tabela: ${fmtBRL(plan.value)}` : undefined}>
+            <Field label="Valor (R$)" hint={plan && listValue !== numericValue ? `Tabela: ${fmtBRL(listValue)}` : undefined}>
               <StyledInput
                 type="text"
                 inputMode="decimal"
@@ -137,6 +147,29 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
             </Field>
           </div>
 
+          {hasDiscount && (
+            <div>
+              <div className="text-[9.5px] font-bold uppercase tracking-[.08em] text-slate-500 dark:text-slate-400 mb-2">
+                Motivo do desconto
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {DISCOUNT_REASONS.map(r => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setReason(r)}
+                    className={cn(
+                      'h-[29px] px-[11px] rounded-lg border-[1.5px] text-[12px] font-semibold whitespace-nowrap transition',
+                      r === reason
+                        ? 'border-brand-600 bg-brand-50 text-brand-700 dark:border-brand-500 dark:bg-brand-500/15 dark:text-brand-300'
+                        : 'border-border bg-card text-slate-600 dark:text-slate-300 hover:border-brand-200 dark:hover:border-brand-500/45'
+                    )}
+                  >{r}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="rounded-[10px] bg-slate-50 dark:bg-white/[0.03] px-3 py-2.5 text-[12px] leading-[1.5] text-slate-600 dark:text-slate-300 text-pretty">
             {novoFim ? (
               <>
@@ -145,7 +178,7 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
                   <span className="num"> (era {fimAtual.toLocaleDateString('pt-BR')})</span>
                 )}.
                 {pausedDaysTotal > 0 && <> Os {pausedDaysTotal} dias já trancados seguem contados.</>}
-                {' '}Isto corrige o registro — não cria contrato novo nem mexe nos marcos de renovação.
+                {' '}Isto corrige o registro. Não cria contrato novo nem mexe nos marcos de renovação.
               </>
             ) : 'Escolha plano e data de início para ver a nova vigência.'}
           </div>
