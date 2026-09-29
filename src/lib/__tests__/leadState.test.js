@@ -3,7 +3,7 @@
 // ser lead, e com contrato vencido ele é INATIVO, não perdido.
 
 import { describe, it, expect } from 'vitest';
-import { deriveLeadState } from '../leadState.js';
+import { deriveLeadState, getTone, phaseToneName, TONES } from '../leadState.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const NOW = D(2026, 9, 8);
@@ -43,5 +43,34 @@ describe('deriveLeadState', () => {
 
   it('Venda sem contrato (antiga) em Perda também continua cliente', () => {
     expect(deriveLeadState({ status: 'Perda', lifecycleStage: 'cliente' }, NOW).key).toBe('cliente_ativo');
+  });
+
+  it('contrato trancado mostra TRANCADO em amarelo, não CLIENTE ATIVO', () => {
+    const state = deriveLeadState(cliente({ currentContractStatus: 'trancado' }), NOW);
+    expect(state.key).toBe('trancado');
+    expect(state.label).toBe('TRANCADO');
+    expect(state.tone).toBe('yellow');
+    expect(state.hint).toBe('Vigência congelada');
+  });
+
+  it('trancado ganha de vencido: parado, o contrato não corre', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStatus: 'trancado',
+      currentContractStartsAt: vencido.startsAt,
+      currentContractEndsAt: vencido.endsAt
+    }), NOW);
+    expect(state.key).toBe('trancado');
+  });
+});
+
+describe('TONES: o amarelo do Trancado', () => {
+  it('existe e não cai no cinza', () => {
+    expect(getTone('yellow')).toBe(TONES.yellow);
+    expect(TONES.yellow.strong).toBe('bg-yellow-500');
+    expect(TONES.yellow.hex).toBe('#EAB308');
+  });
+
+  it('etapa de funil pintada de amarelo passa a sair amarela na ficha', () => {
+    expect(phaseToneName('Proposta', [{ name: 'Proposta', color: 'yellow' }])).toBe('yellow');
   });
 });
