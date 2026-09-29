@@ -517,4 +517,19 @@ describe('emendado: começa no dia seguinte ao fim do contrato renovado', () => 
       currentContractSeamless: true
     }, NOW)).toBe(CONTRACT_STATUS.ATIVO);
   });
+
+  it('sobreposição de vários dias encurta para a véspera do novo', () => {
+    expect(renewalJoinOf(D(2026, 10, 11), D(2026, 10, 8))).toEqual({ seamless: false, overlaps: true, previousEndsAt: D(2026, 10, 7) });
+  });
+
+  it('a marca de emendado nunca ganha de cancelado nem de trancado', () => {
+    const base = { startsAt: D(2026, 8, 20), endsAt: D(2027, 8, 20), seamless: true };
+    expect(deriveContractStatus({ ...base, status: 'cancelado' }, NOW)).toBe(CONTRACT_STATUS.CANCELADO);
+    expect(deriveContractStatus({ ...base, status: 'trancado' }, NOW)).toBe(CONTRACT_STATUS.TRANCADO);
+  });
+
+  it('renewalJoinOf aceita Timestamp do Firestore', () => {
+    const ts = (d) => ({ toDate: () => d });
+    expect(renewalJoinOf(ts(D(2026, 10, 11)), ts(D(2026, 10, 12))).seamless).toBe(true);
+  });
 });

@@ -77,9 +77,11 @@ export function renewalJoinOf(prevEndsAt, startsAt) {
 
 export const isSeamlessStart = (prevEndsAt, startsAt) => renewalJoinOf(prevEndsAt, startsAt).seamless;
 
-// Deriva o status "vivo" do contrato a partir de { status, endsAt } + uma
-// janela de alerta (thresholdDays). Aceita tanto um doc de contrato quanto
-// o resumo denormalizado do lead, desde que tenham `status` e `endsAt`.
+// Deriva o status "vivo" do contrato a partir de { status, startsAt, endsAt,
+// seamless } + uma janela de alerta (thresholdDays). Aceita tanto um doc de
+// contrato quanto o resumo denormalizado do lead, desde que tenham `status` e
+// `endsAt`; `startsAt` decide o agendado, e `seamless` (renovação emendada)
+// tira dele o contrato que começa no dia seguinte ao fim do anterior.
 // Retorna null quando não há vigência registrada (ex.: cliente legado sem
 // contrato) — chamadores tratam isso como "sem contrato".
 export const deriveContractStatus = (
