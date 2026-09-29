@@ -56,13 +56,13 @@ import {
   TIMELINE_FILTERS,
   TIMELINE_SYSTEM_KIND
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, Link2, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, Link2, MessageCircle, PauseCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Tom do bloco de contagem, do chip e do preenchimento da régua — o estado do
 // contrato manda na cor da aba Contratos inteira.
 const CONTRACT_TONE = {
   [CONTRACT_STATUS.AGENDADO]: { block: 'bg-violet-500/10 dark:bg-violet-500/15', fg: 'text-violet-700 dark:text-violet-300', fill: 'bg-violet-500' },
-  [CONTRACT_STATUS.TRANCADO]: { block: 'bg-brand-500/10 dark:bg-brand-500/15', fg: 'text-brand-700 dark:text-brand-300', fill: 'bg-brand-600' },
+  [CONTRACT_STATUS.TRANCADO]: { block: 'bg-yellow-500/15 dark:bg-yellow-500/15', fg: 'text-yellow-700 dark:text-yellow-300', fill: 'bg-yellow-500' },
   [CONTRACT_STATUS.ATIVO]: { block: 'bg-emerald-500/10 dark:bg-emerald-500/15', fg: 'text-emerald-700 dark:text-emerald-400', fill: 'bg-emerald-500' },
   [CONTRACT_STATUS.A_VENCER]: { block: 'bg-amber-500/12 dark:bg-amber-500/16', fg: 'text-amber-700 dark:text-amber-400', fill: 'bg-amber-500' },
   [CONTRACT_STATUS.VENCIDO]: { block: 'bg-slate-500/10 dark:bg-slate-400/15', fg: 'text-slate-600 dark:text-slate-300', fill: 'bg-slate-400' },
@@ -1736,8 +1736,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 const daysToStart = scheduled && curStartsAt
                   ? Math.max(0, Math.ceil((curStartsAt.getTime() - Date.now()) / 86400000))
                   : 0;
+                // Mesma conta da reativação (buildContractResume). Com o
+                // arredondamento para cima, o card dizia 11 dias e o modal, 10.
                 const pausedDays = paused && curPausedAt
-                  ? Math.max(0, Math.ceil((Date.now() - curPausedAt.getTime()) / 86400000))
+                  ? Math.max(0, daysBetween(curPausedAt, new Date()) || 0)
                   : 0;
                 const missed = scheduled || paused ? null : missedCheckpointsLabel(vigencia?.missedCount);
                 // Desconto do contrato. Contrato antigo não tem discountValue:
@@ -1755,7 +1757,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                     <div className="flex items-stretch flex-wrap">
                       {/* A contagem é o que importa */}
                       <div className={cn('w-[186px] flex-none px-[22px] py-5', tone.block)}>
-                        <div className={cn('text-[9.5px] font-bold uppercase tracking-[.08em]', tone.fg)}>
+                        <div className={cn('flex items-center gap-1 text-[9.5px] font-bold uppercase tracking-[.08em]', tone.fg)}>
+                          {paused && <PauseCircle size={11} aria-hidden="true" />}
                           {scheduled ? 'Começa em' : paused ? 'Trancado há' : 'Restam'}
                         </div>
                         <div className="flex items-baseline gap-1.5 mt-1.5">
