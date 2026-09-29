@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { AlertTriangle, ArrowLeft, CheckCircle, KeyRound, Lock, Mail } from 'lucide-react';
+import { ArrowLeft, KeyRound, Lock, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AuthLayout, AuthTenantChip } from './AuthLayout.jsx';
 import { AuthField, AuthInput, AuthPasswordToggle } from './AuthField.jsx';
+import { AuthAlert, AuthStatus } from './AuthNotice.jsx';
 import { PASSWORD_RULE_TEXT, passwordPolicyError } from '../../lib/passwordPolicy.js';
 import {
   RESET_ACTION_REQUEST, RESET_ACTION_CONFIRM, RESET_CODE_TTL_MS, RESET_CODE_MAX_ATTEMPTS,
@@ -254,7 +255,7 @@ function ForgotPasswordScreen() {
                 aria-describedby={describedBy(fieldErrors.email && 'esqueci-email-erro')}
               />
             </AuthField>
-            <FormAlert message={formError} />
+            <AuthAlert message={formError} />
             <button type="submit" aria-disabled={busy || undefined} className={PRIMARY}>
               {busy ? <><Spinner /> Enviando…</> : 'Enviar código'}
             </button>
@@ -332,8 +333,8 @@ function ForgotPasswordScreen() {
                 aria-describedby={describedBy(fieldErrors.confirm && 'esqueci-confirma-erro')}
               />
             </AuthField>
-            <FormStatus message={info} />
-            <FormAlert message={formError} />
+            <AuthStatus message={info} />
+            <AuthAlert message={formError} />
             <button type="submit" aria-disabled={busy || undefined} className={PRIMARY}>
               {busy ? <><Spinner /> Salvando…</> : 'Salvar senha nova'}
             </button>
@@ -365,37 +366,6 @@ function ForgotPasswordScreen() {
         </form>
       )}
     </AuthLayout>
-  );
-}
-
-// Erro que não é de um campo só. Fica sempre montado para o leitor de tela
-// anunciar a troca.
-function FormAlert({ message }) {
-  return (
-    <div
-      role="alert"
-      className={cn(message
-        ? 'flex items-start gap-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3.5 py-2.5 text-[12.5px] text-rose-700 dark:text-rose-300'
-        : 'sr-only')}
-    >
-      {message && <AlertTriangle className="size-[15px] mt-px shrink-0" />}
-      <span>{message}</span>
-    </div>
-  );
-}
-
-// Aviso que não é erro, como o de código reenviado. Fica montado pelo mesmo motivo.
-function FormStatus({ message }) {
-  return (
-    <div
-      role="status"
-      className={cn(message
-        ? 'flex items-start gap-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-3.5 py-2.5 text-[12.5px] text-emerald-700 dark:text-emerald-300'
-        : 'sr-only')}
-    >
-      {message && <CheckCircle className="size-[15px] mt-px shrink-0" />}
-      <span>{message}</span>
-    </div>
   );
 }
 

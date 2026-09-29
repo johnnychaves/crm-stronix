@@ -1,19 +1,44 @@
-import { useState, useRef } from 'react';
-import { signInWithEmailAndPassword, sendPasswordResetEmail, setPersistence } from 'firebase/auth';
+import { useEffect, useState, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router';
+import { signInWithEmailAndPassword, setPersistence } from 'firebase/auth';
 import { auth, persistenceFor } from '../../lib/firebase.js';
-import { AlertTriangle, ArrowRight, Check, CheckCircle, Lock, Mail } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, Lock, Mail } from 'lucide-react';
 import { AuthLayout, AuthTenantChip } from './AuthLayout.jsx';
 import { AuthField, AuthInput, AuthPasswordToggle } from './AuthField.jsx';
+import { AuthAlert, AuthStatus } from './AuthNotice.jsx';
+import { RESET_PATH, PASSWORD_SAVED_MESSAGE, readLoginArrival, resetLinkState } from '../../lib/passwordReset.js';
 
 function LoginScreen({ authSetupError, urlTenant }) {
-  const [email, setEmail] = useState('');
+  const location = useLocation();
+  const navigate = useNavigate();
+  // Quem volta do "Esqueci a senha" chega com o e-mail e o aviso no estado da
+  // navegação. O aviso vale uma vez: o estado é limpo logo depois, para o F5
+  // não repetir.
+  const [arrival] = useState(() => readLoginArrival(location.state));
+  // O endereço de quando a tela abriu, guardado aqui e não lido no efeito:
+  // limpar o estado troca o location, e um efeito que dependesse dele rodaria
+  // de novo.
+  const [arrivalLocation] = useState(location);
+  const [email, setEmail] = useState(arrival.email);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [resetMessage, setResetMessage] = useState('');
+  const [notice, setNotice] = useState(arrival.passwordReset ? PASSWORD_SAVED_MESSAGE : '');
   const [showPass, setShowPass] = useState(false);
   const [remember, setRemember] = useState(true);
   const formRef = useRef(null);
+  // Trava do efeito: o estado é limpo uma vez só. Sem ela, uma troca de endereço
+  // depois disso refaria a limpeza e levaria a pessoa de volta ao endereço da
+  // abertura.
+  const arrivalCleared = useRef(false);
+
+  useEffect(() => {
+    if (!arrival.passwordReset || arrivalCleared.current) return;
+    arrivalCleared.current = true;
+    // O mesmo endereço, com a query e o hash, só que sem o estado. O replace
+    // troca a entrada do histórico em vez de empilhar outra.
+    navigate(arrivalLocation, { replace: true, state: null });
+  }, [arrival.passwordReset, arrivalLocation, navigate]);
 
   // Dispara a animação de shake no card do formulário ao falhar.
   const triggerShake = () => {
@@ -27,7 +52,7 @@ function LoginScreen({ authSetupError, urlTenant }) {
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
-    setResetMessage('');
+    setNotice('');
     setLoading(true);
 
     try {
@@ -55,26 +80,8 @@ function LoginScreen({ authSetupError, urlTenant }) {
     setLoading(false);
   };
 
-  const handleForgotPassword = async () => {
-    setError('');
-    setResetMessage('');
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!normalizedEmail) {
-      setError('Informe o e-mail antes de solicitar redefinição.');
-      return;
-    }
-    try {
-      await sendPasswordResetEmail(auth, normalizedEmail);
-      setResetMessage('Enviamos um link de redefinição para o e-mail informado.');
-    } catch (err) {
-      console.error(err);
-      if (err.code === 'auth/user-not-found') {
-        setError('Não há conta cadastrada para esse e-mail.');
-      } else {
-        setError('Não foi possível enviar o e-mail de redefinição.');
-      }
-    }
-  };
+  // O "Esqueci a senha" recebe o e-mail digitado e a academia do endereço.
+  const resetState = resetLinkState(email, urlTenant);
 
   return (
     <AuthLayout>
@@ -99,18 +106,8 @@ function LoginScreen({ authSetupError, urlTenant }) {
           <span>{authSetupError}</span>
         </div>
       )}
-      {error && (
-        <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3.5 py-2.5 text-[12.5px] text-rose-700 dark:text-rose-300">
-          <AlertTriangle className="w-[15px] h-[15px] mt-px shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
-      {resetMessage && (
-        <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20 px-3.5 py-2.5 text-[12.5px] text-emerald-700 dark:text-emerald-300">
-          <CheckCircle className="w-[15px] h-[15px] mt-px shrink-0" />
-          <span>{resetMessage}</span>
-        </div>
-      )}
+      <AuthAlert id="login-erro" message={error} className="mb-4" />
+      <AuthStatus id="login-aviso" message={notice} className="mb-4" />
 
       <form ref={formRef} onSubmit={handleLogin} className="space-y-4">
         <AuthField label="E-mail" icon={Mail}>
@@ -119,7 +116,18 @@ function LoginScreen({ authSetupError, urlTenant }) {
 
         <div>
           <AuthField label="Senha" icon={Lock}>
-            <AuthInput type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" required />
+            {/* Quem volta com a senha nova já tem o e-mail preenchido, então o cursor
+                vai para a senha, e o leitor de tela lê o aviso junto com o campo. */}
+            <AuthInput
+              type={showPass ? 'text' : 'password'}
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+              autoFocus={arrival.passwordReset}
+              aria-describedby={notice ? 'login-aviso' : undefined}
+              required
+            />
             <AuthPasswordToggle shown={showPass} onToggle={() => setShowPass(s => !s)} />
           </AuthField>
           <div className="mt-2.5 flex items-center justify-between">
@@ -129,9 +137,9 @@ function LoginScreen({ authSetupError, urlTenant }) {
               </span>
               <span className="text-[12.5px] text-gray-600 dark:text-neutral-300 font-medium">Manter conectado</span>
             </button>
-            <button type="button" onClick={handleForgotPassword} className="text-[12.5px] font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-700 hover:underline">
+            <Link to={RESET_PATH} state={resetState} className="text-[12.5px] font-semibold text-brand-600 dark:text-brand-400 hover:text-brand-700 hover:underline">
               Esqueci a senha
-            </button>
+            </Link>
           </div>
         </div>
 
@@ -144,7 +152,7 @@ function LoginScreen({ authSetupError, urlTenant }) {
 
       <p className="mt-7 text-center text-[12.5px] text-gray-500 dark:text-neutral-400">
         Problemas para acessar?{' '}
-        <button type="button" onClick={handleForgotPassword} className="font-semibold text-gray-700 dark:text-neutral-200 hover:underline">Recuperar acesso</button>
+        <Link to={RESET_PATH} state={resetState} className="font-semibold text-gray-700 dark:text-neutral-200 hover:underline">Recuperar acesso</Link>
       </p>
     </AuthLayout>
   );
