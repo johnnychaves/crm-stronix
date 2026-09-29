@@ -9,6 +9,8 @@ import {
   timelineStamp,
   buildStageTransitions,
   classifyInteraction,
+  zapSignupPillText,
+  zapSignupDetailText,
   TIMELINE_FILTERS
 } from '../timeline.js';
 
@@ -314,5 +316,45 @@ describe('classifyInteraction: cadastro importado', () => {
       type: 'import',
       text: 'Cadastro importado do NextFit. Plano Trimestral, vigência até 12/11/2026.'
     })).toBe('system');
+  });
+});
+
+describe('marco de início do cadastro pelo Stronizap (type zap_signup)', () => {
+  const MARCO = {
+    type: 'zap_signup',
+    text: 'Cadastrado pelo Stronizap por Johnny. Consultor responsável: Ana Souza. Canal Recepção.',
+    consultantName: 'Johnny',
+    ownerName: 'Ana Souza',
+    zapChannelName: 'Recepção',
+    createdAt: new Date(2026, 8, 28, 14, 32)
+  };
+
+  it('tem bucket próprio, decidido pelo type', () => {
+    expect(classifyInteraction(MARCO)).toBe('origin');
+    // Nem o texto de conversa leva o marco para outro bucket.
+    expect(classifyInteraction({ ...MARCO, text: '📲 Mensagem WhatsApp enviada: oi' })).toBe('origin');
+  });
+
+  it('entra em Marcos e em Tudo, e não em Anotações', () => {
+    expect(matchesTimelineFilter('origin', 'milestone')).toBe(true);
+    expect(matchesTimelineFilter('origin', 'all')).toBe(true);
+    expect(matchesTimelineFilter('origin', 'note')).toBe(false);
+  });
+
+  it("rótulo da coluna: 'Início'", () => {
+    expect(timelineTypeLabel({ _kind: 'origin' })).toBe('Início');
+  });
+
+  it('pílula: quem cadastrou, o dia e a hora', () => {
+    expect(zapSignupPillText(MARCO)).toBe('cadastrado pelo Stronizap por Johnny em 28/09 às 14:32');
+    expect(zapSignupPillText({ ...MARCO, consultantName: '' })).toBe('cadastrado pelo Stronizap em 28/09 às 14:32');
+    expect(zapSignupPillText({ ...MARCO, createdAt: null })).toBe('cadastrado pelo Stronizap por Johnny');
+  });
+
+  it('linha de baixo: o consultor responsável só quando é outra pessoa, e o canal', () => {
+    expect(zapSignupDetailText(MARCO)).toBe('Consultor responsável Ana Souza · canal Recepção');
+    expect(zapSignupDetailText({ ...MARCO, ownerName: undefined })).toBe('Canal Recepção');
+    expect(zapSignupDetailText({ ...MARCO, zapChannelName: null })).toBe('Consultor responsável Ana Souza');
+    expect(zapSignupDetailText({ ...MARCO, ownerName: null, zapChannelName: '' })).toBeNull();
   });
 });
