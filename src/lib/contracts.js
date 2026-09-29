@@ -205,7 +205,8 @@ export const buildMatriculaWrites = ({
   // Renovação: como o contrato novo encosta no atual (renewalJoinOf). A
   // emendada conta como ativa desde já. A sobreposta encurta o atual para a
   // véspera do novo, e o fim de antes fica guardado para a renovação poder ser
-  // desfeita (buildRenewalCancel).
+  // desfeita (buildRenewalCancel). Encurtado o atual, o novo começa no dia
+  // seguinte ao fim dele e também conta como emendado (seamless, abaixo).
   // As datas saem do DOCUMENTO do contrato atual quando o chamador o tem. O
   // Kanban e a Meta Diária passam o lead da lista, e o resumo dele pode estar
   // velho: um fim velho mais tarde faria o "encurtamento" esticar o contrato e
@@ -232,6 +233,11 @@ export const buildMatriculaWrites = ({
     && join.previousEndsAt.getTime() < currentEnd.getTime()
     && join.previousEndsAt.getTime() > currentStart.getTime()
   );
+  // A sobreposta que encurta o atual também é emendada: o atual passa a
+  // terminar na véspera do novo, então o novo começa no dia seguinte ao fim
+  // dele e não fica agendado. Sem encurtar (sem o documento, ou com ele já
+  // encurtado por outra renovação), os dois valem juntos e a marca fica false.
+  const seamless = join.seamless || canShorten;
 
   const contract = {
     leadId: lead?.id || null,
@@ -247,7 +253,7 @@ export const buildMatriculaWrites = ({
     cancelledAt: null,
     cancelReason: null,
     renewedFromId: renewedFromId || null,
-    seamless: join.seamless,
+    seamless,
     // Fechou de dentro do funil Upgrade (decisão 9 do spec): a marca vem do
     // funil, não do plano. Renovação continua sendo renewedFromId; o mesmo
     // contrato pode ser os dois, e é uma venda só.
@@ -268,7 +274,7 @@ export const buildMatriculaWrites = ({
     currentContractStartsAt: start,
     currentContractEndsAt: endsAt,
     currentContractStatus: CONTRACT_STATUS.ATIVO,
-    currentContractSeamless: join.seamless,
+    currentContractSeamless: seamless,
     // Novo ciclo de contrato = marcos de renovação zerados. Vale tanto para
     // matrícula (lead novo, campos já nascem assim) quanto para renovação
     // (o ciclo anterior pode ter deixado marcos tratados/declínio gravados —

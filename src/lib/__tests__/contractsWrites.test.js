@@ -64,7 +64,11 @@ describe('commitMatricula: renovação e o contrato atual', () => {
       data: { endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: contractId, updatedAt: 'TS' },
       op: 'update'
     });
-    expect(m.writes.some((w) => w.path === `${CONTRATOS}/${contractId}`)).toBe(true);
+    // Encurtado o atual, o novo começa no dia seguinte ao fim dele: emendado.
+    const novo = m.writes.find((w) => w.path === `${CONTRATOS}/${contractId}`);
+    expect(novo.data.seamless).toBe(true);
+    const leadDoc = m.writes.find((w) => w.path === 'artifacts/acad/public/data/stronix_leads/l1');
+    expect(leadDoc.data.currentContractSeamless).toBe(true);
     // Um batch só, gravado uma vez: o contrato novo e o encurtamento entram ou
     // ficam de fora juntos.
     expect(m.batches).toBe(1);
@@ -74,7 +78,11 @@ describe('commitMatricula: renovação e o contrato atual', () => {
   it('sobreposta sem o documento do contrato atual: grava a renovação e não encurta nada', async () => {
     const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: null });
     expect(m.writes.some((w) => w.path === `${CONTRATOS}/k1`)).toBe(false);
-    expect(m.writes.some((w) => w.path === `${CONTRATOS}/${contractId}`)).toBe(true);
+    // Os dois valem juntos: o novo não é emendado.
+    const novo = m.writes.find((w) => w.path === `${CONTRATOS}/${contractId}`);
+    expect(novo.data.seamless).toBe(false);
+    const leadDoc = m.writes.find((w) => w.path === 'artifacts/acad/public/data/stronix_leads/l1');
+    expect(leadDoc.data.currentContractSeamless).toBe(false);
   });
 
   it('emendada: não toca no atual e o contrato novo leva a marca', async () => {

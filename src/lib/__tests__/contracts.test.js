@@ -562,22 +562,43 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
     expect(r.previousPatch).toBeNull();
   });
 
-  it('começa antes do fim: o atual termina na véspera do novo', () => {
+  // Encurtado o atual para a véspera do novo, o novo começa no dia seguinte ao
+  // fim dele: é emendado, igual a quem emendou no fim original.
+  it('começa antes do fim: o atual termina na véspera do novo, e o novo conta como emendado', () => {
     const r = renovar(D(2026, 9, 28));
-    expect(r.contract.seamless).toBe(false);
+    expect(r.contract.seamless).toBe(true);
+    expect(r.leadPatch.currentContractSeamless).toBe(true);
     expect(r.previousContractId).toBe('k1');
     expect(r.previousPatch).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11) });
+  });
+
+  it('com início no futuro, a renovação que encurta o atual não fica agendada', () => {
+    // Hoje é 29/09. O atual ia até 11/10, a renovação começa em 05/10, e o
+    // atual passa a terminar em 04/10: o cliente não fica um dia sem contrato.
+    const hoje = D(2026, 9, 29);
+    const r = renovar(D(2026, 10, 5));
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 10, 4), originalEndsAt: D(2026, 10, 11) });
+    expect(deriveContractStatus(r.contract, hoje)).not.toBe(CONTRACT_STATUS.AGENDADO);
+    expect(deriveLeadContractStatus(r.leadPatch, hoje)).not.toBe(CONTRACT_STATUS.AGENDADO);
+    // Sem o documento do atual, nada é encurtado, os dois valem juntos e o
+    // novo continua agendado até começar.
+    const semDoc = renovar(D(2026, 10, 5), { doc: null });
+    expect(semDoc.previousPatch).toBeNull();
+    expect(deriveContractStatus(semDoc.contract, hoje)).toBe(CONTRACT_STATUS.AGENDADO);
+    expect(deriveLeadContractStatus(semDoc.leadPatch, hoje)).toBe(CONTRACT_STATUS.AGENDADO);
   });
 
   it('começa no próprio dia do fim também encurta', () => {
     expect(renovar(D(2026, 10, 11)).previousPatch).toEqual({ endsAt: D(2026, 10, 10), originalEndsAt: D(2026, 10, 11) });
   });
 
-  it('sem o documento do contrato atual, não encurta nada', () => {
+  it('sem o documento do contrato atual, não encurta nada nem marca emendada', () => {
     const r = buildMatriculaWrites({ lead, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1' });
     expect(r.previousPatch).toBeNull();
     expect(r.previousContractId).toBeNull();
     expect(r.contract.renewedFromId).toBe('k1');
+    expect(r.contract.seamless).toBe(false);
+    expect(r.leadPatch.currentContractSeamless).toBe(false);
   });
 
   it('um documento que não é o atual do lead também não encurta nada', () => {
@@ -619,7 +640,9 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
     expect(renovar(D(2025, 10, 5)).previousPatch).toBeNull();
     // A véspera cairia no próprio início: contrato de duração zero.
     expect(renovar(D(2025, 10, 12)).previousPatch).toBeNull();
+    expect(renovar(D(2025, 10, 12)).contract.seamless).toBe(false);
     expect(renovar(D(2025, 10, 13)).previousPatch).toEqual({ endsAt: D(2025, 10, 12), originalEndsAt: D(2026, 10, 11) });
+    expect(renovar(D(2025, 10, 13)).contract.seamless).toBe(true);
   });
 
   // Lead velho na lista, ainda apontando para um contrato que outra renovação
@@ -630,6 +653,7 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
     expect(r.previousPatch).toBeNull();
     expect(r.previousContractId).toBeNull();
     expect(r.contract.renewedFromId).toBe('k1');
+    expect(r.contract.seamless).toBe(false);
     // Com a renovação desfeita (shortenedById volta a null), encurta de novo.
     expect(renovar(D(2026, 9, 20), { doc: { ...atual, originalEndsAt: null, shortenedById: null } }).previousPatch)
       .toEqual({ endsAt: D(2026, 9, 19), originalEndsAt: D(2026, 10, 11) });

@@ -57,8 +57,9 @@ export function deriveLeadState(lead, refDate = new Date(), thresholdDays) {
     // Antes caía no fim da lista e o topo da ficha dizia CLIENTE ATIVO.
     if (cs === CONTRACT_STATUS.TRANCADO) return { key: 'trancado', tone: 'yellow', label: 'TRANCADO', hint: 'Vigência congelada' };
     // "CONTRATO AGENDADO", e não "MATRÍCULA": vale também para a renovação que
-    // começa depois de um intervalo, ou que sobrepõe o atual com início no futuro.
-    // A emendada não chega aqui (seamless).
+    // começa depois de um intervalo, ou que sobrepõe o atual sem encurtá-lo, com
+    // início no futuro. A emendada não chega aqui (seamless), nem a que encurtou
+    // o atual para a véspera dela.
     if (cs === CONTRACT_STATUS.AGENDADO) return { key: 'agendado', tone: 'violet', label: 'CONTRATO AGENDADO', hint: 'A vigência ainda não começou' };
     if (cs === CONTRACT_STATUS.A_VENCER) return { key: 'a_vencer', tone: 'amber', label: 'A VENCER', hint: 'Contrato perto do fim' };
     if (cs === CONTRACT_STATUS.VENCIDO) return { key: 'inativo', tone: 'slate', label: 'INATIVO', hint: 'Contrato vencido' };
