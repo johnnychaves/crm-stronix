@@ -102,3 +102,13 @@ export function withSentry(handler) {
     }
   };
 }
+
+// Captura um erro que aconteceu depois da resposta, no waitUntil, onde o
+// withSentry não alcança. Sem DSN não faz nada. O flush espera o envio porque
+// a função congela quando o trabalho termina.
+export async function captureError(err, req) {
+  start();
+  if (!DSN) return;
+  Sentry.captureException(err, { tags: { endpoint: endpointTag(req) } });
+  await Sentry.flush(2000).catch(() => {});
+}
