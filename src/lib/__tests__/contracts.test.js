@@ -974,3 +974,146 @@ describe('renovação cancelada antes de começar', () => {
     expect(neverTookEffect({ ...renovacao, ...r.contractPatch })).toBe(true);
   });
 });
+
+// Corrigir o início de uma renovação segue as regras da gravação dela
+// (buildMatriculaWrites): a marca de emendada e o fim do contrato renovado
+// acompanham o início novo. Decisão do Johnny (29/09/2026).
+describe('buildContractEdit: renovação com o contrato anterior', () => {
+  const plano = { id: 'p1', name: 'Flow', value: 1308, durationMonths: 12 };
+  const anterior = { id: 'k1', planName: 'Start', status: 'ativo', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+  const renovacao = {
+    id: 'k2', planId: 'p1', planName: 'Flow', value: 1308, listValue: 1308, durationMonths: 12,
+    renewedFromId: 'k1', startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12), seamless: true
+  };
+  // O Start, encurtado por esta renovação quando ela começava em 28/09.
+  const encurtado = { ...anterior, endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' };
+  const sobreposta = { ...renovacao, startsAt: D(2026, 9, 28), endsAt: D(2027, 9, 28) };
+  const corrigir = (startsAt, { previous = anterior, contract = renovacao, value = 1308 } = {}) =>
+    buildContractEdit({ contract, plan: plano, value, startsAt, previous });
+
+  it('continua emendada: nada muda no anterior', () => {
+    const r = corrigir(D(2026, 10, 12));
+    expect(r.contractPatch.seamless).toBe(true);
+    expect(r.leadPatch.currentContractSeamless).toBe(true);
+    expect(r.previousPatch).toBeNull();
+  });
+
+  it('passa a sobrepor: o anterior termina na véspera, e a renovação segue emendada', () => {
+    const r = corrigir(D(2026, 9, 28));
+    expect(r.contractPatch.seamless).toBe(true);
+    expect(r.leadPatch.currentContractSeamless).toBe(true);
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
+  });
+
+  it('encurtou o anterior e volta para a emenda: o anterior volta ao fim original', () => {
+    const r = corrigir(D(2026, 10, 12), { previous: encurtado, contract: sobreposta });
+    expect(r.contractPatch.seamless).toBe(true);
+    expect(r.leadPatch.currentContractSeamless).toBe(true);
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
+  });
+
+  it('encurtou o anterior e muda de data dentro da sobreposição: encurta a partir do fim original', () => {
+    const r = corrigir(D(2026, 10, 1), { previous: encurtado, contract: sobreposta });
+    expect(r.contractPatch.seamless).toBe(true);
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 9, 30), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
+  });
+
+  it('encurtou o anterior e o início fica igual: nada a gravar no anterior', () => {
+    const r = corrigir(D(2026, 9, 28), { previous: encurtado, contract: sobreposta, value: 1250 });
+    expect(r.contractPatch.value).toBe(1250);
+    expect(r.contractPatch.seamless).toBe(true);
+    expect(r.leadPatch.currentContractSeamless).toBe(true);
+    expect(r.previousPatch).toBeNull();
+  });
+
+  it('encurtou o anterior e vai para depois de um intervalo: o fim original volta, e ela deixa de ser emendada', () => {
+    const r = corrigir(D(2026, 10, 20), { previous: encurtado, contract: sobreposta });
+    expect(r.contractPatch.seamless).toBe(false);
+    expect(r.leadPatch.currentContractSeamless).toBe(false);
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
+  });
+
+  // Só se mexe no fim que esta renovação mudou. Como na gravação, o contrato
+  // que outra renovação encurtou não é encurtado de novo.
+  it('anterior encurtado por outra renovação: não mexe nele, e a marca sai do fim gravado', () => {
+    const deOutra = { ...encurtado, shortenedById: 'k9' };
+    const emenda = corrigir(D(2026, 9, 28), { previous: deOutra });
+    expect(emenda.previousPatch).toBeNull();
+    expect(emenda.contractPatch.seamless).toBe(true);
+    const sobrepoe = corrigir(D(2026, 9, 20), { previous: deOutra });
+    expect(sobrepoe.previousPatch).toBeNull();
+    expect(sobrepoe.contractPatch.seamless).toBe(false);
+    const intervalo = corrigir(D(2026, 10, 12), { previous: deOutra });
+    expect(intervalo.previousPatch).toBeNull();
+    expect(intervalo.contractPatch.seamless).toBe(false);
+  });
+
+  // O fim do trancado ainda anda na reativação, e o do cancelado já parou.
+  it('anterior trancado ou cancelado: a sobreposição não encurta nem marca emendada', () => {
+    ['trancado', 'cancelado'].forEach((status) => {
+      const r = corrigir(D(2026, 9, 28), { previous: { ...anterior, status } });
+      expect(r.previousPatch, status).toBeNull();
+      expect(r.contractPatch.seamless, status).toBe(false);
+      expect(r.leadPatch.currentContractSeamless, status).toBe(false);
+    });
+  });
+
+  it('não encurta para antes do início do contrato anterior', () => {
+    // A véspera cairia no próprio início: contrato de duração zero.
+    const r = corrigir(D(2025, 10, 12));
+    expect(r.previousPatch).toBeNull();
+    expect(r.contractPatch.seamless).toBe(false);
+    expect(corrigir(D(2025, 10, 13)).previousPatch)
+      .toEqual({ endsAt: D(2025, 10, 12), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
+    // Importado sem início: o limite é a criação, como na gravação da renovação.
+    const importado = { ...anterior, startsAt: null, createdAt: D(2026, 9, 4) };
+    expect(corrigir(D(2026, 9, 28), { previous: importado }).previousPatch)
+      .toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
+    expect(corrigir(D(2026, 9, 5), { previous: importado }).previousPatch).toBeNull();
+  });
+
+  it('sem ligação com o anterior: não mexe em contrato nenhum, e a marca fica como estava', () => {
+    [[undefined, false], [false, false], [true, true]].forEach(([marca, esperado]) => {
+      const solto = { ...renovacao, renewedFromId: null, seamless: marca };
+      const r = buildContractEdit({ contract: solto, plan: plano, value: 1308, startsAt: D(2026, 9, 28), previous: anterior });
+      expect(r.previousPatch).toBeNull();
+      expect(r.contractPatch.seamless).toBe(esperado);
+      expect(r.leadPatch.currentContractSeamless).toBe(esperado);
+    });
+    // Sem o anterior carregado, ou com outro contrato no lugar dele, também não.
+    [null, { ...anterior, id: 'k0' }].forEach((previous) => {
+      const r = corrigir(D(2026, 9, 28), { previous });
+      expect(r.previousPatch).toBeNull();
+      expect(r.contractPatch.seamless).toBe(true);
+    });
+  });
+
+  it('aceita o doc cru do Firestore e grava Date', () => {
+    const ts = (d) => ({ toDate: () => d });
+    const cru = { ...encurtado, startsAt: ts(D(2025, 10, 11)), endsAt: ts(D(2026, 9, 27)), originalEndsAt: ts(D(2026, 10, 11)) };
+    // Mesmo início: o patch seria igual ao que já está gravado.
+    expect(corrigir(D(2026, 9, 28), { previous: cru, contract: sobreposta }).previousPatch).toBeNull();
+    const volta = corrigir(D(2026, 10, 12), { previous: cru, contract: sobreposta });
+    expect(volta.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
+    expect(volta.previousPatch.endsAt).toBeInstanceOf(Date);
+  });
+
+  // O leitor da linha do tempo (contractEventOf) depende deste texto.
+  it('o texto da linha do tempo não muda', () => {
+    expect(corrigir(D(2026, 9, 28)).interactionText)
+      .toBe('Contrato corrigido — Plano Flow (R$ 1.308,00), vigência 28/09/2026 → 28/09/2027.');
+  });
+
+  // Ida e volta pelas funções de verdade: renovar encurtando e corrigir o
+  // início para a emenda devolve o contrato anterior como era.
+  it('renovar encurtando e corrigir para a emenda devolve o anterior como estava', () => {
+    const lead = { id: 'l1', name: 'Ana', currentContractId: 'k1', currentContractEndsAt: D(2026, 10, 11) };
+    const w = buildMatriculaWrites({
+      lead, plan: plano, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: anterior
+    });
+    const depois = { ...anterior, ...w.previousPatch, shortenedById: 'k2' };
+    const r = corrigir(D(2026, 10, 12), { previous: depois, contract: { id: 'k2', ...w.contract } });
+    expect({ ...depois, ...r.previousPatch }).toEqual({ ...anterior, originalEndsAt: null, shortenedById: null });
+    expect(r.contractPatch.seamless).toBe(true);
+  });
+});

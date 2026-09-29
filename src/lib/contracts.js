@@ -77,6 +77,16 @@ export function renewalJoinOf(prevEndsAt, startsAt) {
 
 export const isSeamlessStart = (prevEndsAt, startsAt) => renewalJoinOf(prevEndsAt, startsAt).seamless;
 
+// A véspera da renovação sobreposta precisa cair dentro da vigência do
+// contrato renovado: antes do fim e depois do início. Começar no início dele,
+// ou antes, deixaria um contrato de duração zero ou negativa. Vale na gravação
+// da renovação (buildMatriculaWrites) e na correção dela (buildContractEdit).
+const eveFitsIn = (join, prevStart, prevEnd) => Boolean(
+  join.overlaps && prevStart && prevEnd
+  && join.previousEndsAt.getTime() < prevEnd.getTime()
+  && join.previousEndsAt.getTime() > prevStart.getTime()
+);
+
 // Por que uma renovação não pode ser gravada, ou null. Contrato trancado: o
 // fim dele ainda anda na reativação, então emendar ou encurtar daria conta
 // errada. A renovação começa no mínimo dois dias depois do início do contrato
@@ -235,20 +245,15 @@ export const buildMatriculaWrites = ({
     ? getSafeDateOrNull(currentDoc ? currentDoc.endsAt : lead?.currentContractEndsAt)
     : null;
   const join = currentEnd ? renewalJoinOf(currentEnd, start) : { seamless: false, overlaps: false, previousEndsAt: null };
-  // A véspera do novo precisa cair dentro da vigência do atual: antes do fim
-  // e depois do início. Começar no início do atual, ou antes, deixaria um
-  // contrato de duração zero ou negativa. Importado pode vir sem início, e
-  // aí vale a criação, como no Operacional (operacional/base.js).
+  // A véspera do novo precisa cair dentro da vigência do atual (eveFitsIn).
+  // Importado pode vir sem início, e aí vale a criação, como no Operacional
+  // (operacional/base.js).
   const currentStart = getSafeDateOrNull(currentDoc?.startsAt) || getSafeDateOrNull(currentDoc?.createdAt);
   // Contrato que outra renovação já encurtou (shortenedById) não é encurtado de
   // novo: o originalEndsAt passaria a guardar o fim encurtado, e o fim original
   // de verdade se perderia. Isso acontece com o lead velho da lista, que ainda
   // aponta para ele. Desfeita a renovação, a marca volta a null e ele encurta.
-  const canShorten = Boolean(
-    currentDoc && !currentDoc.shortenedById && join.overlaps && currentStart
-    && join.previousEndsAt.getTime() < currentEnd.getTime()
-    && join.previousEndsAt.getTime() > currentStart.getTime()
-  );
+  const canShorten = Boolean(currentDoc && !currentDoc.shortenedById && eveFitsIn(join, currentStart, currentEnd));
   // A sobreposta que encurta o atual também é emendada: o atual passa a
   // terminar na véspera do novo, então o novo começa no dia seguinte ao fim
   // dele e não fica agendado. Sem encurtar (sem o documento, ou com ele já
@@ -562,13 +567,24 @@ export const correctionNeedsReason = ({ contract, plan, value, hasDiscount }) =>
   return dealChanged || Boolean(contract?.discountReason);
 };
 
+// O patch muda alguma coisa no contrato renovado? Mesmo fim (o instante), mesmo
+// fim original e a mesma marca de quem encurtou: não há o que gravar nele.
+const sameInstant = (a, b) => (getSafeDateOrNull(a)?.getTime() ?? null) === (getSafeDateOrNull(b)?.getTime() ?? null);
+const changesPrevious = (previous, patch) => !(
+  sameInstant(previous?.endsAt, patch.endsAt)
+  && sameInstant(previous?.originalEndsAt, patch.originalEndsAt)
+  && (previous?.shortenedById || null) === (patch.shortenedById || null)
+);
+
 // Correção de um contrato já gravado (erro de digitação em plano, valor ou
 // início). NÃO é renovação: não cria contrato novo, não mexe em marcos de
 // renovação e não recarimba conversão. Preserva os dias já trancados.
 // O desconto é recalculado junto (tabela menos o valor corrigido). 'nenhum' e
 // 'final' são os valores de DISCOUNT_MODES (renewal.js), escritos aqui porque
 // importar renewal.js fecharia um ciclo.
-export const buildContractEdit = ({ contract, plan, value, startsAt, discountReason } = {}) => {
+// `previous`: o DOC do contrato que esta renovação renova, quando o chamador o
+// tem. Com ele vem `previousPatch`, o que gravar nele, ou null.
+export const buildContractEdit = ({ contract, plan, value, startsAt, discountReason, previous = null } = {}) => {
   const start = getSafeDateOrNull(startsAt) || getSafeDateOrNull(contract?.startsAt) || new Date();
   const durationMonths = Number(plan?.durationMonths) || Number(contract?.durationMonths) || 0;
   const base = computeEndsAt(start, durationMonths);
@@ -581,6 +597,33 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
   const sameDeal = finalValue === (Number(contract?.value) || 0) && listValue === (Number(contract?.listValue) || 0);
   const priorMode = contract?.discountMode && contract.discountMode !== 'nenhum' ? contract.discountMode : null;
 
+  // Renovação corrigida: a marca de emendada e o fim do contrato renovado
+  // acompanham o início novo, com as mesmas regras da gravação da renovação
+  // (buildMatriculaWrites). Se foi esta renovação que encurtou o anterior, a
+  // conta parte do fim original dele, para o fim de verdade nunca se perder.
+  // Sobrepondo, o anterior termina na véspera do novo, e o novo conta como
+  // emendado. Sem sobrepor, o fim que esta renovação encurtou volta ao
+  // original. Não se encurta o que outra renovação encurtou, nem contrato
+  // trancado (o fim ainda anda na reativação) ou cancelado. Sem o anterior
+  // ligado, a marca fica como estava e nenhum outro contrato é gravado.
+  let seamless = Boolean(contract?.seamless);
+  let previousPatch = null;
+  if (contract?.renewedFromId && previous?.id === contract.renewedFromId) {
+    const original = getSafeDateOrNull(previous.originalEndsAt);
+    const shortenedByThis = Boolean(original && previous.shortenedById && previous.shortenedById === contract.id);
+    const shortenedByOther = Boolean(previous.shortenedById && previous.shortenedById !== contract.id);
+    const frozen = previous.status === CONTRACT_STATUS.TRANCADO || previous.status === CONTRACT_STATUS.CANCELADO;
+    const refEnd = shortenedByThis ? original : getSafeDateOrNull(previous.endsAt);
+    const prevStart = getSafeDateOrNull(previous.startsAt) || getSafeDateOrNull(previous.createdAt);
+    const join = renewalJoinOf(refEnd, start);
+    const canShorten = !shortenedByOther && !frozen && eveFitsIn(join, prevStart, refEnd);
+    seamless = join.seamless || canShorten;
+    let patch = null;
+    if (canShorten) patch = { endsAt: join.previousEndsAt, originalEndsAt: refEnd, shortenedById: contract.id };
+    else if (shortenedByThis) patch = { endsAt: refEnd, originalEndsAt: null, shortenedById: null };
+    previousPatch = patch && changesPrevious(previous, patch) ? patch : null;
+  }
+
   return {
     contractPatch: {
       planId: plan?.id ?? contract?.planId ?? null,
@@ -590,6 +633,7 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
       durationMonths,
       startsAt: start,
       endsAt,
+      seamless,
       discountMode: hasDiscount ? ((sameDeal && priorMode) || 'final') : 'nenhum',
       discountValue: hasDiscount ? discountValue : 0,
       discountReason: hasDiscount ? (discountReason ?? contract?.discountReason ?? null) : null
@@ -598,8 +642,10 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
       currentPlanName: plan?.name ?? contract?.planName ?? null,
       currentContractValue: finalValue,
       currentContractStartsAt: start,
-      currentContractEndsAt: endsAt
+      currentContractEndsAt: endsAt,
+      currentContractSeamless: seamless
     },
+    previousPatch,
     interactionText: `Contrato corrigido — Plano ${plan?.name ?? contract?.planName ?? '—'} (${fmtBRL(finalValue)}), vigência ${fmtDia(start)} → ${fmtDia(endsAt)}.`
   };
 };
