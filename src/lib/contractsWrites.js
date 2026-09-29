@@ -80,7 +80,9 @@ export async function commitMatricula({
     setStatusVenda,
     stampClienteSince,
     notifyReferrerId,
-    referrerInteractionText
+    referrerInteractionText,
+    previousContractId,
+    previousPatch
   } = buildMatriculaWrites({ lead, plan, value, startsAt, appUser, mode, renewedFromId });
 
   // Troca de etapa para Venda (base do CRM). null na renovação, quando o lead
@@ -94,6 +96,16 @@ export async function commitMatricula({
   // (1) Contrato — id gerado client-side para já referenciá-lo no lead.
   const contractRef = doc(collection(db, 'artifacts', appId, 'public', 'data', CONTRACTS_PATH));
   batch.set(contractRef, { ...contract, ...(contractExtra || {}), createdAt: serverTimestamp() });
+
+  // (1b) Renovação que começa antes do fim do atual: o atual passa a terminar
+  //      na véspera do novo, no mesmo batch, e guarda quem o encurtou.
+  if (previousContractId && previousPatch) {
+    batch.set(
+      doc(db, 'artifacts', appId, 'public', 'data', CONTRACTS_PATH, previousContractId),
+      { ...previousPatch, shortenedById: contractRef.id, updatedAt: serverTimestamp() },
+      { merge: true }
+    );
+  }
 
   // (2) Resumo denormalizado no lead. Os campos que dependem do SDK
   //     (serverTimestamp / status de venda) entram aqui conforme os sinais
