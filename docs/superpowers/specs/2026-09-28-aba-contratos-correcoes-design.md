@@ -84,16 +84,16 @@ A regra vira a função pura `vigenciaRefDate({ status, pausedAt, cancelledAt },
 
 ### Origem do contrato (item 7)
 
-- Função pura nova, `contractOriginOf(contract, leadContracts)`, num módulo novo, `src/lib/contractHistory.js`. Ela segue a ordem de `saleTypeOf` (`src/lib/gerencial/scope.js`): renovação, upgrade, retorno e primeira. Devolve `{ kind, previous, ordinal, gapDays }`.
+- Função pura nova, `contractOriginOf(contract, leadContracts)`, num módulo novo, `src/lib/contractHistory.js`. Ela segue a ordem de `saleTypeOf` (`src/lib/gerencial/scope.js`): renovação, upgrade, retorno e primeira. Devolve `{ kind, previous, ordinal, gapDays, coverageEnd }`.
   - renovação: o contrato tem `renewedFromId`. `previous` é o contrato ligado. `ordinal` conta a sequência de ligações para trás, então recomeça depois de um retorno;
   - upgrade: `closedFromUpgrade` sem `renewedFromId`;
-  - retorno: existe contrato anterior sem ligação, pela mesma data que o Gerencial usa (`createdAt`, ou `startsAt` quando falta). `previous` é o anterior mais recente;
+  - retorno: existe contrato anterior sem ligação, pela mesma data que o Gerencial usa (`createdAt`, ou `startsAt` quando falta). `previous` é o contrato que cobria o aluno por último, para o plano e a data da célula saírem do mesmo contrato (sem nenhum que tenha valido, o vendido por último);
   - primeira: nenhum contrato anterior;
-  - `gapDays`: dias sem contrato entre o fim do anterior (ou a data do cancelamento, se ele foi cancelado antes do fim) e o início deste. Zero ou negativo vira `null`.
+  - `gapDays`: dias sem contrato entre o fim da cobertura anterior (`coverageEnd`, o fim efetivo mais distante entre os contratos anteriores que chegaram a valer) e o início deste, em dias do calendário. O fim efetivo é o cancelamento quando ele veio antes do fim ou quando o contrato foi cancelado ainda trancado. Zero ou negativo vira `null`. Ajustado na execução, depois da revisão: medir do contrato vendido por último errava com contrato paralelo e com renovação cancelada antes de começar.
 - A célula da ficha:
   - renovação: "Renovado de", o plano anterior e "#ID · 2ª renovação";
   - upgrade: "Upgrade", com o plano anterior;
-  - retorno: "Retorno", "último contrato: Plano X, até DD/MM" e o tempo sem contrato (`gapLabel`), quando houver;
+  - retorno: "Retorno", o plano do contrato anterior e, em linhas curtas, "até DD/MM/AAAA" e o tempo sem contrato (`gapLabel`), quando houver. A célula é estreita, e numa linha só o intervalo ficava cortado;
   - primeira: "Matrícula inicial", como hoje.
 - O número curto do contrato passa a ter 8 caracteres também nessa célula, igual ao resto do card.
 - No Histórico, o nó do retorno ganha ícone próprio (`LogIn`). A renovação continua com `RefreshCw` e a primeira matrícula com `GraduationCap`.

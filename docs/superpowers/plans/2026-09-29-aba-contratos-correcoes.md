@@ -1659,6 +1659,15 @@ Conferência no preview da Vercel, no lead de teste:
 
 Branch novo: `git switch -c claude/contratos-vigencia` a partir do branch do PR 1. Se o PR 1 já estiver na main, partir da main atualizada. Enquanto o PR 1 não entra, o PR 2 abre com base no branch do PR 1; quando o PR 1 for mesclado, o GitHub troca a base para a main.
 
+**O que a execução do PR 1 mudou e que o PR 2 precisa saber (29/09/2026):**
+- A Task 12 já foi feita no PR 1 (commit `f73da98`): `startOfLocalDay` e `calendarDaysBetween` estão em `src/lib/dates.js`, com teste. Pular a Task 12 e só conferir.
+- `src/lib/contractHistory.js` já importa `CONTRACT_STATUS` (de `contracts.js`) e `calendarDaysBetween`, e já tem `neverStarted` (cancelado antes de começar) e `coverageOf`. Na Task 19, acrescentar só `deriveContractStatus` ao import e reaproveitar `neverStarted` no lugar de criar `cancelledBeforeStart`, se a regra servir (a do plano compara por dia do calendário; conferir e escolher uma só).
+- `contractOriginOf` devolve também `coverageEnd`, e o `previous` de retorno e upgrade é o contrato que cobria o aluno por último, não o vendido por último.
+- Na ficha, a origem do contrato vigente se chama `contractOrigin` (não `origin`), e a linha de intervalo do Histórico já usa `contractOriginOf` (`newerOrigin`). As âncoras da Task 20 no `LeadProfileView.jsx` mudaram: reler o arquivo antes de editar.
+- `vigenciaRefDate` já trata o cancelado ainda trancado (para no trancamento).
+- `buildContractEdit` usa `editListValueOf` para a tabela, e o modal de correção usa `editListValueOf` e `correctionNeedsReason`. Nas Tasks 23 e 24, somar a lógica do contrato anterior a essa versão, sem voltar ao `plan.value`.
+- O Gerencial já pinta trancados de amarelo (`WalletBand`, `ExitsCard`).
+
 ## Task 12: Dias do calendário em `dates.js`
 
 **Files:**
