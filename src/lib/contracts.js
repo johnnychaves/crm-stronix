@@ -161,8 +161,9 @@ export const buildMatriculaInteractionText = ({ planName, value, endsAt, isRenew
 //       * stampClienteSince — só se o lead ainda não tem clienteSince.
 //
 // `mode`: 'matricula' (padrão) | 'renovacao'.
-// `previousContract`: o DOC do contrato atual, quando o chamador o tem. Sem ele
-// (ou com um doc que não é o atual do lead), a renovação não encurta nada.
+// `previousContract`: o DOC do contrato atual, quando o chamador o tem. É dele
+// que saem o fim e o início usados na emenda e no encurtamento. Sem ele (ou com
+// um doc que não é o atual do lead), a renovação não encurta nada.
 export const buildMatriculaWrites = ({
   lead,
   plan,
@@ -184,11 +185,27 @@ export const buildMatriculaWrites = ({
   // emendada conta como ativa desde já. A sobreposta encurta o atual para a
   // véspera do novo, e o fim de antes fica guardado para a renovação poder ser
   // desfeita (buildRenewalCancel).
-  const currentEnd = isRenewal && lead?.currentContractId ? getSafeDateOrNull(lead?.currentContractEndsAt) : null;
+  // As datas saem do DOCUMENTO do contrato atual quando o chamador o tem. O
+  // Kanban e a Meta Diária passam o lead da lista, e o resumo dele pode estar
+  // velho: um fim velho mais tarde faria o "encurtamento" esticar o contrato e
+  // guardar um fim original falso. Sem o documento, o resumo do lead decide só
+  // a marca de emendada, e nada é encurtado (gravar com merge num id velho
+  // criaria um contrato fantasma, só com datas).
+  const currentDoc = isRenewal && previousContract?.id && previousContract.id === lead?.currentContractId ? previousContract : null;
+  const currentEnd = isRenewal && lead?.currentContractId
+    ? getSafeDateOrNull(currentDoc ? currentDoc.endsAt : lead?.currentContractEndsAt)
+    : null;
   const join = currentEnd ? renewalJoinOf(currentEnd, start) : { seamless: false, overlaps: false, previousEndsAt: null };
-  // Só encurta um contrato que existe: com a referência velha no lead, gravar
-  // com merge criaria um contrato fantasma, só com datas.
-  const canShorten = Boolean(join.overlaps && previousContract?.id && previousContract.id === lead?.currentContractId);
+  // A véspera do novo precisa cair dentro da vigência do atual: antes do fim
+  // e depois do início. Começar no início do atual, ou antes, deixaria um
+  // contrato de duração zero ou negativa. Importado pode vir sem início, e
+  // aí vale a criação, como no Operacional (operacional/base.js).
+  const currentStart = getSafeDateOrNull(currentDoc?.startsAt) || getSafeDateOrNull(currentDoc?.createdAt);
+  const canShorten = Boolean(
+    currentDoc && join.overlaps && currentStart
+    && join.previousEndsAt.getTime() < currentEnd.getTime()
+    && join.previousEndsAt.getTime() > currentStart.getTime()
+  );
 
   const contract = {
     leadId: lead?.id || null,

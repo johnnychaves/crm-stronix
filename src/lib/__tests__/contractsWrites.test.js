@@ -3,7 +3,9 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const m = vi.hoisted(() => ({ sets: [], seq: 0 }));
+// batches e commits contam as chamadas: é assim que o teste prova que o
+// encurtamento vai no mesmo batch da renovação.
+const m = vi.hoisted(() => ({ sets: [], seq: 0, batches: 0, commits: 0 }));
 
 vi.mock('../firebase.js', () => ({
   appId: 'acad',
@@ -24,10 +26,13 @@ vi.mock('firebase/firestore', () => ({
   },
   increment: (n) => ({ increment: n }),
   serverTimestamp: () => 'TS',
-  writeBatch: () => ({
-    set: (ref, data, opts) => { m.sets.push({ path: ref.path, data, opts }); },
-    commit: async () => {}
-  })
+  writeBatch: () => {
+    m.batches += 1;
+    return {
+      set: (ref, data, opts) => { m.sets.push({ path: ref.path, data, opts }); },
+      commit: async () => { m.commits += 1; }
+    };
+  }
 }));
 
 const { commitMatricula } = await import('../contractsWrites.js');
@@ -41,15 +46,22 @@ const lead = {
   lifecycleStage: 'cliente', isConverted: true, status: 'Venda', clienteSince: D(2025, 10, 11),
   currentContractId: 'k1', currentContractStartsAt: D(2025, 10, 11), currentContractEndsAt: D(2026, 10, 11)
 };
+// O documento do contrato atual, como chega da coleção de contratos.
+const atual = { id: 'k1', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
 
-beforeEach(() => { m.sets.length = 0; m.seq = 0; });
+beforeEach(() => { m.sets.length = 0; m.seq = 0; m.batches = 0; m.commits = 0; });
 
 describe('commitMatricula: renovação e o contrato atual', () => {
   it('sobreposta: encurta o atual no mesmo batch e guarda quem encurtou', async () => {
-    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: { id: 'k1' } });
-    const atual = m.sets.find((s) => s.path === `${CONTRATOS}/k1`);
-    expect(atual.data).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: contractId, updatedAt: 'TS' });
-    expect(atual.opts).toEqual({ merge: true });
+    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: atual });
+    const encurtado = m.sets.find((s) => s.path === `${CONTRATOS}/k1`);
+    expect(encurtado.data).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: contractId, updatedAt: 'TS' });
+    expect(encurtado.opts).toEqual({ merge: true });
+    expect(m.sets.some((s) => s.path === `${CONTRATOS}/${contractId}`)).toBe(true);
+    // Um batch só, gravado uma vez: o contrato novo e o encurtamento entram ou
+    // ficam de fora juntos.
+    expect(m.batches).toBe(1);
+    expect(m.commits).toBe(1);
   });
 
   it('sobreposta sem o documento do contrato atual: grava a renovação e não encurta nada', async () => {
@@ -59,7 +71,7 @@ describe('commitMatricula: renovação e o contrato atual', () => {
   });
 
   it('emendada: não toca no atual e o contrato novo leva a marca', async () => {
-    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 10, 12), mode: 'renovacao', renewedFromId: 'k1', previousContract: { id: 'k1' } });
+    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 10, 12), mode: 'renovacao', renewedFromId: 'k1', previousContract: atual });
     expect(m.sets.some((s) => s.path === `${CONTRATOS}/k1`)).toBe(false);
     const novo = m.sets.find((s) => s.path === `${CONTRATOS}/${contractId}`);
     expect(novo.data.seamless).toBe(true);

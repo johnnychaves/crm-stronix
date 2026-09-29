@@ -589,12 +589,15 @@ const CLIENT_MARKS = {
   upgradeEnteredAt: null
 };
 
+// A marca de emendada vai false de propósito: o lead é gravado com merge, e a
+// marca da renovação emendada de antes sobreviveria ao contrato da planilha.
 const contractSummary = (contract) => (contract ? {
   currentPlanName: contract.planName,
   currentContractValue: contract.value,
   currentContractStartsAt: contract.startsAt,
   currentContractEndsAt: contract.endsAt,
-  currentContractStatus: contract.status
+  currentContractStatus: contract.status,
+  currentContractSeamless: false
 } : {});
 
 // Toda importação vem da planilha modelo do Stronilead. Lote antigo guarda

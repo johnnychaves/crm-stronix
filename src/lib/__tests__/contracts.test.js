@@ -540,7 +540,11 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
     id: 'l1', name: 'Ana', consultantId: 'c1', consultantAuthUid: 'u1',
     currentContractId: 'k1', currentContractStartsAt: D(2025, 10, 11), currentContractEndsAt: D(2026, 10, 11)
   };
-  const renovar = (startsAt) => buildMatriculaWrites({ lead, plan, value: 1308, startsAt, mode: 'renovacao', renewedFromId: 'k1', previousContract: { id: 'k1' } });
+  // O documento do contrato atual, como chega da coleção de contratos.
+  const atual = { id: 'k1', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+  const renovar = (startsAt, { from = lead, doc = atual } = {}) => buildMatriculaWrites({
+    lead: from, plan, value: 1308, startsAt, mode: 'renovacao', renewedFromId: 'k1', previousContract: doc
+  });
 
   it('começa no dia seguinte ao fim: emendada, sem encurtar o atual', () => {
     const r = renovar(D(2026, 10, 12));
@@ -575,9 +579,52 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
   });
 
   it('um documento que não é o atual do lead também não encurta nada', () => {
-    const r = buildMatriculaWrites({ lead, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: { id: 'k0' } });
+    const r = renovar(D(2026, 9, 28), { doc: { ...atual, id: 'k0' } });
     expect(r.previousPatch).toBeNull();
     expect(r.previousContractId).toBeNull();
+  });
+
+  // O Kanban e a Meta Diária passam o lead da lista, que pode estar velho; o
+  // documento vem da coleção assinada. Com o fim velho mais tarde, o
+  // "encurtamento" esticaria o contrato e guardaria um fim original falso.
+  it('o fim que vale é o do documento: o resumo velho do lead não estica o contrato', () => {
+    const velho = { ...lead, currentContractEndsAt: D(2026, 12, 11) };
+    const r = renovar(D(2026, 11, 1), { from: velho });
+    expect(r.previousPatch).toBeNull();
+    expect(r.previousContractId).toBeNull();
+    expect(r.contract.seamless).toBe(false);
+  });
+
+  it('com o resumo velho mais cedo, encurta pelo fim do documento', () => {
+    const r = renovar(D(2026, 9, 28), { from: { ...lead, currentContractEndsAt: D(2026, 9, 1) } });
+    expect(r.previousContractId).toBe('k1');
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11) });
+  });
+
+  it('a marca de emendada também sai do documento', () => {
+    const r = renovar(D(2026, 10, 12), { from: { ...lead, currentContractEndsAt: D(2026, 12, 11) } });
+    expect(r.contract.seamless).toBe(true);
+    expect(r.leadPatch.currentContractSeamless).toBe(true);
+  });
+
+  it('sem o documento, o resumo do lead decide só a marca de emendada', () => {
+    const r = renovar(D(2026, 10, 12), { doc: null });
+    expect(r.contract.seamless).toBe(true);
+    expect(r.previousPatch).toBeNull();
+  });
+
+  it('não encurta para antes do início do contrato atual', () => {
+    expect(renovar(D(2025, 10, 5)).previousPatch).toBeNull();
+    // A véspera cairia no próprio início: contrato de duração zero.
+    expect(renovar(D(2025, 10, 12)).previousPatch).toBeNull();
+    expect(renovar(D(2025, 10, 13)).previousPatch).toEqual({ endsAt: D(2025, 10, 12), originalEndsAt: D(2026, 10, 11) });
+  });
+
+  it('importado sem início: o limite é a criação, como no Operacional', () => {
+    const importado = { id: 'k1', startsAt: null, createdAt: D(2026, 9, 4), endsAt: D(2026, 10, 11) };
+    expect(renovar(D(2026, 9, 28), { doc: importado }).previousPatch).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11) });
+    expect(renovar(D(2026, 9, 5), { doc: importado }).previousPatch).toBeNull();
+    expect(renovar(D(2026, 9, 28), { doc: { ...importado, createdAt: null } }).previousPatch).toBeNull();
   });
 
   it('matrícula nunca é emendada nem encurta nada', () => {
