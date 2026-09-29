@@ -250,13 +250,14 @@ describe('ExitsCard', () => {
     expect(html).toContain('R$ 820');
   });
 
-  it('cancelamento em vermelho, trancamento em âmbar, cada barra focável e com dica', () => {
+  it('cancelamento em vermelho, trancamento em amarelo, cada barra focável e com dica', () => {
     const html = render(createElement(ExitsCard, { items: EXITS }));
     expect(html.match(/tabindex="0"/g)).toHaveLength(2);
     expect(html).toContain('aria-label="Cancelamentos: 7 contratos, R$ 1.480 por mês"');
     expect(html).toContain('text-rose-700');
-    expect(html).toContain('text-amber-700');
-    expect(html).toContain('bg-amber-500');
+    expect(html).toContain('text-yellow-700');
+    expect(html).toContain('bg-yellow-500');
+    expect(html).not.toContain('amber');
   });
 
   it('a barra maior enche a trilha e a menor fica na proporção do valor', () => {
