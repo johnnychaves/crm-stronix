@@ -13,6 +13,15 @@
 // ============================================================================
 export const ANNOUNCEMENTS = [
   {
+    id: 'esqueci-a-senha-2026-09',
+    audience: 'todos',
+    date: '2026-09-29',
+    eyebrow: 'Novidade',
+    title: 'Esqueceu a senha? Agora dá para criar outra sozinho',
+    summary:
+      'Na tela de entrada, clique em Esqueci a senha e digite o seu e-mail. Chega um código de 6 números, que vale por 15 minutos. Digite o código com a senha nova e entre com ela. Para o gestor: trocar a senha de quem saiu da academia não tira mais o acesso, porque a pessoa pode pedir um código. Para tirar o acesso, use Excluir acesso (o ícone de lixeira) em Configurações, Equipe & acessos.',
+  },
+  {
     id: 'upgrade-2026-09',
     audience: 'todos',
     date: '2026-09-09',

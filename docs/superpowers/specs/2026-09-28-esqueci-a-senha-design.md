@@ -465,12 +465,13 @@ O `captureError` nunca lança: falha do próprio Sentry vira um aviso no log da 
 
 ## Antes do deploy
 
-1. **Domínio no Resend.** Os registros foram publicados em 28/09/2026 no DNS da Vercel, que é quem responde pelo `stronilead.com.br`: DKIM em `resend._domainkey`, MX e SPF em `send` (região `sa-east-1`) e DMARC em `_dmarc`. O domínio precisa aparecer como verificado no painel do Resend antes do merge. Se não aparecer, todo pedido recebe 200, o Resend recusa o envio e o código morre na hora, com o erro no Sentry. Cada tentativa ainda conta no limite diário da conta e gasta uma vaga do teto de e-mails.
+1. **Domínio no Resend.** Os registros foram publicados em 28/09/2026 no DNS da Vercel, que é quem responde pelo `stronilead.com.br`: DKIM em `resend._domainkey`, MX e SPF em `send` (região `sa-east-1`) e DMARC em `_dmarc`. O domínio precisa aparecer como verificado no painel do Resend antes do merge. Se não aparecer, todo pedido recebe 200, o Resend recusa o envio e o código morre na hora, com o erro no Sentry. Cada tentativa ainda conta no limite diário da conta e gasta uma vaga do teto de e-mails. O Johnny confirmou em 29/09/2026 que o domínio aparece como verificado.
 2. **Chave.** A `RESEND_API_KEY` foi cadastrada na Vercel em 28/09/2026, só em Production e como Sensitive. A chave deve ter só permissão de envio, e só para o `stronilead.com.br`.
 3. **Teste no Preview**, pela lista de "Na mão".
 4. **Merge.** A Vercel publica. Nada a publicar no console do Firebase, nas rules ou nos índices.
 5. **Conferir de verdade:** pedir um código para uma conta de gestor, não o super-admin, e ver o e-mail chegar na caixa de entrada, não no spam.
-6. **Decisão do Johnny.** O risco do e-mail de conta nunca verificado, descrito em "Riscos", continua em aberto e precisa de decisão antes do deploy.
+6. **E-mail nunca verificado.** Decisão do Johnny em 29/09/2026: o código vai também para a conta cujo e-mail nunca foi verificado, como fazia o link antigo do Firebase. Ver "Riscos".
+7. **Aviso aos gestores.** A novidade `esqueci-a-senha-2026-09` do sino (`src/lib/announcements.js`) anuncia a função para todos e diz ao gestor que, para tirar o acesso de alguém, é preciso usar "Excluir acesso".
 
 A `RESEND_API_KEY` já está em Production. Por isso o merge põe a função no ar: a partir dele, o código sai por e-mail para as contas de produção. O aviso de função desligada só aparece se a chave sair de lá.
 
@@ -504,9 +505,9 @@ A `RESEND_API_KEY` já está em Production. Por isso o merge põe a função no 
 
 **E-mail de login que não é caixa de verdade.** Se a academia cadastrou consultor com e-mail inventado, o código não chega. A saída é a de hoje: o gestor define a senha.
 
-**E-mail de conta nunca verificado.** O Firebase nunca confirmou o e-mail dessas contas. Se o gestor cadastrou um e-mail inventado, quem criar essa caixa de correio depois pode pedir o código e tomar a conta. A decisão continua em aberto e fica com o Johnny antes do deploy. O link antigo do Firebase (`sendPasswordResetEmail`) tinha o mesmo risco.
+**E-mail de conta nunca verificado.** O Firebase nunca confirmou o e-mail dessas contas. Se o gestor cadastrou um e-mail inventado, quem criar essa caixa de correio depois pode pedir o código e tomar a conta. O link antigo do Firebase (`sendPasswordResetEmail`) tinha o mesmo risco. Aceito pelo Johnny em 29/09/2026: a maioria das contas foi criada pelo gestor e nunca verificou o e-mail, e exigir a verificação deixaria essas contas sem o "Esqueci a senha".
 
-**Quem saiu da academia e só teve a senha trocada.** A senha nova que o gestor define em Equipe & acessos mata o código pendente, mas a conta e o cadastro na equipe continuam. A pessoa que saiu pede outro código para o e-mail dela e cria uma senha nova sozinha. Para tirar o acesso, o gestor usa "Excluir acesso", que apaga a conta no Firebase Auth e o cadastro. Isso precisa ser avisado aos gestores.
+**Quem saiu da academia e só teve a senha trocada.** A senha nova que o gestor define em Equipe & acessos mata o código pendente, mas a conta e o cadastro na equipe continuam. A pessoa que saiu pede outro código para o e-mail dela e cria uma senha nova sozinha. Para tirar o acesso, o gestor usa "Excluir acesso", que apaga a conta no Firebase Auth e o cadastro. Os gestores são avisados pela novidade `esqueci-a-senha-2026-09` do sino.
 
 **"E-mail de login" da tela da equipe.** O campo muda só o cadastro no Firestore, e não o e-mail do Firebase Auth. O código vai para o e-mail do Auth, e o login também usa esse. Quem teve o e-mail corrigido nessa tela continua recebendo o código no e-mail antigo, e o pedido feito com o e-mail novo não manda nada.
 
