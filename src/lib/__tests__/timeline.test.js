@@ -9,8 +9,18 @@ import {
   timelineStamp,
   buildStageTransitions,
   classifyInteraction,
+  contractEventOf,
   TIMELINE_FILTERS
 } from '../timeline.js';
+import {
+  buildContractCancel,
+  buildContractEdit,
+  buildContractPause,
+  buildContractResume,
+  buildMatriculaInteractionText
+} from '../contracts.js';
+
+const D = (y, m, d) => new Date(y, m - 1, d);
 
 describe('classifyInteraction — desfecho de agendamento', () => {
   // O desfecho é gravado com type='daily_goal_done' mas carrega
@@ -314,5 +324,77 @@ describe('classifyInteraction: cadastro importado', () => {
       type: 'import',
       text: 'Cadastro importado do NextFit. Plano Trimestral, vigência até 12/11/2026.'
     })).toBe('system');
+  });
+});
+
+describe('contractEventOf: o tipo, o plano e o valor do próprio evento', () => {
+  it('matrícula, com o valor gravado no texto', () => {
+    const text = buildMatriculaInteractionText({ planName: 'Clube + Start', value: 1308, endsAt: D(2027, 9, 1), isRenewal: false });
+    expect(contractEventOf(text)).toEqual({ kind: 'matricula', planName: 'Clube + Start', value: 1308 });
+  });
+
+  it('renovação', () => {
+    const text = buildMatriculaInteractionText({ planName: 'Anual', value: 1177.2, endsAt: D(2027, 9, 1), isRenewal: true });
+    expect(contractEventOf(text)).toEqual({ kind: 'renovacao', planName: 'Anual', value: 1177.2 });
+  });
+
+  it('matrícula antiga, com o valor sem centavos', () => {
+    expect(contractEventOf('Matrícula realizada — Plano Mensal (R$ 149). Vigência até 01/08/2026.'))
+      .toEqual({ kind: 'matricula', planName: 'Mensal', value: 149 });
+  });
+
+  it('plano com parênteses no nome', () => {
+    expect(contractEventOf('Matrícula realizada — Plano Anual (12m) (R$ 1.308,00). Vigência até 01/09/2027.'))
+      .toEqual({ kind: 'matricula', planName: 'Anual (12m)', value: 1308 });
+  });
+
+  it('cancelamento', () => {
+    const { interactionText } = buildContractCancel({ planName: 'Anual', cancelledAt: D(2026, 5, 14), reason: 'Mudou de cidade' });
+    expect(contractEventOf(interactionText)).toEqual({ kind: 'cancelamento', planName: 'Anual', value: null });
+  });
+
+  it('trancamento', () => {
+    const { interactionText } = buildContractPause({ planName: 'Clube + Start', pausedAt: D(2026, 9, 10), reason: 'Viagem' });
+    expect(contractEventOf(interactionText)).toEqual({ kind: 'trancamento', planName: 'Clube + Start', value: null });
+  });
+
+  it('reativação', () => {
+    const { interactionText } = buildContractResume({
+      contract: { pausedAt: D(2026, 9, 1), endsAt: D(2027, 1, 1) },
+      resumedAt: D(2026, 9, 13)
+    });
+    expect(contractEventOf(interactionText)).toEqual({ kind: 'reativacao', planName: null, value: null });
+  });
+
+  it('correção', () => {
+    const { interactionText } = buildContractEdit({
+      contract: { planId: 'p1', planName: 'Mensal', value: 149, durationMonths: 1, startsAt: D(2026, 7, 1), endsAt: D(2026, 8, 1) },
+      plan: { id: 'p2', name: 'Anual', value: 1390, durationMonths: 12 },
+      value: 1240,
+      startsAt: D(2026, 7, 1)
+    });
+    expect(contractEventOf(interactionText)).toEqual({ kind: 'correcao', planName: 'Anual', value: 1240 });
+  });
+
+  it('renovação cancelada antes de começar é cancelamento, não renovação', () => {
+    expect(contractEventOf('Renovação cancelada antes de começar: Plano Clube + Flow, motivo Financeiro. O contrato Plano Clube + Start volta a valer até 11/10/2026.'))
+      .toEqual({ kind: 'cancelamento', planName: 'Clube + Flow', value: null });
+  });
+
+  it('texto que não é de contrato devolve null', () => {
+    expect(contractEventOf('Fase alterada para [Plano apresentado].')).toBeNull();
+    expect(contractEventOf('')).toBeNull();
+  });
+});
+
+describe('classifyInteraction: todo evento de contrato vai para o balde de contrato', () => {
+  it('reativação', () => {
+    expect(classifyInteraction({ type: 'status_change', text: 'Contrato reativado após 12 dias trancado. Vigência estendida até 13/09/2027.' }))
+      .toBe('contract');
+  });
+
+  it('trancamento sem plano no texto', () => {
+    expect(classifyInteraction({ type: 'status_change', text: 'Contrato trancado a partir de 10/09/2026 — Viagem.' }))
+      .toBe('contract');
   });
 });
