@@ -79,13 +79,19 @@ export const isSeamlessStart = (prevEndsAt, startsAt) => renewalJoinOf(prevEndsA
 
 // Por que uma renovação não pode ser gravada, ou null. Contrato trancado: o
 // fim dele ainda anda na reativação, então emendar ou encurtar daria conta
-// errada. Início no dia do início do contrato renovado, ou antes, encurtaria
-// esse contrato para antes de ele começar.
+// errada. A renovação começa no mínimo dois dias depois do início do contrato
+// renovado, em dias do calendário. No dia do início, ou antes, ela encurtaria
+// esse contrato para antes de ele começar. No dia seguinte, a véspera dela
+// cairia no próprio início, o contrato renovado não teria como ser encurtado
+// (buildMatriculaWrites) e os dois valeriam juntos. Renovar um contrato um dia
+// depois de ele começar é engano, e o Corrigir da ficha resolve.
 export function renewalStartProblem({ status, startsAt: prevStartsAt } = {}, startsAt) {
   if (status === CONTRACT_STATUS.TRANCADO) return 'Este contrato está trancado. Reative o contrato antes de renovar.';
   const prevStart = getSafeDateOrNull(prevStartsAt);
   const diff = calendarDaysBetween(prevStart, startsAt);
-  if (diff != null && diff <= 0) return `A renovação precisa começar depois do início do contrato renovado (${fmtDia(prevStart)}).`;
+  if (diff != null && diff <= 1) {
+    return `A renovação precisa começar a partir de ${fmtDia(addDays(prevStart, 2))}, dois dias depois do início do contrato renovado. Para trocar o plano desse contrato, use Corrigir na ficha do cliente.`;
+  }
   return null;
 }
 

@@ -190,9 +190,9 @@ function ContractModal({
         : null;
   const warningIsSevere = isRenewal && seam?.kind === SEAM_KIND.SOBREPOSICAO;
 
-  // Renovação que não pode ser gravada: contrato trancado, início que não vem
-  // depois do início do contrato renovado, ou contrato que já foi renovado (o
-  // lead da lista do Kanban e da Meta Diária ainda pode apontar para ele).
+  // Renovação que não pode ser gravada: contrato trancado, início a menos de
+  // dois dias do início do contrato renovado, ou contrato que já foi renovado
+  // (o lead da lista do Kanban e da Meta Diária ainda pode apontar para ele).
   const liveRenewal = isRenewal ? liveRenewalOf(renewFromId, contratos) : null;
   const startProblem = isRenewal
     ? renewalStartProblem({ status: refStatus, startsAt: refStart }, startsAt)

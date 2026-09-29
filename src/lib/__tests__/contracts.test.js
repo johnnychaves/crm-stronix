@@ -675,33 +675,46 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
 });
 
 describe('renewalStartProblem: quando a renovação não pode ser gravada', () => {
+  // Contrato renovado que começou em 11/10/2025: a renovação começa a partir de 13/10.
+  const cedo = 'A renovação precisa começar a partir de 13/10/2025, dois dias depois do início do contrato renovado. Para trocar o plano desse contrato, use Corrigir na ficha do cliente.';
+
   it('contrato trancado não renova', () => {
     expect(renewalStartProblem({ status: 'trancado', startsAt: D(2025, 10, 11) }, D(2026, 10, 12)))
       .toBe('Este contrato está trancado. Reative o contrato antes de renovar.');
   });
 
   it('renovação não começa no dia do início do contrato renovado, nem antes', () => {
-    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 11)))
-      .toBe('A renovação precisa começar depois do início do contrato renovado (11/10/2025).');
-    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 1)))
-      .toBe('A renovação precisa começar depois do início do contrato renovado (11/10/2025).');
+    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 11))).toBe(cedo);
+    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 6))).toBe(cedo);
+  });
+
+  // No dia seguinte ao início, a véspera do novo cairia no próprio início do
+  // renovado e ele não teria como ser encurtado: os dois valeriam juntos.
+  it('nem no dia seguinte ao início do contrato renovado', () => {
+    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 12))).toBe(cedo);
+  });
+
+  it('a partir de dois dias depois do início, pode', () => {
+    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 13))).toBeNull();
   });
 
   it('conta dias do calendário: o horário não muda a resposta', () => {
-    expect(renewalStartProblem({ status: 'ativo', startsAt: new Date(2025, 9, 11, 15, 32) }, new Date(2025, 9, 11, 23, 0)))
-      .not.toBeNull();
-    expect(renewalStartProblem({ status: 'ativo', startsAt: new Date(2025, 9, 11, 23, 0) }, new Date(2025, 9, 12, 1, 0)))
+    // 46 horas, mas só um dia do calendário.
+    expect(renewalStartProblem({ status: 'ativo', startsAt: new Date(2025, 9, 11, 1, 0) }, new Date(2025, 9, 12, 23, 0)))
+      .toBe(cedo);
+    // 26 horas, mas dois dias do calendário.
+    expect(renewalStartProblem({ status: 'ativo', startsAt: new Date(2025, 9, 11, 23, 0) }, new Date(2025, 9, 13, 1, 0)))
       .toBeNull();
   });
 
   it('aceita Timestamp do Firestore no início do contrato renovado', () => {
     const ts = (d) => ({ toDate: () => d });
-    expect(renewalStartProblem({ status: 'ativo', startsAt: ts(D(2025, 10, 11)) }, D(2025, 10, 11))).not.toBeNull();
+    expect(renewalStartProblem({ status: 'ativo', startsAt: ts(D(2025, 10, 11)) }, D(2025, 10, 11))).toBe(cedo);
+    expect(renewalStartProblem({ status: 'ativo', startsAt: ts(D(2025, 10, 11)) }, D(2025, 10, 13))).toBeNull();
   });
 
   it('sem problema devolve null', () => {
     expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2026, 10, 12))).toBeNull();
-    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 12))).toBeNull();
     expect(renewalStartProblem({}, D(2026, 10, 12))).toBeNull();
     expect(renewalStartProblem(undefined, D(2026, 10, 12))).toBeNull();
     expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, null)).toBeNull();
