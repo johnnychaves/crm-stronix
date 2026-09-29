@@ -43,6 +43,9 @@ A fila de contatos a classificar e o vínculo da conversa com lead de outro tele
 | Linha do tempo | Um registro próprio, o marco de início (modelo C dos mockups), no lugar de uma nota de texto. |
 | Listas | Todas vêm do Stronilead a cada abertura do formulário. Item novo nasce no Stronilead. |
 | Canais | Só WhatsApp com número. Instagram e contato sem número (LID) ficam de fora. |
+| Liberação | O botão aparece em toda academia com a integração ligada, e essa é a única condição. Sem a integração, o Stronizap funciona sozinho, como hoje. |
+| Nomes dos campos | "Nome do responsável" para quem responde pelo menor, como no Novo lead, e "Consultor responsável" para o dono do lead, como na ficha. |
+| Número sem o nono dígito | O celular antigo ganha o 9 que falta ao ser gravado. |
 
 ## Na tela do Stronizap
 
@@ -75,9 +78,9 @@ Ao abrir, o Stronizap pede as opções ao Stronilead e mostra "Carregando…" no
 | Dor ou necessidade | Vazio | Obrigatória |
 | Modalidade de interesse | Vazio | Opcional |
 | Funil e etapa | O funil padrão da academia e a primeira etapa dele, como no Novo lead | Obrigatório. Renovações, Vencidos, Upgrade e Indicações não aparecem |
-| Responsável (só gestor) | Você | A equipe do Stronilead |
+| Consultor responsável (só gestor) | Você | A equipe do Stronilead |
 
-A consultora não vê o campo Responsável. No lugar dele aparece "Fica com você (Ana Souza) e soma na sua Meta diária." Quando o gestor escolhe outra pessoa, aparece "Ana recebe o aviso no sino do Stronilead."
+A consultora não vê o campo Consultor responsável. No lugar dele aparece "Fica com você (Ana Souza) e soma na sua Meta diária." Quando o gestor escolhe outra pessoa, aparece "Ana recebe o aviso no sino do Stronilead."
 
 Sem dor cadastrada na academia, o campo diz "Nenhuma dor cadastrada no Stronilead. O gestor cadastra em Configurações → Catálogos → Dores." e o botão não cadastra. É a mesma trava do Novo lead.
 
@@ -88,7 +91,7 @@ Nenhuma lista do formulário mora no código do Stronizap, nenhum campo aceita t
 Com a chave ligada, o campo Nome vira:
 
 - Nome do aluno (obrigatório);
-- Responsável (obrigatório, começa com o nome do contato);
+- Nome do responsável (obrigatório, começa com o nome do contato);
 - Parentesco (opcional, com a lista que vem do Stronilead);
 - WhatsApp do aluno, se tiver (opcional).
 
@@ -114,6 +117,8 @@ Todo cartão com lead ganha o link "Abrir no Stronilead", que abre a ficha em ou
 
 O identificador da academia que o Stronizap guarda é o mesmo que aparece no endereço do Stronilead. O endereço leva só o id, sem nome nem telefone, como pede a regra do Stronilead.
 
+Na tela de Contatos, onde não há conversa aberta, o cartão mostra o link, mas não o botão de cadastrar.
+
 ## No Stronilead
 
 ### Um montador só para o lead novo
@@ -133,7 +138,7 @@ Tudo numa transação só:
    - No menor, o telefone do responsável não barra, porque irmãos dividem o número. Barra um lead com o mesmo `guardianZapMatchKey` e o mesmo nome de aluno.
    - O WhatsApp do aluno, quando preenchido, também é conferido.
 2. **O lead**, pelo montador, com:
-   - `whatsapp` no formato do Novo lead, sem o 55, pela mesma regra do `zapMatchKey`;
+   - `whatsapp` no formato do Novo lead, sem o 55, pela mesma regra do `zapMatchKey`, e com o nono dígito quando o celular antigo vier sem ele: com 10 dígitos e o primeiro número depois do DDD entre 6 e 9, entra um 9 logo depois do DDD. Telefone fixo continua com 10 dígitos, e o `zapMatchKey` não muda. A mesma regra vale para o telefone do responsável e para o WhatsApp do aluno;
    - os campos de busca (`buildLeadSearchFields`) e, no menor, o bloco do responsável (`buildGuardianPatch`), com o número da conversa como telefone do responsável;
    - o dono: quem cadastrou, ou quem o gestor escolheu;
    - quando o dono não é quem cadastrou, `consultantChangedAt`, `consultantChangedByName` e `consultantChangedByAuthUid`, que acendem o aviso "passado para você" no sino sem mudança no sino;
@@ -153,12 +158,14 @@ Interação em `stronix_interactions`:
 | `leadConsultantId`, `leadConsultantAuthUid` | o dono |
 | `ownerName` | o dono, só quando não é quem cadastrou |
 | `zapChannelName` | o canal do Stronizap onde a conversa aconteceu |
-| `text` | "Cadastrado pelo Stronizap por Johnny. Responsável: Ana Souza. Canal Recepção." |
+| `text` | "Cadastrado pelo Stronizap por Johnny. Consultor responsável: Ana Souza. Canal Recepção." |
 | `createdAt` | hora do servidor |
 
 O `text` serve para qualquer tela que ainda não conheça o tipo mostrar algo que faz sentido.
 
-Na ficha, o registro aparece no fim da linha do tempo, que é onde a história do lead começa (modelo C dos mockups): uma linha fina com a pílula "Início · cadastrado pelo Stronizap por Johnny em 28/09 às 14:32" e, embaixo, "Responsável Ana Souza · canal Recepção". O responsável só aparece quando não é quem cadastrou. Quando é a mesma pessoa, a linha de baixo fica só com o canal, e o `text` sai sem a parte do responsável.
+Na ficha, o registro aparece no fim da linha do tempo, que é onde a história do lead começa (modelo C dos mockups): uma linha fina com a pílula "Início · cadastrado pelo Stronizap por Johnny em 28/09 às 14:32" e, embaixo, "Consultor responsável Ana Souza · canal Recepção". O consultor responsável só aparece quando não é quem cadastrou. Quando é a mesma pessoa, a linha de baixo fica só com o canal, e o `text` sai sem essa parte.
+
+A linha "Início da jornada", que a ficha já mostra, some quando o marco de início existe, para o começo da história não aparecer duas vezes.
 
 A pílula leva a marca do Stronizap, um balão escuro com raio verde. No tema escuro entra a versão clara da marca. Ela vira um componente do Stronilead, do mesmo jeito que o Stronizap tem o `StronileadMark`.
 
@@ -167,13 +174,13 @@ Regras do registro:
 - `classifyInteraction` devolve um tipo novo, `'origin'`. Ele entra no filtro "Marcos" e aparece com o interruptor "Sistema" desligado.
 - Não conta como contato feito. Fica fora do "já interagiu hoje" (`src/lib/leads.js`) e do primeiro contato do Dashboard CRM do Stronilead (`src/lib/crm/contact.js`), igual à observação do cadastro. Todo lugar que hoje reconhece a observação do cadastro por `isRegistrationNote` passa a reconhecer também este tipo.
 - Não tem `volumeKind`. O lead cadastrado entra na prospecção do dono pelo próprio lead, como no Novo lead.
-- O feed de atividade do dashboard do Stronilead mostra "Cadastro pelo Stronizap".
+- O feed de atividade do dashboard, onde a observação do cadastro ganhava rótulo, saiu em 12/09 (commit `7de8114`). Não há rótulo novo a criar. O extrato de prospecção da visão Equipe continua mostrando "Lead cadastrado", sem marca nova no lead.
 
 ### Conferências do servidor
 
 O `firebase-admin` passa por cima das regras do Firestore. Por isso a ação faz sozinha o que as regras e a tela do Novo lead fazem:
 
-- **Academia ativa.** A mesma conferência de `tenantActive` das regras: suspensa, teste vencido sem pagamento e atraso de mais de 3 dias ficam de fora. Vale também para as opções, para o formulário nem abrir.
+- **Academia ativa.** A mesma conferência de `tenantActive` das regras do Firestore, que é a trava que a academia encontra ao gravar no próprio Stronilead: suspensa, teste vencido e atraso de mais de 3 dias ficam de fora. A tela de login do Stronilead deixa entrar quem tem o teste vencido e já pagou, mas as regras não deixam gravar, e o cadastro pelo Stronizap segue as regras. Vale também para as opções, para o formulário nem abrir.
 - **Equipe.** A pessoa é achada em `stronix_users` pelo e-mail em minúsculas, e precisa ter `authUid`. Sem isso, a resposta é "fora da equipe".
 - **Papel.** Escolher o dono só vale para quem é gestor (`role: 'admin'`). Se uma consultora mandar outra pessoa como dono, o cadastro é recusado. O dono escolhido precisa estar na equipe.
 - **Catálogos.** Origem, dor, modalidade, funil e etapa são conferidos contra o que existe no momento do cadastro. Item que sumiu é recusado, e a resposta diz qual campo mudou.
@@ -303,12 +310,13 @@ O cartão não muda de forma. O smoke passa a conferir também a resposta de `le
 - O formulário e os estados dos mockups (vitest).
 - A suíte de isolamento entre organizações cobrindo as rotas novas.
 
-**À mão:** um cadastro de verdade na academia de teste antes de valer para as outras academias.
+**De ponta a ponta, antes de publicar o Stronizap:** o Stronizap deste branch rodando na máquina, ligado ao Stronilead de produção na academia de teste (`academia-teste`), com uma chave gerada nas Integrações dela, e um número de WhatsApp de teste. Nenhuma academia de cliente vê o botão antes disso.
 
 ## Publicação
 
 1. **Stronilead primeiro.** As ações novas ficam paradas até alguém chamar. A Vercel publica no merge.
-2. **Stronizap depois**, à mão no servidor, com o smoke antes. Não há mudança no banco do Stronizap.
+2. **O teste de ponta a ponta**, descrito acima.
+3. **Stronizap depois**, à mão no servidor, com o smoke antes. Não há mudança no banco do Stronizap. A partir daí, o botão aparece em toda academia com a integração ligada. Não existe outra chave.
 
 Antes de ligar numa academia, conferir no Stronilead dela:
 
@@ -345,3 +353,5 @@ Com o recurso em produção, atualizar o `CLAUDE.md` dos dois sistemas, a seçã
 - [ ] A chave nunca chega ao navegador, e quem cadastrou sai da sessão, nunca do que o navegador manda.
 - [ ] "Abrir no Stronilead" abre a ficha certa em todo cartão de lead ou cliente e em cada menor.
 - [ ] Nenhum dado vaza entre academias nem entre organizações.
+- [ ] Número antigo, sem o nono dígito, é gravado com o 9, e o cartão continua achando a pessoa.
+- [ ] Sem a integração ligada, o Stronizap não mostra nada do cadastro e funciona como hoje.
