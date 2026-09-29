@@ -73,7 +73,7 @@ const IP = '203.0.113.7';
 const SENHA = 'Nova@Senha1';
 const SIGN_IN = 'Sun, 28 Sep 2026 10:00:00 GMT';
 const TOKENS = 'Sun, 28 Sep 2026 09:00:00 GMT';
-const silencioso = { info: () => {}, error: () => {} };
+const silencioso = { info: () => {}, warn: () => {}, error: () => {} };
 
 beforeEach(() => {
   vi.stubEnv('FIREBASE_ADMIN_PRIVATE_KEY', SEGREDO);
@@ -133,7 +133,7 @@ describe('realResetDeps entrega o que o fluxo usa', () => {
     const d = realResetDeps();
     const tipos = Object.fromEntries(Object.getOwnPropertyNames(d).map((nome) => [nome, typeof d[nome]]));
     expect(tipos).toEqual({
-      findAccount: 'function', reserveMailSlot: 'function', issueCode: 'function', reserveAttempt: 'function',
+      findAccount: 'function', dailyRoom: 'function', reserveMailSlot: 'function', issueCode: 'function', reserveAttempt: 'function',
       killCode: 'function', setPassword: 'function', revokeSessions: 'function', audit: 'function',
       sendMail: 'function', now: 'function', randomInt: 'function', secret: 'string', log: 'object',
     });
@@ -265,6 +265,8 @@ describe('o fluxo de verdade sobre as operações de verdade', () => {
     for (let i = 0; i < 6; i += 1) resultados.push(await requestPasswordReset('ana@academia.com', IP, deps()));
     expect(resultados).toEqual([...Array(5).fill({ sent: true }), { sent: false, reason: 'daily_limit' }]);
     expect(mensagens()).toHaveLength(5);
+    // O sexto para no espaço do dia, antes da vaga: o teto contou só os 5 e-mails.
+    expect(h.store.get('_ratelimit/pw-reset-mail-day')).toMatchObject({ count: 5 });
   });
 
   it('academia suspensa não recebe código', async () => {

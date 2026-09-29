@@ -5,7 +5,7 @@ import { logAudit } from './_audit.js';
 import { sendMail } from './_mail.js';
 import { checkRateLimit } from './_rateLimit.js';
 import { normalizeEmail, RESET_WINDOW_MS } from '../src/lib/passwordReset.js';
-import { planIssue, planReserve, planKill, isTenantActive, RESET_MAILS_PER_DAY } from './_passwordReset.js';
+import { hasDailyRoom, planIssue, planReserve, planKill, isTenantActive, RESET_MAILS_PER_DAY } from './_passwordReset.js';
 
 // As operações de verdade do "Esqueci a senha": leituras, chamadas ao Firebase
 // Auth e transações no documento da conta. As regras moram em _passwordReset.js
@@ -79,6 +79,16 @@ async function findMember(tenantId, uid, accountEmail) {
   return legacy.id === uid ? legacy.data() || {} : null;
 }
 
+// Cabe mais um código no dia desta conta? Leitura simples do documento da
+// conta, sem transação e sem escrita, com a mesma regra do issueCode. Ela vem
+// antes da vaga do teto, para a conta que já gastou os 5 códigos do dia não
+// gastar vaga. O issueCode confere de novo na transação, e a corrida entre as
+// duas pode gastar uma vaga de vez em quando, o que é aceito.
+export async function dailyRoom(uid, now) {
+  const snap = await resetDoc(uid).get();
+  return hasDailyRoom(snap.exists ? snap.data() : null, now);
+}
+
 // Uma vaga no teto de e-mails do dia (RESET_MAILS_PER_DAY). Devolve se há vaga.
 // Uma contagem só, em _ratelimit, vale para todas as academias. O limitador
 // falha aberto: se a conta dele falhar, o e-mail sai.
@@ -141,6 +151,7 @@ export const audit = ({ uid, tenantId }) =>
 export function realResetDeps() {
   const deps = {
     findAccount,
+    dailyRoom,
     reserveMailSlot,
     issueCode,
     reserveAttempt,

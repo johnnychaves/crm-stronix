@@ -300,8 +300,38 @@ describe('limites', () => {
     expect(h.enviados).toHaveLength(TETO);
     // Nenhum código emitido: a conta nem ganhou documento.
     expect(h.docs.has(`_password_reset/u${cheias}`)).toBe(false);
-    expect(linhas()).toContain("motivo: 'mail_cap'");
-    expect(linhas()).toContain(`conta: 'u${cheias}'`);
+    // O teto estourado sai como aviso, para aparecer no filtro de avisos da Vercel.
+    const linhaDoTeto = ['esqueci-a-senha: pedido sem envio', { motivo: 'mail_cap', conta: `u${cheias}`, academia: ACADEMIA, ip: '198.51.100.99' }];
+    expect(console.warn).toHaveBeenCalledWith(...linhaDoTeto);
+    expect(console.info).not.toHaveBeenCalledWith(...linhaDoTeto);
+  });
+
+  it('a conta que já gastou os 5 códigos do dia não gasta vaga do teto', async () => {
+    // Sem a leitura do espaço do dia antes da vaga, o e-mail de um membro só e 3
+    // IPs esgotariam as 50 vagas sem mandar e-mail.
+    const outras = TETO / RESET_CODES_PER_DAY - 1;
+    semear(outras + 2);
+    let n = 0;
+    const pedirDeOutroIp = (email) => { n += 1; return pedir(email, `198.51.100.${n}`); };
+
+    for (let i = 0; i < RESET_CODES_PER_DAY + 1; i += 1) {
+      expect((await pedirDeOutroIp('pessoa0@academia.com')).statusCode).toBe(200);
+    }
+    expect(h.enviados).toHaveLength(RESET_CODES_PER_DAY);
+    expect(linhas()).toContain("motivo: 'daily_limit'");
+    // O sexto parou antes da vaga: o teto contou só os 5 e-mails.
+    expect(h.docs.get('_ratelimit/pw-reset-mail-day')).toMatchObject({ count: RESET_CODES_PER_DAY });
+
+    // O teto continua com 45 vagas: mais 45 e-mails saem, e o seguinte não.
+    for (let i = 1; i <= outras; i += 1) {
+      for (let j = 0; j < RESET_CODES_PER_DAY; j += 1) {
+        expect((await pedirDeOutroIp(`pessoa${i}@academia.com`)).statusCode).toBe(200);
+      }
+    }
+    expect(h.enviados).toHaveLength(TETO);
+    await pedirDeOutroIp(`pessoa${outras + 1}@academia.com`);
+    expect(h.enviados).toHaveLength(TETO);
+    expect(console.warn).toHaveBeenCalledWith('esqueci-a-senha: pedido sem envio', expect.objectContaining({ motivo: 'mail_cap' }));
   });
 });
 

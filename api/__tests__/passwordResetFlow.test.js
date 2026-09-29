@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { requestPasswordReset, confirmPasswordReset } from '../_passwordResetFlow.js';
-import { planIssue, planReserve, planKill, hashResetCode } from '../_passwordReset.js';
+import { planIssue, planReserve, planKill, hashResetCode, hasDailyRoom } from '../_passwordReset.js';
 import { RESET_CODE_TTL_MS, RESET_WINDOW_MS } from '../../src/lib/passwordReset.js';
 import { recusaDaPolitica } from './_recusaDaPolitica.js';
 
@@ -23,12 +23,16 @@ function montar(contaInicial = conta()) {
   const s = {
     conta: contaInicial, agora: 1_790_000_000_000, sorteios: [123456],
     enviados: [], senhas: [], revogadas: [], auditoria: [], logs: [],
+    // O log inteiro fica em logs, e as linhas de info e de warn também ficam à parte.
+    infos: [], avisos: [],
     falharEnvio: false, falharSenha: null,
     // Vagas reservadas no teto de e-mails do dia, e se ainda há vaga.
     vagasReservadas: 0, semVaga: false,
   };
   const deps = {
     findAccount: async (email) => (email === EMAIL ? s.conta : null),
+    // Como o repositório: uma leitura do documento da conta, sem escrever nada.
+    dailyRoom: async (uid, now) => hasDailyRoom(docs.get(uid) ?? null, now),
     reserveMailSlot: async () => {
       s.vagasReservadas += 1;
       return !s.semVaga;
@@ -64,7 +68,11 @@ function montar(contaInicial = conta()) {
     now: () => s.agora,
     randomInt: () => s.sorteios.shift() ?? 0,
     secret: SEGREDO,
-    log: { info: (...a) => s.logs.push(a), error: (...a) => s.logs.push(a) },
+    log: {
+      info: (...a) => { s.logs.push(a); s.infos.push(a); },
+      warn: (...a) => { s.logs.push(a); s.avisos.push(a); },
+      error: (...a) => s.logs.push(a),
+    },
   };
   return { deps, docs, s };
 }
@@ -167,6 +175,8 @@ describe('pedido', () => {
     }
     expect(await requestPasswordReset(EMAIL, IP, deps)).toEqual({ sent: false, reason: 'daily_limit' });
     expect(s.enviados).toHaveLength(5);
+    // O sexto para antes da vaga do teto.
+    expect(s.vagasReservadas).toBe(5);
     s.agora += RESET_WINDOW_MS;
     expect(await requestPasswordReset(EMAIL, IP, deps)).toEqual({ sent: true });
   });
@@ -219,10 +229,10 @@ describe('pedido', () => {
       }
     });
 
-    it('a vaga é reservada depois da recusa da conta e antes do código', async () => {
+    it('a ordem é a recusa da conta, o espaço do dia, a vaga e o código', async () => {
       const { deps } = montar();
       const ordem = [];
-      for (const nome of ['findAccount', 'reserveMailSlot', 'issueCode', 'sendMail']) {
+      for (const nome of ['findAccount', 'dailyRoom', 'reserveMailSlot', 'issueCode', 'sendMail']) {
         const original = deps[nome];
         deps[nome] = async (...args) => {
           ordem.push(nome);
@@ -230,7 +240,51 @@ describe('pedido', () => {
         };
       }
       await requestPasswordReset(EMAIL, IP, deps);
-      expect(ordem).toEqual(['findAccount', 'reserveMailSlot', 'issueCode', 'sendMail']);
+      expect(ordem).toEqual(['findAccount', 'dailyRoom', 'reserveMailSlot', 'issueCode', 'sendMail']);
+    });
+
+    it('a conta que já gastou os 5 códigos do dia não reserva vaga, não emite código e registra daily_limit', async () => {
+      const { deps, docs, s } = montar();
+      docs.set('u-ana', { requestsMs: [1, 2, 3, 4, 5].map((i) => s.agora - i * 60_000) });
+      const antes = structuredClone(docs.get('u-ana'));
+      expect(await requestPasswordReset(EMAIL, IP, deps)).toEqual({ sent: false, reason: 'daily_limit' });
+      expect(s.vagasReservadas).toBe(0);
+      expect(s.enviados).toEqual([]);
+      expect(docs.get('u-ana')).toEqual(antes);
+      expect(s.infos).toEqual([
+        ['esqueci-a-senha: pedido sem envio', { motivo: 'daily_limit', conta: 'u-ana', academia: 'academia-teste', ip: IP }],
+      ]);
+    });
+
+    it('o espaço do dia é conferido no relógio do deps', async () => {
+      const { deps, docs, s } = montar();
+      const vistos = [];
+      const original = deps.dailyRoom;
+      deps.dailyRoom = async (uid, now) => { vistos.push([uid, now]); return original(uid, now); };
+      docs.set('u-ana', { requestsMs: [1, 2, 3, 4, 5].map((i) => s.agora - i * 60_000) });
+      s.agora += RESET_WINDOW_MS;
+      expect(await requestPasswordReset(EMAIL, IP, deps)).toEqual({ sent: true });
+      expect(vistos).toEqual([['u-ana', s.agora]]);
+    });
+
+    it('o mail_cap vai para o log como aviso (warn), e os outros motivos continuam em info', async () => {
+      const cheio = montar();
+      cheio.s.semVaga = true;
+      await requestPasswordReset(EMAIL, IP, cheio.deps);
+      expect(cheio.s.avisos).toEqual([
+        ['esqueci-a-senha: pedido sem envio', { motivo: 'mail_cap', conta: 'u-ana', academia: 'academia-teste', ip: IP }],
+      ]);
+      expect(cheio.s.infos).toEqual([]);
+
+      const semConta = montar(null);
+      await requestPasswordReset(EMAIL, IP, semConta.deps);
+      const semEspaco = montar();
+      semEspaco.docs.set('u-ana', { requestsMs: [1, 2, 3, 4, 5].map((i) => semEspaco.s.agora - i) });
+      await requestPasswordReset(EMAIL, IP, semEspaco.deps);
+      for (const { s } of [semConta, semEspaco]) {
+        expect(s.avisos).toEqual([]);
+        expect(s.infos).toHaveLength(1);
+      }
     });
   });
 

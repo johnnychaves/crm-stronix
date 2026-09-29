@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { findAccount, issueCode, reserveAttempt, killCode, audit } from '../_passwordResetRepo.js';
+import { findAccount, dailyRoom, issueCode, reserveAttempt, killCode, audit } from '../_passwordResetRepo.js';
 
-const h = vi.hoisted(() => ({ usuarios: {}, tenants: {}, membros: {}, resets: {}, escritas: [], auditoria: [], leituras: [] }));
+const h = vi.hoisted(() => ({ usuarios: {}, tenants: {}, membros: {}, resets: {}, escritas: [], auditoria: [], leituras: [], transacoes: 0 }));
 
 // Os cadastros da equipe ficam indexados pelo caminho inteiro da coleção, como
 // no banco: uma busca em outro caminho não acha ninguém.
@@ -33,6 +33,7 @@ vi.mock('../_firebaseAdmin.js', () => {
     collection: (nome) => ref([nome]),
     // Como o SDK: a leitura depois de uma escrita na mesma transação lança.
     runTransaction: async (fn) => {
+      h.transacoes += 1;
       let escreveu = false;
       return fn({
         get: (r) => {
@@ -73,6 +74,7 @@ beforeEach(() => {
   h.escritas = [];
   h.auditoria = [];
   h.leituras = [];
+  h.transacoes = 0;
 });
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -192,6 +194,32 @@ describe('findAccount', () => {
   it('e-mail que o Firebase não aceita vira null, e outro erro sobe', async () => {
     expect(await findAccount('invalido')).toBeNull();
     await expect(findAccount('quebra@academia.com')).rejects.toThrow('Firebase fora do ar');
+  });
+});
+
+// A leitura que vem antes da vaga do teto. O issueCode confere de novo dentro
+// da transação.
+describe('dailyRoom', () => {
+  const AGORA = 1_790_000_000_000;
+  const pedidos = (n) => ({ requestsMs: Array.from({ length: n }, (_, i) => AGORA - (i + 1) * 1000) });
+
+  it('lê _password_reset/<uid> uma vez, sem transação e sem escrita', async () => {
+    h.resets['u-ana'] = pedidos(4);
+    expect(await dailyRoom('u-ana', AGORA)).toBe(true);
+    expect(h.leituras).toEqual(['_password_reset/u-ana']);
+    expect(h.transacoes).toBe(0);
+    expect(h.escritas).toEqual([]);
+  });
+
+  it('com 5 pedidos nas últimas 24 horas não cabe outro, e quem decide é o relógio que chega', async () => {
+    h.resets['u-ana'] = pedidos(5);
+    expect(await dailyRoom('u-ana', AGORA)).toBe(false);
+    expect(await dailyRoom('u-ana', AGORA + 24 * 60 * 60 * 1000)).toBe(true);
+  });
+
+  it('conta que nunca pediu código tem espaço', async () => {
+    expect(await dailyRoom('u-bia', AGORA)).toBe(true);
+    expect(h.escritas).toEqual([]);
   });
 });
 

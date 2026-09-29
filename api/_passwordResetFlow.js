@@ -10,13 +10,14 @@ import { buildResetEmail } from './_passwordResetEmail.js';
 // _passwordResetRepo.js, e o teste passa versões falsas:
 //   findAccount(email) → conta ou null. A conta traz o e-mail que o Firebase
 //     guarda (email): o código vai para ele, nunca para o que foi digitado.
+//   dailyRoom(uid, now) → se cabe mais um código no dia da conta (só leitura)
 //   reserveMailSlot() → se há vaga no teto de e-mails do dia
 //   issueCode(uid, { now, codeHash, tenantId, signInMark, tokensMark }) → { ok, reason? }
 //   reserveAttempt(uid, now) → { ok, attempt?, code? }
 //   killCode(uid, codeHash, now)
 //   setPassword(uid, password), revokeSessions(uid), audit({ uid, tenantId })
 //   sendMail({ to, subject, html, text })
-//   now(), randomInt(max), secret, log
+//   now(), randomInt(max), secret, log (com info, warn e error)
 // Os motivos de recusa vão para o log e nunca para a tela. O código nunca vai
 // para o log.
 
@@ -32,12 +33,23 @@ export async function requestPasswordReset(email, ip, deps) {
     return { sent: false, reason: refusal };
   }
 
+  // A conta que já gastou os 5 códigos do dia para aqui, antes da vaga do teto.
+  // Sem isso, o e-mail de um membro só esgotaria o teto sem mandar e-mail. O
+  // issueCode confere de novo na transação, e a corrida entre os dois pode
+  // gastar uma vaga de vez em quando, o que é aceito.
+  if (!(await deps.dailyRoom(account.uid, deps.now()))) {
+    deps.log.info('esqueci-a-senha: pedido sem envio', { motivo: 'daily_limit', conta: account.uid, academia: account.tenantId, ip });
+    return { sent: false, reason: 'daily_limit' };
+  }
+
   // O teto de e-mails do dia protege a cota do Resend, dividida com o Stronizap.
-  // A vaga vem depois da recusa, para e-mail inventado não gastar o teto, e
-  // antes do código, para o pedido sem vaga não gastar um dos 5 códigos do dia
-  // da pessoa sem mandar e-mail.
+  // A vaga vem depois da recusa e do espaço do dia, para e-mail inventado e
+  // conta sem código disponível não gastarem o teto, e antes do código, para o
+  // pedido sem vaga não gastar um dos 5 códigos do dia da pessoa sem mandar
+  // e-mail. Teto estourado é sinal de ataque ou de volume real crescendo, e vai
+  // para o log como aviso, para aparecer nos filtros de aviso da Vercel.
   if (!(await deps.reserveMailSlot())) {
-    deps.log.info('esqueci-a-senha: pedido sem envio', { motivo: 'mail_cap', conta: account.uid, academia: account.tenantId, ip });
+    deps.log.warn('esqueci-a-senha: pedido sem envio', { motivo: 'mail_cap', conta: account.uid, academia: account.tenantId, ip });
     return { sent: false, reason: 'mail_cap' };
   }
 

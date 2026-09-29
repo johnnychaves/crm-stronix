@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   generateResetCode, hashResetCode, resetCodeMatches, accountRefusal, isTenantActive, maskEmail,
-  planIssue, planReserve, planKill, marksChanged,
+  hasDailyRoom, planIssue, planReserve, planKill, marksChanged,
 } from '../_passwordReset.js';
 import { RESET_CODE_TTL_MS, RESET_WINDOW_MS } from '../../src/lib/passwordReset.js';
 
@@ -145,8 +146,66 @@ describe('maskEmail', () => {
   });
 });
 
+describe('hasDailyRoom', () => {
+  const pedidos = (n) => ({ requestsMs: Array.from({ length: n }, (_, i) => AGORA - (i + 1) * 1000) });
+
+  it('com 0 pedidos nas últimas 24 horas, cabe outro código', () => {
+    expect(hasDailyRoom(pedidos(0), AGORA)).toBe(true);
+  });
+
+  it('com 4 pedidos nas últimas 24 horas, ainda cabe o quinto', () => {
+    expect(hasDailyRoom(pedidos(4), AGORA)).toBe(true);
+  });
+
+  it('com 5 pedidos nas últimas 24 horas, não cabe outro', () => {
+    expect(hasDailyRoom(pedidos(5), AGORA)).toBe(false);
+  });
+
+  it('o pedido de 24 horas atrás ou mais sai da conta', () => {
+    const atual = { requestsMs: [AGORA - RESET_WINDOW_MS, ...pedidos(4).requestsMs] };
+    expect(hasDailyRoom(atual, AGORA)).toBe(true);
+    // Um milissegundo antes das 24 horas, o mesmo pedido ainda conta.
+    expect(hasDailyRoom({ requestsMs: [AGORA - RESET_WINDOW_MS + 1, ...pedidos(4).requestsMs] }, AGORA)).toBe(false);
+  });
+
+  it('documento ausente ou malformado conta como nenhum pedido', () => {
+    for (const atual of [null, undefined, {}, 'lixo', 5, { requestsMs: 'x' }, { requestsMs: ['1', null, {}, NaN] }]) {
+      expect(hasDailyRoom(atual, AGORA)).toBe(true);
+    }
+  });
+
+  it('relógio que não é um número finito lança erro, como no planIssue', () => {
+    for (const agora of [NaN, undefined, null, '1790000000000', Infinity]) {
+      expect(() => hasDailyRoom(pedidos(0), agora)).toThrow('relógio inválido');
+    }
+  });
+});
+
 describe('planIssue', () => {
   const entrada = { now: AGORA, codeHash: 'h1', tenantId: 'academia-teste', signInMark: 's1', tokensMark: 't1' };
+
+  // A leitura que vem antes da vaga do teto (dailyRoom) e a transação do pedido
+  // decidem pela mesma regra.
+  it('aceita exatamente quando o hasDailyRoom diz que cabe', () => {
+    const casos = [
+      null, {}, { requestsMs: 'x' },
+      ...[0, 1, 4, 5, 6].map((n) => ({ requestsMs: Array.from({ length: n }, (_, i) => AGORA - (i + 1) * 1000) })),
+      { requestsMs: [AGORA - RESET_WINDOW_MS, AGORA - RESET_WINDOW_MS + 1, 1, 2, 3].map((t, i) => (i < 2 ? t : AGORA - t)) },
+    ];
+    for (const atual of casos) {
+      expect(planIssue(atual, entrada).ok, JSON.stringify(atual)).toBe(hasDailyRoom(atual, AGORA));
+    }
+  });
+
+  it('o planIssue chama o hasDailyRoom, em vez de repetir a conta', () => {
+    // Pelo código, sem os comentários: uma cópia da regra dentro do planIssue
+    // funcionaria igual hoje e se separaria da leitura na primeira mudança.
+    const fonte = fs.readFileSync(new URL('../_passwordReset.js', import.meta.url), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const corpo = fonte.slice(fonte.indexOf('export function planIssue('), fonte.indexOf('export function planReserve('));
+    expect(corpo).toContain('hasDailyRoom(current, now)');
+    expect(corpo).not.toContain('RESET_CODES_PER_DAY');
+  });
 
   it('o primeiro pedido cria o código com a validade, as marcas e a hora do pedido', () => {
     expect(planIssue(null, entrada)).toEqual({

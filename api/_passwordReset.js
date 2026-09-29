@@ -84,13 +84,26 @@ export function maskEmail(email) {
   return `${s.slice(0, Math.min(2, at - 1))}***${s.slice(at)}`;
 }
 
+// Os pedidos das últimas 24 horas no documento da conta. Documento ausente ou
+// malformado conta como nenhum pedido.
+function recentRequests(current, now) {
+  return (Array.isArray(current?.requestsMs) ? current.requestsMs : [])
+    .filter((t) => typeof t === 'number' && now - t < RESET_WINDOW_MS);
+}
+
+// Cabe mais um código no dia desta conta? A mesma regra vale na leitura que vem
+// antes da vaga do teto (dailyRoom, no _passwordResetRepo.js) e dentro da
+// transação do pedido (planIssue).
+export function hasDailyRoom(current, now) {
+  if (!Number.isFinite(now)) throw new Error('esqueci-a-senha: relógio inválido');
+  return recentRequests(current, now).length < RESET_CODES_PER_DAY;
+}
+
 // Pedido: com 5 códigos nas últimas 24 horas, recusa. Senão devolve o
 // documento novo, que escreve por cima do anterior: só o último código vale.
 export function planIssue(current, { now, codeHash, tenantId, signInMark, tokensMark }) {
-  if (!Number.isFinite(now)) throw new Error('esqueci-a-senha: relógio inválido');
-  const recent = (Array.isArray(current?.requestsMs) ? current.requestsMs : [])
-    .filter((t) => typeof t === 'number' && now - t < RESET_WINDOW_MS);
-  if (recent.length >= RESET_CODES_PER_DAY) return { ok: false, reason: 'daily_limit' };
+  if (!hasDailyRoom(current, now)) return { ok: false, reason: 'daily_limit' };
+  const recent = recentRequests(current, now);
   return {
     ok: true,
     doc: {
