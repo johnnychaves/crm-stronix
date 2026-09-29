@@ -136,8 +136,8 @@ A regra vira a função pura `vigenciaRefDate({ status, pausedAt, cancelledAt },
 `buildContractEdit` recebe o contrato anterior quando o corrigido tem `renewedFromId`. O fim de referência do anterior é `originalEndsAt`, se foi este contrato que o encurtou, ou `endsAt`, nos outros casos.
 - Tudo abaixo só vale quando o início muda de dia (`correctionMovesStart`). Corrigir só o valor ou o plano não mexe no anterior nem na marca, então as sobreposições antigas ficam como estão.
 - A marca `seamless` é recalculada, no contrato e em `currentContractSeamless`, já que o contrato corrigido é sempre o atual.
-- Se o início novo sobrepõe o anterior, o encurtamento é gravado como na criação, com as mesmas travas.
-- Se o início novo não sobrepõe e o anterior tinha sido encurtado por este contrato, o fim original volta.
+- Se o início novo sobrepõe o anterior, o encurtamento é gravado como na criação, com as mesmas travas. Vale também na correção feita depois de o anterior vencer: como na criação, com o início novo já chegado o anterior é julgado na véspera dele.
+- Se o início novo não sobrepõe e o anterior tinha sido encurtado por este contrato, o fim original volta. Sobrepondo, o fim original só volta quando o anterior não pode ser encurtado: cancelado, trancado ou que ainda não tinha começado na véspera do início novo.
 - Se nada muda no anterior, nada é gravado nele.
 - Se o início novo cai menos de dois dias depois do início do anterior, o modal recusa.
 
@@ -150,10 +150,11 @@ No modo renovação, se o contrato atual estiver `trancado` (pelo documento dele
 ### Renovar contrato fora de vigor
 
 Entrou na revisão do código (29/09/2026). A lista da Meta Diária e o quadro de Renovações carregam uma vez por dia, e o contrato podia ter sido cancelado depois: a renovação emendada deixava o lead ativo com o Operacional já contando o cliente fora da base, e a sobreposta encurtava o contrato cancelado. A ficha também oferecia renovar o contrato que ainda não começou.
-- Só o contrato em vigor, ativo ou a vencer na hora da gravação, é emendado ou encurtado, na renovação (`buildMatriculaWrites`) e na correção dela (`buildContractEdit`). O status sai do documento, quando ele é usado, senão do resumo do lead. A emendada que ainda não começou conta como em vigor.
-- O último dia do contrato também conta como em vigor: o fim gravado à meia-noite deixa o contrato vencido durante o dia inteiro, e sem isso a renovação emendada feita nesse dia apareceria como "CONTRATO AGENDADO" até a meia-noite. O que venceu antes de hoje continua fora.
+- Só o contrato em vigor quando a renovação assume, ativo ou a vencer, é emendado ou encurtado, na renovação (`buildMatriculaWrites`) e na correção dela (`buildContractEdit`). Com o início da renovação já chegado, a conta é na véspera dele; com o início no futuro, é na hora da gravação (`renewalTakeoverAt`). O status sai do documento, quando ele é usado, senão do resumo do lead. A emendada que ainda não começou conta como em vigor.
+- O último dia do contrato também conta como em vigor: o fim gravado à meia-noite deixa o contrato vencido durante o dia inteiro, e sem isso a renovação emendada feita nesse dia apareceria como "CONTRATO AGENDADO" até a meia-noite.
+- Entrou na segunda revisão do código (29/09/2026): o vencido não tem exceção. Antes, a renovação lançada depois do vencimento, com o início que o aluno pagou antes do fim, não encurtava o vencido, e a carteira do mês contava dois contratos. Agora o contrato é julgado na véspera do início, quando ainda valia: a renovação o encurta para essa véspera, e a que começa no dia seguinte ao fim leva a marca de emendada. A trava da lista velha continua: cancelado e trancado derivam assim em qualquer data, e o que ainda não começou agora também não tinha começado na véspera.
 - O modal recusa renovar contrato cancelado ("Este contrato foi cancelado. Para o cliente voltar, faça uma nova matrícula pela ficha.") e contrato que ainda não começou ("Este contrato ainda não começou (começa em DD/MM/AAAA). Para trocar o plano ou a data, use Corrigir na ficha do cliente."). No Corrigir, essas duas travas não valem.
-- Na correção, o anterior que a própria renovação encurtou é lido pelo fim original.
+- Na correção, o anterior que a própria renovação encurtou é lido pelo fim original. A correção feita meses depois, com o anterior já vencido, também é julgada na véspera do início novo: se o início novo continua sobrepondo, o anterior termina na véspera dele, e o fim original não volta.
 
 ### Renovações já feitas
 

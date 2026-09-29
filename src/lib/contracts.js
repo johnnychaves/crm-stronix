@@ -201,21 +201,34 @@ export const hasLiveContract = (lead, refDate, thresholdDays) => {
     || cs === CONTRACT_STATUS.AGENDADO || cs === CONTRACT_STATUS.TRANCADO;
 };
 
-// Contrato em vigor em `now`: ativo ou a vencer pelo status derivado, ou
+// Contrato em vigor em `at`: ativo ou a vencer pelo status derivado, ou
 // vencido no próprio dia do fim (`end`, o mesmo fim que deu o status). Só ele é
 // emendado ou encurtado por uma renovação (buildMatriculaWrites e
-// buildContractEdit, que usam esta função para as duas contas não se
-// separarem). O fim gravado à meia-noite deixa o contrato vencido durante o
-// último dia inteiro, e renovar nesse dia é comum: sem o último dia, a
-// renovação emendada apareceria agendada até a meia-noite. Cancelado,
-// trancado, agendado e o que venceu antes de hoje ficam de fora: emendar neles
-// deixaria o lead ativo com o Operacional contando o cliente fora da base, e
-// encurtar mexeria no fim de um contrato que não vale mais. A renovação
-// emendada que ainda não começou deriva como ativa, então a corrente de
-// renovações segue.
-const isInForce = (status, end, now) => status === CONTRACT_STATUS.ATIVO
+// buildContractEdit, que usam esta função e renewalTakeoverAt para as duas
+// contas não se separarem). O fim gravado à meia-noite deixa o contrato vencido
+// durante o último dia inteiro, e renovar nesse dia é comum: sem o último dia,
+// a renovação emendada apareceria agendada até a meia-noite. Cancelado,
+// trancado e agendado ficam de fora: emendar neles deixaria o lead ativo com o
+// Operacional contando o cliente fora da base, e encurtar mexeria no fim de um
+// contrato que não vale. A renovação emendada que ainda não começou deriva como
+// ativa, então a corrente de renovações segue.
+const isInForce = (status, end, at) => status === CONTRACT_STATUS.ATIVO
   || status === CONTRACT_STATUS.A_VENCER
-  || (status === CONTRACT_STATUS.VENCIDO && calendarDaysBetween(now, end) === 0);
+  || (status === CONTRACT_STATUS.VENCIDO && calendarDaysBetween(at, end) === 0);
+
+// O instante em que o contrato renovado precisa estar em vigor (isInForce).
+// Com o início da renovação já chegado, a véspera dele: é ali que a renovação
+// assume, e a sobreposição se decide ali mesmo que o renovado tenha vencido
+// depois. Encerrar na véspera não tem exceção para o vencido (decisão do
+// Johnny, 29/09/2026), e é o caso da renovação lançada depois do vencimento,
+// com o início que o aluno pagou, e da correção feita meses depois. Com o
+// início no futuro, agora. Nos dois casos a trava da lista velha continua:
+// cancelado e trancado derivam assim em qualquer data, e o que ainda não
+// começou agora também não tinha começado na véspera.
+const renewalTakeoverAt = (start, now) => {
+  const ref = getSafeDateOrNull(now) || new Date();
+  return start.getTime() <= ref.getTime() ? addDays(start, -1) : ref;
+};
 
 // Texto humano gravado na timeline (interaction) na matrícula/renovação.
 export const buildMatriculaInteractionText = ({ planName, value, endsAt, isRenewal }) => {
@@ -245,8 +258,9 @@ export const buildMatriculaInteractionText = ({ planName, value, endsAt, isRenew
 // `previousContract`: o DOC do contrato atual, quando o chamador o tem. É dele
 // que saem o fim e o início usados na emenda e no encurtamento. Sem ele (ou com
 // um doc que não é o atual do lead), a renovação não encurta nada.
-// `now`: o instante em que o contrato atual precisa estar em vigor para ser
-// emendado ou encurtado. Padrão: agora.
+// `now`: a hora da gravação. Com o início já chegado, o contrato atual precisa
+// estar em vigor na véspera dele para ser emendado ou encurtado; com o início
+// no futuro, agora (renewalTakeoverAt). Padrão: o relógio.
 export const buildMatriculaWrites = ({
   lead,
   plan,
@@ -282,14 +296,17 @@ export const buildMatriculaWrites = ({
     ? getSafeDateOrNull(currentDoc ? currentDoc.endsAt : lead?.currentContractEndsAt)
     : null;
   const join = currentEnd ? renewalJoinOf(currentEnd, start) : { seamless: false, overlaps: false, previousEndsAt: null };
-  // Só o contrato em vigor agora (isInForce) é emendado ou encurtado. O status
-  // sai da mesma fonte das datas: o documento, quando ele é usado, senão o
-  // resumo do lead. O lead da lista pode dizer ativo com o documento já
-  // cancelado.
+  // Só o contrato em vigor quando a renovação assume (isInForce, no instante de
+  // renewalTakeoverAt) é emendado ou encurtado. O vencido que ainda valia na
+  // véspera de um início que já chegou entra: a renovação lançada depois do
+  // vencimento, com início antes do fim, encurta o vencido. O status sai da
+  // mesma fonte das datas: o documento, quando ele é usado, senão o resumo do
+  // lead. O lead da lista pode dizer ativo com o documento já cancelado.
+  const at = renewalTakeoverAt(start, now);
   const inForce = isRenewal && isInForce(
-    currentDoc ? deriveContractStatus(currentDoc, now) : deriveLeadContractStatus(lead, now),
+    currentDoc ? deriveContractStatus(currentDoc, at) : deriveLeadContractStatus(lead, at),
     currentEnd,
-    now
+    at
   );
   // A véspera do novo precisa cair dentro da vigência do atual (eveFitsIn).
   // Importado pode vir sem início, e aí vale a criação, como no Operacional
@@ -638,8 +655,9 @@ const changesPrevious = (previous, patch) => !(
 // importar renewal.js fecharia um ciclo.
 // `previous`: o DOC do contrato que esta renovação renova, quando o chamador o
 // tem. Com ele vem `previousPatch`, o que gravar nele, ou null.
-// `now`: o instante em que o anterior precisa estar em vigor para a renovação
-// ser emendada ou encurtá-lo. Padrão: agora.
+// `now`: a hora da correção. Com o início novo já chegado, o anterior precisa
+// estar em vigor na véspera dele para a renovação ser emendada ou encurtá-lo;
+// com o início novo no futuro, agora (renewalTakeoverAt). Padrão: o relógio.
 export const buildContractEdit = ({ contract, plan, value, startsAt, discountReason, previous = null, now = new Date() } = {}) => {
   const start = getSafeDateOrNull(startsAt) || getSafeDateOrNull(contract?.startsAt) || new Date();
   const durationMonths = Number(plan?.durationMonths) || Number(contract?.durationMonths) || 0;
@@ -658,11 +676,13 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
   // renovação (buildMatriculaWrites). Se foi esta renovação que encurtou o
   // anterior, a conta parte do fim original dele, para o fim de verdade nunca
   // se perder. Sobrepondo, o anterior termina na véspera do novo, e o novo
-  // conta como emendado. Sem sobrepor, o fim que esta renovação encurtou volta
-  // ao original. Não se encurta o que outra renovação encurtou, e só o anterior
-  // em vigor agora (isInForce) é emendado ou encurtado: trancado (o fim ainda
-  // anda na reativação), cancelado, agendado e o que venceu antes de hoje ficam
-  // de fora.
+  // conta como emendado. Não se encurta o que outra renovação encurtou, e só o
+  // anterior em vigor quando a renovação assume (isInForce, no instante de
+  // renewalTakeoverAt) é emendado ou encurtado: trancado (o fim ainda anda na
+  // reativação), cancelado e agendado ficam de fora. O vencido não fica: a
+  // correção feita depois de o anterior vencer encurta como a gravação
+  // encurtaria. O fim que esta renovação encurtou só volta ao original quando o
+  // início novo não sobrepõe ou quando o anterior não pode ser encurtado.
   // Só um início novo recalcula (correctionMovesStart). Com o mesmo início, ou
   // sem o anterior ligado, a marca fica como estava e nenhum outro contrato é
   // gravado: corrigir só o valor de uma renovação antiga não encurta a
@@ -678,7 +698,8 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
     // Em vigor pelo fim de referência. Pelo fim encurtado, o anterior que esta
     // renovação encurtou e cujo fim novo já passou leria como vencido, e a
     // correção de volta para a emenda perderia a marca.
-    const inForce = isInForce(deriveContractStatus({ ...previous, endsAt: refEnd }, now), refEnd, now);
+    const at = renewalTakeoverAt(start, now);
+    const inForce = isInForce(deriveContractStatus({ ...previous, endsAt: refEnd }, at), refEnd, at);
     const prevStart = getSafeDateOrNull(previous.startsAt) || getSafeDateOrNull(previous.createdAt);
     const join = renewalJoinOf(refEnd, start);
     const canShorten = inForce && !shortenedByOther && eveFitsIn(join, prevStart, refEnd);
