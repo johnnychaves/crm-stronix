@@ -3,7 +3,10 @@
 // bloco compara as duas, para a ficha e o Gerencial não se separarem.
 
 import { describe, it, expect } from 'vitest';
-import { CONTRACT_ORIGIN, contractEndOf, contractOriginOf } from '../contractHistory.js';
+import {
+  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, runningPredecessorOf
+} from '../contractHistory.js';
+import { CONTRACT_STATUS } from '../contracts.js';
 import { normalizeContracts, indexContracts } from '../operacional/base.js';
 import { saleTypeOf, SALE_TYPES } from '../gerencial/scope.js';
 
@@ -152,5 +155,94 @@ describe('contractOriginOf dá o mesmo tipo que o Gerencial', () => {
     norm.forEach((n, i) => {
       expect(TO_SALE[contractOriginOf(raw[i], raw).kind], raw[i].id).toBe(saleTypeOf(n, byPerson));
     });
+  });
+});
+
+// O contrato que já tem renovação ligada, no Histórico e no card. Antes ele
+// aparecia "A vencer" com o aluno já renovado.
+describe('historyStatusOf e runningPredecessorOf', () => {
+  const HOJE = D(2026, 9, 28);
+  const atual = { id: 'k1', leadId: L, planName: 'Start', status: 'ativo', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+  const renovacao = { id: 'k2', leadId: L, planName: 'Flow', status: 'ativo', renewedFromId: 'k1', seamless: true, startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12) };
+
+  it('contrato com renovação que ainda não começou está em uso', () => {
+    expect(historyStatusOf(atual, [atual, renovacao], HOJE)).toBe(HISTORY_STATUS.EM_USO);
+  });
+
+  it('depois que a renovação começa, vira renovado', () => {
+    expect(historyStatusOf(atual, [atual, renovacao], D(2026, 10, 12))).toBe(HISTORY_STATUS.RENOVADO);
+  });
+
+  it('renovação cancelada antes de começar não conta', () => {
+    const desistiu = { ...renovacao, status: 'cancelado', cancelledAt: D(2026, 9, 20) };
+    expect(historyStatusOf(atual, [atual, desistiu], HOJE)).toBe(CONTRACT_STATUS.A_VENCER);
+  });
+
+  it('nem a cancelada no instante do início', () => {
+    const noInicio = { ...renovacao, status: 'cancelado', cancelledAt: D(2026, 10, 12) };
+    expect(historyStatusOf(atual, [atual, noInicio], HOJE)).toBe(CONTRACT_STATUS.A_VENCER);
+  });
+
+  it('cancelado continua cancelado, e sem renovação vale o status comum', () => {
+    expect(historyStatusOf({ ...atual, status: 'cancelado', cancelledAt: D(2026, 5, 1) }, [atual, renovacao], HOJE)).toBe(CONTRACT_STATUS.CANCELADO);
+    expect(historyStatusOf(atual, [atual], HOJE)).toBe(CONTRACT_STATUS.A_VENCER);
+  });
+
+  // No Histórico, o contrato que ainda não começou nunca está em uso nem
+  // renovado, nem o emendado, que o status comum trata como ativo.
+  it('a renovação que ainda não começou é agendada, mesmo emendada', () => {
+    expect(historyStatusOf(renovacao, [atual, renovacao], HOJE)).toBe(CONTRACT_STATUS.AGENDADO);
+  });
+
+  it('com intervalo: em uso até o fim, renovado depois dele, mesmo antes de a renovação começar', () => {
+    const depois = { ...renovacao, seamless: false, startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20) };
+    expect(historyStatusOf(atual, [atual, depois], HOJE)).toBe(HISTORY_STATUS.EM_USO);
+    // O último dia do contrato ainda é dele.
+    expect(historyStatusOf(atual, [atual, depois], new Date(2026, 9, 11, 18, 0))).toBe(HISTORY_STATUS.EM_USO);
+    expect(historyStatusOf(atual, [atual, depois], D(2026, 10, 15))).toBe(HISTORY_STATUS.RENOVADO);
+  });
+
+  it('aceita as datas como Timestamp do Firestore', () => {
+    const tAtual = { ...atual, startsAt: ts(atual.startsAt), endsAt: ts(atual.endsAt) };
+    const tRenovacao = { ...renovacao, startsAt: ts(renovacao.startsAt), endsAt: ts(renovacao.endsAt) };
+    expect(historyStatusOf(tAtual, [tAtual, tRenovacao], HOJE)).toBe(HISTORY_STATUS.EM_USO);
+    expect(runningPredecessorOf(tRenovacao, [tAtual, tRenovacao], HOJE)).toBe(tAtual);
+  });
+
+  it('os selos têm rótulo', () => {
+    expect(HISTORY_STATUS_LABEL[HISTORY_STATUS.EM_USO]).toBe('Em uso');
+    expect(HISTORY_STATUS_LABEL[HISTORY_STATUS.RENOVADO]).toBe('Renovado');
+  });
+
+  it('runningPredecessorOf acha o contrato em uso da renovação', () => {
+    expect(runningPredecessorOf(renovacao, [atual, renovacao], HOJE)).toBe(atual);
+    expect(runningPredecessorOf(renovacao, [atual, renovacao], D(2026, 10, 12))).toBeNull();
+    expect(runningPredecessorOf(atual, [atual, renovacao], HOJE)).toBeNull();
+  });
+
+  it('runningPredecessorOf ignora o anterior cancelado', () => {
+    const cancelado = { ...atual, status: 'cancelado', cancelledAt: D(2026, 9, 1) };
+    expect(runningPredecessorOf(renovacao, [cancelado, renovacao], HOJE)).toBeNull();
+  });
+
+  it('runningPredecessorOf: com intervalo, o anterior só vale até o fim dele', () => {
+    const depois = { ...renovacao, seamless: false, startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20) };
+    expect(runningPredecessorOf(depois, [atual, depois], HOJE)).toBe(atual);
+    expect(runningPredecessorOf(depois, [atual, depois], D(2026, 10, 15))).toBeNull();
+  });
+
+  it('runningPredecessorOf: o anterior encurtado vale até o fim encurtado', () => {
+    const encurtado = { ...atual, endsAt: D(2026, 10, 4), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' };
+    const antecipada = { ...renovacao, startsAt: D(2026, 10, 5), endsAt: D(2027, 10, 5) };
+    const emUso = runningPredecessorOf(antecipada, [encurtado, antecipada], HOJE);
+    expect(emUso).toBe(encurtado);
+    expect(contractEndOf(emUso)).toEqual(D(2026, 10, 4));
+  });
+
+  it('runningPredecessorOf sem o anterior na lista, ou com ele ainda sem começar', () => {
+    expect(runningPredecessorOf(renovacao, [renovacao], HOJE)).toBeNull();
+    expect(runningPredecessorOf(renovacao, null, HOJE)).toBeNull();
+    const futuro = { ...atual, startsAt: D(2026, 10, 1) };
+    expect(runningPredecessorOf(renovacao, [futuro, renovacao], HOJE)).toBeNull();
   });
 });
