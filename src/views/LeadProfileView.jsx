@@ -62,7 +62,7 @@ import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, Check
 // contrato manda na cor da aba Contratos inteira.
 const CONTRACT_TONE = {
   [CONTRACT_STATUS.AGENDADO]: { block: 'bg-violet-500/10 dark:bg-violet-500/15', fg: 'text-violet-700 dark:text-violet-300', fill: 'bg-violet-500' },
-  [CONTRACT_STATUS.TRANCADO]: { block: 'bg-yellow-500/15 dark:bg-yellow-500/15', fg: 'text-yellow-700 dark:text-yellow-300', fill: 'bg-yellow-500' },
+  [CONTRACT_STATUS.TRANCADO]: { block: 'bg-yellow-500/15', fg: 'text-yellow-800 dark:text-yellow-300', fill: 'bg-yellow-500' },
   [CONTRACT_STATUS.ATIVO]: { block: 'bg-emerald-500/10 dark:bg-emerald-500/15', fg: 'text-emerald-700 dark:text-emerald-400', fill: 'bg-emerald-500' },
   [CONTRACT_STATUS.A_VENCER]: { block: 'bg-amber-500/12 dark:bg-amber-500/16', fg: 'text-amber-700 dark:text-amber-400', fill: 'bg-amber-500' },
   [CONTRACT_STATUS.VENCIDO]: { block: 'bg-slate-500/10 dark:bg-slate-400/15', fg: 'text-slate-600 dark:text-slate-300', fill: 'bg-slate-400' },
@@ -1736,10 +1736,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 const daysToStart = scheduled && curStartsAt
                   ? Math.max(0, Math.ceil((curStartsAt.getTime() - Date.now()) / 86400000))
                   : 0;
-                // Mesma conta da reativação (buildContractResume). Com o
-                // arredondamento para cima, o card dizia 11 dias e o modal, 10.
+                // Mesma conta da reativação (buildContractResume), que reativa na
+                // meia-noite do dia escolhido: por isso a conta vai até o início
+                // de hoje. Contando até agora, à tarde o card dizia um dia a mais.
+                const todayStart = new Date();
+                todayStart.setHours(0, 0, 0, 0);
                 const pausedDays = paused && curPausedAt
-                  ? Math.max(0, daysBetween(curPausedAt, new Date()) || 0)
+                  ? Math.max(0, daysBetween(curPausedAt, todayStart) || 0)
                   : 0;
                 const missed = scheduled || paused ? null : missedCheckpointsLabel(vigencia?.missedCount);
                 // Desconto do contrato. Contrato antigo não tem discountValue:

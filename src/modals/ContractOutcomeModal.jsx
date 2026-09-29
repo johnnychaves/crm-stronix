@@ -54,9 +54,8 @@ const ACTIONS = {
 
 const TONE_CLASS = {
   rose: { chip: 'bg-rose-500/10 text-rose-700 dark:bg-rose-500/15 dark:text-rose-400', btn: 'bg-rose-600 hover:bg-rose-700' },
-  brand: { chip: 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300', btn: 'bg-brand-600 hover:bg-brand-700' },
   // Só o ícone fica amarelo. O botão segue azul: texto branco em amarelo não tem contraste.
-  yellow: { chip: 'bg-yellow-500/15 text-yellow-700 dark:bg-yellow-500/15 dark:text-yellow-300', btn: 'bg-brand-600 hover:bg-brand-700' },
+  yellow: { chip: 'bg-yellow-500/15 text-yellow-800 dark:text-yellow-300', btn: 'bg-brand-600 hover:bg-brand-700' },
   emerald: { chip: 'bg-emerald-500/10 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-400', btn: 'bg-emerald-600 hover:bg-emerald-500' }
 };
 
