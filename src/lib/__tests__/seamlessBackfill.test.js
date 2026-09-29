@@ -61,6 +61,44 @@ describe('planSeamlessBackfill: contratos', () => {
     expect(contratosMarcados([anterior, depois])).toEqual(['k3']);
   });
 
+  // O contrato renovado precisa ter valido até o fim previsto. O trancado não
+  // corre, e o cancelado antes do fim parou antes de a renovação começar.
+  it('não marca a renovação de contrato trancado', () => {
+    const trancado = { ...anterior, status: 'trancado', pausedAt: ts(D(2026, 9, 1)) };
+    expect(contratosMarcados([trancado, renovacao('k2', D(2026, 10, 12))])).toEqual([]);
+  });
+
+  it('não marca a renovação de contrato cancelado antes do fim previsto', () => {
+    const cancelado = { ...anterior, status: 'cancelado', cancelledAt: ts(D(2026, 9, 29)) };
+    expect(contratosMarcados([cancelado, renovacao('k2', D(2026, 10, 12))])).toEqual([]);
+    // Cancelado no último dia, antes da hora do fim, ainda é antes do fim.
+    const noUltimoDia = { ...anterior, status: 'cancelado', endsAt: ts(new Date(2026, 9, 11, 14, 30)), cancelledAt: ts(D(2026, 10, 11)) };
+    expect(contratosMarcados([noUltimoDia, renovacao('k2', D(2026, 10, 12))])).toEqual([]);
+    // O fim previsto de quem foi encurtado é o original.
+    const encurtado = {
+      ...anterior, status: 'cancelado', cancelledAt: ts(D(2026, 9, 20)),
+      endsAt: ts(D(2026, 9, 27)), originalEndsAt: ts(D(2026, 10, 11)), shortenedById: 'k2'
+    };
+    expect(contratosMarcados([encurtado, renovacao('k2', D(2026, 9, 28))])).toEqual([]);
+  });
+
+  it('marca a renovação de contrato cancelado no fim previsto ou depois', () => {
+    // A importação grava o cancelado da planilha com cancelledAt igual ao endsAt.
+    const noFim = { ...anterior, status: 'cancelado', cancelledAt: ts(D(2026, 10, 11)) };
+    expect(contratosMarcados([noFim, renovacao('k2', D(2026, 10, 12))])).toEqual(['k2']);
+    const depois = { ...anterior, status: 'cancelado', cancelledAt: ts(D(2026, 11, 3)) };
+    expect(contratosMarcados([depois, renovacao('k2', D(2026, 10, 12))])).toEqual(['k2']);
+  });
+
+  // Sem a data, não dá para saber se valeu até o fim. O cancelado ainda
+  // trancado parou no trancamento, como no fim efetivo (contractEndOf).
+  it('não marca com o cancelado sem data nem com o cancelado ainda trancado', () => {
+    const semData = { ...anterior, status: 'cancelado', cancelledAt: null };
+    expect(contratosMarcados([semData, renovacao('k2', D(2026, 10, 12))])).toEqual([]);
+    const trancadoECancelado = { ...anterior, status: 'cancelado', pausedAt: ts(D(2026, 9, 1)), cancelledAt: ts(D(2026, 11, 3)) };
+    expect(contratosMarcados([trancadoECancelado, renovacao('k2', D(2026, 10, 12))])).toEqual([]);
+  });
+
   it('lista vazia, nula ou com buracos não quebra', () => {
     expect(planSeamlessBackfill([], [])).toEqual({ contractIds: [], leadIds: [] });
     expect(planSeamlessBackfill(null, undefined)).toEqual({ contractIds: [], leadIds: [] });
@@ -90,5 +128,11 @@ describe('planSeamlessBackfill: leads', () => {
     );
     expect(r.contractIds).toEqual(['k2']);
     expect(r.leadIds).toEqual(['l1', 'l2']);
+  });
+
+  it('o lead da renovação que ficou de fora não é marcado', () => {
+    const trancado = { ...anterior, status: 'trancado', pausedAt: ts(D(2026, 9, 1)) };
+    expect(planSeamlessBackfill([trancado, renovacao('k2', D(2026, 10, 12))], [{ id: 'l1', currentContractId: 'k2' }]))
+      .toEqual({ contractIds: [], leadIds: [] });
   });
 });

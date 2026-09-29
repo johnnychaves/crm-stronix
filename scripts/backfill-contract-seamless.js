@@ -8,9 +8,15 @@
 // grava a marca nelas.
 //
 // Não grava false em ninguém e não encurta sobreposição antiga (decisão do
-// Johnny, 28/09/2026). A decisão de quem recebe a marca mora em
+// Johnny, 28/09/2026). Não marca a renovação de contrato trancado ou cancelado
+// antes do fim previsto. A decisão de quem recebe a marca mora em
 // src/lib/seamlessBackfill.js, com teste. Quem já tem a marca não entra, então
 // rodar de novo é seguro.
+//
+// Cada documento é gravado com a precondição da hora da última gravação que a
+// leitura viu (lastUpdateTime). O que mudou depois da leitura derruba o lote
+// inteiro, em vez de receber a marca de um plano velho, e o script para e diz
+// o que fazer.
 //
 // Uso (mesmas credenciais Admin das funções api/):
 //   FIREBASE_ADMIN_PROJECT_ID=... \
@@ -25,10 +31,12 @@
 //
 // Lê a coleção inteira de contratos e os leads com contrato atual. Grava em
 // lotes de 400 (limite de 500 escritas por batch do Firestore, com folga). A
-// saída mostra ids, plano e data de início, nunca o nome do cliente.
+// saída mostra ids, plano, datas e o status do contrato renovado, nunca o nome
+// do cliente.
 
 import process from 'node:process';
 import admin from 'firebase-admin';
+import { CONTRACT_STATUS } from '../src/lib/contracts.js';
 import { getSafeDateOrNull } from '../src/lib/dates.js';
 import { planSeamlessBackfill } from '../src/lib/seamlessBackfill.js';
 
@@ -103,6 +111,21 @@ if (inexistentes.length) {
 
 const diaDe = (value) => getSafeDateOrNull(value)?.toLocaleDateString('pt-BR') || 'sem data';
 
+// O contrato renovado, na linha de cada renovação: o status gravado, o dia do
+// cancelamento, quando cancelado, e o fim previsto. É o que o plano confere
+// antes de marcar (seamlessBackfill.js).
+const anteriorDe = (prev) => {
+  const cancelado = prev.status === CONTRACT_STATUS.CANCELADO ? ` em ${diaDe(prev.cancelledAt)}` : '';
+  return `anterior ${prev.id} ${prev.status || 'sem status'}${cancelado}, fim previsto ${diaDe(prev.originalEndsAt || prev.endsAt)}`;
+};
+
+// Códigos do Firestore (gRPC) para a precondição que falhou: o documento mudou
+// depois da leitura (FAILED_PRECONDITION) ou sumiu (NOT_FOUND).
+const PRECONDICAO_FALHOU = new Set([9, 5]);
+
+// Lote recusado pela precondição. Leva a mensagem pronta para quem roda.
+class LoteRecusado extends Error {}
+
 async function sweep(tenantId) {
   const [contractsSnap, leadsSnap] = await Promise.all([
     dataCol(tenantId, CONTRACTS_PATH).get(),
@@ -110,27 +133,51 @@ async function sweep(tenantId) {
   ]);
   const contracts = contractsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
   const leads = leadsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  // A hora da última gravação de cada documento, como a leitura viu.
+  const lidoEm = new Map([...contractsSnap.docs, ...leadsSnap.docs].map((d) => [d.ref.path, d.updateTime]));
   const { contractIds, leadIds } = planSeamlessBackfill(contracts, leads);
   const byId = new Map(contracts.map((c) => [c.id, c]));
   const tag = APPLY ? 'GRAVA' : 'DRY  ';
 
   for (const id of contractIds) {
     const c = byId.get(id);
-    console.log(`  [${tag}] contrato ${id} · ${c.planName || 'sem plano'} · início ${diaDe(c.startsAt)}: seamless = true`);
+    console.log(`  [${tag}] contrato ${id} · ${c.planName || 'sem plano'} · início ${diaDe(c.startsAt)} · ${anteriorDe(byId.get(c.renewedFromId))}: seamless = true`);
   }
   for (const id of leadIds) console.log(`  [${tag}] lead ${id}: currentContractSeamless = true`);
 
   if (APPLY) {
     // update, e não set com merge: um documento que sumiu entre a leitura e a
     // gravação derruba o lote, em vez de virar um documento só com a marca.
+    // A precondição lastUpdateTime vai além: o documento precisa estar como a
+    // leitura o viu. Sem a hora da leitura o script para, porque uma
+    // precondição vazia tiraria até a exigência de o documento existir.
+    const precondicao = (ref) => {
+      const lastUpdateTime = lidoEm.get(ref.path);
+      if (!lastUpdateTime) throw new Error(`Sem a hora da leitura de ${ref.path}. Nada deste lote foi gravado.`);
+      return { lastUpdateTime };
+    };
     const writes = [
       ...contractIds.map((id) => [dataCol(tenantId, CONTRACTS_PATH).doc(id), { seamless: true }]),
       ...leadIds.map((id) => [dataCol(tenantId, LEADS_PATH).doc(id), { currentContractSeamless: true }])
     ];
+    const lotes = Math.ceil(writes.length / BATCH_SIZE);
     for (let i = 0; i < writes.length; i += BATCH_SIZE) {
+      const lote = i / BATCH_SIZE + 1;
       const batch = db.batch();
-      for (const [ref, data] of writes.slice(i, i + BATCH_SIZE)) batch.update(ref, data);
-      await batch.commit();
+      for (const [ref, data] of writes.slice(i, i + BATCH_SIZE)) batch.update(ref, data, precondicao(ref));
+      try {
+        await batch.commit();
+      } catch (err) {
+        if (!PRECONDICAO_FALHOU.has(err?.code)) throw err;
+        const anteriores = lote - 1;
+        throw new LoteRecusado([
+          `Tenant "${tenantId}": o lote ${lote} de ${lotes} foi recusado. Um contrato ou lead mudou, ou foi apagado, depois da leitura. Nada desse lote foi gravado.`,
+          anteriores === 1 ? 'O lote anterior deste tenant já está gravado.' : null,
+          anteriores > 1 ? `Os ${anteriores} lotes anteriores deste tenant já estão gravados.` : null,
+          'Rode de novo, primeiro sem --apply, para conferir a lista atualizada. Quem já tem a marca não entra de novo.',
+          `Detalhe do Firestore: ${err.message}`
+        ].filter(Boolean).join('\n'));
+      }
     }
   }
 
@@ -139,13 +186,27 @@ async function sweep(tenantId) {
 
 async function run() {
   console.log(`\nMarca das renovações emendadas antigas. Modo: ${APPLY ? 'GRAVAR' : 'DRY-RUN'}\n`);
+  const feitos = [];
   for (const tenantId of TENANTS) {
     console.log(`Tenant "${tenantId}"`);
-    const r = await sweep(tenantId);
+    let r;
+    try {
+      r = await sweep(tenantId);
+    } catch (err) {
+      if (err instanceof LoteRecusado && feitos.length) {
+        err.message += `\nOs tenants anteriores desta execução foram gravados por inteiro: ${feitos.join(', ')}.`;
+      }
+      throw err;
+    }
+    feitos.push(tenantId);
     console.log(`  Lidos: ${r.contracts} contratos e ${r.leads} leads com contrato atual. ${APPLY ? 'Marcados' : 'A marcar'}: ${r.contractIds.length} contratos e ${r.leadIds.length} leads.\n`);
   }
   if (APPLY) console.log('Concluído.');
   else console.log('DRY-RUN: nada foi gravado. Revise a lista acima e rode de novo com --apply para gravar.');
 }
 
-run().then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });
+run().then(() => process.exit(0)).catch((err) => {
+  if (err instanceof LoteRecusado) console.error(`\n${err.message}`);
+  else console.error(err);
+  process.exit(1);
+});
