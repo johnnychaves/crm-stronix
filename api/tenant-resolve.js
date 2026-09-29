@@ -14,6 +14,7 @@ import {
   referralLinkAttemptText,
   referralLinkGenericText
 } from './_referral.js';
+import { isPasswordResetAction, handlePasswordReset } from './_passwordResetRoute.js';
 
 // Resolve PÚBLICO de organização por slug (?slug=ironfit).
 // GET (intacto): usado pela tela de login (App.jsx) para mostrar a MARCA da
@@ -28,6 +29,12 @@ import {
 //     por IP e por academia, dedupe SILENCIOSO em duas chaves (telefone/CPF —
 //     resposta de sucesso igual pra não vazar quem é aluno), funil Indicações
 //     → etapa de entrada, consultor herdado do CLIENTE dono do link.
+//
+// ESQUECI A SENHA (docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md):
+// mais duas actions POST públicas, pelo mesmo motivo do limite de funções:
+//   { action:'password-reset-request', email } → sempre 200 antes do trabalho
+//   { action:'password-reset-confirm', email, code, newPassword }
+// Tudo mora em _passwordResetRoute.js e nos arquivos _passwordReset*.js.
 
 // Mesma regra de leitura do endereço do app (src/lib/tenantSlug.js).
 const SLUG_RE = TENANT_SLUG_READ_RE;
@@ -38,7 +45,12 @@ const STATUSES_PATH = 'stronix_statuses';
 const MODALITIES_PATH = 'stronix_modalities';
 
 export default withSentry(async function handler(req, res) {
-  if (req.method === 'POST') return handleReferral(req, res);
+  if (req.method === 'POST') {
+    // "Esqueci a senha": as duas ações públicas moram aqui, e não numa função
+    // nova (docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md).
+    if (isPasswordResetAction(req.body?.action)) return handlePasswordReset(req, res);
+    return handleReferral(req, res);
+  }
   if (req.method !== 'GET') {
     return res.status(405).json({ error: 'Método não permitido' });
   }
