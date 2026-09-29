@@ -7,6 +7,7 @@
 // contrato encosta no atual, quanto de desconto foi dado e onde cada marco
 // cai na régua de vigência.
 
+import { CONTRACT_STATUS } from './contracts.js';
 import { addDays, daysBetween, getSafeDateOrNull } from './dates.js';
 import { parseValorBRL } from './format.js';
 import { normalize } from './globalSearch.js';
@@ -142,6 +143,19 @@ export function searchPlans(plans, query) {
 // ---------------------------------------------------------------------------
 // Régua de vigência do contrato vigente
 // ---------------------------------------------------------------------------
+
+// A data que a régua de vigência trata como "hoje". Trancado congela na data
+// do trancamento. Cancelado para na data do cancelamento quando ela já passou:
+// sem isso a porcentagem de um contrato encerrado subia todo dia.
+export function vigenciaRefDate({ status, pausedAt, cancelledAt } = {}, now = new Date()) {
+  const ref = getSafeDateOrNull(now) || new Date();
+  if (status === CONTRACT_STATUS.TRANCADO) return getSafeDateOrNull(pausedAt) || ref;
+  if (status === CONTRACT_STATUS.CANCELADO) {
+    const at = getSafeDateOrNull(cancelledAt);
+    if (at && at.getTime() < ref.getTime()) return at;
+  }
+  return ref;
+}
 
 // Percentual decorrido, dias restantes e a posição de cada marco de renovação
 // na régua: (total - marco) / total. Os marcos vêm de Configurações → Metas &

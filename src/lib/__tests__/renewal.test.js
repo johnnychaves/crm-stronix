@@ -17,7 +17,8 @@ import {
   topSellingPlans,
   searchPlans,
   contractVigencia,
-  missedCheckpointsLabel
+  missedCheckpointsLabel,
+  vigenciaRefDate
 } from '../renewal.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
@@ -268,5 +269,35 @@ describe('missedCheckpointsLabel', () => {
     expect(missedCheckpointsLabel(0)).toBeNull();
     expect(missedCheckpointsLabel(1)).toBe('1 marco de renovação passou sem contato');
     expect(missedCheckpointsLabel(2)).toBe('2 marcos de renovação passaram sem contato');
+  });
+});
+
+describe('vigenciaRefDate', () => {
+  const NOW = D(2026, 9, 28);
+
+  it('cancelado para na data do cancelamento', () => {
+    expect(vigenciaRefDate({ status: 'cancelado', cancelledAt: D(2026, 3, 1) }, NOW)).toEqual(D(2026, 3, 1));
+  });
+
+  it('cancelamento com data futura (aviso prévio) usa hoje', () => {
+    expect(vigenciaRefDate({ status: 'cancelado', cancelledAt: D(2026, 10, 28) }, NOW)).toEqual(NOW);
+  });
+
+  it('trancado congela na data do trancamento', () => {
+    expect(vigenciaRefDate({ status: 'trancado', pausedAt: D(2026, 9, 10) }, NOW)).toEqual(D(2026, 9, 10));
+  });
+
+  it('nos outros casos é hoje', () => {
+    expect(vigenciaRefDate({ status: 'ativo' }, NOW)).toEqual(NOW);
+    expect(vigenciaRefDate({ status: 'cancelado' }, NOW)).toEqual(NOW);
+  });
+
+  it('a porcentagem do cancelado não sobe com o tempo', () => {
+    const c = { startsAt: D(2026, 1, 1), endsAt: D(2027, 1, 1) };
+    const cancelado = { status: 'cancelado', cancelledAt: D(2026, 3, 1) };
+    const antes = contractVigencia({ ...c, now: vigenciaRefDate(cancelado, D(2026, 6, 1)) }).elapsedPct;
+    const depois = contractVigencia({ ...c, now: vigenciaRefDate(cancelado, D(2026, 12, 1)) }).elapsedPct;
+    expect(antes).toBe(16);
+    expect(depois).toBe(16);
   });
 });

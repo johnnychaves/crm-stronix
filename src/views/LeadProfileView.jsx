@@ -13,7 +13,7 @@ import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
 import { fmtBRL } from '../lib/format.js';
 import { deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
-import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
+import { contractVigencia, daysBetween, missedCheckpointsLabel, vigenciaRefDate } from '../lib/renewal.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
 import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
@@ -794,16 +794,19 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const curEndsAt = getSafeDateOrNull(lead.currentContractEndsAt);
   const hasCurrentContract = Boolean(lead.currentContractId && curEndsAt);
   const curClosed = curStatus === CONTRACT_STATUS.VENCIDO || curStatus === CONTRACT_STATUS.CANCELADO;
-  // Trancado congela a régua na data em que parou: o contrato não corre.
+  // Trancado congela a régua na data em que parou, e cancelado para na data do
+  // cancelamento (vigenciaRefDate). Sem isso a porcentagem do cancelado subia
+  // todo dia.
   const curPaused = curStatus === CONTRACT_STATUS.TRANCADO;
   const curPausedAt = getSafeDateOrNull(currentContract?.pausedAt);
+  const curCancelledAt = getSafeDateOrNull(currentContract?.cancelledAt);
   const vigencia = hasCurrentContract
     ? contractVigencia({
       startsAt: curStartsAt,
       endsAt: curEndsAt,
       checkpoints: renewalCheckpoints,
       handled: lead.renewalHandledCheckpoints,
-      now: curPaused && curPausedAt ? curPausedAt : new Date()
+      now: vigenciaRefDate({ status: curStatus, pausedAt: curPausedAt, cancelledAt: curCancelledAt }, new Date())
     })
     : null;
 
