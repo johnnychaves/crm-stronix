@@ -25,10 +25,18 @@ export const phoneDigits = (raw) => {
   return d.slice(0, 11);
 };
 
-// Telefone: (51) 9 0000-0000 (máx. 11 dígitos). Regra do DDI em phoneDigits.
+// Telefone com DDD. Fixo, 10 dígitos: (51) 3333-4444. Celular, 11 dígitos:
+// (51) 9 8124-4710. É a máscara dos campos, aplicada a cada tecla, e até o
+// 10º dígito não dá para saber se vem um fixo ou um celular. Por isso o
+// número fica no desenho do fixo e troca para o do celular quando chega o
+// 11º dígito: até lá cada tecla só acrescenta no fim, e a troca acontece uma
+// vez só. Regra do DDI em phoneDigits.
 export const formatPhone = (v) => {
   const d = phoneDigits(v);
   if (d.length <= 2) return d.length ? `(${d}` : '';
-  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3, 7)}-${d.slice(7)}`;
+  const ddd = d.slice(0, 2);
+  const numero = d.slice(2);
+  if (numero.length === 9) return `(${ddd}) ${numero.slice(0, 1)} ${numero.slice(1, 5)}-${numero.slice(5)}`;
+  if (numero.length <= 4) return `(${ddd}) ${numero}`;
+  return `(${ddd}) ${numero.slice(0, 4)}-${numero.slice(4)}`;
 };
