@@ -123,6 +123,26 @@ export function contractOriginOf(contract, leadContracts) {
   };
 }
 
+// O contrato que veio depois deste de verdade, de onde sai a linha de intervalo
+// acima dele no Histórico: o mais próximo com início depois do dele (início
+// mais recente primeiro, empate na ordem da lista), entre o contrato atual e os
+// que chegaram a valer. O vizinho de cima da lista pode ser uma renovação
+// desfeita, que começaria depois do atual. Ela continua na lista, mas não é
+// sucessora de ninguém, e ela mesma não tem sucessor: nunca valeu, então não
+// houve intervalo depois dela. O atual entra sempre, como na célula de origem
+// do card. Null quando nenhum contrato veio depois.
+export function historySuccessorOf(contract, leadContracts, currentContractId) {
+  if (!contract || neverTookEffect(contract)) return null;
+  const startOf = (c) => getSafeDateOrNull(c.startsAt)?.getTime() || 0;
+  const list = (Array.isArray(leadContracts) ? leadContracts.filter(Boolean) : [])
+    .sort((x, y) => startOf(y) - startOf(x));
+  const at = list.findIndex((c) => c.id === contract.id);
+  for (let i = at - 1; i >= 0; i -= 1) {
+    if (list[i].id === currentContractId || !neverTookEffect(list[i])) return list[i];
+  }
+  return null;
+}
+
 // Selos do Histórico que não são status do contrato: dizem que ele já tem
 // renovação ligada.
 export const HISTORY_STATUS = { EM_USO: 'em_uso', RENOVADO: 'renovado' };

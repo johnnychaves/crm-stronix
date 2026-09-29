@@ -15,7 +15,7 @@ import { fmtBRL } from '../lib/format.js';
 import { contractDiscountOf, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { SEAM_KIND, computeSeam, contractVigencia, daysBetween, missedCheckpointsLabel, vigenciaRefDate } from '../lib/renewal.js';
 import {
-  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, runningPredecessorOf
+  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, historySuccessorOf, runningPredecessorOf
 } from '../lib/contractHistory.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
@@ -2052,12 +2052,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                     || (hStart && hEnd ? Math.max(1, Math.round(daysBetween(hStart, hEnd) / 30.44)) : 0);
                   const hOrigin = contractOriginOf(c, leadContracts);
                   // A lacuna aparece ACIMA do nó: os dias sem contrato antes do
-                  // próximo contrato (mais novo), pela mesma conta da célula de
-                  // origem (fim da cobertura anterior, em dias do calendário).
-                  const newer = i === 0 ? currentContract : pastContracts[i - 1];
-                  const newerOrigin = !newer ? null
-                    : newer === currentContract ? contractOrigin : contractOriginOf(newer, leadContracts);
-                  const gapDays = newerOrigin?.gapDays || 0;
+                  // contrato que veio depois dele de verdade, pela mesma conta
+                  // da célula de origem (fim da cobertura anterior, em dias do
+                  // calendário). Não é o vizinho de cima: ele pode ser uma
+                  // renovação desfeita, que nunca valeu (historySuccessorOf).
+                  const successor = historySuccessorOf(c, leadContracts, lead.currentContractId);
+                  const successorOrigin = !successor ? null
+                    : successor === currentContract ? contractOrigin : contractOriginOf(successor, leadContracts);
+                  const gapDays = successorOrigin?.gapDays || 0;
                   const isFirstEver = i === pastContracts.length - 1;
                   return (
                     <div key={c.id}>
