@@ -10,6 +10,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { LoginScreen } from '../../views/auth/LoginScreen.jsx';
+import { ForgotPasswordScreen } from '../../views/auth/ForgotPasswordScreen.jsx';
+import { TOO_MANY_MESSAGE, isPasswordResetPath } from '../passwordReset.js';
 
 vi.mock('../firebase.js', () => ({ auth: {}, persistenceFor: async () => 'local' }));
 vi.mock('firebase/auth', () => ({ signInWithEmailAndPassword: vi.fn(), setPersistence: vi.fn() }));
@@ -17,12 +19,24 @@ vi.mock('firebase/auth', () => ({ signInWithEmailAndPassword: vi.fn(), setPersis
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 let root = null;
+// Monta a árvore do montar com as props dadas, para o redesenhar.
+let desenhar = null;
 
 // Lê um arquivo do projeto pelo caminho relativo a este teste. No jsdom o new
 // URL resolve contra a base http do jsdom, então o caminho sai do
 // import.meta.url como texto.
 const AQUI = dirname(fileURLToPath(import.meta.url));
 const fonte = (relativo) => readFileSync(join(AQUI, relativo), 'utf8');
+
+// Tira comentário de bloco e de linha, como a varredura do endereço faz: a linha
+// comentada tem o mesmo texto da linha ligada e não liga nada.
+const semComentarios = (texto) => texto.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+
+const MEMORIA = 'stronilead:recuperar-senha';
+// As classes que as caixas de erro do login já tinham antes de virarem o
+// AuthAlert, com o mb-4.
+const CAIXA_DO_ERRO = 'mb-4 flex items-start gap-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3.5 py-2.5 text-[12.5px] text-rose-700 dark:text-rose-300'.split(' ').sort();
+const classesDe = (el) => [...el.classList].sort();
 
 // Mostra o endereço e o estado de agora, e o login fora do /recuperar-senha. O
 // tipo da navegação diz se a entrada do histórico foi trocada (REPLACE) ou se
@@ -41,7 +55,30 @@ async function montar({ path = '/academia-teste', search = '', state = null, url
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  const arvore = h(MemoryRouter, { initialEntries: [{ pathname: path, search, state }] }, h(Palco, { urlTenant, authSetupError }));
+  desenhar = (props) => {
+    const arvore = h(MemoryRouter, { initialEntries: [{ pathname: path, search, state }] }, h(Palco, props));
+    return estrito ? h(StrictMode, null, arvore) : arvore;
+  };
+  await act(async () => {
+    root.render(desenhar({ urlTenant, authSetupError }));
+  });
+}
+
+// Desenha de novo a árvore que o montar criou, com as props de agora: os
+// elementos são os mesmos, só mudam as props.
+async function redesenhar(props) {
+  await act(async () => {
+    root.render(desenhar(props));
+  });
+}
+
+// Monta no histórico de verdade do jsdom, como o main.jsx. O React Router guarda
+// o estado da navegação em history.state.usr.
+async function montarNoNavegador(elemento, { estrito = false } = {}) {
+  const container = document.createElement('div');
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const arvore = h(BrowserRouter, { useTransitions: false }, elemento);
   await act(async () => {
     root.render(estrito ? h(StrictMode, null, arvore) : arvore);
   });
@@ -74,9 +111,10 @@ async function clicar(el) {
   });
 }
 
-// Preenche e envia o formulário, com o Firebase recusando as credenciais.
-async function entrarComSenhaErrada() {
-  signInWithEmailAndPassword.mockRejectedValueOnce({ code: 'auth/invalid-credential' });
+// Preenche e envia o formulário, com o Firebase recusando a entrada do jeito
+// dado. Sem argumento, recusa como credencial inválida.
+async function entrarComSenhaErrada(rejeicao = { code: 'auth/invalid-credential' }) {
+  signInWithEmailAndPassword.mockRejectedValueOnce(rejeicao);
   await escrever(campoEmail(), 'bia@academia.com');
   await escrever(campoSenha(), 'Senha@Errada1');
   await clicar(botao('Entrar'));
@@ -90,6 +128,8 @@ afterEach(async () => {
   await act(async () => { root?.unmount(); });
   document.body.innerHTML = '';
   root = null;
+  desenhar = null;
+  window.history.replaceState(null, '', '/');
   vi.restoreAllMocks();
 });
 
@@ -143,26 +183,12 @@ describe('volta do "Esqueci a senha"', () => {
   });
 });
 
-// O F5 lê o que ficou no histórico do navegador. O React Router guarda o estado
-// da navegação em history.state.usr, e o teste usa o histórico de verdade do
-// jsdom para conferir que a volta não fica lá.
+// O F5 lê o que ficou no histórico do navegador, e o teste usa o histórico de
+// verdade do jsdom para conferir que a volta não fica lá.
 describe('F5 depois da volta', () => {
-  async function montarNoNavegador() {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    root = createRoot(container);
-    await act(async () => {
-      root.render(h(BrowserRouter, { useTransitions: false }, h(LoginScreen, { urlTenant: null })));
-    });
-  }
-
-  afterEach(() => {
-    window.history.replaceState(null, '', '/');
-  });
-
   it('o estado da volta sai do histórico, com o mesmo endereço e o mesmo idx, e o F5 não repete o aviso', async () => {
     window.history.replaceState({ usr: { email: 'ana@academia.com', passwordReset: true }, key: 'volta', idx: 0 }, '', '/academia-teste?a=1#topo');
-    await montarNoNavegador();
+    await montarNoNavegador(h(LoginScreen, { urlTenant: null }));
     expect(document.body.textContent).toContain('Senha nova salva. Entre com ela.');
     expect(window.history.state.usr).toBeNull();
     expect(window.history.state.idx).toBe(0);
@@ -171,9 +197,67 @@ describe('F5 depois da volta', () => {
     // O F5: a página nasce de novo e lê o histórico que ficou.
     await act(async () => { root.unmount(); });
     document.body.innerHTML = '';
-    await montarNoNavegador();
+    await montarNoNavegador(h(LoginScreen, { urlTenant: null }));
     expect(document.body.textContent).not.toContain('Senha nova salva');
     expect(campoEmail().value).toBe('');
+  });
+});
+
+// A ida e a volta com as duas telas de verdade, no histórico do navegador: o
+// que a tela do "Esqueci a senha" manda é o que o login lê. O Palco faz o mesmo
+// desvio do App sem sessão, e o fetch responde como o servidor responde quando
+// dá certo.
+describe('ida e volta do "Esqueci a senha"', () => {
+  const ACADEMIA = { slug: 'academia-teste', found: true, displayName: 'Academia Teste' };
+
+  function PalcoDoApp() {
+    const loc = useLocation();
+    return isPasswordResetPath(loc.pathname) ? h(ForgotPasswordScreen) : h(LoginScreen, { urlTenant: ACADEMIA });
+  }
+
+  let servidor = null;
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    servidor = vi.fn(async () => ({ status: 200, json: async () => ({ ok: true }) }));
+    vi.stubGlobal('fetch', servidor);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it.each([['sem StrictMode', false], ['com StrictMode', true]])('a senha trocada volta ao login com o aviso, o e-mail e o cursor na senha, %s', async (_nome, estrito) => {
+    window.history.replaceState({ usr: null, key: 'inicio', idx: 0 }, '', '/academia-teste');
+    await montarNoNavegador(h(PalcoDoApp), { estrito });
+
+    // Do login ao "Esqueci a senha", com o e-mail digitado e a academia do endereço.
+    await escrever(campoEmail(), 'bia@academia.com');
+    await clicar(link('Esqueci a senha'));
+    expect(window.location.pathname).toBe('/recuperar-senha');
+    expect(document.querySelector('input[name="email"]').value).toBe('bia@academia.com');
+    expect(document.body.textContent).toContain('Academia Teste');
+
+    // Passo 1, o código por e-mail. Passo 2, o código com a senha nova.
+    await clicar(botao('Enviar código'));
+    expect(sessionStorage.getItem(MEMORIA)).not.toBeNull();
+    await escrever(document.querySelector('input[name="code"]'), '123456');
+    await escrever(document.querySelector('input[name="newPassword"]'), 'Nova@Senha1');
+    await escrever(document.querySelector('input[name="confirmPassword"]'), 'Nova@Senha1');
+    await clicar(botao('Salvar senha nova'));
+    expect(servidor).toHaveBeenCalledTimes(2);
+
+    // De volta ao login da academia, com tudo o que a outra tela mandou. O idx
+    // 1 é a entrada do "Esqueci a senha" trocada pelo login: nenhuma sobrou.
+    expect(window.location.pathname).toBe('/academia-teste');
+    expect(campoEmail().value).toBe('bia@academia.com');
+    expect(document.activeElement).toBe(campoSenha());
+    expect(descricao(campoSenha())).toBe('Senha nova salva. Entre com ela.');
+    expect(document.body.textContent).toContain('Academia Teste');
+    expect(window.history.state.usr).toBeNull();
+    expect(window.history.state.idx).toBe(1);
+    expect(sessionStorage.getItem(MEMORIA)).toBeNull();
   });
 });
 
@@ -232,9 +316,46 @@ describe('avisos do login', () => {
     expect(regiaoDoAviso().classList.contains('sr-only')).toBe(true);
   });
 
-  it('o erro de configuração do Firebase continua aparecendo na tela', async () => {
-    await montar({ authSetupError: 'Configure o Firebase Auth.' });
-    expect(document.body.textContent).toContain('Configure o Firebase Auth.');
+  it('o erro de configuração também é anunciado: a região já está na tela e recebe a frase na caixa de sempre', async () => {
+    await montar();
+    // O login tem duas regiões de alerta: a do erro de entrada (#login-erro) e a
+    // da configuração, que não tem id porque não descreve campo nenhum.
+    const regiao = [...document.querySelectorAll('[role="alert"]')].find((el) => el.id !== 'login-erro');
+    expect(regiao).toBeDefined();
+    expect(regiao.textContent).toBe('');
+    await redesenhar({ urlTenant: null, authSetupError: 'Configure o Firebase Auth.' });
+    expect(regiao.isConnected).toBe(true);
+    expect(regiao.textContent).toBe('Configure o Firebase Auth.');
+    expect(classesDe(regiao)).toEqual(CAIXA_DO_ERRO);
+  });
+});
+
+// O que a pessoa da recepção lê quando o Firebase recusa a entrada: nenhuma
+// frase fala em configuração nem em Firebase, e o código do erro fica só no console.
+describe('erro de entrada do login', () => {
+  it.each([
+    ['auth/invalid-credential', 'E-mail ou senha inválidos.'],
+    ['auth/wrong-password', 'E-mail ou senha inválidos.'],
+    ['auth/user-not-found', 'E-mail ou senha inválidos.'],
+    ['auth/too-many-requests', TOO_MANY_MESSAGE],
+    ['auth/network-request-failed', 'Sem conexão com a internet. Confira a rede e tente de novo.'],
+    ['auth/user-disabled', 'Essa conta está desativada. Fale com o administrador da sua academia.'],
+    ['auth/internal-error', 'Não deu para entrar agora. Tente de novo.'],
+  ])('%s mostra "%s"', async (code, frase) => {
+    const erroNoConsole = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await montar();
+    const recusa = { code };
+    await entrarComSenhaErrada(recusa);
+    expect(regiaoDoErro().textContent).toBe(frase);
+    expect(regiaoDoErro().textContent).not.toMatch(/firebase/i);
+    expect(erroNoConsole).toHaveBeenCalledWith(recusa);
+  });
+
+  it('um erro sem código também cai em "Não deu para entrar agora"', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await montar();
+    await entrarComSenhaErrada(new Error('falha sem código'));
+    expect(regiaoDoErro().textContent).toBe('Não deu para entrar agora. Tente de novo.');
   });
 });
 
@@ -273,7 +394,8 @@ describe('o login de hoje', () => {
 // conferido pelo texto, no molde da varredura do endereço.
 describe('o App e o endereço /recuperar-senha', () => {
   it('sem sessão, desenha o "Esqueci a senha" no lugar do login, só nesse endereço', () => {
-    const app = fonte('../../App.jsx');
+    // Sem os comentários: a linha comentada tem o mesmo texto e não liga nada.
+    const app = semComentarios(fonte('../../App.jsx'));
     const semSessao = app.slice(app.indexOf('if (!appUser) {'));
     const desvio = semSessao.indexOf('if (isPasswordResetPath(location.pathname)) return <ForgotPasswordScreen />;');
     expect(desvio).toBeGreaterThan(-1);

@@ -2,11 +2,30 @@ import { useEffect, useState, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { signInWithEmailAndPassword, setPersistence } from 'firebase/auth';
 import { auth, persistenceFor } from '../../lib/firebase.js';
-import { AlertTriangle, ArrowRight, Check, Lock, Mail } from 'lucide-react';
+import { ArrowRight, Check, Lock, Mail } from 'lucide-react';
 import { AuthLayout, AuthTenantChip } from './AuthLayout.jsx';
 import { AuthField, AuthInput, AuthPasswordToggle } from './AuthField.jsx';
 import { AuthAlert, AuthStatus } from './AuthNotice.jsx';
-import { RESET_PATH, PASSWORD_SAVED_MESSAGE, readLoginArrival, resetLinkState } from '../../lib/passwordReset.js';
+import { RESET_PATH, PASSWORD_SAVED_MESSAGE, TOO_MANY_MESSAGE, readLoginArrival, resetLinkState } from '../../lib/passwordReset.js';
+
+// O que a pessoa lê quando o Firebase recusa a entrada. O código do erro fica só
+// no console.
+function loginErrorMessage(code) {
+  switch (code) {
+    case 'auth/invalid-credential':
+    case 'auth/wrong-password':
+    case 'auth/user-not-found':
+      return 'E-mail ou senha inválidos.';
+    case 'auth/too-many-requests':
+      return TOO_MANY_MESSAGE;
+    case 'auth/network-request-failed':
+      return 'Sem conexão com a internet. Confira a rede e tente de novo.';
+    case 'auth/user-disabled':
+      return 'Essa conta está desativada. Fale com o administrador da sua academia.';
+    default:
+      return 'Não deu para entrar agora. Tente de novo.';
+  }
+}
 
 function LoginScreen({ authSetupError, urlTenant }) {
   const location = useLocation();
@@ -15,10 +34,6 @@ function LoginScreen({ authSetupError, urlTenant }) {
   // navegação. O aviso vale uma vez: o estado é limpo logo depois, para o F5
   // não repetir.
   const [arrival] = useState(() => readLoginArrival(location.state));
-  // O endereço de quando a tela abriu, guardado aqui e não lido no efeito:
-  // limpar o estado troca o location, e um efeito que dependesse dele rodaria
-  // de novo.
-  const [arrivalLocation] = useState(location);
   const [email, setEmail] = useState(arrival.email);
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -27,9 +42,8 @@ function LoginScreen({ authSetupError, urlTenant }) {
   const [showPass, setShowPass] = useState(false);
   const [remember, setRemember] = useState(true);
   const formRef = useRef(null);
-  // Trava do efeito: o estado é limpo uma vez só. Sem ela, uma troca de endereço
-  // depois disso refaria a limpeza e levaria a pessoa de volta ao endereço da
-  // abertura.
+  // Trava do efeito: o estado é limpo uma vez só. O efeito depende do location e
+  // o navigate o troca, então sem a trava o efeito rodaria de novo, sem parar.
   const arrivalCleared = useRef(false);
 
   useEffect(() => {
@@ -37,8 +51,8 @@ function LoginScreen({ authSetupError, urlTenant }) {
     arrivalCleared.current = true;
     // O mesmo endereço, com a query e o hash, só que sem o estado. O replace
     // troca a entrada do histórico em vez de empilhar outra.
-    navigate(arrivalLocation, { replace: true, state: null });
-  }, [arrival.passwordReset, arrivalLocation, navigate]);
+    navigate(location, { replace: true, state: null });
+  }, [arrival.passwordReset, location, navigate]);
 
   // Dispara a animação de shake no card do formulário ao falhar.
   const triggerShake = () => {
@@ -64,16 +78,7 @@ function LoginScreen({ authSetupError, urlTenant }) {
       await signInWithEmailAndPassword(auth, normalizedEmail, password);
     } catch (err) {
       console.error(err);
-
-      if (
-        err.code === 'auth/invalid-credential' ||
-        err.code === 'auth/wrong-password' ||
-        err.code === 'auth/user-not-found'
-      ) {
-        setError('E-mail ou senha inválidos.');
-      } else {
-        setError('Erro ao autenticar. Verifique a configuração do Firebase Auth.');
-      }
+      setError(loginErrorMessage(err?.code));
       triggerShake();
     }
 
@@ -100,12 +105,7 @@ function LoginScreen({ authSetupError, urlTenant }) {
         )}
       </div>
 
-      {authSetupError && (
-        <div className="mb-4 flex items-start gap-2.5 rounded-xl bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 px-3.5 py-2.5 text-[12.5px] text-rose-700 dark:text-rose-300">
-          <AlertTriangle className="w-[15px] h-[15px] mt-px shrink-0" />
-          <span>{authSetupError}</span>
-        </div>
-      )}
+      <AuthAlert message={authSetupError} className="mb-4" />
       <AuthAlert id="login-erro" message={error} className="mb-4" />
       <AuthStatus id="login-aviso" message={notice} className="mb-4" />
 
