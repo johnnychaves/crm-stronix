@@ -6,11 +6,11 @@
 // currentContractSeamless: true no lead, e não aparece como agendada. As
 // renovações gravadas antes não têm a marca. Recebem a marca:
 //   - a renovação (renewedFromId) que ainda não a tem, que chegou a valer
-//     (neverTookEffect) e cujo contrato renovado está na lista e valeu até o
-//     fim previsto (stoppedEarly), quando começa no dia seguinte ao fim
-//     previsto dele (originalEndsAt, se ele foi encurtado; senão endsAt) ou
-//     quando foi ela que o encurtou (shortenedById), porque aí começa no dia
-//     seguinte ao fim novo dele;
+//     (neverTookEffect) e cujo contrato renovado está na lista, já começou
+//     (início até `now`) e valeu até o fim previsto (stoppedEarly), quando
+//     começa no dia seguinte ao fim previsto dele (originalEndsAt, se ele foi
+//     encurtado; senão endsAt) ou quando foi ela que o encurtou
+//     (shortenedById), porque aí começa no dia seguinte ao fim novo dele;
 //   - o lead cujo contrato atual tem a marca, gravada agora ou antes, e que
 //     ainda não tem currentContractSeamless: true.
 // Só marca true: sem a marca já quer dizer "não emendado", e nada é gravado
@@ -37,15 +37,28 @@ const stoppedEarly = (prev) => {
   return cancelled.getTime() < planned.getTime();
 };
 
-export function planSeamlessBackfill(contracts, leads) {
+// O contrato renovado ainda não começou em `now` (instante do início depois
+// dele). A renovação emendada dele deixaria o lead ativo hoje, com o
+// Operacional contando o cliente fora da base, e o modal recusa renovar esse
+// contrato (renewalStartProblem). Sem início gravado, não há como estar no
+// futuro.
+const notStartedAt = (prev, now) => {
+  const start = getSafeDateOrNull(prev.startsAt);
+  return Boolean(start && start.getTime() > now.getTime());
+};
+
+// `now`: a hora da varredura, que decide se o contrato renovado já começou.
+// Padrão: o relógio.
+export function planSeamlessBackfill(contracts, leads, now = new Date()) {
   const list = (Array.isArray(contracts) ? contracts : []).filter(Boolean);
   const byId = new Map(list.map((c) => [c.id, c]));
+  const at = getSafeDateOrNull(now) || new Date();
 
   const contractIds = list
     .filter((c) => {
       if (!c.renewedFromId || c.seamless === true || neverTookEffect(c)) return false;
       const prev = byId.get(c.renewedFromId);
-      if (!prev || stoppedEarly(prev)) return false;
+      if (!prev || notStartedAt(prev, at) || stoppedEarly(prev)) return false;
       const shortenedByThis = Boolean(prev.shortenedById && prev.shortenedById === c.id);
       return shortenedByThis || isSeamlessStart(prev.originalEndsAt || prev.endsAt, c.startsAt);
     })

@@ -99,6 +99,21 @@ describe('planSeamlessBackfill: contratos', () => {
     expect(contratosMarcados([trancadoECancelado, renovacao('k2', D(2026, 10, 12))])).toEqual([]);
   });
 
+  // A renovação emendada de um contrato que ainda não começou ficaria ativa
+  // hoje, com o Operacional contando o cliente fora da base. O modal também
+  // recusa renovar esse contrato. Hoje é 29/09/2026: o F1 começa em 20/10.
+  it('não marca a renovação de contrato que ainda não começou, nem o lead dela', () => {
+    const hoje = new Date(2026, 8, 29, 10, 0);
+    const f1 = { id: 'f1', planName: 'Start', status: 'ativo', startsAt: ts(D(2026, 10, 20)), endsAt: ts(D(2027, 4, 20)) };
+    const f2 = { id: 'f2', planName: 'Flow', status: 'ativo', renewedFromId: 'f1', startsAt: ts(D(2027, 4, 21)) };
+    const leads = [{ id: 'l1', currentContractId: 'f2' }];
+    expect(planSeamlessBackfill([f1, f2], leads, hoje)).toEqual({ contractIds: [], leadIds: [] });
+    // Começou hoje mais cedo: já vale, e a renovação emendada é marcada.
+    const comecou = { ...f1, startsAt: ts(new Date(2026, 8, 29, 8, 0)), endsAt: ts(new Date(2027, 2, 29, 8, 0)) };
+    const depois = { ...f2, startsAt: ts(D(2027, 3, 30)) };
+    expect(planSeamlessBackfill([comecou, depois], leads, hoje)).toEqual({ contractIds: ['f2'], leadIds: ['l1'] });
+  });
+
   it('lista vazia, nula ou com buracos não quebra', () => {
     expect(planSeamlessBackfill([], [])).toEqual({ contractIds: [], leadIds: [] });
     expect(planSeamlessBackfill(null, undefined)).toEqual({ contractIds: [], leadIds: [] });

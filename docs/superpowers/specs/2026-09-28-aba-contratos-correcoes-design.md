@@ -163,6 +163,7 @@ Script `scripts/backfill-contract-seamless.js`, no molde dos outros de `scripts/
 - Para cada lead cujo `currentContractId` aponta para um contrato marcado, grava `currentContractSeamless: true`.
 - Não grava `false` em ninguém e não encurta sobreposições antigas.
 - Entrou na revisão do código (29/09/2026): o contrato renovado precisa ter valido até o fim previsto. Fica de fora a renovação de contrato trancado, cancelado antes do fim previsto, cancelado sem data ou cancelado ainda trancado. A lista mostra o status do contrato renovado em cada linha.
+- Entrou na segunda revisão do código (29/09/2026): o contrato renovado também precisa já ter começado na hora da varredura. A renovação emendada de um contrato que ainda não começou deixaria o lead ativo hoje, com o Operacional contando o cliente fora da base. Cada linha da lista mostra também o início do contrato renovado.
 - Entrou na revisão do código (29/09/2026): cada documento é gravado com a precondição da hora da leitura (`lastUpdateTime`). O que mudou entre a leitura e a gravação derruba o lote inteiro, e o script para dizendo o que já foi gravado e que é para rodar de novo, primeiro sem `--apply`.
 - Só roda em produção com o ok do Johnny.
 

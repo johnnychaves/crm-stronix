@@ -8,10 +8,10 @@
 // grava a marca nelas.
 //
 // Não grava false em ninguém e não encurta sobreposição antiga (decisão do
-// Johnny, 28/09/2026). Não marca a renovação de contrato trancado ou cancelado
-// antes do fim previsto. A decisão de quem recebe a marca mora em
-// src/lib/seamlessBackfill.js, com teste. Quem já tem a marca não entra, então
-// rodar de novo é seguro.
+// Johnny, 28/09/2026). Não marca a renovação de contrato trancado, cancelado
+// antes do fim previsto ou que ainda não começou. A decisão de quem recebe a
+// marca mora em src/lib/seamlessBackfill.js, com teste. Quem já tem a marca
+// não entra, então rodar de novo é seguro.
 //
 // Cada documento é gravado com a precondição da hora da última gravação que a
 // leitura viu (lastUpdateTime). O que mudou depois da leitura derruba o lote
@@ -112,11 +112,11 @@ if (inexistentes.length) {
 const diaDe = (value) => getSafeDateOrNull(value)?.toLocaleDateString('pt-BR') || 'sem data';
 
 // O contrato renovado, na linha de cada renovação: o status gravado, o dia do
-// cancelamento, quando cancelado, e o fim previsto. É o que o plano confere
-// antes de marcar (seamlessBackfill.js).
+// cancelamento, quando cancelado, o início e o fim previsto. É o que o plano
+// confere antes de marcar (seamlessBackfill.js).
 const anteriorDe = (prev) => {
   const cancelado = prev.status === CONTRACT_STATUS.CANCELADO ? ` em ${diaDe(prev.cancelledAt)}` : '';
-  return `anterior ${prev.id} ${prev.status || 'sem status'}${cancelado}, fim previsto ${diaDe(prev.originalEndsAt || prev.endsAt)}`;
+  return `anterior ${prev.id} ${prev.status || 'sem status'}${cancelado}, início ${diaDe(prev.startsAt)}, fim previsto ${diaDe(prev.originalEndsAt || prev.endsAt)}`;
 };
 
 // Códigos do Firestore (gRPC) para a precondição que falhou: o documento mudou
