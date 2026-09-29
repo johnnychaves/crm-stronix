@@ -201,13 +201,21 @@ export const hasLiveContract = (lead, refDate, thresholdDays) => {
     || cs === CONTRACT_STATUS.AGENDADO || cs === CONTRACT_STATUS.TRANCADO;
 };
 
-// Contrato em vigor: ativo ou a vencer, pelo status derivado. Só ele é emendado
-// ou encurtado por uma renovação (buildMatriculaWrites e buildContractEdit).
-// Cancelado, trancado, vencido e agendado ficam de fora: emendar neles deixaria
-// o lead ativo com o Operacional contando o cliente fora da base, e encurtar
-// mexeria no fim de um contrato que não vale mais. A renovação emendada que
-// ainda não começou deriva como ativa, então a corrente de renovações segue.
-const isInForce = (status) => status === CONTRACT_STATUS.ATIVO || status === CONTRACT_STATUS.A_VENCER;
+// Contrato em vigor em `now`: ativo ou a vencer pelo status derivado, ou
+// vencido no próprio dia do fim (`end`, o mesmo fim que deu o status). Só ele é
+// emendado ou encurtado por uma renovação (buildMatriculaWrites e
+// buildContractEdit, que usam esta função para as duas contas não se
+// separarem). O fim gravado à meia-noite deixa o contrato vencido durante o
+// último dia inteiro, e renovar nesse dia é comum: sem o último dia, a
+// renovação emendada apareceria agendada até a meia-noite. Cancelado,
+// trancado, agendado e o que venceu antes de hoje ficam de fora: emendar neles
+// deixaria o lead ativo com o Operacional contando o cliente fora da base, e
+// encurtar mexeria no fim de um contrato que não vale mais. A renovação
+// emendada que ainda não começou deriva como ativa, então a corrente de
+// renovações segue.
+const isInForce = (status, end, now) => status === CONTRACT_STATUS.ATIVO
+  || status === CONTRACT_STATUS.A_VENCER
+  || (status === CONTRACT_STATUS.VENCIDO && calendarDaysBetween(now, end) === 0);
 
 // Texto humano gravado na timeline (interaction) na matrícula/renovação.
 export const buildMatriculaInteractionText = ({ planName, value, endsAt, isRenewal }) => {
@@ -278,9 +286,11 @@ export const buildMatriculaWrites = ({
   // sai da mesma fonte das datas: o documento, quando ele é usado, senão o
   // resumo do lead. O lead da lista pode dizer ativo com o documento já
   // cancelado.
-  const inForce = isRenewal && isInForce(currentDoc
-    ? deriveContractStatus(currentDoc, now)
-    : deriveLeadContractStatus(lead, now));
+  const inForce = isRenewal && isInForce(
+    currentDoc ? deriveContractStatus(currentDoc, now) : deriveLeadContractStatus(lead, now),
+    currentEnd,
+    now
+  );
   // A véspera do novo precisa cair dentro da vigência do atual (eveFitsIn).
   // Importado pode vir sem início, e aí vale a criação, como no Operacional
   // (operacional/base.js).
@@ -651,7 +661,8 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
   // conta como emendado. Sem sobrepor, o fim que esta renovação encurtou volta
   // ao original. Não se encurta o que outra renovação encurtou, e só o anterior
   // em vigor agora (isInForce) é emendado ou encurtado: trancado (o fim ainda
-  // anda na reativação), cancelado, vencido e agendado ficam de fora.
+  // anda na reativação), cancelado, agendado e o que venceu antes de hoje ficam
+  // de fora.
   // Só um início novo recalcula (correctionMovesStart). Com o mesmo início, ou
   // sem o anterior ligado, a marca fica como estava e nenhum outro contrato é
   // gravado: corrigir só o valor de uma renovação antiga não encurta a
@@ -667,7 +678,7 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
     // Em vigor pelo fim de referência. Pelo fim encurtado, o anterior que esta
     // renovação encurtou e cujo fim novo já passou leria como vencido, e a
     // correção de volta para a emenda perderia a marca.
-    const inForce = isInForce(deriveContractStatus({ ...previous, endsAt: refEnd }, now));
+    const inForce = isInForce(deriveContractStatus({ ...previous, endsAt: refEnd }, now), refEnd, now);
     const prevStart = getSafeDateOrNull(previous.startsAt) || getSafeDateOrNull(previous.createdAt);
     const join = renewalJoinOf(refEnd, start);
     const canShorten = inForce && !shortenedByOther && eveFitsIn(join, prevStart, refEnd);

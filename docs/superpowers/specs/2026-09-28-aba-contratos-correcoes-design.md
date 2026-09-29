@@ -151,6 +151,7 @@ No modo renovação, se o contrato atual estiver `trancado` (pelo documento dele
 
 Entrou na revisão do código (29/09/2026). A lista da Meta Diária e o quadro de Renovações carregam uma vez por dia, e o contrato podia ter sido cancelado depois: a renovação emendada deixava o lead ativo com o Operacional já contando o cliente fora da base, e a sobreposta encurtava o contrato cancelado. A ficha também oferecia renovar o contrato que ainda não começou.
 - Só o contrato em vigor, ativo ou a vencer na hora da gravação, é emendado ou encurtado, na renovação (`buildMatriculaWrites`) e na correção dela (`buildContractEdit`). O status sai do documento, quando ele é usado, senão do resumo do lead. A emendada que ainda não começou conta como em vigor.
+- O último dia do contrato também conta como em vigor: o fim gravado à meia-noite deixa o contrato vencido durante o dia inteiro, e sem isso a renovação emendada feita nesse dia apareceria como "CONTRATO AGENDADO" até a meia-noite. O que venceu antes de hoje continua fora.
 - O modal recusa renovar contrato cancelado ("Este contrato foi cancelado. Para o cliente voltar, faça uma nova matrícula pela ficha.") e contrato que ainda não começou ("Este contrato ainda não começou (começa em DD/MM/AAAA). Para trocar o plano ou a data, use Corrigir na ficha do cliente."). No Corrigir, essas duas travas não valem.
 - Na correção, o anterior que a própria renovação encurtou é lido pelo fim original.
 

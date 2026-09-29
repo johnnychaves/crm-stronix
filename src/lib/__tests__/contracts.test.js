@@ -801,6 +801,53 @@ describe('buildMatriculaWrites: só contrato em vigor é emendado ou encurtado',
     // Em vigor pelo resumo, marca como antes.
     expect(renovar(emendar, { doc: null }).contract.seamless).toBe(true);
   });
+
+  // O fim gravado à meia-noite deixa o contrato vencido durante o último dia
+  // inteiro. Renovar nesse dia é comum, e a renovação emendada não pode
+  // aparecer como agendada até a meia-noite.
+  describe('no último dia do contrato', () => {
+    // C1 vai até a meia-noite de hoje (29/09): às 10h ele já deriva vencido.
+    const ultimoDia = { ...c1, startsAt: D(2025, 9, 29), endsAt: D(2026, 9, 29) };
+    const from = { ...lead, currentContractStartsAt: ultimoDia.startsAt, currentContractEndsAt: ultimoDia.endsAt };
+
+    it('Emendar (30/09) marca emendada, pelo documento e pelo resumo do lead', () => {
+      expect(deriveContractStatus(ultimoDia, HOJE)).toBe(CONTRACT_STATUS.VENCIDO);
+      const r = renovar(D(2026, 9, 30), { doc: ultimoDia, from });
+      expect(r.contract.seamless).toBe(true);
+      expect(r.leadPatch.currentContractSeamless).toBe(true);
+      expect(r.previousPatch).toBeNull();
+      expect(renovar(D(2026, 9, 30), { doc: null, from }).contract.seamless).toBe(true);
+    });
+
+    // Começar no próprio dia do fim sobrepõe um dia. A véspera (28/09, na hora
+    // do início) cai dentro da vigência, então o atual termina nela e a
+    // renovação conta como emendada.
+    it('começar hoje às 15h encurta o atual para a véspera e marca emendada', () => {
+      const r = renovar(new Date(2026, 8, 29, 15, 0), { doc: ultimoDia, from });
+      expect(r.previousContractId).toBe('c1');
+      expect(r.previousPatch).toEqual({ endsAt: new Date(2026, 8, 28, 15, 0), originalEndsAt: D(2026, 9, 29) });
+      expect(r.contract.seamless).toBe(true);
+      expect(r.leadPatch.currentContractSeamless).toBe(true);
+    });
+
+    it('o que venceu ontem continua fora de vigor', () => {
+      const ontem = { ...c1, startsAt: D(2025, 9, 28), endsAt: D(2026, 9, 28) };
+      const deOntem = { ...lead, currentContractStartsAt: ontem.startsAt, currentContractEndsAt: ontem.endsAt };
+      expect(renovar(D(2026, 9, 29), { doc: ontem, from: deOntem }).contract.seamless).toBe(false);
+      expect(renovar(D(2026, 9, 29), { doc: null, from: deOntem }).contract.seamless).toBe(false);
+      expect(renovar(D(2026, 9, 20), { doc: ontem, from: deOntem }).previousPatch).toBeNull();
+    });
+
+    it('cancelado ou trancado no último dia continuam fora de vigor', () => {
+      [
+        { ...ultimoDia, status: 'cancelado', cancelledAt: D(2026, 9, 20) },
+        { ...ultimoDia, status: 'trancado', pausedAt: D(2026, 9, 1) }
+      ].forEach((doc) => {
+        expect(renovar(D(2026, 9, 30), { doc, from }).contract.seamless, doc.status).toBe(false);
+        expect(renovar(new Date(2026, 8, 29, 15, 0), { doc, from }).previousPatch, doc.status).toBeNull();
+      });
+    });
+  });
 });
 
 describe('renewalStartProblem: quando a renovação não pode ser gravada', () => {
@@ -1290,6 +1337,28 @@ describe('buildContractEdit: renovação com o contrato anterior', () => {
     const tarde = corrigir(D(2026, 10, 12), { previous: encurtado, contract: sobreposta, now: D(2026, 10, 20) });
     expect(tarde.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
     expect(tarde.contractPatch.seamless).toBe(false);
+  });
+
+  // Hoje é 29/09, 10h, e o anterior vai até a meia-noite de hoje: pelo instante
+  // ele já venceu, mas o último dia ainda conta como em vigor.
+  it('no último dia do anterior, voltar para a emenda mantém a marca', () => {
+    const ateHoje = { ...anterior, startsAt: D(2025, 9, 29), endsAt: D(2026, 9, 29) };
+    // A renovação que começaria depois de um intervalo volta para a emenda (30/09).
+    const comIntervalo = { ...renovacao, startsAt: D(2026, 10, 5), endsAt: D(2027, 10, 5), seamless: false };
+    const r = corrigir(D(2026, 9, 30), { previous: ateHoje, contract: comIntervalo });
+    expect(r.contractPatch.seamless).toBe(true);
+    expect(r.leadPatch.currentContractSeamless).toBe(true);
+    expect(r.previousPatch).toBeNull();
+    // A que começou em 25/09 e encurtou o anterior volta para a emenda: o fim
+    // original (hoje) volta, e a marca fica.
+    const encurtadoAteHoje = { ...ateHoje, endsAt: D(2026, 9, 24), originalEndsAt: D(2026, 9, 29), shortenedById: 'k2' };
+    const sobrepostaAteHoje = { ...renovacao, startsAt: D(2026, 9, 25), endsAt: D(2027, 9, 25), seamless: true };
+    const v = corrigir(D(2026, 9, 30), { previous: encurtadoAteHoje, contract: sobrepostaAteHoje });
+    expect(v.previousPatch).toEqual({ endsAt: D(2026, 9, 29), originalEndsAt: null, shortenedById: null });
+    expect(v.contractPatch.seamless).toBe(true);
+    // No dia seguinte, o anterior já não conta, e a marca não vem.
+    const amanha = corrigir(D(2026, 9, 30), { previous: ateHoje, contract: comIntervalo, now: new Date(2026, 8, 30, 10, 0) });
+    expect(amanha.contractPatch.seamless).toBe(false);
   });
 
   it('não encurta para antes do início do contrato anterior', () => {
