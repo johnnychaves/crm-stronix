@@ -77,6 +77,27 @@ export function renewalJoinOf(prevEndsAt, startsAt) {
 
 export const isSeamlessStart = (prevEndsAt, startsAt) => renewalJoinOf(prevEndsAt, startsAt).seamless;
 
+// Por que uma renovação não pode ser gravada, ou null. Contrato trancado: o
+// fim dele ainda anda na reativação, então emendar ou encurtar daria conta
+// errada. Início no dia do início do contrato renovado, ou antes, encurtaria
+// esse contrato para antes de ele começar.
+export function renewalStartProblem({ status, startsAt: prevStartsAt } = {}, startsAt) {
+  if (status === CONTRACT_STATUS.TRANCADO) return 'Este contrato está trancado. Reative o contrato antes de renovar.';
+  const prevStart = getSafeDateOrNull(prevStartsAt);
+  const diff = calendarDaysBetween(prevStart, startsAt);
+  if (diff != null && diff <= 0) return `A renovação precisa começar depois do início do contrato renovado (${fmtDia(prevStart)}).`;
+  return null;
+}
+
+// A renovação ainda de pé de um contrato: a primeira que o renova
+// (renewedFromId) e não foi cancelada, ou null. Contrato que já tem renovação
+// não cancelada não pode ser renovado de novo. O Kanban e a Meta Diária passam
+// o lead da lista, e o resumo dele ainda pode apontar para o contrato antigo.
+export function liveRenewalOf(contractId, contracts) {
+  if (!contractId || !Array.isArray(contracts)) return null;
+  return contracts.find(c => c?.renewedFromId === contractId && c?.status !== CONTRACT_STATUS.CANCELADO) || null;
+}
+
 // Deriva o status "vivo" do contrato a partir de { status, startsAt, endsAt,
 // seamless } + uma janela de alerta (thresholdDays). Aceita tanto um doc de
 // contrato quanto o resumo denormalizado do lead, desde que tenham `status` e

@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Check, GraduationCap, RefreshCw, Search, X } from 'lucide-react';
-import { computeEndsAt } from '../lib/contracts.js';
+import { buildMatriculaWrites, computeEndsAt, liveRenewalOf, renewalStartProblem } from '../lib/contracts.js';
 import { commitMatricula } from '../lib/contractsWrites.js';
-import { fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
+import { calendarDaysBetween, fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
 import { fmtBRL } from '../lib/format.js';
 import {
   DISCOUNT_MODES,
@@ -38,6 +38,18 @@ const fmtDate = (d) => (d ? d.toLocaleDateString('pt-BR') : '—');
 const monthsLabel = (n) => (Number(n) === 1 ? '1 mês' : `${Number(n) || 0} meses`);
 const monthlyLabel = (value, months) => (Number(months) > 0 ? `${fmtBRL(Number(value) / Number(months))}/mês` : '—');
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const daysLabel = (n) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
+
+// Aviso do contrato que já tem renovação de pé: qual é e onde ver. O plano ou a
+// data que faltarem saem da frase.
+const renewedAlreadyText = (renewal) => {
+  const start = getSafeDateOrNull(renewal?.startsAt);
+  const when = start
+    ? `${calendarDaysBetween(start, new Date()) > 0 ? 'começou' : 'começa'} em ${fmtDate(start)}`
+    : '';
+  const detail = [renewal?.planName ? `Plano ${renewal.planName}` : '', when].filter(Boolean).join(', ');
+  return `Este contrato já foi renovado${detail ? ` (${detail})` : ''}. Abra a ficha do cliente para ver o contrato novo.`;
+};
 
 const StepLabel = ({ n, children, hint }) => (
   <div className="flex items-center gap-2.5 mb-3">
@@ -91,11 +103,23 @@ function ContractModal({
   );
   const topPlans = useMemo(() => topSellingPlans(activePlans, 3), [activePlans]);
 
+  // O documento do contrato atual: a ficha passa, e a Meta Diária e o Kanban
+  // não. Sem ele, a renovação não encurta nada (commitMatricula).
+  const currentDoc = currentContract || (contratos || []).find(c => c.id === lead?.currentContractId) || null;
+
   // Contrato de referência: o vigente na renovação, o encerrado na nova
-  // matrícula de quem já foi cliente. O resumo do lead basta; o doc completo
-  // entra quando o chamador tem ele à mão (duração exata p/ o comparativo).
-  const refEnd = getSafeDateOrNull(lead?.currentContractEndsAt);
-  const refStart = getSafeDateOrNull(lead?.currentContractStartsAt);
+  // matrícula de quem já foi cliente. Na renovação, fim, início e status saem
+  // do mesmo documento que a gravação usa, e na mesma condição
+  // (buildMatriculaWrites): o Kanban e a Meta Diária passam o lead da lista, e
+  // o resumo dele pode estar velho. Sem esse documento, e na matrícula, vale o
+  // resumo do lead. O doc do chamador também dá a duração exata do comparativo.
+  const refDoc = isRenewal && currentDoc?.id && currentDoc.id === lead?.currentContractId ? currentDoc : null;
+  const refEnd = getSafeDateOrNull(refDoc ? refDoc.endsAt : lead?.currentContractEndsAt);
+  // Importado pode vir sem início, e aí vale a criação, como na gravação.
+  const refStart = refDoc
+    ? getSafeDateOrNull(refDoc.startsAt) || getSafeDateOrNull(refDoc.createdAt)
+    : getSafeDateOrNull(lead?.currentContractStartsAt);
+  const refStatus = refDoc ? refDoc.status : lead?.currentContractStatus;
   const refValue = Number(lead?.currentContractValue) || 0;
   const refMonths = Number(currentContract?.durationMonths)
     || (refStart && refEnd ? Math.max(1, Math.round(daysBetween(refStart, refEnd) / 30.44)) : 0);
@@ -103,10 +127,6 @@ function ContractModal({
   // Emendar só faz sentido com contrato VIGENTE — numa nova matrícula depois de
   // um contrato vencido a lacuna já aconteceu, e datar no passado não a desfaz.
   const emendaDate = isRenewal ? seamStart(refEnd) : null;
-
-  // O documento do contrato atual: a ficha passa, e a Meta Diária e o Kanban
-  // não. Sem ele, a renovação não encurta nada (commitMatricula).
-  const currentDoc = currentContract || (contratos || []).find(c => c.id === lead?.currentContractId) || null;
 
   // A renovação começa oferecendo o plano que o cliente já tem; a matrícula, o
   // mais vendido.
@@ -133,16 +153,36 @@ function ContractModal({
   const results = searchPlans(activePlans, planSearch);
   const searchOpen = Boolean(planSearch.trim());
 
+  const today = new Date();
   const startsAt = startMode === 'emendar' ? emendaDate
-    : startMode === 'hoje' ? new Date()
+    : startMode === 'hoje' ? today
       : fromDateInputValue(customStart);
   const endsAt = plan && startsAt ? computeEndsAt(startsAt, planMonths) : null;
+
+  const { finalValue, discountValue, discountPct, hasDiscount } = computeDiscount({
+    listValue, mode: discountMode, input: discountInput
+  });
+
+  // O contrato renovado: o mesmo id que a gravação recebe.
+  const renewFromId = isRenewal ? (renewedFromId || lead?.currentContractId || null) : null;
+  // Prévia do que a gravação faz com o contrato atual, pela própria função que
+  // grava (buildMatriculaWrites é pura). É dela que sai se o atual é encurtado e
+  // até quando: a tela não refaz essa conta.
+  const previewFor = (at) => buildMatriculaWrites({
+    lead, plan, value: finalValue, startsAt: at, appUser, mode, renewedFromId: renewFromId, previousContract: currentDoc
+  });
+  const shortenTo = isRenewal && plan && startsAt ? previewFor(startsAt).previousPatch?.endsAt || null : null;
 
   // Renovação: o encaixe com o contrato atual. Matrícula: só o desvio de hoje.
   const seam = isRenewal ? computeSeam(refEnd, startsAt) : null;
   const offsetDays = startsAt ? (daysBetween(startOfToday(), startsAt) || 0) : 0;
+  // Na sobreposição, o aviso só promete encurtar o contrato atual quando a
+  // gravação encurta. Sem o documento dele, ou com ele já encurtado por outra
+  // renovação, os dois contratos valem juntos.
   const warning = isRenewal
-    ? seamWarning(seam, startsAt)
+    ? seam?.kind === SEAM_KIND.SOBREPOSICAO && !shortenTo
+      ? `O contrato atual continua até ${fmtDate(refEnd)}, e os dois valem juntos por ${daysLabel(seam.overlapDays)}.`
+      : seamWarning(seam, startsAt)
     : offsetDays < 0
       ? `Matrícula retroativa — a vigência começa em ${fmtDate(startsAt)}, então ${Math.abs(offsetDays)} ${Math.abs(offsetDays) === 1 ? 'dia já terá passado' : 'dias já terão passado'} quando o contrato for criado.`
       : offsetDays > 0
@@ -150,9 +190,20 @@ function ContractModal({
         : null;
   const warningIsSevere = isRenewal && seam?.kind === SEAM_KIND.SOBREPOSICAO;
 
-  const { finalValue, discountValue, discountPct, hasDiscount } = computeDiscount({
-    listValue, mode: discountMode, input: discountInput
-  });
+  // Renovação que não pode ser gravada: contrato trancado, início que não vem
+  // depois do início do contrato renovado, ou contrato que já foi renovado (o
+  // lead da lista do Kanban e da Meta Diária ainda pode apontar para ele).
+  const liveRenewal = isRenewal ? liveRenewalOf(renewFromId, contratos) : null;
+  const startProblem = isRenewal
+    ? renewalStartProblem({ status: refStatus, startsAt: refStart }, startsAt)
+      || (liveRenewal ? renewedAlreadyText(liveRenewal) : null)
+    : null;
+
+  // "Começar hoje": quantos dias do contrato atual ele toma, em dias do
+  // calendário, e se a gravação encurtaria o atual com início hoje.
+  const todaySeam = isRenewal && refEnd ? computeSeam(refEnd, today) : null;
+  const todayOverlap = todaySeam?.kind === SEAM_KIND.SOBREPOSICAO ? todaySeam.overlapDays : 0;
+  const todayShortens = Boolean(todayOverlap && plan && previewFor(today).previousPatch);
 
   const newMonthly = planMonths > 0 ? finalValue / planMonths : 0;
   const oldMonthly = refMonths > 0 ? refValue / refMonths : 0;
@@ -186,6 +237,7 @@ function ContractModal({
   const handleConfirm = async () => {
     if (!plan) { toast.warning('Selecione um plano.'); return; }
     if (!startsAt) { toast.warning('Informe a data de início.'); return; }
+    if (startProblem) { toast.warning(startProblem); return; }
     if (hasDiscount && !reason) { toast.warning('Escolha o motivo do desconto.'); return; }
 
     setSubmitting(true);
@@ -198,7 +250,7 @@ function ContractModal({
         value: finalValue,
         startsAt,
         mode,
-        renewedFromId: isRenewal ? (renewedFromId || lead?.currentContractId || null) : null,
+        renewedFromId: renewFromId,
         previousContract: isRenewal ? currentDoc : null,
         contractExtra: {
           discountMode: hasDiscount ? discountMode : DISCOUNT_MODES.NENHUM,
@@ -228,9 +280,11 @@ function ContractModal({
     {
       id: 'hoje',
       label: 'Começar hoje',
-      hint: isRenewal && refDaysLeft != null && refDaysLeft > 0
-        ? `${fmtDate(new Date())} · encerra o atual ${refDaysLeft} dias antes`
-        : fmtDate(new Date()),
+      hint: todayOverlap
+        ? `${fmtDate(today)} · ${todayShortens
+          ? `encerra o atual ${daysLabel(todayOverlap)} antes`
+          : `os dois valem juntos por ${daysLabel(todayOverlap)}`}`
+        : fmtDate(today),
       chip: isRenewal ? null : 'Padrão'
     },
     { id: 'outra', label: 'Outra data', hint: 'define manualmente', custom: true }
@@ -247,6 +301,7 @@ function ContractModal({
   const writes = isRenewal
     ? [
       `Contrato novo, ligado ao ${lead?.currentContractId ? `#${shortId(lead.currentContractId)}` : 'contrato atual'}`,
+      ...(shortenTo ? [`O contrato atual passa a terminar em ${fmtDate(shortenTo)}`] : []),
       'Resumo no cliente: plano, valor e vigência',
       'Evento na linha do tempo',
       'Renovação concluída na Meta Diária de hoje'
@@ -462,6 +517,12 @@ function ContractModal({
                     );
                   })}
                 </div>
+
+                {startProblem && (
+                  <div className="flex items-start gap-2.5 mt-2.5 px-3 py-2.5 rounded-[11px] border border-rose-300/60 bg-rose-500/[0.07] dark:border-rose-500/40 dark:bg-rose-500/10">
+                    <p className="min-w-0 flex-1 text-[12px] leading-[1.5] font-semibold text-rose-700 dark:text-rose-300 text-pretty">{startProblem}</p>
+                  </div>
+                )}
 
                 {warning && (
                   <div className={cn(

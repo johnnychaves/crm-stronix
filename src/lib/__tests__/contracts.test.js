@@ -20,7 +20,9 @@ import {
   isImportedContract,
   isImportPause,
   isSeamlessStart,
-  renewalJoinOf
+  liveRenewalOf,
+  renewalJoinOf,
+  renewalStartProblem
 } from '../contracts.js';
 import { DISCOUNT_MODES } from '../renewal.js';
 
@@ -645,5 +647,66 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
     expect(r.contract.seamless).toBe(false);
     expect(r.leadPatch.currentContractSeamless).toBe(false);
     expect(r.previousPatch).toBeNull();
+  });
+});
+
+describe('renewalStartProblem: quando a renovação não pode ser gravada', () => {
+  it('contrato trancado não renova', () => {
+    expect(renewalStartProblem({ status: 'trancado', startsAt: D(2025, 10, 11) }, D(2026, 10, 12)))
+      .toBe('Este contrato está trancado. Reative o contrato antes de renovar.');
+  });
+
+  it('renovação não começa no dia do início do contrato renovado, nem antes', () => {
+    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 11)))
+      .toBe('A renovação precisa começar depois do início do contrato renovado (11/10/2025).');
+    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 1)))
+      .toBe('A renovação precisa começar depois do início do contrato renovado (11/10/2025).');
+  });
+
+  it('conta dias do calendário: o horário não muda a resposta', () => {
+    expect(renewalStartProblem({ status: 'ativo', startsAt: new Date(2025, 9, 11, 15, 32) }, new Date(2025, 9, 11, 23, 0)))
+      .not.toBeNull();
+    expect(renewalStartProblem({ status: 'ativo', startsAt: new Date(2025, 9, 11, 23, 0) }, new Date(2025, 9, 12, 1, 0)))
+      .toBeNull();
+  });
+
+  it('aceita Timestamp do Firestore no início do contrato renovado', () => {
+    const ts = (d) => ({ toDate: () => d });
+    expect(renewalStartProblem({ status: 'ativo', startsAt: ts(D(2025, 10, 11)) }, D(2025, 10, 11))).not.toBeNull();
+  });
+
+  it('sem problema devolve null', () => {
+    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2026, 10, 12))).toBeNull();
+    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, D(2025, 10, 12))).toBeNull();
+    expect(renewalStartProblem({}, D(2026, 10, 12))).toBeNull();
+    expect(renewalStartProblem(undefined, D(2026, 10, 12))).toBeNull();
+    expect(renewalStartProblem({ status: 'ativo', startsAt: D(2025, 10, 11) }, null)).toBeNull();
+  });
+});
+
+describe('liveRenewalOf: renovação ainda de pé do contrato', () => {
+  const antigo = { id: 'k1', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+  const renovacao = { id: 'k2', renewedFromId: 'k1', status: 'ativo', planName: 'Anual', startsAt: D(2026, 10, 12) };
+  const desfeita = { id: 'k3', renewedFromId: 'k1', status: 'cancelado', startsAt: D(2026, 10, 12) };
+  const outra = { id: 'k9', renewedFromId: 'k8', status: 'ativo' };
+
+  it('acha a renovação que não foi cancelada', () => {
+    expect(liveRenewalOf('k1', [antigo, desfeita, renovacao, outra])).toBe(renovacao);
+  });
+
+  it('renovação cancelada não conta', () => {
+    expect(liveRenewalOf('k1', [antigo, desfeita, outra])).toBeNull();
+  });
+
+  it('ignora contrato que renova outro', () => {
+    expect(liveRenewalOf('k1', [antigo, outra])).toBeNull();
+    expect(liveRenewalOf('k2', [antigo, renovacao, outra])).toBeNull();
+  });
+
+  it('sem id ou sem lista devolve null', () => {
+    expect(liveRenewalOf(null, [renovacao])).toBeNull();
+    expect(liveRenewalOf(undefined, [renovacao])).toBeNull();
+    expect(liveRenewalOf('k1', null)).toBeNull();
+    expect(liveRenewalOf('k1', undefined)).toBeNull();
   });
 });
