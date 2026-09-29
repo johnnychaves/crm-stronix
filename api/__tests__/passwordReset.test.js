@@ -13,7 +13,7 @@ afterEach(() => vi.restoreAllMocks());
 
 const conta = (extra = {}) => ({
   uid: 'u-ana', tenantId: 'academia-teste', superAdmin: false, disabled: false,
-  isMember: true, organizationActive: true, ...extra,
+  isMember: true, organizationActive: true, email: 'ana@academia.com', ...extra,
 });
 
 describe('generateResetCode', () => {
@@ -93,14 +93,31 @@ describe('accountRefusal', () => {
     expect(accountRefusal(conta({ isMember: false }))).toBe('not_member');
     expect(accountRefusal(conta({ organizationActive: false }))).toBe('organization_inactive');
   });
+
+  it('conta sem e-mail no Firebase não recebe código, seja o campo ausente, vazio ou de outro tipo', () => {
+    for (const email of [undefined, null, '', 42, {}, ['ana@academia.com']]) {
+      expect(accountRefusal(conta({ email })), JSON.stringify(email) ?? 'undefined').toBe('no_email');
+    }
+  });
+
+  it('a falta do e-mail vem logo depois da conta que não existe, antes dos outros motivos', () => {
+    expect(accountRefusal(conta({ email: '', superAdmin: true }))).toBe('no_email');
+    expect(accountRefusal(conta({ email: '', disabled: true, tenantId: null }))).toBe('no_email');
+  });
 });
 
 describe('maskEmail', () => {
   it('mostra só o começo e o domínio', () => {
     expect(maskEmail('ana@academia.com')).toBe('an***@academia.com');
-    expect(maskEmail('a@x.com')).toBe('a***@x.com');
+    // Com nome mais longo, continuam só duas letras.
+    expect(maskEmail('anabela.souza@academia.com')).toBe('an***@academia.com');
     expect(maskEmail('')).toBe('***');
     expect(maskEmail('sem-arroba')).toBe('***');
+  });
+
+  it('nunca deixa a parte antes do @ inteira', () => {
+    expect(maskEmail('jo@academia.com')).toBe('j***@academia.com');
+    expect(maskEmail('a@x.com')).toBe('***@x.com');
   });
 });
 

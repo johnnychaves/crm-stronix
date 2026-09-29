@@ -8,7 +8,8 @@ import { buildResetEmail } from './_passwordResetEmail.js';
 // O fluxo do "Esqueci a senha" (docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md).
 // Tudo que toca o mundo entra por `deps`. As ações usam o realResetDeps() do
 // _passwordResetRepo.js, e o teste passa versões falsas:
-//   findAccount(email) → conta ou null
+//   findAccount(email) → conta ou null. A conta traz o e-mail que o Firebase
+//     guarda (email): o código vai para ele, nunca para o que foi digitado.
 //   issueCode(uid, { now, codeHash, tenantId, signInMark, tokensMark }) → { ok, reason? }
 //   reserveAttempt(uid, now) → { ok, attempt?, code? }
 //   killCode(uid, codeHash, now)
@@ -45,16 +46,13 @@ export async function requestPasswordReset(email, ip, deps) {
   }
 
   try {
-    await deps.sendMail({ to: target, ...buildResetEmail(account.name, code) });
+    await deps.sendMail({ to: account.email, ...buildResetEmail(account.name, code) });
   } catch (err) {
-    // A pessoa dona da conta não ficou sabendo do pedido: o código morre logo
-    // depois do log, e o pedido continua contando no limite do dia. O log vem
-    // primeiro para o diagnóstico não depender do killCode. O erro que sobe é o
-    // do envio: a rota captura no waitUntil e manda ao Sentry, porque chave
-    // revogada ou domínio sem verificação quebram todo pedido, e o log da
-    // Vercel some em 1 hora. A resposta ao navegador já saiu antes, então quem
-    // pediu não percebe nada. Se o killCode também falhar, essa falha só vai
-    // para o log e nunca esconde o erro do envio.
+    // A pessoa dona da conta não soube do pedido: o código morre, e o pedido
+    // segue contando no dia. O log vem antes do killCode, que não pode esconder
+    // o erro do envio. Esse erro sobe para a rota mandar ao Sentry, porque chave
+    // revogada ou domínio sem verificação quebram todo pedido e o log da Vercel
+    // some em 1 hora. A resposta ao navegador já saiu, então ninguém percebe.
     deps.log.error('esqueci-a-senha: envio falhou', { conta: account.uid, academia: account.tenantId, ip, erro: err?.message || String(err), status: err?.status });
     try {
       await deps.killCode(account.uid, codeHash, deps.now());
@@ -83,13 +81,17 @@ export async function confirmPasswordReset({ email, code, newPassword, ip }, dep
   const reserved = await deps.reserveAttempt(account.uid, deps.now());
   if (!reserved.ok) return refuse(deps, 'no_live_code', account, target, ip);
   const { codeHash } = reserved.code;
+  // Matar o código nunca muda a resposta: a recusa e a troca valem de qualquer
+  // jeito, e a falha só vai para o log.
+  const killQuietly = (message) =>
+    quietly(deps, account.uid, message, () => deps.killCode(account.uid, codeHash, deps.now()));
 
   if (marksChanged(reserved.code, account)) {
-    await deps.killCode(account.uid, codeHash, deps.now());
+    await killQuietly('esqueci-a-senha: não matou o código depois da recusa');
     return refuse(deps, 'account_changed', account, target, ip);
   }
   if (!resetCodeMatches(deps.secret, account.uid, code, codeHash)) {
-    if (reserved.attempt >= RESET_CODE_MAX_ATTEMPTS) await deps.killCode(account.uid, codeHash, deps.now());
+    if (reserved.attempt >= RESET_CODE_MAX_ATTEMPTS) await killQuietly('esqueci-a-senha: não matou o código depois da recusa');
     return refuse(deps, 'wrong_code', account, target, ip);
   }
 
@@ -101,21 +103,28 @@ export async function confirmPasswordReset({ email, code, newPassword, ip }, dep
     // mensagem do Firebase lista as exigências que faltaram, não a senha, e
     // vai para o log para dizer o que alinhar com o console.
     if (!passwordRejectedByFirebase(err)) throw err;
-    deps.log.error('esqueci-a-senha: o Firebase recusou uma senha que passou em src/lib/passwordPolicy.js. Alinhe o arquivo com a política do console.', { conta: account.uid, erro: err?.message });
+    deps.log.error('esqueci-a-senha: o Firebase recusou uma senha que passou em src/lib/passwordPolicy.js. Alinhe o arquivo com a política do console.', { conta: account.uid, academia: account.tenantId, ip, erro: err?.message });
     return { ok: false, reason: 'password_rejected' };
   }
 
-  // A senha já mudou. Daqui em diante, falha só vai para o log: se o código
-  // não for marcado, ele morre do mesmo jeito, porque a troca muda a marca
-  // tokensValidAfterTime da conta.
-  await deps.killCode(account.uid, codeHash, deps.now()).catch((err) =>
-    deps.log.error('esqueci-a-senha: não marcou o código como usado', { conta: account.uid, erro: err?.message || String(err) }));
-  await deps.revokeSessions(account.uid).catch((err) =>
-    deps.log.error('esqueci-a-senha: não revogou as sessões', { conta: account.uid, erro: err?.message || String(err) }));
-  await deps.audit({ uid: account.uid, tenantId: account.tenantId }).catch((err) =>
-    deps.log.error('esqueci-a-senha: não gravou a auditoria', { conta: account.uid, erro: err?.message || String(err) }));
+  // A senha já mudou. Daqui em diante, falha só vai para o log, inclusive erro
+  // síncrono. Se o código não for marcado, ele morre do mesmo jeito: a troca de
+  // senha e o revokeRefreshTokens mudam a marca tokensValidAfterTime da conta.
+  await killQuietly('esqueci-a-senha: não marcou o código como usado');
+  await quietly(deps, account.uid, 'esqueci-a-senha: não revogou as sessões', () => deps.revokeSessions(account.uid));
+  await quietly(deps, account.uid, 'esqueci-a-senha: não gravou a auditoria', () => deps.audit({ uid: account.uid, tenantId: account.tenantId }));
   deps.log.info('esqueci-a-senha: senha trocada', { conta: account.uid, academia: account.tenantId, ip });
   return { ok: true };
+}
+
+// Passo que não pode mudar a resposta: se falhar, só vai para o log. A função
+// roda dentro do try, então pega também o erro síncrono, inclusive o do deps.now().
+async function quietly(deps, uid, message, step) {
+  try {
+    await step();
+  } catch (err) {
+    deps.log.error(message, { conta: uid, erro: err?.message || String(err) });
+  }
 }
 
 // Toda recusa da troca vai para o log com o motivo, a conta, a academia e o IP.

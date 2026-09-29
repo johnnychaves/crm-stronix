@@ -50,9 +50,11 @@ export function resetCodeMatches(secret, uid, code, codeHash) {
 
 // Por que esta conta não recebe código nem troca a senha, ou null quando pode.
 // É o que o login deixaria entrar. O super-admin fica de fora e troca a senha
-// pelo scripts/create-super-admin.js.
+// pelo scripts/create-super-admin.js. O código vai para o e-mail que a conta
+// tem no Firebase, então conta sem ele fica de fora também (no_email).
 export function accountRefusal(account) {
   if (!account) return 'unknown_email';
+  if (typeof account.email !== 'string' || !account.email) return 'no_email';
   if (account.superAdmin) return 'superadmin';
   if (account.disabled) return 'account_disabled';
   if (!account.tenantId) return 'no_tenant';
@@ -61,12 +63,13 @@ export function accountRefusal(account) {
   return null;
 }
 
-// E-mail sem conta vai para o log assim, nunca inteiro.
+// E-mail sem conta vai para o log assim, nunca inteiro. A parte antes do @ também
+// nunca sai inteira: com duas letras ou menos, aparece uma a menos.
 export function maskEmail(email) {
   const s = String(email ?? '');
   const at = s.lastIndexOf('@');
   if (at < 1) return '***';
-  return `${s.slice(0, Math.min(2, at))}***${s.slice(at)}`;
+  return `${s.slice(0, Math.min(2, at - 1))}***${s.slice(at)}`;
 }
 
 // Pedido: com 5 códigos nas últimas 24 horas, recusa. Senão devolve o

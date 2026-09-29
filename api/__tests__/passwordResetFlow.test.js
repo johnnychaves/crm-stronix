@@ -11,7 +11,7 @@ const IP = '203.0.113.7';
 
 const conta = (extra = {}) => ({
   uid: 'u-ana', tenantId: 'academia-teste', superAdmin: false, disabled: false,
-  isMember: true, organizationActive: true, name: 'Ana Souza',
+  isMember: true, organizationActive: true, name: 'Ana Souza', email: EMAIL,
   signInMark: 'Sun, 28 Sep 2026 10:00:00 GMT', tokensMark: 'Sun, 28 Sep 2026 09:00:00 GMT',
   ...extra,
 });
@@ -116,6 +116,26 @@ describe('pedido', () => {
     await requestPasswordReset(EMAIL, IP, deps);
     expect(JSON.stringify(s.logs)).toContain('an***@academia.com');
     expect(JSON.stringify(s.logs)).not.toContain(EMAIL);
+  });
+
+  it('o código vai para o e-mail que a conta tem no Firebase, nunca para o que foi digitado', async () => {
+    const { deps, s } = montar();
+    // Um findAccount que casa de forma frouxa: devolve a conta de ana para qualquer variante.
+    deps.findAccount = async () => s.conta;
+    for (const digitado of ['ana.souza@academia.com', 'ana+teste@academia.com', 'outra@variante.com.br']) {
+      s.sorteios = [123456];
+      expect(await requestPasswordReset(digitado, IP, deps), digitado).toEqual({ sent: true });
+    }
+    expect(s.enviados.map((m) => m.to)).toEqual([EMAIL, EMAIL, EMAIL]);
+  });
+
+  it('conta sem e-mail no Firebase não recebe código, mesmo achada pelo e-mail digitado', async () => {
+    for (const email of [undefined, null, '']) {
+      const { deps, docs, s } = montar(conta({ email }));
+      expect(await requestPasswordReset(EMAIL, IP, deps)).toEqual({ sent: false, reason: 'no_email' });
+      expect(s.enviados).toEqual([]);
+      expect(docs.size).toBe(0);
+    }
   });
 
   it('a recusa do pedido vai para o log com o motivo, a conta, a academia e o IP', async () => {
@@ -223,6 +243,24 @@ describe('troca', () => {
     }
   });
 
+  it('killCode que falha na quinta tentativa errada não esconde a recusa: continua wrong_code', async () => {
+    const { deps, s } = montar();
+    await requestPasswordReset(EMAIL, IP, deps);
+    deps.killCode = async () => { throw new Error('Firestore fora do ar'); };
+    for (let i = 1; i <= 4; i += 1) await trocar(deps, '000000');
+    expect(await trocar(deps, '000000')).toEqual({ ok: false, reason: 'wrong_code' });
+    expect(JSON.stringify(s.logs)).toContain('Firestore fora do ar');
+  });
+
+  it('killCode que falha com a marca mudada não esconde a recusa: continua account_changed', async () => {
+    const { deps, s } = montar();
+    await requestPasswordReset(EMAIL, IP, deps);
+    s.conta = { ...s.conta, signInMark: 'Sun, 28 Sep 2026 11:00:00 GMT' };
+    deps.killCode = async () => { throw new Error('Firestore fora do ar'); };
+    expect(await trocar(deps, '123456')).toEqual({ ok: false, reason: 'account_changed' });
+    expect(JSON.stringify(s.logs)).toContain('Firestore fora do ar');
+  });
+
   it('código com letra ou com 5 números é recusado sem gastar tentativa', async () => {
     const { deps, docs } = montar();
     await requestPasswordReset(EMAIL, IP, deps);
@@ -298,8 +336,11 @@ describe('troca', () => {
     s.falharSenha = recusa;
     expect(await trocar(deps, '123456')).toEqual({ ok: false, reason: 'password_rejected' });
     expect(docs.get('u-ana').usedAtMs).toBeNull();
-    // O log leva a mensagem do Firebase, que lista as exigências e não a senha.
-    expect(s.logs.some(([, o]) => o?.erro === recusa.message)).toBe(true);
+    // O log leva a mensagem do Firebase, que lista as exigências e não a senha,
+    // com a conta, a academia e o IP.
+    const linha = s.logs.find(([, o]) => o?.erro === recusa.message);
+    expect(linha, 'o log leva a mensagem do Firebase').toBeDefined();
+    expect(linha[1]).toMatchObject({ conta: 'u-ana', academia: 'academia-teste', ip: IP });
     s.falharSenha = null;
     expect(await trocar(deps, '123456')).toEqual({ ok: true });
     expect(JSON.stringify(s.logs)).not.toContain(SENHA);
@@ -340,6 +381,48 @@ describe('troca', () => {
     expect(s.senhas).toHaveLength(1);
     expect(s.revogadas).toEqual(['u-ana']);
     expect(JSON.stringify(s.logs)).toContain('Firestore fora do ar');
+  });
+
+  it('erro síncrono depois da troca não desfaz a troca e só vai para o log', async () => {
+    const casos = [
+      // O relógio é lido na chamada do killCode, antes de a promessa existir.
+      ['o relógio', (deps, s) => {
+        const agora = deps.now;
+        deps.now = () => { if (s.senhas.length) throw new Error('quebrou sync'); return agora(); };
+      }, { revogadas: 1, auditoria: 1 }],
+      ['o killCode', (deps) => { deps.killCode = () => { throw new Error('quebrou sync'); }; }, { revogadas: 1, auditoria: 1 }],
+      ['a revogação', (deps) => { deps.revokeSessions = () => { throw new Error('quebrou sync'); }; }, { revogadas: 0, auditoria: 1 }],
+      ['a auditoria', (deps) => { deps.audit = () => { throw new Error('quebrou sync'); }; }, { revogadas: 1, auditoria: 0 }],
+    ];
+    for (const [quem, quebrar, esperado] of casos) {
+      const { deps, s } = montar();
+      await requestPasswordReset(EMAIL, IP, deps);
+      quebrar(deps, s);
+      expect(await trocar(deps, '123456'), quem).toEqual({ ok: true });
+      expect(s.senhas, quem).toHaveLength(1);
+      // Os passos que vêm depois do que quebrou ainda rodam.
+      expect(s.revogadas, quem).toHaveLength(esperado.revogadas);
+      expect(s.auditoria, quem).toHaveLength(esperado.auditoria);
+      expect(JSON.stringify(s.logs), quem).toContain('quebrou sync');
+    }
+  });
+
+  it('se o código não for marcado depois da troca, a marca que a troca adianta o recusa na segunda tentativa', async () => {
+    const { deps, docs, s } = montar();
+    await requestPasswordReset(EMAIL, IP, deps);
+    // Como o Firebase: trocar a senha adianta o tokensValidAfterTime da conta.
+    deps.setPassword = async (uid, senha) => {
+      s.senhas.push({ uid, senha });
+      s.conta = { ...s.conta, tokensMark: 'Sun, 28 Sep 2026 12:00:00 GMT' };
+    };
+    const killCode = deps.killCode;
+    deps.killCode = async () => { throw new Error('Firestore fora do ar'); };
+    expect(await trocar(deps, '123456')).toEqual({ ok: true });
+    // A marcação falhou, então o código ficou vivo no banco.
+    expect(docs.get('u-ana').usedAtMs).toBeNull();
+    deps.killCode = killCode;
+    expect(await trocar(deps, '123456')).toEqual({ ok: false, reason: 'account_changed' });
+    expect(s.senhas).toHaveLength(1);
   });
 
   it('a troca normaliza o e-mail como o pedido', async () => {
