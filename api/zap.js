@@ -17,12 +17,14 @@
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { withSentry } from './_sentry.js';
 import { isTenantAdmin } from './_auth.js';
+import { checkRateLimit } from './_rateLimit.js';
 import { generateZapKey, verifyZapKey } from './_zapAuth.js';
 import { zapMatchKey } from './_zapPhone.js';
 import { buildZapCard, buildGuardianCard, buildZapWards } from './_zapCard.js';
 import {
-  ZAP_LEAD_MESSAGES, refusal, invalidData, tenantBlocked, emailFromActor, findTeamMember,
-  buildLeadOptions, scrubbedError
+  LEAD_CREATE_LIMIT, ZAP_LEAD_MESSAGES, refusal, invalidData, tenantBlocked, emailFromActor, findTeamMember,
+  buildLeadOptions, readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
+  buildZapLead, buildZapSignupInteraction, alreadyRegisteredBody, scrubbedError
 } from './_zapLead.js';
 import { contactOf } from '../src/lib/guardian.js';
 
@@ -34,6 +36,7 @@ const LEADS_PATH = 'stronix_leads';
 const CONFIG_PATH = 'stronix_config';
 const CONFIG_GENERAL_ID = 'general';
 const USERS_PATH = 'stronix_users';
+const INTERACTIONS_PATH = 'stronix_interactions';
 // Catálogos do formulário do cadastro, na ordem em que readCatalogs devolve.
 const CATALOG_PATHS = ['stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses'];
 
@@ -42,6 +45,10 @@ const MATCH_MAX = 30; // teto do operador `in` do Firestore
 // Menores por responsável lidos por consulta. Irmãos de verdade passam longe
 // disso; o teto só impede um número muito compartilhado de pesar a rota.
 const WARDS_MAX = 10;
+
+// Menores lidos por responsável na conferência de duplicado do cadastro. Só
+// um teto contra número compartilhado demais: irmãos passam longe disso.
+const MINORS_SCAN_MAX = 100;
 
 // Campos de data que os módulos puros esperam como Date. O Firestore devolve
 // Timestamp.
@@ -188,6 +195,7 @@ async function handlePost(req, res) {
   const action = req.body?.action;
   if (action === 'match') return handleMatch(req, res);
   if (action === 'lead-options') return handleLeadOptions(req, res);
+  if (action === 'create-lead') return handleCreateLead(req, res);
 
   try {
     const auth = await verifyRequest(req);
@@ -380,5 +388,80 @@ async function handleLeadOptions(req, res) {
     return res.status(200).json(buildLeadOptions({ actor, team, catalogs }));
   } catch (e) {
     throw scrubbedError('lead-options', e);
+  }
+}
+
+// Cadastro do lead de dentro da conversa. Só cadastra quem está na equipe, com
+// as regras do Stronilead, e responde 201 com o mesmo cartão que o GET devolve
+// para o número.
+async function handleCreateLead(req, res) {
+  try {
+    const access = await openByKey(req);
+    if (access.refusal) return responder(res, access.refusal);
+    const { tenantId } = access;
+
+    const read = readCreateLeadBody(req.body);
+    if (read.refusal) return responder(res, read.refusal);
+    const { phone, matchKey, email, actorName, channelName, lead } = read.value;
+
+    const limit = await checkRateLimit(`zap-create-lead:${tenantId}`, LEAD_CREATE_LIMIT);
+    if (!limit.ok) return responder(res, refusal(429, 'limite', ZAP_LEAD_MESSAGES.rateLimited));
+
+    const [team, catalogs] = await Promise.all([readTeam(tenantId), readCatalogs(tenantId)]);
+    const member = findTeamMember(team, email);
+    if (!member) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+    // O nome do autor é o do Stronilead, como em toda interação do app. O que
+    // o Stronizap manda só entra se o cadastro da equipe não tiver nome.
+    const actor = { ...member, name: member.name || actorName };
+
+    const problem = checkMinor({ minor: lead.minor, phone }) || checkCatalog(lead, catalogs);
+    if (problem) return responder(res, problem);
+    const ownership = resolveOwner({ actor, ownerId: lead.ownerId, team });
+    if (ownership.refusal) return responder(res, ownership.refusal);
+
+    const serverTime = admin.firestore.FieldValue.serverTimestamp();
+    const leadRef = leadsCollection(tenantId).doc();
+    const markRef = academyCollection(tenantId, INTERACTIONS_PATH).doc();
+    const newLead = buildZapLead({ lead, phone, actor, owner: ownership.owner, serverTime });
+    const mark = buildZapSignupInteraction({
+      leadId: leadRef.id, leadName: newLead.name, actor, owner: ownership.owner, channelName, serverTime
+    });
+    const studentMatch = studentKey(lead.minor);
+
+    // Conferência de duplicado e gravação na MESMA transação: dois cliques,
+    // duas pessoas ou o "Tentar de novo" depois de uma resposta perdida caem
+    // num lead só.
+    const outcome = await adminDb.runTransaction(async (tx) => {
+      if (!lead.minor) {
+        const owners = await tx.get(leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1));
+        if (!owners.empty) return { repeated: leadDoDoc(owners.docs[0]) };
+      } else {
+        // O telefone do responsável não barra: irmãos dividem o número. Barra
+        // o mesmo aluno com o mesmo responsável.
+        const wards = await tx.get(
+          leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(MINORS_SCAN_MAX)
+        );
+        const same = wards.docs.map(leadDoDoc).find((m) => sameStudentName(m.name, lead.name));
+        if (same) return { repeated: same };
+        if (studentMatch) {
+          const student = await tx.get(leadsCollection(tenantId).where('zapMatchKey', '==', studentMatch).limit(1));
+          if (!student.empty) return { studentTaken: true };
+        }
+      }
+      tx.create(leadRef, newLead);
+      tx.create(markRef, mark);
+      return { created: true };
+    });
+
+    if (outcome.studentTaken) {
+      return responder(res, refusal(422, 'menor_invalido', ZAP_LEAD_MESSAGES.studentTaken, { field: 'studentWhatsapp' }));
+    }
+    const card = await cardFor(tenantId, matchKey);
+    if (outcome.repeated) {
+      return res.status(409).json(alreadyRegisteredBody({ repeated: outcome.repeated, card, minor: Boolean(lead.minor) }));
+    }
+    return res.status(201).json({ card });
+  } catch (e) {
+    throw scrubbedError('create-lead', e);
   }
 }

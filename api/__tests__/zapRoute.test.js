@@ -13,6 +13,8 @@ const fusoDaMaquina = vi.hoisted(() => {
 import { generateZapKey } from '../_zapAuth.js';
 import { zapMatchKey } from '../_zapPhone.js';
 import handler from '../zap.js';
+import { buildNewLeadDoc } from '../../src/lib/newLead.js';
+import { buildNotificationFeed } from '../../src/lib/notifications.js';
 
 // A rota inteira, com o Firestore trocado por um banco em memória.
 //
@@ -313,6 +315,33 @@ const pedidoOpcoes = (email = ANA.email) => ({
   headers: { 'x-stronizap-key': chave },
   body: { action: 'lead-options', tenant: TENANT, actor: { email } }
 });
+
+// Mariana escreveu do WhatsApp e ainda não tem cadastro. Como o Zap manda.
+const MARIANA = '5551998124471';
+// Timestamp que o banco falso grava no lugar da hora do servidor.
+const HORA = expect.objectContaining({ toDate: expect.any(Function) });
+
+// Pedido de cadastro da Ana. `lead` mexe nos campos do lead; o resto troca
+// campos do corpo (phone, actor, channelName).
+const pedidoCadastro = ({ lead = {}, ...extra } = {}) => ({
+  method: 'POST',
+  headers: { 'x-stronizap-key': chave },
+  body: {
+    action: 'create-lead',
+    tenant: TENANT,
+    phone: MARIANA,
+    actor: { email: ANA.email, name: 'Ana' },
+    channelName: 'Recepção',
+    lead: {
+      name: 'Mariana Souza', source: 'WhatsApp', dor: 'Postura', modalidade: 'Pilates',
+      funnelId: 'f-com', stage: 'Novo lead', ownerId: null, minor: null, ...lead
+    },
+    ...extra
+  }
+});
+
+const leadsDaAcademia = () => banco.leads[TENANT] ?? [];
+const marcosDaAcademia = () => banco.interacoes[TENANT] ?? [];
 
 const pedido = () => ({
   method: 'GET',
@@ -1026,10 +1055,11 @@ describe('POST /api/zap: o desvio no começo do handlePost', () => {
   // Os pedidos de cada ação que autentica pela chave.
   const pedidoPelaChave = (action) => ({
     match: { method: 'POST', headers: { 'x-stronizap-key': chave }, body: { action, tenant: TENANT, phones: [TELEFONE] } },
-    'lead-options': pedidoOpcoes()
+    'lead-options': pedidoOpcoes(),
+    'create-lead': pedidoCadastro()
   })[action];
 
-  it.each(['lead-options'])('%s com login de admin e sem a chave do Zap responde 401 e não grava nada', async (action) => {
+  it.each(['lead-options', 'create-lead'])('%s com login de admin e sem a chave do Zap responde 401 e não grava nada', async (action) => {
     sessao.auth = { uid: 'auth-johnny', tenantId: TENANT };
     sessao.admin = true;
     const p = pedidoPelaChave(action);
@@ -1045,7 +1075,7 @@ describe('POST /api/zap: o desvio no começo do handlePost', () => {
     expect(sessao.consultasDoLogin).toBe(0);
   });
 
-  it.each(['match', 'lead-options'])('%s com a chave nunca consulta o login do CRM', async (action) => {
+  it.each(['match', 'lead-options', 'create-lead'])('%s com a chave nunca consulta o login do CRM', async (action) => {
     const res = resposta();
 
     await handler(pedidoPelaChave(action), res);
@@ -1062,5 +1092,433 @@ describe('POST /api/zap: o desvio no começo do handlePost', () => {
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'Não autenticado.' });
     expect(sessao.consultasDoLogin).toBe(1);
+  });
+});
+
+describe('POST /api/zap com action create-lead', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(HOJE);
+    zerarBanco();
+    academiaComEquipe();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('consultora cadastra: o lead nasce com ela de dona e o marco de início na linha do tempo', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro(), res);
+
+    expect(res.statusCode).toBe(201);
+    const [lead] = leadsDaAcademia();
+    expect(res.body).toEqual({ card: expect.objectContaining({
+      found: true, leadId: lead.id, kind: 'lead', name: 'Mariana Souza',
+      stage: 'Novo lead', source: 'WhatsApp', consultantName: 'Ana Souza'
+    }) });
+    expect(lead).toMatchObject({
+      whatsapp: '(51) 9 9812-4471', zapMatchKey: '5198124471', funnelId: 'f-com', status: 'Novo lead',
+      consultantId: 'u-ana', consultantName: 'Ana Souza', consultantAuthUid: 'auth-ana',
+      lifecycleBucket: 'ativo', interactionsCount: 1, lastInteractionAt: HORA, createdAt: HORA, statusEnteredAt: HORA
+    });
+    expect('consultantChangedAt' in lead).toBe(false);
+    expect(marcosDaAcademia()).toEqual([{
+      id: expect.any(String),
+      leadId: lead.id,
+      leadName: 'Mariana Souza',
+      consultantName: 'Ana Souza',
+      leadConsultantId: 'u-ana',
+      leadConsultantAuthUid: 'auth-ana',
+      actorId: 'u-ana',
+      actorAuthUid: 'auth-ana',
+      type: 'zap_signup',
+      text: 'Cadastrado pelo Stronizap por Ana Souza. Canal Recepção.',
+      zapChannelName: 'Recepção',
+      createdAt: HORA
+    }]);
+    expect(limitador.chamadas).toEqual([{ chave: 'zap-create-lead:academia-teste', opcoes: { limit: 60, windowMs: 3600000 } }]);
+  });
+
+  it('o lead tem os mesmos campos que o Novo lead grava, mais o que é da ponte', async () => {
+    await handler(pedidoCadastro(), resposta());
+
+    const [lead] = leadsDaAcademia();
+    expect(lead).toEqual({
+      ...buildNewLeadDoc(
+        { name: 'Mariana Souza', whatsapp: '(51) 9 9812-4471', source: 'WhatsApp', funnelId: 'f-com', status: 'Novo lead', dor: 'Postura', modalidade: 'Pilates' },
+        { owner: ANA }
+      ),
+      id: lead.id,
+      createdAt: HORA,
+      statusEnteredAt: HORA,
+      lastInteractionAt: HORA,
+      interactionsCount: 1
+    });
+  });
+
+  it('gestor escolhe outra pessoa: ela vira a dona e recebe o aviso no sino', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ actor: { email: JOHNNY.email, name: 'Johnny' }, lead: { ownerId: 'u-bruno' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    const [lead] = leadsDaAcademia();
+    expect(lead).toMatchObject({
+      consultantId: 'u-bruno', consultantName: 'Bruno Lima', consultantAuthUid: 'auth-bruno',
+      consultantChangedAt: HORA, consultantChangedByName: 'Johnny', consultantChangedByAuthUid: 'auth-johnny'
+    });
+    expect(marcosDaAcademia()[0]).toMatchObject({
+      consultantName: 'Johnny', actorId: 'u-johnny', actorAuthUid: 'auth-johnny',
+      leadConsultantId: 'u-bruno', leadConsultantAuthUid: 'auth-bruno', ownerName: 'Bruno Lima',
+      text: 'Cadastrado pelo Stronizap por Johnny. Consultor responsável: Bruno Lima. Canal Recepção.'
+    });
+    // O sino do Bruno acende com "passado para você", sem mudança no sino.
+    const { handoffs } = buildNotificationFeed({
+      appUser: { id: 'u-bruno', authUid: 'auth-bruno', role: 'consultant' },
+      handoffLeads: [lead],
+      now: HOJE
+    });
+    expect(handoffs).toEqual([expect.objectContaining({ id: lead.id, name: 'Mariana Souza', byName: 'Johnny', unread: true })]);
+  });
+
+  it('gestor que escolhe a si mesmo não gera aviso de troca', async () => {
+    await handler(pedidoCadastro({ actor: { email: JOHNNY.email }, lead: { ownerId: 'u-johnny' } }), resposta());
+
+    const [lead] = leadsDaAcademia();
+    expect(lead.consultantId).toBe('u-johnny');
+    expect('consultantChangedAt' in lead).toBe(false);
+    expect('ownerName' in marcosDaAcademia()[0]).toBe(false);
+  });
+
+  it('consultora não escolhe outra pessoa como dona', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ lead: { ownerId: 'u-bruno' } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({ error: 'responsavel_invalido', message: 'Só o gestor escolhe outra pessoa como consultor responsável.' });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it.each(['u-saiu', 'u-bia'])('o dono escolhido precisa estar na equipe com login (%s)', async (ownerId) => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ actor: { email: JOHNNY.email }, lead: { ownerId } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({ error: 'responsavel_invalido', message: 'Essa pessoa não está mais na equipe do Stronilead.' });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('pessoa fora da equipe não cadastra', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ actor: { email: 'carla@stronix.com.br' } }), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toBe('fora_da_equipe');
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('academia com teste vencido não cadastra nem gasta o limite', async () => {
+    Object.assign(banco.tenants[TENANT], { status: 'trial', trialEndsAt: ts(new Date(2026, 8, 1)) });
+    const res = resposta();
+
+    await handler(pedidoCadastro(), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toBe('academia_bloqueada');
+    expect(limitador.chamadas).toEqual([]);
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('mensalidade atrasada há mais de 3 dias bloqueia; há 2 dias, não', async () => {
+    const atrasada = (dias) => ({ paymentStatus: 'overdue', paymentOverdueSince: ts(new Date(HOJE.getTime() - dias * 86400000)) });
+    Object.assign(banco.tenants[TENANT], atrasada(4));
+    const bloqueada = resposta();
+    await handler(pedidoCadastro(), bloqueada);
+    expect(bloqueada.statusCode).toBe(403);
+
+    Object.assign(banco.tenants[TENANT], atrasada(2));
+    const liberada = resposta();
+    await handler(pedidoCadastro(), liberada);
+    expect(liberada.statusCode).toBe(201);
+  });
+
+  it('número já cadastrado: devolve o cartão de quem já existe, sem gravar nada', async () => {
+    banco.leads[TENANT] = [{ ...clienteAVencer, zapMatchKey: zapMatchKey(MARIANA), createdAt: ts(new Date(2026, 7, 1)), consultantName: 'Bruno Lima' }];
+    const res = resposta();
+
+    await handler(pedidoCadastro(), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      error: 'ja_cadastrado',
+      card: expect.objectContaining({ found: true, kind: 'cliente', leadId: 'c1' }),
+      createdAt: '2026-08-01T00:00:00.000Z',
+      message: 'Esse número já estava no Stronilead.'
+    });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('cadastrado há menos de 10 minutos: diz quem cuida', async () => {
+    banco.leads[TENANT] = [{
+      id: 'n1', name: 'Mariana', lifecycleStage: 'lead', status: 'Novo lead', consultantName: 'Bruno Lima',
+      zapMatchKey: zapMatchKey(MARIANA), createdAt: ts(new Date(HOJE.getTime() - 5 * 60000))
+    }];
+    const res = resposta();
+
+    await handler(pedidoCadastro(), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.message).toBe('Esse número foi cadastrado há pouco. Quem cuida é Bruno Lima.');
+  });
+
+  it('dois pedidos ao mesmo tempo no mesmo número resultam num lead só', async () => {
+    const [a, b] = [resposta(), resposta()];
+
+    await Promise.all([
+      handler(pedidoCadastro(), a),
+      handler(pedidoCadastro({ actor: { email: BRUNO.email } }), b)
+    ]);
+
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    expect(leadsDaAcademia()).toHaveLength(1);
+    expect(marcosDaAcademia()).toHaveLength(1);
+    const recusado = a.statusCode === 409 ? a : b;
+    expect(recusado.body.card.leadId).toBe(leadsDaAcademia()[0].id);
+    expect(recusado.body.message).toMatch(/^Esse número foi cadastrado há pouco\. Quem cuida é (Ana Souza|Bruno Lima)\.$/);
+  });
+
+  it('número antigo, sem o nono dígito: o lead ganha o 9, e o número com ou sem o 9 cai no duplicado', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: '555181244710' }), res);
+
+    expect(res.statusCode).toBe(201);
+    // O cartão devolvido é o do GET para o número antigo: ele continua achando a pessoa.
+    expect(res.body.card).toMatchObject({ found: true, name: 'Mariana Souza' });
+    expect(leadsDaAcademia()[0]).toMatchObject({ whatsapp: '(51) 9 8124-4710', whatsappDigits: '51981244710', zapMatchKey: '5181244710' });
+    for (const phone of ['555181244710', '5551981244710']) {
+      const repetido = resposta();
+      await handler(pedidoCadastro({ phone }), repetido);
+      expect(repetido.statusCode).toBe(409);
+    }
+    expect(leadsDaAcademia()).toHaveLength(1);
+  });
+
+  it('fixo continua com 10 dígitos', async () => {
+    await handler(pedidoCadastro({ phone: '555133334444' }), resposta());
+
+    expect(leadsDaAcademia()[0]).toMatchObject({ whatsappDigits: '5133334444', zapMatchKey: '5133334444' });
+  });
+
+  it('"Tentar de novo" depois de um cadastro feito não duplica: recebe o cartão', async () => {
+    await handler(pedidoCadastro(), resposta());
+    const res = resposta();
+
+    await handler(pedidoCadastro(), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.card).toMatchObject({ found: true, kind: 'lead', name: 'Mariana Souza' });
+    expect(leadsDaAcademia()).toHaveLength(1);
+  });
+
+  const menorDaConversa = (extra = {}) => ({ guardianName: 'Maria Souza', relationship: 'Mãe', studentWhatsapp: null, ...extra });
+
+  it('menor: o número da conversa vira o telefone do responsável e o cartão vira o do responsável', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: MAE, lead: { name: 'Pedro Souza', minor: menorDaConversa() } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.card).toMatchObject({ found: true, kind: 'responsavel', name: 'Maria Souza' });
+    expect(res.body.card.wards.map((w) => w.name)).toEqual(['Pedro Souza']);
+    expect(leadsDaAcademia()[0]).toMatchObject({
+      name: 'Pedro Souza', whatsapp: '', zapMatchKey: null, isMinor: true,
+      guardian: { name: 'Maria Souza', phone: '(11) 9 1234-5678', relationship: 'Mãe' },
+      guardianZapMatchKey: zapMatchKey(MAE)
+    });
+  });
+
+  it('irmão com o mesmo responsável entra', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza')];
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: MAE, lead: { name: 'Ana Souza', minor: menorDaConversa() } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.card.wards.map((w) => w.name)).toEqual(['Ana Souza', 'Pedro Souza']);
+  });
+
+  it('o mesmo aluno com o mesmo responsável não duplica', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza', { consultantName: 'Bruno Lima' })];
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: MAE, lead: { name: ' pedro  SOUZA ', minor: menorDaConversa() } }), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toMatchObject({
+      error: 'ja_cadastrado',
+      card: { found: true, kind: 'responsavel' },
+      createdAt: '2026-08-01T00:00:00.000Z',
+      message: 'Pedro Souza já tem cadastro no Stronilead com esse responsável.'
+    });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('WhatsApp do aluno igual ao do responsável é recusado no campo', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: MAE, lead: { name: 'Pedro Souza', minor: menorDaConversa({ studentWhatsapp: '(11) 9 1234-5678' }) } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({
+      error: 'menor_invalido', field: 'studentWhatsapp',
+      message: 'Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.'
+    });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('WhatsApp do aluno que já é de outro cadastro é recusado no campo', async () => {
+    banco.leads[TENANT] = [clienteAVencer];
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: MAE, lead: { name: 'Pedro Souza', minor: menorDaConversa({ studentWhatsapp: '(11) 9 8765-4321' }) } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({ error: 'menor_invalido', field: 'studentWhatsapp', message: 'Esse WhatsApp já está em outro cadastro do Stronilead.' });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('WhatsApp próprio do aluno vai para o lead do aluno', async () => {
+    await handler(pedidoCadastro({ phone: MAE, lead: { name: 'Pedro Souza', minor: menorDaConversa({ studentWhatsapp: '11955554444' }) } }), resposta());
+
+    expect(leadsDaAcademia()[0]).toMatchObject({ whatsapp: '(11) 9 5555-4444', zapMatchKey: '1155554444', guardianZapMatchKey: zapMatchKey(MAE) });
+  });
+
+  it('menor num número antigo: o telefone do responsável também ganha o 9', async () => {
+    await handler(pedidoCadastro({ phone: '555181244710', lead: { name: 'Pedro Souza', minor: menorDaConversa() } }), resposta());
+
+    expect(leadsDaAcademia()[0]).toMatchObject({
+      guardian: { name: 'Maria Souza', phone: '(51) 9 8124-4710', relationship: 'Mãe' },
+      guardianZapMatchKey: '5181244710'
+    });
+  });
+
+  it('responsável sem nome é recusado no campo', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: MAE, lead: { name: 'Pedro Souza', minor: menorDaConversa({ guardianName: 'M' }) } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({ error: 'menor_invalido', field: 'guardianName', message: 'Informe o nome do responsável.' });
+  });
+
+  it('adulto num número que só é de responsável entra: o telefone do responsável não barra', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza')];
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: MAE, lead: { name: 'Maria Souza' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.card).toMatchObject({ found: true, kind: 'lead', name: 'Maria Souza' });
+    expect(res.body.card.wards.map((w) => w.leadId)).toEqual(['k1']);
+  });
+
+  it.each([
+    ['source', { source: 'Facebook' }, 'Essa origem não existe mais no Stronilead. Escolha de novo.'],
+    ['dor', { dor: 'Ansiedade' }, 'Essa dor não existe mais no Stronilead. Escolha de novo.'],
+    ['modalidade', { modalidade: 'Crossfit' }, 'Essa modalidade não existe mais no Stronilead. Escolha de novo.'],
+    ['funnelId', { funnelId: 'f-ren' }, 'Esse funil não existe mais no Stronilead. Escolha de novo.'],
+    ['stage', { stage: 'Interesse' }, 'Essa etapa não existe mais no Stronilead. Escolha de novo.']
+  ])('item de catálogo que sumiu (%s) é recusado e diz o campo', async (field, lead, message) => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ lead }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({ error: 'catalogo_mudou', field, message });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('academia sem dor cadastrada não cadastra', async () => {
+    banco.catalogos[TENANT].stronix_dores = [];
+    const res = resposta();
+
+    await handler(pedidoCadastro(), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({
+      error: 'sem_dor_cadastrada',
+      message: 'Nenhuma dor cadastrada no Stronilead. O gestor cadastra em Configurações → Catálogos → Dores.'
+    });
+  });
+
+  it('dor em branco com dores cadastradas é campo a preencher', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ lead: { dor: '' } }), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'dados_invalidos', field: 'dor', message: 'Escolha a dor ou necessidade.' });
+  });
+
+  it('passou de 60 cadastros na hora: recusa sem gravar', async () => {
+    limitador.ok = false;
+    const res = resposta();
+
+    await handler(pedidoCadastro(), res);
+
+    expect(res.statusCode).toBe(429);
+    expect(res.body).toEqual({ error: 'limite', message: 'Muitos cadastros em pouco tempo. Tente de novo em alguns minutos.' });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('pedido com formato errado responde 400 sem gastar o limite', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: '123' }), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'dados_invalidos', field: 'phone', message: 'O número desta conversa não é um WhatsApp com DDD.' });
+    expect(limitador.chamadas).toEqual([]);
+  });
+
+  it('nome com menos de 2 letras é recusado no campo', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ lead: { name: ' A ' } }), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'dados_invalidos', field: 'name', message: 'Informe o nome, com 2 letras ou mais.' });
+  });
+
+  it('erro do banco no meio do cadastro sobe sem o telefone e sem gravar nada', async () => {
+    banco.falhaEm = 'zapMatchKey';
+
+    const erro = await handler(pedidoCadastro(), resposta()).catch((e) => e);
+
+    expect(erro).toBeInstanceOf(Error);
+    expect(erro.message).toBe('zap create-lead falhou (9)');
+    expect(String(erro.stack)).not.toContain(zapMatchKey(MARIANA));
+    expect(String(erro.stack)).not.toContain(MARIANA);
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('chave de outra academia não cadastra', async () => {
+    academia(OUTRA);
+    banco.users[OUTRA] = [ANA];
+    const res = resposta();
+    const p = pedidoCadastro();
+    p.body.tenant = OUTRA;
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(banco.leads[OUTRA]).toEqual([]);
+    expect(banco.gravacoes).toEqual([]);
   });
 });
