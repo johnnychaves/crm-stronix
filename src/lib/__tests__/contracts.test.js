@@ -11,12 +11,14 @@ import {
   buildContractPause,
   buildContractResume,
   buildMatriculaWrites,
+  contractDiscountOf,
   deriveContractStatus,
   deriveLeadContractStatus,
   hasLiveContract,
   isImportedContract,
   isImportPause
 } from '../contracts.js';
+import { DISCOUNT_MODES } from '../renewal.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const NOW = D(2026, 7, 28);
@@ -379,5 +381,54 @@ describe('hasLiveContract', () => {
     expect(hasLiveContract({ ...base, currentContractEndsAt: D(2026, 1, 10) }, NOW)).toBe(false);
     expect(hasLiveContract({ ...base, currentContractStatus: 'cancelado' }, NOW)).toBe(false);
     expect(hasLiveContract({ name: 'sem contrato' }, NOW)).toBe(false);
+  });
+});
+
+describe('contractDiscountOf: tabela menos valor, como no Gerencial', () => {
+  it('é a diferença entre a tabela e o valor fechado', () => {
+    expect(contractDiscountOf({ value: 1177.2, listValue: 1308 })).toBe(130.8);
+  });
+
+  it('ignora o discountValue gravado', () => {
+    expect(contractDiscountOf({ value: 1308, listValue: 1308, discountValue: 130.8 })).toBe(0);
+  });
+
+  it('sem tabela, ou acima dela, não tem desconto', () => {
+    expect(contractDiscountOf({ value: 100 })).toBe(0);
+    expect(contractDiscountOf({ value: 1400, listValue: 1308 })).toBe(0);
+  });
+});
+
+describe('buildContractEdit: desconto recalculado', () => {
+  const base = {
+    planId: 'p1', planName: 'Start', value: 1177.2, listValue: 1308, durationMonths: 12,
+    startsAt: D(2026, 9, 1), endsAt: D(2027, 9, 1),
+    discountMode: 'percent', discountValue: 130.8, discountReason: 'Fidelidade'
+  };
+  const plano = { id: 'p1', name: 'Start', value: 1308, durationMonths: 12 };
+
+  it('corrigir para o valor cheio apaga desconto e motivo', () => {
+    const r = buildContractEdit({ contract: base, plan: plano, value: 1308, startsAt: D(2026, 9, 1) });
+    expect(r.contractPatch).toMatchObject({ discountMode: 'nenhum', discountValue: 0, discountReason: null });
+  });
+
+  it('valor abaixo da tabela grava a diferença e o motivo escolhido', () => {
+    const r = buildContractEdit({ contract: base, plan: plano, value: 1200, startsAt: D(2026, 9, 1), discountReason: 'Campanha' });
+    expect(r.contractPatch).toMatchObject({ discountMode: 'final', discountValue: 108, discountReason: 'Campanha' });
+  });
+
+  it('só a data mudou: mantém o modo e o motivo', () => {
+    const r = buildContractEdit({ contract: base, plan: plano, value: 1177.2, startsAt: D(2026, 9, 5) });
+    expect(r.contractPatch).toMatchObject({ discountMode: 'percent', discountValue: 130.8, discountReason: 'Fidelidade' });
+  });
+
+  it('valor acima da tabela não vira desconto negativo', () => {
+    const r = buildContractEdit({ contract: base, plan: plano, value: 1400, startsAt: D(2026, 9, 1) });
+    expect(r.contractPatch).toMatchObject({ discountMode: 'nenhum', discountValue: 0, discountReason: null });
+  });
+
+  it('grava os mesmos modos de DISCOUNT_MODES', () => {
+    expect(DISCOUNT_MODES.NENHUM).toBe('nenhum');
+    expect(DISCOUNT_MODES.FINAL).toBe('final');
   });
 });

@@ -227,6 +227,15 @@ export const buildMatriculaWrites = ({
   };
 };
 
+// Desconto de um contrato: tabela menos o valor fechado, a mesma conta do
+// Gerencial (gerencial/sales.js). O discountValue gravado não é lido: depois
+// de uma correção ele podia guardar o desconto antigo. Sem tabela, zero.
+export const contractDiscountOf = (contract) => {
+  const value = Number(contract?.value) || 0;
+  const list = Number(contract?.listValue) || value;
+  return Math.max(Math.round((list - value) * 100) / 100, 0);
+};
+
 // ---------------------------------------------------------------------------
 // Desfechos do contrato vigente: cancelar, trancar, reativar e corrigir.
 // Cada um devolve { contractPatch, leadPatch, interactionText } — o caller só
@@ -371,23 +380,34 @@ export const buildContractResume = ({ contract, resumedAt } = {}) => {
 // Correção de um contrato já gravado (erro de digitação em plano, valor ou
 // início). NÃO é renovação: não cria contrato novo, não mexe em marcos de
 // renovação e não recarimba conversão. Preserva os dias já trancados.
-export const buildContractEdit = ({ contract, plan, value, startsAt } = {}) => {
+// O desconto é recalculado junto (tabela menos o valor corrigido). 'nenhum' e
+// 'final' são os valores de DISCOUNT_MODES (renewal.js), escritos aqui porque
+// importar renewal.js fecharia um ciclo.
+export const buildContractEdit = ({ contract, plan, value, startsAt, discountReason } = {}) => {
   const start = getSafeDateOrNull(startsAt) || getSafeDateOrNull(contract?.startsAt) || new Date();
   const durationMonths = Number(plan?.durationMonths) || Number(contract?.durationMonths) || 0;
   const base = computeEndsAt(start, durationMonths);
   const pausedDaysTotal = Number(contract?.pausedDaysTotal) || 0;
   const endsAt = base && pausedDaysTotal > 0 ? addDays(base, pausedDaysTotal) : base;
   const finalValue = Number.isFinite(Number(value)) ? Number(value) : (Number(contract?.value) || 0);
+  const listValue = Number(plan?.value) || Number(contract?.listValue) || 0;
+  const discountValue = contractDiscountOf({ value: finalValue, listValue });
+  const hasDiscount = discountValue > 0.005;
+  const sameDeal = finalValue === (Number(contract?.value) || 0) && listValue === (Number(contract?.listValue) || 0);
+  const priorMode = contract?.discountMode && contract.discountMode !== 'nenhum' ? contract.discountMode : null;
 
   return {
     contractPatch: {
       planId: plan?.id ?? contract?.planId ?? null,
       planName: plan?.name ?? contract?.planName ?? null,
       value: finalValue,
-      listValue: Number(plan?.value) || Number(contract?.listValue) || 0,
+      listValue,
       durationMonths,
       startsAt: start,
-      endsAt
+      endsAt,
+      discountMode: hasDiscount ? ((sameDeal && priorMode) || 'final') : 'nenhum',
+      discountValue: hasDiscount ? discountValue : 0,
+      discountReason: hasDiscount ? (discountReason ?? contract?.discountReason ?? null) : null
     },
     leadPatch: {
       currentPlanName: plan?.name ?? contract?.planName ?? null,
