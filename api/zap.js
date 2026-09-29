@@ -55,17 +55,71 @@ const leadDoDoc = (doc) => {
 // lugar do texto derrube a função antes da autenticação.
 const TENANT_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-const leadsCollection = (tenantId) =>
+// Coleção da academia em artifacts/{academia}/public/data/{nome}.
+const academyCollection = (tenantId, nome) =>
   adminDb.collection('artifacts').doc(tenantId)
-    .collection('public').doc('data').collection(LEADS_PATH);
+    .collection('public').doc('data').collection(nome);
+
+const leadsCollection = (tenantId) => academyCollection(tenantId, LEADS_PATH);
+
+// A academia e a integração dela, ou null quando a academia não existe, nunca
+// gerou chave (sem keyHash) ou teve a chave revogada. O cadastro pelo Stronizap
+// precisa do documento inteiro para conferir se a academia está ativa.
+async function loadZapTenant(tenantId) {
+  const tenantSnap = await adminDb.collection('tenants').doc(tenantId).get();
+  const tenant = tenantSnap.exists ? tenantSnap.data() : null;
+  const zap = tenant?.integrations?.zap;
+  if (!zap?.keyHash || zap.revokedAt) return null;
+  return { tenant, zap };
+}
 
 // Integração do tenant, ou null quando o tenant não existe, nunca gerou chave
 // (sem keyHash) ou teve a chave revogada.
 async function loadZapIntegration(tenantId) {
-  const tenantSnap = await adminDb.collection('tenants').doc(tenantId).get();
-  const zap = tenantSnap.exists ? tenantSnap.data()?.integrations?.zap : null;
-  if (!zap?.keyHash || zap.revokedAt) return null;
-  return zap;
+  return (await loadZapTenant(tenantId))?.zap ?? null;
+}
+
+// O cartão que o GET devolve para esta chave de telefone: o dono do número e
+// os menores que o têm como responsável, ou { found: false } quando ninguém
+// casa. O cadastro pelo Stronizap responde com este mesmo cartão.
+async function cardFor(tenantId, matchKey) {
+  // O dono do número e os menores que o têm como responsável, juntos. A busca
+  // dos menores não pode derrubar o cartão do dono: se ela falhar (índice
+  // desligado no console, por exemplo), o cartão sai sem os menores. O log
+  // leva só o código do erro: a mensagem do Firestore pode trazer o valor da
+  // consulta, que é o telefone.
+  const [achados, menoresSnap] = await Promise.all([
+    leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get(),
+    leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get()
+      .catch((e) => {
+        console.error('zap: busca dos menores falhou', e?.code ?? 'sem código');
+        return null;
+      })
+  ]);
+  const menoresDocs = menoresSnap ? menoresSnap.docs : [];
+
+  const agora = new Date();
+  const dono = achados.empty ? null : leadDoDoc(achados.docs[0]);
+  // Só quem ainda tem o responsável como contato (menor, ou que fez 18 sem
+  // WhatsApp próprio), e nunca o próprio dono do número.
+  const menores = menoresDocs
+    .map(leadDoDoc)
+    .filter((m) => m.id !== dono?.id && contactOf(m, agora).viaGuardian);
+
+  if (!dono && menores.length === 0) return { found: false };
+
+  // Marcos de renovação da academia. Só lê depois de achar alguém: em
+  // 'found: false' não há faixa pra montar, então não vale o custo da
+  // consulta. Doc inexistente (academia nunca abriu Configurações → Metas &
+  // ritmo) ou campo ausente/malformado: buildZapCard/buildZapStrip caem no
+  // padrão 90/60/30 sozinhos, não precisa validar aqui.
+  const configSnap = await academyCollection(tenantId, CONFIG_PATH).doc(CONFIG_GENERAL_ID).get();
+  const renewalCheckpoints = configSnap.exists ? configSnap.data()?.renewalCheckpoints : undefined;
+
+  if (!dono) return buildGuardianCard(menores, agora, renewalCheckpoints);
+  const card = buildZapCard(dono, agora, renewalCheckpoints);
+  if (menores.length > 0) card.wards = buildZapWards(menores, agora, renewalCheckpoints);
+  return card;
 }
 
 export default withSentry(async function handler(req, res) {
@@ -104,49 +158,10 @@ export default withSentry(async function handler(req, res) {
     return;
   }
 
-  // O dono do número e os menores que o têm como responsável, juntos. A busca
-  // dos menores não pode derrubar o cartão do dono: se ela falhar (índice
-  // desligado no console, por exemplo), o cartão sai sem os menores. O log
-  // leva só o código do erro: a mensagem do Firestore pode trazer o valor da
-  // consulta, que é o telefone.
-  const [achados, menoresSnap] = await Promise.all([
-    leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get(),
-    leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get()
-      .catch((e) => {
-        console.error('zap: busca dos menores falhou', e?.code ?? 'sem código');
-        return null;
-      })
-  ]);
-  const menoresDocs = menoresSnap ? menoresSnap.docs : [];
-
-  const agora = new Date();
-  const dono = achados.empty ? null : leadDoDoc(achados.docs[0]);
-  // Só quem ainda tem o responsável como contato (menor, ou que fez 18 sem
-  // WhatsApp próprio), e nunca o próprio dono do número.
-  const menores = menoresDocs
-    .map(leadDoDoc)
-    .filter((m) => m.id !== dono?.id && contactOf(m, agora).viaGuardian);
-
-  if (!dono && menores.length === 0) {
+  const card = await cardFor(tenantId, matchKey);
+  if (!card.found) {
     res.status(200).json({ found: false });
     return;
-  }
-
-  // Marcos de renovação da academia. Só lê depois de achar alguém: em
-  // 'found: false' não há faixa pra montar, então não vale o custo da
-  // consulta. Doc inexistente (academia nunca abriu Configurações → Metas &
-  // ritmo) ou campo ausente/malformado: buildZapCard/buildZapStrip caem no
-  // padrão 90/60/30 sozinhos, não precisa validar aqui.
-  const configSnap = await adminDb.collection('artifacts').doc(tenantId)
-    .collection('public').doc('data').collection(CONFIG_PATH).doc(CONFIG_GENERAL_ID).get();
-  const renewalCheckpoints = configSnap.exists ? configSnap.data()?.renewalCheckpoints : undefined;
-
-  let card;
-  if (dono) {
-    card = buildZapCard(dono, agora, renewalCheckpoints);
-    if (menores.length > 0) card.wards = buildZapWards(menores, agora, renewalCheckpoints);
-  } else {
-    card = buildGuardianCard(menores, agora, renewalCheckpoints);
   }
 
   res.setHeader('Cache-Control', 'private, max-age=120');
