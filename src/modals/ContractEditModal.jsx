@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Calendar, DollarSign, Pencil } from 'lucide-react';
-import { buildContractEdit, correctionNeedsReason, editListValueOf, renewalStartProblem } from '../lib/contracts.js';
+import { buildContractEdit, correctionMovesStart, correctionNeedsReason, editListValueOf, renewalStartProblem } from '../lib/contracts.js';
 import { commitContractPatch } from '../lib/contractsWrites.js';
-import { fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
+import { calendarDaysBetween, fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
 import { fmtBRL, parseValorBRL, valorToInput } from '../lib/format.js';
 import { DISCOUNT_REASONS } from '../lib/renewal.js';
 import { cn } from '../lib/utils.js';
@@ -62,9 +62,12 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
   const needsReason = correctionNeedsReason({ contract, plan, value: numericValue, hasDiscount });
 
   // A renovação começa no mínimo dois dias depois do início do contrato que ela
-  // renova. Sem o status: a trava do trancado é para renovar, não para corrigir.
-  // E sem a dica de usar o Corrigir, que é esta tela (correcting).
-  const startProblem = previous && startsAt
+  // renova. A regra só confere um início novo (correctionMovesStart): corrigir
+  // o valor ou o plano de uma renovação antiga, que começou colada no contrato
+  // renovado, precisa passar. Sem o status: a trava do trancado é para renovar,
+  // não para corrigir. E sem a dica de usar o Corrigir, que é esta tela
+  // (correcting).
+  const startProblem = previous && startsAt && correctionMovesStart(contract, startsAt)
     ? renewalStartProblem({ startsAt: previous.startsAt || previous.createdAt }, startsAt, { correcting: true })
     : null;
   const preview = plan && startsAt
@@ -72,6 +75,10 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
     : null;
   const novoFim = getSafeDateOrNull(preview?.contractPatch?.endsAt);
   const fimAtual = getSafeDateOrNull(contract?.endsAt);
+  // O fim de antes ("era ...") só aparece quando o dia muda. O campo de data dá
+  // a meia-noite, e o fim gravado pode ter hora: comparar o instante mostraria
+  // a mesma data duas vezes.
+  const fimMudou = Boolean(fimAtual && novoFim && calendarDaysBetween(fimAtual, novoFim) !== 0);
   const pausedDaysTotal = Number(contract?.pausedDaysTotal) || 0;
   // O que a correção faz com o fim do contrato anterior: encurta (a marca de
   // quem encurtou fica) ou devolve o fim original (a marca sai).
@@ -200,7 +207,7 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
             {novoFim ? (
               <>
                 A vigência passa a terminar em <span className="num font-semibold text-slate-900 dark:text-white">{novoFim.toLocaleDateString('pt-BR')}</span>
-                {fimAtual && novoFim.getTime() !== fimAtual.getTime() && (
+                {fimMudou && (
                   <span className="num"> (era {fimAtual.toLocaleDateString('pt-BR')})</span>
                 )}.
                 {pausedDaysTotal > 0 && <> Os {pausedDaysTotal} dias já trancados seguem contados.</>}

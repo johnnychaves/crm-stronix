@@ -13,6 +13,7 @@ import {
   buildMatriculaWrites,
   buildRenewalCancel,
   contractDiscountOf,
+  correctionMovesStart,
   correctionNeedsReason,
   deriveContractStatus,
   deriveLeadContractStatus,
@@ -459,6 +460,31 @@ describe('editListValueOf: a tabela que vale na correção', () => {
 
   it('mesmo plano, mas o contrato não tem tabela gravada: usa a do plano', () => {
     expect(editListValueOf({ planId: 'p1', value: 1177.2 }, { id: 'p1', value: 1500 })).toBe(1500);
+  });
+});
+
+// A mesma conta decide, na correção, se a emenda é recalculada
+// (buildContractEdit) e se a regra de início da renovação vale
+// (ContractEditModal).
+describe('correctionMovesStart: a correção muda o início?', () => {
+  it('conta por dia do calendário: o mesmo dia com outra hora não é mudança', () => {
+    const contrato = { startsAt: new Date(2026, 7, 1, 14, 30) };
+    expect(correctionMovesStart(contrato, D(2026, 8, 1))).toBe(false);
+    expect(correctionMovesStart(contrato, new Date(2026, 7, 1, 23, 59))).toBe(false);
+    expect(correctionMovesStart(contrato, D(2026, 8, 2))).toBe(true);
+    expect(correctionMovesStart(contrato, D(2026, 7, 31))).toBe(true);
+  });
+
+  it('aceita o doc cru do Firestore', () => {
+    const ts = (d) => ({ toDate: () => d });
+    expect(correctionMovesStart({ startsAt: ts(new Date(2026, 7, 1, 14, 30)) }, D(2026, 8, 1))).toBe(false);
+    expect(correctionMovesStart({ startsAt: ts(D(2026, 8, 1)) }, D(2026, 8, 3))).toBe(true);
+  });
+
+  it('sem início gravado conta como mudança', () => {
+    expect(correctionMovesStart({ startsAt: null }, D(2026, 8, 1))).toBe(true);
+    expect(correctionMovesStart({}, D(2026, 8, 1))).toBe(true);
+    expect(correctionMovesStart(null, D(2026, 8, 1))).toBe(true);
   });
 });
 

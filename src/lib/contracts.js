@@ -570,6 +570,13 @@ export const correctionNeedsReason = ({ contract, plan, value, hasDiscount }) =>
   return dealChanged || Boolean(contract?.discountReason);
 };
 
+// A correção muda o início? Conta por dia do calendário: o campo de data do
+// modal dá a meia-noite, e o mesmo dia com outra hora não é mudança. Sem início
+// gravado, conta como mudança. Só um início novo recalcula a emenda
+// (buildContractEdit) e passa pela regra de início da renovação no modal de
+// correção (ContractEditModal).
+export const correctionMovesStart = (contract, startsAt) => calendarDaysBetween(contract?.startsAt, startsAt) !== 0;
+
 // O patch muda alguma coisa no contrato renovado? Mesmo fim (o instante), mesmo
 // fim original e a mesma marca de quem encurtou: não há o que gravar nele.
 const sameInstant = (a, b) => (getSafeDateOrNull(a)?.getTime() ?? null) === (getSafeDateOrNull(b)?.getTime() ?? null);
@@ -608,13 +615,11 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
   // conta como emendado. Sem sobrepor, o fim que esta renovação encurtou volta
   // ao original. Não se encurta o que outra renovação encurtou, nem contrato
   // trancado (o fim ainda anda na reativação) ou cancelado.
-  // Só um início novo recalcula. O início muda por dia do calendário: o campo
-  // de data do modal dá a meia-noite, e o mesmo dia com outra hora não é
-  // mudança. Sem início gravado, conta como mudança. Com o mesmo início, ou sem
-  // o anterior ligado, a marca fica como estava e nenhum outro contrato é
+  // Só um início novo recalcula (correctionMovesStart). Com o mesmo início, ou
+  // sem o anterior ligado, a marca fica como estava e nenhum outro contrato é
   // gravado: corrigir só o valor de uma renovação antiga não encurta a
   // sobreposição dela (decisão do Johnny, 28/09/2026).
-  const startChanged = calendarDaysBetween(contract?.startsAt, start) !== 0;
+  const startChanged = correctionMovesStart(contract, start);
   let seamless = Boolean(contract?.seamless);
   let previousPatch = null;
   if (startChanged && contract?.renewedFromId && previous?.id === contract.renewedFromId) {
