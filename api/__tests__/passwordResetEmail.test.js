@@ -32,6 +32,10 @@ describe('buildResetEmail', () => {
     expect(email.html).toMatch(/>048213<\/td>/);
   });
 
+  it('o rodapé usa o cinza #687083, com contraste de 4,6:1 sobre o fundo', () => {
+    expect(email.html).toMatch(/color:#687083;">Stronilead · Gestão de leads para academias<\/p>/);
+  });
+
   it('declara o charset UTF-8 no head, antes do corpo', () => {
     expect(email.html).toContain('<meta charset="utf-8">');
     expect(email.html.indexOf('<meta charset="utf-8">')).toBeLessThan(email.html.indexOf('<body'));
@@ -48,6 +52,10 @@ describe('buildResetEmail', () => {
     // Abre o corpo: é o primeiro texto que o cliente de e-mail lê.
     expect(email.html).toMatch(/<body[^>]*>\s*<div style="display:none/);
     expect(previa[1]).not.toMatch(/\d/);
+    // A frase não repete o assunto, que a caixa de entrada já mostra ao lado dela.
+    expect(previa[1].startsWith('Abra o e-mail para ver o código.')).toBe(true);
+    // Sem o mso-hide:all o Outlook pode mostrar o bloco no corpo do e-mail.
+    expect(previa[0]).toContain('mso-hide:all');
     expect(email.html.indexOf(previa[0])).toBeLessThan(email.html.indexOf('048213'));
     // O enchimento impede o cliente de completar a prévia com o resto do corpo.
     expect((previa[1].match(/&zwnj;&nbsp;/g) ?? []).length).toBeGreaterThanOrEqual(30);
@@ -67,7 +75,7 @@ describe('buildResetEmail', () => {
   });
 
   it('pega o primeiro nome com espaço nas pontas, tab ou espaço não separável', () => {
-    for (const nome of ['  Maria da Silva ', 'Maria da Silva', 'Maria\tda Silva']) {
+    for (const nome of ['  Maria da Silva ', 'Maria\u00a0da Silva', 'Maria\tda Silva']) {
       expect(buildResetEmail(nome, '000001').text.startsWith('Olá, Maria.')).toBe(true);
     }
   });
@@ -78,7 +86,7 @@ describe('buildResetEmail', () => {
   });
 
   it('sem nome útil (null, só espaços), cumprimenta sem nome', () => {
-    for (const nome of [null, '   ', ' ']) {
+    for (const nome of [null, '   ', '\u00a0']) {
       expect(buildResetEmail(nome, '000001').text.startsWith('Olá.\n')).toBe(true);
     }
   });
