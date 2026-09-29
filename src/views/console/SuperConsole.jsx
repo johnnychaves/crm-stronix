@@ -276,7 +276,7 @@ function Logs({ audit }) {
               <tr key={l.id}>
                 <td className="tnum muted" style={{ whiteSpace: 'nowrap' }}>{l.at ? new Date(l.at).toLocaleString('pt-BR') : '—'}</td>
                 <td className="muted" style={{ whiteSpace: 'nowrap' }}>{l.actorUid ? String(l.actorUid).slice(0, 8) : 'sistema'}</td>
-                <td><span className="log-act">{auditActionLabel(l.action) || l.action}</span></td>
+                <td><span className="log-act">{auditActionLabel(l) || l.action}</span></td>
                 <td style={{ fontWeight: 600 }}>{l.tenantId || '—'}</td>
                 <td className="muted">{detailStr(l.details)}</td>
               </tr>
@@ -1253,7 +1253,7 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
             <div className="tl">
               <div className="tl-item"><span className="tl-dot" /><div className="tl-t">Último acesso — {t.lastActivityAt ? new Date(t.lastActivityAt).toLocaleString('pt-BR') : '—'}</div><div className="tl-s">app.stronilead.com</div></div>
               {events.map((l) => (
-                <div key={l.id} className="tl-item"><span className="tl-dot" style={{ background: 'var(--accent)' }} /><div className="tl-t">{auditActionLabel(l.action) || l.action}</div><div className="tl-s">{l.at ? new Date(l.at).toLocaleString('pt-BR') : ''}{detailStr(l.details) ? ' · ' + detailStr(l.details) : ''}</div></div>
+                <div key={l.id} className="tl-item"><span className="tl-dot" style={{ background: 'var(--accent)' }} /><div className="tl-t">{auditActionLabel(l) || l.action}</div><div className="tl-s">{l.at ? new Date(l.at).toLocaleString('pt-BR') : ''}{detailStr(l.details) ? ' · ' + detailStr(l.details) : ''}</div></div>
               ))}
               <div className="tl-item"><span className="tl-dot" style={{ background: 'var(--muted)' }} /><div className="tl-t">Conta criada</div><div className="tl-s">{t.createdAt ? new Date(t.createdAt).toLocaleDateString('pt-BR') : '—'}</div></div>
             </div>

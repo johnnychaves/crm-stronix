@@ -87,6 +87,8 @@ import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { ReferralLandingScreen } from './views/public/ReferralLandingScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
+import { ForgotPasswordScreen } from './views/auth/ForgotPasswordScreen.jsx';
+import { isPasswordResetPath, clearResetMemory } from './lib/passwordReset.js';
 import { DashboardOperacionalView } from './views/dashboard/DashboardOperacionalView.jsx';
 import { DashboardCrmView } from './views/dashboard/DashboardCrmView.jsx';
 import { DashboardGerencialView } from './views/dashboard/DashboardGerencialView.jsx';
@@ -1259,10 +1261,13 @@ useEffect(() => {
   // listas em memória, a academia do módulo (appId) e as configurações de
   // funil: num computador de recepção, quem entra depois não vê nada da sessão
   // anterior. O await garante que a sessão já saiu do navegador antes da recarga.
+  // A memória do "Esqueci a senha" sai junto, senão a próxima pessoa cairia no
+  // passo 2 com o e-mail desta conta.
   const leaveTo = async (destino) => {
     setLeaving(true);
     try { await signOut(auth); } catch (e) { console.error('Erro ao sair do sistema', e); }
     try { sessionStorage.removeItem(IMPERSONATION_KEY); } catch { /* ignore */ }
+    clearResetMemory();
     window.location.replace(destino);
   };
 
@@ -1466,7 +1471,13 @@ useEffect(() => {
     );
   }
 
-  if (!appUser) return <LoginScreen setAppUser={setAppUser} firebaseUser={firebaseUser} db={db} authSetupError={authSetupError} urlTenant={urlTenant} />;
+  if (!appUser) {
+    // Sem sessão, /recuperar-senha desenha o "Esqueci a senha" no lugar do
+    // login (docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md). Com
+    // sessão, o routeDecision já leva esse endereço para a tela inicial.
+    if (isPasswordResetPath(location.pathname)) return <ForgotPasswordScreen />;
+    return <LoginScreen setAppUser={setAppUser} firebaseUser={firebaseUser} db={db} authSetupError={authSetupError} urlTenant={urlTenant} />;
+  }
 
   // Academia suspensa ou com trial expirado: bloqueia o acesso ao app (super-admin
   // sem tenant não é afetado). O usuário está autenticado, mas a organização não.

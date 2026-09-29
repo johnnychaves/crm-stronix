@@ -4,6 +4,9 @@ import {
   scrubLeadPath, scrubLeadPathsDeep, scrubSpan
 } from '../sentryScrub.js';
 
+// Chave inventada, no formato do Resend: re_, 8 caracteres, sublinhado e 24 caracteres.
+const CHAVE_RESEND = `re_${'Ab3d'.repeat(2)}_${'Ef6g'.repeat(6)}`;
+
 describe('maskSensitive', () => {
   it('mascara CPF formatado', () => {
     expect(maskSensitive('cliente 123.456.789-01 nao encontrado'))
@@ -47,6 +50,34 @@ describe('maskSensitive', () => {
     const chave = `szk_${'a1b2'.repeat(12)}`; // 48 hex, formato de generateZapKey
     expect(maskSensitive(`erro com a chave ${chave} invalida`))
       .toBe('erro com a chave [chave] invalida');
+  });
+
+  it('mascara a chave do resend', () => {
+    expect(maskSensitive(`erro com a chave ${CHAVE_RESEND} invalida`))
+      .toBe('erro com a chave [chave] invalida');
+  });
+
+  it('mascara a chave do resend inteira mesmo com 11 dígitos seguidos no meio dela', () => {
+    // Se o padrão de documento rodasse antes, os dígitos virariam [documento] e o
+    // resto da chave sairia em claro.
+    expect(maskSensitive('o Resend recusou re_12345678901_abcdefghijklmnopqrstuvwx agora'))
+      .toBe('o Resend recusou [chave] agora');
+  });
+
+  it('só é chave do resend com 16 caracteres ou mais depois do re_', () => {
+    expect(maskSensitive(`re_${'a'.repeat(16)}`)).toBe('[chave]');
+    expect(maskSensitive(`re_${'a'.repeat(15)}`)).toBe(`re_${'a'.repeat(15)}`);
+  });
+
+  it('deixa como está o texto que só lembra a chave do resend', () => {
+    // O re_ no fim de uma palavra (feature_, where_, pre_) não começa chave.
+    const textos = [
+      're_curta',
+      'feature_flags_enabled_for_all',
+      'where_clause_is_not_valid',
+      'pre_renderizar_a_tela_inteira'
+    ];
+    for (const texto of textos) expect(maskSensitive(texto)).toBe(texto);
   });
 });
 
@@ -171,6 +202,32 @@ describe('scrubEvent', () => {
     expect(scrubEvent(event).extra.payload.email).toBe('[email]');
   });
 
+  it('mascara a chave do resend na mensagem, na pilha, na migalha e nos dados extras', () => {
+    const event = {
+      message: `envio falhou com ${CHAVE_RESEND}`,
+      exception: {
+        values: [{
+          value: `Error: O Resend recusou a chave ${CHAVE_RESEND}\n    at sendMail (file:///var/task/api/_mail.js:80:19)`
+        }]
+      },
+      breadcrumbs: [{
+        category: 'console',
+        message: `Error: 401 Bearer ${CHAVE_RESEND}`,
+        data: { arguments: [`Bearer ${CHAVE_RESEND}`] }
+      }],
+      extra: { envio: { authorization: `Bearer ${CHAVE_RESEND}` } }
+    };
+    const out = scrubEvent(event);
+    expect(out.message).toBe('envio falhou com [chave]');
+    // Só a chave sai: o resto da pilha continua como estava.
+    expect(out.exception.values[0].value)
+      .toBe('Error: O Resend recusou a chave [chave]\n    at sendMail (file:///var/task/api/_mail.js:80:19)');
+    expect(out.breadcrumbs[0].message).toBe('Error: 401 Bearer [chave]');
+    expect(out.breadcrumbs[0].data.arguments).toEqual(['Bearer [chave]']);
+    expect(out.extra.envio.authorization).toBe('Bearer [chave]');
+    expect(JSON.stringify(out)).not.toContain(CHAVE_RESEND);
+  });
+
   it('devolve null para evento de ruido', () => {
     expect(scrubEvent({ exception: { values: [{ value: 'ResizeObserver loop' }] } })).toBe(null);
   });
@@ -248,6 +305,13 @@ describe('scrubBreadcrumb', () => {
   it('mascara PII em breadcrumb que nao e de UI', () => {
     const crumb = { category: 'fetch', message: 'POST /api/x tel 11987654321' };
     expect(scrubBreadcrumb(crumb).message).toBe('POST /api/x tel [telefone]');
+  });
+
+  it('mascara a chave do resend na migalha antes de ela entrar no evento', () => {
+    const crumb = { category: 'console', message: `falhou com ${CHAVE_RESEND}`, data: { arguments: [`Bearer ${CHAVE_RESEND}`] } };
+    const out = scrubBreadcrumb(crumb);
+    expect(out.message).toBe('falhou com [chave]');
+    expect(out.data.arguments).toEqual(['Bearer [chave]']);
   });
 
   it('corta a query da URL em breadcrumb de navegacao', () => {

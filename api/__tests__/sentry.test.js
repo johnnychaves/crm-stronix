@@ -28,8 +28,31 @@ describe('SENTRY_OPTIONS das funções da api', () => {
     expect(SENTRY_OPTIONS.beforeSendTransaction).toBe(scrubEvent);
   });
 
-  it('passa todo breadcrumb pelo scrubBreadcrumb', () => {
-    expect(SENTRY_OPTIONS.beforeBreadcrumb).toBe(scrubBreadcrumb);
+  it('descarta a migalha de console, que no log da api leva uid, academia, IP e e-mail', () => {
+    const migalha = {
+      category: 'console',
+      message: 'esqueci-a-senha: envio falhou [object Object]',
+      data: { logger: 'console', arguments: ['esqueci-a-senha: envio falhou', { conta: 'uid-da-conta', ip: '203.0.113.77' }] }
+    };
+    expect(SENTRY_OPTIONS.beforeBreadcrumb(migalha)).toBe(null);
+  });
+
+  it('passa as outras migalhas pelo scrubBreadcrumb', () => {
+    const pedido = {
+      category: 'http',
+      message: 'POST /api/x tel 11987654321',
+      data: { url: 'https://api.exemplo.com/v1?phone=5511987654321', 'http.query': '?phone=5511987654321' }
+    };
+    const esperado = scrubBreadcrumb(structuredClone(pedido));
+    const saiu = SENTRY_OPTIONS.beforeBreadcrumb(pedido);
+    expect(saiu).toEqual(esperado);
+    expect(saiu.message).toBe('POST /api/x tel [telefone]');
+    expect(saiu.data.url).toBe('https://api.exemplo.com/v1');
+    expect(saiu.data).not.toHaveProperty('http.query');
+  });
+
+  it('aguenta migalha nula', () => {
+    expect(SENTRY_OPTIONS.beforeBreadcrumb(null)).toBe(null);
   });
 });
 
