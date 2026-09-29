@@ -1,12 +1,13 @@
-import { RESET_CODE_TTL_MS } from '../src/lib/passwordReset.js';
+import { RESET_CODE_TTL_MS, isResetCodeFormat } from '../src/lib/passwordReset.js';
 
 // O e-mail com o código do "Esqueci a senha". Função pura: quem manda é o
 // _mail.js. O HTML vai em tabela e com o estilo no próprio elemento, porque
 // cliente de e-mail não lê CSS de fora e o Outlook ignora largura em div. Por
 // isso as cores aparecem em hex. As da marca vêm do src/index.css: paper-50,
 // paper-200, ink-900, brand-600, brand-50 e brand-700. Os dois cinzas do texto
-// de apoio (#5B6477 e #8A93A6) são próprios do e-mail. A marca vai em texto
-// porque cliente de e-mail costuma bloquear imagem.
+// de apoio (#5B6477 e #687083) são próprios do e-mail. O do rodapé tem 4,6:1
+// de contraste sobre o fundo, acima do mínimo de 4,5:1 para texto pequeno. A
+// marca vai em texto porque cliente de e-mail costuma bloquear imagem.
 
 export function escapeHtml(s) {
   return String(s)
@@ -20,10 +21,16 @@ export function escapeHtml(s) {
 const firstName = (name) => String(name ?? '').trim().split(/\s+/)[0] || '';
 
 export function buildResetEmail(name, code) {
+  if (!isResetCodeFormat(code)) throw new Error('esqueci-a-senha: código inválido para o e-mail');
   const minutos = Math.round(RESET_CODE_TTL_MS / 60_000);
   const primeiro = firstName(name);
   // O código fica fora do assunto para não aparecer na tela bloqueada do celular.
   const subject = 'Seu código para criar uma senha nova no Stronilead';
+  // A prévia da caixa de entrada também não leva o código. Ela sai do começo
+  // do corpo, então um bloco escondido ocupa esse lugar com uma frase, e o
+  // enchimento impede o cliente de completar a prévia com o resto do e-mail.
+  const previa = 'Seu código para criar uma senha nova chegou. Abra o e-mail para ver.';
+  const enchimento = '&zwnj;&nbsp;'.repeat(30);
   const intro = 'Use este código para criar uma senha nova no Stronilead:';
   const aviso = `Ele vale por ${minutos} minutos. Se não foi você que pediu, ignore este e-mail. Sua senha atual continua valendo.`;
   const rodape = 'Stronilead · Gestão de leads para academias';
@@ -46,8 +53,9 @@ export function buildResetEmail(name, code) {
     '<html lang="pt-BR">',
     // O charset vale para o HTML aberto fora do cliente de e-mail, onde não
     // há cabeçalho MIME dizendo que é UTF-8.
-    '<head><meta charset="utf-8"></head>',
+    `<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${subject}</title></head>`,
     '<body style="margin:0;padding:0;background:#F5F7FB;">',
+    `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${previa}${enchimento}</div>`,
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F5F7FB;">',
     '<tr><td align="center" style="padding:32px 16px;">',
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:480px;background:#FFFFFF;border:1px solid #E3E6EE;border-radius:12px;">',
@@ -61,7 +69,7 @@ export function buildResetEmail(name, code) {
     `<p style="margin:0;font-size:14px;line-height:1.6;color:#5B6477;">${aviso}</p>`,
     '</td></tr>',
     '</table>',
-    `<p style="margin:14px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#8A93A6;">${rodape}</p>`,
+    `<p style="margin:14px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#687083;">${rodape}</p>`,
     '</td></tr>',
     '</table>',
     '</body>',
