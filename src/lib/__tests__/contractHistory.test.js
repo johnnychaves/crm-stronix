@@ -21,7 +21,7 @@ const todos = [a, b, c, d, e];
 
 describe('contractOriginOf', () => {
   it('primeiro contrato da pessoa', () => {
-    expect(contractOriginOf(a, todos)).toEqual({ kind: CONTRACT_ORIGIN.PRIMEIRA, previous: null, ordinal: 0, gapDays: null });
+    expect(contractOriginOf(a, todos)).toEqual({ kind: CONTRACT_ORIGIN.PRIMEIRA, previous: null, ordinal: 0, gapDays: null, coverageEnd: null });
   });
 
   it('renovação conta só a sequência ligada', () => {
@@ -63,7 +63,7 @@ describe('contractOriginOf', () => {
 
   it('renovação cujo contrato ligado não está na lista continua renovação', () => {
     const solta = K('solta', { renewedFromId: 'sumiu', startsAt: D(2026, 1, 1), endsAt: D(2027, 1, 1), createdAt: D(2026, 1, 1) });
-    expect(contractOriginOf(solta, [solta])).toEqual({ kind: CONTRACT_ORIGIN.RENOVACAO, previous: null, ordinal: 1, gapDays: null });
+    expect(contractOriginOf(solta, [solta])).toEqual({ kind: CONTRACT_ORIGIN.RENOVACAO, previous: null, ordinal: 1, gapDays: null, coverageEnd: null });
   });
 
   it('aceita as datas como Timestamp do Firestore', () => {
@@ -81,6 +81,7 @@ describe('contractOriginOf', () => {
     const o = contractOriginOf(z, [x, p, z]);
     expect(o.previous).toBe(p);
     expect(o.gapDays).toBeNull();
+    expect(o.coverageEnd).toEqual(D(2026, 12, 31));
   });
 
   it('renovação cancelada antes de começar não conta como cobertura', () => {

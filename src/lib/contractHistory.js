@@ -69,12 +69,13 @@ function coverageEndOf(list) {
   return best;
 }
 
-// De onde veio o contrato: { kind, previous, ordinal, gapDays }.
+// De onde veio o contrato: { kind, previous, ordinal, gapDays, coverageEnd }.
 // previous: o contrato ligado (renovação) ou o anterior mais recente pela data
 // da venda (retorno e upgrade). gapDays: dias do calendário sem contrato entre
 // o fim da cobertura anterior (o fim efetivo mais distante entre o contrato
 // ligado e os vendidos antes, só dos que chegaram a valer) e o início deste, ou
-// null quando não houve intervalo.
+// null quando não houve intervalo. coverageEnd: o fim da cobertura anterior, de
+// onde o intervalo é medido, ou null.
 export function contractOriginOf(contract, leadContracts) {
   const list = Array.isArray(leadContracts) ? leadContracts.filter(Boolean) : [];
   const byId = new Map(list.map((c) => [c.id, c]));
@@ -111,6 +112,7 @@ export function contractOriginOf(contract, leadContracts) {
     kind,
     previous,
     ordinal: kind === CONTRACT_ORIGIN.RENOVACAO ? renewalOrdinalOf(contract, byId) : 0,
-    gapDays
+    gapDays,
+    coverageEnd
   };
 }

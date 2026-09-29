@@ -14,7 +14,7 @@ import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMin
 import { fmtBRL } from '../lib/format.js';
 import { contractDiscountOf, deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { contractVigencia, daysBetween, missedCheckpointsLabel, vigenciaRefDate } from '../lib/renewal.js';
-import { CONTRACT_ORIGIN, contractEndOf, contractOriginOf } from '../lib/contractHistory.js';
+import { CONTRACT_ORIGIN, contractOriginOf } from '../lib/contractHistory.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
 import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
@@ -103,29 +103,28 @@ function OriginCell({ origin }) {
     return (
       <>
         <CapsLabel>Renovado de</CapsLabel>
-        <div className="text-[13px] font-semibold mt-[7px] truncate">{prev?.planName || '—'}</div>
+        <div className="text-[13px] font-semibold mt-[7px] truncate" title={prev?.planName || undefined}>{prev?.planName || '—'}</div>
         <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">
-          {prev ? `#${shortContractId(prev.id)} · ` : ''}{origin.ordinal}ª renovação
+          {prev ? `#${shortContractId(prev.id)} · ` : ''}<span className="whitespace-nowrap">{origin.ordinal}ª renovação</span>
         </div>
       </>
     );
   }
   if (kind === CONTRACT_ORIGIN.RETORNO || kind === CONTRACT_ORIGIN.UPGRADE) {
-    const prevEnd = contractEndOf(prev);
-    const detail = [
-      prevEnd ? `até ${prevEnd.toLocaleDateString('pt-BR')}` : null,
-      origin.gapDays ? gapLabel(origin.gapDays) : null
-    ].filter(Boolean).join(' · ');
-    const main = prev?.planName
-      ? `último: ${prev.planName}`
-      : kind === CONTRACT_ORIGIN.UPGRADE ? 'pelo funil Upgrade' : '—';
+    // Três linhas curtas: a célula é estreita, e numa linha só o intervalo sem
+    // contrato ficava cortado. A data é o fim da cobertura anterior, a mesma de
+    // onde o intervalo é medido.
+    const coverageEnd = origin?.coverageEnd || null;
+    const main = prev?.planName || (kind === CONTRACT_ORIGIN.UPGRADE ? 'pelo funil Upgrade' : '—');
+    const endText = coverageEnd ? `até ${coverageEnd.toLocaleDateString('pt-BR')}` : null;
+    const gapText = origin?.gapDays ? gapLabel(origin.gapDays) : null;
+    const detail = [endText, gapText].filter(Boolean).join(' · ');
     return (
       <>
         <CapsLabel>{kind === CONTRACT_ORIGIN.UPGRADE ? 'Upgrade' : 'Retorno'}</CapsLabel>
-        <div className="text-[13px] font-semibold mt-[7px] truncate" title={main}>{main}</div>
-        {detail && (
-          <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px] truncate" title={detail}>{detail}</div>
-        )}
+        <div className="text-[13px] font-semibold mt-[7px] truncate" title={detail ? `${main} · ${detail}` : main}>{main}</div>
+        {endText && <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">{endText}</div>}
+        {gapText && <div className="text-[11.5px] text-slate-500 dark:text-slate-400">{gapText}</div>}
       </>
     );
   }
@@ -145,6 +144,14 @@ function OriginIcon({ kind }) {
   if (kind === CONTRACT_ORIGIN.RENOVACAO) return <RefreshCw size={14} aria-hidden="true" />;
   return <GraduationCap size={14} aria-hidden="true" />;
 }
+
+// Nome da origem, para o title e o leitor de tela do nó do Histórico.
+const ORIGIN_LABEL = {
+  [CONTRACT_ORIGIN.RENOVACAO]: 'Renovação',
+  [CONTRACT_ORIGIN.UPGRADE]: 'Upgrade',
+  [CONTRACT_ORIGIN.RETORNO]: 'Retorno',
+  [CONTRACT_ORIGIN.PRIMEIRA]: 'Primeira matrícula'
+};
 
 // Célula da faixa de metadados do cabeçalho: rótulo em versalete sobre o valor.
 // Substituiu a fila de ícones — sem rótulo, "(51) 99184-2270" e "Ana Duarte"
@@ -839,7 +846,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // De onde veio o contrato vigente: renovação, upgrade, retorno ou primeira
   // matrícula, na ordem do Gerencial (lib/contractHistory.js). Antes contava
   // qualquer contrato anterior como renovação.
-  const origin = currentContract ? contractOriginOf(currentContract, leadContracts) : null;
+  const contractOrigin = currentContract ? contractOriginOf(currentContract, leadContracts) : null;
 
   // Estado do contrato vigente + a régua de vigência com os marcos de
   // renovação da academia (Configurações → Metas & ritmo, nunca hardcode).
@@ -1883,7 +1890,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                         </div>
 
                         <div className="flex-1 min-w-[130px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
-                          <OriginCell origin={origin} />
+                          <OriginCell origin={contractOrigin} />
                         </div>
 
                         <div className="flex-1 min-w-[140px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
@@ -2024,6 +2031,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                   const hEnd = getSafeDateOrNull(c.endsAt);
                   const hMonths = Number(c.durationMonths)
                     || (hStart && hEnd ? Math.max(1, Math.round(daysBetween(hStart, hEnd) / 30.44)) : 0);
+                  const hOrigin = contractOriginOf(c, leadContracts);
                   // A lacuna aparece ACIMA do nó: o intervalo entre o fim deste
                   // contrato e o início do próximo (mais novo) — inclusive o vigente.
                   const newer = i === 0 ? currentContract : pastContracts[i - 1];
@@ -2041,11 +2049,15 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
                       <div className="relative flex items-center gap-3.5 py-3 pr-3 rounded-xl hover:bg-slate-50 dark:hover:bg-white/[0.03] transition">
                         {!isFirstEver && <span className="absolute left-[15px] top-0 -bottom-px w-0.5 bg-slate-100 dark:bg-white/[0.06]"></span>}
-                        <span className={cn(
-                          'relative z-[1] size-8 flex-none rounded-full grid place-items-center ring-4 ring-white dark:ring-[#0e1326]',
-                          hTone.block, hTone.fg
-                        )}>
-                          <OriginIcon kind={contractOriginOf(c, leadContracts).kind} />
+                        <span
+                          title={ORIGIN_LABEL[hOrigin.kind]}
+                          className={cn(
+                            'relative z-[1] size-8 flex-none rounded-full grid place-items-center ring-4 ring-white dark:ring-[#0e1326]',
+                            hTone.block, hTone.fg
+                          )}
+                        >
+                          <OriginIcon kind={hOrigin.kind} />
+                          <span className="sr-only">{ORIGIN_LABEL[hOrigin.kind]}</span>
                         </span>
 
                         <div className="min-w-0 flex-[1.4]">
