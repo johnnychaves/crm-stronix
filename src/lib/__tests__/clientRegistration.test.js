@@ -146,6 +146,44 @@ describe('readClientRegistration', () => {
   });
 });
 
+// Até 29/09/2026 o telefone fixo (10 dígitos) era gravado no desenho do
+// celular, "(51) 3 3334-444". Abrir o cadastro completo mostra o número
+// certo, e salvar grava o texto certo sem mudar nenhum campo de busca.
+describe('telefone fixo gravado com a máscara antiga', () => {
+  const lead = {
+    name: 'Rafael Costa', whatsapp: '(51) 3 3334-444',
+    emergencyContact: { name: 'Clara', phone: '(51) 3 3224-455', relationship: 'Mãe' },
+  };
+
+  it('o formulário abre com o número no desenho do fixo', () => {
+    const form = readClientRegistration(lead);
+    expect(form.whatsapp).toBe('(51) 3333-4444');
+    expect(form.emgPhone).toBe('(51) 3322-4455');
+  });
+
+  it('salvar grava o texto certo, e os campos de busca são os mesmos de antes', () => {
+    const patch = buildClientRegistrationPatch(readClientRegistration(lead), {});
+    expect(patch.whatsapp).toBe('(51) 3333-4444');
+    expect(patch.emergencyContact.phone).toBe('(51) 3322-4455');
+    expect(patch).toMatchObject(buildLeadSearchFields({ name: lead.name, whatsapp: lead.whatsapp }));
+  });
+
+  it('o telefone do responsável do menor também', () => {
+    // Datas longe da virada dos 18 anos: o teste não depende do fuso.
+    const agora = new Date(2026, 8, 29, 12);
+    const menor = {
+      name: 'Pedro Costa', whatsapp: '', isMinor: true, birthDate: new Date(2016, 0, 10, 12),
+      guardian: { name: 'Maria Costa', phone: '(51) 3 3334-444', relationship: 'Mãe' },
+    };
+    const form = readClientRegistration(menor, agora);
+    expect(form.guardianPhone).toBe('(51) 3333-4444');
+    const patch = buildClientRegistrationPatch(form, {});
+    expect(patch.guardian.phone).toBe('(51) 3333-4444');
+    expect(patch.guardianPhoneDigits).toBe('5133334444');
+    expect(patch.guardianZapMatchKey).toBe('5133334444');
+  });
+});
+
 describe('computeCompleteness', () => {
   it('form cheio ~100% e vazio ~0%', () => {
     expect(computeCompleteness(baseForm())).toBeGreaterThanOrEqual(90);

@@ -1,5 +1,7 @@
-// Ponte com o Stronizap. Um sentido só nesta Parte A: o Zap pergunta quem é a
-// pessoa por trás de um telefone e recebe o cartão de contexto.
+// Ponte com o Stronizap. O Zap pergunta quem é a pessoa por trás de um
+// telefone e recebe o cartão de contexto. Desde o cadastro pelo Stronizap, ele
+// também pede as listas do formulário (lead-options) e cadastra o lead de
+// dentro da conversa (create-lead).
 //
 // O GET procura também os menores que têm aquele telefone como responsável
 // (`guardianZapMatchKey`), e o `match` conta o número do responsável como
@@ -9,15 +11,21 @@
 // guardada aqui só como hash em tenants/{id}.integrations.zap.keyHash.
 //
 // O POST tem dois donos. `generate` e `revoke` são do admin da academia, logado
-// no CRM, e autenticam por verifyRequest (ID token). `match` é do próprio
-// Stronizap e autentica pela chave, igual ao GET. O desvio fica na primeira
-// linha de handlePost, e os dois caminhos nunca se misturam.
+// no CRM, e autenticam por verifyRequest (ID token). `match`, `lead-options` e
+// `create-lead` são do próprio Stronizap e autenticam pela chave, igual ao GET.
+// O desvio fica no começo de handlePost, e os dois caminhos nunca se misturam.
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { withSentry } from './_sentry.js';
 import { isTenantAdmin } from './_auth.js';
+import { checkRateLimit } from './_rateLimit.js';
 import { generateZapKey, verifyZapKey } from './_zapAuth.js';
 import { zapMatchKey } from './_zapPhone.js';
 import { buildZapCard, buildGuardianCard, buildZapWards } from './_zapCard.js';
+import {
+  LEAD_CREATE_LIMIT, ZAP_LEAD_MESSAGES, refusal, invalidData, tenantBlocked, emailFromActor, findTeamMember,
+  buildLeadOptions, readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
+  buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError
+} from './_zapLead.js';
 import { contactOf } from '../src/lib/guardian.js';
 
 const LEADS_PATH = 'stronix_leads';
@@ -27,12 +35,20 @@ const LEADS_PATH = 'stronix_leads';
 // CLIENTE do Firebase (App Check, IndexedDB) e quebra em runtime de servidor.
 const CONFIG_PATH = 'stronix_config';
 const CONFIG_GENERAL_ID = 'general';
+const USERS_PATH = 'stronix_users';
+const INTERACTIONS_PATH = 'stronix_interactions';
+// Catálogos do formulário do cadastro, na ordem em que readCatalogs devolve.
+const CATALOG_PATHS = ['stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses'];
 
 const MATCH_MAX = 30; // teto do operador `in` do Firestore
 
 // Menores por responsável lidos por consulta. Irmãos de verdade passam longe
 // disso; o teto só impede um número muito compartilhado de pesar a rota.
 const WARDS_MAX = 10;
+
+// Menores lidos por responsável na conferência de duplicado do cadastro. Só
+// um teto contra número compartilhado demais: irmãos passam longe disso.
+const MINORS_SCAN_MAX = 100;
 
 // Campos de data que os módulos puros esperam como Date. O Firestore devolve
 // Timestamp.
@@ -55,17 +71,71 @@ const leadDoDoc = (doc) => {
 // lugar do texto derrube a função antes da autenticação.
 const TENANT_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
-const leadsCollection = (tenantId) =>
+// Coleção da academia em artifacts/{academia}/public/data/{nome}.
+const academyCollection = (tenantId, nome) =>
   adminDb.collection('artifacts').doc(tenantId)
-    .collection('public').doc('data').collection(LEADS_PATH);
+    .collection('public').doc('data').collection(nome);
+
+const leadsCollection = (tenantId) => academyCollection(tenantId, LEADS_PATH);
+
+// A academia e a integração dela, ou null quando a academia não existe, nunca
+// gerou chave (sem keyHash) ou teve a chave revogada. O cadastro pelo Stronizap
+// precisa do documento inteiro para conferir se a academia está ativa.
+async function loadZapTenant(tenantId) {
+  const tenantSnap = await adminDb.collection('tenants').doc(tenantId).get();
+  const tenant = tenantSnap.exists ? tenantSnap.data() : null;
+  const zap = tenant?.integrations?.zap;
+  if (!zap?.keyHash || zap.revokedAt) return null;
+  return { tenant, zap };
+}
 
 // Integração do tenant, ou null quando o tenant não existe, nunca gerou chave
 // (sem keyHash) ou teve a chave revogada.
 async function loadZapIntegration(tenantId) {
-  const tenantSnap = await adminDb.collection('tenants').doc(tenantId).get();
-  const zap = tenantSnap.exists ? tenantSnap.data()?.integrations?.zap : null;
-  if (!zap?.keyHash || zap.revokedAt) return null;
-  return zap;
+  return (await loadZapTenant(tenantId))?.zap ?? null;
+}
+
+// O cartão que o GET devolve para esta chave de telefone: o dono do número e
+// os menores que o têm como responsável, ou { found: false } quando ninguém
+// casa. O cadastro pelo Stronizap responde com este mesmo cartão.
+async function cardFor(tenantId, matchKey) {
+  // O dono do número e os menores que o têm como responsável, juntos. A busca
+  // dos menores não pode derrubar o cartão do dono: se ela falhar (índice
+  // desligado no console, por exemplo), o cartão sai sem os menores. O log
+  // leva só o código do erro: a mensagem do Firestore pode trazer o valor da
+  // consulta, que é o telefone.
+  const [achados, menoresSnap] = await Promise.all([
+    leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get(),
+    leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get()
+      .catch((e) => {
+        console.error('zap: busca dos menores falhou', e?.code ?? 'sem código');
+        return null;
+      })
+  ]);
+  const menoresDocs = menoresSnap ? menoresSnap.docs : [];
+
+  const agora = new Date();
+  const dono = achados.empty ? null : leadDoDoc(achados.docs[0]);
+  // Só quem ainda tem o responsável como contato (menor, ou que fez 18 sem
+  // WhatsApp próprio), e nunca o próprio dono do número.
+  const menores = menoresDocs
+    .map(leadDoDoc)
+    .filter((m) => m.id !== dono?.id && contactOf(m, agora).viaGuardian);
+
+  if (!dono && menores.length === 0) return { found: false };
+
+  // Marcos de renovação da academia. Só lê depois de achar alguém: em
+  // 'found: false' não há faixa pra montar, então não vale o custo da
+  // consulta. Doc inexistente (academia nunca abriu Configurações → Metas &
+  // ritmo) ou campo ausente/malformado: buildZapCard/buildZapStrip caem no
+  // padrão 90/60/30 sozinhos, não precisa validar aqui.
+  const configSnap = await academyCollection(tenantId, CONFIG_PATH).doc(CONFIG_GENERAL_ID).get();
+  const renewalCheckpoints = configSnap.exists ? configSnap.data()?.renewalCheckpoints : undefined;
+
+  if (!dono) return buildGuardianCard(menores, agora, renewalCheckpoints);
+  const card = buildZapCard(dono, agora, renewalCheckpoints);
+  if (menores.length > 0) card.wards = buildZapWards(menores, agora, renewalCheckpoints);
+  return card;
 }
 
 export default withSentry(async function handler(req, res) {
@@ -104,49 +174,10 @@ export default withSentry(async function handler(req, res) {
     return;
   }
 
-  // O dono do número e os menores que o têm como responsável, juntos. A busca
-  // dos menores não pode derrubar o cartão do dono: se ela falhar (índice
-  // desligado no console, por exemplo), o cartão sai sem os menores. O log
-  // leva só o código do erro: a mensagem do Firestore pode trazer o valor da
-  // consulta, que é o telefone.
-  const [achados, menoresSnap] = await Promise.all([
-    leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get(),
-    leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get()
-      .catch((e) => {
-        console.error('zap: busca dos menores falhou', e?.code ?? 'sem código');
-        return null;
-      })
-  ]);
-  const menoresDocs = menoresSnap ? menoresSnap.docs : [];
-
-  const agora = new Date();
-  const dono = achados.empty ? null : leadDoDoc(achados.docs[0]);
-  // Só quem ainda tem o responsável como contato (menor, ou que fez 18 sem
-  // WhatsApp próprio), e nunca o próprio dono do número.
-  const menores = menoresDocs
-    .map(leadDoDoc)
-    .filter((m) => m.id !== dono?.id && contactOf(m, agora).viaGuardian);
-
-  if (!dono && menores.length === 0) {
+  const card = await cardFor(tenantId, matchKey);
+  if (!card.found) {
     res.status(200).json({ found: false });
     return;
-  }
-
-  // Marcos de renovação da academia. Só lê depois de achar alguém: em
-  // 'found: false' não há faixa pra montar, então não vale o custo da
-  // consulta. Doc inexistente (academia nunca abriu Configurações → Metas &
-  // ritmo) ou campo ausente/malformado: buildZapCard/buildZapStrip caem no
-  // padrão 90/60/30 sozinhos, não precisa validar aqui.
-  const configSnap = await adminDb.collection('artifacts').doc(tenantId)
-    .collection('public').doc('data').collection(CONFIG_PATH).doc(CONFIG_GENERAL_ID).get();
-  const renewalCheckpoints = configSnap.exists ? configSnap.data()?.renewalCheckpoints : undefined;
-
-  let card;
-  if (dono) {
-    card = buildZapCard(dono, agora, renewalCheckpoints);
-    if (menores.length > 0) card.wards = buildZapWards(menores, agora, renewalCheckpoints);
-  } else {
-    card = buildGuardianCard(menores, agora, renewalCheckpoints);
   }
 
   res.setHeader('Cache-Control', 'private, max-age=120');
@@ -154,12 +185,17 @@ export default withSentry(async function handler(req, res) {
 });
 
 // Gera e revoga a chave de conexão do Stronizap (ação do admin da academia, pela
-// tela de Configurações → Integrações) e responde o match em lote (ação do
-// próprio Stronizap, autenticada pela chave). Ver o desvio logo abaixo.
+// tela de Configurações → Integrações) e atende as ações do próprio Stronizap,
+// autenticadas pela chave: o match em lote, as opções e o cadastro de lead.
+// Ver o desvio logo abaixo.
 async function handlePost(req, res) {
-  // A ação match é a única do POST que autentica pela chave do Zap. As outras
-  // duas (generate e revoke) são do admin logado e seguem exigindo ID token.
-  if (req.body?.action === 'match') return handleMatch(req, res);
+  // match, lead-options e create-lead são do próprio Stronizap e autenticam
+  // pela chave do Zap. generate e revoke são do admin logado e seguem exigindo
+  // ID token. Ação desconhecida cai no caminho do login e é recusada lá.
+  const action = req.body?.action;
+  if (action === 'match') return handleMatch(req, res);
+  if (action === 'lead-options') return handleLeadOptions(req, res);
+  if (action === 'create-lead') return handleCreateLead(req, res);
 
   try {
     const auth = await verifyRequest(req);
@@ -172,7 +208,6 @@ async function handlePost(req, res) {
       return res.status(403).json({ error: 'Só o admin da academia pode alterar a integração' });
     }
 
-    const { action } = req.body || {};
     const tenantRef = adminDb.collection('tenants').doc(auth.tenantId);
 
     if (action === 'generate') {
@@ -280,4 +315,162 @@ async function handleMatch(req, res) {
     for (const phone of porMatchKey.get(menor.guardianZapMatchKey) || []) found.add(phone);
   }
   return res.status(200).json({ found: [...found] });
+}
+
+// ---------------------------------------------------------------------------
+// Cadastro de lead pelo Stronizap. As regras moram em api/_zapLead.js; aqui
+// ficam a leitura e a gravação. Spec em
+// docs/superpowers/specs/2026-09-29-cadastro-de-lead-pelo-stronizap-design.md
+// ---------------------------------------------------------------------------
+
+const responder = (res, { status, body }) => res.status(status).json(body);
+
+const docsOf = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+// Autenticação das ações do Stronizap no POST: identificador no formato da
+// casa, chave da academia e academia ativa. Devolve { tenantId } ou
+// { refusal }. Academia inexistente responde igual a chave errada, como no GET.
+async function openByKey(req) {
+  const chave = req.headers['x-stronizap-key'];
+  const tenantId = req.body?.tenant;
+  if (!chave || !tenantId) return { refusal: { status: 401, body: { error: 'Credencial ausente' } } };
+  if (typeof tenantId !== 'string' || !TENANT_RE.test(tenantId)) {
+    return { refusal: { status: 401, body: { error: 'Credencial inválida' } } };
+  }
+  const loaded = await loadZapTenant(tenantId);
+  if (!loaded || !verifyZapKey(chave, loaded.zap.keyHash)) {
+    return { refusal: { status: 401, body: { error: 'Credencial inválida' } } };
+  }
+  // O firebase-admin passa por cima das regras do Firestore, então a conta do
+  // tenantActive (firestore.rules) é refeita aqui. Vale também para as
+  // opções: o formulário nem abre.
+  if (tenantBlocked(loaded.tenant, new Date())) {
+    return { refusal: refusal(403, 'academia_bloqueada', ZAP_LEAD_MESSAGES.blocked) };
+  }
+  return { tenantId };
+}
+
+// A equipe inteira da academia: quem cadastra (pelo e-mail), o dono que o
+// gestor escolhe e a lista de Consultor responsável. Equipe cabe numa leitura.
+async function readTeam(tenantId) {
+  return docsOf(await academyCollection(tenantId, USERS_PATH).get());
+}
+
+// Os catálogos do formulário, lidos a cada pedido: item novo no Stronilead
+// aparece na próxima abertura, e item apagado é recusado no cadastro.
+async function readCatalogs(tenantId) {
+  const [sources, dores, modalities, funnels, statuses] = await Promise.all(
+    CATALOG_PATHS.map((nome) => academyCollection(tenantId, nome).get())
+  );
+  return {
+    sources: docsOf(sources),
+    dores: docsOf(dores),
+    modalities: docsOf(modalities),
+    funnels: docsOf(funnels),
+    statuses: docsOf(statuses)
+  };
+}
+
+// Opções do formulário: quem pede (achado pelo e-mail da sessão do Stronizap)
+// e as listas da academia. Só lê.
+async function handleLeadOptions(req, res) {
+  try {
+    const access = await openByKey(req);
+    if (access.refusal) return responder(res, access.refusal);
+
+    const email = emailFromActor(req.body?.actor);
+    if (!email) return responder(res, invalidData('actor', ZAP_LEAD_MESSAGES.actor));
+
+    const [team, catalogs] = await Promise.all([readTeam(access.tenantId), readCatalogs(access.tenantId)]);
+    const actor = findTeamMember(team, email);
+    if (!actor) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+
+    return res.status(200).json(buildLeadOptions({ actor, team, catalogs }));
+  } catch (e) {
+    throw scrubbedError('lead-options', e);
+  }
+}
+
+// Cadastro do lead de dentro da conversa. Só cadastra quem está na equipe, com
+// as regras do Stronilead, e responde 201 com o mesmo cartão que o GET devolve
+// para o número.
+async function handleCreateLead(req, res) {
+  try {
+    const access = await openByKey(req);
+    if (access.refusal) return responder(res, access.refusal);
+    const { tenantId } = access;
+
+    const read = readCreateLeadBody(req.body);
+    if (read.refusal) return responder(res, read.refusal);
+    const { phone, matchKey, email, actorName, channelName, lead } = read.value;
+
+    const limit = await checkRateLimit(`zap-create-lead:${tenantId}`, LEAD_CREATE_LIMIT);
+    if (!limit.ok) return responder(res, refusal(429, 'limite', ZAP_LEAD_MESSAGES.rateLimited));
+
+    const [team, catalogs] = await Promise.all([readTeam(tenantId), readCatalogs(tenantId)]);
+    const member = findTeamMember(team, email);
+    if (!member) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+    // O nome do autor é o do Stronilead, como em toda interação do app. O que
+    // o Stronizap manda só entra se o cadastro da equipe não tiver nome.
+    const actor = { ...member, name: member.name || actorName };
+
+    const problem = checkMinor({ minor: lead.minor, phone }) || checkCatalog(lead, catalogs);
+    if (problem) return responder(res, problem);
+    const ownership = resolveOwner({ actor, ownerId: lead.ownerId, team });
+    if (ownership.refusal) return responder(res, ownership.refusal);
+
+    const serverTime = admin.firestore.FieldValue.serverTimestamp();
+    const leadRef = leadsCollection(tenantId).doc();
+    const markRef = academyCollection(tenantId, INTERACTIONS_PATH).doc();
+    const newLead = buildZapLead({ lead, phone, actor, owner: ownership.owner, serverTime });
+    const mark = buildZapSignupInteraction({
+      leadId: leadRef.id, leadName: newLead.name, actor, owner: ownership.owner, channelName, serverTime
+    });
+    // A observação do cadastro, como no Novo lead, na mesma gravação: ou entra
+    // tudo, ou nada, e o "Tentar de novo" não deixa lead sem a nota.
+    const noteRef = lead.observacao ? academyCollection(tenantId, INTERACTIONS_PATH).doc() : null;
+    const note = noteRef
+      ? buildRegistrationNote({
+          leadId: leadRef.id, leadName: newLead.name, actor, owner: ownership.owner, observacao: lead.observacao, serverTime
+        })
+      : null;
+    const studentMatch = studentKey(lead.minor);
+
+    // Conferência de duplicado e gravação na MESMA transação: dois cliques,
+    // duas pessoas ou o "Tentar de novo" depois de uma resposta perdida caem
+    // num lead só.
+    const outcome = await adminDb.runTransaction(async (tx) => {
+      if (!lead.minor) {
+        const owners = await tx.get(leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1));
+        if (!owners.empty) return { repeated: leadDoDoc(owners.docs[0]) };
+      } else {
+        // O telefone do responsável não barra: irmãos dividem o número. Barra
+        // o mesmo aluno com o mesmo responsável.
+        const wards = await tx.get(
+          leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(MINORS_SCAN_MAX)
+        );
+        const same = wards.docs.map(leadDoDoc).find((m) => sameStudentName(m.name, lead.name));
+        if (same) return { repeated: same };
+        if (studentMatch) {
+          const student = await tx.get(leadsCollection(tenantId).where('zapMatchKey', '==', studentMatch).limit(1));
+          if (!student.empty) return { studentTaken: true };
+        }
+      }
+      tx.create(leadRef, newLead);
+      tx.create(markRef, mark);
+      if (noteRef) tx.create(noteRef, note);
+      return { created: true };
+    });
+
+    if (outcome.studentTaken) {
+      return responder(res, refusal(422, 'menor_invalido', ZAP_LEAD_MESSAGES.studentTaken, { field: 'studentWhatsapp' }));
+    }
+    const card = await cardFor(tenantId, matchKey);
+    if (outcome.repeated) {
+      return res.status(409).json(alreadyRegisteredBody({ repeated: outcome.repeated, card, minor: Boolean(lead.minor) }));
+    }
+    return res.status(201).json({ card });
+  } catch (e) {
+    throw scrubbedError('create-lead', e);
+  }
 }
