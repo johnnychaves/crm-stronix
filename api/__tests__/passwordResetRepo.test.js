@@ -174,9 +174,11 @@ describe('findAccount', () => {
     expect((await findAccount('ana@academia.com')).organizationActive).toBe(true);
   });
 
+  // Cada caso sai por um corte só do retorno antecipado: o super-admin e a conta
+  // desativada trazem a academia no claim, e só a conta sem academia fica sem ela.
   it.each([
-    ['super-admin', { customClaims: { superAdmin: true } }, { superAdmin: true, tenantId: null }],
-    ['conta desativada', { disabled: true }, { disabled: true }],
+    ['super-admin', { customClaims: { tenantId: 'academia-teste', superAdmin: true } }, { superAdmin: true, tenantId: 'academia-teste' }],
+    ['conta desativada', { disabled: true }, { disabled: true, tenantId: 'academia-teste' }],
     ['conta sem academia', { customClaims: {} }, { tenantId: null }],
   ])('%s sai com o e-mail e sem ler a academia nem a equipe', async (_caso, extra, esperado) => {
     h.usuarios['ana@academia.com'] = usuario(extra);
