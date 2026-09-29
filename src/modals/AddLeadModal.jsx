@@ -6,17 +6,17 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
-import { getLeadOwnershipFields } from '../lib/leads.js';
 import { useDuplicateLead, findDuplicateLeadRemote } from '../hooks/useDuplicateLead.js';
 import { logInteraction } from '../lib/interactions.js';
-import { buildLeadSearchFields, buildGuardianPatch, deriveLeadBucket, sameContactPhone } from '../lib/leadDerived.js';
+import { sameContactPhone } from '../lib/leadDerived.js';
+import { buildNewLeadDoc, leadEntryFunnels } from '../lib/newLead.js';
 import { formatPhone } from '../lib/masks.js';
 import { GUARDIAN_RELATIONSHIPS, guardianIssue, turnedAdult } from '../lib/guardian.js';
 import { phoneNoticeLines } from '../lib/phoneNotice.js';
 import { useGuardianMatches } from '../hooks/useGuardianMatches.js';
 import { fromDateInputValue } from '../lib/dates.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
-import { getReferralFunnel, getReferralEntryStage, isReferralFunnel, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
+import { getReferralFunnel, getReferralEntryStage, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
 import { isRenewalFunnel } from '../lib/renewalFunnel.js';
 import { isExpiredFunnel } from '../lib/expiredFunnel.js';
 import { isUpgradeFunnel } from '../lib/upgradeFunnel.js';
@@ -347,7 +347,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   // criado ali nasceria com a etapa vazia — vivo nas listas, sem casar com
   // coluna de board nenhum, sumido do pipeline sem aviso.
   // Funis que projetam CLIENTES (Renovações, Vencidos, Upgrade) não recebem lead novo: ele sumiria de todo board.
-  const pickerFunnels = safeFunnels.filter((f) => !isReferralFunnel(f) && !isRenewalFunnel(f) && !isExpiredFunnel(f) && !isUpgradeFunnel(f));
+  const pickerFunnels = leadEntryFunnels(safeFunnels);
   // Modal aberto já na aba do funil de indicações → switch nasce ligado.
   const initialIsReferral = canReferral && initialFunnelId === referralFunnel.id;
 
@@ -480,39 +480,12 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
       const leadRef = await addDoc(
         collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH),
         {
-          name: form.name.trim(),
-          whatsapp: form.whatsapp,
-          source: form.source,
-          funnelId: form.funnelId,
-          status: form.status,
-          tags: form.tags,
-          birthDate: fromDateInputValue(form.birthDate),
-          cpf: (form.cpf || '').trim() || null,
-          email: (form.email || '').trim() || null,
-          sexo: form.sexo || null,
-          dor: (form.dor || '').trim() || null,
-          modalidade: form.modalidade || null,
-          // Vínculo de indicação no PRÓPRIO doc: a feature funciona mesmo se o
-          // batch de eventos (commitReferralLink) falhar depois.
-          referredById: isReferral && referrer ? referrer.id : null,
-          referredByName: isReferral && referrer ? (referrer.name || null) : null,
-          ...getLeadOwnershipFields(appUser),
-          ...buildLeadSearchFields({ name: form.name, whatsapp: form.whatsapp, cpf: form.cpf }),
-          ...buildGuardianPatch({
-            isMinor: form.isMinor,
-            name: form.guardianName,
-            phone: form.guardianPhone,
-            relationship: form.guardianRelation,
-          }),
-          lifecycleBucket: deriveLeadBucket({ status: form.status }),
-          lastInteractionAt: null,
-          interactionsCount: 0,
+          // O mesmo montador do cadastro pelo Stronizap (src/lib/newLead.js):
+          // campo novo do lead entra lá e os dois cadastros gravam igual. As
+          // datas do servidor ficam aqui, porque cada lado usa um SDK.
+          ...buildNewLeadDoc(form, { owner: appUser, referrer: isReferral ? referrer : null }),
           createdAt: serverTimestamp(),
           statusEnteredAt: serverTimestamp(),
-          nextFollowUp: null,
-          nextFollowUpType: null,
-          appointmentType: null,
-          appointmentScheduledFor: null,
         }
       );
 
