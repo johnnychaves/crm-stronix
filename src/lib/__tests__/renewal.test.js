@@ -20,6 +20,7 @@ import {
   missedCheckpointsLabel,
   vigenciaRefDate
 } from '../renewal.js';
+import { renewalJoinOf } from '../contracts.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 
@@ -64,11 +65,43 @@ describe('computeSeam', () => {
     expect(computeSeam(end, D(2026, 9, 1)).kind).toBe(SEAM_KIND.LACUNA);
   });
 
-  it('começar hoje, 25 dias antes do vencimento, sobrepõe 25 dias', () => {
+  it('começar 25 dias antes do fim sobrepõe 26: o dia do fim entra nos dois', () => {
     const seam = computeSeam(end, D(2026, 7, 27));
     expect(seam.kind).toBe(SEAM_KIND.SOBREPOSICAO);
-    expect(seam.gapDays).toBe(-25);
-    expect(seam.overlapDays).toBe(25);
+    expect(seam.gapDays).toBe(-26);
+    expect(seam.overlapDays).toBe(26);
+  });
+
+  it('começar no próprio dia do fim sobrepõe um dia, não é emenda', () => {
+    const seam = computeSeam(end, D(2026, 8, 21));
+    expect(seam.kind).toBe(SEAM_KIND.SOBREPOSICAO);
+    expect(seam.overlapDays).toBe(1);
+  });
+
+  it('conta dias do calendário: o horário não muda o encaixe', () => {
+    expect(computeSeam(new Date(2026, 7, 21, 23, 0), new Date(2026, 7, 22, 1, 0)).kind).toBe(SEAM_KIND.EMENDA);
+    expect(computeSeam(new Date(2026, 7, 21, 1, 0), new Date(2026, 7, 21, 23, 0)).kind).toBe(SEAM_KIND.SOBREPOSICAO);
+  });
+
+  // O modal mostra o encaixe e a gravação decide por renewalJoinOf. Se as duas
+  // contas divergirem, a tela promete uma coisa e o contrato grava outra.
+  it('bate com renewalJoinOf, a conta que decide a gravação', () => {
+    const pares = [
+      [new Date(2026, 9, 11, 15, 32), new Date(2026, 9, 12, 0, 0)],
+      [new Date(2026, 9, 11, 0, 0), new Date(2026, 9, 12, 23, 59)],
+      [new Date(2026, 9, 11, 23, 0), new Date(2026, 9, 11, 1, 0)],
+      [new Date(2026, 9, 11, 8, 0), new Date(2026, 8, 29, 17, 45)],
+      [new Date(2026, 9, 11, 8, 0), new Date(2026, 9, 13, 8, 0)],
+      [new Date(2026, 11, 31, 22, 0), new Date(2027, 0, 1, 3, 0)],
+      [D(2026, 2, 28), D(2026, 3, 1)],
+      [D(2026, 8, 21), D(2026, 7, 27)]
+    ];
+    pares.forEach(([fim, inicio]) => {
+      const seam = computeSeam(fim, inicio);
+      const join = renewalJoinOf(fim, inicio);
+      expect(seam.kind === SEAM_KIND.EMENDA).toBe(join.seamless);
+      expect(seam.kind === SEAM_KIND.SOBREPOSICAO).toBe(join.overlaps);
+    });
   });
 
   it('null quando falta uma das datas', () => {
@@ -81,10 +114,11 @@ describe('seamLabel', () => {
   const end = D(2026, 8, 21);
 
   it('lê a emenda, a lacuna e a sobreposição', () => {
-    expect(seamLabel(computeSeam(end, D(2026, 8, 22)))).toMatch(/Emenda perfeita/);
+    expect(seamLabel(computeSeam(end, D(2026, 8, 22)))).toBe('Emenda perfeita, nenhum dia sem contrato.');
     expect(seamLabel(computeSeam(end, D(2026, 8, 23)))).toBe('1 dia sem contrato entre os dois.');
     expect(seamLabel(computeSeam(end, D(2026, 9, 1)))).toBe('10 dias sem contrato entre os dois.');
-    expect(seamLabel(computeSeam(end, D(2026, 7, 27)))).toBe('Sobreposição de 25 dias com o contrato atual.');
+    expect(seamLabel(computeSeam(end, D(2026, 7, 27)))).toBe('Sobreposição de 26 dias com o contrato atual.');
+    expect(seamLabel(computeSeam(end, D(2026, 8, 21)))).toBe('Sobreposição de 1 dia com o contrato atual.');
   });
 });
 
@@ -95,10 +129,16 @@ describe('seamWarning', () => {
     expect(seamWarning(computeSeam(end, D(2026, 8, 22)), D(2026, 8, 22))).toBeNull();
   });
 
-  it('na sobreposição diz a data em que o contrato atual seria encerrado', () => {
+  it('na sobreposição diz a véspera do novo, que vira o fim do atual, sem travessão', () => {
     const warn = seamWarning(computeSeam(end, D(2026, 7, 27)), D(2026, 7, 27));
     expect(warn).toMatch(/26\/07\/2026/);
-    expect(warn).toMatch(/25 dias antes/);
+    expect(warn).toMatch(/26 dias antes/);
+    expect(warn).not.toContain('—');
+  });
+
+  it('começar no dia do fim encerra o atual um dia antes, no singular', () => {
+    const warn = seamWarning(computeSeam(end, D(2026, 8, 21)), D(2026, 8, 21));
+    expect(warn).toMatch(/20\/08\/2026, 1 dia antes/);
   });
 
   it('na lacuna diz quantos dias o cliente fica fora dos relatórios', () => {
