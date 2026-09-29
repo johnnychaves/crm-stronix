@@ -119,7 +119,9 @@ export async function captureError(err, req) {
     if (!DSN) return;
     Sentry.captureException(err, { tags: { endpoint: endpointTag(req) } });
     await Sentry.flush(2000);
-  } catch {
-    // Telemetria não derruba a função.
+  } catch (e) {
+    // Telemetria não derruba a função. O aviso deixa rastro no log da Vercel, e
+    // como a migalha de console não vai ao Sentry, ele não entra num laço.
+    console.warn('Sentry falhou ao enviar o erro:', e?.message);
   }
 }

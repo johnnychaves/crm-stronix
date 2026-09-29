@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const h = vi.hoisted(() => ({ init: vi.fn(), capture: vi.fn(), flush: vi.fn(async () => true) }));
 
@@ -11,7 +11,14 @@ vi.mock('@sentry/node', () => ({
 
 const DSN = 'https://chave@o1.ingest.sentry.io/1';
 
+beforeEach(() => {
+  // Quando o SDK falha, o captureError escreve um aviso no console. Aqui ele
+  // fica em silêncio, e os testes do aviso conferem a chamada.
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+});
+
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllEnvs();
   vi.resetModules();
   // mockReset, e não mockClear: limpa também o que um teste deixou na fila do
@@ -104,6 +111,24 @@ describe('captureError', () => {
     const req = { url: { toString() { throw new Error('toString quebrou'); } } };
     const { captureError } = await import('../_sentry.js');
     await expect(captureError(new Error('x'), req)).resolves.toBeUndefined();
+  });
+
+  // A falha do SDK deixa rastro no log da Vercel. O aviso não entra num laço:
+  // a migalha de console não vai ao Sentry nas funções da api/.
+  it('deixa um aviso no log quando o SDK falha, e continua sem lançar', async () => {
+    vi.stubEnv('SENTRY_DSN', DSN);
+    h.flush.mockRejectedValueOnce(new Error('rede fora'));
+    const { captureError } = await import('../_sentry.js');
+    await expect(captureError(new Error('x'), { url: '/api/tenant-resolve' })).resolves.toBeUndefined();
+    expect(console.warn).toHaveBeenCalledTimes(1);
+    expect(console.warn).toHaveBeenCalledWith('Sentry falhou ao enviar o erro:', 'rede fora');
+  });
+
+  it('sem falha do SDK, não escreve aviso nenhum', async () => {
+    vi.stubEnv('SENTRY_DSN', DSN);
+    const { captureError } = await import('../_sentry.js');
+    await captureError(new Error('x'), { url: '/api/tenant-resolve' });
+    expect(console.warn).not.toHaveBeenCalled();
   });
 });
 
