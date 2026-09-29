@@ -12,7 +12,8 @@ const fusoDaMaquina = vi.hoisted(() => {
 
 import {
   ZAP_LEAD_MESSAGES, LEAD_CREATE_LIMIT, refusal, invalidData, tenantBlocked, nationalDigits, whatsappFromZap,
-  emailFromActor, findTeamMember, teamRole, catalogView, buildLeadOptions
+  emailFromActor, findTeamMember, teamRole, catalogView, buildLeadOptions,
+  readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey
 } from '../_zapLead.js';
 // A máscara do Novo lead. O fixo sai dela, e não de um texto fixo aqui: a PR
 // #232 corrige a máscara de 10 dígitos, e este teste vale antes e depois dela.
@@ -216,5 +217,187 @@ describe('catalogView e buildLeadOptions', () => {
   it('sem funil marcado como padrão, vale o primeiro pela ordem', () => {
     const semPadrao = { ...CATALOGOS, funnels: CATALOGOS.funnels.map((f) => ({ ...f, isDefault: false })) };
     expect(buildLeadOptions({ actor: ANA, catalogs: semPadrao }).defaults).toMatchObject({ funnelId: 'f-com', stage: 'Novo lead' });
+  });
+});
+
+describe('readCreateLeadBody: só o formato do pedido', () => {
+  const corpo = (lead = {}, extra = {}) => ({
+    phone: '5551998124471',
+    actor: { email: ' Ana@Stronix.com.br ', name: ' Ana ' },
+    channelName: ' Recepção ',
+    lead: {
+      name: '  Mariana Souza ', source: 'WhatsApp', dor: 'Postura', modalidade: null,
+      funnelId: 'f-com', stage: 'Novo lead', ownerId: null, minor: null, ...lead
+    },
+    ...extra
+  });
+
+  it('pedido certo: telefone com a chave, e-mail em minúsculas, nome aparado e catálogo como veio', () => {
+    expect(readCreateLeadBody(corpo())).toEqual({
+      value: {
+        phone: '51998124471',
+        matchKey: '5198124471',
+        email: 'ana@stronix.com.br',
+        actorName: 'Ana',
+        channelName: 'Recepção',
+        lead: {
+          name: 'Mariana Souza', source: 'WhatsApp', dor: 'Postura', modalidade: null,
+          funnelId: 'f-com', stage: 'Novo lead', ownerId: null, minor: null
+        }
+      }
+    });
+  });
+
+  it('número antigo: o telefone sai com o nono dígito, e a chave é a mesma', () => {
+    const { value } = readCreateLeadBody(corpo({}, { phone: '555181244710' }));
+    expect(value.phone).toBe('51981244710');
+    expect(value.matchKey).toBe('5181244710');
+  });
+
+  it('menor: o bloco aparado, com parentesco e WhatsApp do aluno opcionais', () => {
+    const { value } = readCreateLeadBody(corpo({ minor: { guardianName: ' Maria ', relationship: '', studentWhatsapp: ' ' } }));
+    expect(value.lead.minor).toEqual({ guardianName: 'Maria', relationship: null, studentWhatsapp: null });
+  });
+
+  it('modalidade em branco vira null, e minor falso é adulto', () => {
+    const { value } = readCreateLeadBody(corpo({ modalidade: '  ', minor: false }));
+    expect(value.lead.modalidade).toBeNull();
+    expect(value.lead.minor).toBeNull();
+  });
+
+  it.each([
+    ['phone', { phone: '123' }],
+    ['phone', { phone: 5551998124471 }],
+    ['actor', { actor: { name: 'Ana' } }],
+    ['actor', { actor: null }],
+    ['channelName', { channelName: 42 }],
+    ['lead', { lead: 'Mariana' }],
+    ['lead', { lead: null }]
+  ])('formato errado em %s é dados_invalidos no campo', (field, extra) => {
+    expect(readCreateLeadBody(corpo({}, extra)).refusal).toEqual(invalidData(field, expect.any(String)));
+  });
+
+  it.each([
+    ['name', { name: ' A ' }, ZAP_LEAD_MESSAGES.nameShort],
+    ['name', { name: 'x'.repeat(121) }, ZAP_LEAD_MESSAGES.nameLong],
+    ['source', { source: 1 }, ZAP_LEAD_MESSAGES.wrongType],
+    ['ownerId', { ownerId: {} }, ZAP_LEAD_MESSAGES.wrongType],
+    ['minor', { minor: 'sim' }, ZAP_LEAD_MESSAGES.minor],
+    ['studentWhatsapp', { minor: { guardianName: 'Maria', studentWhatsapp: 51999 } }, ZAP_LEAD_MESSAGES.wrongType]
+  ])('campo do lead errado (%s) é recusado com a mensagem certa', (field, lead, message) => {
+    expect(readCreateLeadBody(corpo(lead)).refusal).toEqual(invalidData(field, message));
+  });
+});
+
+describe('checkMinor: as regras do guardian.js e do sameContactPhone', () => {
+  const FONE = '5511912345678';
+  const menor = (extra = {}) => ({ guardianName: 'Maria Souza', relationship: 'Mãe', studentWhatsapp: null, ...extra });
+
+  it('adulto não tem o que conferir; menor certo passa', () => {
+    expect(checkMinor({ minor: null, phone: FONE })).toBeNull();
+    expect(checkMinor({ minor: menor({ studentWhatsapp: '(11) 9 5555-4444' }), phone: FONE })).toBeNull();
+  });
+
+  it('responsável sem nome', () => {
+    expect(checkMinor({ minor: menor({ guardianName: 'M' }), phone: FONE }))
+      .toEqual(refusal(422, 'menor_invalido', 'Informe o nome do responsável.', { field: 'guardianName' }));
+  });
+
+  it('parentesco fora da lista do Stronilead', () => {
+    expect(checkMinor({ minor: menor({ relationship: 'Madrasta' }), phone: FONE }))
+      .toEqual(refusal(422, 'menor_invalido', ZAP_LEAD_MESSAGES.relationship, { field: 'relationship' }));
+  });
+
+  it('WhatsApp do aluno incompleto', () => {
+    expect(checkMinor({ minor: menor({ studentWhatsapp: '(11) 9 123' }), phone: FONE }))
+      .toEqual(refusal(422, 'menor_invalido', ZAP_LEAD_MESSAGES.studentIncomplete, { field: 'studentWhatsapp' }));
+  });
+
+  it('WhatsApp do aluno igual ao da conversa, com ou sem o nono dígito', () => {
+    const recusa = refusal(422, 'menor_invalido', ZAP_LEAD_MESSAGES.studentIsGuardian, { field: 'studentWhatsapp' });
+    expect(checkMinor({ minor: menor({ studentWhatsapp: '(11) 9 1234-5678' }), phone: FONE })).toEqual(recusa);
+    expect(checkMinor({ minor: menor({ studentWhatsapp: '(11) 1234-5678' }), phone: FONE })).toEqual(recusa);
+  });
+});
+
+describe('checkCatalog: o que existe no Stronilead na hora do cadastro', () => {
+  const lead = (extra = {}) => ({
+    name: 'Mariana', source: 'WhatsApp', dor: 'Postura', modalidade: 'Pilates', funnelId: 'f-com', stage: 'Novo lead', ...extra
+  });
+
+  it('tudo no catálogo: null; modalidade é opcional', () => {
+    expect(checkCatalog(lead(), CATALOGOS)).toBeNull();
+    expect(checkCatalog(lead({ modalidade: null }), CATALOGOS)).toBeNull();
+  });
+
+  it('academia sem dor: sem_dor_cadastrada antes de qualquer campo', () => {
+    expect(checkCatalog(lead({ source: '' }), { ...CATALOGOS, dores: [] }))
+      .toEqual(refusal(422, 'sem_dor_cadastrada', ZAP_LEAD_MESSAGES.noDor));
+  });
+
+  it.each([
+    ['source', 'Escolha a origem.'],
+    ['dor', 'Escolha a dor ou necessidade.'],
+    ['funnelId', 'Escolha o funil.'],
+    ['stage', 'Escolha a etapa.']
+  ])('%s em branco é campo a preencher', (field, message) => {
+    expect(checkCatalog(lead({ [field]: ' ' }), CATALOGOS)).toEqual(invalidData(field, message));
+  });
+
+  it.each([
+    ['source', { source: 'Facebook' }],
+    ['dor', { dor: 'Ansiedade' }],
+    ['modalidade', { modalidade: 'Crossfit' }],
+    ['funnelId', { funnelId: 'f-ind' }],
+    ['funnelId', { funnelId: 'f-vazio' }],
+    ['stage', { stage: 'Interesse' }]
+  ])('%s que sumiu, ou que não serve para lead novo, é catalogo_mudou', (field, extra) => {
+    expect(checkCatalog(lead(extra), CATALOGOS))
+      .toEqual(refusal(422, 'catalogo_mudou', ZAP_LEAD_MESSAGES.gone[field], { field }));
+  });
+
+  it('o nome vale como está gravado: com espaço a mais é outro item', () => {
+    expect(checkCatalog(lead({ source: 'WhatsApp ' }), CATALOGOS))
+      .toEqual(refusal(422, 'catalogo_mudou', ZAP_LEAD_MESSAGES.gone.source, { field: 'source' }));
+  });
+});
+
+describe('resolveOwner: o dono do lead', () => {
+  const EQUIPE = [ANA, BRUNO, JOHNNY, BIA];
+
+  it('sem escolha, ou escolhendo a si mesmo: quem cadastra', () => {
+    expect(resolveOwner({ actor: ANA, ownerId: null, team: EQUIPE })).toEqual({ owner: ANA });
+    expect(resolveOwner({ actor: ANA, ownerId: 'u-ana', team: EQUIPE })).toEqual({ owner: ANA });
+  });
+
+  it('consultor não passa o lead para outra pessoa', () => {
+    expect(resolveOwner({ actor: ANA, ownerId: 'u-bruno', team: EQUIPE }))
+      .toEqual({ refusal: refusal(422, 'responsavel_invalido', ZAP_LEAD_MESSAGES.onlyManagerPicks) });
+  });
+
+  it('gestor escolhe alguém da equipe com login', () => {
+    expect(resolveOwner({ actor: JOHNNY, ownerId: 'u-bruno', team: EQUIPE })).toEqual({ owner: BRUNO });
+  });
+
+  it('quem saiu da equipe, ou nunca entrou, não pode ser dono', () => {
+    const recusa = { refusal: refusal(422, 'responsavel_invalido', ZAP_LEAD_MESSAGES.ownerGone) };
+    expect(resolveOwner({ actor: JOHNNY, ownerId: 'u-saiu', team: EQUIPE })).toEqual(recusa);
+    expect(resolveOwner({ actor: JOHNNY, ownerId: 'u-bia', team: EQUIPE })).toEqual(recusa);
+  });
+});
+
+describe('mesmo aluno e chave do WhatsApp do aluno', () => {
+  it('mesmo nome sem acento, sem caixa e sem espaço a mais', () => {
+    expect(sameStudentName('Pedro Souza', '  pedro   SOUZA ')).toBe(true);
+    expect(sameStudentName('Pédro Souza', 'Pedro Souza')).toBe(true);
+    expect(sameStudentName('Pedro Souza', 'Ana Souza')).toBe(false);
+    expect(sameStudentName('', '')).toBe(false);
+  });
+
+  it('studentKey: a chave do Zap do WhatsApp do aluno, ou null', () => {
+    expect(studentKey({ studentWhatsapp: '(11) 9 5555-4444' })).toBe('1155554444');
+    expect(studentKey({ studentWhatsapp: '(11) 8555-4444' })).toBe('1185554444');
+    expect(studentKey({ studentWhatsapp: null })).toBeNull();
+    expect(studentKey(null)).toBeNull();
   });
 });

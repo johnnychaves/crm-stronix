@@ -8,15 +8,18 @@
 // para o log.
 //
 // Spec: docs/superpowers/specs/2026-09-29-cadastro-de-lead-pelo-stronizap-design.md
-import { GUARDIAN_RELATIONSHIPS } from '../src/lib/guardian.js';
+import { GUARDIAN_RELATIONSHIPS, guardianIssue } from '../src/lib/guardian.js';
+import { sameContactPhone } from '../src/lib/leadDerived.js';
 import { formatPhone } from '../src/lib/masks.js';
+import { normalize } from '../src/lib/globalSearch.js';
 import { leadEntryFunnels } from '../src/lib/newLead.js';
 import { pickDefaultFunnel } from './_referral.js';
-import { nationalPhoneDigits } from './_zapPhone.js';
+import { nationalPhoneDigits, zapMatchKey } from './_zapPhone.js';
 
 const MINUTE_MS = 60000;
 const DAY_MS = 86400000;
 const NAME_MAX = 120;
+const CHANNEL_MAX = 80;
 
 // No máximo 60 cadastros por hora por academia (api/_rateLimit.js).
 export const LEAD_CREATE_LIMIT = Object.freeze({ limit: 60, windowMs: 60 * MINUTE_MS });
@@ -176,3 +179,131 @@ export function buildLeadOptions({ actor, team, catalogs }) {
   }
   return options;
 }
+
+// ---------------------------------------------------------------------------
+// Pedido de cadastro e conferências
+// ---------------------------------------------------------------------------
+
+const textOrEmpty = (v) => (typeof v === 'string' ? v : '');
+const isBlank = (v) => !v || !v.trim();
+
+// Lê o corpo do create-lead. Só o formato: o que depende da academia (equipe,
+// catálogos, duplicado) é conferido depois. Devolve { value } ou { refusal }.
+// O telefone sai normalizado (sem o 55 e com o nono dígito), e é dele que sai
+// a chave do duplicado. Os nomes de catálogo vão como vieram, porque são
+// comparados com o gravado.
+export function readCreateLeadBody(body) {
+  const phone = nationalDigits(body?.phone);
+  if (!phone) return { refusal: invalidData('phone', ZAP_LEAD_MESSAGES.phone) };
+  const email = emailFromActor(body?.actor);
+  if (!email) return { refusal: invalidData('actor', ZAP_LEAD_MESSAGES.actor) };
+  const channel = body.channelName;
+  if (channel != null && typeof channel !== 'string') {
+    return { refusal: invalidData('channelName', ZAP_LEAD_MESSAGES.channelName) };
+  }
+  const lead = body.lead;
+  if (!lead || typeof lead !== 'object' || Array.isArray(lead)) {
+    return { refusal: invalidData('lead', ZAP_LEAD_MESSAGES.lead) };
+  }
+  const name = textOrEmpty(lead.name).trim();
+  if (name.length < 2) return { refusal: invalidData('name', ZAP_LEAD_MESSAGES.nameShort) };
+  if (name.length > NAME_MAX) return { refusal: invalidData('name', ZAP_LEAD_MESSAGES.nameLong) };
+  for (const field of ['source', 'dor', 'modalidade', 'funnelId', 'stage', 'ownerId']) {
+    if (lead[field] != null && typeof lead[field] !== 'string') {
+      return { refusal: invalidData(field, ZAP_LEAD_MESSAGES.wrongType) };
+    }
+  }
+  let minor = null;
+  if (lead.minor) {
+    const m = lead.minor;
+    if (typeof m !== 'object' || Array.isArray(m)) return { refusal: invalidData('minor', ZAP_LEAD_MESSAGES.minor) };
+    for (const field of ['guardianName', 'relationship', 'studentWhatsapp']) {
+      if (m[field] != null && typeof m[field] !== 'string') {
+        return { refusal: invalidData(field, ZAP_LEAD_MESSAGES.wrongType) };
+      }
+    }
+    minor = {
+      guardianName: textOrEmpty(m.guardianName).trim(),
+      relationship: textOrEmpty(m.relationship).trim() || null,
+      studentWhatsapp: textOrEmpty(m.studentWhatsapp).trim() || null
+    };
+  }
+  const actorName = textOrEmpty(body.actor.name).trim().slice(0, NAME_MAX);
+  return {
+    value: {
+      phone,
+      matchKey: zapMatchKey(phone),
+      email,
+      actorName: actorName || null,
+      channelName: textOrEmpty(channel).trim().slice(0, CHANNEL_MAX) || null,
+      lead: {
+        name,
+        source: textOrEmpty(lead.source),
+        dor: textOrEmpty(lead.dor),
+        modalidade: isBlank(lead.modalidade) ? null : lead.modalidade,
+        funnelId: textOrEmpty(lead.funnelId),
+        stage: textOrEmpty(lead.stage),
+        ownerId: textOrEmpty(lead.ownerId).trim() || null,
+        minor
+      }
+    }
+  };
+}
+
+// Regras do menor: as do guardian.js, com o número da conversa como telefone
+// do responsável, mais o sameContactPhone no WhatsApp do aluno.
+export function checkMinor({ minor, phone }) {
+  if (!minor) return null;
+  const problem = guardianIssue({ isMinor: true, name: minor.guardianName, phone, birthDate: null });
+  if (problem) return refusal(422, 'menor_invalido', problem, { field: 'guardianName' });
+  if (minor.relationship && !GUARDIAN_RELATIONSHIPS.includes(minor.relationship)) {
+    return refusal(422, 'menor_invalido', ZAP_LEAD_MESSAGES.relationship, { field: 'relationship' });
+  }
+  if (minor.studentWhatsapp) {
+    if (!nationalDigits(minor.studentWhatsapp)) {
+      return refusal(422, 'menor_invalido', ZAP_LEAD_MESSAGES.studentIncomplete, { field: 'studentWhatsapp' });
+    }
+    if (sameContactPhone(minor.studentWhatsapp, phone)) {
+      return refusal(422, 'menor_invalido', ZAP_LEAD_MESSAGES.studentIsGuardian, { field: 'studentWhatsapp' });
+    }
+  }
+  return null;
+}
+
+// Origem, dor, modalidade, funil e etapa conferidos contra o que existe agora.
+// Academia sem dor não cadastra, a mesma trava do Novo lead.
+export function checkCatalog(lead, catalogs) {
+  const view = catalogView(catalogs);
+  if (view.dores.length === 0) return refusal(422, 'sem_dor_cadastrada', ZAP_LEAD_MESSAGES.noDor);
+  const gone = (field) => refusal(422, 'catalogo_mudou', ZAP_LEAD_MESSAGES.gone[field], { field });
+  if (isBlank(lead.source)) return invalidData('source', ZAP_LEAD_MESSAGES.pick.source);
+  if (!view.sources.includes(lead.source)) return gone('source');
+  if (isBlank(lead.dor)) return invalidData('dor', ZAP_LEAD_MESSAGES.pick.dor);
+  if (!view.dores.includes(lead.dor)) return gone('dor');
+  if (lead.modalidade && !view.modalities.includes(lead.modalidade)) return gone('modalidade');
+  if (isBlank(lead.funnelId)) return invalidData('funnelId', ZAP_LEAD_MESSAGES.pick.funnelId);
+  const funnel = view.funnels.find((f) => f.id === lead.funnelId);
+  if (!funnel) return gone('funnelId');
+  if (isBlank(lead.stage)) return invalidData('stage', ZAP_LEAD_MESSAGES.pick.stage);
+  if (!funnel.stages.includes(lead.stage)) return gone('stage');
+  return null;
+}
+
+// Dono do lead: quem cadastra, ou quem o gestor escolheu. Consultor não passa
+// o lead para outra pessoa, e o escolhido precisa estar na equipe com login.
+export function resolveOwner({ actor, ownerId, team }) {
+  if (!ownerId || ownerId === actor.id) return { owner: actor };
+  if (teamRole(actor) !== 'gestor') {
+    return { refusal: refusal(422, 'responsavel_invalido', ZAP_LEAD_MESSAGES.onlyManagerPicks) };
+  }
+  const owner = (team || []).find((u) => u.id === ownerId && u.authUid);
+  return owner ? { owner } : { refusal: refusal(422, 'responsavel_invalido', ZAP_LEAD_MESSAGES.ownerGone) };
+}
+
+// O mesmo aluno: nome sem acento, sem caixa e sem espaço a mais.
+const nameKey = (name) => normalize(name).trim().replace(/\s+/g, ' ');
+export const sameStudentName = (a, b) => nameKey(a) !== '' && nameKey(a) === nameKey(b);
+
+// Chave do Zap do WhatsApp do aluno, quando ele tem um, tirada do número já
+// normalizado, como a do número da conversa.
+export const studentKey = (minor) => (minor?.studentWhatsapp ? zapMatchKey(nationalDigits(minor.studentWhatsapp)) : null);
