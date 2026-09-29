@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Check, Handshake, Lock } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
+import { formatPhone } from '../../lib/masks.js';
 
 // Página PÚBLICA do link de indicação (fase 2 — docs/indicacoes.md), aberta em
 // /i/{slug}?ref={idDoCliente} sem login, quase sempre num celular vindo do
@@ -10,13 +11,6 @@ import { cn } from '../../lib/utils.js';
 // brand/accent) — independe do dark mode do app.
 
 const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
-const fmtPhone = (raw) => {
-  const d = onlyDigits(raw).slice(0, 11);
-  if (d.length <= 2) return d;
-  if (d.length <= 3) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3)}`;
-  return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3, 7)}-${d.slice(7)}`;
-};
 const fmtCPF = (raw) => {
   const d = onlyDigits(raw).slice(0, 11);
   if (d.length > 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
@@ -206,8 +200,8 @@ export function ReferralLandingScreen({ slug, refId }) {
 
               <label className={cn(labelCls, 'mt-3.5')} htmlFor="ref-zap">Seu WhatsApp</label>
               <input
-                id="ref-zap" type="tel" inputMode="numeric" className={inputCls} value={fmtPhone(form.whatsapp)}
-                onChange={(e) => set({ whatsapp: e.target.value })} placeholder="(51) 9 0000-0000"
+                id="ref-zap" type="tel" inputMode="numeric" className={inputCls} value={form.whatsapp}
+                onChange={(e) => set({ whatsapp: formatPhone(e.target.value) })} placeholder="(51) 9 0000-0000"
               />
 
               <label className={cn(labelCls, 'mt-3.5')} htmlFor="ref-cpf">
