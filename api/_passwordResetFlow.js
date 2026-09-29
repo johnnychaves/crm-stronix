@@ -47,14 +47,20 @@ export async function requestPasswordReset(email, ip, deps) {
   try {
     await deps.sendMail({ to: target, ...buildResetEmail(account.name, code) });
   } catch (err) {
-    // A pessoa dona da conta não ficou sabendo do pedido: o código morre na
-    // hora, e o pedido continua contando no limite do dia. O erro sobe depois
-    // disso. A rota captura no waitUntil e manda ao Sentry, porque chave
+    // A pessoa dona da conta não ficou sabendo do pedido: o código morre logo
+    // depois do log, e o pedido continua contando no limite do dia. O log vem
+    // primeiro para o diagnóstico não depender do killCode. O erro que sobe é o
+    // do envio: a rota captura no waitUntil e manda ao Sentry, porque chave
     // revogada ou domínio sem verificação quebram todo pedido, e o log da
     // Vercel some em 1 hora. A resposta ao navegador já saiu antes, então quem
-    // pediu não percebe nada.
-    await deps.killCode(account.uid, codeHash, deps.now());
-    deps.log.error('esqueci-a-senha: envio falhou, código morto', { conta: account.uid, erro: err?.message || String(err), status: err?.status });
+    // pediu não percebe nada. Se o killCode também falhar, essa falha só vai
+    // para o log e nunca esconde o erro do envio.
+    deps.log.error('esqueci-a-senha: envio falhou', { conta: account.uid, erro: err?.message || String(err), status: err?.status });
+    try {
+      await deps.killCode(account.uid, codeHash, deps.now());
+    } catch (killErr) {
+      deps.log.error('esqueci-a-senha: não matou o código depois da falha no envio', { conta: account.uid, erro: killErr?.message || String(killErr) });
+    }
     throw err;
   }
   deps.log.info('esqueci-a-senha: código enviado', { conta: account.uid, academia: account.tenantId, ip });
@@ -102,7 +108,8 @@ export async function confirmPasswordReset({ email, code, newPassword, ip }, dep
     deps.log.error('esqueci-a-senha: não marcou o código como usado', { conta: account.uid, erro: err?.message || String(err) }));
   await deps.revokeSessions(account.uid).catch((err) =>
     deps.log.error('esqueci-a-senha: não revogou as sessões', { conta: account.uid, erro: err?.message || String(err) }));
-  await deps.audit({ uid: account.uid, tenantId: account.tenantId });
+  await deps.audit({ uid: account.uid, tenantId: account.tenantId }).catch((err) =>
+    deps.log.error('esqueci-a-senha: não gravou a auditoria', { conta: account.uid, erro: err?.message || String(err) }));
   deps.log.info('esqueci-a-senha: senha trocada', { conta: account.uid, academia: account.tenantId, ip });
   return { ok: true };
 }

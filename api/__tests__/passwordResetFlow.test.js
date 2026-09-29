@@ -66,6 +66,11 @@ function montar(contaInicial = conta()) {
 const trocar = (deps, code, extra = {}) =>
   confirmPasswordReset({ email: EMAIL, code, newPassword: SENHA, ip: IP, ...extra }, deps);
 
+// A recusa do Resend como o _mail.js a monta: mensagem com o status e o
+// status também em err.status.
+const erroDoResend = () =>
+  Object.assign(new Error('O Resend recusou o e-mail (403): domínio sem verificação'), { status: 403 });
+
 describe('pedido', () => {
   it('cria o código e manda o e-mail com o código sorteado', async () => {
     const { deps, docs, s } = montar();
@@ -131,6 +136,31 @@ describe('pedido', () => {
     await expect(requestPasswordReset(EMAIL, IP, deps)).rejects.toThrow('Resend fora do ar');
     expect(docs.get('u-ana').usedAtMs).toBe(s.agora);
     expect(docs.get('u-ana').requestsMs).toHaveLength(1);
+  });
+
+  it('o log da falha de envio leva o status do Resend e não leva o código nem o e-mail', async () => {
+    const { deps, s } = montar();
+    deps.sendMail = async () => { throw erroDoResend(); };
+    await expect(requestPasswordReset(EMAIL, IP, deps)).rejects.toMatchObject({ status: 403 });
+    const log = JSON.stringify(s.logs);
+    expect(log).toContain('"status":403');
+    expect(log).toContain('domínio sem verificação');
+    expect(log).not.toContain('123456');
+    expect(log).not.toContain(EMAIL);
+  });
+
+  it('falha no envio e no killCode juntos: sobe o erro do Resend, e o log tem as duas falhas', async () => {
+    const { deps, s } = montar();
+    const doResend = erroDoResend();
+    deps.sendMail = async () => { throw doResend; };
+    deps.killCode = async () => { throw new Error('Firestore fora do ar'); };
+    // O erro que sobe é o do envio, o mesmo objeto, e não o do killCode.
+    await expect(requestPasswordReset(EMAIL, IP, deps)).rejects.toBe(doResend);
+    // Primeiro a linha do envio, com o status. Depois a do killCode.
+    expect(s.logs).toHaveLength(2);
+    expect(JSON.stringify(s.logs[0])).toContain('domínio sem verificação');
+    expect(JSON.stringify(s.logs[0])).toContain('"status":403');
+    expect(JSON.stringify(s.logs[1])).toContain('Firestore fora do ar');
   });
 });
 
@@ -217,6 +247,33 @@ describe('troca', () => {
     expect(await trocar(deps, '123456')).toEqual({ ok: true });
     expect(s.senhas).toHaveLength(1);
     expect(s.revogadas).toEqual(['u-ana']);
+  });
+
+  it('falha ao revogar as sessões depois da troca não desfaz a troca e só vai para o log', async () => {
+    const { deps, s } = montar();
+    await requestPasswordReset(EMAIL, IP, deps);
+    deps.revokeSessions = async () => { throw new Error('Firebase fora do ar'); };
+    expect(await trocar(deps, '123456')).toEqual({ ok: true });
+    expect(s.senhas).toHaveLength(1);
+    expect(s.auditoria).toHaveLength(1);
+    expect(JSON.stringify(s.logs)).toContain('Firebase fora do ar');
+  });
+
+  it('falha ao gravar a auditoria depois da troca não desfaz a troca e só vai para o log', async () => {
+    const { deps, s } = montar();
+    await requestPasswordReset(EMAIL, IP, deps);
+    deps.audit = async () => { throw new Error('Firestore fora do ar'); };
+    expect(await trocar(deps, '123456')).toEqual({ ok: true });
+    expect(s.senhas).toHaveLength(1);
+    expect(s.revogadas).toEqual(['u-ana']);
+    expect(JSON.stringify(s.logs)).toContain('Firestore fora do ar');
+  });
+
+  it('a troca normaliza o e-mail como o pedido', async () => {
+    const { deps, s } = montar();
+    await requestPasswordReset(EMAIL, IP, deps);
+    expect(await trocar(deps, '123456', { email: '  ANA@Academia.com ' })).toEqual({ ok: true });
+    expect(s.senhas).toEqual([{ uid: 'u-ana', senha: SENHA }]);
   });
 
   it('o código nunca vai para o log', async () => {
