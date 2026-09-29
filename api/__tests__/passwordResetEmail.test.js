@@ -53,12 +53,26 @@ describe('buildResetEmail', () => {
     expect(email.html).toMatch(/<body[^>]*>\s*<div style="display:none/);
     expect(previa[1]).not.toMatch(/\d/);
     // A frase não repete o assunto, que a caixa de entrada já mostra ao lado dela.
-    expect(previa[1].startsWith('Abra o e-mail para ver o código.')).toBe(true);
+    expect(previa[1].startsWith('Abra o e-mail para ver o código. Se não foi você que pediu, pode ignorar este e-mail.')).toBe(true);
     // Sem o mso-hide:all o Outlook pode mostrar o bloco no corpo do e-mail.
     expect(previa[0]).toContain('mso-hide:all');
     expect(email.html.indexOf(previa[0])).toBeLessThan(email.html.indexOf('048213'));
     // O enchimento impede o cliente de completar a prévia com o resto do corpo.
-    expect((previa[1].match(/&zwnj;&nbsp;/g) ?? []).length).toBeGreaterThanOrEqual(30);
+    expect((previa[1].match(/&zwnj;&nbsp;/g) ?? []).length).toBeGreaterThanOrEqual(48);
+  });
+
+  it('sem o enchimento, o código cai depois do caractere 140 da prévia', () => {
+    // Alguns clientes descartam o enchimento. Mesmo assim, o código não pode
+    // aparecer nos primeiros 140 caracteres do texto do corpo. Sem nome é o
+    // pior caso, porque a saudação fica mais curta.
+    const { html } = buildResetEmail('', '048213');
+    const texto = html
+      .slice(html.indexOf('<body'))
+      .replace(/<[^>]*>/g, '')
+      .replace(/(&zwnj;&nbsp;)+/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    expect(texto.indexOf('048213')).toBeGreaterThan(140);
   });
 
   it('nome com < ou & não quebra o HTML', () => {

@@ -29,8 +29,10 @@ export function buildResetEmail(name, code) {
   // A prévia da caixa de entrada também não leva o código. Ela sai do começo
   // do corpo, então um bloco escondido ocupa esse lugar com uma frase, e o
   // enchimento impede o cliente de completar a prévia com o resto do e-mail.
-  const previa = 'Abra o e-mail para ver o código.';
-  const enchimento = '&zwnj;&nbsp;'.repeat(30);
+  // A frase é longa de propósito: sem o enchimento, o código ainda cai depois
+  // do caractere 140.
+  const previa = 'Abra o e-mail para ver o código. Se não foi você que pediu, pode ignorar este e-mail.';
+  const enchimento = '&zwnj;&nbsp;'.repeat(48);
   const intro = 'Use este código para criar uma senha nova no Stronilead:';
   const aviso = `Ele vale por ${minutos} minutos. Se não foi você que pediu, ignore este e-mail. Sua senha atual continua valendo.`;
   const rodape = 'Stronilead · Gestão de leads para academias';
