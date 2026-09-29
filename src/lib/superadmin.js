@@ -56,6 +56,7 @@ const auditActionLabel = (e) => {
       const ch = (e.details?.changed || []).join(', ');
       return `Atualizou ${t}${ch ? ` (${ch})` : ''}`;
     }
+    case 'password.reset': return `Trocou a senha pelo código · ${t}`;
     default: return `${e.action} · ${t}`;
   }
 };
