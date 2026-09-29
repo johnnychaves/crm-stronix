@@ -81,7 +81,12 @@ export function readResetMemory(now = Date.now(), storage = sessionStore()) {
     if (!raw) return null;
     const m = JSON.parse(raw);
     if (!m || typeof m.email !== 'string' || typeof m.sentAt !== 'number') return null;
-    if (now - m.sentAt >= RESET_CODE_TTL_MS) return null;
+    if (now - m.sentAt >= RESET_CODE_TTL_MS) {
+      // Vencida, ela sai da aba: numa recepção com computador dividido, o e-mail
+      // de quem pediu o código não pode ficar para a próxima pessoa.
+      storage.removeItem(MEMORY_KEY);
+      return null;
+    }
     return { email: m.email, sentAt: m.sentAt };
   } catch {
     return null;

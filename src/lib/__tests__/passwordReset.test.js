@@ -85,6 +85,27 @@ describe('memória da aba', () => {
     expect(readResetMemory(1000 + RESET_CODE_TTL_MS, s)).toBeNull();
   });
 
+  // Numa recepção com computador dividido, a aba pode passar para outra pessoa: o
+  // e-mail de quem pediu o código não pode ficar nela depois de vencido.
+  it('a memória vencida sai do storage, e a que ainda vale fica', () => {
+    const s = armazenamento();
+    writeResetMemory({ email: 'ana@academia.com', sentAt: 1000 }, s);
+    expect(readResetMemory(1000 + RESET_CODE_TTL_MS - 1, s)).not.toBeNull();
+    expect(s.getItem('stronilead:recuperar-senha')).not.toBeNull();
+    expect(readResetMemory(1000 + RESET_CODE_TTL_MS, s)).toBeNull();
+    expect(s.getItem('stronilead:recuperar-senha')).toBeNull();
+  });
+
+  it('se o storage não deixa apagar a memória vencida, a leitura não quebra', () => {
+    const vencida = JSON.stringify({ email: 'ana@academia.com', sentAt: 1000 });
+    const teimoso = {
+      getItem: () => vencida,
+      setItem: () => {},
+      removeItem: () => { throw new Error('x'); },
+    };
+    expect(readResetMemory(1000 + RESET_CODE_TTL_MS, teimoso)).toBeNull();
+  });
+
   it('nunca guarda código nem senha', () => {
     const s = armazenamento();
     writeResetMemory({ email: 'ana@academia.com', sentAt: 1000, code: '123456', password: 'x' }, s);

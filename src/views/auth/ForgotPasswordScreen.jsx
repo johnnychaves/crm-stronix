@@ -17,8 +17,10 @@ const LEAD = 'text-[14px] text-gray-500 dark:text-neutral-400 mt-1.5';
 // Enquanto espera a resposta, os botões ficam com aria-disabled e não com
 // disabled: no Chrome, o botão focado que vira disabled solta o foco no body, e
 // o foco não volta. O clique que chega nesse meio tempo é barrado pelo inFlight,
-// dentro do componente. O aria-disabled:active:scale-100 tira o efeito de
-// aperto, que o disabled também não tinha.
+// dentro do componente. O visual da espera muda numa coisa, de propósito: o
+// botão disabled ainda encolhia ao ser apertado (o Chrome aplica :active a ele),
+// e o aria-disabled:active:scale-100 faz o botão indisponível não responder ao
+// aperto.
 const PRIMARY = 'w-full h-12 rounded-xl bg-brand-600 hover:bg-brand-700 text-white text-[14px] font-semibold inline-flex items-center justify-center gap-2 transition active:scale-[.99] shadow-sm shadow-brand-600/20 aria-disabled:opacity-90 aria-disabled:cursor-default aria-disabled:active:scale-100';
 const CODE_TTL_MINUTES = RESET_CODE_TTL_MS / 60000;
 
@@ -103,6 +105,9 @@ function ForgotPasswordScreen() {
   }
 
   async function onRequest(e) {
+    // O preventDefault vem antes da trava: com aria-disabled, o envio feito na
+    // espera (Enter num campo) chega até aqui, e sem ele o navegador faria um
+    // GET da página com os campos na URL.
     e.preventDefault();
     if (inFlight.current) return;
     const target = email.trim();
@@ -149,11 +154,14 @@ function ForgotPasswordScreen() {
   }
 
   async function onConfirm(e) {
+    // Antes da trava, como no onRequest. Aqui o GET levaria a senha nova na URL.
     e.preventDefault();
     if (inFlight.current) return;
     const errors = {};
     if (code.length !== 6) errors.code = 'Digite os 6 números do código.';
-    const problem = passwordPolicyError(password);
+    // Com a senha vazia a regra já está na dica logo acima do campo, e o erro só
+    // a repetiria.
+    const problem = password === '' ? 'Digite a senha nova.' : passwordPolicyError(password);
     if (problem) errors.password = problem;
     else if (confirm !== password) errors.confirm = 'As duas senhas não são iguais.';
     setFieldErrors(errors);
@@ -190,9 +198,12 @@ function ForgotPasswordScreen() {
       } else if (err.status === 429) setFormError(err.message || TOO_MANY_MESSAGE);
       else setFormError(SAVE_FAILED_MESSAGE);
     } finally {
-      inFlight.current = false;
-      // Na saída o busy fica ligado até a tela sumir, para o botão não piscar.
-      if (!saved) setBusy(false);
+      // Na saída o busy e o inFlight ficam ligados até a tela sumir: o botão não
+      // pisca de volta, e nenhum segundo envio manda outra troca.
+      if (!saved) {
+        inFlight.current = false;
+        setBusy(false);
+      }
     }
   }
 

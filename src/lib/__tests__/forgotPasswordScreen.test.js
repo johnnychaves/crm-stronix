@@ -83,6 +83,15 @@ async function preencherPasso2(code = '123456', senha = 'Nova@Senha1', repetir =
   await escrever(campo('confirmPassword'), repetir);
 }
 
+// Dispara um submit cancelável, como o do navegador, e devolve o evento para
+// conferir se a tela o barrou (defaultPrevented). Não passa pelo clique nem pelo
+// requestSubmit, que o jsdom trataria por conta própria.
+async function disparaSubmit(form) {
+  const evento = new Event('submit', { bubbles: true, cancelable: true });
+  await act(async () => { form.dispatchEvent(evento); });
+  return evento;
+}
+
 // Só Date e setInterval são falsos, então o setTimeout do clicar segue real. O
 // relógio para numa hora fixa e só anda quando o teste manda. O afterEach
 // devolve os timers de verdade. Devolve a hora de agora, em milissegundos.
@@ -451,6 +460,15 @@ describe('cursor ao trocar de passo', () => {
     expect(document.activeElement).toBe(campo('email'));
   });
 
+  it('depois do reenvio, o cursor vai para o código também quando ele estava vazio, que é o caso comum', async () => {
+    lembrar('ana@academia.com', Date.now() - 61 * 1000);
+    respostas = [[200, { ok: true }]];
+    await montar();
+    expect(campo('code').value).toBe('');
+    await enviar('Mandar outro código');
+    expect(document.activeElement).toBe(campo('code'));
+  });
+
   it('depois do reenvio, o cursor vai para o campo do código, que acabou de ser limpo', async () => {
     lembrar('ana@academia.com', Date.now() - 61 * 1000);
     respostas = [[200, { ok: true }]];
@@ -731,6 +749,14 @@ describe('o gerenciador de senhas', () => {
     await clicar(botao('Enviar código'));
     expect(campo('username').value).toBe('ana@academia.com');
   });
+
+  // O gerenciador liga a senha ao último campo de usuário que vem antes dela.
+  it('o campo de usuário vem antes dos campos de senha', async () => {
+    lembrar();
+    await montar();
+    expect(campo('username').compareDocumentPosition(campo('newPassword')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(campo('username').compareDocumentPosition(campo('confirmPassword')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
 });
 
 // Só o leitor de tela muda: o formulário segue com noValidate, e quem avisa do
@@ -755,7 +781,10 @@ describe('campos obrigatórios', () => {
     await clicar(botao('Salvar senha nova'));
     expect(chamadas).toEqual([]);
     expect(texto()).toContain('Digite os 6 números do código.');
-    expect(texto()).toContain(passwordPolicyError(''));
+    // A regra já está na dica logo acima do campo, então o erro só pede a senha.
+    expect(document.getElementById('esqueci-senha-erro').textContent).toBe('Digite a senha nova.');
+    expect(texto()).not.toContain(passwordPolicyError(''));
+    expect(descricao(campo('newPassword'))).toBe(`${PASSWORD_RULE_TEXT} Digite a senha nova.`);
   });
 });
 
@@ -778,6 +807,65 @@ describe('texto do passo 2', () => {
     expect(frase.textContent).toContain('maria.fernanda.oliveira.santos@dominio-muito-comprido-da-academia.com.br');
     expect(frase.classList.contains('wrap-anywhere')).toBe(true);
     expect(frase.classList.contains('break-words')).toBe(false);
+  });
+});
+
+// O formulário não tem action. Sem o preventDefault, o navegador manda um GET da
+// própria página com os campos na URL, inclusive a senha nova. Com aria-disabled
+// no lugar de disabled, o envio feito durante a espera (Enter num campo) chega ao
+// manipulador, então a ordem importa: o preventDefault vem antes da trava. Cada
+// teste dispara um submit cancelável e confere se a tela o barrou.
+describe('o envio nunca segue o caminho nativo do formulário', () => {
+  it('passo 1: o envio é barrado pela tela', async () => {
+    const { liberar } = fetchQueEspera();
+    await montar({ email: 'ana@academia.com' });
+    expect((await disparaSubmit(document.querySelector('form'))).defaultPrevented).toBe(true);
+    await act(async () => { liberar(); });
+  });
+
+  it('passo 1: o segundo envio, com o pedido em andamento, também', async () => {
+    const { fn, liberar } = fetchQueEspera();
+    await montar({ email: 'ana@academia.com' });
+    const form = document.querySelector('form');
+    await disparaSubmit(form);
+    expect((await disparaSubmit(form)).defaultPrevented).toBe(true);
+    expect(fn).toHaveBeenCalledTimes(1);
+    await act(async () => { liberar(); });
+  });
+
+  it('passo 1: o e-mail sem @, que a conferência da tela barra, também', async () => {
+    await montar();
+    await escrever(campo('email'), 'ana');
+    expect((await disparaSubmit(document.querySelector('form'))).defaultPrevented).toBe(true);
+    expect(chamadas).toEqual([]);
+  });
+
+  it('passo 2: o envio é barrado pela tela', async () => {
+    lembrar();
+    const { liberar } = fetchQueEspera();
+    await montar({ tenant: ACADEMIA });
+    await preencherPasso2();
+    expect((await disparaSubmit(document.querySelector('form'))).defaultPrevented).toBe(true);
+    await act(async () => { liberar(); });
+  });
+
+  it('passo 2: o segundo envio, com a troca em andamento, também', async () => {
+    lembrar();
+    const { fn, liberar } = fetchQueEspera();
+    await montar({ tenant: ACADEMIA });
+    await preencherPasso2();
+    const form = document.querySelector('form');
+    await disparaSubmit(form);
+    expect((await disparaSubmit(form)).defaultPrevented).toBe(true);
+    expect(fn).toHaveBeenCalledTimes(1);
+    await act(async () => { liberar(); });
+  });
+
+  it('passo 2: tudo vazio, que a conferência da tela barra, também', async () => {
+    lembrar();
+    await montar();
+    expect((await disparaSubmit(document.querySelector('form'))).defaultPrevented).toBe(true);
+    expect(chamadas).toEqual([]);
   });
 });
 
@@ -879,6 +967,43 @@ describe('enquanto espera a resposta', () => {
     expect(fn).toHaveBeenCalledTimes(1);
     await act(async () => { liberar(); });
     expect(aviso().textContent).toBe('Mandamos outro código. Só o último vale.');
+  });
+});
+
+// Na vida real a rota tira a tela do ar assim que a troca dá certo. Aqui a tela
+// fica montada depois do navigate (com a transição padrão do Router ela ainda
+// aparece por um instante), para conferir o que ela faz nesse meio tempo: o botão
+// segue em "Salvando…", travado, e nenhum segundo envio manda outra troca.
+describe('a troca que deu certo, com a tela ainda montada', () => {
+  async function montarSemSair() {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    await act(async () => {
+      root.render(h(MemoryRouter, { initialEntries: [{ pathname: RESET_PATH, state: { tenant: ACADEMIA } }] }, h(ForgotPasswordScreen)));
+    });
+  }
+
+  it('o botão fica em "Salvando…", travado, até a tela sair', async () => {
+    lembrar();
+    respostas = [[200, { ok: true }]];
+    await montarSemSair();
+    await preencherPasso2();
+    await clicar(botao('Salvar senha nova'));
+    expect(botao('Salvando…')).toBeDefined();
+    expect(botao('Salvando…').getAttribute('aria-disabled')).toBe('true');
+    expect(botao('Salvar senha nova')).toBeUndefined();
+  });
+
+  it('um segundo envio nesse meio tempo não manda outra troca', async () => {
+    lembrar();
+    const { fn, liberar } = fetchQueEspera();
+    await montarSemSair();
+    await preencherPasso2();
+    await act(async () => { document.querySelector('form').requestSubmit(); });
+    await act(async () => { liberar(); });
+    await act(async () => { document.querySelector('form').requestSubmit(); });
+    expect(fn).toHaveBeenCalledTimes(1);
   });
 });
 
