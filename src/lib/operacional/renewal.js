@@ -9,7 +9,7 @@
 // contrato vale num instante é a cobertura, contractStateAt, pelo endsAt.
 
 import { getSafeDateOrNull } from '../dates.js';
-import { contractStateAt, hasOpenPause, indexContracts } from './base.js';
+import { contractStateAt, hasOpenPause, indexContracts, neverTookEffect } from './base.js';
 import { dayKeyOf } from './month.js';
 
 const DAY_MS = 86400000;
@@ -26,25 +26,28 @@ const ownerFilter = (owner) => {
   return typeof owner === 'function' ? owner : (id) => id === owner;
 };
 
-// A lista da pessoa no índice vem em ordem de início: o mais recente é o último.
+// A lista da pessoa no índice vem em ordem de início: o mais recente é o último
+// que chegou a valer. A renovação desfeita antes de começar (neverTookEffect)
+// não tira esse lugar do contrato que ela renovava.
 const isLatestOfPerson = (c, index) => {
-  const list = index.byPerson.get(c.personKey) || [];
-  const last = list[list.length - 1];
+  const took = (index.byPerson.get(c.personKey) || []).filter((o) => !neverTookEffect(o));
+  const last = took[took.length - 1];
   return !c.startsAt || !last?.startsAt || last.startsAt <= c.startsAt;
 };
 
-// Contratos da mesma pessoa que começam depois deste.
+// Contratos da mesma pessoa que começam depois deste e chegaram a valer.
 const laterOfPerson = (c, index) => (index.byPerson.get(c.personKey) || [])
-  .filter((o) => o !== c && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
+  .filter((o) => o !== c && !neverTookEffect(o) && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
 
 // Sucessor = renovação ligada (renewedFromId) ou outro contrato da mesma pessoa
 // criado até o vencimento + tolerância (cobre a reativação feita pela ficha, que
-// nasce como matrícula). Só conta o que já existia no corte (asOf).
+// nasce como matrícula). Só conta o que já existia no corte (asOf). O que nunca
+// valeu não é sucessor: com a renovação desfeita, o contrato volta a vencer.
 function successorOf(c, index, graceMs, asOf) {
   const limit = c.plannedEndsAt ? c.plannedEndsAt.getTime() + graceMs : null;
   let best = null;
   const take = (o) => {
-    if (o === c || !o.createdAt || o.createdAt > asOf) return;
+    if (o === c || neverTookEffect(o) || !o.createdAt || o.createdAt > asOf) return;
     if (!best || o.createdAt < best.createdAt) best = o;
   };
   (index.byRenewedFrom.get(c.id) || []).forEach(take);
@@ -121,10 +124,11 @@ export function summarizeCohort(rows, { owner = null } = {}) {
 }
 
 // Quando cada candidato a sucessor foi criado (ms), pela regra da coorte:
-// renovação ligada ou outro contrato da mesma pessoa que começa depois.
+// renovação ligada ou outro contrato da mesma pessoa que começa depois, desde
+// que tenha chegado a valer.
 function successorTimes(c, index) {
   const out = [];
-  const add = (o) => { if (o !== c && o.createdAt) out.push(o.createdAt.getTime()); };
+  const add = (o) => { if (o !== c && !neverTookEffect(o) && o.createdAt) out.push(o.createdAt.getTime()); };
   (index.byRenewedFrom.get(c.id) || []).forEach(add);
   laterOfPerson(c, index).forEach((o) => { if (o.renewedFromId !== c.id) add(o); });
   return out;

@@ -101,12 +101,13 @@ export async function commitMatricula({
   batch.set(contractRef, { ...contract, ...(contractExtra || {}), createdAt: serverTimestamp() });
 
   // (1b) Renovação que começa antes do fim do atual: o atual passa a terminar
-  //      na véspera do novo, no mesmo batch, e guarda quem o encurtou.
+  //      na véspera do novo, no mesmo batch, e guarda quem o encurtou. update, e
+  //      não set com merge: se o contrato não existir mais, o batch inteiro
+  //      falha em vez de criar um contrato fantasma só com datas.
   if (previousContractId && previousPatch) {
-    batch.set(
+    batch.update(
       doc(db, 'artifacts', appId, 'public', 'data', CONTRACTS_PATH, previousContractId),
-      { ...previousPatch, shortenedById: contractRef.id, updatedAt: serverTimestamp() },
-      { merge: true }
+      { ...previousPatch, shortenedById: contractRef.id, updatedAt: serverTimestamp() }
     );
   }
 

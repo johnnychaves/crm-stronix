@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { buildContractPause, buildContractResume } from '../contracts.js';
 import {
   normalizeContract, normalizeContracts, hasOpenPause, contractStateAt, countActiveAt, countLockedAt,
-  computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow, indexContracts
+  computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow, indexContracts, neverTookEffect
 } from '../operacional/base.js';
 
 const D = (y, m, d, h = 12) => new Date(y, m - 1, d, h);
@@ -413,10 +413,11 @@ describe('normalizeContracts', () => {
 
 // A renovação emendada começa no dia seguinte ao fim, na mesma hora, e a que
 // começa antes do fim encurta o atual para a véspera dela, também na mesma
-// hora. Nos dois casos sobravam 24 horas sem contrato vigente, e na virada do
-// mês a ponte contava um "venceu" e, no mês seguinte, um "voltou" (decisão do
+// hora. Nos dois casos sobrava até um dia do calendário sem contrato vigente
+// (pode passar de 24 horas, com início à meia-noite), e na virada do mês a
+// ponte contava um "venceu" e, no mês seguinte, um "voltou" (decisão do
 // Johnny, 29/09/2026: fechar o buraco, mesmo mudando mês fechado).
-describe('renovação ligada que encosta no fim: sem as 24 horas sem contrato', () => {
+describe('renovação ligada que encosta no fim: sem o dia sem contrato', () => {
   const monthOf = (y, m) => ({ start: new Date(y, m - 1, 1), end: new Date(y, m, 1), graceDays: 15 });
   const OCT = monthOf(2026, 10);
   const NOV = monthOf(2026, 11);
@@ -481,6 +482,19 @@ describe('renovação ligada que encosta no fim: sem as 24 horas sem contrato', 
     expect(byId(normalizeContracts([cancelado, emendada]), 'velho').endsAt).toEqual(D(2026, 10, 31, 15));
   });
 
+  // Trancado (sem encurtar) que renovou emendado no fim congelado. A pausa
+  // fecha primeiro, no início da renovação, e o fim anda do fim congelado: 25/09
+  // mais 16 dias parados. Se o buraco fechasse antes, o fim andaria do início
+  // da renovação e ganharia um dia.
+  it('trancado que renovou emendado: a pausa fecha antes do buraco, e o fim anda do fim congelado', () => {
+    const parado = raw('parado', { status: 'trancado', pauseReason: 'Viagem', pausedAt: D(2026, 9, 10), startsAt: D(2026, 3, 25), endsAt: D(2026, 9, 25) });
+    const renova = raw('renova', { renewedFromId: 'parado', seamless: true, startsAt: D(2026, 9, 26), endsAt: D(2027, 3, 26), createdAt: D(2026, 9, 15) });
+    const c = byId(normalizeContracts([parado, renova]), 'parado');
+    expect(c.pauses).toEqual([{ from: D(2026, 9, 10), to: D(2026, 9, 26) }]);
+    expect(c.endsAt).toEqual(D(2026, 10, 11));
+    expect(c.plannedEndsAt).toEqual(D(2026, 10, 11));
+  });
+
   // Renovado ainda trancado, com a renovação começando antes do fim: o atual
   // foi encurtado. A pausa fecha no início da renovação, como no trancado que
   // renovou sem encurtar, mas o fim não anda pelos dias parados: ele já é a
@@ -500,5 +514,22 @@ describe('renovação ligada que encosta no fim: sem as 24 horas sem contrato', 
     expect(contractStateAt(c, D(2026, 9, 19, 18))).toBe('trancado');
     expect(contractStateAt(c, D(2026, 9, 25))).toBe(null);
     expect(list.filter((k) => contractStateAt(k, D(2026, 9, 25)) != null).map((k) => k.id)).toEqual(['renova']);
+  });
+});
+
+describe('neverTookEffect', () => {
+  const k = (over) => normalizeContract({
+    id: 'x', leadId: 'x', status: 'cancelado', startsAt: D(2026, 10, 1), endsAt: D(2027, 10, 1), createdAt: D(2026, 9, 1), ...over
+  });
+
+  it('é o contrato cancelado no instante do início ou antes dele', () => {
+    expect(neverTookEffect(k({ cancelledAt: D(2026, 9, 20) }))).toBe(true);
+    expect(neverTookEffect(k({ cancelledAt: D(2026, 10, 1) }))).toBe(true);
+    expect(neverTookEffect(k({ cancelledAt: D(2026, 10, 2) }))).toBe(false);
+  });
+
+  it('não vale para contrato ativo nem para o cancelado sem data, que termina no fim', () => {
+    expect(neverTookEffect(k({ status: 'ativo', cancelledAt: null }))).toBe(false);
+    expect(neverTookEffect(k({ cancelledAt: null }))).toBe(false);
   });
 });

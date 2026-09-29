@@ -189,8 +189,9 @@ export const buildMatriculaWrites = ({
   // Kanban e a Meta Diária passam o lead da lista, e o resumo dele pode estar
   // velho: um fim velho mais tarde faria o "encurtamento" esticar o contrato e
   // guardar um fim original falso. Sem o documento, o resumo do lead decide só
-  // a marca de emendada, e nada é encurtado (gravar com merge num id velho
-  // criaria um contrato fantasma, só com datas).
+  // a marca de emendada, e nada é encurtado: o id do lead pode ser velho, e o
+  // encurtamento vai por update, que num contrato que não existe derrubaria a
+  // renovação inteira.
   const currentDoc = isRenewal && previousContract?.id && previousContract.id === lead?.currentContractId ? previousContract : null;
   const currentEnd = isRenewal && lead?.currentContractId
     ? getSafeDateOrNull(currentDoc ? currentDoc.endsAt : lead?.currentContractEndsAt)

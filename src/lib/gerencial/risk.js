@@ -1,7 +1,7 @@
 // O que sai da carteira: o que vence nos próximos 90 dias, o que já venceu sem
 // sucessor e o que saiu neste mês.
 
-import { contractStateAt, indexContracts } from '../operacional/base.js';
+import { contractStateAt, indexContracts, neverTookEffect } from '../operacional/base.js';
 import { hasValue, monthlyTicket, inWindow } from './scope.js';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -9,10 +9,11 @@ export const HORIZON_DAYS = [30, 60, 90];
 
 // Sucessor: a renovação ligada ou outro contrato da pessoa que começa depois
 // deste. Mesma ideia de src/lib/operacional/renewal.js, simplificada porque
-// aqui só importa existir ou não.
+// aqui só importa existir ou não. O que nunca valeu (neverTookEffect) não é
+// sucessor: a renovação desfeita devolve o contrato renovado ao risco.
 function hasSuccessor(c, index) {
-  if ((index.byRenewedFrom.get(c.id) || []).length) return true;
-  return (index.byPerson.get(c.personKey) || []).some((o) => o !== c && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
+  if ((index.byRenewedFrom.get(c.id) || []).some((o) => !neverTookEffect(o))) return true;
+  return (index.byPerson.get(c.personKey) || []).some((o) => o !== c && !neverTookEffect(o) && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
 }
 
 // Só contrato vigente vence. Trancado não: o fim dele anda quando reativar.
@@ -51,6 +52,9 @@ export function exitsInWindow(contracts, { start, end }) {
   const cancels = [];
   const locks = [];
   (contracts || []).forEach((c) => {
+    // O que nunca valeu não esteve na carteira, então não sai dela: nem o
+    // cancelamento nem o trancamento dele contam.
+    if (neverTookEffect(c)) return;
     if (c.cancelledAt && !c.cancelFromImport && inWindow(c.cancelledAt, start, end)) cancels.push(c);
     if ((c.pauses || []).some((p) => !p.fromImport && inWindow(p.from, start, end))) locks.push(c);
   });
