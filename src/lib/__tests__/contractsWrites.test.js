@@ -50,12 +50,16 @@ const lead = {
 };
 // O documento do contrato atual, como chega da coleção de contratos.
 const atual = { id: 'k1', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+// A hora da gravação: 29/09/2026, às 10h. O contrato atual precisa estar em
+// vigor para ser emendado ou encurtado, e isso depende do dia. Sem uma hora
+// fixa, estes testes dependiam do relógio de verdade.
+const AGORA = new Date(2026, 8, 29, 10, 0);
 
 beforeEach(() => { m.writes.length = 0; m.seq = 0; m.batches = 0; m.commits = 0; });
 
 describe('commitMatricula: renovação e o contrato atual', () => {
   it('sobreposta: encurta o atual no mesmo batch e guarda quem encurtou', async () => {
-    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: atual });
+    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: atual, now: AGORA });
     // update, e não set com merge: se o contrato não existir mais, o batch
     // inteiro falha em vez de criar um contrato fantasma só com datas.
     const encurtado = m.writes.find((w) => w.path === `${CONTRATOS}/k1`);
@@ -76,7 +80,7 @@ describe('commitMatricula: renovação e o contrato atual', () => {
   });
 
   it('sobreposta sem o documento do contrato atual: grava a renovação e não encurta nada', async () => {
-    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: null });
+    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: null, now: AGORA });
     expect(m.writes.some((w) => w.path === `${CONTRATOS}/k1`)).toBe(false);
     // Os dois valem juntos: o novo não é emendado.
     const novo = m.writes.find((w) => w.path === `${CONTRATOS}/${contractId}`);
@@ -86,12 +90,24 @@ describe('commitMatricula: renovação e o contrato atual', () => {
   });
 
   it('emendada: não toca no atual e o contrato novo leva a marca', async () => {
-    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 10, 12), mode: 'renovacao', renewedFromId: 'k1', previousContract: atual });
+    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 10, 12), mode: 'renovacao', renewedFromId: 'k1', previousContract: atual, now: AGORA });
     expect(m.writes.some((w) => w.path === `${CONTRATOS}/k1`)).toBe(false);
     const novo = m.writes.find((w) => w.path === `${CONTRATOS}/${contractId}`);
     expect(novo.data.seamless).toBe(true);
     const leadDoc = m.writes.find((w) => w.path === 'artifacts/acad/public/data/stronix_leads/l1');
     expect(leadDoc.data.currentContractSeamless).toBe(true);
+  });
+
+  // A hora da gravação chega à regra do contrato em vigor
+  // (buildMatriculaWrites). Numa hora de antes do início do atual, ele ainda
+  // não tinha começado: nada é encurtado e a renovação não leva a marca.
+  it('a hora passada chega à regra: com o atual ainda sem começar, nada muda nele e nada é marcado', async () => {
+    const antesDoInicio = D(2025, 10, 1);
+    const sobreposta = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: atual, now: antesDoInicio });
+    expect(m.writes.some((w) => w.path === `${CONTRATOS}/k1`)).toBe(false);
+    expect(m.writes.find((w) => w.path === `${CONTRATOS}/${sobreposta.contractId}`).data.seamless).toBe(false);
+    const emendada = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 10, 12), mode: 'renovacao', renewedFromId: 'k1', previousContract: atual, now: antesDoInicio });
+    expect(m.writes.find((w) => w.path === `${CONTRATOS}/${emendada.contractId}`).data.seamless).toBe(false);
   });
 });
 
