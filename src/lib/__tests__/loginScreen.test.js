@@ -441,10 +441,12 @@ describe('o login de hoje', () => {
 describe('o App e o endereço /recuperar-senha', () => {
   it('sem sessão, desenha o "Esqueci a senha" no lugar do login, só nesse endereço', () => {
     // Sem os comentários: a linha comentada tem o mesmo texto e não liga nada.
+    // Cada tela vem dentro da própria ScreenErrorBoundary, cobrada à parte pelo
+    // protecaoDeErro.sweep.test.js.
     const app = semComentarios(fonte('../../App.jsx'));
     const semSessao = app.slice(app.indexOf('if (!appUser) {'));
-    const desvio = semSessao.indexOf('if (isPasswordResetPath(location.pathname)) return <ForgotPasswordScreen />;');
+    const desvio = semSessao.indexOf('if (isPasswordResetPath(location.pathname)) return <ScreenErrorBoundary key="recuperar-senha"><ForgotPasswordScreen /></ScreenErrorBoundary>;');
     expect(desvio).toBeGreaterThan(-1);
-    expect(semSessao.indexOf('return <LoginScreen ')).toBeGreaterThan(desvio);
+    expect(semSessao.indexOf('return <ScreenErrorBoundary key="login"><LoginScreen ')).toBeGreaterThan(desvio);
   });
 });
