@@ -3,11 +3,14 @@ import { adminAuth, adminDb, admin } from './_firebaseAdmin.js';
 import { usersCollection } from './_auth.js';
 import { logAudit } from './_audit.js';
 import { sendMail } from './_mail.js';
-import { planIssue, planReserve, planKill } from './_passwordReset.js';
+import { normalizeEmail } from '../src/lib/passwordReset.js';
+import { planIssue, planReserve, planKill, isTenantActive } from './_passwordReset.js';
 
 // As operações de verdade do "Esqueci a senha": leituras, chamadas ao Firebase
-// Auth e transações no documento da conta. Sem regra de negócio: as contas
-// moram nos planejadores de _passwordReset.js. Desenho em
+// Auth e transações no documento da conta. As regras moram em _passwordReset.js
+// (academia ativa e as contas que rodam dentro das transações). Aqui fica só a
+// regra do cadastro legado, que precisa andar junto com o login e com as rules
+// (ver findMember). Desenho em
 // docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md.
 
 // Um documento por conta, com o uid como id: garante um código vivo só. O
@@ -45,24 +48,34 @@ export async function findAccount(email) {
 
   const [tenantSnap, member] = await Promise.all([
     adminDb.collection('tenants').doc(account.tenantId).get(),
-    findMember(account.tenantId, user.uid, email),
+    findMember(account.tenantId, user.uid, user.email),
   ]);
+  // null quando a academia não tem documento (legado).
   const tenant = tenantSnap.exists ? tenantSnap.data() || {} : null;
-  // Academia sem documento (legado): o login libera, e aqui também. O par de
-  // checagens é o do invite-accept e da página de indicação.
-  account.organizationActive = !tenant || !(tenant.status === 'suspended' || tenant.archived === true);
+  account.organizationActive = isTenantActive(tenant);
   account.isMember = Boolean(member);
   if (member?.name) account.name = member.name;
   return account;
 }
 
-// O cadastro na equipe, pelos mesmos dois caminhos do login (App.jsx): o
-// authUid e, no legado, o e-mail.
-async function findMember(tenantId, uid, email) {
+// O cadastro na equipe, pelos dois caminhos do login (App.jsx). O primeiro é o
+// authUid. O segundo é o legado: o cadastro achado pelo e-mail da conta, sem
+// espaço e em minúsculas, como o login o normaliza. No legado o login grava o
+// próprio uid no cadastro que achou, e as rules só aceitam essa gravação quando
+// o id do cadastro é o uid (selfLinksOwnUid, em firestore.rules). Cadastro de
+// outro id derruba o login, então aqui ele também não conta. O login usa o
+// primeiro cadastro que o e-mail acha, e o limit(1) traz o mesmo, porque a busca
+// sai ordenada pelo id. Mudou o login ou essas rules, mude aqui também.
+async function findMember(tenantId, uid, accountEmail) {
   const byUid = await usersCollection(tenantId).where('authUid', '==', uid).limit(1).get();
   if (!byUid.empty) return byUid.docs[0].data() || {};
+  // Sem e-mail na conta não há o que procurar, como no login.
+  const email = normalizeEmail(accountEmail);
+  if (!email) return null;
   const byEmail = await usersCollection(tenantId).where('email', '==', email).limit(1).get();
-  return byEmail.empty ? null : byEmail.docs[0].data() || {};
+  if (byEmail.empty) return null;
+  const legacy = byEmail.docs[0];
+  return legacy.id === uid ? legacy.data() || {} : null;
 }
 
 // A transação faz pedidos ao mesmo tempo da mesma conta esperarem a vez, e
@@ -112,7 +125,7 @@ export const audit = ({ uid, tenantId }) =>
 
 // O que as ações do tenant-resolve passam para o fluxo.
 export function realResetDeps() {
-  return {
+  const deps = {
     findAccount,
     issueCode,
     reserveAttempt,
@@ -123,9 +136,13 @@ export function realResetDeps() {
     sendMail: (msg) => sendMail(msg),
     now: () => Date.now(),
     randomInt: (max) => crypto.randomInt(0, max),
-    // A chave do HMAC sai da chave privada do Admin, que o _firebaseAdmin.js
-    // já exige para subir.
-    secret: process.env.FIREBASE_ADMIN_PRIVATE_KEY,
     log: console,
   };
+  // A chave do HMAC sai da chave privada do Admin, que o _firebaseAdmin.js já
+  // exige para subir. Ela não é enumerável, para não sair se alguém imprimir o
+  // deps (log, Sentry, JSON). Por isso copiar o deps com spread deixa o secret
+  // para trás, e o fluxo falha por falta de segredo: troque uma chave por
+  // atribuição (deps.log = ...), nunca com { ...deps }.
+  Object.defineProperty(deps, 'secret', { value: process.env.FIREBASE_ADMIN_PRIVATE_KEY, enumerable: false });
+  return deps;
 }

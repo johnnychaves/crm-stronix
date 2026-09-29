@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
+import util from 'node:util';
 import { realResetDeps } from '../_passwordResetRepo.js';
 import { requestPasswordReset, confirmPasswordReset } from '../_passwordResetFlow.js';
 import { hashResetCode } from '../_passwordReset.js';
@@ -24,8 +25,8 @@ vi.mock('../_firebaseAdmin.js', () => {
     limit: () => ref(caminho, filtro),
     get: async () => {
       if (filtro) {
-        const lista = (h.membros[caminho[1]] || []).filter((m) => m[filtro.campo] === filtro.valor);
-        return { empty: lista.length === 0, docs: lista.map((m) => ({ data: () => m })) };
+        const lista = (h.membros[caminho.join('/')] || []).filter((m) => m[filtro.campo] === filtro.valor);
+        return { empty: lista.length === 0, docs: lista.map((m) => ({ id: m.id, data: () => m })) };
       }
       const dados = h.store.get(caminho.join('/'));
       return { exists: dados != null, data: () => dados };
@@ -33,16 +34,24 @@ vi.mock('../_firebaseAdmin.js', () => {
   });
   const adminDb = {
     collection: (nome) => ref([nome]),
-    // Como o Firestore: o set troca o documento inteiro, e o update num
-    // documento que não existe falha.
-    runTransaction: async (fn) => fn({
-      get: (r) => r.get(),
-      set: (r, dados) => { h.store.set(r.caminho, dados); },
-      update: (r, dados) => {
-        if (!h.store.has(r.caminho)) throw new Error(`NOT_FOUND: ${r.caminho}`);
-        h.store.set(r.caminho, { ...h.store.get(r.caminho), ...dados });
-      },
-    }),
+    // Como o SDK: o set troca o documento inteiro, o update num documento que
+    // não existe falha, e a leitura depois de uma escrita na mesma transação
+    // lança.
+    runTransaction: async (fn) => {
+      let escreveu = false;
+      return fn({
+        get: (r) => {
+          if (escreveu) throw new Error('Firestore transactions require all reads to be executed before all writes.');
+          return r.get();
+        },
+        set: (r, dados) => { escreveu = true; h.store.set(r.caminho, dados); },
+        update: (r, dados) => {
+          if (!h.store.has(r.caminho)) throw new Error(`NOT_FOUND: ${r.caminho}`);
+          escreveu = true;
+          h.store.set(r.caminho, { ...h.store.get(r.caminho), ...dados });
+        },
+      });
+    },
   };
   const adminAuth = {
     getUserByEmail: async (email) => {
@@ -58,6 +67,8 @@ vi.mock('../_audit.js', () => ({ logAudit: async (e) => { h.auditoria.push(e); }
 vi.mock('../_mail.js', () => ({ sendMail: async (...args) => { h.envios.push(args); } }));
 
 const SEGREDO = 'chave-privada-de-teste';
+// Os cadastros da equipe ficam indexados pelo caminho inteiro da coleção.
+const EQUIPE = 'artifacts/academia-teste/public/data/stronix_users';
 const IP = '203.0.113.7';
 const SENHA = 'Nova@Senha1';
 const SIGN_IN = 'Sun, 28 Sep 2026 10:00:00 GMT';
@@ -67,7 +78,7 @@ const silencioso = { info: () => {}, error: () => {} };
 beforeEach(() => {
   vi.stubEnv('FIREBASE_ADMIN_PRIVATE_KEY', SEGREDO);
   h.store = new Map([['tenants/academia-teste', { status: 'active' }]]);
-  h.membros = { 'academia-teste': [{ authUid: 'u-ana', email: 'ana@academia.com', name: 'Ana Souza' }] };
+  h.membros = { [EQUIPE]: [{ id: 'u-ana', authUid: 'u-ana', email: 'ana@academia.com', name: 'Ana Souza' }] };
   // O Firebase guarda o e-mail com a grafia dele, que pode diferir da digitada.
   h.usuarios = {
     'ana@academia.com': {
@@ -87,7 +98,13 @@ afterEach(() => {
 });
 
 // As deps de verdade, só com o log calado para o teste não escrever no terminal.
-const deps = () => ({ ...realResetDeps(), log: silencioso });
+// O log entra por atribuição: o spread deixaria o secret para trás, porque ele
+// não é enumerável.
+const deps = () => {
+  const d = realResetDeps();
+  d.log = silencioso;
+  return d;
+};
 const mensagens = () => h.envios.map(([msg]) => msg);
 
 // Faz o pedido e devolve o código que saiu no texto do e-mail.
@@ -108,12 +125,13 @@ function depsUsadasPeloFluxo() {
 
 describe('realResetDeps entrega o que o fluxo usa', () => {
   it('as chaves que o fluxo lê em deps são as que o módulo entrega', () => {
-    expect(depsUsadasPeloFluxo()).toEqual(Object.keys(realResetDeps()).sort());
+    // getOwnPropertyNames traz também o secret, que não é enumerável.
+    expect(depsUsadasPeloFluxo()).toEqual(Object.getOwnPropertyNames(realResetDeps()).sort());
   });
 
   it('cada chave tem o tipo com que o fluxo a usa', () => {
     const d = realResetDeps();
-    const tipos = Object.fromEntries(Object.entries(d).map(([nome, valor]) => [nome, typeof valor]));
+    const tipos = Object.fromEntries(Object.getOwnPropertyNames(d).map((nome) => [nome, typeof d[nome]]));
     expect(tipos).toEqual({
       findAccount: 'function', issueCode: 'function', reserveAttempt: 'function', killCode: 'function',
       setPassword: 'function', revokeSessions: 'function', audit: 'function', sendMail: 'function',
@@ -132,6 +150,23 @@ describe('realResetDeps entrega o que o fluxo usa', () => {
     const sorteios = Array.from({ length: 2000 }, () => d.randomInt(1_000_000));
     expect(sorteios.every((n) => Number.isInteger(n) && n >= 0 && n < 1_000_000)).toBe(true);
     expect(d.randomInt(1)).toBe(0);
+  });
+
+  it('o segredo lê normalmente, mas não aparece em JSON.stringify nem em util.inspect', () => {
+    const d = realResetDeps();
+    expect(d.secret).toBe(SEGREDO);
+    expect(Object.keys(d)).not.toContain('secret');
+    expect(JSON.stringify(d)).not.toContain(SEGREDO);
+    expect(util.inspect(d)).not.toContain(SEGREDO);
+    expect(util.inspect(d, { depth: null })).not.toContain(SEGREDO);
+  });
+
+  it('copiar o deps com spread deixa o segredo para trás, e o fluxo falha em vez de seguir sem ele', async () => {
+    const copia = { ...realResetDeps(), log: silencioso };
+    expect(copia.secret).toBeUndefined();
+    await expect(requestPasswordReset('ana@academia.com', IP, copia)).rejects.toThrow('falta o segredo');
+    expect(mensagens()).toEqual([]);
+    expect(h.store.has('_password_reset/u-ana')).toBe(false);
   });
 
   it('sendMail entrega ao _mail.js só a mensagem', async () => {

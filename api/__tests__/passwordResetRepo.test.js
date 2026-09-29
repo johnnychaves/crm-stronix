@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { findAccount, issueCode, reserveAttempt, killCode, audit } from '../_passwordResetRepo.js';
 
-const h = vi.hoisted(() => ({ usuarios: {}, tenants: {}, membros: {}, resets: {}, escritas: [], auditoria: [] }));
+const h = vi.hoisted(() => ({ usuarios: {}, tenants: {}, membros: {}, resets: {}, escritas: [], auditoria: [], leituras: [] }));
+
+// Os cadastros da equipe ficam indexados pelo caminho inteiro da coleção, como
+// no banco: uma busca em outro caminho não acha ninguém.
+const EQUIPE = 'artifacts/academia-teste/public/data/stronix_users';
 
 vi.mock('../_firebaseAdmin.js', () => {
   const ler = (caminho) => {
@@ -16,9 +20,10 @@ vi.mock('../_firebaseAdmin.js', () => {
     where: (campo, _op, valor) => ref(caminho, { campo, valor }),
     limit: () => ref(caminho, filtro),
     get: async () => {
+      h.leituras.push(filtro ? `${caminho.join('/')} where ${filtro.campo} == ${filtro.valor}` : caminho.join('/'));
       if (filtro) {
-        const lista = (h.membros[caminho[1]] || []).filter((m) => m[filtro.campo] === filtro.valor);
-        return { empty: lista.length === 0, docs: lista.map((m) => ({ data: () => m })) };
+        const lista = (h.membros[caminho.join('/')] || []).filter((m) => m[filtro.campo] === filtro.valor);
+        return { empty: lista.length === 0, docs: lista.map((m) => ({ id: m.id, data: () => m })) };
       }
       const dados = ler(caminho);
       return { exists: dados != null, data: () => dados };
@@ -26,11 +31,18 @@ vi.mock('../_firebaseAdmin.js', () => {
   });
   const adminDb = {
     collection: (nome) => ref([nome]),
-    runTransaction: async (fn) => fn({
-      get: (r) => r.get(),
-      set: (r, dados) => { h.escritas.push({ tipo: 'set', caminho: r.caminho, dados }); },
-      update: (r, dados) => { h.escritas.push({ tipo: 'update', caminho: r.caminho, dados }); },
-    }),
+    // Como o SDK: a leitura depois de uma escrita na mesma transação lança.
+    runTransaction: async (fn) => {
+      let escreveu = false;
+      return fn({
+        get: (r) => {
+          if (escreveu) throw new Error('Firestore transactions require all reads to be executed before all writes.');
+          return r.get();
+        },
+        set: (r, dados) => { escreveu = true; h.escritas.push({ tipo: 'set', caminho: r.caminho, dados }); },
+        update: (r, dados) => { escreveu = true; h.escritas.push({ tipo: 'update', caminho: r.caminho, dados }); },
+      });
+    },
   };
   const adminAuth = {
     getUserByEmail: async (email) => {
@@ -56,10 +68,11 @@ const usuario = (extra = {}) => ({
 beforeEach(() => {
   h.usuarios = { 'ana@academia.com': usuario() };
   h.tenants = { 'academia-teste': { displayName: 'Academia Teste', status: 'active' } };
-  h.membros = { 'academia-teste': [{ authUid: 'u-ana', email: 'ana@academia.com', name: 'Ana Souza' }] };
+  h.membros = { [EQUIPE]: [{ id: 'u-ana', authUid: 'u-ana', email: 'ana@academia.com', name: 'Ana Souza' }] };
   h.resets = {};
   h.escritas = [];
   h.auditoria = [];
+  h.leituras = [];
 });
 
 describe('findAccount', () => {
@@ -75,15 +88,76 @@ describe('findAccount', () => {
     });
   });
 
-  it('acha o cadastro pelo e-mail quando falta o authUid, como o login', async () => {
-    h.membros['academia-teste'] = [{ email: 'ana@academia.com', name: 'Ana Legada' }];
+  it('lê a academia em tenants/<id> e a equipe em artifacts/<id>/public/data/stronix_users', async () => {
+    await findAccount('ana@academia.com');
+    expect(h.leituras).toEqual(expect.arrayContaining(['tenants/academia-teste', `${EQUIPE} where authUid == u-ana`]));
+  });
+
+  it('acha o cadastro pelo authUid, qualquer que seja o id do documento', async () => {
+    h.membros[EQUIPE] = [{ id: 'doc-qualquer', authUid: 'u-ana', email: 'outro@academia.com', name: 'Ana Convidada' }];
+    const c = await findAccount('ana@academia.com');
+    expect(c.isMember).toBe(true);
+    expect(c.name).toBe('Ana Convidada');
+  });
+
+  it('acha o cadastro legado pelo e-mail quando o id do documento é o uid, como o login', async () => {
+    h.membros[EQUIPE] = [{ id: 'u-ana', email: 'ana@academia.com', name: 'Ana Legada' }];
     const c = await findAccount('ana@academia.com');
     expect(c.isMember).toBe(true);
     expect(c.name).toBe('Ana Legada');
   });
 
+  it('cadastro achado pelo e-mail com id de outra conta não conta: o login não consegue vinculá-lo', async () => {
+    // O cadastro do Bruno, com o e-mail da Ana por engano.
+    h.membros[EQUIPE] = [{ id: 'u-bruno', authUid: 'u-bruno', email: 'ana@academia.com', name: 'Bruno Lima' }];
+    const bruno = await findAccount('ana@academia.com');
+    expect(bruno.isMember).toBe(false);
+    expect(bruno.name).toBe('Ana do Firebase');
+    // Cadastro antigo, sem authUid e com id automático.
+    h.membros[EQUIPE] = [{ id: 'doc-antigo', email: 'ana@academia.com', name: 'Ana Antiga' }];
+    const antigo = await findAccount('ana@academia.com');
+    expect(antigo.isMember).toBe(false);
+    expect(antigo.name).toBe('Ana do Firebase');
+  });
+
+  it('o legado é procurado pelo e-mail da conta em minúsculas, mesmo com outra grafia no digitado e no Firebase', async () => {
+    // Digitado em maiúsculas, e o Firebase guarda o e-mail com a grafia dele.
+    h.usuarios['ANA@ACADEMIA.COM'] = usuario({ email: 'Ana@Academia.com' });
+    h.membros[EQUIPE] = [{ id: 'u-ana', email: 'ana@academia.com', name: 'Ana Legada' }];
+    const c = await findAccount('ANA@ACADEMIA.COM');
+    expect(c.isMember).toBe(true);
+    expect(c.name).toBe('Ana Legada');
+    // O código continua indo para a grafia que o Firebase guarda.
+    expect(c.email).toBe('Ana@Academia.com');
+    expect(h.leituras).toContain(`${EQUIPE} where email == ana@academia.com`);
+    expect(h.leituras.filter((l) => l.includes(' where email == '))).toHaveLength(1);
+  });
+
+  it('o legado usa o e-mail que o Firebase guarda para a conta, e não o digitado', async () => {
+    // O Firebase acha a conta pelo digitado, e o e-mail dela é outro.
+    h.usuarios['ana@academia.com'] = usuario({ email: 'ana.souza@academia.com' });
+    h.membros[EQUIPE] = [
+      { id: 'u-ana', email: 'ana.souza@academia.com', name: 'Ana Legada' },
+      { id: 'u-bia', email: 'ana@academia.com', name: 'Bia Costa' },
+    ];
+    const c = await findAccount('ana@academia.com');
+    expect(c.isMember).toBe(true);
+    expect(c.name).toBe('Ana Legada');
+    expect(h.leituras).toContain(`${EQUIPE} where email == ana.souza@academia.com`);
+    expect(h.leituras).not.toContain(`${EQUIPE} where email == ana@academia.com`);
+  });
+
+  it('conta sem e-mail no Firebase não é procurada pelo e-mail', async () => {
+    h.usuarios['ana@academia.com'] = usuario({ email: '' });
+    h.membros[EQUIPE] = [{ id: 'u-ana', email: '', name: 'Sem E-mail' }];
+    const c = await findAccount('ana@academia.com');
+    expect(c.email).toBeNull();
+    expect(c.isMember).toBe(false);
+    expect(h.leituras.some((l) => l.includes(' where email == '))).toBe(false);
+  });
+
   it('sem cadastro na equipe, não é da equipe e fica com o nome do Firebase', async () => {
-    h.membros['academia-teste'] = [];
+    h.membros[EQUIPE] = [];
     const c = await findAccount('ana@academia.com');
     expect(c.isMember).toBe(false);
     expect(c.name).toBe('Ana do Firebase');
@@ -100,16 +174,14 @@ describe('findAccount', () => {
     expect((await findAccount('ana@academia.com')).organizationActive).toBe(true);
   });
 
-  it('super-admin e conta desativada saem com a marca certa e com o e-mail', async () => {
-    h.usuarios['ana@academia.com'] = usuario({ customClaims: { superAdmin: true } });
-    expect(await findAccount('ana@academia.com')).toMatchObject({ superAdmin: true, tenantId: null, email: 'ana@academia.com' });
-    h.usuarios['ana@academia.com'] = usuario({ disabled: true });
-    expect(await findAccount('ana@academia.com')).toMatchObject({ disabled: true, email: 'ana@academia.com' });
-  });
-
-  it('conta sem academia também sai com o e-mail', async () => {
-    h.usuarios['ana@academia.com'] = usuario({ customClaims: {} });
-    expect(await findAccount('ana@academia.com')).toMatchObject({ tenantId: null, isMember: false, email: 'ana@academia.com' });
+  it.each([
+    ['super-admin', { customClaims: { superAdmin: true } }, { superAdmin: true, tenantId: null }],
+    ['conta desativada', { disabled: true }, { disabled: true }],
+    ['conta sem academia', { customClaims: {} }, { tenantId: null }],
+  ])('%s sai com o e-mail e sem ler a academia nem a equipe', async (_caso, extra, esperado) => {
+    h.usuarios['ana@academia.com'] = usuario(extra);
+    expect(await findAccount('ana@academia.com')).toMatchObject({ ...esperado, email: 'ana@academia.com' });
+    expect(h.leituras).toEqual([]);
   });
 
   it('e-mail que o Firebase não aceita vira null, e outro erro sobe', async () => {

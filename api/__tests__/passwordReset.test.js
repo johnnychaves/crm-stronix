@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
-  generateResetCode, hashResetCode, resetCodeMatches, accountRefusal, maskEmail,
+  generateResetCode, hashResetCode, resetCodeMatches, accountRefusal, isTenantActive, maskEmail,
   planIssue, planReserve, planKill, marksChanged,
 } from '../_passwordReset.js';
 import { RESET_CODE_TTL_MS, RESET_WINDOW_MS } from '../../src/lib/passwordReset.js';
@@ -103,6 +103,30 @@ describe('accountRefusal', () => {
   it('a falta do e-mail vem logo depois da conta que não existe, antes dos outros motivos', () => {
     expect(accountRefusal(conta({ email: '', superAdmin: true }))).toBe('no_email');
     expect(accountRefusal(conta({ email: '', disabled: true, tenantId: null }))).toBe('no_email');
+  });
+});
+
+describe('isTenantActive', () => {
+  it('academia sem documento (legado) conta como ativa, como no login', () => {
+    expect(isTenantActive(null)).toBe(true);
+    expect(isTenantActive(undefined)).toBe(true);
+  });
+
+  it('documento sem status, ativo, em teste e não arquivado contam como ativos', () => {
+    expect(isTenantActive({})).toBe(true);
+    expect(isTenantActive({ status: 'active' })).toBe(true);
+    expect(isTenantActive({ status: 'trial' })).toBe(true);
+    expect(isTenantActive({ status: 'active', archived: false })).toBe(true);
+  });
+
+  it('academia suspensa não está ativa', () => {
+    expect(isTenantActive({ status: 'suspended' })).toBe(false);
+    expect(isTenantActive({ status: 'suspended', archived: false })).toBe(false);
+  });
+
+  it('academia arquivada não está ativa, mesmo com o status ativo', () => {
+    expect(isTenantActive({ archived: true })).toBe(false);
+    expect(isTenantActive({ status: 'active', archived: true })).toBe(false);
   });
 });
 

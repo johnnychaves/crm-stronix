@@ -63,6 +63,13 @@ export function accountRefusal(account) {
   return null;
 }
 
+// A academia pode receber código? Suspensa ou arquivada não. Academia sem
+// documento (legado) recebe, porque o login também a libera. É o mesmo par de
+// checagens do invite-accept e da página de indicação.
+export function isTenantActive(tenant) {
+  return !tenant || !(tenant.status === 'suspended' || tenant.archived === true);
+}
+
 // E-mail sem conta vai para o log assim, nunca inteiro. A parte antes do @ também
 // nunca sai inteira: com duas letras ou menos, aparece uma a menos.
 export function maskEmail(email) {
