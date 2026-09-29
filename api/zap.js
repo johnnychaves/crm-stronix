@@ -1,5 +1,7 @@
-// Ponte com o Stronizap. Um sentido só nesta Parte A: o Zap pergunta quem é a
-// pessoa por trás de um telefone e recebe o cartão de contexto.
+// Ponte com o Stronizap. O Zap pergunta quem é a pessoa por trás de um
+// telefone e recebe o cartão de contexto. Desde o cadastro pelo Stronizap, ele
+// também pede as listas do formulário (lead-options) e cadastra o lead de
+// dentro da conversa (create-lead).
 //
 // O GET procura também os menores que têm aquele telefone como responsável
 // (`guardianZapMatchKey`), e o `match` conta o número do responsável como
@@ -9,15 +11,19 @@
 // guardada aqui só como hash em tenants/{id}.integrations.zap.keyHash.
 //
 // O POST tem dois donos. `generate` e `revoke` são do admin da academia, logado
-// no CRM, e autenticam por verifyRequest (ID token). `match` é do próprio
-// Stronizap e autentica pela chave, igual ao GET. O desvio fica na primeira
-// linha de handlePost, e os dois caminhos nunca se misturam.
+// no CRM, e autenticam por verifyRequest (ID token). `match`, `lead-options` e
+// `create-lead` são do próprio Stronizap e autenticam pela chave, igual ao GET.
+// O desvio fica no começo de handlePost, e os dois caminhos nunca se misturam.
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { withSentry } from './_sentry.js';
 import { isTenantAdmin } from './_auth.js';
 import { generateZapKey, verifyZapKey } from './_zapAuth.js';
 import { zapMatchKey } from './_zapPhone.js';
 import { buildZapCard, buildGuardianCard, buildZapWards } from './_zapCard.js';
+import {
+  ZAP_LEAD_MESSAGES, refusal, invalidData, tenantBlocked, emailFromActor, findTeamMember,
+  buildLeadOptions, scrubbedError
+} from './_zapLead.js';
 import { contactOf } from '../src/lib/guardian.js';
 
 const LEADS_PATH = 'stronix_leads';
@@ -27,6 +33,9 @@ const LEADS_PATH = 'stronix_leads';
 // CLIENTE do Firebase (App Check, IndexedDB) e quebra em runtime de servidor.
 const CONFIG_PATH = 'stronix_config';
 const CONFIG_GENERAL_ID = 'general';
+const USERS_PATH = 'stronix_users';
+// Catálogos do formulário do cadastro, na ordem em que readCatalogs devolve.
+const CATALOG_PATHS = ['stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses'];
 
 const MATCH_MAX = 30; // teto do operador `in` do Firestore
 
@@ -169,12 +178,16 @@ export default withSentry(async function handler(req, res) {
 });
 
 // Gera e revoga a chave de conexão do Stronizap (ação do admin da academia, pela
-// tela de Configurações → Integrações) e responde o match em lote (ação do
-// próprio Stronizap, autenticada pela chave). Ver o desvio logo abaixo.
+// tela de Configurações → Integrações) e atende as ações do próprio Stronizap,
+// autenticadas pela chave: o match em lote, as opções e o cadastro de lead.
+// Ver o desvio logo abaixo.
 async function handlePost(req, res) {
-  // A ação match é a única do POST que autentica pela chave do Zap. As outras
-  // duas (generate e revoke) são do admin logado e seguem exigindo ID token.
-  if (req.body?.action === 'match') return handleMatch(req, res);
+  // match, lead-options e create-lead são do próprio Stronizap e autenticam
+  // pela chave do Zap. generate e revoke são do admin logado e seguem exigindo
+  // ID token. Ação desconhecida cai no caminho do login e é recusada lá.
+  const action = req.body?.action;
+  if (action === 'match') return handleMatch(req, res);
+  if (action === 'lead-options') return handleLeadOptions(req, res);
 
   try {
     const auth = await verifyRequest(req);
@@ -187,7 +200,6 @@ async function handlePost(req, res) {
       return res.status(403).json({ error: 'Só o admin da academia pode alterar a integração' });
     }
 
-    const { action } = req.body || {};
     const tenantRef = adminDb.collection('tenants').doc(auth.tenantId);
 
     if (action === 'generate') {
@@ -295,4 +307,78 @@ async function handleMatch(req, res) {
     for (const phone of porMatchKey.get(menor.guardianZapMatchKey) || []) found.add(phone);
   }
   return res.status(200).json({ found: [...found] });
+}
+
+// ---------------------------------------------------------------------------
+// Cadastro de lead pelo Stronizap. As regras moram em api/_zapLead.js; aqui
+// ficam a leitura e a gravação. Spec em
+// docs/superpowers/specs/2026-09-29-cadastro-de-lead-pelo-stronizap-design.md
+// ---------------------------------------------------------------------------
+
+const responder = (res, { status, body }) => res.status(status).json(body);
+
+const docsOf = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+// Autenticação das ações do Stronizap no POST: identificador no formato da
+// casa, chave da academia e academia ativa. Devolve { tenantId } ou
+// { refusal }. Academia inexistente responde igual a chave errada, como no GET.
+async function openByKey(req) {
+  const chave = req.headers['x-stronizap-key'];
+  const tenantId = req.body?.tenant;
+  if (!chave || !tenantId) return { refusal: { status: 401, body: { error: 'Credencial ausente' } } };
+  if (typeof tenantId !== 'string' || !TENANT_RE.test(tenantId)) {
+    return { refusal: { status: 401, body: { error: 'Credencial inválida' } } };
+  }
+  const loaded = await loadZapTenant(tenantId);
+  if (!loaded || !verifyZapKey(chave, loaded.zap.keyHash)) {
+    return { refusal: { status: 401, body: { error: 'Credencial inválida' } } };
+  }
+  // O firebase-admin passa por cima das regras do Firestore, então a conta do
+  // tenantActive (firestore.rules) é refeita aqui. Vale também para as
+  // opções: o formulário nem abre.
+  if (tenantBlocked(loaded.tenant, new Date())) {
+    return { refusal: refusal(403, 'academia_bloqueada', ZAP_LEAD_MESSAGES.blocked) };
+  }
+  return { tenantId };
+}
+
+// A equipe inteira da academia: quem cadastra (pelo e-mail), o dono que o
+// gestor escolhe e a lista de Consultor responsável. Equipe cabe numa leitura.
+async function readTeam(tenantId) {
+  return docsOf(await academyCollection(tenantId, USERS_PATH).get());
+}
+
+// Os catálogos do formulário, lidos a cada pedido: item novo no Stronilead
+// aparece na próxima abertura, e item apagado é recusado no cadastro.
+async function readCatalogs(tenantId) {
+  const [sources, dores, modalities, funnels, statuses] = await Promise.all(
+    CATALOG_PATHS.map((nome) => academyCollection(tenantId, nome).get())
+  );
+  return {
+    sources: docsOf(sources),
+    dores: docsOf(dores),
+    modalities: docsOf(modalities),
+    funnels: docsOf(funnels),
+    statuses: docsOf(statuses)
+  };
+}
+
+// Opções do formulário: quem pede (achado pelo e-mail da sessão do Stronizap)
+// e as listas da academia. Só lê.
+async function handleLeadOptions(req, res) {
+  try {
+    const access = await openByKey(req);
+    if (access.refusal) return responder(res, access.refusal);
+
+    const email = emailFromActor(req.body?.actor);
+    if (!email) return responder(res, invalidData('actor', ZAP_LEAD_MESSAGES.actor));
+
+    const [team, catalogs] = await Promise.all([readTeam(access.tenantId), readCatalogs(access.tenantId)]);
+    const actor = findTeamMember(team, email);
+    if (!actor) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+
+    return res.status(200).json(buildLeadOptions({ actor, team, catalogs }));
+  } catch (e) {
+    throw scrubbedError('lead-options', e);
+  }
 }

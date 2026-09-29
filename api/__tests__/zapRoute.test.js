@@ -240,6 +240,37 @@ const menorDe = (id, name, extra = {}) => ({
   ...extra
 });
 
+// Equipe da academia, como mora em stronix_users. O id é o do documento.
+const ANA = { id: 'u-ana', name: 'Ana Souza', email: 'ana@stronix.com.br', authUid: 'auth-ana', role: 'consultant' };
+const BRUNO = { id: 'u-bruno', name: 'Bruno Lima', email: 'bruno@stronix.com.br', authUid: 'auth-bruno', role: 'consultant' };
+const JOHNNY = { id: 'u-johnny', name: 'Johnny', email: 'johnny@stronix.com.br', authUid: 'auth-johnny', role: 'admin' };
+// Convidada que nunca entrou no Stronilead: está na equipe, mas sem authUid.
+const BIA = { id: 'u-bia', name: 'Bia Rocha', email: 'bia@stronix.com.br', role: 'consultant' };
+
+// Catálogos da academia, no formato dos documentos. Função, porque os testes
+// mexem neles.
+const catalogosDaAcademia = () => ({
+  stronix_sources: [{ id: 's1', name: 'Instagram' }, { id: 's2', name: 'WhatsApp' }, { id: 's3', name: 'Indicação' }],
+  stronix_dores: [{ id: 'd1', name: 'Postura' }, { id: 'd2', name: 'Emagrecimento' }],
+  stronix_modalities: [{ id: 'm2', name: 'Pilates', order: 2 }, { id: 'm1', name: 'Musculação', order: 1 }],
+  stronix_funnels: [
+    { id: 'f-com', name: 'Comercial', order: 1, isDefault: true },
+    { id: 'f-kids', name: 'Kids', order: 2 },
+    { id: 'f-vazio', name: 'Sem etapas', order: 3 },
+    { id: 'f-ind', name: 'Indicações', order: 97, systemKind: 'referral' },
+    { id: 'f-ren', name: 'Renovações', order: 98, systemKind: 'renewal' },
+    { id: 'f-venc', name: 'Vencidos', order: 99, systemKind: 'expired' },
+    { id: 'f-up', name: 'Upgrade', order: 100, systemKind: 'upgrade' }
+  ],
+  stronix_statuses: [
+    { id: 'st2', funnelId: 'f-com', name: 'Primeiro contato', order: 2 },
+    { id: 'st1', funnelId: 'f-com', name: 'Novo lead', order: 1 },
+    { id: 'st3', funnelId: 'f-kids', name: 'Interesse', order: 1 },
+    { id: 'st4', funnelId: 'f-ind', name: 'Aguardando ação', order: 1, isEntry: true },
+    { id: 'st5', funnelId: 'f-venc', name: 'Aguardando contato', order: 1 }
+  ]
+});
+
 let chave;
 
 function zerarBanco() {
@@ -269,6 +300,19 @@ function academia(tenantId) {
   banco.leads[tenantId] = [];
   return gerada.key;
 }
+
+// Academia com chave, equipe e catálogos: o cenário do cadastro pelo Stronizap.
+function academiaComEquipe() {
+  chave = academia(TENANT);
+  banco.users[TENANT] = [ANA, BRUNO, JOHNNY, BIA];
+  banco.catalogos[TENANT] = catalogosDaAcademia();
+}
+
+const pedidoOpcoes = (email = ANA.email) => ({
+  method: 'POST',
+  headers: { 'x-stronizap-key': chave },
+  body: { action: 'lead-options', tenant: TENANT, actor: { email } }
+});
 
 const pedido = () => ({
   method: 'GET',
@@ -826,5 +870,197 @@ describe('POST /api/zap com generate e revoke', () => {
     expect(res.statusCode).toBe(200);
     expect(banco.gravacoes).toHaveLength(1);
     expect(banco.gravacoes[0].caminho).toBe(`tenants/${TENANT}`);
+  });
+});
+
+describe('POST /api/zap com action lead-options', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(HOJE);
+    zerarBanco();
+    academiaComEquipe();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('consultora: quem ela é, as listas da academia e o padrão do Novo lead, sem a equipe', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoes(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      actor: { id: 'u-ana', name: 'Ana Souza', role: 'consultor' },
+      sources: [{ name: 'Indicação' }, { name: 'Instagram' }, { name: 'WhatsApp' }],
+      dores: [{ name: 'Emagrecimento' }, { name: 'Postura' }],
+      modalities: [{ name: 'Musculação' }, { name: 'Pilates' }],
+      funnels: [
+        { id: 'f-com', name: 'Comercial', stages: [{ name: 'Novo lead' }, { name: 'Primeiro contato' }] },
+        { id: 'f-kids', name: 'Kids', stages: [{ name: 'Interesse' }] }
+      ],
+      relationships: ['Mãe', 'Pai', 'Avó', 'Avô', 'Tia', 'Tio', 'Outro'],
+      defaults: { source: 'WhatsApp', funnelId: 'f-com', stage: 'Novo lead' }
+    });
+    expect('team' in res.body).toBe(false);
+    // Opções só leem: não gastam o limite de cadastros nem gravam nada.
+    expect(limitador.chamadas).toEqual([]);
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('gestor: recebe a equipe com id e nome, sem e-mail e sem quem nunca entrou', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoes(JOHNNY.email), res);
+
+    expect(res.body.actor).toEqual({ id: 'u-johnny', name: 'Johnny', role: 'gestor' });
+    expect(res.body.team).toEqual([
+      { id: 'u-ana', name: 'Ana Souza' },
+      { id: 'u-bruno', name: 'Bruno Lima' },
+      { id: 'u-johnny', name: 'Johnny' }
+    ]);
+    expect(JSON.stringify(res.body)).not.toContain('@');
+  });
+
+  it('e-mail com maiúsculas e espaços acha a pessoa', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoes('  ANA@Stronix.com.br '), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.actor.id).toBe('u-ana');
+  });
+
+  it('item novo no catálogo aparece no pedido seguinte', async () => {
+    banco.catalogos[TENANT].stronix_dores.push({ id: 'd3', name: 'Ansiedade' });
+    const res = resposta();
+
+    await handler(pedidoOpcoes(), res);
+
+    expect(res.body.dores).toEqual([{ name: 'Ansiedade' }, { name: 'Emagrecimento' }, { name: 'Postura' }]);
+  });
+
+  it('pessoa fora da equipe recebe o aviso com o e-mail dela', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoes('carla@stronix.com.br'), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({
+      error: 'fora_da_equipe',
+      message: 'Seu e-mail do Stronizap, carla@stronix.com.br, não está na equipe do Stronilead. Peça ao gestor para incluir você lá com esse mesmo e-mail.'
+    });
+  });
+
+  it('quem está na equipe mas nunca entrou no Stronilead também fica de fora', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoes(BIA.email), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toBe('fora_da_equipe');
+  });
+
+  it('academia suspensa não abre o formulário', async () => {
+    banco.tenants[TENANT].status = 'suspended';
+    const res = resposta();
+
+    await handler(pedidoOpcoes(), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({
+      error: 'academia_bloqueada',
+      message: 'O Stronilead desta academia está bloqueado. Fale com o gestor.'
+    });
+  });
+
+  it('sem o e-mail de quem pede, 400 no campo actor', async () => {
+    const res = resposta();
+    const p = pedidoOpcoes();
+    delete p.body.actor;
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'dados_invalidos', field: 'actor', message: 'Não deu para saber quem está cadastrando.' });
+  });
+
+  it('chave de outra academia não abre as opções', async () => {
+    academia(OUTRA);
+    banco.users[OUTRA] = [ANA];
+    const res = resposta();
+    const p = pedidoOpcoes();
+    p.body.tenant = OUTRA;
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+
+  it('identificador com barra responde 401 sem chegar ao banco', async () => {
+    const res = resposta();
+    const p = pedidoOpcoes();
+    p.body.tenant = 'academia/teste';
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+});
+
+describe('POST /api/zap: o desvio no começo do handlePost', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(HOJE);
+    zerarBanco();
+    academiaComEquipe();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  // Os pedidos de cada ação que autentica pela chave.
+  const pedidoPelaChave = (action) => ({
+    match: { method: 'POST', headers: { 'x-stronizap-key': chave }, body: { action, tenant: TENANT, phones: [TELEFONE] } },
+    'lead-options': pedidoOpcoes()
+  })[action];
+
+  it.each(['lead-options'])('%s com login de admin e sem a chave do Zap responde 401 e não grava nada', async (action) => {
+    sessao.auth = { uid: 'auth-johnny', tenantId: TENANT };
+    sessao.admin = true;
+    const p = pedidoPelaChave(action);
+    delete p.headers['x-stronizap-key'];
+    p.headers.authorization = 'Bearer token-de-admin';
+    const res = resposta();
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial ausente' });
+    expect(banco.gravacoes).toEqual([]);
+    expect(sessao.consultasDoLogin).toBe(0);
+  });
+
+  it.each(['match', 'lead-options'])('%s com a chave nunca consulta o login do CRM', async (action) => {
+    const res = resposta();
+
+    await handler(pedidoPelaChave(action), res);
+
+    expect(res.statusCode).toBeLessThan(300);
+    expect(sessao.consultasDoLogin).toBe(0);
+  });
+
+  it('ação desconhecida com a chave cai no caminho do login e é recusada', async () => {
+    const res = resposta();
+
+    await handler({ method: 'POST', headers: { 'x-stronizap-key': chave }, body: { action: 'lead-option', tenant: TENANT } }, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Não autenticado.' });
+    expect(sessao.consultasDoLogin).toBe(1);
   });
 });
