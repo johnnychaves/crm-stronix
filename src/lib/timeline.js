@@ -4,6 +4,7 @@
 
 import { monthKeyOf, monthLabel } from './operacional/month.js';
 import { parseValorBRL } from './format.js';
+import { ZAP_SIGNUP_TYPE } from './leads.js';
 
 export const extractStageNameFromInteractionText = (text = '') => {
   const match = String(text).match(/\[([^\]]+)\]/);
@@ -37,6 +38,52 @@ export const timelineStamp = (date) => {
   const d = validDate(date);
   if (!d) return '';
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+};
+
+// Textos do marco de início do lead cadastrado pelo Stronizap (modelo C da
+// spec). A pílula: "cadastrado pelo Stronizap por Johnny em 28/09 às 14:32".
+// O "Início" em negrito fica com o componente (ZapSignupMarker).
+export const zapSignupPillText = (i) => {
+  const d = validDate(i?.createdAt);
+  const autor = String(i?.consultantName || '').trim();
+  return [
+    'cadastrado pelo Stronizap',
+    autor ? `por ${autor}` : null,
+    d ? `em ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)} às ${pad2(d.getHours())}:${pad2(d.getMinutes())}` : null
+  ].filter(Boolean).join(' ');
+};
+
+// A linha de baixo do marco: o consultor responsável, só quando não é quem
+// cadastrou (o ownerName só é gravado nesse caso), e o canal da conversa. Sem
+// nenhum dos dois, null.
+export const zapSignupDetailText = (i) => {
+  const dono = String(i?.ownerName || '').trim();
+  const canal = String(i?.zapChannelName || '').trim();
+  const texto = [dono ? `Consultor responsável ${dono}` : null, canal ? `canal ${canal}` : null].filter(Boolean).join(' · ');
+  return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : null;
+};
+
+// O marco de início fica embaixo de quem tem o mesmo horário que ele. O
+// cadastro pelo Stronizap grava o marco e a observação do cadastro na mesma
+// transação, com o mesmo horário do servidor, e o Firestore desempata pelo id,
+// que é aleatório: sem isto a observação às vezes vinha antes do início.
+// Recebe a lista do mais novo para o mais antigo, como o useLeadTimeline, e
+// só mexe dentro de um empate. Evento sem data não empata com ninguém.
+export const originLastOnTies = (list) => {
+  const hora = (i) => validDate(i?.createdAt)?.getTime() ?? null;
+  const out = [];
+  let empate = [];
+  const fechar = () => {
+    out.push(...empate.filter((i) => i._kind !== 'origin'), ...empate.filter((i) => i._kind === 'origin'));
+    empate = [];
+  };
+  (list || []).forEach((item) => {
+    const h = hora(item);
+    if (empate.length > 0 && !(h !== null && h === hora(empate[0]))) fechar();
+    empate.push(item);
+  });
+  fechar();
+  return out;
 };
 
 // Detecta eventos de CONTRATO (matrícula, renovação, cancelamento, trancamento,
@@ -96,6 +143,10 @@ export const classifyInteraction = (i) => {
   // qualquer regex de texto: o 🎉 de conversão menciona "matrícula" e sem este
   // gate cairia em 'contract' (ou, pior, no 'system' oculto por padrão).
   if (i.type === 'referral') return 'referral';
+  // Marco de início do lead cadastrado pelo Stronizap: bucket próprio, também
+  // decidido pelo type. Entra em Marcos e aparece com o interruptor de
+  // Sistema desligado.
+  if (i.type === ZAP_SIGNUP_TYPE) return 'origin';
   // Cadastro importado de outro sistema (clientImportWrites.js): evento de
   // sistema, atrás do interruptor. Vem antes do regex de contrato porque o
   // texto cita o plano e a vigência.
@@ -135,7 +186,7 @@ export const TIMELINE_FILTERS = [
   { id: 'conversation', label: 'Conversas',    kinds: ['conversation'] },
   { id: 'appointment',  label: 'Agendamentos', kinds: ['appointment'] },
   { id: 'note',         label: 'Anotações',    kinds: ['note'] },
-  { id: 'milestone',    label: 'Marcos',       kinds: ['status', 'contract', 'referral'] }
+  { id: 'milestone',    label: 'Marcos',       kinds: ['status', 'contract', 'referral', 'origin'] }
 ];
 
 export const TIMELINE_SYSTEM_KIND = 'system';
@@ -157,6 +208,7 @@ export const timelineTypeLabel = (i) => {
     case 'contract': return 'Contrato';
     case 'status': return 'Fase';
     case 'referral': return 'Indicação';
+    case 'origin': return 'Início';
     case 'conversation': return /^📞|ligaç/i.test(t) ? 'Ligação' : 'WhatsApp';
     case 'note': return i?.pinned ? 'Nota fixa' : 'Nota';
     case 'appointment': return /aula/i.test(t) ? 'Aula' : 'Agenda';

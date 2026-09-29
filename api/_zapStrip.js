@@ -4,31 +4,32 @@
 //
 // NUNCA importe src/lib/dailyGoal.js aqui — ele traz lucide-react e quebra no
 // servidor. Os gatilhos são derivados dos módulos puros.
+//
+// Hora escrita e conta de dias saem do horário de Brasília
+// (_horarioDeBrasilia.js), nunca de getHours()/getDate(): a função da Vercel
+// roda em UTC.
 import { deriveLeadContractStatus, CONTRACT_STATUS } from '../src/lib/contracts.js';
 import { DEFAULT_RENEWAL_CHECKPOINTS, daysToExpiryOf, activeRenewalCheckpoint } from '../src/lib/renewalGoal.js';
 import { normalizeRenewalCheckpoints } from '../src/lib/leadStatus.js';
 import { getLeadAppointmentType, getLeadAppointmentDate } from '../src/lib/leads.js';
 import { getSafeDateOrNull } from '../src/lib/dates.js';
+import { diaDeBrasilia, horaDeBrasilia, ddmmDoDia } from './_horarioDeBrasilia.js';
 
-const DAY_MS = 86400000;
-const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
-const isSameDay = (a, b) => startOfDay(a).getTime() === startOfDay(b).getTime();
-const pad = (n) => String(n).padStart(2, '0');
-const hhmm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-const ddmm = (d) => `${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
 const contagem = (n) => (n === 1 ? 'falta 1 dia' : `faltam ${n} dias`);
 
 // Espelha passDaysLeft de src/lib/freePass.js: a quantidade configurada é a
 // validade em DIAS a partir da aula marcada, e o último dia válido é
-// data + (N-1). Mantido aqui porque freePass.js não exporta a conta crua.
+// data + (N-1). Mantido aqui porque freePass.js não exporta a conta crua. A
+// tela conta no fuso do navegador; aqui os dias são os do calendário de
+// Brasília.
 function freepassInfo(lead, now) {
   const total = Number(lead?.trialClassesPlanned);
   if (!Number.isFinite(total) || total <= 0) return null;
   const marcada = getLeadAppointmentDate(lead);
   if (!marcada) return null;
-  const fim = new Date(startOfDay(marcada).getTime() + (total - 1) * DAY_MS);
-  const daysLeft = Math.round((fim.getTime() - startOfDay(now).getTime()) / DAY_MS);
-  return { daysLeft, fim };
+  const fimDia = diaDeBrasilia(marcada) + (total - 1);
+  const daysLeft = Math.round(fimDia - diaDeBrasilia(now));
+  return { daysLeft, fimDia };
 }
 
 export function buildZapStrip(lead, now = new Date(), checkpoints = DEFAULT_RENEWAL_CHECKPOINTS) {
@@ -42,12 +43,12 @@ export function buildZapStrip(lead, now = new Date(), checkpoints = DEFAULT_RENE
   // 1. Compromisso de hoje ganha de tudo.
   const tipo = getLeadAppointmentType(lead);
   const quando = getLeadAppointmentDate(lead);
-  if (tipo && quando && isSameDay(quando, now)) {
+  if (tipo && quando && diaDeBrasilia(quando) === diaDeBrasilia(now)) {
     const eAula = String(tipo).toLowerCase().startsWith('aula');
     return {
       kind: eAula ? 'aula_hoje' : 'visita_hoje',
       tone: 'agendado',
-      text: `${eAula ? 'Aula experimental' : 'Visita'} hoje às ${hhmm(quando)}`
+      text: `${eAula ? 'Aula experimental' : 'Visita'} hoje às ${horaDeBrasilia(quando)}`
     };
   }
 
@@ -56,7 +57,7 @@ export function buildZapStrip(lead, now = new Date(), checkpoints = DEFAULT_RENE
 
   // 2. Contrato vencido.
   if (status === CONTRACT_STATUS.VENCIDO && fim) {
-    const ha = Math.round((startOfDay(now).getTime() - startOfDay(fim).getTime()) / DAY_MS);
+    const ha = diaDeBrasilia(now) - diaDeBrasilia(fim);
     return {
       kind: 'vencido',
       tone: 'vencido',
@@ -73,7 +74,7 @@ export function buildZapStrip(lead, now = new Date(), checkpoints = DEFAULT_RENE
       tone: passe.daysLeft <= 2 ? 'avencer' : 'neutro',
       text: passe.daysLeft === 0
         ? 'Freepass termina hoje'
-        : `Freepass até ${ddmm(passe.fim)} · ${contagem(passe.daysLeft)}`
+        : `Freepass até ${ddmmDoDia(passe.fimDia)} · ${contagem(passe.daysLeft)}`
     };
   }
 

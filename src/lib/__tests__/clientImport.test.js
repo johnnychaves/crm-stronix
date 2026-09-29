@@ -535,6 +535,13 @@ describe('buildFillPatch', () => {
     expect(patch.nameLower).toBe('ana');
   });
 
+  it('telefone fixo entra no desenho do fixo', () => {
+    const lead = { name: 'Ana', whatsapp: '', email: 'ja@tem.com', cpf: null, tags: [] };
+    const patch = buildFillPatch({ ...VALID, whatsappDigits: '7133334444' }, lead);
+    expect(patch.whatsapp).toBe('(71) 3333-4444');
+    expect(patch.whatsappDigits).toBe('7133334444');
+  });
+
   it('nada vazio, nada no patch; VIP já presente não repete', () => {
     const lead = { name: 'Ana', whatsapp: '(71) 9 9999-0001', email: 'x@y.com', cpf: '529.982.247-25', rg: '1', birthDate: D(1985, 3, 5), sexo: 'Feminino', dor: 'x', address: { street: 'r' }, professorId: 'p9', tags: ['VIP'] };
     expect(buildFillPatch({ ...VALID, vip: true, rg: '2', professorId: 'p1' }, lead)).toEqual({});
@@ -682,6 +689,12 @@ describe('buildImportedContract', () => {
 
 describe('buildImportedClientWrites', () => {
   const newCandidate = { ...VALID, rg: '12', birthDate: D(1985, 3, 5), sexo: 'Feminino', dor: 'Emagrecer', vip: true, address: { street: 'Rua A' }, registeredAt: D(2026, 1, 10), startsAt: D(2026, 8, 12), endsAt: D(2026, 11, 12), value: 450, plan: PLANOS[0], planName: 'Trimestral', consultant: null, professorId: 'p1', professorName: 'Carlos Lima' };
+
+  it('cadastro novo com telefone fixo grava o número no desenho do fixo', () => {
+    const w = buildImportedClientWrites({ c: { ...newCandidate, whatsappDigits: '7133334444' }, cls: { lead: null, fill: null, createContract: true }, consultant: USERS[0], funnelId: 'f1', appUser: APP_USER, importMeta: META, now: NOW });
+    expect(w.leadData.whatsapp).toBe('(71) 3333-4444');
+    expect(w.leadData.whatsappDigits).toBe('7133334444');
+  });
 
   it('cadastro novo nasce cliente, com contrato, carimbos históricos e campos de busca', () => {
     const w = buildImportedClientWrites({ c: newCandidate, cls: { lead: null, fill: null, createContract: true }, consultant: USERS[0], funnelId: 'f1', appUser: APP_USER, importMeta: META, now: NOW });

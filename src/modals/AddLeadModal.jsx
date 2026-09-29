@@ -6,17 +6,17 @@ import {
 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH } from '../lib/firebase.js';
-import { getLeadOwnershipFields } from '../lib/leads.js';
 import { useDuplicateLead, findDuplicateLeadRemote } from '../hooks/useDuplicateLead.js';
 import { logInteraction } from '../lib/interactions.js';
-import { buildLeadSearchFields, buildGuardianPatch, deriveLeadBucket, sameContactPhone } from '../lib/leadDerived.js';
-import { phoneDigits as extractPhoneDigits } from '../lib/masks.js';
+import { sameContactPhone } from '../lib/leadDerived.js';
+import { buildNewLeadDoc, leadEntryFunnels } from '../lib/newLead.js';
+import { formatPhone } from '../lib/masks.js';
 import { GUARDIAN_RELATIONSHIPS, guardianIssue, turnedAdult } from '../lib/guardian.js';
 import { phoneNoticeLines } from '../lib/phoneNotice.js';
 import { useGuardianMatches } from '../hooks/useGuardianMatches.js';
 import { fromDateInputValue } from '../lib/dates.js';
 import { getDefaultFunnel } from '../lib/funnels.js';
-import { getReferralFunnel, getReferralEntryStage, isReferralFunnel, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
+import { getReferralFunnel, getReferralEntryStage, REFERRAL_FUNNEL_NAME } from '../lib/referrals.js';
 import { isRenewalFunnel } from '../lib/renewalFunnel.js';
 import { isExpiredFunnel } from '../lib/expiredFunnel.js';
 import { isUpgradeFunnel } from '../lib/upgradeFunnel.js';
@@ -42,15 +42,6 @@ import { getTone, phaseToneName } from '../lib/leadState.js';
 
 // ---------- helpers de apresentação ----------
 const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
-// (51) 9 9530-4633. Dígitos e regra do DDI vêm de phoneDigits (src/lib/masks.js);
-// só a formatação de exibição é própria daqui (difere de formatPhone p/ input parcial).
-const fmtPhone = (raw) => {
-  const d = extractPhoneDigits(raw);
-  if (d.length <= 2) return d;
-  if (d.length <= 3) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
-  if (d.length <= 7) return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3)}`;
-  return `(${d.slice(0, 2)}) ${d.slice(2, 3)} ${d.slice(3, 7)}-${d.slice(7)}`;
-};
 // 000.000.000-00
 const fmtCPF = (raw) => {
   const d = onlyDigits(raw).slice(0, 11);
@@ -286,8 +277,8 @@ function PreviewCard({ form, statusObj, sources, tags }) {
             </div>
             <div className="text-[12px] text-slate-500 dark:text-slate-400 num">
               {form.isMinor && form.guardianPhone
-                ? `${fmtPhone(form.guardianPhone)} · resp.`
-                : (form.whatsapp ? fmtPhone(form.whatsapp) : '(00) 0 0000-0000')}
+                ? `${formatPhone(form.guardianPhone)} · resp.`
+                : (form.whatsapp ? formatPhone(form.whatsapp) : '(00) 0 0000-0000')}
             </div>
           </div>
         </div>
@@ -356,7 +347,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
   // criado ali nasceria com a etapa vazia — vivo nas listas, sem casar com
   // coluna de board nenhum, sumido do pipeline sem aviso.
   // Funis que projetam CLIENTES (Renovações, Vencidos, Upgrade) não recebem lead novo: ele sumiria de todo board.
-  const pickerFunnels = safeFunnels.filter((f) => !isReferralFunnel(f) && !isRenewalFunnel(f) && !isExpiredFunnel(f) && !isUpgradeFunnel(f));
+  const pickerFunnels = leadEntryFunnels(safeFunnels);
   // Modal aberto já na aba do funil de indicações → switch nasce ligado.
   const initialIsReferral = canReferral && initialFunnelId === referralFunnel.id;
 
@@ -489,39 +480,12 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
       const leadRef = await addDoc(
         collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH),
         {
-          name: form.name.trim(),
-          whatsapp: form.whatsapp,
-          source: form.source,
-          funnelId: form.funnelId,
-          status: form.status,
-          tags: form.tags,
-          birthDate: fromDateInputValue(form.birthDate),
-          cpf: (form.cpf || '').trim() || null,
-          email: (form.email || '').trim() || null,
-          sexo: form.sexo || null,
-          dor: (form.dor || '').trim() || null,
-          modalidade: form.modalidade || null,
-          // Vínculo de indicação no PRÓPRIO doc: a feature funciona mesmo se o
-          // batch de eventos (commitReferralLink) falhar depois.
-          referredById: isReferral && referrer ? referrer.id : null,
-          referredByName: isReferral && referrer ? (referrer.name || null) : null,
-          ...getLeadOwnershipFields(appUser),
-          ...buildLeadSearchFields({ name: form.name, whatsapp: form.whatsapp, cpf: form.cpf }),
-          ...buildGuardianPatch({
-            isMinor: form.isMinor,
-            name: form.guardianName,
-            phone: form.guardianPhone,
-            relationship: form.guardianRelation,
-          }),
-          lifecycleBucket: deriveLeadBucket({ status: form.status }),
-          lastInteractionAt: null,
-          interactionsCount: 0,
+          // O mesmo montador do cadastro pelo Stronizap (src/lib/newLead.js):
+          // campo novo do lead entra lá e os dois cadastros gravam igual. As
+          // datas do servidor ficam aqui, porque cada lado usa um SDK.
+          ...buildNewLeadDoc(form, { owner: appUser, referrer: isReferral ? referrer : null }),
           createdAt: serverTimestamp(),
           statusEnteredAt: serverTimestamp(),
-          nextFollowUp: null,
-          nextFollowUpType: null,
-          appointmentType: null,
-          appointmentScheduledFor: null,
         }
       );
 
@@ -686,7 +650,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                           </div>
                           <div>
                             <Label required hint="com DDD + 9 dígitos">Telefone do responsável</Label>
-                            <IconInput type="tel" inputMode="numeric" icon={<Phone size={16} />} value={fmtPhone(form.guardianPhone)} onChange={(e) => set({ guardianPhone: fmtPhone(e.target.value) })}
+                            <IconInput type="tel" inputMode="numeric" icon={<Phone size={16} />} value={formatPhone(form.guardianPhone)} onChange={(e) => set({ guardianPhone: formatPhone(e.target.value) })}
                               placeholder="(51) 9 0000-0000"
                               className={guardianTooShort ? '!border-amber-400' : ''} />
                             {guardianTooShort && (
@@ -716,7 +680,7 @@ function AddLeadModal({ onClose, appUser, sources, statuses, tags, db, funnels, 
                         <Label required={!form.isMinor} hint={duplicate ? '' : (form.isMinor ? 'opcional' : 'com DDD + 9 dígitos')}>
                           {form.isMinor ? 'WhatsApp do aluno' : 'WhatsApp'}
                         </Label>
-                        <IconInput type="tel" inputMode="numeric" icon={<MessageCircle size={16} />} value={fmtPhone(form.whatsapp)} onChange={(e) => set({ whatsapp: fmtPhone(e.target.value) })}
+                        <IconInput type="tel" inputMode="numeric" icon={<MessageCircle size={16} />} value={formatPhone(form.whatsapp)} onChange={(e) => set({ whatsapp: formatPhone(e.target.value) })}
                           placeholder="(51) 9 0000-0000"
                           className={duplicate ? '!border-rose-400 focus:!ring-rose-400/15' : ((phoneTooShort || sameAsGuardian) ? '!border-amber-400' : '')} />
                         {duplicate ? (
