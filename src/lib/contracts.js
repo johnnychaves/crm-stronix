@@ -366,6 +366,65 @@ export const buildContractCancel = ({ planName, cancelledAt, reason, note } = {}
   };
 };
 
+// Renovação cancelada antes de começar: nunca valeu, e o cliente volta ao
+// contrato que ela renovava. Vale quando o contrato renovado existe, é o ligado
+// e não foi cancelado, e o cancelamento cai no instante do início ou antes dele
+// (neverTookEffect, a mesma regra dos painéis). A data do modal é a meia-noite
+// do dia escolhido, então o próprio dia do início ainda desfaz a renovação.
+export function isRenewalNotStarted(contract, previous, at) {
+  if (!contract?.renewedFromId || !previous || previous.id !== contract.renewedFromId) return false;
+  if (previous.status === CONTRACT_STATUS.CANCELADO || contract.status === CONTRACT_STATUS.CANCELADO) return false;
+  return neverTookEffect({ cancelledAt: at, startsAt: contract.startsAt });
+}
+
+// Desfaz a renovação que ainda não começou. O fim do contrato renovado volta
+// ao original, se foi esta renovação que o encurtou, e o resumo do lead volta
+// para ele. Os marcos de renovação seguem zerados, como a renovação deixou: se
+// o contrato renovado estiver perto do fim, a Meta Diária volta a cobrar.
+// Os textos da linha do tempo são lidos por contractEventOf (timeline.js): o
+// plano da renovação vem logo depois dos dois-pontos e para em ", motivo " ou
+// em ". O contrato". Mudou um texto aqui, mude o leitor e o timeline.test.js.
+export function buildRenewalCancel({ contract, previous, cancelledAt, reason, note } = {}) {
+  const when = getSafeDateOrNull(cancelledAt) || new Date();
+  const original = getSafeDateOrNull(previous?.originalEndsAt);
+  const restores = Boolean(original && contract?.id && previous?.shortenedById === contract.id);
+  const end = restores ? original : getSafeDateOrNull(previous?.endsAt);
+  // Importado pode vir sem valor, e aí o resumo fica sem valor, como a
+  // importação grava. Number(null) daria zero.
+  const value = previous?.value == null ? null : Number(previous.value);
+
+  const renovacao = contract?.planName ? `Plano ${contract.planName}` : 'renovação';
+  const motivo = reason ? `, motivo ${reason}` : '';
+  const anterior = previous?.planName ? `Plano ${previous.planName}` : 'anterior';
+  // O contrato renovado pode ter vencido antes do cancelamento, quando a
+  // renovação começaria depois de um intervalo. O último dia ainda é dele.
+  const volta = !end
+    ? `O contrato ${anterior} volta a ser o atual.`
+    : calendarDaysBetween(when, end) < 0
+      ? `O contrato ${anterior}, que venceu em ${fmtDia(end)}, volta a ser o atual.`
+      : `O contrato ${anterior} volta a valer até ${fmtDia(end)}.`;
+
+  return {
+    contractPatch: {
+      status: CONTRACT_STATUS.CANCELADO,
+      cancelledAt: when,
+      cancelReason: reason || null,
+      cancelNote: note || null
+    },
+    previousPatch: restores ? { endsAt: original, originalEndsAt: null, shortenedById: null } : null,
+    leadPatch: {
+      currentContractId: previous?.id || null,
+      currentPlanName: previous?.planName || null,
+      currentContractValue: Number.isFinite(value) ? value : null,
+      currentContractStartsAt: getSafeDateOrNull(previous?.startsAt) || getSafeDateOrNull(previous?.createdAt),
+      currentContractEndsAt: end,
+      currentContractStatus: previous?.status || CONTRACT_STATUS.ATIVO,
+      currentContractSeamless: Boolean(previous?.seamless)
+    },
+    interactionText: `Renovação cancelada antes de começar: ${renovacao}${motivo}. ${volta}`
+  };
+}
+
 // Trancamento. Congela a vigência: enquanto está parado o contrato não corre,
 // e o término é empurrado na reativação pelos dias efetivamente parados.
 export const buildContractPause = ({ planName, pausedAt, reason } = {}) => {

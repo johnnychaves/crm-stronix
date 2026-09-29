@@ -24,7 +24,9 @@ export async function commitContractPatch({
   contractId,
   contractPatch,
   leadPatch,
-  interactionText
+  interactionText,
+  previousContractId = null,
+  previousContractPatch = null
 }) {
   if (!contractId) throw new Error('Contrato não informado.');
   const batch = writeBatch(db);
@@ -34,6 +36,17 @@ export async function commitContractPatch({
     { ...contractPatch, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  // Segundo contrato, quando o desfecho mexe no contrato renovado (cancelar a
+  // renovação que não começou, corrigir o início de uma renovação). update, e
+  // não set com merge: se o contrato não existir mais, o batch inteiro falha em
+  // vez de criar um contrato fantasma só com datas.
+  if (previousContractId && previousContractPatch) {
+    batch.update(
+      doc(db, 'artifacts', appId, 'public', 'data', CONTRACTS_PATH, previousContractId),
+      { ...previousContractPatch, updatedAt: serverTimestamp() }
+    );
+  }
 
   batch.set(
     doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),

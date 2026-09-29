@@ -37,7 +37,7 @@ vi.mock('firebase/firestore', () => ({
   }
 }));
 
-const { commitMatricula } = await import('../contractsWrites.js');
+const { commitContractPatch, commitMatricula } = await import('../contractsWrites.js');
 
 const D = (y, mo, d) => new Date(y, mo - 1, d);
 const CONTRATOS = 'artifacts/acad/public/data/stronix_contratos';
@@ -92,5 +92,62 @@ describe('commitMatricula: renovação e o contrato atual', () => {
     expect(novo.data.seamless).toBe(true);
     const leadDoc = m.writes.find((w) => w.path === 'artifacts/acad/public/data/stronix_leads/l1');
     expect(leadDoc.data.currentContractSeamless).toBe(true);
+  });
+});
+
+// Desfecho que mexe também no contrato renovado: cancelar a renovação que
+// ainda não começou devolve o fim de antes ao contrato que ela encurtou.
+describe('commitContractPatch: o contrato renovado no mesmo batch', () => {
+  const base = {
+    db: {}, lead, appUser, contractId: 'k2',
+    contractPatch: { status: 'cancelado' },
+    leadPatch: { currentContractId: 'k1' },
+    interactionText: 'Renovação cancelada antes de começar: Plano Flow. O contrato Plano Start volta a valer até 11/10/2026.'
+  };
+  // O que o desfecho sempre gravou: contrato, resumo no lead e linha do tempo.
+  const sempre = [
+    { op: 'set', path: `${CONTRATOS}/k2`, data: { status: 'cancelado', updatedAt: 'TS' }, opts: { merge: true } },
+    {
+      op: 'set', path: 'artifacts/acad/public/data/stronix_leads/l1',
+      data: { currentContractId: 'k1', lastInteractionAt: 'TS', interactionsCount: { increment: 1 } }, opts: { merge: true }
+    },
+    {
+      op: 'set', path: 'artifacts/acad/public/data/stronix_interactions/novo1',
+      data: {
+        leadId: 'l1', consultantName: 'Bia', leadConsultantId: 'c1', leadConsultantAuthUid: 'u1',
+        actorId: 'c1', actorAuthUid: 'u1', text: base.interactionText, type: 'status_change', createdAt: 'TS'
+      }
+    }
+  ];
+
+  it('sem o contrato renovado, grava o mesmo de antes', async () => {
+    await commitContractPatch(base);
+    expect(m.writes).toEqual(sempre);
+    expect(m.batches).toBe(1);
+    expect(m.commits).toBe(1);
+  });
+
+  it('só o id ou só o patch não grava o contrato renovado', async () => {
+    await commitContractPatch({ ...base, previousContractId: 'k1' });
+    await commitContractPatch({ ...base, previousContractPatch: { endsAt: D(2026, 10, 11) } });
+    expect(m.writes.some((w) => w.path === `${CONTRATOS}/k1`)).toBe(false);
+  });
+
+  it('com o patch, atualiza o contrato renovado no mesmo batch', async () => {
+    await commitContractPatch({
+      ...base, previousContractId: 'k1', previousContractPatch: { endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null }
+    });
+    // update, e não set com merge: se o contrato não existir mais, o batch
+    // inteiro falha em vez de criar um contrato fantasma só com datas.
+    expect(m.writes.find((w) => w.path === `${CONTRATOS}/k1`)).toEqual({
+      path: `${CONTRATOS}/k1`,
+      data: { endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null, updatedAt: 'TS' },
+      op: 'update'
+    });
+    expect(m.writes.filter((w) => w.path !== `${CONTRATOS}/k1`)).toEqual(sempre);
+    // Um batch só, gravado uma vez: a renovação desfeita e o fim devolvido
+    // entram ou ficam de fora juntos.
+    expect(m.batches).toBe(1);
+    expect(m.commits).toBe(1);
   });
 });

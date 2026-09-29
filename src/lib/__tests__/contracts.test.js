@@ -11,6 +11,7 @@ import {
   buildContractPause,
   buildContractResume,
   buildMatriculaWrites,
+  buildRenewalCancel,
   contractDiscountOf,
   correctionNeedsReason,
   deriveContractStatus,
@@ -19,6 +20,7 @@ import {
   hasLiveContract,
   isImportedContract,
   isImportPause,
+  isRenewalNotStarted,
   isSeamlessStart,
   liveRenewalOf,
   neverTookEffect,
@@ -780,5 +782,195 @@ describe('neverTookEffect: contrato que nunca valeu', () => {
     expect(neverTookEffect({})).toBe(false);
     expect(neverTookEffect(null)).toBe(false);
     expect(neverTookEffect(undefined)).toBe(false);
+  });
+});
+
+// Cancelar a renovação que ainda não começou desfaz a renovação: ela nunca
+// valeu, e o cliente volta ao contrato que ela renovava, com o fim de antes do
+// encurtamento. Decisão do Johnny (29/09/2026).
+describe('renovação cancelada antes de começar', () => {
+  const ts = (d) => ({ toDate: () => d });
+  // O Start ia até 11/10 e foi encurtado para 27/09 pela renovação, que começa em 28/09.
+  const previous = {
+    id: 'k1', planName: 'Start', value: 1308, status: 'ativo', seamless: false,
+    startsAt: D(2025, 10, 11), endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2'
+  };
+  const renewal = {
+    id: 'k2', planName: 'Flow', renewedFromId: 'k1', status: 'ativo', seamless: true,
+    startsAt: D(2026, 9, 28), endsAt: D(2027, 9, 28)
+  };
+
+  describe('isRenewalNotStarted', () => {
+    it('vale até o instante do início, a mesma regra do contrato que nunca valeu', () => {
+      expect(isRenewalNotStarted(renewal, previous, D(2026, 9, 27))).toBe(true);
+      // A data do modal é a meia-noite do dia escolhido: o próprio dia do
+      // início ainda desfaz a renovação.
+      expect(isRenewalNotStarted(renewal, previous, D(2026, 9, 28))).toBe(true);
+      expect(isRenewalNotStarted(renewal, previous, D(2026, 9, 29))).toBe(false);
+    });
+
+    it('início com hora: o cancelamento na meia-noite do mesmo dia ainda vem antes', () => {
+      const comHora = { ...renewal, startsAt: new Date(2026, 8, 28, 14, 30) };
+      expect(isRenewalNotStarted(comHora, previous, D(2026, 9, 28))).toBe(true);
+    });
+
+    it('não vale sem o contrato renovado, com ele cancelado, sem ligação ou com a renovação já cancelada', () => {
+      expect(isRenewalNotStarted(renewal, null, D(2026, 9, 20))).toBe(false);
+      expect(isRenewalNotStarted(renewal, { ...previous, status: 'cancelado' }, D(2026, 9, 20))).toBe(false);
+      expect(isRenewalNotStarted({ ...renewal, renewedFromId: null }, previous, D(2026, 9, 20))).toBe(false);
+      expect(isRenewalNotStarted({ ...renewal, renewedFromId: 'k0' }, previous, D(2026, 9, 20))).toBe(false);
+      expect(isRenewalNotStarted({ ...renewal, status: 'cancelado', cancelledAt: D(2026, 9, 10) }, previous, D(2026, 9, 20))).toBe(false);
+    });
+
+    it('sem data ou sem contrato, não vale', () => {
+      expect(isRenewalNotStarted(renewal, previous, null)).toBe(false);
+      expect(isRenewalNotStarted(null, previous, D(2026, 9, 20))).toBe(false);
+      expect(isRenewalNotStarted(undefined, undefined, undefined)).toBe(false);
+    });
+
+    it('aceita o doc cru do Firestore', () => {
+      const cru = { ...renewal, startsAt: ts(D(2026, 9, 28)) };
+      expect(isRenewalNotStarted(cru, previous, D(2026, 9, 28))).toBe(true);
+      expect(isRenewalNotStarted(cru, previous, D(2026, 9, 29))).toBe(false);
+    });
+  });
+
+  describe('buildRenewalCancel', () => {
+    it('devolve o fim de antes ao contrato encurtado e o resumo do lead a ele', () => {
+      const r = buildRenewalCancel({ contract: renewal, previous, cancelledAt: D(2026, 9, 20), reason: 'Financeiro', note: 'Mudou de ideia' });
+      expect(r.contractPatch).toEqual({ status: 'cancelado', cancelledAt: D(2026, 9, 20), cancelReason: 'Financeiro', cancelNote: 'Mudou de ideia' });
+      expect(r.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
+      expect(r.leadPatch).toEqual({
+        currentContractId: 'k1',
+        currentPlanName: 'Start',
+        currentContractValue: 1308,
+        currentContractStartsAt: D(2025, 10, 11),
+        currentContractEndsAt: D(2026, 10, 11),
+        currentContractStatus: 'ativo',
+        currentContractSeamless: false
+      });
+      expect(r.interactionText).toBe('Renovação cancelada antes de começar: Plano Flow, motivo Financeiro. O contrato Plano Start volta a valer até 11/10/2026.');
+    });
+
+    it('sem motivo, sem ", motivo" no texto', () => {
+      const r = buildRenewalCancel({ contract: renewal, previous, cancelledAt: D(2026, 9, 20) });
+      expect(r.contractPatch).toEqual({ status: 'cancelado', cancelledAt: D(2026, 9, 20), cancelReason: null, cancelNote: null });
+      expect(r.interactionText).toBe('Renovação cancelada antes de começar: Plano Flow. O contrato Plano Start volta a valer até 11/10/2026.');
+    });
+
+    it('renovação emendada: o contrato renovado não foi encurtado e fica como está', () => {
+      const r = buildRenewalCancel({
+        contract: { ...renewal, startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12) },
+        previous: { ...previous, endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null },
+        cancelledAt: D(2026, 9, 20)
+      });
+      expect(r.previousPatch).toBeNull();
+      expect(r.leadPatch.currentContractEndsAt).toEqual(D(2026, 10, 11));
+      expect(r.interactionText).toBe('Renovação cancelada antes de começar: Plano Flow. O contrato Plano Start volta a valer até 11/10/2026.');
+    });
+
+    // Só volta o fim que esta renovação mudou. O contrato que outra renovação
+    // encurtou fica com o fim dela.
+    it('contrato encurtado por outra renovação: o fim não volta', () => {
+      const r = buildRenewalCancel({ contract: renewal, previous: { ...previous, shortenedById: 'k9' }, cancelledAt: D(2026, 9, 20) });
+      expect(r.previousPatch).toBeNull();
+      expect(r.leadPatch.currentContractEndsAt).toEqual(D(2026, 9, 27));
+    });
+
+    // Renovação com intervalo, desfeita depois de o contrato renovado vencer.
+    it('contrato renovado que já venceu: volta a ser o atual, sem "volta a valer"', () => {
+      const vencido = { ...previous, endsAt: D(2026, 9, 10), originalEndsAt: null, shortenedById: null };
+      const depois = { ...renewal, startsAt: D(2026, 10, 5), endsAt: D(2027, 10, 5), seamless: false };
+      const r = buildRenewalCancel({ contract: depois, previous: vencido, cancelledAt: D(2026, 9, 29), reason: 'Financeiro' });
+      expect(r.previousPatch).toBeNull();
+      expect(r.leadPatch.currentContractEndsAt).toEqual(D(2026, 9, 10));
+      expect(r.interactionText).toBe('Renovação cancelada antes de começar: Plano Flow, motivo Financeiro. O contrato Plano Start, que venceu em 10/09/2026, volta a ser o atual.');
+    });
+
+    it('contrato renovado que termina no próprio dia do cancelamento ainda volta a valer', () => {
+      const r = buildRenewalCancel({
+        contract: { ...renewal, startsAt: D(2026, 10, 5), seamless: false },
+        previous: { ...previous, endsAt: new Date(2026, 8, 29, 18, 0), originalEndsAt: null, shortenedById: null },
+        cancelledAt: D(2026, 9, 29)
+      });
+      expect(r.interactionText).toBe('Renovação cancelada antes de começar: Plano Flow. O contrato Plano Start volta a valer até 29/09/2026.');
+    });
+
+    it('sem nome de plano, o texto diz renovação e contrato anterior', () => {
+      const semPlano = { contract: { ...renewal, planName: null }, previous: { ...previous, planName: null } };
+      expect(buildRenewalCancel({ ...semPlano, cancelledAt: D(2026, 9, 20), reason: 'Financeiro' }).interactionText)
+        .toBe('Renovação cancelada antes de começar: renovação, motivo Financeiro. O contrato anterior volta a valer até 11/10/2026.');
+      const vencido = { ...semPlano.previous, endsAt: D(2026, 9, 10), originalEndsAt: null, shortenedById: null };
+      expect(buildRenewalCancel({ contract: semPlano.contract, previous: vencido, cancelledAt: D(2026, 9, 29) }).interactionText)
+        .toBe('Renovação cancelada antes de começar: renovação. O contrato anterior, que venceu em 10/09/2026, volta a ser o atual.');
+      expect(buildRenewalCancel({ ...semPlano, cancelledAt: D(2026, 9, 20) }).leadPatch.currentPlanName).toBeNull();
+    });
+
+    it('contrato renovado sem fim gravado: volta a ser o atual, sem data', () => {
+      const r = buildRenewalCancel({ contract: renewal, previous: { ...previous, endsAt: null, originalEndsAt: null, shortenedById: null }, cancelledAt: D(2026, 9, 20) });
+      expect(r.leadPatch.currentContractEndsAt).toBeNull();
+      expect(r.interactionText).toBe('Renovação cancelada antes de começar: Plano Flow. O contrato Plano Start volta a ser o atual.');
+    });
+
+    // Importado pode vir sem valor, sem início e sem status gravado.
+    it('resumo do lead: sem valor fica null, sem início vale a criação, sem status é ativo', () => {
+      const importado = { id: 'k1', planName: 'Start', value: null, startsAt: null, createdAt: D(2026, 9, 4), endsAt: D(2026, 10, 11), seamless: true };
+      const r = buildRenewalCancel({ contract: renewal, previous: importado, cancelledAt: D(2026, 9, 20) });
+      expect(r.leadPatch.currentContractValue).toBeNull();
+      expect(r.leadPatch.currentContractStartsAt).toEqual(D(2026, 9, 4));
+      expect(r.leadPatch.currentContractStatus).toBe('ativo');
+      expect(r.leadPatch.currentContractSeamless).toBe(true);
+    });
+
+    it('aceita o doc cru do Firestore e grava Date', () => {
+      const cru = { ...previous, startsAt: ts(D(2025, 10, 11)), endsAt: ts(D(2026, 9, 27)), originalEndsAt: ts(D(2026, 10, 11)) };
+      const r = buildRenewalCancel({ contract: renewal, previous: cru, cancelledAt: D(2026, 9, 20) });
+      expect(r.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
+      expect(r.previousPatch.endsAt).toBeInstanceOf(Date);
+      expect(r.leadPatch.currentContractStartsAt).toEqual(D(2025, 10, 11));
+      expect(r.leadPatch.currentContractEndsAt).toEqual(D(2026, 10, 11));
+    });
+  });
+
+  // Ida e volta pelas funções de verdade: renovar encurtando o contrato atual e
+  // desfazer antes de começar devolve o contrato e o resumo do lead como eram.
+  it('renovar encurtando e desfazer devolve o contrato e o lead como estavam', () => {
+    const antes = {
+      id: 'k1', planId: 'p1', planName: 'Start', value: 1308, listValue: 1308, durationMonths: 12, status: 'ativo', seamless: false,
+      startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11), createdAt: D(2025, 10, 11)
+    };
+    const resumo = {
+      currentContractId: 'k1',
+      currentPlanName: 'Start',
+      currentContractValue: 1308,
+      currentContractStartsAt: D(2025, 10, 11),
+      currentContractEndsAt: D(2026, 10, 11),
+      currentContractStatus: 'ativo',
+      currentContractSeamless: false
+    };
+    const lead = { id: 'l1', name: 'Ana', consultantId: 'c1', consultantAuthUid: 'u1', ...resumo };
+
+    const w = buildMatriculaWrites({
+      lead, plan: { id: 'p2', name: 'Flow', value: 1500, durationMonths: 12 }, value: 1500,
+      startsAt: D(2026, 10, 5), mode: 'renovacao', renewedFromId: 'k1', previousContract: antes
+    });
+    expect(w.previousContractId).toBe('k1');
+    // Como o banco fica depois da renovação: commitMatricula grava o
+    // encurtamento com shortenedById e o lead aponta para o contrato novo.
+    const encurtado = { ...antes, ...w.previousPatch, shortenedById: 'k2' };
+    const renovacao = { id: 'k2', ...w.contract };
+    const leadRenovado = { ...lead, ...w.leadPatch, currentContractId: 'k2' };
+    expect(encurtado.endsAt).toEqual(D(2026, 10, 4));
+
+    const cancelamento = D(2026, 9, 29);
+    expect(isRenewalNotStarted(renovacao, encurtado, cancelamento)).toBe(true);
+    const r = buildRenewalCancel({ contract: renovacao, previous: encurtado, cancelledAt: cancelamento, reason: 'Financeiro' });
+
+    expect({ ...encurtado, ...r.previousPatch }).toEqual({ ...antes, originalEndsAt: null, shortenedById: null });
+    expect(r.leadPatch).toEqual(resumo);
+    const leadDepois = { ...leadRenovado, ...r.leadPatch };
+    Object.keys(resumo).forEach((k) => expect(leadDepois[k], k).toEqual(lead[k]));
+    // A renovação desfeita nunca valeu: os painéis não a contam.
+    expect(neverTookEffect({ ...renovacao, ...r.contractPatch })).toBe(true);
   });
 });
