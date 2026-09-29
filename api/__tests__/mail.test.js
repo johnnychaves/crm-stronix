@@ -1,3 +1,4 @@
+import util from 'node:util';
 import { describe, it, expect, vi } from 'vitest';
 import { sendMail, mailStatus, MAIL_FROM_PADRAO } from '../_mail.js';
 
@@ -5,6 +6,8 @@ const MSG = { to: 'ana@academia.com', subject: 'Assunto', html: '<p>oi</p>', tex
 const log = () => ({ info: vi.fn() });
 // Um envio que chega ao Resend: com chave, em produção. O teste troca só o que interessa.
 const deps = (extra) => ({ apiKey: 're_x', vercelEnv: 'production', log: log(), ...extra });
+// Tudo que o erro carrega (message, stack, cause e propriedades) num texto só.
+const dump = (erro) => util.inspect(erro, { depth: 10, showHidden: true });
 
 // Resposta cujo corpo nunca chega: o json() só rejeita quando o sinal aborta.
 const corpoTravado = ({ ok, status }) => async (_url, init) => {
@@ -187,6 +190,29 @@ describe('sendMail', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('a chave não aparece no erro (message, stack, cause) nem no log, em nenhum caminho de falha', async () => {
+    const chave = 're_SEGREDO_9f3a';
+    const caminhos = {
+      recusa: async () => ({ ok: false, status: 422, json: async () => ({ message: 'domínio não verificado' }) }),
+      demora: (_url, init) => new Promise((_resolve, reject) => {
+        init.signal.addEventListener('abort', () => reject(new Error('abortado')));
+      }),
+      rede: async () => { throw new TypeError('fetch failed', { cause: new Error('connect ECONNREFUSED') }); },
+    };
+    for (const [nome, httpFetch] of Object.entries(caminhos)) {
+      const l = log();
+      const erro = await sendMail(MSG, deps({ apiKey: chave, httpFetch, log: l, timeoutMs: 20 }))
+        .then(() => null, (e) => e);
+      expect(erro, nome).toBeInstanceOf(Error);
+      expect(dump(erro), nome).not.toContain(chave);
+      expect(JSON.stringify(l.info.mock.calls), nome).not.toContain(chave);
+    }
+    // Chave inválida: o erro do Headers repete a chave, então ele não pode ir em cause.
+    const invalida = await sendMail(MSG, deps({ apiKey: `${chave}\nfim`, httpFetch: vi.fn() }))
+      .then(() => null, (e) => e);
+    expect(dump(invalida)).not.toContain(chave);
   });
 });
 
