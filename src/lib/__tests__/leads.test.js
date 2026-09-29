@@ -13,6 +13,8 @@ import {
   hasGoalDoneToday,
   isLeadResolvedToday,
   isRegistrationNote,
+  isRegistrationInteraction,
+  ZAP_SIGNUP_TYPE,
   hasActiveInteractionToday,
   isLeadAttended,
   getLeadAttendanceDate,
@@ -450,5 +452,25 @@ describe('canEditLead', () => {
     expect(canEditLead({ id: 'u4', role: 'consultor' })).toBe(false);
     expect(canEditLead(null)).toBe(false);
     expect(canEditLead(undefined)).toBe(false);
+  });
+});
+
+describe('marco do cadastro pelo Stronizap (type zap_signup)', () => {
+  const MARCO = { leadId: 'l1', type: 'zap_signup', text: 'Cadastrado pelo Stronizap por Ana Souza. Canal Recepção.', createdAt: TODAY_10H };
+
+  it('o tipo tem nome fixo: é o que fica gravado na interação', () => {
+    expect(ZAP_SIGNUP_TYPE).toBe('zap_signup');
+  });
+
+  it('isRegistrationInteraction: o marco e a observação do cadastro são registro, o resto não', () => {
+    expect(isRegistrationInteraction(MARCO)).toBe(true);
+    expect(isRegistrationInteraction({ type: 'note', text: 'OBSERVAÇÃO DO CADASTRO: veio do site' })).toBe(true);
+    expect(isRegistrationInteraction({ type: 'note', text: 'Ligou pedindo horário' })).toBe(false);
+    expect(isRegistrationInteraction({ type: 'status_change', text: 'Fase alterada para [Contato].' })).toBe(false);
+    expect(isRegistrationInteraction(null)).toBe(false);
+  });
+
+  it('não acende o "Já interagido hoje"', () => {
+    expect(hasActiveInteractionToday({ id: 'l1' }, [MARCO], TODAY_START)).toBe(false);
   });
 });

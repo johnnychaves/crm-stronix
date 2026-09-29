@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { buildZapCard, buildZapWard, buildGuardianCard } from '../_zapCard.js';
 
-const HOJE = new Date(2026, 8, 8, 10, 0);
+// Instante escrito no horário de Brasília, pelo mesmo motivo de
+// zapStrip.test.js: o cartão conta dias de Brasília em qualquer máquina.
+const brt = (s) => new Date(`${s}:00-03:00`);
+
+const HOJE = brt('2026-09-08T10:00');
 
 describe('buildZapCard', () => {
   it('monta o cartão de um cliente com contrato ativo', () => {
@@ -12,13 +16,13 @@ describe('buildZapCard', () => {
       consultantName: 'Ana Beatriz',
       currentPlanName: 'Musculação Anual',
       currentContractStatus: 'ativo',
-      currentContractStartsAt: new Date(2025, 10, 12),
+      currentContractStartsAt: brt('2025-11-12T00:00'),
       // Longe de qualquer marco padrão (90/60/30) de propósito: este teste
       // valida os campos do cartão de um cliente comum, não a faixa — a faixa
       // tem cobertura própria em 'marcos de renovação repassados pra faixa',
       // abaixo.
-      currentContractEndsAt: new Date(2027, 8, 8),
-      lastInteractionAt: new Date(2026, 8, 7, 14, 22)
+      currentContractEndsAt: brt('2027-09-08T00:00'),
+      lastInteractionAt: brt('2026-09-07T14:22')
     };
     expect(buildZapCard(lead, HOJE)).toMatchObject({
       found: true,
@@ -42,7 +46,7 @@ describe('buildZapCard', () => {
       source: 'Instagram',
       consultantName: 'Diego Martins',
       appointmentType: 'Visita',
-      appointmentScheduledFor: new Date(2026, 8, 8, 18, 30)
+      appointmentScheduledFor: brt('2026-09-08T18:30')
     };
     const card = buildZapCard(lead, HOJE);
     expect(card).toMatchObject({
@@ -81,8 +85,8 @@ describe('buildZapCard', () => {
       name: 'Cliente Teste',
       lifecycleStage: 'cliente',
       currentContractStatus: 'ativo',
-      currentContractStartsAt: new Date(2025, 8, 8),
-      currentContractEndsAt: new Date(2026, 9, 23), // 45 dias após HOJE
+      currentContractStartsAt: brt('2025-09-08T00:00'),
+      currentContractEndsAt: brt('2026-10-23T00:00'), // 45 dias após HOJE
       ...extra
     });
 
@@ -94,7 +98,7 @@ describe('buildZapCard', () => {
     });
 
     it('cai no padrão 90/60/30 quando nenhum marco é passado (config ausente)', () => {
-      const lead = clienteAVencer({ currentContractEndsAt: new Date(2026, 9, 8) }); // 30 dias
+      const lead = clienteAVencer({ currentContractEndsAt: brt('2026-10-08T00:00') }); // 30 dias
       const card = buildZapCard(lead, HOJE);
       expect(card.strip).toEqual({
         kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 30 dias'
@@ -102,7 +106,7 @@ describe('buildZapCard', () => {
     });
 
     it('cai no padrão 90/60/30 quando o valor da config é lixo', () => {
-      const lead = clienteAVencer({ currentContractEndsAt: new Date(2026, 9, 8) }); // 30 dias
+      const lead = clienteAVencer({ currentContractEndsAt: brt('2026-10-08T00:00') }); // 30 dias
       const card = buildZapCard(lead, HOJE, [-1, 0, 'x']);
       expect(card.strip).toEqual({
         kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 30 dias'
@@ -125,9 +129,9 @@ describe('cartão do responsável', () => {
   const pedro = {
     id: 'k1', name: 'Pedro Souza', lifecycleStage: 'lead', status: 'Novo', source: 'Instagram',
     consultantName: 'Bruno', isMinor: true, guardian: MAE, cpf: '12345678900',
-    createdAt: new Date(2026, 7, 1),
+    createdAt: brt('2026-08-01T00:00'),
   };
-  const ana = { ...pedro, id: 'k2', name: 'Ana Souza', guardian: { ...MAE, name: 'Maria S.' }, createdAt: new Date(2026, 8, 1) };
+  const ana = { ...pedro, id: 'k2', name: 'Ana Souza', guardian: { ...MAE, name: 'Maria S.' }, createdAt: brt('2026-09-01T00:00') };
 
   it('menor em wards: cartão de lead sem found, com parentesco, e sem campo fora da lista', () => {
     const w = buildZapWard(pedro, HOJE);
