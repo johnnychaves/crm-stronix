@@ -3,7 +3,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createElement as h, act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
-import { Lock } from 'lucide-react';
+import { Lock, Mail } from 'lucide-react';
 import { AuthLayout, AuthTenantChip } from '../../views/auth/AuthLayout.jsx';
 import { AuthField, AuthInput, AuthPasswordToggle } from '../../views/auth/AuthField.jsx';
 
@@ -95,13 +95,16 @@ describe('AuthField', () => {
     expect(texto(input.getAttribute('aria-describedby'))).toBe('Uma dica Um erro');
   });
 
-  it('o erro entra numa região de alerta que já estava na página', async () => {
+  it('o erro entra numa região viva educada que já estava na página', async () => {
     await montar(campoDeSenha());
-    const regiao = document.querySelector('[role="alert"]');
+    const regiao = document.querySelector('[aria-live="polite"]');
     expect(regiao).not.toBeNull();
+    // Educada e não alerta: a tela leva o foco ao campo com erro, e o alerta
+    // cortaria a leitura do campo.
+    expect(regiao.getAttribute('role')).toBeNull();
     expect(regiao.textContent).toBe('');
     await act(async () => { root.render(campoDeSenha({ error: 'Um erro' })); });
-    expect(document.querySelector('[role="alert"]')).toBe(regiao);
+    expect(document.querySelector('[aria-live="polite"]')).toBe(regiao);
     expect(regiao.contains(document.getElementById('erro'))).toBe(true);
     expect(regiao.textContent).toBe('Um erro');
   });
@@ -193,5 +196,43 @@ describe('AuthPasswordToggle', () => {
     await act(async () => { document.querySelector('button').click(); });
     expect(onToggle).toHaveBeenCalledTimes(1);
     expect(onSubmit).not.toHaveBeenCalled();
+  });
+});
+
+// Dois campos na mesma página, como no login.
+const emailESenha = () => h('form', { id: 'formulario' },
+  h(AuthField, { label: 'E-mail', icon: Mail }, h(AuthInput, { name: 'email' })),
+  h(AuthField, { label: 'Senha', icon: Lock },
+    h(AuthInput, { name: 'senha', type: 'password' }),
+    h(AuthPasswordToggle, { shown: false, onToggle: () => {} })));
+
+describe('o que a pessoa usa não fica escondido do leitor de tela', () => {
+  it('main, formulário, inputs e botão estão fora de qualquer aria-hidden', async () => {
+    await montar(h(AuthLayout, null, emailESenha()));
+    const usados = [
+      document.querySelector('main'),
+      document.getElementById('formulario'),
+      document.querySelector('input[name="email"]'),
+      document.querySelector('input[name="senha"]'),
+      document.querySelector('button'),
+    ];
+    for (const el of usados) expect(el.closest('[aria-hidden="true"]')).toBeNull();
+  });
+});
+
+describe('o id do rótulo', () => {
+  it('cada input aponta para o rótulo do próprio campo', async () => {
+    await montar(emailESenha());
+    const nome = (n) => texto(document.querySelector(`input[name="${n}"]`).getAttribute('aria-labelledby'));
+    expect(nome('email')).toBe('E-mail');
+    expect(nome('senha')).toBe('Senha');
+  });
+
+  it('aponta para o texto do rótulo, que não contém o input nem o botão', async () => {
+    await montar(emailESenha());
+    const input = document.querySelector('input[name="senha"]');
+    const alvo = document.getElementById(input.getAttribute('aria-labelledby'));
+    expect(alvo.contains(input)).toBe(false);
+    expect(alvo.querySelector('button, input')).toBeNull();
   });
 });

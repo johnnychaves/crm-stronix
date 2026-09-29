@@ -13,8 +13,12 @@ const LabelIdContext = createContext(undefined);
 // botão de mostrar senha fica dentro do <label> e, sem isso, entraria no nome:
 // "Senha Mostrar senha".
 //
-// O erro fica numa região de alerta montada desde o primeiro render, porque o
+// O erro fica numa região viva montada desde o primeiro render, porque o
 // leitor de tela só anuncia o que aparece numa região que já estava na página.
+// A região é educada (polite), não de alerta: a tela leva o foco ao primeiro
+// campo com erro, e o leitor lê o erro ali pela descrição. A região espera essa
+// leitura terminar em vez de cortá-la, e com vários campos errados um aviso não
+// corta o outro.
 //
 // A dica e o erro só ganham id quando a tela passa hintId e errorId. Quem
 // aponta o aria-describedby do input para eles é a tela.
@@ -36,7 +40,7 @@ function AuthField({ label, icon: Icon, hint, hintId, error, errorId, children }
           </div>
         </label>
         {hint && <p id={hintId} className="mt-1.5 text-[12px] leading-snug text-gray-500 dark:text-neutral-400">{hint}</p>}
-        <div role="alert">
+        <div aria-live="polite">
           {error && <p id={errorId} className="mt-1.5 text-[12px] font-medium leading-snug text-rose-600 dark:text-rose-400">{error}</p>}
         </div>
       </div>
@@ -62,8 +66,8 @@ function AuthInput({ className, ...props }) {
 }
 
 // O botão de mostrar e esconder a senha, que vai dentro do AuthField. O nome
-// fica só no aria-label: com um title diferente, o Chrome expõe o title como
-// descrição e o leitor de tela repete a mesma coisa duas vezes.
+// fica só no aria-label, sem title: o Chrome expõe qualquer title como
+// descrição, mesmo igual ao aria-label, e o leitor de tela repete o nome.
 function AuthPasswordToggle({ shown, onToggle }) {
   return (
     <span className="pr-2">
