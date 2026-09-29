@@ -1,7 +1,8 @@
 // O que sai da carteira: o que vence nos próximos 90 dias, o que já venceu sem
 // sucessor e o que saiu neste mês.
 
-import { contractStateAt, indexContracts, neverTookEffect } from '../operacional/base.js';
+import { neverTookEffect } from '../contracts.js';
+import { contractStateAt, indexContracts } from '../operacional/base.js';
 import { hasValue, monthlyTicket, inWindow } from './scope.js';
 
 const DAY = 24 * 60 * 60 * 1000;

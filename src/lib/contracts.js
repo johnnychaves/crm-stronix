@@ -104,6 +104,16 @@ export function liveRenewalOf(contractId, contracts) {
   return contracts.find(c => c?.renewedFromId === contractId && c?.status !== CONTRACT_STATUS.CANCELADO) || null;
 }
 
+// Contrato que nunca valeu: cancelado no instante do início ou antes dele, como
+// a renovação de que o cliente desistiu. Regra única da ficha, dos modais e dos
+// painéis (Operacional e Gerencial). Aceita o doc cru do Firestore (Timestamp)
+// ou o contrato normalizado (Date).
+export const neverTookEffect = (c) => {
+  const cancelled = getSafeDateOrNull(c?.cancelledAt);
+  const start = getSafeDateOrNull(c?.startsAt);
+  return Boolean(cancelled && start && cancelled.getTime() <= start.getTime());
+};
+
 // Deriva o status "vivo" do contrato a partir de { status, startsAt, endsAt,
 // seamless } + uma janela de alerta (thresholdDays). Aceita tanto um doc de
 // contrato quanto o resumo denormalizado do lead, desde que tenham `status` e

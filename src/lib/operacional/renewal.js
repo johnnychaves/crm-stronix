@@ -8,8 +8,9 @@
 // gravado para a véspera dela, mas o vencimento continua o de antes. Se o
 // contrato vale num instante é a cobertura, contractStateAt, pelo endsAt.
 
+import { neverTookEffect } from '../contracts.js';
 import { getSafeDateOrNull } from '../dates.js';
-import { contractStateAt, hasOpenPause, indexContracts, neverTookEffect } from './base.js';
+import { contractStateAt, hasOpenPause, indexContracts } from './base.js';
 import { dayKeyOf } from './month.js';
 
 const DAY_MS = 86400000;

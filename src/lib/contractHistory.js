@@ -8,7 +8,7 @@
 // ligação é retorno, inclusive o paralelo, como no Gerencial. O
 // contractHistory.test.js compara as duas regras.
 
-import { CONTRACT_STATUS } from './contracts.js';
+import { CONTRACT_STATUS, neverTookEffect } from './contracts.js';
 import { calendarDaysBetween, getSafeDateOrNull } from './dates.js';
 
 export const CONTRACT_ORIGIN = {
@@ -49,21 +49,16 @@ function renewalOrdinalOf(contract, byId) {
   return n;
 }
 
-// Contrato cancelado antes de começar: nunca valeu, então não cobriu ninguém.
-const neverStarted = (c) => {
-  const s = getSafeDateOrNull(c?.startsAt);
-  const x = getSafeDateOrNull(c?.cancelledAt);
-  return Boolean(s && x && x.getTime() <= s.getTime());
-};
-
 // Até quando a pessoa teve contrato antes deste, e qual contrato cobria esse
 // fim: o fim efetivo mais distante entre os anteriores que chegaram a valer.
-// Com contrato paralelo, o vendido por último nem sempre é o que cobria.
+// Com contrato paralelo, o vendido por último nem sempre é o que cobria. O
+// cancelado antes de começar (neverTookEffect) nunca valeu, então não cobriu
+// ninguém.
 function coverageOf(list) {
   let end = null;
   let contract = null;
   list.forEach((o) => {
-    if (neverStarted(o)) return;
+    if (neverTookEffect(o)) return;
     const e = contractEndOf(o);
     if (e && (!end || e.getTime() > end.getTime())) { end = e; contract = o; }
   });

@@ -21,6 +21,7 @@ import {
   isImportPause,
   isSeamlessStart,
   liveRenewalOf,
+  neverTookEffect,
   renewalJoinOf,
   renewalStartProblem
 } from '../contracts.js';
@@ -745,5 +746,39 @@ describe('liveRenewalOf: renovação ainda de pé do contrato', () => {
     expect(liveRenewalOf(undefined, [renovacao])).toBeNull();
     expect(liveRenewalOf('k1', null)).toBeNull();
     expect(liveRenewalOf('k1', undefined)).toBeNull();
+  });
+});
+
+// A mesma regra serve à ficha (docs crus, com Timestamp) e aos painéis
+// (contratos normalizados, com Date). O caso normalizado é testado também em
+// operacional.base.test.js.
+describe('neverTookEffect: contrato que nunca valeu', () => {
+  const ts = (d) => ({ toDate: () => d });
+  const inicio = new Date(2026, 9, 12, 0, 0);
+
+  it('cancelado antes do início nunca valeu', () => {
+    expect(neverTookEffect({ status: 'cancelado', startsAt: inicio, cancelledAt: D(2026, 9, 20) })).toBe(true);
+  });
+
+  it('cancelado no instante do início também não', () => {
+    expect(neverTookEffect({ status: 'cancelado', startsAt: inicio, cancelledAt: new Date(inicio.getTime()) })).toBe(true);
+  });
+
+  it('cancelado um minuto depois do início chegou a valer', () => {
+    expect(neverTookEffect({ status: 'cancelado', startsAt: inicio, cancelledAt: new Date(2026, 9, 12, 0, 1) })).toBe(false);
+  });
+
+  it('aceita o doc cru do Firestore', () => {
+    expect(neverTookEffect({ status: 'cancelado', startsAt: ts(inicio), cancelledAt: ts(D(2026, 9, 20)) })).toBe(true);
+    expect(neverTookEffect({ status: 'cancelado', startsAt: ts(inicio), cancelledAt: ts(new Date(inicio.getTime())) })).toBe(true);
+    expect(neverTookEffect({ status: 'cancelado', startsAt: ts(inicio), cancelledAt: ts(new Date(2026, 9, 12, 0, 1)) })).toBe(false);
+  });
+
+  it('sem cancelamento ou sem início, não', () => {
+    expect(neverTookEffect({ status: 'ativo', startsAt: inicio, cancelledAt: null })).toBe(false);
+    expect(neverTookEffect({ status: 'cancelado', startsAt: null, cancelledAt: D(2026, 9, 20) })).toBe(false);
+    expect(neverTookEffect({})).toBe(false);
+    expect(neverTookEffect(null)).toBe(false);
+    expect(neverTookEffect(undefined)).toBe(false);
   });
 });

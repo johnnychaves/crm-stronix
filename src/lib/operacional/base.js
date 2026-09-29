@@ -7,8 +7,14 @@
 // depois num importado contam como os outros.
 
 import { calendarDaysBetween, getSafeDateOrNull } from '../dates.js';
+// neverTookEffect: o contrato que nunca valeu, cancelado no instante do início
+// ou antes dele, como a renovação de que o cliente desistiu. Não cobriu
+// ninguém, então nos painéis não é sucessor, não é o contrato mais recente da
+// pessoa, não é volta nem saída, e o cancelamento dele não conta como
+// cancelamento. A venda do mês continua contando (gerencial/sales.js). A regra
+// mora em contracts.js, a mesma da ficha e dos modais.
 import {
-  buildContractResume, isImportedContract, isImportCancel, isImportPause, reconstructedPauseOf
+  buildContractResume, isImportedContract, isImportCancel, isImportPause, neverTookEffect, reconstructedPauseOf
 } from '../contracts.js';
 
 const DAY_MS = 86400000;
@@ -78,13 +84,6 @@ export function normalizeContract(c) {
     personKey: c.leadId || `contrato:${c.id}`
   };
 }
-
-// Contrato que nunca valeu: cancelado no instante do início ou antes dele, como
-// a renovação de que o cliente desistiu. Não cobriu ninguém, então não é
-// sucessor, não é o contrato mais recente da pessoa, não é volta nem saída, e o
-// cancelamento dele não conta como cancelamento. Regra única do Operacional e
-// do Gerencial; a venda do mês continua contando (gerencial/sales.js).
-export const neverTookEffect = (c) => Boolean(c?.cancelledAt && c?.startsAt && c.cancelledAt <= c.startsAt);
 
 // Início do sucessor que encerra a pausa aberta (começada em `from`): a
 // renovação ligada (renewedFromId) ou outro contrato da pessoa que começa

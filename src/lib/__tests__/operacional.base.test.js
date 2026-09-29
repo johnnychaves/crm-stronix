@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { buildContractPause, buildContractResume } from '../contracts.js';
+import { buildContractPause, buildContractResume, neverTookEffect } from '../contracts.js';
 import {
   normalizeContract, normalizeContracts, hasOpenPause, contractStateAt, countActiveAt, countLockedAt,
-  computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow, indexContracts, neverTookEffect
+  computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow, indexContracts
 } from '../operacional/base.js';
 
 const D = (y, m, d, h = 12) => new Date(y, m - 1, d, h);
