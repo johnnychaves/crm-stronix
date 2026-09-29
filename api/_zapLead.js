@@ -22,6 +22,8 @@ const MINUTE_MS = 60000;
 const DAY_MS = 86400000;
 const NAME_MAX = 120;
 const CHANNEL_MAX = 80;
+// Observação do cadastro, o mesmo campo do Novo lead.
+const NOTE_MAX = 1000;
 // Cadastro mais novo que isto aparece como "cadastrado há pouco".
 const RECENT_MS = 10 * MINUTE_MS;
 
@@ -38,6 +40,7 @@ export const ZAP_LEAD_MESSAGES = Object.freeze({
   lead: 'Faltaram os dados do cadastro.',
   nameShort: 'Informe o nome, com 2 letras ou mais.',
   nameLong: `Nome longo demais. Use até ${NAME_MAX} letras.`,
+  noteLong: `Observação longa demais. Use até ${NOTE_MAX} caracteres.`,
   wrongType: 'Esse campo veio num formato que o Stronilead não aceita.',
   minor: 'Os dados do menor vieram num formato que o Stronilead não aceita.',
   pick: Object.freeze({
@@ -212,11 +215,13 @@ export function readCreateLeadBody(body) {
   const name = textOrEmpty(lead.name).trim();
   if (name.length < 2) return { refusal: invalidData('name', ZAP_LEAD_MESSAGES.nameShort) };
   if (name.length > NAME_MAX) return { refusal: invalidData('name', ZAP_LEAD_MESSAGES.nameLong) };
-  for (const field of ['source', 'dor', 'modalidade', 'funnelId', 'stage', 'ownerId']) {
+  for (const field of ['source', 'dor', 'modalidade', 'funnelId', 'stage', 'ownerId', 'observacao']) {
     if (lead[field] != null && typeof lead[field] !== 'string') {
       return { refusal: invalidData(field, ZAP_LEAD_MESSAGES.wrongType) };
     }
   }
+  const observacao = textOrEmpty(lead.observacao).trim();
+  if (observacao.length > NOTE_MAX) return { refusal: invalidData('observacao', ZAP_LEAD_MESSAGES.noteLong) };
   let minor = null;
   if (lead.minor) {
     const m = lead.minor;
@@ -248,7 +253,8 @@ export function readCreateLeadBody(body) {
         funnelId: textOrEmpty(lead.funnelId),
         stage: textOrEmpty(lead.stage),
         ownerId: textOrEmpty(lead.ownerId).trim() || null,
-        minor
+        minor,
+        observacao: observacao || null
       }
     }
   };
@@ -354,7 +360,8 @@ export function buildZapLead({ lead, phone, actor, owner, serverTime }) {
     createdAt: serverTime,
     statusEnteredAt: serverTime,
     lastInteractionAt: serverTime,
-    interactionsCount: 1
+    // O marco de início e, quando vem, a observação do cadastro.
+    interactionsCount: lead.observacao ? 2 : 1
   };
   if (owner.id !== actor.id) {
     doc.consultantChangedAt = serverTime;
@@ -382,6 +389,25 @@ export function buildZapSignupInteraction({ leadId, leadName, actor, owner, chan
     ...(otherOwner ? { ownerName: owner.name ?? null } : {}),
     zapChannelName: channelName || null,
     createdAt: serverTime
+  };
+}
+
+// A observação do cadastro, com a mesma forma que o Novo lead grava pelo
+// logInteraction: nota com o prefixo que a linha do tempo reconhece
+// (isRegistrationNote), no dono do lead e em nome de quem cadastrou. Vai na
+// mesma transação do lead e do marco; a ficha põe o marco embaixo dela quando
+// os horários empatam (originLastOnTies).
+export function buildRegistrationNote({ leadId, leadName, actor, owner, observacao, serverTime }) {
+  return {
+    leadId,
+    leadName: leadName || null,
+    consultantName: actor.name ?? null,
+    ...getInteractionSecurityFields({ consultantId: owner.id, consultantAuthUid: owner.authUid }, actor),
+    actorId: actor.id,
+    actorAuthUid: actor.authUid ?? null,
+    createdAt: serverTime,
+    text: `OBSERVAÇÃO DO CADASTRO: ${observacao}`,
+    type: 'note'
   };
 }
 

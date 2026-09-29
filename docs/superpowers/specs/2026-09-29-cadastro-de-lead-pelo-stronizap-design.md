@@ -35,17 +35,27 @@ A fila de contatos a classificar e o vínculo da conversa com lead de outro tele
 | Assunto | Decisão |
 |---|---|
 | Ordem | Primeiro o cadastro, depois o agendamento (projeto 2). |
-| Onde fica o formulário | No painel do contato, na seção do Stronilead (modelo B dos mockups). A conversa fica à vista enquanto a pessoa preenche. |
+| Onde fica o formulário | Num balão, que abre pelo "Cadastrar" do cabeçalho, logo abaixo dele, ou pelo "Cadastrar lead" da seção do Stronilead no painel do contato, ao lado do painel. Era o painel (modelo B dos mockups) até a revisão de 29/09, abaixo. |
 | Quem vira dono | Quem cadastrou, como no Stronilead. O gestor pode escolher o responsável. |
 | Quem é gestor | Quem tem o papel de gestor no Stronilead. O Stronilead acha a pessoa pelo e-mail que ela usa no Stronizap. |
 | Escolha do responsável no Stronilead | Não muda. O Novo lead do Stronilead continua sem essa escolha. |
-| Campos | Nome, origem, funil e etapa, dor (obrigatória), modalidade de interesse (opcional) e menor de idade. Indicação e observação ficam de fora. |
+| Campos | Nome, origem, funil e etapa, dor (obrigatória), modalidade de interesse (opcional), menor de idade e observação (opcional, desde a revisão de 29/09). Indicação fica de fora. |
 | Linha do tempo | Um registro próprio, o marco de início (modelo C dos mockups), no lugar de uma nota de texto. |
 | Listas | Todas vêm do Stronilead a cada abertura do formulário. Item novo nasce no Stronilead. |
 | Canais | Só WhatsApp com número. Instagram e contato sem número (LID) ficam de fora. |
 | Liberação | O botão aparece em toda academia com a integração ligada, e essa é a única condição. Sem a integração, o Stronizap funciona sozinho, como hoje. |
 | Nomes dos campos | "Nome do responsável" para quem responde pelo menor, como no Novo lead, e "Consultor responsável" para o dono do lead, como na ficha. |
 | Número sem o nono dígito | O celular antigo ganha o 9 que falta ao ser gravado. |
+
+### Revisão de 29/09, depois de ver na tela
+
+O Johnny testou o Stronizap deste projeto rodando na máquina, com um Stronilead simulado, e pediu cinco mudanças, que valem por cima do resto desta spec e dos mockups:
+
+1. **O formulário abre num balão**, e não dentro do painel. Pelo "Cadastrar" do cabeçalho, o balão desce logo abaixo do link, sem precisar do painel. Pelo "Cadastrar lead" do painel, ele abre ao lado do painel, por cima da conversa. Só um fica aberto por vez.
+2. **Clicar fora fecha o balão**, em qualquer lugar. Aí o foco fica onde a pessoa clicou. Cancelar, Esc e o cadastro feito também fecham, e esses três devolvem o cursor para a caixa de digitar.
+3. **A chave "Quem escreve é responsável por um menor" é o primeiro controle** e não muda de lugar ao ligar e desligar: o que muda são os campos embaixo dela.
+4. **No cabeçalho, "Cadastrar" substitui "Sem cadastro"** para quem pode cadastrar: o link já diz que o número não está no Stronilead. Sem o link (contato sem número, superadmin entrando como admin), o "Sem cadastro" continua.
+5. **Entra o campo Observação**, o mesmo do Novo lead: opcional, até 1.000 caracteres. Ele vira a nota "OBSERVAÇÃO DO CADASTRO: …" da linha do tempo, gravada na mesma transação do lead e do marco de início. Como os dois nascem com o mesmo horário do servidor, a ficha põe o marco embaixo da nota no empate (`originLastOnTies`, em `src/lib/timeline.js`).
 
 ## Na tela do Stronizap
 
@@ -60,9 +70,9 @@ A seção do Stronilead no painel do contato ganha o botão "Cadastrar lead" qua
 
 Vale para qualquer papel do Stronizap que já vê o cartão: admin, gestor e atendente com acesso ao canal. Quem decide se a pessoa pode cadastrar é o Stronilead, pela equipe dele.
 
-No cabeçalho da conversa, o item "Sem cadastro" ganha ao lado o link "Cadastrar". Ele abre o painel com o formulário já aberto.
+No cabeçalho da conversa, quem pode cadastrar vê só o link "Cadastrar", no lugar de "Sem cadastro", e ele abre o balão do cadastro logo abaixo. Sem o link, o "Sem cadastro" continua.
 
-O formulário começa fechado, com o texto de hoje ("Esse número não está na base.") e o botão. Fornecedor, banco e entregador também aparecem como "Sem cadastro" e não precisam de formulário aberto no painel.
+O painel mostra o texto de hoje ("Esse número não está na base.") e o botão, que abre o balão ao lado do painel. Fornecedor, banco e entregador também aparecem como "Sem cadastro" e ninguém precisa abrir balão nenhum para eles.
 
 Com o Stronilead indisponível (`reason: 'indisponivel'`) ou a integração desligada, nada muda: a seção continua sumindo como hoje.
 
@@ -72,19 +82,20 @@ Ao abrir, o Stronizap pede as opções ao Stronilead e mostra "Carregando…" no
 
 | Campo | Vem preenchido com | Regra |
 |---|---|---|
+| Quem escreve é responsável por um menor | Desligado | Ver "Menor de idade". Primeiro controle, sempre no mesmo lugar |
 | Nome | O nome do contato no Stronizap | Obrigatório, 2 letras ou mais |
-| Quem escreve é responsável por um menor | Desligado | Ver "Menor de idade" |
 | Origem | A origem do catálogo com "WhatsApp" no nome. Sem ela, a primeira em ordem alfabética | Obrigatória |
 | Dor ou necessidade | Vazio | Obrigatória |
 | Modalidade de interesse | Vazio | Opcional |
 | Funil e etapa | O funil padrão da academia e a primeira etapa dele, como no Novo lead | Obrigatório. Renovações, Vencidos, Upgrade e Indicações não aparecem |
 | Consultor responsável (só gestor) | Você | A equipe do Stronilead |
+| Observação | Vazio | Opcional, até 1.000 caracteres, o mesmo campo do Novo lead |
 
 A consultora não vê o campo Consultor responsável. No lugar dele aparece "Fica com você (Ana Souza) e soma na sua Meta diária." Quando o gestor escolhe outra pessoa, aparece "Ana recebe o aviso no sino do Stronilead."
 
 Sem dor cadastrada na academia, o campo diz "Nenhuma dor cadastrada no Stronilead. O gestor cadastra em Configurações → Catálogos → Dores." e o botão não cadastra. É a mesma trava do Novo lead.
 
-Nenhuma lista do formulário mora no código do Stronizap, nenhum campo aceita texto livre para elas e não existe botão de criar item. Os únicos campos de texto são nomes de pessoa e o WhatsApp do aluno.
+Nenhuma lista do formulário mora no código do Stronizap, nenhum campo aceita texto livre para elas e não existe botão de criar item. Os únicos campos de texto são nomes de pessoa, o WhatsApp do aluno e a observação.
 
 ### Menor de idade
 
@@ -142,8 +153,9 @@ Tudo numa transação só:
    - os campos de busca (`buildLeadSearchFields`) e, no menor, o bloco do responsável (`buildGuardianPatch`), com o número da conversa como telefone do responsável;
    - o dono: quem cadastrou, ou quem o gestor escolheu;
    - quando o dono não é quem cadastrou, `consultantChangedAt`, `consultantChangedByName` e `consultantChangedByAuthUid`, que acendem o aviso "passado para você" no sino sem mudança no sino;
-   - `lastInteractionAt` e `interactionsCount: 1`, como fazem o cadastro com observação e o link de indicação.
+   - `lastInteractionAt` e `interactionsCount: 1`, como fazem o cadastro com observação e o link de indicação, ou `interactionsCount: 2` quando vem a observação.
 3. **O marco de início**, a interação descrita abaixo.
+4. **A observação do cadastro**, quando vem: a mesma nota que o Novo lead grava pelo `logInteraction`, com `type: 'note'` e o texto "OBSERVAÇÃO DO CADASTRO: …" (`buildRegistrationNote`, em `api/_zapLead.js`), no dono do lead e em nome de quem cadastrou.
 
 ### O marco de início
 
@@ -224,7 +236,8 @@ POST /api/zap
     source, dor, modalidade,      // modalidade pode ser null
     funnelId, stage,
     ownerId,                      // só gestor; consultora manda null
-    minor: null | { guardianName, relationship, studentWhatsapp }
+    minor: null | { guardianName, relationship, studentWhatsapp },
+    observacao                    // opcional, até 1.000 caracteres; null sem observação
   }
 }
 
@@ -329,7 +342,7 @@ Com o recurso em produção, atualizar o `CLAUDE.md` dos dois sistemas, a seçã
 ## Fora deste projeto
 
 - Instagram e contato sem número.
-- Indicação e observação no formulário.
+- Indicação no formulário.
 - CPF, nascimento, e-mail, sexo e etiquetas. Completam-se na ficha.
 - Cadastrar mais um menor para quem já é responsável.
 - Ligar a conversa a um lead que usa outro telefone (Parte B da ponte).

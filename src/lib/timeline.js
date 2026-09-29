@@ -62,6 +62,29 @@ export const zapSignupDetailText = (i) => {
   return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : null;
 };
 
+// O marco de início fica embaixo de quem tem o mesmo horário que ele. O
+// cadastro pelo Stronizap grava o marco e a observação do cadastro na mesma
+// transação, com o mesmo horário do servidor, e o Firestore desempata pelo id,
+// que é aleatório: sem isto a observação às vezes vinha antes do início.
+// Recebe a lista do mais novo para o mais antigo, como o useLeadTimeline, e
+// só mexe dentro de um empate. Evento sem data não empata com ninguém.
+export const originLastOnTies = (list) => {
+  const hora = (i) => validDate(i?.createdAt)?.getTime() ?? null;
+  const out = [];
+  let empate = [];
+  const fechar = () => {
+    out.push(...empate.filter((i) => i._kind !== 'origin'), ...empate.filter((i) => i._kind === 'origin'));
+    empate = [];
+  };
+  (list || []).forEach((item) => {
+    const h = hora(item);
+    if (empate.length > 0 && !(h !== null && h === hora(empate[0]))) fechar();
+    empate.push(item);
+  });
+  fechar();
+  return out;
+};
+
 // Detecta eventos de CONTRATO (matrícula/renovação/cancelamento/troca de plano)
 // pelo texto da interaction. Usado como bucket próprio na timeline. Só é
 // consultado para type='status_change' (ver classifyInteraction) — contrato

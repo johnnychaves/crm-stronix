@@ -1158,6 +1158,48 @@ describe('POST /api/zap com action create-lead', () => {
     });
   });
 
+  it('com observação: a nota do cadastro entra na mesma gravação, como o Novo lead faz', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ lead: { observacao: '  Prefere treinar de manhã.  ' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    const [lead] = leadsDaAcademia();
+    expect(lead.interactionsCount).toBe(2);
+    expect('observacao' in lead).toBe(false);
+    expect(marcosDaAcademia().map((i) => i.type)).toEqual(['zap_signup', 'note']);
+    expect(marcosDaAcademia()[1]).toEqual({
+      id: expect.any(String),
+      leadId: lead.id,
+      leadName: 'Mariana Souza',
+      consultantName: 'Ana Souza',
+      leadConsultantId: 'u-ana',
+      leadConsultantAuthUid: 'auth-ana',
+      actorId: 'u-ana',
+      actorAuthUid: 'auth-ana',
+      createdAt: HORA,
+      text: 'OBSERVAÇÃO DO CADASTRO: Prefere treinar de manhã.',
+      type: 'note'
+    });
+  });
+
+  it('observação em branco não grava nota', async () => {
+    await handler(pedidoCadastro({ lead: { observacao: '   ' } }), resposta());
+
+    expect(marcosDaAcademia().map((i) => i.type)).toEqual(['zap_signup']);
+    expect(leadsDaAcademia()[0].interactionsCount).toBe(1);
+  });
+
+  it('observação longa demais é recusada no campo, sem gravar nada', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ lead: { observacao: 'x'.repeat(1001) } }), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ error: 'dados_invalidos', field: 'observacao' });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
   it('gestor escolhe outra pessoa: ela vira a dona e recebe o aviso no sino', async () => {
     const res = resposta();
 

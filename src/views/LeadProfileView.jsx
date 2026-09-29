@@ -55,7 +55,8 @@ import {
   matchesTimelineFilter,
   timelineTypeLabel,
   TIMELINE_FILTERS,
-  TIMELINE_SYSTEM_KIND
+  TIMELINE_SYSTEM_KIND,
+  originLastOnTies
 } from '../lib/timeline.js';
 import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, Link2, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
@@ -699,7 +700,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     useReferrals({ db, leadId: lead.id, enabled: isClient, active: activeProfileTab === 'referrals' });
 
   // Classificação + filtro da timeline (helpers compartilhados em lib/timeline.js).
-  const interactionsWithClass = (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }));
+  // O marco de início fica embaixo da observação do cadastro, que nasce no
+  // mesmo horário que ele quando o lead vem do Stronizap.
+  const interactionsWithClass = originLastOnTies(
+    (interactions || []).map(i => ({ ...i, _kind: classifyInteraction(i) }))
+  );
 
   // Origem de cada mudança de fase, reconstruída da transição anterior: a origem
   // de uma transição é o destino da transição imediatamente anterior (em ordem

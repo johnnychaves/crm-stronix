@@ -11,6 +11,7 @@ import {
   classifyInteraction,
   zapSignupPillText,
   zapSignupDetailText,
+  originLastOnTies,
   TIMELINE_FILTERS
 } from '../timeline.js';
 
@@ -356,5 +357,29 @@ describe('marco de início do cadastro pelo Stronizap (type zap_signup)', () => 
     expect(zapSignupDetailText({ ...MARCO, ownerName: undefined })).toBe('Canal Recepção');
     expect(zapSignupDetailText({ ...MARCO, zapChannelName: null })).toBe('Consultor responsável Ana Souza');
     expect(zapSignupDetailText({ ...MARCO, ownerName: null, zapChannelName: '' })).toBeNull();
+  });
+});
+
+describe('originLastOnTies: o marco de início embaixo de quem tem o mesmo horário', () => {
+  const as = (h, m) => new Date(2026, 8, 29, h, m);
+  const MARCO = { id: 'z1', _kind: 'origin', createdAt: as(14, 32) };
+  const NOTA = { id: 'n1', _kind: 'note', createdAt: as(14, 32) };
+  const DEPOIS = { id: 'd1', _kind: 'note', createdAt: as(15, 10) };
+  const ANTES = { id: 'a1', _kind: 'status', createdAt: as(9, 0) };
+
+  it('mesmo horário: a observação do cadastro fica acima do marco, venha na ordem que vier', () => {
+    expect(originLastOnTies([MARCO, NOTA]).map((i) => i.id)).toEqual(['n1', 'z1']);
+    expect(originLastOnTies([NOTA, MARCO]).map((i) => i.id)).toEqual(['n1', 'z1']);
+  });
+
+  it('horários diferentes seguem como vieram, do mais novo para o mais antigo', () => {
+    expect(originLastOnTies([DEPOIS, MARCO, NOTA, ANTES]).map((i) => i.id)).toEqual(['d1', 'n1', 'z1', 'a1']);
+  });
+
+  it('sem data não se junta a ninguém, e a lista original não muda', () => {
+    const semData = { id: 's1', _kind: 'note', createdAt: null };
+    const lista = [MARCO, semData, NOTA];
+    expect(originLastOnTies(lista).map((i) => i.id)).toEqual(['z1', 's1', 'n1']);
+    expect(lista.map((i) => i.id)).toEqual(['z1', 's1', 'n1']);
   });
 });

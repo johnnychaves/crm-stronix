@@ -24,7 +24,7 @@ import { buildZapCard, buildGuardianCard, buildZapWards } from './_zapCard.js';
 import {
   LEAD_CREATE_LIMIT, ZAP_LEAD_MESSAGES, refusal, invalidData, tenantBlocked, emailFromActor, findTeamMember,
   buildLeadOptions, readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
-  buildZapLead, buildZapSignupInteraction, alreadyRegisteredBody, scrubbedError
+  buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError
 } from './_zapLead.js';
 import { contactOf } from '../src/lib/guardian.js';
 
@@ -426,6 +426,14 @@ async function handleCreateLead(req, res) {
     const mark = buildZapSignupInteraction({
       leadId: leadRef.id, leadName: newLead.name, actor, owner: ownership.owner, channelName, serverTime
     });
+    // A observação do cadastro, como no Novo lead, na mesma gravação: ou entra
+    // tudo, ou nada, e o "Tentar de novo" não deixa lead sem a nota.
+    const noteRef = lead.observacao ? academyCollection(tenantId, INTERACTIONS_PATH).doc() : null;
+    const note = noteRef
+      ? buildRegistrationNote({
+          leadId: leadRef.id, leadName: newLead.name, actor, owner: ownership.owner, observacao: lead.observacao, serverTime
+        })
+      : null;
     const studentMatch = studentKey(lead.minor);
 
     // Conferência de duplicado e gravação na MESMA transação: dois cliques,
@@ -450,6 +458,7 @@ async function handleCreateLead(req, res) {
       }
       tx.create(leadRef, newLead);
       tx.create(markRef, mark);
+      if (noteRef) tx.create(noteRef, note);
       return { created: true };
     });
 

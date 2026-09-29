@@ -14,9 +14,10 @@ import {
   ZAP_LEAD_MESSAGES, LEAD_CREATE_LIMIT, refusal, invalidData, tenantBlocked, nationalDigits, whatsappFromZap,
   emailFromActor, findTeamMember, teamRole, catalogView, buildLeadOptions,
   readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
-  zapSignupText, buildZapLead, buildZapSignupInteraction, alreadyRegisteredBody, scrubbedError
+  zapSignupText, buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError
 } from '../_zapLead.js';
 import { buildNewLeadDoc } from '../../src/lib/newLead.js';
+import { isRegistrationNote } from '../../src/lib/leads.js';
 // A máscara do Novo lead. O fixo sai dela, e não de um texto fixo aqui: a PR
 // #232 corrige a máscara de 10 dígitos, e este teste vale antes e depois dela.
 import { formatPhone } from '../../src/lib/masks.js';
@@ -244,10 +245,16 @@ describe('readCreateLeadBody: só o formato do pedido', () => {
         channelName: 'Recepção',
         lead: {
           name: 'Mariana Souza', source: 'WhatsApp', dor: 'Postura', modalidade: null,
-          funnelId: 'f-com', stage: 'Novo lead', ownerId: null, minor: null
+          funnelId: 'f-com', stage: 'Novo lead', ownerId: null, minor: null, observacao: null
         }
       }
     });
+  });
+
+  it('observação aparada, e em branco vira null', () => {
+    expect(readCreateLeadBody(corpo({ observacao: '  Prefere treinar de manhã.  ' })).value.lead.observacao)
+      .toBe('Prefere treinar de manhã.');
+    expect(readCreateLeadBody(corpo({ observacao: '   ' })).value.lead.observacao).toBeNull();
   });
 
   it('número antigo: o telefone sai com o nono dígito, e a chave é a mesma', () => {
@@ -285,7 +292,9 @@ describe('readCreateLeadBody: só o formato do pedido', () => {
     ['source', { source: 1 }, ZAP_LEAD_MESSAGES.wrongType],
     ['ownerId', { ownerId: {} }, ZAP_LEAD_MESSAGES.wrongType],
     ['minor', { minor: 'sim' }, ZAP_LEAD_MESSAGES.minor],
-    ['studentWhatsapp', { minor: { guardianName: 'Maria', studentWhatsapp: 51999 } }, ZAP_LEAD_MESSAGES.wrongType]
+    ['studentWhatsapp', { minor: { guardianName: 'Maria', studentWhatsapp: 51999 } }, ZAP_LEAD_MESSAGES.wrongType],
+    ['observacao', { observacao: 42 }, ZAP_LEAD_MESSAGES.wrongType],
+    ['observacao', { observacao: 'x'.repeat(1001) }, ZAP_LEAD_MESSAGES.noteLong]
   ])('campo do lead errado (%s) é recusado com a mensagem certa', (field, lead, message) => {
     expect(readCreateLeadBody(corpo(lead)).refusal).toEqual(invalidData(field, message));
   });
@@ -440,6 +449,12 @@ describe('buildZapLead: o montador do Novo lead mais as diferenças da ponte', (
     });
   });
 
+  it('com observação: o lead nasce com o marco e a nota do cadastro contados', () => {
+    const doc = buildZapLead({ lead: { ...LEAD, observacao: 'Prefere de manhã.' }, phone: '5551998124471', actor: ANA, owner: ANA, serverTime: HORA });
+    expect(doc.interactionsCount).toBe(2);
+    expect('observacao' in doc).toBe(false);
+  });
+
   it('dono escolhido pelo gestor: o aviso de troca que acende o sino', () => {
     expect(buildZapLead({ lead: LEAD, phone: '5551998124471', actor: JOHNNY, owner: BRUNO, serverTime: HORA })).toMatchObject({
       consultantId: 'u-bruno', consultantName: 'Bruno Lima', consultantAuthUid: 'auth-bruno',
@@ -512,6 +527,30 @@ describe('buildZapSignupInteraction: o marco de início', () => {
       zapChannelName: null, text: 'Cadastrado pelo Stronizap por Johnny. Consultor responsável: Bruno Lima.'
     });
     expect('volumeKind' in marco).toBe(false);
+  });
+});
+
+describe('buildRegistrationNote: a observação do cadastro, como o Novo lead grava', () => {
+  const HORA = { horaDoServidor: true };
+
+  it('nota com o prefixo que a linha do tempo reconhece, no dono do lead e em nome de quem cadastrou', () => {
+    const nota = buildRegistrationNote({
+      leadId: 'L1', leadName: 'Mariana Souza', actor: JOHNNY, owner: BRUNO, observacao: 'Prefere treinar de manhã.', serverTime: HORA
+    });
+    expect(nota).toEqual({
+      leadId: 'L1',
+      leadName: 'Mariana Souza',
+      consultantName: 'Johnny',
+      leadConsultantId: 'u-bruno',
+      leadConsultantAuthUid: 'auth-bruno',
+      actorId: 'u-johnny',
+      actorAuthUid: 'auth-johnny',
+      createdAt: HORA,
+      text: 'OBSERVAÇÃO DO CADASTRO: Prefere treinar de manhã.',
+      type: 'note'
+    });
+    // A mesma marca que tira a nota da conta de contato do dia e do "Obs:" da ficha.
+    expect(isRegistrationNote(nota.text)).toBe(true);
   });
 });
 

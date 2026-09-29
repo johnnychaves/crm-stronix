@@ -102,6 +102,19 @@ describe('marco de início do cadastro pelo Stronizap na ficha', () => {
     expect(ficha()).toMatch(/Marcos<span class="num opacity-65">2<\/span>/);
   });
 
+  it('observação do cadastro no mesmo horário do marco fica acima dele, venha na ordem que vier', () => {
+    const OBS = {
+      id: 'o1', type: 'note', text: 'OBSERVAÇÃO DO CADASTRO: Prefere treinar de manhã.',
+      consultantName: 'Johnny', createdAt: MARCO.createdAt,
+    };
+    for (const ordem of [[MARCO, OBS], [OBS, MARCO]]) {
+      linha.registros = ordem;
+      const html = ficha();
+      expect(html).toContain('Prefere treinar de manhã.');
+      expect(html.indexOf('cadastrado pelo Stronizap')).toBeGreaterThan(html.indexOf('Prefere treinar de manhã.'));
+    }
+  });
+
   it('a pílula leva a marca do Stronizap, com as cores dos dois temas', () => {
     linha.registros = [MARCO];
     const html = ficha();
