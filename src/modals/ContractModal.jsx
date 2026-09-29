@@ -104,6 +104,10 @@ function ContractModal({
   // um contrato vencido a lacuna já aconteceu, e datar no passado não a desfaz.
   const emendaDate = isRenewal ? seamStart(refEnd) : null;
 
+  // O documento do contrato atual: a ficha passa, e a Meta Diária e o Kanban
+  // não. Sem ele, a renovação não encurta nada (commitMatricula).
+  const currentDoc = currentContract || (contratos || []).find(c => c.id === lead?.currentContractId) || null;
+
   // A renovação começa oferecendo o plano que o cliente já tem; a matrícula, o
   // mais vendido.
   const initialPlan = (isRenewal && activePlans.find(p => p.name === lead?.currentPlanName))
@@ -195,6 +199,7 @@ function ContractModal({
         startsAt,
         mode,
         renewedFromId: isRenewal ? (renewedFromId || lead?.currentContractId || null) : null,
+        previousContract: isRenewal ? currentDoc : null,
         contractExtra: {
           discountMode: hasDiscount ? discountMode : DISCOUNT_MODES.NENHUM,
           discountValue: hasDiscount ? discountValue : 0,

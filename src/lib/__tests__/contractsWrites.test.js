@@ -46,14 +46,20 @@ beforeEach(() => { m.sets.length = 0; m.seq = 0; });
 
 describe('commitMatricula: renovação e o contrato atual', () => {
   it('sobreposta: encurta o atual no mesmo batch e guarda quem encurtou', async () => {
-    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1' });
+    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: { id: 'k1' } });
     const atual = m.sets.find((s) => s.path === `${CONTRATOS}/k1`);
     expect(atual.data).toEqual({ endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: contractId, updatedAt: 'TS' });
     expect(atual.opts).toEqual({ merge: true });
   });
 
+  it('sobreposta sem o documento do contrato atual: grava a renovação e não encurta nada', async () => {
+    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: null });
+    expect(m.sets.some((s) => s.path === `${CONTRATOS}/k1`)).toBe(false);
+    expect(m.sets.some((s) => s.path === `${CONTRATOS}/${contractId}`)).toBe(true);
+  });
+
   it('emendada: não toca no atual e o contrato novo leva a marca', async () => {
-    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 10, 12), mode: 'renovacao', renewedFromId: 'k1' });
+    const { contractId } = await commitMatricula({ db: {}, lead, appUser, plan, value: 1308, startsAt: D(2026, 10, 12), mode: 'renovacao', renewedFromId: 'k1', previousContract: { id: 'k1' } });
     expect(m.sets.some((s) => s.path === `${CONTRATOS}/k1`)).toBe(false);
     const novo = m.sets.find((s) => s.path === `${CONTRATOS}/${contractId}`);
     expect(novo.data.seamless).toBe(true);

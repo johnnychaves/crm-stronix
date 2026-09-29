@@ -161,6 +161,8 @@ export const buildMatriculaInteractionText = ({ planName, value, endsAt, isRenew
 //       * stampClienteSince — só se o lead ainda não tem clienteSince.
 //
 // `mode`: 'matricula' (padrão) | 'renovacao'.
+// `previousContract`: o DOC do contrato atual, quando o chamador o tem. Sem ele
+// (ou com um doc que não é o atual do lead), a renovação não encurta nada.
 export const buildMatriculaWrites = ({
   lead,
   plan,
@@ -168,7 +170,8 @@ export const buildMatriculaWrites = ({
   startsAt,
   appUser,
   mode = 'matricula',
-  renewedFromId = null
+  renewedFromId = null,
+  previousContract = null
 }) => {
   const isRenewal = mode === 'renovacao';
   const start = getSafeDateOrNull(startsAt) || new Date();
@@ -183,6 +186,9 @@ export const buildMatriculaWrites = ({
   // desfeita (buildRenewalCancel).
   const currentEnd = isRenewal && lead?.currentContractId ? getSafeDateOrNull(lead?.currentContractEndsAt) : null;
   const join = currentEnd ? renewalJoinOf(currentEnd, start) : { seamless: false, overlaps: false, previousEndsAt: null };
+  // Só encurta um contrato que existe: com a referência velha no lead, gravar
+  // com merge criaria um contrato fantasma, só com datas.
+  const canShorten = Boolean(join.overlaps && previousContract?.id && previousContract.id === lead?.currentContractId);
 
   const contract = {
     leadId: lead?.id || null,
@@ -258,8 +264,8 @@ export const buildMatriculaWrites = ({
     referrerInteractionText: referralConvertedText(lead?.name),
     // Sobreposição: o contrato atual a encurtar. O caller grava no mesmo batch
     // e acrescenta shortenedById com o id do contrato novo.
-    previousContractId: join.overlaps ? lead.currentContractId : null,
-    previousPatch: join.overlaps ? { endsAt: join.previousEndsAt, originalEndsAt: currentEnd } : null
+    previousContractId: canShorten ? lead.currentContractId : null,
+    previousPatch: canShorten ? { endsAt: join.previousEndsAt, originalEndsAt: currentEnd } : null
   };
 };
 

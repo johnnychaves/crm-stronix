@@ -540,7 +540,7 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
     id: 'l1', name: 'Ana', consultantId: 'c1', consultantAuthUid: 'u1',
     currentContractId: 'k1', currentContractStartsAt: D(2025, 10, 11), currentContractEndsAt: D(2026, 10, 11)
   };
-  const renovar = (startsAt) => buildMatriculaWrites({ lead, plan, value: 1308, startsAt, mode: 'renovacao', renewedFromId: 'k1' });
+  const renovar = (startsAt) => buildMatriculaWrites({ lead, plan, value: 1308, startsAt, mode: 'renovacao', renewedFromId: 'k1', previousContract: { id: 'k1' } });
 
   it('começa no dia seguinte ao fim: emendada, sem encurtar o atual', () => {
     const r = renovar(D(2026, 10, 12));
@@ -565,6 +565,19 @@ describe('buildMatriculaWrites: renovação emendada e sobreposta', () => {
 
   it('começa no próprio dia do fim também encurta', () => {
     expect(renovar(D(2026, 10, 11)).previousPatch).toEqual({ endsAt: D(2026, 10, 10), originalEndsAt: D(2026, 10, 11) });
+  });
+
+  it('sem o documento do contrato atual, não encurta nada', () => {
+    const r = buildMatriculaWrites({ lead, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1' });
+    expect(r.previousPatch).toBeNull();
+    expect(r.previousContractId).toBeNull();
+    expect(r.contract.renewedFromId).toBe('k1');
+  });
+
+  it('um documento que não é o atual do lead também não encurta nada', () => {
+    const r = buildMatriculaWrites({ lead, plan, value: 1308, startsAt: D(2026, 9, 28), mode: 'renovacao', renewedFromId: 'k1', previousContract: { id: 'k0' } });
+    expect(r.previousPatch).toBeNull();
+    expect(r.previousContractId).toBeNull();
   });
 
   it('matrícula nunca é emendada nem encurta nada', () => {

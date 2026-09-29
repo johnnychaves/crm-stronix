@@ -61,6 +61,8 @@ export async function commitContractPatch({
 // Resolve tudo num único batch e devolve o id do contrato criado.
 // `contractExtra` carrega os campos que só a renovação preenche (modo e valor
 // do desconto, motivo) — o payload base continua vindo de buildMatriculaWrites.
+// `previousContract` é o doc do contrato atual: sem ele, a renovação que
+// sobrepõe o atual não encurta nada (evita gravar um contrato fantasma).
 export async function commitMatricula({
   db,
   lead,
@@ -70,6 +72,7 @@ export async function commitMatricula({
   startsAt,
   mode = 'matricula',
   renewedFromId = null,
+  previousContract = null,
   contractExtra = null
 }) {
   const {
@@ -83,7 +86,7 @@ export async function commitMatricula({
     referrerInteractionText,
     previousContractId,
     previousPatch
-  } = buildMatriculaWrites({ lead, plan, value, startsAt, appUser, mode, renewedFromId });
+  } = buildMatriculaWrites({ lead, plan, value, startsAt, appUser, mode, renewedFromId, previousContract });
 
   // Troca de etapa para Venda (base do CRM). null na renovação, quando o lead
   // já está em Venda, e também quando quem matricula já é cliente — o card
