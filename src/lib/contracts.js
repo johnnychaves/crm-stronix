@@ -377,6 +377,15 @@ export const buildContractResume = ({ contract, resumedAt } = {}) => {
   };
 };
 
+// Tabela que vale na correção. Mesmo plano: a tabela gravada no contrato, a do
+// dia da venda, porque o catálogo pode ter sido reajustado depois e corrigir
+// só a data não pode mudar o desconto. Plano trocado: a tabela do plano novo.
+export const editListValueOf = (contract, plan) => {
+  const samePlan = Boolean(plan?.id && contract?.planId && plan.id === contract.planId);
+  const own = Number(contract?.listValue) || 0;
+  return (samePlan && own) || Number(plan?.value) || own;
+};
+
 // Correção de um contrato já gravado (erro de digitação em plano, valor ou
 // início). NÃO é renovação: não cria contrato novo, não mexe em marcos de
 // renovação e não recarimba conversão. Preserva os dias já trancados.
@@ -390,7 +399,7 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
   const pausedDaysTotal = Number(contract?.pausedDaysTotal) || 0;
   const endsAt = base && pausedDaysTotal > 0 ? addDays(base, pausedDaysTotal) : base;
   const finalValue = Number.isFinite(Number(value)) ? Number(value) : (Number(contract?.value) || 0);
-  const listValue = Number(plan?.value) || Number(contract?.listValue) || 0;
+  const listValue = editListValueOf(contract, plan);
   const discountValue = contractDiscountOf({ value: finalValue, listValue });
   const hasDiscount = discountValue > 0.005;
   const sameDeal = finalValue === (Number(contract?.value) || 0) && listValue === (Number(contract?.listValue) || 0);

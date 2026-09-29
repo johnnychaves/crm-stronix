@@ -14,6 +14,7 @@ import {
   contractDiscountOf,
   deriveContractStatus,
   deriveLeadContractStatus,
+  editListValueOf,
   hasLiveContract,
   isImportedContract,
   isImportPause
@@ -427,8 +428,28 @@ describe('buildContractEdit: desconto recalculado', () => {
     expect(r.contractPatch).toMatchObject({ discountMode: 'nenhum', discountValue: 0, discountReason: null });
   });
 
+  it('plano reajustado depois da venda: corrigir só a data mantém a tabela e o desconto', () => {
+    const reajustado = { ...plano, value: 1500 };
+    const r = buildContractEdit({ contract: base, plan: reajustado, value: 1177.2, startsAt: D(2026, 9, 5) });
+    expect(r.contractPatch).toMatchObject({ listValue: 1308, discountMode: 'percent', discountValue: 130.8, discountReason: 'Fidelidade' });
+  });
+
   it('grava os mesmos modos de DISCOUNT_MODES', () => {
     expect(DISCOUNT_MODES.NENHUM).toBe('nenhum');
     expect(DISCOUNT_MODES.FINAL).toBe('final');
+  });
+});
+
+describe('editListValueOf: a tabela que vale na correção', () => {
+  it('mesmo plano: fica a tabela gravada no contrato, não a do catálogo de hoje', () => {
+    expect(editListValueOf({ planId: 'p1', listValue: 1308 }, { id: 'p1', value: 1500 })).toBe(1308);
+  });
+
+  it('plano trocado: vale a tabela do plano novo', () => {
+    expect(editListValueOf({ planId: 'p1', listValue: 1308 }, { id: 'p2', value: 1390 })).toBe(1390);
+  });
+
+  it('mesmo plano, mas o contrato não tem tabela gravada: usa a do plano', () => {
+    expect(editListValueOf({ planId: 'p1', value: 1177.2 }, { id: 'p1', value: 1500 })).toBe(1500);
   });
 });
