@@ -54,6 +54,11 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
   const listValue = plan ? editListValueOf(contract, plan) : 0;
   const hasDiscount = listValue > 0 && Number.isFinite(numericValue) && listValue - numericValue > 0.005;
   const discountReason = hasDiscount ? reason : null;
+  // Motivo obrigatório só quando o negócio mudou (outro plano ou outro valor)
+  // ou quando o contrato já tinha motivo, que vem marcado. Corrigir só a data de
+  // um contrato antigo, com desconto sem motivo, não pode travar.
+  const dealChanged = plan?.id !== contract?.planId || numericValue !== (Number(contract?.value) || 0);
+  const needsReason = hasDiscount && (dealChanged || Boolean(contract?.discountReason));
 
   const preview = plan && startsAt
     ? buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason })
@@ -65,7 +70,10 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
   const onChangePlan = (id) => {
     setPlanId(id);
     const p = options.find(x => x.id === id);
-    if (p) setValue(valorToInput(p.value));
+    if (!p) return;
+    // Voltar ao plano do contrato devolve o valor gravado: o preço de hoje do
+    // catálogo pode ter sido reajustado depois da venda.
+    setValue(valorToInput(id === contract?.planId ? contract?.value : p.value));
   };
 
   const handleClose = (open) => { if (!open && !submitting) onClose && onClose(); };
@@ -74,7 +82,7 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
     if (!plan) { toast.warning('Selecione um plano.'); return; }
     if (!startsAt) { toast.warning('Informe a data de início.'); return; }
     if (!Number.isFinite(numericValue) || numericValue < 0) { toast.warning('Informe um valor válido.'); return; }
-    if (hasDiscount && !reason) { toast.warning('Escolha o motivo do desconto.'); return; }
+    if (needsReason && !reason) { toast.warning('Escolha o motivo do desconto.'); return; }
 
     setSubmitting(true);
     try {
@@ -128,7 +136,7 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Valor (R$)" hint={plan && listValue !== numericValue ? `Tabela: ${fmtBRL(listValue)}` : undefined}>
+            <Field label="Valor (R$)" hint={plan && listValue !== numericValue ? `${plan.id === contract?.planId && listValue !== Number(plan.value) ? 'Tabela na venda' : 'Tabela'}: ${fmtBRL(listValue)}` : undefined}>
               <StyledInput
                 type="text"
                 inputMode="decimal"
@@ -148,10 +156,7 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
           </div>
 
           {hasDiscount && (
-            <div>
-              <div className="text-[9.5px] font-bold uppercase tracking-[.08em] text-slate-500 dark:text-slate-400 mb-2">
-                Motivo do desconto
-              </div>
+            <Field label="Motivo do desconto">
               <div className="flex flex-wrap gap-1.5">
                 {DISCOUNT_REASONS.map(r => (
                   <button
@@ -167,7 +172,7 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
                   >{r}</button>
                 ))}
               </div>
-            </div>
+            </Field>
           )}
 
           <div className="rounded-[10px] bg-slate-50 dark:bg-white/[0.03] px-3 py-2.5 text-[12px] leading-[1.5] text-slate-600 dark:text-slate-300 text-pretty">
