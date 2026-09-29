@@ -22,7 +22,13 @@ const PATTERNS = [
   // [documento] e deixar o resto dela em claro.
   [/\bre_[A-Za-z0-9_]{16,}/g, '[chave]'],
   [/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g, '[cpf]'],
-  [/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, '[email]'],
+  // A parte antes do @ vai até 64 caracteres, o máximo que o padrão de e-mail
+  // aceita (RFC 5321). Sem o limite, num texto longo sem espaço cada começo de
+  // palavra lia o resto do texto atrás de um @, e 80 KB de "a.a.a." levavam
+  // 10 s. Com ele, o tempo cresce na proporção do texto, e o resultado só muda
+  // quando a parte antes do @ passa de 64 caracteres. O domínio fica sem
+  // limite, porque no máximo 64 começos chegam a cada @.
+  [/\b[\w.+-]{1,64}@[\w-]+\.[\w.-]+\b/g, '[email]'],
   // O caractere anterior é capturado e reemitido em vez de usar lookbehind.
   // Lookbehind só existe no Safari a partir do 16.4, e um erro de sintaxe
   // aqui derrubaria o bundle inteiro no boot, não só o mascaramento. Um \b
