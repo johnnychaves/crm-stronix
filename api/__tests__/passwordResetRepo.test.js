@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { findAccount, issueCode, reserveAttempt, killCode, audit } from '../_passwordResetRepo.js';
 
 const h = vi.hoisted(() => ({ usuarios: {}, tenants: {}, membros: {}, resets: {}, escritas: [], auditoria: [], leituras: [] }));
@@ -73,6 +73,9 @@ beforeEach(() => {
   h.escritas = [];
   h.auditoria = [];
   h.leituras = [];
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
 });
 
 describe('findAccount', () => {
@@ -228,8 +231,30 @@ describe('transações no documento da conta', () => {
     expect(h.escritas).toEqual([{ tipo: 'update', caminho: '_password_reset/u-ana', dados: { usedAtMs: entrada.now, updatedAt: 'agora' } }]);
   });
 
-  it('audit grava password.reset com a academia e a conta', async () => {
+  it('audit grava password.reset com a academia, a conta e o ambiente', async () => {
+    vi.stubEnv('VERCEL_ENV', 'production');
     await audit({ uid: 'u-ana', tenantId: 'academia-teste' });
-    expect(h.auditoria).toEqual([{ action: 'password.reset', tenantId: 'academia-teste', actorUid: 'u-ana', details: { via: 'codigo-por-email' } }]);
+    expect(h.auditoria).toEqual([{
+      action: 'password.reset', tenantId: 'academia-teste', actorUid: 'u-ana',
+      details: { via: 'codigo-por-email', ambiente: 'production' },
+    }]);
+  });
+
+  it('a troca feita no Preview fica diferente da de produção na auditoria', async () => {
+    // O Preview usa o Firebase de produção, e lá o código sai no log da Vercel.
+    vi.stubEnv('VERCEL_ENV', 'preview');
+    await audit({ uid: 'u-ana', tenantId: 'academia-teste' });
+    expect(h.auditoria[0].details).toEqual({ via: 'codigo-por-email', ambiente: 'preview' });
+  });
+
+  it('sem VERCEL_ENV, o ambiente vai como null', async () => {
+    for (const valor of [undefined, '']) {
+      vi.stubEnv('VERCEL_ENV', valor);
+      await audit({ uid: 'u-ana', tenantId: 'academia-teste' });
+    }
+    expect(h.auditoria.map((e) => e.details)).toEqual([
+      { via: 'codigo-por-email', ambiente: null },
+      { via: 'codigo-por-email', ambiente: null },
+    ]);
   });
 });

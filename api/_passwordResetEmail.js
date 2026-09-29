@@ -18,7 +18,17 @@ export function escapeHtml(s) {
     .replace(/'/g, '&#39;');
 }
 
-const firstName = (name) => String(name ?? '').trim().split(/\s+/)[0] || '';
+// A saudação só leva a primeira palavra do nome quando ela é nome: começa com
+// letra, segue com letras, apóstrofo ou hífen, e tem até 40 caracteres. O nome
+// vem do cadastro da equipe, que o gestor digita, e um nome como
+// "https://site-falso.com" viraria link clicável num e-mail oficial. O resto
+// fica "Olá." sem nome.
+const NAME_RE = /^\p{L}[\p{L}'’-]{0,39}$/u;
+
+const firstName = (name) => {
+  const first = String(name ?? '').trim().split(/\s+/)[0] || '';
+  return NAME_RE.test(first) ? first : '';
+};
 
 export function buildResetEmail(name, code) {
   if (!isResetCodeFormat(code)) throw new Error('esqueci-a-senha: código inválido para o e-mail');

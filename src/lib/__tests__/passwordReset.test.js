@@ -151,6 +151,11 @@ describe('readResetApiError', () => {
       .toEqual({ status: 400, message: 'Código errado ou vencido.', passwordIssue: null });
     expect(readResetApiError(500, null)).toEqual({ status: 500, message: null, passwordIssue: null });
   });
+
+  it('o 415 (corpo que não veio em JSON) passa como falha comum, sem frase de campo', () => {
+    expect(readResetApiError(415, { error: 'Não deu para enviar agora. Tente de novo.' }))
+      .toEqual({ status: 415, message: 'Não deu para enviar agora. Tente de novo.', passwordIssue: null });
+  });
 });
 
 describe('ida e volta entre o login e a tela', () => {

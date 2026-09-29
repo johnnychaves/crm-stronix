@@ -3,8 +3,9 @@ import { adminAuth, adminDb, admin } from './_firebaseAdmin.js';
 import { usersCollection } from './_auth.js';
 import { logAudit } from './_audit.js';
 import { sendMail } from './_mail.js';
-import { normalizeEmail } from '../src/lib/passwordReset.js';
-import { planIssue, planReserve, planKill, isTenantActive } from './_passwordReset.js';
+import { checkRateLimit } from './_rateLimit.js';
+import { normalizeEmail, RESET_WINDOW_MS } from '../src/lib/passwordReset.js';
+import { planIssue, planReserve, planKill, isTenantActive, RESET_MAILS_PER_DAY } from './_passwordReset.js';
 
 // As operações de verdade do "Esqueci a senha": leituras, chamadas ao Firebase
 // Auth e transações no documento da conta. As regras moram em _passwordReset.js
@@ -78,6 +79,14 @@ async function findMember(tenantId, uid, accountEmail) {
   return legacy.id === uid ? legacy.data() || {} : null;
 }
 
+// Uma vaga no teto de e-mails do dia (RESET_MAILS_PER_DAY). Devolve se há vaga.
+// Uma contagem só, em _ratelimit, vale para todas as academias. O limitador
+// falha aberto: se a conta dele falhar, o e-mail sai.
+export async function reserveMailSlot() {
+  const rl = await checkRateLimit('pw-reset-mail-day', { limit: RESET_MAILS_PER_DAY, windowMs: RESET_WINDOW_MS });
+  return rl.ok;
+}
+
 // A transação faz pedidos ao mesmo tempo da mesma conta esperarem a vez, e
 // nenhum passa do limite do dia.
 export async function issueCode(uid, input) {
@@ -119,14 +128,20 @@ export const setPassword = (uid, password) => adminAuth.updateUser(uid, { passwo
 // isso escrito e vale também se o Firebase mudar esse comportamento.
 export const revokeSessions = (uid) => adminAuth.revokeRefreshTokens(uid);
 
-// O log da Vercel some em 1 hora. A auditoria fica para o super-admin.
+// O log da Vercel some em 1 hora. A auditoria fica para o super-admin. O
+// ambiente separa a troca feita no Preview, que usa o Firebase de produção e
+// escreve o código no log, da troca feita em produção.
 export const audit = ({ uid, tenantId }) =>
-  logAudit({ action: 'password.reset', tenantId, actorUid: uid, details: { via: 'codigo-por-email' } });
+  logAudit({
+    action: 'password.reset', tenantId, actorUid: uid,
+    details: { via: 'codigo-por-email', ambiente: process.env.VERCEL_ENV || null },
+  });
 
 // O que as ações do tenant-resolve passam para o fluxo.
 export function realResetDeps() {
   const deps = {
     findAccount,
+    reserveMailSlot,
     issueCode,
     reserveAttempt,
     killCode,

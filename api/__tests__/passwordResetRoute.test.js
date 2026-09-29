@@ -5,7 +5,7 @@ import handler from '../tenant-resolve.js';
 import { CONFIRM_MIN_MS, rateKeyIp } from '../_passwordResetRoute.js';
 import { PASSWORD_REJECTED_ERROR } from '../../src/lib/passwordPolicy.js';
 import {
-  CODE_REFUSED_MESSAGE, MAIL_OFF_MESSAGE, TOO_MANY_MESSAGE, EMAIL_INVALID_MESSAGE, SAVE_FAILED_MESSAGE,
+  CODE_REFUSED_MESSAGE, MAIL_OFF_MESSAGE, TOO_MANY_MESSAGE, EMAIL_INVALID_MESSAGE, SAVE_FAILED_MESSAGE, SEND_FAILED_MESSAGE,
 } from '../../src/lib/passwordReset.js';
 
 // As duas ações do "Esqueci a senha" no POST do tenant-resolve. O teste chama o
@@ -14,18 +14,19 @@ import {
 // vale o que a rota responde, quando responde e o que ela põe no log.
 
 const h = vi.hoisted(() => ({
-  limiteOk: true, limiteErro: null, chamadas: [], status: 'resend', ip: '203.0.113.7',
+  limiteOk: true, limiteErro: null, recusadas: [], chamadas: [], status: 'resend', ip: '203.0.113.7',
   adiados: [], capturados: [], sentryTravado: false, depsErro: null,
   pedido: vi.fn(), troca: vi.fn(),
 }));
 
 vi.mock('../_firebaseAdmin.js', () => ({ adminDb: {}, adminAuth: {}, admin: {} }));
 vi.mock('../_rateLimit.js', () => ({
-  // Guarda a chave e os números de cada contagem, para o teste conferir os limites.
+  // Guarda a chave e os números de cada contagem, para o teste conferir os
+  // limites. O limiteOk recusa todas as chaves, e o recusadas só as dadas.
   checkRateLimit: async (chave, opcoes) => {
     h.chamadas.push({ chave, limit: opcoes?.limit, windowMs: opcoes?.windowMs });
     if (h.limiteErro) throw h.limiteErro;
-    return { ok: h.limiteOk };
+    return { ok: h.limiteOk && !h.recusadas.includes(chave) };
   },
   clientIp: () => h.ip,
 }));
@@ -59,7 +60,10 @@ vi.mock('../_sentry.js', async (importOriginal) => ({
   },
 }));
 
-const post = (body) => ({ method: 'POST', headers: {}, body });
+// A tela manda o corpo em JSON (postResetAction, em src/lib/passwordReset.js).
+// Node entrega os nomes dos cabeçalhos em minúsculas.
+const JSON_HEADERS = { 'content-type': 'application/json' };
+const post = (body, headers = JSON_HEADERS) => ({ method: 'POST', headers, body });
 const resposta = () => ({
   statusCode: 0,
   body: undefined,
@@ -72,6 +76,7 @@ const trocarSenha = (extra = {}) => post({
 });
 
 const QUINZE_MINUTOS = 15 * 60 * 1000;
+const UM_DIA = 24 * 60 * 60 * 1000;
 // O piso da troca, escrito por extenso: se alguém mexer no valor, os testes de
 // tempo avisam em vez de acompanhar a mudança.
 const PISO = 2500;
@@ -85,6 +90,7 @@ const saidaDe = (spy) => util.inspect(spy.mock.calls, { depth: null });
 beforeEach(() => {
   h.limiteOk = true;
   h.limiteErro = null;
+  h.recusadas = [];
   h.chamadas = [];
   h.status = 'resend';
   h.ip = '203.0.113.7';
@@ -197,17 +203,40 @@ describe('POST password-reset-request', () => {
     expect(h.pedido).not.toHaveBeenCalled();
   });
 
-  it('limita a 5 pedidos a cada 15 minutos por IP', async () => {
+  it('limita a 5 pedidos a cada 15 minutos e depois a 20 por dia, por IP', async () => {
     await handler(pedirCodigo(), resposta());
     await h.adiados[0];
-    expect(h.chamadas).toEqual([{ chave: 'pw-reset-request:203.0.113.7', limit: 5, windowMs: QUINZE_MINUTOS }]);
+    expect(h.chamadas).toEqual([
+      { chave: 'pw-reset-request:203.0.113.7', limit: 5, windowMs: QUINZE_MINUTOS },
+      { chave: 'pw-reset-request-day:203.0.113.7', limit: 20, windowMs: UM_DIA },
+    ]);
+  });
+
+  it('429 no limite do dia, com a mesma frase, mesmo com a janela de 15 minutos livre', async () => {
+    // Só a janela de 15 minutos deixaria um IP fazer 480 pedidos por dia: ela
+    // reinicia 96 vezes em 24 horas.
+    h.recusadas = ['pw-reset-request-day:203.0.113.7'];
+    const res = resposta();
+    await handler(pedirCodigo(), res);
+    expect(res.statusCode).toBe(429);
+    expect(res.body).toEqual({ error: TOO_MANY_MESSAGE });
+    expect(h.pedido).not.toHaveBeenCalled();
+    expect(h.adiados).toEqual([]);
+  });
+
+  it('quem estoura os 15 minutos não gasta a cota do dia', async () => {
+    h.recusadas = ['pw-reset-request:203.0.113.7'];
+    const res = resposta();
+    await handler(pedirCodigo(), res);
+    expect(res.statusCode).toBe(429);
+    expect(chaves()).toEqual(['pw-reset-request:203.0.113.7']);
   });
 
   it('conta o IPv6 pelo bloco /64 e passa o IP inteiro ao fluxo', async () => {
     h.ip = '2001:db8:1:2:aaaa::1';
     await handler(pedirCodigo(), resposta());
     await h.adiados[0];
-    expect(chaves()).toEqual(['pw-reset-request:2001:db8:1:2']);
+    expect(chaves()).toEqual(['pw-reset-request:2001:db8:1:2', 'pw-reset-request-day:2001:db8:1:2']);
     expect(h.pedido).toHaveBeenCalledWith('ana@academia.com', '2001:db8:1:2:aaaa::1', expect.anything());
   });
 
@@ -304,6 +333,22 @@ describe('POST password-reset-confirm', () => {
     expect(h.troca).not.toHaveBeenCalled();
   });
 
+  it('a 429 sai na hora, sem ligar o piso: ela depende só do IP', async () => {
+    // Com o piso, cada pedido barrado ocuparia a função 2,5 s em vez de uns 100
+    // ms, e isso gasta o tempo de função do plano Hobby.
+    h.limiteOk = false;
+    const res = resposta();
+    const feito = handler(trocarSenha(), res);
+    await vi.advanceTimersByTimeAsync(1);
+    expect([res.statusCode, res.body]).toEqual([429, { error: TOO_MANY_MESSAGE }]);
+    // Nenhum relógio ficou ligado: o piso nem começou.
+    expect(vi.getTimerCount()).toBe(0);
+    await feito;
+    expect(h.troca).not.toHaveBeenCalled();
+    // A troca barrada não entra no log de quanto o trabalho levou.
+    expect(info).not.toHaveBeenCalled();
+  });
+
   it('limita a 10 trocas a cada 15 minutos por IP', async () => {
     await trocar(trocarSenha());
     expect(h.chamadas).toEqual([{ chave: 'pw-reset-confirm:203.0.113.7', limit: 10, windowMs: QUINZE_MINUTOS }]);
@@ -382,7 +427,8 @@ describe('POST password-reset-confirm', () => {
       expect(CONFIRM_MIN_MS).toBe(PISO);
     });
 
-    // Cada caso: como preparar, o pedido e o status esperado.
+    // Cada caso: como preparar, o pedido e o status esperado. A 429 e o 415 ficam
+    // de fora: dependem só do IP e do pedido, e saem na hora.
     const casos = [
       ['200 quando troca', () => {}, () => trocarSenha(), 200],
       ['400 de código recusado', () => h.troca.mockResolvedValue({ ok: false, reason: 'wrong_code' }), () => trocarSenha(), 400],
@@ -390,8 +436,8 @@ describe('POST password-reset-confirm', () => {
       ['400 de senha fora da regra', () => {}, () => trocarSenha({ newPassword: 'fraca' }), 400],
       ['400 de código que não é texto', () => {}, () => trocarSenha({ code: 123456 }), 400],
       ['400 de e-mail comprido demais', () => {}, () => trocarSenha({ email: 'a@' + 'x'.repeat(300) }), 400],
-      ['429 no limite por IP', () => { h.limiteOk = false; }, () => trocarSenha(), 429],
       ['500 de erro inesperado', () => h.troca.mockRejectedValue(new Error('Firebase fora do ar')), () => trocarSenha(), 500],
+      ['500 do limitador que lança', () => { h.limiteErro = new Error('Firestore fora do ar'); }, () => trocarSenha(), 500],
     ];
 
     it.each(casos)('%s só sai aos 2500 ms', async (_nome, preparar, pedido, esperado) => {
@@ -456,6 +502,70 @@ describe('POST password-reset-confirm', () => {
   });
 });
 
+// O parser da Vercel transforma application/x-www-form-urlencoded em objeto, e
+// um <form method="post"> de outro site não passa por preflight. Sem esta trava,
+// a página de um atacante pediria códigos com o IP de cada visitante.
+describe('corpo que não vem em JSON', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const pedidoEm = (headers) => post({ action: 'password-reset-request', email: 'ana@academia.com' }, headers);
+  const trocaEm = (headers) => post({
+    action: 'password-reset-confirm', email: 'ana@academia.com', code: '123456', newPassword: 'Nova@Senha1',
+  }, headers);
+
+  // Cada caso: o nome e os cabeçalhos do pedido.
+  const recusados = [
+    ['formulário', { 'content-type': 'application/x-www-form-urlencoded' }],
+    ['multipart', { 'content-type': 'multipart/form-data; boundary=----x' }],
+    ['texto', { 'content-type': 'text/plain;charset=UTF-8' }],
+    ['tipo que só começa parecido', { 'content-type': 'application/jsonp' }],
+    ['sem content-type', {}],
+  ];
+
+  it.each(recusados)('pedido em %s dá 415 antes do limitador, sem trabalho', async (_nome, headers) => {
+    const res = resposta();
+    await handler(pedidoEm(headers), res);
+    expect([res.statusCode, res.body]).toEqual([415, { error: SEND_FAILED_MESSAGE }]);
+    expect(h.chamadas).toEqual([]);
+    expect(h.adiados).toEqual([]);
+    expect(h.pedido).not.toHaveBeenCalled();
+  });
+
+  it.each(recusados)('troca em %s dá 415 na hora, antes do limitador e sem o piso', async (_nome, headers) => {
+    const res = resposta();
+    const feito = handler(trocaEm(headers), res);
+    await vi.advanceTimersByTimeAsync(1);
+    expect([res.statusCode, res.body]).toEqual([415, { error: SAVE_FAILED_MESSAGE }]);
+    expect(vi.getTimerCount()).toBe(0);
+    await feito;
+    expect(h.chamadas).toEqual([]);
+    expect(h.troca).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'application/json',
+    'application/json; charset=utf-8',
+    'Application/JSON',
+    'APPLICATION/JSON;CHARSET=UTF-8',
+  ])('aceita %s nas duas ações', async (tipo) => {
+    const pedido = resposta();
+    await handler(pedidoEm({ 'content-type': tipo }), pedido);
+    await h.adiados[0];
+    expect(pedido.statusCode).toBe(200);
+
+    const troca = resposta();
+    const feito = handler(trocaEm({ 'content-type': tipo }), troca);
+    await vi.advanceTimersByTimeAsync(PISO);
+    await feito;
+    expect(troca.statusCode).toBe(200);
+  });
+});
+
 describe('rateKeyIp', () => {
   it('IPv4 fica como veio', () => {
     expect(rateKeyIp('203.0.113.7')).toBe('203.0.113.7');
@@ -517,6 +627,20 @@ describe('o resto do POST do tenant-resolve', () => {
       expect(res.statusCode, action).toBe(429);
     }
     expect(chaves()).toEqual(['referral-info:203.0.113.7', 'referral-signup:203.0.113.7', 'referral-signup:slug:academia-teste']);
+  });
+
+  it('a indicação e a ação desconhecida não olham o content-type', async () => {
+    const formulario = { 'content-type': 'application/x-www-form-urlencoded' };
+    const desconhecida = resposta();
+    await handler(post({ action: 'outra-coisa' }, formulario), desconhecida);
+    expect(desconhecida.statusCode).toBe(405);
+
+    h.limiteOk = false;
+    for (const action of ['referral-info', 'referral-signup']) {
+      const res = resposta();
+      await handler(post({ action, slug: 'academia-teste' }, formulario), res);
+      expect(res.statusCode, action).toBe(429);
+    }
   });
 });
 

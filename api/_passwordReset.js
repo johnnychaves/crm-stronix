@@ -5,10 +5,15 @@ import {
 } from '../src/lib/passwordReset.js';
 
 // Regras do "Esqueci a senha" que só o servidor usa: o sorteio, a impressão
-// do código, quem pode receber e as contas que rodam dentro das transações.
-// Sem banco e sem rede. Quem usa é o _passwordResetFlow.js e o
-// _passwordResetRepo.js. Desenho em
+// do código, quem pode receber, o teto de e-mails do dia e as contas que rodam
+// dentro das transações. Sem banco e sem rede. Quem usa é o
+// _passwordResetFlow.js e o _passwordResetRepo.js. Desenho em
 // docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md.
+
+// Teto de e-mails do "Esqueci a senha" a cada 24 horas, somando todas as
+// academias. A cota grátis do Resend é de 100 por dia e a conta é a mesma do
+// Stronizap: 50 deixa metade para ele.
+export const RESET_MAILS_PER_DAY = 50;
 
 // 6 números com zero à esquerda. O sorteio entra por parâmetro para o teste
 // escolher o número.

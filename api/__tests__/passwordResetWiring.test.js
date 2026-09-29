@@ -133,9 +133,9 @@ describe('realResetDeps entrega o que o fluxo usa', () => {
     const d = realResetDeps();
     const tipos = Object.fromEntries(Object.getOwnPropertyNames(d).map((nome) => [nome, typeof d[nome]]));
     expect(tipos).toEqual({
-      findAccount: 'function', issueCode: 'function', reserveAttempt: 'function', killCode: 'function',
-      setPassword: 'function', revokeSessions: 'function', audit: 'function', sendMail: 'function',
-      now: 'function', randomInt: 'function', secret: 'string', log: 'object',
+      findAccount: 'function', reserveMailSlot: 'function', issueCode: 'function', reserveAttempt: 'function',
+      killCode: 'function', setPassword: 'function', revokeSessions: 'function', audit: 'function',
+      sendMail: 'function', now: 'function', randomInt: 'function', secret: 'string', log: 'object',
     });
     expect(d.secret).toBe(SEGREDO);
     expect(d.log).toBe(console);
@@ -174,6 +174,29 @@ describe('realResetDeps entrega o que o fluxo usa', () => {
     await realResetDeps().sendMail(msg);
     expect(h.envios).toEqual([[msg]]);
   });
+
+  describe('reserveMailSlot, pelo limitador de verdade', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('dá 50 vagas a cada 24 horas, somando todas as academias, e a 51ª espera o dia virar', async () => {
+      const inicio = Date.parse('2026-09-29T08:00:00Z');
+      const relogio = vi.spyOn(Date, 'now').mockReturnValue(inicio);
+      const reserva = realResetDeps().reserveMailSlot;
+      const vagas = [];
+      for (let i = 0; i < 51; i += 1) vagas.push(await reserva());
+      // Escrito por extenso: a outra metade da cota grátis do Resend é do Stronizap.
+      expect(vagas).toEqual([...Array(50).fill(true), false]);
+      // Uma contagem só, em _ratelimit, que vale para todas as academias.
+      expect(h.store.get('_ratelimit/pw-reset-mail-day')).toMatchObject({ count: 50, windowStartMs: inicio });
+
+      relogio.mockReturnValue(inicio + 24 * 60 * 60 * 1000 - 1);
+      expect(await reserva()).toBe(false);
+      relogio.mockReturnValue(inicio + 24 * 60 * 60 * 1000);
+      expect(await reserva()).toBe(true);
+    });
+  });
 });
 
 describe('o fluxo de verdade sobre as operações de verdade', () => {
@@ -209,12 +232,16 @@ describe('o fluxo de verdade sobre as operações de verdade', () => {
   });
 
   it('o código certo troca a senha, revoga as sessões, audita e marca o código como usado', async () => {
+    vi.stubEnv('VERCEL_ENV', 'preview');
     const codigo = await pedir();
     expect(await trocar(codigo)).toEqual({ ok: true });
     expect(h.senhas).toEqual([{ uid: 'u-ana', patch: { password: SENHA } }]);
     expect(h.revogadas).toEqual(['u-ana']);
     expect(h.auditoria).toEqual([
-      { action: 'password.reset', tenantId: 'academia-teste', actorUid: 'u-ana', details: { via: 'codigo-por-email' } },
+      {
+        action: 'password.reset', tenantId: 'academia-teste', actorUid: 'u-ana',
+        details: { via: 'codigo-por-email', ambiente: 'preview' },
+      },
     ]);
     expect(h.store.get('_password_reset/u-ana').usedAtMs).toEqual(expect.any(Number));
   });

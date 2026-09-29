@@ -7,7 +7,7 @@ import { realResetDeps } from './_passwordResetRepo.js';
 import { passwordPolicyError, PASSWORD_REJECTED_ERROR } from '../src/lib/passwordPolicy.js';
 import {
   RESET_ACTION_REQUEST, RESET_ACTION_CONFIRM, isEmailFormat,
-  CODE_REFUSED_MESSAGE, MAIL_OFF_MESSAGE, TOO_MANY_MESSAGE, EMAIL_INVALID_MESSAGE, SAVE_FAILED_MESSAGE,
+  CODE_REFUSED_MESSAGE, MAIL_OFF_MESSAGE, TOO_MANY_MESSAGE, EMAIL_INVALID_MESSAGE, SAVE_FAILED_MESSAGE, SEND_FAILED_MESSAGE,
 } from '../src/lib/passwordReset.js';
 
 // As duas ações públicas do "Esqueci a senha", servidas pelo tenant-resolve
@@ -15,15 +15,23 @@ import {
 // em docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md.
 
 const WINDOW_MS = 15 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
-// Toda resposta da troca sai no mínimo neste tempo depois do começo do pedido,
-// inclusive a 400, a 429 e a 500. Sem o piso, a troca com um código qualquer
-// demora mais quando o e-mail tem conta (leitura da equipe e transação da
-// tentativa), e esse tempo entrega quem tem conta sem o dono receber aviso
-// nenhum. O piso precisa ficar acima do trabalho mais lento, e por isso cada
-// troca registra no log quanto o trabalho levou (ms): um ms perto do piso pede
-// piso maior. O pedido de código não precisa dele, porque responde antes do
-// trabalho.
+// Limites por IP. O pedido tem dois: a janela de 15 minutos reinicia 96 vezes
+// por dia e, sozinha, deixaria um IP fazer 480 pedidos em 24 horas.
+const REQUESTS_PER_WINDOW = 5;
+const REQUESTS_PER_DAY = 20;
+const CONFIRMS_PER_WINDOW = 10;
+
+// Toda resposta da troca que passa pelo limitador, inclusive a 400 e a 500, sai
+// no mínimo neste tempo depois de ligado o piso. Sem o piso, a troca com um
+// código qualquer demora mais quando o e-mail tem conta (leitura da equipe e
+// transação da tentativa), e esse tempo entrega quem tem conta sem o dono
+// receber aviso nenhum. O piso precisa ficar acima do trabalho mais lento, e
+// por isso cada troca registra no log quanto o trabalho levou (ms): um ms perto
+// do piso pede piso maior. O 415 e a 429 saem antes dele, porque dependem só do
+// pedido e do IP. O pedido de código não precisa do piso, porque responde antes
+// do trabalho.
 export const CONFIRM_MIN_MS = 2500;
 
 const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
@@ -55,8 +63,22 @@ export function isPasswordResetAction(action) {
   return action === RESET_ACTION_REQUEST || action === RESET_ACTION_CONFIRM;
 }
 
+// O corpo só vale em JSON: o content-type começa com application/json, em
+// maiúsculas ou minúsculas, com ou sem "; charset=...". O parser da Vercel
+// também transforma application/x-www-form-urlencoded em objeto, e um
+// <form method="post"> de outro site chega aqui sem preflight, com o IP de quem
+// abriu a página. A tela manda JSON (postResetAction, em src/lib/passwordReset.js).
+function isJsonBody(req) {
+  return /^application\/json\s*(;|$)/i.test(String(req.headers?.['content-type'] ?? '').trim());
+}
+
+// O 415 sai antes de tudo: antes do limitador, antes do 200 do pedido e antes
+// do piso da troca. Ele não diz nada sobre contas. Só as duas ações do
+// "Esqueci a senha" passam por aqui; a indicação não olha o content-type.
 export function handlePasswordReset(req, res) {
-  return req.body?.action === RESET_ACTION_REQUEST ? handleRequest(req, res) : handleConfirm(req, res);
+  const isRequest = req.body?.action === RESET_ACTION_REQUEST;
+  if (!isJsonBody(req)) return res.status(415).json({ error: isRequest ? SEND_FAILED_MESSAGE : SAVE_FAILED_MESSAGE });
+  return isRequest ? handleRequest(req, res) : handleConfirm(req, res);
 }
 
 // O que vai para o log quando o trabalho falha: a frase do erro, o status da
@@ -72,9 +94,14 @@ const failureLog = (err) => ({
 
 async function handleRequest(req, res) {
   const ip = clientIp(req);
-  // Contagem própria: não gasta a cota da marca do login nem a da indicação.
-  const rl = await checkRateLimit(`pw-reset-request:${rateKeyIp(ip)}`, { limit: 5, windowMs: WINDOW_MS });
+  const ipKey = rateKeyIp(ip);
+  // Contagem própria: não gasta a cota da marca do login nem a da indicação. O
+  // limite do dia vem depois do de 15 minutos, então o pedido barrado na janela
+  // não gasta a cota do dia.
+  const rl = await checkRateLimit(`pw-reset-request:${ipKey}`, { limit: REQUESTS_PER_WINDOW, windowMs: WINDOW_MS });
   if (!rl.ok) return res.status(429).json({ error: TOO_MANY_MESSAGE });
+  const daily = await checkRateLimit(`pw-reset-request-day:${ipKey}`, { limit: REQUESTS_PER_DAY, windowMs: DAY_MS });
+  if (!daily.ok) return res.status(429).json({ error: TOO_MANY_MESSAGE });
   const email = req.body?.email;
   if (!isEmailFormat(email)) return res.status(400).json({ error: EMAIL_INVALID_MESSAGE });
   if (mailStatus() === 'off') return res.status(503).json({ error: MAIL_OFF_MESSAGE });
@@ -99,17 +126,32 @@ async function handleRequest(req, res) {
   return undefined;
 }
 
-// O piso de tempo vale para toda resposta, então o trabalho (confirmOutcome)
-// devolve o que responder e só esta função responde, depois do piso. O relógio
-// começa antes de qualquer trabalho, e a resposta espera o mais demorado dos
-// dois, o trabalho ou o piso: um não soma ao outro. Erro inesperado, de dentro
-// ou de fora do fluxo, também espera o piso e vira 500.
+// A troca. O 415 já saiu no handlePasswordReset, e a 429 sai aqui na hora,
+// antes de ligar o piso: ela depende só do IP e não diz nada sobre contas. Com
+// o piso, cada pedido barrado ocuparia a função 2,5 s em vez de uns 100 ms, e
+// isso gasta o tempo de função do plano Hobby. Todo o resto espera o piso: o
+// trabalho (confirmOutcome) devolve o que responder e só esta função responde,
+// depois dele. O relógio do piso começa antes de qualquer trabalho que dependa
+// da conta, e a resposta espera o mais demorado dos dois, o trabalho ou o piso:
+// um não soma ao outro. Erro inesperado, de dentro ou de fora do fluxo (o
+// limitador que lança, por exemplo), também espera o piso e vira 500.
 async function handleConfirm(req, res) {
+  const ip = clientIp(req);
+  let limited = false;
+  let limiterError = null;
+  try {
+    limited = !(await checkRateLimit(`pw-reset-confirm:${rateKeyIp(ip)}`, { limit: CONFIRMS_PER_WINDOW, windowMs: WINDOW_MS })).ok;
+  } catch (err) {
+    limiterError = err;
+  }
+  if (limited) return res.status(429).json({ error: TOO_MANY_MESSAGE });
+
   const started = Date.now();
   const floor = sleep(CONFIRM_MIN_MS);
   let out;
   try {
-    out = await confirmOutcome(req);
+    if (limiterError) throw limiterError;
+    out = await confirmOutcome(req, ip);
   } catch (err) {
     console.error('esqueci-a-senha: troca falhou', failureLog(err));
     // O envio ao Sentry pode levar até 2 s (o flush) e a resposta não espera por ele.
@@ -124,10 +166,7 @@ async function handleConfirm(req, res) {
 }
 
 // Devolve o que responder e lança no erro inesperado, que o handleConfirm trata.
-async function confirmOutcome(req) {
-  const ip = clientIp(req);
-  const rl = await checkRateLimit(`pw-reset-confirm:${rateKeyIp(ip)}`, { limit: 10, windowMs: WINDOW_MS });
-  if (!rl.ok) return { status: 429, body: { error: TOO_MANY_MESSAGE } };
+async function confirmOutcome(req, ip) {
   const { email, code, newPassword } = req.body || {};
   // A regra da senha vem antes de tudo e não gasta tentativa.
   const problem = passwordPolicyError(newPassword);

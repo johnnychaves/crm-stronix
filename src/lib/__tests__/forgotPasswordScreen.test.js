@@ -649,6 +649,28 @@ describe('respostas e entradas que faltavam', () => {
     expect(alerta().textContent).toBe(SEND_FAILED_MESSAGE);
   });
 
+  // O 415 é a resposta do servidor ao corpo que não veio em JSON. A tela manda
+  // JSON, então ele só aparece por defeito, e cai no aviso comum de cada passo.
+  it('passo 1: o 415 cai no aviso de que não deu para enviar, sem marcar o e-mail e sem abrir o passo 2', async () => {
+    respostas = [[415, { error: SEND_FAILED_MESSAGE }]];
+    await montar({ email: 'ana@academia.com' });
+    await clicar(botao('Enviar código'));
+    expect(alerta().textContent).toBe(SEND_FAILED_MESSAGE);
+    expect(campo('email').hasAttribute('aria-invalid')).toBe(false);
+    expect(texto()).not.toContain('Criar senha nova');
+  });
+
+  it('passo 2: o 415 cai no aviso de que não deu para salvar, sem marcar o código nem a senha', async () => {
+    lembrar();
+    respostas = [[415, { error: SAVE_FAILED_MESSAGE }]];
+    await montar();
+    await preencherPasso2();
+    await clicar(botao('Salvar senha nova'));
+    expect(alerta().textContent).toBe(SAVE_FAILED_MESSAGE);
+    expect(campo('code').hasAttribute('aria-invalid')).toBe(false);
+    expect(campo('newPassword').hasAttribute('aria-invalid')).toBe(false);
+  });
+
   it('passo 1: o e-mail com espaço nas pontas vai e fica na memória sem o espaço', async () => {
     respostas = [[200, { ok: true }]];
     await montar({ email: '  ana@academia.com  ' });

@@ -10,6 +10,7 @@ import { buildResetEmail } from './_passwordResetEmail.js';
 // _passwordResetRepo.js, e o teste passa versões falsas:
 //   findAccount(email) → conta ou null. A conta traz o e-mail que o Firebase
 //     guarda (email): o código vai para ele, nunca para o que foi digitado.
+//   reserveMailSlot() → se há vaga no teto de e-mails do dia
 //   issueCode(uid, { now, codeHash, tenantId, signInMark, tokensMark }) → { ok, reason? }
 //   reserveAttempt(uid, now) → { ok, attempt?, code? }
 //   killCode(uid, codeHash, now)
@@ -29,6 +30,15 @@ export async function requestPasswordReset(email, ip, deps) {
   if (refusal) {
     deps.log.info('esqueci-a-senha: pedido sem envio', { motivo: refusal, conta: who(account, target), academia: account?.tenantId, ip });
     return { sent: false, reason: refusal };
+  }
+
+  // O teto de e-mails do dia protege a cota do Resend, dividida com o Stronizap.
+  // A vaga vem depois da recusa, para e-mail inventado não gastar o teto, e
+  // antes do código, para o pedido sem vaga não gastar um dos 5 códigos do dia
+  // da pessoa sem mandar e-mail.
+  if (!(await deps.reserveMailSlot())) {
+    deps.log.info('esqueci-a-senha: pedido sem envio', { motivo: 'mail_cap', conta: account.uid, academia: account.tenantId, ip });
+    return { sent: false, reason: 'mail_cap' };
   }
 
   const code = generateResetCode(deps.randomInt);

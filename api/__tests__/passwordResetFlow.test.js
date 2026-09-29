@@ -24,9 +24,15 @@ function montar(contaInicial = conta()) {
     conta: contaInicial, agora: 1_790_000_000_000, sorteios: [123456],
     enviados: [], senhas: [], revogadas: [], auditoria: [], logs: [],
     falharEnvio: false, falharSenha: null,
+    // Vagas reservadas no teto de e-mails do dia, e se ainda há vaga.
+    vagasReservadas: 0, semVaga: false,
   };
   const deps = {
     findAccount: async (email) => (email === EMAIL ? s.conta : null),
+    reserveMailSlot: async () => {
+      s.vagasReservadas += 1;
+      return !s.semVaga;
+    },
     issueCode: async (uid, input) => {
       const plano = planIssue(docs.get(uid) ?? null, input);
       if (!plano.ok) return plano;
@@ -183,6 +189,49 @@ describe('pedido', () => {
     expect(log).toContain('domínio sem verificação');
     expect(log).not.toContain('123456');
     expect(log).not.toContain(EMAIL);
+  });
+
+  describe('teto de e-mails do dia', () => {
+    it('sem vaga, não emite código nem manda e-mail, e registra mail_cap com a conta, a academia e o IP', async () => {
+      const { deps, docs, s } = montar();
+      s.semVaga = true;
+      expect(await requestPasswordReset(EMAIL, IP, deps)).toEqual({ sent: false, reason: 'mail_cap' });
+      expect(s.enviados).toEqual([]);
+      // Sem issueCode: o pedido não gasta um dos 5 códigos do dia da pessoa.
+      expect(docs.size).toBe(0);
+      expect(s.logs).toEqual([
+        ['esqueci-a-senha: pedido sem envio', { motivo: 'mail_cap', conta: 'u-ana', academia: 'academia-teste', ip: IP }],
+      ]);
+    });
+
+    it('com vaga, cada pedido que manda e-mail gasta uma vaga', async () => {
+      const { deps, s } = montar();
+      expect(await requestPasswordReset(EMAIL, IP, deps)).toEqual({ sent: true });
+      expect(s.vagasReservadas).toBe(1);
+      expect(s.enviados).toHaveLength(1);
+    });
+
+    it('e-mail inventado e conta recusada não gastam o teto', async () => {
+      for (const c of [null, conta({ superAdmin: true }), conta({ isMember: false }), conta({ email: '' })]) {
+        const { deps, s } = montar(c);
+        await requestPasswordReset(EMAIL, IP, deps);
+        expect(s.vagasReservadas).toBe(0);
+      }
+    });
+
+    it('a vaga é reservada depois da recusa da conta e antes do código', async () => {
+      const { deps } = montar();
+      const ordem = [];
+      for (const nome of ['findAccount', 'reserveMailSlot', 'issueCode', 'sendMail']) {
+        const original = deps[nome];
+        deps[nome] = async (...args) => {
+          ordem.push(nome);
+          return original(...args);
+        };
+      }
+      await requestPasswordReset(EMAIL, IP, deps);
+      expect(ordem).toEqual(['findAccount', 'reserveMailSlot', 'issueCode', 'sendMail']);
+    });
   });
 
   it('falha no envio e no killCode juntos: sobe o erro do Resend, e o log tem as duas falhas', async () => {

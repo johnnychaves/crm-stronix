@@ -75,10 +75,12 @@ describe('buildResetEmail', () => {
     expect(texto.indexOf('048213')).toBeGreaterThan(140);
   });
 
-  it('nome com < ou & não quebra o HTML', () => {
-    const { html } = buildResetEmail('<b>Ana</b> & Cia', '000001');
-    expect(html).toContain('Olá, &lt;b&gt;Ana&lt;/b&gt;.');
-    expect(html).not.toContain('<b>Ana');
+  it('nome com < ou & não quebra o HTML: a primeira palavra não é nome, e a saudação fica sem ele', () => {
+    const { html, text } = buildResetEmail('<b>Ana</b> & Cia', '000001');
+    expect(html).toContain('>Olá.<');
+    expect(text.startsWith('Olá.\n')).toBe(true);
+    expect(html).not.toContain('<b>');
+    expect(html).not.toContain('&lt;b&gt;');
   });
 
   it('o texto puro não leva entidade HTML, o HTML leva', () => {
@@ -103,6 +105,51 @@ describe('buildResetEmail', () => {
     for (const nome of [null, '   ', '\u00a0']) {
       expect(buildResetEmail(nome, '000001').text.startsWith('Olá.\n')).toBe(true);
     }
+  });
+
+  // O nome vem do cadastro da equipe, que o gestor digita, e vai num e-mail
+  // oficial. Só uma primeira palavra que é nome entra na saudação.
+  describe('quem entra na saudação', () => {
+    // A saudação do HTML e a do texto, lado a lado.
+    const saudacoes = (nome) => {
+      const { html, text } = buildResetEmail(nome, '000001');
+      return [html.match(/>(Olá[^<]*)<\/p>/)[1], text.split('\n')[0]];
+    };
+
+    it.each([
+      ['nome comum', 'Ana Souza', 'Olá, Ana.'],
+      ['nome com acento', 'João Pedro', 'Olá, João.'],
+      ['nome com cedilha e til', 'Conceição', 'Olá, Conceição.'],
+      ['nome com hífen', 'Ana-Maria Lopes', 'Olá, Ana-Maria.'],
+      ['nome com apóstrofo curvo', 'D’Ávila', 'Olá, D’Ávila.'],
+      ['nome de 40 letras', 'A'.repeat(40), `Olá, ${'A'.repeat(40)}.`],
+    ])('%s entra: %s', (_caso, nome, esperado) => {
+      expect(saudacoes(nome)).toEqual([esperado, esperado]);
+    });
+
+    it('nome com apóstrofo reto entra, e o HTML leva o apóstrofo com escape', () => {
+      expect(saudacoes("D'Ávila")).toEqual(['Olá, D&#39;Ávila.', "Olá, D'Ávila."]);
+    });
+
+    it.each([
+      ['endereço de site', 'https://site-falso.com Silva'],
+      ['site sem o https', 'www.site-falso.com'],
+      ['e-mail', 'ana@academia.com'],
+      ['número', '123'],
+      ['nome com número', 'Ana2 Souza'],
+      ['palavra que começa com hífen', '-Ana'],
+      ['palavra que começa com apóstrofo', "'Ana"],
+      ['nome com ponto', 'Ana. Souza'],
+      ['nome de 41 letras', 'A'.repeat(41)],
+      ['nome vazio', ''],
+    ])('%s fica de fora: "Olá." sem nome', (_caso, nome) => {
+      expect(saudacoes(nome)).toEqual(['Olá.', 'Olá.']);
+    });
+
+    it('o endereço não aparece em lugar nenhum do e-mail', () => {
+      const { html, text } = buildResetEmail('https://site-falso.com', '000001');
+      expect(html + text).not.toContain('site-falso');
+    });
   });
 
   it('tabelas de layout com role="presentation" e idioma declarado', () => {
