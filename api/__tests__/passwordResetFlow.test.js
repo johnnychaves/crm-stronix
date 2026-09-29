@@ -247,6 +247,7 @@ describe('troca', () => {
     expect(await trocar(deps, '123456')).toEqual({ ok: true });
     expect(s.senhas).toHaveLength(1);
     expect(s.revogadas).toEqual(['u-ana']);
+    expect(JSON.stringify(s.logs)).toContain('Firestore fora do ar');
   });
 
   it('falha ao revogar as sessões depois da troca não desfaz a troca e só vai para o log', async () => {
