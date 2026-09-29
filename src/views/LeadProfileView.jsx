@@ -1690,7 +1690,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               (() => {
                 const cancelled = curStatus === CONTRACT_STATUS.CANCELADO;
                 const tone = CONTRACT_TONE[curStatus];
-                const cancelledAt = getSafeDateOrNull(currentContract?.cancelledAt);
                 const pct = vigencia ? vigencia.elapsedPct : 100;
                 return (
                   <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
@@ -1707,7 +1706,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                         </div>
                         <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-1">
                           {cancelled
-                            ? `Cancelado${cancelledAt ? ` em ${cancelledAt.toLocaleDateString('pt-BR')}` : ''}${currentContract?.cancelReason ? ` · ${currentContract.cancelReason}` : ''}`
+                            ? `Cancelado${curCancelledAt ? ` em ${curCancelledAt.toLocaleDateString('pt-BR')}` : ''}${currentContract?.cancelReason ? ` · ${currentContract.cancelReason}` : ''}`
                             : `Venceu há ${Math.abs(vigencia?.daysLeft ?? 0)} dias · ${curEndsAt.toLocaleDateString('pt-BR')}`}
                         </div>
                       </div>

@@ -290,6 +290,7 @@ describe('vigenciaRefDate', () => {
   it('nos outros casos é hoje', () => {
     expect(vigenciaRefDate({ status: 'ativo' }, NOW)).toEqual(NOW);
     expect(vigenciaRefDate({ status: 'cancelado' }, NOW)).toEqual(NOW);
+    expect(vigenciaRefDate({ status: 'trancado' }, NOW)).toEqual(NOW);
   });
 
   it('a porcentagem do cancelado não sobe com o tempo', () => {
