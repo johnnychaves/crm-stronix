@@ -1,9 +1,9 @@
 import { useState, useRef } from 'react';
 import { signInWithEmailAndPassword, sendPasswordResetEmail, setPersistence } from 'firebase/auth';
 import { auth, persistenceFor } from '../../lib/firebase.js';
-import { AlertTriangle, ArrowRight, Check, CheckCircle, Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Check, CheckCircle, Lock, Mail } from 'lucide-react';
 import { AuthLayout, AuthTenantChip } from './AuthLayout.jsx';
-import { AuthField, AuthInput } from './AuthField.jsx';
+import { AuthField, AuthInput, AuthPasswordToggle } from './AuthField.jsx';
 
 function LoginScreen({ authSetupError, urlTenant }) {
   const [email, setEmail] = useState('');
@@ -120,11 +120,7 @@ function LoginScreen({ authSetupError, urlTenant }) {
         <div>
           <AuthField label="Senha" icon={Lock}>
             <AuthInput type={showPass ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••" autoComplete="current-password" required />
-            <span className="pr-2">
-              <button type="button" onClick={() => setShowPass(s => !s)} title={showPass ? 'Ocultar' : 'Mostrar'} className="w-9 h-9 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-neutral-200 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition">
-                {showPass ? <EyeOff className="w-[17px] h-[17px]" /> : <Eye className="w-[17px] h-[17px]" />}
-              </button>
-            </span>
+            <AuthPasswordToggle shown={showPass} onToggle={() => setShowPass(s => !s)} />
           </AuthField>
           <div className="mt-2.5 flex items-center justify-between">
             <button type="button" onClick={() => setRemember(r => !r)} className="inline-flex items-center gap-2 group">

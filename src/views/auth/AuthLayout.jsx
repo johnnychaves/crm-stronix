@@ -3,7 +3,9 @@ import { SurgeMark, StronileadWordmark } from '../../components/brand/SurgeMark.
 
 // Moldura das telas de entrada (login e "Esqueci a senha"): o painel azul da
 // esquerda, a marca no celular e o rodapé. O formulário entra como children.
-// Saiu do LoginScreen sem mudar o visual.
+// A paleta é a do login (gray, neutral e brand, com o dark: escrito à mão), não
+// a dos tokens semânticos, para as telas de entrada continuarem iguais ao login
+// de antes.
 function AuthLayout({ children }) {
   return (
     <div className="min-h-screen grid lg:grid-cols-2 bg-paper-50 dark:bg-ink-950 text-gray-900 dark:text-white">
@@ -25,7 +27,7 @@ function AuthLayout({ children }) {
         </div>
 
         {/* centro: cards flutuantes de preview */}
-        <div className="relative z-10 my-8 h-[300px]">
+        <div aria-hidden="true" className="relative z-10 my-8 h-[300px]">
           <div className="floaty absolute left-2 top-4 rounded-2xl bg-white/95 dark:bg-white/10 backdrop-blur shadow-float border border-white/40 dark:border-white/10 p-4 w-[200px]">
             <div className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-300">Leads no mês</div>
             <div className="mt-1 flex items-baseline gap-2">
@@ -65,9 +67,9 @@ function AuthLayout({ children }) {
 
         {/* base: headline */}
         <div className="relative z-10 max-w-md">
-          <h2 className="font-display text-[26px] xl:text-[30px] font-semibold leading-tight tracking-tight">
+          <p className="font-display text-[26px] xl:text-[30px] font-semibold leading-tight tracking-tight">
             Transforme cada lead em matrícula.
-          </h2>
+          </p>
           <p className="mt-3 text-[14px] text-white/60 leading-relaxed">
             Pipeline, meta diária e agendamentos num só lugar. Sua equipe focada no que importa: fechar.
           </p>
@@ -86,11 +88,11 @@ function AuthLayout({ children }) {
           <StronileadWordmark className="text-[16px]" />
         </div>
 
-        <div className="flex-1 flex flex-col justify-center">
+        <main className="flex-1 flex flex-col justify-center">
           <div className="w-full max-w-[380px] mx-auto rise">
             {children}
           </div>
-        </div>
+        </main>
 
         <div className="pt-8 flex items-center justify-center gap-1.5 text-[11.5px] text-gray-400 dark:text-neutral-500">
           <Shield className="w-3.5 h-3.5" /> Conexão segura · STRONILEAD © 2026
@@ -104,7 +106,7 @@ function AuthLayout({ children }) {
 function AuthTenantChip({ name }) {
   return (
     <div className="mb-3 inline-flex items-center gap-1.5 rounded-lg bg-brand-50 dark:bg-white/[0.06] ring-1 ring-brand-100 dark:ring-white/[0.08] px-2.5 py-1 text-[12px] font-semibold text-brand-700 dark:text-brand-300">
-      <Building2 className="w-3.5 h-3.5" /> {name}
+      <Building2 className="size-3.5" /> {name}
     </div>
   );
 }
