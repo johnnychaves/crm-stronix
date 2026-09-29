@@ -159,8 +159,8 @@ function ForgotPasswordScreen() {
     if (inFlight.current) return;
     const errors = {};
     if (code.length !== 6) errors.code = 'Digite os 6 números do código.';
-    // Com a senha vazia a regra já está na dica logo acima do campo, e o erro só
-    // a repetiria.
+    // Com a senha vazia a regra já aparece na dica, logo abaixo do campo, e o
+    // erro só a repetiria.
     const problem = password === '' ? 'Digite a senha nova.' : passwordPolicyError(password);
     if (problem) errors.password = problem;
     else if (confirm !== password) errors.confirm = 'As duas senhas não são iguais.';
