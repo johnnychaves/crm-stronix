@@ -61,6 +61,21 @@ describe('deriveLeadState', () => {
     }), NOW);
     expect(state.key).toBe('trancado');
   });
+
+  it('contrato com início no futuro é CONTRATO AGENDADO', () => {
+    const state = deriveLeadState(cliente({ currentContractStartsAt: D(2026, 10, 1), currentContractEndsAt: D(2027, 10, 1) }), NOW);
+    expect(state.key).toBe('agendado');
+    expect(state.label).toBe('CONTRATO AGENDADO');
+  });
+
+  it('renovação emendada que ainda não começou é CLIENTE ATIVO', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStartsAt: D(2026, 10, 1),
+      currentContractEndsAt: D(2027, 10, 1),
+      currentContractSeamless: true
+    }), NOW);
+    expect(state.key).toBe('cliente_ativo');
+  });
 });
 
 describe('TONES: o amarelo do Trancado', () => {
