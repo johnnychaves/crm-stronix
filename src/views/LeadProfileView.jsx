@@ -39,6 +39,7 @@ import { PhaseChanger } from '../components/profile/PhaseChanger.jsx';
 import { ReferralsSection } from '../components/profile/ReferralsSection.jsx';
 import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
+import { ZapSignupMarker } from '../components/profile/ZapSignupMarker.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
 import { ContractOutcomeModal } from '../modals/ContractOutcomeModal.jsx';
@@ -757,6 +758,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   const groupedEvents = groupTimeline(filteredInteractions);
 
+  // Lead cadastrado pelo Stronizap já fecha a linha do tempo com o marco de
+  // início (ZapSignupMarker). Com ele, a linha genérica "Início da jornada" sai,
+  // senão o começo aparece duas vezes.
+  const hasOriginMarker = interactionsWithClass.some(i => i._kind === 'origin');
+
   // Próximos agendamentos (aba CRM): agendamentos futuros, em ordem ascendente.
   const upcomingAppointments = interactionsWithClass
     .filter(i => i._kind === 'appointment')
@@ -961,6 +967,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Cor no feed só aparece em chip de fase, selo de aula e faixa de marco —
   // todo o resto é neutro, senão vinte eventos viram um arco-íris.
   const renderTimelineEvent = (i) => {
+    // ---- Variante 5: marco de início do cadastro pelo Stronizap -----------
+    // Régua com a pílula, fora do padrão tabular (modelo C da spec). É o
+    // registro mais antigo do lead, então fecha a linha do tempo por baixo.
+    if (i._kind === 'origin') return <ZapSignupMarker key={i.id} interaction={i} />;
+
     // "28/09 14:32". O ano fica no bloco do mês.
     const stamp = timelineStamp(i.createdAt);
     const typeLabel = timelineTypeLabel(i);
@@ -1594,7 +1605,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               ))}
 
               {/* Marco de origem: fecha o registro com a data de cadastro. */}
-              {timelineFilter === 'all' && !timelineQuery && (
+              {timelineFilter === 'all' && !timelineQuery && !hasOriginMarker && (
                 <p className="pl-[68px] pt-1 text-[11px] text-slate-400 dark:text-slate-500 whitespace-nowrap">
                   Início da jornada · {lead.createdAt?.toLocaleDateString('pt-BR') || '—'}
                 </p>
