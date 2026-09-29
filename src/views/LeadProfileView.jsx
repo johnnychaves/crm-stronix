@@ -979,7 +979,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     // O evento de contrato vem do próprio texto: tipo, plano e valor dele, e não
     // os do contrato de hoje (contractEventOf, em lib/timeline.js).
     const contractEvent = i._kind === 'contract' ? contractEventOf(i.text) : null;
-    const isContract = Boolean(contractEvent && CONTRACT_MILESTONE_KINDS.has(contractEvent.kind));
+    const isContractMilestone = Boolean(contractEvent && CONTRACT_MILESTONE_KINDS.has(contractEvent.kind));
     const contractCancel = contractEvent?.kind === 'cancelamento';
     const lowerText = String(i.text || '').toLowerCase();
     // Perda: o status_change que encerra a oportunidade não traz etapa entre
@@ -1002,7 +1002,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
     // ---- Variante 4: marco (matrícula, venda, perda) ----------------------
     // Quebra o padrão tabular numa faixa full-width com régua no topo.
-    if (isContract || isWin || isLoss) {
+    if (isContractMilestone || isWin || isLoss) {
       const lossReason = isLoss
         ? (String(i.text || '').match(/motivo:\s*([^.·\n]+)/i)?.[1] || '').trim()
         : '';
@@ -1024,7 +1024,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       const subtitle = isWin ? `Fase alterada por ${author}` : cleanBody;
 
       // Valor só na matrícula e na renovação, e o do próprio evento.
-      const eventValue = isContract && !contractCancel ? contractEvent.value : null;
+      const eventValue = isContractMilestone && !contractCancel ? contractEvent.value : null;
       const showValue = eventValue != null;
 
       return (
