@@ -5,12 +5,15 @@ import {
   CONTRACT_PAUSE_REASONS,
   buildContractCancel,
   buildContractPause,
-  buildContractResume
+  buildContractResume,
+  buildRenewalCancel,
+  isRenewalNotStarted
 } from '../lib/contracts.js';
 import { commitContractPatch } from '../lib/contractsWrites.js';
-import { daysBetween, fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
+import { calendarDaysBetween, daysBetween, fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
+import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog.jsx';
 
 // Desfechos do contrato VIGENTE: cancelar, trancar e reativar. Os três têm a
@@ -69,10 +72,26 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
   const [reason, setReason] = useState(null);
   const [note, setNote] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  // A renovação desfeita que foi confirmada. Enquanto grava, a escrita local já
+  // chega à ficha, que passa ao modal o contrato de volta: sem isto, o título e
+  // a prévia virariam os do cancelamento comum até a janela fechar.
+  const [sentUndo, setSentUndo] = useState(null);
 
   const when = fromDateInputValue(dateStr);
   const pausedAt = getSafeDateOrNull(contract?.pausedAt);
   const endsAt = getSafeDateOrNull(contract?.endsAt);
+
+  // Cancelar uma renovação que ainda não começou desfaz a renovação: o cliente
+  // volta ao contrato que ela renovava (buildRenewalCancel). A data decide: até
+  // o dia do início, desfaz; depois dele, é o cancelamento comum.
+  const { contratos } = useGeneralConfig();
+  const previous = contract?.renewedFromId
+    ? (contratos || []).find(c => c.id === contract.renewedFromId) || null
+    : null;
+  const undo = sentUndo || (action === 'cancelar' && when && isRenewalNotStarted(contract, previous, when)
+    ? buildRenewalCancel({ contract, previous, cancelledAt: when, reason, note: note.trim() || null })
+    : null);
+  const primeiro = (lead?.name || '').trim().split(/\s+/)[0] || 'o cliente';
 
   // Prévia da reativação: quantos dias pararam e para onde o término anda.
   const pausedDays = action === 'reativar' && pausedAt && when
@@ -80,6 +99,15 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
     : 0;
 
   const preview = (() => {
+    if (undo) {
+      // O contrato renovado pode já ter vencido, quando a renovação começaria
+      // depois de um intervalo. O último dia ainda é dele.
+      const plano = undo.leadPatch.currentPlanName || 'Plano';
+      const fim = undo.leadPatch.currentContractEndsAt;
+      return fim && calendarDaysBetween(undo.contractPatch.cancelledAt, fim) < 0
+        ? `A renovação é desfeita e ${primeiro} volta ao contrato anterior (${plano}), que venceu em ${fmtDate(fim)}.`
+        : `A renovação é desfeita e ${primeiro} volta ao contrato em uso (${plano}${fim ? `, até ${fmtDate(fim)}` : ''}).`;
+    }
     if (action === 'reativar') {
       const novo = buildContractResume({ contract, resumedAt: when || new Date() });
       return pausedDays > 0
@@ -89,7 +117,6 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
     if (action === 'trancar') {
       return 'A vigência congela nesta data. Quando reativar, o término anda para frente pelos dias parados — o cliente não perde o que pagou.';
     }
-    const primeiro = (lead?.name || '').trim().split(/\s+/)[0] || 'o cliente';
     return `O contrato é encerrado${when ? ` em ${fmtDate(when)}` : ''} e ${primeiro} passa a contar como inativo. O histórico fica registrado.`;
   })();
 
@@ -100,14 +127,17 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
     if (cfg.reasons && !reason) { toast.warning('Escolha o motivo.'); return; }
 
     setSubmitting(true);
+    if (undo) setSentUndo(undo);
     try {
       const planName = contract?.planName || lead?.currentPlanName;
-      const built = action === 'cancelar'
+      const built = undo || (action === 'cancelar'
         ? buildContractCancel({ planName, cancelledAt: when, reason, note: note.trim() || null })
         : action === 'trancar'
           ? buildContractPause({ planName, pausedAt: when, reason })
-          : buildContractResume({ contract, resumedAt: when });
+          : buildContractResume({ contract, resumedAt: when }));
 
+      // Desfeita a renovação que encurtou o contrato renovado, o fim de antes
+      // volta a ele no mesmo batch.
       await commitContractPatch({
         db,
         lead,
@@ -115,18 +145,22 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
         contractId: contract?.id || lead?.currentContractId,
         contractPatch: built.contractPatch,
         leadPatch: built.leadPatch,
-        interactionText: built.interactionText
+        interactionText: built.interactionText,
+        previousContractId: undo?.previousPatch ? previous.id : null,
+        previousContractPatch: undo?.previousPatch || null
       });
 
       toast.success(
-        action === 'cancelar' ? 'Contrato cancelado.'
-          : action === 'trancar' ? 'Contrato trancado.'
-            : 'Contrato reativado.'
+        undo ? 'Renovação cancelada.'
+          : action === 'cancelar' ? 'Contrato cancelado.'
+            : action === 'trancar' ? 'Contrato trancado.'
+              : 'Contrato reativado.'
       );
       onDone && onDone();
     } catch (e) {
       console.error('Erro no desfecho do contrato:', e);
       toast.error('Não foi possível salvar. Tente novamente.');
+      setSentUndo(null);
     } finally {
       setSubmitting(false);
     }
@@ -143,7 +177,7 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
             <Icon size={19} />
           </span>
           <div className="min-w-0 flex-1">
-            <DialogTitle className="font-display text-[18px] font-bold tracking-tight">{cfg.title}</DialogTitle>
+            <DialogTitle className="font-display text-[18px] font-bold tracking-tight">{undo ? 'Cancelar renovação' : cfg.title}</DialogTitle>
             <div className="num text-[12.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
               {lead?.name || 'Cliente'} · {contract?.planName || lead?.currentPlanName || 'Plano'}
               {endsAt ? ` · até ${fmtDate(endsAt)}` : ''}
@@ -233,7 +267,7 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
             )}
           >
             <Icon size={14} />
-            {submitting ? cfg.saving : cfg.confirm}
+            {submitting ? cfg.saving : undo ? 'Cancelar renovação' : cfg.confirm}
           </button>
         </div>
       </DialogContent>
