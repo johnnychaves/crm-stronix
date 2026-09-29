@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs';
 import util from 'node:util';
 import handler from '../tenant-resolve.js';
-import { CONFIRM_MIN_MS } from '../_passwordResetRoute.js';
+import { CONFIRM_MIN_MS, rateKeyIp } from '../_passwordResetRoute.js';
 import { PASSWORD_REJECTED_ERROR } from '../../src/lib/passwordPolicy.js';
 import {
   CODE_REFUSED_MESSAGE, MAIL_OFF_MESSAGE, TOO_MANY_MESSAGE, EMAIL_INVALID_MESSAGE, SAVE_FAILED_MESSAGE,
@@ -14,21 +14,37 @@ import {
 // vale o que a rota responde, quando responde e o que ela põe no log.
 
 const h = vi.hoisted(() => ({
-  limiteOk: true, chaves: [], status: 'resend', adiados: [], capturados: [], sentryTravado: false,
+  limiteOk: true, limiteErro: null, chamadas: [], status: 'resend', ip: '203.0.113.7',
+  adiados: [], capturados: [], sentryTravado: false, depsErro: null,
   pedido: vi.fn(), troca: vi.fn(),
 }));
 
 vi.mock('../_firebaseAdmin.js', () => ({ adminDb: {}, adminAuth: {}, admin: {} }));
 vi.mock('../_rateLimit.js', () => ({
-  checkRateLimit: async (chave) => { h.chaves.push(chave); return { ok: h.limiteOk }; },
-  clientIp: () => '203.0.113.7',
+  // Guarda a chave e os números de cada contagem, para o teste conferir os limites.
+  checkRateLimit: async (chave, opcoes) => {
+    h.chamadas.push({ chave, limit: opcoes?.limit, windowMs: opcoes?.windowMs });
+    if (h.limiteErro) throw h.limiteErro;
+    return { ok: h.limiteOk };
+  },
+  clientIp: () => h.ip,
 }));
-vi.mock('@vercel/functions', () => ({ waitUntil: (p) => { h.adiados.push(p); } }));
+// Como o de verdade, que só aceita promessa e lança TypeError para o resto.
+vi.mock('@vercel/functions', () => ({
+  waitUntil: (p) => {
+    if (p === null || typeof p !== 'object' || typeof p.then !== 'function') {
+      throw new TypeError(`waitUntil can only be called with a Promise, got ${typeof p}`);
+    }
+    h.adiados.push(p);
+  },
+}));
 vi.mock('../_mail.js', () => ({ mailStatus: () => h.status, sendMail: async () => {} }));
 vi.mock('../_passwordResetFlow.js', () => ({ requestPasswordReset: h.pedido, confirmPasswordReset: h.troca }));
 vi.mock('../_passwordResetRepo.js', () => ({
-  // Como o de verdade: o secret não é enumerável, então copiar o deps o perde.
+  // Como o de verdade: o secret não é enumerável, então copiar o deps o perde. O
+  // teste também pode fazê-lo lançar (h.depsErro).
   realResetDeps: () => {
+    if (h.depsErro) throw h.depsErro;
     const deps = { deps: 'de verdade' };
     Object.defineProperty(deps, 'secret', { value: 'segredo-de-teste', enumerable: false });
     return deps;
@@ -55,25 +71,37 @@ const trocarSenha = (extra = {}) => post({
   action: 'password-reset-confirm', email: 'ana@academia.com', code: '123456', newPassword: 'Nova@Senha1', ...extra,
 });
 
-// Tudo o que foi para o console.error, como texto, para procurar o que não pode estar lá.
+const QUINZE_MINUTOS = 15 * 60 * 1000;
+// O piso da troca, escrito por extenso: se alguém mexer no valor, os testes de
+// tempo avisam em vez de acompanhar a mudança.
+const PISO = 2500;
+const chaves = () => h.chamadas.map((c) => c.chave);
+
+// console.error e console.info, como texto, para procurar o que não pode estar lá.
 let log;
-const saidaDoLog = () => util.inspect(log.mock.calls, { depth: null });
+let info;
+const saidaDe = (spy) => util.inspect(spy.mock.calls, { depth: null });
 
 beforeEach(() => {
   h.limiteOk = true;
-  h.chaves = [];
+  h.limiteErro = null;
+  h.chamadas = [];
   h.status = 'resend';
+  h.ip = '203.0.113.7';
   h.adiados = [];
   h.capturados = [];
   h.sentryTravado = false;
+  h.depsErro = null;
   h.pedido.mockReset();
   h.pedido.mockResolvedValue({ sent: true });
   h.troca.mockReset();
   h.troca.mockResolvedValue({ ok: true });
   log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  info = vi.spyOn(console, 'info').mockImplementation(() => {});
 });
 afterEach(() => {
   log.mockRestore();
+  info.mockRestore();
 });
 
 describe('POST password-reset-request', () => {
@@ -117,15 +145,29 @@ describe('POST password-reset-request', () => {
     expect(h.capturados).toEqual([erro]);
   });
 
-  it('o log da falha leva o status do Resend e o motivo da rede, e nunca o e-mail', async () => {
-    const erro = Object.assign(new Error('O Resend recusou o e-mail (422)'), { status: 422, cause: { code: 'ECONNRESET' } });
+  it('realResetDeps que lança cai no mesmo catch: vai ao Sentry e a resposta continua 200', async () => {
+    const erro = new Error('deps quebrou');
+    h.depsErro = erro;
+    const res = resposta();
+    await handler(pedirCodigo(), res);
+    await h.adiados[0];
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({ ok: true });
+    expect(h.capturados).toEqual([erro]);
+    expect(h.pedido).not.toHaveBeenCalled();
+  });
+
+  it('o log da falha leva o status, o código do erro e o motivo da rede, e nunca o e-mail', async () => {
+    const erro = Object.assign(new Error('O Resend recusou o e-mail (422)'), {
+      status: 422, code: 'validation_error', cause: { code: 'ECONNRESET' },
+    });
     h.pedido.mockRejectedValue(erro);
     await handler(pedirCodigo(), resposta());
     await h.adiados[0];
     expect(log).toHaveBeenCalledWith('esqueci-a-senha: pedido falhou', {
-      erro: 'O Resend recusou o e-mail (422)', status: 422, causa: 'ECONNRESET',
+      erro: 'O Resend recusou o e-mail (422)', status: 422, codigo: 'validation_error', causa: 'ECONNRESET',
     });
-    expect(saidaDoLog()).not.toContain('ana@academia.com');
+    expect(saidaDe(log)).not.toContain('ana@academia.com');
   });
 
   it('503 com o envio desligado, sem pedir nada', async () => {
@@ -151,8 +193,22 @@ describe('POST password-reset-request', () => {
     await handler(pedirCodigo(), res);
     expect(res.statusCode).toBe(429);
     expect(res.body).toEqual({ error: TOO_MANY_MESSAGE });
-    expect(h.chaves).toEqual(['pw-reset-request:203.0.113.7']);
+    expect(chaves()).toEqual(['pw-reset-request:203.0.113.7']);
     expect(h.pedido).not.toHaveBeenCalled();
+  });
+
+  it('limita a 5 pedidos a cada 15 minutos por IP', async () => {
+    await handler(pedirCodigo(), resposta());
+    await h.adiados[0];
+    expect(h.chamadas).toEqual([{ chave: 'pw-reset-request:203.0.113.7', limit: 5, windowMs: QUINZE_MINUTOS }]);
+  });
+
+  it('conta o IPv6 pelo bloco /64 e passa o IP inteiro ao fluxo', async () => {
+    h.ip = '2001:db8:1:2:aaaa::1';
+    await handler(pedirCodigo(), resposta());
+    await h.adiados[0];
+    expect(chaves()).toEqual(['pw-reset-request:2001:db8:1:2']);
+    expect(h.pedido).toHaveBeenCalledWith('ana@academia.com', '2001:db8:1:2:aaaa::1', expect.anything());
   });
 
   it('400 para e-mail fora do formato', async () => {
@@ -164,8 +220,8 @@ describe('POST password-reset-request', () => {
   });
 });
 
-// Toda resposta da troca espera CONFIRM_MIN_MS. Os testes usam relógio falso:
-// começam o pedido, avançam o tempo e esperam o fim.
+// Toda resposta da troca espera o piso. Os testes usam relógio falso: começam o
+// pedido, avançam o tempo e esperam o fim.
 describe('POST password-reset-confirm', () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -176,7 +232,7 @@ describe('POST password-reset-confirm', () => {
 
   async function trocar(pedido, res = resposta()) {
     const feito = handler(pedido, res);
-    await vi.advanceTimersByTimeAsync(CONFIRM_MIN_MS);
+    await vi.advanceTimersByTimeAsync(PISO);
     await feito;
     return res;
   }
@@ -190,7 +246,7 @@ describe('POST password-reset-confirm', () => {
       { email: 'ana@academia.com', code: '123456', newPassword: 'Nova@Senha1', ip: '203.0.113.7' },
       { deps: 'de verdade' },
     );
-    expect(h.chaves).toEqual(['pw-reset-confirm:203.0.113.7']);
+    expect(chaves()).toEqual(['pw-reset-confirm:203.0.113.7']);
   });
 
   it('passa o realResetDeps() direto ao fluxo, sem copiar, para o secret chegar', async () => {
@@ -231,12 +287,33 @@ describe('POST password-reset-confirm', () => {
     expect(h.troca).not.toHaveBeenCalled();
   });
 
+  it('e-mail sem arroba ou com mais de 254 caracteres dá a frase única sem chamar o fluxo', async () => {
+    for (const email of ['a@' + 'x'.repeat(300), 'sem-arroba']) {
+      const res = await trocar(trocarSenha({ email }));
+      expect(res.statusCode, email.slice(0, 12)).toBe(400);
+      expect(res.body, email.slice(0, 12)).toEqual({ error: CODE_REFUSED_MESSAGE });
+    }
+    expect(h.troca).not.toHaveBeenCalled();
+  });
+
   it('429 no limite por IP', async () => {
     h.limiteOk = false;
     const res = await trocar(trocarSenha());
     expect(res.statusCode).toBe(429);
     expect(res.body).toEqual({ error: TOO_MANY_MESSAGE });
     expect(h.troca).not.toHaveBeenCalled();
+  });
+
+  it('limita a 10 trocas a cada 15 minutos por IP', async () => {
+    await trocar(trocarSenha());
+    expect(h.chamadas).toEqual([{ chave: 'pw-reset-confirm:203.0.113.7', limit: 10, windowMs: QUINZE_MINUTOS }]);
+  });
+
+  it('conta o IPv6 pelo bloco /64 e passa o IP inteiro ao fluxo', async () => {
+    h.ip = '2001:db8:1:2:aaaa::1';
+    await trocar(trocarSenha());
+    expect(chaves()).toEqual(['pw-reset-confirm:2001:db8:1:2']);
+    expect(h.troca).toHaveBeenCalledWith(expect.objectContaining({ ip: '2001:db8:1:2:aaaa::1' }), expect.anything());
   });
 
   describe('erro inesperado', () => {
@@ -248,6 +325,7 @@ describe('POST password-reset-confirm', () => {
       expect(res.body).toEqual({ error: SAVE_FAILED_MESSAGE });
       expect(h.capturados).toEqual([erro]);
       expect(h.adiados).toHaveLength(1);
+      expect(info).toHaveBeenCalledWith('esqueci-a-senha: troca respondida', { status: 500, ms: 0 });
     });
 
     it('responde sem esperar o Sentry', async () => {
@@ -259,14 +337,40 @@ describe('POST password-reset-confirm', () => {
       expect(h.adiados).toHaveLength(1);
     });
 
-    it('o log leva o status e o motivo da rede, e nunca e-mail, código nem senha', async () => {
-      const erro = Object.assign(new Error('Firebase fora do ar'), { status: 503, cause: { code: 'ETIMEDOUT' } });
+    it('realResetDeps que lança dá 500 com a frase e vai para o Sentry', async () => {
+      const erro = new Error('deps quebrou');
+      h.depsErro = erro;
+      const res = await trocar(trocarSenha());
+      expect([res.statusCode, res.body]).toEqual([500, { error: SAVE_FAILED_MESSAGE }]);
+      expect(h.capturados).toEqual([erro]);
+      expect(h.troca).not.toHaveBeenCalled();
+    });
+
+    it('erro fora do fluxo (o limitador lança) ainda respeita o piso e responde 500 com a frase', async () => {
+      const erro = new Error('Firestore fora do ar');
+      h.limiteErro = erro;
+      const res = resposta();
+      const feito = handler(trocarSenha(), res);
+      await vi.advanceTimersByTimeAsync(PISO - 1);
+      expect(res.statusCode).toBe(0);
+      await vi.advanceTimersByTimeAsync(1);
+      await feito;
+      expect([res.statusCode, res.body]).toEqual([500, { error: SAVE_FAILED_MESSAGE }]);
+      expect(h.capturados).toEqual([erro]);
+      expect(h.adiados).toHaveLength(1);
+      expect(h.troca).not.toHaveBeenCalled();
+    });
+
+    it('o log leva o status, o código do erro e o motivo da rede, e nunca e-mail, código nem senha', async () => {
+      const erro = Object.assign(new Error('Firebase fora do ar'), {
+        status: 503, code: 'auth/internal-error', cause: { code: 'ETIMEDOUT' },
+      });
       h.troca.mockRejectedValue(erro);
       await trocar(trocarSenha());
       expect(log).toHaveBeenCalledWith('esqueci-a-senha: troca falhou', {
-        erro: 'Firebase fora do ar', status: 503, causa: 'ETIMEDOUT',
+        erro: 'Firebase fora do ar', status: 503, codigo: 'auth/internal-error', causa: 'ETIMEDOUT',
       });
-      const saida = saidaDoLog();
+      const saida = saidaDe(log);
       for (const segredo of ['ana@academia.com', '123456', 'Nova@Senha1']) {
         expect(saida).not.toContain(segredo);
       }
@@ -274,8 +378,8 @@ describe('POST password-reset-confirm', () => {
   });
 
   describe('tempo mínimo', () => {
-    it('vale CONFIRM_MIN_MS, 1500 ms', () => {
-      expect(CONFIRM_MIN_MS).toBe(1500);
+    it('vale 2500 ms', () => {
+      expect(CONFIRM_MIN_MS).toBe(PISO);
     });
 
     // Cada caso: como preparar, o pedido e o status esperado.
@@ -285,15 +389,16 @@ describe('POST password-reset-confirm', () => {
       ['400 de senha recusada pelo Firebase', () => h.troca.mockResolvedValue({ ok: false, reason: 'password_rejected' }), () => trocarSenha(), 400],
       ['400 de senha fora da regra', () => {}, () => trocarSenha({ newPassword: 'fraca' }), 400],
       ['400 de código que não é texto', () => {}, () => trocarSenha({ code: 123456 }), 400],
+      ['400 de e-mail comprido demais', () => {}, () => trocarSenha({ email: 'a@' + 'x'.repeat(300) }), 400],
       ['429 no limite por IP', () => { h.limiteOk = false; }, () => trocarSenha(), 429],
       ['500 de erro inesperado', () => h.troca.mockRejectedValue(new Error('Firebase fora do ar')), () => trocarSenha(), 500],
     ];
 
-    it.each(casos)('%s só sai depois de CONFIRM_MIN_MS', async (_nome, preparar, pedido, esperado) => {
+    it.each(casos)('%s só sai aos 2500 ms', async (_nome, preparar, pedido, esperado) => {
       preparar();
       const res = resposta();
       const feito = handler(pedido(), res);
-      await vi.advanceTimersByTimeAsync(CONFIRM_MIN_MS - 1);
+      await vi.advanceTimersByTimeAsync(PISO - 1);
       expect(res.statusCode).toBe(0);
       await vi.advanceTimersByTimeAsync(1);
       await feito;
@@ -313,7 +418,7 @@ describe('POST password-reset-confirm', () => {
       const a = handler(trocarSenha({ email: 'ninguem@academia.com' }), semConta);
       const b = handler(trocarSenha(), comConta);
 
-      await vi.advanceTimersByTimeAsync(CONFIRM_MIN_MS - 1);
+      await vi.advanceTimersByTimeAsync(PISO - 1);
       expect(h.troca).toHaveBeenCalledTimes(2);
       expect(semConta.statusCode).toBe(0);
       expect(comConta.statusCode).toBe(0);
@@ -325,15 +430,75 @@ describe('POST password-reset-confirm', () => {
     });
 
     it('o piso não soma ao trabalho: quem demora mais responde quando o trabalho termina', async () => {
-      h.troca.mockImplementation(() => new Promise((r) => setTimeout(() => r({ ok: true }), 2000)));
+      const trabalho = PISO + 500;
+      h.troca.mockImplementation(() => new Promise((r) => setTimeout(() => r({ ok: true }), trabalho)));
       const res = resposta();
       const feito = handler(trocarSenha(), res);
-      await vi.advanceTimersByTimeAsync(1999);
+      await vi.advanceTimersByTimeAsync(trabalho - 1);
       expect(res.statusCode).toBe(0);
       await vi.advanceTimersByTimeAsync(1);
       await feito;
       expect(res.statusCode).toBe(200);
+      // O log mostra o trabalho inteiro, sem o corte do piso: é assim que se vê um piso curto.
+      expect(info).toHaveBeenCalledWith('esqueci-a-senha: troca respondida', { status: 200, ms: trabalho });
     });
+
+    it('registra quanto o trabalho levou, medido antes do piso, sem e-mail nem código', async () => {
+      h.troca.mockImplementation(() => new Promise((r) => setTimeout(() => r({ ok: false, reason: 'wrong_code' }), 600)));
+      await trocar(trocarSenha());
+      expect(info).toHaveBeenCalledTimes(1);
+      expect(info).toHaveBeenCalledWith('esqueci-a-senha: troca respondida', { status: 400, ms: 600 });
+      const saida = saidaDe(info);
+      for (const segredo of ['ana@academia.com', '123456', 'Nova@Senha1']) {
+        expect(saida).not.toContain(segredo);
+      }
+    });
+  });
+});
+
+describe('rateKeyIp', () => {
+  it('IPv4 fica como veio', () => {
+    expect(rateKeyIp('203.0.113.7')).toBe('203.0.113.7');
+  });
+
+  it('IPv4 mapeado no IPv6 vale o IPv4', () => {
+    expect(rateKeyIp('::ffff:203.0.113.7')).toBe('203.0.113.7');
+    expect(rateKeyIp('::FFFF:203.0.113.7')).toBe('203.0.113.7');
+  });
+
+  it('ignora espaço nas pontas, inclusive no IPv4 mapeado', () => {
+    expect(rateKeyIp(' 203.0.113.7 ')).toBe('203.0.113.7');
+    expect(rateKeyIp(' ::ffff:203.0.113.7')).toBe('203.0.113.7');
+  });
+
+  it('IPv6 vira o bloco /64: endereços do mesmo bloco dão a mesma chave', () => {
+    expect(rateKeyIp('2001:db8:1:2:aaaa::1')).toBe('2001:db8:1:2');
+    expect(rateKeyIp('2001:db8:1:2:bbbb::2')).toBe(rateKeyIp('2001:db8:1:2:aaaa::1'));
+  });
+
+  it('bloco diferente dá chave diferente', () => {
+    expect(rateKeyIp('2001:db8:1:3:aaaa::1')).not.toBe(rateKeyIp('2001:db8:1:2:aaaa::1'));
+  });
+
+  it('expande o :: até as quatro primeiras partes', () => {
+    expect(rateKeyIp('2001:db8::1')).toBe('2001:db8:0:0');
+    expect(rateKeyIp('::1')).toBe('0:0:0:0');
+    // O :: vale exatamente as partes que faltam para 8: aqui 1 zero, e 3 no de baixo.
+    expect(rateKeyIp('1::2:3:4:5:6:7')).toBe('1:0:2:3');
+    expect(rateKeyIp('2001::a:b:c:d')).toBe('2001:0:0:0');
+  });
+
+  it('escreve o bloco sempre do mesmo jeito: minúsculas e sem zero à esquerda', () => {
+    expect(rateKeyIp('2001:0DB8:0001:0002::1')).toBe('2001:db8:1:2');
+    expect(rateKeyIp('2001:db8:1:2:3:4:5:6')).toBe('2001:db8:1:2');
+  });
+
+  it('o que não é endereço fica como veio', () => {
+    expect(rateKeyIp('')).toBe('');
+    expect(rateKeyIp(undefined)).toBe('');
+    expect(rateKeyIp('desconhecido')).toBe('desconhecido');
+    expect(rateKeyIp('A:B:C')).toBe('A:B:C');
+    expect(rateKeyIp('zzzz:1:2:3:4:5:6:7')).toBe('zzzz:1:2:3:4:5:6:7');
   });
 });
 
@@ -351,7 +516,7 @@ describe('o resto do POST do tenant-resolve', () => {
       await handler(post({ action, slug: 'academia-teste' }), res);
       expect(res.statusCode, action).toBe(429);
     }
-    expect(h.chaves).toEqual(['referral-info:203.0.113.7', 'referral-signup:203.0.113.7', 'referral-signup:slug:academia-teste']);
+    expect(chaves()).toEqual(['referral-info:203.0.113.7', 'referral-signup:203.0.113.7', 'referral-signup:slug:academia-teste']);
   });
 });
 

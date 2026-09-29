@@ -32,7 +32,7 @@ import { isPasswordResetAction, handlePasswordReset } from './_passwordResetRout
 //
 // ESQUECI A SENHA (docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md):
 // mais duas actions POST públicas, pelo mesmo motivo do limite de funções:
-//   { action:'password-reset-request', email } → sempre 200 antes do trabalho
+//   { action:'password-reset-request', email } → 200 antes do trabalho, com conta ou sem
 //   { action:'password-reset-confirm', email, code, newPassword }
 // Tudo mora em _passwordResetRoute.js e nos arquivos _passwordReset*.js.
 
