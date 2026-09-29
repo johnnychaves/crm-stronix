@@ -146,13 +146,18 @@ export function searchPlans(plans, query) {
 
 // A data que a régua de vigência trata como "hoje". Trancado congela na data
 // do trancamento. Cancelado para na data do cancelamento quando ela já passou:
-// sem isso a porcentagem de um contrato encerrado subia todo dia.
+// sem isso a porcentagem de um contrato encerrado subia todo dia. Cancelado
+// ainda trancado (mantém o pausedAt) para no trancamento, porque a vigência já
+// estava congelada e o período depois dele não conta.
 export function vigenciaRefDate({ status, pausedAt, cancelledAt } = {}, now = new Date()) {
   const ref = getSafeDateOrNull(now) || new Date();
   if (status === CONTRACT_STATUS.TRANCADO) return getSafeDateOrNull(pausedAt) || ref;
   if (status === CONTRACT_STATUS.CANCELADO) {
+    // Cancelado ainda trancado: a vigência já tinha parado no trancamento.
     const at = getSafeDateOrNull(cancelledAt);
-    if (at && at.getTime() < ref.getTime()) return at;
+    const paused = getSafeDateOrNull(pausedAt);
+    const stop = at && paused && paused.getTime() < at.getTime() ? paused : at;
+    if (stop && stop.getTime() < ref.getTime()) return stop;
   }
   return ref;
 }

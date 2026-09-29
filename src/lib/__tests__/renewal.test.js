@@ -287,6 +287,10 @@ describe('vigenciaRefDate', () => {
     expect(vigenciaRefDate({ status: 'trancado', pausedAt: D(2026, 9, 10) }, NOW)).toEqual(D(2026, 9, 10));
   });
 
+  it('cancelado ainda trancado para no trancamento', () => {
+    expect(vigenciaRefDate({ status: 'cancelado', pausedAt: D(2026, 3, 1), cancelledAt: D(2026, 8, 1) }, NOW)).toEqual(D(2026, 3, 1));
+  });
+
   it('nos outros casos é hoje', () => {
     expect(vigenciaRefDate({ status: 'ativo' }, NOW)).toEqual(NOW);
     expect(vigenciaRefDate({ status: 'cancelado' }, NOW)).toEqual(NOW);
