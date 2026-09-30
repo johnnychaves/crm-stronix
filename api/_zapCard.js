@@ -13,12 +13,19 @@ import { diaDeBrasilia } from './_horarioDeBrasilia.js';
 
 const iso = (d) => (d ? d.toISOString() : null);
 
-// Desfecho que o cartão mostra: compareceu ou faltou. O Stronilead grava
-// também 'rescheduled' (o lead já está com a data nova, então não há desfecho
-// a mostrar) e 'cancelled', que tira o agendamento do cartão (cardAppointment).
+// Desfecho que o cartão mostra: compareceu ou faltou. O 'rescheduled' pode vir
+// em dado antigo, mas hoje só a interação leva esse valor, porque o Remarcar
+// zera o desfecho do lead, que já fica com a data nova. Não há desfecho a
+// mostrar nesse caso. O 'cancelled' tira o agendamento do cartão (cardAppointment).
 export function appointmentOutcomeOf(lead) {
   const outcome = lead?.appointmentOutcome;
   return outcome === 'attended' || outcome === 'no_show' ? outcome : null;
+}
+
+// Agendamento cancelado não aparece. A regra mora só aqui, para o cartão e
+// para o detalhe do agendamento lerem a mesma.
+export function isAppointmentCancelled(lead) {
+  return lead?.appointmentOutcome === 'cancelled';
 }
 
 // A linha "Agendamento" do cartão: tipo, dia e hora e o desfecho, ou null.
@@ -26,7 +33,7 @@ export function appointmentOutcomeOf(lead) {
 // lead; o do writeAppointmentOutcome sem consumeAppointment não apaga, e esta
 // regra cobre esse caminho.
 export function cardAppointment(lead) {
-  if (lead?.appointmentOutcome === 'cancelled') return null;
+  if (isAppointmentCancelled(lead)) return null;
   const tipo = getLeadAppointmentType(lead);
   const quando = getLeadAppointmentDate(lead);
   return tipo && quando ? { type: tipo, at: iso(quando), outcome: appointmentOutcomeOf(lead) } : null;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildZapCard, buildZapWard, buildGuardianCard, appointmentOutcomeOf, cardAppointment } from '../_zapCard.js';
+import { buildZapCard, buildZapWard, buildGuardianCard, appointmentOutcomeOf, cardAppointment, isAppointmentCancelled } from '../_zapCard.js';
 
 // Instante escrito no horário de Brasília, pelo mesmo motivo de
 // zapStrip.test.js: o cartão conta dias de Brasília em qualquer máquina.
@@ -190,10 +190,31 @@ describe('desfecho do agendamento no cartão', () => {
     expect(buildZapCard(cliente, HOJE)).toMatchObject({ kind: 'cliente', appointment: { outcome: 'attended' } });
   });
 
+  it('a linha do agendamento só leva tipo, data e desfecho, mesmo com o lead cheio', () => {
+    const cheio = visita({
+      appointmentOutcome: 'attended',
+      appointmentUnit: 'Centro',
+      appointmentModality: 'Pilates',
+      appointmentProfessorName: 'Carla Dias',
+      appointmentOutcomeBy: 'u1',
+      appointmentOutcomeAt: brt('2026-10-01T19:00'),
+      nextFollowUpNote: 'Vem depois do trabalho.',
+      cpf: '12345678900'
+    });
+    expect(Object.keys(buildZapCard(cheio, HOJE).appointment).sort()).toEqual(['at', 'outcome', 'type']);
+  });
+
   it('appointmentOutcomeOf e cardAppointment são a regra que o cartão usa', () => {
     expect(appointmentOutcomeOf({ appointmentOutcome: 'attended' })).toBe('attended');
     expect(appointmentOutcomeOf({ appointmentOutcome: 'qualquer' })).toBeNull();
     expect(appointmentOutcomeOf(null)).toBeNull();
     expect(cardAppointment({})).toBeNull();
+  });
+
+  it('isAppointmentCancelled é verdadeiro só para o desfecho cancelled', () => {
+    expect(isAppointmentCancelled({ appointmentOutcome: 'cancelled' })).toBe(true);
+    expect(isAppointmentCancelled({ appointmentOutcome: 'attended' })).toBe(false);
+    expect(isAppointmentCancelled({})).toBe(false);
+    expect(isAppointmentCancelled(null)).toBe(false);
   });
 });
