@@ -26,6 +26,7 @@ import {
   buildLeadOptions, readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
   buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError
 } from './_zapLead.js';
+import { readScheduleOptionsBody, buildScheduleOptions } from './_zapSchedule.js';
 import { contactOf } from '../src/lib/guardian.js';
 
 const LEADS_PATH = 'stronix_leads';
@@ -37,6 +38,10 @@ const CONFIG_PATH = 'stronix_config';
 const CONFIG_GENERAL_ID = 'general';
 const USERS_PATH = 'stronix_users';
 const INTERACTIONS_PATH = 'stronix_interactions';
+// Listas do agendamento pelo Stronizap.
+const UNITS_PATH = 'stronix_units';
+const MODALITIES_PATH = 'stronix_modalities';
+const PROFESSORS_PATH = 'stronix_professores';
 // Catálogos do formulário do cadastro, na ordem em que readCatalogs devolve.
 const CATALOG_PATHS = ['stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses'];
 
@@ -200,6 +205,7 @@ async function handlePost(req, res) {
   if (action === 'match') return handleMatch(req, res);
   if (action === 'lead-options') return handleLeadOptions(req, res);
   if (action === 'create-lead') return handleCreateLead(req, res);
+  if (action === 'schedule-options') return handleScheduleOptions(req, res);
 
   try {
     const auth = await verifyRequest(req);
@@ -476,5 +482,56 @@ async function handleCreateLead(req, res) {
     return res.status(201).json({ card });
   } catch (e) {
     throw scrubbedError('create-lead', e);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Agendamento pelo Stronizap. As regras moram em api/_zapSchedule.js; aqui
+// ficam a leitura e a gravação. Spec em
+// docs/superpowers/specs/2026-09-29-agendamento-pelo-stronizap-design.md
+// ---------------------------------------------------------------------------
+
+// As listas do agendamento, lidas a cada pedido, como as do cadastro: item
+// novo no Stronilead aparece na próxima abertura do balão, e item apagado é
+// recusado na gravação.
+async function readScheduleCatalogs(tenantId) {
+  const [units, modalities, professors, configSnap] = await Promise.all([
+    academyCollection(tenantId, UNITS_PATH).get(),
+    academyCollection(tenantId, MODALITIES_PATH).get(),
+    academyCollection(tenantId, PROFESSORS_PATH).get(),
+    academyCollection(tenantId, CONFIG_PATH).doc(CONFIG_GENERAL_ID).get()
+  ]);
+  return {
+    units: docsOf(units),
+    modalities: docsOf(modalities),
+    professors: docsOf(professors),
+    config: configSnap.exists ? configSnap.data() : null
+  };
+}
+
+// Opções do balão: quem pede (achado pelo e-mail da sessão do Stronizap), os
+// cadastros do número, as listas e os dias sugeridos. Só lê.
+async function handleScheduleOptions(req, res) {
+  try {
+    const access = await openByKey(req);
+    if (access.refusal) return responder(res, access.refusal);
+    const { tenantId } = access;
+
+    const read = readScheduleOptionsBody(req.body);
+    if (read.refusal) return responder(res, read.refusal);
+    const { matchKey, email } = read.value;
+
+    const agora = new Date();
+    const [team, catalogs, people] = await Promise.all([
+      readTeam(tenantId), readScheduleCatalogs(tenantId), numberPeople(tenantId, matchKey, agora)
+    ]);
+    const member = findTeamMember(team, email);
+    if (!member) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+
+    return res.status(200).json(
+      buildScheduleOptions({ member, catalogs, owner: people.dono, wards: people.menores, now: agora })
+    );
+  } catch (e) {
+    throw scrubbedError('schedule-options', e);
   }
 }

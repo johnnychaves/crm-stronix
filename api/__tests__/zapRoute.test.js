@@ -1598,3 +1598,192 @@ describe('POST /api/zap com action create-lead', () => {
     expect(banco.gravacoes).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Agendamento pelo Stronizap
+// ---------------------------------------------------------------------------
+
+// Terça, 29/09/2026, às 15:40 de Brasília, como nos mockups.
+const AGORA = new Date('2026-09-29T18:40:00.000Z');
+// A Mariana, lead da Ana com o número da conversa. Os campos de data vêm como
+// Timestamp, como o Firestore devolve.
+const marianaLead = (extra = {}) => ({
+  id: 'L1', name: 'Mariana Souza', lifecycleStage: 'lead', status: 'Primeiro contato', source: 'Instagram',
+  consultantId: 'u-ana', consultantName: 'Ana Souza', consultantAuthUid: 'auth-ana',
+  whatsapp: '(51) 9 9812-4471', zapMatchKey: zapMatchKey(MARIANA), interactionsCount: 3,
+  createdAt: ts(new Date('2026-09-01T13:00:00.000Z')), ...extra
+});
+
+const pedidoOpcoesAgenda = ({ phone = MARIANA, email = ANA.email } = {}) => ({
+  method: 'POST',
+  headers: { 'x-stronizap-key': chave },
+  body: { action: 'schedule-options', tenant: TENANT, phone, actor: { email } }
+});
+
+describe('POST /api/zap com action schedule-options', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(AGORA);
+    zerarBanco();
+    academiaComEquipe();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('consultora em dia de meta: quem ela é, os cadastros do número, as listas e os dias', async () => {
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'visita', appointmentScheduledFor: ts(new Date('2026-09-30T21:00:00.000Z')), appointmentUnit: 'Centro'
+    })];
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      actor: { id: 'u-ana', name: 'Ana Souza', role: 'consultor', countsForMeta: true },
+      targets: [
+        { leadId: 'L1', name: 'Mariana Souza', relationship: null, appointment: { type: 'visita', at: '2026-09-30T21:00:00.000Z', outcome: null } }
+      ],
+      units: [{ name: 'Centro', address: 'Rua Garibaldi, 1200' }, { name: 'Zona Sul', address: null }],
+      modalities: [{ id: 'm1', name: 'Musculação' }, { id: 'm2', name: 'Pilates' }],
+      professors: [
+        { id: 'p1', name: 'Carla Dias', modalityIds: ['m2'] },
+        { id: 'p2', name: 'Rafael Moura', modalityIds: ['m2', 'm1'] }
+      ],
+      trialClassOptions: [1, 2, 3],
+      days: [
+        { date: '2026-09-29', label: 'Hoje', defaultTime: '18:00' },
+        { date: '2026-09-30', label: 'Amanhã', defaultTime: '09:00' },
+        { date: '2026-10-01', label: 'Quinta', defaultTime: '09:00' },
+        { date: '2026-10-02', label: 'Sexta', defaultTime: '09:00' },
+        { date: '2026-10-05', label: 'Segunda', defaultTime: '09:00' }
+      ]
+    });
+    // Opções só leem: não gastam o limite nem gravam nada.
+    expect(limitador.chamadas).toEqual([]);
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('gestor: papel gestor e fora da Meta', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda({ email: JOHNNY.email }), res);
+
+    expect(res.body.actor).toEqual({ id: 'u-johnny', name: 'Johnny', role: 'gestor', countsForMeta: false });
+  });
+
+  it('a quantidade de aulas e os dias da meta são os da academia', async () => {
+    banco.config[TENANT] = { trialClassOptions: [1, 2], metaWeekdays: [1, 2, 3, 4, 5, 6] };
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda(), res);
+
+    expect(res.body.trialClassOptions).toEqual([1, 2]);
+    expect(res.body.days.map((d) => d.label)).toEqual(['Hoje', 'Amanhã', 'Quinta', 'Sexta', 'Sábado']);
+  });
+
+  it('depois das 18h de Brasília, os dias começam amanhã', async () => {
+    vi.setSystemTime(new Date('2026-09-29T21:30:00.000Z'));
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda(), res);
+
+    expect(res.body.days[0]).toEqual({ date: '2026-09-30', label: 'Amanhã', defaultTime: '09:00' });
+  });
+
+  it('mãe sem cadastro próprio: os filhos em ordem de nome, com o parentesco e o agendamento de cada um', async () => {
+    banco.leads[TENANT] = [
+      menorDe('k1', 'Pedro Souza', {
+        sexo: 'Masculino', appointmentType: 'aula_experimental',
+        appointmentScheduledFor: ts(new Date('2026-10-02T22:00:00.000Z')), appointmentModality: 'Pilates'
+      }),
+      menorDe('k2', 'Ana Souza', { sexo: 'Feminino' }),
+      menorDe('k3', 'Caio Souza')
+    ];
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda({ phone: MAE }), res);
+
+    expect(res.body.targets).toEqual([
+      { leadId: 'k2', name: 'Ana Souza', relationship: 'Filha', appointment: null },
+      { leadId: 'k3', name: 'Caio Souza', relationship: null, appointment: null },
+      { leadId: 'k1', name: 'Pedro Souza', relationship: 'Filho', appointment: { type: 'aula_experimental', at: '2026-10-02T22:00:00.000Z', outcome: null } }
+    ]);
+  });
+
+  it('dona do número que também é responsável: ela primeiro, depois o filho', async () => {
+    banco.leads[TENANT] = [marianaLead({ zapMatchKey: zapMatchKey(MAE) }), menorDe('k1', 'Pedro Souza', { sexo: 'Masculino' })];
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda({ phone: MAE }), res);
+
+    expect(res.body.targets.map((t) => [t.leadId, t.relationship])).toEqual([['L1', null], ['k1', 'Filho']]);
+  });
+
+  it('número sem cadastro: nenhum alvo, e as listas vêm do mesmo jeito', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.targets).toEqual([]);
+    expect(res.body.units).toHaveLength(2);
+  });
+
+  it('pessoa fora da equipe recebe o aviso do cadastro, com o e-mail dela', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda({ email: 'carla@stronix.com.br' }), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({
+      error: 'fora_da_equipe',
+      message: 'Seu e-mail do Stronizap, carla@stronix.com.br, não está na equipe do Stronilead. Peça ao gestor para incluir você lá com esse mesmo e-mail.'
+    });
+  });
+
+  it('academia suspensa não abre o balão', async () => {
+    banco.tenants[TENANT].status = 'suspended';
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda(), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toBe('academia_bloqueada');
+  });
+
+  it('número fora do formato e pedido sem e-mail: 400 no campo', async () => {
+    const semNumero = resposta();
+    await handler(pedidoOpcoesAgenda({ phone: '123' }), semNumero);
+    expect(semNumero.statusCode).toBe(400);
+    expect(semNumero.body).toMatchObject({ error: 'dados_invalidos', field: 'phone' });
+
+    const semEmail = resposta();
+    await handler(pedidoOpcoesAgenda({ email: '' }), semEmail);
+    expect(semEmail.body).toEqual({ error: 'dados_invalidos', field: 'actor', message: 'Não deu para saber quem está agendando.' });
+  });
+
+  it('chave de outra academia não abre as opções', async () => {
+    academia(OUTRA);
+    banco.users[OUTRA] = [ANA];
+    const res = resposta();
+    const p = pedidoOpcoesAgenda();
+    p.body.tenant = OUTRA;
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+
+  it('erro do banco sobe sem o telefone', async () => {
+    banco.falhaEm = 'zapMatchKey';
+
+    const erro = await handler(pedidoOpcoesAgenda(), resposta()).catch((e) => e);
+
+    expect(erro.message).toBe('zap schedule-options falhou (9)');
+    expect(String(erro.stack)).not.toContain(zapMatchKey(MARIANA));
+  });
+});
