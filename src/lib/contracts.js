@@ -831,3 +831,34 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
     interactionText: `Contrato corrigido — Plano ${plan?.name ?? contract?.planName ?? '—'} (${fmtBRL(finalValue)}), vigência ${fmtDia(start)} → ${fmtDia(endsAt)}.`
   };
 };
+
+// Ativar agora: o contrato que ainda não começou passa a começar agora, com a
+// duração vendida; plano, valor e desconto não mudam. É a correção do início
+// (buildContractEdit), com as mesmas regras do contrato em uso (`previous`, o
+// que este contrato renova): em vigor, ele passa a terminar ontem, com
+// originalEndsAt e shortenedById, e o ativado leva a marca de emendado;
+// trancado ou cancelado, nada é encurtado. O bloco "em uso" do lead é limpo,
+// porque o último contrato passou a valer. Começa "agora" com a hora, como o
+// "Começar hoje" do ContractModal. `daysLost`: os dias do contrato em uso que
+// se perdem no encurtamento, para o modal; `scheduledFor`: a data que estava
+// marcada. O texto da linha do tempo é lido por contractEventOf (tipo
+// `ativacao`): mudou aqui, mude lá e no timeline.test.js.
+export function buildContractActivate({ contract, previous = null, now = new Date() } = {}) {
+  const at = getSafeDateOrNull(now) || new Date();
+  const edit = buildContractEdit({
+    contract, plan: null, value: contract?.value, startsAt: at,
+    discountReason: contract?.discountReason ?? null, previous, now: at
+  });
+  const shortened = Boolean(edit.previousPatch?.shortenedById);
+  const original = getSafeDateOrNull(previous?.originalEndsAt);
+  const plannedEnd = original && previous?.shortenedById === contract?.id ? original : getSafeDateOrNull(previous?.endsAt);
+  const daysLost = shortened ? Math.max(0, calendarDaysBetween(edit.previousPatch.endsAt, plannedEnd) || 0) : 0;
+  const { planName, value, endsAt } = edit.contractPatch;
+  return {
+    ...edit,
+    scheduledFor: getSafeDateOrNull(contract?.startsAt),
+    daysLost,
+    leadPatch: { ...edit.leadPatch, ...CLEAR_IN_USE_BLOCK },
+    interactionText: `Contrato ativado antes da data marcada — Plano ${planName ?? '—'} (${fmtBRL(value)}), vigência ${fmtDia(at)} → ${fmtDia(endsAt)}.`
+  };
+}

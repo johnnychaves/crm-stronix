@@ -7,6 +7,7 @@ import {
   CONTRACT_STATUS,
   CONTRACT_STATUS_LABEL,
   CLEAR_IN_USE_BLOCK,
+  buildContractActivate,
   buildContractCancel,
   buildContractEdit,
   buildContractPause,
@@ -1810,5 +1811,71 @@ describe('trancar, reativar e cancelar o contrato em uso (role inUse)', () => {
     expect(cancel.interactionText).toBe('Contrato cancelado — Plano Start. Encerrado em 30/09/2026.');
     expect(buildContractResume({ contract: { ...emUso, pausedAt: D(2026, 9, 20) }, resumedAt: D(2026, 9, 30) }).leadPatch)
       .toEqual({ currentContractStatus: 'ativo', currentContractEndsAt: D(2026, 10, 21) });
+  });
+});
+
+describe('buildContractActivate: o contrato agendado passa a começar agora', () => {
+  const AGORA = new Date(2026, 8, 30, 10, 0);
+  const emUso = { id: 'k1', planName: 'Start', status: 'ativo', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+  const proximo = {
+    id: 'k2', planId: 'p2', planName: 'Flow', value: 1788, listValue: 1908, durationMonths: 12,
+    discountMode: 'reais', discountValue: 120, discountReason: 'Fidelidade',
+    renewedFromId: 'k1', status: 'ativo', seamless: true, startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12)
+  };
+
+  it('começa agora com a duração vendida, e o em uso termina ontem, com a marca de emendado', () => {
+    const r = buildContractActivate({ contract: proximo, previous: emUso, now: AGORA });
+    expect(r.contractPatch).toEqual({
+      planId: 'p2', planName: 'Flow', value: 1788, listValue: 1908, durationMonths: 12,
+      startsAt: AGORA, endsAt: new Date(2027, 8, 30, 10, 0), seamless: true,
+      discountMode: 'reais', discountValue: 120, discountReason: 'Fidelidade'
+    });
+    expect(r.previousPatch).toEqual({ endsAt: new Date(2026, 8, 29, 10, 0), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
+    expect(r.daysLost).toBe(12);
+    expect(r.scheduledFor).toEqual(D(2026, 10, 12));
+    expect(r.leadPatch).toEqual({
+      currentPlanName: 'Flow', currentContractValue: 1788, currentContractStartsAt: AGORA,
+      currentContractEndsAt: new Date(2027, 8, 30, 10, 0), currentContractSeamless: true,
+      ...CLEAR_IN_USE_BLOCK
+    });
+    expect(r.interactionText).toBe('Contrato ativado antes da data marcada — Plano Flow (R$ 1.788,00), vigência 30/09/2026 → 30/09/2027.');
+  });
+
+  it('em uso trancado ou cancelado: nada é encurtado e o ativado não leva a marca', () => {
+    [
+      { ...emUso, status: 'trancado', pausedAt: D(2026, 9, 20) },
+      { ...emUso, status: 'cancelado', cancelledAt: D(2026, 9, 20) }
+    ].forEach((previous) => {
+      const r = buildContractActivate({ contract: proximo, previous, now: AGORA });
+      expect(r.previousPatch, previous.status).toBeNull();
+      expect(r.contractPatch.seamless, previous.status).toBe(false);
+      expect(r.daysLost, previous.status).toBe(0);
+      expect(r.leadPatch, previous.status).toMatchObject(CLEAR_IN_USE_BLOCK);
+    });
+  });
+
+  it('matrícula agendada sem contrato em uso: só as datas mudam, e o bloco fica limpo', () => {
+    const agendada = { ...proximo, renewedFromId: null, seamless: false };
+    const r = buildContractActivate({ contract: agendada, previous: null, now: AGORA });
+    expect(r.previousPatch).toBeNull();
+    expect(r.contractPatch.seamless).toBe(false);
+    expect(r.contractPatch.startsAt).toEqual(AGORA);
+    expect(r.daysLost).toBe(0);
+    expect(r.leadPatch).toMatchObject(CLEAR_IN_USE_BLOCK);
+  });
+
+  it('preserva os dias já trancados e o desconto sem motivo', () => {
+    const r = buildContractActivate({ contract: { ...proximo, pausedDaysTotal: 5, discountReason: null }, previous: null, now: AGORA });
+    expect(r.contractPatch.endsAt).toEqual(new Date(2027, 9, 5, 10, 0));
+    expect(r.contractPatch.discountValue).toBe(120);
+    expect(r.contractPatch.discountReason).toBeNull();
+  });
+
+  it('o em uso encurtado por esta renovação encurta de novo a partir do fim original', () => {
+    const encurtado = { ...emUso, endsAt: D(2026, 10, 4), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' };
+    const antecipada = { ...proximo, startsAt: D(2026, 10, 5), endsAt: D(2027, 10, 5) };
+    const r = buildContractActivate({ contract: antecipada, previous: encurtado, now: AGORA });
+    expect(r.previousPatch).toEqual({ endsAt: new Date(2026, 8, 29, 10, 0), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
+    expect(r.daysLost).toBe(12);
   });
 });

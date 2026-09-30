@@ -87,7 +87,7 @@ export const originLastOnTies = (list) => {
 };
 
 // Detecta eventos de CONTRATO (matrícula, renovação, cancelamento, trancamento,
-// reativação e correção) pelo texto da interaction. Usado como bucket próprio
+// reativação, correção e ativação antes da data) pelo texto da interaction. Usado como bucket próprio
 // na timeline. Só é consultado para type='status_change' (ver
 // classifyInteraction) — contrato real é sempre gravado com esse type
 // (contractsWrites.js); sem esse gate o regex também capturava notas/conclusões
@@ -95,7 +95,7 @@ export const originLastOnTies = (list) => {
 // reagendamento de renovação na Meta Diária, RenewalOutcomeModal.jsx), fazendo
 // a timeline mostrar a anotação do consultor como se fosse uma matrícula
 // fechada.
-const CONTRACT_RE = /matrícula|matricula|renova(ç|c)ão|contrato (cancelado|trancado|reativado|corrigido)|plano /i;
+const CONTRACT_RE = /matrícula|matricula|renova(ç|c)ão|contrato (cancelado|trancado|reativado|corrigido|ativado)|plano /i;
 
 // Prefixo dos eventos do funil Upgrade (src/lib/stageMove.js).
 const UPGRADE_EVENT_RE = /^Upgrade: /;
@@ -108,6 +108,7 @@ const CONTRACT_EVENT_RULES = [
   { kind: 'trancamento', re: /^contrato trancado/i },
   { kind: 'reativacao', re: /^contrato reativado/i },
   { kind: 'correcao', re: /^contrato corrigido/i },
+  { kind: 'ativacao', re: /^contrato ativado/i },
   { kind: 'renovacao', re: /^renova(ç|c)ão registrada/i },
   { kind: 'matricula', re: /^matr(í|i)cula realizada/i }
 ];
