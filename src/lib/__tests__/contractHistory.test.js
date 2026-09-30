@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, historySuccessorOf, inUseNoteOf,
+  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, historySuccessorOf, inUseNoteOf, isInUseAt,
   runningPredecessorOf
 } from '../contractHistory.js';
 import { CONTRACT_STATUS } from '../contracts.js';
@@ -261,13 +261,15 @@ describe('historyStatusOf e runningPredecessorOf', () => {
     expect(historyStatusOf(atual, [atual], HOJE)).toBe(CONTRACT_STATUS.A_VENCER);
   });
 
-  // Renovar contrato trancado é barrado (renewalStartProblem), então trancado
-  // com renovação ligada só existe em dado antigo. Ele segue trancado, antes e
-  // depois de a renovação começar.
-  it('trancado continua trancado, mesmo com renovação ligada', () => {
+  // Trancado com renovação ligada: trancado até ela começar. Depois, renovado,
+  // a mesma leitura do Operacional, que encerra a pausa no início do sucessor.
+  it('trancado continua trancado até a renovação começar, e vira renovado depois', () => {
     const trancado = { ...atual, status: 'trancado', pausedAt: D(2026, 9, 1) };
     expect(historyStatusOf(trancado, [trancado, renovacao], HOJE)).toBe(CONTRACT_STATUS.TRANCADO);
-    expect(historyStatusOf(trancado, [trancado, renovacao], D(2026, 10, 12))).toBe(CONTRACT_STATUS.TRANCADO);
+    expect(historyStatusOf(trancado, [trancado, renovacao], D(2026, 10, 12))).toBe(HISTORY_STATUS.RENOVADO);
+    // A renovação desfeita não conta.
+    const desistiu = { ...renovacao, status: 'cancelado', cancelledAt: D(2026, 9, 20) };
+    expect(historyStatusOf(trancado, [trancado, desistiu], D(2026, 10, 12))).toBe(CONTRACT_STATUS.TRANCADO);
   });
 
   // No Histórico, o contrato que ainda não começou nunca está em uso nem
@@ -307,10 +309,13 @@ describe('historyStatusOf e runningPredecessorOf', () => {
     expect(runningPredecessorOf(renovacao, [cancelado, renovacao], HOJE)).toBeNull();
   });
 
-  // Contrato parado não está em uso.
-  it('runningPredecessorOf ignora o anterior trancado', () => {
+  // O contrato parado também está em uso: o fim dele não corre, e é ele que o
+  // cliente tem enquanto a renovação não começa.
+  it('runningPredecessorOf aceita o anterior trancado, mesmo com o fim gravado já passado', () => {
     const trancado = { ...atual, status: 'trancado', pausedAt: D(2026, 9, 1) };
-    expect(runningPredecessorOf(renovacao, [trancado, renovacao], HOJE)).toBeNull();
+    expect(runningPredecessorOf(renovacao, [trancado, renovacao], HOJE)).toBe(trancado);
+    const depois = { ...renovacao, seamless: false, startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20) };
+    expect(runningPredecessorOf(depois, [trancado, depois], D(2026, 10, 15))).toBe(trancado);
   });
 
   it('runningPredecessorOf: com intervalo, o anterior só vale até o fim dele', () => {
@@ -361,5 +366,32 @@ describe('inUseNoteOf: a linha do contrato em uso no card', () => {
       .toBe('Continua o contrato em uso (Start, até 07/10/2026)');
     expect(inUseNoteOf({ planName: 'Start', end: null, seamless: true })).toBeNull();
     expect(inUseNoteOf()).toBeNull();
+  });
+});
+
+describe('isInUseAt: o contrato que o cliente usa num instante', () => {
+  const HOJE = D(2026, 9, 30);
+  const c = { id: 'k1', status: 'ativo', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+
+  it('vale do início ao último dia do fim efetivo, por dia do calendário', () => {
+    expect(isInUseAt(c, HOJE)).toBe(true);
+    expect(isInUseAt(c, new Date(2026, 9, 11, 18, 0))).toBe(true);
+    expect(isInUseAt(c, D(2026, 10, 12))).toBe(false);
+    expect(isInUseAt(c, D(2025, 10, 10))).toBe(false);
+  });
+
+  it('cancelado não está em uso, nem depois do cancelamento; trancado está, mesmo com o fim gravado passado', () => {
+    expect(isInUseAt({ ...c, status: 'cancelado', cancelledAt: D(2026, 9, 1) }, HOJE)).toBe(false);
+    expect(isInUseAt({ ...c, status: 'trancado', pausedAt: D(2026, 9, 1) }, D(2026, 10, 20))).toBe(true);
+  });
+
+  it('importado sem início vale pela criação; sem fim, ou sem contrato, não vale', () => {
+    expect(isInUseAt({ id: 'k1', createdAt: D(2026, 9, 4), endsAt: D(2026, 10, 11) }, HOJE)).toBe(true);
+    expect(isInUseAt({ id: 'k1', startsAt: D(2025, 10, 11) }, HOJE)).toBe(false);
+    expect(isInUseAt(null, HOJE)).toBe(false);
+  });
+
+  it('aceita as datas como Timestamp do Firestore', () => {
+    expect(isInUseAt({ ...c, startsAt: ts(c.startsAt), endsAt: ts(c.endsAt) }, HOJE)).toBe(true);
   });
 });
