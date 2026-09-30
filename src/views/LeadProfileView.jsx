@@ -40,6 +40,7 @@ import { ReferralsSection } from '../components/profile/ReferralsSection.jsx';
 import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { ZapSignupMarker } from '../components/profile/ZapSignupMarker.jsx';
+import { TimelineAuthor } from '../components/profile/TimelineAuthor.jsx';
 import { StronizapBadge } from '../components/brand/StronizapMark.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
@@ -985,8 +986,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     const typeLabel = timelineTypeLabel(i);
     const author = i.consultantName || 'Sistema';
     // Agendamento feito pelo Stronizap: a marca antes do nome e o canal no
-    // detalhe ao passar o mouse (modelo A da spec do agendamento).
-    const zapTitle = zapScheduleTitle(i);
+    // detalhe ao passar o mouse (modelo A da spec do agendamento). Só a linha
+    // de agendamento leva isso: o campo via pode aparecer em outras linhas.
+    const zapTitle = i._kind === 'appointment' ? zapScheduleTitle(i) : null;
     const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
     const stageName = i._kind === 'status' ? extractStageNameFromInteractionText(i.text) : '';
     const isContract = i._kind === 'contract';
@@ -1167,13 +1169,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         <div className="text-[11px] num text-slate-400 dark:text-slate-500 text-right whitespace-nowrap pt-0.5" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</div>
         <div className={cn('text-[9.5px] font-bold uppercase tracking-[.07em] pt-1', typeToneClass)}>{typeLabel}</div>
         <div className="min-w-0">{body}</div>
-        <div
-          className={cn('text-[11px] text-slate-500 dark:text-slate-400 text-right truncate pt-0.5', zapTitle && 'flex items-center justify-end gap-[5px]')}
-          title={zapTitle || author}
-        >
-          {zapTitle && <StronizapBadge />}
-          {zapTitle ? <span className="truncate">{author}</span> : author}
-        </div>
+        <TimelineAuthor author={author} zapTitle={zapTitle} />
       </div>
     );
   };
