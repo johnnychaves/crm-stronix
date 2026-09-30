@@ -1204,10 +1204,13 @@ describe('POST /api/zap: o desvio no começo do handlePost', () => {
   const pedidoPelaChave = (action) => ({
     match: { method: 'POST', headers: { 'x-stronizap-key': chave }, body: { action, tenant: TENANT, phones: [TELEFONE] } },
     'lead-options': pedidoOpcoes(),
-    'create-lead': pedidoCadastro()
+    'create-lead': pedidoCadastro(),
+    'schedule-options': pedidoOpcoesAgenda(),
+    schedule: pedidoAgenda(),
+    'appointment-status': pedidoStatus(['L1'])
   })[action];
 
-  it.each(['lead-options', 'create-lead'])('%s com login de admin e sem a chave do Zap responde 401 e não grava nada', async (action) => {
+  it.each(['lead-options', 'create-lead', 'schedule-options', 'schedule', 'appointment-status'])('%s com login de admin e sem a chave do Zap responde 401 e não grava nada', async (action) => {
     sessao.auth = { uid: 'auth-johnny', tenantId: TENANT };
     sessao.admin = true;
     const p = pedidoPelaChave(action);
@@ -1223,7 +1226,9 @@ describe('POST /api/zap: o desvio no começo do handlePost', () => {
     expect(sessao.consultasDoLogin).toBe(0);
   });
 
-  it.each(['match', 'lead-options', 'create-lead'])('%s com a chave nunca consulta o login do CRM', async (action) => {
+  it.each(['match', 'lead-options', 'create-lead', 'schedule-options', 'schedule', 'appointment-status'])('%s com a chave nunca consulta o login do CRM', async (action) => {
+    // O agendamento precisa de um lead do número para dar certo.
+    if (action === 'schedule') banco.leads[TENANT] = [marianaLead()];
     const res = resposta();
 
     await handler(pedidoPelaChave(action), res);
