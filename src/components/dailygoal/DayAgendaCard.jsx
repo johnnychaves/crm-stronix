@@ -1,6 +1,6 @@
 import { BookOpen, Building2, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PresenceSwitch } from '../ui/PresenceSwitch.jsx';
+import { OutcomePopover } from './OutcomePopover.jsx';
 import { DAILY_GOAL_CATEGORIES } from '../../lib/leads.js';
 import { SOLO_TRAINING_LABEL } from '../../lib/professores.js';
 
@@ -76,7 +76,11 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
                   <span
                     className={cn(
                       'mt-1.5 size-[7px] rounded-full shrink-0',
-                      row.outcome ? 'bg-emerald-500' : isNext ? 'bg-accent-500' : 'bg-slate-300 dark:bg-neutral-600'
+                      row.outcome === 'no_show'
+                        ? 'bg-rose-500'
+                        : row.outcome
+                          ? 'bg-emerald-500'
+                          : isNext ? 'bg-accent-500' : 'bg-slate-300 dark:bg-neutral-600'
                     )}
                   />
                   <span className="flex-1 w-px bg-slate-100 dark:bg-white/[0.06] min-h-[10px]" />
@@ -84,9 +88,11 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
 
                 <div
                   className={cn(
-                    'flex-1 min-w-0 mb-1.5 flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-white/[0.03] border',
-                    isNext ? 'border-accent-400 dark:border-accent-500/40' : 'border-slate-200/70 dark:border-white/[0.06]',
-                    row.isMine && 'border-l-2 border-l-accent-500 rounded-l-none'
+                    // Sem contorno laranja no próximo compromisso (pedido do
+                    // Johnny, 30/09/2026): a hora laranja do trilho já diz qual
+                    // é o próximo. A linha grossa da esquerda marca o que é seu.
+                    'flex-1 min-w-0 mb-1.5 flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.06]',
+                    row.isMine && 'border-l-4 border-l-accent-500 rounded-l-none'
                   )}
                 >
                   <div className="min-w-0 flex-1">
@@ -103,10 +109,13 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
                       {subtitleOf(row)}
                     </div>
                   </div>
-                  <PresenceSwitch
-                    attKey={row.outcome}
+                  <OutcomePopover
+                    compact
+                    outcome={row.outcome}
+                    canUndo
                     saving={savingId === row.id}
-                    onMark={(o) => onMark(row, o)}
+                    title={`${row.categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE ? 'Visita' : 'Aula exp.'} de ${row.name || 'sem nome'} · ${hourLabel(row.scheduledAt)}`}
+                    onPick={(choice) => onMark(row, choice)}
                   />
                 </div>
               </div>

@@ -212,6 +212,17 @@ describe('desfecho corrigido no espelho do lead', () => {
       .toBe('no_show');
   });
 
+  it('a marca de correção da Meta ganha do Compareceu do mesmo dia quando o lead já foi remarcado', () => {
+    // Compareceu às 18h, corrigido para Não compareceu às 19h pela Meta, e a
+    // remarcação levou o lead para outro dia: decide a linha do tempo.
+    const corrigido = visitOutcomesByLead([
+      G('g1', 'v1', 'attended', D(9, 3, 18)),
+      { ...G('g2', 'v1', 'no_show', D(9, 3, 19)), outcomeCorrection: true },
+    ]);
+    expect(effectiveStatus(V('1'), corrigido, mirror({ appointmentScheduledFor: D(9, 4, 18), appointmentOutcome: null })))
+      .toBe('no_show');
+  });
+
   it('reagendado no espelho, ou espelho sem desfecho de outro agendamento, decide a linha do tempo; o cancelamento limpa a data e segue por ela', () => {
     expect(effectiveStatus(V('1'), marks, mirror({ appointmentOutcome: 'rescheduled' }))).toBe('no_show');
     expect(effectiveStatus(V('1'), marks, mirror({ appointmentScheduledFor: D(9, 10, 18), appointmentOutcome: null }))).toBe('no_show');

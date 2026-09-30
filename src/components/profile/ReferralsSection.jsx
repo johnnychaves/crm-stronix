@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { Handshake } from 'lucide-react';
+import { Handshake, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { summarizeReferrals } from '../../lib/referrals.js';
 import { deriveLeadState, getTone } from '../../lib/leadState.js';
@@ -9,6 +9,7 @@ import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { isValidLeadId } from '../../lib/routes.js';
 import { LeadLink } from '../nav/AppLink.jsx';
 import { StateRingAvatar } from '../ui/StateRingAvatar.jsx';
+import { Btn } from '../ui/Btn.jsx';
 
 const fmtDia = (d) => {
   const date = getSafeDateOrNull(d);
@@ -26,13 +27,18 @@ function SummaryBlock({ label, value, accent }) {
 }
 
 // Conteúdo da aba Indicações da ficha do CLIENTE: resumo + lista dos indicados.
-// O link compartilhável vive no cabeçalho da ficha, ao lado do WhatsApp.
+// O menu Indicar vive no cabeçalho da ficha, ao lado do WhatsApp. `onAdd`
+// (opcional) liga o botão de cadastrar indicação à mão; a ficha só passa
+// quando a academia tem o funil Indicações e a pessoa pode editar.
 // O estado de cada indicado é derivado AO VIVO do doc dele (deriveLeadState/
 // isClientLead) — desfazer uma Venda reflete aqui sozinho.
-export function ReferralsSection({ items, loading }) {
+export function ReferralsSection({ items, loading, onAdd = null }) {
   const { contractThresholdDays } = useGeneralConfig();
   const summary = useMemo(() => summarizeReferrals(items || []), [items]);
   const now = new Date();
+  const addButton = onAdd ? (
+    <Btn kind="brand" icon={<UserPlus size={14} />} onClick={onAdd}>Cadastrar indicação</Btn>
+  ) : null;
 
   if (loading && items == null) {
     return (
@@ -49,15 +55,22 @@ export function ReferralsSection({ items, loading }) {
           <Handshake size={22} className="text-emerald-600 dark:text-emerald-400" />
         </div>
         <p className="text-[14px] font-semibold text-slate-900 dark:text-white">Nenhuma indicação ainda</p>
-        <p className="text-[12.5px] text-muted-foreground mt-1 max-w-[400px] mx-auto leading-relaxed">
-          Use o botão “Link de indicação” no topo da ficha para o cliente convidar os amigos, ou cadastre um lead novo com o interruptor “É uma indicação?”. Os indicados aparecem aqui com o andamento de cada um.
+        <p className="text-[12.5px] text-muted-foreground mt-1 max-w-[420px] mx-auto leading-relaxed">
+          {onAdd
+            ? 'Use o botão Indicar, no topo da ficha, para cadastrar as indicações do cliente ou mandar o link para ele convidar os amigos. Também dá para cadastrar um lead novo com o interruptor “É uma indicação?”.'
+            : 'Use o botão Indicar, no topo da ficha, para mandar o link para o cliente convidar os amigos, ou cadastre um lead novo com o interruptor “É uma indicação?”.'}
+          {' '}Os indicados aparecem aqui com o andamento de cada um.
         </p>
+        {addButton && <div className="mt-4 flex justify-center">{addButton}</div>}
       </section>
     );
   }
 
   return (
       <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
+        {addButton && (
+          <div className="px-5 sm:px-8 pt-4 flex justify-end">{addButton}</div>
+        )}
         {/* Resumo */}
         <div className="px-8 py-4 border-b border-border grid grid-cols-2 sm:grid-cols-4 gap-y-3 divide-x divide-slate-100 dark:divide-white/[0.06]">
           <SummaryBlock label="Indicados" value={summary.total} />

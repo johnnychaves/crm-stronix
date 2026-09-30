@@ -1,6 +1,6 @@
 // Confere, com o SDK do Sentry de verdade (não com um beforeSend espião),
-// que a chave do Zap e o telefone do lead não saem das funções da api/ —
-// e prova que a própria verificação enxergaria se saíssem.
+// que a chave do Zap, a chave do Resend e o telefone do lead não saem das
+// funções da api/, e prova que a própria verificação enxergaria se saíssem.
 //
 //   node scripts/verificar-vazamento-sentry.js
 //   node scripts/verificar-vazamento-sentry.js --round=normal     (só a rodada limpa)
@@ -59,6 +59,13 @@ const ESPERADO = 4; // uma chamada, um erro: 4 chamadas na sequência abaixo
 // Marcas exclusivas desta verificação: improvável de aparecer em outro lugar
 // do envelope por acaso, fácil de achar em texto cru.
 const CHAVE = `szk_${'f1e2d3c4'.repeat(6)}`; // 52 chars, formato de generateZapKey (api/_zapAuth.js)
+// Chave do Resend inventada (re_, 8 caracteres, sublinhado e 24 caracteres).
+// Cada erro simulado a repete no texto, como faria uma recusa do Resend que a
+// devolvesse na mensagem. Testa a segunda camada, o mascaramento do
+// sentryScrub: a primeira, o corte na origem, está no envio (api/_mail.js) e
+// não neste handler.
+const CHAVE_RESEND = `re_a1b2c3d4_${'e5f6a7b8'.repeat(3)}`;
+const RECUSA_RESEND = `O Resend recusou a chave ${CHAVE_RESEND}`;
 const TENANT = 'academia-verificacao';
 const TEL_BODY = '5511987654321'; // telefone do lote, no corpo do POST match
 const TEL_QUERY = '5521912345678'; // telefone do GET, na query
@@ -67,6 +74,7 @@ const QUERY_GET = `?tenant=${TENANT}&phone=${TEL_QUERY}`;
 
 const MARCAS = {
   'chave do zap': CHAVE,
+  'chave do resend': CHAVE_RESEND,
   'telefone do lote (corpo)': TEL_BODY,
   'telefone da query (GET)': TEL_QUERY,
   'query inteira do GET': QUERY_GET,
@@ -192,7 +200,7 @@ async function rodarRodada(variante) {
   //     comentário de arquitetura no topo do arquivo.
   async function bancoIndisponivel() {
     await new Promise((ok) => setImmediate(ok));
-    throw new Error('Firestore indisponível (simulado)');
+    throw new Error(`Firestore indisponível (simulado). ${RECUSA_RESEND}`);
   }
 
   async function handlerSimulado(req, res) {
@@ -204,7 +212,7 @@ async function rodarRodada(variante) {
       if (!chave || !tenantId) return res.status(401).json({ error: 'Credencial ausente' });
       if (direto) {
         await new Promise((ok) => setImmediate(ok));
-        throw new Error(`Firestore indisponível (simulado, direto no handler) ${String(phone).length}`);
+        throw new Error(`Firestore indisponível (simulado, direto no handler) ${String(phone).length}. ${RECUSA_RESEND}`);
       }
       await bancoIndisponivel();
       return res.status(200).json({ found: false, phone });
@@ -216,7 +224,7 @@ async function rodarRodada(variante) {
     }
     if (direto) {
       await new Promise((ok) => setImmediate(ok));
-      throw new Error(`Firestore indisponível (simulado, direto no handler) ${phones.length}`);
+      throw new Error(`Firestore indisponível (simulado, direto no handler) ${phones.length}. ${RECUSA_RESEND}`);
     }
     await bancoIndisponivel();
     return res.status(200).json({ found: [] });
@@ -363,7 +371,7 @@ async function orquestrar() {
 
   const tudoOk = normal.ok && sabotagem.ok;
   console.log(tudoOk
-    ? 'Sentry não recebe a chave do Zap nem telefone, e a sabotagem prova que esta verificação enxergaria se recebesse.'
+    ? 'Sentry não recebe a chave do Zap, a chave do Resend nem telefone, e a sabotagem prova que esta verificação enxergaria se recebesse.'
     : 'FALHOU — ver o motivo de cada rodada acima.');
   process.exit(tudoOk ? 0 : 1);
 }

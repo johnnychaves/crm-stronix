@@ -14,8 +14,21 @@ const PATTERNS = [
   // nada que não seja a própria chave. Primeiro da lista, antes até do CPF,
   // pela mesma razão do CPF vir primeiro: quanto mais específico, mais cedo.
   [/\bszk_[0-9a-f]{48}\b/g, '[chave]'],
+  // Chave do Resend: re_ mais 16 ou mais letras, números ou sublinhados. O envio
+  // (api/_mail.js) já corta a chave na origem, e este padrão é a segunda camada,
+  // como o da chave do Zap. O \b na frente deixa de fora o re_ que só termina
+  // uma palavra (feature_flags_..., where_clause_...). Precisa vir antes do
+  // padrão de documento: 11 dígitos seguidos dentro da chave não podem virar
+  // [documento] e deixar o resto dela em claro.
+  [/\bre_[A-Za-z0-9_]{16,}/g, '[chave]'],
   [/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g, '[cpf]'],
-  [/\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g, '[email]'],
+  // A parte antes do @ vai até 64 caracteres, o máximo que o padrão de e-mail
+  // aceita (RFC 5321). Sem o limite, num texto longo sem espaço cada começo de
+  // palavra lia o resto do texto atrás de um @, e 80 KB de "a.a.a." levavam
+  // 10 s. Com ele, o tempo cresce na proporção do texto, e o resultado só muda
+  // quando a parte antes do @ passa de 64 caracteres. O domínio fica sem
+  // limite, porque no máximo 64 começos chegam a cada @.
+  [/\b[\w.+-]{1,64}@[\w-]+\.[\w.-]+\b/g, '[email]'],
   // O caractere anterior é capturado e reemitido em vez de usar lookbehind.
   // Lookbehind só existe no Safari a partir do 16.4, e um erro de sintaxe
   // aqui derrubaria o bundle inteiro no boot, não só o mascaramento. Um \b
