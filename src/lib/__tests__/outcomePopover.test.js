@@ -59,6 +59,18 @@ describe('OutcomePopover', () => {
     expect(document.querySelector('[data-outcome-item]')).toBeNull();
   });
 
+  it('compacto (Agenda de hoje): "Marcar" sem desfecho e só o ícone com desfecho, com o texto inteiro no rótulo', async () => {
+    await montar({ compact: true, title: 'Visita de Ana · 18:00', onPick: () => {} });
+    expect(gatilho().textContent.trim()).toBe('Marcar');
+    expect(gatilho().getAttribute('aria-label')).toBe('Marcar desfecho: Visita de Ana · 18:00');
+    await act(async () => { root.unmount(); });
+    document.body.innerHTML = '';
+    await montar({ compact: true, outcome: 'no_show', onPick: () => {} });
+    expect(gatilho().textContent.trim()).toBe('');
+    expect(gatilho().getAttribute('aria-label')).toBe('Não compareceu. Abrir para corrigir');
+    expect(gatilho().getAttribute('title')).toBe('Não compareceu');
+  });
+
   it('gravando, o botão fica desligado', async () => {
     await montar({ saving: true, onPick: () => {} });
     expect(gatilho().disabled).toBe(true);

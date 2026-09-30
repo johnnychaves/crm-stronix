@@ -108,7 +108,7 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
                     </div>
                   </div>
                   <OutcomePopover
-                    size="sm"
+                    compact
                     outcome={row.outcome}
                     canUndo
                     saving={savingId === row.id}

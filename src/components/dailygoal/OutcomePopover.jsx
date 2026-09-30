@@ -11,6 +11,11 @@ import { outcomeMenuItems, outcomeTriggerLabel } from '../../lib/outcomeMenu.js'
 // Substituiu o switch de presença, cujo gesto de segurar para desmarcar
 // ninguém descobria. O mesmo componente serve a Agenda de hoje, o card
 // "A fazer", o Próximo compromisso e o "Feitos hoje".
+//
+// `compact` é para a Agenda de hoje, onde a coluna é estreita e o botão
+// largo cortava o nome da pessoa: sem desfecho o botão diz só "Marcar", e com
+// desfecho mostra só o ícone verde ou vermelho. O texto inteiro continua no
+// aria-label e na dica do mouse.
 
 const TRIGGER_TONE = {
   attended: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30 dark:hover:bg-emerald-500/15',
@@ -33,6 +38,7 @@ export function OutcomePopover({
   canUndo = false,
   saving = false,
   size = 'md',
+  compact = false,
   className,
   onPick,
 }) {
@@ -40,6 +46,7 @@ export function OutcomePopover({
   const marked = outcome === 'attended' || outcome === 'no_show' ? outcome : null;
   const items = outcomeMenuItems({ outcome: marked, withMore, canUndo });
   const label = outcomeTriggerLabel(marked);
+  const shownLabel = compact ? (marked ? null : 'Marcar') : label;
 
   const pick = (id) => {
     setOpen(false);
@@ -53,20 +60,23 @@ export function OutcomePopover({
         disabled={saving}
         // Com o título, o leitor de tela diferencia um botão do outro na lista.
         aria-label={marked ? `${label}. Abrir para corrigir` : (title ? `Marcar desfecho: ${title}` : 'Marcar desfecho')}
+        title={compact ? (marked ? label : 'Marcar desfecho') : undefined}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-lg border font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-60 disabled:cursor-default',
+          'inline-flex items-center rounded-lg border font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-60 disabled:cursor-default',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
-          size === 'sm' ? 'h-7 px-2 text-[11.5px]' : 'h-8 px-3 text-[12px]',
+          compact
+            ? 'h-7 px-1.5 gap-1 text-[11.5px]'
+            : size === 'sm' ? 'h-7 px-2 gap-1.5 text-[11.5px]' : 'h-8 px-3 gap-1.5 text-[12px]',
           TRIGGER_TONE[marked || 'none'],
           className
         )}
       >
         {marked === 'attended' && <Check size={13} />}
         {marked === 'no_show' && <X size={13} />}
-        <span>{label}</span>
+        {shownLabel && <span>{shownLabel}</span>}
         <ChevronDown size={13} className="opacity-60" />
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={6} aria-label={title || 'Desfecho'} className="w-56 p-2 rounded-xl">
+      <PopoverContent align="end" sideOffset={6} aria-label={title || 'Desfecho'} className="w-56 p-2 rounded-xl border-border">
         {title && (
           <div className="px-1.5 pb-1.5 text-[11.5px] text-muted-foreground truncate">{title}</div>
         )}
