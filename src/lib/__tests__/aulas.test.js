@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, pickMirrorAppointment, aulaRecordFields, rescheduleRecordPlan } from '../aulas.js';
+import {
+  AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, pickMirrorAppointment, aulaRecordFields, rescheduleRecordPlan,
+  recordPlanFor, recordMatchesAppointment
+} from '../aulas.js';
 
 describe('outcomeToAulaStatus', () => {
   it('mapeia os desfechos que resolvem a aula', () => {
@@ -234,5 +237,107 @@ describe('rescheduleRecordPlan', () => {
       .toEqual({ close: null, upsertVisita: true });
     expect(rescheduleRecordPlan({ previousType: undefined, finalType: 'aula_experimental', afterNoShow: true }))
       .toEqual({ close: null, upsertVisita: false });
+  });
+});
+
+// Agendar de novo depois de um desfecho: o registro do agendamento que teve
+// "Compareceu" ou "Não veio" fecha com esse desfecho antes de o agendamento
+// novo abrir outro. Sem isso, o registro da visita ia para a data nova, e o
+// Dashboard CRM perdia a falta ou o comparecimento no mês original.
+describe('rescheduleRecordPlan com o desfecho que o lead já tem', () => {
+  const SET_28 = new Date(2026, 8, 28, 18, 0);
+  const OUT_06 = new Date(2026, 9, 6, 18, 0);
+  const plano = (extra) => rescheduleRecordPlan({
+    previousType: 'visita', finalType: 'visita', previousAt: SET_28, finalAt: OUT_06, ...extra,
+  });
+
+  it('visita com "Não veio" e outra visita em outro dia: a que faltou fecha como falta', () => {
+    expect(plano({ outcome: 'no_show' })).toEqual({ close: { type: 'visita', status: 'no_show' }, upsertVisita: true });
+  });
+
+  it('visita com "Compareceu" e outra visita em outro dia: a que aconteceu fecha como compareceu', () => {
+    expect(plano({ outcome: 'attended' })).toEqual({ close: { type: 'visita', status: 'attended' }, upsertVisita: true });
+  });
+
+  it('o mesmo tipo no mesmo instante: o desfecho foi marcado antes da hora e o registro fica em aberto', () => {
+    expect(plano({ outcome: 'no_show', finalAt: new Date(2026, 8, 28, 18, 0) })).toEqual({ close: null, upsertVisita: true });
+    expect(plano({ outcome: 'attended', finalAt: { toDate: () => new Date(2026, 8, 28, 18, 0) } }))
+      .toEqual({ close: null, upsertVisita: true });
+  });
+
+  it('outro tipo no mesmo instante não é o mesmo agendamento: fecha com o desfecho', () => {
+    expect(plano({ outcome: 'no_show', finalType: 'aula_experimental', finalAt: SET_28 }))
+      .toEqual({ close: { type: 'visita', status: 'no_show' }, upsertVisita: false });
+  });
+
+  it('na troca de tipo, o desfecho ganha do cancelado: a visita que aconteceu não vira cancelada', () => {
+    expect(plano({ outcome: 'attended', finalType: 'aula_experimental' }))
+      .toEqual({ close: { type: 'visita', status: 'attended' }, upsertVisita: false });
+    expect(rescheduleRecordPlan({
+      previousType: 'aula_experimental', finalType: 'visita', outcome: 'no_show', previousAt: SET_28, finalAt: OUT_06,
+    })).toEqual({ close: { type: 'aula', status: 'no_show' }, upsertVisita: true });
+  });
+
+  it('o "Não veio" que a Meta acabou de gravar ganha do desfecho antigo do lead (a correção de "Compareceu" para "Não compareceu")', () => {
+    expect(plano({ afterNoShow: true, outcome: 'attended' })).toEqual({ close: { type: 'visita', status: 'no_show' }, upsertVisita: true });
+  });
+
+  it('"Cancelou", "rescheduled" e sem desfecho não fecham pelo desfecho: vale a regra da troca de tipo', () => {
+    for (const outcome of ['cancelled', 'rescheduled', null, undefined]) {
+      expect(plano({ outcome })).toEqual({ close: null, upsertVisita: true });
+      expect(plano({ outcome, finalType: 'aula_experimental' }))
+        .toEqual({ close: { type: 'visita', status: 'cancelled' }, upsertVisita: false });
+    }
+  });
+
+  it('sem agendamento anterior, nada fecha, com ou sem desfecho', () => {
+    expect(plano({ previousType: null, outcome: 'no_show' })).toEqual({ close: null, upsertVisita: true });
+  });
+});
+
+describe('recordPlanFor: a regra lida do lead', () => {
+  const SET_28 = new Date(2026, 8, 28, 18, 0);
+  const OUT_06 = new Date(2026, 9, 6, 18, 0);
+  const lead = (extra = {}) => ({
+    id: 'L1', appointmentType: 'visita', appointmentScheduledFor: { toDate: () => SET_28 }, appointmentOutcome: 'no_show', ...extra,
+  });
+
+  it('usa o tipo, o desfecho e o instante do agendamento do lead, com a data como o Firestore devolve', () => {
+    expect(recordPlanFor(lead(), { type: 'visita', at: OUT_06 }))
+      .toEqual({ close: { type: 'visita', status: 'no_show' }, upsertVisita: true });
+    expect(recordPlanFor(lead(), { type: 'visita', at: SET_28 })).toEqual({ close: null, upsertVisita: true });
+  });
+
+  it('lead antigo com "Visita" no tipo e a data só no próximo contato também entra na regra', () => {
+    const antigo = { id: 'L2', appointmentType: 'Visita', nextFollowUp: SET_28, appointmentOutcome: 'attended' };
+    expect(recordPlanFor(antigo, { type: 'visita', at: OUT_06 }))
+      .toEqual({ close: { type: 'visita', status: 'attended' }, upsertVisita: true });
+  });
+
+  it('repassa o afterNoShow do Remarcar', () => {
+    expect(recordPlanFor(lead({ appointmentOutcome: null }), { type: 'visita', at: SET_28, afterNoShow: true }))
+      .toEqual({ close: { type: 'visita', status: 'no_show' }, upsertVisita: true });
+  });
+
+  it('lead sem agendamento não fecha nada', () => {
+    expect(recordPlanFor({ id: 'L3' }, { type: 'aula_experimental', at: OUT_06 })).toEqual({ close: null, upsertVisita: false });
+  });
+});
+
+describe('recordMatchesAppointment: a guarda da data', () => {
+  const SET_28 = new Date(2026, 8, 28, 18, 0);
+
+  it('registro da mesma data do agendamento do lead vale, com Date ou Timestamp dos dois lados', () => {
+    expect(recordMatchesAppointment({ scheduledFor: SET_28 }, { appointmentScheduledFor: { toDate: () => new Date(SET_28) } })).toBe(true);
+  });
+
+  it('registro de outra data não vale: pode ser histórico antigo', () => {
+    expect(recordMatchesAppointment({ scheduledFor: new Date(2026, 8, 20, 18, 0) }, { appointmentScheduledFor: SET_28 })).toBe(false);
+  });
+
+  it('sem uma das duas datas não há o que comparar, e vale', () => {
+    expect(recordMatchesAppointment({ scheduledFor: null }, { appointmentScheduledFor: SET_28 })).toBe(true);
+    expect(recordMatchesAppointment({ scheduledFor: SET_28 }, {})).toBe(true);
+    expect(recordMatchesAppointment(null, null)).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
 // Helpers do histórico de aulas experimentais (coleção stronix_aulas). Puros
 // aqui; a escrita no Firestore fica em aulasWrites.js.
-import { getSafeDateOrNull } from './dates.js';
+import { getSafeDateOrNull, normalizeAppointmentType } from './dates.js';
+import { getLeadAppointmentType, getLeadAppointmentDate } from './leads.js';
 
 export const AULA_STATUS = { AGENDADA: 'agendada', ATTENDED: 'attended', NO_SHOW: 'no_show', CANCELLED: 'cancelled' };
 
@@ -32,23 +33,72 @@ const recordTypeOf = (appointmentType) => {
   return null;
 };
 
-// O que o Remarcar da Meta Diária faz em stronix_aulas para o registro seguir
-// o agendamento do lead, como o assistente da ficha já faz. Até 2026-09-29 só
-// a aula acompanhava, e a visita remarcada ficava com a data velha no
-// registro: o Dashboard CRM a contava no dia antigo e perdia o comparecimento.
+// Desfecho do lead que fecha o registro: só "Compareceu" e "Não veio". O
+// "Cancelou" apaga o agendamento do lead, e "rescheduled" é dado antigo, sem
+// desfecho.
+const closingStatusOf = (outcome) =>
+  (outcome === 'attended' || outcome === 'no_show' ? outcomeToAulaStatus(outcome) : null);
+
+const sameInstant = (a, b) => {
+  const x = getSafeDateOrNull(a);
+  const y = getSafeDateOrNull(b);
+  return Boolean(x && y) && x.getTime() === y.getTime();
+};
+
+// O que um agendamento novo faz em stronix_aulas para o registro seguir o
+// agendamento do lead. Vale para o Remarcar da Meta Diária, o assistente da
+// ficha e o agendamento pelo Stronizap. O desfecho da visita não é gravado no
+// registro quando é marcado: mover o registro de uma visita com desfecho para
+// a data nova apagaria a falta ou o comparecimento do Dashboard CRM no mês
+// original.
 //   close: o registro em aberto do tipo anterior a fechar, ou null.
-//     - depois do "Não veio", fecha como falta: o desfecho da visita não é
-//       gravado no registro, e mover o registro apagaria a falta do painel;
-//     - na troca de tipo, fecha como cancelado: aquele agendamento não
-//       acontece mais.
+//     - depois do "Não veio" (afterNoShow, o Remarcar que a Meta abre logo em
+//       seguida), fecha como falta;
+//     - com o desfecho que o lead já tem ("Compareceu" ou "Não veio"), fecha
+//       com esse desfecho, a não ser que o agendamento novo seja o mesmo (mesmo
+//       tipo e mesmo instante): aí o desfecho foi marcado antes da hora, o
+//       agendamento continua e o registro fica em aberto;
+//     - na troca de tipo sem desfecho, fecha como cancelado: aquele
+//       agendamento não acontece mais.
 //   upsertVisita: a visita do tipo novo move o registro aberto ou cria um.
 //     A aula continua com o upsertScheduledAula de sempre.
-export function rescheduleRecordPlan({ previousType, finalType, afterNoShow }) {
+export function rescheduleRecordPlan({
+  previousType, finalType, afterNoShow = false, outcome = null, previousAt = null, finalAt = null,
+}) {
   const previous = recordTypeOf(previousType);
+  const outcomeStatus = closingStatusOf(outcome);
+  const sameAppointment = previousType === finalType && sameInstant(previousAt, finalAt);
   let close = null;
   if (previous && afterNoShow) close = { type: previous, status: AULA_STATUS.NO_SHOW };
+  else if (previous && outcomeStatus && !sameAppointment) close = { type: previous, status: outcomeStatus };
   else if (previous && previousType !== finalType) close = { type: previous, status: AULA_STATUS.CANCELLED };
   return { close, upsertVisita: finalType === 'visita' };
+}
+
+// A regra acima para um lead: o tipo, o desfecho e o instante do agendamento
+// que ele tem hoje contra o agendamento novo. É a entrada do assistente da
+// ficha (recordNewAppointment, em aulasWrites.js) e do Stronizap
+// (scheduleRecordChanges, em api/_zapSchedule.js). Os tipos passam por
+// normalizeAppointmentType porque lead antigo pode guardar "Visita".
+export function recordPlanFor(lead, { type, at, afterNoShow = false }) {
+  return rescheduleRecordPlan({
+    previousType: normalizeAppointmentType(getLeadAppointmentType(lead)),
+    finalType: normalizeAppointmentType(type),
+    afterNoShow,
+    outcome: lead?.appointmentOutcome ?? null,
+    previousAt: getLeadAppointmentDate(lead),
+    finalAt: at,
+  });
+}
+
+// O registro em aberto é o do agendamento que o lead tem hoje: a guarda do
+// applyOutcomeToAula e do closeOpenAppointment. Registro com data diferente da
+// do agendamento do lead pode ser histórico antigo e não é fechado. Sem uma
+// das duas datas não há o que comparar, e vale.
+export function recordMatchesAppointment(record, lead) {
+  const registro = getSafeDateOrNull(record?.scheduledFor);
+  const compromisso = getSafeDateOrNull(lead?.appointmentScheduledFor);
+  return !registro || !compromisso || registro.getTime() === compromisso.getTime();
 }
 
 // A aula que leva o crédito da conversão: a atendida de maior scheduledFor.
