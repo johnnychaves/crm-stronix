@@ -26,7 +26,11 @@ import {
   buildLeadOptions, readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
   buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError
 } from './_zapLead.js';
-import { readScheduleOptionsBody, buildScheduleOptions } from './_zapSchedule.js';
+import {
+  SCHEDULE_LIMIT, ZAP_SCHEDULE_MESSAGES, unitsView, readScheduleOptionsBody, buildScheduleOptions, isDocId,
+  readScheduleBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
+  isOpenAulaRecord, pickOpenVisitaId, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody
+} from './_zapSchedule.js';
 import { contactOf } from '../src/lib/guardian.js';
 
 const LEADS_PATH = 'stronix_leads';
@@ -38,10 +42,11 @@ const CONFIG_PATH = 'stronix_config';
 const CONFIG_GENERAL_ID = 'general';
 const USERS_PATH = 'stronix_users';
 const INTERACTIONS_PATH = 'stronix_interactions';
-// Listas do agendamento pelo Stronizap.
+// Listas e registro do agendamento pelo Stronizap.
 const UNITS_PATH = 'stronix_units';
 const MODALITIES_PATH = 'stronix_modalities';
 const PROFESSORS_PATH = 'stronix_professores';
+const AULAS_PATH = 'stronix_aulas';
 // Catálogos do formulário do cadastro, na ordem em que readCatalogs devolve.
 const CATALOG_PATHS = ['stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses'];
 
@@ -206,6 +211,7 @@ async function handlePost(req, res) {
   if (action === 'lead-options') return handleLeadOptions(req, res);
   if (action === 'create-lead') return handleCreateLead(req, res);
   if (action === 'schedule-options') return handleScheduleOptions(req, res);
+  if (action === 'schedule') return handleSchedule(req, res);
 
   try {
     const auth = await verifyRequest(req);
@@ -533,5 +539,84 @@ async function handleScheduleOptions(req, res) {
     );
   } catch (e) {
     throw scrubbedError('schedule-options', e);
+  }
+}
+
+// Agenda a visita ou a aula experimental, gravando o que o assistente da
+// ficha grava, numa transação só. Responde 201 com o cartão do número já
+// atualizado e o agendamento.
+async function handleSchedule(req, res) {
+  try {
+    const access = await openByKey(req);
+    if (access.refusal) return responder(res, access.refusal);
+    const { tenantId } = access;
+
+    const read = readScheduleBody(req.body);
+    if (read.refusal) return responder(res, read.refusal);
+    const { matchKey, email, actorName, channelName, at, schedule } = read.value;
+
+    const limit = await checkRateLimit(`zap-schedule:${tenantId}`, SCHEDULE_LIMIT);
+    if (!limit.ok) return responder(res, refusal(429, 'limite', ZAP_SCHEDULE_MESSAGES.rateLimited));
+
+    const [team, catalogs] = await Promise.all([readTeam(tenantId), readScheduleCatalogs(tenantId)]);
+    const member = findTeamMember(team, email);
+    if (!member) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+    // O nome de quem agendou é o do Stronilead, como no cadastro. O que o
+    // Stronizap manda só entra se o cadastro da equipe não tiver nome.
+    const actor = { ...member, name: member.name || actorName };
+
+    const agora = new Date();
+    const problem = checkScheduleCatalog(schedule, catalogs) || checkFuture(at, agora);
+    if (problem) return responder(res, problem);
+
+    const serverTime = admin.firestore.FieldValue.serverTimestamp();
+    const increment = admin.firestore.FieldValue.increment(1);
+    const leadRef = leadsCollection(tenantId).doc(schedule.leadId);
+    const aulas = academyCollection(tenantId, AULAS_PATH);
+    const interactionRef = academyCollection(tenantId, INTERACTIONS_PATH).doc();
+
+    // Conferência do lead, do agendamento repetido e gravação na MESMA
+    // transação: dois cliques, duas pessoas ou o "Tentar de novo" depois de
+    // uma resposta perdida gravam uma vez só e dão um ponto só na Meta.
+    const outcome = await adminDb.runTransaction(async (tx) => {
+      const leadSnap = await tx.get(leadRef);
+      const lead = leadSnap.exists ? leadDoDoc(leadSnap) : null;
+      if (!leadBelongsToNumber(lead, matchKey, agora)) return { notTheLead: true };
+      if (hasSameAppointment(lead, { type: schedule.type, at })) return { repeated: lead };
+
+      // O registro em aberto que o assistente reaproveitaria: a aula do
+      // currentAulaId ainda agendada, ou a visita agendada do lead.
+      let openRecordId = null;
+      if (schedule.type === 'aula_experimental') {
+        if (isDocId(lead.currentAulaId)) {
+          const aulaSnap = await tx.get(aulas.doc(lead.currentAulaId));
+          if (aulaSnap.exists && isOpenAulaRecord(aulaSnap.data())) openRecordId = lead.currentAulaId;
+        }
+      } else {
+        openRecordId = pickOpenVisitaId(docsOf(await tx.get(aulas.where('leadId', '==', lead.id))));
+      }
+      const newRecordRef = openRecordId ? null : aulas.doc();
+      const writes = buildScheduleWrites({
+        lead, actor, schedule, at, professors: catalogs.professors, channelName,
+        openRecordId, newRecordId: newRecordRef ? newRecordRef.id : null, serverTime, increment
+      });
+      if (openRecordId) tx.update(aulas.doc(openRecordId), writes.record.update);
+      else tx.create(newRecordRef, writes.record.create);
+      tx.create(interactionRef, writes.interaction);
+      tx.update(leadRef, writes.leadPatch);
+      return { scheduled: { ...lead, ...writes.leadPatch } };
+    });
+
+    if (outcome.notTheLead) {
+      return responder(res, refusal(422, 'lead_nao_confere', ZAP_SCHEDULE_MESSAGES.notTheLead));
+    }
+    const units = unitsView(catalogs.units);
+    const card = await cardFor(tenantId, matchKey);
+    if (outcome.repeated) {
+      return res.status(409).json(alreadyScheduledBody({ card, appointment: appointmentDetailOf(outcome.repeated, units) }));
+    }
+    return res.status(201).json({ card, appointment: appointmentDetailOf(outcome.scheduled, units) });
+  } catch (e) {
+    throw scrubbedError('schedule', e);
   }
 }

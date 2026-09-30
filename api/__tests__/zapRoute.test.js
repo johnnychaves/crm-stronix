@@ -1787,3 +1787,380 @@ describe('POST /api/zap com action schedule-options', () => {
     expect(String(erro.stack)).not.toContain(zapMatchKey(MARIANA));
   });
 });
+
+// Um registro de stronix_aulas como o assistente grava.
+const registro = (id, extra = {}) => ({
+  id, type: 'visita', unit: 'Centro', leadId: 'L1', leadName: 'Mariana Souza', professorId: null, professorName: null,
+  soloTraining: false, modality: null, scheduledFor: ts(new Date('2026-09-30T21:00:00.000Z')), status: 'agendada',
+  outcomeAt: null, converted: false, convertedAt: null, consultantId: 'u-ana', consultantAuthUid: 'auth-ana',
+  consultantName: 'Ana Souza', ...extra
+});
+
+// Pedido de agendamento da Ana: visita da Mariana na quinta, 01/10, às 18:00.
+// `schedule` mexe nos campos do agendamento; o resto troca campos do corpo.
+const pedidoAgenda = ({ schedule = {}, ...extra } = {}) => ({
+  method: 'POST',
+  headers: { 'x-stronizap-key': chave },
+  body: {
+    action: 'schedule',
+    tenant: TENANT,
+    phone: MARIANA,
+    actor: { email: ANA.email, name: 'Ana' },
+    channelName: 'Recepção',
+    schedule: {
+      leadId: 'L1', type: 'visita', unit: 'Centro', modality: null, professorId: null, soloTraining: false,
+      quantity: null, date: '2026-10-01', time: '18:00', note: 'Vem depois do trabalho.', ...schedule
+    },
+    ...extra
+  }
+});
+// Aula experimental de pilates com a Carla, na sexta, 02/10, às 19:00.
+const AULA_DA_CARLA = {
+  type: 'aula_experimental', unit: null, modality: 'Pilates', professorId: 'p1', soloTraining: false,
+  quantity: 1, date: '2026-10-02', time: '19:00', note: null
+};
+
+const aulasDaAcademia = () => banco.aulas[TENANT] ?? [];
+const interacoesDaAcademia = () => banco.interacoes[TENANT] ?? [];
+const leadDaAcademia = (id) => leadsDaAcademia().find((l) => l.id === id);
+
+describe('POST /api/zap com action schedule', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(AGORA);
+    zerarBanco();
+    academiaComEquipe();
+    banco.leads[TENANT] = [marianaLead()];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  const QUINTA_18H = new Date('2026-10-01T21:00:00.000Z');
+  const SEXTA_19H = new Date('2026-10-02T22:00:00.000Z');
+
+  it('visita nova: o registro, a interação e o lead, numa gravação só, e o cartão já atualizado', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(201);
+    const [rec] = aulasDaAcademia();
+    expect(rec).toEqual({
+      id: expect.any(String), type: 'visita', unit: 'Centro', leadId: 'L1', leadName: 'Mariana Souza',
+      professorId: null, professorName: null, soloTraining: false, modality: null, scheduledFor: QUINTA_18H,
+      status: 'agendada', outcomeAt: null, converted: false, convertedAt: null,
+      consultantId: 'u-ana', consultantAuthUid: 'auth-ana', consultantName: 'Ana Souza', createdAt: HORA
+    });
+    expect(interacoesDaAcademia()).toEqual([{
+      id: expect.any(String),
+      leadId: 'L1',
+      leadName: 'Mariana Souza',
+      // O nome vem do Stronilead, e não do "Ana" que o Stronizap mandou.
+      consultantName: 'Ana Souza',
+      leadConsultantId: 'u-ana',
+      leadConsultantAuthUid: 'auth-ana',
+      actorId: 'u-ana',
+      actorAuthUid: 'auth-ana',
+      createdAt: HORA,
+      text: '🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: Vem depois do trabalho.',
+      type: 'note',
+      volumeKind: 'visita',
+      via: 'stronizap',
+      zapChannelName: 'Recepção'
+    }]);
+    expect(leadDaAcademia('L1')).toMatchObject({
+      status: 'Primeiro contato',
+      interactionsCount: 4,
+      lastInteractionAt: HORA,
+      nextFollowUp: QUINTA_18H,
+      nextFollowUpType: 'Visita',
+      nextFollowUpNote: 'Vem depois do trabalho.',
+      appointmentType: 'visita',
+      appointmentScheduledFor: QUINTA_18H,
+      appointmentUnit: 'Centro',
+      appointmentModality: null,
+      trialClassesPlanned: null,
+      appointmentOutcome: null,
+      currentAulaId: null
+    });
+    expect(res.body).toEqual({
+      card: expect.objectContaining({
+        found: true, leadId: 'L1', kind: 'lead',
+        appointment: { type: 'visita', at: '2026-10-01T21:00:00.000Z', outcome: null }
+      }),
+      appointment: {
+        leadId: 'L1', leadName: 'Mariana Souza', type: 'visita', at: '2026-10-01T21:00:00.000Z',
+        unit: 'Centro', unitAddress: 'Rua Garibaldi, 1200', modality: null, professorName: null,
+        soloTraining: false, quantity: null, outcome: null
+      }
+    });
+    expect(limitador.chamadas).toEqual([{ chave: 'zap-schedule:academia-teste', opcoes: { limit: 60, windowMs: 3600000 } }]);
+  });
+
+  it('remarcar visita: o registro em aberto troca de data, o desfecho anterior sai e a linha do tempo ganha outro registro', async () => {
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'visita', appointmentScheduledFor: ts(new Date('2026-09-30T21:00:00.000Z')),
+      appointmentUnit: 'Zona Sul', appointmentOutcome: 'no_show', appointmentOutcomeAt: ts(new Date('2026-09-28T21:00:00.000Z'))
+    })];
+    banco.aulas[TENANT] = [
+      registro('v-velha', { status: 'no_show', scheduledFor: ts(new Date('2026-09-20T21:00:00.000Z')) }),
+      registro('v-aberta', { unit: 'Zona Sul' })
+    ];
+    const res = resposta();
+
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(aulasDaAcademia()).toHaveLength(2);
+    expect(aulasDaAcademia().find((a) => a.id === 'v-aberta')).toMatchObject({ unit: 'Centro', scheduledFor: QUINTA_18H, status: 'agendada' });
+    expect(aulasDaAcademia().find((a) => a.id === 'v-velha').status).toBe('no_show');
+    expect(leadDaAcademia('L1')).toMatchObject({
+      appointmentScheduledFor: QUINTA_18H, appointmentUnit: 'Centro', appointmentOutcome: null, appointmentOutcomeAt: null
+    });
+    expect(interacoesDaAcademia()).toHaveLength(1);
+  });
+
+  it('aula nova: o registro leva o professor, e o lead passa a apontar para ele', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), res);
+
+    expect(res.statusCode).toBe(201);
+    const [rec] = aulasDaAcademia();
+    expect(rec).toMatchObject({
+      type: 'aula', unit: null, professorId: 'p1', professorName: 'Carla Dias', modality: 'Pilates',
+      soloTraining: false, scheduledFor: SEXTA_19H, status: 'agendada'
+    });
+    expect(leadDaAcademia('L1')).toMatchObject({
+      appointmentType: 'aula_experimental', nextFollowUpType: 'Aula Experimental', appointmentModality: 'Pilates',
+      appointmentProfessorId: 'p1', appointmentProfessorName: 'Carla Dias', trialClassesPlanned: 1,
+      appointmentUnit: null, currentAulaId: rec.id
+    });
+    expect(interacoesDaAcademia()[0]).toMatchObject({
+      text: '🔔 Aula Experimental agendada (Pilates · 1 aula) · Carla Dias p/ 02/10/2026, 19:00.',
+      volumeKind: 'aula_experimental'
+    });
+    expect(res.body.appointment).toMatchObject({
+      type: 'aula_experimental', at: '2026-10-02T22:00:00.000Z', modality: 'Pilates', professorName: 'Carla Dias', quantity: 1
+    });
+  });
+
+  it('aula no registro do currentAulaId ainda agendada: o mesmo registro é atualizado', async () => {
+    banco.leads[TENANT] = [marianaLead({ currentAulaId: 'a-aberta' })];
+    banco.aulas[TENANT] = [registro('a-aberta', { type: 'aula', unit: null, professorId: 'p2', professorName: 'Rafael Moura', modality: 'Musculação' })];
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, quantity: 2 } }), resposta());
+
+    expect(aulasDaAcademia()).toHaveLength(1);
+    expect(aulasDaAcademia()[0]).toMatchObject({
+      id: 'a-aberta', professorId: 'p1', professorName: 'Carla Dias', modality: 'Pilates', scheduledFor: SEXTA_19H
+    });
+    expect(leadDaAcademia('L1')).toMatchObject({ currentAulaId: 'a-aberta', trialClassesPlanned: 2 });
+    expect(interacoesDaAcademia()[0].text).toBe('🔔 Aula Experimental agendada (Pilates · 2 aulas) · Carla Dias p/ 02/10/2026, 19:00.');
+  });
+
+  it('aula do currentAulaId já resolvida: nasce outro registro', async () => {
+    banco.leads[TENANT] = [marianaLead({ currentAulaId: 'a-feita' })];
+    banco.aulas[TENANT] = [registro('a-feita', { type: 'aula', status: 'attended' })];
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), resposta());
+
+    expect(aulasDaAcademia()).toHaveLength(2);
+    const nova = aulasDaAcademia().find((a) => a.id !== 'a-feita');
+    expect(leadDaAcademia('L1').currentAulaId).toBe(nova.id);
+    expect(aulasDaAcademia().find((a) => a.id === 'a-feita').status).toBe('attended');
+  });
+
+  it('quem treina sozinho: a aula vai sem professor', async () => {
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, professorId: null, soloTraining: true } }), resposta());
+
+    expect(aulasDaAcademia()[0]).toMatchObject({ professorId: null, professorName: null, soloTraining: true });
+    expect(interacoesDaAcademia()[0].text).toBe('🔔 Aula Experimental agendada (Pilates · 1 aula) · Treina sozinho p/ 02/10/2026, 19:00.');
+  });
+
+  it('o gestor agenda no lead da Ana: ele é o autor, e a Ana continua dona do lead e do registro', async () => {
+    await handler(pedidoAgenda({ actor: { email: JOHNNY.email } }), resposta());
+
+    expect(interacoesDaAcademia()[0]).toMatchObject({
+      consultantName: 'Johnny', actorId: 'u-johnny', actorAuthUid: 'auth-johnny', leadConsultantId: 'u-ana'
+    });
+    expect(aulasDaAcademia()[0]).toMatchObject({ consultantId: 'u-ana', consultantName: 'Ana Souza' });
+    expect(leadDaAcademia('L1').consultantId).toBe('u-ana');
+  });
+
+  it('menor de quem o número é responsável: agenda no lead dele e devolve o cartão do responsável', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza', { consultantId: 'u-bruno', consultantName: 'Bruno Lima', consultantAuthUid: 'auth-bruno' })];
+    const res = resposta();
+
+    await handler(pedidoAgenda({ phone: MAE, schedule: { leadId: 'k1' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.card).toMatchObject({ found: true, kind: 'responsavel', name: 'Maria Souza' });
+    expect(res.body.card.wards[0]).toMatchObject({ leadId: 'k1', appointment: { type: 'visita', at: '2026-10-01T21:00:00.000Z' } });
+    expect(interacoesDaAcademia()[0]).toMatchObject({ leadId: 'k1', leadConsultantId: 'u-bruno', actorId: 'u-ana' });
+  });
+
+  it.each([
+    ['de outro número', () => { banco.leads[TENANT].push({ ...marianaLead(), id: 'L7', zapMatchKey: zapMatchKey(TELEFONE) }); }, 'L7'],
+    ['que não existe', () => {}, 'nao-existe'],
+    ['que fez 18 anos com WhatsApp próprio', () => {
+      banco.leads[TENANT].push(menorDe('k9', 'Adulto', { birthDate: ts(new Date(2000, 0, 10)), whatsapp: '(11) 9 5555-4444' }));
+    }, 'k9']
+  ])('lead %s é recusado, sem gravar nada', async (_, preparar, leadId) => {
+    preparar();
+    const res = resposta();
+
+    await handler(pedidoAgenda({ phone: leadId === 'k9' ? MAE : MARIANA, schedule: { leadId } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({ error: 'lead_nao_confere', message: 'Esse cadastro não é deste número no Stronilead.' });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('o mesmo agendamento de novo: 409 com o cartão e o agendamento, sem gravar e sem outro ponto', async () => {
+    await handler(pedidoAgenda(), resposta());
+    const gravacoes = banco.gravacoes.length;
+    const res = resposta();
+
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      error: 'ja_agendado',
+      message: 'Esse agendamento já estava no Stronilead.',
+      card: expect.objectContaining({ found: true, leadId: 'L1' }),
+      appointment: expect.objectContaining({ leadId: 'L1', type: 'visita', at: '2026-10-01T21:00:00.000Z', unit: 'Centro' })
+    });
+    expect(banco.gravacoes).toHaveLength(gravacoes);
+    expect(interacoesDaAcademia()).toHaveLength(1);
+    expect(aulasDaAcademia()).toHaveLength(1);
+  });
+
+  it('dois pedidos ao mesmo tempo gravam uma vez só', async () => {
+    const [a, b] = [resposta(), resposta()];
+
+    await Promise.all([
+      handler(pedidoAgenda(), a),
+      handler(pedidoAgenda({ actor: { email: BRUNO.email } }), b)
+    ]);
+
+    expect([a.statusCode, b.statusCode].sort()).toEqual([201, 409]);
+    expect(interacoesDaAcademia()).toHaveLength(1);
+    expect(aulasDaAcademia()).toHaveLength(1);
+    expect(leadDaAcademia('L1').interactionsCount).toBe(4);
+  });
+
+  it('horário que já passou é recusado, sem gravar', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { date: '2026-09-29', time: '15:00' } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({ error: 'horario_passado', message: 'Esse horário já passou. Escolha outro.' });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it.each([
+    ['unit', { unit: 'Unidade Antiga' }],
+    ['modality', { ...AULA_DA_CARLA, modality: 'Crossfit' }],
+    ['professorId', { ...AULA_DA_CARLA, professorId: 'p3' }],
+    ['professorId', { ...AULA_DA_CARLA, modality: 'Musculação' }],
+    ['quantity', { ...AULA_DA_CARLA, quantity: 4 }]
+  ])('item que mudou no Stronilead (%s) é recusado e diz o campo', async (field, schedule) => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toMatchObject({ error: 'catalogo_mudou', field });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('academia sem unidade: a visita vai sem unidade', async () => {
+    banco.catalogos[TENANT].stronix_units = [];
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { unit: null, note: null } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(interacoesDaAcademia()[0].text).toBe('🔔 Visita agendada p/ 01/10/2026, 18:00.');
+    expect(aulasDaAcademia()[0].unit).toBeNull();
+  });
+
+  it('com unidade cadastrada, visita sem unidade é campo a escolher', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { unit: null } }), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'dados_invalidos', field: 'unit', message: 'Escolha a unidade.' });
+  });
+
+  it('pessoa fora da equipe não agenda', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ actor: { email: 'carla@stronix.com.br' } }), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toBe('fora_da_equipe');
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('academia com teste vencido não agenda nem gasta o limite', async () => {
+    Object.assign(banco.tenants[TENANT], { status: 'trial', trialEndsAt: ts(new Date('2026-09-01T00:00:00.000Z')) });
+    const res = resposta();
+
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toBe('academia_bloqueada');
+    expect(limitador.chamadas).toEqual([]);
+  });
+
+  it('passou de 60 agendamentos na hora: recusa sem gravar', async () => {
+    limitador.ok = false;
+    const res = resposta();
+
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(429);
+    expect(res.body).toEqual({ error: 'limite', message: 'Muitos agendamentos em pouco tempo. Tente de novo em alguns minutos.' });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('pedido com formato errado responde 400 sem gastar o limite', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { date: '2026-02-30' } }), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'dados_invalidos', field: 'date', message: 'Escolha o dia.' });
+    expect(limitador.chamadas).toEqual([]);
+  });
+
+  it('erro do banco no meio do agendamento sobe sem o telefone e sem gravar nada', async () => {
+    banco.falhaEm = 'leadId';
+
+    const erro = await handler(pedidoAgenda(), resposta()).catch((e) => e);
+
+    expect(erro).toBeInstanceOf(Error);
+    expect(erro.message).toBe('zap schedule falhou (9)');
+    expect(String(erro.stack)).not.toContain(MARIANA);
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('chave de outra academia não agenda', async () => {
+    academia(OUTRA);
+    banco.users[OUTRA] = [ANA];
+    const res = resposta();
+    const p = pedidoAgenda();
+    p.body.tenant = OUTRA;
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(banco.gravacoes).toEqual([]);
+  });
+});
