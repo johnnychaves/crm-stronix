@@ -149,8 +149,8 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
         contractPatch: built.contractPatch,
         leadPatch: built.leadPatch,
         interactionText: built.interactionText,
-        previousContractId: undo?.previousPatch ? previous.id : null,
-        previousContractPatch: undo?.previousPatch || null
+        linkedContractId: undo?.previousPatch ? previous.id : null,
+        linkedContractPatch: undo?.previousPatch || null
       });
 
       toast.success(

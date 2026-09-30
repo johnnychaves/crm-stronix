@@ -479,9 +479,18 @@ export const contractDiscountOf = (contract) => {
 
 // Cancelamento. O motivo era gravado como null desde sempre; sem ele a ficha
 // mostrava "Cancelado em 14/05" e ninguém sabia por quê.
-export const buildContractCancel = ({ planName, cancelledAt, reason, note } = {}) => {
+// `role`: 'current' (padrão) grava o resumo do último contrato, como sempre;
+// 'inUse' cancela o contrato em uso com a renovação marcada (`next`): grava só
+// o bloco "em uso" do resumo, e precisa do `contract` para montá-lo. A
+// renovação continua marcada; a emendada perde a marca, no contrato
+// (`nextPatch`) e no resumo, porque passa a existir um intervalo até ela
+// começar. O texto ganha a frase da renovação, lida por contractEventOf.
+export const buildContractCancel = ({ planName, cancelledAt, reason, note, role = 'current', contract = null, next = null } = {}) => {
   const when = getSafeDateOrNull(cancelledAt) || new Date();
   const motivo = reason ? ` — ${reason}` : '';
+  const inUse = role === 'inUse';
+  const nextStart = inUse ? getSafeDateOrNull(next?.startsAt) : null;
+  const dropSeam = Boolean(inUse && next?.seamless);
   return {
     contractPatch: {
       status: CONTRACT_STATUS.CANCELADO,
@@ -489,8 +498,11 @@ export const buildContractCancel = ({ planName, cancelledAt, reason, note } = {}
       cancelReason: reason || null,
       cancelNote: note || null
     },
-    leadPatch: { currentContractStatus: CONTRACT_STATUS.CANCELADO },
-    interactionText: `Contrato cancelado${planName ? ` — Plano ${planName}` : ''}${motivo}. Encerrado em ${fmtDia(when)}.`
+    leadPatch: inUse
+      ? { ...inUseBlockOf(contract, { inUseContractStatus: CONTRACT_STATUS.CANCELADO }), ...(dropSeam ? { currentContractSeamless: false } : {}) }
+      : { currentContractStatus: CONTRACT_STATUS.CANCELADO },
+    nextPatch: dropSeam ? { seamless: false } : null,
+    interactionText: `Contrato cancelado${planName ? ` — Plano ${planName}` : ''}${motivo}. Encerrado em ${fmtDia(when)}.${nextStart ? ` A renovação continua marcada para ${fmtDia(nextStart)}.` : ''}`
   };
 };
 
@@ -557,7 +569,9 @@ export function buildRenewalCancel({ contract, previous, cancelledAt, reason, no
 
 // Trancamento. Congela a vigência: enquanto está parado o contrato não corre,
 // e o término é empurrado na reativação pelos dias efetivamente parados.
-export const buildContractPause = ({ planName, pausedAt, reason } = {}) => {
+// `role` 'inUse' (o contrato em uso, com renovação marcada) grava só o bloco
+// "em uso" do resumo, montado do `contract`.
+export const buildContractPause = ({ planName, pausedAt, reason, role = 'current', contract = null } = {}) => {
   const when = getSafeDateOrNull(pausedAt) || new Date();
   const motivo = reason ? ` — ${reason}` : '';
   return {
@@ -566,7 +580,9 @@ export const buildContractPause = ({ planName, pausedAt, reason } = {}) => {
       pausedAt: when,
       pauseReason: reason || null
     },
-    leadPatch: { currentContractStatus: CONTRACT_STATUS.TRANCADO },
+    leadPatch: role === 'inUse'
+      ? inUseBlockOf(contract, { inUseContractStatus: CONTRACT_STATUS.TRANCADO })
+      : { currentContractStatus: CONTRACT_STATUS.TRANCADO },
     interactionText: `Contrato trancado a partir de ${fmtDia(when)}${planName ? ` — Plano ${planName}` : ''}${motivo}.`
   };
 };
@@ -636,8 +652,11 @@ const closedPausesOf = (contract) => {
 
 // Reativação. O cliente pagou por N meses de treino, não por N meses de
 // calendário: o término anda para frente pelos dias parados. `pausedDaysTotal`
-// acumula porque o contrato pode ser trancado mais de uma vez.
-export const buildContractResume = ({ contract, resumedAt } = {}) => {
+// acumula porque o contrato pode ser trancado mais de uma vez. O contrato que
+// uma renovação encurtou (originalEndsAt) anda o fim original pelos mesmos
+// dias, para o "Cancelar renovação" devolver a data certa depois. `role`
+// 'inUse' grava só o bloco "em uso" do resumo, com o fim novo.
+export const buildContractResume = ({ contract, resumedAt, role = 'current' } = {}) => {
   const back = getSafeDateOrNull(resumedAt) || new Date();
   const pausedAt = getSafeDateOrNull(contract?.pausedAt);
   const endsAt = getSafeDateOrNull(contract?.endsAt);
@@ -646,6 +665,7 @@ export const buildContractResume = ({ contract, resumedAt } = {}) => {
   const total = (Number(contract?.pausedDaysTotal) || 0) + pausedDays;
   // A pausa gravada pela importação usa a hora da importação, não a data real.
   const fromImport = isImportPause(contract, pausedAt);
+  const original = getSafeDateOrNull(contract?.originalEndsAt);
 
   return {
     pausedDays,
@@ -656,6 +676,7 @@ export const buildContractResume = ({ contract, resumedAt } = {}) => {
       resumedAt: back,
       pausedDaysTotal: total,
       ...(newEndsAt ? { endsAt: newEndsAt } : {}),
+      ...(original && pausedDays > 0 ? { originalEndsAt: addDays(original, pausedDays) } : {}),
       ...(pausedAt ? {
         pauseHistory: [
           ...closedPausesOf(contract),
@@ -663,10 +684,12 @@ export const buildContractResume = ({ contract, resumedAt } = {}) => {
         ]
       } : {})
     },
-    leadPatch: {
-      currentContractStatus: CONTRACT_STATUS.ATIVO,
-      ...(newEndsAt ? { currentContractEndsAt: newEndsAt } : {})
-    },
+    leadPatch: role === 'inUse'
+      ? inUseBlockOf(contract, { inUseContractStatus: CONTRACT_STATUS.ATIVO, inUseContractEndsAt: newEndsAt || endsAt })
+      : {
+        currentContractStatus: CONTRACT_STATUS.ATIVO,
+        ...(newEndsAt ? { currentContractEndsAt: newEndsAt } : {})
+      },
     interactionText: pausedDays > 0
       ? `Contrato reativado após ${pausedDays} ${pausedDays === 1 ? 'dia' : 'dias'} trancado. Vigência estendida até ${fmtDia(newEndsAt)}.`
       : `Contrato reativado. Vigência mantida até ${fmtDia(newEndsAt || endsAt)}.`

@@ -1758,3 +1758,57 @@ describe('o bloco "em uso" nas gravações', () => {
     });
   });
 });
+
+describe('trancar, reativar e cancelar o contrato em uso (role inUse)', () => {
+  const emUso = { id: 'k1', planName: 'Start', status: 'ativo', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+  const proximo = { id: 'k2', planName: 'Flow', renewedFromId: 'k1', status: 'ativo', seamless: true, startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12) };
+
+  it('trancar: só o bloco no lead, com trancado, e o contrato como sempre', () => {
+    const r = buildContractPause({ planName: 'Start', pausedAt: D(2026, 9, 30), reason: 'Viagem', role: 'inUse', contract: emUso });
+    expect(r.contractPatch).toEqual({ status: 'trancado', pausedAt: D(2026, 9, 30), pauseReason: 'Viagem' });
+    expect(r.leadPatch).toEqual({ inUseContractId: 'k1', inUseContractStatus: 'trancado', inUseContractEndsAt: D(2026, 10, 11) });
+  });
+
+  it('reativar: o bloco volta a ativo com o fim novo', () => {
+    const trancado = { ...emUso, status: 'trancado', pausedAt: D(2026, 9, 20) };
+    const r = buildContractResume({ contract: trancado, resumedAt: D(2026, 9, 30), role: 'inUse' });
+    expect(r.newEndsAt).toEqual(D(2026, 10, 21));
+    expect(r.leadPatch).toEqual({ inUseContractId: 'k1', inUseContractStatus: 'ativo', inUseContractEndsAt: D(2026, 10, 21) });
+    expect(r.contractPatch).not.toHaveProperty('originalEndsAt');
+  });
+
+  it('reativar o contrato que uma renovação encurtou anda o fim original junto', () => {
+    const encurtado = { ...emUso, status: 'trancado', pausedAt: D(2026, 9, 20), endsAt: D(2026, 10, 4), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' };
+    const r = buildContractResume({ contract: encurtado, resumedAt: D(2026, 9, 30) });
+    expect(r.contractPatch.endsAt).toEqual(D(2026, 10, 14));
+    expect(r.contractPatch.originalEndsAt).toEqual(D(2026, 10, 21));
+    // Sem dia parado, nada anda.
+    expect(buildContractResume({ contract: encurtado, resumedAt: D(2026, 9, 20) }).contractPatch).not.toHaveProperty('originalEndsAt');
+  });
+
+  it('cancelar: o bloco com cancelado, a renovação continua e a marca de emendada sai', () => {
+    const r = buildContractCancel({ planName: 'Start', cancelledAt: D(2026, 9, 30), reason: 'Financeiro', role: 'inUse', contract: emUso, next: proximo });
+    expect(r.contractPatch).toEqual({ status: 'cancelado', cancelledAt: D(2026, 9, 30), cancelReason: 'Financeiro', cancelNote: null });
+    expect(r.leadPatch).toEqual({ inUseContractId: 'k1', inUseContractStatus: 'cancelado', inUseContractEndsAt: D(2026, 10, 11), currentContractSeamless: false });
+    expect(r.nextPatch).toEqual({ seamless: false });
+    expect(r.interactionText).toBe('Contrato cancelado — Plano Start — Financeiro. Encerrado em 30/09/2026. A renovação continua marcada para 12/10/2026.');
+  });
+
+  it('cancelar com a renovação que não era emendada: sem patch nela e sem mexer na marca', () => {
+    const depois = { ...proximo, seamless: false, startsAt: D(2026, 10, 20) };
+    const r = buildContractCancel({ planName: 'Start', cancelledAt: D(2026, 9, 30), reason: 'Financeiro', role: 'inUse', contract: emUso, next: depois });
+    expect(r.nextPatch).toBeNull();
+    expect(r.leadPatch).toEqual({ inUseContractId: 'k1', inUseContractStatus: 'cancelado', inUseContractEndsAt: D(2026, 10, 11) });
+    expect(r.interactionText).toBe('Contrato cancelado — Plano Start — Financeiro. Encerrado em 30/09/2026. A renovação continua marcada para 20/10/2026.');
+  });
+
+  it('o papel padrão continua gravando currentContract*, como sempre', () => {
+    expect(buildContractPause({ planName: 'Start', pausedAt: D(2026, 9, 30), reason: 'Viagem' }).leadPatch).toEqual({ currentContractStatus: 'trancado' });
+    const cancel = buildContractCancel({ planName: 'Start', cancelledAt: D(2026, 9, 30) });
+    expect(cancel.leadPatch).toEqual({ currentContractStatus: 'cancelado' });
+    expect(cancel.nextPatch).toBeNull();
+    expect(cancel.interactionText).toBe('Contrato cancelado — Plano Start. Encerrado em 30/09/2026.');
+    expect(buildContractResume({ contract: { ...emUso, pausedAt: D(2026, 9, 20) }, resumedAt: D(2026, 9, 30) }).leadPatch)
+      .toEqual({ currentContractStatus: 'ativo', currentContractEndsAt: D(2026, 10, 21) });
+  });
+});

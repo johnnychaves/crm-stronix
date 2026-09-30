@@ -115,8 +115,8 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
         contractPatch: built.contractPatch,
         leadPatch: built.leadPatch,
         interactionText: built.interactionText,
-        previousContractId: built.previousPatch ? previous.id : null,
-        previousContractPatch: built.previousPatch || null
+        linkedContractId: built.previousPatch ? previous.id : null,
+        linkedContractPatch: built.previousPatch || null
       });
       toast.success('Contrato corrigido.');
       onDone && onDone();
