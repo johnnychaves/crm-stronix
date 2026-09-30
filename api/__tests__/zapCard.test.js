@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildZapCard, buildZapWard, buildGuardianCard } from '../_zapCard.js';
+import { buildZapCard, buildZapWard, buildGuardianCard, appointmentOutcomeOf, cardAppointment, isAppointmentCancelled } from '../_zapCard.js';
 
 // Instante escrito no horário de Brasília, pelo mesmo motivo de
 // zapStrip.test.js: o cartão conta dias de Brasília em qualquer máquina.
@@ -149,5 +149,72 @@ describe('cartão do responsável', () => {
     expect(card.name).toBe('Maria S.');
     expect(card.wards.map((w) => w.name)).toEqual(['Ana Souza', 'Pedro Souza']);
     expect(Object.keys(card).sort()).toEqual(['found', 'kind', 'name', 'wards']);
+  });
+});
+
+describe('desfecho do agendamento no cartão', () => {
+  // Visita de 01/10 às 18:00 de Brasília, como a ficha e a Meta Diária mostram.
+  const visita = (extra = {}) => ({
+    id: 'lead9', name: 'Camila Prado', lifecycleStage: 'lead', status: 'Negociação',
+    appointmentType: 'visita', appointmentScheduledFor: brt('2026-10-01T18:00'), nextFollowUpType: 'Visita', ...extra
+  });
+
+  it('sem desfecho: a linha vem com outcome null', () => {
+    expect(buildZapCard(visita(), HOJE).appointment).toEqual({ type: 'visita', at: '2026-10-01T21:00:00.000Z', outcome: null });
+  });
+
+  it.each(['attended', 'no_show'])('%s registrado na Meta Diária aparece na linha', (outcome) => {
+    expect(buildZapCard(visita({ appointmentOutcome: outcome }), HOJE).appointment.outcome).toBe(outcome);
+  });
+
+  it('remarcado não é desfecho: o lead já está com a data nova', () => {
+    expect(buildZapCard(visita({ appointmentOutcome: 'rescheduled' }), HOJE).appointment.outcome).toBeNull();
+  });
+
+  it('cancelado pela Meta Diária: a data já foi apagada e a linha some', () => {
+    const cancelado = visita({ appointmentOutcome: 'cancelled', appointmentScheduledFor: null, appointmentType: null, nextFollowUp: null });
+    expect(buildZapCard(cancelado, HOJE).appointment).toBeNull();
+  });
+
+  it('cancelado sem a data apagada também some', () => {
+    expect(buildZapCard(visita({ appointmentOutcome: 'cancelled' }), HOJE).appointment).toBeNull();
+  });
+
+  it('o menor em wards leva o desfecho do agendamento dele', () => {
+    const menor = visita({ isMinor: true, guardian: { name: 'Maria', phone: '(11) 9 1234-5678', relationship: 'Mãe' }, appointmentOutcome: 'no_show' });
+    expect(buildZapWard(menor, HOJE).appointment).toEqual({ type: 'visita', at: '2026-10-01T21:00:00.000Z', outcome: 'no_show' });
+  });
+
+  it('o cliente também mostra o desfecho', () => {
+    const cliente = visita({ lifecycleStage: 'cliente', appointmentOutcome: 'attended' });
+    expect(buildZapCard(cliente, HOJE)).toMatchObject({ kind: 'cliente', appointment: { outcome: 'attended' } });
+  });
+
+  it('a linha do agendamento só leva tipo, data e desfecho, mesmo com o lead cheio', () => {
+    const cheio = visita({
+      appointmentOutcome: 'attended',
+      appointmentUnit: 'Centro',
+      appointmentModality: 'Pilates',
+      appointmentProfessorName: 'Carla Dias',
+      appointmentOutcomeBy: 'u1',
+      appointmentOutcomeAt: brt('2026-10-01T19:00'),
+      nextFollowUpNote: 'Vem depois do trabalho.',
+      cpf: '12345678900'
+    });
+    expect(Object.keys(buildZapCard(cheio, HOJE).appointment).sort()).toEqual(['at', 'outcome', 'type']);
+  });
+
+  it('appointmentOutcomeOf e cardAppointment são a regra que o cartão usa', () => {
+    expect(appointmentOutcomeOf({ appointmentOutcome: 'attended' })).toBe('attended');
+    expect(appointmentOutcomeOf({ appointmentOutcome: 'qualquer' })).toBeNull();
+    expect(appointmentOutcomeOf(null)).toBeNull();
+    expect(cardAppointment({})).toBeNull();
+  });
+
+  it('isAppointmentCancelled é verdadeiro só para o desfecho cancelled', () => {
+    expect(isAppointmentCancelled({ appointmentOutcome: 'cancelled' })).toBe(true);
+    expect(isAppointmentCancelled({ appointmentOutcome: 'attended' })).toBe(false);
+    expect(isAppointmentCancelled({})).toBe(false);
+    expect(isAppointmentCancelled(null)).toBe(false);
   });
 });

@@ -12,6 +12,8 @@ import {
   zapSignupPillText,
   zapSignupDetailText,
   originLastOnTies,
+  zapScheduleTitle,
+  appointmentOriginText,
   TIMELINE_FILTERS
 } from '../timeline.js';
 
@@ -381,5 +383,27 @@ describe('originLastOnTies: o marco de início embaixo de quem tem o mesmo horá
     const lista = [MARCO, semData, NOTA];
     expect(originLastOnTies(lista).map((i) => i.id)).toEqual(['z1', 's1', 'n1']);
     expect(lista.map((i) => i.id)).toEqual(['z1', 's1', 'n1']);
+  });
+});
+
+describe('agendamento feito pelo Stronizap', () => {
+  it('zapScheduleTitle: o detalhe do autor, com o canal quando ele veio', () => {
+    expect(zapScheduleTitle({ via: 'stronizap', zapChannelName: 'Recepção' })).toBe('Agendado pelo Stronizap, canal Recepção');
+    expect(zapScheduleTitle({ via: 'stronizap', zapChannelName: '  ' })).toBe('Agendado pelo Stronizap');
+    expect(zapScheduleTitle({ via: 'stronizap' })).toBe('Agendado pelo Stronizap');
+  });
+
+  it('zapScheduleTitle: agendamento que não veio do Stronizap não tem detalhe', () => {
+    expect(zapScheduleTitle({ zapChannelName: 'Recepção' })).toBeNull();
+    expect(zapScheduleTitle({ via: 'outro' })).toBeNull();
+    expect(zapScheduleTitle(null)).toBeNull();
+  });
+
+  it('appointmentOriginText: o rodapé do desfecho, com o Stronizap quando o agendamento veio de lá', () => {
+    const at = new Date(2026, 8, 29, 15, 42);
+    expect(appointmentOriginText({ at, by: 'Ana Souza', via: 'stronizap' })).toBe('Agendada em 29/09 por Ana Souza, pelo Stronizap');
+    expect(appointmentOriginText({ at, by: 'Ana Souza' })).toBe('Agendada em 29/09 por Ana Souza');
+    expect(appointmentOriginText({ at, via: 'stronizap' })).toBe('Agendada em 29/09, pelo Stronizap');
+    expect(appointmentOriginText({ at: new Date('x') })).toBe('');
   });
 });
