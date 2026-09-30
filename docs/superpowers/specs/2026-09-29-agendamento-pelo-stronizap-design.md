@@ -1,5 +1,5 @@
 ---
-status: revisão
+status: ativo
 ---
 
 # Agendamento pelo Stronizap
@@ -172,7 +172,7 @@ Recebe `{ tenant, phone, actor: { email, name }, channelName, schedule: { leadId
 
 Quem usa é o lembrete (PR 3), mas a ação entra no PR do Stronilead para ele subir uma vez só. Recebe `{ tenant, leadIds }`, até 30. Para cada lead, devolve o agendamento que a ficha, o cartão e a Meta mostram hoje (`type`, `at`, `unit`, `modality`, `professorName` e `outcome`), com o nome do lead, ou `null` quando não há agendamento. Lead que não existe na academia também volta como `null`.
 
-O lembrete segue esse agendamento, e não o registro de `stronix_aulas`, porque o "Remarcar" da Meta Diária troca a data da visita no lead sem mexer no registro de aulas.
+O lembrete segue esse agendamento, e não o registro de `stronix_aulas`, porque é ele que a ficha, o cartão e a Meta mostram. Desde o PR #237 o "Remarcar" da Meta Diária leva o registro de aulas junto, mas as visitas remarcadas antes dele continuam com a data velha no registro.
 
 ### O desfecho no cartão
 
@@ -329,7 +329,6 @@ O smoke passa a conferir também as opções do agendamento, que só leem, e o `
 - Capacidade da aula, conflito de horário e horário de funcionamento da academia, que o Stronilead também não confere.
 - Academia fora do horário de Brasília.
 - Texto da confirmação configurável.
-- O "Remarcar" da Meta Diária não atualiza a data da visita em `stronix_aulas`. O defeito é do Stronilead e fica anotado aqui, porque o lembrete foi desenhado para não depender disso.
 
 ## Critérios de aceitação
 
