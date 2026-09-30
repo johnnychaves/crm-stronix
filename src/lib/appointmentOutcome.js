@@ -1,7 +1,7 @@
 // Escrita do desfecho de um agendamento (visita/aula) — fonte ÚNICA para os
 // lugares que confirmam presença na Meta Diária: a Agenda de hoje e a correção
-// do "Feitos hoje". O card "A fazer" grava pelo handleOutcome do
-// DailyGoalView, com a mesma regra de promoção (planPromotion).
+// do "Feitos hoje". O card "A fazer" grava pelo handleOutcome do DailyGoalView,
+// que usa a mesma regra de promoção (planPromotion).
 //
 // A rule de leads permite qualquer membro do tenant dar UPDATE desde que o
 // DONO (consultantAuthUid) fique inalterado — este helper nunca o toca, então
@@ -21,6 +21,8 @@
 //     duplicar a marca no feed a cada clique.
 //   correction — a marca do dia é de correção: texto "↩️ Desfecho corrigido" e
 //     outcomeCorrection: true.
+//   extraPatch — campos a mais no mesmo updateDoc do lead (a correção manda a
+//     volta da etapa e do próximo contato).
 //
 // Correção (correctAppointmentOutcome): regras puras em outcomeCorrection.js.
 
@@ -71,7 +73,8 @@ export async function writeAppointmentOutcome({
   promote = true,
   writeGoalDone = true,
   sourceLabel = 'Meta Diária',
-  correction = false
+  correction = false,
+  extraPatch = null
 }) {
   if (!APPOINTMENT_OUTCOMES.includes(outcome)) {
     throw new Error(`Desfecho inválido: ${outcome}`);
@@ -81,6 +84,7 @@ export async function writeAppointmentOutcome({
   const { toStatus, promotedFrom } = planPromotion({ lead, outcome, categorySlug, statuses, promote });
 
   const leadUpdate = {
+    ...(extraPatch || {}),
     appointmentOutcome: outcome,
     appointmentOutcomeAt: serverTimestamp(),
     appointmentOutcomeBy: appUser.authUid || appUser.id || null,
@@ -148,6 +152,10 @@ export async function writeAppointmentOutcome({
 // uma daily_goal_done: o relatório de visitas fica com o último desfecho do
 // dia (visitOutcomesByLead) e o Operacional não conta de novo a tarefa da
 // mesma pessoa no mesmo dia (tasksByType). Desfazer não grava marca, como antes.
+// A marca de correção passa pelo writeAppointmentOutcome, como a primeira
+// marcação da agenda, para o crédito da tarefa ficar com o DONO do lead e não
+// com quem clicou. Só o status_change da volta da etapa vai por logInteraction,
+// que registra quem corrigiu (e status_change não conta como tarefa).
 export async function correctAppointmentOutcome({
   db,
   lead,
@@ -174,26 +182,11 @@ export async function correctAppointmentOutcome({
   const bucketed = (p) => (p.status ? withBucket(p, lead) : p);
 
   if (to === 'no_show') {
-    const categoryLabel = DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug;
-    await logInteraction(
-      db, lead, appUser,
-      {
-        text: correctionText({ outcome: 'no_show', sourceLabel, categoryLabel }),
-        type: 'daily_goal_done',
-        dailyGoalCategory: categorySlug,
-        appointmentOutcome: 'no_show',
-        outcomeCorrection: true
-      },
-      bucketed({
-        ...patch,
-        appointmentOutcome: 'no_show',
-        appointmentOutcomeAt: serverTimestamp(),
-        appointmentOutcomeBy: appUser.authUid || appUser.id || null
-      })
-    );
-    if (outcomeAppliesToAula(categorySlug)) {
-      try { await applyOutcomeToAula({ db, lead, outcome: 'no_show' }); } catch (e) { console.error('applyOutcomeToAula falhou', e); }
-    }
+    await writeAppointmentOutcome({
+      db, lead, outcome: 'no_show', categorySlug, appUser, statuses,
+      promote: false, consumeAppointment: false, writeGoalDone: true, sourceLabel, correction: true,
+      extraPatch: bucketed(patch)
+    });
   } else {
     await clearAppointmentOutcome({ db, lead, categorySlug, extraPatch: bucketed(patch) });
   }

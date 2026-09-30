@@ -79,6 +79,17 @@ describe('writeAppointmentOutcome', () => {
   });
 });
 
+describe('writeAppointmentOutcome com extraPatch', () => {
+  it('extraPatch entra no updateDoc sem sobrescrever o desfecho', async () => {
+    await writeAppointmentOutcome({
+      db: {}, lead: NOVO, outcome: 'no_show', categorySlug: VISITA, appUser: USER, statuses: STATUSES,
+      extraPatch: { appointmentOutcome: 'x', foo: 1 },
+    });
+    expect(m.updates[0].data.foo).toBe(1);
+    expect(m.updates[0].data.appointmentOutcome).toBe('no_show');
+  });
+});
+
 describe('correctAppointmentOutcome', () => {
   it('Compareceu para Não compareceu: volta a etapa, repõe o próximo contato e registra a correção', async () => {
     const r = await correctAppointmentOutcome({
@@ -86,16 +97,21 @@ describe('correctAppointmentOutcome', () => {
       statuses: STATUSES, sourceLabel: 'Agenda do dia',
     });
     expect(r.revertedTo).toBe('Novo');
-    expect(m.logs).toHaveLength(2);
-    expect(m.logs[0].payload).toMatchObject({
-      type: 'daily_goal_done', dailyGoalCategory: VISITA, appointmentOutcome: 'no_show', outcomeCorrection: true,
-    });
-    expect(m.logs[0].payload.text).toMatch(/^↩️ Desfecho corrigido: ❌ Não veio · Agenda do dia/);
-    expect(m.logs[0].patch).toMatchObject({
+    expect(m.updates[0].data).toMatchObject({
       appointmentOutcome: 'no_show', appointmentOutcomeAt: 'TS', appointmentOutcomeBy: 'auth1',
       appointmentPromotedFrom: null, status: 'Novo', statusEnteredAt: entrou, nextFollowUp: agendado,
     });
-    expect(m.logs[1].payload).toMatchObject({
+    expect(m.updates[0].data.lifecycleBucket).toBe('ativo');
+    // A marca da correção sai como a primeira marcação da agenda: sem actorId/actorAuthUid,
+    // então o Operacional credita a tarefa ao dono do lead e não a quem clicou.
+    expect(m.adds).toHaveLength(1);
+    expect(m.adds[0].data).toMatchObject({
+      type: 'daily_goal_done', dailyGoalCategory: VISITA, appointmentOutcome: 'no_show', outcomeCorrection: true,
+    });
+    expect(m.adds[0].data.text).toMatch(/^↩️ Desfecho corrigido: ❌ Não veio · Agenda do dia/);
+    expect(m.adds[0].data.actorAuthUid).toBeUndefined();
+    expect(m.logs).toHaveLength(1);
+    expect(m.logs[0].payload).toMatchObject({
       type: 'status_change', fromStatus: 'Negociação', toStatus: 'Novo', funnelId: 'f1',
       text: 'Fase voltou para [Novo] após correção do desfecho.',
     });
@@ -113,9 +129,23 @@ describe('correctAppointmentOutcome', () => {
       appUser: USER, isClient: true,
     });
     expect(r.revertedTo).toBeNull();
-    expect(m.logs).toHaveLength(1);
-    expect(m.logs[0].patch.status).toBeUndefined();
-    expect(m.logs[0].patch.nextFollowUp).toBeUndefined();
+    expect(m.logs).toEqual([]);
+    expect(m.updates[0].data.status).toBeUndefined();
+    expect(m.updates[0].data.nextFollowUp).toBeUndefined();
+    expect(m.adds[0].data.outcomeCorrection).toBe(true);
+  });
+
+  it('cliente: corrigir para Compareceu não promove nem consome o próximo contato', async () => {
+    const faltou = { ...NOVO, status: 'Venda', appointmentOutcome: 'no_show' };
+    await correctAppointmentOutcome({
+      db: {}, lead: faltou, from: 'no_show', to: 'attended', categorySlug: VISITA, appUser: USER,
+      statuses: STATUSES, isClient: true,
+    });
+    expect(m.updates[0].data.status).toBeUndefined();
+    expect(m.updates[0].data.nextFollowUp).toBeUndefined();
+    expect(m.updates[0].data.appointmentPromotedFrom).toBeNull();
+    expect(m.adds).toHaveLength(1);
+    expect(m.adds[0].data.outcomeCorrection).toBe(true);
   });
 
   it('Não compareceu para Compareceu: é um Compareceu com a marca de correção', async () => {
