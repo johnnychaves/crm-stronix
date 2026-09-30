@@ -149,7 +149,7 @@ O `firebase-admin` passa por cima das regras do Firestore, então a ação confe
 - o lead escolhido é o cadastro do próprio número ou um menor de quem o número é responsável. Qualquer outro id é recusado;
 - a unidade, a modalidade e o professor existem, o professor está ativo e dá a modalidade (ou é "Treina sozinho"), e a quantidade está nas opções da academia;
 - data e hora válidas, no horário de Brasília, e ainda no futuro;
-- se o lead já tem o mesmo tipo de agendamento no mesmo dia e horário, nada é gravado, e a resposta é `ja_agendado`, com o cartão. Dois cliques, duas pessoas ou o "Tentar de novo" depois de uma resposta perdida gravam uma vez só e dão um ponto só;
+- se o pedido é idêntico ao agendamento que o lead já tem (mesmo tipo, mesmo dia e horário e as mesmas escolhas de unidade, modalidade, professor e quantidade de aulas), nada é gravado, e a resposta é `ja_agendado`, com o cartão. Dois cliques, duas pessoas ou o "Tentar de novo" depois de uma resposta perdida gravam uma vez só e dão um ponto só. Mudar uma dessas escolhas no mesmo horário, ou escrever uma anotação diferente da que está no lead, é remarcação, e grava, como no assistente. Pedido sem anotação nunca conta como mudança, porque o balão não mostra a anotação que o lead já tem;
 - no máximo 60 agendamentos por hora por academia (`checkRateLimit`, chave `zap-schedule:<academia>`).
 
 ## A ponte
@@ -188,7 +188,7 @@ O `appointment` do cartão (`api/_zapCard.js`) ganha `outcome`: `attended` ou `n
 | `lead_nao_confere` | 422 | O lead não é deste número nem menor de quem ele é responsável |
 | `catalogo_mudou` | 422 | Unidade, modalidade, professor ou quantidade que não existe mais, com `field` |
 | `horario_passado` | 422 | Dia e hora que já passaram |
-| `ja_agendado` | 409 | O mesmo agendamento já existe, com `card` |
+| `ja_agendado` | 409 | O pedido é idêntico ao agendamento que o lead já tem, com `card` |
 | `limite` | 429 | Mais de 60 agendamentos na última hora |
 
 Toda recusa traz o `message` pronto para a tela, como no cadastro.
