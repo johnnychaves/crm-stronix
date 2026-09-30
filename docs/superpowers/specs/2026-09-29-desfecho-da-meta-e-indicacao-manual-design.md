@@ -139,7 +139,7 @@ As duas entradas só existem na ficha de cliente, como a aba e o menu já são. 
 
 ### Conferências antes de gravar
 
-- **Nome** com pelo menos um caractere que não seja espaço.
+- **Nome** com 2 letras ou mais, sem contar os espaços das pontas, a mesma regra do Novo lead.
 - **WhatsApp** com 10 ou 11 dígitos, a mesma conta do Novo lead.
 - **WhatsApp repetido barra o cadastro.** O aviso "Já existe: Fulano", com link para a ficha, aparece enquanto se digita (`useDuplicateLead`), e a conferência é refeita na hora de gravar (`findDuplicateLeadRemote`), como no Novo lead. Isso também pega o número do próprio cliente que indica.
 - **O telefone de responsável de outro lead não barra**, igual ao Novo lead. A mãe de um aluno menor pode ser indicada.

@@ -65,7 +65,7 @@ Flag própria porque `funnelsSetupDoneAt` já estava carimbada nos tenants antig
 
 ## Fase 2 — link compartilhável (CONSTRUÍDA 2026-08-09)
 
-Cada cliente tem um link público — `{origin}/i/{slug}?ref={idDoCliente}` — na
+Cada cliente tem um link público — `{origin}/i/{slug}?ref={idDoCliente}` — no
 menu "Indicar" do cabeçalho da ficha (copiar, ou mandar direto
 no WhatsApp do cliente com mensagem pronta). A página pública
 (`src/views/public/ReferralLandingScreen.jsx`, gate de rota por pathname no

@@ -51,7 +51,14 @@ export function QuickReferralModal({ db, appUser, referrer, referralFunnelId, en
 
   const digits = onlyDigits(form.whatsapp);
   const { duplicate } = useDuplicateLead({ db, phoneDigits: digits });
-  const canSubmit = !quickReferralIssue(form) && !duplicate && !saving;
+  const issue = quickReferralIssue(form);
+  const canSubmit = !issue && !duplicate && !saving;
+  // Diz o que falta quando o Cadastrar está desligado com o campo já começado.
+  const hint = issue === 'name' && form.name.trim()
+    ? 'Digite o nome com 2 letras ou mais.'
+    : issue === 'whatsapp' && digits
+      ? 'Digite o WhatsApp com DDD.'
+      : null;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -102,7 +109,7 @@ export function QuickReferralModal({ db, appUser, referrer, referralFunnelId, en
         <DialogTitle className="text-[16px] font-bold tracking-tight pr-6">
           Indicações de {referrer?.name || 'cliente'}
         </DialogTitle>
-        <DialogDescription className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
+        <DialogDescription className="text-[12.5px] text-muted-foreground mt-1">
           Entram no funil Indicações, com você de responsável.
         </DialogDescription>
 
@@ -155,7 +162,8 @@ export function QuickReferralModal({ db, appUser, referrer, referralFunnelId, en
             </p>
           )}
 
-          <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-3">
+            {hint && <span className="text-[12px] text-muted-foreground">{hint}</span>}
             <Btn kind="brand" type="submit" icon={<Plus size={14} />} disabled={!canSubmit}>
               {saving ? 'Cadastrando…' : 'Cadastrar'}
             </Btn>
@@ -174,7 +182,7 @@ export function QuickReferralModal({ db, appUser, referrer, referralFunnelId, en
                     leadId={c.id}
                     target="_blank"
                     rel="noopener"
-                    className="flex items-center gap-2 py-1.5 text-[13px] rounded-md hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                    className="flex items-center gap-2 py-1.5 text-[13px] rounded-md hover:bg-accent"
                   >
                     <CheckCircle2 size={15} className="text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <span className="flex-1 truncate">{c.name}</span>

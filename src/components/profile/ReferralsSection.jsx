@@ -56,7 +56,10 @@ export function ReferralsSection({ items, loading, onAdd = null }) {
         </div>
         <p className="text-[14px] font-semibold text-slate-900 dark:text-white">Nenhuma indicação ainda</p>
         <p className="text-[12.5px] text-muted-foreground mt-1 max-w-[420px] mx-auto leading-relaxed">
-          Use o botão Indicar, no topo da ficha, para cadastrar as indicações do cliente ou mandar o link para ele convidar os amigos. Também dá para cadastrar um lead novo com o interruptor “É uma indicação?”. Os indicados aparecem aqui com o andamento de cada um.
+          {onAdd
+            ? 'Use o botão Indicar, no topo da ficha, para cadastrar as indicações do cliente ou mandar o link para ele convidar os amigos. Também dá para cadastrar um lead novo com o interruptor “É uma indicação?”.'
+            : 'Use o botão Indicar, no topo da ficha, para mandar o link para o cliente convidar os amigos, ou cadastre um lead novo com o interruptor “É uma indicação?”.'}
+          {' '}Os indicados aparecem aqui com o andamento de cada um.
         </p>
         {addButton && <div className="mt-4 flex justify-center">{addButton}</div>}
       </section>

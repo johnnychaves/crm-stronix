@@ -20,7 +20,7 @@ export const ANNOUNCEMENTS = [
     eyebrow: 'Novidade',
     title: 'Marcar desfecho na Meta e cadastrar indicações pela ficha',
     summary:
-      'Na Meta Diária, visita e aula experimental agora têm o botão Marcar desfecho, que abre Compareceu e Não compareceu. Marcou errado? Clique no desfecho e troque: a pessoa volta para a etapa em que estava. O switch da Agenda de hoje e o gesto de segurar para desmarcar saíram. Na ficha do aluno, o botão Indicar ganhou Cadastrar indicação, para lançar os indicados um depois do outro.',
+      'Na Meta Diária, visita e aula experimental agora têm o botão Marcar desfecho, que abre Compareceu e Não compareceu. Marcou errado? Clique no desfecho e troque: a pessoa volta para a etapa em que estava. O interruptor da Agenda de hoje e o gesto de segurar para desmarcar saíram. Na ficha do aluno, o botão Indicar ganhou Cadastrar indicação, para lançar os indicados um depois do outro.',
   },
   {
     id: 'esqueci-a-senha-2026-09',
