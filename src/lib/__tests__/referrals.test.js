@@ -17,7 +17,10 @@ import {
   buildReferralShareLink,
   buildReferralWhatsAppText,
   pendingReferralOwners,
-  planReferralFunnelMerge
+  planReferralFunnelMerge,
+  quickReferralForm,
+  quickReferralIssue,
+  REFERRAL_SOURCE_NAME
 } from '../referrals.js';
 
 describe('isReferralFunnel', () => {
@@ -296,5 +299,37 @@ describe('link compartilhável (fase 2)', () => {
     expect(text).toContain('Oi Maria!');
     expect(text).toContain('https://x/i/s?ref=1');
     expect(buildReferralWhatsAppText({ firstName: '', link: 'L' })).toContain('Oi!');
+  });
+});
+
+describe('indicação rápida pela ficha', () => {
+  const alvo = { funnelId: 'fRef', entryStageName: 'Aguardando ação' };
+
+  it('monta o formulário do Novo lead no funil Indicações, na entrada, com origem Indicação', () => {
+    expect(quickReferralForm({ name: '  Juliana Prado ', whatsapp: '(51) 9 9812-4410', dor: 'Dor nas costas', modalidade: 'Pilates' }, alvo))
+      .toEqual({
+        name: 'Juliana Prado',
+        whatsapp: '(51) 9 9812-4410',
+        source: 'Indicação',
+        funnelId: 'fRef',
+        status: 'Aguardando ação',
+        dor: 'Dor nas costas',
+        modalidade: 'Pilates',
+      });
+    expect(REFERRAL_SOURCE_NAME).toBe('Indicação');
+  });
+
+  it('dor e modalidade são opcionais', () => {
+    const form = quickReferralForm({ name: 'Ana', whatsapp: '51998124410' }, alvo);
+    expect(form.dor).toBe('');
+    expect(form.modalidade).toBe('');
+  });
+
+  it('diz o que falta: nome com 2 letras ou mais, WhatsApp com 10 dígitos ou mais', () => {
+    expect(quickReferralIssue({ name: 'A', whatsapp: '(51) 9 9812-4410' })).toBe('name');
+    expect(quickReferralIssue({ name: '   ', whatsapp: '(51) 9 9812-4410' })).toBe('name');
+    expect(quickReferralIssue({ name: 'Ana', whatsapp: '(51) 9981' })).toBe('whatsapp');
+    expect(quickReferralIssue({ name: 'Ana', whatsapp: '(51) 3333-4444' })).toBeNull();
+    expect(quickReferralIssue({ name: 'Ana', whatsapp: '(51) 9 9812-4410' })).toBeNull();
   });
 });

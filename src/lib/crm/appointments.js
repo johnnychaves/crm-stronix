@@ -51,11 +51,12 @@ export function visitOutcomesByLead(interactions) {
 
 // Desfecho que o próprio lead guarda para o registro: vale quando o
 // agendamento do lead (appointmentScheduledFor) é o mesmo instante do registro
-// e o desfecho é "veio" ou "não veio". Todo desfecho grava o lead, mas a
-// Agenda do dia só grava a marca na linha do tempo quando ainda não há uma do
-// dia, e desfazer limpa só o lead: a correção ("não veio" e depois "veio")
-// chega ao lead e não à linha do tempo. O cancelamento limpa o
-// appointmentScheduledFor e segue pela linha do tempo.
+// e o desfecho é "veio" ou "não veio". Todo desfecho grava o lead. A correção
+// pela Meta (correctAppointmentOutcome, desde 29/09/2026) também grava uma
+// marca daily_goal_done com outcomeCorrection, então a linha do tempo fica com
+// o último desfecho mesmo depois de remarcar. Correção de antes disso chegava
+// só ao lead. O cancelamento limpa o appointmentScheduledFor e segue pela
+// linha do tempo.
 const MIRROR_OUTCOMES = new Set(['attended', 'no_show']);
 function mirrorStatusOf(r, lead) {
   if (!MIRROR_OUTCOMES.has(lead?.appointmentOutcome)) return null;

@@ -16,7 +16,7 @@ import { deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRA
 import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
-import { getReferralFunnel, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
+import { getReferralFunnel, getReferralEntryStage, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
 import { getUpgradeFunnel, upgradeStageIdOf } from '../lib/upgradeFunnel.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
@@ -47,6 +47,7 @@ import { ContractModal } from '../modals/ContractModal.jsx';
 import { ContractOutcomeModal } from '../modals/ContractOutcomeModal.jsx';
 import { ContractEditModal } from '../modals/ContractEditModal.jsx';
 import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
+import { QuickReferralModal } from '../modals/QuickReferralModal.jsx';
 import {
   groupTimeline,
   timelineStamp,
@@ -62,7 +63,7 @@ import {
   zapScheduleTitle,
   appointmentOriginText
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, Link2, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
 // Tom do bloco de contagem, do chip e do preenchimento da régua — o estado do
 // contrato manda na cor da aba Contratos inteira.
@@ -702,6 +703,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const isInReferralFunnel = Boolean(referralFunnel && lead.funnelId === referralFunnel.id);
   const { count: referralsCount, items: referralItems, loading: referralsLoading, reload: reloadReferrals } =
     useReferrals({ db, leadId: lead.id, enabled: isClient, active: activeProfileTab === 'referrals' });
+  // Cadastro à mão de indicações (menu Indicar e aba Indicações). Só existe
+  // com o funil Indicações e a etapa de entrada, a mesma trava do "É uma
+  // indicação?" do Novo lead, e só para quem pode editar.
+  const referralEntry = referralFunnel ? getReferralEntryStage(statuses, referralFunnel.id) : null;
+  const canQuickReferral = isClient && !isReadOnly && Boolean(referralFunnel && referralEntry);
+  const [quickReferralOpen, setQuickReferralOpen] = useState(false);
 
   // Classificação + filtro da timeline (helpers compartilhados em lib/timeline.js).
   // O marco de início fica embaixo da observação do cadastro, que nasce no
@@ -1297,9 +1304,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                       ref nem as props que o Radix injeta, então com `asChild`
                       o menu não abria. Estilo espelha o Btn ghost tamanho md. */}
                   <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-9 px-3.5 text-[12.5px] rounded-lg font-semibold whitespace-nowrap transition active:scale-[.98] text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] data-[state=open]:bg-slate-100 dark:data-[state=open]:bg-white/[0.06]">
-                    <Link2 size={14} /> Link de indicação
+                    <Handshake size={14} /> Indicar
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" sideOffset={6} className="w-56 rounded-xl">
+                    {canQuickReferral && (
+                      <DropdownMenuItem onSelect={() => setQuickReferralOpen(true)} className="cursor-pointer">
+                        <UserPlus className="size-4 text-brand-600 dark:text-brand-300" /> Cadastrar indicação
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem onClick={copyReferralLink} className="cursor-pointer">
                       <Copy className="size-4 text-slate-500" /> Copiar link
                     </DropdownMenuItem>
@@ -2050,7 +2062,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         {/* ----- Aba: Indicações (só cliente) ----- */}
         {isClient && (
           <TabsContent value="referrals" className="pt-2">
-            <ReferralsSection items={referralItems} loading={referralsLoading} />
+            <ReferralsSection
+              items={referralItems}
+              loading={referralsLoading}
+              onAdd={canQuickReferral ? () => setQuickReferralOpen(true) : null}
+            />
           </TabsContent>
         )}
 
@@ -2073,6 +2089,17 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         tags={tags}
       />
       {lossModalOpen && <LossReasonModal lossReasons={lossReasons} onClose={() => setLossModalOpen(false)} onConfirm={confirmLoss} />}
+      {quickReferralOpen && (
+        <QuickReferralModal
+          db={db}
+          appUser={appUser}
+          referrer={lead}
+          referralFunnelId={referralFunnel?.id}
+          entryStageName={referralEntry?.name}
+          onClose={() => setQuickReferralOpen(false)}
+          onCreated={reloadReferrals}
+        />
+      )}
       {referrerDialogOpen && (
         <Dialog open onOpenChange={(o) => { if (!o) setReferrerDialogOpen(false); }}>
           <DialogContent className="max-w-[440px] rounded-2xl p-5 gap-0">
