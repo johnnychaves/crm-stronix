@@ -1,7 +1,9 @@
 // Ponte com o Stronizap. O Zap pergunta quem é a pessoa por trás de um
 // telefone e recebe o cartão de contexto. Desde o cadastro pelo Stronizap, ele
 // também pede as listas do formulário (lead-options) e cadastra o lead de
-// dentro da conversa (create-lead).
+// dentro da conversa (create-lead). Desde o agendamento pelo Stronizap, pede
+// as listas do balão (schedule-options), agenda visita e aula experimental
+// (schedule) e confere os agendamentos antes do lembrete (appointment-status).
 //
 // O GET procura também os menores que têm aquele telefone como responsável
 // (`guardianZapMatchKey`), e o `match` conta o número do responsável como
@@ -11,9 +13,10 @@
 // guardada aqui só como hash em tenants/{id}.integrations.zap.keyHash.
 //
 // O POST tem dois donos. `generate` e `revoke` são do admin da academia, logado
-// no CRM, e autenticam por verifyRequest (ID token). `match`, `lead-options` e
-// `create-lead` são do próprio Stronizap e autenticam pela chave, igual ao GET.
-// O desvio fica no começo de handlePost, e os dois caminhos nunca se misturam.
+// no CRM, e autenticam por verifyRequest (ID token). `match`, `lead-options`,
+// `create-lead`, `schedule-options`, `schedule` e `appointment-status` são do
+// próprio Stronizap e autenticam pela chave, igual ao GET. O desvio fica no
+// começo de handlePost, e os dois caminhos nunca se misturam.
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { withSentry } from './_sentry.js';
 import { isTenantAdmin } from './_auth.js';
@@ -28,7 +31,7 @@ import {
 } from './_zapLead.js';
 import {
   SCHEDULE_LIMIT, ZAP_SCHEDULE_MESSAGES, unitsView, readScheduleOptionsBody, buildScheduleOptions, isDocId,
-  readScheduleBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
+  readScheduleBody, readStatusBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
   isOpenAulaRecord, pickOpenVisitaId, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody
 } from './_zapSchedule.js';
 import { contactOf } from '../src/lib/guardian.js';
@@ -200,18 +203,21 @@ export default withSentry(async function handler(req, res) {
 
 // Gera e revoga a chave de conexão do Stronizap (ação do admin da academia, pela
 // tela de Configurações → Integrações) e atende as ações do próprio Stronizap,
-// autenticadas pela chave: o match em lote, as opções e o cadastro de lead.
-// Ver o desvio logo abaixo.
+// autenticadas pela chave: o match em lote, as opções e o cadastro de lead, e
+// as opções, a gravação e a conferência do agendamento. Ver o desvio logo
+// abaixo.
 async function handlePost(req, res) {
-  // match, lead-options e create-lead são do próprio Stronizap e autenticam
-  // pela chave do Zap. generate e revoke são do admin logado e seguem exigindo
-  // ID token. Ação desconhecida cai no caminho do login e é recusada lá.
+  // match, lead-options, create-lead, schedule-options, schedule e
+  // appointment-status são do próprio Stronizap e autenticam pela chave do
+  // Zap. generate e revoke são do admin logado e seguem exigindo ID token.
+  // Ação desconhecida cai no caminho do login e é recusada lá.
   const action = req.body?.action;
   if (action === 'match') return handleMatch(req, res);
   if (action === 'lead-options') return handleLeadOptions(req, res);
   if (action === 'create-lead') return handleCreateLead(req, res);
   if (action === 'schedule-options') return handleScheduleOptions(req, res);
   if (action === 'schedule') return handleSchedule(req, res);
+  if (action === 'appointment-status') return handleAppointmentStatus(req, res);
 
   try {
     const auth = await verifyRequest(req);
@@ -346,7 +352,9 @@ const docsOf = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 // Autenticação das ações do Stronizap no POST: identificador no formato da
 // casa, chave da academia e academia ativa. Devolve { tenantId } ou
 // { refusal }. Academia inexistente responde igual a chave errada, como no GET.
-async function openByKey(req) {
+// `checkBlocked: false` fica só com as conferências do GET (chave e
+// identificador): é o appointment-status, que o lembrete do Stronizap consulta.
+async function openByKey(req, { checkBlocked = true } = {}) {
   const chave = req.headers['x-stronizap-key'];
   const tenantId = req.body?.tenant;
   if (!chave || !tenantId) return { refusal: { status: 401, body: { error: 'Credencial ausente' } } };
@@ -360,7 +368,7 @@ async function openByKey(req) {
   // O firebase-admin passa por cima das regras do Firestore, então a conta do
   // tenantActive (firestore.rules) é refeita aqui. Vale também para as
   // opções: o formulário nem abre.
-  if (tenantBlocked(loaded.tenant, new Date())) {
+  if (checkBlocked && tenantBlocked(loaded.tenant, new Date())) {
     return { refusal: refusal(403, 'academia_bloqueada', ZAP_LEAD_MESSAGES.blocked) };
   }
   return { tenantId };
@@ -620,5 +628,32 @@ async function handleSchedule(req, res) {
     return res.status(201).json({ card, appointment: appointmentDetailOf(outcome.scheduled, units) });
   } catch (e) {
     throw scrubbedError('schedule', e);
+  }
+}
+
+// O agendamento de cada lead, como a ficha, o cartão e a Meta mostram hoje.
+// Quem pergunta é o lembrete do Stronizap, antes de enviar. Só lê, e fica só
+// com as conferências do GET (chave e identificador).
+async function handleAppointmentStatus(req, res) {
+  try {
+    const access = await openByKey(req, { checkBlocked: false });
+    if (access.refusal) return responder(res, access.refusal);
+    const { tenantId } = access;
+
+    const read = readStatusBody(req.body);
+    if (read.refusal) return responder(res, read.refusal);
+    const { leadIds } = read.value;
+
+    const [snaps, unitsSnap] = await Promise.all([
+      Promise.all(leadIds.map((id) => leadsCollection(tenantId).doc(id).get())),
+      academyCollection(tenantId, UNITS_PATH).get()
+    ]);
+    const units = unitsView(docsOf(unitsSnap));
+    const appointments = Object.fromEntries(leadIds.map((id, i) => [
+      id, snaps[i].exists ? appointmentDetailOf(leadDoDoc(snaps[i]), units) : null
+    ]));
+    return res.status(200).json({ appointments });
+  } catch (e) {
+    throw scrubbedError('appointment-status', e);
   }
 }

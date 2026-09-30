@@ -2333,3 +2333,117 @@ describe('POST /api/zap com action schedule', () => {
     expect(banco.gravacoes).toEqual([]);
   });
 });
+
+const pedidoStatus = (leadIds) => ({
+  method: 'POST',
+  headers: { 'x-stronizap-key': chave },
+  body: { action: 'appointment-status', tenant: TENANT, leadIds }
+});
+
+describe('POST /api/zap com action appointment-status', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(AGORA);
+    zerarBanco();
+    chave = academia(TENANT);
+    banco.catalogos[TENANT] = catalogosDaAcademia();
+    banco.leads[TENANT] = [
+      marianaLead({ appointmentType: 'visita', appointmentScheduledFor: ts(new Date('2026-10-01T21:00:00.000Z')), appointmentUnit: 'Centro' }),
+      menorDe('k1', 'Pedro Souza', {
+        appointmentType: 'aula_experimental', appointmentScheduledFor: ts(new Date('2026-10-02T22:00:00.000Z')),
+        appointmentModality: 'Pilates', appointmentProfessorName: 'Carla Dias', appointmentSoloTraining: false,
+        trialClassesPlanned: 2, appointmentOutcome: 'attended'
+      }),
+      menorDe('k2', 'Ana Souza'),
+      menorDe('k3', 'Caio Souza', {
+        appointmentType: null, appointmentScheduledFor: null, nextFollowUpType: 'Visita', appointmentOutcome: 'cancelled'
+      })
+    ];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('devolve o agendamento de cada lead, e null para quem não tem, foi cancelado ou não existe', async () => {
+    const res = resposta();
+
+    await handler(pedidoStatus(['L1', 'k1', 'k2', 'k3', 'nao-existe']), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toEqual({
+      appointments: {
+        L1: {
+          leadId: 'L1', leadName: 'Mariana Souza', type: 'visita', at: '2026-10-01T21:00:00.000Z',
+          unit: 'Centro', unitAddress: 'Rua Garibaldi, 1200', modality: null, professorName: null,
+          soloTraining: false, quantity: null, outcome: null
+        },
+        k1: {
+          leadId: 'k1', leadName: 'Pedro Souza', type: 'aula_experimental', at: '2026-10-02T22:00:00.000Z',
+          unit: null, unitAddress: null, modality: 'Pilates', professorName: 'Carla Dias',
+          soloTraining: false, quantity: 2, outcome: 'attended'
+        },
+        k2: null,
+        k3: null,
+        'nao-existe': null
+      }
+    });
+    expect(banco.gravacoes).toEqual([]);
+    expect(limitador.chamadas).toEqual([]);
+  });
+
+  it('lead de outra academia volta null', async () => {
+    academia(OUTRA);
+    banco.leads[OUTRA] = [marianaLead({ id: 'L-outra', appointmentType: 'visita', appointmentScheduledFor: ts(AGORA) })];
+    const res = resposta();
+
+    await handler(pedidoStatus(['L-outra']), res);
+
+    expect(res.body).toEqual({ appointments: { 'L-outra': null } });
+  });
+
+  it('responde mesmo com a academia bloqueada, como o GET do cartão', async () => {
+    banco.tenants[TENANT].status = 'suspended';
+    const res = resposta();
+
+    await handler(pedidoStatus(['L1']), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.appointments.L1).toMatchObject({ type: 'visita' });
+  });
+
+  it.each([
+    ['vazia', []],
+    ['com 31 ids', Array.from({ length: 31 }, (_, i) => `L${i}`)],
+    ['com id repetido', ['L1', 'L1']],
+    ['com id que não é texto', ['L1', 7]]
+  ])('lista %s é recusada no campo leadIds', async (_, leadIds) => {
+    const res = resposta();
+
+    await handler(pedidoStatus(leadIds), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'dados_invalidos', field: 'leadIds', message: 'Envie de 1 a 30 leads, sem repetir.' });
+  });
+
+  it('chave errada responde 401 e não lê nada', async () => {
+    const res = resposta();
+    const p = pedidoStatus(['L1']);
+    p.headers['x-stronizap-key'] = generateZapKey().key;
+
+    await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+
+  it('erro do banco sobe sem o caminho do lead', async () => {
+    banco.falhaEm = 'documento';
+
+    const erro = await handler(pedidoStatus(['L1']), resposta()).catch((e) => e);
+
+    expect(erro).toBeInstanceOf(Error);
+    expect(erro.message).toBe('zap appointment-status falhou (14)');
+    expect(String(erro.stack)).not.toContain('stronix_leads/L1');
+  });
+});
