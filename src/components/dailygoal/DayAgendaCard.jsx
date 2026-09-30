@@ -1,6 +1,6 @@
 import { BookOpen, Building2, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { PresenceSwitch } from '../ui/PresenceSwitch.jsx';
+import { OutcomePopover } from './OutcomePopover.jsx';
 import { DAILY_GOAL_CATEGORIES } from '../../lib/leads.js';
 import { SOLO_TRAINING_LABEL } from '../../lib/professores.js';
 
@@ -76,7 +76,11 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
                   <span
                     className={cn(
                       'mt-1.5 size-[7px] rounded-full shrink-0',
-                      row.outcome ? 'bg-emerald-500' : isNext ? 'bg-accent-500' : 'bg-slate-300 dark:bg-neutral-600'
+                      row.outcome === 'no_show'
+                        ? 'bg-rose-500'
+                        : row.outcome
+                          ? 'bg-emerald-500'
+                          : isNext ? 'bg-accent-500' : 'bg-slate-300 dark:bg-neutral-600'
                     )}
                   />
                   <span className="flex-1 w-px bg-slate-100 dark:bg-white/[0.06] min-h-[10px]" />
@@ -103,10 +107,13 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
                       {subtitleOf(row)}
                     </div>
                   </div>
-                  <PresenceSwitch
-                    attKey={row.outcome}
+                  <OutcomePopover
+                    size="sm"
+                    outcome={row.outcome}
+                    canUndo
                     saving={savingId === row.id}
-                    onMark={(o) => onMark(row, o)}
+                    title={`${row.categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE ? 'Visita' : 'Aula exp.'} de ${row.name || 'sem nome'} · ${hourLabel(row.scheduledAt)}`}
+                    onPick={(choice) => onMark(row, choice)}
                   />
                 </div>
               </div>

@@ -13,7 +13,7 @@ import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
 import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
-import { writeAppointmentOutcome, clearAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { writeAppointmentOutcome, correctAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { applyOutcomeToAula, upsertScheduledAula } from '../lib/aulasWrites.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
 import { expiredLabel, expiredSortKey } from '../lib/expiredGoal.js';
@@ -1055,7 +1055,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     [leads, agendaLeads, usersById, appUser, now]
   );
 
-  const markAgendaPresence = async (row, outcome) => {
+  // Agenda de hoje. Linha sem desfecho: grava o escolhido. Linha já marcada:
+  // o balão corrige (troca ou desfaz) pelo correctAppointmentOutcome, que
+  // devolve a etapa e o próximo contato que o Compareceu tinha mudado.
+  const markAgendaPresence = async (row, choice) => {
     if (savingAgendaId) return;
     setSavingAgendaId(row.id);
     try {
@@ -1066,15 +1069,27 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       // Sem isso, confirmar a presença de um aluno apagava um contato agendado
       // e podia empurrá-lo de volta para o funil de vendas.
       const quem = row.isMine ? '' : ` (meta de ${row.ownerName})`;
+      const isCliente = row.isClient;
 
-      // Segurar o botão manda `null` = desmarcar, volta a linha para o neutro.
-      if (outcome === null) {
-        await clearAppointmentOutcome({ db, lead: row, categorySlug: row.categorySlug });
-        toast.success(`Presença de ${row.name} desmarcada${quem}.`);
+      if (row.outcome) {
+        const to = choice === 'undo' ? null : choice;
+        if (to === row.outcome) return;
+        const { revertedTo } = await correctAppointmentOutcome({
+          db, lead: row, from: row.outcome, to, categorySlug: row.categorySlug, appUser, statuses,
+          isClient: isCliente, sourceLabel: 'Agenda do dia',
+        });
+        const volta = revertedTo ? ` Voltou para ${revertedTo}.` : '';
+        if (to === null) toast.success(`Marcação de ${row.name} desfeita${quem}.${volta}`);
+        else if (to === 'attended') toast.success(`Desfecho de ${row.name} corrigido para compareceu${quem}.`);
+        else toast.success(`Desfecho de ${row.name} corrigido para não compareceu${quem}.${volta}`);
+        // Mesmo passo do Não compareceu normal: sem nova data o lead fica parado.
+        if (to === 'no_show') {
+          setRescheduleTarget({ lead: row, categorySlug: row.categorySlug, flow: 'after_no_show' });
+        }
         return;
       }
 
-      const isCliente = row.isClient;
+      if (choice !== 'attended' && choice !== 'no_show') return;
       // Não regrava a marca da Meta se já existe uma de hoje nesta categoria.
       // Sem isso, dois consultores confirmando a mesma linha (que é o cenário
       // normal de uma agenda compartilhada) empilham registros na timeline.
@@ -1085,20 +1100,20 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         new Date(now.getFullYear(), now.getMonth(), now.getDate())
       );
       await writeAppointmentOutcome({
-        db, lead: row, outcome, categorySlug: row.categorySlug, appUser, statuses,
+        db, lead: row, outcome: choice, categorySlug: row.categorySlug, appUser, statuses,
         promote: !isCliente,
         consumeAppointment: !isCliente,
         writeGoalDone: !jaTemMarcaHoje,
         sourceLabel: 'Agenda do dia',
       });
-      toast.success(outcome === 'attended'
+      toast.success(choice === 'attended'
         ? `Presença de ${row.name} confirmada${quem}.`
         : `${row.name} marcado como não veio${quem}.`);
       // Quem não veio precisa de nova data, senão o lead fica parado sem
       // próximo passo. Abre a remarcação na hora — fechar a janela é o
       // "deixo pra marcar depois". Mesmo comportamento do handleOutcome da
       // Meta; comparecimento não pergunta nada, só aplica o que já é regra.
-      if (outcome === 'no_show') {
+      if (choice === 'no_show') {
         setRescheduleTarget({ lead: row, categorySlug: row.categorySlug, flow: 'after_no_show' });
       }
     } catch (err) {
