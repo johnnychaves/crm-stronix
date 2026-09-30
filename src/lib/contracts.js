@@ -178,10 +178,59 @@ export const deriveContractStatus = (
   return CONTRACT_STATUS.ATIVO;
 };
 
-// Conveniência: deriva o status a partir do resumo denormalizado gravado
-// no doc do lead (currentContractStatus / currentContractEndsAt).
+// ---------------------------------------------------------------------------
+// Bloco "em uso" do resumo do lead
+// ---------------------------------------------------------------------------
+// Enquanto o último contrato (currentContractId) ainda não começou, o resumo
+// guarda também o contrato que o cliente usa hoje: id, status gravado (ativo,
+// trancado ou cancelado) e fim. É uma cópia: quem grava é a renovação, o
+// trancar, o reativar e o cancelar do contrato em uso e o corrigir da
+// renovação; matrícula, importação, cancelar a renovação e Ativar agora limpam.
+// A ficha não lê o bloco, porque lê os contratos; as listas, a Meta Diária e o
+// cartão do Stronizap leem, por deriveLeadContractStatus.
+export const CLEAR_IN_USE_BLOCK = Object.freeze({ inUseContractId: null, inUseContractStatus: null, inUseContractEndsAt: null });
+
+const storedStatusOf = (status) => (
+  status === CONTRACT_STATUS.TRANCADO || status === CONTRACT_STATUS.CANCELADO ? status : CONTRACT_STATUS.ATIVO
+);
+
+// O bloco a partir do documento do contrato em uso. `overrides` troca o status
+// ou o fim quando a gravação os muda no mesmo lote (trancar, reativar,
+// cancelar, encurtar).
+export const inUseBlockOf = (contract, overrides = {}) => ({
+  inUseContractId: contract?.id || null,
+  inUseContractStatus: storedStatusOf(contract?.status),
+  inUseContractEndsAt: getSafeDateOrNull(contract?.endsAt),
+  ...overrides
+});
+
+// O estado do cliente pelo bloco, ou null quando o bloco não decide. Vale só
+// com o último contrato ainda por começar (por instante), o bloco apontando um
+// contrato e o último não cancelado. Trancado dá trancado. Cancelado dá
+// agendado: o cliente fica sem contrato até a renovação começar. Valendo, dá
+// ativo, e nunca "a vencer", porque o cliente já renovou. Com o fim já passado,
+// a emendada continua com a marca (currentContractSeamless) decidindo, como
+// antes desta entrega, senão o dia entre o fim do contrato em uso e o início
+// dela apareceria como agendado; sem a marca, é o intervalo: agendado.
+// Comparação por instante, nunca por dia do calendário: o cartão do Stronizap
+// roda em UTC.
+const inUseStatusOf = (lead, refDate) => {
+  if (!lead?.inUseContractId || lead.currentContractStatus === CONTRACT_STATUS.CANCELADO) return null;
+  const start = getSafeDateOrNull(lead.currentContractStartsAt);
+  const now = getSafeDateOrNull(refDate) || new Date();
+  if (!start || start.getTime() <= now.getTime()) return null;
+  if (lead.inUseContractStatus === CONTRACT_STATUS.TRANCADO) return CONTRACT_STATUS.TRANCADO;
+  if (lead.inUseContractStatus === CONTRACT_STATUS.CANCELADO) return CONTRACT_STATUS.AGENDADO;
+  const end = getSafeDateOrNull(lead.inUseContractEndsAt);
+  if (end && now.getTime() <= end.getTime()) return CONTRACT_STATUS.ATIVO;
+  return lead.currentContractSeamless ? null : CONTRACT_STATUS.AGENDADO;
+};
+
+// Conveniência: deriva o status a partir do resumo denormalizado gravado no
+// doc do lead. O bloco "em uso" decide primeiro (inUseStatusOf); sem ele, o
+// último contrato (currentContractStatus / currentContractEndsAt).
 export const deriveLeadContractStatus = (lead, refDate, thresholdDays) =>
-  deriveContractStatus(
+  inUseStatusOf(lead, refDate) || deriveContractStatus(
     {
       status: lead?.currentContractStatus,
       startsAt: lead?.currentContractStartsAt,
