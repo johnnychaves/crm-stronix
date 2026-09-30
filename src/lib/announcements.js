@@ -13,6 +13,25 @@
 // ============================================================================
 export const ANNOUNCEMENTS = [
   {
+    id: 'desfecho-e-indicacao-manual-2026-09',
+    audience: 'todos',
+    date: '2026-09-29',
+    articleId: 'agendamentos',
+    eyebrow: 'Novidade',
+    title: 'Marcar desfecho na Meta e cadastrar indicações pela ficha',
+    summary:
+      'Na Meta Diária, visita e aula experimental agora têm o botão Marcar desfecho, que abre Compareceu e Não compareceu. Marcou errado? Clique no desfecho e troque: a pessoa volta para a etapa em que estava. O interruptor da Agenda de hoje e o gesto de segurar para desmarcar saíram. Na ficha do aluno, o botão Indicar ganhou Cadastrar indicação, para lançar os indicados um depois do outro.',
+  },
+  {
+    id: 'esqueci-a-senha-2026-09',
+    audience: 'todos',
+    date: '2026-09-29',
+    eyebrow: 'Novidade',
+    title: 'Esqueceu a senha? Agora dá para criar outra sozinho',
+    summary:
+      'Na tela de entrada, clique em Esqueci a senha e digite o seu e-mail. Chega um código de 6 números, que vale por 15 minutos. Digite o código com a senha nova e entre com ela. Para o gestor: trocar a senha de quem saiu da academia não tira mais o acesso, porque a pessoa pode pedir um código. Para tirar o acesso, use Excluir acesso (o ícone de lixeira) em Configurações, Equipe & acessos.',
+  },
+  {
     id: 'upgrade-2026-09',
     audience: 'todos',
     date: '2026-09-09',

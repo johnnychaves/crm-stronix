@@ -196,11 +196,13 @@ function Body({ name }) {
     case 'desfecho':
       return (
         <Screen>
-          <div className="text-[9px] font-bold text-slate-500 dark:text-slate-400 mb-2">Como foi a aula de Ana Prado?</div>
-          <div className="flex gap-1.5">
-            <span className="flex-1 h-7 rounded-md grid place-items-center text-[9px] font-semibold text-white bg-emerald-500" style={A('wdPop')}>Compareceu</span>
-            <span className="flex-1 h-7 rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 grid place-items-center text-[9px] text-slate-500">Não veio</span>
-            <span className="flex-1 h-7 rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 grid place-items-center text-[9px] text-slate-500">Remarcou</span>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[9px] font-bold text-slate-500 dark:text-slate-400">Aula de Ana Prado</div>
+            <span className="h-6 px-2 rounded-md border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 grid place-items-center text-[9px] font-semibold text-slate-600 dark:text-slate-300">Marcar desfecho ▾</span>
+          </div>
+          <div className="ml-auto w-[70%] rounded-lg border border-slate-200 dark:border-white/10 bg-white dark:bg-neutral-800 p-1.5 flex flex-col gap-1">
+            <span className="h-6 rounded-md grid place-items-center text-[9px] font-semibold text-white bg-emerald-500" style={A('wdPop')}>Compareceu</span>
+            <span className="h-6 rounded-md grid place-items-center text-[9px] font-semibold text-rose-700 bg-rose-50 dark:text-rose-300 dark:bg-rose-500/10">Não compareceu</span>
           </div>
           <div className="mt-2 text-[9px] text-slate-500 dark:text-slate-400" style={A('wdPop')}>
             → Ana avança para <span className="font-semibold text-violet-600 dark:text-violet-400">Negociação</span>

@@ -6,6 +6,7 @@ import { commitOpsInChunks } from '../../lib/funnels.js';
 import { isClientLead } from '../../lib/leads.js';
 import { professorModalityNames } from '../../lib/professores.js';
 import { generateTemporaryPassword, passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
+import { planLoginEmailChange, loginEmailConfirmText, LOGIN_EMAIL_FAILED_MESSAGE } from '../../lib/loginEmail.js';
 import { cn } from '../../lib/utils.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
@@ -244,12 +245,49 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       const passwordProblem = passwordPolicyError(form.password);
       if (passwordProblem) { toast.warning(passwordProblem); return; }
     }
+    // O e-mail de login de quem tem conta muda pelo servidor (set-email do
+    // /api/admin-users), no Auth e no cadastro juntos, e as sessões da pessoa
+    // caem. O cliente só grava o e-mail do cadastro sem conta, que não tem
+    // login para trocar.
+    const emailChange = planLoginEmailChange(target, form.email);
+    if (emailChange.kind === 'invalid') { toast.warning(emailChange.error); return; }
+    const ownEmail = emailChange.kind === 'account'
+      && emailChange.body.targetAuthUid === normalizeUid(appUser?.authUid);
+    // Trocar o próprio e-mail derruba a sessão de quem está salvando, e a troca
+    // de senha que viria em seguida seria recusada pelo servidor.
+    if (ownEmail && form.password.trim()) {
+      toast.warning('Troque o seu e-mail e a sua senha em duas vezes: salve o e-mail, entre de novo e depois troque a senha.');
+      return;
+    }
+    if (emailChange.kind === 'account'
+      && !window.confirm(loginEmailConfirmText({ name: target.name, email: emailChange.email, self: ownEmail }))) return;
+
     setSaving(true);
     try {
+      if (emailChange.kind === 'account') {
+        const res = await fetch('/api/admin-users', {
+          method: 'POST',
+          headers: await authHeader(),
+          body: JSON.stringify(emailChange.body)
+        });
+        const data = await res.json().catch(() => ({}));
+        // Sem o e-mail trocado, nada mais é salvo: o formulário fica aberto com
+        // o que foi digitado.
+        if (!res.ok) { toast.error(data.error || LOGIN_EMAIL_FAILED_MESSAGE); return; }
+        // changed: false é o e-mail que a conta já tinha. O login não mudou.
+        if (data.changed !== false) {
+          toast.success(ownEmail
+            ? 'Seu e-mail de login mudou. Saia e entre de novo com o e-mail novo.'
+            : 'E-mail de login trocado. A pessoa passa a entrar com o e-mail novo.');
+        }
+      }
+
       const newName = form.name.trim();
       await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, target.id), {
         name: newName,
-        email: normalizeEmail(form.email),
+        // O e-mail só entra aqui no cadastro sem conta. Com conta, quem grava é
+        // o set-email, junto com o Auth.
+        ...(emailChange.kind === 'record' ? { email: emailChange.email } : {}),
         // authUid não sai daqui: é a chave que liga o cadastro à conta do Auth,
         // e as rules agora recusam a troca. Ele nasce no /api/admin-users (ação
         // create) e no aceite de convite.
@@ -560,7 +598,10 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
           <DialogField label="Nome">
             <input className={FIELD_INPUT} value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Ex: Ana Duarte" required />
           </DialogField>
-          <DialogField label="E-mail de login">
+          <DialogField
+            label="E-mail de login"
+            hint={memberDialog?.mode === 'edit' ? 'Trocar o e-mail muda o login da pessoa.' : undefined}
+          >
             <input className={FIELD_INPUT} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="ana@academia.com.br" required />
           </DialogField>
         </div>

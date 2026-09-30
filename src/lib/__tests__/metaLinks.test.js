@@ -159,6 +159,48 @@ describe('Meta diária', () => {
     expect(html).toContain('Ana Lima');
     expect(html).toContain('draggable="false"');
   });
+
+  it('TaskCard de visita: os quatro botões viraram o Marcar desfecho', () => {
+    const html = render(createElement(TaskCard, {
+      task: { ...TASK, categorySlugs: ['visita_hoje'] }, slug: 'visita_hoje', now: new Date('2026-09-22T10:00:00'),
+    }));
+    expect(html).toContain('Marcar desfecho');
+    expect(html).not.toContain('>Não veio<');
+    expect(html).not.toContain('>Remarcou<');
+  });
+
+  it('DoneCard: desfecho de hoje vira o botão de correção, por cima do link', () => {
+    const now = new Date('2026-09-22T15:00:00');
+    const html = render(createElement(DoneCard, {
+      lead: {
+        ...TASK, categorySlugs: ['visita_hoje'], categoryStatus: { visita_hoje: true },
+        appointmentOutcome: 'attended',
+        appointmentOutcomeAt: new Date('2026-09-22T14:00:00'),
+        appointmentScheduledFor: new Date('2026-09-22T13:00:00'),
+      },
+      now,
+      onReschedule: () => {},
+      onCorrect: () => {},
+    }));
+    const i = html.indexOf('aria-label="Compareceu. Abrir para corrigir"');
+    expect(i).toBeGreaterThan(-1);
+    const b = html.lastIndexOf('<button', i);
+    expect(html.slice(b, html.indexOf('>', i))).toContain('relative z-10');
+  });
+
+  it('DoneCard sem onCorrect continua mostrando só o texto do desfecho', () => {
+    const html = render(createElement(DoneCard, {
+      lead: {
+        ...TASK, categorySlugs: ['visita_hoje'], categoryStatus: { visita_hoje: true },
+        appointmentOutcome: 'attended',
+        appointmentOutcomeAt: new Date('2026-09-22T14:00:00'),
+        appointmentScheduledFor: new Date('2026-09-22T13:00:00'),
+      },
+      onReschedule: () => {},
+    }));
+    expect(html).not.toContain('Abrir para corrigir');
+    expect(html).toContain('Compareceu');
+  });
 });
 
 describe('visão Equipe', () => {

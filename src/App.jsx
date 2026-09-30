@@ -87,6 +87,8 @@ import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { ReferralLandingScreen } from './views/public/ReferralLandingScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
+import { ForgotPasswordScreen } from './views/auth/ForgotPasswordScreen.jsx';
+import { isPasswordResetPath, clearResetMemory } from './lib/passwordReset.js';
 import { DashboardOperacionalView } from './views/dashboard/DashboardOperacionalView.jsx';
 import { DashboardCrmView } from './views/dashboard/DashboardCrmView.jsx';
 import { DashboardGerencialView } from './views/dashboard/DashboardGerencialView.jsx';
@@ -112,7 +114,7 @@ import { SuperAdminView } from './views/superadmin/SuperAdminView.jsx';
 import { SuperConsole } from './views/console/SuperConsole.jsx';
 import { SupportCenterModal } from './modals/SupportCenterModal.jsx';
 import { countUnreadForClient } from './lib/ticketThread.js';
-import { AppErrorBoundary, ModalErrorBoundary, SilentErrorBoundary } from './components/ErrorBoundary.jsx';
+import { AppErrorBoundary, ModalErrorBoundary, ScreenErrorBoundary, SilentErrorBoundary } from './components/ErrorBoundary.jsx';
 import { RouteRedirect } from './components/RouteRedirect.jsx';
 import { setSentryUser, clearSentryUser } from './lib/sentry.js';
 
@@ -144,12 +146,14 @@ export default function App() {
       return null;
     }
   });
+  // As duas telas públicas são desenhadas antes de qualquer outra proteção de
+  // erro, então cada uma leva a sua ScreenErrorBoundary.
   return (
     <ToastProvider>
       {referralRoute
-        ? <ReferralLandingScreen slug={referralRoute.slug} refId={referralRoute.refId} />
+        ? <ScreenErrorBoundary><ReferralLandingScreen slug={referralRoute.slug} refId={referralRoute.refId} /></ScreenErrorBoundary>
         : invite.token && invite.tenantId
-          ? <AcceptInviteScreen token={invite.token} tenantId={invite.tenantId} />
+          ? <ScreenErrorBoundary><AcceptInviteScreen token={invite.token} tenantId={invite.tenantId} /></ScreenErrorBoundary>
           : <AppInner />}
     </ToastProvider>
   );
@@ -1259,10 +1263,13 @@ useEffect(() => {
   // listas em memória, a academia do módulo (appId) e as configurações de
   // funil: num computador de recepção, quem entra depois não vê nada da sessão
   // anterior. O await garante que a sessão já saiu do navegador antes da recarga.
+  // A memória do "Esqueci a senha" sai junto, senão a próxima pessoa cairia no
+  // passo 2 com o e-mail desta conta.
   const leaveTo = async (destino) => {
     setLeaving(true);
     try { await signOut(auth); } catch (e) { console.error('Erro ao sair do sistema', e); }
     try { sessionStorage.removeItem(IMPERSONATION_KEY); } catch { /* ignore */ }
+    clearResetMemory();
     window.location.replace(destino);
   };
 
@@ -1457,16 +1464,28 @@ useEffect(() => {
     if (isLeadsTab) setLeadsMenuOpen(true);
   }, [isLeadsTab]);
 
+  // Daqui até o bloqueio da academia, tudo roda sem sessão e fora de qualquer
+  // outra proteção de erro. Por isso cada retorno vem dentro de uma
+  // ScreenErrorBoundary, com key própria para o aviso de uma tela não ficar
+  // preso quando outra assumir o lugar. O protecaoDeErro.sweep.test.js cobra.
   if (isAuthChecking || leaving) {
     return (
-      <div className="min-h-screen bg-paper-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-4">
-        <Activity className="w-12 h-12 text-brand-600 mb-4 animate-pulse" />
-        <p className="text-gray-400 dark:text-neutral-500 text-sm font-bold uppercase tracking-widest">Carregando Sessão...</p>
-      </div>
+      <ScreenErrorBoundary key="carregando">
+        <div className="min-h-screen bg-paper-50 dark:bg-neutral-950 flex flex-col items-center justify-center p-4">
+          <Activity className="w-12 h-12 text-brand-600 mb-4 animate-pulse" />
+          <p className="text-gray-400 dark:text-neutral-500 text-sm font-bold uppercase tracking-widest">Carregando Sessão...</p>
+        </div>
+      </ScreenErrorBoundary>
     );
   }
 
-  if (!appUser) return <LoginScreen setAppUser={setAppUser} firebaseUser={firebaseUser} db={db} authSetupError={authSetupError} urlTenant={urlTenant} />;
+  if (!appUser) {
+    // Sem sessão, /recuperar-senha desenha o "Esqueci a senha" no lugar do
+    // login (docs/superpowers/specs/2026-09-28-esqueci-a-senha-design.md). Com
+    // sessão, o routeDecision já leva esse endereço para a tela inicial.
+    if (isPasswordResetPath(location.pathname)) return <ScreenErrorBoundary key="recuperar-senha"><ForgotPasswordScreen /></ScreenErrorBoundary>;
+    return <ScreenErrorBoundary key="login"><LoginScreen setAppUser={setAppUser} firebaseUser={firebaseUser} db={db} authSetupError={authSetupError} urlTenant={urlTenant} /></ScreenErrorBoundary>;
+  }
 
   // Academia suspensa ou com trial expirado: bloqueia o acesso ao app (super-admin
   // sem tenant não é afetado). O usuário está autenticado, mas a organização não.

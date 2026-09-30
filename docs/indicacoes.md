@@ -65,8 +65,8 @@ Flag própria porque `funnelsSetupDoneAt` já estava carimbada nos tenants antig
 
 ## Fase 2 — link compartilhável (CONSTRUÍDA 2026-08-09)
 
-Cada cliente tem um link público — `{origin}/i/{slug}?ref={idDoCliente}` — na
-caixa "Link de indicação" da aba Indicações da ficha (copiar, ou mandar direto
+Cada cliente tem um link público — `{origin}/i/{slug}?ref={idDoCliente}` — no
+menu "Indicar" do cabeçalho da ficha (copiar, ou mandar direto
 no WhatsApp do cliente com mensagem pronta). A página pública
 (`src/views/public/ReferralLandingScreen.jsx`, gate de rota por pathname no
 `App()` — o segmento `/i/` é reservado) mostra a marca da academia e o 1º nome
@@ -101,3 +101,22 @@ modalidade opcionais.
    (contenção contra farmar indicação com telefone alheio quando houver
    recompensa). No fluxo manual isso já é resolvido pelo dup-check do modal:
    bloqueia, mostra quem é, e o vínculo retroativo sai pelo PhaseChanger.
+
+## Fase 3 — cadastro à mão pela ficha (2026-09-29)
+
+Terceira forma de entrada, ao lado do "É uma indicação?" do Novo lead e do link.
+Na ficha do cliente, o menu "Indicar" (antes "Link de indicação") e a aba
+Indicações têm "Cadastrar indicação", que abre `src/modals/QuickReferralModal.jsx`.
+O pop-up pede nome e WhatsApp (obrigatórios), modalidade e dor (opcionais), e
+fica aberto para o próximo indicado depois de cada cadastro.
+
+- O formulário sai de `quickReferralForm` (`src/lib/referrals.js`) e o doc, de
+  `buildNewLeadDoc`: funil Indicações, etapa de entrada, origem "Indicação".
+- O dono é quem cadastra, como no Novo lead. As rules só deixam o consultor
+  criar lead em nome dele mesmo.
+- WhatsApp repetido barra, como no Novo lead (`useDuplicateLead` ao vivo e
+  `findDuplicateLeadRemote` na hora de gravar).
+- `commitReferralLink` grava `referredAt` e o 🤝 nos dois lados. Não há
+  `referralVia`: o sino só avisa o que chega pelo link.
+- Só aparece com o funil Indicações e a etapa de entrada, e para quem pode
+  editar a ficha.

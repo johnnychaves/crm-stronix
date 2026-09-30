@@ -219,13 +219,17 @@ export const WIKI_ARTICLES = [
       ] },
 
       { t: 'h', text: 'Registrando o desfecho' },
-      { t: 'demo', name: 'desfecho', caption: 'Compareceu avança a pessoa para Negociação.' },
+      { t: 'demo', name: 'desfecho', caption: 'Marcar desfecho abre o balão. Compareceu avança a pessoa para Negociação.' },
       { t: 'steps', items: [
+        'Clique em Marcar desfecho, no card da Meta, no Próximo compromisso ou na Agenda de hoje.',
         'Compareceu: a pessoa avança sozinha para Negociação e a aula fica registrada no histórico do professor.',
-        'Não veio: fica registrado e a pessoa volta para o fluxo de contato.',
+        'Não compareceu: fica registrado e a Meta já abre a remarcação.',
         'Remarcou: escolha a data nova e o compromisso se move.',
         'Cancelou: encerra o agendamento sem mover a pessoa no funil.',
       ] },
+
+      { t: 'h', text: 'Corrigindo no mesmo dia' },
+      { t: 'p', text: 'Marcou errado? Clique no desfecho, na Agenda de hoje ou em Feitos hoje, e troque. Trocar Compareceu por Não compareceu devolve a pessoa para a etapa em que estava, se ninguém a moveu depois, e a linha do tempo registra a correção. Na Agenda de hoje também dá para desfazer a marcação.' },
 
       { t: 'h', text: 'Por que isso importa' },
       { t: 'warn', text: 'Agendamento sem desfecho fica no limbo: não conta como comparecimento nem como falta, e some dos relatórios. A taxa de comparecimento e a conversão por professor saem exatamente desses registros.' },
@@ -366,9 +370,16 @@ export const WIKI_ARTICLES = [
         'Busque o aluno que indicou. Só quem já é aluno matriculado aparece na busca.',
         'Salve. Não precisa escolher funil nem etapa: o sistema já sabe para onde vai.',
       ] },
+      { t: 'p', text: 'Quando o aluno passa vários nomes de uma vez, é mais rápido pela ficha dele:' },
+      { t: 'steps', items: [
+        'Abra a ficha do aluno que indicou.',
+        'Clique em Indicar, no cabeçalho, e escolha Cadastrar indicação. A aba Indicações tem o mesmo botão.',
+        'Preencha nome e WhatsApp. Modalidade e dor são opcionais.',
+        'Clique em Cadastrar. Os campos limpam para o próximo, e cada cadastrado aparece na lista embaixo.',
+      ] },
 
       { t: 'h', text: '2. Para onde o indicado vai' },
-      { t: 'p', text: 'O lead entra no funil Indicações, na etapa Aguardando ação, com a origem Indicação e o mesmo consultor responsável pelo aluno que indicou. As indicações ficam todas juntas, num funil que a equipe trabalha sabendo que aquela pessoa chegou por confiança.' },
+      { t: 'p', text: 'O lead entra no funil Indicações, na etapa Aguardando ação, com a origem Indicação. Quem cadastrou fica responsável por ele. Pelo link do aluno, fica o consultor responsável pelo aluno que indicou. As indicações ficam todas juntas, num funil que a equipe trabalha sabendo que aquela pessoa chegou por confiança.' },
       { t: 'p', text: 'A partir daí é o fluxo normal: contato, visita ou aula, e fechamento. O funil de Indicações também tem Negociação, Venda e Perda.' },
 
       { t: 'h', text: '3. Acompanhando o resultado' },
@@ -398,7 +409,7 @@ export const WIKI_ARTICLES = [
       { t: 'demo', name: 'indicacao-link', caption: 'Copiar ou mandar direto no WhatsApp do aluno.' },
       { t: 'steps', items: [
         'Abra a ficha do aluno.',
-        'Clique em Link de indicação, no cabeçalho, ao lado do WhatsApp.',
+        'Clique em Indicar, no cabeçalho, ao lado do WhatsApp.',
         'Escolha Copiar link, para mandar do seu jeito, ou Enviar pro cliente, que abre o WhatsApp dele já com a mensagem pronta.',
       ] },
 
