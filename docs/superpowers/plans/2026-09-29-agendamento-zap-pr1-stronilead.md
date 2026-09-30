@@ -196,7 +196,7 @@ A ação `schedule` grava numa transação só o que o assistente (`handleWizard
 
 **Files:** nenhum arquivo de código
 
-- [ ] **Step 1: Commit dos planos e rebase na main**
+- [ ] **Step 1: Commit dos planos e a main de hoje no branch**
 
 ```bash
 cd /Users/johnnybittencourt/STRONIX-FIRMA/06-sistemas/stronilead/.claude/worktrees/agendamento-pelo-zap
@@ -212,10 +212,10 @@ git commit -m "docs: planos do agendamento pelo Stronizap
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 git fetch origin
-git rebase origin/main
+git merge --no-edit origin/main
 ```
 
-Expected: rebase sem conflito. Se os planos dos PRs 2 e 3 tiverem outro nome, acrescente-os ao `git add`.
+Expected: merge sem conflito (ou "Already up to date."). É merge, e não rebase, porque o branch já está no GitHub com o commit da spec: um rebase reescreveria esse commit, e o `git push` da Task 16 seria recusado. Se os planos dos PRs 2 e 3 tiverem outro nome, acrescente-os ao `git add`.
 
 - [ ] **Step 2: Dependências e suíte de partida**
 
