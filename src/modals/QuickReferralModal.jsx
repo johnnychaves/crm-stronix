@@ -105,7 +105,7 @@ export function QuickReferralModal({ db, appUser, referrer, referralFunnelId, en
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
-      <DialogContent className="max-w-[480px] rounded-2xl p-5 gap-0">
+      <DialogContent className="max-w-[480px] rounded-2xl border-border p-5 gap-0">
         <DialogTitle className="text-[16px] font-bold tracking-tight pr-6">
           Indicações de {referrer?.name || 'cliente'}
         </DialogTitle>
