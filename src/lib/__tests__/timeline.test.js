@@ -14,6 +14,7 @@ import {
   originLastOnTies,
   zapScheduleTitle,
   appointmentOriginText,
+  isAppointmentReschedule,
   TIMELINE_FILTERS
 } from '../timeline.js';
 
@@ -405,5 +406,35 @@ describe('agendamento feito pelo Stronizap', () => {
     expect(appointmentOriginText({ at, by: 'Ana Souza' })).toBe('Agendada em 29/09 por Ana Souza');
     expect(appointmentOriginText({ at, via: 'stronizap' })).toBe('Agendada em 29/09, pelo Stronizap');
     expect(appointmentOriginText({ at: new Date('x') })).toBe('');
+  });
+});
+
+describe('isAppointmentReschedule: o Remarcar da Meta Diária', () => {
+  const quando = new Date(2026, 9, 3, 18, 0);
+
+  it('visita ou aula marcada de novo, com o rescheduledFor e o volumeKind do tipo, é Remarcar', () => {
+    expect(isAppointmentReschedule({ type: 'note', volumeKind: 'visita', rescheduledFor: quando })).toBe(true);
+    expect(isAppointmentReschedule({ type: 'note', volumeKind: 'aula_experimental', rescheduledFor: quando })).toBe(true);
+  });
+
+  it('o Remarcar de outro dia, que leva o desfecho "rescheduled" na mesma linha, também é', () => {
+    expect(isAppointmentReschedule({
+      type: 'daily_goal_done', appointmentOutcome: 'rescheduled', volumeKind: 'visita', rescheduledFor: quando
+    })).toBe(true);
+  });
+
+  // O próximo contato e o contato reagendado também gravam o rescheduledFor,
+  // mas com o volumeKind do contato. Só o rescheduledFor contaria os dois.
+  it.each(['mensagem', 'ligacao', undefined])('o rescheduledFor com o volumeKind %s não é agendamento', (volumeKind) => {
+    expect(isAppointmentReschedule({ type: 'note', volumeKind, rescheduledFor: quando })).toBe(false);
+  });
+
+  // O agendamento do assistente e o da ponte já são linha de agendamento pelo
+  // texto (🔔), e não levam rescheduledFor.
+  it('sem o rescheduledFor não é Remarcar', () => {
+    expect(isAppointmentReschedule({ type: 'note', volumeKind: 'visita', via: 'stronizap' })).toBe(false);
+    expect(isAppointmentReschedule({ type: 'note' })).toBe(false);
+    expect(isAppointmentReschedule(null)).toBe(false);
+    expect(isAppointmentReschedule(undefined)).toBe(false);
   });
 });

@@ -376,22 +376,31 @@ export function leadBelongsToNumber(lead, matchKey, now = new Date()) {
 }
 
 // O mesmo agendamento já existe: mesmo tipo, mesmo instante e as mesmas escolhas
-// de unidade, modalidade, professor e quantidade. É o pedido repetido (dois
-// cliques, duas pessoas, o "Tentar de novo" depois de uma resposta perdida).
-// Mudou uma dessas escolhas no mesmo horário: é remarcação, e grava, como o
-// assistente da ficha.
+// de unidade, modalidade, professor e quantidade, com o agendamento ainda em
+// aberto, sem desfecho. É o pedido repetido (dois cliques, duas pessoas, o
+// "Tentar de novo" depois de uma resposta perdida). Mudou uma dessas escolhas no
+// mesmo horário: é remarcação, e grava, como o assistente da ficha.
 //
-// A anotação conta só num sentido. Anotação escrita e diferente da que o lead
-// tem (`nextFollowUpNote`) é edição, e grava também. Pedido sem anotação não
-// mexe na anotação que já está no lead e nunca conta como mudança: o balão do
+// Agendamento com desfecho (compareceu ou não compareceu) nunca é o mesmo. O
+// desfecho pode ser marcado no mesmo dia, antes do horário (Agenda de hoje,
+// "Marcar desfecho" ou correção do desfecho), e a pessoa que escreve depois
+// dizendo que vem no mesmo horário pede um agendamento que já está encerrado. O
+// pedido grava, e o buildSchedulePatch zera o desfecho, como o assistente.
+// Cancelado nem chega aqui: o appointmentDetailOf devolve null.
+//
+// A anotação conta só num sentido, e só para decidir se o pedido é o repetido.
+// Anotação escrita e diferente da que o lead tem (`nextFollowUpNote`) é edição, e
+// grava também. Pedido sem anotação nunca conta como mudança: o balão do
 // Stronizap não recebe a anotação do lead, então em branco quer dizer "não
-// digitei", e não "apague". Repetir o agendamento sem digitar nada não grava de
-// novo nem apaga a anotação. Com um contato (mensagem ou ligação) marcado na
+// digitei", e não "apague". Por isso repetir o agendamento sem digitar nada não
+// grava de novo e deixa a anotação como está. Numa remarcação que grava, o
+// `nextFollowUpNote` passa a ser a anotação do pedido (vazia, se o pedido não
+// trouxer), como no assistente. Com um contato (mensagem ou ligação) marcado na
 // ficha depois do compromisso, a anotação do lead é a do contato, e a
 // comparação é com ela.
 export function hasSameAppointment(lead, { type, at, schedule }) {
   const current = appointmentDetailOf(lead);
-  if (!current || current.type !== type || current.at !== at.toISOString()) return false;
+  if (!current || current.outcome || current.type !== type || current.at !== at.toISOString()) return false;
   const note = schedule.note || null;
   if (note !== null && note !== (lead.nextFollowUpNote || null)) return false;
   if (type === 'visita') return current.unit === (schedule.unit || null);

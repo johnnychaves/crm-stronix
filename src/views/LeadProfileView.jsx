@@ -61,7 +61,8 @@ import {
   TIMELINE_SYSTEM_KIND,
   originLastOnTies,
   zapScheduleTitle,
-  appointmentOriginText
+  appointmentOriginText,
+  isAppointmentReschedule
 } from '../lib/timeline.js';
 import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
@@ -735,6 +736,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // O desfecho aponta de volta para o agendamento que o originou: o
   // agendamento mais recente ANTES dele. Dado real — não há campo ligando os
   // dois, mas a ordem cronológica resolve. `via` diz se ele veio do Stronizap.
+  // O Remarcar da Meta Diária também conta como agendamento
+  // (isAppointmentReschedule): a nota dele não é linha de agendamento, e sem
+  // ele o desfecho apontaria para o agendamento de antes do Remarcar. O
+  // Remarcar de outro dia é as duas coisas na mesma linha, o desfecho
+  // "reagendado" do agendamento de antes e o agendamento novo: por isso o
+  // rodapé sai antes de ele virar a origem.
   const outcomeOrigin = (() => {
     const chrono = interactionsWithClass
       .filter(i => i.createdAt instanceof Date)
@@ -743,11 +750,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     const map = {};
     let lastScheduled = null;
     chrono.forEach(i => {
-      if (i.appointmentOutcome) {
-        if (lastScheduled) map[i.id] = { at: lastScheduled.createdAt, by: lastScheduled.consultantName, via: lastScheduled.via ?? null };
-      } else if (i._kind === 'appointment') {
-        lastScheduled = i;
+      if (i.appointmentOutcome && lastScheduled) {
+        map[i.id] = { at: lastScheduled.createdAt, by: lastScheduled.consultantName, via: lastScheduled.via ?? null };
       }
+      if (isAppointmentReschedule(i) || (!i.appointmentOutcome && i._kind === 'appointment')) lastScheduled = i;
     });
     return map;
   })();

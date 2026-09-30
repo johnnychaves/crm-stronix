@@ -180,3 +180,83 @@ describe('agendamento feito pelo Stronizap na ficha', () => {
     expect(marcas(html)).toBe(2);
   });
 });
+
+// O Remarcar da Meta Diária marca a visita de novo depois do desfecho, e o
+// desfecho seguinte diz de qual agendamento ele veio. A nota do Remarcar não é
+// linha de agendamento (a classificação a lê como nota), então o rodapé
+// precisa contar o Remarcar por conta própria. Sem isso, o comparecimento de
+// uma visita que outra pessoa remarcou na Meta dizia "Agendada ... pelo
+// Stronizap", com a marca, apontando para o agendamento de antes.
+describe('o rodapé do desfecho depois de remarcar pela Meta Diária', () => {
+  beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 3, 20, 0)); });
+  afterAll(() => { vi.useRealTimers(); });
+
+  // "Não veio" da Agenda do dia, em 01/10.
+  const FALTOU = {
+    id: 'd2', type: 'daily_goal_done', dailyGoalCategory: 'visita_hoje', appointmentOutcome: 'no_show',
+    text: '❌ Não veio — Agenda do dia (Visita Hoje)', consultantName: 'Bruno Lima', createdAt: new Date(2026, 9, 1, 18, 40),
+  };
+  // O Remarcar que abre logo depois do "Não veio" (flow after_no_show): uma nota
+  // com o rescheduledFor e o volumeKind do tipo marcado.
+  const REMARCOU_NA_META = {
+    id: 'r1', type: 'note', volumeKind: 'visita', rescheduledFor: new Date(2026, 9, 3, 18, 0),
+    text: '🔄 Próxima tentativa marcada (Visita) para 03/10/2026 às 18:00, após "Não veio".',
+    consultantName: 'Bruno Lima', createdAt: new Date(2026, 9, 1, 18, 41),
+  };
+  // O comparecimento no dia 3, da visita que o Bruno marcou na Meta.
+  const VEIO_DIA_3 = {
+    id: 'd3', type: 'daily_goal_done', dailyGoalCategory: 'visita_hoje', appointmentOutcome: 'attended',
+    text: '✅ Compareceu — Agenda do dia (Visita Hoje)', consultantName: 'Bruno Lima', createdAt: new Date(2026, 9, 3, 18, 30),
+  };
+
+  it('o desfecho depois do Remarcar aponta para o Remarcar, sem a marca, e a falta continua apontando para o agendamento do Stronizap', () => {
+    linha.registros = [VEIO_DIA_3, REMARCOU_NA_META, FALTOU, AGENDA];
+    const html = ficha();
+    // Só a falta leva o rodapé do Stronizap.
+    expect(html.match(/Agendada em 29\/09 por Ana Souza, pelo Stronizap/g)).toHaveLength(1);
+    // O comparecimento do dia 3 é da visita que o Bruno remarcou em 01/10, sem nada do Stronizap.
+    expect(html).toContain('Agendada em 01/10 por Bruno Lima<');
+    // Duas marcas: a do autor do agendamento e a do rodapé da falta. O rodapé do Remarcar não leva nenhuma.
+    expect(marcas(html)).toBe(2);
+  });
+
+  // O Remarcar para outro dia fecha a tarefa de hoje e leva o desfecho
+  // "rescheduled" na própria linha: é o desfecho do agendamento de antes e, ao
+  // mesmo tempo, o agendamento novo.
+  it('o Remarcar de outro dia é o desfecho do agendamento de antes e a origem do desfecho seguinte', () => {
+    const remarcou = {
+      id: 'r2', type: 'daily_goal_done', dailyGoalCategory: 'visita_hoje', appointmentOutcome: 'rescheduled',
+      volumeKind: 'visita', rescheduledFor: new Date(2026, 9, 3, 18, 0),
+      text: '🔄 Remarcou visita para 03/10/2026 às 18:00 — Meta Diária.',
+      consultantName: 'Bruno Lima', createdAt: new Date(2026, 9, 1, 12, 0),
+    };
+    linha.registros = [VEIO_DIA_3, remarcou, AGENDA];
+    const html = ficha();
+    expect(html).toContain('>Reagendado<');
+    expect(html.match(/Agendada em 29\/09 por Ana Souza, pelo Stronizap/g)).toHaveLength(1);
+    expect(html).toContain('Agendada em 01/10 por Bruno Lima<');
+    expect(marcas(html)).toBe(2);
+  });
+
+  // O "Próximo contato?" da Meta também grava o rescheduledFor, mas com o
+  // volumeKind do contato: é mensagem ou ligação, e não agendamento. O
+  // desfecho que vem depois dele (a correção do comparecimento, no mesmo dia)
+  // continua apontando para a visita.
+  it('o próximo contato marcado depois do comparecimento não vira origem: a correção do desfecho aponta para a visita', () => {
+    const compareceu = { ...VEIO_DIA_3, id: 'd4', createdAt: new Date(2026, 9, 1, 18, 40) };
+    const proximoContato = {
+      id: 'p1', type: 'note', volumeKind: 'mensagem', rescheduledFor: new Date(2026, 9, 2, 10, 0),
+      text: '✅ Visita Hoje concluída — próximo contato (mensagem) em 02/10/2026 às 10:00.',
+      consultantName: 'Bruno Lima', createdAt: new Date(2026, 9, 1, 18, 45),
+    };
+    const corrigido = {
+      id: 'd5', type: 'daily_goal_done', dailyGoalCategory: 'visita_hoje', appointmentOutcome: 'no_show', outcomeCorrection: true,
+      text: '↩️ Desfecho corrigido: ❌ Não veio · Agenda do dia (Visita Hoje)', consultantName: 'Bruno Lima',
+      createdAt: new Date(2026, 9, 1, 19, 0),
+    };
+    linha.registros = [corrigido, proximoContato, compareceu, AGENDA];
+    const html = ficha();
+    expect(html.match(/Agendada em 29\/09 por Ana Souza, pelo Stronizap/g)).toHaveLength(2);
+    expect(html).not.toContain('Agendada em 01/10');
+  });
+});

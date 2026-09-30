@@ -29,9 +29,10 @@ export function isAppointmentCancelled(lead) {
 }
 
 // A linha "Agendamento" do cartão: tipo, dia e hora e o desfecho, ou null.
-// Cancelado não aparece. O cancelamento da Meta Diária já apaga a data do
-// lead; o do writeAppointmentOutcome sem consumeAppointment não apaga, e esta
-// regra cobre esse caminho.
+// Cancelado não aparece. Hoje o único caminho que grava o cancelamento é o
+// "Cancelou" da Meta Diária, que já apaga a data e o tipo do lead. A regra é
+// defensiva: cobre dado antigo e um caminho que um dia grave o cancelado sem
+// apagar a data.
 export function cardAppointment(lead) {
   if (isAppointmentCancelled(lead)) return null;
   const tipo = getLeadAppointmentType(lead);

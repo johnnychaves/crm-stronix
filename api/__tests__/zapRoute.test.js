@@ -2225,6 +2225,51 @@ describe('POST /api/zap com action schedule', () => {
     expect(aulasDaAcademia()).toHaveLength(1);
   });
 
+  // O desfecho pode ser marcado antes do horário, no mesmo dia (Agenda de hoje,
+  // "Marcar desfecho" ou correção do desfecho). Visita de hoje às 18:00, "Não
+  // compareceu" marcado de manhã e a lead avisando ao meio-dia que vai às 18h:
+  // o pedido tem o mesmo horário e as mesmas escolhas, mas o agendamento já não
+  // está em aberto. Responder ja_agendado deixaria a lead com o desfecho, sem
+  // interação, sem ponto e fora das pendências do dia.
+  it('visita de hoje com "Não compareceu" já marcado e o mesmo horário pedido: grava, zera o desfecho e dá o ponto, e o repetido depois responde ja_agendado', async () => {
+    vi.setSystemTime(new Date('2026-10-01T15:00:00.000Z'));
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'visita', appointmentScheduledFor: ts(QUINTA_18H), appointmentUnit: 'Centro',
+      nextFollowUp: ts(QUINTA_18H), nextFollowUpType: 'Visita', nextFollowUpNote: 'Vem depois do trabalho.',
+      appointmentOutcome: 'no_show', appointmentOutcomeAt: ts(new Date('2026-10-01T13:00:00.000Z')), appointmentOutcomeBy: 'auth-ana'
+    })];
+    banco.aulas[TENANT] = [registro('v1', { scheduledFor: ts(QUINTA_18H) })];
+    const res = resposta();
+
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(leadDaAcademia('L1')).toMatchObject({
+      appointmentType: 'visita', appointmentScheduledFor: QUINTA_18H, appointmentUnit: 'Centro',
+      appointmentOutcome: null, appointmentOutcomeAt: null, appointmentOutcomeBy: null, interactionsCount: 4
+    });
+    expect(res.body.appointment).toMatchObject({ type: 'visita', at: '2026-10-01T21:00:00.000Z', outcome: null });
+    expect(res.body.card.appointment).toEqual({ type: 'visita', at: '2026-10-01T21:00:00.000Z', outcome: null });
+    expect(interacoesDaAcademia()).toHaveLength(1);
+    expect(interacoesDaAcademia()[0]).toMatchObject({
+      text: '🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: Vem depois do trabalho.',
+      volumeKind: 'visita', via: 'stronizap'
+    });
+    // O registro em aberto é o mesmo, e continua um só.
+    expect(aulasDaAcademia()).toHaveLength(1);
+    expect(aulasDaAcademia()[0]).toMatchObject({ id: 'v1', scheduledFor: QUINTA_18H, status: 'agendada' });
+
+    // Agora o agendamento está em aberto: o mesmo pedido de novo é o repetido.
+    const gravacoes = banco.gravacoes.length;
+    const repetido = resposta();
+    await handler(pedidoAgenda(), repetido);
+    expect(repetido.statusCode).toBe(409);
+    expect(repetido.body.error).toBe('ja_agendado');
+    expect(repetido.body.appointment).toMatchObject({ type: 'visita', at: '2026-10-01T21:00:00.000Z', outcome: null });
+    expect(banco.gravacoes).toHaveLength(gravacoes);
+    expect(interacoesDaAcademia()).toHaveLength(1);
+  });
+
   // Mudar só a unidade, no mesmo dia e horário, é remarcação: o assistente da
   // ficha grava, e aqui também. Responder ja_agendado perderia a troca.
   it('remarcar no mesmo dia e horário com outra unidade: grava, e o pedido idêntico depois disso é o repetido', async () => {
