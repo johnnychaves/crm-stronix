@@ -19,12 +19,14 @@ import { ZAP_LEAD_MESSAGES, refusal, invalidData, nationalDigits, emailFromActor
 import { zapMatchKey } from './_zapPhone.js';
 import { appointmentOutcomeOf, isAppointmentCancelled } from './_zapCard.js';
 import {
-  diaDeBrasilia, horaInteiraDeBrasilia, diaDaSemanaDoDia, isoDoDia, instanteDeBrasilia
+  diaDeBrasilia, horaInteiraDeBrasilia, diaDaSemanaDoDia, isoDoDia, dataHoraDeBrasilia, instanteDeBrasilia
 } from './_horarioDeBrasilia.js';
-import { getLeadAppointmentType, getLeadAppointmentDate } from '../src/lib/leads.js';
+import { getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, ZAP_VIA } from '../src/lib/leads.js';
 import { normalizeAppointmentType } from '../src/lib/dates.js';
 import { normalizeTrialClassOptions, normalizeMetaWeekdays } from '../src/lib/leadStatus.js';
-import { professorsForModality } from '../src/lib/professores.js';
+import { professorsForModality, professorNameById, SOLO_TRAINING_LABEL } from '../src/lib/professores.js';
+import { AULA_STATUS, APPOINTMENT_RECORD_TYPES, aulaRecordFields, isAulaRecord } from '../src/lib/aulas.js';
+import { buildSchedulePatch } from '../src/lib/schedulePatch.js';
 import { contactOf } from '../src/lib/guardian.js';
 
 const MINUTE_MS = 60000;
@@ -369,4 +371,132 @@ export function leadBelongsToNumber(lead, matchKey, now = new Date()) {
 export function hasSameAppointment(lead, { type, at }) {
   const current = appointmentDetailOf(lead);
   return Boolean(current) && current.type === type && current.at === at.toISOString();
+}
+
+// ---------------------------------------------------------------------------
+// O que é gravado e o que é respondido (schedule)
+// ---------------------------------------------------------------------------
+
+// Rótulo do tipo, igual ao followUpLabel do ScheduleWizard: é o que vai no
+// texto da interação e em nextFollowUpType.
+const TYPE_LABEL = Object.freeze({ visita: 'Visita', aula_experimental: 'Aula Experimental' });
+
+// O texto da interação, no formato do assistente (handleWizardConfirm), que a
+// linha do tempo lê com parseAppointment:
+//   "🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: …"
+//   "🔔 Aula Experimental agendada (Pilates · 1 aula) · Carla Dias p/ 02/10/2026, 19:00."
+// O navegador escreve o dia e a hora no fuso da academia; aqui eles saem no
+// horário de Brasília, porque a Vercel roda em UTC.
+export function scheduleInteractionText({
+  type, unit = null, modality = null, quantity = null, professorId = null, professorName = null,
+  soloTraining = false, at, note = null
+}) {
+  let extra = '';
+  if (type === 'aula_experimental') {
+    const q = quantity || 1;
+    extra = ` (${modality ? `${modality} · ` : ''}${q} ${q === 1 ? 'aula' : 'aulas'})`;
+    if (professorId) extra += ` · ${professorName}`;
+    else if (soloTraining) extra += ` · ${SOLO_TRAINING_LABEL}`;
+  } else if (unit) {
+    extra = ` (Unidade ${unit})`;
+  }
+  const obs = (note || '').trim();
+  return `🔔 ${TYPE_LABEL[type]} agendada${extra} p/ ${dataHoraDeBrasilia(at)}.` + (obs ? ` Obs: ${obs}` : '');
+}
+
+// A visita em aberto do lead, como o findOpenVisitaId do aulasWrites.js: a
+// primeira visita 'agendada' entre os registros dele.
+export function pickOpenVisitaId(records) {
+  const open = (records || []).find((r) => !isAulaRecord(r) && r.status === AULA_STATUS.AGENDADA);
+  return open ? open.id : null;
+}
+
+// A aula do currentAulaId só é reaproveitada se ainda estiver 'agendada',
+// como no findOpenAulaId do aulasWrites.js.
+export const isOpenAulaRecord = (record) => Boolean(record) && record.status === AULA_STATUS.AGENDADA;
+
+// O que a ação schedule grava numa transação só, o mesmo que o assistente
+// grava em três passos:
+//   - record: o registro em stronix_aulas. Com `openRecordId` (a aula do
+//     currentAulaId ainda agendada, ou a visita em aberto do lead), só a data
+//     e os campos do tipo mudam; sem ele, nasce um registro com o id
+//     `newRecordId`, com os campos de consultor do dono do lead;
+//   - interaction: a nota que a linha do tempo mostra como agendamento, com o
+//     volumeKind da Meta Diária, quem agendou em consultantName, actorId e
+//     actorAuthUid, e a origem (via e zapChannelName);
+//   - leadPatch: o buildSchedulePatch do assistente, mais lastInteractionAt e
+//     interactionsCount, como o logInteraction.
+// `professors` são os documentos de stronix_professores, de onde sai o nome.
+// `serverTime` e `increment` são os FieldValue do firebase-admin.
+export function buildScheduleWrites({
+  lead, actor, schedule, at, professors = [], channelName = null, openRecordId = null, newRecordId = null,
+  serverTime, increment
+}) {
+  const isAula = schedule.type === 'aula_experimental';
+  const professorName = isAula && schedule.professorId ? professorNameById(professors, schedule.professorId) : null;
+  const recordPatch = isAula
+    ? {
+        professorId: schedule.professorId || null,
+        professorName: professorName || null,
+        soloTraining: Boolean(schedule.soloTraining),
+        modality: schedule.modality || null,
+        scheduledFor: at
+      }
+    : { unit: schedule.unit || null, scheduledFor: at };
+  const recordId = openRecordId || newRecordId;
+  const record = openRecordId
+    ? { id: openRecordId, update: recordPatch }
+    : {
+        id: newRecordId,
+        create: {
+          ...aulaRecordFields({
+            type: isAula ? APPOINTMENT_RECORD_TYPES.AULA : APPOINTMENT_RECORD_TYPES.VISITA,
+            leadId: lead.id,
+            leadName: lead.name || lead.nome || null,
+            consultantId: lead.consultantId || null,
+            consultantAuthUid: lead.consultantAuthUid || null,
+            consultantName: lead.consultantName || null,
+            status: AULA_STATUS.AGENDADA,
+            ...recordPatch
+          }),
+          createdAt: serverTime
+        }
+      };
+  const interaction = {
+    leadId: lead.id,
+    leadName: lead.name || null,
+    consultantName: actor.name || null,
+    ...getInteractionSecurityFields(lead, actor),
+    actorId: actor.id || null,
+    actorAuthUid: actor.authUid || null,
+    createdAt: serverTime,
+    text: scheduleInteractionText({ ...schedule, professorName, at }),
+    type: 'note',
+    volumeKind: schedule.type,
+    via: ZAP_VIA,
+    zapChannelName: channelName || null
+  };
+  const leadPatch = {
+    lastInteractionAt: serverTime,
+    interactionsCount: increment,
+    ...buildSchedulePatch({
+      typeLabel: TYPE_LABEL[schedule.type],
+      date: at,
+      modalidade: schedule.modality,
+      professorId: schedule.professorId,
+      professorName,
+      soloTraining: schedule.soloTraining,
+      quantidade: schedule.quantity,
+      unidade: schedule.unit,
+      note: schedule.note,
+      currentAulaId: isAula ? recordId : (lead.currentAulaId || null)
+    })
+  };
+  return { record, interaction, leadPatch };
+}
+
+// Resposta 409: o cartão do número e o agendamento que já existia. O
+// Stronizap trata como sucesso, porque a gravação é a mesma.
+export function alreadyScheduledBody({ card, appointment }) {
+  return { error: 'ja_agendado', message: ZAP_SCHEDULE_MESSAGES.alreadyScheduled, card, appointment };
 }

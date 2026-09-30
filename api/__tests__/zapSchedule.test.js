@@ -14,8 +14,10 @@ const fusoDaMaquina = vi.hoisted(() => {
 import {
   SCHEDULE_LIMIT, LEAD_IDS_MAX, ZAP_SCHEDULE_MESSAGES, unitsView, scheduleCatalogView, suggestedDays, countsForMeta,
   wardRelationship, appointmentDetailOf, scheduleTargets, readScheduleOptionsBody, buildScheduleOptions,
-  isDocId, readScheduleBody, readStatusBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment
+  isDocId, readScheduleBody, readStatusBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
+  scheduleInteractionText, pickOpenVisitaId, isOpenAulaRecord, buildScheduleWrites, alreadyScheduledBody
 } from '../_zapSchedule.js';
+import { aulaRecordFields } from '../../src/lib/aulas.js';
 
 afterAll(() => {
   if (fusoDaMaquina === undefined) delete process.env.TZ;
@@ -533,5 +535,189 @@ describe('hasSameAppointment: o mesmo agendamento já gravado', () => {
     expect(hasSameAppointment(MARIANA, { type: 'visita', at: brt('2026-09-30T18:30') })).toBe(false);
     expect(hasSameAppointment(MARIANA, { type: 'aula_experimental', at })).toBe(false);
     expect(hasSameAppointment({ ...MARIANA, appointmentOutcome: 'cancelled' }, { type: 'visita', at })).toBe(false);
+  });
+});
+
+describe('scheduleInteractionText: o texto do assistente, no horário de Brasília', () => {
+  const visita = { type: 'visita', unit: 'Centro', at: brt('2026-10-01T18:00'), note: 'Vem depois do trabalho.' };
+  const aula = { type: 'aula_experimental', modality: 'Pilates', quantity: 1, professorId: 'p1', professorName: 'Carla Dias', at: brt('2026-10-02T19:00') };
+
+  it('visita com unidade e anotação', () => {
+    expect(scheduleInteractionText(visita)).toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: Vem depois do trabalho.');
+  });
+
+  it('visita sem unidade e sem anotação', () => {
+    expect(scheduleInteractionText({ ...visita, unit: null, note: null })).toBe('🔔 Visita agendada p/ 01/10/2026, 18:00.');
+  });
+
+  it('aula de uma aula, com professor', () => {
+    expect(scheduleInteractionText(aula)).toBe('🔔 Aula Experimental agendada (Pilates · 1 aula) · Carla Dias p/ 02/10/2026, 19:00.');
+  });
+
+  it('aula de várias aulas', () => {
+    expect(scheduleInteractionText({ ...aula, quantity: 2 })).toBe('🔔 Aula Experimental agendada (Pilates · 2 aulas) · Carla Dias p/ 02/10/2026, 19:00.');
+  });
+
+  it('aula de quem treina sozinho, com anotação', () => {
+    expect(scheduleInteractionText({ ...aula, professorId: null, professorName: null, soloTraining: true, note: 'Traz tênis.' }))
+      .toBe('🔔 Aula Experimental agendada (Pilates · 1 aula) · Treina sozinho p/ 02/10/2026, 19:00. Obs: Traz tênis.');
+  });
+
+  it('anotação só com espaço não entra', () => {
+    expect(scheduleInteractionText({ ...visita, note: '   ' })).toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00.');
+  });
+
+  it('com o processo em UTC, 23:30 de Brasília continua no mesmo dia', () => {
+    expect(scheduleInteractionText({ ...visita, at: brt('2026-10-01T23:30'), note: null }))
+      .toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 23:30.');
+  });
+});
+
+describe('registro em aberto que o assistente reaproveita', () => {
+  it('pickOpenVisitaId: a primeira visita agendada; aula (com ou sem type) e visita resolvida não contam', () => {
+    const registros = [
+      { id: 'a1', status: 'agendada' },
+      { id: 'a2', type: 'aula', status: 'agendada' },
+      { id: 'v1', type: 'visita', status: 'no_show' },
+      { id: 'v2', type: 'visita', status: 'agendada' },
+      { id: 'v3', type: 'visita', status: 'agendada' }
+    ];
+    expect(pickOpenVisitaId(registros)).toBe('v2');
+    expect(pickOpenVisitaId(registros.slice(0, 3))).toBeNull();
+    expect(pickOpenVisitaId(undefined)).toBeNull();
+  });
+
+  it('isOpenAulaRecord: só a aula ainda agendada', () => {
+    expect(isOpenAulaRecord({ status: 'agendada' })).toBe(true);
+    expect(isOpenAulaRecord({ status: 'attended' })).toBe(false);
+    expect(isOpenAulaRecord(null)).toBe(false);
+  });
+});
+
+describe('buildScheduleWrites: o que o assistente grava, numa gravação só', () => {
+  const HORA = Object.freeze({ horaDoServidor: true });
+  const MAIS_UM = Object.freeze({ incremento: 1 });
+  // A Mariana antes do agendamento: lead da Ana, com uma aula antiga já resolvida.
+  const LEAD = {
+    id: 'L1', name: 'Mariana Lima', status: 'Primeiro contato', consultantId: 'u-ana', consultantName: 'Ana Souza',
+    consultantAuthUid: 'auth-ana', currentAulaId: 'aula-velha', appointmentOutcome: 'no_show'
+  };
+  const VISITA = { leadId: 'L1', type: 'visita', unit: 'Centro', modality: null, professorId: null, soloTraining: false, quantity: null, note: 'Vem depois do trabalho.' };
+  const AULA = { leadId: 'L1', type: 'aula_experimental', unit: null, modality: 'Pilates', professorId: 'p1', soloTraining: false, quantity: 2, note: null };
+  const atVisita = brt('2026-10-01T18:00');
+  const atAula = brt('2026-10-02T19:00');
+  const gravar = (extra) => buildScheduleWrites({
+    lead: LEAD, actor: ANA, professors: CATALOGOS.professors, channelName: 'Recepção', serverTime: HORA, increment: MAIS_UM, ...extra
+  });
+
+  it('visita nova: o registro, a interação e o patch do lead, valor por valor', () => {
+    const { record, interaction, leadPatch } = gravar({ schedule: VISITA, at: atVisita, newRecordId: 'rec-novo' });
+    expect(record).toEqual({
+      id: 'rec-novo',
+      create: {
+        ...aulaRecordFields({
+          type: 'visita', leadId: 'L1', leadName: 'Mariana Lima', consultantId: 'u-ana', consultantAuthUid: 'auth-ana',
+          consultantName: 'Ana Souza', status: 'agendada', unit: 'Centro', scheduledFor: atVisita
+        }),
+        createdAt: HORA
+      }
+    });
+    expect(record.create).toMatchObject({ type: 'visita', unit: 'Centro', professorId: null, status: 'agendada', converted: false });
+    expect(interaction).toEqual({
+      leadId: 'L1',
+      leadName: 'Mariana Lima',
+      consultantName: 'Ana Souza',
+      leadConsultantId: 'u-ana',
+      leadConsultantAuthUid: 'auth-ana',
+      actorId: 'u-ana',
+      actorAuthUid: 'auth-ana',
+      createdAt: HORA,
+      text: '🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: Vem depois do trabalho.',
+      type: 'note',
+      volumeKind: 'visita',
+      via: 'stronizap',
+      zapChannelName: 'Recepção'
+    });
+    expect(leadPatch).toEqual({
+      lastInteractionAt: HORA,
+      interactionsCount: MAIS_UM,
+      nextFollowUp: atVisita,
+      nextFollowUpType: 'Visita',
+      nextFollowUpNote: 'Vem depois do trabalho.',
+      appointmentModality: null,
+      appointmentProfessorId: null,
+      appointmentProfessorName: null,
+      appointmentSoloTraining: false,
+      trialClassesPlanned: null,
+      appointmentUnit: 'Centro',
+      appointmentType: 'visita',
+      appointmentScheduledFor: atVisita,
+      appointmentOutcome: null,
+      appointmentOutcomeAt: null,
+      appointmentOutcomeBy: null,
+      // A visita não mexe no ponteiro da aula, como no assistente.
+      currentAulaId: 'aula-velha'
+    });
+  });
+
+  it('visita remarcada: o registro em aberto só troca a unidade e a data', () => {
+    const { record } = gravar({ schedule: VISITA, at: atVisita, openRecordId: 'visita-aberta', newRecordId: 'rec-novo' });
+    expect(record).toEqual({ id: 'visita-aberta', update: { unit: 'Centro', scheduledFor: atVisita } });
+  });
+
+  it('aula nova: o registro leva o professor e o lead passa a apontar para ele', () => {
+    const { record, interaction, leadPatch } = gravar({ schedule: AULA, at: atAula, newRecordId: 'rec-novo' });
+    expect(record.create).toMatchObject({
+      type: 'aula', unit: null, professorId: 'p1', professorName: 'Carla Dias', soloTraining: false, modality: 'Pilates',
+      scheduledFor: atAula, status: 'agendada'
+    });
+    expect(interaction).toMatchObject({
+      text: '🔔 Aula Experimental agendada (Pilates · 2 aulas) · Carla Dias p/ 02/10/2026, 19:00.',
+      volumeKind: 'aula_experimental'
+    });
+    expect(leadPatch).toMatchObject({
+      nextFollowUpType: 'Aula Experimental', nextFollowUpNote: null, appointmentType: 'aula_experimental',
+      appointmentModality: 'Pilates', appointmentProfessorId: 'p1', appointmentProfessorName: 'Carla Dias',
+      appointmentSoloTraining: false, trialClassesPlanned: 2, appointmentUnit: null, currentAulaId: 'rec-novo'
+    });
+  });
+
+  it('aula no registro ainda agendada: atualiza professor, modalidade e data, e o ponteiro continua', () => {
+    const { record, leadPatch } = gravar({ schedule: AULA, at: atAula, openRecordId: 'aula-aberta', newRecordId: 'rec-novo' });
+    expect(record).toEqual({
+      id: 'aula-aberta',
+      update: { professorId: 'p1', professorName: 'Carla Dias', soloTraining: false, modality: 'Pilates', scheduledFor: atAula }
+    });
+    expect(leadPatch.currentAulaId).toBe('aula-aberta');
+  });
+
+  it('quem treina sozinho: sem professor no registro, no lead e no texto', () => {
+    const { record, interaction, leadPatch } = gravar({ schedule: { ...AULA, professorId: null, soloTraining: true, quantity: 1 }, at: atAula, newRecordId: 'rec-novo' });
+    expect(record.create).toMatchObject({ professorId: null, professorName: null, soloTraining: true });
+    expect(leadPatch).toMatchObject({ appointmentProfessorId: null, appointmentProfessorName: null, appointmentSoloTraining: true });
+    expect(interaction.text).toBe('🔔 Aula Experimental agendada (Pilates · 1 aula) · Treina sozinho p/ 02/10/2026, 19:00.');
+  });
+
+  it('o gestor agenda no lead da Ana: ele é o autor, e a Ana continua dona', () => {
+    const { interaction } = gravar({ actor: JOHNNY, schedule: VISITA, at: atVisita, newRecordId: 'rec-novo' });
+    expect(interaction).toMatchObject({
+      consultantName: 'Johnny', actorId: 'u-johnny', actorAuthUid: 'auth-johnny',
+      leadConsultantId: 'u-ana', leadConsultantAuthUid: 'auth-ana'
+    });
+  });
+
+  it('sem canal, zapChannelName vai null; agendar não muda a etapa; nada vai como undefined', () => {
+    const { record, interaction, leadPatch } = gravar({ schedule: VISITA, at: atVisita, newRecordId: 'rec-novo', channelName: null });
+    expect(interaction.zapChannelName).toBeNull();
+    expect('status' in leadPatch).toBe(false);
+    for (const gravado of [record.create, interaction, leadPatch]) expect(Object.values(gravado)).not.toContain(undefined);
+  });
+});
+
+describe('alreadyScheduledBody: a resposta do ja_agendado', () => {
+  it('leva o cartão, o agendamento que já existia e o texto', () => {
+    expect(alreadyScheduledBody({ card: { found: true }, appointment: { leadId: 'L1' } })).toEqual({
+      error: 'ja_agendado', message: 'Esse agendamento já estava no Stronilead.', card: { found: true }, appointment: { leadId: 'L1' }
+    });
   });
 });
