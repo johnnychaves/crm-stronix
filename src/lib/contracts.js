@@ -368,8 +368,8 @@ export const buildMatriculaWrites = ({
   // a marca de emendada, e nada é encurtado: o id do lead pode ser velho, e o
   // encurtamento vai por update, que num contrato que não existe derrubaria a
   // renovação inteira.
-  const currentDoc = isRenewal && previousContract?.id && previousContract.id === lead?.currentContractId ? previousContract : null;
-  const currentEnd = isRenewal && lead?.currentContractId
+  const currentDoc = previousContract?.id && previousContract.id === lead?.currentContractId ? previousContract : null;
+  const currentEnd = lead?.currentContractId
     ? getSafeDateOrNull(currentDoc ? currentDoc.endsAt : lead?.currentContractEndsAt)
     : null;
   const join = currentEnd ? renewalJoinOf(currentEnd, start) : { seamless: false, overlaps: false, previousEndsAt: null };
@@ -380,7 +380,7 @@ export const buildMatriculaWrites = ({
   // mesma fonte das datas: o documento, quando ele é usado, senão o resumo do
   // lead. O lead da lista pode dizer ativo com o documento já cancelado.
   const at = renewalTakeoverAt(start, now);
-  const inForce = isRenewal && isInForce(
+  const inForce = Boolean(lead?.currentContractId) && isInForce(
     currentDoc ? deriveContractStatus(currentDoc, at) : deriveLeadContractStatus(lead, at),
     currentEnd,
     at
@@ -393,20 +393,26 @@ export const buildMatriculaWrites = ({
   // novo: o originalEndsAt passaria a guardar o fim encurtado, e o fim original
   // de verdade se perderia. Isso acontece com o lead velho da lista, que ainda
   // aponta para ele. Desfeita a renovação, a marca volta a null e ele encurta.
-  const canShorten = Boolean(inForce && currentDoc && !currentDoc.shortenedById && eveFitsIn(join, currentStart, currentEnd));
+  const canShorten = Boolean(isRenewal && inForce && currentDoc && !currentDoc.shortenedById && eveFitsIn(join, currentStart, currentEnd));
   // A sobreposta que encurta o atual também é emendada: o atual passa a
   // terminar na véspera do novo, então o novo começa no dia seguinte ao fim
   // dele e não fica agendado. Sem encurtar (sem o documento, ou com ele já
   // encurtado por outra renovação), os dois valem juntos e a marca fica false.
-  // Fora de vigor, nem a emenda marca: o novo fica agendado até começar.
-  const seamless = inForce && (join.seamless || canShorten);
-  // O bloco "em uso" do resumo (inUseBlockOf): com a renovação começando depois
-  // de agora e o contrato renovado em vigor, o cliente segue usando o renovado
-  // até ela começar, com o fim encurtado quando a gravação encurta. Sem o
-  // documento, o id e o fim saem do resumo do lead, como a marca. Renovação
-  // que já começa valendo, e matrícula, limpam o bloco.
+  // Fora de vigor, nem a emenda marca: o novo fica agendado até começar. A
+  // matrícula nunca emenda nem encurta: isso é da renovação.
+  const seamless = isRenewal && inForce && (join.seamless || canShorten);
+  // O bloco "em uso" do resumo (inUseBlockOf): com o contrato novo começando
+  // depois de agora e o contrato atual em vigor e já começado, o cliente segue
+  // usando o atual até o novo começar, com o fim encurtado quando a gravação
+  // encurta. Vale para a renovação e para a matrícula marcada para depois, de
+  // um cliente com um contrato paralelo em vigor (revisão de 30/09/2026). Sem
+  // o documento, o id e o fim saem do resumo do lead, como a marca. O atual
+  // que ainda não começou (uma renovação marcada) não entra. Contrato novo que
+  // já começa valendo, e matrícula de quem não tem contrato em vigor, limpam.
   const ref = getSafeDateOrNull(now) || new Date();
-  const inUseBlock = inForce && start.getTime() > ref.getTime()
+  const currentStartedAt = currentStart || getSafeDateOrNull(lead?.currentContractStartsAt);
+  const currentStarted = Boolean(currentStartedAt && currentStartedAt.getTime() <= ref.getTime());
+  const inUseBlock = inForce && currentStarted && start.getTime() > ref.getTime()
     ? inUseBlockOf({ id: lead.currentContractId, status: CONTRACT_STATUS.ATIVO, endsAt: canShorten ? join.previousEndsAt : currentEnd })
     : CLEAR_IN_USE_BLOCK;
 

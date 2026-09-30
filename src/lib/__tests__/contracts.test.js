@@ -1711,8 +1711,29 @@ describe('o bloco "em uso" nas gravações', () => {
     });
   });
 
-  it('matrícula limpa o bloco', () => {
-    expect(buildMatriculaWrites({ lead, plan, value: 1788, startsAt: D(2026, 10, 12) }).leadPatch).toMatchObject(CLEAR_IN_USE_BLOCK);
+  // Revisão de 30/09/2026: a matrícula marcada para depois, de um cliente com
+  // o contrato atual em vigor (um paralelo), grava esse contrato no bloco, como
+  // a renovação faz: o cliente segue treinando nele até o novo começar, e a
+  // lista diz ativo. Sem contrato em vigor, a matrícula limpa o bloco.
+  it('matrícula: limpa o bloco sem contrato em vigor; marcada para depois com o atual em vigor, grava o atual', () => {
+    // Lead sem contrato, cliente com o atual vencido ou cancelado, e matrícula
+    // que já começa valendo: limpa.
+    expect(buildMatriculaWrites({ lead: { id: 'l2', name: 'Bia' }, plan, value: 1788, startsAt: D(2026, 10, 12), now: HOJE }).leadPatch).toMatchObject(CLEAR_IN_USE_BLOCK);
+    expect(buildMatriculaWrites({ lead: { ...lead, currentContractEndsAt: D(2026, 9, 10) }, plan, value: 1788, startsAt: D(2026, 10, 12), now: HOJE }).leadPatch).toMatchObject(CLEAR_IN_USE_BLOCK);
+    expect(buildMatriculaWrites({ lead: { ...lead, currentContractStatus: 'cancelado' }, plan, value: 1788, startsAt: D(2026, 10, 12), now: HOJE }).leadPatch).toMatchObject(CLEAR_IN_USE_BLOCK);
+    expect(buildMatriculaWrites({ lead, plan, value: 1788, startsAt: HOJE, now: HOJE }).leadPatch).toMatchObject(CLEAR_IN_USE_BLOCK);
+    // Marcada para depois, com o atual em vigor: o bloco aponta o atual, com o
+    // fim do resumo do lead, ou o do documento quando ele vem.
+    expect(buildMatriculaWrites({ lead, plan, value: 1788, startsAt: D(2026, 10, 12), now: HOJE }).leadPatch).toMatchObject(bloco(D(2026, 10, 11)));
+    expect(buildMatriculaWrites({ lead, plan, value: 1788, startsAt: D(2026, 10, 12), previousContract: { ...atual, endsAt: D(2026, 10, 15) }, now: HOJE }).leadPatch).toMatchObject(bloco(D(2026, 10, 15)));
+    // A matrícula não emenda nem encurta o atual: isso é da renovação.
+    const w = buildMatriculaWrites({ lead, plan, value: 1788, startsAt: D(2026, 10, 5), previousContract: atual, now: HOJE });
+    expect(w.contract.seamless).toBe(false);
+    expect(w.previousContractId).toBeNull();
+    expect(w.leadPatch).toMatchObject(bloco(D(2026, 10, 11)));
+    // O atual que ainda não começou (uma renovação marcada) não entra no bloco.
+    const pendente = { ...lead, currentContractId: 'k2', currentContractStartsAt: D(2026, 10, 12), currentContractEndsAt: D(2027, 10, 12), currentContractSeamless: true };
+    expect(buildMatriculaWrites({ lead: pendente, plan, value: 1788, startsAt: D(2026, 11, 1), now: HOJE }).leadPatch).toMatchObject(CLEAR_IN_USE_BLOCK);
   });
 
   it('cancelar a renovação limpa o bloco', () => {
