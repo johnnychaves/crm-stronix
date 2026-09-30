@@ -1242,7 +1242,11 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     // Auto-move "Compareceu" em visita/aula → Negociação no mesmo funil. A
     // regra e o registro de onde o lead saiu (para a correção poder voltar)
     // moram em planPromotion (src/lib/outcomeCorrection.js), a mesma da Agenda.
-    const { toStatus: promoteTo, promotedFrom } = planPromotion({ lead, outcome, categorySlug, statuses });
+    // Cliente nunca é promovido: quem virou cliente não volta a ser lead, nem
+    // o que está numa etapa com nome de matrícula ("Matriculado").
+    const { toStatus: promoteTo, promotedFrom } = planPromotion({
+      lead, outcome, categorySlug, statuses, promote: !isClientLead(lead),
+    });
 
     try {
       const leadUpdate = {

@@ -51,7 +51,8 @@ export function OutcomePopover({
       <PopoverTrigger
         type="button"
         disabled={saving}
-        aria-label={marked ? `${label}. Abrir para corrigir` : 'Marcar desfecho'}
+        // Com o título, o leitor de tela diferencia um botão do outro na lista.
+        aria-label={marked ? `${label}. Abrir para corrigir` : (title ? `Marcar desfecho: ${title}` : 'Marcar desfecho')}
         className={cn(
           'inline-flex items-center gap-1.5 rounded-lg border font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-60 disabled:cursor-default',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
@@ -65,7 +66,7 @@ export function OutcomePopover({
         <span>{label}</span>
         <ChevronDown size={13} className="opacity-60" />
       </PopoverTrigger>
-      <PopoverContent align="end" sideOffset={6} className="w-56 p-2 rounded-xl">
+      <PopoverContent align="end" sideOffset={6} aria-label={title || 'Desfecho'} className="w-56 p-2 rounded-xl">
         {title && (
           <div className="px-1.5 pb-1.5 text-[11.5px] text-muted-foreground truncate">{title}</div>
         )}
