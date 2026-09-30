@@ -754,6 +754,26 @@ describe('hasSameAppointment: o pedido idêntico ao agendamento que o lead já t
     expect(hasSameAppointment({ id: 'L9', name: 'Sem agenda' }, pedidoVisita())).toBe(false);
   });
 
+  // O desfecho pode ser marcado no mesmo dia, antes do horário (Agenda de hoje,
+  // "Marcar desfecho" ou correção do desfecho). Quem já tem desfecho não tem
+  // mais agendamento em aberto: o pedido idêntico grava, e o buildSchedulePatch
+  // zera o desfecho.
+  it.each([
+    ['"Não compareceu"', 'no_show'],
+    ['"Compareceu"', 'attended']
+  ])('pedido idêntico a um agendamento com o desfecho %s não é o repetido', (_, appointmentOutcome) => {
+    expect(hasSameAppointment({ ...MARIANA, appointmentOutcome }, pedidoVisita())).toBe(false);
+    expect(hasSameAppointment({ ...PEDRO, appointmentOutcome }, pedidoAula())).toBe(false);
+  });
+
+  // "rescheduled" só existe em dado antigo e o cartão o lê como sem desfecho
+  // (appointmentOutcomeOf): o lead já está com a data nova, em aberto.
+  it('agendamento sem desfecho continua sendo o repetido, inclusive com o "rescheduled" de dado antigo', () => {
+    expect(hasSameAppointment({ ...MARIANA, appointmentOutcome: null }, pedidoVisita())).toBe(true);
+    expect(hasSameAppointment({ ...PEDRO, appointmentOutcome: null }, pedidoAula())).toBe(true);
+    expect(hasSameAppointment({ ...MARIANA, appointmentOutcome: 'rescheduled' }, pedidoVisita())).toBe(true);
+  });
+
   // Academia sem unidade: a visita pedida vai com unit null, e a aula também
   // não tem unidade. Só o tipo separa os dois no mesmo horário.
   it('visita sem unidade no horário de uma aula é outro tipo, e não o mesmo agendamento', () => {

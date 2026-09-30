@@ -598,10 +598,12 @@ async function handleSchedule(req, res) {
     // Conferência do lead, do pedido repetido e gravação na MESMA transação:
     // dois cliques, duas pessoas ou o "Tentar de novo" depois de uma resposta
     // perdida gravam uma vez só e dão um ponto só na Meta. Só o pedido idêntico
-    // é o repetido: mudar unidade, professor, modalidade ou quantidade, ou
-    // escrever uma anotação diferente da do lead, no mesmo horário, é
-    // remarcação e grava. Pedido sem anotação nunca conta como mudança, porque
-    // o balão do Stronizap não recebe a anotação que o lead já tem
+    // ao agendamento em aberto, sem desfecho, é o repetido: mudar unidade,
+    // professor, modalidade ou quantidade, ou escrever uma anotação diferente
+    // da do lead, no mesmo horário, é remarcação e grava. Agendamento com
+    // desfecho marcado (compareceu ou não compareceu) também grava, e o
+    // desfecho sai. Pedido sem anotação nunca conta como mudança, porque o
+    // balão do Stronizap não recebe a anotação que o lead já tem
     // (hasSameAppointment).
     const outcome = await adminDb.runTransaction(async (tx) => {
       const leadSnap = await tx.get(leadRef);

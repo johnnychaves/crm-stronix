@@ -85,6 +85,19 @@ export const appointmentOriginText = ({ at, by = null, via = null } = {}) => {
   ].join('');
 };
 
+// O Remarcar da Meta Diária (handleReschedule, em DailyGoalView.jsx) marca a
+// visita ou a aula de novo. Depois do "Não veio", ou para o mesmo dia, ele grava
+// uma nota ("🔄 Próxima tentativa marcada…", "🔄 Horário ajustado…") que
+// classifyInteraction lê como nota, e não como agendamento. Para outro dia, a
+// linha leva também o desfecho 'rescheduled' e é lida como desfecho. Nos três
+// casos o que o identifica é o `rescheduledFor` junto do `volumeKind` do tipo
+// marcado, 'visita' ou 'aula_experimental'. O `rescheduledFor` sozinho não
+// basta: o próximo contato e o contato reagendado da Meta também o gravam, com
+// o `volumeKind` do contato ('mensagem' ou 'ligacao'), e esses não marcam
+// visita nem aula.
+export const isAppointmentReschedule = (i) =>
+  Boolean(i?.rescheduledFor) && (i.volumeKind === 'visita' || i.volumeKind === 'aula_experimental');
+
 // O marco de início fica embaixo de quem tem o mesmo horário que ele. O
 // cadastro pelo Stronizap grava o marco e a observação do cadastro na mesma
 // transação, com o mesmo horário do servidor, e o Firestore desempata pelo id,

@@ -62,6 +62,8 @@ As revisões de qualidade pediram ajustes pequenos em cima do código deste plan
 
 Com isso, a partir da Task 11 os totais da suíte ficam 50 acima dos que o plano cita, e `api/__tests__/zapRoute.test.js` tem 5 testes a mais (146 antes da Task 11, no lugar de 141).
 
+- **Revisão final do PR #239.** O `ja_agendado` passou a valer só para o agendamento em aberto, sem desfecho (`hasSameAppointment` confere `current.outcome`). O desfecho pode ser marcado no mesmo dia, antes do horário (Agenda de hoje, "Marcar desfecho" e correção do desfecho do PR #238), e o pedido idêntico a um agendamento com "Não compareceu" ou "Compareceu" respondia `409` sem gravar: a lead ficava com o desfecho, sem interação, sem ponto e fora das pendências do dia. Agora grava, e o `buildSchedulePatch` zera o desfecho. O rodapé do desfecho na ficha passou a contar o Remarcar da Meta Diária como agendamento (`isAppointmentReschedule`, em `src/lib/timeline.js`, pelo `rescheduledFor` junto do `volumeKind` de visita ou aula), e os textos do `cancelled` (`api/_zapCard.js` e `CLAUDE.md`) e da anotação (`hasSameAppointment`) foram corrigidos para o que o código faz. São 13 testes a mais: 3 em `api/__tests__/zapSchedule.test.js`, 1 em `api/__tests__/zapRoute.test.js`, 6 em `src/lib/__tests__/timeline.test.js` e 3 em `src/lib/__tests__/profileZapSchedule.test.js`.
+
 ## O contrato da ponte
 
 Tudo pelo `POST /api/zap`, autenticado pela chave (`x-stronizap-key`), igual ao `match`, ao `lead-options` e ao `create-lead`. O identificador da academia vai em `tenant`.
@@ -163,7 +165,7 @@ Toda recusa traz `error` e um `message` pronto para a tela; a de campo traz `fie
 | `lead_nao_confere` | 422 | o lead não é deste número nem menor de quem ele é responsável | "Esse cadastro não é deste número no Stronilead." |
 | `catalogo_mudou` | 422 | unidade, modalidade, professor ou quantidade que não existe mais, com `field` | ver Task 3 |
 | `horario_passado` | 422 | dia e hora que já passaram | "Esse horário já passou. Escolha outro." |
-| `ja_agendado` | 409 | o pedido é idêntico ao agendamento que o lead já tem (tipo, dia e horário e escolhas; anotação escrita e diferente conta como mudança); traz `card` e o `appointment` que já existia | "Esse agendamento já estava no Stronilead." |
+| `ja_agendado` | 409 | o pedido é idêntico ao agendamento em aberto, sem desfecho, que o lead já tem (tipo, dia e horário e escolhas; anotação escrita e diferente conta como mudança); traz `card` e o `appointment` que já existia | "Esse agendamento já estava no Stronilead." |
 | `limite` | 429 | mais de 60 agendamentos na última hora na academia (`zap-schedule:<academia>`) | "Muitos agendamentos em pouco tempo. Tente de novo em alguns minutos." |
 | (erro inesperado) | 5xx | a Vercel responde; o erro vai ao Sentry como `zap <ação> falhou (<código>)`, sem dado pessoal | |
 
