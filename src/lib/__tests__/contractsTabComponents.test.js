@@ -5,7 +5,8 @@ import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { ContractTimeline, HATCH_VIOLET } from '../../components/profile/contracts/ContractTimeline.jsx';
-import { contractTimelineOf } from '../contractsTab.js';
+import { contractFactsOf, contractTimelineOf } from '../contractsTab.js';
+import { ContractHistoryTable } from '../../components/profile/contracts/ContractHistoryTable.jsx';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const HOJE = new Date(2026, 8, 30, 10, 0);
@@ -51,5 +52,75 @@ describe('ContractTimeline', () => {
 
   it('sem linha do tempo, não desenha nada', () => {
     expect(renderToString(createElement(ContractTimeline, { timeline: null }))).toBe('');
+  });
+});
+
+describe('ContractHistoryTable', () => {
+  const todos = [trimestral, start24, emUso, proximo];
+
+  it('uma linha por contrato, com origem, datas, motivo, trancamento, valores e situação', () => {
+    const rows = [start24, trimestral].map((c) => contractFactsOf(c, todos, HOJE, 30));
+    const html = renderToString(createElement(ContractHistoryTable, { rows, firstName: 'Ana', hasContract: true }));
+    expect(html).toContain('>Histórico<');
+    expect(html).toContain('>2 anteriores<');
+    ['>Contrato<', '>Início<', '>Fim previsto<', '>Fim de fato<', '>Trancado<', '>Valor<', '>Média/mês<', '>Situação<'].forEach((th) => expect(html).toContain(th));
+    expect(html).toContain('retorno, 89 dias depois');
+    expect(html).toContain('>20/09/2024<');
+    expect(html).toContain('>20/09/2025<');
+    expect(html).toContain('>10/10/2025<');
+    expect(html).toContain('20 dias depois, pelo trancamento');
+    expect(html).toContain('>20 dias<');
+    expect(html).toContain('>1 vez<');
+    expect(html).toContain('R$ 1.188,00');
+    expect(html).toContain('R$ 99,00');
+    expect(html).toContain('>Renovado<');
+    expect(html).toContain('primeira matrícula');
+    expect(html).toContain('cancelado · Financeiro');
+    expect(html).toContain('>Nunca<');
+    expect(html).toContain('>Cancelado<');
+    expect(html).toContain('overflow-x-auto overscroll-x-contain');
+    // Fechada, a linha não mostra os detalhes.
+    expect(html).not.toContain('>Fechado por<');
+  });
+
+  it('a linha aberta mostra desconto, quem fechou, código, cancelamento e trancamentos', () => {
+    const cancelado = { ...emUso, status: 'cancelado', cancelledAt: D(2026, 9, 25), cancelReason: 'Financeiro', cancelNote: 'Vai voltar em janeiro' };
+    const rows = [contractFactsOf(cancelado, [start24, cancelado], HOJE, 30)];
+    const html = renderToString(createElement(ContractHistoryTable, { rows, firstName: 'Ana', hasContract: false, defaultOpenId: 'k1' }));
+    expect(html).toContain('>Desconto<');
+    expect(html).toContain('−R$ 120,00');
+    expect(html).toContain('fidelidade');
+    expect(html).toContain('tabela R$ 1.428,00');
+    expect(html).toContain('>Fechado por<');
+    expect(html).toContain('>Ana<');
+    expect(html).toContain('em 09/10/2025');
+    expect(html).toContain('>Código<');
+    expect(html).toContain('#K1');
+    expect(html).toContain('12 meses');
+    expect(html).toContain('>Cancelamento<');
+    expect(html).toContain('25/09/2026');
+    expect(html).toContain('Vai voltar em janeiro');
+    expect(html).toContain('>Trancamentos<');
+    expect(html).toContain('Nunca trancado');
+    expect(html).toContain('aria-expanded="true"');
+  });
+
+  it('trancado quando a renovação começou: renovado, com a nota na linha aberta e os períodos', () => {
+    const trancado = { ...emUso, status: 'trancado', pausedAt: D(2026, 9, 20), pausedDaysTotal: 5, pauseHistory: [{ pausedAt: D(2026, 3, 1), resumedAt: D(2026, 3, 6) }] };
+    const rows = [contractFactsOf(trancado, [trancado, proximo], D(2026, 10, 15), 30)];
+    const html = renderToString(createElement(ContractHistoryTable, { rows, firstName: 'Ana', hasContract: true, defaultOpenId: 'k1' }));
+    expect(html).toContain('>Renovado<');
+    expect(html).toContain('Estava trancado quando a renovação começou.');
+    expect(html).toContain('01/03/2026 a 06/03/2026');
+    expect(html).toContain('desde 20/09/2026');
+    expect(html).toContain('>2 vezes<');
+  });
+
+  it('sem contrato anterior', () => {
+    const comContrato = renderToString(createElement(ContractHistoryTable, { rows: [], firstName: 'Ana', hasContract: true }));
+    expect(comContrato).toContain('Nenhum contrato anterior');
+    expect(comContrato).toContain('Este é o primeiro contrato de Ana.');
+    const semContrato = renderToString(createElement(ContractHistoryTable, { rows: [], firstName: 'Ana', hasContract: false }));
+    expect(semContrato).toContain('O histórico de planos aparecerá aqui.');
   });
 });
