@@ -15,6 +15,10 @@ export const REFERRAL_FUNNEL_NAME = 'Indicações';
 // criados — contrato semântico, como 'Negociação'.
 export const REFERRAL_ENTRY_NAME = 'Aguardando ação';
 
+// Origem gravada no lead indicado. O setup do funil cria uma origem com esse
+// nome quando nenhuma do catálogo casa com /indica/.
+export const REFERRAL_SOURCE_NAME = 'Indicação';
+
 export const isReferralFunnel = (f) => f?.systemKind === REFERRAL_FUNNEL_KIND;
 
 // createdAt em ms aceitando Timestamp ({toMillis}/{seconds}), Date ou número.
@@ -211,3 +215,25 @@ export const buildReferralShareLink = (origin, slug, leadId) =>
 export const buildReferralWhatsAppText = ({ firstName, link }) =>
   `Oi${firstName ? ` ${firstName}` : ''}! Esse é o seu link de indicação 🤝\n` +
   `Manda pros amigos que querem treinar: quando alguém se cadastrar por ele, a indicação entra no seu nome.\n${link}`;
+
+// Cadastro rápido de indicação pela ficha do cliente (menu Indicar e aba
+// Indicações). Monta o formulário no formato do Novo lead, para o
+// buildNewLeadDoc gravar igual aos outros cadastros: funil Indicações, etapa
+// de entrada e origem Indicação. Dor e modalidade são opcionais.
+export const quickReferralForm = ({ name = '', whatsapp = '', dor = '', modalidade = '' } = {}, { funnelId = null, entryStageName = '' } = {}) => ({
+  name: String(name || '').trim(),
+  whatsapp: whatsapp || '',
+  source: REFERRAL_SOURCE_NAME,
+  funnelId,
+  status: entryStageName || '',
+  dor: dor || '',
+  modalidade: modalidade || '',
+});
+
+// O que falta para gravar: 'name' (menos de 2 letras, a regra do Novo lead) ou
+// 'whatsapp' (menos de 10 dígitos). null quando dá para gravar.
+export const quickReferralIssue = ({ name = '', whatsapp = '' } = {}) => {
+  if (String(name || '').trim().length < 2) return 'name';
+  if (String(whatsapp || '').replace(/\D/g, '').length < 10) return 'whatsapp';
+  return null;
+};
