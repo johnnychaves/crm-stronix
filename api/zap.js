@@ -95,15 +95,12 @@ async function loadZapIntegration(tenantId) {
   return (await loadZapTenant(tenantId))?.zap ?? null;
 }
 
-// O cartão que o GET devolve para esta chave de telefone: o dono do número e
-// os menores que o têm como responsável, ou { found: false } quando ninguém
-// casa. O cadastro pelo Stronizap responde com este mesmo cartão.
-async function cardFor(tenantId, matchKey) {
-  // O dono do número e os menores que o têm como responsável, juntos. A busca
-  // dos menores não pode derrubar o cartão do dono: se ela falhar (índice
-  // desligado no console, por exemplo), o cartão sai sem os menores. O log
-  // leva só o código do erro: a mensagem do Firestore pode trazer o valor da
-  // consulta, que é o telefone.
+// O dono do número e os menores que o têm como responsável, juntos: a mesma
+// seleção serve o cartão e o "Para quem?" do agendamento pelo Stronizap. A
+// busca dos menores não pode derrubar o dono: se ela falhar (índice desligado
+// no console, por exemplo), sai só o dono. O log leva só o código do erro: a
+// mensagem do Firestore pode trazer o valor da consulta, que é o telefone.
+async function numberPeople(tenantId, matchKey, agora) {
   const [achados, menoresSnap] = await Promise.all([
     leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get(),
     leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get()
@@ -113,15 +110,22 @@ async function cardFor(tenantId, matchKey) {
       })
   ]);
   const menoresDocs = menoresSnap ? menoresSnap.docs : [];
-
-  const agora = new Date();
   const dono = achados.empty ? null : leadDoDoc(achados.docs[0]);
   // Só quem ainda tem o responsável como contato (menor, ou que fez 18 sem
   // WhatsApp próprio), e nunca o próprio dono do número.
   const menores = menoresDocs
     .map(leadDoDoc)
     .filter((m) => m.id !== dono?.id && contactOf(m, agora).viaGuardian);
+  return { dono, menores };
+}
 
+// O cartão que o GET devolve para esta chave de telefone: o dono do número e
+// os menores que o têm como responsável, ou { found: false } quando ninguém
+// casa. O cadastro e o agendamento pelo Stronizap respondem com este mesmo
+// cartão.
+async function cardFor(tenantId, matchKey) {
+  const agora = new Date();
+  const { dono, menores } = await numberPeople(tenantId, matchKey, agora);
   if (!dono && menores.length === 0) return { found: false };
 
   // Marcos de renovação da academia. Só lê depois de achar alguém: em
