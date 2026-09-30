@@ -1851,6 +1851,29 @@ describe('POST /api/zap com action schedule-options', () => {
     expect(res.body.units).toHaveLength(2);
   });
 
+  it('quem fez 18 anos com WhatsApp próprio sai do "Para quem?", como sai do cartão', async () => {
+    banco.leads[TENANT] = [
+      menorDe('k1', 'Pedro Souza'),
+      menorDe('k9', 'Adulto', { birthDate: ts(new Date(2000, 0, 10)), whatsapp: '(11) 9 5555-4444' })
+    ];
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda({ phone: MAE }), res);
+
+    expect(res.body.targets.map((t) => t.leadId)).toEqual(['k1']);
+  });
+
+  it('cadastro de outra academia com o mesmo número não aparece', async () => {
+    academia(OUTRA);
+    banco.leads[OUTRA] = [marianaLead({ id: 'L-outra' }), menorDe('k-outra', 'Pedro Souza', { guardianZapMatchKey: zapMatchKey(MARIANA) })];
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda(), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.targets).toEqual([]);
+  });
+
   it('pessoa fora da equipe recebe o aviso do cadastro, com o e-mail dela', async () => {
     const res = resposta();
 
@@ -1904,6 +1927,24 @@ describe('POST /api/zap com action schedule-options', () => {
 
     expect(erro.message).toBe('zap schedule-options falhou (9)');
     expect(String(erro.stack)).not.toContain(zapMatchKey(MARIANA));
+  });
+
+  // No GET e no match, a busca dos menores falhando só tira os filhos do cartão
+  // (o cartão do dono não pode cair por causa dela). Aqui ela esconderia o
+  // defeito: o "Para quem?" sairia só com o cadastro do próprio número, sem
+  // aviso, e o atendente não agendaria para o filho nem saberia por quê.
+  it('busca dos menores falhando sobe como erro, sem devolver só o cadastro do próprio número', async () => {
+    banco.leads[TENANT] = [marianaLead({ zapMatchKey: zapMatchKey(MAE) }), menorDe('k1', 'Pedro Souza', { sexo: 'Masculino' })];
+    banco.falhaEm = 'guardianZapMatchKey';
+    const res = resposta();
+
+    const erro = await handler(pedidoOpcoesAgenda({ phone: MAE }), res).catch((e) => e);
+
+    expect(erro).toBeInstanceOf(Error);
+    expect(erro.message).toBe('zap schedule-options falhou (9)');
+    expect(String(erro.stack)).not.toContain(zapMatchKey(MAE));
+    expect(res.statusCode).toBe(0);
+    expect(res.body).toBeUndefined();
   });
 });
 
@@ -2092,6 +2133,33 @@ describe('POST /api/zap com action schedule', () => {
     expect(aulasDaAcademia().find((a) => a.id === 'a-feita').status).toBe('attended');
   });
 
+  // A api/ grava com poder de admin, e o documento que o currentAulaId aponta
+  // já foi lido: só vale se for uma aula deste lead. O registro de outro lead,
+  // sem dono ou de visita fica como estava, e a aula nasce num registro próprio.
+  it.each([
+    ['é de outro lead', { leadId: 'L9', leadName: 'Outra Pessoa' }],
+    ['não diz de quem é', { leadId: null }],
+    ['é uma visita', { type: 'visita', unit: 'Centro', professorId: null, professorName: null, modality: null }]
+  ])('currentAulaId que aponta para um registro que %s não é reaproveitado: nasce outro, e ele fica como estava', async (_, extra) => {
+    const alheio = registro('a-alheia', {
+      type: 'aula', unit: null, professorId: 'p2', professorName: 'Rafael Moura', modality: 'Musculação', ...extra
+    });
+    banco.leads[TENANT] = [marianaLead({ currentAulaId: 'a-alheia' })];
+    banco.aulas[TENANT] = [{ ...alheio }];
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(aulasDaAcademia()).toHaveLength(2);
+    expect(aulasDaAcademia().find((a) => a.id === 'a-alheia')).toEqual(alheio);
+    const nova = aulasDaAcademia().find((a) => a.id !== 'a-alheia');
+    expect(nova).toMatchObject({
+      type: 'aula', leadId: 'L1', professorId: 'p1', modality: 'Pilates', scheduledFor: SEXTA_19H, status: 'agendada'
+    });
+    expect(leadDaAcademia('L1').currentAulaId).toBe(nova.id);
+  });
+
   it('quem treina sozinho: a aula vai sem professor', async () => {
     await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, professorId: null, soloTraining: true } }), resposta());
 
@@ -2199,6 +2267,185 @@ describe('POST /api/zap com action schedule', () => {
     });
     expect(interacoesDaAcademia()).toHaveLength(2);
     expect(interacoesDaAcademia()[1].text).toBe('🔔 Aula Experimental agendada (Pilates · 1 aula) · Rafael Moura p/ 02/10/2026, 19:00.');
+  });
+
+  // Anotação escrita e diferente da que o lead tem é edição, e grava. Pedido
+  // sem anotação nunca conta como mudança: o balão do Stronizap não recebe a
+  // anotação que o lead já tem, então em branco quer dizer "não digitei".
+  it('o mesmo agendamento só com a anotação trocada grava: outra interação e a anotação nova no lead', async () => {
+    await handler(pedidoAgenda(), resposta());
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { note: 'Vem de manhã.' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(leadDaAcademia('L1')).toMatchObject({
+      nextFollowUpNote: 'Vem de manhã.', appointmentScheduledFor: QUINTA_18H, interactionsCount: 5
+    });
+    expect(interacoesDaAcademia()).toHaveLength(2);
+    expect(interacoesDaAcademia()[1].text).toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: Vem de manhã.');
+    // O registro em aberto continua um só.
+    expect(aulasDaAcademia()).toHaveLength(1);
+  });
+
+  it('o mesmo agendamento sem anotação, em lead com anotação, responde ja_agendado e mantém a anotação', async () => {
+    await handler(pedidoAgenda(), resposta());
+    const gravacoes = banco.gravacoes.length;
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { note: null } }), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.error).toBe('ja_agendado');
+    expect(banco.gravacoes).toHaveLength(gravacoes);
+    expect(interacoesDaAcademia()).toHaveLength(1);
+    expect(aulasDaAcademia()).toHaveLength(1);
+    expect(leadDaAcademia('L1')).toMatchObject({ nextFollowUpNote: 'Vem depois do trabalho.', interactionsCount: 4 });
+  });
+
+  // O caminho do contrato para a resposta perdida: a gravação entrou, a leitura
+  // do cartão caiu, o Stronizap recebe 5xx, tenta de novo e recebe ja_agendado.
+  // Aqui cai a busca do dono do número, uma das duas consultas do schedule que
+  // levam o telefone (a outra é a dos menores, nos dois testes a seguir).
+  it('gravou e a leitura do cartão falhou: o erro sobe sem o telefone, e o "Tentar de novo" recebe ja_agendado sem gravar outra vez', async () => {
+    banco.falhaEm = 'zapMatchKey';
+
+    const erro = await handler(pedidoAgenda(), resposta()).catch((e) => e);
+
+    expect(erro).toBeInstanceOf(Error);
+    expect(erro.message).toBe('zap schedule falhou (9)');
+    expect(String(erro.stack)).not.toContain(zapMatchKey(MARIANA));
+    // A gravação já tinha entrado, inteira.
+    expect(banco.gravacoes).toHaveLength(3);
+
+    banco.falhaEm = null;
+    const res = resposta();
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      error: 'ja_agendado',
+      message: 'Esse agendamento já estava no Stronilead.',
+      card: expect.objectContaining({
+        found: true, leadId: 'L1', appointment: { type: 'visita', at: '2026-10-01T21:00:00.000Z', outcome: null }
+      }),
+      appointment: {
+        leadId: 'L1', leadName: 'Mariana Souza', type: 'visita', at: '2026-10-01T21:00:00.000Z',
+        unit: 'Centro', unitAddress: 'Rua Garibaldi, 1200', modality: null, professorName: null,
+        soloTraining: false, quantity: null, outcome: null
+      }
+    });
+    expect(banco.gravacoes).toHaveLength(3);
+    expect(interacoesDaAcademia()).toHaveLength(1);
+    expect(aulasDaAcademia()).toHaveLength(1);
+    expect(leadDaAcademia('L1').interactionsCount).toBe(4);
+  });
+
+  // A busca dos menores também é leitura do cartão. O contrato promete o cartão
+  // já com o agendamento novo, e um 201 com `found: false` (número só de
+  // responsável) ou sem `wards` (dona do número com filhos) mentiria ao
+  // atendente. O erro sobe, e o "Tentar de novo" recebe ja_agendado com o
+  // cartão inteiro. No GET e no match a busca dos menores continua tolerada.
+  it('agendou o menor e a busca dos menores falhou na leitura do cartão: o erro sobe, e o "Tentar de novo" recebe ja_agendado com o cartão do responsável', async () => {
+    banco.leads[TENANT] = [menorDe('k1', 'Pedro Souza')];
+    banco.falhaEm = 'guardianZapMatchKey';
+    const pedidoDoMenor = () => pedidoAgenda({ phone: MAE, schedule: { leadId: 'k1' } });
+    const res = resposta();
+
+    const erro = await handler(pedidoDoMenor(), res).catch((e) => e);
+
+    expect(erro).toBeInstanceOf(Error);
+    expect(erro.message).toBe('zap schedule falhou (9)');
+    expect(String(erro.stack)).not.toContain(zapMatchKey(MAE));
+    expect(res.body).toBeUndefined();
+    // A gravação já tinha entrado, inteira.
+    expect(banco.gravacoes).toHaveLength(3);
+
+    banco.falhaEm = null;
+    const retry = resposta();
+    await handler(pedidoDoMenor(), retry);
+
+    expect(retry.statusCode).toBe(409);
+    expect(retry.body.error).toBe('ja_agendado');
+    expect(retry.body.card).toMatchObject({ found: true, kind: 'responsavel', name: 'Maria Souza' });
+    expect(retry.body.card.wards).toHaveLength(1);
+    expect(retry.body.card.wards[0]).toMatchObject({
+      leadId: 'k1', appointment: { type: 'visita', at: '2026-10-01T21:00:00.000Z', outcome: null }
+    });
+    expect(retry.body.appointment).toMatchObject({ leadId: 'k1', type: 'visita', unit: 'Centro' });
+    expect(banco.gravacoes).toHaveLength(3);
+    expect(interacoesDaAcademia()).toHaveLength(1);
+  });
+
+  it('agendou a dona do número que tem filhos e a busca dos menores falhou: o erro sobe, em vez de um cartão sem wards', async () => {
+    banco.leads[TENANT] = [marianaLead({ zapMatchKey: zapMatchKey(MAE) }), menorDe('k1', 'Pedro Souza')];
+    banco.falhaEm = 'guardianZapMatchKey';
+    const pedidoDaMae = () => pedidoAgenda({ phone: MAE });
+    const res = resposta();
+
+    const erro = await handler(pedidoDaMae(), res).catch((e) => e);
+
+    expect(erro.message).toBe('zap schedule falhou (9)');
+    expect(String(erro.stack)).not.toContain(zapMatchKey(MAE));
+    expect(res.body).toBeUndefined();
+    expect(banco.gravacoes).toHaveLength(3);
+
+    banco.falhaEm = null;
+    const retry = resposta();
+    await handler(pedidoDaMae(), retry);
+
+    expect(retry.statusCode).toBe(409);
+    expect(retry.body.card).toMatchObject({ found: true, leadId: 'L1', kind: 'lead' });
+    expect(retry.body.card.wards.map((w) => w.leadId)).toEqual(['k1']);
+    expect(banco.gravacoes).toHaveLength(3);
+  });
+
+  it('lead que só existe em outra academia, com o mesmo número, é recusado, e nada é gravado lá', async () => {
+    academia(OUTRA);
+    banco.leads[OUTRA] = [marianaLead({ id: 'L-outra' })];
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { leadId: 'L-outra' } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body.error).toBe('lead_nao_confere');
+    expect(banco.gravacoes).toEqual([]);
+    expect(banco.leads[OUTRA][0].appointmentType).toBeUndefined();
+  });
+
+  it.each([[7], ['a/b'], ['__x__']])('currentAulaId estragado no lead (%j) não derruba o agendamento: nasce outro registro', async (estragado) => {
+    banco.leads[TENANT] = [marianaLead({ currentAulaId: estragado })];
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(aulasDaAcademia()).toHaveLength(1);
+    expect(leadDaAcademia('L1').currentAulaId).toBe(aulasDaAcademia()[0].id);
+  });
+
+  it('pessoa da equipe sem nome no Stronilead: vale o nome que o Stronizap mandou', async () => {
+    banco.users[TENANT] = [{ ...ANA, name: '' }];
+
+    await handler(pedidoAgenda(), resposta());
+
+    expect(interacoesDaAcademia()[0].consultantName).toBe('Ana');
+  });
+
+  // O limite conta tentativas: vem antes da leitura da equipe e das listas.
+  it.each([
+    ['fora da equipe', { actor: { email: 'carla@stronix.com.br' } }, 403],
+    ['item que mudou', { schedule: { unit: 'Unidade Antiga' } }, 422],
+    ['horário que passou', { schedule: { date: '2026-09-29', time: '15:00' } }, 422],
+    ['lead de outro número', { schedule: { leadId: 'nao-existe' } }, 422]
+  ])('recusa por regra (%s) gasta o limite', async (_, mudanca, status) => {
+    const res = resposta();
+
+    await handler(pedidoAgenda(mudanca), res);
+
+    expect(res.statusCode).toBe(status);
+    expect(limitador.chamadas).toHaveLength(1);
+    expect(banco.gravacoes).toEqual([]);
   });
 
   it('dois pedidos ao mesmo tempo gravam uma vez só', async () => {
@@ -2432,11 +2679,23 @@ describe('POST /api/zap com action appointment-status', () => {
   });
 
   it('chave errada responde 401 e não lê nada', async () => {
+    // Qualquer leitura de lead estouraria: o 401 sai antes dela.
+    banco.falhaEm = 'documento';
     const res = resposta();
     const p = pedidoStatus(['L1']);
     p.headers['x-stronizap-key'] = generateZapKey().key;
 
     await handler(p, res);
+
+    expect(res.statusCode).toBe(401);
+    expect(res.body).toEqual({ error: 'Credencial inválida' });
+  });
+
+  it('chave revogada responde 401: só a conferência de academia bloqueada fica de fora', async () => {
+    banco.tenants[TENANT].integrations.zap.revokedAt = ts(AGORA);
+    const res = resposta();
+
+    await handler(pedidoStatus(['L1']), res);
 
     expect(res.statusCode).toBe(401);
     expect(res.body).toEqual({ error: 'Credencial inválida' });

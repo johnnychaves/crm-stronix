@@ -109,18 +109,27 @@ async function loadZapIntegration(tenantId) {
 }
 
 // O dono do número e os menores que o têm como responsável, juntos: a mesma
-// seleção serve o cartão e o "Para quem?" do agendamento pelo Stronizap. A
-// busca dos menores não pode derrubar o dono: se ela falhar (índice desligado
-// no console, por exemplo), sai só o dono. O log leva só o código do erro: a
-// mensagem do Firestore pode trazer o valor da consulta, que é o telefone.
-async function numberPeople(tenantId, matchKey, agora) {
+// seleção serve o cartão e o "Para quem?" do agendamento pelo Stronizap.
+//
+// No cartão do GET e no do cadastro de lead, a busca dos menores não pode
+// derrubar o dono: se ela falhar (índice desligado no console, por exemplo),
+// sai só o dono. O log leva só o código do erro: a mensagem do Firestore pode
+// trazer o valor da consulta, que é o telefone.
+//
+// As ações do agendamento passam `strictWards: true`, e ali a falha sobe como
+// erro. Engolir esconderia o defeito: o "Para quem?" sairia só com o cadastro
+// do próprio número, sem aviso, e o agendamento gravado responderia 201 com um
+// cartão sem os menores, quando o contrato promete o cartão já com o
+// agendamento novo. Com o erro, o "Tentar de novo" recebe ja_agendado com o
+// cartão inteiro.
+async function numberPeople(tenantId, matchKey, agora, { strictWards = false } = {}) {
+  const menoresQuery = leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get();
   const [achados, menoresSnap] = await Promise.all([
     leadsCollection(tenantId).where('zapMatchKey', '==', matchKey).limit(1).get(),
-    leadsCollection(tenantId).where('guardianZapMatchKey', '==', matchKey).limit(WARDS_MAX).get()
-      .catch((e) => {
-        console.error('zap: busca dos menores falhou', e?.code ?? 'sem código');
-        return null;
-      })
+    strictWards ? menoresQuery : menoresQuery.catch((e) => {
+      console.error('zap: busca dos menores falhou', e?.code ?? 'sem código');
+      return null;
+    })
   ]);
   const menoresDocs = menoresSnap ? menoresSnap.docs : [];
   const dono = achados.empty ? null : leadDoDoc(achados.docs[0]);
@@ -135,10 +144,10 @@ async function numberPeople(tenantId, matchKey, agora) {
 // O cartão que o GET devolve para esta chave de telefone: o dono do número e
 // os menores que o têm como responsável, ou { found: false } quando ninguém
 // casa. O cadastro e o agendamento pelo Stronizap respondem com este mesmo
-// cartão.
-async function cardFor(tenantId, matchKey) {
+// cartão. `strictWards` é do agendamento (ver numberPeople).
+async function cardFor(tenantId, matchKey, { strictWards = false } = {}) {
   const agora = new Date();
-  const { dono, menores } = await numberPeople(tenantId, matchKey, agora);
+  const { dono, menores } = await numberPeople(tenantId, matchKey, agora, { strictWards });
   if (!dono && menores.length === 0) return { found: false };
 
   // Marcos de renovação da academia. Só lê depois de achar alguém: em
@@ -524,7 +533,8 @@ async function readScheduleCatalogs(tenantId) {
 }
 
 // Opções do balão: quem pede (achado pelo e-mail da sessão do Stronizap), os
-// cadastros do número, as listas e os dias sugeridos. Só lê.
+// cadastros do número, as listas e os dias sugeridos. Só lê. A falha na busca
+// dos menores sobe como erro: o balão não abre com o "Para quem?" incompleto.
 async function handleScheduleOptions(req, res) {
   try {
     const access = await openByKey(req);
@@ -537,7 +547,7 @@ async function handleScheduleOptions(req, res) {
 
     const agora = new Date();
     const [team, catalogs, people] = await Promise.all([
-      readTeam(tenantId), readScheduleCatalogs(tenantId), numberPeople(tenantId, matchKey, agora)
+      readTeam(tenantId), readScheduleCatalogs(tenantId), numberPeople(tenantId, matchKey, agora, { strictWards: true })
     ]);
     const member = findTeamMember(team, email);
     if (!member) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
@@ -552,7 +562,9 @@ async function handleScheduleOptions(req, res) {
 
 // Agenda a visita ou a aula experimental, gravando o que o assistente da
 // ficha grava, numa transação só. Responde 201 com o cartão do número já
-// atualizado e o agendamento.
+// atualizado e o agendamento. A falha na busca dos menores, na leitura do
+// cartão depois da gravação, sobe como erro: o "Tentar de novo" recebe
+// ja_agendado com o cartão inteiro.
 async function handleSchedule(req, res) {
   try {
     const access = await openByKey(req);
@@ -586,8 +598,11 @@ async function handleSchedule(req, res) {
     // Conferência do lead, do pedido repetido e gravação na MESMA transação:
     // dois cliques, duas pessoas ou o "Tentar de novo" depois de uma resposta
     // perdida gravam uma vez só e dão um ponto só na Meta. Só o pedido idêntico
-    // é o repetido: mudar unidade, professor, modalidade, quantidade ou
-    // anotação no mesmo horário é remarcação e grava (hasSameAppointment).
+    // é o repetido: mudar unidade, professor, modalidade ou quantidade, ou
+    // escrever uma anotação diferente da do lead, no mesmo horário, é
+    // remarcação e grava. Pedido sem anotação nunca conta como mudança, porque
+    // o balão do Stronizap não recebe a anotação que o lead já tem
+    // (hasSameAppointment).
     const outcome = await adminDb.runTransaction(async (tx) => {
       const leadSnap = await tx.get(leadRef);
       const lead = leadSnap.exists ? leadDoDoc(leadSnap) : null;
@@ -595,12 +610,15 @@ async function handleSchedule(req, res) {
       if (hasSameAppointment(lead, { type: schedule.type, at, schedule })) return { repeated: lead };
 
       // O registro em aberto que o assistente reaproveitaria: a aula do
-      // currentAulaId ainda agendada, ou a visita agendada do lead.
+      // currentAulaId ainda agendada, ou a visita agendada do lead. A api/
+      // grava com poder de admin, então o registro que o currentAulaId aponta
+      // só é reaproveitado se for mesmo uma aula deste lead (isOpenAulaRecord).
+      // Se não for, conta como sem registro em aberto, e nasce outro.
       let openRecordId = null;
       if (schedule.type === 'aula_experimental') {
         if (isDocId(lead.currentAulaId)) {
           const aulaSnap = await tx.get(aulas.doc(lead.currentAulaId));
-          if (aulaSnap.exists && isOpenAulaRecord(aulaSnap.data())) openRecordId = lead.currentAulaId;
+          if (aulaSnap.exists && isOpenAulaRecord(aulaSnap.data(), lead.id)) openRecordId = lead.currentAulaId;
         }
       } else {
         openRecordId = pickOpenVisitaId(docsOf(await tx.get(aulas.where('leadId', '==', lead.id))));
@@ -621,7 +639,7 @@ async function handleSchedule(req, res) {
       return responder(res, refusal(422, 'lead_nao_confere', ZAP_SCHEDULE_MESSAGES.notTheLead));
     }
     const units = unitsView(catalogs.units);
-    const card = await cardFor(tenantId, matchKey);
+    const card = await cardFor(tenantId, matchKey, { strictWards: true });
     if (outcome.repeated) {
       return res.status(409).json(alreadyScheduledBody({ card, appointment: appointmentDetailOf(outcome.repeated, units) }));
     }

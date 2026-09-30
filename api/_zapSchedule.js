@@ -375,15 +375,25 @@ export function leadBelongsToNumber(lead, matchKey, now = new Date()) {
   return lead.guardianZapMatchKey === matchKey && contactOf(lead, now).viaGuardian;
 }
 
-// O mesmo agendamento já existe: mesmo tipo, mesmo instante, as mesmas escolhas
-// e a mesma anotação. É o pedido repetido (dois cliques, duas pessoas, o "Tentar
-// de novo" depois de uma resposta perdida). Mudou a unidade, o professor, a
-// modalidade, a quantidade ou a anotação no mesmo horário: é remarcação, e grava,
-// como o assistente da ficha.
+// O mesmo agendamento já existe: mesmo tipo, mesmo instante e as mesmas escolhas
+// de unidade, modalidade, professor e quantidade. É o pedido repetido (dois
+// cliques, duas pessoas, o "Tentar de novo" depois de uma resposta perdida).
+// Mudou uma dessas escolhas no mesmo horário: é remarcação, e grava, como o
+// assistente da ficha.
+//
+// A anotação conta só num sentido. Anotação escrita e diferente da que o lead
+// tem (`nextFollowUpNote`) é edição, e grava também. Pedido sem anotação não
+// mexe na anotação que já está no lead e nunca conta como mudança: o balão do
+// Stronizap não recebe a anotação do lead, então em branco quer dizer "não
+// digitei", e não "apague". Repetir o agendamento sem digitar nada não grava de
+// novo nem apaga a anotação. Com um contato (mensagem ou ligação) marcado na
+// ficha depois do compromisso, a anotação do lead é a do contato, e a
+// comparação é com ela.
 export function hasSameAppointment(lead, { type, at, schedule }) {
   const current = appointmentDetailOf(lead);
   if (!current || current.type !== type || current.at !== at.toISOString()) return false;
-  if ((lead.nextFollowUpNote || null) !== (schedule.note || null)) return false;
+  const note = schedule.note || null;
+  if (note !== null && note !== (lead.nextFollowUpNote || null)) return false;
   if (type === 'visita') return current.unit === (schedule.unit || null);
   return current.modality === (schedule.modality || null)
     && (lead.appointmentProfessorId || null) === (schedule.professorId || null)
@@ -430,8 +440,14 @@ export function pickOpenVisitaId(records) {
 }
 
 // A aula do currentAulaId só é reaproveitada se ainda estiver 'agendada',
-// como no findOpenAulaId do aulasWrites.js.
-export const isOpenAulaRecord = (record) => Boolean(record) && record.status === AULA_STATUS.AGENDADA;
+// como no findOpenAulaId do aulasWrites.js. Aqui ela também precisa ser um
+// registro de aula e ser deste lead: a api/ grava com poder de admin, e um
+// currentAulaId que aponte para o registro de outro lead, ou para uma visita,
+// não pode ser sobrescrito. Registro sem `type` é aula (isAulaRecord), e sem
+// `leadId` não é de ninguém.
+export const isOpenAulaRecord = (record, leadId) =>
+  Boolean(record) && Boolean(leadId) && record.leadId === leadId
+  && record.status === AULA_STATUS.AGENDADA && isAulaRecord(record);
 
 // O que a ação schedule grava numa transação só, o mesmo que o assistente
 // grava em três passos:

@@ -708,11 +708,21 @@ describe('hasSameAppointment: o pedido idêntico ao agendamento que o lead já t
     expect(hasSameAppointment({ ...MARIANA, appointmentUnit: null }, pedidoVisita({ unit: 'Centro' }))).toBe(false);
   });
 
-  it('mesma visita com outra anotação, ou com a anotação apagada, é remarcação', () => {
+  // O balão do Stronizap não recebe a anotação que o lead já tem: pedido sem
+  // anotação quer dizer "não digitei", e não "apague". Anotação escrita e
+  // diferente da do lead é edição, e grava.
+  it('mesma visita com anotação escrita e diferente é remarcação, e sem anotação é o pedido repetido', () => {
     const comNota = { ...MARIANA, nextFollowUpNote: 'Vem depois do trabalho.' };
     expect(hasSameAppointment(comNota, pedidoVisita({ note: 'Vem de manhã.' }))).toBe(false);
-    expect(hasSameAppointment(comNota, pedidoVisita({ note: null }))).toBe(false);
     expect(hasSameAppointment(MARIANA, pedidoVisita({ note: 'Vem depois do trabalho.' }))).toBe(false);
+    expect(hasSameAppointment(comNota, pedidoVisita({ note: null }))).toBe(true);
+  });
+
+  it('a regra da anotação vale também para a aula', () => {
+    const comNota = { ...PEDRO, nextFollowUpNote: 'Traz tênis.' };
+    expect(hasSameAppointment(comNota, pedidoAula({ note: null }))).toBe(true);
+    expect(hasSameAppointment(comNota, pedidoAula({ note: 'Traz tênis.' }))).toBe(true);
+    expect(hasSameAppointment(comNota, pedidoAula({ note: 'Traz garrafa.' }))).toBe(false);
   });
 
   it.each([
@@ -800,10 +810,25 @@ describe('registro em aberto que o assistente reaproveita', () => {
     expect(pickOpenVisitaId(undefined)).toBeNull();
   });
 
-  it('isOpenAulaRecord: só a aula ainda agendada', () => {
-    expect(isOpenAulaRecord({ status: 'agendada' })).toBe(true);
-    expect(isOpenAulaRecord({ status: 'attended' })).toBe(false);
-    expect(isOpenAulaRecord(null)).toBe(false);
+  // A api/ grava com poder de admin: o registro que o currentAulaId aponta só é
+  // reaproveitado se for mesmo uma aula ainda agendada deste lead.
+  it('isOpenAulaRecord: só a aula ainda agendada e do próprio lead', () => {
+    expect(isOpenAulaRecord({ status: 'agendada', leadId: 'L1' }, 'L1')).toBe(true);
+    // Registro sem `type` é aula (isAulaRecord), e com `type: 'aula'` também.
+    expect(isOpenAulaRecord({ status: 'agendada', type: 'aula', leadId: 'L1' }, 'L1')).toBe(true);
+    expect(isOpenAulaRecord({ status: 'attended', leadId: 'L1' }, 'L1')).toBe(false);
+    expect(isOpenAulaRecord({ status: 'cancelled', leadId: 'L1' }, 'L1')).toBe(false);
+    expect(isOpenAulaRecord(null, 'L1')).toBe(false);
+  });
+
+  it('isOpenAulaRecord: registro de outro lead, de visita ou sem dono não é reaproveitado', () => {
+    expect(isOpenAulaRecord({ status: 'agendada', leadId: 'L9' }, 'L1')).toBe(false);
+    expect(isOpenAulaRecord({ status: 'agendada', type: 'visita', leadId: 'L1' }, 'L1')).toBe(false);
+    expect(isOpenAulaRecord({ status: 'agendada' }, 'L1')).toBe(false);
+    expect(isOpenAulaRecord({ status: 'agendada', leadId: null }, 'L1')).toBe(false);
+    // Sem o id do lead, dois "sem dono" não se igualam.
+    expect(isOpenAulaRecord({ status: 'agendada' })).toBe(false);
+    expect(isOpenAulaRecord({ status: 'agendada', leadId: 'L1' })).toBe(false);
   });
 });
 
