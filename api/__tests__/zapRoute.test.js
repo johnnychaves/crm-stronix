@@ -13,6 +13,9 @@ const fusoDaMaquina = vi.hoisted(() => {
 import { generateZapKey } from '../_zapAuth.js';
 import { zapMatchKey } from '../_zapPhone.js';
 import handler from '../zap.js';
+// Com o vi.mock abaixo, este é o adminDb falso: os testes do banco falso o usam
+// direto, sem passar pela rota.
+import { adminDb } from '../_firebaseAdmin.js';
 import { buildNewLeadDoc } from '../../src/lib/newLead.js';
 import { buildNotificationFeed } from '../../src/lib/notifications.js';
 
@@ -26,12 +29,25 @@ import { buildNotificationFeed } from '../../src/lib/notifications.js';
 //
 // Ele também recusa o que o Firestore real recusa: id de documento que não é
 // texto, vazio ou com barra, consulta `in` com 0 ou mais de 30 valores,
-// leitura depois de escrita dentro da transação, create de documento que já
+// leitura depois de escrita dentro da transação, leitura dentro da transação
+// que não passa pelo tx.get (no SDK ela não é transacional, e o resultado
+// seria gravação dupla), campo undefined numa gravação da transação (o adminDb
+// do projeto não liga ignoreUndefinedProperties), create de documento que já
 // existe e update de documento que não existe. O `select` devolve só os
 // campos pedidos, e o increment soma no valor gravado. Um fake mais tolerante
 // que produção deixa passar exatamente o erro que importa. E tudo fica
 // guardado por academia, para dar para provar que a chave de uma não lê a
 // outra.
+//
+// O que ele NÃO imita, para ninguém supor que imita:
+//   - `set` com `merge` não mescla: dentro da transação substitui o documento,
+//     e fora dela (o `set` direto do generate e do revoke) só registra a
+//     gravação, sem mexer no documento e sem recusar undefined;
+//   - `Date` gravado volta como `Date`, e não como `Timestamp`;
+//   - ids que só o servidor recusa (`.`, `..`, `__x__`, mais de 1.500 bytes)
+//     passam;
+//   - não há contenção nem repetição do callback: cada transação roda uma vez,
+//     em fila.
 const banco = vi.hoisted(() => ({
   tenants: {}, leads: {}, config: {}, users: {}, catalogos: {}, interacoes: {}, aulas: {},
   gravacoes: [], falhaEm: null, ultimoId: 0
@@ -43,7 +59,18 @@ const sessao = vi.hoisted(() => ({ auth: null, admin: false, consultasDoLogin: 0
 // chave foi chamado.
 const limitador = vi.hoisted(() => ({ ok: true, chamadas: [] }));
 
-vi.mock('../_firebaseAdmin.js', () => {
+vi.mock('../_firebaseAdmin.js', async () => {
+  // Dentro do callback de runTransaction, uma leitura que não passa por tx.get
+  // não é transacional no Firestore de verdade. O falso roda cada callback
+  // inteiro em fila e esconderia esse defeito (a leitura sempre veria o estado
+  // já gravado pelo pedido anterior), então aqui ele é recusado.
+  const { AsyncLocalStorage } = await import('node:async_hooks');
+  const contexto = new AsyncLocalStorage();
+  const foraDaTx = (opc, caminho) => {
+    if (contexto.getStore()?.tx && !opc?.viaTx) {
+      throw new Error(`leitura fora de tx.get dentro do runTransaction: ${caminho.join('/')}`);
+    }
+  };
   // Hora do servidor. Na gravação vira um Timestamp falso, com toDate(), como
   // o documento volta do Firestore depois do commit. O increment soma no valor
   // que o documento já tinha (campo ausente conta como zero).
@@ -157,17 +184,31 @@ vi.mock('../_firebaseAdmin.js', () => {
         return listaDe(caminho).filter((l) => (op === 'in' ? valor.includes(l[campo]) : l[campo] === valor));
       };
       return {
-        limit: (n) => ({ get: async () => consulta(linhas().slice(0, n)) }),
-        select: (...campos) => ({ get: async () => consulta(linhas(), campos) }),
-        get: async () => consulta(linhas())
+        limit: (n) => ({ get: async (opc) => { foraDaTx(opc, caminho); return consulta(linhas().slice(0, n)); } }),
+        select: (...campos) => ({ get: async (opc) => { foraDaTx(opc, caminho); return consulta(linhas(), campos); } }),
+        get: async (opc) => { foraDaTx(opc, caminho); return consulta(linhas()); }
       };
     },
     // Coleção (caminho de tamanho ímpar) devolve a lista; documento, o snapshot.
-    get: async () => (caminho.length % 2 === 1 ? consulta(listaDe(caminho)) : documento(caminho)),
+    get: async (opc) => {
+      foraDaTx(opc, caminho);
+      return caminho.length % 2 === 1 ? consulta(listaDe(caminho)) : documento(caminho);
+    },
     set: async (dados, opcoes) => {
       banco.gravacoes.push({ caminho: caminho.join('/'), dados, opcoes });
     }
   });
+
+  // O SDK recusa `undefined` em qualquer campo: ignoreUndefinedProperties vem
+  // desligado e api/_firebaseAdmin.js não liga. Campo undefined que passa no
+  // teste vira erro 500 em produção.
+  const semUndefined = (valor, campo = '') => {
+    if (valor === undefined) throw new Error(`Cannot use "undefined" as a Firestore value (found in field "${campo}")`);
+    if (Array.isArray(valor)) valor.forEach((v, i) => semUndefined(v, `${campo}.${i}`));
+    else if (valor && Object.getPrototypeOf(valor) === Object.prototype) {
+      Object.entries(valor).forEach(([k, v]) => semUndefined(v, campo ? `${campo}.${k}` : k));
+    }
+  };
 
   // Uma transação de cada vez, em fila: é o efeito do isolamento serializável
   // do Firestore. As escritas só valem juntas, no fim, e só se nenhuma for
@@ -178,17 +219,21 @@ vi.mock('../_firebaseAdmin.js', () => {
     const vez = fila.then(async () => {
       const escritas = [];
       const tx = {};
-      const escrever = (tipo) => (alvo, dados) => { escritas.push({ tipo, caminho: alvo.caminho, dados }); return tx; };
+      const escrever = (tipo) => (alvo, dados) => {
+        semUndefined(dados);
+        escritas.push({ tipo, caminho: alvo.caminho, dados });
+        return tx;
+      };
       Object.assign(tx, {
         get: async (alvo) => {
           if (escritas.length > 0) throw new Error('Firestore transactions require all reads to be executed before all writes.');
-          return alvo.get();
+          return alvo.get({ viaTx: true });
         },
         create: escrever('create'),
         set: escrever('set'),
         update: escrever('update')
       });
-      const resultado = await fn(tx);
+      const resultado = await contexto.run({ tx: true }, () => fn(tx));
       escritas.forEach(conferir);
       escritas.forEach(aplicar);
       return resultado;
@@ -395,6 +440,75 @@ const resposta = () => ({
 describe('processo em UTC, como a função da Vercel', () => {
   it('o fuso do processo é UTC de verdade', () => {
     expect(new Date(2026, 0, 15).getTimezoneOffset()).toBe(0);
+  });
+});
+
+// Estes testes travam as duas recusas que deixam o banco falso tão rígido
+// quanto o firebase-admin, para elas não sumirem numa refatoração dele. Sem
+// elas, "dois pedidos ao mesmo tempo gravam uma vez só" passaria mesmo com uma
+// leitura fora da transação, e um campo undefined passaria no teste e viraria
+// erro 500 em produção. Usam o adminDb falso direto, sem passar pela rota.
+describe('o banco falso imita o firebase-admin', () => {
+  beforeEach(() => {
+    zerarBanco();
+  });
+
+  const leads = () => adminDb.collection('artifacts').doc(TENANT)
+    .collection('public').doc('data').collection('stronix_leads');
+
+  it('leitura dentro da transação que não passa pelo tx.get é recusada', async () => {
+    banco.leads[TENANT] = [clienteAVencer];
+    const recusada = /leitura fora de tx\.get dentro do runTransaction/;
+
+    // A mesma leitura pelo tx.get passa, e fora da transação também.
+    const pelaTransacao = await adminDb.runTransaction((tx) => tx.get(leads().doc('c1')));
+    expect(pelaTransacao.exists).toBe(true);
+    expect((await leads().doc('c1').get()).exists).toBe(true);
+
+    // Dentro do callback, sem o tx, é recusada, mesmo depois de um tx.get e de
+    // um await: o documento, a coleção e cada forma de consulta.
+    const consulta = () => leads().where('zapMatchKey', '==', clienteAVencer.zapMatchKey);
+    const leituras = [
+      ['documento', () => leads().doc('c1').get()],
+      ['coleção', () => leads().get()],
+      ['consulta', () => consulta().get()],
+      ['consulta com limit', () => consulta().limit(1).get()],
+      ['consulta com select', () => consulta().select('name').get()]
+    ];
+    for (const [forma, ler] of leituras) {
+      const transacao = adminDb.runTransaction(async (tx) => {
+        await tx.get(leads().doc('c1'));
+        return ler();
+      });
+      await expect(transacao, forma).rejects.toThrow(recusada);
+    }
+  });
+
+  it('undefined numa gravação da transação é recusado, como no SDK', async () => {
+    const recusado = (campo) => `Cannot use "undefined" as a Firestore value (found in field "${campo}")`;
+    const ana = { id: 'ana', name: 'Ana', observacao: null, tags: ['a'] };
+
+    // null passa, e fica gravado.
+    await adminDb.runTransaction(async (tx) => {
+      tx.create(leads().doc('ana'), { name: 'Ana', observacao: null, tags: ['a'] });
+    });
+    expect(leadsDaAcademia()).toEqual([ana]);
+
+    // undefined é recusado no create, no update e no set, no campo, dentro de
+    // objeto e dentro de lista.
+    await expect(adminDb.runTransaction(async (tx) => {
+      tx.create(leads().doc('bia'), { name: 'Bia', observacao: undefined });
+    })).rejects.toThrow(recusado('observacao'));
+    await expect(adminDb.runTransaction(async (tx) => {
+      tx.update(leads().doc('ana'), { agenda: { unit: undefined } });
+    })).rejects.toThrow(recusado('agenda.unit'));
+    await expect(adminDb.runTransaction(async (tx) => {
+      tx.set(leads().doc('ana'), { tags: ['a', undefined] });
+    })).rejects.toThrow(recusado('tags.1'));
+
+    // A transação recusada não gravou nada.
+    expect(leadsDaAcademia()).toEqual([ana]);
+    expect(banco.gravacoes).toHaveLength(1);
   });
 });
 

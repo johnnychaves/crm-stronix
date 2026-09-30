@@ -7,13 +7,34 @@
 // registro, a ficha ou a Meta mudam sem ninguém perceber.
 //
 // As datas do app são locais; o texto que a ponte grava sai no horário de
-// Brasília. Os horários daqui ficam longe da meia-noite, então o teste vale no
-// fuso da máquina e no UTC do CI.
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+// Brasília. O processo roda em UTC, como a função da Vercel (lá o TZ é
+// variável reservada) e como o CI. A máquina de desenvolvimento fica em
+// Brasília, e nela um texto escrito na hora do processo em vez da de Brasília
+// passaria despercebido, porque as duas horas coincidem. Em UTC o teste o pega,
+// e os testes da Meta Diária deixam de depender do fuso da máquina (de UTC+2
+// em diante, a aula ou a visita cai noutro dia).
+
+/* global process -- o lint de src/ é o do navegador, e este teste troca o fuso do processo do Node */
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
+
+// O fuso vai para UTC antes dos imports (o vi.hoisted roda primeiro), como em
+// zapRoute.test.js e em zapFuso.test.js (PR #227). O primeiro teste confere que
+// a troca pegou.
+const fusoDaMaquina = vi.hoisted(() => {
+  const antes = process.env.TZ;
+  process.env.TZ = 'UTC';
+  return antes;
+});
+
 import { buildScheduleWrites } from '../../../api/_zapSchedule.js';
 import { parseAppointment, classifyInteraction, timelineTypeLabel } from '../timeline.js';
 import { hasActiveInteractionToday, ZAP_VIA } from '../leads.js';
 import { computeDailyVolume, computeDailyGoalSlots, buildInteractionsByLead } from '../dailyGoal.js';
+
+afterAll(() => {
+  if (fusoDaMaquina === undefined) delete process.env.TZ;
+  else process.env.TZ = fusoDaMaquina;
+});
 
 // 01/10/2026 às 18:00 e 02/10/2026 às 19:00 de Brasília.
 const VISITA_EM = new Date('2026-10-01T21:00:00.000Z');
@@ -29,21 +50,36 @@ const lead = () => ({
 });
 const PROFESSORES = [{ id: 'p1', nome: 'Carla Dias', modalidadeIds: ['m2'] }];
 
+// Os marcadores que a ponte manda no lugar da hora do servidor e do "mais um".
+const HORA = 'HORA';
+const MAIS_UM = 'MAIS_UM';
+
 // O que a ponte grava quando a Ana agenda, com as datas como o Firestore
-// devolve: a hora do servidor vira agora.
+// devolve: só os dois marcadores são trocados (a hora do servidor vira agora, e
+// o "mais um" soma no que o lead já tinha). O resto fica como a ponte mandou,
+// então um campo que ela deixe de gravar, como o createdAt da interação,
+// continua faltando e o teste falha.
 function agendar(schedule, at) {
   const { interaction, leadPatch } = buildScheduleWrites({
     lead: lead(), actor: ANA, schedule, at, professors: PROFESSORES, channelName: 'Recepção',
-    newRecordId: 'rec-1', serverTime: 'HORA', increment: 'MAIS_UM'
+    newRecordId: 'rec-1', serverTime: HORA, increment: MAIS_UM
   });
   const agora = new Date();
-  const gravada = { id: 'i1', ...interaction, createdAt: agora };
-  const patch = { ...leadPatch, lastInteractionAt: agora, interactionsCount: 1 };
-  return { interaction: gravada, lead: { ...lead(), ...patch } };
+  const gravado = (dados, anterior = {}) => Object.fromEntries(Object.entries(dados).map(([campo, valor]) => [
+    campo,
+    valor === HORA ? agora : valor === MAIS_UM ? (Number(anterior[campo]) || 0) + 1 : valor
+  ]));
+  return { interaction: { id: 'i1', ...gravado(interaction) }, lead: { ...lead(), ...gravado(leadPatch, lead()) } };
 }
 
 const VISITA = { type: 'visita', unit: 'Centro', modality: null, professorId: null, soloTraining: false, quantity: null, note: 'Vem depois do trabalho.' };
 const AULA = { type: 'aula_experimental', unit: null, modality: 'Pilates', professorId: 'p1', soloTraining: false, quantity: 1, note: null };
+
+describe('processo em UTC, como a função da Vercel', () => {
+  it('o fuso do processo é UTC de verdade', () => {
+    expect(new Date(2026, 0, 15).getTimezoneOffset()).toBe(0);
+  });
+});
 
 describe('o agendamento da ponte na linha do tempo', () => {
   beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 1, 10, 0)); });
