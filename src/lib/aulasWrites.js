@@ -2,7 +2,10 @@
 // das escritas existentes do lead. Consultas por campo único (índice automático).
 import { collection, doc, addDoc, getDoc, getDocs, updateDoc, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, AULAS_PATH, LEADS_PATH } from './firebase.js';
-import { AULA_STATUS, APPOINTMENT_RECORD_TYPES, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields } from './aulas.js';
+import {
+  AULA_STATUS, APPOINTMENT_RECORD_TYPES, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, aulaRecordFields,
+  recordPlanFor, recordMatchesAppointment
+} from './aulas.js';
 
 const aulasCol = (db) => collection(db, 'artifacts', appId, 'public', 'data', AULAS_PATH);
 const aulaDoc = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', AULAS_PATH, id);
@@ -64,15 +67,53 @@ export async function closeOpenAppointment({ db, lead, type, status }) {
   if (!openId) return null;
 
   const snap = await getDoc(aulaDoc(db, openId));
-  const registroMs = millisOf(snap.exists() ? snap.data().scheduledFor : null);
-  const compromissoMs = millisOf(lead.appointmentScheduledFor);
-  if (registroMs !== null && compromissoMs !== null && registroMs !== compromissoMs) {
+  if (!recordMatchesAppointment(snap.exists() ? snap.data() : null, lead)) {
     console.warn('closeOpenAppointment: registro aberto de outra data; não fechado', { leadId: lead.id, aulaId: openId });
     return null;
   }
 
   await updateDoc(aulaDoc(db, openId), { status, outcomeAt: serverTimestamp() });
   return openId;
+}
+
+// O registro em stronix_aulas de um agendamento novo de visita ou aula pelo
+// assistente da ficha (handleWizardConfirm), na regra do Remarcar da Meta
+// Diária (recordPlanFor, em aulas.js): primeiro fecha o registro do agendamento
+// que o lead tinha, quando ele não vai mais acontecer (com o desfecho que o
+// lead tem, ou cancelado na troca de tipo), e depois move o registro em aberto
+// do tipo novo ou abre um. A ponte com o Stronizap faz o mesmo numa transação
+// (scheduleRecordChanges, em api/_zapSchedule.js): mudou aqui, mude lá.
+// Best-effort como todo o dual-write: o passo que falha vai para o console e
+// não derruba o agendamento do lead. Mensagem e ligação não têm registro.
+// Devolve o currentAulaId que o lead passa a guardar: o registro da aula
+// agendada, ou o que ele já tinha.
+export async function recordNewAppointment({ db, lead, appointmentType, fields }) {
+  const kept = lead.currentAulaId || null;
+  if (appointmentType !== 'visita' && appointmentType !== 'aula_experimental') return kept;
+
+  const plan = recordPlanFor(lead, { type: appointmentType, at: fields.scheduledFor });
+  if (plan.close) {
+    try {
+      await closeOpenAppointment({ db, lead, ...plan.close });
+    } catch (e) {
+      console.error('closeOpenAppointment falhou', e);
+    }
+  }
+
+  if (plan.upsertVisita) {
+    try {
+      await upsertScheduledAppointment({ db, lead, type: APPOINTMENT_RECORD_TYPES.VISITA, fields });
+    } catch (e) {
+      console.error('upsertScheduledAppointment (visita) falhou', e);
+    }
+    return kept;
+  }
+  try {
+    return await upsertScheduledAula({ db, lead, fields });
+  } catch (e) {
+    console.error('upsertScheduledAula falhou', e);
+    return kept;
+  }
 }
 
 // Aula: atalho barato pelo ponteiro que já existia no lead.
