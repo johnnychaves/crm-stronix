@@ -15,7 +15,7 @@ import {
   SCHEDULE_LIMIT, LEAD_IDS_MAX, ZAP_SCHEDULE_MESSAGES, unitsView, scheduleCatalogView, suggestedDays, countsForMeta,
   wardRelationship, appointmentDetailOf, scheduleTargets, readScheduleOptionsBody, buildScheduleOptions,
   isDocId, readScheduleBody, readStatusBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
-  scheduleInteractionText, pickOpenVisitaId, isOpenAulaRecord, buildScheduleWrites, alreadyScheduledBody
+  scheduleInteractionText, pickOpenVisitaId, isOpenAulaRecord, scheduleRecordChanges, buildScheduleWrites, alreadyScheduledBody
 } from '../_zapSchedule.js';
 import { aulaRecordFields } from '../../src/lib/aulas.js';
 import { GUARDIAN_RELATIONSHIPS } from '../../src/lib/guardian.js';
@@ -852,6 +852,95 @@ describe('registro em aberto que o assistente reaproveita', () => {
   });
 });
 
+// Agendar de novo depois de um desfecho: o registro do agendamento que teve
+// "Compareceu" ou "Não veio" fecha com esse desfecho antes de o agendamento
+// novo abrir outro, como no assistente da ficha (recordNewAppointment). Os
+// registros chegam como a consulta por leadId devolve, com a data em Timestamp.
+describe('scheduleRecordChanges: o registro que fecha e o que é reaproveitado', () => {
+  const ts = (d) => ({ toDate: () => d });
+  // A visita da Mariana na segunda, 28/09, às 18:00, e a data nova, quinta, 01/10, às 18:00.
+  const SEG = brt('2026-09-28T18:00');
+  const QUI = brt('2026-10-01T18:00');
+  const lead = (extra = {}) => ({
+    id: 'L1', appointmentType: 'visita', appointmentScheduledFor: SEG, appointmentUnit: 'Centro', currentAulaId: null, ...extra
+  });
+  const visita = (id, extra = {}) => ({ id, type: 'visita', leadId: 'L1', status: 'agendada', scheduledFor: ts(SEG), ...extra });
+  const aula = (id, extra = {}) => ({ id, type: 'aula', leadId: 'L1', status: 'agendada', scheduledFor: ts(SEG), ...extra });
+  const VISITA = { type: 'visita' };
+  const AULA = { type: 'aula_experimental' };
+  const mudancas = (l, schedule, records, at = QUI) => scheduleRecordChanges({ lead: l, schedule, at, records });
+
+  it('visita sem desfecho remarcada: nada fecha, e o registro em aberto é reaproveitado', () => {
+    expect(mudancas(lead(), VISITA, [visita('v1')])).toEqual({ close: null, openRecordId: 'v1' });
+  });
+
+  it.each([
+    ['"Não veio"', 'no_show'],
+    ['"Compareceu"', 'attended']
+  ])('visita com %s e outra visita em outro dia: o registro fecha com o desfecho, e nasce outro', (_, appointmentOutcome) => {
+    expect(mudancas(lead({ appointmentOutcome }), VISITA, [visita('v1')]))
+      .toEqual({ close: { id: 'v1', status: appointmentOutcome }, openRecordId: null });
+  });
+
+  it('o mesmo instante com o desfecho marcado antes da hora: nada fecha, e o registro continua o mesmo', () => {
+    expect(mudancas(lead({ appointmentOutcome: 'no_show' }), VISITA, [visita('v1')], SEG)).toEqual({ close: null, openRecordId: 'v1' });
+  });
+
+  it('visita trocada por aula: a visita fecha como cancelada, e a aula aberta do currentAulaId é reaproveitada', () => {
+    expect(mudancas(lead({ currentAulaId: 'a1' }), AULA, [visita('v1'), aula('a1', { scheduledFor: ts(brt('2026-09-20T10:00')) })]))
+      .toEqual({ close: { id: 'v1', status: 'cancelled' }, openRecordId: 'a1' });
+  });
+
+  it('visita com "Compareceu" trocada por aula: fecha como compareceu, e não como cancelada', () => {
+    expect(mudancas(lead({ appointmentOutcome: 'attended' }), AULA, [visita('v1')]))
+      .toEqual({ close: { id: 'v1', status: 'attended' }, openRecordId: null });
+  });
+
+  it('aula trocada por visita: a aula do currentAulaId fecha como cancelada, e a visita em aberto é reaproveitada', () => {
+    const comAula = lead({ appointmentType: 'aula_experimental', currentAulaId: 'a1' });
+    expect(mudancas(comAula, VISITA, [aula('a1'), visita('v0', { scheduledFor: ts(brt('2026-09-10T18:00')) })]))
+      .toEqual({ close: { id: 'a1', status: 'cancelled' }, openRecordId: 'v0' });
+  });
+
+  it('aula com "Não veio" que não chegou ao registro fecha como falta; a que já fechou fica como está', () => {
+    const comAula = lead({ appointmentType: 'aula_experimental', currentAulaId: 'a1', appointmentOutcome: 'no_show' });
+    expect(mudancas(comAula, AULA, [aula('a1')])).toEqual({ close: { id: 'a1', status: 'no_show' }, openRecordId: null });
+    expect(mudancas(comAula, AULA, [aula('a1', { status: 'no_show' })])).toEqual({ close: null, openRecordId: null });
+  });
+
+  it('registro em aberto de outra data não fecha, como no closeOpenAppointment, e continua sendo o reaproveitado', () => {
+    const antigo = visita('v1', { scheduledFor: ts(brt('2026-09-20T18:00')) });
+    expect(mudancas(lead({ appointmentOutcome: 'no_show' }), VISITA, [antigo])).toEqual({ close: null, openRecordId: 'v1' });
+  });
+
+  it('duas visitas em aberto: fecha a do agendamento e reaproveita a outra, como o assistente, que fecha antes de procurar', () => {
+    const outra = visita('v2', { scheduledFor: ts(brt('2026-09-10T18:00')) });
+    expect(mudancas(lead({ appointmentOutcome: 'no_show' }), VISITA, [visita('v1'), outra]))
+      .toEqual({ close: { id: 'v1', status: 'no_show' }, openRecordId: 'v2' });
+  });
+
+  it('o registro de outro lead no currentAulaId não fecha nem é reaproveitado', () => {
+    const comAula = lead({ appointmentType: 'aula_experimental', currentAulaId: 'a9', appointmentOutcome: 'no_show' });
+    expect(mudancas(comAula, AULA, [aula('a9', { leadId: 'L9' })])).toEqual({ close: null, openRecordId: null });
+  });
+
+  it('lead sem agendamento, ou com o agendamento cancelado, não fecha nada', () => {
+    expect(mudancas({ id: 'L1' }, VISITA, [visita('v1')])).toEqual({ close: null, openRecordId: 'v1' });
+    const cancelado = lead({ appointmentType: null, appointmentScheduledFor: null, appointmentOutcome: 'cancelled' });
+    expect(mudancas(cancelado, VISITA, [visita('v1')])).toEqual({ close: null, openRecordId: 'v1' });
+  });
+
+  it('lead antigo com "Visita" no tipo também fecha', () => {
+    expect(mudancas(lead({ appointmentType: 'Visita', appointmentOutcome: 'no_show' }), VISITA, [visita('v1')]))
+      .toEqual({ close: { id: 'v1', status: 'no_show' }, openRecordId: null });
+  });
+
+  it('sem registros, nada fecha e nada é reaproveitado', () => {
+    expect(mudancas(lead({ appointmentOutcome: 'no_show' }), VISITA, [])).toEqual({ close: null, openRecordId: null });
+    expect(mudancas(lead({ appointmentOutcome: 'no_show' }), VISITA, undefined)).toEqual({ close: null, openRecordId: null });
+  });
+});
+
 describe('buildScheduleWrites: o que o assistente grava, numa gravação só', () => {
   const HORA = Object.freeze({ horaDoServidor: true });
   const MAIS_UM = Object.freeze({ incremento: 1 });
@@ -921,6 +1010,13 @@ describe('buildScheduleWrites: o que o assistente grava, numa gravação só', (
   it('visita remarcada: o registro em aberto só troca a unidade e a data', () => {
     const { record } = gravar({ schedule: VISITA, at: atVisita, openRecordId: 'visita-aberta', newRecordId: 'rec-novo' });
     expect(record).toEqual({ id: 'visita-aberta', update: { unit: 'Centro', scheduledFor: atVisita } });
+  });
+
+  it('com o registro a fechar: ele leva o status e a hora do servidor, e sem ele nada fecha', () => {
+    const { closed, record } = gravar({ schedule: VISITA, at: atVisita, close: { id: 'visita-velha', status: 'no_show' }, newRecordId: 'rec-novo' });
+    expect(closed).toEqual({ id: 'visita-velha', update: { status: 'no_show', outcomeAt: HORA } });
+    expect(record.id).toBe('rec-novo');
+    expect(gravar({ schedule: VISITA, at: atVisita, newRecordId: 'rec-novo' }).closed).toBeNull();
   });
 
   it('aula nova: o registro leva o professor e o lead passa a apontar para ele', () => {
