@@ -28,11 +28,12 @@ import { buildNotificationFeed } from '../../src/lib/notifications.js';
 // texto, vazio ou com barra, consulta `in` com 0 ou mais de 30 valores,
 // leitura depois de escrita dentro da transação, create de documento que já
 // existe e update de documento que não existe. O `select` devolve só os
-// campos pedidos. Um fake mais tolerante que produção deixa passar
-// exatamente o erro que importa. E tudo fica guardado por academia, para dar
-// para provar que a chave de uma não lê a outra.
+// campos pedidos, e o increment soma no valor gravado. Um fake mais tolerante
+// que produção deixa passar exatamente o erro que importa. E tudo fica
+// guardado por academia, para dar para provar que a chave de uma não lê a
+// outra.
 const banco = vi.hoisted(() => ({
-  tenants: {}, leads: {}, config: {}, users: {}, catalogos: {}, interacoes: {},
+  tenants: {}, leads: {}, config: {}, users: {}, catalogos: {}, interacoes: {}, aulas: {},
   gravacoes: [], falhaEm: null, ultimoId: 0
 }));
 // Quem está logado no CRM (verifyRequest), se é admin (isTenantAdmin) e
@@ -44,22 +45,32 @@ const limitador = vi.hoisted(() => ({ ok: true, chamadas: [] }));
 
 vi.mock('../_firebaseAdmin.js', () => {
   // Hora do servidor. Na gravação vira um Timestamp falso, com toDate(), como
-  // o documento volta do Firestore depois do commit.
+  // o documento volta do Firestore depois do commit. O increment soma no valor
+  // que o documento já tinha (campo ausente conta como zero).
   const HORA_DO_SERVIDOR = Object.freeze({ horaDoServidor: true });
-  const gravado = (dados) => {
+  const incremento = (n) => Object.freeze({ incremento: n });
+  const gravado = (dados, anterior = {}) => {
     const instante = new Date();
-    return Object.fromEntries(Object.entries(dados).map(([k, v]) =>
-      [k, v === HORA_DO_SERVIDOR ? { toDate: () => instante } : v]));
+    return Object.fromEntries(Object.entries(dados).map(([k, v]) => {
+      if (v === HORA_DO_SERVIDOR) return [k, { toDate: () => instante }];
+      if (v && typeof v === 'object' && 'incremento' in v) return [k, (Number(anterior[k]) || 0) + v.incremento];
+      return [k, v];
+    }));
   };
 
-  const snapshot = (dados) => ({ exists: dados != null, data: () => dados ?? undefined });
+  const snapshot = (id, dados) => ({ id, exists: dados != null, data: () => dados ?? undefined });
 
   const idValido = (id) => typeof id === 'string' && id.length > 0 && !id.includes('/');
 
   // A lista em memória de cada coleção da academia
   // (artifacts/{academia}/public/data/{coleção}).
-  const LISTAS = { stronix_leads: 'leads', stronix_users: 'users', stronix_interactions: 'interacoes' };
-  const CATALOGOS = ['stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses'];
+  const LISTAS = {
+    stronix_leads: 'leads', stronix_users: 'users', stronix_interactions: 'interacoes', stronix_aulas: 'aulas'
+  };
+  const CATALOGOS = [
+    'stronix_sources', 'stronix_dores', 'stronix_modalities', 'stronix_funnels', 'stronix_statuses',
+    'stronix_units', 'stronix_professores'
+  ];
   const listaDe = (caminho, criar = false) => {
     const [raiz, academia, , , nome] = caminho;
     if (raiz === 'artifacts' && caminho.length === 5) {
@@ -83,8 +94,20 @@ vi.mock('../_firebaseAdmin.js', () => {
   };
 
   const documento = (caminho) => {
-    if (caminho[0] === 'tenants') return snapshot(banco.tenants[caminho[1]]);
-    if (caminho.at(-2) === 'stronix_config') return snapshot(banco.config[caminho[1]]);
+    if (caminho[0] === 'tenants') return snapshot(caminho[1], banco.tenants[caminho[1]]);
+    if (caminho.at(-2) === 'stronix_config') return snapshot(caminho.at(-1), banco.config[caminho[1]]);
+    // Um documento de lista (lead, registro de aulas...) pelo id. `falhaEm:
+    // 'documento'` simula a leitura recusada (Firestore fora do ar, por
+    // exemplo), com o caminho dentro da mensagem, como o SDK faz.
+    if (caminho[0] === 'artifacts' && caminho.length === 6 && LISTAS[caminho[4]]) {
+      if (banco.falhaEm === 'documento') {
+        throw Object.assign(new Error(`14 UNAVAILABLE: leitura de ${caminho.join('/')} falhou`), { code: 14 });
+      }
+      const linha = listaDe(caminho.slice(0, 5)).find((l) => l.id === caminho[5]);
+      if (!linha) return snapshot(caminho[5], null);
+      const { id, ...dados } = linha;
+      return snapshot(id, dados);
+    }
     throw new Error(`caminho sem fixture no teste: ${caminho.join('/')}`);
   };
 
@@ -99,7 +122,7 @@ vi.mock('../_firebaseAdmin.js', () => {
     const lista = listaDe(caminho.slice(0, -1), true);
     const id = caminho.at(-1);
     const i = lista.findIndex((l) => l.id === id);
-    if (tipo === 'update') lista[i] = { ...lista[i], ...gravado(dados) };
+    if (tipo === 'update') lista[i] = { ...lista[i], ...gravado(dados, lista[i]) };
     else if (i >= 0) lista[i] = { id, ...gravado(dados) };
     else lista.push({ id, ...gravado(dados) });
     banco.gravacoes.push({ caminho: caminho.join('/'), dados, tipo });
@@ -180,7 +203,7 @@ vi.mock('../_firebaseAdmin.js', () => {
   return {
     adminDb,
     adminAuth: {},
-    admin: { firestore: { FieldValue: { serverTimestamp: () => HORA_DO_SERVIDOR } } },
+    admin: { firestore: { FieldValue: { serverTimestamp: () => HORA_DO_SERVIDOR, increment: incremento } } },
     verifyRequest: async () => {
       sessao.consultasDoLogin += 1;
       return sessao.auth;
@@ -270,6 +293,16 @@ const catalogosDaAcademia = () => ({
     { id: 'st3', funnelId: 'f-kids', name: 'Interesse', order: 1 },
     { id: 'st4', funnelId: 'f-ind', name: 'Aguardando ação', order: 1, isEntry: true },
     { id: 'st5', funnelId: 'f-venc', name: 'Aguardando contato', order: 1 }
+  ],
+  // Do agendamento: a Zona Sul sem endereço e a Paula desligada.
+  stronix_units: [
+    { id: 'un2', name: 'Zona Sul', address: '', order: 2 },
+    { id: 'un1', name: 'Centro', address: 'Rua Garibaldi, 1200', order: 1 }
+  ],
+  stronix_professores: [
+    { id: 'p1', nome: 'Carla Dias', modalidadeIds: ['m2'], order: 1 },
+    { id: 'p2', nome: 'Rafael Moura', modalidadeIds: ['m2', 'm1'], order: 2 },
+    { id: 'p3', nome: 'Paula Reis', modalidadeIds: ['m2'], ativo: false, order: 3 }
   ]
 });
 
@@ -282,6 +315,7 @@ function zerarBanco() {
   banco.users = {};
   banco.catalogos = {};
   banco.interacoes = {};
+  banco.aulas = {};
   banco.gravacoes = [];
   banco.falhaEm = null;
   banco.ultimoId = 0;
