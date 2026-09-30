@@ -123,17 +123,18 @@ As duas entradas só existem na ficha de cliente, como a aba e o menu já são. 
 
 ### O pop-up
 
-`src/modals/QuickReferralModal.jsx`, com o Dialog do shadcn. O título é "Indicações de <cliente>" e o subtítulo, "Entram no funil Indicações, com você de responsável".
+`src/modals/QuickReferralModal.jsx`, com o Dialog do shadcn, em dois painéis (desenho aprovado pelo Johnny em 30/09/2026, com a skill de design). À esquerda ficam o avatar de quem indica, o título "<cliente> indica", o subtítulo "Funil Indicações · você fica responsável" e o formulário. À direita ficam o contador e a lista do que já foi cadastrado, com o mais recente em cima. No celular os painéis empilham.
 
 | Campo | Obrigatório | De onde vem |
 |---|---|---|
 | Nome | sim | texto |
 | WhatsApp | sim | a mesma máscara do Novo lead (celular e fixo) |
-| Modalidade de interesse | não | `modalities` do `useGeneralConfig` |
+| Modalidade de interesse | não | `modalities` do `useGeneralConfig`, em botões de um clique |
 | Dor | não | `dores` do `useGeneralConfig` |
 
 - **Cadastrar** (ou o Enter) grava o indicado, limpa os campos e põe o cursor de volta no Nome. O pop-up fica aberto.
-- Cada gravado entra na lista "Cadastradas agora", com o nome, o telefone e o link para a ficha (`LeadLink`).
+- Cada gravado entra na lista do painel da direita, com o avatar, o nome, o telefone, a modalidade e o link para a ficha (`LeadLink`), que abre em outra guia.
+- O Enter cadastra também com o foco num botão de modalidade.
 - **Concluir** fecha o pop-up. A lista da aba e o número na aba são recarregados a cada cadastro (`reloadReferrals`).
 - Sem modalidade ou dor cadastradas na academia, o campo some. O cadastro não trava por isso.
 
