@@ -804,7 +804,7 @@ describe('buildImportedClientWrites', () => {
     const ref = buildMatriculaWrites({ lead, plan: PLANOS[0], value: 450, startsAt: start, appUser: APP_USER });
     const c = { ...newCandidate, startsAt: start, endsAt: computeEndsAt(start, 3), value: 450, plan: PLANOS[0] };
     const w = buildImportedClientWrites({ c, cls: { lead: null, fill: null, createContract: true }, consultant: USERS[0], funnelId: 'f1', appUser: APP_USER, importMeta: META, now: NOW });
-    ['lifecycleStage', 'currentPlanName', 'currentContractValue', 'currentContractStartsAt', 'currentContractEndsAt', 'currentContractStatus', 'currentContractSeamless', 'renewalHandledCheckpoints', 'renewalDeclined', 'reactivationStageId']
+    ['lifecycleStage', 'currentPlanName', 'currentContractValue', 'currentContractStartsAt', 'currentContractEndsAt', 'currentContractStatus', 'currentContractSeamless', 'renewalHandledCheckpoints', 'renewalDeclined', 'reactivationStageId', 'inUseContractId', 'inUseContractStatus', 'inUseContractEndsAt']
       .forEach((k) => expect(w.leadData[k], k).toEqual(ref.leadPatch[k]));
     ['planId', 'planName', 'value', 'listValue', 'durationMonths', 'startsAt', 'endsAt', 'status', 'cancelledAt', 'cancelReason', 'renewedFromId', 'consultantId', 'consultantName', 'consultantAuthUid']
       .forEach((k) => expect(w.contract[k], k).toEqual(ref.contract[k]));

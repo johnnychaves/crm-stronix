@@ -372,6 +372,15 @@ export const buildMatriculaWrites = ({
   // encurtado por outra renovação), os dois valem juntos e a marca fica false.
   // Fora de vigor, nem a emenda marca: o novo fica agendado até começar.
   const seamless = inForce && (join.seamless || canShorten);
+  // O bloco "em uso" do resumo (inUseBlockOf): com a renovação começando depois
+  // de agora e o contrato renovado em vigor, o cliente segue usando o renovado
+  // até ela começar, com o fim encurtado quando a gravação encurta. Sem o
+  // documento, o id e o fim saem do resumo do lead, como a marca. Renovação
+  // que já começa valendo, e matrícula, limpam o bloco.
+  const ref = getSafeDateOrNull(now) || new Date();
+  const inUseBlock = inForce && start.getTime() > ref.getTime()
+    ? inUseBlockOf({ id: lead.currentContractId, status: CONTRACT_STATUS.ATIVO, endsAt: canShorten ? join.previousEndsAt : currentEnd })
+    : CLEAR_IN_USE_BLOCK;
 
   const contract = {
     leadId: lead?.id || null,
@@ -409,6 +418,7 @@ export const buildMatriculaWrites = ({
     currentContractEndsAt: endsAt,
     currentContractStatus: CONTRACT_STATUS.ATIVO,
     currentContractSeamless: seamless,
+    ...inUseBlock,
     // Novo ciclo de contrato = marcos de renovação zerados. Vale tanto para
     // matrícula (lead novo, campos já nascem assim) quanto para renovação
     // (o ciclo anterior pode ter deixado marcos tratados/declínio gravados —
@@ -537,7 +547,9 @@ export function buildRenewalCancel({ contract, previous, cancelledAt, reason, no
       currentContractStartsAt: getSafeDateOrNull(previous?.startsAt) || getSafeDateOrNull(previous?.createdAt),
       currentContractEndsAt: end,
       currentContractStatus: previous?.status || CONTRACT_STATUS.ATIVO,
-      currentContractSeamless: Boolean(previous?.seamless)
+      currentContractSeamless: Boolean(previous?.seamless),
+      // O resumo volta ao contrato renovado, que passa a ser o último: sem bloco.
+      ...CLEAR_IN_USE_BLOCK
     },
     interactionText: `Renovação cancelada antes de começar: ${renovacao}${motivo}. ${volta}`
   };
@@ -739,6 +751,8 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
   const startChanged = correctionMovesStart(contract, start);
   let seamless = Boolean(contract?.seamless);
   let previousPatch = null;
+  // O bloco "em uso" do resumo: null é "não mexer".
+  let inUseBlock = null;
   if (startChanged && contract?.renewedFromId && previous?.id === contract.renewedFromId) {
     const original = getSafeDateOrNull(previous.originalEndsAt);
     const shortenedByThis = Boolean(original && previous.shortenedById && previous.shortenedById === contract.id);
@@ -757,6 +771,15 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
     if (canShorten) patch = { endsAt: join.previousEndsAt, originalEndsAt: refEnd, shortenedById: contract.id };
     else if (shortenedByThis) patch = { endsAt: refEnd, originalEndsAt: null, shortenedById: null };
     previousPatch = patch && changesPrevious(previous, patch) ? patch : null;
+    // Com o início novo ainda no futuro e o anterior já começado, o bloco
+    // aponta o anterior com o status dele (trancado e cancelado inclusive) e o
+    // fim depois desta correção: o encurtado, o devolvido ou o de sempre. Com
+    // o início novo já chegado, o último contrato passou a valer: bloco limpo.
+    const ref = getSafeDateOrNull(now) || new Date();
+    const started = Boolean(prevStart && prevStart.getTime() <= ref.getTime());
+    inUseBlock = start.getTime() > ref.getTime() && started
+      ? inUseBlockOf(previous, { inUseContractEndsAt: patch ? patch.endsAt : refEnd })
+      : CLEAR_IN_USE_BLOCK;
   }
 
   return {
@@ -778,7 +801,8 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
       currentContractValue: finalValue,
       currentContractStartsAt: start,
       currentContractEndsAt: endsAt,
-      currentContractSeamless: seamless
+      currentContractSeamless: seamless,
+      ...(inUseBlock || {})
     },
     previousPatch,
     interactionText: `Contrato corrigido — Plano ${plan?.name ?? contract?.planName ?? '—'} (${fmtBRL(finalValue)}), vigência ${fmtDia(start)} → ${fmtDia(endsAt)}.`
