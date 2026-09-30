@@ -79,7 +79,7 @@ Se alguém já moveu o lead depois do Compareceu, a etapa fica onde está. A vol
 
 - no lead: `appointmentOutcome: 'no_show'`, com `appointmentOutcomeAt` e `appointmentOutcomeBy`;
 - a etapa volta, pela regra acima, e `appointmentPromotedFrom` vira `null`;
-- o `nextFollowUp` volta a ser o horário do agendamento (`appointmentScheduledFor`), porque o Compareceu o tinha limpado. Isso não vale para cliente, cujo Compareceu não limpa esse campo. Com isso o lead fica igual a quem foi marcado Não compareceu desde o começo: amanhã ele aparece em Atrasado se ninguém remarcar;
+- o `nextFollowUp` volta a ser o horário do agendamento (`appointmentScheduledFor`) quando está vazio, porque o Compareceu o tinha limpado. Se alguém já agendou o próximo contato depois do Compareceu (o card "A fazer" pergunta isso logo em seguida), esse contato fica. Também não vale para cliente, cujo Compareceu não limpa esse campo. Com isso o lead fica igual a quem foi marcado Não compareceu desde o começo: amanhã ele aparece em Atrasado se ninguém remarcar;
 - uma interação `daily_goal_done` com `appointmentOutcome: 'no_show'`, `outcomeCorrection: true` e o texto "↩️ Desfecho corrigido: ❌ Não veio · Agenda do dia (Visita hoje)". O relatório de visitas já lê o último desfecho do dia na linha do tempo (`visitOutcomesByLead`), então a correção ganha;
 - na aula experimental, `applyOutcomeToAula` marca o registro da aula como falta;
 - abre a remarcação (`flow: 'after_no_show'`), como no Não compareceu normal. Fechar a janela quer dizer "remarco depois".
@@ -94,7 +94,7 @@ Se alguém já moveu o lead depois do Compareceu, a etapa fica onde está. A vol
 
 - `clearAppointmentOutcome` limpa o desfecho, como hoje;
 - a etapa volta, pela regra acima;
-- se o desfecho desfeito era Compareceu de um lead que não é cliente, o `nextFollowUp` volta a ser o horário do agendamento;
+- se o desfecho desfeito era Compareceu de um lead que não é cliente e o `nextFollowUp` está vazio, ele volta a ser o horário do agendamento;
 - a marca da Meta do dia fica, como já acontece hoje.
 
 **Conta das tarefas.** O Operacional conta uma tarefa por lead, categoria, dia e autor (`tasksByType`, em `src/lib/operacional/routine.js`). A correção feita pela mesma pessoa no mesmo dia não conta de novo. Se outra pessoa corrige, conta uma tarefa para ela, que é a regra de hoje para a agenda compartilhada.
