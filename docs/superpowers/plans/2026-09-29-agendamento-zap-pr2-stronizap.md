@@ -138,8 +138,10 @@ As três ações moram no `POST /api/zap`, autenticadas pela chave no header `x-
 | `lead_nao_confere` | 422 | O lead não é do número nem menor de quem ele é responsável |
 | `catalogo_mudou` | 422 | Unidade, modalidade, professor ou quantidade que não existe mais, com `field` |
 | `horario_passado` | 422 | Dia e hora que já passaram |
-| `ja_agendado` | 409 | O mesmo agendamento já existe; vem com `card` e `appointment` |
+| `ja_agendado` | 409 | O pedido é idêntico ao agendamento que o lead já tem (mesmo tipo, horário e escolhas de unidade, modalidade, professor e quantidade; uma anotação escrita e diferente grava, e pedido sem anotação nunca conta como mudança); vem com `card` e `appointment` |
 | `limite` | 429 | Mais de 60 agendamentos na última hora na academia |
+
+O que mudou no PR 1 durante a execução e vale para este lado: a regra do `ja_agendado` acima (antes, remarcar no mesmo horário trocando só a unidade respondia `ja_agendado` sem gravar); e, no `schedule-options` e no cartão devolvido pelo `schedule`, a falha do Stronilead ao buscar os menores do número responde 5xx, em vez de devolver a lista sem eles. Para este lado as duas coisas não pedem código novo: o 5xx já vira "Não deu para falar com o Stronilead agora." com o "Tentar de novo", e o "Tentar de novo" do `schedule` cai no `ja_agendado` com o cartão inteiro, que a tela trata como sucesso.
 
 **`AppointmentDetail`** (resposta do `schedule`, do `ja_agendado` e, no PR 3, do `appointment-status`):
 
