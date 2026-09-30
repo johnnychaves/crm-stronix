@@ -50,6 +50,13 @@
 15. **Horário que já passou é o instante igual ou anterior a agora**, sem margem, como a spec pede.
 16. **Textos a confirmar com o Johnny** (a spec não traz): todos os de `ZAP_SCHEDULE_MESSAGES` (Task 3), os parentescos invertidos da nota 1 e o detalhe do autor sem canal, "Agendado pelo Stronizap" (Task 13).
 
+## Ajustes de revisão feitos durante a execução
+
+As revisões de qualidade pediram ajustes pequenos em cima do código deste plano. O plano abaixo já conta com eles onde uma tarefa seguinte depende.
+
+- **Task 1 (`823ed78`).** `api/__tests__/horarioDeBrasilia.test.js` ganhou 7 testes (meia-noite, mês de um dígito e entrada que não é texto), e o primeiro parâmetro de `instanteDeBrasilia` chama `data`. Os totais da suíte ficam 7 acima dos que o plano cita.
+- **Task 2 (`2af56a8`).** `api/__tests__/zapCard.test.js` ganhou 2 testes (a lista fechada dentro de `appointment` e o predicado), e `api/_zapCard.js` exporta `isAppointmentCancelled(lead)`, que o `cardAppointment` usa. O `appointmentDetailOf` da Task 3 usa o mesmo predicado, então os três blocos de import do `_zapSchedule.js` (Tasks 3, 4 e 5) trazem `isAppointmentCancelled`. Os totais da suíte ficam mais 2 acima.
+
 ## O contrato da ponte
 
 Tudo pelo `POST /api/zap`, autenticado pela chave (`x-stronizap-key`), igual ao `match`, ao `lead-options` e ao `create-lead`. O identificador da academia vai em `tenant`.
@@ -923,7 +930,7 @@ Expected: FAIL, com `Cannot find module '/api/_zapSchedule.js'` e nenhum teste r
 // Spec: docs/superpowers/specs/2026-09-29-agendamento-pelo-stronizap-design.md
 import { ZAP_LEAD_MESSAGES, invalidData, nationalDigits, emailFromActor, teamRole } from './_zapLead.js';
 import { zapMatchKey } from './_zapPhone.js';
-import { appointmentOutcomeOf } from './_zapCard.js';
+import { appointmentOutcomeOf, isAppointmentCancelled } from './_zapCard.js';
 import { diaDeBrasilia, horaInteiraDeBrasilia, diaDaSemanaDoDia, isoDoDia } from './_horarioDeBrasilia.js';
 import { getLeadAppointmentType, getLeadAppointmentDate } from '../src/lib/leads.js';
 import { normalizeAppointmentType } from '../src/lib/dates.js';
@@ -1072,7 +1079,7 @@ export function wardRelationship(lead) {
 // mesmas leituras do cartão, e cancelado vira null. `units` é a lista de
 // unitsView, de onde sai o endereço da unidade pelo nome.
 export function appointmentDetailOf(lead, units = []) {
-  if (!lead || lead.appointmentOutcome === 'cancelled') return null;
+  if (!lead || isAppointmentCancelled(lead)) return null;
   const type = normalizeAppointmentType(getLeadAppointmentType(lead));
   const at = getLeadAppointmentDate(lead);
   if (!type || !at) return null;
@@ -1407,7 +1414,7 @@ Trocar o bloco de imports do topo (as sete linhas de `import`) por:
 ```js
 import { ZAP_LEAD_MESSAGES, refusal, invalidData, nationalDigits, emailFromActor, teamRole } from './_zapLead.js';
 import { zapMatchKey } from './_zapPhone.js';
-import { appointmentOutcomeOf } from './_zapCard.js';
+import { appointmentOutcomeOf, isAppointmentCancelled } from './_zapCard.js';
 import {
   diaDeBrasilia, horaInteiraDeBrasilia, diaDaSemanaDoDia, isoDoDia, instanteDeBrasilia
 } from './_horarioDeBrasilia.js';
@@ -1811,7 +1818,7 @@ Trocar o bloco de imports do topo por:
 ```js
 import { ZAP_LEAD_MESSAGES, refusal, invalidData, nationalDigits, emailFromActor, teamRole } from './_zapLead.js';
 import { zapMatchKey } from './_zapPhone.js';
-import { appointmentOutcomeOf } from './_zapCard.js';
+import { appointmentOutcomeOf, isAppointmentCancelled } from './_zapCard.js';
 import {
   diaDeBrasilia, horaInteiraDeBrasilia, diaDaSemanaDoDia, isoDoDia, dataHoraDeBrasilia, instanteDeBrasilia
 } from './_horarioDeBrasilia.js';
