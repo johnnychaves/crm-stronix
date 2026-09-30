@@ -8,7 +8,7 @@
 // ligação é retorno, inclusive o paralelo, como no Gerencial. O
 // contractHistory.test.js compara as duas regras.
 
-import { CONTRACT_STATUS, deriveContractStatus, neverTookEffect, pauseSuccessorStartOf } from './contracts.js';
+import { CONTRACT_STATUS, buildContractResume, deriveContractStatus, neverTookEffect, pauseSuccessorStartOf } from './contracts.js';
 import { calendarDaysBetween, getSafeDateOrNull } from './dates.js';
 
 export const CONTRACT_ORIGIN = {
@@ -148,14 +148,41 @@ export function historySuccessorOf(contract, leadContracts, currentContractId) {
 export const HISTORY_STATUS = { EM_USO: 'em_uso', RENOVADO: 'renovado' };
 export const HISTORY_STATUS_LABEL = { em_uso: 'Em uso', renovado: 'Renovado' };
 
+// A pausa aberta de um trancado que um sucessor já encerrou, em `now`
+// (pauseSuccessorStartOf, a regra do Operacional): de quando (`from`) até
+// quando (`to`) o contrato ficou parado, e até quando ele volta a valer
+// (`end`): o fim gravado andado pelos dias parados, a conta da reativação
+// (buildContractResume), sem gravar nada. O encurtado por uma renovação
+// (originalEndsAt) não anda, como no Operacional. Sucessor que começa antes da
+// pausa: ela não chegou a valer. Null enquanto nenhum sucessor começou, ou fora
+// do trancado. Decisão do Johnny (30/09/2026): quem tranca e renova sem
+// reativar tem os dias que sobram correndo junto com a renovação.
+export function closedPauseOf(contract, leadContracts, now = new Date()) {
+  if (contract?.status !== CONTRACT_STATUS.TRANCADO) return null;
+  const ref = getSafeDateOrNull(now) || new Date();
+  const start = getSafeDateOrNull(contract.startsAt) || getSafeDateOrNull(contract.createdAt);
+  const from = getSafeDateOrNull(contract.pausedAt) || start;
+  if (!from) return null;
+  const at = pauseSuccessorStartOf(contract, from, leadContracts);
+  if (!at || at.getTime() > ref.getTime()) return null;
+  const to = at.getTime() < from.getTime() ? from : at;
+  const recorded = getSafeDateOrNull(contract.endsAt);
+  const end = recorded && !getSafeDateOrNull(contract.originalEndsAt)
+    ? buildContractResume({ contract: { ...contract, pausedAt: from, endsAt: recorded }, resumedAt: to }).newEndsAt
+    : recorded;
+  return { from, to, end };
+}
+
 // Status do contrato na lista do Histórico. Com renovação ligada, "Em uso"
 // enquanto ele vale e "Renovado" depois do fim dele ou quando a renovação
 // começa. Antes, o contrato em uso aparecia "A vencer" com o aluno já
 // renovado. A renovação que nunca valeu (neverTookEffect) não conta. O
 // contrato que ainda não começou é "Agendado", mesmo o emendado: no Histórico
-// ele nunca está em uso nem renovado. O trancado segue "Trancado" até a
-// renovação ligada começar, e "Renovado" depois: a mesma leitura do
-// Operacional, que encerra a pausa no início do sucessor (closeOpenPause).
+// ele nunca está em uso nem renovado. O trancado segue "Trancado" até um
+// sucessor começar; dali em diante a pausa fecha e ele volta a correr junto
+// com o sucessor pelos dias parados (closedPauseOf): "Em uso" até esse fim
+// andado e "Renovado" depois, ou "Vencido" quando o sucessor não é renovação
+// ligada (decisão do Johnny, 30/09/2026).
 export function historyStatusOf(contract, leadContracts, now = new Date(), thresholdDays) {
   const base = deriveContractStatus(contract, now, thresholdDays) || CONTRACT_STATUS.VENCIDO;
   if (base === CONTRACT_STATUS.CANCELADO || base === CONTRACT_STATUS.AGENDADO) return base;
@@ -166,7 +193,12 @@ export function historyStatusOf(contract, leadContracts, now = new Date(), thres
     const s = getSafeDateOrNull(r.startsAt);
     return Boolean(s && s.getTime() <= ref.getTime());
   });
-  if (base === CONTRACT_STATUS.TRANCADO) return renewalStarted ? HISTORY_STATUS.RENOVADO : base;
+  if (base === CONTRACT_STATUS.TRANCADO) {
+    const run = closedPauseOf(contract, list, ref);
+    if (!run) return base;
+    if (run.end && calendarDaysBetween(ref, run.end) >= 0) return HISTORY_STATUS.EM_USO;
+    return renewals.length ? HISTORY_STATUS.RENOVADO : CONTRACT_STATUS.VENCIDO;
+  }
   const start = getSafeDateOrNull(contract?.startsAt);
   if (start && start.getTime() > ref.getTime()) return CONTRACT_STATUS.AGENDADO;
   if (!renewals.length) return base;
@@ -189,11 +221,7 @@ export function isInUseAt(contract, now = new Date(), leadContracts = []) {
   const ref = getSafeDateOrNull(now) || new Date();
   const start = getSafeDateOrNull(contract.startsAt) || getSafeDateOrNull(contract.createdAt);
   if (start && start.getTime() > ref.getTime()) return false;
-  if (contract.status === CONTRACT_STATUS.TRANCADO) {
-    // A pausa aberta começa no trancamento; sem a data (legado), no início.
-    const successor = pauseSuccessorStartOf(contract, getSafeDateOrNull(contract.pausedAt) || start, leadContracts);
-    return !(successor && successor.getTime() <= ref.getTime());
-  }
+  if (contract.status === CONTRACT_STATUS.TRANCADO) return !closedPauseOf(contract, leadContracts, ref);
   const end = contractEndOf(contract);
   return Boolean(end && calendarDaysBetween(ref, end) >= 0);
 }

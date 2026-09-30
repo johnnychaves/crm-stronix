@@ -109,7 +109,7 @@ function HistoryRow({ facts: f, open, onToggle }) {
               )}
               <Detail label="Trancamentos">
                 {f.pauses.length ? f.pauses.map((p, i) => <div key={i} className="num">{pauseText(p)}</div>) : 'Nunca trancado'}
-                {f.lockedAtRenewalStart && <div className={MUTED}>Estava trancado quando a renovação começou.</div>}
+                {f.lockedAtRenewalStart && <div className={MUTED}>Estava trancado quando a renovação começou e voltou a correr junto com ela.</div>}
               </Detail>
             </dl>
           </td>

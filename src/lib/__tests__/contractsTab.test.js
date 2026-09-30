@@ -8,6 +8,8 @@ import {
 } from '../contractsTab.js';
 import { CONTRACT_STATUS } from '../contracts.js';
 import { HISTORY_STATUS } from '../contractHistory.js';
+import { normalizeContracts } from '../operacional/base.js';
+import { daysBetween } from '../dates.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const HOJE = new Date(2026, 8, 30, 10, 0);
@@ -208,7 +210,10 @@ describe('contractFactsOf: os fatos de cada contrato', () => {
     expect(f).toMatchObject({ pausedDays: 15, pauseCount: 2, status: CONTRACT_STATUS.TRANCADO, lockedAtRenewalStart: false });
     expect(f.pauses[1]).toEqual({ from: D(2026, 9, 20), to: null, fromImport: false, reconstructed: false });
     expect(f.endReason.kind).toBeNull();
-    expect(contractFactsOf(trancado, [trancado, proximo], D(2026, 10, 15), 30)).toMatchObject({ status: HISTORY_STATUS.RENOVADO, lockedAtRenewalStart: true });
+    // Com a renovação já começada, a pausa fecha em 12/10 (22 dias) e o contrato
+    // volta a correr junto com ela até 02/11: em uso até lá, renovado depois.
+    expect(contractFactsOf(trancado, [trancado, proximo], D(2026, 10, 15), 30)).toMatchObject({ status: HISTORY_STATUS.EM_USO, lockedAtRenewalStart: true, pausedDays: 27, actualEnd: D(2026, 11, 2) });
+    expect(contractFactsOf(trancado, [trancado, proximo], D(2026, 12, 15), 30)).toMatchObject({ status: HISTORY_STATUS.RENOVADO, lockedAtRenewalStart: true, pausedDays: 27 });
   });
 
   it('cancelado ainda trancado: a pausa aberta vai até o cancelamento', () => {
@@ -367,5 +372,84 @@ describe('contractsTabModel: destaque velho ou alheio', () => {
     const semUso = contractsTabModel({ lead: lead('k2'), contracts: [{ ...emUso, endsAt: D(2026, 9, 10) }, desistiu], now: HOJE });
     expect(semUso.hero).toBe(desistiu);
     expect(semUso.next).toBeNull();
+  });
+});
+
+// Decisão do Johnny (30/09/2026): o contrato ainda trancado no dia em que a
+// renovação começa tem a pausa fechada nesse dia e volta a correr junto com ela
+// pelos dias que faltavam, a mesma leitura do Operacional (closeOpenPause).
+describe('o trancado que a renovação alcançou volta a correr junto com ela', () => {
+  // K1 trancado em 30/09/2026 (fim 11/10); K2, a renovação emendada, começa em
+  // 12/10 com K1 ainda trancado: a pausa fecha em 12/10 (12 dias) e K1 volta a
+  // valer até 23/10, junto com K2. Os números não crescem com o passar dos dias.
+  const k1 = K('k1', { planName: 'Start', value: 1200, listValue: 1200, status: 'trancado', pausedAt: D(2026, 9, 30), startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11), createdAt: D(2025, 10, 9) });
+  const k2 = K('k2', { planName: 'Flow', renewedFromId: 'k1', seamless: true, startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12), createdAt: D(2026, 9, 28) });
+
+  it('os fatos: 12 dias parados, fim de fato em 23/10, em uso até lá e renovado depois, com a nota', () => {
+    [D(2026, 10, 15), D(2027, 1, 15), D(2027, 6, 15)].forEach((when) => {
+      const f = contractFactsOf(k1, [k1, k2], when, 30);
+      expect(f.pausedDays, String(when)).toBe(12);
+      expect(f.pauseCount).toBe(1);
+      expect(f.pauses).toEqual([{ from: D(2026, 9, 30), to: D(2026, 10, 12), fromImport: false, reconstructed: false }]);
+      expect(f.actualEnd).toEqual(D(2026, 10, 23));
+      expect(f.endReason).toEqual({ kind: 'trancamento', days: 12, text: '12 dias depois, pelo trancamento' });
+      expect(f.lockedAtRenewalStart).toBe(true);
+    });
+    expect(contractFactsOf(k1, [k1, k2], D(2026, 10, 15), 30).status).toBe(HISTORY_STATUS.EM_USO);
+    expect(contractFactsOf(k1, [k1, k2], D(2027, 1, 15), 30).status).toBe(HISTORY_STATUS.RENOVADO);
+    // Antes de K2 começar, a pausa está aberta e conta até o início de hoje.
+    const antes = contractFactsOf(k1, [k1, k2], new Date(2026, 9, 5, 10, 0), 30);
+    expect(antes.pausedDays).toBe(5);
+    expect(antes.pauses[0].to).toBeNull();
+    expect(antes.status).toBe(CONTRACT_STATUS.TRANCADO);
+    expect(antes.lockedAtRenewalStart).toBe(false);
+  });
+
+  it('a linha do tempo fecha a pausa em 12/10 e termina o segmento em 23/10, numa segunda trilha', () => {
+    const t = contractTimelineOf({ contracts: [k1, k2], heroId: 'k2', nextId: null, now: D(2027, 1, 15) });
+    const seg = t.lanes.flat().find((s) => s.id === 'k1');
+    expect(seg.title).toBe('Start · 11/10/2025 a 23/10/2026');
+    expect(seg.pauses).toHaveLength(1);
+    expect(seg.pauses[0].title).toBe('Trancado de 30/09/2026 a 12/10/2026');
+    // K2 começa antes de K1 terminar: trilhas separadas.
+    expect(t.lanes).toHaveLength(2);
+    expect(t.end).toEqual(D(2027, 10, 12));
+  });
+
+  it('paridade com o Operacional: o mesmo fim andado e os mesmos dias parados que normalizeContracts', () => {
+    const cases = [
+      [k1, k2],
+      // Com intervalo: K2 começa em 20/10, a pausa dura 20 dias e K1 vale até 31/10.
+      [k1, { ...k2, seamless: false, startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20) }],
+      // Sucessor sem ligação: uma matrícula nova em 05/10 fecha a pausa com 5 dias.
+      [k1, K('k3', { planName: 'Pilates', startsAt: D(2026, 10, 5), endsAt: D(2027, 10, 5), createdAt: D(2026, 10, 1) })]
+    ];
+    cases.forEach((docs) => {
+      const norm = normalizeContracts(docs).find((c) => c.id === 'k1');
+      const f = contractFactsOf(k1, docs, D(2027, 6, 15), 30);
+      expect(f.actualEnd, docs[1].id).toEqual(norm.endsAt);
+      const pausa = norm.pauses[0];
+      expect(f.pauses[0].to, docs[1].id).toEqual(pausa.to);
+      expect(f.pausedDays, docs[1].id).toBe(daysBetween(pausa.from, pausa.to));
+    });
+  });
+
+  it('a faixa do próximo diz que o em uso está trancado, e não "sem intervalo"', () => {
+    const m = contractsTabModel({ lead: lead('k2'), contracts: [k1, k2], now: HOJE });
+    expect(m.hero).toBe(k1);
+    expect(m.next).toBe(k2);
+    expect(joinTextOf(m.join)).toBe('O contrato em uso está trancado. Quando este começar, os dias que sobram dele correm junto.');
+  });
+
+  it('a renovação desfeita: nunca começou, sem fim de fato, sem média e sem ordem de renovação', () => {
+    const desfeita = { ...k2, status: 'cancelado', cancelledAt: D(2026, 9, 30), cancelReason: 'Outro' };
+    const f = contractFactsOf(desfeita, [emUso, desfeita], new Date(2026, 9, 2, 10, 0), 30);
+    expect(f.neverTookEffect).toBe(true);
+    expect(f.actualEnd).toBeNull();
+    expect(f.endReason).toEqual({ kind: 'cancelado', days: 0, text: 'nunca começou' });
+    expect(f.monthly).toBeNull();
+    expect(f.status).toBe(CONTRACT_STATUS.CANCELADO);
+    expect(originTextOf(f.origin)).toBe('renovação');
+    expect(contractFactsOf(emUso, [emUso], HOJE, 30).neverTookEffect).toBe(false);
   });
 });

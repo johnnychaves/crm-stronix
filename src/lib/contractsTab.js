@@ -6,7 +6,7 @@
 
 import { CONTRACT_STATUS, closedPausesOf, contractDiscountOf, isImportPause, neverTookEffect } from './contracts.js';
 import {
-  CONTRACT_ORIGIN, HISTORY_STATUS, contractEndOf, contractOriginOf, historyStatusOf, isInUseAt, runningPredecessorOf
+  CONTRACT_ORIGIN, closedPauseOf, contractEndOf, contractOriginOf, historyStatusOf, isInUseAt, runningPredecessorOf
 } from './contractHistory.js';
 import { addDays, addMonths, calendarDaysBetween, daysBetween, getSafeDateOrNull, startOfLocalDay } from './dates.js';
 import { SEAM_KIND, computeSeam, contractVigencia, vigenciaRefDate } from './renewal.js';
@@ -75,13 +75,23 @@ export function contractsTabModel({ lead, contracts, now = new Date() } = {}) {
     }
   }
   const history = list.filter((c) => c.id !== hero?.id && c.id !== next?.id).sort(byStartDesc);
-  const join = next ? computeSeam(contractEndOf(hero), contractStartOf(next)) : null;
+  // O encaixe do próximo com o em uso (computeSeam). Com o em uso trancado, o
+  // fim dele ainda anda: os dias que sobram correm junto com o próximo.
+  const join = !next ? null
+    : hero?.status === CONTRACT_STATUS.TRANCADO ? { kind: JOIN_LOCKED, gapDays: 0, overlapDays: 0 }
+      : computeSeam(contractEndOf(hero), contractStartOf(next));
   return { latest, hero, next, history, join };
 }
+
+// O encaixe quando o contrato em uso está trancado: o fim dele ainda anda, e
+// os dias que sobram correm junto com o próximo (decisão do Johnny,
+// 30/09/2026). A faixa e a linha do tempo dizem a mesma coisa.
+const JOIN_LOCKED = 'trancado';
 
 // O encaixe do próximo com o contrato em uso, na faixa do próximo.
 export function joinTextOf(join) {
   if (!join) return null;
+  if (join.kind === JOIN_LOCKED) return 'O contrato em uso está trancado. Quando este começar, os dias que sobram dele correm junto.';
   if (join.kind === SEAM_KIND.EMENDA) return 'sem intervalo';
   if (join.kind === SEAM_KIND.LACUNA) return `${dias(join.gapDays)} sem contrato antes`;
   return `${dias(join.overlapDays)} junto com o atual`;
@@ -124,9 +134,13 @@ export function heroActionsOf({ status, hasNext = false } = {}) {
 
 // Os períodos de trancamento: os encerrados (pauseHistory, ou um refeito pelo
 // total, como o Operacional) e o aberto, do trancado e do cancelado ainda
-// trancado, que vai até hoje ou até o cancelamento. `days` é o total gravado
-// mais a pausa aberta, até o início de hoje; `openDays`, só a pausa aberta.
-function pausesOf(contract, ref) {
+// trancado. A pausa aberta termina no cancelamento ou, no trancado, no início
+// do sucessor que já começou (closedPauseOf, a regra do Operacional): dali em
+// diante o contrato volta a correr junto com ele. Sucessor ainda por começar
+// não fecha nada: hoje o contrato segue trancado, e a pausa conta até o início
+// de hoje. `days` é o total gravado mais a pausa aberta; `openDays`, só ela;
+// `run`, a pausa fechada pelo sucessor, com o fim andado, ou null.
+function pausesOf(contract, ref, leadContracts = []) {
   const closed = closedPausesOf(contract)
     .map((p) => ({
       from: getSafeDateOrNull(p?.pausedAt), to: getSafeDateOrNull(p?.resumedAt),
@@ -136,12 +150,13 @@ function pausesOf(contract, ref) {
   const status = contract?.status;
   const openAt = status === CONTRACT_STATUS.TRANCADO || (status === CONTRACT_STATUS.CANCELADO && contract?.pausedAt)
     ? getSafeDateOrNull(contract.pausedAt) : null;
-  const openTo = openAt && status === CONTRACT_STATUS.CANCELADO ? contractEndOf(contract) : null;
+  const run = openAt && status === CONTRACT_STATUS.TRANCADO ? closedPauseOf(contract, leadContracts, ref) : null;
+  const openTo = openAt && status === CONTRACT_STATUS.CANCELADO ? contractEndOf(contract) : (run ? run.to : null);
   const pauses = openAt
     ? [...closed, { from: openAt, to: openTo, fromImport: isImportPause(contract, openAt), reconstructed: false }]
     : closed;
   const openDays = openAt ? Math.max(0, daysBetween(openAt, openTo || startOfLocalDay(ref)) || 0) : 0;
-  return { days: (Number(contract?.pausedDaysTotal) || 0) + openDays, openDays, count: pauses.length, pauses };
+  return { days: (Number(contract?.pausedDaysTotal) || 0) + openDays, openDays, count: pauses.length, pauses, run };
 }
 
 // Por que o fim de fato difere do previsto, nesta ordem: cancelado (com o
@@ -172,7 +187,8 @@ export const gapText = (days) => {
 // matrícula.
 export function originTextOf(origin) {
   const gap = origin?.gapDays ? `, ${gapText(origin.gapDays)} depois` : '';
-  if (origin?.kind === CONTRACT_ORIGIN.RENOVACAO) return `${origin.ordinal}ª renovação`;
+  // Sem ordem (a renovação desfeita, que nunca valeu), só "renovação".
+  if (origin?.kind === CONTRACT_ORIGIN.RENOVACAO) return origin.ordinal ? `${origin.ordinal}ª renovação` : 'renovação';
   if (origin?.kind === CONTRACT_ORIGIN.UPGRADE) return `upgrade${gap}`;
   if (origin?.kind === CONTRACT_ORIGIN.RETORNO) return `retorno${gap}`;
   return 'primeira matrícula';
@@ -185,8 +201,13 @@ export function contractFactsOf(contract, leadContracts, now = new Date(), thres
   const start = contractStartOf(contract);
   const months = Number(contract?.durationMonths) || 0;
   const recordedEnd = getSafeDateOrNull(contract?.endsAt);
-  const actualEnd = contractEndOf(contract);
-  const { days: pausedDays, count: pauseCount, pauses } = pausesOf(contract, ref);
+  const { days: pausedDays, count: pauseCount, pauses, run } = pausesOf(contract, ref, leadContracts);
+  // O contrato que nunca valeu (a renovação desfeita) não tem fim de fato, nem
+  // média, nem ordem de renovação.
+  const never = neverTookEffect(contract);
+  // Fim de fato: o cancelamento ou o fim gravado (contractEndOf); no trancado
+  // que um sucessor já alcançou, o fim andado pelos dias parados (closedPauseOf).
+  const actualEnd = never ? null : (run?.end || contractEndOf(contract));
   // Fim previsto: início mais a duração vendida. Sem duração gravada, o fim
   // gravado menos os dias trancados, que o esticaram.
   const plannedEnd = start && months > 0
@@ -194,6 +215,7 @@ export function contractFactsOf(contract, leadContracts, now = new Date(), thres
     : (recordedEnd && pausedDays > 0 ? addDays(recordedEnd, -pausedDays) : recordedEnd);
   const status = historyStatusOf(contract, leadContracts, ref, thresholdDays);
   const value = contract?.value == null ? null : Number(contract.value);
+  const origin = contractOriginOf(contract, leadContracts);
   return {
     id: contract?.id ?? null,
     shortId: shortContractId(contract?.id),
@@ -202,12 +224,12 @@ export function contractFactsOf(contract, leadContracts, now = new Date(), thres
     start,
     plannedEnd,
     actualEnd,
-    endReason: endReasonOf({ contract, actualEnd, plannedEnd }),
+    endReason: never ? { kind: 'cancelado', days: 0, text: 'nunca começou' } : endReasonOf({ contract, actualEnd, plannedEnd }),
     pausedDays,
     pauseCount,
     pauses,
     value,
-    monthly: value != null && months > 0 ? value / months : null,
+    monthly: !never && value != null && months > 0 ? value / months : null,
     listValue: Number(contract?.listValue) || 0,
     discount: contractDiscountOf(contract),
     discountReason: contract?.discountReason || null,
@@ -216,10 +238,12 @@ export function contractFactsOf(contract, leadContracts, now = new Date(), thres
     cancelledAt: getSafeDateOrNull(contract?.cancelledAt),
     cancelReason: contract?.cancelReason || null,
     cancelNote: contract?.cancelNote || null,
-    origin: contractOriginOf(contract, leadContracts),
+    origin: never ? { ...origin, ordinal: 0 } : origin,
     status,
-    // Ainda estava trancado quando a renovação começou (historyStatusOf).
-    lockedAtRenewalStart: contract?.status === CONTRACT_STATUS.TRANCADO && status === HISTORY_STATUS.RENOVADO
+    neverTookEffect: never,
+    // Estava trancado quando o sucessor começou e voltou a correr junto com
+    // ele (closedPauseOf).
+    lockedAtRenewalStart: Boolean(run)
   };
 }
 
@@ -242,8 +266,11 @@ export function contractTimelineOf({
     .map((c) => {
       const start = contractStartOf(c);
       const recorded = getSafeDateOrNull(c.endsAt);
+      // O trancado projeta o fim pelos dias parados: até hoje, ou até o início
+      // do sucessor que o alcançou (closedPauseOf), quando ele volta a correr.
+      const locked = c.status === CONTRACT_STATUS.TRANCADO && recorded ? pausesOf(c, ref, contracts) : null;
       const end = c.id === nextId ? recorded
-        : c.status === CONTRACT_STATUS.TRANCADO && recorded ? addDays(recorded, pausesOf(c, ref).openDays)
+        : locked ? (locked.run?.end || addDays(recorded, locked.openDays))
           : contractEndOf(c);
       return { contract: c, start, end };
     })
@@ -280,7 +307,7 @@ export function contractTimelineOf({
           : `${plano} · ${fmtDia(it.start)} a ${fmtDia(it.end)}`;
     const left = pct(it.start.getTime());
     const right = pct(it.end.getTime());
-    const pauses = pausesOf(c, ref).pauses.map((p) => {
+    const pauses = pausesOf(c, ref, contracts).pauses.map((p) => {
       const from = Math.max(p.from.getTime(), it.start.getTime());
       const to = Math.min((p.to || ref).getTime(), it.end.getTime());
       if (to <= from) return null;

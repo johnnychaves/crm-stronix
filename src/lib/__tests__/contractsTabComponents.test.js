@@ -105,15 +105,30 @@ describe('ContractHistoryTable', () => {
     expect(html).toContain('aria-expanded="true"');
   });
 
-  it('trancado quando a renovação começou: renovado, com a nota na linha aberta e os períodos', () => {
+  // Decisão do Johnny (30/09/2026): o trancado que a renovação alcançou volta a
+  // correr junto com ela. A pausa fecha em 12/10 (22 dias) e o contrato vale
+  // até 02/11/2026: em uso até lá, renovado depois, com a nota e os períodos.
+  it('trancado quando a renovação começou: em uso até o fim andado e renovado depois, com a nota e os períodos', () => {
     const trancado = { ...emUso, status: 'trancado', pausedAt: D(2026, 9, 20), pausedDaysTotal: 5, pauseHistory: [{ pausedAt: D(2026, 3, 1), resumedAt: D(2026, 3, 6) }] };
-    const rows = [contractFactsOf(trancado, [trancado, proximo], D(2026, 10, 15), 30)];
-    const html = renderToString(createElement(ContractHistoryTable, { rows, firstName: 'Ana', hasContract: true, defaultOpenId: 'k1' }));
-    expect(html).toContain('>Renovado<');
-    expect(html).toContain('Estava trancado quando a renovação começou.');
-    expect(html).toContain('01/03/2026 a 06/03/2026');
-    expect(html).toContain('desde 20/09/2026');
-    expect(html).toContain('>2 vezes<');
+    const aberta = renderToString(createElement(ContractHistoryTable, { rows: [contractFactsOf(trancado, [trancado, proximo], D(2026, 10, 15), 30)], firstName: 'Ana', hasContract: true, defaultOpenId: 'k1' }));
+    expect(aberta).toContain('>Em uso<');
+    expect(aberta).toContain('Estava trancado quando a renovação começou e voltou a correr junto com ela.');
+    expect(aberta).toContain('01/03/2026 a 06/03/2026');
+    expect(aberta).toContain('20/09/2026 a 12/10/2026');
+    expect(aberta).toContain('>27 dias<');
+    expect(aberta).toContain('>2 vezes<');
+    expect(aberta).toContain('>02/11/2026<');
+    const depois = renderToString(createElement(ContractHistoryTable, { rows: [contractFactsOf(trancado, [trancado, proximo], D(2026, 12, 15), 30)], firstName: 'Ana', hasContract: true }));
+    expect(depois).toContain('>Renovado<');
+  });
+
+  it('a renovação desfeita: Cancelado, "nunca começou" no fim de fato, sem média nem ordem de renovação', () => {
+    const desfeita = { ...proximo, status: 'cancelado', cancelledAt: D(2026, 9, 30), cancelReason: 'Outro' };
+    const html = renderToString(createElement(ContractHistoryTable, { rows: [contractFactsOf(desfeita, [emUso, desfeita], HOJE, 30)], firstName: 'Ana', hasContract: true }));
+    expect(html).toContain('>Cancelado<');
+    expect(html).toContain('nunca começou');
+    expect(html).toContain('>renovação<');
+    expect(html).not.toContain('1ª renovação');
   });
 
   it('sem contrato anterior', () => {

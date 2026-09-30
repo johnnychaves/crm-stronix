@@ -261,15 +261,26 @@ describe('historyStatusOf e runningPredecessorOf', () => {
     expect(historyStatusOf(atual, [atual], HOJE)).toBe(CONTRACT_STATUS.A_VENCER);
   });
 
-  // Trancado com renovação ligada: trancado até ela começar. Depois, renovado,
-  // a mesma leitura do Operacional, que encerra a pausa no início do sucessor.
-  it('trancado continua trancado até a renovação começar, e vira renovado depois', () => {
-    const trancado = { ...atual, status: 'trancado', pausedAt: D(2026, 9, 1) };
+  // Trancado com renovação ligada: trancado até ela começar. Depois, a pausa
+  // fecha no início dela e o contrato volta a correr junto com ela pelos dias
+  // que faltavam, a mesma leitura do Operacional (closeOpenPause): "Em uso" até
+  // esse fim andado, e "Renovado" depois (decisão do Johnny, 30/09/2026).
+  it('trancado continua trancado até a renovação começar; depois corre junto com ela e só então vira renovado', () => {
+    // Trancado em 30/09/2026 com o fim em 11/10: a renovação começa em 12/10, a
+    // pausa dura 12 dias e o contrato volta a valer até 23/10.
+    const trancado = { ...atual, status: 'trancado', pausedAt: D(2026, 9, 30) };
     expect(historyStatusOf(trancado, [trancado, renovacao], HOJE)).toBe(CONTRACT_STATUS.TRANCADO);
-    expect(historyStatusOf(trancado, [trancado, renovacao], D(2026, 10, 12))).toBe(HISTORY_STATUS.RENOVADO);
+    expect(historyStatusOf(trancado, [trancado, renovacao], D(2026, 10, 12))).toBe(HISTORY_STATUS.EM_USO);
+    expect(historyStatusOf(trancado, [trancado, renovacao], new Date(2026, 9, 23, 18, 0))).toBe(HISTORY_STATUS.EM_USO);
+    expect(historyStatusOf(trancado, [trancado, renovacao], D(2026, 10, 24))).toBe(HISTORY_STATUS.RENOVADO);
+    expect(historyStatusOf(trancado, [trancado, renovacao], D(2027, 6, 15))).toBe(HISTORY_STATUS.RENOVADO);
     // A renovação desfeita não conta.
     const desistiu = { ...renovacao, status: 'cancelado', cancelledAt: D(2026, 9, 20) };
     expect(historyStatusOf(trancado, [trancado, desistiu], D(2026, 10, 12))).toBe(CONTRACT_STATUS.TRANCADO);
+    // Sucessor sem ligação (uma matrícula): depois do fim andado, vencido.
+    const matricula = { id: 'k3', leadId: L, status: 'ativo', startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12) };
+    expect(historyStatusOf(trancado, [trancado, matricula], D(2026, 10, 15))).toBe(HISTORY_STATUS.EM_USO);
+    expect(historyStatusOf(trancado, [trancado, matricula], D(2026, 11, 15))).toBe(CONTRACT_STATUS.VENCIDO);
   });
 
   // No Histórico, o contrato que ainda não começou nunca está em uso nem
