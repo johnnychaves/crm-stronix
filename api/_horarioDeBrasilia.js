@@ -10,6 +10,9 @@
 // Serve para hora escrita e para contar dias de calendário. Comparar dois
 // instantes (venceu? faltam quantas horas?) não depende de fuso e não precisa
 // disto.
+//
+// instanteDeBrasilia faz o caminho inverso: do dia e da hora escritos em
+// Brasília para o instante.
 
 const FUSO = 'America/Sao_Paulo';
 const DAY_MS = 86400000;
@@ -87,10 +90,12 @@ export function dataHoraDeBrasilia(date) {
 
 // O instante de um dia ("2026-10-01") e de uma hora ("18:00") escritos no
 // horário de Brasília. null quando vêm fora do formato ou não existem (31/02,
-// 24:00). Brasília está em -03:00 desde que o horário de verão acabou, em
-// 2019, mas a conta lê o deslocamento do Intl em vez de fixá-lo.
-export function instanteDeBrasilia(dia, hora) {
-  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof dia === 'string' ? dia : '');
+// 24:00). O deslocamento de Brasília (-03:00 hoje) é lido do Intl, mas no
+// instante do relógio tratado como UTC, e não no instante real. A conta vale
+// enquanto o deslocamento for o mesmo nos dois instantes, o que é o caso de
+// Brasília, sem horário de verão desde 2019.
+export function instanteDeBrasilia(data, hora) {
+  const d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(typeof data === 'string' ? data : '');
   const h = /^(\d{2}):(\d{2})$/.exec(typeof hora === 'string' ? hora : '');
   if (!d || !h) return null;
   const [ano, mes, diaDoMes, horas, minutos] = [d[1], d[2], d[3], h[1], h[2]].map(Number);

@@ -49,7 +49,9 @@ describe('instanteDeBrasilia: dia e hora de Brasília viram instante', () => {
   it.each([
     ['2026-10-01', '24:00'], ['2026-10-01', '18:60'], ['2026-10-01', '8:00'], ['2026-10-01', '18:00:00'],
     ['2026-10-1', '18:00'], ['2026-13-01', '18:00'], ['2026-04-31', '18:00'], ['01/10/2026', '18:00'],
-    [20261001, '18:00'], ['2026-10-01', null], [undefined, undefined]
+    [20261001, '18:00'], ['2026-10-01', null], [undefined, undefined],
+    [['2026-10-01'], '18:00'], ['2026-10-01', ['18:00']],
+    ['12026-10-01', '18:00'], ['2026-10-011', '18:00'], [' 2026-10-01', '18:00']
   ])('fora do formato ou inexistente volta null (%s %s)', (dia, hora) => {
     expect(instanteDeBrasilia(dia, hora)).toBeNull();
   });
@@ -80,5 +82,19 @@ describe('leitura do calendário de Brasília', () => {
     expect(horaInteiraDeBrasilia(new Date('2026-09-29T20:59:00.000Z'))).toBe(17);
     expect(horaInteiraDeBrasilia(quintaTarde)).toBe(23);
     expect(horaInteiraDeBrasilia(new Date('x'))).toBeNaN();
+  });
+
+  it('a meia-noite de Brasília é hora 0, e não 24, na leitura e na conta do instante', () => {
+    // 00:00 de quinta, 01/10, em Brasília, que em UTC são 03:00. Se o Intl lesse a
+    // meia-noite como hora 24, a leitura e a conta do instanteDeBrasilia errariam.
+    const meiaNoite = new Date('2026-10-01T03:00:00.000Z');
+    expect(instanteDeBrasilia('2026-10-01', '03:00').toISOString()).toBe('2026-10-01T06:00:00.000Z');
+    expect(dataHoraDeBrasilia(meiaNoite)).toBe('01/10/2026, 00:00');
+    expect(horaInteiraDeBrasilia(meiaNoite)).toBe(0);
+  });
+
+  it('mês de um dígito sai com zero à esquerda, no ISO e na data escrita', () => {
+    expect(isoDoDia(diaDeBrasilia(new Date('2026-03-05T12:00:00.000Z')))).toBe('2026-03-05');
+    expect(dataHoraDeBrasilia(new Date('2026-03-05T12:05:00.000Z'))).toBe('05/03/2026, 09:05');
   });
 });
