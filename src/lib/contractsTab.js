@@ -61,12 +61,17 @@ export function contractsTabModel({ lead, contracts, now = new Date() } = {}) {
   let hero = latest;
   let next = null;
   if (notStarted) {
+    // O contrato em uso: o que o último renova (runningPredecessorOf) ou, só
+    // quando o último não é renovação, outro contrato do lead em uso, o de
+    // início mais recente. Um paralelo nunca vira o destaque de uma renovação,
+    // e o trancado que um sucessor já alcançou não está em uso (isInUseAt).
     const inUse = runningPredecessorOf(latest, list, ref)
-      || list.filter((c) => c.id !== latest.id && isInUseAt(c, ref)).sort(byStartDesc)[0]
+      || (latest.renewedFromId ? null : list.filter((c) => c.id !== latest.id && isInUseAt(c, ref, list)).sort(byStartDesc)[0])
       || null;
     if (inUse) {
       hero = inUse;
-      next = latest;
+      // O último contrato cancelado nunca é o próximo: vai para o Histórico.
+      next = latest.status === CONTRACT_STATUS.CANCELADO ? null : latest;
     }
   }
   const history = list.filter((c) => c.id !== hero?.id && c.id !== next?.id).sort(byStartDesc);
@@ -107,6 +112,9 @@ export function heroCountdownOf({ contract, status, hasNext = false, now = new D
 // Os botões do card em cada situação (tabela "Botões em cada situação" da
 // spec). `primary` é o botão grande; `actions` são os pequenos, na ordem.
 export function heroActionsOf({ status, hasNext = false } = {}) {
+  // Vencido ou cancelado: o card fechado só oferece a matrícula nova, nunca
+  // renovar, corrigir, trancar ou cancelar (revisão de 30/09/2026).
+  if (status === CONTRACT_STATUS.VENCIDO || status === CONTRACT_STATUS.CANCELADO) return { primary: 'matricula', actions: [] };
   const paused = status === CONTRACT_STATUS.TRANCADO;
   if (hasNext) return { primary: null, actions: [paused ? 'reativar' : 'trancar', 'cancelar'] };
   if (status === CONTRACT_STATUS.AGENDADO) return { primary: 'ativar', actions: ['corrigir', 'cancelar'] };

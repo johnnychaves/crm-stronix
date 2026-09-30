@@ -142,6 +142,34 @@ export const neverTookEffect = (c) => {
   return Boolean(cancelled && start && cancelled.getTime() <= start.getTime());
 };
 
+// O início do sucessor que encerra a pausa aberta de um contrato trancado,
+// começada em `from`: a renovação ligada (renewedFromId) ou outro contrato da
+// mesma pessoa que começa depois deste e depois do início da pausa, o que
+// começar primeiro. O da pessoa que já corria quando a pausa começou é
+// paralelo, não sucessor. O que nunca valeu (neverTookEffect) não conta. É a
+// regra única do Operacional (closeOpenPause, em operacional/base.js) e da aba
+// Contratos (contractHistory.js e contractsTab.js): quem tranca e renova sem
+// reativar tem a pausa fechada no início do sucessor, e o contrato volta a
+// correr junto com ele pelos dias que faltavam (decisão do Johnny,
+// 30/09/2026). `others` são os contratos da pessoa, crus (Timestamp ou Date)
+// ou já normalizados; o próprio contrato pode estar na lista. Importado sem
+// início vale pela criação, como no Operacional. Null sem sucessor.
+export function pauseSuccessorStartOf(contract, from, others) {
+  const start = getSafeDateOrNull(contract?.startsAt) || getSafeDateOrNull(contract?.createdAt);
+  const pausedAt = getSafeDateOrNull(from);
+  let at = null;
+  (Array.isArray(others) ? others : []).forEach((o) => {
+    if (!o || o === contract || (o.id != null && o.id === contract?.id) || neverTookEffect(o)) return;
+    const s = getSafeDateOrNull(o.startsAt) || getSafeDateOrNull(o.createdAt);
+    if (!s) return;
+    const linked = Boolean(o.renewedFromId && contract?.id != null && o.renewedFromId === contract.id);
+    const later = Boolean(start && pausedAt && s.getTime() > start.getTime() && s.getTime() >= pausedAt.getTime());
+    if (!linked && !later) return;
+    if (!at || s.getTime() < at.getTime()) at = s;
+  });
+  return at;
+}
+
 // Deriva o status "vivo" do contrato a partir de { status, startsAt, endsAt,
 // seamless } + uma janela de alerta (thresholdDays). Aceita tanto um doc de
 // contrato quanto o resumo denormalizado do lead, desde que tenham `status` e

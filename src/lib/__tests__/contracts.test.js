@@ -28,6 +28,7 @@ import {
   isSeamlessStart,
   liveRenewalOf,
   neverTookEffect,
+  pauseSuccessorStartOf,
   renewalJoinOf,
   renewalStartProblem
 } from '../contracts.js';
@@ -1877,5 +1878,37 @@ describe('buildContractActivate: o contrato agendado passa a começar agora', ()
     const r = buildContractActivate({ contract: antecipada, previous: encurtado, now: AGORA });
     expect(r.previousPatch).toEqual({ endsAt: new Date(2026, 8, 29, 10, 0), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
     expect(r.daysLost).toBe(12);
+  });
+});
+
+// A regra única do Operacional (closeOpenPause, em operacional/base.js) e da
+// aba Contratos: quem tranca e renova sem reativar tem a pausa encerrada no
+// início do sucessor, e o contrato volta a correr junto com ele pelos dias que
+// faltavam (decisão do Johnny, 30/09/2026).
+describe('pauseSuccessorStartOf: quem encerra a pausa aberta', () => {
+  const ts = (d) => ({ toDate: () => d });
+  const k1 = { id: 'k1', status: 'trancado', pausedAt: D(2026, 9, 30), startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+  const renovacao = { id: 'k2', renewedFromId: 'k1', status: 'ativo', startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12) };
+
+  it('a renovação ligada, ou outro contrato da pessoa que começa depois da pausa, o que vier primeiro', () => {
+    expect(pauseSuccessorStartOf(k1, k1.pausedAt, [k1, renovacao])).toEqual(D(2026, 10, 12));
+    const matricula = { id: 'k3', status: 'ativo', startsAt: D(2026, 10, 5), endsAt: D(2027, 10, 5) };
+    expect(pauseSuccessorStartOf(k1, k1.pausedAt, [k1, renovacao, matricula])).toEqual(D(2026, 10, 5));
+  });
+
+  it('o paralelo que já corria antes da pausa não é sucessor, nem a renovação desfeita; sem sucessor, null', () => {
+    const paralelo = { id: 'p1', status: 'ativo', startsAt: D(2026, 3, 1), endsAt: D(2026, 12, 1) };
+    expect(pauseSuccessorStartOf(k1, k1.pausedAt, [k1, paralelo])).toBeNull();
+    const desfeita = { ...renovacao, status: 'cancelado', cancelledAt: D(2026, 10, 1) };
+    expect(pauseSuccessorStartOf(k1, k1.pausedAt, [k1, desfeita])).toBeNull();
+    expect(pauseSuccessorStartOf(k1, k1.pausedAt, [k1])).toBeNull();
+    expect(pauseSuccessorStartOf(k1, k1.pausedAt, null)).toBeNull();
+  });
+
+  it('a renovação ligada conta mesmo começando antes da pausa; importado sem início vale pela criação; aceita Timestamp', () => {
+    const antes = { ...renovacao, startsAt: ts(D(2026, 9, 20)) };
+    expect(pauseSuccessorStartOf(k1, k1.pausedAt, [k1, antes])).toEqual(D(2026, 9, 20));
+    const importado = { id: 'i1', status: 'ativo', createdAt: D(2026, 10, 3), endsAt: D(2026, 12, 31), importBatchId: 'lote' };
+    expect(pauseSuccessorStartOf(k1, ts(k1.pausedAt), [k1, importado])).toEqual(D(2026, 10, 3));
   });
 });

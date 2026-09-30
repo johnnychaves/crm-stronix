@@ -14,7 +14,7 @@ import { calendarDaysBetween, getSafeDateOrNull } from '../dates.js';
 // cancelamento. A venda do mês continua contando (gerencial/sales.js). A regra
 // mora em contracts.js, a mesma da ficha e dos modais.
 import {
-  buildContractResume, isImportedContract, isImportCancel, isImportPause, neverTookEffect, reconstructedPauseOf
+  buildContractResume, isImportedContract, isImportCancel, isImportPause, neverTookEffect, pauseSuccessorStartOf, reconstructedPauseOf
 } from '../contracts.js';
 
 const DAY_MS = 86400000;
@@ -88,18 +88,11 @@ export function normalizeContract(c) {
 // Início do sucessor que encerra a pausa aberta (começada em `from`): a
 // renovação ligada (renewedFromId) ou outro contrato da pessoa que começa
 // depois deste, o que começar primeiro. O da pessoa que já corria quando a
-// pausa começou é paralelo, não sucessor. O que nunca valeu não conta.
+// pausa começou é paralelo, não sucessor. O que nunca valeu não conta. A regra
+// mora em contracts.js (pauseSuccessorStartOf), a mesma da aba Contratos; aqui
+// só entram os candidatos do índice.
 function successorStartOf(c, from, index) {
-  let at = null;
-  const consider = (o) => {
-    if (o === c || !o.startsAt || neverTookEffect(o)) return;
-    if (!at || o.startsAt < at) at = o.startsAt;
-  };
-  (index.byRenewedFrom.get(c.id) || []).forEach(consider);
-  (index.byPerson.get(c.personKey) || []).forEach((o) => {
-    if (c.startsAt && o.startsAt > c.startsAt && o.startsAt >= from) consider(o);
-  });
-  return at;
+  return pauseSuccessorStartOf(c, from, [...(index.byRenewedFrom.get(c.id) || []), ...(index.byPerson.get(c.personKey) || [])]);
 }
 
 // A lista inteira normalizada, e é por aqui que ela entra no Operacional. Dois

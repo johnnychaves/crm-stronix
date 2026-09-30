@@ -8,7 +8,7 @@
 // ligação é retorno, inclusive o paralelo, como no Gerencial. O
 // contractHistory.test.js compara as duas regras.
 
-import { CONTRACT_STATUS, deriveContractStatus, neverTookEffect } from './contracts.js';
+import { CONTRACT_STATUS, deriveContractStatus, neverTookEffect, pauseSuccessorStartOf } from './contracts.js';
 import { calendarDaysBetween, getSafeDateOrNull } from './dates.js';
 
 export const CONTRACT_ORIGIN = {
@@ -177,15 +177,23 @@ export function historyStatusOf(contract, leadContracts, now = new Date(), thres
 
 // O contrato está em uso em `now`: já começou (importado sem início vale pela
 // criação), não foi cancelado e ainda vale, com o fim efetivo hoje ou depois
-// por dia do calendário, ou está trancado, que congela o fim. É a regra do
-// destaque da aba Contratos (contractsTab.js) e do contrato em uso da
-// renovação (runningPredecessorOf).
-export function isInUseAt(contract, now = new Date()) {
+// por dia do calendário, ou está trancado, que congela o fim, enquanto nenhum
+// sucessor começou (pauseSuccessorStartOf, a regra do Operacional). O trancado
+// que a renovação ou outro contrato da pessoa já alcançou voltou a correr
+// junto com ele e vive no Histórico, nunca no destaque (decisão do Johnny,
+// 30/09/2026). `leadContracts` são os contratos da pessoa, para achar esse
+// sucessor. É a regra do destaque da aba Contratos (contractsTab.js) e do
+// contrato em uso da renovação (runningPredecessorOf).
+export function isInUseAt(contract, now = new Date(), leadContracts = []) {
   if (!contract || contract.status === CONTRACT_STATUS.CANCELADO) return false;
   const ref = getSafeDateOrNull(now) || new Date();
   const start = getSafeDateOrNull(contract.startsAt) || getSafeDateOrNull(contract.createdAt);
   if (start && start.getTime() > ref.getTime()) return false;
-  if (contract.status === CONTRACT_STATUS.TRANCADO) return true;
+  if (contract.status === CONTRACT_STATUS.TRANCADO) {
+    // A pausa aberta começa no trancamento; sem a data (legado), no início.
+    const successor = pauseSuccessorStartOf(contract, getSafeDateOrNull(contract.pausedAt) || start, leadContracts);
+    return !(successor && successor.getTime() <= ref.getTime());
+  }
   const end = contractEndOf(contract);
   return Boolean(end && calendarDaysBetween(ref, end) >= 0);
 }
@@ -199,7 +207,7 @@ export function runningPredecessorOf(contract, leadContracts, now = new Date()) 
   if (start && start.getTime() <= ref.getTime()) return null;
   const list = Array.isArray(leadContracts) ? leadContracts : [];
   const prev = list.find((c) => c?.id === contract.renewedFromId);
-  return prev && isInUseAt(prev, ref) ? prev : null;
+  return prev && isInUseAt(prev, ref, list) ? prev : null;
 }
 
 // A linha da faixa do card quando o contrato atual ainda não começou e o

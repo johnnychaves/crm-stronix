@@ -394,4 +394,24 @@ describe('isInUseAt: o contrato que o cliente usa num instante', () => {
   it('aceita as datas como Timestamp do Firestore', () => {
     expect(isInUseAt({ ...c, startsAt: ts(c.startsAt), endsAt: ts(c.endsAt) }, HOJE)).toBe(true);
   });
+
+  // O trancado que um sucessor já alcançou não está mais em uso: a pausa fecha
+  // no início do sucessor e o contrato volta a correr junto com ele, no
+  // Histórico (decisão do Johnny, 30/09/2026). Antes do sucessor, está em uso.
+  it('trancado com sucessor já começado não está em uso; antes do sucessor, está', () => {
+    const trancado = { ...c, status: 'trancado', pausedAt: D(2026, 9, 30) };
+    const renovacao = { id: 'k2', renewedFromId: 'k1', status: 'ativo', startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12) };
+    expect(isInUseAt(trancado, D(2026, 10, 5), [trancado, renovacao])).toBe(true);
+    expect(isInUseAt(trancado, D(2026, 10, 12), [trancado, renovacao])).toBe(false);
+    expect(isInUseAt(trancado, D(2027, 10, 15), [trancado, renovacao])).toBe(false);
+    // Outro contrato da pessoa que começa depois da pausa também é sucessor,
+    // como no Operacional; o que já corria antes dela é paralelo.
+    const matricula = { id: 'k3', status: 'ativo', startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20) };
+    expect(isInUseAt(trancado, D(2026, 10, 25), [trancado, matricula])).toBe(false);
+    const paralelo = { id: 'p1', status: 'ativo', startsAt: D(2026, 3, 1), endsAt: D(2026, 12, 1) };
+    expect(isInUseAt(trancado, D(2026, 10, 25), [trancado, paralelo])).toBe(true);
+    // A renovação desfeita não conta.
+    const desfeita = { ...renovacao, status: 'cancelado', cancelledAt: D(2026, 10, 1) };
+    expect(isInUseAt(trancado, D(2026, 10, 20), [trancado, desfeita])).toBe(true);
+  });
 });

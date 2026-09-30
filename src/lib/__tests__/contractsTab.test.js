@@ -151,6 +151,13 @@ describe('heroActionsOf: os botões em cada situação', () => {
   it('agendado sem contrato em uso: Ativar agora, e Corrigir, Cancelar, sem Trancar', () => {
     expect(heroActionsOf({ status: CONTRACT_STATUS.AGENDADO })).toEqual({ primary: 'ativar', actions: ['corrigir', 'cancelar'] });
   });
+  // O card fechado (vencido ou cancelado) só oferece a matrícula nova: nunca
+  // renovar, corrigir, trancar ou cancelar (revisão de 30/09/2026).
+  it('vencido ou cancelado: só a matrícula nova', () => {
+    expect(heroActionsOf({ status: CONTRACT_STATUS.VENCIDO })).toEqual({ primary: 'matricula', actions: [] });
+    expect(heroActionsOf({ status: CONTRACT_STATUS.CANCELADO })).toEqual({ primary: 'matricula', actions: [] });
+    expect(heroActionsOf({ status: CONTRACT_STATUS.CANCELADO, hasNext: true })).toEqual({ primary: 'matricula', actions: [] });
+  });
 });
 
 describe('contractFactsOf: os fatos de cada contrato', () => {
@@ -311,5 +318,54 @@ describe('contractTimelineOf: a linha do tempo, em porcentagem', () => {
     expect(seg.kind).toBe('em_uso');
     expect(seg.pauses[0].title).toBe('Trancado desde 20/09/2026');
     expect(tt.end).toEqual(D(2026, 10, 21));
+  });
+});
+
+// Revisão de 30/09/2026: o destaque nunca é um contrato velho nem alheio.
+describe('contractsTabModel: destaque velho ou alheio', () => {
+  // K1 trancado em 30/09/2026 com K2, a renovação emendada, marcada para 12/10.
+  // K2 começa com K1 ainda trancado. Um ano depois K2 venceu e K3, a renovação
+  // dela, está marcada com intervalo: o destaque é K3, agendado, K1 e K2 vão
+  // para o Histórico e o K1 não tem ação nenhuma.
+  const k1 = K('k1', { planName: 'Start', status: 'trancado', pausedAt: D(2026, 9, 30), startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11), createdAt: D(2025, 10, 9) });
+  const k2 = K('k2', { planName: 'Flow', renewedFromId: 'k1', seamless: true, startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12), createdAt: D(2026, 9, 28) });
+  const k3 = K('k3', { planName: 'Flow', renewedFromId: 'k2', seamless: false, startsAt: D(2027, 10, 20), endsAt: D(2028, 10, 20), createdAt: D(2027, 10, 14) });
+
+  it('o trancado que a renovação já alcançou nunca é o destaque', () => {
+    const m = contractsTabModel({ lead: lead('k3'), contracts: [k1, k2, k3], now: new Date(2027, 9, 15, 10) });
+    expect(m.hero).toBe(k3);
+    expect(m.next).toBeNull();
+    expect(m.history.map((c) => c.id)).toEqual(['k2', 'k1']);
+    // Antes de K2 começar, K1 trancado ainda é o destaque, e K2 o próximo.
+    const antes = contractsTabModel({ lead: lead('k2'), contracts: [k1, k2], now: HOJE });
+    expect(antes.hero).toBe(k1);
+    expect(antes.next).toBe(k2);
+  });
+
+  it('um contrato paralelo nunca vira o destaque de uma renovação', () => {
+    const pilates = K('p1', { planName: 'Pilates', startsAt: D(2026, 3, 1), endsAt: D(2026, 12, 1), createdAt: D(2026, 3, 1) });
+    // O renovado cancelado: o destaque é a renovação, como agendada, e não o Pilates.
+    const cancelado = { ...emUso, status: 'cancelado', cancelledAt: D(2026, 9, 25) };
+    const m = contractsTabModel({ lead: lead('k2'), contracts: [cancelado, proximo, pilates], now: HOJE });
+    expect(m.hero).toBe(proximo);
+    expect(m.next).toBeNull();
+    expect(m.history.map((c) => c.id)).toEqual(['p1', 'k1']);
+    // O renovado vencido, com a renovação depois de um intervalo: idem.
+    const vencido = { ...emUso, endsAt: D(2026, 9, 10) };
+    const depois = { ...proximo, seamless: false, startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20) };
+    expect(contractsTabModel({ lead: lead('k2'), contracts: [vencido, depois, pilates], now: HOJE }).hero).toBe(depois);
+  });
+
+  it('o último contrato cancelado nunca é o próximo: o em uso é o destaque e ele vai para o Histórico', () => {
+    const desistiu = { ...proximo, status: 'cancelado', cancelledAt: D(2026, 10, 20), cancelReason: 'Financeiro' };
+    const m = contractsTabModel({ lead: lead('k2'), contracts: [emUso, desistiu], now: HOJE });
+    expect(m.hero).toBe(emUso);
+    expect(m.next).toBeNull();
+    expect(m.join).toBeNull();
+    expect(m.history).toEqual([desistiu]);
+    // Sem contrato em uso, o cancelado é o destaque, como card fechado.
+    const semUso = contractsTabModel({ lead: lead('k2'), contracts: [{ ...emUso, endsAt: D(2026, 9, 10) }, desistiu], now: HOJE });
+    expect(semUso.hero).toBe(desistiu);
+    expect(semUso.next).toBeNull();
   });
 });
