@@ -1912,3 +1912,76 @@ describe('pauseSuccessorStartOf: quem encerra a pausa aberta', () => {
     expect(pauseSuccessorStartOf(k1, ts(k1.pausedAt), [k1, importado])).toEqual(D(2026, 10, 3));
   });
 });
+
+// Revisão de 30/09/2026: correção e ativação de contrato sem duração ou sem
+// valor (importado). Sem duração, o fim anda o mesmo tanto que o início; o
+// valor e a tabela nulos ficam nulos, nunca viram zero.
+describe('corrigir e ativar sem duração ou sem valor', () => {
+  const AGORA = new Date(2026, 8, 30, 10, 0);
+  // Importado agendado, sem duração e sem valor: dez dias, de 10/10 a 20/10.
+  const importado = { id: 'i1', planName: 'Mensal', value: null, listValue: null, durationMonths: null, status: 'ativo', startsAt: D(2026, 10, 10), endsAt: D(2026, 10, 20), importBatchId: 'lote' };
+
+  it('ativar agora move o fim o mesmo tanto que o início, e o valor nulo fica nulo', () => {
+    const r = buildContractActivate({ contract: importado, previous: null, now: AGORA });
+    expect(r.contractPatch.startsAt).toEqual(AGORA);
+    // O início veio de 10/10 00:00 para 30/09 10:00: o fim anda o mesmo tanto.
+    expect(r.contractPatch.endsAt).toEqual(new Date(2026, 9, 10, 10, 0));
+    expect(r.contractPatch.value).toBeNull();
+    expect(r.contractPatch.listValue).toBeNull();
+    expect(r.contractPatch.discountMode).toBe('nenhum');
+    expect(r.leadPatch.currentContractValue).toBeNull();
+    expect(r.leadPatch.currentContractEndsAt).toEqual(new Date(2026, 9, 10, 10, 0));
+    expect(deriveLeadContractStatus({ currentContractStatus: 'ativo', ...r.leadPatch }, AGORA)).toBe(CONTRACT_STATUS.A_VENCER);
+  });
+
+  it('corrigir o início sem duração gravada move o fim junto; sem valor no pedido, o gravado nulo fica nulo', () => {
+    const r = buildContractEdit({ contract: importado, plan: null, value: null, startsAt: D(2026, 10, 12), now: AGORA });
+    expect(r.contractPatch.endsAt).toEqual(D(2026, 10, 22));
+    expect(r.contractPatch.value).toBeNull();
+    expect(r.contractPatch.listValue).toBeNull();
+    // Com duração gravada, a conta continua a de sempre: início mais a duração.
+    const comDuracao = buildContractEdit({ contract: { ...importado, durationMonths: 1 }, plan: null, value: null, startsAt: D(2026, 10, 12), now: AGORA });
+    expect(comDuracao.contractPatch.endsAt).toEqual(D(2026, 11, 12));
+    // Valor no pedido continua valendo.
+    expect(buildContractEdit({ contract: importado, plan: null, value: 150, startsAt: D(2026, 10, 12), now: AGORA }).contractPatch.value).toBe(150);
+  });
+
+  it('sem início gravado, o fim fica como está', () => {
+    const semInicio = { ...importado, startsAt: null, createdAt: D(2026, 9, 4) };
+    expect(buildContractEdit({ contract: semInicio, plan: null, value: null, startsAt: D(2026, 10, 12), now: AGORA }).contractPatch.endsAt).toEqual(D(2026, 10, 20));
+  });
+});
+
+// Revisão de 30/09/2026: corrigir ou ativar a renovação com o em uso trancado.
+describe('corrigir ou ativar a renovação com o em uso trancado', () => {
+  const AGORA = new Date(2026, 8, 30, 10, 0);
+  const plan = { id: 'p2', name: 'Flow', value: 1800, durationMonths: 12 };
+  // K2 sobreposta encurtou K1 (fim 04/10, original 11/10); K1 trancado em 30/09.
+  const k1 = { id: 'k1', planName: 'Start', status: 'trancado', pausedAt: D(2026, 9, 30), pauseReason: 'Viagem', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 4), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2', durationMonths: 12, value: 1200 };
+  const k2 = { id: 'k2', planId: 'p2', planName: 'Flow', value: 1800, listValue: 1800, durationMonths: 12, status: 'ativo', renewedFromId: 'k1', seamless: true, startsAt: D(2026, 10, 5), endsAt: D(2027, 10, 5) };
+
+  it('início novo que ainda sobrepõe o fim original: o em uso fica como está, e a marca de emendada também', () => {
+    const r = buildContractEdit({ contract: k2, plan, value: 1800, startsAt: D(2026, 10, 6), previous: k1, now: AGORA });
+    expect(r.previousPatch).toBeNull();
+    expect(r.contractPatch.seamless).toBe(true);
+    expect(r.leadPatch).toMatchObject({ inUseContractId: 'k1', inUseContractStatus: 'trancado', inUseContractEndsAt: D(2026, 10, 4) });
+    const a = buildContractActivate({ contract: k2, previous: k1, now: AGORA });
+    expect(a.previousPatch).toBeNull();
+    expect(a.contractPatch.seamless).toBe(true);
+    expect(a.daysLost).toBe(0);
+  });
+
+  it('início novo que deixa de sobrepor: o fim original volta, e a marca sai', () => {
+    const r = buildContractEdit({ contract: k2, plan, value: 1800, startsAt: D(2026, 10, 20), previous: k1, now: AGORA });
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null });
+    expect(r.contractPatch.seamless).toBe(false);
+    expect(r.leadPatch).toMatchObject({ inUseContractId: 'k1', inUseContractStatus: 'trancado', inUseContractEndsAt: D(2026, 10, 11) });
+  });
+
+  it('o em uso em vigor continua sendo encurtado como sempre', () => {
+    const ativo = { ...k1, status: 'ativo', pausedAt: null, pauseReason: null };
+    const r = buildContractEdit({ contract: k2, plan, value: 1800, startsAt: D(2026, 10, 6), previous: ativo, now: AGORA });
+    expect(r.previousPatch).toEqual({ endsAt: D(2026, 10, 5), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' });
+    expect(r.contractPatch.seamless).toBe(true);
+  });
+});

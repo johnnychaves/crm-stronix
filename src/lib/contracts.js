@@ -774,11 +774,20 @@ const changesPrevious = (previous, patch) => !(
 export const buildContractEdit = ({ contract, plan, value, startsAt, discountReason, previous = null, now = new Date() } = {}) => {
   const start = getSafeDateOrNull(startsAt) || getSafeDateOrNull(contract?.startsAt) || new Date();
   const durationMonths = Number(plan?.durationMonths) || Number(contract?.durationMonths) || 0;
-  const base = computeEndsAt(start, durationMonths);
   const pausedDaysTotal = Number(contract?.pausedDaysTotal) || 0;
-  const endsAt = base && pausedDaysTotal > 0 ? addDays(base, pausedDaysTotal) : base;
-  const finalValue = Number.isFinite(Number(value)) ? Number(value) : (Number(contract?.value) || 0);
-  const listValue = editListValueOf(contract, plan);
+  // Fim: início mais a duração vendida, mais os dias já trancados. Sem duração
+  // gravada (importado), o fim anda o mesmo tanto que o início; sem início
+  // gravado, fica como está (revisão de 30/09/2026).
+  const recordedStart = getSafeDateOrNull(contract?.startsAt);
+  const recordedEnd = getSafeDateOrNull(contract?.endsAt);
+  const base = durationMonths > 0 ? computeEndsAt(start, durationMonths) : null;
+  const endsAt = base
+    ? (pausedDaysTotal > 0 ? addDays(base, pausedDaysTotal) : base)
+    : (recordedStart && recordedEnd ? new Date(recordedEnd.getTime() + (start.getTime() - recordedStart.getTime())) : recordedEnd);
+  // Valor: o do pedido; sem ele, o gravado. O gravado nulo (importado sem
+  // valor) fica nulo, nunca vira zero. A tabela idem: sem plano, a gravada.
+  const finalValue = value != null && Number.isFinite(Number(value)) ? Number(value) : (contract?.value == null ? null : Number(contract.value));
+  const listValue = plan || contract?.listValue != null ? editListValueOf(contract, plan) : null;
   const discountValue = contractDiscountOf({ value: finalValue, listValue });
   const hasDiscount = discountValue > 0.005;
   const sameDeal = finalValue === (Number(contract?.value) || 0) && listValue === (Number(contract?.listValue) || 0);
@@ -820,17 +829,33 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
     const canShorten = inForce && !shortenedByOther && eveFitsIn(join, prevStart, refEnd);
     seamless = inForce && (join.seamless || canShorten);
     let patch = null;
-    if (canShorten) patch = { endsAt: join.previousEndsAt, originalEndsAt: refEnd, shortenedById: contract.id };
-    else if (shortenedByThis) patch = { endsAt: refEnd, originalEndsAt: null, shortenedById: null };
+    // O fim do anterior depois desta correção, para o bloco "em uso".
+    let previousEndAfter = refEnd;
+    if (canShorten) {
+      patch = { endsAt: join.previousEndsAt, originalEndsAt: refEnd, shortenedById: contract.id };
+      previousEndAfter = patch.endsAt;
+    } else if (shortenedByThis) {
+      // O em uso trancado que esta renovação encurtou fica como está enquanto
+      // o início novo ainda sobrepõe o fim original: nem volta ao fim original
+      // nem perde a marca de emendada (revisão de 30/09/2026). O fim só volta
+      // quando o início deixa de sobrepor.
+      if (join.overlaps && previous.status === CONTRACT_STATUS.TRANCADO) {
+        seamless = Boolean(contract?.seamless);
+        previousEndAfter = getSafeDateOrNull(previous.endsAt);
+      } else {
+        patch = { endsAt: refEnd, originalEndsAt: null, shortenedById: null };
+      }
+    }
     previousPatch = patch && changesPrevious(previous, patch) ? patch : null;
     // Com o início novo ainda no futuro e o anterior já começado, o bloco
     // aponta o anterior com o status dele (trancado e cancelado inclusive) e o
-    // fim depois desta correção: o encurtado, o devolvido ou o de sempre. Com
-    // o início novo já chegado, o último contrato passou a valer: bloco limpo.
+    // fim depois desta correção: o encurtado, o devolvido, o que ficou como
+    // estava ou o de sempre. Com o início novo já chegado, o último contrato
+    // passou a valer: bloco limpo.
     const ref = getSafeDateOrNull(now) || new Date();
     const started = Boolean(prevStart && prevStart.getTime() <= ref.getTime());
     inUseBlock = start.getTime() > ref.getTime() && started
-      ? inUseBlockOf(previous, { inUseContractEndsAt: patch ? patch.endsAt : refEnd })
+      ? inUseBlockOf(previous, { inUseContractEndsAt: previousEndAfter })
       : CLEAR_IN_USE_BLOCK;
   }
 
