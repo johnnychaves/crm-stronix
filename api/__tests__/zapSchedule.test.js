@@ -13,7 +13,8 @@ const fusoDaMaquina = vi.hoisted(() => {
 
 import {
   SCHEDULE_LIMIT, LEAD_IDS_MAX, ZAP_SCHEDULE_MESSAGES, unitsView, scheduleCatalogView, suggestedDays, countsForMeta,
-  wardRelationship, appointmentDetailOf, scheduleTargets, readScheduleOptionsBody, buildScheduleOptions
+  wardRelationship, appointmentDetailOf, scheduleTargets, readScheduleOptionsBody, buildScheduleOptions,
+  isDocId, readScheduleBody, readStatusBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment
 } from '../_zapSchedule.js';
 
 afterAll(() => {
@@ -320,5 +321,217 @@ describe('buildScheduleOptions: a resposta do schedule-options', () => {
     const catalogs = { ...CATALOGOS, config: { metaWeekdays: [1, 2, 3, 4, 5, 6] } };
     expect(buildScheduleOptions({ member: ANA, catalogs, now: AGORA }).days.map((d) => d.label))
       .toEqual(['Hoje', 'Amanhã', 'Quinta', 'Sexta', 'Sábado']);
+  });
+});
+
+describe('readScheduleBody: só o formato do pedido', () => {
+  const VISITA = {
+    leadId: 'L1', type: 'visita', unit: 'Centro', modality: null, professorId: null, soloTraining: false,
+    quantity: null, date: '2026-10-01', time: '18:00', note: '  Vem depois do trabalho.  '
+  };
+  const AULA = {
+    leadId: 'L2', type: 'aula_experimental', unit: null, modality: 'Pilates', professorId: 'p1', soloTraining: false,
+    quantity: 1, date: '2026-10-02', time: '19:00', note: null
+  };
+  const corpo = (schedule = {}, extra = {}) => ({
+    phone: '5551998124471', actor: { email: ' Ana@Stronix.com.br ', name: ' Ana ' }, channelName: ' Recepção ',
+    schedule: { ...VISITA, ...schedule }, ...extra
+  });
+  const recusa = (b) => readScheduleBody(b).refusal;
+
+  it('visita: número normalizado, e-mail, canal e o instante no horário de Brasília', () => {
+    expect(readScheduleBody(corpo())).toEqual({
+      value: {
+        phone: '51998124471', matchKey: '5198124471', email: 'ana@stronix.com.br', actorName: 'Ana', channelName: 'Recepção',
+        at: new Date('2026-10-01T21:00:00.000Z'),
+        schedule: {
+          leadId: 'L1', type: 'visita', unit: 'Centro', modality: null, professorId: null, soloTraining: false,
+          quantity: null, note: 'Vem depois do trabalho.'
+        }
+      }
+    });
+  });
+
+  it('aula: modalidade, professor e quantidade; unidade fica null', () => {
+    expect(readScheduleBody(corpo(AULA)).value.schedule).toEqual({
+      leadId: 'L2', type: 'aula_experimental', unit: null, modality: 'Pilates', professorId: 'p1', soloTraining: false,
+      quantity: 1, note: null
+    });
+  });
+
+  it('aula de quem treina sozinho: sem professor', () => {
+    expect(readScheduleBody(corpo({ ...AULA, professorId: null, soloTraining: true })).value.schedule)
+      .toMatchObject({ professorId: null, soloTraining: true });
+  });
+
+  it('anotação e canal em branco viram null', () => {
+    const { value } = readScheduleBody(corpo({ note: '   ' }, { channelName: '  ' }));
+    expect(value.schedule.note).toBeNull();
+    expect(value.channelName).toBeNull();
+  });
+
+  it.each([
+    ['phone', corpo({}, { phone: '123' })],
+    ['actor', corpo({}, { actor: { email: 'sem-arroba' } })],
+    ['channelName', corpo({}, { channelName: 42 })],
+    ['schedule', corpo({}, { schedule: null })],
+    ['schedule', corpo({}, { schedule: [] })],
+    ['leadId', corpo({ leadId: '' })],
+    ['leadId', corpo({ leadId: 'a/b' })],
+    ['leadId', corpo({ leadId: 5 })],
+    ['type', corpo({ type: 'ligacao' })],
+    ['unit', corpo({ unit: 3 })],
+    ['note', corpo({ note: 3 })],
+    ['quantity', corpo({ ...AULA, quantity: '2' })],
+    ['quantity', corpo({ ...AULA, quantity: 1.5 })],
+    ['quantity', corpo({ ...AULA, quantity: 0 })],
+    ['professorId', corpo({ ...AULA, soloTraining: 'sim' })],
+    ['modality', corpo({ modality: 'Pilates' })],
+    ['professorId', corpo({ professorId: 'p1' })],
+    ['professorId', corpo({ soloTraining: true })],
+    ['quantity', corpo({ quantity: 1 })],
+    ['unit', corpo({ ...AULA, unit: 'Centro' })],
+    ['professorId', corpo({ ...AULA, soloTraining: true })],
+    ['date', corpo({ date: '2026-02-30' })],
+    ['date', corpo({ date: '01/10/2026' })],
+    ['time', corpo({ time: '24:00' })],
+    ['time', corpo({ time: '9:00' })],
+    ['note', corpo({ note: 'x'.repeat(1001) })]
+  ])('formato errado no campo %s é recusado com 400', (field, b) => {
+    expect(recusa(b)).toMatchObject({ status: 400, body: { error: 'dados_invalidos', field } });
+    expect(typeof recusa(b).body.message).toBe('string');
+  });
+
+  it('os textos da tela para dia, horário e anotação', () => {
+    expect(recusa(corpo({ date: '2026-02-30' })).body.message).toBe('Escolha o dia.');
+    expect(recusa(corpo({ time: '24:00' })).body.message).toBe('Escolha o horário.');
+    expect(recusa(corpo({ note: 'x'.repeat(1001) })).body.message).toBe('Anotação longa demais. Use até 1000 caracteres.');
+  });
+
+  it('isDocId: texto, sem barra, nem "." nem ".."', () => {
+    expect(isDocId('L1')).toBe(true);
+    expect([isDocId(''), isDocId('a/b'), isDocId('.'), isDocId('..'), isDocId(7), isDocId('x'.repeat(129))])
+      .toEqual([false, false, false, false, false, false]);
+  });
+});
+
+describe('readStatusBody: de 1 a 30 leads, sem repetir', () => {
+  it('lista válida passa como veio', () => {
+    expect(readStatusBody({ leadIds: ['L1', 'L2'] })).toEqual({ value: { leadIds: ['L1', 'L2'] } });
+    const trinta = Array.from({ length: 30 }, (_, i) => `L${i}`);
+    expect(readStatusBody({ leadIds: trinta }).value.leadIds).toHaveLength(30);
+  });
+
+  it.each([
+    ['ausente', undefined], ['vazia', []], ['31 ids', Array.from({ length: 31 }, (_, i) => `L${i}`)],
+    ['repetido', ['L1', 'L1']], ['número', ['L1', 2]], ['com barra', ['a/b']]
+  ])('lista %s é recusada no campo leadIds', (_, leadIds) => {
+    expect(readStatusBody({ leadIds }).refusal).toEqual({
+      status: 400, body: { error: 'dados_invalidos', field: 'leadIds', message: 'Envie de 1 a 30 leads, sem repetir.' }
+    });
+  });
+});
+
+describe('checkScheduleCatalog: o que foi escolhido ainda existe no Stronilead', () => {
+  const visita = (unit) => ({ type: 'visita', unit });
+  const aula = (extra = {}) => ({ type: 'aula_experimental', modality: 'Pilates', professorId: 'p1', soloTraining: false, quantity: 1, ...extra });
+  const gone = (field, message) => ({ status: 422, body: { error: 'catalogo_mudou', field, message } });
+  const pick = (field, message) => ({ status: 400, body: { error: 'dados_invalidos', field, message } });
+
+  it('visita numa unidade que existe passa', () => {
+    expect(checkScheduleCatalog(visita('Centro'), CATALOGOS)).toBeNull();
+  });
+
+  it('com unidade cadastrada, a unidade é obrigatória e precisa existir', () => {
+    expect(checkScheduleCatalog(visita(null), CATALOGOS)).toEqual(pick('unit', 'Escolha a unidade.'));
+    expect(checkScheduleCatalog(visita('Unidade Antiga'), CATALOGOS))
+      .toEqual(gone('unit', 'Essa unidade não existe mais no Stronilead. Escolha de novo.'));
+  });
+
+  it('academia sem unidade: visita sem unidade passa, e uma unidade que não existe é recusada', () => {
+    const semUnidade = { ...CATALOGOS, units: [] };
+    expect(checkScheduleCatalog(visita(null), semUnidade)).toBeNull();
+    expect(checkScheduleCatalog(visita('Centro'), semUnidade)).toMatchObject({ status: 422, body: { field: 'unit' } });
+  });
+
+  it('aula com modalidade, professor que dá a modalidade e quantidade da academia passa', () => {
+    expect(checkScheduleCatalog(aula(), CATALOGOS)).toBeNull();
+    expect(checkScheduleCatalog(aula({ professorId: 'p2', quantity: 3 }), CATALOGOS)).toBeNull();
+  });
+
+  it('"Treina sozinho" dispensa o professor', () => {
+    expect(checkScheduleCatalog(aula({ professorId: null, soloTraining: true }), CATALOGOS)).toBeNull();
+  });
+
+  it('modalidade em branco é campo a escolher; modalidade que sumiu é recusada', () => {
+    expect(checkScheduleCatalog(aula({ modality: null }), CATALOGOS)).toEqual(pick('modality', 'Escolha a modalidade.'));
+    expect(checkScheduleCatalog(aula({ modality: 'Crossfit' }), CATALOGOS))
+      .toEqual(gone('modality', 'Essa modalidade não existe mais no Stronilead. Escolha de novo.'));
+  });
+
+  it('sem professor e sem "Treina sozinho" é campo a escolher', () => {
+    expect(checkScheduleCatalog(aula({ professorId: null }), CATALOGOS))
+      .toEqual(pick('professorId', 'Escolha o professor ou "Treina sozinho".'));
+  });
+
+  it.each([
+    ['desligado', aula({ professorId: 'p3' })],
+    ['que não dá a modalidade', aula({ modality: 'Musculação', professorId: 'p1' })],
+    ['apagado', aula({ professorId: 'p9' })]
+  ])('professor %s é recusado', (_, schedule) => {
+    expect(checkScheduleCatalog(schedule, CATALOGOS))
+      .toEqual(gone('professorId', 'Esse professor não está mais disponível para essa modalidade. Escolha de novo.'));
+  });
+
+  it('quantidade em branco é campo a escolher; fora das opções da academia é recusada', () => {
+    expect(checkScheduleCatalog(aula({ quantity: null }), CATALOGOS)).toEqual(pick('quantity', 'Escolha quantas aulas.'));
+    expect(checkScheduleCatalog(aula({ quantity: 4 }), CATALOGOS))
+      .toEqual(gone('quantity', 'Essa quantidade de aulas não existe mais no Stronilead. Escolha de novo.'));
+    expect(checkScheduleCatalog(aula({ quantity: 3 }), { ...CATALOGOS, config: { trialClassOptions: [1, 2] } }))
+      .toMatchObject({ status: 422, body: { field: 'quantity' } });
+  });
+});
+
+describe('checkFuture: horário que já passou não é aceito', () => {
+  it('um minuto depois de agora passa; agora e antes, não', () => {
+    expect(checkFuture(brt('2026-09-29T15:41'), AGORA)).toBeNull();
+    const recusa = { status: 422, body: { error: 'horario_passado', message: 'Esse horário já passou. Escolha outro.' } };
+    expect(checkFuture(brt('2026-09-29T15:40'), AGORA)).toEqual(recusa);
+    expect(checkFuture(brt('2026-09-28T18:00'), AGORA)).toEqual(recusa);
+  });
+});
+
+describe('leadBelongsToNumber: o lead é deste número', () => {
+  const NUMERO = '5198124471';
+
+  it('o cadastro do próprio número e o menor de quem o número é responsável', () => {
+    expect(leadBelongsToNumber(MARIANA, NUMERO, AGORA)).toBe(true);
+    expect(leadBelongsToNumber(PEDRO, NUMERO, AGORA)).toBe(true);
+  });
+
+  it('quem fez 18 com WhatsApp próprio deixa de ser do número do responsável; sem WhatsApp próprio, continua', () => {
+    const adulto = { ...PEDRO, birthDate: new Date('2000-01-10T03:00:00.000Z') };
+    expect(leadBelongsToNumber({ ...adulto, whatsapp: '(51) 9 9555-4444' }, NUMERO, AGORA)).toBe(false);
+    expect(leadBelongsToNumber(adulto, NUMERO, AGORA)).toBe(true);
+  });
+
+  it('outro número, lead ausente ou chave ausente: não', () => {
+    expect(leadBelongsToNumber(MARIANA, '1187654321', AGORA)).toBe(false);
+    expect(leadBelongsToNumber(null, NUMERO, AGORA)).toBe(false);
+    expect(leadBelongsToNumber(MARIANA, null, AGORA)).toBe(false);
+  });
+});
+
+describe('hasSameAppointment: o mesmo agendamento já gravado', () => {
+  const at = brt('2026-09-30T18:00');
+
+  it('mesmo tipo, mesmo dia e mesmo horário', () => {
+    expect(hasSameAppointment(MARIANA, { type: 'visita', at })).toBe(true);
+  });
+
+  it('outro horário, outro tipo ou agendamento cancelado não é o mesmo', () => {
+    expect(hasSameAppointment(MARIANA, { type: 'visita', at: brt('2026-09-30T18:30') })).toBe(false);
+    expect(hasSameAppointment(MARIANA, { type: 'aula_experimental', at })).toBe(false);
+    expect(hasSameAppointment({ ...MARIANA, appointmentOutcome: 'cancelled' }, { type: 'visita', at })).toBe(false);
   });
 });

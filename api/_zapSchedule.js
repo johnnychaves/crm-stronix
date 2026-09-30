@@ -15,13 +15,17 @@
 // pronto para a tela. Nada daqui vai para o log.
 //
 // Spec: docs/superpowers/specs/2026-09-29-agendamento-pelo-stronizap-design.md
-import { ZAP_LEAD_MESSAGES, invalidData, nationalDigits, emailFromActor, teamRole } from './_zapLead.js';
+import { ZAP_LEAD_MESSAGES, refusal, invalidData, nationalDigits, emailFromActor, teamRole } from './_zapLead.js';
 import { zapMatchKey } from './_zapPhone.js';
 import { appointmentOutcomeOf, isAppointmentCancelled } from './_zapCard.js';
-import { diaDeBrasilia, horaInteiraDeBrasilia, diaDaSemanaDoDia, isoDoDia } from './_horarioDeBrasilia.js';
+import {
+  diaDeBrasilia, horaInteiraDeBrasilia, diaDaSemanaDoDia, isoDoDia, instanteDeBrasilia
+} from './_horarioDeBrasilia.js';
 import { getLeadAppointmentType, getLeadAppointmentDate } from '../src/lib/leads.js';
 import { normalizeAppointmentType } from '../src/lib/dates.js';
 import { normalizeTrialClassOptions, normalizeMetaWeekdays } from '../src/lib/leadStatus.js';
+import { professorsForModality } from '../src/lib/professores.js';
+import { contactOf } from '../src/lib/guardian.js';
 
 const MINUTE_MS = 60000;
 // Anotação do agendamento: o mesmo tamanho da observação do cadastro.
@@ -234,4 +238,135 @@ export function buildScheduleOptions({ member, catalogs, owner = null, wards = [
     trialClassOptions: view.trialClassOptions,
     days: suggestedDays({ now, metaWeekdays: view.metaWeekdays })
   };
+}
+
+// ---------------------------------------------------------------------------
+// Pedido de agendamento e conferências (schedule e appointment-status)
+// ---------------------------------------------------------------------------
+
+// Os mesmos tetos do cadastro (api/_zapLead.js).
+const NAME_MAX = 120;
+const CHANNEL_MAX = 80;
+
+export const SCHEDULE_TYPES = Object.freeze(['visita', 'aula_experimental']);
+
+// Id de documento do Firestore: texto não vazio, sem barra, que não seja "."
+// nem "..".
+export const isDocId = (v) =>
+  typeof v === 'string' && v.length > 0 && v.length <= 128 && !v.includes('/') && v !== '.' && v !== '..';
+
+// Lê o corpo do schedule. Só o formato: o que depende da academia (equipe,
+// catálogos, o lead) é conferido depois. Devolve { value } ou { refusal }.
+// Visita não leva campo de aula, e aula não leva unidade. O instante sai do
+// dia e da hora de Brasília.
+export function readScheduleBody(body) {
+  const phone = nationalDigits(body?.phone);
+  if (!phone) return { refusal: invalidData('phone', ZAP_LEAD_MESSAGES.phone) };
+  const email = emailFromActor(body?.actor);
+  if (!email) return { refusal: invalidData('actor', ZAP_SCHEDULE_MESSAGES.actor) };
+  const channel = body.channelName;
+  if (channel != null && typeof channel !== 'string') {
+    return { refusal: invalidData('channelName', ZAP_LEAD_MESSAGES.channelName) };
+  }
+  const s = body.schedule;
+  if (!s || typeof s !== 'object' || Array.isArray(s)) {
+    return { refusal: invalidData('schedule', ZAP_SCHEDULE_MESSAGES.schedule) };
+  }
+  if (!isDocId(s.leadId)) return { refusal: invalidData('leadId', ZAP_SCHEDULE_MESSAGES.leadId) };
+  if (!SCHEDULE_TYPES.includes(s.type)) return { refusal: invalidData('type', ZAP_SCHEDULE_MESSAGES.type) };
+  const wrong = (field) => ({ refusal: invalidData(field, ZAP_LEAD_MESSAGES.wrongType) });
+  for (const field of ['unit', 'modality', 'professorId', 'note']) {
+    if (s[field] != null && typeof s[field] !== 'string') return wrong(field);
+  }
+  if (s.quantity != null && !(Number.isInteger(s.quantity) && s.quantity > 0)) return wrong('quantity');
+  // soloTraining não tem campo próprio na tela: é a opção "Treina sozinho" do
+  // passo do professor.
+  if (s.soloTraining != null && typeof s.soloTraining !== 'boolean') return wrong('professorId');
+  const isAula = s.type === 'aula_experimental';
+  if (isAula) {
+    if (hasText(s.unit)) return wrong('unit');
+    if (hasText(s.professorId) && s.soloTraining === true) return wrong('professorId');
+  } else {
+    if (hasText(s.modality)) return wrong('modality');
+    if (hasText(s.professorId) || s.soloTraining === true) return wrong('professorId');
+    if (s.quantity != null) return wrong('quantity');
+  }
+  if (!instanteDeBrasilia(s.date, '00:00')) return { refusal: invalidData('date', ZAP_SCHEDULE_MESSAGES.date) };
+  const at = instanteDeBrasilia(s.date, s.time);
+  if (!at) return { refusal: invalidData('time', ZAP_SCHEDULE_MESSAGES.time) };
+  const note = typeof s.note === 'string' ? s.note.trim() : '';
+  if (note.length > NOTE_MAX) return { refusal: invalidData('note', ZAP_SCHEDULE_MESSAGES.noteLong) };
+  const actorName = typeof body.actor.name === 'string' ? body.actor.name.trim().slice(0, NAME_MAX) : '';
+  return {
+    value: {
+      phone,
+      matchKey: zapMatchKey(phone),
+      email,
+      actorName: actorName || null,
+      channelName: (typeof channel === 'string' ? channel.trim().slice(0, CHANNEL_MAX) : '') || null,
+      at,
+      schedule: {
+        leadId: s.leadId,
+        type: s.type,
+        unit: isAula ? null : textOrNull(s.unit),
+        modality: isAula ? textOrNull(s.modality) : null,
+        professorId: isAula ? textOrNull(s.professorId) : null,
+        soloTraining: isAula && s.soloTraining === true,
+        quantity: isAula ? (s.quantity ?? null) : null,
+        note: note || null
+      }
+    }
+  };
+}
+
+// Lê o corpo do appointment-status: de 1 a 30 ids de lead, sem repetição.
+export function readStatusBody(body) {
+  const ids = body?.leadIds;
+  const ok = Array.isArray(ids) && ids.length > 0 && ids.length <= LEAD_IDS_MAX
+    && ids.every(isDocId) && new Set(ids).size === ids.length;
+  return ok ? { value: { leadIds: ids } } : { refusal: invalidData('leadIds', ZAP_SCHEDULE_MESSAGES.leadIds) };
+}
+
+// Unidade, modalidade, professor e quantidade conferidos contra o que existe
+// agora no Stronilead. Academia sem unidade não tem o passo da unidade; com
+// unidade, ele é obrigatório. O professor precisa estar ativo e dar a
+// modalidade (professorsForModality, a regra do assistente), ou a aula é de
+// quem treina sozinho. `catalogs` são os documentos que a rota leu.
+export function checkScheduleCatalog(schedule, catalogs) {
+  const view = scheduleCatalogView(catalogs);
+  const gone = (field) => refusal(422, 'catalogo_mudou', ZAP_SCHEDULE_MESSAGES.gone[field], { field });
+  const pick = (field) => invalidData(field, ZAP_SCHEDULE_MESSAGES.pick[field]);
+  if (schedule.type === 'visita') {
+    if (view.units.length === 0) return schedule.unit ? gone('unit') : null;
+    if (!schedule.unit) return pick('unit');
+    return view.units.some((u) => u.name === schedule.unit) ? null : gone('unit');
+  }
+  if (!schedule.modality) return pick('modality');
+  if (!view.modalities.some((m) => m.name === schedule.modality)) return gone('modality');
+  if (!schedule.soloTraining) {
+    if (!schedule.professorId) return pick('professorId');
+    const teachers = professorsForModality(catalogs?.professors, catalogs?.modalities, schedule.modality);
+    if (!teachers.some((p) => p.id === schedule.professorId && hasText(p.nome))) return gone('professorId');
+  }
+  if (schedule.quantity == null) return pick('quantity');
+  return view.trialClassOptions.includes(schedule.quantity) ? null : gone('quantity');
+}
+
+// Horário que já passou não é aceito.
+export function checkFuture(at, now = new Date()) {
+  return at.getTime() > now.getTime() ? null : refusal(422, 'horario_passado', ZAP_SCHEDULE_MESSAGES.pastTime);
+}
+
+// O lead escolhido é o cadastro do próprio número, ou um menor que tem esse
+// número como responsável e ainda o tem como contato: a mesma conta do cartão.
+export function leadBelongsToNumber(lead, matchKey, now = new Date()) {
+  if (!lead || !matchKey) return false;
+  if (lead.zapMatchKey === matchKey) return true;
+  return lead.guardianZapMatchKey === matchKey && contactOf(lead, now).viaGuardian;
+}
+
+// O lead já tem este agendamento: mesmo tipo, mesmo dia e mesmo horário.
+export function hasSameAppointment(lead, { type, at }) {
+  const current = appointmentDetailOf(lead);
+  return Boolean(current) && current.type === type && current.at === at.toISOString();
 }
