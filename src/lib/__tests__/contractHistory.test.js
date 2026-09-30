@@ -4,7 +4,8 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, historySuccessorOf, runningPredecessorOf
+  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, historySuccessorOf, inUseNoteOf,
+  runningPredecessorOf
 } from '../contractHistory.js';
 import { CONTRACT_STATUS } from '../contracts.js';
 import { normalizeContracts, indexContracts } from '../operacional/base.js';
@@ -331,5 +332,34 @@ describe('historyStatusOf e runningPredecessorOf', () => {
     expect(runningPredecessorOf(renovacao, null, HOJE)).toBeNull();
     const futuro = { ...atual, startsAt: D(2026, 10, 1) };
     expect(runningPredecessorOf(renovacao, [futuro, renovacao], HOJE)).toBeNull();
+  });
+});
+
+describe('inUseNoteOf: a linha do contrato em uso no card', () => {
+  const fim = D(2026, 10, 7);
+
+  it('renovação emendada diz que continua o contrato em uso, com o plano', () => {
+    expect(inUseNoteOf({ planName: 'Start', end: fim, seamless: true }))
+      .toBe('Continua o contrato em uso (Start, até 07/10/2026)');
+  });
+
+  it('contrato importado sem nome de plano: a frase sai sem a palavra Plano', () => {
+    expect(inUseNoteOf({ planName: null, end: fim, seamless: true })).toBe('Continua o contrato em uso (até 07/10/2026)');
+    expect(inUseNoteOf({ planName: '  ', end: fim, seamless: false })).toBe('Contrato em uso até 07/10/2026');
+  });
+
+  it('renovação agendada diz qual contrato está em uso e os dias sem contrato', () => {
+    expect(inUseNoteOf({ planName: 'Start', end: fim, seamless: false })).toBe('Contrato em uso: Start, até 07/10/2026');
+    expect(inUseNoteOf({ planName: 'Start', end: fim, seamless: false, gapDays: 8 }))
+      .toBe('Contrato em uso: Start, até 07/10/2026 · 8 dias sem contrato entre os dois');
+    expect(inUseNoteOf({ planName: null, end: fim, seamless: false, gapDays: 1 }))
+      .toBe('Contrato em uso até 07/10/2026 · 1 dia sem contrato entre os dois');
+  });
+
+  it('aceita a data crua do Firestore, e sem fim não há linha', () => {
+    expect(inUseNoteOf({ planName: 'Start', end: { toDate: () => fim }, seamless: true }))
+      .toBe('Continua o contrato em uso (Start, até 07/10/2026)');
+    expect(inUseNoteOf({ planName: 'Start', end: null, seamless: true })).toBeNull();
+    expect(inUseNoteOf()).toBeNull();
   });
 });

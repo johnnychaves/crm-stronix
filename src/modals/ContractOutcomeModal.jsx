@@ -102,11 +102,14 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
     if (undo) {
       // O contrato renovado pode já ter vencido, quando a renovação começaria
       // depois de um intervalo. O último dia ainda é dele.
-      const plano = undo.leadPatch.currentPlanName || 'Plano';
+      // Contrato importado pode vir sem nome de plano: a frase sai sem ele.
+      const plano = String(undo.leadPatch.currentPlanName || '').trim();
       const fim = undo.leadPatch.currentContractEndsAt;
-      return fim && calendarDaysBetween(undo.contractPatch.cancelledAt, fim) < 0
-        ? `A renovação é desfeita e ${primeiro} volta ao contrato anterior (${plano}), que venceu em ${fmtDate(fim)}.`
-        : `A renovação é desfeita e ${primeiro} volta ao contrato em uso (${plano}${fim ? `, até ${fmtDate(fim)}` : ''}).`;
+      if (fim && calendarDaysBetween(undo.contractPatch.cancelledAt, fim) < 0) {
+        return `A renovação é desfeita e ${primeiro} volta ao contrato anterior${plano ? ` (${plano})` : ''}, que venceu em ${fmtDate(fim)}.`;
+      }
+      const detalhe = [plano, fim ? `até ${fmtDate(fim)}` : ''].filter(Boolean).join(', ');
+      return `A renovação é desfeita e ${primeiro} volta ao contrato em uso${detalhe ? ` (${detalhe})` : ''}.`;
     }
     if (action === 'reativar') {
       const novo = buildContractResume({ contract, resumedAt: when || new Date() });

@@ -192,3 +192,18 @@ export function runningPredecessorOf(contract, leadContracts, now = new Date()) 
   if (!end || calendarDaysBetween(ref, end) < 0) return null;
   return prev;
 }
+
+// A linha da faixa do card quando o contrato atual ainda não começou e o
+// anterior está em uso. A emendada continua o contrato em uso; a agendada diz
+// qual contrato vale agora e quantos dias ficam sem contrato. Contrato
+// importado pode vir sem nome de plano, e aí a frase sai sem ele (antes dizia
+// "Contrato em uso: Plano, até ...").
+export function inUseNoteOf({ planName, end, seamless, gapDays = 0 } = {}) {
+  const fim = getSafeDateOrNull(end);
+  if (!fim) return null;
+  const ate = `até ${fim.toLocaleDateString('pt-BR')}`;
+  const plano = String(planName || '').trim();
+  if (seamless) return `Continua o contrato em uso (${plano ? `${plano}, ` : ''}${ate})`;
+  const intervalo = gapDays > 0 ? ` · ${gapDays} ${gapDays === 1 ? 'dia' : 'dias'} sem contrato entre os dois` : '';
+  return `Contrato em uso${plano ? `: ${plano},` : ''} ${ate}${intervalo}`;
+}

@@ -15,7 +15,7 @@ import { fmtBRL } from '../lib/format.js';
 import { contractDiscountOf, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
 import { SEAM_KIND, computeSeam, contractVigencia, daysBetween, missedCheckpointsLabel, vigenciaRefDate } from '../lib/renewal.js';
 import {
-  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, historySuccessorOf, runningPredecessorOf
+  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, historySuccessorOf, inUseNoteOf, runningPredecessorOf
 } from '../lib/contractHistory.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
@@ -1870,9 +1870,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 const seamlessNow = Boolean(currentContract?.seamless || lead.currentContractSeamless);
                 const inUseGap = inUse && inUseEnd && curStartsAt ? computeSeam(inUseEnd, curStartsAt) : null;
                 const inUseNote = inUse && inUseEnd
-                  ? seamlessNow
-                    ? `Continua o contrato em uso (${inUse.planName || 'Plano'}, até ${inUseEnd.toLocaleDateString('pt-BR')})`
-                    : `Contrato em uso: ${inUse.planName || 'Plano'}, até ${inUseEnd.toLocaleDateString('pt-BR')}${inUseGap?.kind === SEAM_KIND.LACUNA ? ` · ${inUseGap.gapDays} ${inUseGap.gapDays === 1 ? 'dia' : 'dias'} sem contrato entre os dois` : ''}`
+                  ? inUseNoteOf({
+                    planName: inUse.planName,
+                    end: inUseEnd,
+                    seamless: seamlessNow,
+                    gapDays: inUseGap?.kind === SEAM_KIND.LACUNA ? inUseGap.gapDays : 0
+                  })
                   : null;
                 return (
                   <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
