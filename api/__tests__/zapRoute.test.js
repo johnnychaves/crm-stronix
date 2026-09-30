@@ -2019,7 +2019,7 @@ describe('POST /api/zap com action schedule', () => {
     expect(banco.gravacoes).toEqual([]);
   });
 
-  it('o mesmo agendamento de novo: 409 com o cartão e o agendamento, sem gravar e sem outro ponto', async () => {
+  it('o pedido idêntico repetido: 409 com o cartão e o agendamento, sem gravar e sem outro ponto', async () => {
     await handler(pedidoAgenda(), resposta());
     const gravacoes = banco.gravacoes.length;
     const res = resposta();
@@ -2036,6 +2036,50 @@ describe('POST /api/zap com action schedule', () => {
     expect(banco.gravacoes).toHaveLength(gravacoes);
     expect(interacoesDaAcademia()).toHaveLength(1);
     expect(aulasDaAcademia()).toHaveLength(1);
+  });
+
+  // Mudar só a unidade, no mesmo dia e horário, é remarcação: o assistente da
+  // ficha grava, e aqui também. Responder ja_agendado perderia a troca.
+  it('remarcar no mesmo dia e horário com outra unidade: grava, e o pedido idêntico depois disso é o repetido', async () => {
+    await handler(pedidoAgenda(), resposta());
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { unit: 'Zona Sul' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.appointment).toMatchObject({ type: 'visita', at: '2026-10-01T21:00:00.000Z', unit: 'Zona Sul', unitAddress: null });
+    expect(leadDaAcademia('L1')).toMatchObject({ appointmentUnit: 'Zona Sul', appointmentScheduledFor: QUINTA_18H, interactionsCount: 5 });
+    // O registro em aberto troca de unidade, e a linha do tempo ganha outra nota.
+    expect(aulasDaAcademia()).toHaveLength(1);
+    expect(aulasDaAcademia()[0]).toMatchObject({ unit: 'Zona Sul', scheduledFor: QUINTA_18H, status: 'agendada' });
+    expect(interacoesDaAcademia()).toHaveLength(2);
+    expect(interacoesDaAcademia()[1].text).toBe('🔔 Visita agendada (Unidade Zona Sul) p/ 01/10/2026, 18:00. Obs: Vem depois do trabalho.');
+
+    // Agora o que o lead tem é a Zona Sul: o mesmo pedido de novo é o repetido.
+    const gravacoes = banco.gravacoes.length;
+    const repetido = resposta();
+    await handler(pedidoAgenda({ schedule: { unit: 'Zona Sul' } }), repetido);
+    expect(repetido.statusCode).toBe(409);
+    expect(repetido.body.appointment).toMatchObject({ unit: 'Zona Sul' });
+    expect(banco.gravacoes).toHaveLength(gravacoes);
+    expect(interacoesDaAcademia()).toHaveLength(2);
+  });
+
+  it('aula no mesmo horário com outro professor: grava, e o registro em aberto muda de professor', async () => {
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), resposta());
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, professorId: 'p2' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(res.body.appointment).toMatchObject({ type: 'aula_experimental', at: '2026-10-02T22:00:00.000Z', professorName: 'Rafael Moura' });
+    expect(aulasDaAcademia()).toHaveLength(1);
+    expect(aulasDaAcademia()[0]).toMatchObject({ professorId: 'p2', professorName: 'Rafael Moura', scheduledFor: SEXTA_19H });
+    expect(leadDaAcademia('L1')).toMatchObject({
+      appointmentProfessorId: 'p2', appointmentProfessorName: 'Rafael Moura', currentAulaId: aulasDaAcademia()[0].id
+    });
+    expect(interacoesDaAcademia()).toHaveLength(2);
+    expect(interacoesDaAcademia()[1].text).toBe('🔔 Aula Experimental agendada (Pilates · 1 aula) · Rafael Moura p/ 02/10/2026, 19:00.');
   });
 
   it('dois pedidos ao mesmo tempo gravam uma vez só', async () => {
@@ -2075,6 +2119,17 @@ describe('POST /api/zap com action schedule', () => {
 
     expect(res.statusCode).toBe(422);
     expect(res.body).toMatchObject({ error: 'catalogo_mudou', field });
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('professor com modalidadeIds malformado no cadastro é recusado como item que mudou, sem derrubar a ação', async () => {
+    banco.catalogos[TENANT].stronix_professores.push({ id: 'p7', nome: 'Duda Lins', modalidadeIds: 7, order: 4 });
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: { ...AULA_DA_CARLA, professorId: 'p7' } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toMatchObject({ error: 'catalogo_mudou', field: 'professorId' });
     expect(banco.gravacoes).toEqual([]);
   });
 

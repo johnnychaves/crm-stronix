@@ -575,14 +575,16 @@ async function handleSchedule(req, res) {
     const aulas = academyCollection(tenantId, AULAS_PATH);
     const interactionRef = academyCollection(tenantId, INTERACTIONS_PATH).doc();
 
-    // Conferência do lead, do agendamento repetido e gravação na MESMA
-    // transação: dois cliques, duas pessoas ou o "Tentar de novo" depois de
-    // uma resposta perdida gravam uma vez só e dão um ponto só na Meta.
+    // Conferência do lead, do pedido repetido e gravação na MESMA transação:
+    // dois cliques, duas pessoas ou o "Tentar de novo" depois de uma resposta
+    // perdida gravam uma vez só e dão um ponto só na Meta. Só o pedido idêntico
+    // é o repetido: mudar unidade, professor, modalidade, quantidade ou
+    // anotação no mesmo horário é remarcação e grava (hasSameAppointment).
     const outcome = await adminDb.runTransaction(async (tx) => {
       const leadSnap = await tx.get(leadRef);
       const lead = leadSnap.exists ? leadDoDoc(leadSnap) : null;
       if (!leadBelongsToNumber(lead, matchKey, agora)) return { notTheLead: true };
-      if (hasSameAppointment(lead, { type: schedule.type, at })) return { repeated: lead };
+      if (hasSameAppointment(lead, { type: schedule.type, at, schedule })) return { repeated: lead };
 
       // O registro em aberto que o assistente reaproveitaria: a aula do
       // currentAulaId ainda agendada, ou a visita agendada do lead.

@@ -18,6 +18,7 @@ import {
   scheduleInteractionText, pickOpenVisitaId, isOpenAulaRecord, buildScheduleWrites, alreadyScheduledBody
 } from '../_zapSchedule.js';
 import { aulaRecordFields } from '../../src/lib/aulas.js';
+import { GUARDIAN_RELATIONSHIPS } from '../../src/lib/guardian.js';
 
 afterAll(() => {
   if (fusoDaMaquina === undefined) delete process.env.TZ;
@@ -68,7 +69,9 @@ const LAURA = { id: 'L3', name: 'Laura Lima', isMinor: true, guardian: MAE, sexo
 
 describe('processo em UTC, como a função da Vercel', () => {
   it('o fuso do processo é UTC de verdade', () => {
+    expect(new Date(2026, 8, 8, 18, 0).toISOString()).toBe('2026-09-08T18:00:00.000Z');
     expect(new Date(2026, 0, 15).getTimezoneOffset()).toBe(0);
+    expect(['UTC', 'Etc/UTC']).toContain(Intl.DateTimeFormat().resolvedOptions().timeZone);
   });
 });
 
@@ -102,6 +105,40 @@ describe('scheduleCatalogView: as listas do balão', () => {
     expect(view.trialClassOptions).toEqual([1, 2]);
     expect(view.metaWeekdays).toEqual([1, 2, 3, 4, 5, 6]);
     expect(scheduleCatalogView({ config: { maxTrialClasses: 4 } }).trialClassOptions).toEqual([1, 2, 3, 4]);
+  });
+
+  it('modalidade sem nome, professor sem nome e modalidadeIds malformado não quebram as listas', () => {
+    const view = scheduleCatalogView({
+      modalities: [{ id: 'm1', name: 'Musculação', order: 1 }, { id: 'm3', name: '   ', order: 2 }, { id: 'm4', order: 3 }],
+      professors: [
+        // Texto no lugar da lista: não vale como lista de ids.
+        { id: 'p1', nome: 'Carla Dias', modalidadeIds: 'm1', order: 1 },
+        // Na lista só valem os ids em texto.
+        { id: 'p2', nome: 'Rafael Moura', modalidadeIds: ['m1', 7, null, { id: 'm1' }], order: 2 },
+        // Sem o campo.
+        { id: 'p3', nome: 'Paula Reis', order: 3 },
+        // Sem nome: a lista do balão não mostra quem não tem nome.
+        { id: 'p4', nome: '   ', modalidadeIds: ['m1'], order: 4 },
+        { id: 'p5', modalidadeIds: ['m1'], order: 5 }
+      ]
+    });
+    expect(view.modalities).toEqual([{ id: 'm1', name: 'Musculação' }]);
+    expect(view.professors).toEqual([
+      { id: 'p1', name: 'Carla Dias', modalityIds: [] },
+      { id: 'p2', name: 'Rafael Moura', modalityIds: ['m1'] },
+      { id: 'p3', name: 'Paula Reis', modalityIds: [] }
+    ]);
+  });
+
+  it('dias da meta em lista vazia voltam a ser segunda a sexta, e é assim que o balão e a Meta os leem', () => {
+    const vazia = { ...CATALOGOS, config: { metaWeekdays: [] } };
+    expect(scheduleCatalogView(vazia).metaWeekdays).toEqual(SEG_A_SEX);
+    // Numa terça, lista vazia não conta como "nenhum dia": a consultora conta na Meta.
+    expect(buildScheduleOptions({ member: ANA, catalogs: vazia, now: AGORA }).actor.countsForMeta).toBe(true);
+    // Num sábado, lista vazia não conta como "todos os dias": o balão começa na segunda.
+    const sabado = buildScheduleOptions({ member: ANA, catalogs: vazia, now: brt('2026-10-03T10:00') });
+    expect(sabado.days[0]).toEqual({ date: '2026-10-05', label: 'Segunda', defaultTime: '09:00' });
+    expect(sabado.actor.countsForMeta).toBe(false);
   });
 
   it('unitsView sozinha: lista ausente vira lista vazia', () => {
@@ -159,6 +196,22 @@ describe('suggestedDays: os cinco dias no horário de Brasília', () => {
     expect(suggestedDays({ now: brt('2026-10-03T10:00'), metaWeekdays: [] }).map((d) => d.label))
       .toEqual(['Hoje', 'Amanhã', 'Segunda', 'Terça', 'Quarta']);
   });
+
+  // Numa segunda de manhã, as cinco segundas são o dia 0 e os dias 7, 14, 21 e
+  // 28: a busca precisa de 29 dias, e o teto é de 90.
+  it('meta só de segunda: as cinco segundas pedem 29 dias de busca, e cabem no teto', () => {
+    expect(suggestedDays({ now: brt('2026-09-28T10:00'), metaWeekdays: [1] })).toEqual([
+      { date: '2026-09-28', label: 'Hoje', defaultTime: '18:00' },
+      { date: '2026-10-05', label: 'Segunda', defaultTime: '09:00' },
+      { date: '2026-10-12', label: 'Segunda', defaultTime: '09:00' },
+      { date: '2026-10-19', label: 'Segunda', defaultTime: '09:00' },
+      { date: '2026-10-26', label: 'Segunda', defaultTime: '09:00' }
+    ]);
+  });
+
+  it('dia da meta que nunca chega: a busca termina e devolve lista vazia', () => {
+    expect(suggestedDays({ now: AGORA, metaWeekdays: [9] })).toEqual([]);
+  });
 });
 
 describe('countsForMeta: agendar hoje conta na Meta diária', () => {
@@ -194,6 +247,24 @@ describe('wardRelationship: o parentesco do menor visto de quem escreve', () => 
     expect(wardRelationship(menor('Outro', 'Masculino'))).toBeNull();
     expect(wardRelationship({ name: 'Sem responsável' })).toBeNull();
   });
+
+  // Parentesco novo na lista do cadastro sem o inverso aqui mandaria null para
+  // o Stronizap em silêncio: este teste obriga a escrever o inverso.
+  it('todo parentesco da lista do cadastro, menos "Outro", tem o inverso nos dois sexos', () => {
+    for (const relationship of GUARDIAN_RELATIONSHIPS.filter((r) => r !== 'Outro')) {
+      const masculino = wardRelationship(menor(relationship, 'Masculino'));
+      const feminino = wardRelationship(menor(relationship, 'Feminino'));
+      expect([relationship, typeof masculino, typeof feminino]).toEqual([relationship, 'string', 'string']);
+      expect(masculino).not.toBe(feminino);
+    }
+  });
+
+  it.each(['constructor', 'toString', '__proto__', 'hasOwnProperty'])(
+    'parentesco "%s" não é da lista: vai null, e nunca undefined',
+    (relationship) => {
+      expect(wardRelationship(menor(relationship, 'Masculino'))).toBeNull();
+    }
+  );
 });
 
 describe('appointmentDetailOf: o agendamento que a ficha, o cartão e a Meta mostram', () => {
@@ -223,6 +294,15 @@ describe('appointmentDetailOf: o agendamento que a ficha, o cartão e a Meta mos
   it('unidade que saiu da lista fica sem endereço; campo de aula esquecido numa visita não aparece', () => {
     const lead = { ...MARIANA, appointmentUnit: 'Unidade Antiga', appointmentModality: 'Pilates', trialClassesPlanned: 3 };
     expect(appointmentDetailOf(lead, unidades)).toMatchObject({ unit: 'Unidade Antiga', unitAddress: null, modality: null, quantity: null });
+  });
+
+  it('unidade esquecida numa aula não aparece: unit e unitAddress saem null', () => {
+    const lead = { ...PEDRO, appointmentUnit: 'Centro' };
+    expect(appointmentDetailOf(lead, unidades)).toMatchObject({ type: 'aula_experimental', unit: null, unitAddress: null });
+  });
+
+  it.each([[2.5], [-1], [0]])('quantidade de aulas %s no lead não passa: sai null', (quantidade) => {
+    expect(appointmentDetailOf({ ...PEDRO, trialClassesPlanned: quantidade }).quantity).toBeNull();
   });
 
   it('tipo gravado no formato antigo ("Visita") sai no formato do contrato', () => {
@@ -372,6 +452,18 @@ describe('readScheduleBody: só o formato do pedido', () => {
     expect(value.channelName).toBeNull();
   });
 
+  // O de 1.001 caracteres está na lista de recusas abaixo.
+  it('anotação com 1.000 caracteres exatos passa, e o espaço das pontas não conta', () => {
+    expect(readScheduleBody(corpo({ note: ` ${'x'.repeat(1000)} ` })).value.schedule.note).toHaveLength(1000);
+  });
+
+  it('nome de quem agenda e canal são cortados nos tetos do cadastro, 120 e 80 caracteres', () => {
+    const { value } = readScheduleBody(corpo({}, {
+      actor: { email: 'ana@stronix.com.br', name: 'n'.repeat(200) }, channelName: 'c'.repeat(200)
+    }));
+    expect([value.actorName.length, value.channelName.length]).toEqual([120, 80]);
+  });
+
   it.each([
     ['phone', corpo({}, { phone: '123' })],
     ['actor', corpo({}, { actor: { email: 'sem-arroba' } })],
@@ -381,6 +473,7 @@ describe('readScheduleBody: só o formato do pedido', () => {
     ['leadId', corpo({ leadId: '' })],
     ['leadId', corpo({ leadId: 'a/b' })],
     ['leadId', corpo({ leadId: 5 })],
+    ['leadId', corpo({ leadId: '__x__' })],
     ['type', corpo({ type: 'ligacao' })],
     ['unit', corpo({ unit: 3 })],
     ['note', corpo({ note: 3 })],
@@ -415,6 +508,13 @@ describe('readScheduleBody: só o formato do pedido', () => {
     expect([isDocId(''), isDocId('a/b'), isDocId('.'), isDocId('..'), isDocId(7), isDocId('x'.repeat(129))])
       .toEqual([false, false, false, false, false, false]);
   });
+
+  // O Firestore reserva o padrão __x__ para id de documento e recusa a leitura
+  // com erro. Barrado aqui, o pedido vira dados_invalidos.
+  it('isDocId: o padrão __x__ é reservado pelo Firestore, e só começar ou só terminar com __ não é', () => {
+    expect([isDocId('__x__'), isDocId('__lead__'), isDocId('____')]).toEqual([false, false, false]);
+    expect([isDocId('__x'), isDocId('x__'), isDocId('_x_')]).toEqual([true, true, true]);
+  });
 });
 
 describe('readStatusBody: de 1 a 30 leads, sem repetir', () => {
@@ -426,7 +526,7 @@ describe('readStatusBody: de 1 a 30 leads, sem repetir', () => {
 
   it.each([
     ['ausente', undefined], ['vazia', []], ['31 ids', Array.from({ length: 31 }, (_, i) => `L${i}`)],
-    ['repetido', ['L1', 'L1']], ['número', ['L1', 2]], ['com barra', ['a/b']]
+    ['repetido', ['L1', 'L1']], ['número', ['L1', 2]], ['com barra', ['a/b']], ['no padrão reservado', ['__x__']]
   ])('lista %s é recusada no campo leadIds', (_, leadIds) => {
     expect(readStatusBody({ leadIds }).refusal).toEqual({
       status: 400, body: { error: 'dados_invalidos', field: 'leadIds', message: 'Envie de 1 a 30 leads, sem repetir.' }
@@ -485,6 +585,36 @@ describe('checkScheduleCatalog: o que foi escolhido ainda existe no Stronilead',
       .toEqual(gone('professorId', 'Esse professor não está mais disponível para essa modalidade. Escolha de novo.'));
   });
 
+  // A lista do balão não mostra professor sem nome, então a conferência não o
+  // aceita, mesmo ativo e dando a modalidade.
+  it('professor ativo, da modalidade, mas sem nome é recusado', () => {
+    const semNome = { ...CATALOGOS, professors: [...CATALOGOS.professors, { id: 'p4', nome: '  ', modalidadeIds: ['m2'], order: 4 }] };
+    expect(checkScheduleCatalog(aula({ professorId: 'p4' }), semNome))
+      .toEqual(gone('professorId', 'Esse professor não está mais disponível para essa modalidade. Escolha de novo.'));
+  });
+
+  // A conferência lê as mesmas listas normalizadas que o balão recebe: cadastro
+  // malformado de um professor é recusa, e não erro da ação nem aceite por
+  // acidente (um texto "contém" o id da modalidade).
+  it('professor com modalidadeIds que não é lista é recusado, e os outros professores continuam passando', () => {
+    const malformados = {
+      ...CATALOGOS,
+      professors: [
+        ...CATALOGOS.professors,
+        { id: 'p5', nome: 'Duda Lins', modalidadeIds: 7, order: 4 },
+        { id: 'p6', nome: 'Edu Reis', modalidadeIds: 'm2', order: 5 },
+        { id: 'p7', nome: 'Fabi Nunes', modalidadeIds: { m2: true }, order: 6 },
+        { id: 'p8', nome: 'Gabi Lopes', order: 7 }
+      ]
+    };
+    for (const professorId of ['p5', 'p6', 'p7', 'p8']) {
+      expect(checkScheduleCatalog(aula({ professorId }), malformados))
+        .toEqual(gone('professorId', 'Esse professor não está mais disponível para essa modalidade. Escolha de novo.'));
+    }
+    expect(checkScheduleCatalog(aula(), malformados)).toBeNull();
+    expect(checkScheduleCatalog(aula({ professorId: 'p2', quantity: 3 }), malformados)).toBeNull();
+  });
+
   it('quantidade em branco é campo a escolher; fora das opções da academia é recusada', () => {
     expect(checkScheduleCatalog(aula({ quantity: null }), CATALOGOS)).toEqual(pick('quantity', 'Escolha quantas aulas.'));
     expect(checkScheduleCatalog(aula({ quantity: 4 }), CATALOGOS))
@@ -522,19 +652,102 @@ describe('leadBelongsToNumber: o lead é deste número', () => {
     expect(leadBelongsToNumber(null, NUMERO, AGORA)).toBe(false);
     expect(leadBelongsToNumber(MARIANA, null, AGORA)).toBe(false);
   });
+
+  // Sem a guarda da chave, "sem chave" seria igual a "sem chave": o lead sem
+  // zapMatchKey casaria com qualquer pedido sem chave, e o menor com
+  // responsável e sem guardianZapMatchKey também.
+  it('lead sem chave e pedido sem chave não casam', () => {
+    expect(leadBelongsToNumber({ id: 'L9' }, undefined, AGORA)).toBe(false);
+    expect(leadBelongsToNumber({ id: 'L9', zapMatchKey: '' }, '', AGORA)).toBe(false);
+    const menorSemChave = { id: 'L9', zapMatchKey: '1187654321', isMinor: true, guardian: MAE };
+    expect(leadBelongsToNumber(menorSemChave, undefined, AGORA)).toBe(false);
+  });
 });
 
-describe('hasSameAppointment: o mesmo agendamento já gravado', () => {
-  const at = brt('2026-09-30T18:00');
+// Só o pedido idêntico ao que o lead já tem é "o mesmo agendamento" (dois
+// cliques, duas pessoas, o "Tentar de novo"). Qualquer diferença no mesmo
+// horário é remarcação e grava, como o assistente da ficha.
+describe('hasSameAppointment: o pedido idêntico ao agendamento que o lead já tem', () => {
+  // A visita que a Mariana já tem, na quarta 30/09 às 18:00, sem anotação.
+  const atVisita = brt('2026-09-30T18:00');
+  const visita = (extra = {}) => ({
+    leadId: 'L1', type: 'visita', unit: 'Centro', modality: null, professorId: null, soloTraining: false,
+    quantity: null, note: null, ...extra
+  });
+  const pedidoVisita = (extra) => ({ type: 'visita', at: atVisita, schedule: visita(extra) });
+  // A aula que o Pedro já tem, na sexta 02/10 às 19:00: pilates com a Carla, 2 aulas.
+  const atAula = brt('2026-10-02T19:00');
+  const aula = (extra = {}) => ({
+    leadId: 'L2', type: 'aula_experimental', unit: null, modality: 'Pilates', professorId: 'p1', soloTraining: false,
+    quantity: 2, note: null, ...extra
+  });
+  const pedidoAula = (extra) => ({ type: 'aula_experimental', at: atAula, schedule: aula(extra) });
+  const PEDRO_SOZINHO = { ...PEDRO, appointmentProfessorId: null, appointmentProfessorName: null, appointmentSoloTraining: true };
 
-  it('mesmo tipo, mesmo dia e mesmo horário', () => {
-    expect(hasSameAppointment(MARIANA, { type: 'visita', at })).toBe(true);
+  it('visita idêntica é o mesmo agendamento', () => {
+    expect(hasSameAppointment(MARIANA, pedidoVisita())).toBe(true);
   });
 
-  it('outro horário, outro tipo ou agendamento cancelado não é o mesmo', () => {
-    expect(hasSameAppointment(MARIANA, { type: 'visita', at: brt('2026-09-30T18:30') })).toBe(false);
-    expect(hasSameAppointment(MARIANA, { type: 'aula_experimental', at })).toBe(false);
-    expect(hasSameAppointment({ ...MARIANA, appointmentOutcome: 'cancelled' }, { type: 'visita', at })).toBe(false);
+  it('aula idêntica é o mesmo agendamento, com professor e com "Treina sozinho"', () => {
+    expect(hasSameAppointment(PEDRO, pedidoAula())).toBe(true);
+    expect(hasSameAppointment(PEDRO_SOZINHO, pedidoAula({ professorId: null, soloTraining: true }))).toBe(true);
+  });
+
+  it('academia sem unidade: a visita sem unidade, repetida, é a mesma', () => {
+    expect(hasSameAppointment({ ...MARIANA, appointmentUnit: null }, pedidoVisita({ unit: null }))).toBe(true);
+  });
+
+  it('a mesma anotação é a mesma, escrita ou em branco', () => {
+    const comNota = { ...MARIANA, nextFollowUpNote: 'Vem depois do trabalho.' };
+    expect(hasSameAppointment(comNota, pedidoVisita({ note: 'Vem depois do trabalho.' }))).toBe(true);
+    expect(hasSameAppointment({ ...MARIANA, nextFollowUpNote: null }, pedidoVisita({ note: null }))).toBe(true);
+  });
+
+  it('mesmo horário com outra unidade é remarcação, e não o mesmo agendamento', () => {
+    expect(hasSameAppointment(MARIANA, pedidoVisita({ unit: 'Zona Sul' }))).toBe(false);
+    expect(hasSameAppointment({ ...MARIANA, appointmentUnit: null }, pedidoVisita({ unit: 'Centro' }))).toBe(false);
+  });
+
+  it('mesma visita com outra anotação, ou com a anotação apagada, é remarcação', () => {
+    const comNota = { ...MARIANA, nextFollowUpNote: 'Vem depois do trabalho.' };
+    expect(hasSameAppointment(comNota, pedidoVisita({ note: 'Vem de manhã.' }))).toBe(false);
+    expect(hasSameAppointment(comNota, pedidoVisita({ note: null }))).toBe(false);
+    expect(hasSameAppointment(MARIANA, pedidoVisita({ note: 'Vem depois do trabalho.' }))).toBe(false);
+  });
+
+  it.each([
+    ['outro professor', { professorId: 'p2' }],
+    ['"Treina sozinho" no lugar do professor', { professorId: null, soloTraining: true }],
+    ['outra modalidade', { modality: 'Musculação' }],
+    ['outra quantidade de aulas', { quantity: 3 }],
+    ['outra anotação', { note: 'Traz tênis.' }]
+  ])('aula no mesmo horário com %s é remarcação', (_, extra) => {
+    expect(hasSameAppointment(PEDRO, pedidoAula(extra))).toBe(false);
+  });
+
+  it('quem treinava sozinho e agora tem professor é remarcação', () => {
+    expect(hasSameAppointment(PEDRO_SOZINHO, pedidoAula())).toBe(false);
+  });
+
+  // Aula de antes do "Treina sozinho": sem professor e sem a marca. Pedir a
+  // marca no mesmo horário muda o agendamento, mesmo com o professor em null
+  // dos dois lados.
+  it('aula antiga, sem professor e sem a marca, que agora pede "Treina sozinho" é remarcação', () => {
+    const antiga = { ...PEDRO_SOZINHO, appointmentSoloTraining: false };
+    expect(hasSameAppointment(antiga, pedidoAula({ professorId: null, soloTraining: true }))).toBe(false);
+  });
+
+  it('outro horário, outro tipo, agendamento cancelado ou lead sem agendamento não é o mesmo', () => {
+    expect(hasSameAppointment(MARIANA, { ...pedidoVisita(), at: brt('2026-09-30T18:30') })).toBe(false);
+    expect(hasSameAppointment(MARIANA, { ...pedidoAula(), at: atVisita })).toBe(false);
+    expect(hasSameAppointment({ ...MARIANA, appointmentOutcome: 'cancelled' }, pedidoVisita())).toBe(false);
+    expect(hasSameAppointment({ id: 'L9', name: 'Sem agenda' }, pedidoVisita())).toBe(false);
+  });
+
+  // Academia sem unidade: a visita pedida vai com unit null, e a aula também
+  // não tem unidade. Só o tipo separa os dois no mesmo horário.
+  it('visita sem unidade no horário de uma aula é outro tipo, e não o mesmo agendamento', () => {
+    expect(hasSameAppointment(PEDRO, { ...pedidoVisita({ unit: null }), at: atAula })).toBe(false);
   });
 });
 
@@ -704,6 +917,13 @@ describe('buildScheduleWrites: o que o assistente grava, numa gravação só', (
       consultantName: 'Johnny', actorId: 'u-johnny', actorAuthUid: 'auth-johnny',
       leadConsultantId: 'u-ana', leadConsultantAuthUid: 'auth-ana'
     });
+  });
+
+  // Os campos de consultor do registro são os do dono do lead, como no
+  // assistente: com o gestor agendando, o consultor do registro continua a Ana.
+  it('o registro novo leva os campos de consultor do dono do lead, e não os de quem agendou', () => {
+    const { record } = gravar({ actor: JOHNNY, schedule: VISITA, at: atVisita, newRecordId: 'rec-novo' });
+    expect(record.create).toMatchObject({ consultantId: 'u-ana', consultantAuthUid: 'auth-ana', consultantName: 'Ana Souza' });
   });
 
   it('sem canal, zapChannelName vai null; agendar não muda a etapa; nada vai como undefined', () => {

@@ -15,7 +15,9 @@
 // pronto para a tela. Nada daqui vai para o log.
 //
 // Spec: docs/superpowers/specs/2026-09-29-agendamento-pelo-stronizap-design.md
-import { ZAP_LEAD_MESSAGES, refusal, invalidData, nationalDigits, emailFromActor, teamRole } from './_zapLead.js';
+import {
+  ZAP_LEAD_MESSAGES, NAME_MAX, CHANNEL_MAX, NOTE_MAX, refusal, invalidData, nationalDigits, emailFromActor, teamRole
+} from './_zapLead.js';
 import { zapMatchKey } from './_zapPhone.js';
 import { appointmentOutcomeOf, isAppointmentCancelled } from './_zapCard.js';
 import {
@@ -24,14 +26,12 @@ import {
 import { getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityFields, ZAP_VIA } from '../src/lib/leads.js';
 import { normalizeAppointmentType } from '../src/lib/dates.js';
 import { normalizeTrialClassOptions, normalizeMetaWeekdays } from '../src/lib/leadStatus.js';
-import { professorsForModality, professorNameById, SOLO_TRAINING_LABEL } from '../src/lib/professores.js';
+import { professorNameById, SOLO_TRAINING_LABEL } from '../src/lib/professores.js';
 import { AULA_STATUS, APPOINTMENT_RECORD_TYPES, aulaRecordFields, isAulaRecord } from '../src/lib/aulas.js';
 import { buildSchedulePatch } from '../src/lib/schedulePatch.js';
 import { contactOf } from '../src/lib/guardian.js';
 
 const MINUTE_MS = 60000;
-// Anotação do agendamento: o mesmo tamanho da observação do cadastro.
-const NOTE_MAX = 1000;
 // Dias sugeridos e até onde procurar por eles (wzDayOptions do ScheduleWizard).
 const DAYS_SHOWN = 5;
 const DAYS_SEARCHED = 90;
@@ -128,6 +128,8 @@ export function scheduleCatalogView({ units = [], modalities = [], professors = 
 export function suggestedDays({ now = new Date(), metaWeekdays = null } = {}) {
   const today = diaDeBrasilia(now);
   const startOffset = horaInteiraDeBrasilia(now) >= EVENING_HOUR ? 1 : 0;
+  // Lista vazia vale todos os dias, como no wzDayOptions, mas a rota nunca chega
+  // aqui com lista vazia: o scheduleCatalogView a troca por segunda a sexta.
   const onMeta = (dia) =>
     !Array.isArray(metaWeekdays) || metaWeekdays.length === 0 || metaWeekdays.includes(diaDaSemanaDoDia(dia));
   const days = [];
@@ -145,7 +147,8 @@ export function suggestedDays({ now = new Date(), metaWeekdays = null } = {}) {
 
 // Agendar hoje conta na Meta diária de quem agenda: consultor, em dia da meta
 // da academia, no calendário de Brasília. Gestor fica fora da régua, como no
-// Stronilead.
+// Stronilead. Lista vazia de dias conta como nenhum dia, mas a rota nunca
+// chega aqui com lista vazia: o scheduleCatalogView a troca por segunda a sexta.
 export function countsForMeta({ member, metaWeekdays, now = new Date() }) {
   return teamRole(member) === 'consultor' && (metaWeekdays || []).includes(diaDaSemanaDoDia(diaDeBrasilia(now)));
 }
@@ -160,7 +163,10 @@ const WARD_OF = Object.freeze({
   Tia: ['Sobrinho', 'Sobrinha'], Tio: ['Sobrinho', 'Sobrinha']
 });
 export function wardRelationship(lead) {
-  const pair = WARD_OF[lead?.guardian?.relationship];
+  // hasOwn, porque WARD_OF é objeto comum: "constructor" ou "toString"
+  // achariam uma função herdada, e o parentesco sairia undefined em vez de null.
+  const relationship = lead?.guardian?.relationship;
+  const pair = Object.hasOwn(WARD_OF, relationship) ? WARD_OF[relationship] : null;
   if (!pair) return null;
   if (lead.sexo === 'Masculino') return pair[0];
   if (lead.sexo === 'Feminino') return pair[1];
@@ -246,16 +252,14 @@ export function buildScheduleOptions({ member, catalogs, owner = null, wards = [
 // Pedido de agendamento e conferências (schedule e appointment-status)
 // ---------------------------------------------------------------------------
 
-// Os mesmos tetos do cadastro (api/_zapLead.js).
-const NAME_MAX = 120;
-const CHANNEL_MAX = 80;
-
 export const SCHEDULE_TYPES = Object.freeze(['visita', 'aula_experimental']);
 
 // Id de documento do Firestore: texto não vazio, sem barra, que não seja "."
-// nem "..".
+// nem "..", e que não comece e termine com "__" (o padrão __x__, que o
+// Firestore reserva e recusa com erro na leitura).
 export const isDocId = (v) =>
-  typeof v === 'string' && v.length > 0 && v.length <= 128 && !v.includes('/') && v !== '.' && v !== '..';
+  typeof v === 'string' && v.length > 0 && v.length <= 128 && !v.includes('/') && v !== '.' && v !== '..'
+  && !/^__.*__$/.test(v);
 
 // Lê o corpo do schedule. Só o formato: o que depende da academia (equipe,
 // catálogos, o lead) é conferido depois. Devolve { value } ou { refusal }.
@@ -331,9 +335,12 @@ export function readStatusBody(body) {
 
 // Unidade, modalidade, professor e quantidade conferidos contra o que existe
 // agora no Stronilead. Academia sem unidade não tem o passo da unidade; com
-// unidade, ele é obrigatório. O professor precisa estar ativo e dar a
-// modalidade (professorsForModality, a regra do assistente), ou a aula é de
-// quem treina sozinho. `catalogs` são os documentos que a rota leu.
+// unidade, ele é obrigatório. O professor precisa estar na lista do balão
+// (ativo e com nome) e dar a modalidade, que é a regra do assistente, ou a
+// aula é de quem treina sozinho. `catalogs` são os documentos que a rota leu, e
+// a conferência usa as mesmas listas normalizadas que o balão recebe
+// (scheduleCatalogView): só passa o que o balão ofereceu, e cadastro malformado
+// de professor é recusa, e não erro da ação.
 export function checkScheduleCatalog(schedule, catalogs) {
   const view = scheduleCatalogView(catalogs);
   const gone = (field) => refusal(422, 'catalogo_mudou', ZAP_SCHEDULE_MESSAGES.gone[field], { field });
@@ -344,11 +351,12 @@ export function checkScheduleCatalog(schedule, catalogs) {
     return view.units.some((u) => u.name === schedule.unit) ? null : gone('unit');
   }
   if (!schedule.modality) return pick('modality');
-  if (!view.modalities.some((m) => m.name === schedule.modality)) return gone('modality');
+  const modality = view.modalities.find((m) => m.name === schedule.modality);
+  if (!modality) return gone('modality');
   if (!schedule.soloTraining) {
     if (!schedule.professorId) return pick('professorId');
-    const teachers = professorsForModality(catalogs?.professors, catalogs?.modalities, schedule.modality);
-    if (!teachers.some((p) => p.id === schedule.professorId && hasText(p.nome))) return gone('professorId');
+    const teaches = view.professors.some((p) => p.id === schedule.professorId && p.modalityIds.includes(modality.id));
+    if (!teaches) return gone('professorId');
   }
   if (schedule.quantity == null) return pick('quantity');
   return view.trialClassOptions.includes(schedule.quantity) ? null : gone('quantity');
@@ -367,10 +375,20 @@ export function leadBelongsToNumber(lead, matchKey, now = new Date()) {
   return lead.guardianZapMatchKey === matchKey && contactOf(lead, now).viaGuardian;
 }
 
-// O lead já tem este agendamento: mesmo tipo, mesmo dia e mesmo horário.
-export function hasSameAppointment(lead, { type, at }) {
+// O mesmo agendamento já existe: mesmo tipo, mesmo instante, as mesmas escolhas
+// e a mesma anotação. É o pedido repetido (dois cliques, duas pessoas, o "Tentar
+// de novo" depois de uma resposta perdida). Mudou a unidade, o professor, a
+// modalidade, a quantidade ou a anotação no mesmo horário: é remarcação, e grava,
+// como o assistente da ficha.
+export function hasSameAppointment(lead, { type, at, schedule }) {
   const current = appointmentDetailOf(lead);
-  return Boolean(current) && current.type === type && current.at === at.toISOString();
+  if (!current || current.type !== type || current.at !== at.toISOString()) return false;
+  if ((lead.nextFollowUpNote || null) !== (schedule.note || null)) return false;
+  if (type === 'visita') return current.unit === (schedule.unit || null);
+  return current.modality === (schedule.modality || null)
+    && (lead.appointmentProfessorId || null) === (schedule.professorId || null)
+    && current.soloTraining === Boolean(schedule.soloTraining)
+    && current.quantity === (schedule.quantity || null);
 }
 
 // ---------------------------------------------------------------------------
