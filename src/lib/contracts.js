@@ -640,9 +640,10 @@ export const reconstructedPauseOf = (contract) => {
   return { pausedAt, resumedAt, fromImport: isImportPause(contract, pausedAt, HALF_DAY_MS) };
 };
 
-// Pausas já encerradas, para o Operacional saber em que meses o cliente
-// esteve trancado. Contrato de antes do histórico começa com UM item refeito.
-const closedPausesOf = (contract) => {
+// Pausas já encerradas, para o Operacional e a aba Contratos saberem quando o
+// cliente esteve trancado. Contrato de antes do histórico começa com UM item
+// refeito.
+export const closedPausesOf = (contract) => {
   if (Array.isArray(contract?.pauseHistory) && contract.pauseHistory.length) return contract.pauseHistory;
   const r = reconstructedPauseOf(contract);
   return r
