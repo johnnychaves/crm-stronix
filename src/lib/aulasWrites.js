@@ -12,8 +12,10 @@ const aulaDoc = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', AULAS_
 // caso de AULA o caller grava em lead.currentAulaId.
 export async function upsertScheduledAppointment({ db, lead, type = APPOINTMENT_RECORD_TYPES.AULA, fields }) {
   const isVisita = type === APPOINTMENT_RECORD_TYPES.VISITA;
+  // Visita sem `unit` no pedido (o Remarcar da Meta Diária, que não escolhe
+  // unidade) só troca a data e mantém a unidade do registro em aberto.
   const patch = isVisita
-    ? { unit: fields.unit || null, scheduledFor: fields.scheduledFor || null }
+    ? { ...(fields.unit !== undefined && { unit: fields.unit || null }), scheduledFor: fields.scheduledFor || null }
     : {
         professorId: fields.professorId || null,
         professorName: fields.professorName || null,
@@ -47,6 +49,31 @@ export async function upsertScheduledAppointment({ db, lead, type = APPOINTMENT_
 // Compatibilidade: os chamadores de aula seguem com a assinatura antiga.
 export const upsertScheduledAula = ({ db, lead, fields }) =>
   upsertScheduledAppointment({ db, lead, type: APPOINTMENT_RECORD_TYPES.AULA, fields });
+
+// Fecha o registro em aberto de um tipo (a visita agendada do lead, ou a aula
+// do currentAulaId) com o status dado e a hora do servidor. É o que o Remarcar
+// da Meta Diária faz com o agendamento que não vai acontecer
+// (rescheduleRecordPlan, em aulas.js). Registro já resolvido fica como está.
+// Mesma guarda do applyOutcomeToAula: registro aberto com data diferente da do
+// agendamento do lead pode ser histórico antigo, e não é fechado.
+// Devolve o id fechado, ou null.
+export async function closeOpenAppointment({ db, lead, type, status }) {
+  const openId = type === APPOINTMENT_RECORD_TYPES.VISITA
+    ? await findOpenVisitaId(db, lead.id)
+    : await findOpenAulaId(db, lead.currentAulaId);
+  if (!openId) return null;
+
+  const snap = await getDoc(aulaDoc(db, openId));
+  const registroMs = millisOf(snap.exists() ? snap.data().scheduledFor : null);
+  const compromissoMs = millisOf(lead.appointmentScheduledFor);
+  if (registroMs !== null && compromissoMs !== null && registroMs !== compromissoMs) {
+    console.warn('closeOpenAppointment: registro aberto de outra data; não fechado', { leadId: lead.id, aulaId: openId });
+    return null;
+  }
+
+  await updateDoc(aulaDoc(db, openId), { status, outcomeAt: serverTimestamp() });
+  return openId;
+}
 
 // Aula: atalho barato pelo ponteiro que já existia no lead.
 async function findOpenAulaId(db, currentId) {

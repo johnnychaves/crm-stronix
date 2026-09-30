@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, pickMirrorAppointment, aulaRecordFields } from '../aulas.js';
+import { AULA_STATUS, isAulaRecord, outcomeToAulaStatus, pickConvertingAula, pickMirrorAppointment, aulaRecordFields, rescheduleRecordPlan } from '../aulas.js';
 
 describe('outcomeToAulaStatus', () => {
   it('mapeia os desfechos que resolvem a aula', () => {
@@ -192,5 +192,47 @@ describe('pickMirrorAppointment', () => {
     ], NOW);
     expect(out.id).toBe('ok');
     expect(pickMirrorAppointment([{ id: 'x', status: 'agendada', scheduledFor: null }], NOW)).toBeNull();
+  });
+});
+
+// Remarcar da Meta Diária: o registro de stronix_aulas acompanha o agendamento
+// do lead. Antes, a visita trocava de data só no lead, e o Dashboard CRM
+// contava a visita na data velha e perdia o comparecimento.
+describe('rescheduleRecordPlan', () => {
+  it('visita remarcada como visita: nada fecha, e o registro aberto muda de data', () => {
+    expect(rescheduleRecordPlan({ previousType: 'visita', finalType: 'visita', afterNoShow: false }))
+      .toEqual({ close: null, upsertVisita: true });
+  });
+
+  it('visita depois do "Não veio": a visita que faltou fecha como falta, e a nova data abre outro registro', () => {
+    expect(rescheduleRecordPlan({ previousType: 'visita', finalType: 'visita', afterNoShow: true }))
+      .toEqual({ close: { type: 'visita', status: 'no_show' }, upsertVisita: true });
+  });
+
+  it('visita trocada por aula: a visita fecha como cancelada, e a aula fica com o upsert dela', () => {
+    expect(rescheduleRecordPlan({ previousType: 'visita', finalType: 'aula_experimental', afterNoShow: false }))
+      .toEqual({ close: { type: 'visita', status: 'cancelled' }, upsertVisita: false });
+  });
+
+  it('aula trocada por visita: a aula fecha como cancelada, e a visita abre', () => {
+    expect(rescheduleRecordPlan({ previousType: 'aula_experimental', finalType: 'visita', afterNoShow: false }))
+      .toEqual({ close: { type: 'aula', status: 'cancelled' }, upsertVisita: true });
+  });
+
+  it('aula remarcada como aula: nada fecha, porque o upsert da aula já move o registro', () => {
+    expect(rescheduleRecordPlan({ previousType: 'aula_experimental', finalType: 'aula_experimental', afterNoShow: false }))
+      .toEqual({ close: null, upsertVisita: false });
+  });
+
+  it('aula depois do "Não veio": fecha como falta, para o caso de o desfecho não ter chegado ao registro', () => {
+    expect(rescheduleRecordPlan({ previousType: 'aula_experimental', finalType: 'aula_experimental', afterNoShow: true }))
+      .toEqual({ close: { type: 'aula', status: 'no_show' }, upsertVisita: false });
+  });
+
+  it('sem agendamento anterior conhecido: não fecha nada e só abre o do tipo novo', () => {
+    expect(rescheduleRecordPlan({ previousType: null, finalType: 'visita', afterNoShow: false }))
+      .toEqual({ close: null, upsertVisita: true });
+    expect(rescheduleRecordPlan({ previousType: undefined, finalType: 'aula_experimental', afterNoShow: true }))
+      .toEqual({ close: null, upsertVisita: false });
   });
 });
