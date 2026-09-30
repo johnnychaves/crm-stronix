@@ -24,6 +24,33 @@ export function outcomeToAulaStatus(outcome) {
   return null;
 }
 
+// Tipo do agendamento do lead ('visita' | 'aula_experimental') -> tipo do
+// registro em stronix_aulas. Outro valor não tem registro.
+const recordTypeOf = (appointmentType) => {
+  if (appointmentType === 'visita') return APPOINTMENT_RECORD_TYPES.VISITA;
+  if (appointmentType === 'aula_experimental') return APPOINTMENT_RECORD_TYPES.AULA;
+  return null;
+};
+
+// O que o Remarcar da Meta Diária faz em stronix_aulas para o registro seguir
+// o agendamento do lead, como o assistente da ficha já faz. Até 2026-09-29 só
+// a aula acompanhava, e a visita remarcada ficava com a data velha no
+// registro: o Dashboard CRM a contava no dia antigo e perdia o comparecimento.
+//   close: o registro em aberto do tipo anterior a fechar, ou null.
+//     - depois do "Não veio", fecha como falta: o desfecho da visita não é
+//       gravado no registro, e mover o registro apagaria a falta do painel;
+//     - na troca de tipo, fecha como cancelado: aquele agendamento não
+//       acontece mais.
+//   upsertVisita: a visita do tipo novo move o registro aberto ou cria um.
+//     A aula continua com o upsertScheduledAula de sempre.
+export function rescheduleRecordPlan({ previousType, finalType, afterNoShow }) {
+  const previous = recordTypeOf(previousType);
+  let close = null;
+  if (previous && afterNoShow) close = { type: previous, status: AULA_STATUS.NO_SHOW };
+  else if (previous && previousType !== finalType) close = { type: previous, status: AULA_STATUS.CANCELLED };
+  return { close, upsertVisita: finalType === 'visita' };
+}
+
 // A aula que leva o crédito da conversão: a atendida de maior scheduledFor.
 // null se nenhuma foi atendida.
 export function pickConvertingAula(aulas) {

@@ -131,3 +131,53 @@ export function SilentErrorBoundary({ children }) {
     </Sentry.ErrorBoundary>
   );
 }
+
+// Aviso que toma o lugar de uma tela inteira fora do app logado. Ele não pode
+// depender de nada do app: se o que quebrou foi a moldura da tela (AuthLayout),
+// um contexto ou o roteador, um aviso que use qualquer um deles quebraria junto
+// e a página ficaria em branco do mesmo jeito. Por isso não tem hook, logotipo,
+// toast nem dado, só tokens semânticos, o Button e um ícone. O botão recarrega
+// a página, porque quem chegou aqui ainda não tem sessão nem rascunho a perder.
+function ScreenErrorFallback({ eventId }) {
+  return (
+    <main className="grid min-h-screen place-items-center bg-background px-6 py-16 text-foreground">
+      <div className="flex w-full max-w-[420px] flex-col items-center text-center">
+        <span className="mb-4 inline-grid size-12 place-items-center rounded-2xl bg-destructive/10 text-destructive">
+          <AlertTriangle className="size-6" />
+        </span>
+        <div role="alert">
+          <h1 className="font-display text-[20px] font-semibold tracking-tight">
+            Não deu para abrir esta tela.
+          </h1>
+          <p className="mt-2 text-[13.5px] leading-relaxed text-muted-foreground">
+            Recarregue a página para tentar de novo. Se o erro continuar, fale com o suporte e passe o código abaixo.
+          </p>
+        </div>
+        <Button type="button" onClick={() => window.location.reload()} className="mt-6 h-11 rounded-xl px-5 text-[13.5px] font-semibold">
+          Recarregar
+        </Button>
+        {eventId && (
+          <p className="mt-5 text-[11.5px] text-muted-foreground">
+            Código do erro: <span className="font-mono">{eventId}</span>
+          </p>
+        )}
+      </div>
+    </main>
+  );
+}
+
+// Proteção de uma tela inteira fora do app logado: o login, o "Esqueci a
+// senha", o convite e a indicação pública, que o App.jsx desenha antes de
+// qualquer outra proteção. Um erro de render numa delas deixava a página toda
+// branca para quem tentava entrar. O erro chega ao Sentry como nos outros: o
+// Sentry.ErrorBoundary captura e o gancho do createRoot, no main.jsx, também. O
+// aviso é uma função fixa pelo mesmo motivo do modal (o Sentry o monta como
+// componente). Telas que se revezam no mesmo lugar do App.jsx levam key própria,
+// senão o aviso de uma ficaria preso quando a tela trocasse.
+export function ScreenErrorBoundary({ children }) {
+  return (
+    <Sentry.ErrorBoundary fallback={ScreenErrorFallback}>
+      {children}
+    </Sentry.ErrorBoundary>
+  );
+}

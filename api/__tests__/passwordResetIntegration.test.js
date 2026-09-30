@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import util from 'node:util';
 import querystring from 'node:querystring';
 import handler from '../tenant-resolve.js';
+import adminUsers from '../admin-users.js';
 import { CONFIRM_MIN_MS } from '../_passwordResetRoute.js';
 import {
   RESET_ACTION_REQUEST, RESET_ACTION_CONFIRM, RESET_CODES_PER_DAY,
@@ -12,21 +13,29 @@ import {
 // o fluxo, o repositório, a impressão do código e o limitador são os de verdade.
 // Só o Firebase Admin (Auth e Firestore, com transação), o waitUntil da Vercel e
 // a rede (o Resend e o SDK do Sentry) são falsos. Os outros testes olham cada
-// peça com as vizinhas falsas; este prova que elas se encaixam.
+// peça com as vizinhas falsas; este prova que elas se encaixam. O e-mail de
+// login trocado pelo gestor passa pela ação set-email de verdade, do
+// api/admin-users.js, com os mesmos falsos.
 
-const h = vi.hoisted(() => ({ docs: new Map(), contas: new Map(), senhas: [], revogadas: [], adiados: [], enviados: [] }));
+const h = vi.hoisted(() => ({
+  docs: new Map(), contas: new Map(), senhas: [], emails: [], revogadas: [], adiados: [], enviados: [], sessao: null,
+}));
 
 vi.mock('../_firebaseAdmin.js', () => {
   const copia = (v) => (v === undefined ? undefined : structuredClone(v));
   const foto = (caminho) => {
     const dados = h.docs.get(caminho);
-    return { exists: dados !== undefined, id: caminho.split('/').at(-1), data: () => copia(dados) };
+    return { exists: dados !== undefined, id: caminho.split('/').at(-1), ref: doc(caminho), data: () => copia(dados) };
   };
   const doc = (caminho) => ({
     caminho,
     id: caminho.split('/').at(-1),
     collection: (nome) => colecao(`${caminho}/${nome}`),
     get: async () => foto(caminho),
+    update: async (dados) => {
+      if (!h.docs.has(caminho)) throw new Error(`NOT_FOUND: ${caminho}`);
+      h.docs.set(caminho, { ...h.docs.get(caminho), ...copia(dados) });
+    },
   });
   const colecao = (caminho, filtros = [], limite = Infinity) => ({
     doc: (id) => doc(`${caminho}/${id}`),
@@ -72,26 +81,54 @@ vi.mock('../_firebaseAdmin.js', () => {
       return saida;
     },
   };
-  // Como o Firebase: trocar a senha e revogar as sessões adiantam a marca das sessões.
+  // Como o Firebase: trocar a senha e revogar as sessões adiantam a marca das
+  // sessões. Trocar o e-mail não adianta aqui, de propósito: o teste do e-mail
+  // trocado prova que quem mata o código pendente é a revogação da ação
+  // set-email, e não um efeito do Firebase que pode mudar.
   const adiantaMarca = (uid) => {
     for (const c of h.contas.values()) if (c.uid === uid) c.tokensValidAfterTime = new Date(Date.now() + 1000).toUTCString();
   };
+  const semConta = () => Object.assign(new Error('There is no user record'), { code: 'auth/user-not-found' });
+  const contaPorUid = (uid) => [...h.contas.values()].find((c) => c.uid === uid);
   const adminAuth = {
+    getUser: async (uid) => {
+      const c = contaPorUid(uid);
+      if (!c) throw semConta();
+      return copia(c);
+    },
     getUserByEmail: async (email) => {
       const c = h.contas.get(String(email).toLowerCase());
-      if (!c) throw Object.assign(new Error('There is no user record'), { code: 'auth/user-not-found' });
+      if (!c) throw semConta();
       return copia(c);
     },
     updateUser: async (uid, patch) => {
-      h.senhas.push({ uid, ...patch });
-      adiantaMarca(uid);
+      const c = contaPorUid(uid);
+      if (!c) throw semConta();
+      if ('email' in patch) {
+        // As contas moram pelo e-mail, como o getUserByEmail as acha.
+        h.contas.delete(c.email);
+        c.email = patch.email;
+        if ('emailVerified' in patch) c.emailVerified = patch.emailVerified;
+        h.contas.set(c.email, c);
+        h.emails.push({ uid, email: patch.email, emailVerified: patch.emailVerified });
+      }
+      if ('password' in patch) {
+        h.senhas.push({ uid, password: patch.password });
+        adiantaMarca(uid);
+      }
     },
     revokeRefreshTokens: async (uid) => {
       h.revogadas.push(uid);
       adiantaMarca(uid);
     },
   };
-  return { adminDb, adminAuth, admin: { firestore: { FieldValue: { serverTimestamp: () => 'agora' } } } };
+  return {
+    adminDb,
+    adminAuth,
+    admin: { firestore: { FieldValue: { serverTimestamp: () => 'agora' } } },
+    // A sessão de quem chama o api/admin-users.js. O tenant-resolve não usa.
+    verifyRequest: async () => copia(h.sessao),
+  };
 });
 // Como o de verdade, que só aceita promessa. Guarda o trabalho de depois da resposta.
 vi.mock('@vercel/functions', () => ({
@@ -129,9 +166,11 @@ beforeEach(() => {
   h.docs.clear();
   h.contas.clear();
   h.senhas = [];
+  h.emails = [];
   h.revogadas = [];
   h.adiados = [];
   h.enviados = [];
+  h.sessao = null;
   // O Resend falso. Qualquer outro endereço é rede de verdade, e o teste falha.
   vi.stubGlobal('fetch', async (url, init) => {
     if (url !== 'https://api.resend.com/emails') throw new Error(`fetch inesperado: ${url}`);
@@ -332,6 +371,73 @@ describe('limites', () => {
     await pedirDeOutroIp(`pessoa${outras + 1}@academia.com`);
     expect(h.enviados).toHaveLength(TETO);
     expect(console.warn).toHaveBeenCalledWith('esqueci-a-senha: pedido sem envio', expect.objectContaining({ motivo: 'mail_cap' }));
+  });
+});
+
+// O gestor corrige o e-mail de login em Equipe & acessos. A tela chama a ação
+// set-email do api/admin-users.js, que troca o e-mail no Auth e no cadastro e
+// revoga as sessões. Aqui ela roda de verdade, com os mesmos falsos.
+describe('e-mail de login trocado pelo gestor', () => {
+  const ANTIGO = 'pessoa0@academia.com';
+  const NOVO = 'pessoa0.nova@academia.com';
+
+  function semearGestor() {
+    h.contas.set('gestor@academia.com', {
+      uid: 'gestor', email: 'gestor@academia.com', displayName: 'Gestor', disabled: false,
+      customClaims: { tenantId: ACADEMIA },
+      metadata: { lastSignInTime: 'Sun, 28 Sep 2026 10:00:00 GMT' },
+      tokensValidAfterTime: 'Sun, 28 Sep 2026 09:00:00 GMT',
+    });
+    h.docs.set(`${EQUIPE}/gestor`, { authUid: 'gestor', email: 'gestor@academia.com', name: 'Gestor', role: 'admin' });
+  }
+
+  async function trocarEmail(email) {
+    h.sessao = { uid: 'gestor', tenantId: ACADEMIA, superAdmin: false, impersonatedBy: null };
+    const res = resposta();
+    await adminUsers(post({ action: 'set-email', targetAuthUid: 'u0', email }, IP, JSON_HEADERS), res);
+    return res;
+  }
+
+  it('o pedido com o e-mail novo manda o código para o e-mail novo, e o pedido com o antigo não manda nada', async () => {
+    semear(1);
+    semearGestor();
+    const troca = await trocarEmail(NOVO);
+    expect([troca.statusCode, troca.body]).toEqual([200, { ok: true, changed: true }]);
+    expect(h.emails).toEqual([{ uid: 'u0', email: NOVO, emailVerified: false }]);
+    expect(h.docs.get(`${EQUIPE}/u0`).email).toBe(NOVO);
+
+    expect((await pedir(NOVO)).statusCode).toBe(200);
+    expect(h.enviados).toHaveLength(1);
+    expect(h.enviados[0].to).toEqual([NOVO]);
+
+    expect((await pedir(ANTIGO)).statusCode).toBe(200);
+    expect(h.enviados).toHaveLength(1);
+    expect(linhas()).toContain("motivo: 'unknown_email'");
+
+    // O código do e-mail novo troca a senha.
+    const senha = await trocar({ email: NOVO, code: codigoDo(h.enviados[0]) });
+    expect([senha.statusCode, senha.body]).toEqual([200, { ok: true }]);
+    expect(h.senhas).toEqual([{ uid: 'u0', password: SENHA }]);
+  });
+
+  it('o código pedido antes da troca é recusado, com o e-mail novo e com o antigo', async () => {
+    semear(1);
+    semearGestor();
+    await pedir(ANTIGO);
+    expect(h.enviados[0].to).toEqual([ANTIGO]);
+    const codigo = codigoDo(h.enviados[0]);
+
+    expect((await trocarEmail(NOVO)).statusCode).toBe(200);
+    expect(h.revogadas).toEqual(['u0']);
+
+    const comNovo = await trocar({ email: NOVO, code: codigo });
+    expect([comNovo.statusCode, comNovo.body]).toEqual([400, { error: CODE_REFUSED_MESSAGE }]);
+    const comAntigo = await trocar({ email: ANTIGO, code: codigo });
+    expect([comAntigo.statusCode, comAntigo.body]).toEqual([400, { error: CODE_REFUSED_MESSAGE }]);
+    expect(h.senhas).toEqual([]);
+    // A revogação mudou a marca das sessões, e o código morreu com ela.
+    expect(linhas()).toContain("motivo: 'account_changed'");
+    expect(h.docs.get('_password_reset/u0').usedAtMs).toEqual(expect.any(Number));
   });
 });
 
