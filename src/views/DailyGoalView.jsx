@@ -4,7 +4,7 @@ import confetti from 'canvas-confetti';
 import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isAdminUser, outcomeAppliesToAula } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isAdminUser, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
@@ -13,7 +13,9 @@ import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
 import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
+import { OutcomePopover } from '../components/dailygoal/OutcomePopover.jsx';
 import { writeAppointmentOutcome, correctAppointmentOutcome } from '../lib/appointmentOutcome.js';
+import { planPromotion, correctableOutcome } from '../lib/outcomeCorrection.js';
 import { applyOutcomeToAula, upsertScheduledAula } from '../lib/aulasWrites.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
 import { expiredLabel, expiredSortKey } from '../lib/expiredGoal.js';
@@ -208,7 +210,7 @@ function FilterChip({ active, label, count, color, onClick }) {
   );
 }
 
-function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOutcome }) {
+function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOutcome, onReschedule }) {
   if (!task) return null;
   const m = DG_CATEGORY_META[slug] || DG_CATEGORY_META[DAILY_GOAL_CATEGORIES.VISITA_HOJE];
   const t = COLOR_TONES[m.color];
@@ -251,8 +253,15 @@ function NextUp({ task, slug, countdownLabel, appointmentLabel, onWhatsapp, onOu
         <Btn kind="soft" icon={<WhatsappGlyph size={13} />} onClick={() => onWhatsapp && onWhatsapp(task)}>WhatsApp</Btn>
         {/* NextUp deriva de pendingBySlug (categoria sempre pendente). O campo
             appointmentOutcome no doc pode estar stale de um agendamento anterior,
-            por isso não condicionamos o botão a ele. */}
-        <Btn kind="success" icon={<CheckCircle size={13} />} onClick={() => onOutcome && onOutcome(task, 'attended', slug)}>Compareceu</Btn>
+            por isso o balão abre sempre sem desfecho. */}
+        <OutcomePopover
+          withMore
+          title={`${typeLabel} de ${task.name || 'lead sem nome'}`}
+          onPick={(id) => {
+            if (id === 'rescheduled') { if (onReschedule) onReschedule(task, slug); }
+            else if (onOutcome) onOutcome(task, id, slug);
+          }}
+        />
       </div>
     </div>
   );
@@ -495,12 +504,14 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
         </div>
         <div className="flex items-center gap-1.5 flex-wrap justify-end">
           {isAppt ? (
-            <>
-              <Btn kind="success" icon={<Check size={13} />} onClick={() => onOutcome && onOutcome(task, 'attended', slug)}>Compareceu</Btn>
-              <Btn kind="secondary" icon={<X size={13} />} onClick={() => onOutcome && onOutcome(task, 'no_show', slug)}>Não veio</Btn>
-              <Btn kind="soft" onClick={() => onReschedule && onReschedule(task, slug)}>Remarcou</Btn>
-              <Btn kind="soft" onClick={() => onOutcome && onOutcome(task, 'cancelled', slug)}>Cancelou</Btn>
-            </>
+            <OutcomePopover
+              withMore
+              title={`${slug === DAILY_GOAL_CATEGORIES.AULA_HOJE ? 'Aula experimental' : 'Visita'} de ${task.name || 'lead sem nome'}`}
+              onPick={(id) => {
+                if (id === 'rescheduled') { if (onReschedule) onReschedule(task, slug); }
+                else if (onOutcome) onOutcome(task, id, slug);
+              }}
+            />
           ) : (
             <Btn kind="primary" icon={<Check size={14} />} onClick={() => onGoalDone && onGoalDone(task, slug, '')}>Concluir</Btn>
           )}
@@ -510,12 +521,16 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
   );
 }
 
-export function DoneCard({ lead, onReschedule }) {
+// `now`, `saving` e `onCorrect` ligam a correção do desfecho: sem onCorrect o
+// card só mostra o texto, como antes. Sem hook, porque o metaLinks.test chama
+// o componente como função.
+export function DoneCard({ lead, now = null, saving = false, onReschedule, onCorrect }) {
   const firstDoneSlug = (lead.categorySlugs || []).find(s => lead.categoryStatus?.[s]);
   const outcomeMeta = lead.appointmentOutcome ? getAppointmentOutcomeMeta(lead.appointmentOutcome) : null;
   const apptSlug = (lead.categorySlugs || []).find(
     s => s === DAILY_GOAL_CATEGORIES.VISITA_HOJE || s === DAILY_GOAL_CATEGORIES.AULA_HOJE
   );
+  const correctable = apptSlug && onCorrect && now ? correctableOutcome(lead, now) : null;
   // relative: base da camada do link esticado. Sem o onClick do container o
   // clique simples empilha uma entrada só no histórico.
   return (
@@ -538,7 +553,19 @@ export function DoneCard({ lead, onReschedule }) {
           </LeadLink>
           {firstDoneSlug && <DgCategoryChip slug={firstDoneSlug} />}
         </div>
-        {outcomeMeta ? (
+        {correctable ? (
+          // relative z-10: por cima da camada do link esticado, igual ao Remarcar.
+          <div className="mt-1">
+            <OutcomePopover
+              size="sm"
+              outcome={correctable}
+              saving={saving}
+              className="relative z-10"
+              title={`Desfecho de ${lead.name || 'lead sem nome'}`}
+              onPick={(to) => onCorrect(lead, apptSlug, to)}
+            />
+          </div>
+        ) : outcomeMeta ? (
           <div className="text-[11.5px] text-slate-500 dark:text-slate-400">{outcomeMeta.icon} {outcomeMeta.label}</div>
         ) : (
           <div className="text-[11.5px] text-slate-500 dark:text-slate-400">Concluído</div>
@@ -1212,33 +1239,20 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   const handleOutcome = async (lead, outcome, categorySlug) => {
     if (!APPOINTMENT_OUTCOMES.includes(outcome)) return;
     const meta = getAppointmentOutcomeMeta(outcome);
-    // Auto-move "Compareceu" em visita/aula → fase Negociação no mesmo funil.
-    // Só dispara se: (a) a etapa Negociação existe pro funil do lead
-    // (a migration garante isso) E (b) o lead ainda não está em Negociação/Venda/Perda.
-    const isAttendedAppt =
-      outcome === 'attended' &&
-      (categorySlug === DAILY_GOAL_CATEGORIES.VISITA_HOJE ||
-       categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE);
-    const negStatus = isAttendedAppt
-      ? (statuses || []).find(s =>
-          s.funnelId === lead.funnelId &&
-          (s.name || '').trim().toLowerCase() === 'negociação'
-        )
-      : null;
-    const shouldPromoteToNegociacao =
-      Boolean(negStatus) &&
-      lead.status !== negStatus.name &&
-      lead.status !== 'Venda' &&
-      lead.status !== 'Perda';
+    // Auto-move "Compareceu" em visita/aula → Negociação no mesmo funil. A
+    // regra e o registro de onde o lead saiu (para a correção poder voltar)
+    // moram em planPromotion (src/lib/outcomeCorrection.js), a mesma da Agenda.
+    const { toStatus: promoteTo, promotedFrom } = planPromotion({ lead, outcome, categorySlug, statuses });
 
     try {
       const leadUpdate = {
         appointmentOutcome: outcome,
         appointmentOutcomeAt: serverTimestamp(),
-        appointmentOutcomeBy: appUser.authUid || appUser.id || null
+        appointmentOutcomeBy: appUser.authUid || appUser.id || null,
+        appointmentPromotedFrom: promotedFrom
       };
-      if (shouldPromoteToNegociacao) {
-        leadUpdate.status = negStatus.name; // 'Negociação'
+      if (promoteTo) {
+        leadUpdate.status = promoteTo;
         leadUpdate.statusEnteredAt = serverTimestamp();
       }
       // Comparecimento PRESERVA o agendamento (appointmentScheduledFor+
@@ -1273,15 +1287,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         try { await applyOutcomeToAula({ db, lead, outcome }); } catch (err) { console.error('applyOutcomeToAula falhou', err); }
       }
       // Log adicional da mudança de fase para o feed do lead.
-      if (shouldPromoteToNegociacao) {
+      if (promoteTo) {
         await logInteraction(db, lead, appUser, {
-          text: `Fase alterada para [${negStatus.name}] após comparecimento em ${DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug}.`,
+          text: `Fase alterada para [${promoteTo}] após comparecimento em ${DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug}.`,
           type: 'status_change',
-          ...stageChangeFields(lead, negStatus.name)
+          ...stageChangeFields(lead, promoteTo)
         });
       }
-      if (shouldPromoteToNegociacao) {
-        toast.success(`${meta.label} registrado. ${lead.name} → Negociação.`);
+      if (promoteTo) {
+        toast.success(`${meta.label} registrado. ${lead.name} → ${promoteTo}.`);
       } else {
         toast.success(`${meta.label} registrado para ${lead.name}.`);
       }
@@ -1298,6 +1312,37 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
     } catch (err) {
       console.error(err);
       toast.error('Não foi possível registrar o comparecimento. Tente novamente.');
+    }
+  };
+
+  // "Feitos hoje": corrige o desfecho de visita ou aula marcado hoje. Usa o
+  // mesmo estado de gravação da Agenda (savingAgendaId), porque as duas mexem
+  // no desfecho do mesmo lead. Depois da correção, o passo seguinte é o do
+  // card "A fazer": Não compareceu pede a remarcação e Compareceu pergunta o
+  // próximo contato.
+  const handleCorrectOutcome = async (lead, categorySlug, to) => {
+    if (savingAgendaId) return;
+    const from = correctableOutcome(lead, now);
+    if (!from || from === to || (to !== 'attended' && to !== 'no_show')) return;
+    setSavingAgendaId(lead.id);
+    try {
+      const { revertedTo } = await correctAppointmentOutcome({
+        db, lead, from, to, categorySlug, appUser, statuses,
+        isClient: isClientLead(lead), sourceLabel: 'Meta Diária',
+      });
+      const volta = revertedTo ? ` Voltou para ${revertedTo}.` : '';
+      if (to === 'attended') toast.success(`Desfecho de ${lead.name} corrigido para compareceu.`);
+      else toast.success(`Desfecho de ${lead.name} corrigido para não compareceu.${volta}`);
+      if (to === 'no_show') {
+        setRescheduleTarget({ lead, categorySlug, flow: 'after_no_show' });
+      } else {
+        setNextContactTarget({ lead, categorySlug, flow: 'after_outcome', contextLabel: 'Comparecimento registrado' });
+      }
+    } catch (err) {
+      console.error('handleCorrectOutcome', err);
+      toast.error('Não foi possível corrigir o desfecho. Tente novamente.');
+    } finally {
+      setSavingAgendaId(null);
     }
   };
 
@@ -1515,6 +1560,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
         appointmentOutcome: null,
         appointmentOutcomeAt: null,
         appointmentOutcomeBy: null,
+        appointmentPromotedFrom: null,
         currentAulaId
       };
 
@@ -1803,6 +1849,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
             appointmentLabel={nextApptLabel}
             onWhatsapp={handleWhatsapp}
             onOutcome={handleOutcome}
+            onReschedule={(t, s) => setRescheduleTarget({ lead: t, categorySlug: s })}
           />
 
           <DayAgendaCard
@@ -1838,7 +1885,10 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
                   <DoneCard
                     key={lead.id}
                     lead={lead}
+                    now={now}
+                    saving={savingAgendaId === lead.id}
                     onReschedule={(l, s) => setRescheduleTarget({ lead: l, categorySlug: s })}
+                    onCorrect={handleCorrectOutcome}
                   />
                 ))
               )}
