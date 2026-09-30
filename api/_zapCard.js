@@ -13,6 +13,25 @@ import { diaDeBrasilia } from './_horarioDeBrasilia.js';
 
 const iso = (d) => (d ? d.toISOString() : null);
 
+// Desfecho que o cartão mostra: compareceu ou faltou. O Stronilead grava
+// também 'rescheduled' (o lead já está com a data nova, então não há desfecho
+// a mostrar) e 'cancelled', que tira o agendamento do cartão (cardAppointment).
+export function appointmentOutcomeOf(lead) {
+  const outcome = lead?.appointmentOutcome;
+  return outcome === 'attended' || outcome === 'no_show' ? outcome : null;
+}
+
+// A linha "Agendamento" do cartão: tipo, dia e hora e o desfecho, ou null.
+// Cancelado não aparece. O cancelamento da Meta Diária já apaga a data do
+// lead; o do writeAppointmentOutcome sem consumeAppointment não apaga, e esta
+// regra cobre esse caminho.
+export function cardAppointment(lead) {
+  if (lead?.appointmentOutcome === 'cancelled') return null;
+  const tipo = getLeadAppointmentType(lead);
+  const quando = getLeadAppointmentDate(lead);
+  return tipo && quando ? { type: tipo, at: iso(quando), outcome: appointmentOutcomeOf(lead) } : null;
+}
+
 // `checkpoints` são os marcos de renovação da ACADEMIA (Configurações → Metas
 // & ritmo → Marcos de renovação, gravados em stronix_config/general). Quem lê
 // o doc e repassa é api/zap.js; aqui só propaga pra buildZapStrip, que já
@@ -23,8 +42,6 @@ export function buildZapCard(lead, now = new Date(), checkpoints = DEFAULT_RENEW
 
   const eCliente = lead.lifecycleStage === 'cliente';
   const fim = getSafeDateOrNull(lead.currentContractEndsAt);
-  const tipo = getLeadAppointmentType(lead);
-  const quando = getLeadAppointmentDate(lead);
 
   const card = {
     found: true,
@@ -33,7 +50,7 @@ export function buildZapCard(lead, now = new Date(), checkpoints = DEFAULT_RENEW
     name: lead.name ?? null,
     consultantName: lead.consultantName ?? null,
     lastInteractionAt: iso(getSafeDateOrNull(lead.lastInteractionAt)),
-    appointment: tipo && quando ? { type: tipo, at: iso(quando) } : null,
+    appointment: cardAppointment(lead),
     strip: buildZapStrip(lead, now, checkpoints)
   };
 
