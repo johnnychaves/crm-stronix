@@ -88,9 +88,11 @@ export function DayAgendaCard({ rows, pending, nextIndex, savingId, onMark }) {
 
                 <div
                   className={cn(
-                    'flex-1 min-w-0 mb-1.5 flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-white/[0.03] border',
-                    isNext ? 'border-accent-400 dark:border-accent-500/40' : 'border-slate-200/70 dark:border-white/[0.06]',
-                    row.isMine && 'border-l-2 border-l-accent-500 rounded-l-none'
+                    // Sem contorno laranja no próximo compromisso (pedido do
+                    // Johnny, 30/09/2026): a hora laranja do trilho já diz qual
+                    // é o próximo. A linha grossa da esquerda marca o que é seu.
+                    'flex-1 min-w-0 mb-1.5 flex items-center gap-2 p-2 rounded-xl bg-white dark:bg-white/[0.03] border border-slate-200/70 dark:border-white/[0.06]',
+                    row.isMine && 'border-l-4 border-l-accent-500 rounded-l-none'
                   )}
                 >
                   <div className="min-w-0 flex-1">

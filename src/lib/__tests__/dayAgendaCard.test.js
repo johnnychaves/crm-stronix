@@ -34,4 +34,10 @@ describe('DayAgendaCard', () => {
     expect(faltou).toContain('bg-rose-500');
     expect(faltou).not.toContain('bg-emerald-500');
   });
+
+  it('o próximo compromisso não tem contorno laranja; o que é seu leva a linha grossa da esquerda', () => {
+    const out = html();
+    expect(out).not.toContain('border-accent-400');
+    expect(out.match(/border-l-4 border-l-accent-500/g)).toHaveLength(3);
+  });
 });

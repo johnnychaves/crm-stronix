@@ -69,6 +69,10 @@ describe('OutcomePopover', () => {
     expect(gatilho().textContent.trim()).toBe('');
     expect(gatilho().getAttribute('aria-label')).toBe('Não compareceu. Abrir para corrigir');
     expect(gatilho().getAttribute('title')).toBe('Não compareceu');
+    // Selo redondo cheio, sem a seta: só o ícone do desfecho.
+    expect(gatilho().className).toContain('rounded-full');
+    expect(gatilho().className).toContain('bg-rose-500');
+    expect(gatilho().querySelectorAll('svg')).toHaveLength(1);
   });
 
   it('gravando, o botão fica desligado', async () => {

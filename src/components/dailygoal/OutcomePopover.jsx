@@ -14,8 +14,14 @@ import { outcomeMenuItems, outcomeTriggerLabel } from '../../lib/outcomeMenu.js'
 //
 // `compact` é para a Agenda de hoje, onde a coluna é estreita e o botão
 // largo cortava o nome da pessoa: sem desfecho o botão diz só "Marcar", e com
-// desfecho mostra só o ícone verde ou vermelho. O texto inteiro continua no
-// aria-label e na dica do mouse.
+// desfecho vira um selo redondo cheio, verde ou vermelho, sem seta (escolha do
+// Johnny, 30/09/2026). O texto inteiro continua no aria-label e na dica do
+// mouse.
+
+const SEAL_TONE = {
+  attended: 'bg-emerald-500 text-white hover:bg-emerald-600',
+  no_show: 'bg-rose-500 text-white hover:bg-rose-600',
+};
 
 const TRIGGER_TONE = {
   attended: 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30 dark:hover:bg-emerald-500/15',
@@ -46,7 +52,10 @@ export function OutcomePopover({
   const marked = outcome === 'attended' || outcome === 'no_show' ? outcome : null;
   const items = outcomeMenuItems({ outcome: marked, withMore, canUndo });
   const label = outcomeTriggerLabel(marked);
+  const seal = compact && Boolean(marked);
   const shownLabel = compact ? (marked ? null : 'Marcar') : label;
+  const iconSize = seal ? 15 : 13;
+  const iconStroke = seal ? 2.75 : 2;
 
   const pick = (id) => {
     setOpen(false);
@@ -62,19 +71,20 @@ export function OutcomePopover({
         aria-label={marked ? `${label}. Abrir para corrigir` : (title ? `Marcar desfecho: ${title}` : 'Marcar desfecho')}
         title={compact ? (marked ? label : 'Marcar desfecho') : undefined}
         className={cn(
-          'inline-flex items-center rounded-lg border font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-60 disabled:cursor-default',
+          'inline-flex items-center font-semibold whitespace-nowrap transition active:scale-[.98] disabled:opacity-60 disabled:cursor-default',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500/50',
-          compact
-            ? 'h-7 px-1.5 gap-1 text-[11.5px]'
-            : size === 'sm' ? 'h-7 px-2 gap-1.5 text-[11.5px]' : 'h-8 px-3 gap-1.5 text-[12px]',
-          TRIGGER_TONE[marked || 'none'],
+          seal && 'size-7 shrink-0 justify-center rounded-full',
+          !seal && compact && 'h-7 px-2.5 rounded-full border text-[11.5px]',
+          !compact && 'gap-1.5 rounded-lg border',
+          !compact && (size === 'sm' ? 'h-7 px-2 text-[11.5px]' : 'h-8 px-3 text-[12px]'),
+          seal ? SEAL_TONE[marked] : TRIGGER_TONE[marked || 'none'],
           className
         )}
       >
-        {marked === 'attended' && <Check size={13} />}
-        {marked === 'no_show' && <X size={13} />}
+        {marked === 'attended' && <Check size={iconSize} strokeWidth={iconStroke} />}
+        {marked === 'no_show' && <X size={iconSize} strokeWidth={iconStroke} />}
         {shownLabel && <span>{shownLabel}</span>}
-        <ChevronDown size={13} className="opacity-60" />
+        {!compact && <ChevronDown size={13} className="opacity-60" />}
       </PopoverTrigger>
       <PopoverContent align="end" sideOffset={6} aria-label={title || 'Desfecho'} className="w-56 p-2 rounded-xl border-border">
         {title && (
