@@ -44,6 +44,7 @@ import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
 import { ContractOutcomeModal } from '../modals/ContractOutcomeModal.jsx';
 import { ContractEditModal } from '../modals/ContractEditModal.jsx';
+import { ContractActivateModal } from '../modals/ContractActivateModal.jsx';
 import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
 import { QuickReferralModal } from '../modals/QuickReferralModal.jsx';
 import {
@@ -124,9 +125,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const [matriculaOpen, setMatriculaOpen] = useState(false);
   // 'matricula' (nova/retroativa) | 'renovacao' — controla o modo do ContractModal.
   const [matriculaMode, setMatriculaMode] = useState('matricula');
-  // Desfecho do contrato vigente: 'cancelar' | 'trancar' | 'reativar'.
+  // Desfecho de um contrato da aba: { action: 'cancelar' | 'trancar' |
+  // 'reativar', contractId }. Com renovação marcada, o contrato pode ser o em
+  // uso, e não o último.
   const [contractAction, setContractAction] = useState(null);
-  const [editingContract, setEditingContract] = useState(false);
+  // O contrato a corrigir e o contrato a ativar agora, pelo id: o documento
+  // vem vivo da coleção assinada (contractById), como antes.
+  const [editingContractId, setEditingContractId] = useState(null);
+  const [activatingId, setActivatingId] = useState(null);
   // Threshold de vencimento do contexto (sem prop-drilling) p/ a seção Contrato.
   const { contractThresholdDays, contratos, professores, renewalCheckpoints } = useGeneralConfig();
 
@@ -247,24 +253,27 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     setMatriculaOpen(true);
   };
 
-  // Cancela o contrato vigente: grava status terminal no doc do contrato e no
-  // resumo do lead, e registra na timeline. Não mexe em status/convertedAt do
-  // lead (continua cliente; só o contrato fica cancelado).
   // Cancelar, trancar e reativar passam pelo ContractOutcomeModal: os três
-  // pedem data e os dois primeiros pedem motivo — o cancelamento gravava
-  // motivo null desde sempre.
-  const openContractAction = (action) => {
+  // pedem data e os dois primeiros pedem motivo. Recebem o CONTRATO em que
+  // agem: com renovação marcada, o card da aba é o contrato em uso.
+  const openContractAction = (action, contract) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
-    if (!lead.currentContractId) { toast.warning('Não há contrato vigente.'); return; }
-    setContractAction(action);
+    if (!contract?.id) { toast.warning('Não há contrato vigente.'); return; }
+    setContractAction({ action, contractId: contract.id });
   };
 
-  // Corrigir o contrato vigente (ContractEditModal). A trava de leitura fica
-  // aqui, como nas outras ações da aba.
-  const openContractEdit = () => {
+  // Corrigir (ContractEditModal) e Ativar agora (ContractActivateModal) de um
+  // contrato da aba. A trava de leitura fica aqui, como nas outras ações.
+  const openContractEdit = (contract) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
-    setEditingContract(true);
+    if (contract?.id) setEditingContractId(contract.id);
   };
+  const openActivate = (contract) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (contract?.id) setActivatingId(contract.id);
+  };
+  // O documento de um contrato da aba, vivo; o do resumo do lead como reserva.
+  const contractById = (id) => leadContracts.find((c) => c.id === id) || currentContract;
 
   const confirmLoss = async (reason) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
@@ -1656,7 +1665,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           <ContractsTab
             lead={lead}
             leadContracts={leadContracts}
-            currentContract={currentContract}
             firstName={firstName}
             isReadOnly={isReadOnly}
             loading={loading}
@@ -1666,6 +1674,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             onRenew={handleRenew}
             onContractAction={openContractAction}
             onEditContract={openContractEdit}
+            onActivate={openActivate}
           />
         </TabsContent>
 
@@ -1742,20 +1751,30 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           lead={lead}
           appUser={appUser}
           db={db}
-          contract={currentContract}
-          action={contractAction}
+          contract={contractById(contractAction.contractId)}
+          action={contractAction.action}
           onClose={() => setContractAction(null)}
           onDone={() => setContractAction(null)}
         />
       )}
-      {editingContract && (
+      {editingContractId && (
         <ContractEditModal
           lead={lead}
           appUser={appUser}
           db={db}
-          contract={currentContract}
-          onClose={() => setEditingContract(false)}
-          onDone={() => setEditingContract(false)}
+          contract={contractById(editingContractId)}
+          onClose={() => setEditingContractId(null)}
+          onDone={() => setEditingContractId(null)}
+        />
+      )}
+      {activatingId && (
+        <ContractActivateModal
+          lead={lead}
+          appUser={appUser}
+          db={db}
+          contract={contractById(activatingId)}
+          onClose={() => setActivatingId(null)}
+          onDone={() => setActivatingId(null)}
         />
       )}
       {matriculaOpen && (
