@@ -23,4 +23,14 @@ describe('o registro do agendamento passa pela regra única', () => {
     expect(corpo).toContain('recordNewAppointment({');
     expect(corpo).not.toMatch(/upsertScheduledAula|upsertScheduledAppointment|closeOpenAppointment/);
   });
+
+  // O "Remarcar agendamento" do "Feitos hoje" abre o Remarcar sem o afterNoShow
+  // num lead que já tem "Compareceu" ou "Não veio": sem o desfecho do lead, a
+  // regra moveria o registro, e na troca de tipo fecharia a visita que
+  // aconteceu como cancelada.
+  it('o Remarcar da Meta Diária lê a regra pelo lead, com o instante novo e o afterNoShow', () => {
+    const corpo = corpoDe(ler('../../views/DailyGoalView.jsx'), 'handleReschedule');
+    expect(corpo).toContain('recordPlanFor(lead, { type: finalApptType, at: newDate, afterNoShow: isAfterNoShow })');
+    expect(corpo).not.toContain('rescheduleRecordPlan(');
+  });
 });
