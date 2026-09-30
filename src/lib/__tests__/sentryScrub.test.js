@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { cpuUsage } from 'node:process';
 import {
   maskSensitive, scrubDeep, isNoise, scrubEvent, stripQuery, scrubBreadcrumb,
   scrubLeadPath, scrubLeadPathsDeep, scrubSpan
@@ -52,6 +53,14 @@ describe('maskSensitive', () => {
       .toBe('erro com a chave [chave] invalida');
   });
 
+  it('mascara a chave do zap inteira mesmo com 11 dígitos seguidos no meio dela', () => {
+    // Se o padrão de documento rodasse antes, os dígitos virariam [documento] e o
+    // resto da chave sairia em claro.
+    const chave = `szk_ab12345678901${'cd'.repeat(17)}e`; // 48 hex
+    expect(maskSensitive(`erro com a chave ${chave} invalida`))
+      .toBe('erro com a chave [chave] invalida');
+  });
+
   it('mascara a chave do resend', () => {
     expect(maskSensitive(`erro com a chave ${CHAVE_RESEND} invalida`))
       .toBe('erro com a chave [chave] invalida');
@@ -78,6 +87,218 @@ describe('maskSensitive', () => {
       'pre_renderizar_a_tela_inteira'
     ];
     for (const texto of textos) expect(maskSensitive(texto)).toBe(texto);
+  });
+});
+
+// O padrão de e-mail de antes do limite de 64 caracteres na parte local. Em
+// texto longo sem espaço ele levava tempo quadrático: 80 KB de "a.a.a." davam 10 s.
+const EMAIL_QUADRATICO = /\b[\w.+-]+@[\w-]+\.[\w.-]+\b/g;
+
+// A lista PATTERNS do sentryScrub.js como estava antes do limite (commit 12cce77),
+// na mesma ordem. Só o padrão de e-mail difere da lista do módulo. Quem mudar
+// outro padrão lá muda aqui também: esta cópia prova que o limite não mudou o
+// resultado de nenhum e-mail de verdade.
+const PATTERNS_ANTES = [
+  [/\bszk_[0-9a-f]{48}\b/g, '[chave]'],
+  [/\bre_[A-Za-z0-9_]{16,}/g, '[chave]'],
+  [/\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g, '[cpf]'],
+  [EMAIL_QUADRATICO, '[email]'],
+  [/(^|[^\d\w])((?:\+?55[\s-]?)?\(?\d{2}\)?[\s-]?9?\d{4}[\s-]?\d{4})(?!\d)/g, '$1[telefone]'],
+  [/(^|[^\d])(\d{11})(?!\d)/g, '$1[documento]'],
+];
+
+function mascaraDeAntes(texto) {
+  let out = texto;
+  for (const [re, label] of PATTERNS_ANTES) out = out.replace(re, label);
+  return out;
+}
+
+// Parte local de 64 caracteres, o máximo do padrão de e-mail, com ponto, mais,
+// hífen e sublinhado.
+const LOCAL_64 = `${('joao.silva+teste_ana-paula.' + 'abc_def-ghi.'.repeat(5)).slice(0, 63)}z`;
+
+// E-mails de verdade: parte local de até 64 caracteres, domínio de um ou mais níveis.
+const EMAILS = [
+  'joao@academia.com.br',
+  'joao.silva@academia.com.br',
+  'maria+stronilead@gmail.com',
+  'ana-paula@empresa.co',
+  'carlos_souza@exemplo.org',
+  'a@b.co',
+  'JOAO.SILVA@ACADEMIA.COM.BR',
+  'financeirostronix@gmail.com',
+  'nao-responda@stronilead.com.br',
+  'recepcao.unidade-2@stronix.com.br',
+  'contato@sub.dominio.exemplo.com.br',
+  'aluno@mail.unidade-1.academia.gov.br',
+  '11987654321@academia.com.br',
+  '12345678901@academia.com.br',
+  'o.nome.bem.comprido+tag_2026-09@dominio-com-hifen.example.museum',
+  `${LOCAL_64}@academia.com.br`,
+  `${'a'.repeat(64)}@x.co`
+];
+
+// Onde o e-mail aparece: colado em pontuação, em URL, em JSON, numa pilha de erro
+// e perto de telefone e de CPF. Nenhum contexto cola letra, número, ponto, mais
+// ou hífen antes do e-mail, porque aí a parte local passaria de 64 caracteres.
+const CONTEXTOS = [
+  (e) => e,
+  (e) => `falha para ${e}`,
+  (e) => `contato: ${e}.`,
+  (e) => `${e}!`,
+  (e) => `${e}, maria@x.com`,
+  (e) => `(${e})`,
+  (e) => `"${e}"`,
+  (e) => `'${e}'`,
+  (e) => `<${e}>`,
+  (e) => `[${e}]`,
+  (e) => `Ana Souza <${e}>`,
+  (e) => `email=${e};`,
+  (e) => `\t${e}\n`,
+  (e) => `mailto:${e}`,
+  (e) => `https://stronilead.com.br/convite?email=${e}&t=academia`,
+  (e) => `https://stronilead.com.br/u/${e}/perfil`,
+  (e) => JSON.stringify({ email: e, nome: 'Ana' }),
+  (e) => `{"lead":{"email":"${e}","whatsapp":"(11) 98765-4321"}}`,
+  (e) => `Error: auth/email-already-exists (${e})\n    at createUser (file:///var/task/api/_auth.js:80:19)`,
+  (e) => `${e} (11) 98765-4321`,
+  (e) => `${e} 123.456.789-01`,
+  (e) => `tel 11987654321, e-mail ${e}, cpf 12345678901`,
+  (e) => `123.456.789-01,${e}`,
+  (e) => `(11) 98765-4321/${e}`,
+  (e) => `${e}11987654321`
+];
+
+const VARIOS_EMAILS = [
+  'a@x.com b@y.com c@z.com.br',
+  'cc: joao@academia.com.br, maria@gmail.com; ana-paula@empresa.co',
+  'de joao.silva@academia.com.br para financeirostronix@gmail.com em 28/09',
+  '["joao@x.com","maria@y.com","ana@z.org"]',
+  'joao@x.com,maria@y.com;ana@z.org',
+  'joao@x.com+maria@y.com',
+  'joao@x.com.maria@y.com',
+  'a@b.c--@x.y',
+  `${LOCAL_64}@x.com ${LOCAL_64}@y.com.br`
+];
+
+const PERTO_DE_NUMEROS = [
+  'joao@x.com (11) 98765-4321 123.456.789-01 12345678901',
+  'whatsapp +55 11 98765-4321, e-mail joao@x.com',
+  '123.456.789-01@academia.com.br',
+  'joao11987654321@academia.com.br',
+  'joao.11987654321@academia.com.br',
+  '11987654321.joao@academia.com.br',
+  'tel:11987654321,mailto:joao@x.com',
+  '5511987654321@s.whatsapp.net',
+  '120363025246125888@g.us'
+];
+
+// Texto que não é e-mail, mas quase. Inclui o arroba largo (U+FF20), a parte
+// local começando com ponto, mais ou hífen, e hífens ou pontos antes do @ que
+// não contam como parte local, porque o padrão começa na primeira letra.
+const QUASE_EMAIL = [
+  '',
+  '@',
+  'a@b',
+  '@x.com',
+  'a@.com',
+  'a@x.',
+  'user@localhost',
+  'joao\uFF20academia.com.br',
+  '.joao@x.com',
+  '-joao@x.com',
+  '+joao@x.com',
+  '..joao@x.com',
+  '-.-joao@x.com',
+  'joao.@x.com',
+  '.@x.com',
+  '-@x.com',
+  '@@x.com',
+  'joao@@x.com',
+  'joao@-x.com',
+  'joao@x.-com',
+  'joao@x..com',
+  'joao @ x.com',
+  'joao@ x.com',
+  'joao (at) x.com',
+  'joão@academia.com.br',
+  'joao@acadêmia.com.br',
+  '"joao silva"@x.com',
+  'git@github.com:stronix/crm.git',
+  'https://usuario:senha@host.com.br/caminho',
+  'logo@2x.png',
+  'npm i @sentry/react@10.69.0',
+  'Olá @maria, veja o #123',
+  `${'-'.repeat(70)}joao@x.com`,
+  `${'.'.repeat(80)}@x.com`
+];
+
+// Texto longo sem espaço, como uma URL enorme ou um JSON colado numa mensagem de
+// erro. Com o padrão quadrático, cada um destes levava de 2 s a 31 s.
+const A_PONTO = 'a.'.repeat(40000);
+const TEXTOS_LONGOS = [
+  ['"a." repetido até 80 KB', A_PONTO],
+  ['o mesmo texto e um @ no fim', `${A_PONTO}@`],
+  ['o mesmo texto e o arroba largo (U+FF20) no fim', `${A_PONTO}\uFF20`],
+  ['muitos pontos seguidos entre as letras', `a${'.'.repeat(9)}`.repeat(8000)],
+  ['um @ no meio seguido de 80 KB sem ponto', `${A_PONTO}@${'b'.repeat(80000)}`],
+  ['um @ no meio seguido de 80 KB de pontos no domínio', `${A_PONTO}@b${'.'.repeat(80000)}`]
+];
+
+// Tempo de CPU, e não de relógio. Com a máquina ocupada, como no CI, que roda
+// vários arquivos de teste ao mesmo tempo, o relógio de um caso de 35 ms chegou
+// a 370 ms, enquanto a CPU gasta ficou em 40 ms.
+function msDeCpu(fn) {
+  const inicio = cpuUsage();
+  fn();
+  const { user, system } = cpuUsage(inicio);
+  return (user + system) / 1000;
+}
+
+describe('maskSensitive: padrão de e-mail', () => {
+  it('mascara cada e-mail de verdade inteiro, como antes', () => {
+    expect(LOCAL_64).toHaveLength(64);
+    for (const email of EMAILS) {
+      expect(mascaraDeAntes(email), email).toBe('[email]');
+      expect(maskSensitive(email), email).toBe('[email]');
+    }
+  });
+
+  it('dá o mesmo resultado de antes com o e-mail em cada contexto', () => {
+    for (const email of EMAILS) {
+      for (const contexto of CONTEXTOS) {
+        const texto = contexto(email);
+        expect(maskSensitive(texto), texto).toBe(mascaraDeAntes(texto));
+      }
+    }
+  });
+
+  it('dá o mesmo resultado de antes com vários e-mails e com telefone e CPF por perto', () => {
+    for (const texto of [...VARIOS_EMAILS, ...PERTO_DE_NUMEROS]) {
+      expect(maskSensitive(texto), texto).toBe(mascaraDeAntes(texto));
+    }
+  });
+
+  it('dá o mesmo resultado de antes no texto que quase é e-mail', () => {
+    for (const texto of QUASE_EMAIL) {
+      expect(maskSensitive(texto), texto).toBe(mascaraDeAntes(texto));
+    }
+  });
+
+  it('só muda o resultado com parte local acima de 64 caracteres, que o padrão de e-mail não permite', () => {
+    // Colado num prefixo longo, o e-mail continua mascarado e só o que passa de
+    // 64 caracteres antes do @ fica como está. Sem começo de palavra nos 64
+    // caracteres antes do @, nada é mascarado.
+    const colado = 'relatorio-exportado-da-academia-stronix-em-2026-09-28-contato-joao.silva@academia.com.br';
+    expect(mascaraDeAntes(colado)).toBe('[email]');
+    expect(maskSensitive(colado)).toBe('relatorio[email]');
+    const semComeco = `${'a'.repeat(65)}@academia.com.br`;
+    expect(mascaraDeAntes(semComeco)).toBe('[email]');
+    expect(maskSensitive(semComeco)).toBe(semComeco);
+  });
+
+  it.each(TEXTOS_LONGOS)('leva menos de 200 ms de CPU com %s', (_nome, texto) => {
+    expect(msDeCpu(() => maskSensitive(texto))).toBeLessThan(200);
   });
 });
 
