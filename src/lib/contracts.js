@@ -511,6 +511,27 @@ export const contractDiscountOf = (contract) => {
 // injeta os serverTimestamp() e comita. Puros para caberem em teste.
 // ---------------------------------------------------------------------------
 
+// O resumo do lead apontando para `contract`, que passa a ser o último
+// contrato: sem bloco "em uso". `endsAt` troca o fim gravado (o desfazer da
+// renovação devolve o fim original ao contrato renovado). Importado pode vir
+// sem valor, e aí o resumo fica sem valor, como a importação grava:
+// Number(null) daria zero. Usado pelo desfazer da renovação
+// (buildRenewalCancel) e pelo cancelamento com outro contrato em uso
+// (buildContractCancel com `replacement`).
+const leadSummaryOf = (contract, { endsAt } = {}) => {
+  const value = contract?.value == null ? null : Number(contract.value);
+  return {
+    currentContractId: contract?.id || null,
+    currentPlanName: contract?.planName || null,
+    currentContractValue: Number.isFinite(value) ? value : null,
+    currentContractStartsAt: getSafeDateOrNull(contract?.startsAt) || getSafeDateOrNull(contract?.createdAt),
+    currentContractEndsAt: endsAt === undefined ? getSafeDateOrNull(contract?.endsAt) : endsAt,
+    currentContractStatus: contract?.status || CONTRACT_STATUS.ATIVO,
+    currentContractSeamless: Boolean(contract?.seamless),
+    ...CLEAR_IN_USE_BLOCK
+  };
+};
+
 // Cancelamento. O motivo era gravado como null desde sempre; sem ele a ficha
 // mostrava "Cancelado em 14/05" e ninguém sabia por quê.
 // `role`: 'current' (padrão) grava o resumo do último contrato, como sempre;
@@ -519,12 +540,21 @@ export const contractDiscountOf = (contract) => {
 // renovação continua marcada; a emendada perde a marca, no contrato
 // (`nextPatch`) e no resumo, porque passa a existir um intervalo até ela
 // começar. O texto ganha a frase da renovação, lida por contractEventOf.
-export const buildContractCancel = ({ planName, cancelledAt, reason, note, role = 'current', contract = null, next = null } = {}) => {
+// `replacement`: só no papel 'current'. Decisão do Johnny (01/10/2026): com
+// dois contratos ativos, cancelar um deixa o cliente ativo pelo outro. É o
+// contrato em uso que continua (quem o escolhe é inUseReplacementOf, em
+// contractsTab.js: o de início mais recente, fora o cancelado), e o resumo
+// do lead passa para ele, como no desfazer da renovação. O texto ganha a
+// frase do contrato que continua, lida por contractEventOf: o plano lido
+// segue sendo o do contrato cancelado.
+export const buildContractCancel = ({ planName, cancelledAt, reason, note, role = 'current', contract = null, next = null, replacement = null } = {}) => {
   const when = getSafeDateOrNull(cancelledAt) || new Date();
   const motivo = reason ? ` — ${reason}` : '';
   const inUse = role === 'inUse';
   const nextStart = inUse ? getSafeDateOrNull(next?.startsAt) : null;
   const dropSeam = Boolean(inUse && next?.seamless);
+  const keeps = !inUse && replacement ? replacement : null;
+  const continua = keeps ? ` O cliente continua com ${keeps.planName ? `o contrato Plano ${keeps.planName}` : 'o outro contrato'}.` : '';
   return {
     contractPatch: {
       status: CONTRACT_STATUS.CANCELADO,
@@ -534,9 +564,9 @@ export const buildContractCancel = ({ planName, cancelledAt, reason, note, role 
     },
     leadPatch: inUse
       ? { ...inUseBlockOf(contract, { inUseContractStatus: CONTRACT_STATUS.CANCELADO }), ...(dropSeam ? { currentContractSeamless: false } : {}) }
-      : { currentContractStatus: CONTRACT_STATUS.CANCELADO },
+      : keeps ? leadSummaryOf(keeps) : { currentContractStatus: CONTRACT_STATUS.CANCELADO },
     nextPatch: dropSeam ? { seamless: false } : null,
-    interactionText: `Contrato cancelado${planName ? ` — Plano ${planName}` : ''}${motivo}. Encerrado em ${fmtDia(when)}.${nextStart ? ` A renovação continua marcada para ${fmtDia(nextStart)}.` : ''}`
+    interactionText: `Contrato cancelado${planName ? ` — Plano ${planName}` : ''}${motivo}. Encerrado em ${fmtDia(when)}.${nextStart ? ` A renovação continua marcada para ${fmtDia(nextStart)}.` : ''}${continua}`
   };
 };
 
@@ -563,9 +593,6 @@ export function buildRenewalCancel({ contract, previous, cancelledAt, reason, no
   const original = getSafeDateOrNull(previous?.originalEndsAt);
   const restores = Boolean(original && contract?.id && previous?.shortenedById === contract.id);
   const end = restores ? original : getSafeDateOrNull(previous?.endsAt);
-  // Importado pode vir sem valor, e aí o resumo fica sem valor, como a
-  // importação grava. Number(null) daria zero.
-  const value = previous?.value == null ? null : Number(previous.value);
 
   const renovacao = contract?.planName ? `Plano ${contract.planName}` : 'renovação';
   const motivo = reason ? `, motivo ${reason}` : '';
@@ -586,17 +613,8 @@ export function buildRenewalCancel({ contract, previous, cancelledAt, reason, no
       cancelNote: note || null
     },
     previousPatch: restores ? { endsAt: original, originalEndsAt: null, shortenedById: null } : null,
-    leadPatch: {
-      currentContractId: previous?.id || null,
-      currentPlanName: previous?.planName || null,
-      currentContractValue: Number.isFinite(value) ? value : null,
-      currentContractStartsAt: getSafeDateOrNull(previous?.startsAt) || getSafeDateOrNull(previous?.createdAt),
-      currentContractEndsAt: end,
-      currentContractStatus: previous?.status || CONTRACT_STATUS.ATIVO,
-      currentContractSeamless: Boolean(previous?.seamless),
-      // O resumo volta ao contrato renovado, que passa a ser o último: sem bloco.
-      ...CLEAR_IN_USE_BLOCK
-    },
+    // O resumo volta ao contrato renovado, que passa a ser o último: sem bloco.
+    leadPatch: leadSummaryOf(previous, { endsAt: end }),
     interactionText: `Renovação cancelada antes de começar: ${renovacao}${motivo}. ${volta}`
   };
 }

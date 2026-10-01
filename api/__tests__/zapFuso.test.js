@@ -14,6 +14,7 @@ const fusoDaMaquina = vi.hoisted(() => {
 
 import { buildZapStrip } from '../_zapStrip.js';
 import { buildZapCard } from '../_zapCard.js';
+import { buildContractCancel } from '../../src/lib/contracts.js';
 
 afterAll(() => {
   if (fusoDaMaquina === undefined) delete process.env.TZ;
@@ -159,6 +160,25 @@ describe('dias restantes do contrato no dia de Brasília', () => {
 // O bloco "em uso" do resumo do lead (contracts.js): enquanto a renovação
 // marcada não começa, o cartão diz o estado do contrato que o cliente usa.
 // A comparação é por instante, então o processo em UTC não muda o resultado.
+// Decisão do Johnny (01/10/2026): com dois contratos ativos, cancelar um deixa
+// o cliente ativo pelo outro. O cancelamento com `replacement` passa o resumo
+// do lead para o contrato que continua, e o cartão do Zap o lê como qualquer
+// resumo, por instante, no processo em UTC.
+describe('cartão depois de cancelar o último contrato com outro em uso', () => {
+  const outro = { id: 'k1', planName: 'Start', value: 1200, status: 'ativo', startsAt: brt('2025-12-01T00:00'), endsAt: brt('2026-12-01T00:00') };
+
+  it('com o resumo passado para o contrato que continua, o cartão diz ativo', () => {
+    const patch = buildContractCancel({ planName: 'Flow', cancelledAt: brt('2026-10-20T00:00'), reason: 'Financeiro', replacement: outro }).leadPatch;
+    const card = buildZapCard({ lifecycleStage: 'cliente', ...patch }, brt('2026-10-20T22:00'));
+    expect(card.contractStatus).toBe('ativo');
+  });
+
+  it('sem outro contrato em uso, o cartão diz cancelado, como sempre', () => {
+    const patch = buildContractCancel({ planName: 'Flow', cancelledAt: brt('2026-10-20T00:00'), reason: 'Financeiro' }).leadPatch;
+    expect(buildZapCard(cliente(patch), brt('2026-10-20T22:00')).contractStatus).toBe('cancelado');
+  });
+});
+
 describe('cartão com o bloco "em uso" do lead, no processo em UTC', () => {
   // A renovação começa em 12/10/2026 e o contrato em uso vai até a meia-noite
   // de 11/10, em Brasília.

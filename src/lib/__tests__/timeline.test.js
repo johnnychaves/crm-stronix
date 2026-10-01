@@ -445,12 +445,33 @@ describe('contractEventOf: o tipo, o plano e o valor do próprio evento', () => 
       buildRenewalCancel({ contract: { ...renovacao, planName: null }, previous: { ...anterior, planName: null }, cancelledAt: D(2026, 9, 29) }).interactionText,
       buildContractActivate({ contract: { id: 'k2', planName: 'Flow', value: 1788, durationMonths: 12, startsAt: D(2026, 10, 12) }, previous: null, now: D(2026, 9, 30) }).interactionText,
       buildContractCancel({ planName: 'Anual', cancelledAt: D(2026, 5, 14), reason: 'Financeiro', role: 'inUse', contract: { id: 'k1' }, next: { id: 'k2', startsAt: D(2026, 6, 1) } }).interactionText,
-      buildContractCancel({ cancelledAt: D(2026, 5, 14), role: 'inUse', contract: { id: 'k1' }, next: { id: 'k2', startsAt: D(2026, 6, 1) } }).interactionText
+      buildContractCancel({ cancelledAt: D(2026, 5, 14), role: 'inUse', contract: { id: 'k1' }, next: { id: 'k2', startsAt: D(2026, 6, 1) } }).interactionText,
+      buildContractCancel({ planName: 'Flow', cancelledAt: D(2026, 10, 20), reason: 'Financeiro', replacement: anterior }).interactionText,
+      buildContractCancel({ cancelledAt: D(2026, 10, 20), replacement: { ...anterior, planName: null } }).interactionText
     ];
     textos.forEach((text) => {
       expect(classifyInteraction({ type: 'status_change', text }), text).toBe('contract');
       expect(contractEventOf(text), text).not.toBeNull();
     });
+  });
+
+  // Decisão do Johnny (01/10/2026): cancelado o último contrato com outro em
+  // uso, o texto ganha a frase do contrato que continua. O plano lido é o do
+  // contrato cancelado, nunca o do que continua, e sem plano no cancelado o
+  // leitor não pega o "Plano" da frase nova.
+  it('cancelamento com outro contrato em uso: o plano lido é o do contrato cancelado', () => {
+    const outro = { id: 'k1', planName: 'Start', status: 'ativo', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+    const comPlano = buildContractCancel({ planName: 'Flow', cancelledAt: D(2026, 10, 20), reason: 'Financeiro', replacement: outro }).interactionText;
+    expect(comPlano).toBe('Contrato cancelado — Plano Flow — Financeiro. Encerrado em 20/10/2026. O cliente continua com o contrato Plano Start.');
+    expect(contractEventOf(comPlano)).toEqual({ kind: 'cancelamento', planName: 'Flow', value: null });
+    const semMotivo = buildContractCancel({ planName: 'Flow', cancelledAt: D(2026, 10, 20), replacement: outro }).interactionText;
+    expect(contractEventOf(semMotivo)).toEqual({ kind: 'cancelamento', planName: 'Flow', value: null });
+    const semPlano = buildContractCancel({ cancelledAt: D(2026, 10, 20), replacement: outro }).interactionText;
+    expect(semPlano).toBe('Contrato cancelado. Encerrado em 20/10/2026. O cliente continua com o contrato Plano Start.');
+    expect(contractEventOf(semPlano)).toEqual({ kind: 'cancelamento', planName: null, value: null });
+    const outroSemPlano = buildContractCancel({ planName: 'Flow', cancelledAt: D(2026, 10, 20), replacement: { ...outro, planName: null } }).interactionText;
+    expect(outroSemPlano).toBe('Contrato cancelado — Plano Flow. Encerrado em 20/10/2026. O cliente continua com o outro contrato.');
+    expect(contractEventOf(outroSemPlano).planName).toBe('Flow');
   });
 
   // Os dois jeitos de o texto terminar (o contrato renovado volta a valer, ou

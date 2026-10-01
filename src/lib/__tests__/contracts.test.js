@@ -33,6 +33,7 @@ import {
   renewalStartProblem
 } from '../contracts.js';
 import { DISCOUNT_MODES } from '../renewal.js';
+import { deriveLeadState } from '../leadState.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const NOW = D(2026, 7, 28);
@@ -116,6 +117,55 @@ describe('buildContractCancel', () => {
     const r = buildContractCancel({ cancelledAt: D(2026, 5, 14) });
     expect(r.contractPatch.cancelReason).toBeNull();
     expect(r.interactionText).not.toContain('—');
+  });
+
+  // Decisão do Johnny (01/10/2026): com dois contratos ativos, cancelar um
+  // deixa o cliente ativo pelo outro. Cancelar o último contrato com
+  // `replacement` (o contrato em uso que continua, escolhido por
+  // inUseReplacementOf) passa o resumo do lead para ele, como o
+  // buildRenewalCancel já faz com o contrato renovado.
+  describe('com outro contrato em uso (replacement)', () => {
+    const outro = { id: 'k1', planName: 'Start', value: 1200, status: 'ativo', seamless: false, startsAt: D(2025, 12, 1), endsAt: D(2026, 12, 1) };
+
+    it('passa o resumo do lead para o contrato que continua, sem bloco, e o cliente segue ativo', () => {
+      const r = buildContractCancel({ planName: 'Flow', cancelledAt: D(2026, 10, 20), reason: 'Financeiro', replacement: outro });
+      expect(r.contractPatch).toEqual({ status: 'cancelado', cancelledAt: D(2026, 10, 20), cancelReason: 'Financeiro', cancelNote: null });
+      expect(r.leadPatch).toEqual({
+        currentContractId: 'k1', currentPlanName: 'Start', currentContractValue: 1200,
+        currentContractStartsAt: D(2025, 12, 1), currentContractEndsAt: D(2026, 12, 1),
+        currentContractStatus: 'ativo', currentContractSeamless: false, ...CLEAR_IN_USE_BLOCK
+      });
+      expect(r.nextPatch).toBeNull();
+      expect(r.interactionText).toBe('Contrato cancelado — Plano Flow — Financeiro. Encerrado em 20/10/2026. O cliente continua com o contrato Plano Start.');
+      // Nas listas, na Meta Diária e no cartão do Zap o cliente continua ativo.
+      expect(deriveLeadContractStatus(r.leadPatch, D(2026, 10, 1))).toBe(CONTRACT_STATUS.ATIVO);
+      expect(deriveLeadState({ lifecycleStage: 'cliente', isConverted: true, ...r.leadPatch }, D(2026, 10, 1)).key).toBe('cliente_ativo');
+    });
+
+    it('trancado continua trancado; importado sem início usa a criação, sem valor fica sem valor e sem plano diz "o outro contrato"', () => {
+      const trancado = { ...outro, status: 'trancado', pausedAt: D(2026, 9, 20) };
+      const t = buildContractCancel({ planName: 'Flow', cancelledAt: D(2026, 10, 20), replacement: trancado });
+      expect(t.leadPatch.currentContractStatus).toBe('trancado');
+      expect(deriveLeadContractStatus(t.leadPatch, D(2026, 10, 1))).toBe(CONTRACT_STATUS.TRANCADO);
+      const importado = { id: 'k0', planName: null, value: null, createdAt: D(2025, 12, 1), endsAt: D(2026, 12, 1) };
+      const r = buildContractCancel({ planName: 'Flow', cancelledAt: D(2026, 10, 20), replacement: importado });
+      expect(r.leadPatch).toEqual({
+        currentContractId: 'k0', currentPlanName: null, currentContractValue: null,
+        currentContractStartsAt: D(2025, 12, 1), currentContractEndsAt: D(2026, 12, 1),
+        currentContractStatus: 'ativo', currentContractSeamless: false, ...CLEAR_IN_USE_BLOCK
+      });
+      expect(r.interactionText).toBe('Contrato cancelado — Plano Flow. Encerrado em 20/10/2026. O cliente continua com o outro contrato.');
+    });
+
+    it('sem replacement, ou no papel inUse, a saída é a de sempre', () => {
+      const semOutro = buildContractCancel({ planName: 'Flow', cancelledAt: D(2026, 10, 20), replacement: null });
+      expect(semOutro.leadPatch).toEqual({ currentContractStatus: 'cancelado' });
+      expect(semOutro.interactionText).toBe('Contrato cancelado — Plano Flow. Encerrado em 20/10/2026.');
+      const emUso = { id: 'k1', status: 'ativo', endsAt: D(2026, 10, 11) };
+      const r = buildContractCancel({ planName: 'Start', cancelledAt: D(2026, 9, 30), role: 'inUse', contract: emUso, next: { id: 'k2', startsAt: D(2026, 10, 12), seamless: true }, replacement: outro });
+      expect(r.leadPatch).toEqual({ inUseContractId: 'k1', inUseContractStatus: 'cancelado', inUseContractEndsAt: D(2026, 10, 11), currentContractSeamless: false });
+      expect(r.interactionText).toBe('Contrato cancelado — Plano Start. Encerrado em 30/09/2026. A renovação continua marcada para 12/10/2026.');
+    });
   });
 });
 

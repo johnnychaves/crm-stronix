@@ -3,7 +3,7 @@
 // Hoje é 30/09/2026, às 10h, como no mockup aprovado.
 import { describe, it, expect } from 'vitest';
 import {
-  contractFactsOf, contractTimelineOf, contractsTabModel, gapText, heroActionsOf, heroCountdownOf, joinTextOf,
+  contractFactsOf, contractTimelineOf, contractsTabModel, gapText, heroActionsOf, heroCountdownOf, inUseReplacementOf, joinTextOf,
   originTextOf, shortContractId, summaryContractOf
 } from '../contractsTab.js';
 import { CONTRACT_STATUS } from '../contracts.js';
@@ -119,6 +119,38 @@ describe('contractsTabModel: destaque, próximo e Histórico', () => {
 
   it('sem contrato nenhum', () => {
     expect(contractsTabModel({ lead: { id: L }, contracts: [], now: HOJE })).toEqual({ latest: null, hero: null, next: null, history: [], join: null });
+  });
+});
+
+// Decisão do Johnny (01/10/2026): com dois contratos ativos, cancelar um deixa
+// o cliente ativo pelo outro. Quem continua é o contrato em uso de início mais
+// recente, fora o cancelado, a mesma escolha que o destaque faz para o em uso
+// sem ligação. O ContractOutcomeModal passa o resultado ao buildContractCancel.
+describe('inUseReplacementOf: quem continua quando o último contrato é cancelado', () => {
+  const emUso = K('k1', { startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) });
+  const paralelo = K('k3', { startsAt: D(2026, 6, 1), endsAt: D(2026, 12, 1) });
+  const renovacao = K('k2', { renewedFromId: 'k1', seamless: true, startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12) });
+
+  it('o contrato em uso de início mais recente, nunca o excluído nem um cancelado', () => {
+    expect(inUseReplacementOf({ contracts: [emUso, paralelo, renovacao], excludeId: 'k2', now: HOJE })).toBe(paralelo);
+    expect(inUseReplacementOf({ contracts: [emUso, paralelo, renovacao], excludeId: 'k3', now: HOJE })).toBe(emUso);
+    const cancelado = { ...paralelo, status: 'cancelado', cancelledAt: D(2026, 8, 1) };
+    expect(inUseReplacementOf({ contracts: [emUso, cancelado, renovacao], excludeId: 'k2', now: HOJE })).toBe(emUso);
+  });
+
+  it('o agendado não conta, e sem contrato em uso devolve null', () => {
+    const agendado = K('k4', { startsAt: D(2026, 11, 1), endsAt: D(2027, 11, 1) });
+    expect(inUseReplacementOf({ contracts: [agendado, renovacao], excludeId: 'k2', now: HOJE })).toBeNull();
+    expect(inUseReplacementOf({ contracts: [emUso], excludeId: 'k1', now: HOJE })).toBeNull();
+    expect(inUseReplacementOf({ contracts: [], excludeId: 'k1', now: HOJE })).toBeNull();
+    expect(inUseReplacementOf({ excludeId: 'k1', now: HOJE })).toBeNull();
+  });
+
+  it('o trancado conta enquanto nenhum sucessor começou, como isInUseAt', () => {
+    const trancado = { ...emUso, status: 'trancado', pausedAt: D(2026, 9, 20) };
+    expect(inUseReplacementOf({ contracts: [trancado, renovacao], excludeId: 'k2', now: HOJE })).toBe(trancado);
+    // Com a renovação já começada, a pausa fechou no início dela: fora de uso.
+    expect(inUseReplacementOf({ contracts: [trancado, renovacao], excludeId: 'k2', now: D(2026, 10, 15) })).toBeNull();
   });
 });
 

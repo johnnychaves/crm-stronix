@@ -66,7 +66,7 @@ export function contractsTabModel({ lead, contracts, now = new Date() } = {}) {
     // início mais recente. Um paralelo nunca vira o destaque de uma renovação,
     // e o trancado que um sucessor já alcançou não está em uso (isInUseAt).
     const inUse = runningPredecessorOf(latest, list, ref)
-      || (latest.renewedFromId ? null : list.filter((c) => c.id !== latest.id && isInUseAt(c, ref, list)).sort(byStartDesc)[0])
+      || (latest.renewedFromId ? null : inUseReplacementOf({ contracts: list, excludeId: latest.id, now: ref }))
       || null;
     if (inUse) {
       hero = inUse;
@@ -81,6 +81,20 @@ export function contractsTabModel({ lead, contracts, now = new Date() } = {}) {
     : hero?.status === CONTRACT_STATUS.TRANCADO ? { kind: JOIN_LOCKED, gapDays: 0, overlapDays: 0 }
       : computeSeam(contractEndOf(hero), contractStartOf(next));
   return { latest, hero, next, history, join };
+}
+
+// Outro contrato da pessoa em uso agora (isInUseAt), fora o de `excludeId`,
+// o de início mais recente, ou null. É a escolha do destaque para o em uso
+// sem ligação e, pela decisão do Johnny de 01/10/2026 (com dois contratos
+// ativos, cancelar um deixa o cliente ativo pelo outro), o contrato que
+// continua quando o último é cancelado: o ContractOutcomeModal passa o
+// resultado ao buildContractCancel (`replacement`), que mora em contracts.js
+// e não pode importar contractHistory.js. Cancelado e agendado nunca contam;
+// o trancado conta enquanto nenhum sucessor começou.
+export function inUseReplacementOf({ contracts, excludeId = null, now = new Date() } = {}) {
+  const ref = getSafeDateOrNull(now) || new Date();
+  const list = (Array.isArray(contracts) ? contracts : []).filter(Boolean);
+  return list.filter((c) => c.id !== excludeId && isInUseAt(c, ref, list)).sort(byStartDesc)[0] || null;
 }
 
 // O encaixe quando o contrato em uso está trancado: o fim dele ainda anda, e
