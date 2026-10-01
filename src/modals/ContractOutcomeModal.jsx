@@ -11,6 +11,7 @@ import {
   isRenewalNotStarted
 } from '../lib/contracts.js';
 import { commitContractPatch } from '../lib/contractsWrites.js';
+import { inUseReplacementOf } from '../lib/contractsTab.js';
 import { calendarDaysBetween, daysBetween, fromDateInputValue, getSafeDateOrNull, toDateInputValue } from '../lib/dates.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -110,6 +111,19 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
     ? buildRenewalCancel({ contract, previous, cancelledAt: when, reason, note: note.trim() || null })
     : null);
   const primeiro = (lead?.name || '').trim().split(/\s+/)[0] || 'o cliente';
+  // Decisão do Johnny (01/10/2026): com dois contratos ativos, cancelar um
+  // deixa o cliente ativo pelo outro. Cancelando o último contrato (fora o
+  // desfazer da renovação), o contrato que continua é o em uso de início
+  // mais recente entre os da pessoa (inUseReplacementOf), e o resumo do lead
+  // passa para ele (buildContractCancel com `replacement`). Trancar não
+  // passa: o Reativar mora no card do contrato trancado.
+  const replacement = isCurrent && action === 'cancelar' && !undo
+    ? inUseReplacementOf({
+      contracts: (contratos || []).filter((c) => c?.leadId === lead?.id),
+      excludeId: contract?.id || lead?.currentContractId || null,
+      now: new Date()
+    })
+    : null;
 
   // Prévia da reativação: quantos dias pararam e para onde o término anda.
   const pausedDays = action === 'reativar' && pausedAt && when
@@ -149,6 +163,16 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
     if (nextStart) {
       return `O contrato é encerrado${when ? ` em ${fmtDate(when)}` : ''}. ${renovacao} continua marcada para ${fmtDate(nextStart)}, e até lá ${primeiro} fica sem contrato.`;
     }
+    if (replacement) {
+      // O cliente continua pelo contrato em uso: ativo até o fim dele, ou
+      // trancado, sem data, porque o fim do trancado ainda anda.
+      const plano = replacement.planName ? `o contrato Plano ${replacement.planName}` : 'o outro contrato';
+      const fim = getSafeDateOrNull(replacement.endsAt);
+      const continua = replacement.status === CONTRACT_STATUS.TRANCADO
+        ? `O cliente continua com ${plano}, que está trancado.`
+        : `O cliente continua ativo ${replacement.planName ? `pelo contrato Plano ${replacement.planName}` : 'pelo outro contrato'}${fim ? `, que vale até ${fmtDate(fim)}` : ''}.`;
+      return `O contrato é encerrado${when ? ` em ${fmtDate(when)}` : ''}. ${continua}`;
+    }
     return `O contrato é encerrado${when ? ` em ${fmtDate(when)}` : ''} e ${primeiro} passa a contar como inativo. O histórico fica registrado.`;
   })();
 
@@ -163,7 +187,7 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
     try {
       const planName = contract?.planName || lead?.currentPlanName;
       const built = undo || (action === 'cancelar'
-        ? buildContractCancel({ planName, cancelledAt: when, reason, note: note.trim() || null, role, contract, next })
+        ? buildContractCancel({ planName, cancelledAt: when, reason, note: note.trim() || null, role, contract, next, replacement })
         : action === 'trancar'
           ? buildContractPause({ planName, pausedAt: when, reason, role, contract })
           : buildContractResume({ contract, resumedAt: when, role }));

@@ -227,6 +227,22 @@ describe('aba Contratos: os botões em cada situação', () => {
   // ser o próximo. O em uso vira o destaque sem próximo, mas não é o último
   // contrato: Renovar renovaria o cancelado e Corrigir reescreveria o resumo
   // do lead com os dados dele. Só Trancar e Cancelar, com o selo Em uso.
+  // Decisão do Johnny (01/10/2026): cancelado o último contrato com outro em
+  // uso, o resumo do lead passa para o que continua (buildContractCancel com
+  // replacement). A aba não precisa de regra nova: o contrato que continua é
+  // o último, com todos os botões, e o cancelado vai para o Histórico.
+  it('com o resumo passado para o contrato que continua, ele é o destaque com todos os botões e o cancelado vai para o Histórico', () => {
+    const flowCancelado = { ...flow, status: 'cancelado', cancelledAt: D(2026, 10, 20), cancelReason: 'Financeiro' };
+    const { hero, strip, historico } = aba(start, [start, flowCancelado]);
+    expect(hero).toContain('>Renovar contrato<');
+    ['>Corrigir<', '>Trancar<', '>Cancelar<'].forEach((acao) => expect(hero).toContain(acao));
+    expect(hero).not.toContain('>Em uso<');
+    expect(hero).toContain('>Start<');
+    expect(strip).toBe('');
+    expect(historico).toContain('>Flow<');
+    expect(historico).toContain('>Cancelado<');
+  });
+
   it('o em uso que não é o último contrato só tranca e cancela, mesmo sem próximo', () => {
     const flowCancelado = { ...flow, status: 'cancelado', cancelledAt: D(2026, 10, 20), cancelReason: 'Financeiro' };
     const { hero, strip, historico } = aba(flowCancelado, [start, flowCancelado]);
