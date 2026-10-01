@@ -46,6 +46,13 @@ const flow = {
 const flowDepois = { ...flow, seamless: false, startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20) };
 const trancado = { ...start, status: 'trancado', pausedAt: D(2026, 9, 20), pauseReason: 'Viagem' };
 const cancelado = { ...start, status: 'cancelado', cancelledAt: D(2026, 9, 25), cancelReason: 'Financeiro' };
+// O Mensal de 2024, trancado 20 dias e renovado pelo Start.
+const anterior = {
+  id: 'k0', leadId: 'l1', planId: 'p0', planName: 'Mensal', value: 1188, listValue: 1188, durationMonths: 12,
+  status: 'ativo', startsAt: D(2024, 9, 20), endsAt: D(2025, 10, 10), createdAt: D(2024, 9, 20), consultantName: 'Ana',
+  pausedDaysTotal: 20, resumedAt: D(2025, 1, 25), pauseHistory: [{ pausedAt: D(2025, 1, 5), resumedAt: D(2025, 1, 25) }]
+};
+const startRenovado = { ...start, renewedFromId: 'k0' };
 // A renovação depois de o contrato em uso ser cancelado: o cancelamento tira a
 // marca de emendada dela (buildContractCancel), senão ela contaria como ativa.
 const flowSemEmenda = { ...flow, seamless: false };
@@ -172,5 +179,22 @@ describe('aba Contratos: os botões em cada situação', () => {
     expect(strip).not.toContain('Ativar agora');
     expect(strip).not.toContain('>Corrigir<');
     expect(strip).toContain('>Próximo<');
+  });
+
+  it('o Histórico é a tabela com os contratos que não são o destaque nem o próximo', () => {
+    const { hero, historico } = aba(startRenovado, [anterior, startRenovado]);
+    expect(hero).toContain('>Renovado de<');
+    expect(hero).toContain('>Mensal<');
+    expect(historico).toContain('>1 anterior<');
+    expect(historico).toContain('>Fim previsto<');
+    expect(historico).toContain('>Mensal<');
+    expect(historico).toContain('primeira matrícula');
+    expect(historico).toContain('>20/09/2025<');
+    expect(historico).toContain('20 dias depois, pelo trancamento');
+    expect(historico).toContain('>Renovado<');
+    expect(historico).toContain('overflow-x-auto overscroll-x-contain');
+    // A linha aberta (desconto, quem fechou, código, trancamentos) é coberta
+    // pelo teste do componente, em contractsTabComponents.test.js, que abre
+    // por defaultOpenId: o renderToString não clica.
   });
 });

@@ -4,7 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, historySuccessorOf, inUseNoteOf, isInUseAt,
+  CONTRACT_ORIGIN, HISTORY_STATUS, HISTORY_STATUS_LABEL, contractEndOf, contractOriginOf, historyStatusOf, isInUseAt,
   runningPredecessorOf
 } from '../contractHistory.js';
 import { CONTRACT_STATUS } from '../contracts.js';
@@ -128,78 +128,6 @@ describe('contractOriginOf', () => {
     const x = K('x', { startsAt: D(2026, 1, 1), endsAt: D(2026, 6, 1), createdAt: D(2026, 1, 1) });
     const r = K('r', { renewedFromId: 'x', startsAt: D(2026, 6, 11), endsAt: D(2027, 6, 11), createdAt: D(2026, 6, 1) });
     expect(contractOriginOf(r, [x, r]).gapDays).toBe(9);
-  });
-});
-
-// A linha de intervalo do Histórico sai do contrato que veio depois de verdade,
-// e não do vizinho de cima da lista: a renovação desfeita continua na lista,
-// mas nunca valeu.
-describe('historySuccessorOf', () => {
-  // C0, 30 dias sem contrato, C1 (retorno) e C2, a renovação de C1 desfeita
-  // antes de começar. Desfeita, o atual volta a ser C1, e C2 fica no topo da
-  // lista porque começaria depois dele.
-  const c0 = K('c0', { startsAt: D(2025, 1, 1), endsAt: D(2025, 7, 1), createdAt: D(2025, 1, 1) });
-  const c1 = K('c1', { startsAt: D(2025, 8, 1), endsAt: D(2026, 8, 1), createdAt: D(2025, 8, 1) });
-  const c2 = K('c2', { renewedFromId: 'c1', status: 'cancelado', startsAt: D(2026, 8, 2), endsAt: D(2027, 8, 2), cancelledAt: D(2026, 7, 15), createdAt: D(2026, 7, 1) });
-
-  it('renovação desfeita: sem linha acima dela, e os 30 dias ficam acima do C0', () => {
-    const lista = [c0, c2, c1];
-    expect(historySuccessorOf(c2, lista, 'c1')).toBeNull();
-    expect(historySuccessorOf(c0, lista, 'c1')).toBe(c1);
-    expect(contractOriginOf(c1, lista).gapDays).toBe(30);
-    // A lista de quem chama não muda de ordem.
-    expect(lista.map((c) => c.id)).toEqual(['c0', 'c2', 'c1']);
-  });
-
-  it('aceita as datas como Timestamp do Firestore', () => {
-    const t = (c) => ({ ...c, startsAt: ts(c.startsAt), endsAt: ts(c.endsAt), createdAt: ts(c.createdAt), ...(c.cancelledAt ? { cancelledAt: ts(c.cancelledAt) } : {}) });
-    const [t0, t1, t2] = [t(c0), t(c1), t(c2)];
-    expect(historySuccessorOf(t2, [t2, t1, t0], 'c1')).toBeNull();
-    expect(historySuccessorOf(t0, [t2, t1, t0], 'c1')).toBe(t1);
-  });
-
-  it('a renovação desfeita no meio da lista é pulada', () => {
-    const x = K('x', { startsAt: D(2025, 1, 1), endsAt: D(2025, 7, 1), createdAt: D(2025, 1, 1) });
-    const desfeita = K('desfeita', { renewedFromId: 'x', status: 'cancelado', startsAt: D(2025, 7, 2), endsAt: D(2026, 7, 2), cancelledAt: D(2025, 6, 20), createdAt: D(2025, 6, 1) });
-    const volta = K('volta', { startsAt: D(2025, 9, 1), endsAt: D(2026, 9, 1), createdAt: D(2025, 9, 1) });
-    const lista = [volta, desfeita, x];
-    expect(historySuccessorOf(desfeita, lista, 'volta')).toBeNull();
-    expect(historySuccessorOf(x, lista, 'volta')).toBe(volta);
-    expect(contractOriginOf(volta, lista).gapDays).toBe(61);
-  });
-
-  it('numa corrente sem renovação desfeita, é o vizinho de cima da lista, como antes', () => {
-    // a → b → c são renovações; d volta depois de 111 dias sem contrato; e é o atual.
-    const historico = [...todos].sort((x, y) => y.startsAt.getTime() - x.startsAt.getTime());
-    const [atual, ...anteriores] = historico;
-    expect(atual.id).toBe('e');
-    anteriores.forEach((k, i) => {
-      const vizinho = i === 0 ? atual : anteriores[i - 1];
-      expect(historySuccessorOf(k, todos, atual.id), k.id).toBe(vizinho);
-    });
-    // O intervalo acima de c é o do retorno d.
-    expect(historySuccessorOf(c, todos, 'e')).toBe(d);
-    expect(contractOriginOf(d, todos).gapDays).toBe(111);
-  });
-
-  it('o contrato que nunca valeu não tem sucessor, mesmo com contrato depois dele', () => {
-    const desistiu = K('desistiu', { status: 'cancelado', startsAt: D(2025, 3, 1), endsAt: D(2025, 9, 1), cancelledAt: D(2025, 3, 1), createdAt: D(2025, 2, 1) });
-    const depois = K('depois', { startsAt: D(2025, 10, 1), endsAt: D(2026, 10, 1), createdAt: D(2025, 10, 1) });
-    expect(historySuccessorOf(desistiu, [depois, desistiu], 'depois')).toBeNull();
-  });
-
-  // O contrato atual entra sempre, como na célula de origem do card, que mostra
-  // o intervalo dele mesmo quando foi cancelado antes de começar.
-  it('o contrato atual é sucessor mesmo cancelado antes de começar', () => {
-    const volta = K('volta', { status: 'cancelado', startsAt: D(2025, 8, 1), endsAt: D(2026, 8, 1), cancelledAt: D(2025, 7, 20), createdAt: D(2025, 7, 10) });
-    expect(historySuccessorOf(c0, [volta, c0], 'volta')).toBe(volta);
-  });
-
-  it('sem contrato depois, ou fora da lista, não tem sucessor', () => {
-    expect(historySuccessorOf(e, todos, 'e')).toBeNull();
-    expect(historySuccessorOf(K('solto', { startsAt: D(2020, 1, 1) }), todos, 'e')).toBeNull();
-    expect(historySuccessorOf(null, todos, 'e')).toBeNull();
-    expect(historySuccessorOf(a, null, 'e')).toBeNull();
   });
 });
 
@@ -348,35 +276,6 @@ describe('historyStatusOf e runningPredecessorOf', () => {
     expect(runningPredecessorOf(renovacao, null, HOJE)).toBeNull();
     const futuro = { ...atual, startsAt: D(2026, 10, 1) };
     expect(runningPredecessorOf(renovacao, [futuro, renovacao], HOJE)).toBeNull();
-  });
-});
-
-describe('inUseNoteOf: a linha do contrato em uso no card', () => {
-  const fim = D(2026, 10, 7);
-
-  it('renovação emendada diz que continua o contrato em uso, com o plano', () => {
-    expect(inUseNoteOf({ planName: 'Start', end: fim, seamless: true }))
-      .toBe('Continua o contrato em uso (Start, até 07/10/2026)');
-  });
-
-  it('contrato importado sem nome de plano: a frase sai sem a palavra Plano', () => {
-    expect(inUseNoteOf({ planName: null, end: fim, seamless: true })).toBe('Continua o contrato em uso (até 07/10/2026)');
-    expect(inUseNoteOf({ planName: '  ', end: fim, seamless: false })).toBe('Contrato em uso até 07/10/2026');
-  });
-
-  it('renovação agendada diz qual contrato está em uso e os dias sem contrato', () => {
-    expect(inUseNoteOf({ planName: 'Start', end: fim, seamless: false })).toBe('Contrato em uso: Start, até 07/10/2026');
-    expect(inUseNoteOf({ planName: 'Start', end: fim, seamless: false, gapDays: 8 }))
-      .toBe('Contrato em uso: Start, até 07/10/2026 · 8 dias sem contrato entre os dois');
-    expect(inUseNoteOf({ planName: null, end: fim, seamless: false, gapDays: 1 }))
-      .toBe('Contrato em uso até 07/10/2026 · 1 dia sem contrato entre os dois');
-  });
-
-  it('aceita a data crua do Firestore, e sem fim não há linha', () => {
-    expect(inUseNoteOf({ planName: 'Start', end: { toDate: () => fim }, seamless: true }))
-      .toBe('Continua o contrato em uso (Start, até 07/10/2026)');
-    expect(inUseNoteOf({ planName: 'Start', end: null, seamless: true })).toBeNull();
-    expect(inUseNoteOf()).toBeNull();
   });
 });
 
