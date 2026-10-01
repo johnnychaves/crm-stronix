@@ -31,7 +31,7 @@ export function NextContractStrip({ next, facts, joinText, now, canUndo, isReadO
           <b className={STRONG}>{facts.value != null ? fmtBRL(facts.value) : '—'}</b>
           {facts.monthly != null ? ` · ${fmtBRL(facts.monthly)}/mês` : ''}
         </span>
-        {joinText && <span className="text-[12px] text-slate-500 dark:text-slate-400">{joinText}</span>}
+        {joinText && <span className="text-[12px] text-muted-foreground">{joinText}</span>}
       </div>
       {!isReadOnly && (
         <div className="flex items-center gap-1 flex-none">

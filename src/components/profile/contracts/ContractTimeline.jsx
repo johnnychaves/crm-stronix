@@ -37,7 +37,7 @@ export function ContractTimeline({ timeline }) {
     <section className="rounded-2xl border border-border bg-card shadow-card px-[22px] pt-4 pb-5">
       <div className="flex items-center gap-4 flex-wrap">
         <h3 className="text-[14.5px] font-semibold tracking-tight">Vigência</h3>
-        <div className="flex items-center gap-3.5 text-[11px] text-slate-500 dark:text-slate-400 flex-wrap">
+        <div className="flex items-center gap-3.5 text-[11px] text-muted-foreground flex-wrap">
           {LEGEND.map((item) => (
             <span key={item.label} className="inline-flex items-center gap-1.5">
               <span

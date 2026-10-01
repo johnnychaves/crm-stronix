@@ -26,7 +26,7 @@ function EmptyState({ firstName, isReadOnly, loading, onEnroll }) {
     <section className="rounded-2xl border border-dashed border-slate-300 dark:border-white/[0.1] bg-card p-8 text-center">
       <div className="size-[46px] rounded-[14px] grid place-items-center mx-auto mb-3 bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300"><FileText size={20} /></div>
       <h3 className="font-display text-[16px] font-bold tracking-tight">Ainda não é cliente</h3>
-      <p className="text-[12.5px] leading-[1.5] text-slate-500 dark:text-slate-400 mt-1.5 max-w-[300px] mx-auto text-pretty">
+      <p className="text-[12.5px] leading-[1.5] text-muted-foreground mt-1.5 max-w-[300px] mx-auto text-pretty">
         Quando {firstName} fechar, registre plano, valor e vigência. A renovação passa a ser acompanhada por aqui.
       </p>
       {!isReadOnly && (
@@ -56,13 +56,13 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, onEnro
               {CONTRACT_STATUS_LABEL[status]}
             </span>
           </div>
-          <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-1">
+          <div className="num text-[11.5px] text-muted-foreground mt-1">
             {cancelled
               ? `Cancelado${facts.cancelledAt ? ` em ${fmtDia(facts.cancelledAt)}` : ''}${facts.cancelReason ? ` · ${facts.cancelReason}` : ''}`
               : `Venceu há ${Math.abs(vigencia?.daysLeft ?? 0)} dias · ${fmtDia(getSafeDateOrNull(hero.endsAt))}`}
           </div>
         </div>
-        <span className={cn('num flex-none font-display text-[19px] font-bold text-slate-500 dark:text-slate-400', cancelled && 'line-through')}>
+        <span className={cn('num flex-none font-display text-[19px] font-bold text-muted-foreground', cancelled && 'line-through')}>
           {facts.value != null ? fmtBRL(facts.value) : '—'}
         </span>
       </div>
@@ -71,7 +71,7 @@ function ClosedCard({ hero, facts, status, vigencia, isReadOnly, loading, onEnro
       </div>
       <div className="flex items-center gap-2 flex-wrap px-5 py-3 bg-slate-50 dark:bg-white/[0.03]">
         {!isReadOnly && <Btn kind="enroll" icon={<UserPlus size={14} />} onClick={onEnroll} disabled={loading}>Nova matrícula</Btn>}
-        <span className="text-[11.5px] text-slate-500 dark:text-slate-400">
+        <span className="text-[11.5px] text-muted-foreground">
           {cancelled ? `Interrompido a ${pct}% da vigência.` : 'O cliente conta como inativo até renovar.'}
         </span>
       </div>
@@ -129,7 +129,7 @@ export function ContractsTab({
     : null;
 
   return (
-    <div className="space-y-4">
+    <div className="flex flex-col gap-4">
       <ContractTimeline timeline={timeline} />
       {!hasContract ? (
         <EmptyState firstName={firstName} isReadOnly={isReadOnly} loading={loading} onEnroll={onEnroll} />

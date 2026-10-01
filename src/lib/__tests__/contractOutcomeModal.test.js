@@ -150,7 +150,7 @@ describe('ContractOutcomeModal: em que contrato age', () => {
 
     it('trancar avisa que a renovação continua marcada e que os dias que sobram correm junto com ela; grava só o bloco', async () => {
       await montar({ lead, contract: start, contratos: [start, flow], action: 'trancar' });
-      expect(texto()).toContain('A renovação (Plano Flow) continua marcada para 12/10/2026. Se o contrato ainda estiver trancado nesse dia, os dias que sobram dele correm junto com ela.');
+      expect(texto()).toContain('A vigência congela nesta data. Quando reativar, o término anda para frente pelos dias parados, e o cliente não perde o que pagou. A renovação (Plano Flow) continua marcada para 12/10/2026. Se o contrato ainda estiver trancado nesse dia, os dias que sobram dele correm junto com ela.');
       await clicar('Viagem');
       await clicar('Confirmar trancamento');
       const w = gravado();
@@ -164,13 +164,22 @@ describe('ContractOutcomeModal: em que contrato age', () => {
     it('reativar com o fim novo passando do início da renovação avisa que os dois valem juntos; o bloco volta a ativo com o fim novo', async () => {
       const trancado = { ...start, status: 'trancado', pausedAt: D(2026, 9, 20), pauseReason: 'Viagem' };
       await montar({ lead, contract: trancado, contratos: [trancado, flow], action: 'reativar' });
-      expect(texto()).toContain('10 dias parados — o término vai de 11/10/2026 para 21/10/2026. A renovação (Plano Flow) começa em 12/10/2026 do mesmo jeito, e os dois contratos valem juntos até 21/10/2026.');
+      expect(texto()).toContain('10 dias parados: o término vai de 11/10/2026 para 21/10/2026. A renovação (Plano Flow) começa em 12/10/2026 do mesmo jeito, e os dois contratos valem juntos até 21/10/2026.');
       await clicar('Confirmar reativação');
       const w = gravado();
       expect(w.contractId).toBe('k1');
       expect(w.contractPatch).toMatchObject({ status: 'ativo', endsAt: D(2026, 10, 21), pausedDaysTotal: 10 });
       expect(w.leadPatch).toEqual({ inUseContractId: 'k1', inUseContractStatus: 'ativo', inUseContractEndsAt: D(2026, 10, 21) });
       expect(w.linkedContractId).toBeNull();
+    });
+
+    // As prévias são texto de tela: sem travessão no meio da frase (revisão
+    // final de 01/10/2026).
+    it('reativar no mesmo dia do trancamento diz que nenhum dia parou, sem travessão', async () => {
+      const trancado = { ...start, status: 'trancado', pausedAt: D(2026, 9, 30), pauseReason: 'Viagem' };
+      await montar({ lead, contract: trancado, contratos: [trancado, flow], action: 'reativar' });
+      expect(texto()).toContain('Nenhum dia parado: a vigência segue igual.');
+      expect(texto()).not.toContain(' — ');
     });
 
     it('sem nome do plano, a renovação aparece sem parênteses', async () => {

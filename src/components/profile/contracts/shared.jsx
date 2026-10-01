@@ -9,7 +9,7 @@ import { CONTRACT_TONE } from './tone.js';
 // Rótulo em versalete das células. Sempre no tom `muted`: a 9.5px ele faz
 // trabalho estrutural, é o que faz a faixa ler como células.
 export const CapsLabel = ({ children }) => (
-  <div className="text-[9.5px] font-bold uppercase tracking-[.08em] text-slate-500 dark:text-slate-400 whitespace-nowrap">
+  <div className="text-[9.5px] font-bold uppercase tracking-[.08em] text-muted-foreground whitespace-nowrap">
     {children}
   </div>
 );

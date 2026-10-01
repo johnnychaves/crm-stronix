@@ -15,7 +15,7 @@ import { OriginIcon, StatusChip } from './shared.jsx';
 const fmtDia = (d) => (d ? d.toLocaleDateString('pt-BR') : '—');
 const dias = (n) => `${n} ${n === 1 ? 'dia' : 'dias'}`;
 const TH = 'font-bold px-3 py-2.5';
-const MUTED = 'text-[11.5px] text-slate-500 dark:text-slate-400';
+const MUTED = 'text-[11.5px] text-muted-foreground';
 
 // Um período de trancamento: "05/01/2025 a 25/01/2025", "desde 20/09/2026",
 // com a marca da pausa que veio da importação ou refeita pelo total de dias.
@@ -135,7 +135,7 @@ export function ContractHistoryTable({ rows, firstName, hasContract, defaultOpen
       {count === 0 ? (
         <div className="py-7 text-center">
           <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Nenhum contrato anterior</p>
-          <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-[12px] text-muted-foreground mt-0.5">
             {hasContract ? `Este é o primeiro contrato de ${firstName}.` : 'O histórico de planos aparecerá aqui.'}
           </p>
         </div>

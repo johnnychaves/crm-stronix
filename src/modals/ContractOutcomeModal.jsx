@@ -132,14 +132,14 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
     if (action === 'reativar') {
       const novo = buildContractResume({ contract, resumedAt: when || new Date(), role });
       const base = pausedDays > 0
-        ? `${pausedDays} ${pausedDays === 1 ? 'dia parado' : 'dias parados'} — o término vai de ${fmtDate(endsAt)} para ${fmtDate(novo.newEndsAt)}.`
-        : 'Nenhum dia parado — a vigência segue igual.';
+        ? `${pausedDays} ${pausedDays === 1 ? 'dia parado' : 'dias parados'}: o término vai de ${fmtDate(endsAt)} para ${fmtDate(novo.newEndsAt)}.`
+        : 'Nenhum dia parado: a vigência segue igual.';
       // O fim novo passa do início da renovação: os dois valem juntos nesse trecho.
       const cruza = nextStart && novo.newEndsAt && novo.newEndsAt.getTime() >= nextStart.getTime();
       return cruza ? `${base} ${renovacao} começa em ${fmtDate(nextStart)} do mesmo jeito, e os dois contratos valem juntos até ${fmtDate(novo.newEndsAt)}.` : base;
     }
     if (action === 'trancar') {
-      const base = 'A vigência congela nesta data. Quando reativar, o término anda para frente pelos dias parados — o cliente não perde o que pagou.';
+      const base = 'A vigência congela nesta data. Quando reativar, o término anda para frente pelos dias parados, e o cliente não perde o que pagou.';
       // Ainda trancado no dia em que a renovação começa, os dias que sobram
       // correm junto com ela (decisão do Johnny, 30/09/2026).
       return nextStart

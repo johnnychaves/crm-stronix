@@ -30,7 +30,7 @@ function OriginCell({ origin }) {
       <>
         <CapsLabel>Renovado de</CapsLabel>
         <div className="text-[13px] font-semibold mt-[7px] truncate" title={prev?.planName || undefined}>{prev?.planName || '—'}</div>
-        <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">
+        <div className="num text-[11.5px] text-muted-foreground mt-[3px]">
           {prev ? `#${shortContractId(prev.id)} · ` : ''}<span className="whitespace-nowrap">{`${origin.ordinal}ª renovação`}</span>
         </div>
       </>
@@ -49,8 +49,8 @@ function OriginCell({ origin }) {
       <>
         <CapsLabel>{kind === CONTRACT_ORIGIN.UPGRADE ? 'Upgrade' : 'Retorno'}</CapsLabel>
         <div className="text-[13px] font-semibold mt-[7px] truncate" title={detail ? `${main} · ${detail}` : main}>{main}</div>
-        {endText && <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">{endText}</div>}
-        {gap && <div className="text-[11.5px] text-slate-500 dark:text-slate-400">{gap}</div>}
+        {endText && <div className="num text-[11.5px] text-muted-foreground mt-[3px]">{endText}</div>}
+        {gap && <div className="text-[11.5px] text-muted-foreground">{gap}</div>}
       </>
     );
   }
@@ -58,7 +58,7 @@ function OriginCell({ origin }) {
     <>
       <CapsLabel>Renovado de</CapsLabel>
       <div className="text-[13px] font-semibold mt-[7px]">Matrícula inicial</div>
-      <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">primeiro contrato</div>
+      <div className="text-[11.5px] text-muted-foreground mt-[3px]">primeiro contrato</div>
     </>
   );
 }
@@ -118,7 +118,7 @@ export function ContractHeroCard({
                 {hasNext ? 'Em uso' : CONTRACT_STATUS_LABEL[status]}
               </span>
             </div>
-            <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[5px]">
+            <div className="num text-[11.5px] text-muted-foreground mt-[5px]">
               {`#${facts.shortId}${facts.months ? ` · ${facts.months === 1 ? '1 mês' : `${facts.months} meses`}` : ''}`}
             </div>
           </div>
@@ -126,7 +126,7 @@ export function ContractHeroCard({
           <div className="flex-1 min-w-[130px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
             <CapsLabel>Valor</CapsLabel>
             <div className="num font-display text-[18px] font-bold tracking-tight mt-1.5">{facts.value != null ? fmtBRL(facts.value) : '—'}</div>
-            <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[5px]">
+            <div className="num text-[11.5px] text-muted-foreground mt-[5px]">
               {facts.monthly != null ? `${fmtBRL(facts.monthly)}/mês` : '—'}
             </div>
             {/* Só o desconto e o motivo: a célula não comporta o valor de
@@ -156,7 +156,7 @@ export function ContractHeroCard({
                 </>
               ) : <span className="text-[13px] text-slate-400 dark:text-slate-500">—</span>}
             </div>
-            {facts.closedAt && <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">{`em ${fmtDia(facts.closedAt)}`}</div>}
+            {facts.closedAt && <div className="num text-[11.5px] text-muted-foreground mt-[3px]">{`em ${fmtDia(facts.closedAt)}`}</div>}
           </div>
         </div>
 
@@ -194,7 +194,7 @@ export function ContractHeroCard({
 
       {missed && (
         <div className="flex items-center gap-2.5 px-[22px] py-[9px] border-t border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-white/[0.03]">
-          <span className="text-[11.5px] text-slate-500 dark:text-slate-400">{missed}</span>
+          <span className="text-[11.5px] text-muted-foreground">{missed}</span>
         </div>
       )}
     </section>
