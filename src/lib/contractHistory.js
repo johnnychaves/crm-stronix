@@ -154,25 +154,24 @@ export function closedPauseOf(contract, leadContracts, now = new Date()) {
 }
 
 // Status do contrato na lista do Histórico. Com renovação ligada, "Em uso"
-// enquanto ele vale e "Renovado" depois do fim dele ou quando a renovação
-// começa. Antes, o contrato em uso aparecia "A vencer" com o aluno já
-// renovado. A renovação que nunca valeu (neverTookEffect) não conta. O
-// contrato que ainda não começou é "Agendado", mesmo o emendado: no Histórico
-// ele nunca está em uso nem renovado. O trancado segue "Trancado" até um
-// sucessor começar; dali em diante a pausa fecha e ele volta a correr junto
-// com o sucessor pelos dias parados (closedPauseOf): "Em uso" até esse fim
-// andado e "Renovado" depois, ou "Vencido" quando o sucessor não é renovação
-// ligada (decisão do Johnny, 30/09/2026).
+// enquanto ele vale, por dia do calendário, e "Renovado" depois do fim dele.
+// A renovação que já começou não decide sozinha: a que cruza o contrato sem
+// encurtá-lo vale junto com ele, e ele segue "Em uso" até o fim, a mesma
+// leitura de isInUseAt (revisão final de 01/10/2026). Antes, o contrato em
+// uso aparecia "A vencer" com o aluno já renovado. A renovação que nunca
+// valeu (neverTookEffect) não conta. O contrato que ainda não começou é
+// "Agendado", mesmo o emendado: no Histórico ele nunca está em uso nem
+// renovado. O trancado segue "Trancado" até um sucessor começar; dali em
+// diante a pausa fecha e ele volta a correr junto com o sucessor pelos dias
+// parados (closedPauseOf): "Em uso" até esse fim andado e "Renovado" depois,
+// ou "Vencido" quando o sucessor não é renovação ligada (decisão do Johnny,
+// 30/09/2026).
 export function historyStatusOf(contract, leadContracts, now = new Date(), thresholdDays) {
   const base = deriveContractStatus(contract, now, thresholdDays) || CONTRACT_STATUS.VENCIDO;
   if (base === CONTRACT_STATUS.CANCELADO || base === CONTRACT_STATUS.AGENDADO) return base;
   const ref = getSafeDateOrNull(now) || new Date();
   const list = Array.isArray(leadContracts) ? leadContracts : [];
   const renewals = list.filter((o) => o?.renewedFromId && o.renewedFromId === contract?.id && !neverTookEffect(o));
-  const renewalStarted = renewals.some((r) => {
-    const s = getSafeDateOrNull(r.startsAt);
-    return Boolean(s && s.getTime() <= ref.getTime());
-  });
   if (base === CONTRACT_STATUS.TRANCADO) {
     const run = closedPauseOf(contract, list, ref);
     if (!run) return base;
@@ -184,7 +183,7 @@ export function historyStatusOf(contract, leadContracts, now = new Date(), thres
   if (!renewals.length) return base;
   const end = contractEndOf(contract);
   const ended = Boolean(end && calendarDaysBetween(ref, end) < 0);
-  return renewalStarted || ended ? HISTORY_STATUS.RENOVADO : HISTORY_STATUS.EM_USO;
+  return ended ? HISTORY_STATUS.RENOVADO : HISTORY_STATUS.EM_USO;
 }
 
 // O contrato está em uso em `now`: já começou (importado sem início vale pela

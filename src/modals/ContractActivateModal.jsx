@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Play } from 'lucide-react';
-import { buildContractActivate } from '../lib/contracts.js';
+import { buildContractActivate, renewalStartProblem } from '../lib/contracts.js';
 import { commitContractPatch } from '../lib/contractsWrites.js';
 import { getSafeDateOrNull } from '../lib/dates.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -29,7 +29,17 @@ function ContractActivateModal({ lead, appUser, db, contract, onClose, onDone })
     : null;
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(null);
-  const built = sent || buildContractActivate({ contract, previous, now: new Date() });
+  const agora = new Date();
+  // A regra de início da renovação, a mesma do Corrigir (renewalStartProblem,
+  // em `correcting`): a renovação começa no mínimo dois dias depois do início
+  // do contrato renovado. No dia seguinte ao início dele, o Ativar agora não
+  // encurtaria nada, a renovação perderia a marca de emendada e os dois
+  // contratos valeriam juntos (revisão final de 01/10/2026). Só o em uso
+  // ligado (previous) tem a regra; a matrícula agendada ativa como sempre.
+  const startProblem = previous
+    ? renewalStartProblem({ startsAt: previous.startsAt || previous.createdAt }, agora, { correcting: true, now: agora })
+    : null;
+  const built = sent || buildContractActivate({ contract, previous, now: agora });
   const inicio = getSafeDateOrNull(built.contractPatch.startsAt);
   const fim = getSafeDateOrNull(built.contractPatch.endsAt);
   const anteriorFim = getSafeDateOrNull(built.previousPatch?.endsAt);
@@ -40,6 +50,7 @@ function ContractActivateModal({ lead, appUser, db, contract, onClose, onDone })
   const handleClose = (open) => { if (!open && !submitting) onClose && onClose(); };
 
   const handleConfirm = async () => {
+    if (startProblem) { toast.warning(startProblem); return; }
     setSubmitting(true);
     setSent(built);
     try {
@@ -96,7 +107,11 @@ function ContractActivateModal({ lead, appUser, db, contract, onClose, onDone })
             )}
           </div>
 
-          {encurta ? (
+          {startProblem ? (
+            <p className="mt-3 px-3 py-2.5 rounded-[11px] border border-rose-300/60 bg-rose-500/[0.07] dark:border-rose-500/40 dark:bg-rose-500/10 text-[12px] leading-[1.5] font-semibold text-rose-700 dark:text-rose-300 text-pretty">
+              {startProblem}
+            </p>
+          ) : encurta ? (
             <p className="mt-3 px-3 py-2.5 rounded-[11px] border border-rose-300/60 bg-rose-500/[0.07] dark:border-rose-500/40 dark:bg-rose-500/10 text-[12px] leading-[1.5] text-slate-600 dark:text-slate-300 text-pretty">
               O contrato em uso termina {built.daysLost} {built.daysLost === 1 ? 'dia' : 'dias'} antes do previsto, e os dias já pagos se perdem. O valor e a duração do plano novo não mudam.
             </p>
@@ -117,7 +132,7 @@ function ContractActivateModal({ lead, appUser, db, contract, onClose, onDone })
           <button
             type="button"
             onClick={handleConfirm}
-            disabled={submitting}
+            disabled={submitting || Boolean(startProblem)}
             className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[10px] text-[13px] font-semibold bg-brand-600 text-white hover:bg-brand-700 transition disabled:opacity-50"
           >
             <Play size={13} />

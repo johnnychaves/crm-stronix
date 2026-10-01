@@ -225,6 +225,19 @@ describe('historyStatusOf e runningPredecessorOf', () => {
     expect(historyStatusOf(atual, [atual, depois], D(2026, 10, 15))).toBe(HISTORY_STATUS.RENOVADO);
   });
 
+  // A renovação que já começou e cruza o contrato sem encurtá-lo (o anterior
+  // não pôde ser encurtado): os dois valem juntos, e o Histórico diz "Em uso"
+  // até o fim dele, a mesma leitura de isInUseAt, e "Renovado" só depois.
+  // Antes, o início da renovação já virava o selo (revisão final de
+  // 01/10/2026).
+  it('a renovação que já começou e cruza o contrato sem encurtar: em uso até o fim dele', () => {
+    const cruza = { ...renovacao, seamless: false, startsAt: D(2026, 10, 1), endsAt: D(2027, 10, 1) };
+    expect(isInUseAt(atual, D(2026, 10, 5), [atual, cruza])).toBe(true);
+    expect(historyStatusOf(atual, [atual, cruza], D(2026, 10, 5))).toBe(HISTORY_STATUS.EM_USO);
+    expect(historyStatusOf(atual, [atual, cruza], new Date(2026, 9, 11, 18, 0))).toBe(HISTORY_STATUS.EM_USO);
+    expect(historyStatusOf(atual, [atual, cruza], D(2026, 10, 12))).toBe(HISTORY_STATUS.RENOVADO);
+  });
+
   it('aceita as datas como Timestamp do Firestore', () => {
     const tAtual = { ...atual, startsAt: ts(atual.startsAt), endsAt: ts(atual.endsAt) };
     const tRenovacao = { ...renovacao, startsAt: ts(renovacao.startsAt), endsAt: ts(renovacao.endsAt) };
