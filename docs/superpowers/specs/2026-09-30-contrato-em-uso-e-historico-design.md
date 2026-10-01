@@ -91,16 +91,19 @@ A linha pontilhada de "N dias sem contrato" entre dois contratos, que existia na
 |---|---|
 | Contrato em uso, sem próximo | Renovar contrato, Corrigir, Trancar, Cancelar (como hoje) |
 | Contrato em uso trancado, sem próximo | Reativar contrato, Corrigir, Cancelar (como hoje) |
-| Contrato em uso, com próximo marcado | Trancar e Cancelar. Trancado, o Trancar vira Reativar |
+| Contrato em uso, com próximo marcado | Trancar e Cancelar. Trancado, o Trancar vira Reativar. Vale também no último dia dele, quando o fim gravado à meia-noite já o deixa vencido por instante |
+| Contrato em uso que não é o último contrato (o último, cancelado, foi para o Histórico) | Os mesmos de com próximo: Trancar ou Reativar e Cancelar. Renovar e Corrigir são do último contrato |
 | Próximo contrato | Ativar agora, Corrigir, Cancelar renovação |
 | Contrato agendado sem nenhum em uso | Ativar agora, Corrigir, Cancelar. Sai o Trancar |
-| Vencido ou cancelado, sem próximo | Nova matrícula (como hoje) |
+| Vencido ou cancelado, sem próximo e sendo o último contrato | Nova matrícula (como hoje) |
 
 O "Cancelar renovação" do próximo contrato é o desfazer que já existe (`isRenewalNotStarted`). Se o contrato renovado foi cancelado, a renovação não pode ser desfeita, e o botão diz "Cancelar" e faz o cancelamento comum.
 
 ### Modal do Ativar agora
 
 Título "Ativar agora", com o nome do cliente, o plano e a data que estava marcada. Mostra as datas novas do contrato ("passa a valer de DD/MM/AAAA a DD/MM/AAAA"). Quando existe contrato em uso valendo, mostra também quando ele passa a terminar e o aviso de que os dias já pagos se perdem, com a contagem. Botões "Voltar" e "Ativar agora".
+
+A regra de início da renovação vale aqui como no Corrigir (`renewalStartProblem`): a renovação começa no mínimo dois dias depois do início do contrato que ela renova. No dia seguinte ao início dele, o modal mostra a regra ("A renovação precisa começar a partir de DD/MM/AAAA, dois dias depois do início do contrato renovado.") e o botão fica desligado. Sem a regra, o Ativar agora nesse dia não encurtava nada, tirava a marca de emendada da renovação e deixava os dois contratos valendo juntos.
 
 ## Quem é o contrato em uso
 
@@ -127,7 +130,7 @@ Uma função pura (`contractFactsOf`) monta os fatos de um contrato, para a tabe
 - **Desconto:** `contractDiscountOf`, com o motivo e o valor de tabela.
 - **Quem fechou:** `consultantName` e `createdAt`.
 - **Origem:** `contractOriginOf`.
-- **Situação:** `historyStatusOf`, com uma regra nova, decidida pelo Johnny em 30/09/2026 depois da revisão: o contrato que continua trancado no dia em que o sucessor começa (a renovação ligada ou outro contrato da pessoa, o que começar primeiro) volta a correr junto com ele. A pausa fecha no início do sucessor e o fim anda os dias parados. No Histórico ele aparece "Em uso" até o fim novo, com a nota "Estava trancado quando a renovação começou e voltou a correr junto com ela.", e depois "Renovado" (ou "Vencido", quando o sucessor não é renovação ligada). É a leitura que o Operacional já fazia (`closeOpenPause`): a regra do sucessor é uma só, `pauseSuccessorStartOf`, e um teste confere que a ficha e o Operacional dão o mesmo fim. A carteira do Gerencial conta os dois contratos nesse trecho.
+- **Situação:** `historyStatusOf`. Com renovação ligada, "Em uso" enquanto o contrato vale, por dia do calendário, e "Renovado" só depois do fim dele: a renovação que já começou e cruza o contrato sem encurtá-lo vale junto com ele, e ele segue "Em uso" até o fim, a mesma leitura de `isInUseAt` (revisão final de 01/10/2026). E uma regra nova, decidida pelo Johnny em 30/09/2026 depois da revisão: o contrato que continua trancado no dia em que o sucessor começa (a renovação ligada ou outro contrato da pessoa, o que começar primeiro) volta a correr junto com ele. A pausa fecha no início do sucessor e o fim anda os dias parados. No Histórico ele aparece "Em uso" até o fim novo, com a nota "Estava trancado quando a renovação começou e voltou a correr junto com ela.", e depois "Renovado" (ou "Vencido", quando o sucessor não é renovação ligada). É a leitura que o Operacional já fazia (`closeOpenPause`): a regra do sucessor é uma só, `pauseSuccessorStartOf`, e um teste confere que a ficha e o Operacional dão o mesmo fim. A carteira do Gerencial conta os dois contratos nesse trecho.
 - **Contrato que nunca valeu** (renovação desfeita): sem fim de fato ("nunca começou"), sem média e sem ordem de renovação.
 
 ## Regras de gravação
@@ -138,6 +141,8 @@ Com próximo contrato, o Trancar, o Reativar e o Cancelar do card agem no contra
 
 - contrato que é o último (`lead.currentContractId`): como hoje, os campos `currentContract*`;
 - contrato em uso com próximo marcado: só o bloco "em uso" do resumo (abaixo), sem tocar em `currentContract*`.
+
+O Corrigir segue a mesma divisão (`buildContractEdit` recebe o `lead`, revisão final de 01/10/2026): só o último contrato grava `currentContract*`. Corrigir outro contrato atualiza apenas o bloco "em uso", e só quando o bloco aponta para ele; sem o bloco, o resumo do lead não é tocado. O contrato que uma renovação encurtou (`shortenedById`) continua terminando na véspera dela: o fim vendido recalculado vai para `originalEndsAt`, e só quando o fim vendido novo cai antes do fim encurtado o encurtamento deixa de existir. Na tela, o Corrigir não aparece no destaque que não é o último contrato, e o `ContractOutcomeModal` não trata o último contrato cancelado como renovação marcada: cancelar o em uso nesse caso é cancelamento comum, no bloco, sem patch na renovação.
 
 ### Trancar e reativar o contrato em uso
 
@@ -245,6 +250,16 @@ A revisão independente das regras, antes da tela, pediu estes ajustes, já feit
 - Corrigir ou ativar o próximo com o contrato em uso trancado só devolve o fim original do em uso quando o início novo deixa de sobrepor. Enquanto sobrepõe, o em uso fica como está.
 - Com o contrato em uso trancado, a faixa do próximo diz "O contrato em uso está trancado. Quando este começar, os dias que sobram dele correm junto."
 - O modal de desfecho decide o papel pelo contrato que recebeu, nunca cai em `currentContractId` quando recebeu um contrato, e nunca desfaz renovação com o contrato em uso.
+
+## Depois da revisão final (01/10/2026)
+
+A revisão independente da entrega inteira pediu estes ajustes, já feitos:
+
+- No último dia do contrato em uso, com a renovação marcada, o destaque continua o em uso, com Trancar e Cancelar. O fim gravado à meia-noite já o deixava vencido por instante, e a aba mostrava o card fechado com "Nova matrícula", que gravaria um segundo contrato.
+- O destaque que não é o último contrato (o último cancelado foi para o Histórico) age como se tivesse próximo: só Trancar ou Reativar e Cancelar. Antes ele oferecia Renovar e Corrigir, e o Corrigir reescrevia o resumo do lead com os dados dele. O `buildContractEdit` passou a receber o `lead` e só grava `currentContract*` para o último contrato; o contrato encurtado por uma renovação continua encurtado na correção; o `ContractOutcomeModal` ignora o último contrato cancelado como renovação marcada; o `contractById` da ficha não cai mais no último contrato para outro id.
+- O Ativar agora segue a regra de início da renovação (dois dias depois do início do contrato renovado), como o Corrigir.
+- No Histórico, "Renovado" só depois do fim do contrato: a renovação que já começou e cruza o contrato sem encurtá-lo deixa o contrato "Em uso" até o fim dele, como `isInUseAt`.
+- As prévias de reativar e trancar saíram sem travessão no meio da frase, e a aba usa `flex` com `gap` e o token `text-muted-foreground` no texto discreto.
 
 ## Pontos em aberto
 
