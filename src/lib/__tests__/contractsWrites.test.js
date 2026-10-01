@@ -113,7 +113,7 @@ describe('commitMatricula: renovação e o contrato atual', () => {
 
 // Desfecho que mexe também no contrato renovado: cancelar a renovação que
 // ainda não começou devolve o fim de antes ao contrato que ela encurtou.
-describe('commitContractPatch: o contrato renovado no mesmo batch', () => {
+describe('commitContractPatch: o contrato ligado no mesmo batch', () => {
   const base = {
     db: {}, lead, appUser, contractId: 'k2',
     contractPatch: { status: 'cancelado' },
@@ -144,14 +144,14 @@ describe('commitContractPatch: o contrato renovado no mesmo batch', () => {
   });
 
   it('só o id ou só o patch não grava o contrato renovado', async () => {
-    await commitContractPatch({ ...base, previousContractId: 'k1' });
-    await commitContractPatch({ ...base, previousContractPatch: { endsAt: D(2026, 10, 11) } });
+    await commitContractPatch({ ...base, linkedContractId: 'k1' });
+    await commitContractPatch({ ...base, linkedContractPatch: { endsAt: D(2026, 10, 11) } });
     expect(m.writes.some((w) => w.path === `${CONTRATOS}/k1`)).toBe(false);
   });
 
   it('com o patch, atualiza o contrato renovado no mesmo batch', async () => {
     await commitContractPatch({
-      ...base, previousContractId: 'k1', previousContractPatch: { endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null }
+      ...base, linkedContractId: 'k1', linkedContractPatch: { endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null }
     });
     // update, e não set com merge: se o contrato não existir mais, o batch
     // inteiro falha em vez de criar um contrato fantasma só com datas.
@@ -163,6 +163,20 @@ describe('commitContractPatch: o contrato renovado no mesmo batch', () => {
     expect(m.writes.filter((w) => w.path !== `${CONTRATOS}/k1`)).toEqual(sempre);
     // Um batch só, gravado uma vez: a renovação desfeita e o fim devolvido
     // entram ou ficam de fora juntos.
+    expect(m.batches).toBe(1);
+    expect(m.commits).toBe(1);
+  });
+
+  // O contrato ligado também pode ser o PRÓXIMO: cancelar o contrato em uso
+  // tira a marca de emendada da renovação marcada.
+  it('o cancelamento do contrato em uso tira a marca de emendada da renovação, no mesmo batch', async () => {
+    await commitContractPatch({
+      ...base, contractId: 'k1', leadPatch: { inUseContractStatus: 'cancelado', currentContractSeamless: false },
+      linkedContractId: 'k2', linkedContractPatch: { seamless: false }
+    });
+    expect(m.writes.find((w) => w.path === `${CONTRATOS}/k2`)).toEqual({
+      path: `${CONTRATOS}/k2`, data: { seamless: false, updatedAt: 'TS' }, op: 'update'
+    });
     expect(m.batches).toBe(1);
     expect(m.commits).toBe(1);
   });
