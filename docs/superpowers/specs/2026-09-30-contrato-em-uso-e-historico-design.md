@@ -159,6 +159,17 @@ O Corrigir segue a mesma divisão (`buildContractEdit` recebe o `lead`, revisão
 - A linha do tempo ganha a frase no fim do texto de cancelamento: "A renovação continua marcada para DD/MM/AAAA."
 - A prévia do modal diz: "O contrato é encerrado em DD/MM/AAAA. A renovação (Plano X) continua marcada para DD/MM/AAAA, e até lá o cliente fica sem contrato."
 
+### Cancelar o último contrato com outro em uso
+
+Decisão do Johnny em 01/10/2026: "Se existem 2 contratos ativos e um é cancelado enquanto o outro está ativo, o cliente tem que constar ATIVO e não cancelado". Até então o cancelamento do último contrato gravava só `currentContractStatus: 'cancelado'`, e Clientes, o topo da ficha, a busca e o cartão do Stronizap diziam "cancelado" com outro contrato ainda valendo: a renovação cancelada com data depois do início, enquanto o contrato renovado seguia em uso, e o contrato paralelo mais novo cancelado. A Meta Diária também tirava o cliente da renovação e dos vencidos, e o Upgrade do Kanban fechava como matrícula nova.
+
+- Quem continua é o contrato em uso de início mais recente entre os outros contratos da pessoa (`inUseReplacementOf`, em `src/lib/contractsTab.js`, por `isInUseAt`): nunca o que está sendo cancelado, nunca um contrato cancelado, e o agendado não conta. O trancado conta enquanto nenhum sucessor começou. É a mesma escolha que o destaque da aba faz para o em uso sem ligação. A conta fica fora de `contracts.js` para não criar ciclo com `contractHistory.js`: o `ContractOutcomeModal` calcula com os contratos da pessoa e passa ao `buildContractCancel` (`replacement`).
+- Com `replacement`, e só no papel `current`, o resumo do lead passa a ser o dele: `currentContractId`, plano, valor (sem valor fica sem valor, nunca zero), início (ou a criação), fim, status gravado (trancado continua trancado) e marca de emendada, com o bloco "em uso" limpo. É o mesmo molde do desfazer da renovação (`buildRenewalCancel`), num helper só. Sem `replacement`, ou no papel `inUse`, a gravação é a de sempre.
+- A prévia do modal: "O contrato é encerrado em DD/MM/AAAA. O cliente continua ativo pelo contrato Plano X, que vale até DD/MM/AAAA." e, com o contrato que continua trancado, "O cliente continua com o contrato Plano X, que está trancado." Sem nome de plano, "pelo outro contrato" e "com o outro contrato".
+- A linha do tempo ganha, no fim do texto de cancelamento, "O cliente continua com o contrato Plano X." (ou "com o outro contrato"). O `contractEventOf` continua lendo o plano do contrato cancelado, nunca o do que continua.
+- Nada mais muda: `inUseStatusOf`, o modelo da aba, o papel `inUse`, trancar e reativar (trancar o último não passa o resumo, porque o Reativar mora no card dele) e o desfazer da renovação ficam como estão. Com o resumo apontando para o contrato que continua, a aba o mostra como último, com todos os botões, e o cancelado vai para o Histórico.
+- Borda conhecida, aceita: na renovação cancelada com data futura, se o contrato renovado terminar antes dessa data, o resumo passa a dizer vencido quando ele termina. É o comportamento de antes, em que o cancelamento com data futura vira o estado na hora.
+
 ### Ativar agora
 
 - É a correção do início para hoje, pela regra que já existe (`buildContractEdit`): o fim é recalculado pela duração, e o plano, o valor e o desconto não mudam.
@@ -265,7 +276,6 @@ Decisão do Johnny em 01/10/2026: Ativar agora a renovação com o contrato em u
 
 ## Pontos em aberto
 
-- Com o último contrato cancelado e outro contrato ainda em uso, o resumo do lead descreve o cancelado. Clientes (etiqueta, anel e filtro), o topo da ficha, a busca e o cartão do Stronizap mostram "cancelado", a Meta Diária deixa o cliente fora da renovação e dos vencidos, e o Upgrade do Kanban fecha como matrícula nova. A aba Contratos mostra o contrato em uso. Acontece na renovação cancelada com data depois do início dela, enquanto o contrato anterior ainda vale, e no contrato paralelo, quando o mais novo é cancelado.
 - O texto da linha do tempo do Ativar agora mostra "(R$ 0,00)" em contrato importado sem valor.
 
 ## Riscos
