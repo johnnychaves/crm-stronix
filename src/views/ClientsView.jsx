@@ -32,8 +32,11 @@ const STATUS_TONE = {
   [CONTRACT_STATUS.AGENDADO]: 'bg-violet-50 text-violet-700 dark:bg-violet-500/10 dark:text-violet-300',
   [CONTRACT_STATUS.ATIVO]:    'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300',
   [CONTRACT_STATUS.A_VENCER]: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300',
-  [CONTRACT_STATUS.VENCIDO]:  'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
-  [CONTRACT_STATUS.CANCELADO]:'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400',
+  [CONTRACT_STATUS.TRANCADO]: 'bg-yellow-50 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-300',
+  // Vencido cinza e cancelado vermelho, como na ficha e no cabeçalho. Antes
+  // os dois estavam trocados só aqui.
+  [CONTRACT_STATUS.VENCIDO]:  'bg-slate-100 text-slate-600 dark:bg-white/[0.06] dark:text-slate-300',
+  [CONTRACT_STATUS.CANCELADO]:'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-300',
   [SEM_CONTRATO]:             'bg-slate-100 text-slate-400 dark:bg-white/[0.04] dark:text-slate-500'
 };
 const STATUS_LABEL = { ...CONTRACT_STATUS_LABEL, [SEM_CONTRATO]: 'Sem contrato' };
@@ -43,26 +46,31 @@ const STATUS_OPTIONS = [
   CONTRACT_STATUS.AGENDADO,
   CONTRACT_STATUS.ATIVO,
   CONTRACT_STATUS.A_VENCER,
+  CONTRACT_STATUS.TRANCADO,
   CONTRACT_STATUS.VENCIDO,
   CONTRACT_STATUS.CANCELADO,
   SEM_CONTRATO
 ];
 
-// Anel de situação do contrato em volta do avatar — mesmo padrão do perfil do
-// aluno (RingAvatar): 100% verde = Ativo · metade âmbar / metade verde = A
-// vencer · cinza = Inativo (vencido/cancelado/sem contrato). Hexes de getTone.
+// Anel de situação do contrato em volta do avatar, mesmo padrão do perfil do
+// aluno (RingAvatar): verde = Ativo, metade âmbar e metade verde = A vencer,
+// amarelo = Trancado, roxo = Agendado e cinza = Inativo (vencido, cancelado ou
+// sem contrato). Hexes de getTone.
 const RING_GREEN = '#10B981'; // emerald
 const RING_AMBER = '#F59E0B'; // amber
+const RING_YELLOW = '#EAB308'; // yellow, contrato trancado
 const RING_GRAY = '#64748B';  // slate
-const RING_VIOLET = '#8B5CF6'; // violet — matrícula agendada, vigência à frente
+const RING_VIOLET = '#8B5CF6'; // violet, contrato agendado
 const contractRing = (status) =>
   status === CONTRACT_STATUS.ATIVO
     ? RING_GREEN
     : status === CONTRACT_STATUS.AGENDADO
       ? RING_VIOLET
-      : status === CONTRACT_STATUS.A_VENCER
-        ? `conic-gradient(${RING_AMBER} 0deg 180deg, ${RING_GREEN} 180deg 360deg)`
-        : RING_GRAY;
+      : status === CONTRACT_STATUS.TRANCADO
+        ? RING_YELLOW
+        : status === CONTRACT_STATUS.A_VENCER
+          ? `conic-gradient(${RING_AMBER} 0deg 180deg, ${RING_GREEN} 180deg 360deg)`
+          : RING_GRAY;
 
 // Avatar com o anel, dimensão constante (32 + gap 2 + anel 2.5) para não
 // desalinhar as linhas entre situações.

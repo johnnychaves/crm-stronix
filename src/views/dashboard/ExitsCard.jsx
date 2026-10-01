@@ -18,7 +18,7 @@ const CARD = 'rounded-2xl border border-border bg-card shadow-card';
 const RULE = 'border-slate-100 dark:border-white/[0.06]';
 const TONES = {
   cancelamento: { text: 'text-rose-700 dark:text-rose-300', fill: 'bg-danger dark:bg-[#E11D48]' },
-  trancamento: { text: 'text-amber-700 dark:text-amber-300', fill: 'bg-amber-500' }
+  trancamento: { text: 'text-yellow-700 dark:text-yellow-300', fill: 'bg-yellow-500' }
 };
 
 const plural = (n, one, many) => `${fmtNum(n)} ${n === 1 ? one : many}`;

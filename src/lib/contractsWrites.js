@@ -24,7 +24,9 @@ export async function commitContractPatch({
   contractId,
   contractPatch,
   leadPatch,
-  interactionText
+  interactionText,
+  linkedContractId = null,
+  linkedContractPatch = null
 }) {
   if (!contractId) throw new Error('Contrato não informado.');
   const batch = writeBatch(db);
@@ -34,6 +36,19 @@ export async function commitContractPatch({
     { ...contractPatch, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  // Contrato ligado, quando o desfecho mexe em outro contrato: o renovado
+  // (cancelar a renovação que não começou, corrigir o início de uma renovação,
+  // Ativar agora) ou o próximo (cancelar o contrato em uso tira a marca de
+  // emendada da renovação marcada). update, e não set com merge: se o contrato
+  // não existir mais, o batch inteiro falha em vez de criar um contrato
+  // fantasma só com datas.
+  if (linkedContractId && linkedContractPatch) {
+    batch.update(
+      doc(db, 'artifacts', appId, 'public', 'data', CONTRACTS_PATH, linkedContractId),
+      { ...linkedContractPatch, updatedAt: serverTimestamp() }
+    );
+  }
 
   batch.set(
     doc(db, 'artifacts', appId, 'public', 'data', LEADS_PATH, lead.id),
@@ -61,6 +76,10 @@ export async function commitContractPatch({
 // Resolve tudo num único batch e devolve o id do contrato criado.
 // `contractExtra` carrega os campos que só a renovação preenche (modo e valor
 // do desconto, motivo) — o payload base continua vindo de buildMatriculaWrites.
+// `previousContract` é o doc do contrato atual: sem ele, a renovação que
+// sobrepõe o atual não encurta nada (evita gravar um contrato fantasma).
+// `now` é a hora da gravação, que buildMatriculaWrites usa para saber se o
+// contrato atual está em vigor. Padrão: o relógio.
 export async function commitMatricula({
   db,
   lead,
@@ -70,7 +89,9 @@ export async function commitMatricula({
   startsAt,
   mode = 'matricula',
   renewedFromId = null,
-  contractExtra = null
+  previousContract = null,
+  contractExtra = null,
+  now = new Date()
 }) {
   const {
     contract,
@@ -80,8 +101,10 @@ export async function commitMatricula({
     setStatusVenda,
     stampClienteSince,
     notifyReferrerId,
-    referrerInteractionText
-  } = buildMatriculaWrites({ lead, plan, value, startsAt, appUser, mode, renewedFromId });
+    referrerInteractionText,
+    previousContractId,
+    previousPatch
+  } = buildMatriculaWrites({ lead, plan, value, startsAt, appUser, mode, renewedFromId, previousContract, now });
 
   // Troca de etapa para Venda (base do CRM). null na renovação, quando o lead
   // já está em Venda, e também quando quem matricula já é cliente — o card
@@ -94,6 +117,17 @@ export async function commitMatricula({
   // (1) Contrato — id gerado client-side para já referenciá-lo no lead.
   const contractRef = doc(collection(db, 'artifacts', appId, 'public', 'data', CONTRACTS_PATH));
   batch.set(contractRef, { ...contract, ...(contractExtra || {}), createdAt: serverTimestamp() });
+
+  // (1b) Renovação que começa antes do fim do atual: o atual passa a terminar
+  //      na véspera do novo, no mesmo batch, e guarda quem o encurtou. update, e
+  //      não set com merge: se o contrato não existir mais, o batch inteiro
+  //      falha em vez de criar um contrato fantasma só com datas.
+  if (previousContractId && previousPatch) {
+    batch.update(
+      doc(db, 'artifacts', appId, 'public', 'data', CONTRACTS_PATH, previousContractId),
+      { ...previousPatch, shortenedById: contractRef.id, updatedAt: serverTimestamp() }
+    );
+  }
 
   // (2) Resumo denormalizado no lead. Os campos que dependem do SDK
   //     (serverTimestamp / status de venda) entram aqui conforme os sinais

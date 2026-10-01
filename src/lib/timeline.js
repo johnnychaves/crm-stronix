@@ -3,6 +3,7 @@
 // Sem React state — só apresentação/classificação/parse de interactions.
 
 import { monthKeyOf, monthLabel } from './operacional/month.js';
+import { parseValorBRL } from './format.js';
 import { ZAP_SIGNUP_TYPE, ZAP_VIA } from './leads.js';
 
 export const extractStageNameFromInteractionText = (text = '') => {
@@ -121,18 +122,55 @@ export const originLastOnTies = (list) => {
   return out;
 };
 
-// Detecta eventos de CONTRATO (matrícula/renovação/cancelamento/troca de plano)
-// pelo texto da interaction. Usado como bucket próprio na timeline. Só é
-// consultado para type='status_change' (ver classifyInteraction) — contrato
-// real é sempre gravado com esse type (contractsWrites.js); sem esse gate o
-// regex também capturava notas/conclusões de sistema que só por coincidência
-// mencionavam "renovação"/"plano" (ex: reagendamento de renovação na Meta
-// Diária, RenewalOutcomeModal.jsx), fazendo a timeline mostrar a anotação do
-// consultor como se fosse uma matrícula fechada.
-const CONTRACT_RE = /matrícula|matricula|renova(ç|c)ão|contrato cancelado|plano /i;
+// Detecta eventos de CONTRATO (matrícula, renovação, cancelamento, trancamento,
+// reativação, correção e ativação antes da data) pelo texto da interaction. Usado como bucket próprio
+// na timeline. Só é consultado para type='status_change' (ver
+// classifyInteraction) — contrato real é sempre gravado com esse type
+// (contractsWrites.js); sem esse gate o regex também capturava notas/conclusões
+// de sistema que só por coincidência mencionavam "renovação"/"plano" (ex:
+// reagendamento de renovação na Meta Diária, RenewalOutcomeModal.jsx), fazendo
+// a timeline mostrar a anotação do consultor como se fosse uma matrícula
+// fechada.
+const CONTRACT_RE = /matrícula|matricula|renova(ç|c)ão|contrato (cancelado|trancado|reativado|corrigido|ativado)|plano /i;
 
 // Prefixo dos eventos do funil Upgrade (src/lib/stageMove.js).
 const UPGRADE_EVENT_RE = /^Upgrade: /;
+
+// Tipo do evento de contrato pelo começo do texto que o próprio app grava
+// (src/lib/contracts.js). Cada texto casa com uma regra só: "Renovação
+// cancelada" cai em cancelamento, e a renovação exige "registrada".
+const CONTRACT_EVENT_RULES = [
+  { kind: 'cancelamento', re: /^(contrato cancelado|renova(ç|c)ão cancelada)/i },
+  { kind: 'trancamento', re: /^contrato trancado/i },
+  { kind: 'reativacao', re: /^contrato reativado/i },
+  { kind: 'correcao', re: /^contrato corrigido/i },
+  { kind: 'ativacao', re: /^contrato ativado/i },
+  { kind: 'renovacao', re: /^renova(ç|c)ão registrada/i },
+  { kind: 'matricula', re: /^matr(í|i)cula realizada/i }
+];
+
+// Lê um evento de contrato: o tipo, o plano e o valor DELE. A ficha mostrava o
+// plano e o valor do contrato de hoje em todo evento, então a matrícula de
+// junho aparecia com o valor da renovação de setembro. Aceita os textos com
+// travessão (os de hoje) e com vírgula (o da renovação cancelada). Sem tipo
+// reconhecido devolve null. Mudou um texto em contracts.js, mude aqui e no
+// timeline.test.js junto.
+export function contractEventOf(text) {
+  const t = String(text || '').trim();
+  const rule = CONTRACT_EVENT_RULES.find((r) => r.re.test(t));
+  if (!rule) return null;
+  // O plano vem logo depois de "— " (matrícula, renovação, cancelamento,
+  // trancamento, correção) ou de ": " (renovação cancelada). Sem isso, um
+  // texto sem plano pegaria o "Plano" de outra parte da frase.
+  const plan = t.match(/(?:— |: )Plano (.+?)(?= \(R\$|, motivo | — |\. (?:Vigência|Encerrado|O contrato)|\.$|$)/);
+  const money = t.match(/\((R\$\s?[\d.,]+)\)/);
+  const value = money ? parseValorBRL(money[1]) : null;
+  return {
+    kind: rule.kind,
+    planName: plan ? plan[1].trim() : null,
+    value: Number.isFinite(value) ? value : null
+  };
+}
 
 // Classifica uma interaction num dos buckets de filtro da timeline.
 // Usa o campo `type` e prefixos injetados pelo composer.

@@ -7,7 +7,8 @@
 // contrato encosta no atual, quanto de desconto foi dado e onde cada marco
 // cai na régua de vigência.
 
-import { addDays, daysBetween, getSafeDateOrNull } from './dates.js';
+import { CONTRACT_STATUS } from './contracts.js';
+import { addDays, calendarDaysBetween, daysBetween, getSafeDateOrNull } from './dates.js';
 import { parseValorBRL } from './format.js';
 import { normalize } from './globalSearch.js';
 import { activeRenewalCheckpoint, DEFAULT_RENEWAL_CHECKPOINTS } from './renewalGoal.js';
@@ -38,12 +39,14 @@ export const SEAM_KIND = {
 // renovação era fechada antes do vencimento.
 export const seamStart = (currentEndsAt) => addDays(currentEndsAt, 1);
 
-// Lacuna e sobreposição são contas diferentes: emendar (início = fim + 1) é
-// lacuna ZERO, por isso o -1; a sobreposição é a cobertura perdida, sem o -1.
+// Encaixe da vigência nova na atual, em dias do calendário (a mesma conta de
+// renewalJoinOf, em contracts.js, que decide o que a gravação faz). Emendar
+// (início no dia seguinte ao fim) é lacuna zero. Começar no próprio dia do fim
+// já sobrepõe um dia: o fim entra na vigência dos dois.
 export function computeSeam(currentEndsAt, startsAt) {
-  const rawGap = daysBetween(currentEndsAt, startsAt);
-  if (rawGap == null) return null;
-  const gapDays = rawGap > 0 ? rawGap - 1 : rawGap;
+  const diff = calendarDaysBetween(currentEndsAt, startsAt);
+  if (diff == null) return null;
+  const gapDays = diff - 1;
   return {
     gapDays,
     overlapDays: gapDays < 0 ? Math.abs(gapDays) : 0,
@@ -56,7 +59,7 @@ export function computeSeam(currentEndsAt, startsAt) {
 // Leitura curta do encaixe, para o recibo do modal.
 export function seamLabel(seam) {
   if (!seam) return '';
-  if (seam.kind === SEAM_KIND.EMENDA) return 'Emenda perfeita — nenhum dia sem contrato.';
+  if (seam.kind === SEAM_KIND.EMENDA) return 'Emenda perfeita, nenhum dia sem contrato.';
   if (seam.kind === SEAM_KIND.LACUNA) {
     return `${seam.gapDays} ${seam.gapDays === 1 ? 'dia' : 'dias'} sem contrato entre os dois.`;
   }
@@ -68,7 +71,8 @@ export function seamWarning(seam, startsAt) {
   if (!seam || seam.kind === SEAM_KIND.EMENDA) return null;
   if (seam.kind === SEAM_KIND.SOBREPOSICAO) {
     const lastDay = fmtDate(addDays(startsAt, -1));
-    return `O contrato atual será encerrado em ${lastDay}, ${seam.overlapDays} dias antes do previsto — os dias já pagos se perdem. Considere emendar no fim do atual ou dar o período como bônus no desconto.`;
+    const n = seam.overlapDays;
+    return `O contrato atual passa a terminar em ${lastDay}, ${n} ${n === 1 ? 'dia' : 'dias'} antes do previsto, e os dias já pagos se perdem. Para não perder, emende no fim do atual ou dê o período como desconto.`;
   }
   return `Ficam ${seam.gapDays} ${seam.gapDays === 1 ? 'dia' : 'dias'} sem contrato ativo. Nesse intervalo o cliente conta como inativo e sai dos relatórios de clientes ativos.`;
 }
@@ -142,6 +146,24 @@ export function searchPlans(plans, query) {
 // ---------------------------------------------------------------------------
 // Régua de vigência do contrato vigente
 // ---------------------------------------------------------------------------
+
+// A data que a régua de vigência trata como "hoje". Trancado congela na data
+// do trancamento. Cancelado para na data do cancelamento quando ela já passou:
+// sem isso a porcentagem de um contrato encerrado subia todo dia. Cancelado
+// ainda trancado (mantém o pausedAt) para no trancamento, porque a vigência já
+// estava congelada e o período depois dele não conta.
+export function vigenciaRefDate({ status, pausedAt, cancelledAt } = {}, now = new Date()) {
+  const ref = getSafeDateOrNull(now) || new Date();
+  if (status === CONTRACT_STATUS.TRANCADO) return getSafeDateOrNull(pausedAt) || ref;
+  if (status === CONTRACT_STATUS.CANCELADO) {
+    // Cancelado ainda trancado: a vigência já tinha parado no trancamento.
+    const at = getSafeDateOrNull(cancelledAt);
+    const paused = getSafeDateOrNull(pausedAt);
+    const stop = at && paused && paused.getTime() < at.getTime() ? paused : at;
+    if (stop && stop.getTime() < ref.getTime()) return stop;
+  }
+  return ref;
+}
 
 // Percentual decorrido, dias restantes e a posição de cada marco de renovação
 // na régua: (total - marco) / total. Os marcos vêm de Configurações → Metas &

@@ -84,7 +84,10 @@ export function buildZapStrip(lead, now = new Date(), checkpoints = DEFAULT_RENE
   // renewalGoal.js: o marco mais distante (ex.: 90 dias) precisa disparar bem
   // antes do threshold de 30, senão nenhum marco > 30 nunca aparece. Só fica
   // de fora quem não tem vigência correndo: cancelado, trancado ou agendado
-  // (vencido já saiu na checagem 2, acima).
+  // (vencido já saiu na checagem 2, acima). A renovação emendada que ainda não
+  // começou (currentContractSeamless) não é agendada: o resumo do lead dá
+  // ativo ou a vencer, então a faixa pode mostrar o marco de renovação, igual
+  // à Meta Diária (shouldPromptRenewal).
   if (
     fim &&
     status !== CONTRACT_STATUS.CANCELADO &&

@@ -12,8 +12,7 @@ import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
 import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
 import { fmtBRL } from '../lib/format.js';
-import { deriveContractStatus, deriveLeadContractStatus, hasLiveContract, CONTRACT_STATUS, CONTRACT_STATUS_LABEL } from '../lib/contracts.js';
-import { contractVigencia, daysBetween, missedCheckpointsLabel } from '../lib/renewal.js';
+import { hasLiveContract } from '../lib/contracts.js';
 import { isSystemFunnel } from '../lib/funnels.js';
 import { planProfileNote } from '../lib/profileNote.js';
 import { getReferralFunnel, getReferralEntryStage, buildReferralShareLink, buildReferralWhatsAppText, isReferralFunnel } from '../lib/referrals.js';
@@ -40,18 +39,21 @@ import { ReferralsSection } from '../components/profile/ReferralsSection.jsx';
 import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { ZapSignupMarker } from '../components/profile/ZapSignupMarker.jsx';
+import { ContractsTab } from '../components/profile/contracts/ContractsTab.jsx';
 import { TimelineAuthor } from '../components/profile/TimelineAuthor.jsx';
 import { StronizapBadge } from '../components/brand/StronizapMark.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
 import { ContractOutcomeModal } from '../modals/ContractOutcomeModal.jsx';
 import { ContractEditModal } from '../modals/ContractEditModal.jsx';
+import { ContractActivateModal } from '../modals/ContractActivateModal.jsx';
 import { ClientRegistrationModal } from '../modals/ClientRegistrationModal.jsx';
 import { QuickReferralModal } from '../modals/QuickReferralModal.jsx';
 import {
   groupTimeline,
   timelineStamp,
   classifyInteraction,
+  contractEventOf,
   parseAppointment,
   extractStageNameFromInteractionText,
   buildStageTransitions,
@@ -64,33 +66,12 @@ import {
   appointmentOriginText,
   isAppointmentReschedule
 } from '../lib/timeline.js';
-import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, PlayCircle, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
-// Tom do bloco de contagem, do chip e do preenchimento da régua — o estado do
-// contrato manda na cor da aba Contratos inteira.
-const CONTRACT_TONE = {
-  [CONTRACT_STATUS.AGENDADO]: { block: 'bg-violet-500/10 dark:bg-violet-500/15', fg: 'text-violet-700 dark:text-violet-300', fill: 'bg-violet-500' },
-  [CONTRACT_STATUS.TRANCADO]: { block: 'bg-brand-500/10 dark:bg-brand-500/15', fg: 'text-brand-700 dark:text-brand-300', fill: 'bg-brand-600' },
-  [CONTRACT_STATUS.ATIVO]: { block: 'bg-emerald-500/10 dark:bg-emerald-500/15', fg: 'text-emerald-700 dark:text-emerald-400', fill: 'bg-emerald-500' },
-  [CONTRACT_STATUS.A_VENCER]: { block: 'bg-amber-500/12 dark:bg-amber-500/16', fg: 'text-amber-700 dark:text-amber-400', fill: 'bg-amber-500' },
-  [CONTRACT_STATUS.VENCIDO]: { block: 'bg-slate-500/10 dark:bg-slate-400/15', fg: 'text-slate-600 dark:text-slate-300', fill: 'bg-slate-400' },
-  [CONTRACT_STATUS.CANCELADO]: { block: 'bg-rose-500/10 dark:bg-rose-500/15', fg: 'text-rose-700 dark:text-rose-400', fill: 'bg-rose-500' }
-};
-
-// Rótulo em versalete das células. Sempre no tom `muted`: a 9.5px ele faz
-// trabalho estrutural, é o que faz a faixa ler como células.
-const CapsLabel = ({ children }) => (
-  <div className="text-[9.5px] font-bold uppercase tracking-[.08em] text-slate-500 dark:text-slate-400 whitespace-nowrap">
-    {children}
-  </div>
-);
-
-// Lacuna entre dois contratos, em dias ou meses conforme o tamanho.
-const gapLabel = (days) => {
-  if (days < 45) return `${days} ${days === 1 ? 'dia' : 'dias'} sem contrato`;
-  const months = Math.round(days / 30.44);
-  return `${months} ${months === 1 ? 'mês' : 'meses'} sem contrato`;
-};
+// Eventos de contrato que ganham faixa de destaque na linha do tempo: os que
+// mudam a situação do cliente. Trancamento, reativação e correção seguem como
+// linha comum do tipo "Contrato".
+const CONTRACT_MILESTONE_KINDS = new Set(['matricula', 'renovacao', 'cancelamento']);
 
 // Célula da faixa de metadados do cabeçalho: rótulo em versalete sobre o valor.
 // Substituiu a fila de ícones — sem rótulo, "(51) 99184-2270" e "Ana Duarte"
@@ -149,9 +130,14 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   const [matriculaOpen, setMatriculaOpen] = useState(false);
   // 'matricula' (nova/retroativa) | 'renovacao' — controla o modo do ContractModal.
   const [matriculaMode, setMatriculaMode] = useState('matricula');
-  // Desfecho do contrato vigente: 'cancelar' | 'trancar' | 'reativar'.
+  // Desfecho de um contrato da aba: { action: 'cancelar' | 'trancar' |
+  // 'reativar', contractId }. Com renovação marcada, o contrato pode ser o em
+  // uso, e não o último.
   const [contractAction, setContractAction] = useState(null);
-  const [editingContract, setEditingContract] = useState(false);
+  // O contrato a corrigir e o contrato a ativar agora, pelo id: o documento
+  // vem vivo da coleção assinada (contractById), como antes.
+  const [editingContractId, setEditingContractId] = useState(null);
+  const [activatingId, setActivatingId] = useState(null);
   // Threshold de vencimento do contexto (sem prop-drilling) p/ a seção Contrato.
   const { contractThresholdDays, contratos, professores, renewalCheckpoints } = useGeneralConfig();
 
@@ -272,17 +258,29 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     setMatriculaOpen(true);
   };
 
-  // Cancela o contrato vigente: grava status terminal no doc do contrato e no
-  // resumo do lead, e registra na timeline. Não mexe em status/convertedAt do
-  // lead (continua cliente; só o contrato fica cancelado).
   // Cancelar, trancar e reativar passam pelo ContractOutcomeModal: os três
-  // pedem data e os dois primeiros pedem motivo — o cancelamento gravava
-  // motivo null desde sempre.
-  const openContractAction = (action) => {
+  // pedem data e os dois primeiros pedem motivo. Recebem o CONTRATO em que
+  // agem: com renovação marcada, o card da aba é o contrato em uso.
+  const openContractAction = (action, contract) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
-    if (!lead.currentContractId) { toast.warning('Não há contrato vigente.'); return; }
-    setContractAction(action);
+    if (!contract?.id) { toast.warning('Não há contrato vigente.'); return; }
+    setContractAction({ action, contractId: contract.id });
   };
+
+  // Corrigir (ContractEditModal) e Ativar agora (ContractActivateModal) de um
+  // contrato da aba. A trava de leitura fica aqui, como nas outras ações.
+  const openContractEdit = (contract) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (contract?.id) setEditingContractId(contract.id);
+  };
+  const openActivate = (contract) => {
+    if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (contract?.id) setActivatingId(contract.id);
+  };
+  // O documento de um contrato da aba, vivo. Sem reserva: cair no último
+  // contrato (currentContract) para outro id faria o modal agir no contrato
+  // errado, e para o próprio último o find já o devolve.
+  const contractById = (id) => leadContracts.find((c) => c.id === id) || null;
 
   const confirmLoss = async (reason) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
@@ -784,39 +782,6 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // O contrato VIGENTE tem card próprio; a corrente do histórico lista só os
   // anteriores (repeti-lo duplicava plano, valor e vigência 42px abaixo).
   const currentContract = leadContracts.find(c => c.id === lead.currentContractId) || null;
-  const pastContracts = leadContracts.filter(c => c.id !== lead.currentContractId);
-  // "3ª renovação": quantos contratos vieram antes do vigente.
-  const renewalOrdinal = pastContracts.length;
-  const renewedFrom = currentContract?.renewedFromId
-    ? leadContracts.find(c => c.id === currentContract.renewedFromId) || null
-    : null;
-
-  // Estado do contrato vigente + a régua de vigência com os marcos de
-  // renovação da academia (Configurações → Metas & ritmo, nunca hardcode).
-  //
-  // A aba lê o CONTRATO (currentContractId), não as marcas de cliente
-  // (isClient). É a mesma fonte do chip de contagem da aba: quando as marcas
-  // estavam erradas (mudança de fase antiga que zerava lifecycleStage), a aba
-  // dizia "Ainda não é cliente" com o chip em 1 e o contrato ainda gravado.
-  const curStatus = lead.currentContractId
-    ? (deriveLeadContractStatus(lead, new Date(), contractThresholdDays) || CONTRACT_STATUS.ATIVO)
-    : null;
-  const curStartsAt = getSafeDateOrNull(lead.currentContractStartsAt);
-  const curEndsAt = getSafeDateOrNull(lead.currentContractEndsAt);
-  const hasCurrentContract = Boolean(lead.currentContractId && curEndsAt);
-  const curClosed = curStatus === CONTRACT_STATUS.VENCIDO || curStatus === CONTRACT_STATUS.CANCELADO;
-  // Trancado congela a régua na data em que parou: o contrato não corre.
-  const curPaused = curStatus === CONTRACT_STATUS.TRANCADO;
-  const curPausedAt = getSafeDateOrNull(currentContract?.pausedAt);
-  const vigencia = hasCurrentContract
-    ? contractVigencia({
-      startsAt: curStartsAt,
-      endsAt: curEndsAt,
-      checkpoints: renewalCheckpoints,
-      handled: lead.renewalHandledCheckpoints,
-      now: curPaused && curPausedAt ? curPausedAt : new Date()
-    })
-    : null;
 
   // ----- Render helpers -----
   const renderComposer = () => (
@@ -987,8 +952,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     const zapTitle = i._kind === 'appointment' ? zapScheduleTitle(i) : null;
     const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
     const stageName = i._kind === 'status' ? extractStageNameFromInteractionText(i.text) : '';
-    const isContract = i._kind === 'contract';
-    const contractCancel = isContract && /cancel/i.test(i.text || '');
+    // O evento de contrato vem do próprio texto: tipo, plano e valor dele, e não
+    // os do contrato de hoje (contractEventOf, em lib/timeline.js).
+    const contractEvent = i._kind === 'contract' ? contractEventOf(i.text) : null;
+    const isContractMilestone = Boolean(contractEvent && CONTRACT_MILESTONE_KINDS.has(contractEvent.kind));
+    const contractCancel = contractEvent?.kind === 'cancelamento';
     const lowerText = String(i.text || '').toLowerCase();
     // Perda: o status_change que encerra a oportunidade não traz etapa entre
     // colchetes — vem como "Lead perdido. Motivo: ...".
@@ -1010,7 +978,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
     // ---- Variante 4: marco (matrícula, venda, perda) ----------------------
     // Quebra o padrão tabular numa faixa full-width com régua no topo.
-    if (isContract || isWin || isLoss) {
+    if (isContractMilestone || isWin || isLoss) {
       const lossReason = isLoss
         ? (String(i.text || '').match(/motivo:\s*([^.·\n]+)/i)?.[1] || '').trim()
         : '';
@@ -1024,15 +992,16 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         ? `Oportunidade encerrada${lossReason ? ` · ${lossReason}` : ''}`
         : isWin
           ? 'Virou cliente — etapa Venda'
-          : contractCancel ? 'Contrato cancelado'
-            : /renova/i.test(i.text || '') ? 'Contrato renovado'
-              : (lead.currentPlanName || 'Matrícula fechada');
+          : contractCancel
+            ? (/^renova/i.test(cleanBody) ? 'Renovação cancelada' : 'Contrato cancelado')
+            : contractEvent?.kind === 'renovacao' ? 'Contrato renovado'
+              : (contractEvent?.planName || 'Matrícula fechada');
 
       const subtitle = isWin ? `Fase alterada por ${author}` : cleanBody;
 
-      // Valor só na matrícula, e só se o contrato realmente tiver valor.
-      const showValue = isContract && !contractCancel && lead.currentContractValue != null
-        && Number.isFinite(Number(lead.currentContractValue));
+      // Valor só na matrícula e na renovação, e o do próprio evento.
+      const eventValue = isContractMilestone && !contractCancel ? contractEvent.value : null;
+      const showValue = eventValue != null;
 
       return (
         <div key={i.id} className={cn('flex items-center gap-3 border-t-2 px-3.5 py-2.5 my-1', band.ring, band.bg)}>
@@ -1045,7 +1014,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           </div>
           {showValue && (
             <span className="font-display text-[17px] font-bold text-emerald-700 dark:text-emerald-300 num shrink-0">
-              {fmtBRL(lead.currentContractValue)}
+              {fmtBRL(eventValue)}
             </span>
           )}
           <span className="text-[11px] num text-slate-400 dark:text-slate-500 shrink-0 whitespace-nowrap" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</span>
@@ -1692,360 +1661,20 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
         {/* ----- Aba: Contratos ----- */}
         <TabsContent value="contratos" className="pt-2">
-          <div className="space-y-4">
-            {!hasCurrentContract ? (
-              /* Lead/cliente sem contrato vigente → matrícula. */
-              <section className="rounded-2xl border border-dashed border-slate-300 dark:border-white/[0.1] bg-card p-8 text-center">
-                <div className="size-[46px] rounded-[14px] grid place-items-center mx-auto mb-3 bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300"><FileText size={20} /></div>
-                <h3 className="font-display text-[16px] font-bold tracking-tight">Ainda não é cliente</h3>
-                <p className="text-[12.5px] leading-[1.5] text-slate-500 dark:text-slate-400 mt-1.5 max-w-[300px] mx-auto text-pretty">
-                  Quando {firstName} fechar, registre plano, valor e vigência — a renovação passa a ser acompanhada por aqui.
-                </p>
-                {!isReadOnly && (
-                  <div className="mt-4 flex items-center justify-center">
-                    <Btn kind="enroll" icon={<UserPlus size={15} />} onClick={handleWin} disabled={loading}>Matricular agora</Btn>
-                  </div>
-                )}
-              </section>
-            ) : curClosed ? (
-              /* Vencido ou cancelado: o card encolhe e a ação vira nova matrícula. */
-              (() => {
-                const cancelled = curStatus === CONTRACT_STATUS.CANCELADO;
-                const tone = CONTRACT_TONE[curStatus];
-                const cancelledAt = getSafeDateOrNull(currentContract?.cancelledAt);
-                const pct = vigencia ? vigencia.elapsedPct : 100;
-                return (
-                  <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
-                    <div className="flex items-start gap-3.5 px-5 pt-[18px] pb-4">
-                      <span className={cn('size-[38px] flex-none rounded-xl grid place-items-center', tone.block, tone.fg)}>
-                        {cancelled ? <Ban size={17} /> : <FileText size={17} />}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-display text-[17px] font-bold tracking-tight">{lead.currentPlanName || 'Plano'}</h3>
-                          <span className={cn('inline-flex items-center h-5 px-[7px] rounded-md text-[9.5px] font-bold uppercase tracking-[.05em]', tone.block, tone.fg)}>
-                            {CONTRACT_STATUS_LABEL[curStatus]}
-                          </span>
-                        </div>
-                        <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-1">
-                          {cancelled
-                            ? `Cancelado${cancelledAt ? ` em ${cancelledAt.toLocaleDateString('pt-BR')}` : ''}${currentContract?.cancelReason ? ` · ${currentContract.cancelReason}` : ''}`
-                            : `Venceu há ${Math.abs(vigencia?.daysLeft ?? 0)} dias · ${curEndsAt.toLocaleDateString('pt-BR')}`}
-                        </div>
-                      </div>
-                      <span className={cn('num flex-none font-display text-[19px] font-bold text-slate-500 dark:text-slate-400', cancelled && 'line-through')}>
-                        {lead.currentContractValue != null ? fmtBRL(lead.currentContractValue) : '—'}
-                      </span>
-                    </div>
-                    <div className="flex h-1 bg-slate-100 dark:bg-white/[0.06]">
-                      <span className={cn('h-full', cancelled ? 'bg-rose-500' : 'bg-slate-300 dark:bg-slate-600')} style={{ width: `${pct}%` }}></span>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap px-5 py-3 bg-slate-50 dark:bg-white/[0.03]">
-                      {!isReadOnly && <Btn kind="enroll" icon={<UserPlus size={14} />} onClick={handleWin} disabled={loading}>Nova matrícula</Btn>}
-                      <span className="text-[11.5px] text-slate-500 dark:text-slate-400">
-                        {cancelled ? `Interrompido a ${pct}% da vigência.` : 'O cliente conta como inativo até renovar.'}
-                      </span>
-                    </div>
-                  </section>
-                );
-              })()
-            ) : (
-              /* Contrato vivo: quem abre esta aba quer saber quantos dias faltam. */
-              (() => {
-                const tone = CONTRACT_TONE[curStatus] || CONTRACT_TONE[CONTRACT_STATUS.ATIVO];
-                const daysLeft = Math.max(0, vigencia?.daysLeft ?? 0);
-                // Contrato agendado: a contagem é até COMEÇAR, não até vencer —
-                // e os marcos de renovação ainda não têm o que dizer.
-                const scheduled = curStatus === CONTRACT_STATUS.AGENDADO;
-                const paused = curPaused;
-                const daysToStart = scheduled && curStartsAt
-                  ? Math.max(0, Math.ceil((curStartsAt.getTime() - Date.now()) / 86400000))
-                  : 0;
-                const pausedDays = paused && curPausedAt
-                  ? Math.max(0, Math.ceil((Date.now() - curPausedAt.getTime()) / 86400000))
-                  : 0;
-                const missed = scheduled || paused ? null : missedCheckpointsLabel(vigencia?.missedCount);
-                // Desconto do contrato. Contrato antigo não tem discountValue:
-                // aí a diferença para a tabela é o que sobrou de registro.
-                const listValue = Number(currentContract?.listValue) || 0;
-                const discount = Number(currentContract?.discountValue)
-                  || Math.max(listValue - (Number(lead.currentContractValue) || 0), 0);
-                const discountReason = currentContract?.discountReason || null;
-                const closedBy = currentContract?.consultantName || lead.consultantName;
-                const closedAt = getSafeDateOrNull(currentContract?.createdAt);
-                const months = Number(currentContract?.durationMonths) || 0;
-                const value = lead.currentContractValue;
-                return (
-                  <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
-                    <div className="flex items-stretch flex-wrap">
-                      {/* A contagem é o que importa */}
-                      <div className={cn('w-[186px] flex-none px-[22px] py-5', tone.block)}>
-                        <div className={cn('text-[9.5px] font-bold uppercase tracking-[.08em]', tone.fg)}>
-                          {scheduled ? 'Começa em' : paused ? 'Trancado há' : 'Restam'}
-                        </div>
-                        <div className="flex items-baseline gap-1.5 mt-1.5">
-                          <span className={cn('num font-display text-[40px] font-bold leading-none tracking-[-.03em]', tone.fg)}>
-                            {scheduled ? daysToStart : paused ? pausedDays : daysLeft}
-                          </span>
-                          <span className={cn('text-[13px] font-semibold', tone.fg)}>
-                            {(scheduled ? daysToStart : paused ? pausedDays : daysLeft) === 1 ? 'dia' : 'dias'}
-                          </span>
-                        </div>
-                        <div className="num text-[11.5px] text-slate-600 dark:text-slate-300 mt-[7px]">
-                          {scheduled
-                            ? `início ${curStartsAt ? curStartsAt.toLocaleDateString('pt-BR') : '—'}`
-                            : paused
-                              ? `desde ${curPausedAt ? curPausedAt.toLocaleDateString('pt-BR') : '—'}`
-                              : `vence ${curEndsAt.toLocaleDateString('pt-BR')}`}
-                        </div>
-                      </div>
-
-                      {/* Quatro células divididas por régua */}
-                      <div className="flex-1 min-w-0 flex items-stretch flex-wrap">
-                        <div className="flex-[1.2] min-w-[160px] px-[22px] py-5">
-                          <CapsLabel>Plano</CapsLabel>
-                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            <span className="font-display text-[18px] font-bold tracking-tight">{lead.currentPlanName || 'Plano'}</span>
-                            <span className={cn('inline-flex items-center h-[19px] px-[7px] rounded-[5px] text-[9.5px] font-bold uppercase tracking-[.05em]', tone.block, tone.fg)}>
-                              {CONTRACT_STATUS_LABEL[curStatus]}
-                            </span>
-                          </div>
-                          <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[5px]">
-                            #{String(lead.currentContractId).slice(0, 8).toUpperCase()}{months ? ` · ${months === 1 ? '1 mês' : `${months} meses`}` : ''}
-                          </div>
-                        </div>
-
-                        <div className="flex-1 min-w-[130px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
-                          <CapsLabel>Valor</CapsLabel>
-                          <div className="num font-display text-[18px] font-bold tracking-tight mt-1.5">{value != null ? fmtBRL(value) : '—'}</div>
-                          <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[5px]">
-                            {value != null && months > 0 ? `${fmtBRL(Number(value) / months)}/mês` : '—'}
-                          </div>
-                          {/* Só o desconto e o motivo: a célula não comporta o
-                              valor de tabela junto sem truncar. Ele fica no title. */}
-                          {discount > 0.005 && listValue > 0 && (
-                            <div
-                              className="text-[11.5px] text-emerald-700 dark:text-emerald-400 mt-[3px] truncate"
-                              title={`Tabela ${fmtBRL(listValue)} · desconto de ${fmtBRL(discount)}`}
-                            >
-                              <span className="num">−{fmtBRL(discount)}</span>
-                              {discountReason ? ` · ${discountReason.toLowerCase()}` : ' de desconto'}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-[130px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
-                          <CapsLabel>Renovado de</CapsLabel>
-                          {renewalOrdinal > 0 ? (
-                            <>
-                              <div className="text-[13px] font-semibold mt-[7px] truncate">{renewedFrom?.planName || pastContracts[0]?.planName || '—'}</div>
-                              <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">
-                                {renewedFrom ? `#${String(renewedFrom.id).slice(0, 4).toUpperCase()} · ` : ''}{renewalOrdinal}ª renovação
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="text-[13px] font-semibold mt-[7px]">Matrícula inicial</div>
-                              <div className="text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">primeiro contrato</div>
-                            </>
-                          )}
-                        </div>
-
-                        <div className="flex-1 min-w-[140px] px-[22px] py-5 border-l border-slate-100 dark:border-white/[0.06]">
-                          <CapsLabel>Fechado por</CapsLabel>
-                          <div className="flex items-center gap-[7px] mt-[7px] min-w-0">
-                            {closedBy ? (
-                              <>
-                                <Avatar name={closedBy} size={19} />
-                                <span className="text-[13px] font-semibold truncate">{closedBy}</span>
-                              </>
-                            ) : <span className="text-[13px] text-slate-400 dark:text-slate-500">—</span>}
-                          </div>
-                          {closedAt && <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-[3px]">em {closedAt.toLocaleDateString('pt-BR')}</div>}
-                        </div>
-                      </div>
-
-                      {/* Ações */}
-                      {!isReadOnly && (
-                        <div className="flex-none flex flex-col justify-center gap-2 px-[22px] py-[18px] border-l border-slate-100 dark:border-white/[0.06]">
-                          {paused ? (
-                            <Btn kind="success" icon={<PlayCircle size={14} />} onClick={() => openContractAction('reativar')} disabled={loading}>Reativar contrato</Btn>
-                          ) : (
-                            <Btn kind="brand" icon={<RefreshCw size={14} />} onClick={handleRenew} disabled={loading}>Renovar contrato</Btn>
-                          )}
-                          <div className="flex items-center gap-0.5">
-                            <button
-                              type="button"
-                              onClick={() => { if (!isReadOnly) setEditingContract(true); }}
-                              disabled={loading}
-                              className="flex-1 h-8 px-2 rounded-[9px] text-[12px] font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] whitespace-nowrap transition disabled:opacity-50"
-                            >
-                              Corrigir
-                            </button>
-                            {!paused && (
-                              <>
-                                <span className="w-px h-[18px] flex-none bg-slate-100 dark:bg-white/[0.06]"></span>
-                                <button
-                                  type="button"
-                                  onClick={() => openContractAction('trancar')}
-                                  disabled={loading}
-                                  className="flex-1 h-8 px-2 rounded-[9px] text-[12px] font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/[0.06] whitespace-nowrap transition disabled:opacity-50"
-                                >
-                                  Trancar
-                                </button>
-                              </>
-                            )}
-                            <span className="w-px h-[18px] flex-none bg-slate-100 dark:bg-white/[0.06]"></span>
-                            <button
-                              type="button"
-                              onClick={() => openContractAction('cancelar')}
-                              disabled={loading}
-                              className="flex-1 h-8 px-2 rounded-[9px] text-[12px] font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 dark:text-slate-400 dark:hover:text-rose-300 dark:hover:bg-rose-500/10 whitespace-nowrap transition disabled:opacity-50"
-                            >
-                              Cancelar
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Faixa de vigência: os marcos de renovação na posição real */}
-                    <div className="flex items-center gap-2.5 flex-wrap px-[22px] py-[11px] border-t border-slate-100 dark:border-white/[0.06] bg-slate-50 dark:bg-white/[0.03]">
-                      <span className="num text-[11.5px] text-slate-500 dark:text-slate-400 flex-none">
-                        {curStartsAt ? curStartsAt.toLocaleDateString('pt-BR') : '—'}
-                      </span>
-                      <div className="relative flex-1 min-w-[80px] h-4">
-                        <span className="absolute left-0 right-0 top-1.5 h-1 rounded-full bg-slate-200/80 dark:bg-white/[0.08]"></span>
-                        <span className={cn('absolute left-0 top-1.5 h-1 rounded-full', tone.fill)} style={{ width: `${vigencia?.elapsedPct ?? 0}%` }}></span>
-                        {(vigencia?.marks || []).map(m => (
-                          <span
-                            key={m.days}
-                            title={`Marco de ${m.days} dias · ${m.date ? m.date.toLocaleDateString('pt-BR') : ''}${m.handled ? ' · contato feito' : m.passed ? ' · passou sem contato' : ''}`}
-                            className={cn(
-                              'absolute top-0.5 w-0.5 h-3 -translate-x-1/2 rounded-[1px]',
-                              m.active ? 'bg-amber-500' : 'bg-slate-300 dark:bg-white/25'
-                            )}
-                            style={{ left: `${m.pos}%` }}
-                          ></span>
-                        ))}
-                        {/* O marcador de hoje só existe dentro da vigência. */}
-                        {!scheduled && (
-                          <span
-                            className="absolute top-0 w-[3px] h-4 -translate-x-1/2 rounded-sm bg-slate-900 dark:bg-white"
-                            style={{ left: `${vigencia?.elapsedPct ?? 0}%` }}
-                          ></span>
-                        )}
-                      </div>
-                      <span className={cn('num text-[11.5px] font-semibold flex-none', tone.fg)}>{curEndsAt.toLocaleDateString('pt-BR')}</span>
-                      {scheduled && (
-                        <>
-                          <span className="w-px h-4 flex-none bg-slate-200 dark:bg-white/[0.08]"></span>
-                          <span className={cn('text-[11.5px] font-semibold flex-none', tone.fg)}>A vigência ainda não começou</span>
-                        </>
-                      )}
-                      {paused && (
-                        <>
-                          <span className="w-px h-4 flex-none bg-slate-200 dark:bg-white/[0.08]"></span>
-                          <span className={cn('text-[11.5px] font-semibold flex-none', tone.fg)}>
-                            Vigência congelada · restam {Math.max(0, vigencia?.daysLeft ?? 0)} dias quando voltar
-                          </span>
-                        </>
-                      )}
-                      {missed && (
-                        <>
-                          <span className="w-px h-4 flex-none bg-slate-200 dark:bg-white/[0.08]"></span>
-                          <span className="text-[11.5px] text-slate-500 dark:text-slate-400 flex-none">{missed}</span>
-                        </>
-                      )}
-                    </div>
-                  </section>
-                );
-              })()
-            )}
-
-            {/* A corrente de renovações — só os anteriores; o vigente tem card próprio. */}
-            <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
-              <div className="flex items-center gap-2.5 px-[22px] py-4 border-b border-slate-100 dark:border-white/[0.06]">
-                <h3 className="text-[14.5px] font-semibold tracking-tight">Histórico</h3>
-                <span className="num text-[10.5px] font-bold px-[7px] py-0.5 rounded-md bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400">
-                  {pastContracts.length === 1 ? '1 anterior' : `${pastContracts.length} anteriores`}
-                </span>
-                <div className="flex-1"></div>
-                <span className="text-[11.5px] text-slate-500 dark:text-slate-400 hidden sm:inline">Do contrato anterior à matrícula</span>
-              </div>
-
-              <div className="px-[22px] pt-2 pb-5">
-                {pastContracts.length === 0 ? (
-                  <div className="py-7 text-center">
-                    <p className="text-[13px] font-semibold text-slate-700 dark:text-slate-200">Nenhum contrato anterior</p>
-                    <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      {hasCurrentContract ? `Este é o primeiro contrato de ${firstName}.` : 'O histórico de planos aparecerá aqui.'}
-                    </p>
-                  </div>
-                ) : pastContracts.map((c, i) => {
-                  const hStatus = deriveContractStatus(c, new Date(), contractThresholdDays) || CONTRACT_STATUS.VENCIDO;
-                  const hTone = CONTRACT_TONE[hStatus] || CONTRACT_TONE[CONTRACT_STATUS.VENCIDO];
-                  const hStart = getSafeDateOrNull(c.startsAt);
-                  const hEnd = getSafeDateOrNull(c.endsAt);
-                  const hMonths = Number(c.durationMonths)
-                    || (hStart && hEnd ? Math.max(1, Math.round(daysBetween(hStart, hEnd) / 30.44)) : 0);
-                  // A lacuna aparece ACIMA do nó: o intervalo entre o fim deste
-                  // contrato e o início do próximo (mais novo) — inclusive o vigente.
-                  const newer = i === 0 ? currentContract : pastContracts[i - 1];
-                  const rawGap = hEnd && newer ? daysBetween(hEnd, getSafeDateOrNull(newer.startsAt)) : null;
-                  const gapDays = rawGap != null && rawGap > 1 ? rawGap - 1 : 0;
-                  const isFirstEver = i === pastContracts.length - 1;
-                  return (
-                    <div key={c.id}>
-                      {gapDays > 0 && (
-                        <div className="flex items-center gap-2.5 py-2 pl-[15px]">
-                          <span className="h-[26px] flex-none border-l-2 border-dashed border-slate-300 dark:border-white/20"></span>
-                          <span className="text-[11px] text-slate-500 dark:text-slate-400 pl-2">{gapLabel(gapDays)}</span>
-                        </div>
-                      )}
-
-                      <div className="relative flex items-center gap-3.5 py-3 pr-3 rounded-xl hover:bg-slate-50 dark:hover:bg-white/[0.03] transition">
-                        {!isFirstEver && <span className="absolute left-[15px] top-0 -bottom-px w-0.5 bg-slate-100 dark:bg-white/[0.06]"></span>}
-                        <span className={cn(
-                          'relative z-[1] size-8 flex-none rounded-full grid place-items-center ring-4 ring-white dark:ring-[#0e1326]',
-                          hTone.block, hTone.fg
-                        )}>
-                          {isFirstEver ? <GraduationCap size={14} /> : <RefreshCw size={14} />}
-                        </span>
-
-                        <div className="min-w-0 flex-[1.4]">
-                          <div className="text-[13.5px] font-semibold truncate">{c.planName || '—'}</div>
-                          <div className="num text-[11.5px] text-slate-500 dark:text-slate-400 mt-0.5">
-                            {hStart ? hStart.toLocaleDateString('pt-BR') : '—'} → {hEnd ? hEnd.toLocaleDateString('pt-BR') : '—'}
-                          </div>
-                        </div>
-
-                        <div className="flex-1 min-w-0 hidden sm:block">
-                          <div className="num text-[11px] text-slate-500 dark:text-slate-400">
-                            {hMonths === 1 ? '1 mês' : `${hMonths} meses`}
-                          </div>
-                          <div className="h-[5px] rounded-full bg-slate-100 dark:bg-white/[0.06] mt-[5px] overflow-hidden max-w-[150px]">
-                            <div
-                              className={cn('h-full rounded-full', hStatus === CONTRACT_STATUS.CANCELADO ? 'bg-rose-400' : 'bg-slate-300 dark:bg-slate-600')}
-                              style={{ width: `${Math.min(100, Math.round((hMonths / 12) * 100))}%` }}
-                            ></div>
-                          </div>
-                        </div>
-
-                        <div className="num w-[92px] flex-none text-right text-[13.5px] font-semibold">{c.value != null ? fmtBRL(c.value) : '—'}</div>
-
-                        <span className="w-[88px] flex-none flex justify-end">
-                          <span className={cn('inline-flex items-center h-5 px-2 rounded-md text-[10px] font-bold uppercase tracking-[.05em] whitespace-nowrap', hTone.block, hTone.fg)}>
-                            {CONTRACT_STATUS_LABEL[hStatus]}
-                          </span>
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          </div>
+          <ContractsTab
+            lead={lead}
+            leadContracts={leadContracts}
+            firstName={firstName}
+            isReadOnly={isReadOnly}
+            loading={loading}
+            contractThresholdDays={contractThresholdDays}
+            renewalCheckpoints={renewalCheckpoints}
+            onEnroll={handleWin}
+            onRenew={handleRenew}
+            onContractAction={openContractAction}
+            onEditContract={openContractEdit}
+            onActivate={openActivate}
+          />
         </TabsContent>
 
         {/* ----- Aba: Indicações (só cliente) ----- */}
@@ -2121,20 +1750,30 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           lead={lead}
           appUser={appUser}
           db={db}
-          contract={currentContract}
-          action={contractAction}
+          contract={contractById(contractAction.contractId)}
+          action={contractAction.action}
           onClose={() => setContractAction(null)}
           onDone={() => setContractAction(null)}
         />
       )}
-      {editingContract && (
+      {editingContractId && (
         <ContractEditModal
           lead={lead}
           appUser={appUser}
           db={db}
-          contract={currentContract}
-          onClose={() => setEditingContract(false)}
-          onDone={() => setEditingContract(false)}
+          contract={contractById(editingContractId)}
+          onClose={() => setEditingContractId(null)}
+          onDone={() => setEditingContractId(null)}
+        />
+      )}
+      {activatingId && (
+        <ContractActivateModal
+          lead={lead}
+          appUser={appUser}
+          db={db}
+          contract={contractById(activatingId)}
+          onClose={() => setActivatingId(null)}
+          onDone={() => setActivatingId(null)}
         />
       )}
       {matriculaOpen && (

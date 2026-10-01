@@ -3,7 +3,7 @@
 // ser lead, e com contrato vencido ele é INATIVO, não perdido.
 
 import { describe, it, expect } from 'vitest';
-import { deriveLeadState } from '../leadState.js';
+import { deriveLeadState, getTone, phaseToneName, TONES } from '../leadState.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const NOW = D(2026, 9, 8);
@@ -43,5 +43,75 @@ describe('deriveLeadState', () => {
 
   it('Venda sem contrato (antiga) em Perda também continua cliente', () => {
     expect(deriveLeadState({ status: 'Perda', lifecycleStage: 'cliente' }, NOW).key).toBe('cliente_ativo');
+  });
+
+  it('contrato trancado mostra TRANCADO em amarelo, não CLIENTE ATIVO', () => {
+    const state = deriveLeadState(cliente({ currentContractStatus: 'trancado' }), NOW);
+    expect(state.key).toBe('trancado');
+    expect(state.label).toBe('TRANCADO');
+    expect(state.tone).toBe('yellow');
+    expect(state.hint).toBe('Vigência congelada');
+  });
+
+  it('trancado ganha de vencido: parado, o contrato não corre', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStatus: 'trancado',
+      currentContractStartsAt: vencido.startsAt,
+      currentContractEndsAt: vencido.endsAt
+    }), NOW);
+    expect(state.key).toBe('trancado');
+  });
+
+  it('contrato com início no futuro é CONTRATO AGENDADO', () => {
+    const state = deriveLeadState(cliente({ currentContractStartsAt: D(2026, 10, 1), currentContractEndsAt: D(2027, 10, 1) }), NOW);
+    expect(state.key).toBe('agendado');
+    expect(state.label).toBe('CONTRATO AGENDADO');
+  });
+
+  it('renovação emendada que ainda não começou é CLIENTE ATIVO', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStartsAt: D(2026, 10, 1),
+      currentContractEndsAt: D(2027, 10, 1),
+      currentContractSeamless: true
+    }), NOW);
+    expect(state.key).toBe('cliente_ativo');
+  });
+
+  // Renovação marcada (12/10/2026) com o contrato em uso valendo até 11/10:
+  // o cliente está ativo, não "agendado". O bloco "em uso" do resumo decide.
+  it('renovação marcada com o contrato em uso valendo é CLIENTE ATIVO, e não CONTRATO AGENDADO', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStartsAt: D(2026, 10, 12), currentContractEndsAt: D(2027, 10, 12),
+      inUseContractId: 'k0', inUseContractStatus: 'ativo', inUseContractEndsAt: D(2026, 10, 11)
+    }), NOW);
+    expect(state.key).toBe('cliente_ativo');
+  });
+
+  it('renovação marcada com o contrato em uso trancado é TRANCADO', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStartsAt: D(2026, 10, 12), currentContractEndsAt: D(2027, 10, 12),
+      inUseContractId: 'k0', inUseContractStatus: 'trancado', inUseContractEndsAt: D(2026, 10, 11)
+    }), NOW);
+    expect(state.key).toBe('trancado');
+  });
+
+  it('renovação marcada com o contrato em uso cancelado é CONTRATO AGENDADO', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStartsAt: D(2026, 10, 12), currentContractEndsAt: D(2027, 10, 12),
+      inUseContractId: 'k0', inUseContractStatus: 'cancelado', inUseContractEndsAt: D(2026, 10, 11)
+    }), NOW);
+    expect(state.key).toBe('agendado');
+  });
+});
+
+describe('TONES: o amarelo do Trancado', () => {
+  it('existe e não cai no cinza', () => {
+    expect(getTone('yellow')).toBe(TONES.yellow);
+    expect(TONES.yellow.strong).toBe('bg-yellow-500');
+    expect(TONES.yellow.hex).toBe('#EAB308');
+  });
+
+  it('etapa de funil pintada de amarelo passa a sair amarela na ficha', () => {
+    expect(phaseToneName('Proposta', [{ name: 'Proposta', color: 'yellow' }])).toBe('yellow');
   });
 });

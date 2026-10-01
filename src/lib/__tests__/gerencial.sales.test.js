@@ -50,6 +50,14 @@ describe('salesOf', () => {
     expect(r.clawValue).toBe(1200);
   });
 
+  // A regra da venda não muda com a renovação que nunca valeu: foi fechada no
+  // mês e aparece com a marca de cancelada.
+  it('renovação desfeita antes de começar continua na venda do mês, com a marca', () => {
+    const r = salesOf([c({ id: 'r', renewedFromId: 'z', startsAt: D(2026, 10, 1), cancelledAt: D(2026, 9, 20) })], { start, end });
+    expect(r.count).toBe(1);
+    expect(r.clawCount).toBe(1);
+  });
+
   it('contrato importado não é venda', () => {
     expect(salesOf([c({ imported: true })], { start, end }).count).toBe(0);
   });

@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="pt-BR" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google" content="notranslate">
+<title>Aba Contratos · mockup aprovado (opção C)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+<style type="text/tailwindcss">
+  @theme {
+    --font-sans: 'Geist', 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Space Grotesk', 'Geist', ui-sans-serif, system-ui, sans-serif;
+    --color-paper-50: #F5F7FB;
+    --color-brand-50: #EAF0FF;
+    --color-brand-100: #D6E1FF;
+    --color-brand-600: #2B59FF;
+    --color-brand-700: #1C3FC4;
+    --color-accent-500: #FF6A2B;
+    --color-ink-900: #0E1A40;
+    --color-border: #e2e8f0;
+    --color-card: #ffffff;
+    --shadow-card: 0 1px 0 rgba(15,23,42,.04), 0 1px 2px rgba(15,23,42,.06);
+  }
+  .num { font-variant-numeric: tabular-nums; font-feature-settings: "ss01", "cv11"; }
+  .caps { @apply text-[9.5px] font-bold uppercase tracking-[.08em] text-slate-400; }
+  .hatch-violet { background-image: repeating-linear-gradient(135deg, rgba(139,92,246,.55) 0 3px, rgba(139,92,246,.18) 3px 7px); }
+  .lnk { @apply h-8 px-2 rounded-[9px] text-[12px] font-medium text-slate-500 hover:text-slate-900 hover:bg-slate-100 whitespace-nowrap transition; }
+  .lnk-danger { @apply h-8 px-2 rounded-[9px] text-[12px] font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 whitespace-nowrap transition; }
+  .chip { @apply inline-flex items-center h-[19px] px-[7px] rounded-[5px] text-[9.5px] font-bold uppercase tracking-[.05em] whitespace-nowrap; }
+</style>
+</head>
+<body class="bg-paper-50 text-ink-900 font-sans antialiased">
+
+<!-- Ícones (lucide) -->
+<svg width="0" height="0" class="hidden">
+  <defs>
+    <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></symbol>
+    <symbol id="i-login" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/></symbol>
+    <symbol id="i-userplus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  </defs>
+</svg>
+
+<header class="sticky top-0 z-20 bg-white/90 backdrop-blur border-b border-border">
+  <div class="max-w-[1180px] mx-auto px-6 h-14 flex items-center gap-4">
+    <h1 class="font-display text-[16px] font-bold tracking-tight">Aba Contratos · mockup aprovado</h1>
+    <span class="text-[12px] text-slate-500 hidden md:inline">Cliente de exemplo em 30/09/2026: contrato em uso até 11/10 e renovação marcada para 12/10</span>
+    <div class="flex-1"></div>
+    <nav class="flex items-center gap-1 text-[12.5px] font-semibold">
+      <a href="#c" class="px-2.5 h-8 grid place-items-center rounded-lg hover:bg-slate-100">A aba</a>
+      <a href="#modal" class="px-2.5 h-8 grid place-items-center rounded-lg hover:bg-slate-100 text-slate-500">Ativar agora</a>
+    </nav>
+  </div>
+</header>
+
+<main class="max-w-[1180px] mx-auto px-6 pb-24">
+
+<!-- ======================================================================= -->
+<!-- OPÇÃO C -->
+<!-- ======================================================================= -->
+<section id="c" class="pt-10 scroll-mt-16">
+  <div class="flex items-baseline gap-3 flex-wrap">
+    <span class="font-display text-[13px] font-bold text-brand-600">Opção C</span>
+    <h2 class="font-display text-[22px] font-bold tracking-tight">Linha do tempo e tabela</h2>
+  </div>
+  <p class="text-[13px] text-slate-600 mt-1 max-w-[760px]">Uma linha do tempo no topo mostra todos os contratos do cliente de uma vez. O próximo contrato vira uma faixa fina, e o Histórico vira uma tabela para comparar os contratos lado a lado.</p>
+
+  <div class="mt-5 flex flex-col gap-4">
+    <!-- Linha do tempo de todos os contratos -->
+    <section class="rounded-2xl border border-border bg-card shadow-card px-[22px] pt-4 pb-5">
+      <div class="flex items-center gap-4 flex-wrap">
+        <h3 class="text-[14.5px] font-semibold tracking-tight">Vigência</h3>
+        <div class="flex items-center gap-3.5 text-[11px] text-slate-500 flex-wrap">
+          <span class="inline-flex items-center gap-1.5"><span class="w-3.5 h-1.5 rounded-full bg-emerald-500"></span>em uso</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-3.5 h-1.5 rounded-full hatch-violet"></span>próximo</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-3.5 h-1.5 rounded-full bg-slate-300"></span>encerrado</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-3.5 h-1.5 rounded-full bg-rose-400"></span>cancelado</span>
+          <span class="inline-flex items-center gap-1.5"><span class="w-3.5 h-1.5 rounded-full bg-yellow-400"></span>trancado</span>
+        </div>
+      </div>
+      <div class="relative mt-7 h-[46px]">
+        <!-- anos -->
+        <span class="absolute top-0 bottom-0 w-px bg-slate-100" style="left:19.1%"></span>
+        <span class="absolute top-0 bottom-0 w-px bg-slate-100" style="left:48.2%"></span>
+        <span class="absolute top-0 bottom-0 w-px bg-slate-100" style="left:77.4%"></span>
+        <span class="num absolute bottom-0 text-[10.5px] text-slate-400 pl-1.5" style="left:19.1%">2025</span>
+        <span class="num absolute bottom-0 text-[10.5px] text-slate-400 pl-1.5" style="left:48.2%">2026</span>
+        <span class="num absolute bottom-0 text-[10.5px] text-slate-400 pl-1.5" style="left:77.4%">2027</span>
+        <!-- trilho -->
+        <span class="absolute left-0 right-0 top-[9px] h-2.5 rounded-full bg-slate-100"></span>
+        <span class="absolute top-[9px] h-2.5 rounded-full bg-rose-400" style="left:0;width:3.7%" title="Plano Trimestral · cancelado em 22/06/2024"></span>
+        <span class="absolute top-[9px] h-2.5 rounded-l-full bg-slate-300" style="left:10.9%;width:30.7%" title="Plano Clube + Start · 20/09/2024 a 10/10/2025"></span>
+        <span class="absolute top-[9px] h-2.5 bg-yellow-400" style="left:19.5%;width:1.6%" title="Trancado de 05/01 a 25/01/2025"></span>
+        <span class="absolute top-[9px] h-2.5 bg-emerald-500" style="left:41.7%;width:29.1%" title="Plano Clube + Start · em uso até 11/10/2026"></span>
+        <span class="absolute top-[9px] h-2.5 rounded-r-full hatch-violet" style="left:70.9%;right:0" title="Plano Clube + Flow · começa em 12/10/2026"></span>
+        <!-- hoje -->
+        <span class="absolute top-[3px] w-[3px] h-[22px] -translate-x-1/2 rounded-sm bg-slate-900" style="left:69.9%"></span>
+        <span class="num absolute -top-4 -translate-x-1/2 text-[10.5px] font-semibold text-slate-900" style="left:69.9%">hoje</span>
+      </div>
+    </section>
+
+    <!-- Card: em uso (sem a faixa de régua, que subiu para a linha do tempo) -->
+    <section class="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
+      <div class="flex items-stretch flex-wrap">
+        <div class="w-[186px] flex-none px-[22px] py-5 bg-emerald-500/10">
+          <div class="text-[9.5px] font-bold uppercase tracking-[.08em] text-emerald-700">Em uso · restam</div>
+          <div class="flex items-baseline gap-1.5 mt-1.5">
+            <span class="num font-display text-[40px] font-bold leading-none tracking-[-.03em] text-emerald-700">11</span>
+            <span class="text-[13px] font-semibold text-emerald-700">dias</span>
+          </div>
+          <div class="num text-[11.5px] text-slate-600 mt-[7px]">vence 11/10/2026</div>
+        </div>
+        <div class="flex-1 min-w-0 flex items-stretch flex-wrap">
+          <div class="flex-[1.2] min-w-[160px] px-[22px] py-5">
+            <div class="caps">Plano</div>
+            <div class="flex items-center gap-2 mt-1.5 flex-wrap">
+              <span class="font-display text-[18px] font-bold tracking-tight">Plano Clube + Start</span>
+              <span class="chip bg-emerald-500/10 text-emerald-700">Em uso</span>
+            </div>
+            <div class="num text-[11.5px] text-slate-500 mt-[5px]">#K3F9A2QD · 12 meses</div>
+          </div>
+          <div class="flex-1 min-w-[130px] px-[22px] py-5 border-l border-slate-100">
+            <div class="caps">Valor</div>
+            <div class="num font-display text-[18px] font-bold tracking-tight mt-1.5">R$ 1.308,00</div>
+            <div class="num text-[11.5px] text-slate-500 mt-[5px]">R$ 109,00/mês</div>
+            <div class="text-[11.5px] text-emerald-700 mt-[3px]"><span class="num">−R$ 120,00</span> · fidelidade</div>
+          </div>
+          <div class="flex-1 min-w-[130px] px-[22px] py-5 border-l border-slate-100">
+            <div class="caps">Renovado de</div>
+            <div class="text-[13px] font-semibold mt-[7px]">Plano Clube + Start</div>
+            <div class="num text-[11.5px] text-slate-500 mt-[3px]">#7HX2M0PL · 1ª renovação</div>
+          </div>
+          <div class="flex-1 min-w-[140px] px-[22px] py-5 border-l border-slate-100">
+            <div class="caps">Fechado por</div>
+            <div class="flex items-center gap-[7px] mt-[7px]">
+              <span class="size-[19px] rounded-full grid place-items-center bg-sky-200 text-sky-900 text-[8.5px] font-semibold">AC</span>
+              <span class="text-[13px] font-semibold">Ana Costa</span>
+            </div>
+            <div class="num text-[11.5px] text-slate-500 mt-[3px]">em 09/10/2025</div>
+          </div>
+        </div>
+        <div class="flex-none flex flex-col justify-center gap-0.5 px-[22px] py-[18px] border-l border-slate-100">
+          <button type="button" class="lnk text-left">Trancar</button>
+          <button type="button" class="lnk-danger text-left">Cancelar</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Próximo: faixa fina -->
+    <section class="rounded-2xl border border-border border-l-[3px] border-l-violet-500 bg-card shadow-card flex items-center gap-4 px-[22px] py-3.5">
+      <div class="min-w-0 flex-1 flex items-center gap-x-4 gap-y-1.5 flex-wrap">
+        <span class="chip bg-violet-500/10 text-violet-700">Próximo</span>
+        <span class="font-display text-[15px] font-bold tracking-tight">Plano Clube + Flow</span>
+        <span class="num text-[12px] text-slate-600">começa em <b class="font-semibold text-slate-900">12/10/2026</b>, daqui a 12 dias</span>
+        <span class="num text-[12px] text-slate-600">até 12/10/2027</span>
+        <span class="num text-[12px] text-slate-600"><b class="font-semibold text-slate-900">R$ 1.788,00</b> · R$ 149,00/mês</span>
+      </div>
+      <div class="flex items-center gap-1 flex-none">
+        <button type="button" class="inline-flex items-center gap-1.5 h-8 px-3 rounded-[9px] text-[12px] font-semibold bg-brand-600 text-white hover:bg-brand-700 transition"><svg class="size-3"><use href="#i-play"/></svg>Ativar agora</button>
+        <button type="button" class="lnk">Corrigir</button>
+        <button type="button" class="lnk-danger">Cancelar renovação</button>
+      </div>
+    </section>
+
+    <!-- Histórico: tabela -->
+    <section class="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
+      <div class="flex items-center gap-2.5 px-[22px] py-4 border-b border-slate-100">
+        <h3 class="text-[14.5px] font-semibold tracking-tight">Histórico</h3>
+        <span class="num text-[10.5px] font-bold px-[7px] py-0.5 rounded-md bg-slate-100 text-slate-500">2 encerrados</span>
+        <div class="flex-1"></div>
+        <span class="text-[11.5px] text-slate-500 hidden sm:inline">A linha abre o desconto, quem fechou e o motivo</span>
+      </div>
+      <div class="overflow-x-auto overscroll-x-contain">
+        <table class="w-full min-w-[860px] text-left">
+          <thead>
+            <tr class="caps">
+              <th class="font-bold pl-[22px] pr-3 py-2.5">Contrato</th>
+              <th class="font-bold px-3 py-2.5">Início</th>
+              <th class="font-bold px-3 py-2.5">Fim previsto</th>
+              <th class="font-bold px-3 py-2.5">Fim de fato</th>
+              <th class="font-bold px-3 py-2.5">Trancado</th>
+              <th class="font-bold px-3 py-2.5 text-right">Valor</th>
+              <th class="font-bold px-3 py-2.5 text-right">Média/mês</th>
+              <th class="font-bold pl-3 pr-[22px] py-2.5 text-right">Situação</th>
+            </tr>
+          </thead>
+          <tbody class="text-[13px]">
+            <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+              <td class="pl-[22px] pr-3 py-3">
+                <div class="flex items-center gap-2.5">
+                  <span class="size-7 flex-none rounded-full grid place-items-center bg-slate-500/10 text-slate-600" title="Retorno"><svg class="size-3"><use href="#i-login"/></svg></span>
+                  <div class="min-w-0"><div class="font-semibold">Plano Clube + Start</div><div class="text-[11.5px] text-slate-500">retorno, 90 dias depois</div></div>
+                </div>
+              </td>
+              <td class="num px-3 py-3">20/09/2024</td>
+              <td class="num px-3 py-3">20/09/2025</td>
+              <td class="px-3 py-3"><div class="num">10/10/2025</div><div class="text-[11.5px] text-slate-500">20 dias depois</div></td>
+              <td class="px-3 py-3"><div class="num">20 dias</div><div class="text-[11.5px] text-slate-500">1 vez</div></td>
+              <td class="num px-3 py-3 text-right font-semibold">R$ 1.188,00</td>
+              <td class="num px-3 py-3 text-right">R$ 99,00</td>
+              <td class="pl-3 pr-[22px] py-3 text-right"><span class="chip h-5 px-2 text-[10px] rounded-md bg-slate-500/10 text-slate-600">Renovado</span></td>
+            </tr>
+            <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer">
+              <td class="pl-[22px] pr-3 py-3">
+                <div class="flex items-center gap-2.5">
+                  <span class="size-7 flex-none rounded-full grid place-items-center bg-rose-500/10 text-rose-700" title="Primeira matrícula"><svg class="size-3"><use href="#i-userplus"/></svg></span>
+                  <div class="min-w-0"><div class="font-semibold">Plano Trimestral</div><div class="text-[11.5px] text-slate-500">primeira matrícula</div></div>
+                </div>
+              </td>
+              <td class="num px-3 py-3">06/05/2024</td>
+              <td class="num px-3 py-3">06/08/2024</td>
+              <td class="px-3 py-3"><div class="num">22/06/2024</div><div class="text-[11.5px] text-slate-500">cancelado</div></td>
+              <td class="px-3 py-3 text-slate-400">Nunca</td>
+              <td class="num px-3 py-3 text-right font-semibold">R$ 447,00</td>
+              <td class="num px-3 py-3 text-right">R$ 149,00</td>
+              <td class="pl-3 pr-[22px] py-3 text-right"><span class="chip h-5 px-2 text-[10px] rounded-md bg-rose-500/10 text-rose-700">Cancelado</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+</section>
+
+<!-- ======================================================================= -->
+<!-- MODAL: Ativar agora (igual nas três opções) -->
+<!-- ======================================================================= -->
+<section id="modal" class="pt-16 scroll-mt-16">
+  <div class="flex items-baseline gap-3 flex-wrap">
+    <span class="font-display text-[13px] font-bold text-slate-500">Modal novo</span>
+    <h2 class="font-display text-[22px] font-bold tracking-tight">O que o "Ativar agora" pergunta</h2>
+  </div>
+  <p class="text-[13px] text-slate-600 mt-1 max-w-[760px]">Aparece em todo contrato que ainda não começou, seja matrícula ou renovação. O contrato passa a começar hoje e mantém a duração vendida.</p>
+
+  <div class="mt-5 rounded-2xl bg-slate-900/40 p-8 grid place-items-center">
+    <div class="w-full max-w-[460px] rounded-2xl bg-white shadow-2xl overflow-hidden">
+      <div class="px-6 pt-5 pb-4">
+        <div class="flex items-center gap-2.5">
+          <span class="size-9 rounded-xl grid place-items-center bg-violet-500/10 text-violet-700"><svg class="size-4"><use href="#i-play"/></svg></span>
+          <h3 class="font-display text-[18px] font-bold tracking-tight">Ativar agora</h3>
+        </div>
+        <p class="text-[12.5px] text-slate-500 mt-1.5">Marina Alves · Plano Clube + Flow · marcado para 12/10/2026</p>
+
+        <div class="mt-4 rounded-xl border border-slate-100 bg-slate-50 divide-y divide-slate-100">
+          <div class="flex items-center justify-between gap-3 px-4 py-3">
+            <span class="text-[12.5px] text-slate-600">Plano Clube + Flow passa a valer</span>
+            <span class="num text-[13px] font-semibold">30/09/2026 → 30/09/2027</span>
+          </div>
+          <div class="flex items-center justify-between gap-3 px-4 py-3">
+            <span class="text-[12.5px] text-slate-600">Plano Clube + Start termina em</span>
+            <span class="num text-[13px] font-semibold">29/09/2026</span>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-2.5 mt-3 px-3 py-2.5 rounded-[11px] border border-rose-300/60 bg-rose-500/[0.07]">
+          <p class="text-[12px] leading-[1.5] text-slate-600">O contrato em uso termina 12 dias antes do previsto, e os dias já pagos se perdem. O valor e a duração do plano novo não mudam.</p>
+        </div>
+      </div>
+      <div class="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50">
+        <button type="button" class="h-9 px-3.5 rounded-[10px] text-[13px] font-semibold text-slate-600 hover:bg-slate-100 transition">Voltar</button>
+        <button type="button" class="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-[10px] text-[13px] font-semibold bg-brand-600 text-white hover:bg-brand-700 transition">Ativar agora</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+</body>
+</html>

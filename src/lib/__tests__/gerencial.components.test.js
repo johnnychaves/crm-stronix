@@ -105,7 +105,7 @@ const CELLS = [
   { key: 'count', label: 'Contratos vigentes', value: 628, sub: 'inclui os 19 trancados', help: 'Contratos com vigência em curso hoje.' },
   { key: 'monthly', label: 'Valor por mês', value: 134200, money: true, unit: '/mês', sub: 'soma dos tickets mensais vigentes', help: 'Soma do ticket mensal de cada contrato vigente.' },
   { key: 'ticket', label: 'Ticket mensal médio', value: 214, money: true, unit: '/mês', sub: 'valor por mês ÷ contratos com valor' },
-  { key: 'locked', label: 'Trancados', value: 19, tone: 'amber', sub: 'R$ 4.100/mês · contam na carteira', help: 'Contrato trancado segue vigente.' }
+  { key: 'locked', label: 'Trancados', value: 19, tone: 'yellow', sub: 'R$ 4.100/mês · contam na carteira', help: 'Contrato trancado segue vigente.' }
 ];
 
 describe('WalletBand', () => {
@@ -133,10 +133,11 @@ describe('WalletBand', () => {
     expect(html).not.toContain('aria-label="O que é &quot;Ticket mensal médio&quot;?"');
   });
 
-  it('trancado fica em âmbar, o resto fica neutro', () => {
+  it('trancado fica em amarelo, o resto fica neutro', () => {
     const html = render(createElement(WalletBand, { items: CELLS, notes: [] }));
-    expect(html).toContain('text-amber-700');
-    expect(html.match(/text-amber-700/g)).toHaveLength(1);
+    expect(html).toContain('text-yellow-700');
+    expect(html.match(/text-yellow-700/g)).toHaveLength(1);
+    expect(html).not.toContain('amber');
   });
 
   it('as notas viram cartões tracejados, e sem nota nenhuma o bloco some', () => {
@@ -249,13 +250,14 @@ describe('ExitsCard', () => {
     expect(html).toContain('R$ 820');
   });
 
-  it('cancelamento em vermelho, trancamento em âmbar, cada barra focável e com dica', () => {
+  it('cancelamento em vermelho, trancamento em amarelo, cada barra focável e com dica', () => {
     const html = render(createElement(ExitsCard, { items: EXITS }));
     expect(html.match(/tabindex="0"/g)).toHaveLength(2);
     expect(html).toContain('aria-label="Cancelamentos: 7 contratos, R$ 1.480 por mês"');
     expect(html).toContain('text-rose-700');
-    expect(html).toContain('text-amber-700');
-    expect(html).toContain('bg-amber-500');
+    expect(html).toContain('text-yellow-700');
+    expect(html).toContain('bg-yellow-500');
+    expect(html).not.toContain('amber');
   });
 
   it('a barra maior enche a trilha e a menor fica na proporção do valor', () => {

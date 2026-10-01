@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { walletAt } from '../gerencial/wallet.js';
+import { normalizeContracts } from '../operacional/base.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const now = D(2026, 9, 17);
@@ -46,5 +47,31 @@ describe('walletAt', () => {
 
   it('base vazia devolve zeros', () => {
     expect(walletAt([], now)).toMatchObject({ count: 0, monthly: 0, ticket: 0, blind: 0, overlap: 0 });
+  });
+});
+
+// A carteira recebe a lista do normalizeContracts, como na tela. A renovação
+// que começa antes do fim encurta o contrato atual para a véspera dela, na
+// mesma hora; a emendada começa no dia seguinte ao fim, na mesma hora.
+describe('walletAt com a renovação que encosta no fim', () => {
+  const H = (y, m, d, h) => new Date(y, m - 1, d, h);
+  const raw = (id, over) => ({ id, leadId: 'P', value: 1200, durationMonths: 12, status: 'ativo', ...over });
+
+  it('encurtada: um contrato por vez, sem somar os dois no que era sobreposição e sem buraco na véspera', () => {
+    const list = normalizeContracts([
+      raw('k1', { startsAt: H(2025, 10, 11, 0), endsAt: H(2026, 9, 27, 15), originalEndsAt: H(2026, 10, 11, 0), shortenedById: 'k2' }),
+      raw('k2', { renewedFromId: 'k1', startsAt: H(2026, 9, 28, 15), endsAt: H(2027, 9, 28, 15), createdAt: H(2026, 9, 28, 15) })
+    ]);
+    [H(2026, 9, 20, 12), H(2026, 9, 28, 10), H(2026, 10, 5, 12)].forEach((t) => {
+      expect(walletAt(list, t), t.toISOString()).toMatchObject({ count: 1, monthly: 100, overlap: 0 });
+    });
+  });
+
+  it('emendada: o contrato segue na carteira até a renovação começar', () => {
+    const list = normalizeContracts([
+      raw('k1', { startsAt: H(2025, 10, 31, 15), endsAt: H(2026, 10, 31, 15) }),
+      raw('k2', { renewedFromId: 'k1', seamless: true, startsAt: H(2026, 11, 1, 15), endsAt: H(2027, 11, 1, 15), createdAt: H(2026, 10, 20, 12) })
+    ]);
+    expect(walletAt(list, H(2026, 11, 1, 10))).toMatchObject({ count: 1, monthly: 100 });
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildContractResume } from '../contracts.js';
 import {
-  normalizeContract, normalizeContracts, hasOpenPause, computeChurn, countLockedAt, computeBaseMovement
+  normalizeContract, normalizeContracts, hasOpenPause, computeChurn, countLockedAt, computeBaseMovement, cancellationsByReason
 } from '../operacional/base.js';
 import {
   ownerOf, renewalCohort, summarizeCohort, milestones, upcomingExpirations, normalizeCheckpoints, milestoneSpanDays
@@ -268,5 +268,104 @@ describe('dono por predicado', () => {
     expect(milestones(contracts, { ...args, start: SEP.start, end: SEP.end, checkpoints: [30], interactions: [] }))
       .toEqual([{ days: 30, total: 1, done: 0, pct: 0 }]);
     expect(upcomingExpirations(contracts, { ...args, now: D(2026, 9, 11) })).toEqual({ d30: 0, d60: 1, d90: 0 });
+  });
+});
+
+// Renovação antecipada com "Começar hoje" em 28/09: o contrato que vencia em
+// 11/10 passou a terminar na véspera (27/09, na mesma hora) e guardou o fim de
+// antes em originalEndsAt. O vencimento continua sendo 11/10.
+describe('renovação antecipada que encurtou o contrato', () => {
+  const monthOf = (y, m) => ({ start: new Date(y, m - 1, 1), end: new Date(y, m, 1), graceDays: 15 });
+  const OCT = monthOf(2026, 10);
+  const encurtado = {
+    id: 'k1', leadId: 'P', consultantId: 'ana', status: 'ativo', startsAt: D(2025, 10, 11), createdAt: D(2025, 10, 11),
+    endsAt: D(2026, 9, 27, 15), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2'
+  };
+  const renovacao = {
+    id: 'k2', leadId: 'P', consultantId: 'ana', status: 'ativo', renewedFromId: 'k1',
+    startsAt: D(2026, 9, 28, 15), endsAt: D(2027, 9, 28, 15), createdAt: D(2026, 9, 28, 15)
+  };
+  const list = normalizeContracts([encurtado, renovacao]);
+  const cohortOf = (win, asOf) => renewalCohort(list, { ...win, asOf, leadsById: new Map() })
+    .map((r) => [r.contract.id, r.outcome, r.when]);
+
+  it('fica na coorte do mês em que ia vencer e conta como renovado antes', () => {
+    expect(cohortOf(SEP, D(2026, 10, 20))).toEqual([]);
+    expect(cohortOf(OCT, D(2026, 10, 20))).toEqual([['k1', 'renew', 'antes']]);
+  });
+
+  it('no corte de antes da renovação existir, ainda estava pendente no mês em que ia vencer', () => {
+    expect(cohortOf(OCT, D(2026, 9, 20))).toEqual([['k1', 'pending', null]]);
+  });
+
+  it('os marcos contam do vencimento: nada em junho, e o de 30 dias em setembro, feito pela renovação', () => {
+    const args = { checkpoints: [90, 60, 30], interactions: [], leadsById: new Map() };
+    const JUN = monthOf(2026, 6);
+    // Pelo fim encurtado, o marco de 90 dias cairia em 29/06, num mês já fechado.
+    expect(milestones(list, { ...args, ...JUN, asOf: D(2026, 10, 20) }).map((m) => m.total)).toEqual([0, 0, 0]);
+    expect(milestones(list, { ...args, ...SEP, asOf: D(2026, 10, 20) }))
+      .toEqual([{ days: 90, total: 0, done: 0, pct: null }, { days: 60, total: 0, done: 0, pct: null }, { days: 30, total: 1, done: 1, pct: 100 }]);
+  });
+});
+
+// Renovação desfeita antes de começar (tarefa 21 do plano): o contrato renovado
+// volta ao fim original, sem as marcas do encurtamento, e a renovação fica
+// cancelada antes do início. Ela nunca valeu: não é sucessor, não é o contrato
+// mais recente da pessoa, não é volta e não conta como cancelamento.
+describe('renovação que nunca valeu', () => {
+  const monthOf = (y, m) => ({ start: new Date(y, m - 1, 1), end: new Date(y, m, 1), graceDays: 15 });
+  const OCT = monthOf(2026, 10);
+  const leadsById = new Map();
+  const raw = (id, over) => ({ id, leadId: 'P', consultantId: 'ana', status: 'ativo', startsAt: D(2025, 10, 11), createdAt: D(2025, 10, 11), ...over });
+  const desistiu = { status: 'cancelado', renewedFromId: 'k1', createdAt: D(2026, 9, 15), cancelReason: 'Financeiro' };
+  // Encurtava o anterior e foi desfeita: o anterior voltou a 11/10.
+  const restaurado = normalizeContracts([
+    raw('k1', { endsAt: D(2026, 10, 11), originalEndsAt: null, shortenedById: null }),
+    raw('k2', { ...desistiu, startsAt: D(2026, 9, 28), endsAt: D(2027, 9, 28), cancelledAt: D(2026, 9, 20) })
+  ]);
+  // Emendada e desfeita: começaria no dia seguinte ao fim do anterior.
+  const emendadaDesfeita = normalizeContracts([
+    raw('k1', { endsAt: D(2026, 10, 11) }),
+    raw('k2', { ...desistiu, seamless: true, startsAt: D(2026, 10, 12), endsAt: D(2027, 10, 12), cancelledAt: D(2026, 10, 5) })
+  ]);
+  const cohortOf = (list, asOf) => renewalCohort(list, { ...OCT, asOf, leadsById }).map((r) => [r.contract.id, r.outcome, r.when]);
+
+  it('coorte: o anterior fica pendente e depois vencido, nunca "renovou antes"', () => {
+    expect(cohortOf(restaurado, D(2026, 10, 5))).toEqual([['k1', 'pending', null]]);
+    expect(cohortOf(restaurado, D(2026, 10, 20))).toEqual([['k1', 'lapsed', null]]);
+    expect(cohortOf(emendadaDesfeita, D(2026, 10, 20))).toEqual([['k1', 'lapsed', null]]);
+  });
+
+  it('marcos: a renovação desfeita não conta como feita', () => {
+    expect(milestones(restaurado, { ...SEP, asOf: D(2026, 10, 20), checkpoints: [30], interactions: [], leadsById }))
+      .toEqual([{ days: 30, total: 1, done: 0, pct: 0 }]);
+  });
+
+  it('a vencer: o anterior volta a ser o contrato mais recente da pessoa', () => {
+    expect(upcomingExpirations(restaurado, { now: D(2026, 9, 25), leadsById })).toEqual({ d30: 1, d60: 0, d90: 0 });
+  });
+
+  it('churn: sai quando o anterior vence, e a desfeita não é volta', () => {
+    expect(computeChurn(restaurado, OCT).exits).toBe(1);
+    expect(computeChurn(emendadaDesfeita, OCT).exits).toBe(1);
+  });
+
+  it('não conta cancelamento, nem no motivo nem na ponte', () => {
+    expect(cancellationsByReason(restaurado, SEP)).toEqual({ total: 0, items: [] });
+    expect(cancellationsByReason(emendadaDesfeita, OCT)).toEqual({ total: 0, items: [] });
+    expect(computeBaseMovement(emendadaDesfeita, OCT).steps).toMatchObject({ cancelaram: 0, venceram: 1 });
+  });
+
+  // Desistiu da renovação sem desfazer o encurtamento: o anterior segue
+  // terminando em 27/09 e a pessoa voltou por um contrato sem ligação, fechado
+  // em 20/10. Pelo fim encurtado mais a tolerância (12/10) ele não seria
+  // sucessor; pelo vencimento mais a tolerância (26/10), é.
+  it('sucessor sem ligação conta até o vencimento mais a tolerância, não até o fim encurtado', () => {
+    const list = normalizeContracts([
+      raw('k1', { endsAt: D(2026, 9, 27), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' }),
+      raw('k2', { ...desistiu, startsAt: D(2026, 9, 28), endsAt: D(2027, 9, 28), cancelledAt: D(2026, 9, 20) }),
+      raw('k3', { startsAt: D(2026, 10, 20), endsAt: D(2027, 10, 20), createdAt: D(2026, 10, 20) })
+    ]);
+    expect(cohortOf(list, D(2026, 10, 30))).toEqual([['k1', 'renew', 'depois']]);
   });
 });

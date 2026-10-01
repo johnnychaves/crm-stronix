@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildContractPause, buildContractResume } from '../contracts.js';
+import { buildContractPause, buildContractResume, neverTookEffect } from '../contracts.js';
 import {
   normalizeContract, normalizeContracts, hasOpenPause, contractStateAt, countActiveAt, countLockedAt,
   computeBaseMovement, computeChurn, cancellationsByReason, salesInWindow, indexContracts
@@ -408,5 +408,128 @@ describe('normalizeContracts', () => {
     const c = tOf(normalizeContracts([cancelado, raw('novo', { startsAt: D(2026, 11, 1), createdAt: D(2026, 11, 1) })]));
     expect(hasOpenPause(c)).toBe(true);
     expect(c.endsAt).toEqual(D(2026, 12, 1));
+  });
+});
+
+// A renovação emendada começa no dia seguinte ao fim, na mesma hora, e a que
+// começa antes do fim encurta o atual para a véspera dela, também na mesma
+// hora. Nos dois casos sobrava até um dia do calendário sem contrato vigente
+// (pode passar de 24 horas, com início à meia-noite), e na virada do mês a
+// ponte contava um "venceu" e, no mês seguinte, um "voltou" (decisão do
+// Johnny, 29/09/2026: fechar o buraco, mesmo mudando mês fechado).
+describe('renovação ligada que encosta no fim: sem o dia sem contrato', () => {
+  const monthOf = (y, m) => ({ start: new Date(y, m - 1, 1), end: new Date(y, m, 1), graceDays: 15 });
+  const OCT = monthOf(2026, 10);
+  const NOV = monthOf(2026, 11);
+  const raw = (id, over = {}) => ({ id, leadId: 'P', consultantId: 'ana', status: 'ativo', createdAt: D(2025, 10, 31), ...over });
+  const velho = raw('velho', { startsAt: D(2025, 10, 31, 15), endsAt: D(2026, 10, 31, 15) });
+  const emendada = raw('emendada', {
+    renewedFromId: 'velho', seamless: true, startsAt: D(2026, 11, 1, 15), endsAt: D(2027, 11, 1, 15), createdAt: D(2026, 10, 20)
+  });
+  // Renovação com "Outra data" (meia-noite) que começa antes do fim de 15/11:
+  // o atual passou a terminar na véspera, 31/10 à meia-noite.
+  const encurtado = raw('encurtado', {
+    startsAt: D(2025, 11, 15, 0), endsAt: D(2026, 10, 31, 0), originalEndsAt: D(2026, 11, 15, 0), shortenedById: 'nova'
+  });
+  const nova = raw('nova', { renewedFromId: 'encurtado', startsAt: D(2026, 11, 1, 0), endsAt: D(2027, 11, 1, 0), createdAt: D(2026, 10, 20) });
+  const byId = (list, id) => list.find((c) => c.id === id);
+
+  it('o fim encosta no início da renovação, o fim previsto não muda e a lista recebida fica igual', () => {
+    const input = [velho, emendada, encurtado, nova];
+    const before = structuredClone(input);
+    const list = normalizeContracts(input);
+    expect(byId(list, 'velho').endsAt).toEqual(D(2026, 11, 1, 15));
+    expect(byId(list, 'velho').plannedEndsAt).toEqual(D(2026, 10, 31, 15));
+    expect(byId(list, 'encurtado').endsAt).toEqual(D(2026, 11, 1, 0));
+    expect(byId(list, 'encurtado').plannedEndsAt).toEqual(D(2026, 11, 15, 0));
+    expect(byId(list, 'emendada').endsAt).toEqual(D(2027, 11, 1, 15));
+    expect(input).toEqual(before);
+  });
+
+  it('emendada na virada do mês: nem "venceu" em outubro nem "voltou" em novembro', () => {
+    const list = normalizeContracts([velho, emendada]);
+    expect(computeBaseMovement(list, OCT)).toMatchObject({ startCount: 1, endCount: 1, steps: { venceram: 0 } });
+    expect(computeBaseMovement(list, NOV)).toMatchObject({ startCount: 1, endCount: 1, steps: { voltaram: 0, entraram: 0 } });
+  });
+
+  it('encurtada na virada do mês: nem "venceu" em outubro nem "voltou" em novembro', () => {
+    const list = normalizeContracts([encurtado, nova]);
+    expect(computeBaseMovement(list, OCT)).toMatchObject({ startCount: 1, endCount: 1, steps: { venceram: 0 } });
+    expect(computeBaseMovement(list, NOV)).toMatchObject({ startCount: 1, endCount: 1, steps: { voltaram: 0, entraram: 0 } });
+  });
+
+  it('churn: a pessoa segue na base do mês seguinte e não sai nem sem tolerância', () => {
+    const list = normalizeContracts([velho, emendada]);
+    expect(computeChurn(list, NOV).base).toBe(1);
+    expect(computeChurn(list, { ...OCT, graceDays: 0 }).exits).toBe(0);
+  });
+
+  it('intervalo de dois dias do calendário é intervalo de verdade: venceu e voltou', () => {
+    const cedo = raw('cedo', { startsAt: D(2025, 10, 30, 15), endsAt: D(2026, 10, 30, 15) });
+    const depois = raw('depois', { renewedFromId: 'cedo', startsAt: D(2026, 11, 1, 15), endsAt: D(2027, 11, 1, 15), createdAt: D(2026, 10, 20) });
+    const list = normalizeContracts([cedo, depois]);
+    expect(byId(list, 'cedo').endsAt).toEqual(D(2026, 10, 30, 15));
+    expect(computeBaseMovement(list, OCT).steps.venceram).toBe(1);
+    expect(computeBaseMovement(list, NOV).steps.voltaram).toBe(1);
+  });
+
+  it('só fecha com renovação ligada que chegou a valer, e não com o contrato cancelado antes', () => {
+    const desfeita = { ...emendada, status: 'cancelado', cancelledAt: D(2026, 10, 25), cancelReason: 'Outro' };
+    const solta = { ...emendada, renewedFromId: null };
+    const cancelado = { ...velho, status: 'cancelado', cancelledAt: D(2026, 10, 20), cancelReason: 'Financeiro' };
+    expect(byId(normalizeContracts([velho, desfeita]), 'velho').endsAt).toEqual(D(2026, 10, 31, 15));
+    expect(byId(normalizeContracts([velho, solta]), 'velho').endsAt).toEqual(D(2026, 10, 31, 15));
+    expect(byId(normalizeContracts([cancelado, emendada]), 'velho').endsAt).toEqual(D(2026, 10, 31, 15));
+  });
+
+  // Trancado (sem encurtar) que renovou emendado no fim congelado. A pausa
+  // fecha primeiro, no início da renovação, e o fim anda do fim congelado: 25/09
+  // mais 16 dias parados. Se o buraco fechasse antes, o fim andaria do início
+  // da renovação e ganharia um dia.
+  it('trancado que renovou emendado: a pausa fecha antes do buraco, e o fim anda do fim congelado', () => {
+    const parado = raw('parado', { status: 'trancado', pauseReason: 'Viagem', pausedAt: D(2026, 9, 10), startsAt: D(2026, 3, 25), endsAt: D(2026, 9, 25) });
+    const renova = raw('renova', { renewedFromId: 'parado', seamless: true, startsAt: D(2026, 9, 26), endsAt: D(2027, 3, 26), createdAt: D(2026, 9, 15) });
+    const c = byId(normalizeContracts([parado, renova]), 'parado');
+    expect(c.pauses).toEqual([{ from: D(2026, 9, 10), to: D(2026, 9, 26) }]);
+    expect(c.endsAt).toEqual(D(2026, 10, 11));
+    expect(c.plannedEndsAt).toEqual(D(2026, 10, 11));
+  });
+
+  // Renovado ainda trancado, com a renovação começando antes do fim: o atual
+  // foi encurtado. A pausa fecha no início da renovação, como no trancado que
+  // renovou sem encurtar, mas o fim não anda pelos dias parados: ele já é a
+  // véspera da renovação, e andar o faria valer junto com ela. O fim previsto
+  // anda, como numa reativação.
+  it('encurtado e trancado: trancado até a renovação começar, sem voltar a valer junto com ela', () => {
+    const parado = raw('parado', {
+      status: 'trancado', pauseReason: 'Viagem', pausedAt: D(2026, 9, 10),
+      startsAt: D(2026, 3, 25), endsAt: D(2026, 9, 19), originalEndsAt: D(2026, 9, 25), shortenedById: 'renova'
+    });
+    const renova = raw('renova', { renewedFromId: 'parado', startsAt: D(2026, 9, 20), endsAt: D(2027, 3, 20), createdAt: D(2026, 9, 15) });
+    const list = normalizeContracts([parado, renova]);
+    const c = byId(list, 'parado');
+    expect(c.pauses).toEqual([{ from: D(2026, 9, 10), to: D(2026, 9, 20) }]);
+    expect(c.endsAt).toEqual(D(2026, 9, 20));
+    expect(c.plannedEndsAt).toEqual(D(2026, 10, 5)); // 25/09 mais 10 dias parados
+    expect(contractStateAt(c, D(2026, 9, 19, 18))).toBe('trancado');
+    expect(contractStateAt(c, D(2026, 9, 25))).toBe(null);
+    expect(list.filter((k) => contractStateAt(k, D(2026, 9, 25)) != null).map((k) => k.id)).toEqual(['renova']);
+  });
+});
+
+describe('neverTookEffect', () => {
+  const k = (over) => normalizeContract({
+    id: 'x', leadId: 'x', status: 'cancelado', startsAt: D(2026, 10, 1), endsAt: D(2027, 10, 1), createdAt: D(2026, 9, 1), ...over
+  });
+
+  it('é o contrato cancelado no instante do início ou antes dele', () => {
+    expect(neverTookEffect(k({ cancelledAt: D(2026, 9, 20) }))).toBe(true);
+    expect(neverTookEffect(k({ cancelledAt: D(2026, 10, 1) }))).toBe(true);
+    expect(neverTookEffect(k({ cancelledAt: D(2026, 10, 2) }))).toBe(false);
+  });
+
+  it('não vale para contrato ativo nem para o cancelado sem data, que termina no fim', () => {
+    expect(neverTookEffect(k({ status: 'ativo', cancelledAt: null }))).toBe(false);
+    expect(neverTookEffect(k({ cancelledAt: null }))).toBe(false);
   });
 });
