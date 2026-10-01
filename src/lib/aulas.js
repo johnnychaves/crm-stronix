@@ -57,7 +57,9 @@ const sameInstant = (a, b) => {
 //     - com o desfecho que o lead já tem ("Compareceu" ou "Não veio"), fecha
 //       com esse desfecho, a não ser que o agendamento novo seja o mesmo (mesmo
 //       tipo e mesmo instante): aí o desfecho foi marcado antes da hora, o
-//       agendamento continua e o registro fica em aberto;
+//       agendamento continua e o registro da visita fica em aberto (o da
+//       aula, o applyOutcomeToAula já fechou, e a aula pedida de novo ganha
+//       registro novo);
 //     - na troca de tipo sem desfecho, fecha como cancelado: aquele
 //       agendamento não acontece mais.
 //   upsertVisita: a visita do tipo novo move o registro aberto ou cria um.
