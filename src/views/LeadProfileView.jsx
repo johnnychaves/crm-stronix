@@ -20,7 +20,7 @@ import { getUpgradeFunnel, upgradeStageIdOf } from '../lib/upgradeFunnel.js';
 import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.js';
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
-import { upsertScheduledAula, upsertScheduledAppointment, markConvertingAula } from '../lib/aulasWrites.js';
+import { recordNewAppointment, markConvertingAula } from '../lib/aulasWrites.js';
 import { buildSchedulePatch } from '../lib/schedulePatch.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -533,42 +533,25 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       const delegado = wizOwnerId && wizOwnerId !== lead.consultantId ? ` · tarefa de ${wizOwnerName || 'outro consultor'}` : '';
       const text = `🔔 ${typeLabel} agendada${extra} p/ ${dateStr}${delegado}.` + (noteStr ? ` Obs: ${noteStr}` : '');
 
-      // Dual-write best-effort no histórico de aulas (stronix_aulas): a regra
-      // do Firestore pode ainda não estar publicada, então falha aqui NÃO
-      // pode quebrar o agendamento do lead — por isso o try/catch isolado.
-      let currentAulaId = lead.currentAulaId || null;
-      if (isAula) {
-        try {
-          currentAulaId = await upsertScheduledAula({
-            db, lead,
-            fields: {
+      // Dual-write best-effort no histórico de aulas (stronix_aulas), na regra
+      // do Remarcar da Meta Diária (recordNewAppointment, em
+      // lib/aulasWrites.js): o registro do agendamento que o lead tinha fecha
+      // quando ele não vai mais acontecer (com o "Compareceu" ou o "Não veio"
+      // que o lead tem, ou cancelado na troca de tipo), e o do tipo novo muda
+      // de data ou nasce. Falha ali não derruba o agendamento do lead.
+      // Mensagem e ligação não têm registro.
+      const currentAulaId = await recordNewAppointment({
+        db, lead, appointmentType,
+        fields: isAula
+          ? {
               professorId: professorId || null,
               professorName: professorId ? professorNameById(professores, professorId) : null,
               soloTraining: Boolean(soloTraining),
               modality: modalidade || null,
               scheduledFor: date,
-            },
-          });
-        } catch (e) {
-          console.error('upsertScheduledAula falhou', e);
-        }
-      }
-
-      // Dual-write da VISITA, espelhando o da aula acima. O lead ainda não
-      // guarda ponteiro de visita, então o registro em aberto é achado por
-      // leadId. Best-effort pelo mesmo motivo: falha aqui não pode derrubar o
-      // agendamento do lead.
-      if (isVisita) {
-        try {
-          await upsertScheduledAppointment({
-            db, lead,
-            type: 'visita',
-            fields: { unit: unidade || null, scheduledFor: date },
-          });
-        } catch (e) {
-          console.error('upsertScheduledAppointment (visita) falhou', e);
-        }
-      }
+            }
+          : { unit: unidade || null, scheduledFor: date },
+      });
 
       // Patch em src/lib/schedulePatch.js: mensagem e ligação mexem SÓ no
       // próximo contato; visita e aula mexem no contato E no compromisso. Vive

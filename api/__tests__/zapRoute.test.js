@@ -18,6 +18,8 @@ import handler from '../zap.js';
 import { adminDb } from '../_firebaseAdmin.js';
 import { buildNewLeadDoc } from '../../src/lib/newLead.js';
 import { buildNotificationFeed } from '../../src/lib/notifications.js';
+import { appointmentsOf } from '../../src/lib/crm/appointments.js';
+import { getSafeDateOrNull } from '../../src/lib/dates.js';
 
 // A rota inteira, com o Firestore trocado por um banco em memória.
 //
@@ -2059,10 +2061,9 @@ describe('POST /api/zap com action schedule', () => {
     expect(limitador.chamadas).toEqual([{ chave: 'zap-schedule:academia-teste', opcoes: { limit: 60, windowMs: 3600000 } }]);
   });
 
-  it('remarcar visita: o registro em aberto troca de data, o desfecho anterior sai e a linha do tempo ganha outro registro', async () => {
+  it('remarcar visita sem desfecho: o registro em aberto troca de data e de unidade, e a linha do tempo ganha outro registro', async () => {
     banco.leads[TENANT] = [marianaLead({
-      appointmentType: 'visita', appointmentScheduledFor: ts(new Date('2026-09-30T21:00:00.000Z')),
-      appointmentUnit: 'Zona Sul', appointmentOutcome: 'no_show', appointmentOutcomeAt: ts(new Date('2026-09-28T21:00:00.000Z'))
+      appointmentType: 'visita', appointmentScheduledFor: ts(new Date('2026-09-30T21:00:00.000Z')), appointmentUnit: 'Zona Sul'
     })];
     banco.aulas[TENANT] = [
       registro('v-velha', { status: 'no_show', scheduledFor: ts(new Date('2026-09-20T21:00:00.000Z')) }),
@@ -2076,10 +2077,101 @@ describe('POST /api/zap com action schedule', () => {
     expect(aulasDaAcademia()).toHaveLength(2);
     expect(aulasDaAcademia().find((a) => a.id === 'v-aberta')).toMatchObject({ unit: 'Centro', scheduledFor: QUINTA_18H, status: 'agendada' });
     expect(aulasDaAcademia().find((a) => a.id === 'v-velha').status).toBe('no_show');
-    expect(leadDaAcademia('L1')).toMatchObject({
-      appointmentScheduledFor: QUINTA_18H, appointmentUnit: 'Centro', appointmentOutcome: null, appointmentOutcomeAt: null
-    });
+    expect(leadDaAcademia('L1')).toMatchObject({ appointmentScheduledFor: QUINTA_18H, appointmentUnit: 'Centro', appointmentOutcome: null });
     expect(interacoesDaAcademia()).toHaveLength(1);
+  });
+
+  // O desfecho da visita não é gravado no registro quando é marcado. Mover o
+  // registro para a data nova apagaria a falta ou o comparecimento do Dashboard
+  // CRM no mês da visita: ele fecha com o desfecho, e a data nova abre outro.
+  it.each([
+    ['"Não compareceu"', 'no_show'],
+    ['"Compareceu"', 'attended']
+  ])('visita com %s e outra visita em outro dia: o registro dela fecha com o desfecho, na data dela, e a data nova abre outro', async (_, appointmentOutcome) => {
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'visita', appointmentScheduledFor: ts(new Date('2026-09-28T21:00:00.000Z')), appointmentUnit: 'Zona Sul',
+      appointmentOutcome, appointmentOutcomeAt: ts(new Date('2026-09-28T22:00:00.000Z'))
+    })];
+    banco.aulas[TENANT] = [registro('v-set', { unit: 'Zona Sul', scheduledFor: ts(new Date('2026-09-28T21:00:00.000Z')) })];
+    const res = resposta();
+
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(aulasDaAcademia()).toHaveLength(2);
+    const velha = aulasDaAcademia().find((a) => a.id === 'v-set');
+    expect(velha).toMatchObject({ status: appointmentOutcome, outcomeAt: HORA, unit: 'Zona Sul' });
+    expect(velha.scheduledFor.toDate()).toEqual(new Date('2026-09-28T21:00:00.000Z'));
+    const nova = aulasDaAcademia().find((a) => a.id !== 'v-set');
+    expect(nova).toMatchObject({ type: 'visita', leadId: 'L1', unit: 'Centro', scheduledFor: QUINTA_18H, status: 'agendada' });
+    expect(leadDaAcademia('L1')).toMatchObject({ appointmentScheduledFor: QUINTA_18H, appointmentOutcome: null });
+    // Uma gravação a mais que a visita nova sem nada a fechar: 4 no lugar de 3.
+    expect(banco.gravacoes).toHaveLength(4);
+  });
+
+  it('visita em aberto trocada por aula: a visita fecha como cancelada, e a aula nasce', async () => {
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'visita', appointmentScheduledFor: ts(new Date('2026-09-30T21:00:00.000Z')), appointmentUnit: 'Centro'
+    })];
+    banco.aulas[TENANT] = [registro('v-aberta')];
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), resposta());
+
+    expect(aulasDaAcademia().find((a) => a.id === 'v-aberta')).toMatchObject({ status: 'cancelled', outcomeAt: HORA });
+    const aula = aulasDaAcademia().find((a) => a.id !== 'v-aberta');
+    expect(aula).toMatchObject({ type: 'aula', status: 'agendada', scheduledFor: SEXTA_19H });
+    expect(leadDaAcademia('L1').currentAulaId).toBe(aula.id);
+  });
+
+  it('visita com "Compareceu" e depois uma aula: a visita fecha como compareceu, e não como cancelada', async () => {
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'visita', appointmentScheduledFor: ts(new Date('2026-09-28T21:00:00.000Z')), appointmentUnit: 'Centro',
+      appointmentOutcome: 'attended'
+    })];
+    banco.aulas[TENANT] = [registro('v-set', { scheduledFor: ts(new Date('2026-09-28T21:00:00.000Z')) })];
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), resposta());
+
+    expect(aulasDaAcademia().find((a) => a.id === 'v-set')).toMatchObject({ status: 'attended' });
+  });
+
+  it('aula em aberto trocada por visita: a aula do currentAulaId fecha como cancelada, e o lead continua apontando para ela', async () => {
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'aula_experimental', appointmentScheduledFor: ts(SEXTA_19H), currentAulaId: 'a-aberta'
+    })];
+    banco.aulas[TENANT] = [registro('a-aberta', {
+      type: 'aula', unit: null, professorId: 'p1', professorName: 'Carla Dias', modality: 'Pilates', scheduledFor: ts(SEXTA_19H)
+    })];
+
+    await handler(pedidoAgenda(), resposta());
+
+    expect(aulasDaAcademia().find((a) => a.id === 'a-aberta')).toMatchObject({ status: 'cancelled', outcomeAt: HORA });
+    expect(aulasDaAcademia().find((a) => a.id !== 'a-aberta')).toMatchObject({ type: 'visita', scheduledFor: QUINTA_18H, status: 'agendada' });
+    expect(leadDaAcademia('L1')).toMatchObject({ appointmentType: 'visita', currentAulaId: 'a-aberta' });
+  });
+
+  // O que o Johnny pediu: agendar de novo depois de um desfecho não apaga o
+  // desfecho do painel. Os registros chegam ao painel como o useCrmSources
+  // entrega (datas em Date), com o lead de depois do agendamento.
+  it.each([
+    ['a falta', 'no_show', { missed: 1, came: 0 }],
+    ['o comparecimento', 'attended', { missed: 0, came: 1 }]
+  ])('Dashboard CRM: %s de setembro continua em setembro depois de agendar de novo em outubro', async (_, appointmentOutcome, setembro) => {
+    banco.leads[TENANT] = [marianaLead({
+      appointmentType: 'visita', appointmentScheduledFor: ts(new Date('2026-09-28T21:00:00.000Z')), appointmentUnit: 'Centro',
+      appointmentOutcome
+    })];
+    banco.aulas[TENANT] = [registro('v-set', { scheduledFor: ts(new Date('2026-09-28T21:00:00.000Z')) })];
+
+    await handler(pedidoAgenda(), resposta());
+
+    const registros = aulasDaAcademia().map((r) => ({
+      ...r, scheduledFor: getSafeDateOrNull(r.scheduledFor), createdAt: getSafeDateOrNull(r.createdAt)
+    }));
+    const lead = leadDaAcademia('L1');
+    const noMes = (start, end) => appointmentsOf(registros, { start, end, leadOf: () => lead, inScope: () => true });
+    expect(noMes(new Date(2026, 8, 1), new Date(2026, 9, 1))).toMatchObject({ total: 1, pending: 0, ...setembro });
+    expect(noMes(new Date(2026, 9, 1), new Date(2026, 10, 1))).toMatchObject({ total: 1, missed: 0, came: 0, pending: 1 });
   });
 
   it('aula nova: o registro leva o professor, e o lead passa a apontar para ele', async () => {

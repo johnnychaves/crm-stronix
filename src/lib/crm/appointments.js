@@ -28,8 +28,10 @@ function bookedAt(r) {
 // ordem, sem repetir id. O app ainda não grava o desfecho no registro da
 // visita (applyOutcomeToAula só vale para aula), mas a Meta e a tela de
 // Visitas registram cada desfecho numa interação daily_goal_done de
-// visita_hoje (appointmentOutcome.js). O reagendamento fica fora: ele move o
-// registro, não o fecha (outcomeToAulaStatus).
+// visita_hoje (appointmentOutcome.js). O reagendamento fica fora
+// (outcomeToAulaStatus): sem desfecho, ele move o registro; com desfecho, o
+// registro fecha com ele antes de o agendamento novo abrir outro
+// (rescheduleRecordPlan, em aulas.js).
 export function visitOutcomesByLead(interactions) {
   const map = new Map();
   const seen = new Set();
@@ -105,8 +107,9 @@ export function effectiveStatus(r, visitOutcomes, lead = null) {
 }
 
 // Agendamentos do mês (spec §4, faixa): scheduledFor em [start, end), sem os
-// cancelados. Pessoa e funil saem do lead do registro. Um reagendamento move o
-// registro, então ele não conta duas vezes. O agendamento com data a partir
+// cancelados. Pessoa e funil saem do lead do registro. Um reagendamento sem
+// desfecho move o registro, então ele não conta duas vezes; com desfecho, o
+// registro antigo fecha e conta no mês dele. O agendamento com data a partir
 // da primeira matrícula (firstEnrolledAtOf, como na safra: quem virou cliente
 // sem contrato só tem o convertedAt) não é funil de lead e fica fora: a aula
 // de upgrade e o registro de visita reaproveitado, que guarda o createdAt de

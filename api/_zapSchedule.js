@@ -5,7 +5,7 @@
 // refeito aqui.
 //
 // A gravação espelha o assistente (handleWizardConfirm, em
-// src/views/LeadProfileView.jsx, mais o upsertScheduledAppointment de
+// src/views/LeadProfileView.jsx, mais o recordNewAppointment de
 // src/lib/aulasWrites.js e o logInteraction de src/lib/interactions.js): o
 // mesmo registro em stronix_aulas, a mesma interação e o mesmo patch do lead
 // (buildSchedulePatch). Mudou o assistente, mude aqui.
@@ -27,7 +27,9 @@ import { getLeadAppointmentType, getLeadAppointmentDate, getInteractionSecurityF
 import { normalizeAppointmentType } from '../src/lib/dates.js';
 import { normalizeTrialClassOptions, normalizeMetaWeekdays } from '../src/lib/leadStatus.js';
 import { professorNameById, SOLO_TRAINING_LABEL } from '../src/lib/professores.js';
-import { AULA_STATUS, APPOINTMENT_RECORD_TYPES, aulaRecordFields, isAulaRecord } from '../src/lib/aulas.js';
+import {
+  AULA_STATUS, APPOINTMENT_RECORD_TYPES, aulaRecordFields, isAulaRecord, recordPlanFor, recordMatchesAppointment
+} from '../src/lib/aulas.js';
 import { buildSchedulePatch } from '../src/lib/schedulePatch.js';
 import { contactOf } from '../src/lib/guardian.js';
 
@@ -458,8 +460,50 @@ export const isOpenAulaRecord = (record, leadId) =>
   Boolean(record) && Boolean(leadId) && record.leadId === leadId
   && record.status === AULA_STATUS.AGENDADA && isAulaRecord(record);
 
+// O registro em aberto de um tipo entre os registros do lead: a visita é a
+// primeira visita agendada (pickOpenVisitaId), e a aula, o registro do
+// currentAulaId quando ele ainda é uma aula agendada deste lead
+// (isOpenAulaRecord).
+function openRecordOf(recordType, records, lead) {
+  if (recordType === APPOINTMENT_RECORD_TYPES.VISITA) {
+    const id = pickOpenVisitaId(records);
+    return records.find((r) => r.id === id) ?? null;
+  }
+  const aula = records.find((r) => r.id === lead.currentAulaId);
+  return aula && isOpenAulaRecord(aula, lead.id) ? aula : null;
+}
+
+// Os registros de stronix_aulas que o agendamento mexe, na regra do assistente
+// da ficha (recordNewAppointment, em src/lib/aulasWrites.js):
+//   - close: o registro do agendamento que o lead tinha e o status com que ele
+//     fecha (recordPlanFor: o "Compareceu" ou o "Não veio" do lead ou, na troca
+//     de tipo, cancelado), ou null. Só fecha registro em aberto e da mesma data
+//     do agendamento do lead (recordMatchesAppointment), como o
+//     closeOpenAppointment;
+//   - openRecordId: o registro em aberto do tipo novo, que o agendamento
+//     reaproveita, ou null para nascer outro. O que acabou de fechar não conta,
+//     como no assistente, que fecha antes de procurar.
+// `records` são todos os registros do lead (a consulta por leadId), lidos na
+// mesma transação da gravação.
+export function scheduleRecordChanges({ lead, schedule, at, records = [] }) {
+  const list = records || [];
+  const plan = recordPlanFor(lead, { type: schedule.type, at });
+  let close = null;
+  if (plan.close) {
+    const target = openRecordOf(plan.close.type, list, lead);
+    if (target && recordMatchesAppointment(target, lead)) close = { id: target.id, status: plan.close.status };
+  }
+  const rest = close ? list.filter((r) => r.id !== close.id) : list;
+  const newType = schedule.type === 'aula_experimental' ? APPOINTMENT_RECORD_TYPES.AULA : APPOINTMENT_RECORD_TYPES.VISITA;
+  const reused = openRecordOf(newType, rest, lead);
+  return { close, openRecordId: reused ? reused.id : null };
+}
+
 // O que a ação schedule grava numa transação só, o mesmo que o assistente
 // grava em três passos:
+//   - closed: com `close` (scheduleRecordChanges), o registro do agendamento
+//     que o lead tinha fecha com o status e a hora do servidor, como o
+//     closeOpenAppointment; sem ele, null;
 //   - record: o registro em stronix_aulas. Com `openRecordId` (a aula do
 //     currentAulaId ainda agendada, ou a visita em aberto do lead), só a data
 //     e os campos do tipo mudam; sem ele, nasce um registro com o id
@@ -472,7 +516,7 @@ export const isOpenAulaRecord = (record, leadId) =>
 // `professors` são os documentos de stronix_professores, de onde sai o nome.
 // `serverTime` e `increment` são os FieldValue do firebase-admin.
 export function buildScheduleWrites({
-  lead, actor, schedule, at, professors = [], channelName = null, openRecordId = null, newRecordId = null,
+  lead, actor, schedule, at, professors = [], channelName = null, close = null, openRecordId = null, newRecordId = null,
   serverTime, increment
 }) {
   const isAula = schedule.type === 'aula_experimental';
@@ -535,7 +579,8 @@ export function buildScheduleWrites({
       currentAulaId: isAula ? recordId : (lead.currentAulaId || null)
     })
   };
-  return { record, interaction, leadPatch };
+  const closed = close ? { id: close.id, update: { status: close.status, outcomeAt: serverTime } } : null;
+  return { closed, record, interaction, leadPatch };
 }
 
 // Resposta 409: o cartão do número e o agendamento que já existia. O
