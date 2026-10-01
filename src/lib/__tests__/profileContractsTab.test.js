@@ -197,4 +197,28 @@ describe('aba Contratos: os botões em cada situação', () => {
     // pelo teste do componente, em contractsTabComponents.test.js, que abre
     // por defaultOpenId: o renderToString não clica.
   });
+
+  // Revisão final (01/10/2026): no último dia do contrato em uso, com o fim
+  // gravado à meia-noite, o status por instante diz vencido, mas o destaque
+  // é escolhido por dia do calendário. O card continua o em uso, com Trancar
+  // e Cancelar; o card fechado, com Nova matrícula, gravaria um segundo
+  // contrato. A faixa do próximo continua.
+  it('no último dia do contrato em uso, com a renovação marcada, o card continua o em uso', () => {
+    vi.setSystemTime(new Date(2026, 9, 11, 10, 0));
+    try {
+      const { hero, strip } = aba(flow, [start, flow]);
+      expect(hero).not.toContain('Nova matrícula');
+      expect(hero).not.toContain('Venceu há');
+      expect(hero).toContain('Em uso · restam');
+      expect(hero).toContain('vence hoje');
+      expect(hero).toContain('>Em uso<');
+      expect(hero).toContain('>Trancar<');
+      expect(hero).toContain('>Cancelar<');
+      expect(hero).not.toContain('Renovar contrato');
+      expect(hero).toContain('title="Start · em uso até 11/10/2026"');
+      expect(strip).toContain('>Próximo<');
+    } finally {
+      vi.setSystemTime(new Date(2026, 8, 30, 10, 0));
+    }
+  });
 });

@@ -136,6 +136,12 @@ describe('heroCountdownOf: o bloco de contagem do card', () => {
   it('agendado: começa em N dias', () => {
     expect(heroCountdownOf({ contract: proximo, status: CONTRACT_STATUS.AGENDADO, now: HOJE })).toEqual({ label: 'Começa em', days: 12, note: 'início 12/10/2026' });
   });
+
+  it('no último dia: restam 0 dias, e a linha de baixo diz que vence hoje', () => {
+    expect(heroCountdownOf({ contract: emUso, status: CONTRACT_STATUS.ATIVO, hasNext: true, now: new Date(2026, 9, 11, 10, 0) }))
+      .toEqual({ label: 'Em uso · restam', days: 0, note: 'vence hoje' });
+    expect(heroCountdownOf({ contract: emUso, status: CONTRACT_STATUS.A_VENCER, now: new Date(2026, 9, 10, 10, 0) }).note).toBe('vence 11/10/2026');
+  });
 });
 
 describe('heroActionsOf: os botões em cada situação', () => {
@@ -158,7 +164,12 @@ describe('heroActionsOf: os botões em cada situação', () => {
   it('vencido ou cancelado: só a matrícula nova', () => {
     expect(heroActionsOf({ status: CONTRACT_STATUS.VENCIDO })).toEqual({ primary: 'matricula', actions: [] });
     expect(heroActionsOf({ status: CONTRACT_STATUS.CANCELADO })).toEqual({ primary: 'matricula', actions: [] });
-    expect(heroActionsOf({ status: CONTRACT_STATUS.CANCELADO, hasNext: true })).toEqual({ primary: 'matricula', actions: [] });
+  });
+  // No último dia do contrato em uso (fim gravado à meia-noite), o status por
+  // instante já diz vencido, mas com próximo contrato o card continua o em
+  // uso: só Trancar e Cancelar, nunca a matrícula nova (revisão final).
+  it('vencido por instante com próximo: Trancar e Cancelar, nunca a matrícula nova', () => {
+    expect(heroActionsOf({ status: CONTRACT_STATUS.VENCIDO, hasNext: true })).toEqual({ primary: null, actions: ['trancar', 'cancelar'] });
   });
 });
 

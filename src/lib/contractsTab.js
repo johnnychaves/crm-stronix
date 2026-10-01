@@ -116,15 +116,21 @@ export function heroCountdownOf({ contract, status, hasNext = false, now = new D
     return { label: 'Trancado há', days, note: `desde ${fmtDia(pausedAt)}` };
   }
   const days = end ? Math.max(0, Math.ceil((end.getTime() - ref.getTime()) / DAY_MS)) : 0;
-  return { label: hasNext ? 'Em uso · restam' : 'Restam', days, note: `vence ${fmtDia(end)}` };
+  // No último dia (o fim gravado à meia-noite já passou por instante), a
+  // linha de baixo diz que vence hoje.
+  const hoje = Boolean(end && calendarDaysBetween(ref, end) === 0);
+  return { label: hasNext ? 'Em uso · restam' : 'Restam', days, note: hoje ? 'vence hoje' : `vence ${fmtDia(end)}` };
 }
 
 // Os botões do card em cada situação (tabela "Botões em cada situação" da
 // spec). `primary` é o botão grande; `actions` são os pequenos, na ordem.
 export function heroActionsOf({ status, hasNext = false } = {}) {
-  // Vencido ou cancelado: o card fechado só oferece a matrícula nova, nunca
-  // renovar, corrigir, trancar ou cancelar (revisão de 30/09/2026).
-  if (status === CONTRACT_STATUS.VENCIDO || status === CONTRACT_STATUS.CANCELADO) return { primary: 'matricula', actions: [] };
+  // Vencido ou cancelado sem próximo: o card fechado só oferece a matrícula
+  // nova, nunca renovar, corrigir, trancar ou cancelar (revisão de
+  // 30/09/2026). Com próximo, o destaque é o contrato em uso no último dia
+  // dele (vencido por instante, em uso por dia do calendário): continua
+  // com Trancar e Cancelar, nunca a matrícula nova (revisão final).
+  if (!hasNext && (status === CONTRACT_STATUS.VENCIDO || status === CONTRACT_STATUS.CANCELADO)) return { primary: 'matricula', actions: [] };
   const paused = status === CONTRACT_STATUS.TRANCADO;
   if (hasNext) return { primary: null, actions: [paused ? 'reativar' : 'trancar', 'cancelar'] };
   if (status === CONTRACT_STATUS.AGENDADO) return { primary: 'ativar', actions: ['corrigir', 'cancelar'] };

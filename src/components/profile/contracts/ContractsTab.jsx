@@ -89,7 +89,13 @@ export function ContractsTab({
   // erradas, a aba dizia "Ainda não é cliente" com o contrato gravado.
   const hasContract = Boolean(hero && getSafeDateOrNull(hero.endsAt));
   const status = hasContract ? (deriveContractStatus(hero, now, contractThresholdDays) || CONTRACT_STATUS.ATIVO) : null;
-  const closed = status === CONTRACT_STATUS.VENCIDO || status === CONTRACT_STATUS.CANCELADO;
+  // Com próximo contrato, o destaque é o contrato em uso, escolhido por dia do
+  // calendário (isInUseAt). No último dia dele, com o fim gravado à meia-noite,
+  // o status por instante já diz vencido, mas o card continua o em uso, com
+  // Trancar e Cancelar; o card fechado, com Nova matrícula, gravaria um
+  // segundo contrato (revisão final de 01/10/2026).
+  const closed = !next && (status === CONTRACT_STATUS.VENCIDO || status === CONTRACT_STATUS.CANCELADO);
+  const heroStatus = next && status === CONTRACT_STATUS.VENCIDO ? CONTRACT_STATUS.ATIVO : status;
   const heroFacts = hasContract ? contractFactsOf(hero, leadContracts, now, contractThresholdDays) : null;
   // A régua do destaque, congelada no trancamento e no cancelamento
   // (vigenciaRefDate): dá os dias e os marcos que passaram sem contato.
@@ -128,12 +134,12 @@ export function ContractsTab({
         <ContractHeroCard
           lead={lead}
           hero={hero}
-          status={status}
+          status={heroStatus}
           hasNext={Boolean(next)}
-          countdown={heroCountdownOf({ contract: hero, status, hasNext: Boolean(next), now })}
+          countdown={heroCountdownOf({ contract: hero, status: heroStatus, hasNext: Boolean(next), now })}
           facts={heroFacts}
           missed={missed}
-          actions={heroActionsOf({ status, hasNext: Boolean(next) })}
+          actions={heroActionsOf({ status: heroStatus, hasNext: Boolean(next) })}
           isReadOnly={isReadOnly}
           loading={loading}
           onRenew={onRenew}
