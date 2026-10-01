@@ -777,8 +777,14 @@ const changesPrevious = (previous, patch) => !(
 // `now`: a hora da correção. Com o início novo já chegado, o anterior precisa
 // estar em vigor na véspera dele para a renovação ser emendada ou encurtá-lo;
 // com o início novo no futuro, agora (renewalTakeoverAt). Padrão: o relógio.
-export const buildContractEdit = ({ contract, plan, value, startsAt, discountReason, previous = null, now = new Date() } = {}) => {
+// `lead`: o resumo do lead, para saber se este é o último contrato
+// (currentContractId). Só o último grava os campos currentContract*; corrigir
+// outro contrato (o em uso, com o último cancelado) atualiza apenas o bloco
+// "em uso", quando ele aponta para este contrato (revisão final de
+// 01/10/2026). Sem `lead`, assume-se o último.
+export const buildContractEdit = ({ contract, plan, value, startsAt, discountReason, previous = null, now = new Date(), lead = null } = {}) => {
   const start = getSafeDateOrNull(startsAt) || getSafeDateOrNull(contract?.startsAt) || new Date();
+  const isLatest = !lead?.currentContractId || lead.currentContractId === contract?.id;
   const durationMonths = Number(plan?.durationMonths) || Number(contract?.durationMonths) || 0;
   const pausedDaysTotal = Number(contract?.pausedDaysTotal) || 0;
   // Fim: início mais a duração vendida, mais os dias já trancados. Sem duração
@@ -790,6 +796,14 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
   const endsAt = base
     ? (pausedDaysTotal > 0 ? addDays(base, pausedDaysTotal) : base)
     : (recordedStart && recordedEnd ? new Date(recordedEnd.getTime() + (start.getTime() - recordedStart.getTime())) : recordedEnd);
+  // O contrato que uma renovação encurtou (shortenedById) continua terminando
+  // na véspera dela: o fim vendido recalculado vai para originalEndsAt. Se o
+  // fim vendido novo cair antes do fim encurtado, o encurtamento deixa de
+  // existir (revisão final de 01/10/2026).
+  const shortened = Boolean(contract?.shortenedById && getSafeDateOrNull(contract?.originalEndsAt) && recordedEnd);
+  const keepsShortening = Boolean(shortened && endsAt && endsAt.getTime() >= recordedEnd.getTime());
+  const patchEnd = keepsShortening ? recordedEnd : endsAt;
+  const shortenPatch = !shortened ? {} : (keepsShortening ? { originalEndsAt: endsAt } : { originalEndsAt: null, shortenedById: null });
   // Valor: o do pedido; sem ele, o gravado. O gravado nulo (importado sem
   // valor) fica nulo, nunca vira zero. A tabela idem: sem plano, a gravada.
   const finalValue = value != null && Number.isFinite(Number(value)) ? Number(value) : (contract?.value == null ? null : Number(contract.value));
@@ -873,22 +887,28 @@ export const buildContractEdit = ({ contract, plan, value, startsAt, discountRea
       listValue,
       durationMonths,
       startsAt: start,
-      endsAt,
+      endsAt: patchEnd,
       seamless,
+      ...shortenPatch,
       discountMode: hasDiscount ? ((sameDeal && priorMode) || 'final') : 'nenhum',
       discountValue: hasDiscount ? discountValue : 0,
       discountReason: hasDiscount ? (discountReason ?? contract?.discountReason ?? null) : null
     },
-    leadPatch: {
-      currentPlanName: plan?.name ?? contract?.planName ?? null,
-      currentContractValue: finalValue,
-      currentContractStartsAt: start,
-      currentContractEndsAt: endsAt,
-      currentContractSeamless: seamless,
-      ...(inUseBlock || {})
-    },
+    // O resumo do lead: os campos currentContract* só quando este é o último
+    // contrato. Corrigir outro contrato só atualiza o bloco "em uso", e só
+    // quando o bloco aponta para ele.
+    leadPatch: isLatest
+      ? {
+        currentPlanName: plan?.name ?? contract?.planName ?? null,
+        currentContractValue: finalValue,
+        currentContractStartsAt: start,
+        currentContractEndsAt: patchEnd,
+        currentContractSeamless: seamless,
+        ...(inUseBlock || {})
+      }
+      : (lead?.inUseContractId && lead.inUseContractId === contract?.id ? inUseBlockOf(contract, { inUseContractEndsAt: patchEnd }) : {}),
     previousPatch,
-    interactionText: `Contrato corrigido — Plano ${plan?.name ?? contract?.planName ?? '—'} (${fmtBRL(finalValue)}), vigência ${fmtDia(start)} → ${fmtDia(endsAt)}.`
+    interactionText: `Contrato corrigido — Plano ${plan?.name ?? contract?.planName ?? '—'} (${fmtBRL(finalValue)}), vigência ${fmtDia(start)} → ${fmtDia(patchEnd)}.`
   };
 };
 

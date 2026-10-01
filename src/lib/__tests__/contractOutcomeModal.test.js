@@ -179,5 +179,23 @@ describe('ContractOutcomeModal: em que contrato age', () => {
       expect(texto()).toContain('A renovação continua marcada para 12/10/2026. Se o contrato ainda estiver trancado nesse dia, os dias que sobram dele correm junto com ela.');
       expect(texto()).not.toContain('(Plano');
     });
+
+    // Revisão final (01/10/2026): a renovação cancelada (o último contrato,
+    // cancelado com a data depois do início) não é "marcada": nada de "A
+    // renovação continua marcada", sem patch nela e sem mexer na marca.
+    it('a renovação cancelada é ignorada: o cancelamento do em uso é comum, no bloco', async () => {
+      const cancelada = { ...flow, status: 'cancelado', cancelledAt: D(2026, 10, 20), cancelReason: 'Financeiro' };
+      await montar({ lead: leadCom(cancelada), contract: start, contratos: [start, cancelada], action: 'cancelar' });
+      expect(texto()).not.toContain('A renovação');
+      expect(texto()).toContain('O contrato é encerrado em 30/09/2026 e Ana passa a contar como inativo. O histórico fica registrado.');
+      await clicar('Financeiro');
+      await clicar('Confirmar cancelamento');
+      const w = gravado();
+      expect(w.contractId).toBe('k1');
+      expect(w.leadPatch).toEqual({ inUseContractId: 'k1', inUseContractStatus: 'cancelado', inUseContractEndsAt: D(2026, 10, 11) });
+      expect(w.linkedContractId).toBeNull();
+      expect(w.linkedContractPatch).toBeNull();
+      expect(w.interactionText).toBe('Contrato cancelado — Plano Start — Financeiro. Encerrado em 30/09/2026.');
+    });
   });
 });

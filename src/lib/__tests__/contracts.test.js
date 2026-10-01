@@ -2006,3 +2006,48 @@ describe('corrigir ou ativar a renovação com o em uso trancado', () => {
     expect(r.contractPatch.seamless).toBe(true);
   });
 });
+
+// Revisão final (01/10/2026): corrigir um contrato que não é o último (o em
+// uso, com o último cancelado) não pode reescrever o resumo do lead com os
+// dados dele. Com `lead`, o builder sabe qual é o último.
+describe('corrigir um contrato que não é o último', () => {
+  const AGORA = new Date(2026, 8, 30, 10, 0);
+  const plan = { id: 'p1', name: 'Start', value: 1200, durationMonths: 12 };
+  const k1 = { id: 'k1', planId: 'p1', planName: 'Start', value: 1200, listValue: 1200, durationMonths: 12, status: 'ativo', startsAt: D(2025, 10, 11), endsAt: D(2026, 10, 11) };
+  const CAMPOS = ['currentPlanName', 'currentContractValue', 'currentContractStartsAt', 'currentContractEndsAt', 'currentContractSeamless'];
+
+  it('o último contrato, ou sem lead, grava o resumo como sempre', () => {
+    const semLead = buildContractEdit({ contract: k1, plan, value: 1200, startsAt: D(2025, 10, 15), now: AGORA });
+    const ultimo = buildContractEdit({ contract: k1, plan, value: 1200, startsAt: D(2025, 10, 15), now: AGORA, lead: { currentContractId: 'k1' } });
+    [semLead, ultimo].forEach((r) => {
+      CAMPOS.forEach((k) => expect(r.leadPatch, k).toHaveProperty(k));
+      expect(r.leadPatch.currentContractEndsAt).toEqual(D(2026, 10, 15));
+    });
+  });
+
+  it('outro contrato: nada de currentContract*; só o bloco "em uso", quando ele aponta para o contrato', () => {
+    const comBloco = { currentContractId: 'k2', inUseContractId: 'k1', inUseContractStatus: 'ativo', inUseContractEndsAt: D(2026, 10, 11) };
+    const r = buildContractEdit({ contract: k1, plan, value: 1200, startsAt: D(2025, 10, 15), now: AGORA, lead: comBloco });
+    expect(r.leadPatch).toEqual({ inUseContractId: 'k1', inUseContractStatus: 'ativo', inUseContractEndsAt: D(2026, 10, 15) });
+    expect(r.contractPatch.endsAt).toEqual(D(2026, 10, 15));
+    // O trancado continua trancado no bloco.
+    const trancado = { ...k1, status: 'trancado', pausedAt: D(2026, 9, 20) };
+    expect(buildContractEdit({ contract: trancado, plan, value: 1200, startsAt: D(2025, 10, 15), now: AGORA, lead: comBloco }).leadPatch.inUseContractStatus).toBe('trancado');
+    // Bloco apontando para outro contrato, ou sem bloco: nada no lead.
+    expect(buildContractEdit({ contract: k1, plan, value: 1200, startsAt: D(2025, 10, 15), now: AGORA, lead: { ...comBloco, inUseContractId: 'k9' } }).leadPatch).toEqual({});
+    expect(buildContractEdit({ contract: k1, plan, value: 1200, startsAt: D(2025, 10, 15), now: AGORA, lead: { currentContractId: 'k2' } }).leadPatch).toEqual({});
+  });
+
+  it('o contrato que uma renovação encurtou continua encurtado: o fim vendido novo vai para originalEndsAt', () => {
+    const encurtado = { ...k1, endsAt: D(2026, 10, 4), originalEndsAt: D(2026, 10, 11), shortenedById: 'k2' };
+    const r = buildContractEdit({ contract: encurtado, plan, value: 1200, startsAt: D(2025, 10, 15), now: AGORA, lead: { currentContractId: 'k2', inUseContractId: 'k1', inUseContractStatus: 'ativo' } });
+    expect(r.contractPatch.endsAt).toEqual(D(2026, 10, 4));
+    expect(r.contractPatch.originalEndsAt).toEqual(D(2026, 10, 15));
+    expect(r.contractPatch).not.toHaveProperty('shortenedById');
+    expect(r.leadPatch.inUseContractEndsAt).toEqual(D(2026, 10, 4));
+    // Fim vendido novo antes do fim encurtado: o encurtamento deixa de existir.
+    const mensal = { id: 'p0', name: 'Mensal', value: 150, durationMonths: 1 };
+    const curto = buildContractEdit({ contract: encurtado, plan: mensal, value: 150, startsAt: D(2025, 10, 11), now: AGORA, lead: { currentContractId: 'k2' } });
+    expect(curto.contractPatch).toMatchObject({ endsAt: D(2025, 11, 11), originalEndsAt: null, shortenedById: null });
+  });
+});

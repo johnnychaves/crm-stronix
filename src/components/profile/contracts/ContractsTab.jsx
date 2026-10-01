@@ -94,8 +94,13 @@ export function ContractsTab({
   // o status por instante já diz vencido, mas o card continua o em uso, com
   // Trancar e Cancelar; o card fechado, com Nova matrícula, gravaria um
   // segundo contrato (revisão final de 01/10/2026).
-  const closed = !next && (status === CONTRACT_STATUS.VENCIDO || status === CONTRACT_STATUS.CANCELADO);
-  const heroStatus = next && status === CONTRACT_STATUS.VENCIDO ? CONTRACT_STATUS.ATIVO : status;
+  // O destaque que não é o último contrato (o em uso, com o último cancelado)
+  // age como se tivesse próximo: só Trancar ou Reativar e Cancelar. Renovar e
+  // Corrigir são do último contrato, e aqui reescreveriam o resumo do lead com
+  // os dados de outro (revisão final de 01/10/2026).
+  const likeNext = Boolean(next) || Boolean(hero && lead?.currentContractId && hero.id !== lead.currentContractId);
+  const closed = !likeNext && (status === CONTRACT_STATUS.VENCIDO || status === CONTRACT_STATUS.CANCELADO);
+  const heroStatus = likeNext && status === CONTRACT_STATUS.VENCIDO ? CONTRACT_STATUS.ATIVO : status;
   const heroFacts = hasContract ? contractFactsOf(hero, leadContracts, now, contractThresholdDays) : null;
   // A régua do destaque, congelada no trancamento e no cancelamento
   // (vigenciaRefDate): dá os dias e os marcos que passaram sem contato.
@@ -135,11 +140,11 @@ export function ContractsTab({
           lead={lead}
           hero={hero}
           status={heroStatus}
-          hasNext={Boolean(next)}
-          countdown={heroCountdownOf({ contract: hero, status: heroStatus, hasNext: Boolean(next), now })}
+          hasNext={likeNext}
+          countdown={heroCountdownOf({ contract: hero, status: heroStatus, hasNext: likeNext, now })}
           facts={heroFacts}
           missed={missed}
-          actions={heroActionsOf({ status: heroStatus, hasNext: Boolean(next) })}
+          actions={heroActionsOf({ status: heroStatus, hasNext: likeNext })}
           isReadOnly={isReadOnly}
           loading={loading}
           onRenew={onRenew}

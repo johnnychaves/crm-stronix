@@ -272,8 +272,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
     if (contract?.id) setActivatingId(contract.id);
   };
-  // O documento de um contrato da aba, vivo; o do resumo do lead como reserva.
-  const contractById = (id) => leadContracts.find((c) => c.id === id) || currentContract;
+  // O documento de um contrato da aba, vivo. Sem reserva: cair no último
+  // contrato (currentContract) para outro id faria o modal agir no contrato
+  // errado, e para o próprio último o find já o devolve.
+  const contractById = (id) => leadContracts.find((c) => c.id === id) || null;
 
   const confirmLoss = async (reason) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }

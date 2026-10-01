@@ -70,8 +70,10 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
   const startProblem = previous && startsAt && correctionMovesStart(contract, startsAt)
     ? renewalStartProblem({ startsAt: previous.startsAt || previous.createdAt }, startsAt, { correcting: true })
     : null;
+  // `lead` vai junto: o builder só grava o resumo do lead (currentContract*)
+  // quando este é o último contrato.
   const preview = plan && startsAt
-    ? buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason, previous })
+    ? buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason, previous, lead })
     : null;
   const novoFim = getSafeDateOrNull(preview?.contractPatch?.endsAt);
   const fimAtual = getSafeDateOrNull(contract?.endsAt);
@@ -105,13 +107,14 @@ function ContractEditModal({ lead, appUser, db, contract, onClose, onDone }) {
 
     setSubmitting(true);
     try {
-      const built = buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason, previous });
-      // O fim novo do contrato anterior vai no mesmo batch.
+      const built = buildContractEdit({ contract, plan, value: numericValue, startsAt, discountReason, previous, lead });
+      // O fim novo do contrato anterior vai no mesmo batch. O id gravado é o do
+      // contrato recebido; o do resumo do lead só vale sem contrato (legado).
       await commitContractPatch({
         db,
         lead,
         appUser,
-        contractId: contract?.id || lead?.currentContractId,
+        contractId: contract ? contract.id : lead?.currentContractId,
         contractPatch: built.contractPatch,
         leadPatch: built.leadPatch,
         interactionText: built.interactionText,

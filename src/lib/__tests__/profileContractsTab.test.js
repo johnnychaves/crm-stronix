@@ -221,4 +221,22 @@ describe('aba Contratos: os botões em cada situação', () => {
       vi.setSystemTime(new Date(2026, 8, 30, 10, 0));
     }
   });
+
+  // Revisão final (01/10/2026): "Cancelar renovação" com a data depois do
+  // início vira cancelamento comum, e o último contrato, cancelado, deixa de
+  // ser o próximo. O em uso vira o destaque sem próximo, mas não é o último
+  // contrato: Renovar renovaria o cancelado e Corrigir reescreveria o resumo
+  // do lead com os dados dele. Só Trancar e Cancelar, com o selo Em uso.
+  it('o em uso que não é o último contrato só tranca e cancela, mesmo sem próximo', () => {
+    const flowCancelado = { ...flow, status: 'cancelado', cancelledAt: D(2026, 10, 20), cancelReason: 'Financeiro' };
+    const { hero, strip, historico } = aba(flowCancelado, [start, flowCancelado]);
+    expect(hero).toContain('>Em uso<');
+    expect(hero).toContain('>Trancar<');
+    expect(hero).toContain('>Cancelar<');
+    expect(hero).not.toContain('Renovar contrato');
+    expect(hero).not.toContain('>Corrigir<');
+    expect(hero).not.toContain('Nova matrícula');
+    expect(strip).toBe('');
+    expect(historico).toContain('>Cancelado<');
+  });
 });

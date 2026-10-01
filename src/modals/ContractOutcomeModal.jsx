@@ -3,6 +3,7 @@ import { Ban, PauseCircle, PlayCircle } from 'lucide-react';
 import {
   CONTRACT_CANCEL_REASONS,
   CONTRACT_PAUSE_REASONS,
+  CONTRACT_STATUS,
   buildContractCancel,
   buildContractPause,
   buildContractResume,
@@ -97,7 +98,10 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
   // recebido, nunca do resumo do lead.
   const isCurrent = !contract?.id || contract.id === lead?.currentContractId;
   const role = isCurrent ? 'current' : 'inUse';
-  const next = isCurrent ? null : (contratos || []).find(c => c.id === lead?.currentContractId) || null;
+  // O último contrato cancelado não é renovação marcada: o em uso é desfeito
+  // sem aviso de renovação e sem patch ligado (revisão final de 01/10/2026).
+  const latest = isCurrent ? null : (contratos || []).find(c => c.id === lead?.currentContractId) || null;
+  const next = latest && latest.status !== CONTRACT_STATUS.CANCELADO ? latest : null;
   const nextStart = getSafeDateOrNull(next?.startsAt);
   const renovacao = next?.planName ? `A renovação (Plano ${next.planName})` : 'A renovação';
   // Só o último contrato desfaz renovação: o contrato em uso que é ele mesmo
