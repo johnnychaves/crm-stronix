@@ -30,9 +30,9 @@ import {
   buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError
 } from './_zapLead.js';
 import {
-  SCHEDULE_LIMIT, ZAP_SCHEDULE_MESSAGES, unitsView, readScheduleOptionsBody, buildScheduleOptions, isDocId,
+  SCHEDULE_LIMIT, ZAP_SCHEDULE_MESSAGES, unitsView, readScheduleOptionsBody, buildScheduleOptions,
   readScheduleBody, readStatusBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
-  isOpenAulaRecord, pickOpenVisitaId, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody
+  scheduleRecordChanges, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody
 } from './_zapSchedule.js';
 import { contactOf } from '../src/lib/guardian.js';
 
@@ -611,25 +611,22 @@ async function handleSchedule(req, res) {
       if (!leadBelongsToNumber(lead, matchKey, agora)) return { notTheLead: true };
       if (hasSameAppointment(lead, { type: schedule.type, at, schedule })) return { repeated: lead };
 
-      // O registro em aberto que o assistente reaproveitaria: a aula do
-      // currentAulaId ainda agendada, ou a visita agendada do lead. A api/
-      // grava com poder de admin, então o registro que o currentAulaId aponta
-      // só é reaproveitado se for mesmo uma aula deste lead (isOpenAulaRecord).
-      // Se não for, conta como sem registro em aberto, e nasce outro.
-      let openRecordId = null;
-      if (schedule.type === 'aula_experimental') {
-        if (isDocId(lead.currentAulaId)) {
-          const aulaSnap = await tx.get(aulas.doc(lead.currentAulaId));
-          if (aulaSnap.exists && isOpenAulaRecord(aulaSnap.data(), lead.id)) openRecordId = lead.currentAulaId;
-        }
-      } else {
-        openRecordId = pickOpenVisitaId(docsOf(await tx.get(aulas.where('leadId', '==', lead.id))));
-      }
+      // Os registros do lead em stronix_aulas, lidos antes de qualquer
+      // gravação. Deles sai o que o assistente da ficha faria
+      // (scheduleRecordChanges): o registro do agendamento que o lead tinha
+      // fecha quando ele não vai mais acontecer (com o "Compareceu" ou o "Não
+      // veio" do lead, ou cancelado na troca de tipo), e o registro em aberto
+      // do tipo novo é reaproveitado. A api/ grava com poder de admin, então a
+      // aula só reaproveita o registro do currentAulaId se ele for mesmo uma
+      // aula deste lead (isOpenAulaRecord); senão, nasce outro.
+      const records = docsOf(await tx.get(aulas.where('leadId', '==', lead.id)));
+      const { close, openRecordId } = scheduleRecordChanges({ lead, schedule, at, records });
       const newRecordRef = openRecordId ? null : aulas.doc();
       const writes = buildScheduleWrites({
-        lead, actor, schedule, at, professors: catalogs.professors, channelName,
+        lead, actor, schedule, at, professors: catalogs.professors, channelName, close,
         openRecordId, newRecordId: newRecordRef ? newRecordRef.id : null, serverTime, increment
       });
+      if (writes.closed) tx.update(aulas.doc(writes.closed.id), writes.closed.update);
       if (openRecordId) tx.update(aulas.doc(openRecordId), writes.record.update);
       else tx.create(newRecordRef, writes.record.create);
       tx.create(interactionRef, writes.interaction);

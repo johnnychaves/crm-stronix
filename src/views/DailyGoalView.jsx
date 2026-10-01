@@ -17,7 +17,7 @@ import { OutcomePopover } from '../components/dailygoal/OutcomePopover.jsx';
 import { writeAppointmentOutcome, correctAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { planPromotion, correctableOutcome } from '../lib/outcomeCorrection.js';
 import { applyOutcomeToAula, closeOpenAppointment, upsertScheduledAppointment, upsertScheduledAula } from '../lib/aulasWrites.js';
-import { rescheduleRecordPlan } from '../lib/aulas.js';
+import { recordPlanFor } from '../lib/aulas.js';
 import { daysToExpiryOf, activeRenewalCheckpoint } from '../lib/renewalGoal.js';
 import { expiredLabel, expiredSortKey } from '../lib/expiredGoal.js';
 import { formatHourLabel, humanizeAge, humanizeUntil } from '../lib/format.js';
@@ -1531,17 +1531,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
 
     try {
       // Dual-write best-effort no histórico de aulas (stronix_aulas): a regra
-      // do Firestore pode ainda não estar publicada, então falha aqui NÃO
-      // pode quebrar o reagendamento do lead — por isso o try/catch isolado.
+      // do Firestore pode ainda não estar publicada, então falha aqui não
+      // pode quebrar o reagendamento do lead, por isso o try/catch isolado.
       // O registro segue o agendamento do lead, como no assistente da ficha
-      // (rescheduleRecordPlan, em lib/aulas.js): o que não vai mais acontecer
-      // fecha (falta depois do "Não veio", cancelado na troca de tipo) e a
-      // visita nova move o registro aberto ou abre um.
-      const recordPlan = rescheduleRecordPlan({
-        previousType: getLeadAppointmentType(lead),
-        finalType: finalApptType,
-        afterNoShow: isAfterNoShow,
-      });
+      // (recordPlanFor, em lib/aulas.js): o que não vai mais acontecer fecha
+      // (falta depois do "Não veio"; o "Compareceu" ou o "Não veio" que o lead
+      // já tem, quando o agendamento muda, como no "Remarcar agendamento" do
+      // "Feitos hoje"; cancelado na troca de tipo) e a visita nova move o
+      // registro aberto ou abre um.
+      const recordPlan = recordPlanFor(lead, { type: finalApptType, at: newDate, afterNoShow: isAfterNoShow });
       if (recordPlan.close) {
         try {
           await closeOpenAppointment({ db, lead, ...recordPlan.close });
