@@ -6,9 +6,15 @@
 // cancelamento que a importação gravou também não contam. Os que o app grava
 // depois num importado contam como os outros.
 
-import { getSafeDateOrNull } from '../dates.js';
+import { calendarDaysBetween, getSafeDateOrNull } from '../dates.js';
+// neverTookEffect: o contrato que nunca valeu, cancelado no instante do início
+// ou antes dele, como a renovação de que o cliente desistiu. Não cobriu
+// ninguém, então nos painéis não é sucessor, não é o contrato mais recente da
+// pessoa, não é volta nem saída, e o cancelamento dele não conta como
+// cancelamento. A venda do mês continua contando (gerencial/sales.js). A regra
+// mora em contracts.js, a mesma da ficha e dos modais.
 import {
-  buildContractResume, isImportedContract, isImportCancel, isImportPause, reconstructedPauseOf
+  buildContractResume, isImportedContract, isImportCancel, isImportPause, neverTookEffect, pauseSuccessorStartOf, reconstructedPauseOf
 } from '../contracts.js';
 
 const DAY_MS = 86400000;
@@ -52,6 +58,7 @@ export function normalizeContract(c) {
   // Importado pode vir sem início: vale a criação.
   const startsAt = d(c.startsAt) || createdAt;
   const endsAt = d(c.endsAt);
+  const originalEndsAt = d(c.originalEndsAt);
   const pausedAt = d(c.pausedAt);
   const resumedAt = d(c.resumedAt);
   const imported = isImportedContract(c);
@@ -59,6 +66,12 @@ export function normalizeContract(c) {
     ...c,
     startsAt,
     endsAt,
+    // Fim previsto: o dia em que o contrato ia vencer. A renovação que começa
+    // antes do fim encurta o contrato para a véspera dela e guarda o fim de
+    // antes em originalEndsAt. A cobertura (contractStateAt) segue endsAt; o
+    // vencimento (coorte, marcos e sucessor, em renewal.js) segue este.
+    originalEndsAt,
+    plannedEndsAt: originalEndsAt || endsAt,
     createdAt,
     // Cancelado sem data (legado): trata como encerrado no fim, sem efeito na ponte.
     cancelledAt: d(c.cancelledAt) || (c.status === 'cancelado' ? endsAt : null),
@@ -75,44 +88,69 @@ export function normalizeContract(c) {
 // Início do sucessor que encerra a pausa aberta (começada em `from`): a
 // renovação ligada (renewedFromId) ou outro contrato da pessoa que começa
 // depois deste, o que começar primeiro. O da pessoa que já corria quando a
-// pausa começou é paralelo, não sucessor. O cancelado antes de começar nunca
-// valeu.
+// pausa começou é paralelo, não sucessor. O que nunca valeu não conta. A regra
+// mora em contracts.js (pauseSuccessorStartOf), a mesma da aba Contratos; aqui
+// só entram os candidatos do índice.
 function successorStartOf(c, from, index) {
-  let at = null;
-  const consider = (o) => {
-    if (o === c || !o.startsAt || (o.cancelledAt && o.cancelledAt <= o.startsAt)) return;
-    if (!at || o.startsAt < at) at = o.startsAt;
-  };
-  (index.byRenewedFrom.get(c.id) || []).forEach(consider);
-  (index.byPerson.get(c.personKey) || []).forEach((o) => {
-    if (c.startsAt && o.startsAt > c.startsAt && o.startsAt >= from) consider(o);
-  });
-  return at;
+  return pauseSuccessorStartOf(c, from, [...(index.byRenewedFrom.get(c.id) || []), ...(index.byPerson.get(c.personKey) || [])]);
 }
 
-// A lista inteira normalizada, e é por aqui que ela entra no Operacional. Quem
-// renova ainda trancado ganha contrato novo, e o velho segue gravado como
+// A lista inteira normalizada, e é por aqui que ela entra no Operacional. Dois
+// ajustes, nesta ordem, que só leem os outros contratos da pessoa: a pausa
+// aberta que um sucessor encerrou (closeOpenPause) e as horas sem contrato
+// entre o fim e a renovação ligada que encosta nele (closeSeam). Devolve
+// objetos novos e não muta a lista recebida. Recebe os docs crus, como chegam
+// do Firestore, e não é idempotente: passar de novo a lista já normalizada
+// andaria outra vez o fim do trancado e tomaria o fim ajustado por fim previsto.
+export function normalizeContracts(rawList) {
+  const list = (rawList || []).map(normalizeContract);
+  const index = indexContracts(list);
+  return list.map((c) => closeSeam(closeOpenPause(c, index), index));
+}
+
+// Quem renova ainda trancado ganha contrato novo, e o velho segue gravado como
 // trancado, porque reativar pela ficha só alcança o contrato atual. Sem fechar
 // essa pausa, a pessoa voltava a ficar trancada para sempre quando o novo
 // acabasse. Ela fecha no início do sucessor, como se o contrato fosse reativado
 // nesse dia: o fim anda pelos dias parados (a conta de buildContractResume, sem
-// gravar nada). Devolve objetos novos e não muta a lista recebida.
-export function normalizeContracts(rawList) {
-  const list = (rawList || []).map(normalizeContract);
-  const index = indexContracts(list);
-  return list.map((c) => {
-    const open = c.pauses.find((p) => p.to == null);
-    const at = open ? successorStartOf(c, open.from, index) : null;
-    // Cancelado ainda parado antes de o sucessor começar: quem encerra é o cancelamento.
-    if (!at || (c.cancelledAt && c.cancelledAt <= at)) return c;
-    // Renovação ligada que começa antes da pausa: a pausa não chegou a valer.
-    const to = at < open.from ? open.from : at;
-    return {
-      ...c,
-      endsAt: buildContractResume({ contract: c, resumedAt: to }).newEndsAt,
-      pauses: c.pauses.map((p) => (p === open ? { ...p, to } : p))
-    };
+// gravar nada), e o fim previsto anda junto.
+function closeOpenPause(c, index) {
+  const open = c.pauses.find((p) => p.to == null);
+  const at = open ? successorStartOf(c, open.from, index) : null;
+  // Cancelado ainda parado antes de o sucessor começar: quem encerra é o cancelamento.
+  if (!at || (c.cancelledAt && c.cancelledAt <= at)) return c;
+  // Renovação ligada que começa antes da pausa: a pausa não chegou a valer.
+  const to = at < open.from ? open.from : at;
+  const walk = (end) => buildContractResume({ contract: { ...c, endsAt: end }, resumedAt: to }).newEndsAt;
+  // Encurtado por uma renovação (originalEndsAt): o fim já é a véspera dela, e
+  // andar pelos dias parados o faria valer junto com ela. Só o fim previsto anda.
+  const endsAt = c.originalEndsAt ? c.endsAt : walk(c.endsAt);
+  return {
+    ...c,
+    endsAt,
+    plannedEndsAt: c.originalEndsAt ? walk(c.plannedEndsAt) : endsAt,
+    pauses: c.pauses.map((p) => (p === open ? { ...p, to } : p))
+  };
+}
+
+// Renovação ligada que começa logo depois do fim: a emendada (no dia seguinte,
+// na mesma hora) e a que encurtou este contrato (fim na véspera dela, na mesma
+// hora). Entre um e outro sobrava até um dia do calendário sem contrato vigente
+// (pode passar de 24 horas, com início à meia-noite), e na virada do mês a ponte
+// contava um "venceu" e, no mês seguinte, um "voltou". O fim encosta no início
+// da renovação; o fim previsto não muda. Intervalo de 2 dias do calendário ou
+// mais é intervalo de verdade e fica. A renovação que nunca valeu não conta, e
+// o contrato cancelado antes de ela começar termina no cancelamento.
+function closeSeam(c, index) {
+  if (!c.endsAt) return c;
+  let at = null;
+  (index.byRenewedFrom.get(c.id) || []).forEach((o) => {
+    if (o === c || !o.startsAt || neverTookEffect(o)) return;
+    if (o.startsAt <= c.endsAt || calendarDaysBetween(c.endsAt, o.startsAt) > 1) return;
+    if (!at || o.startsAt < at) at = o.startsAt;
   });
+  if (!at || (c.cancelledAt && c.cancelledAt <= at)) return c;
+  return { ...c, endsAt: at };
 }
 
 export const hasOpenPause = (c) => (c.pauses || []).some((p) => p.to == null);
@@ -182,14 +220,14 @@ export function indexContracts(contracts) {
 // porque contrato paralelo é permitido: quem tranca um de dois contratos segue
 // na base pelo outro (a ponte não muda), mas trancou. A pausa da importação não
 // é trancamento feito aqui; a reativação dela é. A pausa fechada no início do
-// sucessor (normalizeContracts) conta como destrancamento. Contrato cancelado
-// antes de começar nunca valeu.
+// sucessor (normalizeContracts) conta como destrancamento. Contrato que nunca
+// valeu (neverTookEffect) fica de fora.
 function lockEventsInWindow(contracts, { start, end }) {
   const locked = new Set();
   const unlocked = new Set();
   const inWindow = (t) => t && t >= start && t < end;
   (contracts || []).forEach((c) => {
-    if (c.cancelledAt && c.startsAt && c.cancelledAt <= c.startsAt) return;
+    if (neverTookEffect(c)) return;
     (c.pauses || []).forEach((p) => {
       if (!p.fromImport && inWindow(p.from)) locked.add(c.personKey);
       if (p.to && p.to > p.from && inWindow(p.to)) unlocked.add(c.personKey);
@@ -228,7 +266,8 @@ export function computeBaseMovement(contracts, { start, end }) {
     if (vB.has(key)) return;
     if (B.get(key) === 'trancado') { n.trancaram += 1; return; }
     const list = people.get(key) || [];
-    const cancelledHere = list.some((c) => !c.cancelFromImport && c.cancelledAt && c.cancelledAt >= start && c.cancelledAt < end);
+    // Desistir da renovação que nunca valeu não é cancelar: quem sai assim venceu.
+    const cancelledHere = list.some((c) => !c.cancelFromImport && !neverTookEffect(c) && c.cancelledAt && c.cancelledAt >= start && c.cancelledAt < end);
     if (cancelledHere) n.cancelaram += 1; else n.venceram += 1;
   });
 
@@ -261,6 +300,8 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
   let exits = 0;
   indexContracts(contracts).byPerson.forEach((list) => {
     const hit = list.some((c) => {
+      // O que nunca valeu não é saída, nem pelo cancelamento nem pelo fim.
+      if (neverTookEffect(c)) return false;
       // Cancelado antes do fim, ou cancelado ainda parado: trancado não vence,
       // então a saída é o cancelamento, mesmo depois do fim antigo.
       if (c.cancelledAt && !c.cancelFromImport && ((c.endsAt && c.cancelledAt < c.endsAt) || hasOpenPause(c))) {
@@ -270,7 +311,9 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
       const xMs = c.endsAt.getTime() + graceMs;
       if (xMs < startMs || xMs >= endMs) return false;
       const x = new Date(xMs);
-      const returned = list.some((o) => o !== c && o.startsAt && o.startsAt >= c.endsAt && o.startsAt <= x);
+      // Volta: outro contrato da pessoa que começa entre o fim e a tolerância e
+      // chegou a valer.
+      const returned = list.some((o) => o !== c && !neverTookEffect(o) && o.startsAt && o.startsAt >= c.endsAt && o.startsAt <= x);
       return !returned && !aliveAt(list, x);
     });
     if (hit) exits += 1;
@@ -282,10 +325,12 @@ export function computeChurn(contracts, { start, end, graceDays, activeAtStart =
 const sortItems = (map) => [...map].map(([name, count]) => ({ name, count }))
   .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
 
+// Cancelamentos do mês por motivo. O cancelamento da importação e o do contrato
+// que nunca valeu (a renovação de que o cliente desistiu) ficam de fora.
 export function cancellationsByReason(contracts, { start, end }) {
   const map = new Map();
   (contracts || []).forEach((c) => {
-    if (c.cancelFromImport || !c.cancelledAt || c.cancelledAt < start || c.cancelledAt >= end) return;
+    if (c.cancelFromImport || neverTookEffect(c) || !c.cancelledAt || c.cancelledAt < start || c.cancelledAt >= end) return;
     const name = c.cancelReason || 'Outro';
     map.set(name, (map.get(name) || 0) + 1);
   });

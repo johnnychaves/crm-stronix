@@ -213,7 +213,9 @@ export function monthHistory(key, { isCurrent, live, liveReady, loaded }) {
 
 // Leads cujo responsável atual a renovação precisa: contratos que vencem entre o
 // início do mês mais antigo pedido e 91 dias depois do fim do mais novo (cobre
-// coorte, marcos e a vencer). `known` = ids já em memória (metaLeads).
+// coorte, marcos e a vencer). Vence pelo fim previsto (plannedEndsAt), o mesmo
+// da coorte e dos marcos; a vencer só olha o contrato mais recente da pessoa,
+// em que os dois fins são iguais. `known` = ids já em memória (metaLeads).
 export function leadIdsForRenewal(contracts, { monthKeys, known = new Set() }) {
   if (!monthKeys?.length) return [];
   const sorted = [...monthKeys].sort();
@@ -221,8 +223,8 @@ export function leadIdsForRenewal(contracts, { monthKeys, known = new Set() }) {
   const to = monthRange(sorted[sorted.length - 1]).end.getTime() + 91 * DAY_MS;
   const ids = new Set();
   (contracts || []).forEach((c) => {
-    if (!c.leadId || !c.endsAt || known.has(c.leadId)) return;
-    const t = c.endsAt.getTime();
+    if (!c.leadId || !c.plannedEndsAt || known.has(c.leadId)) return;
+    const t = c.plannedEndsAt.getTime();
     if (t >= from && t < to) ids.add(c.leadId);
   });
   return [...ids];

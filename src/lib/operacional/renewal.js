@@ -1,8 +1,14 @@
-// Renovação a partir dos contratos: coorte do mês (fim da vigência no mês),
+// Renovação a partir dos contratos: coorte do mês (fim previsto no mês),
 // desfecho de cada contrato, quando renovou, taxa, motivos de quem não vai
 // renovar, contatos nos marcos e a vencer. A carteira é do responsável ATUAL
 // pelo cliente (doc do lead); sem o doc, vale o consultor do contrato.
+//
+// Duas datas de fim, de normalizeContract (base.js). Quando o contrato vence
+// é o fim previsto (plannedEndsAt): a renovação antecipada encurta o fim
+// gravado para a véspera dela, mas o vencimento continua o de antes. Se o
+// contrato vale num instante é a cobertura, contractStateAt, pelo endsAt.
 
+import { neverTookEffect } from '../contracts.js';
 import { getSafeDateOrNull } from '../dates.js';
 import { contractStateAt, hasOpenPause, indexContracts } from './base.js';
 import { dayKeyOf } from './month.js';
@@ -21,25 +27,28 @@ const ownerFilter = (owner) => {
   return typeof owner === 'function' ? owner : (id) => id === owner;
 };
 
-// A lista da pessoa no índice vem em ordem de início: o mais recente é o último.
+// A lista da pessoa no índice vem em ordem de início: o mais recente é o último
+// que chegou a valer. A renovação desfeita antes de começar (neverTookEffect)
+// não tira esse lugar do contrato que ela renovava.
 const isLatestOfPerson = (c, index) => {
-  const list = index.byPerson.get(c.personKey) || [];
-  const last = list[list.length - 1];
+  const took = (index.byPerson.get(c.personKey) || []).filter((o) => !neverTookEffect(o));
+  const last = took[took.length - 1];
   return !c.startsAt || !last?.startsAt || last.startsAt <= c.startsAt;
 };
 
-// Contratos da mesma pessoa que começam depois deste.
+// Contratos da mesma pessoa que começam depois deste e chegaram a valer.
 const laterOfPerson = (c, index) => (index.byPerson.get(c.personKey) || [])
-  .filter((o) => o !== c && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
+  .filter((o) => o !== c && !neverTookEffect(o) && o.startsAt && c.startsAt && o.startsAt > c.startsAt);
 
 // Sucessor = renovação ligada (renewedFromId) ou outro contrato da mesma pessoa
-// criado até o fim + tolerância (cobre a reativação feita pela ficha, que nasce
-// como matrícula). Só conta o que já existia no corte (asOf).
+// criado até o vencimento + tolerância (cobre a reativação feita pela ficha, que
+// nasce como matrícula). Só conta o que já existia no corte (asOf). O que nunca
+// valeu não é sucessor: com a renovação desfeita, o contrato volta a vencer.
 function successorOf(c, index, graceMs, asOf) {
-  const limit = c.endsAt ? c.endsAt.getTime() + graceMs : null;
+  const limit = c.plannedEndsAt ? c.plannedEndsAt.getTime() + graceMs : null;
   let best = null;
   const take = (o) => {
-    if (o === c || !o.createdAt || o.createdAt > asOf) return;
+    if (o === c || neverTookEffect(o) || !o.createdAt || o.createdAt > asOf) return;
     if (!best || o.createdAt < best.createdAt) best = o;
   };
   (index.byRenewedFrom.get(c.id) || []).forEach(take);
@@ -64,7 +73,9 @@ export function renewalCohort(contracts, { start, end, asOf, graceDays, leadsByI
   const graceMs = (Number(graceDays) || 0) * DAY_MS;
   const rows = [];
   (contracts || []).forEach((c) => {
-    if (!c.endsAt || c.endsAt < start || c.endsAt >= end) return;
+    const due = c.plannedEndsAt;
+    if (!due || due < start || due >= end) return;
+    // Cancelado enquanto ainda valia: a pergunta é de cobertura, pelo endsAt.
     if (c.cancelledAt && c.cancelledAt < c.endsAt) return;
     // Trancado não vence: o fim anda na reativação e o contrato vai para a
     // coorte do mês em que passar a vencer.
@@ -76,12 +87,12 @@ export function renewalCohort(contracts, { start, end, asOf, graceDays, leadsByI
     if (s) {
       outcome = 'renew';
       const sk = dayKeyOf(s.createdAt);
-      const ek = dayKeyOf(c.endsAt);
+      const ek = dayKeyOf(due);
       when = sk < ek ? 'antes' : sk === ek ? 'no' : 'depois';
     } else {
       const decline = declineOf(c, index, leadsById, asOf);
       if (decline) { outcome = 'wont'; reason = decline.reason; }
-      else outcome = c.endsAt <= asOf ? 'lapsed' : 'pending';
+      else outcome = due <= asOf ? 'lapsed' : 'pending';
     }
     rows.push({ contract: c, owner: ownerOf(c, leadsById), outcome, when, reason });
   });
@@ -114,10 +125,11 @@ export function summarizeCohort(rows, { owner = null } = {}) {
 }
 
 // Quando cada candidato a sucessor foi criado (ms), pela regra da coorte:
-// renovação ligada ou outro contrato da mesma pessoa que começa depois.
+// renovação ligada ou outro contrato da mesma pessoa que começa depois, desde
+// que tenha chegado a valer.
 function successorTimes(c, index) {
   const out = [];
-  const add = (o) => { if (o !== c && o.createdAt) out.push(o.createdAt.getTime()); };
+  const add = (o) => { if (o !== c && !neverTookEffect(o) && o.createdAt) out.push(o.createdAt.getTime()); };
   (index.byRenewedFrom.get(c.id) || []).forEach(add);
   laterOfPerson(c, index).forEach((o) => { if (o.renewedFromId !== c.id) add(o); });
   return out;
@@ -139,13 +151,15 @@ export function milestoneSpanDays(checkpoints) {
   return cps.reduce((max, cp, i) => Math.max(max, cp - (cps[i + 1] ?? 0)), 0);
 }
 
-// Marco C cruza em fim − C dias, e o cruzamento tem de cair no mês. Chegou ao
-// marco quem estava vigente e ainda sem sucessor nesse dia. Feito = tarefa de
-// renovação concluída (de qualquer autor) ou sucessor criado entre o
-// cruzamento e o marco seguinte (o fim, no menor marco): o intervalo passa do
-// fim do mês em até milestoneSpanDays, mas não do corte (asOf). As interações
-// precisam cobrir esse intervalo; o metricsOf manda as do mês e as dos meses
-// que ele alcança (metrics.milestoneMonthsAfter).
+// Marco C cruza no vencimento (plannedEndsAt) − C dias, e o cruzamento tem de
+// cair no mês. Pelo fim encurtado, os marcos de uma renovação antecipada
+// cairiam antes, em meses já fechados e sem contato. Chegou ao marco quem
+// estava vigente e ainda sem sucessor nesse dia. Feito = tarefa de renovação
+// concluída (de qualquer autor) ou sucessor criado entre o cruzamento e o marco
+// seguinte (o vencimento, no menor marco): o intervalo passa do fim do mês em
+// até milestoneSpanDays, mas não do corte (asOf). As interações precisam cobrir
+// esse intervalo; o metricsOf manda as do mês e as dos meses que ele alcança
+// (metrics.milestoneMonthsAfter).
 export function milestones(contracts, { start, end, asOf = null, checkpoints, interactions, leadsById, owner = null }) {
   const index = indexContracts(contracts);
   const cps = normalizeCheckpoints(checkpoints);
@@ -164,16 +178,16 @@ export function milestones(contracts, { start, end, asOf = null, checkpoints, in
     let total = 0;
     let done = 0;
     (contracts || []).forEach((c) => {
-      if (!c.endsAt) return;
-      const endsMs = c.endsAt.getTime();
-      const xMs = endsMs - cp * DAY_MS;
+      if (!c.plannedEndsAt) return;
+      const dueMs = c.plannedEndsAt.getTime();
+      const xMs = dueMs - cp * DAY_MS;
       if (xMs < startMs || xMs >= endMs) return;
       if (match && !match(ownerOf(c, leadsById))) return;
       if (contractStateAt(c, new Date(xMs)) !== 'vigente') return;
       const successors = successorTimes(c, index);
       if (successors.some((t) => t < xMs)) return;
       total += 1;
-      const untilMs = Math.min(next ? endsMs - next * DAY_MS : endsMs, asOfMs);
+      const untilMs = Math.min(next ? dueMs - next * DAY_MS : dueMs, asOfMs);
       const inside = (t) => t >= xMs && t < untilMs;
       if ((doneByLead.get(c.leadId) || []).some(inside) || successors.some(inside)) done += 1;
     });
@@ -182,6 +196,9 @@ export function milestones(contracts, { start, end, asOf = null, checkpoints, in
 }
 
 // Contratos vigentes, sem o próximo já fechado, em faixas a partir de agora.
+// Aqui vale o endsAt, que é quando a cobertura acaba. O fim previsto só é
+// outro num contrato que já tem o seguinte (a renovação que o encurtou ou a
+// que encostou nele), e esse sai por isLatestOfPerson.
 export function upcomingExpirations(contracts, { now, leadsById, owner = null }) {
   const index = indexContracts(contracts);
   const nowMs = now.getTime();

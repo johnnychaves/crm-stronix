@@ -1,5 +1,5 @@
 ---
-status: revisão
+status: ativo
 ---
 
 # Aba Contratos da ficha: correções da auditoria
@@ -103,28 +103,30 @@ A regra vira a função pura `vigenciaRefDate({ status, pausedAt, cancelledAt },
 
 ### Emendado (item 1)
 
-- Emendado: o contrato novo começa no dia do calendário seguinte ao fim do contrato atual, pelo horário local. Função pura `isSeamlessStart(prevEndsAt, startsAt)`, em `src/lib/renewal.js`.
-- `buildMatriculaWrites`, no modo renovação, calcula a marca a partir de `lead.currentContractEndsAt` e do início escolhido. Grava `seamless: true` no contrato e `currentContractSeamless: true` no lead. Na matrícula, e na renovação que não emenda, grava `false`.
+- Emendado: o contrato novo começa no dia do calendário seguinte ao fim do contrato atual, pelo horário local. Funções puras `renewalJoinOf(prevEndsAt, startsAt)` e `isSeamlessStart(prevEndsAt, startsAt)`, em `src/lib/contracts.js`, e não em `renewal.js`, porque `contracts.js` não pode importar `renewal.js` (ciclo de import).
+- `buildMatriculaWrites`, no modo renovação, calcula a marca a partir do fim gravado no documento do contrato atual e do início escolhido. Sem o documento, usa o resumo do lead só para a marca. Grava `seamless: true` no contrato e `currentContractSeamless: true` no lead. A renovação que encurta o contrato atual também grava `true`, porque depois do encurtamento ela começa no dia seguinte ao fim dele. Na matrícula, e na renovação que não emenda nem encurta, grava `false`.
 - `deriveContractStatus` só devolve `agendado` quando o início está no futuro e o contrato não é emendado. O emendado segue para as regras de "A vencer" e "Ativo" pelo fim dele. `deriveLeadContractStatus` repassa `lead.currentContractSeamless`. Cabeçalho, Clientes, Meta Diária e o resto passam a ver o emendado como ativo sem mudança própria.
 - `deriveLeadState`: o rótulo do agendado vira "CONTRATO AGENDADO". A cor segue roxa.
 - Card de um contrato que ainda não começou e tem um anterior em uso: uma linha na faixa de vigência. No emendado, "Continua o contrato em uso (Plano X, até DD/MM)". Com intervalo, "Contrato em uso: Plano X, até DD/MM", seguido de quantos dias ficam sem contrato. No emendado, a contagem é "Restam N dias" até o fim do contrato novo, e o marcador de hoje não aparece na régua enquanto ele não começa.
-- Histórico, pela função pura `historyStatusOf(contract, leadContracts, now, thresholdDays)`, em `src/lib/contractHistory.js`: contrato que tem uma renovação ligada a ele mostra "Em uso" (verde) enquanto já começou e o fim dele ainda não chegou, e "Renovado" (cinza) depois do fim. Renovação cancelada antes de começar não conta como renovação ligada. Cancelado continua "Cancelado", e o resto segue `deriveContractStatus`.
+- Histórico, pela função pura `historyStatusOf(contract, leadContracts, now, thresholdDays)`, em `src/lib/contractHistory.js`: contrato que tem uma renovação ligada a ele mostra "Em uso" (verde) enquanto já começou e o fim dele ainda não chegou, e "Renovado" (cinza) depois do fim ou assim que a renovação começa, o que vier primeiro. Renovação cancelada antes de começar não conta como renovação ligada. Cancelado continua "Cancelado", trancado continua "Trancado", o contrato que ainda não começou é "Agendado", mesmo emendado, e o resto segue `deriveContractStatus`.
 
 ### Sobreposição (item 3)
 
-- Quando a renovação começa antes do fim do contrato atual (`computeSeam` dá sobreposição), o mesmo batch de `commitMatricula` grava no contrato anterior: `endsAt` igual ao início do novo menos um dia, `originalEndsAt` com o fim de antes e `shortenedById` com o id do novo. O cálculo sai de `buildMatriculaWrites` (`previousPatch`), e o id entra no `commitMatricula`.
+- Quando a renovação começa no dia do fim do contrato atual ou antes, o mesmo batch de `commitMatricula` grava no contrato anterior: `endsAt` igual ao início do novo menos um dia, `originalEndsAt` com o fim de antes e `shortenedById` com o id do novo. O cálculo sai de `buildMatriculaWrites` (`previousPatch`), e a gravação é `batch.update`, para um contrato que não existe mais derrubar a renovação em vez de virar um contrato fantasma.
+- Só encurta com o documento do contrato atual em mãos, sem `shortenedById` de outra renovação e com a véspera do novo dentro da vigência dele. Nos outros casos os dois contratos valem juntos, e o modal diz isso.
+- O `computeSeam` do modal passou a contar dias do calendário, a mesma conta de `renewalJoinOf`. Começar no próprio dia do fim sobrepõe um dia.
 - O status do anterior não muda. Depois do novo fim, ele fica vencido pelo tempo, e o Histórico mostra "Renovado".
-- O aviso do modal e a dica de "Começar hoje" passam a descrever o que acontece de verdade, sem travessão. A lista "Ao confirmar" ganha a linha "O contrato atual passa a terminar em DD/MM".
-- Validação: a renovação não pode começar no mesmo dia do início do contrato atual, nem antes. O modal mostra o motivo e não salva.
+- O aviso do modal e a dica de "Começar hoje" passam a descrever o que acontece de verdade, sem travessão. A lista "Ao confirmar" ganha a linha "O contrato atual passa a terminar em DD/MM". O modal tira tudo isso do próprio `buildMatriculaWrites`, com os mesmos argumentos da gravação.
+- Validação: a renovação precisa começar pelo menos dois dias depois do início do contrato atual. Começar no dia seguinte deixaria o contrato atual com menos de um dia. Contrato que já tem renovação não cancelada também não é renovado de novo (`liveRenewalOf`): o lead da lista do Kanban e da Meta Diária pode estar velho. O modal mostra o motivo e não salva.
 
 ### Cancelar renovação que não começou
 
-- Vale quando o contrato cancelado tem `renewedFromId`, o anterior existe e não está cancelado, e o dia do cancelamento é anterior ao dia de início do contrato.
+- Vale quando o contrato cancelado tem `renewedFromId`, o anterior existe e não está cancelado, e o cancelamento cai no instante do início do contrato ou antes (`isRenewalNotStarted`, sobre `neverTookEffect`, a mesma regra dos painéis). Como a data do modal é a meia-noite do dia escolhido, o próprio dia do início ainda desfaz a renovação.
 - Função pura `buildRenewalCancel({ contract, previous, cancelledAt, reason, note })`, em `src/lib/contracts.js`:
   - contrato: cancelado, com data, motivo e observação, como no cancelamento comum;
   - anterior: se foi encurtado por este contrato (`shortenedById`), `endsAt` volta a `originalEndsAt` e as duas marcas são apagadas;
   - lead: o resumo volta para o anterior (`currentContractId`, plano, valor, início, fim, status e `currentContractSeamless`);
-  - linha do tempo: "Renovação cancelada antes de começar: Plano X, motivo Y. O contrato Plano Z volta a valer até DD/MM/AAAA."
+  - linha do tempo: "Renovação cancelada antes de começar: Plano X, motivo Y. O contrato Plano Z volta a valer até DD/MM/AAAA." Quando o contrato anterior já tinha vencido (renovação depois de um intervalo), a segunda frase é "O contrato Plano Z, que venceu em DD/MM/AAAA, volta a ser o atual."
 - Os marcos de renovação tratados continuam zerados, como ficaram na renovação. Se o contrato anterior estiver perto do fim, a Meta Diária volta a cobrar a renovação, que é o esperado.
 - `commitContractPatch` aceita um segundo contrato no mesmo batch (`previousContractId` e `previousContractPatch`).
 - `ContractOutcomeModal`, nesse caso, usa o título "Cancelar renovação" e a prévia "A renovação é desfeita e {nome} volta ao contrato em uso (Plano Z, até DD/MM)." O anterior sai de `contratos` (`useGeneralConfig`).
@@ -132,24 +134,46 @@ A regra vira a função pura `vigenciaRefDate({ status, pausedAt, cancelledAt },
 ### Corrigir renovação
 
 `buildContractEdit` recebe o contrato anterior quando o corrigido tem `renewedFromId`. O fim de referência do anterior é `originalEndsAt`, se foi este contrato que o encurtou, ou `endsAt`, nos outros casos.
+- Tudo abaixo só vale quando o início muda de dia (`correctionMovesStart`). Corrigir só o valor ou o plano não mexe no anterior nem na marca, então as sobreposições antigas ficam como estão.
 - A marca `seamless` é recalculada, no contrato e em `currentContractSeamless`, já que o contrato corrigido é sempre o atual.
-- Se o início novo sobrepõe o anterior, o encurtamento é gravado como na criação.
-- Se o início novo não sobrepõe e o anterior tinha sido encurtado por este contrato, o fim original volta.
-- Se o início novo cai no dia do início do anterior, ou antes, o modal recusa.
+- Se o início novo sobrepõe o anterior, o encurtamento é gravado como na criação, com as mesmas travas. Vale também na correção feita depois de o anterior vencer: como na criação, com o início novo já chegado o anterior é julgado na véspera dele.
+- Se o início novo não sobrepõe e o anterior tinha sido encurtado por este contrato, o fim original volta. Sobrepondo, o fim original só volta quando o anterior não pode ser encurtado: cancelado, trancado ou que ainda não tinha começado na véspera do início novo.
+- Se nada muda no anterior, nada é gravado nele.
+- Se o início novo cai menos de dois dias depois do início do anterior, o modal recusa.
 
 `ContractEditModal` busca o anterior em `contratos` e avisa na prévia quando o fim do anterior muda.
 
 ### Renovar trancado
 
-No modo renovação, se `lead.currentContractStatus` for `trancado`, o `ContractModal` mostra "Este contrato está trancado. Reative o contrato antes de renovar." e não salva. A ficha já troca Renovar por Reativar no trancado. O caminho que chega aqui é o funil Upgrade, pelo Kanban e pelo Mudar fase.
+No modo renovação, se o contrato atual estiver `trancado` (pelo documento dele ou, sem o documento, pelo resumo do lead), o `ContractModal` mostra "Este contrato está trancado. Reative o contrato antes de renovar." e não salva. A ficha já troca Renovar por Reativar no trancado. O caminho que chega aqui é o funil Upgrade, pelo Kanban e pelo Mudar fase.
+
+### Renovar contrato fora de vigor
+
+Entrou na revisão do código (29/09/2026). A lista da Meta Diária e o quadro de Renovações carregam uma vez por dia, e o contrato podia ter sido cancelado depois: a renovação emendada deixava o lead ativo com o Operacional já contando o cliente fora da base, e a sobreposta encurtava o contrato cancelado. A ficha também oferecia renovar o contrato que ainda não começou.
+- Só o contrato em vigor quando a renovação assume, ativo ou a vencer, é emendado ou encurtado, na renovação (`buildMatriculaWrites`) e na correção dela (`buildContractEdit`). Com o início da renovação já chegado, a conta é na véspera dele; com o início no futuro, é na hora da gravação (`renewalTakeoverAt`). O status sai do documento, quando ele é usado, senão do resumo do lead. A emendada que ainda não começou conta como em vigor.
+- O último dia do contrato também conta como em vigor: o fim gravado à meia-noite deixa o contrato vencido durante o dia inteiro, e sem isso a renovação emendada feita nesse dia apareceria como "CONTRATO AGENDADO" até a meia-noite.
+- Entrou na segunda revisão do código (29/09/2026): o vencido não tem exceção. Antes, a renovação lançada depois do vencimento, com o início que o aluno pagou antes do fim, não encurtava o vencido, e a carteira do mês contava dois contratos. Agora o contrato é julgado na véspera do início, quando ainda valia: a renovação o encurta para essa véspera, e a que começa no dia seguinte ao fim leva a marca de emendada. A trava da lista velha continua: cancelado e trancado derivam assim em qualquer data, e o que ainda não começou agora também não tinha começado na véspera.
+- O modal recusa renovar contrato cancelado ("Este contrato foi cancelado. Para o cliente voltar, faça uma nova matrícula pela ficha.") e contrato que ainda não começou ("Este contrato ainda não começou (começa em DD/MM/AAAA). Para trocar o plano ou a data, use Corrigir na ficha do cliente."). No Corrigir, essas duas travas não valem.
+- Entrou na segunda revisão do código (29/09/2026): a aba Contratos não mostra "Renovar contrato" no card do contrato que ainda não começou, porque o modal sempre recusa. Corrigir, Trancar e Cancelar continuam. O Mudar fase para Venda e o funil Upgrade do Kanban ainda abrem a renovação desse contrato, e o modal recusa.
+- Na correção, o anterior que a própria renovação encurtou é lido pelo fim original. A correção feita meses depois, com o anterior já vencido, também é julgada na véspera do início novo: se o início novo continua sobrepondo, o anterior termina na véspera dele, e o fim original não volta.
 
 ### Renovações já feitas
 
-Script `scripts/backfill-contract-seamless.js`, no molde dos outros de `scripts/`. Roda por academia (`--tenant=<id>`), só mostra o que faria por padrão e grava com `--apply`.
-- Para cada contrato com `renewedFromId` cujo anterior existe e cujo início é o dia seguinte ao fim do anterior (`isSeamlessStart`), grava `seamless: true`.
+Script `scripts/backfill-contract-seamless.js`, no molde dos outros de `scripts/`. Roda por academia, com os ids na linha de comando (obrigatórios e conferidos na coleção `tenants` antes de varrer), só mostra o que faria por padrão e grava com `--apply`. A decisão mora em `src/lib/seamlessBackfill.js`, com teste.
+- Para cada contrato com `renewedFromId` cujo anterior existe e cujo início é o dia seguinte ao fim previsto do anterior (`isSeamlessStart`, sobre `originalEndsAt` ou `endsAt`), ou que encurtou o anterior, grava `seamless: true`. O contrato que nunca valeu fica de fora.
 - Para cada lead cujo `currentContractId` aponta para um contrato marcado, grava `currentContractSeamless: true`.
 - Não grava `false` em ninguém e não encurta sobreposições antigas.
+- Entrou na revisão do código (29/09/2026): o contrato renovado precisa ter valido até o fim previsto. Fica de fora a renovação de contrato trancado, cancelado antes do fim previsto, cancelado sem data ou cancelado ainda trancado. A lista mostra o status do contrato renovado em cada linha.
+- Entrou na segunda revisão do código (29/09/2026): o contrato renovado também precisa já ter começado na hora da varredura. A renovação emendada de um contrato que ainda não começou deixaria o lead ativo hoje, com o Operacional contando o cliente fora da base. Cada linha da lista mostra também o início do contrato renovado.
+- Entrou na revisão do código (29/09/2026): cada documento é gravado com a precondição da hora da leitura (`lastUpdateTime`). O que mudou entre a leitura e a gravação derruba o lote inteiro, e o script para dizendo o que já foi gravado e que é para rodar de novo, primeiro sem `--apply`.
 - Só roda em produção com o ok do Johnny.
+
+### Painéis
+
+Entrou na execução, depois da revisão do código (29/09/2026). O encurtamento e a renovação desfeita mexem em datas que o Operacional e o Gerencial leem.
+- Contrato que nunca valeu é o cancelado no instante do início ou antes (`neverTookEffect`, em `src/lib/contracts.js`), regra única da ficha, dos modais e dos painéis. Nos painéis ele não é sucessor, não é volta nem saída, e o cancelamento dele não conta como cancelamento. Com a renovação desfeita, o contrato renovado volta à coorte, ao "a vencer" e ao risco do Gerencial. A venda do mês continua contando, com a marca de cancelada.
+- O Operacional lê a renovação pelo fim previsto (`plannedEndsAt`, que é o `originalEndsAt` ou, sem encurtamento, o `endsAt`) nas perguntas de vencimento: coorte, marcos e "a vencer". A cobertura usa o `endsAt` e emenda até um dia do calendário entre um contrato e a renovação ligada a ele, para a virada do mês não contar um "venceu" e depois um "voltou".
+- Decisão do Johnny: corrigir a leitura, sabendo que números de meses fechados podem mudar para o valor certo.
 
 ## Dados
 
@@ -157,7 +181,7 @@ No contrato (`stronix_contratos`):
 
 | Campo | Conteúdo |
 |---|---|
-| `seamless` | `true` quando o contrato começa no dia seguinte ao fim do contrato renovado. `false` ou ausente nos outros casos |
+| `seamless` | `true` quando o contrato começa no dia seguinte ao fim do contrato renovado, inclusive depois de encurtá-lo. `false` ou ausente nos outros casos |
 | `originalEndsAt` | o fim de antes, quando uma renovação encurtou este contrato. `null` ou ausente nos outros casos |
 | `shortenedById` | o id da renovação que encurtou este contrato |
 
@@ -170,8 +194,9 @@ No lead (`stronix_leads`):
 ## Testes
 
 Em node, nas regras puras, como no resto do app:
-- `contracts.test.js`: agendado com e sem a marca, emendado com início no passado, `buildMatriculaWrites` com emenda, intervalo e sobreposição, `buildRenewalCancel` e `buildContractEdit` com desconto e com o contrato anterior.
-- `renewal.test.js`: `isSeamlessStart` (virada de mês, virada de ano, horários diferentes no mesmo dia) e `vigenciaRefDate`.
+- `contracts.test.js`: agendado com e sem a marca, emendado com início no passado, `renewalJoinOf` e `isSeamlessStart` (virada de mês, virada de ano, horários diferentes no mesmo dia), `buildMatriculaWrites` com emenda, intervalo e sobreposição, `renewalStartProblem`, `liveRenewalOf`, `neverTookEffect`, `buildRenewalCancel` e `buildContractEdit` com desconto e com o contrato anterior.
+- `renewal.test.js`: `computeSeam` por dia do calendário, a paridade com `renewalJoinOf` e `vigenciaRefDate`.
+- `operacional.base.test.js`, `operacional.renewal.test.js` e `gerencial.risk.test.js`: renovação antecipada lida pelo fim previsto, a emenda da cobertura e a renovação desfeita.
 - `leadState.test.js`: trancado, rótulo do agendado e emendado como ativo.
 - `timeline.test.js`: `contractEventOf` com os textos atuais, os antigos (valor sem centavos) e os novos, e o reativado no balde de contrato.
 - `contractHistory.test.js` (novo): origem, sequência de renovações, retorno com e sem intervalo, `historyStatusOf` e a comparação com `saleTypeOf`.

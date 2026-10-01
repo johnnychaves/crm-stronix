@@ -61,6 +61,47 @@ describe('deriveLeadState', () => {
     }), NOW);
     expect(state.key).toBe('trancado');
   });
+
+  it('contrato com início no futuro é CONTRATO AGENDADO', () => {
+    const state = deriveLeadState(cliente({ currentContractStartsAt: D(2026, 10, 1), currentContractEndsAt: D(2027, 10, 1) }), NOW);
+    expect(state.key).toBe('agendado');
+    expect(state.label).toBe('CONTRATO AGENDADO');
+  });
+
+  it('renovação emendada que ainda não começou é CLIENTE ATIVO', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStartsAt: D(2026, 10, 1),
+      currentContractEndsAt: D(2027, 10, 1),
+      currentContractSeamless: true
+    }), NOW);
+    expect(state.key).toBe('cliente_ativo');
+  });
+
+  // Renovação marcada (12/10/2026) com o contrato em uso valendo até 11/10:
+  // o cliente está ativo, não "agendado". O bloco "em uso" do resumo decide.
+  it('renovação marcada com o contrato em uso valendo é CLIENTE ATIVO, e não CONTRATO AGENDADO', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStartsAt: D(2026, 10, 12), currentContractEndsAt: D(2027, 10, 12),
+      inUseContractId: 'k0', inUseContractStatus: 'ativo', inUseContractEndsAt: D(2026, 10, 11)
+    }), NOW);
+    expect(state.key).toBe('cliente_ativo');
+  });
+
+  it('renovação marcada com o contrato em uso trancado é TRANCADO', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStartsAt: D(2026, 10, 12), currentContractEndsAt: D(2027, 10, 12),
+      inUseContractId: 'k0', inUseContractStatus: 'trancado', inUseContractEndsAt: D(2026, 10, 11)
+    }), NOW);
+    expect(state.key).toBe('trancado');
+  });
+
+  it('renovação marcada com o contrato em uso cancelado é CONTRATO AGENDADO', () => {
+    const state = deriveLeadState(cliente({
+      currentContractStartsAt: D(2026, 10, 12), currentContractEndsAt: D(2027, 10, 12),
+      inUseContractId: 'k0', inUseContractStatus: 'cancelado', inUseContractEndsAt: D(2026, 10, 11)
+    }), NOW);
+    expect(state.key).toBe('agendado');
+  });
 });
 
 describe('TONES: o amarelo do Trancado', () => {

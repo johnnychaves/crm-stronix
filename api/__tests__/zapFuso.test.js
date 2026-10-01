@@ -14,6 +14,7 @@ const fusoDaMaquina = vi.hoisted(() => {
 
 import { buildZapStrip } from '../_zapStrip.js';
 import { buildZapCard } from '../_zapCard.js';
+import { buildContractCancel } from '../../src/lib/contracts.js';
 
 afterAll(() => {
   if (fusoDaMaquina === undefined) delete process.env.TZ;
@@ -153,5 +154,59 @@ describe('dias restantes do contrato no dia de Brasília', () => {
     expect(card.contractEndsAt).toBe('2026-09-09T03:00:00.000Z');
     expect(card.appointment).toEqual({ type: 'Visita', at: '2026-09-08T21:00:00.000Z', outcome: null });
     expect(card.lastInteractionAt).toBe('2026-09-09T00:15:00.000Z');
+  });
+});
+
+// O bloco "em uso" do resumo do lead (contracts.js): enquanto a renovação
+// marcada não começa, o cartão diz o estado do contrato que o cliente usa.
+// A comparação é por instante, então o processo em UTC não muda o resultado.
+// Decisão do Johnny (01/10/2026): com dois contratos ativos, cancelar um deixa
+// o cliente ativo pelo outro. O cancelamento com `replacement` passa o resumo
+// do lead para o contrato que continua, e o cartão do Zap o lê como qualquer
+// resumo, por instante, no processo em UTC.
+describe('cartão depois de cancelar o último contrato com outro em uso', () => {
+  const outro = { id: 'k1', planName: 'Start', value: 1200, status: 'ativo', startsAt: brt('2025-12-01T00:00'), endsAt: brt('2026-12-01T00:00') };
+
+  it('com o resumo passado para o contrato que continua, o cartão diz ativo', () => {
+    const patch = buildContractCancel({ planName: 'Flow', cancelledAt: brt('2026-10-20T00:00'), reason: 'Financeiro', replacement: outro }).leadPatch;
+    const card = buildZapCard({ lifecycleStage: 'cliente', ...patch }, brt('2026-10-20T22:00'));
+    expect(card.contractStatus).toBe('ativo');
+  });
+
+  it('sem outro contrato em uso, o cartão diz cancelado, como sempre', () => {
+    const patch = buildContractCancel({ planName: 'Flow', cancelledAt: brt('2026-10-20T00:00'), reason: 'Financeiro' }).leadPatch;
+    expect(buildZapCard(cliente(patch), brt('2026-10-20T22:00')).contractStatus).toBe('cancelado');
+  });
+});
+
+describe('cartão com o bloco "em uso" do lead, no processo em UTC', () => {
+  // A renovação começa em 12/10/2026 e o contrato em uso vai até a meia-noite
+  // de 11/10, em Brasília.
+  const renovado = (extra = {}) => cliente({
+    currentContractStartsAt: brt('2026-10-12T00:00'), currentContractEndsAt: brt('2027-10-12T00:00'),
+    inUseContractId: 'k1', inUseContractStatus: 'ativo', inUseContractEndsAt: brt('2026-10-11T00:00'),
+    ...extra
+  });
+
+  it('contrato em uso valendo: ativo, sem faixa de marco', () => {
+    const card = buildZapCard(renovado(), brt('2026-09-30T22:00'));
+    expect(card.contractStatus).toBe('ativo');
+    expect(card.strip).toBeNull();
+  });
+
+  it('às 22:00 de Brasília do dia seguinte ao fim, sem a marca de emendada, já é o intervalo: agendado', () => {
+    expect(buildZapCard(renovado(), brt('2026-10-11T22:00')).contractStatus).toBe('agendado');
+    // Com a marca, o dia 11 continua do cliente.
+    expect(buildZapCard(renovado({ currentContractSeamless: true }), brt('2026-10-11T22:00')).contractStatus).toBe('ativo');
+  });
+
+  it('em uso trancado: trancado, e a faixa fica em silêncio', () => {
+    const card = buildZapCard(renovado({ inUseContractStatus: 'trancado' }), brt('2026-09-30T22:00'));
+    expect(card.contractStatus).toBe('trancado');
+    expect(card.strip).toBeNull();
+  });
+
+  it('em uso cancelado: agendado', () => {
+    expect(buildZapCard(renovado({ inUseContractStatus: 'cancelado' }), brt('2026-09-30T22:00')).contractStatus).toBe('agendado');
   });
 });

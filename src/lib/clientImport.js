@@ -12,7 +12,7 @@ import { formatCPF, formatPhone } from './masks.js';
 import { parseValorBRL } from './format.js';
 import { buildLeadSearchFields, deriveLeadBucket } from './leadDerived.js';
 import { isClientLead } from './leads.js';
-import { CONTRACT_STATUS, deriveContractStatus } from './contracts.js';
+import { CLEAR_IN_USE_BLOCK, CONTRACT_STATUS, deriveContractStatus } from './contracts.js';
 import { DEFAULT_EXPIRED_WINDOW_DAYS } from './expiredGoal.js';
 
 // ---------------------------------------------------------------------------
@@ -589,12 +589,17 @@ const CLIENT_MARKS = {
   upgradeEnteredAt: null
 };
 
+// A marca de emendada vai false de propósito: o lead é gravado com merge, e a
+// marca da renovação emendada de antes sobreviveria ao contrato da planilha.
 const contractSummary = (contract) => (contract ? {
   currentPlanName: contract.planName,
   currentContractValue: contract.value,
   currentContractStartsAt: contract.startsAt,
   currentContractEndsAt: contract.endsAt,
-  currentContractStatus: contract.status
+  currentContractStatus: contract.status,
+  currentContractSeamless: false,
+  // O contrato da planilha passa a ser o último, e não há renovação marcada.
+  ...CLEAR_IN_USE_BLOCK
 } : {});
 
 // Toda importação vem da planilha modelo do Stronilead. Lote antigo guarda

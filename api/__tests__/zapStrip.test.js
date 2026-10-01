@@ -66,6 +66,21 @@ describe('buildZapStrip', () => {
     });
   });
 
+  // Renovação emendada (começa no dia seguinte ao fim do contrato renovado) que
+  // ainda não começou não é agendada: o resumo do lead dá "ativo" e a faixa
+  // mostra o marco, igual à Meta Diária. Sem a marca, o mesmo contrato é
+  // agendado e a faixa fica em silêncio. Só a marca muda entre os dois casos.
+  it('renovação emendada que ainda não começou mostra o marco; sem a marca, é agendada e não mostra', () => {
+    const renovacao = {
+      currentContractStartsAt: new Date(2026, 8, 20), // 20/09/2026, ainda no futuro
+      currentContractEndsAt: new Date(2026, 9, 20) // 20/10/2026: 42 dias, marco de 60
+    };
+    expect(buildZapStrip(cliente({ ...renovacao, currentContractSeamless: true }), HOJE)).toEqual({
+      kind: 'renovacao', tone: 'avencer', text: 'Marco de renovação · 60 dias'
+    });
+    expect(buildZapStrip(cliente(renovacao), HOJE)).toBeNull();
+  });
+
   it('devolve freepass ativo com a contagem', () => {
     // aula em 07/09 com 3 dias de validade: último dia é 09/09, hoje é 08/09.
     const lead = {

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { expiryHorizons, expiredWithoutSuccessor, exitsInWindow } from '../gerencial/risk.js';
+import { normalizeContracts } from '../operacional/base.js';
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const now = D(2026, 9, 17);
@@ -88,5 +89,35 @@ describe('expiryHorizons e quem já renovou', () => {
 
   it('contrato sem sucessor continua no risco', () => {
     expect(expiryHorizons([base], hoje)[0].count).toBe(1);
+  });
+});
+
+// Renovação desfeita antes de começar: o contrato renovado voltou ao fim
+// original e a renovação ficou cancelada antes do início. Ela nunca valeu, não
+// tira o contrato renovado do risco e não sai da carteira, porque nunca entrou.
+describe('renovação que nunca valeu', () => {
+  const raw = (id, over) => ({ id, leadId: 'P', value: 1200, durationMonths: 12, status: 'ativo', startsAt: D(2025, 10, 11), createdAt: D(2025, 10, 11), ...over });
+  const desistiu = {
+    status: 'cancelado', renewedFromId: 'k1', startsAt: D(2026, 9, 28), endsAt: D(2027, 9, 28), createdAt: D(2026, 9, 15), cancelledAt: D(2026, 9, 20), cancelReason: 'Financeiro'
+  };
+  const SEP = { start: D(2026, 9, 1), end: D(2026, 10, 1) };
+  const list = normalizeContracts([raw('k1', { endsAt: D(2026, 10, 11) }), raw('k2', desistiu)]);
+
+  it('o contrato renovado volta ao risco e, vencido, aparece sem sucessor', () => {
+    expect(expiryHorizons(list, D(2026, 9, 25))[0]).toMatchObject({ count: 1, v: 100 });
+    expect(expiredWithoutSuccessor(list, D(2026, 10, 20)).count).toBe(1);
+  });
+
+  it('não é cancelamento do mês', () => {
+    expect(exitsInWindow(list, SEP).items[0]).toMatchObject({ kind: 'cancelamento', count: 0, v: 0 });
+  });
+
+  it('nem trancamento, se foi trancada antes de começar', () => {
+    const parada = normalizeContracts([
+      raw('k1', { endsAt: D(2026, 10, 11) }),
+      raw('k2', { ...desistiu, pausedAt: D(2026, 9, 18), pauseReason: 'Viagem' })
+    ]);
+    expect(exitsInWindow(parada, SEP).total).toBe(0);
+    expect(exitsInWindow(parada, SEP).items[1]).toMatchObject({ kind: 'trancamento', count: 0 });
   });
 });
