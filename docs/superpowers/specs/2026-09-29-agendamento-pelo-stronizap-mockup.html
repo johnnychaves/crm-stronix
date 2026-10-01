@@ -1,0 +1,466 @@
+<!doctype html>
+<html lang="pt-BR" translate="no">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agendamento pelo Stronizap · mockups aprovados</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Sora:wght@500;600&family=Geist+Mono:wght@400&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3/dist/tabler-icons.min.css">
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #F4F5F4; color: #1A1F1C; font-family: Inter, system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 32px 16px 72px; }
+  h1 { font-family: Sora, Inter, sans-serif; font-size: 22px; font-weight: 600; margin: 0 0 6px; }
+  h2 { font-size: 16px; font-weight: 600; margin: 44px 0 6px; }
+  p.lead { color: #575F59; font-size: 14px; line-height: 1.6; margin: 0 0 8px; }
+  p.nota { color: #575F59; font-size: 13px; line-height: 1.6; margin: 0 0 14px; }
+  .ok { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: #0A5240; background: #E9F4EE; border-radius: 99px; padding: 2px 9px; margin-left: 6px; vertical-align: 2px; }
+  .prop { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; color: #8A5A00; background: #FFF3D6; border-radius: 99px; padding: 2px 9px; margin-left: 6px; vertical-align: 2px; }
+  .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; align-items: start; }
+  @media (max-width: 820px) { .grid2, .grid3 { grid-template-columns: minmax(0, 1fr); } }
+  .cap { font-size: 13px; color: #1A1F1C; font-weight: 500; margin-bottom: 4px; }
+  .capn { font-size: 12px; color: #6B736D; margin: 0 0 8px; line-height: 1.5; }
+  .grid2 .capn, .grid3 .capn { min-height: 36px; }
+
+  /* Stronizap: tokens do tema claro (frontend/src/index.css) */
+  .zp { --a:#0E7257; --ad:#0A5240; --asoft:#E9F4EE; --chat:#FBFBFA; --in:#F2F4F2; --bd:#ECEDEC; --bds:#E0E2E0;
+        --ink:#1A1F1C; --ink2:#575F59; --ink3:#8B948E; --ink4:#A9B1AB;
+        font-size: 12px; line-height: 1.4; color: var(--ink); }
+  .zp .scr { position: relative; border: 1px solid var(--bds); border-radius: 12px; overflow: hidden; background: #fff; }
+  .zp .fld { height: 30px; border: 1px solid var(--bds); border-radius: 8px; background: #fff; display: flex; align-items: center;
+             justify-content: space-between; gap: 6px; padding: 0 9px; white-space: nowrap; overflow: hidden; }
+  .zp .fld.on { border-color: var(--a); box-shadow: 0 0 0 3px rgba(14,114,87,.12); }
+  .zp .area { min-height: 46px; height: auto; align-items: flex-start; padding: 7px 9px; white-space: normal; line-height: 1.45; }
+  .zp .area.tpl { display: block; }
+  .zp .ph { color: var(--ink4); }
+  .zp .lbl { font-size: 11px; color: var(--ink2); margin-bottom: 4px; }
+  .zp .mono { font-family: 'Geist Mono', ui-monospace, monospace; }
+  .zp .bp { background: var(--a); color: #fff; border-radius: 8px; height: 30px; padding: 0 14px; display: inline-flex; align-items: center; font-weight: 500; white-space: nowrap; }
+  .zp .bgh { color: var(--ink2); height: 30px; padding: 0 10px; display: inline-flex; align-items: center; }
+  .zp .bi { background: var(--in); border-radius: 12px 12px 12px 4px; padding: 7px 10px; max-width: 80%; width: fit-content; }
+  .zp .sw { width: 26px; height: 15px; border-radius: 99px; background: var(--bds); position: relative; flex: none; }
+  .zp .sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: #fff; }
+  .zp .sw.on { background: var(--a); }
+  .zp .sw.on::after { left: 13px; }
+  .zp .pill { border-radius: 99px; padding: 2px 8px; font-size: 11px; font-weight: 500; }
+  .zp .note { font-size: 11px; color: var(--ink3); }
+  .zp .dr { display: flex; justify-content: space-between; gap: 10px; }
+  .zp .dr span:first-child { color: var(--ink3); }
+  .zp .lock { display: inline-flex; align-items: center; gap: 5px; }
+  .zp .pn { border: 1px solid var(--bds); border-radius: 12px; background: #fff; padding: 12px; display: flex; flex-direction: column; gap: 9px; }
+  .zp .row2 { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 8px; }
+  .zp .novo { background: #FFF7E6; border-radius: 6px; margin: 0 -6px; padding: 3px 6px; }
+  .zp .aviso { background: var(--in); border-radius: 10px; padding: 9px 10px; display: flex; gap: 8px; color: var(--ink2); font-size: 11.5px; line-height: 1.45; }
+
+  /* Balão (380px) com o assistente passo a passo */
+  .zp .bal { width: 100%; max-width: 380px; background: #fff; border: 1px solid var(--bds); border-radius: 14px;
+             box-shadow: 0 14px 34px -14px rgba(16,24,20,.28), 0 2px 6px rgba(16,24,20,.06); overflow: hidden; }
+  .zp .bal .bh { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--bd); font-weight: 600; font-size: 13px; }
+  .zp .bal .bb { padding: 4px 14px 14px; display: flex; flex-direction: column; }
+  .zp .st { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--bd); }
+  .zp .st .v { margin-left: auto; font-weight: 500; }
+  .zp .st .ed { font-size: 13px; color: var(--ink4); }
+  .zp .n { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 600; background: var(--in); color: var(--ink3); flex: none; }
+  .zp .n.ok { background: var(--asoft); color: var(--ad); }
+  .zp .n.cur { background: var(--a); color: #fff; }
+  .zp .st.off { opacity: .5; }
+  .zp .cur-step { padding: 10px 0 12px; border-bottom: 1px solid var(--bd); display: flex; flex-direction: column; gap: 8px; }
+  .zp .cur-step .t { display: flex; align-items: center; gap: 8px; }
+  .zp .cur-step .t b { font-size: 12.5px; font-weight: 600; }
+  .zp .opt { border: 1px solid var(--bds); border-radius: 10px; padding: 8px 10px; display: flex; align-items: center; gap: 10px; }
+  .zp .opt .ic { width: 30px; height: 30px; border-radius: 8px; background: var(--in); display: grid; place-items: center; color: var(--ink2); font-size: 16px; flex: none; }
+  .zp .opt .tx { flex: 1; min-width: 0; line-height: 1.3; }
+  .zp .opt .tx b { display: block; font-weight: 600; font-size: 12.5px; }
+  .zp .opt .tx small { color: var(--ink3); font-size: 11px; }
+  .zp .opt.on { border-color: var(--a); background: var(--asoft); }
+  .zp .opt.on .ic { background: #fff; color: var(--a); }
+  .zp .days { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 5px; }
+  .zp .day { border: 1px solid var(--bds); border-radius: 8px; padding: 5px 0 6px; text-align: center; line-height: 1.25; }
+  .zp .day small { display: block; font-size: 10px; color: var(--ink3); }
+  .zp .day b { display: block; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .zp .day.on { border-color: var(--a); background: var(--asoft); }
+  .zp .day.on small, .zp .day.on b { color: var(--ad); }
+  .zp .lnk { color: var(--a); font-weight: 500; display: inline-flex; align-items: center; gap: 4px; }
+  .zp .rem { border: 1px solid var(--bds); border-radius: 10px; padding: 9px 10px; display: flex; flex-direction: column; gap: 7px; margin-top: 10px; }
+  .zp .rem .msg { background: var(--in); border-radius: 10px 10px 10px 3px; padding: 7px 9px; line-height: 1.45; color: var(--ink); }
+  .zp .foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 12px; }
+  .zp .tog { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink2); }
+
+  /* Mensagem agendada na conversa (bolha de saída com relógio) */
+  .zp .sched { margin-left: auto; max-width: 82%; border: 1px dashed var(--a); background: #F4FAF7; border-radius: 12px 12px 4px 12px; padding: 7px 10px; }
+  .zp .sched .h { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 10.5px; color: var(--ad); margin-bottom: 3px; }
+
+  /* Configurações */
+  .zp .set { border: 1px solid var(--bds); border-radius: 12px; background: #fff; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+  .zp .set h3 { margin: 0; font-size: 14px; font-weight: 600; }
+  .zp .radio { display: flex; align-items: center; gap: 8px; }
+  .zp .radio .o { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--bds); flex: none; }
+  .zp .radio .o.on { border: 4.5px solid var(--a); }
+  .zp .mini { height: 26px; border: 1px solid var(--bds); border-radius: 7px; padding: 0 8px; display: inline-flex; align-items: center; font-family: 'Geist Mono', ui-monospace, monospace; }
+  .zp .var { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 6px; background: var(--in); color: var(--ink2); font-family: 'Geist Mono', ui-monospace, monospace; font-size: 10.5px; }
+  .zp .vars { display: flex; flex-wrap: wrap; gap: 5px; }
+  .zp .hl { color: var(--ad); font-family: 'Geist Mono', ui-monospace, monospace; font-size: 11px; }
+  /* Stronilead: linha do tempo da ficha (src/views/LeadProfileView.jsx) */
+  .sl { --s3:#CBD5E1; --s4:#94A3B8; --s5:#64748B; --s6:#475569; --s7:#334155; --s9:#0F172A; --s1:#F1F5F9; --s2:#E2E8F0; --s50:#F8FAFC;
+        --b7:#1C3FC4; --b5:#5A7FFF;
+        font-size: 12px; line-height: 1.45; color: var(--s9); }
+  .sl .card { background: #fff; border: 1px solid var(--s2); border-radius: 16px; padding: 10px 16px 12px; }
+  .sl .mh { font-size: 11px; color: var(--s5); padding: 4px 0 6px; border-bottom: 1px solid var(--s2); margin-bottom: 2px; }
+  .sl .r { display: grid; grid-template-columns: 68px 58px minmax(0,1fr) 118px; gap: 12px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--s1); }
+  .sl .r:last-child { border-bottom: 0; }
+  .sl .st { font-size: 11px; color: var(--s4); text-align: right; font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .sl .ty { font-size: 9.5px; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--s4); padding-top: 4px; }
+  .sl .ty.b { color: var(--b7); }
+  .sl .au { font-size: 11px; color: var(--s5); text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-top: 2px; display: flex; justify-content: flex-end; align-items: center; gap: 5px; }
+  .sl .body { color: var(--s7); font-size: 12.5px; }
+  /* O cartão de agendamento de hoje (variante 3) */
+  .sl .ap { border: 1px solid var(--s2); background: var(--s50); border-radius: 8px; padding: 7px 10px; }
+  .sl .ap .in { display: flex; align-items: center; gap: 10px; }
+  .sl .ap .dt { width: 34px; flex: none; text-align: center; }
+  .sl .ap .dt b { display: block; font-family: 'Space Grotesk', sans-serif; font-size: 16px; font-weight: 700; line-height: 1; color: var(--b7); font-variant-numeric: tabular-nums; }
+  .sl .ap .dt small { display: block; font-size: 9px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--s4); margin-top: 2px; }
+  .sl .ap .sep { width: 1px; height: 26px; background: var(--s2); flex: none; }
+  .sl .ap .tx { flex: 1; min-width: 0; }
+  .sl .ap .tx .t { display: flex; align-items: baseline; gap: 6px; }
+  .sl .ap .tx .t b { font-size: 12.5px; font-weight: 600; color: var(--s9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sl .ap .tx .t span { font-size: 11px; color: var(--s5); font-variant-numeric: tabular-nums; }
+  .sl .ap .tx .d { font-size: 11px; color: var(--s4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sl .seal { flex: none; height: 17px; padding: 0 6px; border-radius: 4px; display: inline-flex; align-items: center; font-size: 9.5px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; }
+  .sl .seal.ag { background: rgba(90,127,255,.12); color: var(--b7); }
+  .sl .seal.ok { background: rgba(16,185,129,.12); color: #047857; }
+  .sl .ap .foot { margin-top: 7px; padding-top: 7px; border-top: 1px solid var(--s2); font-size: 11px; color: var(--s4); display: flex; align-items: center; gap: 6px; }
+  .sl .zpill { flex: none; height: 17px; padding: 0 6px 0 3px; border-radius: 99px; border: 1px solid var(--s2); background: #fff; display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 600; color: var(--s6); }
+  .sl .mark { width: 17px; height: 17px; border-radius: 50%; background: var(--s1); display: inline-grid; place-items: center; flex: none; }
+  .sl .cap2 { margin-top: 5px; font-size: 11px; color: var(--s4); display: flex; align-items: center; gap: 6px; }
+  .frame-cap { font-size: 13px; font-weight: 500; margin: 22px 0 4px; }
+  .frame-note { font-size: 12px; color: #6B736D; margin: 0 0 8px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Agendamento pelo Stronizap</h1>
+  <p class="lead">Mockups aprovados pelo Johnny em 29/09/2026. Acompanham a spec <code>2026-09-29-agendamento-pelo-stronizap-design.md</code>. As regras de cada estado estão na spec; aqui fica só o desenho.</p>
+  <p class="lead">Nos exemplos, hoje é terça, 29/09, às 15:40, e quem atende é a Ana Souza.</p>
+
+  <!-- ============ 1. Cabeçalho ============ -->
+  <h2>1. O "Agendar" no cabeçalho <span class="ok"><i class="ti ti-check"></i>escolhido</span></h2>
+  <p class="nota">Aparece para quem tem cadastro no Stronilead, lead ou cliente. Quem ainda não tem vê o "Cadastrar", e depois do cadastro o "Agendar" já aparece. O balão abre logo abaixo, e a primeira pergunta é o que vai ser.</p>
+  <div class="zp">
+    <div class="scr" style="max-width:560px">
+      <div style="height:52px;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--bd)">
+        <div style="width:32px;height:32px;border-radius:50%;background:var(--asoft);color:#0A5240;display:flex;align-items:center;justify-content:center;font-weight:600;flex:none">M</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:Sora,Inter,sans-serif;font-size:14px;font-weight:600">Mariana Souza</div>
+          <div style="display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink2);white-space:nowrap">
+            <span style="width:6px;height:6px;border-radius:50%;background:#2B59FF;flex:none"></span>Lead · Primeiro contato · Ana Souza
+            <span style="color:var(--ink4)">·</span>
+            <span style="color:var(--a);font-weight:500;display:inline-flex;align-items:center;gap:3px;background:var(--asoft);border-radius:5px;padding:1px 5px"><i class="ti ti-calendar-plus" style="font-size:12px"></i>Agendar</span>
+          </div>
+        </div>
+        <i class="ti ti-search" style="font-size:16px;color:var(--ink3)"></i>
+        <i class="ti ti-arrows-exchange" style="font-size:16px;color:var(--ink3)"></i>
+        <i class="ti ti-circle-check" style="font-size:16px;color:var(--ink3)"></i>
+      </div>
+      <div style="background:var(--chat);padding:10px 12px 16px;min-height:236px;position:relative">
+        <div class="bi" style="opacity:.55">Posso passar aí na quinta depois do trabalho?</div>
+        <div class="bal" style="position:absolute;top:8px;left:150px;width:340px">
+          <div class="bh">Agendar <span class="lock" style="margin-left:2px"><svg width="14" height="14" viewBox="0 0 48 48" fill="none" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF"/><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF"/><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B"/></svg><span style="font-family:'Space Grotesk',sans-serif;font-size:12px"><span style="color:var(--ink2);font-weight:500">STRONI</span><span style="color:#2B59FF;font-weight:700">LEAD</span></span></span></div>
+          <div class="bb">
+            <div class="cur-step" style="border-bottom:0">
+              <div class="t"><span class="n cur">1</span><b>O que vai ser?</b></div>
+              <div class="opt"><span class="ic"><i class="ti ti-building"></i></span><span class="tx"><b>Visita</b><small>Conhecer a unidade</small></span></div>
+              <div class="opt"><span class="ic"><i class="ti ti-barbell"></i></span><span class="tx"><b>Aula experimental</b><small>Treino de experiência</small></span></div>
+            </div>
+            <div class="foot" style="padding-top:4px"><span></span><span class="bgh" style="padding-right:0">Cancelar</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 2. Passo a passo ============ -->
+  <h2>2. O balão, passo a passo <span class="ok"><i class="ti ti-check"></i>escolhido</span></h2>
+  <p class="nota">Como no assistente do Stronilead: cada passo respondido vira uma linha com a escolha, que dá para clicar e trocar. Visita é Unidade e Dia e horário. Aula experimental é Modalidade, Professor, Quantas aulas e Dia e horário. Os cinco dias são os que a academia atende, e o horário começa em 18:00 hoje e 09:00 nos outros dias.</p>
+  <div class="zp grid2">
+
+    <div>
+      <div class="cap">Visita · no passo do dia e horário</div>
+      <p class="capn">A unidade já foi escolhida. "Outro dia" abre o calendário.</p>
+      <div class="bal">
+        <div class="bh">Agendar visita</div>
+        <div class="bb">
+          <div class="st"><span class="n ok"><i class="ti ti-check" style="font-size:12px"></i></span><span style="color:var(--ink2)">Unidade</span><span class="v">Centro</span><i class="ti ti-pencil ed"></i></div>
+          <div class="cur-step" style="border-bottom:0">
+            <div class="t"><span class="n cur">2</span><b>Dia e horário</b><span class="note">Quando vai ser?</span></div>
+            <div class="days">
+              <div class="day"><small>Hoje</small><b>29/09</b></div>
+              <div class="day"><small>Amanhã</small><b>30/09</b></div>
+              <div class="day on"><small>Quinta</small><b>01/10</b></div>
+              <div class="day"><small>Sexta</small><b>02/10</b></div>
+              <div class="day"><small>Sábado</small><b>03/10</b></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+              <div style="display:flex;align-items:center;gap:8px"><span class="lbl" style="margin:0">Horário</span><div class="fld on" style="width:92px"><span class="mono">18:00</span><i class="ti ti-clock ph"></i></div></div>
+              <span class="lnk"><i class="ti ti-calendar"></i>Outro dia</span>
+            </div>
+          </div>
+          <div class="foot"><span class="bgh" style="padding-left:0">Voltar</span><span class="bp">Continuar</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">Aula experimental · no passo do professor</div>
+      <p class="capn">Só aparece quem dá a modalidade escolhida, mais "Treina sozinho".</p>
+      <div class="bal">
+        <div class="bh">Agendar aula experimental</div>
+        <div class="bb">
+          <div class="st"><span class="n ok"><i class="ti ti-check" style="font-size:12px"></i></span><span style="color:var(--ink2)">Modalidade</span><span class="v">Pilates</span><i class="ti ti-pencil ed"></i></div>
+          <div class="cur-step">
+            <div class="t"><span class="n cur">2</span><b>Professor</b><span class="note">Quem vai acompanhar a aula?</span></div>
+            <div class="opt on"><span class="ic"><i class="ti ti-school"></i></span><span class="tx"><b>Carla Dias</b></span><i class="ti ti-check" style="color:var(--a)"></i></div>
+            <div class="opt"><span class="ic"><i class="ti ti-school"></i></span><span class="tx"><b>Rafael Moura</b></span></div>
+            <div class="opt"><span class="ic"><i class="ti ti-walk"></i></span><span class="tx"><b>Treina sozinho</b></span></div>
+          </div>
+          <div class="st off"><span class="n">3</span><span>Quantas aulas</span></div>
+          <div class="st off" style="border-bottom:0"><span class="n">4</span><span>Dia e horário</span></div>
+          <div class="foot"><span class="bgh" style="padding-left:0">Voltar</span><span class="bp" style="opacity:.45">Complete os passos</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">Tudo respondido · o lembrete e a confirmação</div>
+      <p class="capn">Os passos viram um resumo. O lembrete já vem ligado com o texto da configuração, e dá para mudar só neste agendamento.</p>
+      <div class="bal">
+        <div class="bh">Agendar visita</div>
+        <div class="bb">
+          <div class="st"><span class="n ok"><i class="ti ti-check" style="font-size:12px"></i></span><span style="color:var(--ink2)">Unidade</span><span class="v">Centro</span><i class="ti ti-pencil ed"></i></div>
+          <div class="st" style="border-bottom:0"><span class="n ok"><i class="ti ti-check" style="font-size:12px"></i></span><span style="color:var(--ink2)">Dia e horário</span><span class="v">Quinta, 01/10 às 18:00</span><i class="ti ti-pencil ed"></i></div>
+          <div class="rem">
+            <div style="display:flex;align-items:center;gap:8px"><div class="sw on"></div><b style="font-weight:600">Lembrete para a Mariana</b><span class="lnk" style="margin-left:auto;font-size:11px"><i class="ti ti-pencil"></i>Editar texto</span></div>
+            <div class="note" style="color:var(--ink2)"><i class="ti ti-clock" style="font-size:12px;vertical-align:-1px"></i> Sai sozinho na véspera, quarta, 30/09, às 18:00.</div>
+            <div class="msg">Oi, Mariana! Passando para lembrar da visita amanhã, quinta-feira (01/10), às 18h, na unidade Centro. Até lá!</div>
+          </div>
+          <div style="margin-top:10px"><div class="lbl">Anotação (opcional)</div><div class="fld area">Vem depois do trabalho, quer conhecer o pilates.</div></div>
+          <div class="tog" style="margin-top:10px"><div class="sw on"></div>Deixar a confirmação escrita na caixa de mensagem</div>
+          <div class="foot"><span class="note">Conta na sua Meta diária.</span><span class="bp">Confirmar agendamento</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">Texto do lembrete, mudado só aqui</div>
+      <p class="capn">"Editar texto" abre o texto já preenchido. A mudança vale só para este agendamento.</p>
+      <div class="bal">
+        <div class="bh">Agendar visita</div>
+        <div class="bb">
+          <div class="st" style="border-bottom:0"><span class="n ok"><i class="ti ti-check" style="font-size:12px"></i></span><span style="color:var(--ink2)">Dia e horário</span><span class="v">Quinta, 01/10 às 18:00</span><i class="ti ti-pencil ed"></i></div>
+          <div class="rem">
+            <div style="display:flex;align-items:center;gap:8px"><div class="sw on"></div><b style="font-weight:600">Lembrete para a Mariana</b></div>
+            <div class="note" style="color:var(--ink2)"><i class="ti ti-clock" style="font-size:12px;vertical-align:-1px"></i> Sai sozinho na véspera, quarta, 30/09, às 18:00.</div>
+            <div class="fld area on">Oi, Mariana! Passando para lembrar da visita amanhã, às 18h, na unidade Centro. Traz uma roupa confortável, que dá para fazer uma aula junto. Até lá!</div>
+            <div style="display:flex;justify-content:flex-end;gap:4px"><span class="bgh" style="height:26px">Voltar ao texto padrão</span></div>
+          </div>
+          <div class="foot"><span class="note">Conta na sua Meta diária.</span><span class="bp">Confirmar agendamento</span></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ 3. Depois ============ -->
+  <h2>3. Depois de agendar <span class="ok"><i class="ti ti-check"></i>aprovado</span></h2>
+  <p class="nota">O cartão troca na hora. A confirmação entra na caixa só se ela estiver vazia, e nada é enviado sozinho. O lembrete aparece na conversa como mensagem agendada, com o botão de cancelar que o Stronizap já tem.</p>
+  <div class="zp grid2">
+
+    <div>
+      <div class="cap">O cartão no painel</div>
+      <p class="capn">O que é novo está marcado.</p>
+      <div class="pn">
+        <div style="display:flex;align-items:center;justify-content:space-between"><span class="lock"><svg width="15" height="15" viewBox="0 0 48 48" fill="none" stroke-width="4.4" stroke-linecap="round" stroke-linejoin="round"><path d="M11 39 L24 29 L37 39" stroke="#2B59FF"/><path d="M13.5 30 L24 21.5 L34.5 30" stroke="#2B59FF"/><path d="M16 21 L24 14 L32 21" stroke="#FF6A2B"/></svg><span style="font-family:'Space Grotesk',sans-serif;font-size:12.5px"><span style="color:var(--ink2);font-weight:500">STRONI</span><span style="color:#2B59FF;font-weight:700">LEAD</span></span></span><span class="pill" style="background:rgba(43,89,255,.10);color:#1C3FC4">Lead</span></div>
+        <div class="dr"><span>Fase</span><span>Primeiro contato</span></div>
+        <div class="dr"><span>Origem</span><span>Instagram</span></div>
+        <div class="dr"><span>Consultor</span><span>Ana Souza</span></div>
+        <div class="dr novo"><span>Agendamento</span><span class="mono">Visita · 01/10 às 18:00</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;font-size:11px" class="novo"><span style="color:var(--ink3);display:inline-flex;gap:4px;align-items:center"><i class="ti ti-check"></i>Agendado agora por você</span><span style="color:var(--a);display:inline-flex;gap:3px;align-items:center">Abrir no Stronilead<i class="ti ti-external-link"></i></span></div>
+      </div>
+<div class="cap" style="margin-top:14px">Depois do comparecimento</div>
+      <p class="capn" style="min-height:0">Quando a Meta Diária registra o desfecho, a mesma linha mostra: compareceu ou faltou. Cancelado some do cartão.</p>
+      <div class="pn"><div class="dr novo"><span>Agendamento</span><span class="mono">Visita · 01/10 às 18:00 · Compareceu</span></div></div>
+    </div>
+
+    <div>
+      <div class="cap">A conversa</div>
+      <p class="capn">O lembrete fica agendado na conversa. A confirmação espera na caixa para a Ana revisar e enviar.</p>
+      <div class="scr">
+        <div style="background:var(--chat);padding:10px 12px;display:flex;flex-direction:column;gap:7px">
+          <div class="bi">Posso passar aí na quinta depois do trabalho?</div>
+          <div class="sched">
+            <div class="h"><span style="display:inline-flex;align-items:center;gap:4px"><i class="ti ti-clock"></i>Agendada para 30/09 às 18:00 · lembrete da visita</span><i class="ti ti-x" style="color:var(--ink3)"></i></div>
+            Oi, Mariana! Passando para lembrar da visita amanhã, quinta-feira (01/10), às 18h, na unidade Centro. Até lá!
+          </div>
+        </div>
+        <div style="border-top:1px solid var(--bd);padding:8px 12px 10px;display:flex;flex-direction:column;gap:7px">
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--ad);background:var(--asoft);border-radius:8px;padding:5px 8px">
+            <span style="display:inline-flex;align-items:center;gap:5px"><i class="ti ti-calendar-check" style="font-size:13px"></i>Visita agendada. A confirmação está na caixa.</span>
+            <span style="color:var(--ink2)">Apagar</span>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:10px">
+            <i class="ti ti-paperclip" style="font-size:16px;color:var(--ink3);padding-bottom:7px"></i>
+            <div style="flex:1;border-radius:16px;background:var(--in);padding:7px 12px;line-height:1.45">Combinado, Mariana! Sua visita ficou para quinta-feira (01/10), às 18h, na unidade Centro (Rua Garibaldi, 1200).</div>
+            <i class="ti ti-send" style="font-size:16px;color:var(--a);padding-bottom:7px"></i>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============ 4. Configuração ============ -->
+  <h2>4. Configuração do lembrete <span class="ok"><i class="ti ti-check"></i>a academia escolhe</span></h2>
+  <p class="nota">Em Configurações → Stronilead, só para o admin, embaixo dos dados da conexão. O texto usa variáveis, como as mensagens prontas, e a prévia mostra como fica.</p>
+  <div class="zp">
+    <div class="set" style="max-width:620px">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="flex:1"><h3>Lembrete de agendamento</h3><div class="note" style="font-size:12px;margin-top:3px;color:var(--ink2)">O Stronizap envia sozinho, pelo número da conversa, um lembrete antes da visita ou da aula agendada por aqui.</div></div>
+        <div class="sw on" style="margin-top:3px"></div>
+      </div>
+      <div>
+        <div class="lbl" style="font-weight:500;color:var(--ink)">Quando sai</div>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:6px">
+          <div class="radio"><span class="o on"></span>Na véspera, às <span class="mini">18:00</span></div>
+          <div class="radio"><span class="o"></span><span class="mini">3</span> horas antes do horário marcado</div>
+        </div>
+        <div class="note" style="margin-top:8px;display:flex;gap:6px;align-items:flex-start"><i class="ti ti-moon" style="font-size:13px"></i><span>O lembrete nunca sai entre 21h e 8h. Se cair nesse intervalo, sai às 20h da véspera.</span></div>
+      </div>
+      <div class="grid2" style="gap:14px">
+        <div>
+          <div class="lbl" style="font-weight:500;color:var(--ink)">Texto para visita</div>
+          <div class="fld area tpl" style="min-height:84px">Oi, <span class="hl">[primeiro_nome]</span>! Passando para lembrar da visita <span class="hl">[do_aluno]</span> <span class="hl">[dia]</span>, às <span class="hl">[hora]</span>, na unidade <span class="hl">[unidade]</span>. Até lá!</div>
+          <div class="vars" style="margin-top:6px"><span class="var">[primeiro_nome]</span><span class="var">[do_aluno]</span><span class="var">[dia]</span><span class="var">[hora]</span><span class="var">[unidade]</span><span class="var">[endereco]</span></div>
+        </div>
+        <div>
+          <div class="lbl" style="font-weight:500;color:var(--ink)">Texto para aula experimental</div>
+          <div class="fld area tpl" style="min-height:84px">Oi, <span class="hl">[primeiro_nome]</span>! Passando para lembrar da aula experimental de <span class="hl">[modalidade]</span> <span class="hl">[do_aluno]</span> <span class="hl">[dia]</span>, às <span class="hl">[hora]</span>. Até lá!</div>
+          <div class="vars" style="margin-top:6px"><span class="var">[primeiro_nome]</span><span class="var">[do_aluno]</span><span class="var">[dia]</span><span class="var">[hora]</span><span class="var">[modalidade]</span><span class="var">[professor_da_aula]</span></div>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="font-weight:500;color:var(--ink)">Prévia da visita</div>
+        <div style="background:var(--in);border-radius:12px 12px 12px 4px;padding:8px 11px;line-height:1.45;width:fit-content;max-width:100%">Oi, Mariana! Passando para lembrar da visita amanhã, quinta-feira (01/10), às 18h, na unidade Centro. Até lá!</div>
+        <div class="note" style="margin-top:6px"><span class="mono">[dia]</span> vira "amanhã" ou "hoje" quando é o caso, com o dia da semana e a data. <span class="mono">[do_aluno]</span> vira "de Pedro" quando o agendamento é de um menor e some quando é da própria pessoa.</div>
+      </div>
+      <div style="display:flex;justify-content:flex-end"><span class="bp">Salvar</span></div>
+    </div>
+  </div>
+
+  <!-- ============ 5. Casos ============ -->
+  <h2>5. Casos que o balão precisa tratar</h2>
+  <div class="zp grid2">
+
+    <div>
+      <div class="cap">Mãe de dois alunos</div>
+      <p class="capn">O número casa mais de um cadastro, então o primeiro passo é para quem. No lembrete, [primeiro_nome] é a mãe e [do_aluno] vira "de Pedro".</p>
+      <div class="bal">
+        <div class="bh">Agendar</div>
+        <div class="bb">
+          <div class="cur-step" style="border-bottom:0">
+            <div class="t"><span class="n cur">1</span><b>Para quem?</b></div>
+            <div class="opt on"><span class="ic"><i class="ti ti-user"></i></span><span class="tx"><b>Pedro Souza</b><small>Filho</small></span><i class="ti ti-check" style="color:var(--a)"></i></div>
+            <div class="opt"><span class="ic"><i class="ti ti-user"></i></span><span class="tx"><b>Laura Souza</b><small>Filha</small></span></div>
+          </div>
+          <div class="st off" style="border-bottom:0;border-top:1px solid var(--bd)"><span class="n">2</span><span>O que vai ser?</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">Já tem visita marcada</div>
+      <p class="capn">Como no Stronilead, agendar de novo troca a data da visita marcada. O lembrete antigo é cancelado e sai um novo.</p>
+      <div class="bal">
+        <div class="bh">Remarcar visita</div>
+        <div class="bb">
+          <div class="aviso" style="margin-top:10px"><i class="ti ti-calendar-event" style="font-size:16px;color:var(--ink3)"></i><span>A Mariana já tem visita marcada para quarta, 30/09, às 18:00. Agendar de novo troca o dia e o horário.</span></div>
+          <div class="st" style="margin-top:4px"><span class="n ok"><i class="ti ti-check" style="font-size:12px"></i></span><span style="color:var(--ink2)">Unidade</span><span class="v">Centro</span><i class="ti ti-pencil ed"></i></div>
+          <div class="st" style="border-bottom:0"><span class="n ok"><i class="ti ti-check" style="font-size:12px"></i></span><span style="color:var(--ink2)">Dia e horário</span><span class="v">Quinta, 01/10 às 18:00</span><i class="ti ti-pencil ed"></i></div>
+          <div class="foot"><span class="bgh" style="padding-left:0">Cancelar</span><span class="bp">Remarcar visita</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">Sem tempo para lembrete</div>
+      <p class="capn">Visita hoje à noite: a véspera já passou. O balão avisa e o agendamento segue sem lembrete.</p>
+      <div class="bal">
+        <div class="bh">Agendar visita</div>
+        <div class="bb">
+          <div class="st" style="border-bottom:0"><span class="n ok"><i class="ti ti-check" style="font-size:12px"></i></span><span style="color:var(--ink2)">Dia e horário</span><span class="v">Hoje, 29/09 às 19:00</span><i class="ti ti-pencil ed"></i></div>
+          <div class="rem" style="background:var(--in);border-color:transparent">
+            <div style="display:flex;align-items:center;gap:8px;color:var(--ink2)"><div class="sw"></div><b style="font-weight:600">Sem lembrete</b></div>
+            <div class="note">A visita é hoje e o horário do lembrete, na véspera, já passou. A confirmação na caixa já avisa a Mariana.</div>
+          </div>
+          <div class="foot"><span class="note">Conta na sua Meta diária.</span><span class="bp">Confirmar agendamento</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <div class="cap">Remarcado ou cancelado no Stronilead</div>
+      <p class="capn">Antes de enviar, o Stronizap confere no Stronilead. Se o agendamento mudou, o lembrete não sai, e a equipe vê uma nota na conversa.</p>
+      <div class="scr">
+        <div style="background:var(--chat);padding:10px 12px;display:flex;flex-direction:column;gap:8px">
+          <div style="align-self:center;display:inline-flex;align-items:center;gap:6px;font-size:11px;color:var(--ink2);background:#fff;border:1px solid var(--bd);border-radius:99px;padding:4px 10px"><i class="ti ti-bell-off" style="font-size:13px"></i>Lembrete da visita não enviado: o agendamento mudou no Stronilead.</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  
+  <!-- ============ Modelo A ============ -->
+  <h2>6. Na ficha do Stronilead <span class="ok"><i class="ti ti-check"></i>modelo A</span></h2>
+  <p class="nota">Tudo igual a um agendamento feito no Stronilead. A marca do Stronizap aparece ao lado de quem agendou, na coluna do autor, e o nome do canal fica no detalhe ao passar o mouse. É o mais discreto: a linha do tempo não fica mais alta.</p>
+  <div class="sl"><div class="card">
+    <div class="mh">Setembro de 2026</div>
+    <div class="r">
+      <div class="st">29/09 15:42</div><div class="ty b">Agenda</div>
+      <div class="body">
+        <div class="ap"><div class="in">
+          <div class="dt"><b>01</b><small>out</small></div><div class="sep"></div>
+          <div class="tx"><div class="t"><b>Visita à unidade</b><span>18:00</span></div><div class="d">Unidade Centro · Vem depois do trabalho, quer conhecer o pilates. · quinta-feira</div></div>
+          <span class="seal ag">Agendado</span>
+        </div></div>
+      </div>
+      <div class="au" title="Agendado pelo Stronizap, canal Recepção"><span class="mark"><svg width="11" height="11" viewBox="0 0 240 240"><path d="M 120 30 C 70 30, 30 70, 30 120 C 30 148, 43.5 173.5, 64 190.5 C 61 201, 56.5 213, 50.5 222 C 49 224, 51 226, 53 225 C 64 222, 79 217, 92 211 C 101 213, 110 214, 120 214 C 170 214, 210 173, 210 122 C 210 71, 170 30, 120 30 Z" fill="#1A1D20"/><path d="M 138 56 L 84 132 L 116 132 L 102 184 L 156 108 L 124 108 Z" fill="#25D366" stroke="#25D366" stroke-width="8" stroke-linejoin="round"/></svg></span>Ana Souza</div>
+    </div>
+    <div class="r">
+      <div class="st">29/09 15:30</div><div class="ty">Nota</div>
+      <div class="body">Pediu horário depois das 18h, sai do trabalho às 17h30.</div>
+      <div class="au">Ana Souza</div>
+    </div>
+  </div></div>
+
+  <div class="frame-cap">Depois da visita</div>
+  <p class="frame-note">O desfecho registrado pela Meta Diária aponta para o agendamento de origem, como hoje, e diz que ele veio do Stronizap.</p>
+  <div class="sl"><div class="card">
+    <div class="mh">Outubro de 2026</div>
+    <div class="r">
+      <div class="st">01/10 18:40</div><div class="ty" style="color:#047857">Agenda</div>
+      <div class="body">
+        <div class="ap"><div class="in">
+          <div class="dt"><b style="color:#047857">01</b><small>out</small></div><div class="sep"></div>
+          <div class="tx"><div class="t"><b>Visita à unidade</b><span>18:40</span></div><div class="d">quinta-feira</div></div>
+          <span class="seal ok">Compareceu</span>
+        </div>
+        <div class="foot"><span class="mark"><svg width="11" height="11" viewBox="0 0 240 240"><path d="M 120 30 C 70 30, 30 70, 30 120 C 30 148, 43.5 173.5, 64 190.5 C 61 201, 56.5 213, 50.5 222 C 49 224, 51 226, 53 225 C 64 222, 79 217, 92 211 C 101 213, 110 214, 120 214 C 170 214, 210 173, 210 122 C 210 71, 170 30, 120 30 Z" fill="#1A1D20"/><path d="M 138 56 L 84 132 L 116 132 L 102 184 L 156 108 L 124 108 Z" fill="#25D366" stroke="#25D366" stroke-width="8" stroke-linejoin="round"/></svg></span>Agendada em 29/09 por Ana Souza, pelo Stronizap</div></div>
+      </div>
+      <div class="au">Ana Souza</div>
+    </div>
+  </div></div>
+
+</main>
+</body>
+</html>

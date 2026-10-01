@@ -7,7 +7,7 @@ import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered } from '../lib/stageMove.js';
-import { isAdminUser, canEditLead, isLeadConverted } from '../lib/leads.js';
+import { isAdminUser, canEditLead, isLeadConverted, ZAP_VIA } from '../lib/leads.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
 import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
@@ -40,6 +40,8 @@ import { ReferrerPicker } from '../components/profile/ReferrerPicker.jsx';
 import { ScheduleWizard } from '../components/profile/ScheduleWizard.jsx';
 import { ZapSignupMarker } from '../components/profile/ZapSignupMarker.jsx';
 import { ContractsTab } from '../components/profile/contracts/ContractsTab.jsx';
+import { TimelineAuthor } from '../components/profile/TimelineAuthor.jsx';
+import { StronizapBadge } from '../components/brand/StronizapMark.jsx';
 import { LossReasonModal } from '../modals/LossReasonModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
 import { ContractOutcomeModal } from '../modals/ContractOutcomeModal.jsx';
@@ -59,7 +61,10 @@ import {
   timelineTypeLabel,
   TIMELINE_FILTERS,
   TIMELINE_SYSTEM_KIND,
-  originLastOnTies
+  originLastOnTies,
+  zapScheduleTitle,
+  appointmentOriginText,
+  isAppointmentReschedule
 } from '../lib/timeline.js';
 import { ArrowLeft, ArrowRight, Ban, BookOpen, Building2, Calendar, Check, CheckCircle, Clock, Copy, CreditCard, FileText, GraduationCap, Handshake, MessageCircle, Pencil, Phone, Plus, RefreshCw, Search, Tag, Target, ThumbsDown, Trash, TrendingUp, User, UserPlus, Users } from 'lucide-react';
 
@@ -728,7 +733,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   // O desfecho aponta de volta para o agendamento que o originou: o
   // agendamento mais recente ANTES dele. Dado real — não há campo ligando os
-  // dois, mas a ordem cronológica resolve.
+  // dois, mas a ordem cronológica resolve. `via` diz se ele veio do Stronizap.
+  // O Remarcar da Meta Diária também conta como agendamento
+  // (isAppointmentReschedule): a nota dele não é linha de agendamento, e sem
+  // ele o desfecho apontaria para o agendamento de antes do Remarcar. O
+  // Remarcar de outro dia é as duas coisas na mesma linha, o desfecho
+  // "reagendado" do agendamento de antes e o agendamento novo: por isso o
+  // rodapé sai antes de ele virar a origem.
   const outcomeOrigin = (() => {
     const chrono = interactionsWithClass
       .filter(i => i.createdAt instanceof Date)
@@ -737,11 +748,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     const map = {};
     let lastScheduled = null;
     chrono.forEach(i => {
-      if (i.appointmentOutcome) {
-        if (lastScheduled) map[i.id] = { at: lastScheduled.createdAt, by: lastScheduled.consultantName };
-      } else if (i._kind === 'appointment') {
-        lastScheduled = i;
+      if (i.appointmentOutcome && lastScheduled) {
+        map[i.id] = { at: lastScheduled.createdAt, by: lastScheduled.consultantName, via: lastScheduled.via ?? null };
       }
+      if (isAppointmentReschedule(i) || (!i.appointmentOutcome && i._kind === 'appointment')) lastScheduled = i;
     });
     return map;
   })();
@@ -953,6 +963,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     const stamp = timelineStamp(i.createdAt);
     const typeLabel = timelineTypeLabel(i);
     const author = i.consultantName || 'Sistema';
+    // Agendamento feito pelo Stronizap: a marca antes do nome e o canal no
+    // detalhe ao passar o mouse (modelo A da spec do agendamento). Só a linha
+    // de agendamento leva isso: o campo via pode aparecer em outras linhas.
+    const zapTitle = i._kind === 'appointment' ? zapScheduleTitle(i) : null;
     const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
     const stageName = i._kind === 'status' ? extractStageNameFromInteractionText(i.text) : '';
     // O evento de contrato vem do próprio texto: tipo, plano e valor dele, e não
@@ -1109,9 +1123,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
           {/* O desfecho aponta de volta pro agendamento que o originou. */}
           {origin && (
-            <div className="mt-[7px] pt-[7px] border-t border-slate-200 dark:border-white/[0.07] text-[11px] text-slate-400 dark:text-slate-500">
-              Agendada em {origin.at.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-              {origin.by ? ` por ${origin.by}` : ''}
+            <div className="mt-[7px] pt-[7px] border-t border-slate-200 dark:border-white/[0.07] text-[11px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+              {origin.via === ZAP_VIA && <StronizapBadge />}
+              <span>{appointmentOriginText(origin)}</span>
             </div>
           )}
         </div>
@@ -1137,7 +1151,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         <div className="text-[11px] num text-slate-400 dark:text-slate-500 text-right whitespace-nowrap pt-0.5" title={i.createdAt?.toLocaleString('pt-BR')}>{stamp}</div>
         <div className={cn('text-[9.5px] font-bold uppercase tracking-[.07em] pt-1', typeToneClass)}>{typeLabel}</div>
         <div className="min-w-0">{body}</div>
-        <div className="text-[11px] text-slate-500 dark:text-slate-400 text-right truncate pt-0.5" title={author}>{author}</div>
+        <TimelineAuthor author={author} zapTitle={zapTitle} />
       </div>
     );
   };

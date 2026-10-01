@@ -1,6 +1,7 @@
 // Marca do Stronizap: o balão de conversa com o raio, no traçado do logo dele
-// (viewBox 240). Vai no marco de início do lead cadastrado pelo Stronizap, do
-// mesmo jeito que o Stronizap mostra a marca do Stronilead (StronileadMark).
+// (viewBox 240). Vai no marco de início do lead cadastrado pelo Stronizap e ao
+// lado de quem agendou pelo Stronizap, do mesmo jeito que o Stronizap mostra a
+// marca do Stronilead (StronileadMark).
 // As cores são as do outro produto, sem token semântico que as represente, e
 // por isso o dark: explícito: no tema claro, balão escuro com raio verde; no
 // escuro, a versão clara da marca, balão branco com raio verde-escuro.
@@ -20,5 +21,16 @@ export function StronizapMark({ size = 13, className }) {
         className="fill-[#25D366] stroke-[#25D366] dark:fill-[#128C7E] dark:stroke-[#128C7E]"
       />
     </svg>
+  );
+}
+
+// A marca num círculo discreto, ao lado de um nome: na coluna do autor e no
+// rodapé do desfecho de um agendamento feito pelo Stronizap, na linha do tempo
+// da ficha.
+export function StronizapBadge({ className }) {
+  return (
+    <span className={cn('grid size-[17px] shrink-0 place-items-center rounded-full bg-muted', className)}>
+      <StronizapMark size={11} />
+    </span>
   );
 }

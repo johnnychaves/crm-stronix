@@ -13,6 +13,9 @@ import {
   zapSignupPillText,
   zapSignupDetailText,
   originLastOnTies,
+  zapScheduleTitle,
+  appointmentOriginText,
+  isAppointmentReschedule,
   TIMELINE_FILTERS
 } from '../timeline.js';
 import {
@@ -544,5 +547,57 @@ describe('originLastOnTies: o marco de início embaixo de quem tem o mesmo horá
     const lista = [MARCO, semData, NOTA];
     expect(originLastOnTies(lista).map((i) => i.id)).toEqual(['z1', 's1', 'n1']);
     expect(lista.map((i) => i.id)).toEqual(['z1', 's1', 'n1']);
+  });
+});
+
+describe('agendamento feito pelo Stronizap', () => {
+  it('zapScheduleTitle: o detalhe do autor, com o canal quando ele veio', () => {
+    expect(zapScheduleTitle({ via: 'stronizap', zapChannelName: 'Recepção' })).toBe('Agendado pelo Stronizap, canal Recepção');
+    expect(zapScheduleTitle({ via: 'stronizap', zapChannelName: '  ' })).toBe('Agendado pelo Stronizap');
+    expect(zapScheduleTitle({ via: 'stronizap' })).toBe('Agendado pelo Stronizap');
+  });
+
+  it('zapScheduleTitle: agendamento que não veio do Stronizap não tem detalhe', () => {
+    expect(zapScheduleTitle({ zapChannelName: 'Recepção' })).toBeNull();
+    expect(zapScheduleTitle({ via: 'outro' })).toBeNull();
+    expect(zapScheduleTitle(null)).toBeNull();
+  });
+
+  it('appointmentOriginText: o rodapé do desfecho, com o Stronizap quando o agendamento veio de lá', () => {
+    const at = new Date(2026, 8, 29, 15, 42);
+    expect(appointmentOriginText({ at, by: 'Ana Souza', via: 'stronizap' })).toBe('Agendada em 29/09 por Ana Souza, pelo Stronizap');
+    expect(appointmentOriginText({ at, by: 'Ana Souza' })).toBe('Agendada em 29/09 por Ana Souza');
+    expect(appointmentOriginText({ at, via: 'stronizap' })).toBe('Agendada em 29/09, pelo Stronizap');
+    expect(appointmentOriginText({ at: new Date('x') })).toBe('');
+  });
+});
+
+describe('isAppointmentReschedule: o Remarcar da Meta Diária', () => {
+  const quando = new Date(2026, 9, 3, 18, 0);
+
+  it('visita ou aula marcada de novo, com o rescheduledFor e o volumeKind do tipo, é Remarcar', () => {
+    expect(isAppointmentReschedule({ type: 'note', volumeKind: 'visita', rescheduledFor: quando })).toBe(true);
+    expect(isAppointmentReschedule({ type: 'note', volumeKind: 'aula_experimental', rescheduledFor: quando })).toBe(true);
+  });
+
+  it('o Remarcar de outro dia, que leva o desfecho "rescheduled" na mesma linha, também é', () => {
+    expect(isAppointmentReschedule({
+      type: 'daily_goal_done', appointmentOutcome: 'rescheduled', volumeKind: 'visita', rescheduledFor: quando
+    })).toBe(true);
+  });
+
+  // O próximo contato e o contato reagendado também gravam o rescheduledFor,
+  // mas com o volumeKind do contato. Só o rescheduledFor contaria os dois.
+  it.each(['mensagem', 'ligacao', undefined])('o rescheduledFor com o volumeKind %s não é agendamento', (volumeKind) => {
+    expect(isAppointmentReschedule({ type: 'note', volumeKind, rescheduledFor: quando })).toBe(false);
+  });
+
+  // O agendamento do assistente e o da ponte já são linha de agendamento pelo
+  // texto (🔔), e não levam rescheduledFor.
+  it('sem o rescheduledFor não é Remarcar', () => {
+    expect(isAppointmentReschedule({ type: 'note', volumeKind: 'visita', via: 'stronizap' })).toBe(false);
+    expect(isAppointmentReschedule({ type: 'note' })).toBe(false);
+    expect(isAppointmentReschedule(null)).toBe(false);
+    expect(isAppointmentReschedule(undefined)).toBe(false);
   });
 });

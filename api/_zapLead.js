@@ -20,10 +20,12 @@ import { nationalPhoneDigits, zapMatchKey } from './_zapPhone.js';
 
 const MINUTE_MS = 60000;
 const DAY_MS = 86400000;
-const NAME_MAX = 120;
-const CHANNEL_MAX = 80;
-// Observação do cadastro, o mesmo campo do Novo lead.
-const NOTE_MAX = 1000;
+// Tetos de texto do cadastro: o nome (inclusive o de quem pede), o canal e a
+// observação do Novo lead. O agendamento pelo Stronizap (api/_zapSchedule.js)
+// usa os mesmos, e NOTE_MAX também vale para a anotação do agendamento.
+export const NAME_MAX = 120;
+export const CHANNEL_MAX = 80;
+export const NOTE_MAX = 1000;
 // Cadastro mais novo que isto aparece como "cadastrado há pouco".
 const RECENT_MS = 10 * MINUTE_MS;
 

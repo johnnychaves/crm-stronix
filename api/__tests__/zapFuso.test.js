@@ -151,7 +151,7 @@ describe('dias restantes do contrato no dia de Brasília', () => {
     });
     const card = buildZapCard(lead, brt('2026-09-08T22:00'));
     expect(card.contractEndsAt).toBe('2026-09-09T03:00:00.000Z');
-    expect(card.appointment).toEqual({ type: 'Visita', at: '2026-09-08T21:00:00.000Z' });
+    expect(card.appointment).toEqual({ type: 'Visita', at: '2026-09-08T21:00:00.000Z', outcome: null });
     expect(card.lastInteractionAt).toBe('2026-09-09T00:15:00.000Z');
   });
 });
