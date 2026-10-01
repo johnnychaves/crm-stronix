@@ -16,10 +16,11 @@ import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { Dialog, DialogContent, DialogTitle } from '../components/ui/dialog.jsx';
 
-// Desfechos do contrato VIGENTE: cancelar, trancar e reativar. Os três têm a
-// mesma forma — uma data, às vezes um motivo, e a consequência escrita antes
-// de confirmar. O cancelamento era um window.confirm que gravava motivo null;
-// o trancamento não existia.
+// Desfechos do contrato VIGENTE, ou do contrato em uso quando há renovação
+// marcada: cancelar, trancar e reativar. Os três têm a mesma forma — uma data,
+// às vezes um motivo, e a consequência escrita antes de confirmar. O
+// cancelamento era um window.confirm que gravava motivo null; o trancamento
+// não existia.
 //
 // O que gravar vive em lib/contracts.js; o como, em lib/contractsWrites.js.
 
@@ -88,7 +89,20 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
   const previous = contract?.renewedFromId
     ? (contratos || []).find(c => c.id === contract.renewedFromId) || null
     : null;
-  const undo = sentUndo || (action === 'cancelar' && when && isRenewalNotStarted(contract, previous, when)
+  // Em que contrato o desfecho age. O último (currentContractId) grava o resumo
+  // do lead como sempre; o contrato em uso, com renovação marcada, grava só o
+  // bloco "em uso" (role 'inUse' dos construtores de contracts.js), e `next` é
+  // a renovação marcada: o cancelamento tira dela a marca de emendada, e o
+  // trancamento avisa que ela começa do mesmo jeito. O papel sai do contrato
+  // recebido, nunca do resumo do lead.
+  const isCurrent = !contract?.id || contract.id === lead?.currentContractId;
+  const role = isCurrent ? 'current' : 'inUse';
+  const next = isCurrent ? null : (contratos || []).find(c => c.id === lead?.currentContractId) || null;
+  const nextStart = getSafeDateOrNull(next?.startsAt);
+  const renovacao = next?.planName ? `A renovação (Plano ${next.planName})` : 'A renovação';
+  // Só o último contrato desfaz renovação: o contrato em uso que é ele mesmo
+  // uma renovação, com a data no início dele, é cancelamento comum.
+  const undo = sentUndo || (isCurrent && action === 'cancelar' && when && isRenewalNotStarted(contract, previous, when)
     ? buildRenewalCancel({ contract, previous, cancelledAt: when, reason, note: note.trim() || null })
     : null);
   const primeiro = (lead?.name || '').trim().split(/\s+/)[0] || 'o cliente';
@@ -112,13 +126,24 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
       return `A renovação é desfeita e ${primeiro} volta ao contrato em uso${detalhe ? ` (${detalhe})` : ''}.`;
     }
     if (action === 'reativar') {
-      const novo = buildContractResume({ contract, resumedAt: when || new Date() });
-      return pausedDays > 0
+      const novo = buildContractResume({ contract, resumedAt: when || new Date(), role });
+      const base = pausedDays > 0
         ? `${pausedDays} ${pausedDays === 1 ? 'dia parado' : 'dias parados'} — o término vai de ${fmtDate(endsAt)} para ${fmtDate(novo.newEndsAt)}.`
         : 'Nenhum dia parado — a vigência segue igual.';
+      // O fim novo passa do início da renovação: os dois valem juntos nesse trecho.
+      const cruza = nextStart && novo.newEndsAt && novo.newEndsAt.getTime() >= nextStart.getTime();
+      return cruza ? `${base} ${renovacao} começa em ${fmtDate(nextStart)} do mesmo jeito, e os dois contratos valem juntos até ${fmtDate(novo.newEndsAt)}.` : base;
     }
     if (action === 'trancar') {
-      return 'A vigência congela nesta data. Quando reativar, o término anda para frente pelos dias parados — o cliente não perde o que pagou.';
+      const base = 'A vigência congela nesta data. Quando reativar, o término anda para frente pelos dias parados — o cliente não perde o que pagou.';
+      // Ainda trancado no dia em que a renovação começa, os dias que sobram
+      // correm junto com ela (decisão do Johnny, 30/09/2026).
+      return nextStart
+        ? `${base} ${renovacao} continua marcada para ${fmtDate(nextStart)}. Se o contrato ainda estiver trancado nesse dia, os dias que sobram dele correm junto com ela.`
+        : base;
+    }
+    if (nextStart) {
+      return `O contrato é encerrado${when ? ` em ${fmtDate(when)}` : ''}. ${renovacao} continua marcada para ${fmtDate(nextStart)}, e até lá ${primeiro} fica sem contrato.`;
     }
     return `O contrato é encerrado${when ? ` em ${fmtDate(when)}` : ''} e ${primeiro} passa a contar como inativo. O histórico fica registrado.`;
   })();
@@ -134,23 +159,25 @@ function ContractOutcomeModal({ lead, appUser, db, contract, action = 'cancelar'
     try {
       const planName = contract?.planName || lead?.currentPlanName;
       const built = undo || (action === 'cancelar'
-        ? buildContractCancel({ planName, cancelledAt: when, reason, note: note.trim() || null })
+        ? buildContractCancel({ planName, cancelledAt: when, reason, note: note.trim() || null, role, contract, next })
         : action === 'trancar'
-          ? buildContractPause({ planName, pausedAt: when, reason })
-          : buildContractResume({ contract, resumedAt: when }));
+          ? buildContractPause({ planName, pausedAt: when, reason, role, contract })
+          : buildContractResume({ contract, resumedAt: when, role }));
 
-      // Desfeita a renovação que encurtou o contrato renovado, o fim de antes
-      // volta a ele no mesmo batch.
+      // O contrato gravado é o recebido; só sem ele vale o último do resumo. O
+      // contrato ligado do batch: desfeita a renovação que encurtou o contrato
+      // renovado, o fim de antes volta a ele; cancelado o contrato em uso, a
+      // renovação marcada perde a marca de emendada (nextPatch).
       await commitContractPatch({
         db,
         lead,
         appUser,
-        contractId: contract?.id || lead?.currentContractId,
+        contractId: contract ? contract.id : lead?.currentContractId,
         contractPatch: built.contractPatch,
         leadPatch: built.leadPatch,
         interactionText: built.interactionText,
-        linkedContractId: undo?.previousPatch ? previous.id : null,
-        linkedContractPatch: undo?.previousPatch || null
+        linkedContractId: undo?.previousPatch ? previous.id : (built.nextPatch ? next.id : null),
+        linkedContractPatch: undo?.previousPatch || built.nextPatch || null
       });
 
       toast.success(
