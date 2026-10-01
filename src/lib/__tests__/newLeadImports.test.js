@@ -54,4 +54,18 @@ describe('o montador do lead novo cabe na api/', () => {
     expect(pacotes).toEqual([]);
     expect(arquivos.filter((f) => PROIBIDOS.includes(f) || f.endsWith('.jsx'))).toEqual([]);
   });
+
+  // O agendamento pelo Stronizap usa o patch do assistente, os helpers do
+  // registro de aulas e dos professores, e nenhum deles pode puxar o SDK do
+  // navegador (aulasWrites.js e interactions.js puxam) nem a Meta Diária.
+  it('as regras do agendamento pelo Stronizap (api/_zapSchedule.js) também não', () => {
+    const { arquivos, pacotes } = grafoDe(doRepo('api/_zapSchedule.js'));
+    expect(arquivos).toEqual(expect.arrayContaining([
+      'src/lib/schedulePatch.js', 'src/lib/aulas.js', 'src/lib/professores.js', 'api/_zapCard.js'
+    ]));
+    expect(pacotes).toEqual([]);
+    expect(arquivos.filter((f) => PROIBIDOS.includes(f) || f.endsWith('.jsx'))).toEqual([]);
+    expect(arquivos).not.toContain('src/lib/aulasWrites.js');
+    expect(arquivos).not.toContain('src/lib/interactions.js');
+  });
 });
