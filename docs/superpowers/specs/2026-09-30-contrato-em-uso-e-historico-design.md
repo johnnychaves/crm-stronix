@@ -261,10 +261,11 @@ A revisão independente da entrega inteira pediu estes ajustes, já feitos:
 - No Histórico, "Renovado" só depois do fim do contrato: a renovação que já começou e cruza o contrato sem encurtá-lo deixa o contrato "Em uso" até o fim dele, como `isInUseAt`.
 - As prévias de reativar e trancar saíram sem travessão no meio da frase, e a aba usa `flex` com `gap` e o token `text-muted-foreground` no texto discreto.
 
+Decisão do Johnny em 01/10/2026: Ativar agora a renovação com o contrato em uso trancado continua tirando a marca de emendada da renovação, pela regra de antes ("fora de vigor, não emenda"). Depois de ativada, a renovação já começou, então a marca não muda o estado dela, e o contrato trancado volta a correr junto, pela regra do sucessor.
+
 ## Pontos em aberto
 
-- Ativar agora a renovação com o contrato em uso trancado e sem encurtamento tira a marca de emendada da renovação, pela regra de antes ("fora de vigor, não emenda").
-- Com o último contrato cancelado e outro contrato ainda em uso, a lista mostra "cancelado".
+- Com o último contrato cancelado e outro contrato ainda em uso, o resumo do lead descreve o cancelado. Clientes (etiqueta, anel e filtro), o topo da ficha, a busca e o cartão do Stronizap mostram "cancelado", a Meta Diária deixa o cliente fora da renovação e dos vencidos, e o Upgrade do Kanban fecha como matrícula nova. A aba Contratos mostra o contrato em uso. Acontece na renovação cancelada com data depois do início dela, enquanto o contrato anterior ainda vale, e no contrato paralelo, quando o mais novo é cancelado.
 - O texto da linha do tempo do Ativar agora mostra "(R$ 0,00)" em contrato importado sem valor.
 
 ## Riscos
