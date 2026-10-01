@@ -13,6 +13,33 @@ import { diaDeBrasilia } from './_horarioDeBrasilia.js';
 
 const iso = (d) => (d ? d.toISOString() : null);
 
+// Desfecho que o cartão mostra: compareceu ou faltou. O 'rescheduled' pode vir
+// em dado antigo, mas hoje só a interação leva esse valor, porque o Remarcar
+// zera o desfecho do lead, que já fica com a data nova. Não há desfecho a
+// mostrar nesse caso. O 'cancelled' tira o agendamento do cartão (cardAppointment).
+export function appointmentOutcomeOf(lead) {
+  const outcome = lead?.appointmentOutcome;
+  return outcome === 'attended' || outcome === 'no_show' ? outcome : null;
+}
+
+// Agendamento cancelado não aparece. A regra mora só aqui, para o cartão e
+// para o detalhe do agendamento lerem a mesma.
+export function isAppointmentCancelled(lead) {
+  return lead?.appointmentOutcome === 'cancelled';
+}
+
+// A linha "Agendamento" do cartão: tipo, dia e hora e o desfecho, ou null.
+// Cancelado não aparece. Hoje o único caminho que grava o cancelamento é o
+// "Cancelou" da Meta Diária, que já apaga a data e o tipo do lead. A regra é
+// defensiva: cobre dado antigo e um caminho que um dia grave o cancelado sem
+// apagar a data.
+export function cardAppointment(lead) {
+  if (isAppointmentCancelled(lead)) return null;
+  const tipo = getLeadAppointmentType(lead);
+  const quando = getLeadAppointmentDate(lead);
+  return tipo && quando ? { type: tipo, at: iso(quando), outcome: appointmentOutcomeOf(lead) } : null;
+}
+
 // `checkpoints` são os marcos de renovação da ACADEMIA (Configurações → Metas
 // & ritmo → Marcos de renovação, gravados em stronix_config/general). Quem lê
 // o doc e repassa é api/zap.js; aqui só propaga pra buildZapStrip, que já
@@ -23,8 +50,6 @@ export function buildZapCard(lead, now = new Date(), checkpoints = DEFAULT_RENEW
 
   const eCliente = lead.lifecycleStage === 'cliente';
   const fim = getSafeDateOrNull(lead.currentContractEndsAt);
-  const tipo = getLeadAppointmentType(lead);
-  const quando = getLeadAppointmentDate(lead);
 
   const card = {
     found: true,
@@ -33,7 +58,7 @@ export function buildZapCard(lead, now = new Date(), checkpoints = DEFAULT_RENEW
     name: lead.name ?? null,
     consultantName: lead.consultantName ?? null,
     lastInteractionAt: iso(getSafeDateOrNull(lead.lastInteractionAt)),
-    appointment: tipo && quando ? { type: tipo, at: iso(quando) } : null,
+    appointment: cardAppointment(lead),
     strip: buildZapStrip(lead, now, checkpoints)
   };
 

@@ -4,7 +4,7 @@
 
 import { monthKeyOf, monthLabel } from './operacional/month.js';
 import { parseValorBRL } from './format.js';
-import { ZAP_SIGNUP_TYPE } from './leads.js';
+import { ZAP_SIGNUP_TYPE, ZAP_VIA } from './leads.js';
 
 export const extractStageNameFromInteractionText = (text = '') => {
   const match = String(text).match(/\[([^\]]+)\]/);
@@ -62,6 +62,42 @@ export const zapSignupDetailText = (i) => {
   const texto = [dono ? `Consultor responsável ${dono}` : null, canal ? `canal ${canal}` : null].filter(Boolean).join(' · ');
   return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : null;
 };
+
+// Agendamento gravado pelo Stronizap (api/zap.js, ação schedule): o detalhe
+// que aparece ao passar o mouse no autor, com o canal da conversa. null
+// quando o agendamento não veio do Stronizap.
+export const zapScheduleTitle = (i) => {
+  if (i?.via !== ZAP_VIA) return null;
+  const canal = String(i?.zapChannelName || '').trim();
+  return canal ? `Agendado pelo Stronizap, canal ${canal}` : 'Agendado pelo Stronizap';
+};
+
+// O rodapé do desfecho, que aponta para o agendamento de origem: "Agendada em
+// 29/09 por Ana Souza", mais ", pelo Stronizap" quando ele veio de lá. `at` é
+// o horário do agendamento, `by` quem agendou e `via` a origem.
+export const appointmentOriginText = ({ at, by = null, via = null } = {}) => {
+  const d = validDate(at);
+  if (!d) return '';
+  const quem = String(by || '').trim();
+  return [
+    `Agendada em ${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}`,
+    quem ? ` por ${quem}` : '',
+    via === ZAP_VIA ? ', pelo Stronizap' : ''
+  ].join('');
+};
+
+// O Remarcar da Meta Diária (handleReschedule, em DailyGoalView.jsx) marca a
+// visita ou a aula de novo. Depois do "Não veio", ou para o mesmo dia, ele grava
+// uma nota ("🔄 Próxima tentativa marcada…", "🔄 Horário ajustado…") que
+// classifyInteraction lê como nota, e não como agendamento. Para outro dia, a
+// linha leva também o desfecho 'rescheduled' e é lida como desfecho. Nos três
+// casos o que o identifica é o `rescheduledFor` junto do `volumeKind` do tipo
+// marcado, 'visita' ou 'aula_experimental'. O `rescheduledFor` sozinho não
+// basta: o próximo contato e o contato reagendado da Meta também o gravam, com
+// o `volumeKind` do contato ('mensagem' ou 'ligacao'), e esses não marcam
+// visita nem aula.
+export const isAppointmentReschedule = (i) =>
+  Boolean(i?.rescheduledFor) && (i.volumeKind === 'visita' || i.volumeKind === 'aula_experimental');
 
 // O marco de início fica embaixo de quem tem o mesmo horário que ele. O
 // cadastro pelo Stronizap grava o marco e a observação do cadastro na mesma

@@ -152,6 +152,11 @@ export const isRegistrationNote = (text) =>
 // create-lead): o marco de início na linha do tempo da ficha.
 export const ZAP_SIGNUP_TYPE = 'zap_signup';
 
+// Origem de uma interação gravada pelo Stronizap (api/zap.js, ação schedule):
+// o campo `via` da interação. A ficha desenha a marca do Stronizap ao lado de
+// quem agendou.
+export const ZAP_VIA = 'stronizap';
+
 // A interação é o registro do próprio cadastro, não um contato com a pessoa:
 // a observação do Novo lead ou o marco do cadastro pelo Stronizap.
 export const isRegistrationInteraction = (i) =>
