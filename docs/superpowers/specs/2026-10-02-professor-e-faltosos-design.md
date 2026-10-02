@@ -1,5 +1,5 @@
 ---
-status: revisão
+status: ativo
 ---
 
 # Professor e faltosos
