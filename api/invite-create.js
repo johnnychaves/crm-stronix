@@ -2,16 +2,25 @@ import { randomUUID } from 'node:crypto';
 import { adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { getSeatUsage, canAddSeat } from './_plans.js';
 import { isTenantAdmin } from './_auth.js';
+import { professorLinkRefusal } from './_professorLink.js';
+import { ROLES } from '../src/lib/acesso.js';
+import { professorIdProblem } from '../src/lib/teamRoles.js';
 import { withSentry } from './_sentry.js';
 
-// Cria um convite para adicionar um usuário (admin ou consultor) ao tenant.
-// ADMIN do tenant only. Vercel serverless function.
+// Cria um convite para adicionar um usuário (gestor, consultor ou professor)
+// ao tenant. ADMIN do tenant only. Vercel serverless function.
 //
-// POST body: { email, role }  (role: 'admin' | 'consultant')
+// POST body: { email, role, professorId?, allowExtra? }
+//   role: 'admin' | 'consultant' | 'professor' (outro valor vira consultor)
+//   professorId: obrigatório no professor, id em stronix_professores
 // Retorna { inviteId, token, tenantId, expiresAt } — o app monta o link
 // /?invite=<token>&t=<tenantId> e o admin envia ao convidado.
+//
+// Professor só com o módulo Professor e faltosos ligado e com um professor
+// ativo do cadastro, sem outro login (api/_professorLink.js). O convite guarda
+// o professorId, e o aceite confere tudo de novo.
 
-const ROLES = ['admin', 'consultant'];
+const INVITE_ROLES = [ROLES.GESTOR, ROLES.CONSULTOR, ROLES.PROFESSOR];
 const INVITE_TTL_DAYS = 7;
 
 const invitesCollection = (tenantId) =>
@@ -33,19 +42,30 @@ export default withSentry(async function handler(req, res) {
       return res.status(403).json({ error: 'Apenas o master pode convidar usuários.' });
     }
 
-    const { email, role, allowExtra } = req.body || {};
+    const { email, role, allowExtra, professorId } = req.body || {};
     const normalizedEmail = String(email || '').trim().toLowerCase();
-    const normalizedRole = ROLES.includes(role) ? role : 'consultant';
+    const normalizedRole = INVITE_ROLES.includes(role) ? role : ROLES.CONSULTOR;
+    const asProfessor = normalizedRole === ROLES.PROFESSOR;
 
     if (!normalizedEmail || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalizedEmail)) {
       return res.status(400).json({ error: 'E-mail inválido.' });
+    }
+    if (asProfessor) {
+      const bad = professorIdProblem(professorId);
+      if (bad) return res.status(bad.status).json({ error: bad.error });
     }
 
     // Vagas por PAPEL do convite: gestor além do incluso → upgrade; consultor
     // além do incluso pode entrar como EXTRA pago, com confirmação do admin
     // AQUI (quem aprova o custo é quem convida, não o convidado). A aprovação
-    // fica gravada no convite (extraApproved) e o aceite revalida.
+    // fica gravada no convite (extraApproved) e o aceite revalida. Professor
+    // não ocupa vaga, mas precisa do módulo e do professor do cadastro,
+    // conferidos com a academia que o getSeatUsage já leu.
     const seats = await getSeatUsage(auth.tenantId);
+    if (asProfessor) {
+      const refused = await professorLinkRefusal({ tenantId: auth.tenantId, modules: seats.modules, professorId });
+      if (refused) return res.status(refused.status).json({ error: refused.error });
+    }
     const decision = canAddSeat(seats, normalizedRole, { allowExtra: allowExtra === true });
     if (!decision.ok) {
       if (decision.code === 'extra_confirm') {
@@ -66,6 +86,7 @@ export default withSentry(async function handler(req, res) {
     const ref = await invitesCollection(auth.tenantId).add({
       email: normalizedEmail,
       role: normalizedRole,
+      ...(asProfessor ? { professorId } : {}),
       token,
       status: 'pending',
       expiresAt,
@@ -81,6 +102,7 @@ export default withSentry(async function handler(req, res) {
       tenantId: auth.tenantId,
       email: normalizedEmail,
       role: normalizedRole,
+      ...(asProfessor ? { professorId } : {}),
       expiresAt: expiresAt.toMillis()
     });
   } catch (error) {
