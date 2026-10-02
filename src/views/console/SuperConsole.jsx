@@ -1267,7 +1267,12 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
               ))}
             </div>
           </div>
-          <TenantModulesCard tenant={t} save={saveModules} professores={stats?.professors || 0} />
+          {/* A contagem da lista do console (t.professorCount) já chega antes do
+              Detail abrir; a do GET (stats) chega depois e fica null se ele
+              falhar. Com só a do GET, o clique antes dela ou o GET com erro
+              desligaria o módulo sem a confirmação, e todo professor perderia
+              o acesso. Vale a maior das duas. */}
+          <TenantModulesCard tenant={t} save={saveModules} professores={Math.max(t.professorCount || 0, stats?.professors || 0)} />
         </div>
         <div className="card">
           <div className="card-h"><h3>Atividade recente</h3></div>

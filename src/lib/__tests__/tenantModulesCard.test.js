@@ -115,11 +115,47 @@ describe('TenantModulesCard', () => {
   });
 });
 
+// Os professores como o Detail passa ao cartão (o teste de baixo trava a
+// mesma conta no SuperConsole.jsx): a contagem da lista do console
+// (t.professorCount, do api/super-overview.js) chega antes do Detail abrir, e
+// a do GET do api/tenant-status.js (stats) chega depois, ou fica null se ele
+// falhar.
+const professoresDoDetail = (t, stats) => Math.max(t.professorCount || 0, stats?.professors || 0);
+
+describe('o cartão com os professores que o Detail passa', () => {
+  it('antes de o GET responder, a contagem da lista já pede a confirmação', async () => {
+    const save = vi.fn(async () => {});
+    const t = { id: 'stronix-crm-app', modules: ['faltosos'], professorCount: 2 };
+    await montar({ tenant: t, save, professores: professoresDoDetail(t, null) });
+    await clicar();
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0]).toBe('Desligar Professor e faltosos? Os 2 professores com login passam a ver só o aviso de acesso desligado, a partir do próximo login ou F5.');
+    expect(save).toHaveBeenCalledWith([]);
+  });
+
+  it('com o GET respondido, vale a maior das duas contagens', async () => {
+    const save = vi.fn(async () => {});
+    const t = { id: 'stronix-crm-app', modules: ['faltosos'], professorCount: 1 };
+    await montar({ tenant: t, save, professores: professoresDoDetail(t, { professors: 3 }) });
+    await clicar();
+    expect(confirm.mock.calls[0][0]).toContain('Os 3 professores');
+  });
+
+  it('academia sem professor na lista e GET com erro: desliga sem confirmação', async () => {
+    const save = vi.fn(async () => {});
+    const t = { id: 'shape-one', modules: ['faltosos'] };
+    await montar({ tenant: t, save, professores: professoresDoDetail(t, null) });
+    await clicar();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(save).toHaveBeenCalledWith([]);
+  });
+});
+
 describe('o cartão na página da academia (SuperConsole.jsx)', () => {
   const fonte = readFileSync(join(AQUI, '../../views/console/SuperConsole.jsx'), 'utf8');
 
-  it('o Detail monta o cartão com a gravação e os professores da academia', () => {
-    expect(fonte).toMatch(/<TenantModulesCard tenant=\{t\} save=\{saveModules\} professores=\{stats\?\.professors \|\| 0\} \/>/);
+  it('o Detail monta o cartão com a gravação e a maior contagem de professores, a da lista ou a do GET', () => {
+    expect(fonte).toMatch(/<TenantModulesCard tenant=\{t\} save=\{saveModules\} professores=\{Math\.max\(t\.professorCount \|\| 0, stats\?\.professors \|\| 0\)\} \/>/);
   });
 
   it('a gravação vai para a api/tenant-status.js com a lista inteira e relê a lista do console', () => {
