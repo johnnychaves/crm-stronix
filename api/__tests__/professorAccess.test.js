@@ -290,6 +290,20 @@ describe('troca de papel (set-role)', () => {
     expect(contas.revokeRefreshTokens).not.toHaveBeenCalled();
   });
 
+  // A carteira conta tudo o que tem o consultantId da pessoa, não só o lead
+  // em aberto: o cliente que ficasse com ela passaria o consultantId para cada
+  // indicação nova pelo link público.
+  it.each([
+    ['cliente', { name: 'Mariana', consultantId: 'uid-ana', lifecycleStage: 'cliente' }],
+    ['perda', { name: 'Mariana', consultantId: 'uid-ana', status: 'Perda' }],
+  ])('%s na carteira também barra', async (_caso, lead) => {
+    banco.docs.set(`artifacts/${T}/public/data/stronix_leads/L1`, lead);
+    const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+    expect(res.statusCode).toBe(409);
+    expect(res.body.error).toBe(PROFESSOR_LINK_MESSAGES.ownsLeads('Ana'));
+    expect(cadastro('uid-ana').role).toBe('consultant');
+  });
+
   it('lead de outra pessoa não barra', async () => {
     banco.docs.set(`artifacts/${T}/public/data/stronix_leads/L1`, { name: 'Mariana', consultantId: 'uid-bia' });
     const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
@@ -382,6 +396,55 @@ describe('troca de papel (set-role)', () => {
     const res = await trocarPapel({ userDocId: 'uid-bia', role: 'professor', professorId: 'prof-lu' });
     expect(res.statusCode).toBe(403);
     expect(cadastro('uid-bia').role).toBe('consultant');
+  });
+
+  // O gestor escreve qualquer campo do stronix_users da própria academia, então
+  // um cadastro dele pode apontar id e authUid para a conta de outra academia.
+  // Quem prova de quem é a conta é o claim do Auth, e sem essa trava o set-role
+  // derrubaria as sessões de uma pessoa de fora.
+  describe('conta de fora da academia', () => {
+    const claimsDe = (alvo, claims) => async (uid) => ({ uid, customClaims: uid === alvo ? claims : { tenantId: T } });
+
+    it.each([
+      ['consultor que viraria professor', consultorDe('uid-x'), { role: 'professor', professorId: 'prof-lu' }],
+      ['professor que voltaria a consultor', professorDe('uid-x', 'prof-rafa'), { role: 'consultant' }],
+    ])('%s com a conta de outra academia: recusa sem mexer no cadastro nem na sessão', async (_caso, dados, pedido) => {
+      semear({ equipe: { 'uid-bia': null, 'uid-x': dados } });
+      contas.getUser.mockImplementation(claimsDe('uid-x', { tenantId: 'outra-academia' }));
+      const antes = { ...cadastro('uid-x') };
+      const res = await trocarPapel({ userDocId: 'uid-x', ...pedido });
+      expect(res.statusCode).toBe(404);
+      expect(res.body.error).toBe('Usuário não encontrado neste tenant.');
+      expect(contas.getUser).toHaveBeenCalledWith('uid-x');
+      expect(cadastro('uid-x')).toEqual(antes);
+      expect(contas.revokeRefreshTokens).not.toHaveBeenCalled();
+      expect(cobranca.sincronizar).not.toHaveBeenCalled();
+    });
+
+    it('a conta do super-admin não muda de papel por aqui', async () => {
+      semear({ equipe: { 'uid-x': consultorDe('uid-x') } });
+      contas.getUser.mockImplementation(claimsDe('uid-x', { superAdmin: true, tenantId: T }));
+      const res = await trocarPapel({ userDocId: 'uid-x', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(403);
+      expect(res.body.error).toBe('Esta conta não pode ser alterada por aqui.');
+      expect(cadastro('uid-x').role).toBe('consultant');
+      expect(cadastro('uid-x')).not.toHaveProperty('professorId');
+      expect(contas.revokeRefreshTokens).not.toHaveBeenCalled();
+    });
+
+    it('cadastro cuja conta não existe mais troca o papel, sem sessão para derrubar', async () => {
+      semear({ equipe: { 'uid-bia': null, 'uid-x': professorDe('uid-x', 'prof-rafa') } });
+      contas.getUser.mockImplementation(async (uid) => {
+        if (uid === 'uid-x') throw Object.assign(new Error('conta não existe'), { code: 'auth/user-not-found' });
+        return { uid, customClaims: { tenantId: T } };
+      });
+      const res = await trocarPapel({ userDocId: 'uid-x', role: 'consultant' });
+      expect(res.statusCode).toBe(200);
+      expect(res.body).toMatchObject({ ok: true, changed: true, role: 'consultant' });
+      expect(cadastro('uid-x').role).toBe('consultant');
+      expect(cadastro('uid-x')).not.toHaveProperty('professorId');
+      expect(contas.revokeRefreshTokens).not.toHaveBeenCalled();
+    });
   });
 
   it('por aqui o papel muda só entre Consultor e Professor', async () => {

@@ -296,7 +296,11 @@ async function handleSetRole(req, res) {
 
     if (change.role === ROLES.PROFESSOR && from !== ROLES.PROFESSOR) {
       // Professor não é dono de lead: a carteira passa antes, em
-      // Configurações → Migrar leads, que move pelo consultantId.
+      // Configurações → Migrar leads, que move pelo consultantId. Barra
+      // qualquer lead da pessoa, cliente e perda inclusive: o cliente que
+      // ficasse com ela passaria o consultantId para cada indicação nova pelo
+      // link público (api/tenant-resolve.js). O texto da recusa diz os três
+      // tipos que o gestor marca lá.
       const owned = await dataCollection(auth.tenantId, LEADS_PATH)
         .where('consultantId', '==', snap.id).limit(1).get();
       if (!owned.empty) {

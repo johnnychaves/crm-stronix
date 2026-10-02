@@ -23,7 +23,13 @@ export const PROFESSOR_LINK_MESSAGES = Object.freeze({
   taken: 'Esse professor já tem acesso ao app. Cada professor do cadastro tem um login só.',
   inviteStale: 'Este convite de professor não vale mais. Peça um convite novo ao gestor.',
   // O professor não é dono de lead: quem vira professor passa a carteira antes.
-  ownsLeads: (name) => `${nameOrSomeone(name)} ainda tem leads na carteira. Passe os leads em Configurações → Migrar leads antes de mudar o papel para Professor.`,
+  // O set-role barra qualquer lead com o consultantId da pessoa, cliente e
+  // perda inclusive (o cliente que ficasse com ela passaria o consultantId
+  // para cada indicação nova pelo link público). O Migrar leads abre só com
+  // "Leads em aberto" marcado, então o texto diz os três tipos com os nomes da
+  // tela, senão o gestor migra o padrão e recebe a mesma recusa. O
+  // teamRoles.test.js confere os nomes na tela.
+  ownsLeads: (name) => `${nameOrSomeone(name)} ainda tem leads na carteira, contando clientes e perdas. Passe os leads em Configurações → Migrar leads, marcando Leads em aberto, Clientes ativos e Perdas, antes de mudar o papel para Professor.`,
   // As regras do Firestore leem o papel no cadastro de id igual ao uid da
   // conta. Cadastro antigo, de id diferente, não enxergaria a trava do
   // professor.

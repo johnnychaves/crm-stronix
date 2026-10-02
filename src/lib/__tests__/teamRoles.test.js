@@ -2,11 +2,16 @@
 // regra serve a tela de Equipe & acessos e a api/ (convite, aceite, cadastro e
 // troca de papel).
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { SETTINGS_RAIL_GROUPS } from '../settingsRail.js';
 import {
   SET_ROLE_ACTION, PROFESSOR_LINK_MESSAGES, isActiveProfessor,
   linkedProfessorIds, availableProfessors, linkedProfessorText, inviteRoleOptions,
   planRoleChange, professorIdProblem, professorModuleProblem, professorLinkProblem,
 } from '../teamRoles.js';
+
+const TRANSFER_TAB_PATH = fileURLToPath(new URL('../../views/settings/TransferLeadsTab.jsx', import.meta.url));
 
 const RAFA = { id: 'prof-rafa', nome: 'Rafael Menezes', ativo: true };
 // Professor cadastrado antes do campo ativo existir.
@@ -133,9 +138,23 @@ describe('conferências do servidor', () => {
 describe('textos das recusas', () => {
   it('dizem o nome de quem não pode virar professor e para onde ir', () => {
     expect(PROFESSOR_LINK_MESSAGES.ownsLeads('Ana Souza'))
-      .toBe('Ana Souza ainda tem leads na carteira. Passe os leads em Configurações → Migrar leads antes de mudar o papel para Professor.');
-    expect(PROFESSOR_LINK_MESSAGES.ownsLeads('')).toMatch(/^Essa pessoa ainda tem leads na carteira\./);
+      .toBe('Ana Souza ainda tem leads na carteira, contando clientes e perdas. Passe os leads em Configurações → Migrar leads, marcando Leads em aberto, Clientes ativos e Perdas, antes de mudar o papel para Professor.');
+    expect(PROFESSOR_LINK_MESSAGES.ownsLeads('')).toMatch(/^Essa pessoa ainda tem leads na carteira,/);
     expect(PROFESSOR_LINK_MESSAGES.legacyRecord('Beto')).toMatch(/^Beto tem um cadastro antigo/);
+  });
+
+  // O set-role barra qualquer lead da pessoa, e o Migrar leads abre só com
+  // "Leads em aberto" marcado. O texto da recusa diz o nome da tela e os três
+  // tipos como a tela escreve: se um deles mudar lá, o gestor não acharia.
+  it('a recusa da carteira usa os nomes da tela Migrar leads', () => {
+    const texto = PROFESSOR_LINK_MESSAGES.ownsLeads('Ana');
+    const telaMigrar = SETTINGS_RAIL_GROUPS.flatMap((g) => g.items).find((i) => i.id === 'transfer');
+    expect(texto).toContain(`Configurações → ${telaMigrar.label}`);
+    const tela = readFileSync(TRANSFER_TAB_PATH, 'utf8');
+    for (const tipo of ['Leads em aberto', 'Clientes ativos', 'Perdas']) {
+      expect(tela, tipo).toContain(`label: '${tipo}'`);
+      expect(texto, tipo).toContain(tipo);
+    }
   });
 
   it('sem travessão nem aspas curvas', () => {
