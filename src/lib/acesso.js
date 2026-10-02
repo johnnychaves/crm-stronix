@@ -77,6 +77,10 @@ const PERMISSOES = Object.freeze({
   [ROLES.PROFESSOR]: Object.freeze([]),
 });
 
+// Ação que não está na lista é recusada em silêncio, para nada quebrar em
+// produção. Por isso um nome errado (ACTIONS.LEAD_CRAIR vira undefined)
+// esconderia o botão de todo mundo sem erro: o acessoActionsRef.test.js
+// confere que todo ACTIONS.NOME de src/ e api/ existe aqui.
 export function can(user, action) {
   if (!user) return false;
   return PERMISSOES[roleOf(user)].includes(action);

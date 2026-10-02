@@ -132,6 +132,8 @@ describe('can', () => {
     }
   });
 
+  // Em produção a recusa é silenciosa. O nome errado em ACTIONS.NOME, que
+  // chegaria aqui como undefined, é barrado antes pelo acessoActionsRef.test.js.
   it('ação fora da lista é recusada para todos (tela é canOpenScreen, não can)', () => {
     expect(can(gestor, 'tela.pipeline')).toBe(false);
     expect(can(consultor, 'lead.excluir')).toBe(false);
