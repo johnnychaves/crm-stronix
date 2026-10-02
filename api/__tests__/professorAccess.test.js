@@ -12,7 +12,7 @@ import { PROFESSOR_LINK_MESSAGES } from '../../src/lib/teamRoles.js';
 // 1 gestor e 2 consultores, sem extra pago.
 
 const T = 'academia-teste';
-const banco = vi.hoisted(() => ({ docs: new Map(), sessao: null, ultimoId: 0 }));
+const banco = vi.hoisted(() => ({ docs: new Map(), consultas: [], sessao: null, ultimoId: 0 }));
 const contas = vi.hoisted(() => ({
   createUser: vi.fn(), setCustomUserClaims: vi.fn(), getUser: vi.fn(), getUserByEmail: vi.fn(),
   updateUser: vi.fn(), deleteUser: vi.fn(), revokeRefreshTokens: vi.fn(),
@@ -51,6 +51,9 @@ vi.mock('../_firebaseAdmin.js', () => {
           const d = banco.docs.get(chave);
           return { id: caminho.at(-1), exists: d != null, data: () => (d ? { ...d } : undefined), ref: ref(caminho) };
         }
+        // Cada consulta de coleção fica anotada, para o teste saber se a
+        // carteira (stronix_leads) chegou a ser lida.
+        banco.consultas.push({ colecao: caminho.at(-1), filtros });
         const docs = filhos();
         return { empty: docs.length === 0, size: docs.length, docs, forEach: (fn) => docs.forEach(fn) };
       },
@@ -97,6 +100,7 @@ vi.mock('@sentry/node', () => ({
 
 const EQUIPE = `artifacts/${T}/public/data/stronix_users`;
 const CATALOGO = `artifacts/${T}/public/data/stronix_professores`;
+const CARTEIRA = `artifacts/${T}/public/data/stronix_leads`;
 const SENHA = 'Academia@2026';
 const PLANO_COM_EXTRA = { slug: 'starter', name: 'Starter', maxManagers: 1, maxConsultants: 2, extraUserPrice: 30, maxExtraUsers: 5 };
 
@@ -110,6 +114,7 @@ const professorDe = (id, professorId) => ({ name: id, email: `${id}@academia.com
 // Academia STRONIX de teste: módulo ligado, um gestor, as duas vagas de
 // consultor ocupadas (Ana e Bia) e três professores no cadastro.
 function semear({ modules = ['faltosos'], plano = null, equipe = {} } = {}) {
+  banco.consultas = [];
   banco.docs = new Map([
     [`tenants/${T}`, { plan: 'starter', status: 'active', modules, primaryAdminUid: 'gestor-1' }],
     [`${EQUIPE}/gestor-1`, { name: 'Gestor', email: 'gestor@academia.com', authUid: 'gestor-1', role: 'admin' }],
@@ -317,6 +322,47 @@ describe('troca de papel (set-role)', () => {
     expect(res.statusCode).toBe(422);
     expect(res.body.error).toBe(PROFESSOR_LINK_MESSAGES.legacyRecord('Beto'));
     expect(cadastro('doc-antigo').role).toBe('consultant');
+  });
+
+  // A carteira é a última conferência de quem vira professor. A recusa dela
+  // manda passar os leads em Migrar leads, e essa migração não tem volta:
+  // qualquer outra recusa precisa aparecer antes, sem nem ler a carteira.
+  describe('a carteira fica por último', () => {
+    const leuCarteira = () => banco.consultas.some((c) => c.colecao === 'stronix_leads');
+
+    it('com o resto certo, a carteira é lida e barra', async () => {
+      banco.docs.set(`${CARTEIRA}/L1`, { name: 'Mariana', consultantId: 'uid-ana' });
+      const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(409);
+      expect(res.body.error).toBe(PROFESSOR_LINK_MESSAGES.ownsLeads('Ana'));
+      expect(leuCarteira()).toBe(true);
+    });
+
+    it('cadastro antigo com leads recebe a recusa do cadastro antigo', async () => {
+      semear({ equipe: { 'doc-antigo': { name: 'Beto', email: 'beto@academia.com', authUid: 'uid-beto', role: 'consultant' } } });
+      banco.docs.set(`${CARTEIRA}/L1`, { name: 'Mariana', consultantId: 'doc-antigo' });
+      const res = await trocarPapel({ userDocId: 'doc-antigo', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(422);
+      expect(res.body.error).toBe(PROFESSOR_LINK_MESSAGES.legacyRecord('Beto'));
+      expect(leuCarteira()).toBe(false);
+      expect(cadastro('doc-antigo').role).toBe('consultant');
+    });
+
+    it.each([
+      ['sem o módulo', { modules: [] }, 'prof-lu', 403, PROFESSOR_LINK_MESSAGES.moduleOff],
+      ['professor que já tem login', { equipe: { 'uid-rafa': professorDe('uid-rafa', 'prof-rafa') } }, 'prof-rafa', 409, PROFESSOR_LINK_MESSAGES.taken],
+      ['professor inativo', {}, 'prof-velho', 422, PROFESSOR_LINK_MESSAGES.inactive],
+      ['professor fora do cadastro', {}, 'prof-sumido', 422, PROFESSOR_LINK_MESSAGES.notFound],
+    ])('%s, com leads na carteira, recebe a própria recusa', async (_caso, semente, professorId, status, erro) => {
+      semear(semente);
+      banco.docs.set(`${CARTEIRA}/L1`, { name: 'Mariana', consultantId: 'uid-ana' });
+      const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId });
+      expect(res.statusCode).toBe(status);
+      expect(res.body.error).toBe(erro);
+      expect(leuCarteira()).toBe(false);
+      expect(cadastro('uid-ana').role).toBe('consultant');
+      expect(contas.revokeRefreshTokens).not.toHaveBeenCalled();
+    });
   });
 
   it('consultor extra que vira professor libera a vaga paga, e a assinatura é ajustada', async () => {

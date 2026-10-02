@@ -235,10 +235,12 @@ async function handleSetPassword(req, res) {
 //
 // Troca o papel entre Consultor e Professor, ou o professor do cadastro
 // ligado a quem já é professor. Gestor da academia only. O papel do gestor
-// não muda por aqui, e ninguém troca o próprio papel. Professor exige o
-// módulo Professor e faltosos, um professor ativo do cadastro sem outro login,
-// carteira vazia (o professor não é dono de lead) e cadastro com id igual ao
-// uid da conta (é por esse id que as regras do Firestore leem o papel).
+// não muda por aqui, e ninguém troca o próprio papel. Professor exige, nesta
+// ordem: cadastro com id igual ao uid da conta (é por esse id que as regras
+// do Firestore leem o papel), o módulo Professor e faltosos, um professor
+// ativo do cadastro sem outro login e, por último, carteira vazia (o
+// professor não é dono de lead). A carteira fica no fim porque a recusa dela
+// pede uma migração de leads que não tem volta.
 // Professor que volta a consultor ocupa vaga de consultor, com a mesma regra
 // do cadastro (extra pago só com allowExtra).
 //
@@ -294,24 +296,15 @@ async function handleSetRole(req, res) {
     const change = planRoleChange(member, { role, professorId });
     if (!change) return res.status(200).json({ ok: true, changed: false });
 
-    if (change.role === ROLES.PROFESSOR && from !== ROLES.PROFESSOR) {
-      // Professor não é dono de lead: a carteira passa antes, em
-      // Configurações → Migrar leads, que move pelo consultantId. Barra
-      // qualquer lead da pessoa, cliente e perda inclusive: o cliente que
-      // ficasse com ela passaria o consultantId para cada indicação nova pelo
-      // link público (api/tenant-resolve.js). O texto da recusa diz os três
-      // tipos que o gestor marca lá.
-      const owned = await dataCollection(auth.tenantId, LEADS_PATH)
-        .where('consultantId', '==', snap.id).limit(1).get();
-      if (!owned.empty) {
-        return res.status(409).json({ error: PROFESSOR_LINK_MESSAGES.ownsLeads(member.name) });
-      }
-      // As regras leem o papel em stronix_users/{uid}. No cadastro antigo, de
-      // id diferente do uid, elas não veriam o professor e deixariam a pessoa
-      // gravar como consultor.
-      if (!member.authUid || member.authUid !== snap.id) {
-        return res.status(422).json({ error: PROFESSOR_LINK_MESSAGES.legacyRecord(member.name) });
-      }
+    // Quem passa a ser professor agora. Quem já é professor e só troca o
+    // professor ligado não tem carteira nem cadastro antigo para conferir.
+    const becomesProfessor = change.role === ROLES.PROFESSOR && from !== ROLES.PROFESSOR;
+
+    // As regras leem o papel em stronix_users/{uid}. No cadastro antigo, de
+    // id diferente do uid, elas não veriam o professor e deixariam a pessoa
+    // gravar como consultor. Não precisa de leitura, então vem primeiro.
+    if (becomesProfessor && (!member.authUid || member.authUid !== snap.id)) {
+      return res.status(422).json({ error: PROFESSOR_LINK_MESSAGES.legacyRecord(member.name) });
     }
 
     const seats = await getSeatUsage(auth.tenantId);
@@ -321,6 +314,24 @@ async function handleSetRole(req, res) {
         tenantId: auth.tenantId, modules: seats.modules, professorId: change.professorId, exceptUserId: snap.id,
       });
       if (refused) return res.status(refused.status).json({ error: refused.error });
+
+      // A carteira fica por último. A recusa dela manda o gestor passar os
+      // leads em Configurações → Migrar leads, e essa migração não tem volta:
+      // se outra recusa (módulo, professor ou cadastro antigo) viesse só
+      // depois, o gestor teria migrado a carteira à toa.
+      //
+      // Professor não é dono de lead: Migrar leads move pelo consultantId.
+      // Barra qualquer lead da pessoa, cliente e perda inclusive: o cliente
+      // que ficasse com ela passaria o consultantId para cada indicação nova
+      // pelo link público (api/tenant-resolve.js). O texto da recusa diz os
+      // três tipos que o gestor marca lá.
+      if (becomesProfessor) {
+        const owned = await dataCollection(auth.tenantId, LEADS_PATH)
+          .where('consultantId', '==', snap.id).limit(1).get();
+        if (!owned.empty) {
+          return res.status(409).json({ error: PROFESSOR_LINK_MESSAGES.ownsLeads(member.name) });
+        }
+      }
     } else {
       decision = canAddSeat(seats, ROLES.CONSULTOR, { allowExtra: allowExtra === true });
       if (!decision.ok) {
