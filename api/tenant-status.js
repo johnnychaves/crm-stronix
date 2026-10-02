@@ -4,6 +4,7 @@ import { loadPlans, getSeatUsage } from './_plans.js';
 import { sanitizeProfile } from './_profile.js';
 import { writeTenantPrivate } from './_tenantPrivate.js';
 import { withSentry } from './_sentry.js';
+import { KNOWN_MODULES, normalizeModules } from '../src/lib/modules.js';
 
 // Atualiza status / plano / cobrança / perfil de uma organização — SUPERADMIN only.
 //
@@ -12,6 +13,8 @@ import { withSentry } from './_sentry.js';
 //   - plan:   slug de um plano EXISTENTE (validado contra a coleção plans/)
 //   - trialDays: number  (>0 reinicia trial a partir de agora; 0/null encerra)
 //   - archived, internal, internalNotes, monthlyPrice  (já existiam)
+//   - modules: string[]  (módulos da academia, só os de src/lib/modules.js;
+//     a lista inteira substitui a anterior)
 //   - displayName, settings { city, state, logoUrl }
 //   - profile { cnpjCpf, legalName, cep, street, number, complement, neighborhood,
 //               responsibleName, email, phone }  (Perfil da academia)
@@ -88,6 +91,9 @@ export default withSentry(async function handler(req, res) {
         // vagas por papel (modelo gestor + consultores)
         managers: seats.managers,
         consultants: seats.consultants,
+        // Professor fica fora das vagas do plano (getSeatUsage, em api/_plans.js).
+        professors: seats.professors || 0,
+        modules: normalizeModules(seats.modules),
         maxManagers: Number.isFinite(seats.maxManagers) ? seats.maxManagers : null,
         maxConsultants: Number.isFinite(seats.maxConsultants) ? seats.maxConsultants : null,
         extraConsultants: seats.extraConsultants,
@@ -109,7 +115,7 @@ export default withSentry(async function handler(req, res) {
     const {
       tenantId, status, plan, trialDays, archived, internal, internalNotes, monthlyPrice,
       displayName, settings, paymentStatus, lastPaymentAt, nextBillingAt,
-      profile, responsiblePhone,
+      profile, responsiblePhone, modules,
     } = req.body || {};
     const slug = String(tenantId || '').trim().toLowerCase();
     if (!slug) return res.status(400).json({ error: 'Campo obrigatório: tenantId.' });
@@ -162,6 +168,17 @@ export default withSentry(async function handler(req, res) {
     // Conta interna/teste: fica fora dos KPIs de negócio. Não muda acesso/status.
     if (internal !== undefined) {
       update.internal = internal === true;
+    }
+    // Módulos da academia (src/lib/modules.js). A lista inteira substitui a
+    // anterior, porque o set com merge troca listas inteiras: ligar é mandar a
+    // lista com o módulo, desligar é mandar sem ele. Só passa módulo conhecido,
+    // escrito exatamente como em MODULES. O app lê no login (App.jsx) e as
+    // regras leem pela hasModule. Não mexe no status, então ninguém é deslogado.
+    if (modules !== undefined) {
+      if (!Array.isArray(modules) || modules.some((m) => !KNOWN_MODULES.includes(m))) {
+        return res.status(400).json({ error: `Módulo inválido. Os módulos que existem são: ${KNOWN_MODULES.join(', ')}.` });
+      }
+      update.modules = normalizeModules(modules);
     }
     // Notas internas (CRM do dono sobre o cliente) — só o super-admin lê/escreve.
     if (internalNotes !== undefined) {
@@ -243,7 +260,12 @@ export default withSentry(async function handler(req, res) {
 
     await logAudit({
       action: 'tenant.update', tenantId: slug, actorUid: auth.uid,
-      details: { changed: [...Object.keys(update).filter((k) => k !== 'updatedAt'), ...privateChanged] },
+      details: {
+        changed: [...Object.keys(update).filter((k) => k !== 'updatedAt'), ...privateChanged],
+        // O "changed" só diz que a lista mudou. Antes e depois dizem o que foi
+        // ligado ou desligado.
+        ...(update.modules ? { modules: update.modules, modulesBefore: normalizeModules(existing.data()?.modules) } : {}),
+      },
     });
 
     // Ao suspender, derruba as sessões ativas imediatamente.
