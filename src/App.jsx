@@ -66,6 +66,7 @@ import { planReferralSetupOps } from './lib/referrals.js';
 import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
 import { tenantCol, tenantDoc, writeSetupWrites, writeSetupPlan } from './lib/funnelSetupWrites.js';
 import { IDLE_RUN, runStatusFor, settleRun, EMPTY_SETUP_FLAGS, setupFlagsFromConfig, setupFlagFor } from './lib/setupRun.js';
+import { normalizeModules } from './lib/modules.js';
 import { parseAppPath, routeDecision, hrefFor, screenKey, documentTitle } from './lib/routes.js';
 import { funnelFromSearch } from './lib/screenParams.js';
 import {
@@ -477,10 +478,17 @@ function AppInner() {
       // Status da academia (suspensão / trial expirado). Best-effort: se o doc
       // /tenants/{id} não existir (tenant legado) ou a leitura falhar, libera o
       // acesso. Super-admin sem tenant não tem o que checar.
+      // Os módulos da academia (src/lib/modules.js) saem do mesmo documento e
+      // vão para o appUser (tenantModules), que o "Acessar como" troca inteiro:
+      // o signInWithCustomToken roda este listener de novo, que relê a academia
+      // nova. Ao contrário do bloqueio, aqui a falta fecha: documento ausente
+      // ou leitura que falhou dão lista vazia.
+      let tenantModules = [];
       if (tenantId) {
         try {
           const tenantSnap = await getDoc(doc(db, 'tenants', tenantId));
           const tData = tenantSnap.exists() ? tenantSnap.data() : null;
+          tenantModules = normalizeModules(tData?.modules);
           let block = null;
           let trialMs = null;
           let billingWarn = null;
@@ -548,7 +556,8 @@ function AppInner() {
           role: 'superadmin',
           superAdmin: true,
           superAdminOnly: true,
-          tenantId: null
+          tenantId: null,
+          tenantModules: []
         });
         setAuthSetupError('');
         setIsAuthChecking(false);
@@ -562,7 +571,7 @@ function AppInner() {
 
       if (!byUidSnap.empty) {
         const userDoc = byUidSnap.docs[0];
-        setAppUser({ id: userDoc.id, ...userDoc.data(), tenantId: appId, superAdmin, impersonating: !!impersonatedBy, impersonatedTenant });
+        setAppUser({ id: userDoc.id, ...userDoc.data(), tenantId: appId, superAdmin, impersonating: !!impersonatedBy, impersonatedTenant, tenantModules });
         setAuthSetupError('');
         setIsAuthChecking(false);
         return;
@@ -593,7 +602,8 @@ function AppInner() {
             tenantId: appId,
             superAdmin,
             impersonating: !!impersonatedBy,
-            impersonatedTenant
+            impersonatedTenant,
+            tenantModules
           });
 
           setAuthSetupError('');
@@ -615,7 +625,8 @@ function AppInner() {
           role: 'superadmin',
           superAdmin: true,
           superAdminOnly: true,
-          tenantId: null
+          tenantId: null,
+          tenantModules: []
         });
         setAuthSetupError('');
         setIsAuthChecking(false);
