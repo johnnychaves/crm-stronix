@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { GraduationCap, Layers, Phone, SlidersHorizontal, Check, X } from 'lucide-react';
-import { isClientLead, isAdminUser } from '../lib/leads.js';
+import { isClientLead } from '../lib/leads.js';
+import { ACTIONS, can, isGestor, isSeller } from '../lib/acesso.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -86,7 +87,10 @@ function ContractRingAvatar({ name, status, photoUrl = null }) {
 
 function ClientsView({ appUser, usersList, db }) {
   const { contractThresholdDays } = useGeneralConfig();
-  const isAdmin = isAdminUser(appUser);
+  const isAdmin = isGestor(appUser);
+  // Responsável por cliente é quem vende. O professor não é dono de lead
+  // (isSeller, em src/lib/acesso.js), então fica fora do filtro e do endereço.
+  const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
 
   const [filterOpen, setFilterOpen] = useState(false);
   // Situação e responsável vêm do endereço. O filtro de responsável só vale
@@ -95,8 +99,8 @@ function ClientsView({ appUser, usersList, db }) {
   // que ele não teria como limpar. O filtro de plano fica fora desta entrega,
   // porque o dado guarda o nome do plano e não o id.
   const paramsCtx = useMemo(() => ({
-    users: usersList, situacoes: STATUS_OPTIONS, podeResp: isAdmin, respPadrao: [],
-  }), [usersList, isAdmin]);
+    users: sellers, situacoes: STATUS_OPTIONS, podeResp: isAdmin, respPadrao: [],
+  }), [sellers, isAdmin]);
   const [{ status: statusFilters, resp: consultantFilters }, setParams] = useScreenParams('clientes', paramsCtx);
   const [planFilters, setPlanFilters] = useState([]);         // plano (multi)
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
@@ -249,12 +253,12 @@ function ClientsView({ appUser, usersList, db }) {
                 </div>
 
                 {/* Responsável (admin) */}
-                {isAdmin && (usersList || []).length > 0 && (
+                {isAdmin && sellers.length > 0 && (
                   <>
                     <div className="mx-3.5 my-1 border-t border-slate-100 dark:border-white/10" />
                     <div className="px-2 pt-1.5 pb-1">
                       <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">Responsável</div>
-                      {(usersList || []).map(u => {
+                      {sellers.map(u => {
                         const selected = consultantFilters.includes(u.id);
                         return (
                           <button
@@ -345,7 +349,10 @@ function ClientsView({ appUser, usersList, db }) {
             <div className="py-16 text-center grid place-items-center gap-2">
               <GraduationCap className="size-[22px] opacity-40 text-slate-400" />
               <p className="text-[14px] font-semibold text-gray-700 dark:text-neutral-200">Nenhum cliente encontrado</p>
-              <p className="text-[12.5px] text-slate-400 dark:text-neutral-500">Matricule um lead pelo Kanban ou pela ficha para vê-lo aqui.</p>
+              {/* O convite para matricular é de quem matricula. O professor não matricula. */}
+              {can(appUser, ACTIONS.CONTRATO_EDITAR) && (
+                <p className="text-[12.5px] text-slate-400 dark:text-neutral-500">Matricule um lead pelo Kanban ou pela ficha para vê-lo aqui.</p>
+              )}
             </div>
           ) : (
             visible.map(c => {
