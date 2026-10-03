@@ -256,8 +256,10 @@ function AppInner() {
   const closeHelpCenter = () => { setTutorialsOpen(false); setHelpArticleId(null); };
   // "Já li" do sino: ids das novidades vistas + carimbo das indicações.
   const { seenIds, lastSeenReferralsAt, markAllSeen } = useNotificationsSeen({ db, appUser });
-  // Leads/clientes que passaram pra carteira desta pessoa (grupo do sino).
-  const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly && !professorAccessOff(appUser) });
+  // Leads/clientes que passaram pra carteira desta pessoa (grupo do sino). O
+  // professor não tem carteira nem esse grupo (ACTIONS.SINO_EQUIPE), então a
+  // leitura nem sai.
+  const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly && !professorAccessOff(appUser) && can(appUser, ACTIONS.SINO_EQUIPE) });
   // Menu do celular: aberto enquanto o endereço for o mesmo em que ele abriu
   // (location.key). Qualquer troca de endereço fecha o menu sozinha, inclusive
   // o voltar do navegador e o replace de um aviso de rota, sem effect. Os links

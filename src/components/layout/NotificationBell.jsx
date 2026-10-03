@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { Bell, Handshake, Sparkles, ArrowRight, UserRoundPlus } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { ANNOUNCEMENTS } from '../../lib/announcements.js';
-import { buildNotificationFeed } from '../../lib/notifications.js';
+import { buildNotificationFeed, emptyBellText } from '../../lib/notifications.js';
+import { isGestor } from '../../lib/acesso.js';
 import { LeadLink } from '../nav/AppLink.jsx';
 import { Popover, PopoverTrigger, PopoverContent } from '../ui/popover.jsx';
 
@@ -125,7 +126,7 @@ export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSe
         <div className="max-h-[min(26rem,60vh)] overflow-y-auto custom-scrollbar">
           {vazio && (
             <p className="px-3.5 py-8 text-center text-[12.5px] text-slate-500 dark:text-slate-400">
-              Nada por aqui ainda. Novidades do sistema, indicações pelo link e leads que passarem pra você aparecem neste espaço.
+              {emptyBellText(appUser)}
             </p>
           )}
 
@@ -183,7 +184,7 @@ export function NotificationBell({ appUser, leads, handoffLeads, seenIds, lastSe
 
         {referrals.length > 0 && (
           <div className="border-t border-slate-100 dark:border-white/[0.06] py-2 text-center text-[11px] text-slate-500 dark:text-slate-400">
-            {appUser?.role === 'admin' ? 'Você vê as indicações da academia' : 'Você vê as indicações da sua carteira'}
+            {isGestor(appUser) ? 'Você vê as indicações da academia' : 'Você vê as indicações da sua carteira'}
           </div>
         )}
       </PopoverContent>
