@@ -516,6 +516,28 @@ describe('troca de papel (set-role)', () => {
   });
 });
 
+// O id do cadastro vai direto para o doc(). Com barra, o SDK de servidor lança
+// erro e o gestor receberia 500: a recusa vem antes, com o texto de campo
+// obrigatório, e nada é lido nem gravado.
+describe('id do cadastro fora do formato', () => {
+  const ids = ['', 'a/b', '.', '..', '__x__', 7, 'x'.repeat(129)];
+
+  it.each([
+    ['set-role', { action: 'set-role', role: 'consultant' }],
+    ['delete', { action: 'delete' }],
+  ])('%s responde 400 sem ler o cadastro', async (_acao, corpo) => {
+    for (const userDocId of ids) {
+      banco.consultas = [];
+      const antes = new Map(banco.docs);
+      const res = await chamar(adminUsers, { ...corpo, userDocId });
+      expect([res.statusCode, res.body], String(userDocId)).toEqual([400, { error: 'Campo obrigatório: userDocId.' }]);
+      expect(banco.docs).toEqual(antes);
+    }
+    expect(contas.getUser).not.toHaveBeenCalled();
+    expect(contas.deleteUser).not.toHaveBeenCalled();
+  });
+});
+
 describe('exclusão', () => {
   it('excluir professor não mexe na assinatura; excluir consultor extra mexe', async () => {
     semear({

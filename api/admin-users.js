@@ -21,7 +21,8 @@ import {
   SET_ROLE_ACTION,
   PROFESSOR_LINK_MESSAGES,
   planRoleChange,
-  professorIdProblem
+  professorIdProblem,
+  isDocId
 } from '../src/lib/teamRoles.js';
 import {
   SET_EMAIL_ACTION,
@@ -256,7 +257,7 @@ async function handleSetRole(req, res) {
     }
 
     const { userDocId, role, professorId, allowExtra } = req.body || {};
-    if (typeof userDocId !== 'string' || !userDocId) {
+    if (!isDocId(userDocId)) {
       return res.status(400).json({ error: 'Campo obrigatório: userDocId.' });
     }
     if (role !== ROLES.CONSULTOR && role !== ROLES.PROFESSOR) {
@@ -555,7 +556,7 @@ async function handleDelete(req, res) {
     }
 
     const { userDocId } = req.body || {};
-    if (!userDocId) {
+    if (!isDocId(userDocId)) {
       return res.status(400).json({ error: 'Campo obrigatório: userDocId.' });
     }
     if (userDocId === auth.uid) {
@@ -583,9 +584,10 @@ async function handleDelete(req, res) {
     // academia e apagar a conta dessa pessoa. Quem decide é o claim do Auth.
     //
     // Recusa só o que é ataque: conta de OUTRA academia e conta do dono da
-    // plataforma. Cadastro sem conta no Auth ou com conta sem claim segue e
-    // apaga apenas o registro interno — é limpeza de cadastro legado, e o
-    // gestor já pode apagar esse doc direto pelas rules de qualquer jeito.
+    // plataforma. Cadastro sem conta no Auth, ou com conta sem claim, segue e
+    // apaga só o registro interno, como limpeza de cadastro antigo. Só o
+    // servidor apaga cadastro de equipe: as rules têm `allow create, delete:
+    // if false` em stronix_users.
     const verdict = await resolveTargetVerdict(resolvedAuthUid, auth.tenantId);
     if (verdict === TARGET_FOREIGN || verdict === TARGET_SUPERADMIN) {
       const denied = targetVerdictError(verdict);

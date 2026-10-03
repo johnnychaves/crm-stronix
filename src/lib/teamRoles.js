@@ -103,8 +103,9 @@ export function planRoleChange(user, { role, professorId } = {}) {
 // e quem já está ligado a ele.
 
 // O mesmo formato de id de documento que a ponte do Stronizap aceita
-// (isDocId, em api/_zapSchedule.js).
-const isDocId = (v) => typeof v === 'string' && v.length > 0 && v.length <= 128
+// (isDocId, em api/_zapSchedule.js). O api/admin-users.js confere com ela o
+// userDocId da troca de papel e da exclusão.
+export const isDocId = (v) => typeof v === 'string' && v.length > 0 && v.length <= 128
   && !v.includes('/') && v !== '.' && v !== '..' && !/^__.*__$/.test(v);
 
 const refusal = (status, code, error) => ({ status, code, error });
