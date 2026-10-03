@@ -7,6 +7,7 @@ import { cn } from '../lib/utils.js';
 import {
   WALKTHROUGH_STEPS, walkthroughSeen, markWalkthroughSeen,
 } from '../lib/walkthrough.js';
+import { isProfessor } from '../lib/acesso.js';
 import {
   GraduationCap, ArrowRight, ArrowLeft, Check, HeartPulse, AlertTriangle, Sparkles,
 } from 'lucide-react';
@@ -133,8 +134,10 @@ function WalkthroughModal({ appUser }) {
   const [step, setStep] = useState(0);
   const [dismissed, setDismissed] = useState(false);
 
+  // O tutorial é a jornada de venda (Kanban, matrícula, renovação). O
+  // professor não abre essas telas, então não recebe o pop-up.
   const autoShow = useMemo(() => {
-    if (!appUser?.id || appUser.superAdminOnly) return false;
+    if (!appUser?.id || appUser.superAdminOnly || isProfessor(appUser)) return false;
     return !walkthroughSeen(appUser);
   }, [appUser]);
 
