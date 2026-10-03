@@ -30,7 +30,7 @@ A spec não cobria estes casos. O plano segue o caminho mais seguro em cada um, 
 
 | | Caso | Decisão |
 |---|---|---|
-| D1 | Módulo desligado com professor já criado | O professor entra e vê só o aviso "O acesso de professor está desligado nesta academia. Fale com o gestor.". As regras do Firestore e a ponte do Stronizap recusam as gravações dele. |
+| D1 | Módulo desligado com professor já criado | O professor entra e vê só o aviso "O acesso de professor está desligado nesta academia. Fale com o gestor.". As regras do Firestore recusam as gravações dele no lead e nas interações, e a ponte do Stronizap recusa o agendamento dele. Nos registros de aula ele grava como qualquer membro (ponto 9). |
 | D2 | Consultor com carteira que vira professor | O `set-role` responde 409: "<nome> ainda tem leads na carteira. Passe os leads em Configurações → Migrar leads antes de mudar o papel para Professor." |
 | D3 | Professor pela ponte do Stronizap | Não abre o cadastro de lead nem cadastra (403), não aparece na equipe nem como dono, e agenda sem contar na Meta. |
 | D4 | Agendamento e anotação do professor nos painéis | Caem em "Outros" no volume do Operacional, porque o professor não tem linha por pessoa. |
@@ -47,11 +47,13 @@ A spec não cobria estes casos. O plano segue o caminho mais seguro em cada um, 
 1. **D1 e a leitura da academia no login.** Se a leitura de `tenants/{id}` falhar no login (rede caindo no meio), a lista de módulos vem vazia e o professor vê o aviso de acesso desligado até o F5. Gestor e consultor não sentem nada.
 2. **Aviso de endereço desconhecido para o professor.** "Não achamos essa tela. Abrimos a Meta diária." O texto de hoje diz "Abrimos o Operacional", o que seria falso para ele. `/` e `/<academia>`, onde o login e o Sair caem, levam o professor à Meta sem aviso.
 3. **Cadastros antigos.** Um cadastro em `stronix_users` com id diferente do uid da conta não vira professor (422), porque as regras leem o papel pelo uid. Antes de ligar o módulo na STRONIX, vale contar quantos cadastros assim existem.
-4. **Travas a mais nas regras, além da spec.** A interação do professor sai sempre no nome dele (`actorAuthUid` igual ao uid). Ele não edita nem apaga interação. O gestor deixa de conseguir gravar `role` e `professorId` pelo navegador, o que também fecha um desvio do limite de vagas.
+4. **Travas a mais nas regras, além da spec.** A interação do professor sai sempre no nome dele (`actorAuthUid` igual ao uid). Ele não edita nem apaga interação. O gestor deixa de conseguir gravar `role` e `professorId` pelo navegador e de criar ou apagar cadastro de equipe por ali (ponto 10), o que também fecha um desvio do limite de vagas.
 5. **O Agendar do professor mexe na Meta do consultor.** Agendar Mensagem ou Ligação cria tarefa na Meta do consultor dono, e a Anotação do professor marca o lead como "Já interagido hoje" para o consultor. A spec libera esses campos. O PR 3 decide o que o contato de falta faz com isso.
 6. **Busca do professor.** A busca traz 20 candidatos por consulta. Um começo de nome comum pode encher a página de leads e esconder um cliente. Resolver de vez pede índice composto.
 7. **Regras ainda não validadas.** Ninguém rodou o validador do Firebase nas regras novas. A Task 11 traz os cenários do Playground, que precisam passar antes da publicação.
 8. **Foto do lead.** Não há `storage.rules` no repositório. O professor não liga foto ao lead (`photoUrl` fica fora da lista dele), mas pode subir o arquivo se as regras do Storage no console deixarem. Vale conferir lá.
+9. **Registros de aula sem trava de professor.** Em `stronix_aulas` o professor grava como qualquer membro, como a spec pede, porque o Agendar da ficha cria e move o registro. Pelo console do navegador, com o módulo ligado ou desligado, ele conseguiria criar registro, marcar `attended` ou `no_show` e trocar o `professorId`, e esses registros alimentam a conversão por professor do Dashboard CRM. Travar a troca de status quebraria o Agendar dele, que fecha o registro com o desfecho ao remarcar (`closeOpenAppointment`). Travar só pelo módulo cobriria o caso do módulo desligado, mas cada gravação de aula passaria a custar uma leitura a mais para todo mundo. O plano deixou aberto, como a spec, e o comentário das regras explica as duas saídas.
+10. **Cadastro de equipe só pelo servidor.** Fora do plano original, as regras passaram a recusar `create` e `delete` em `stronix_users` vindos do navegador. Sem isso, um gestor apagaria o cadastro de um professor e criaria de novo como consultor, pulando a conta das vagas, a carteira do D2 e a cobrança. Nenhuma tela cria ou apaga esse cadastro: tudo passa por `api/admin-users.js`, `api/invite-accept.js` e `api/provision-tenant.js`.
 
 ## Mapa de arquivos
 
@@ -10218,7 +10220,8 @@ Etapa A, antes de publicar:
 | Consultor C | create em `stronix_contratos` | Permitido |
 | Gestor G | update em `stronix_users/{C}`, mudando `name` | Permitido |
 | Gestor G | update em `stronix_users/{C}`, mudando `role` para `admin` | Negado. É novo e esperado: o papel só muda pelo servidor |
-| Gestor G | create em `stronix_users` com `role: 'professor'` | Negado |
+| Gestor G | create em `stronix_users`, com qualquer papel | Negado. É novo e esperado: o cadastro de equipe só nasce pelo servidor (ponto 10) |
+| Gestor G | delete em `stronix_users/{C}` | Negado, pelo mesmo motivo. O "Excluir acesso" da tela passa pelo servidor e continua funcionando |
 | Consultor C | update no próprio `stronix_users/{C}`, mudando `lastSeenReferralsAtMs` | Permitido |
 | Consultor legado (cadastro com id diferente do uid), se existir | create em `stronix_interactions` | Permitido |
 
@@ -10246,8 +10249,9 @@ Etapa B, no Preview do PR 1, depois de publicar (o Preview usa o Firebase de pro
 | update no próprio `stronix_users/{P}`, mudando `professorId` | Negado |
 | update no próprio `stronix_users/{P}`, mudando `lastSeenReferralsAtMs` | Permitido |
 | create em `stronix_aulas` | Permitido, como antes |
+| update em `stronix_aulas`, mudando `status` para `attended` | Permitido. Aceito, ponto 9 |
 
-8. Desligar o módulo no super console e repetir, com P: o update do lead mudando `nextFollowUpNote` e o create da interação `note` passam a ser Negados. Religar o módulo.
+8. Desligar o módulo no super console e repetir, com P: o update do lead mudando `nextFollowUpNote` e o create da interação `note` passam a ser Negados. O create em `stronix_aulas` continua Permitido (ponto 9). Religar o módulo.
 9. Só então fazer o merge do PR 1.
 
 ---
