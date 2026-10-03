@@ -136,11 +136,21 @@ service cloud.firestore {
     // O dono e a fase do lead não estão na lista, então o professor não troca o
     // dono nem move o lead de etapa. Com o módulo desligado, ele não altera
     // lead nenhum.
+    //
+    // O toque do lead (lastInteractionAt e interactionsCount) também tem o valor
+    // travado: a hora do servidor e o número de antes mais um, que é o que o
+    // logInteraction grava (serverTimestamp() e increment(1)). O
+    // serverTimestamp() chega aqui como request.time, e o increment já vem
+    // somado em request.resource. Sem isso, o professor gravaria pelo SDK uma
+    // data de 2099 nos leads de qualquer consultor, e eles nunca mais
+    // esfriariam nem ficariam atrasados para o dono.
     function professorLeadUpdateOk(appId) {
       let changed = request.resource.data.diff(resource.data).affectedKeys();
       return hasModule(appId, 'faltosos')
         && changed.hasOnly(professorLeadFields())
-        && (!changed.hasAny(professorOutcomeFields()) || professorOutcomeCleared());
+        && (!changed.hasAny(professorOutcomeFields()) || professorOutcomeCleared())
+        && (!changed.hasAny(['lastInteractionAt']) || request.resource.data.lastInteractionAt == request.time)
+        && (!changed.hasAny(['interactionsCount']) || request.resource.data.interactionsCount == resource.data.get('interactionsCount', 0) + 1);
     }
 
     // Os tipos de interação que o professor cria. A Anotação, o WhatsApp, a
@@ -343,16 +353,25 @@ service cloud.firestore {
     // Operacional. Qualquer membro lê todos: o Operacional mostra a meta de
     // toda a equipe para todo mundo. Não há delete (o histórico é imutável).
     // ID = `${consultantId}_${date}`.
+    //
+    // O professor (spec 2026-10-02) não grava dia batido: ele não vende, e o
+    // app nunca grava o dia dele (goalHitKeyToRecord com seller=false, em
+    // src/lib/dailyGoalHistory.js). Sem a trava, ele criaria pelo SDK o dia de
+    // um consultor com números inventados, e o dia de verdade, gravado depois
+    // pelo consultor, seria recusado. O isProfessor custa uma leitura do
+    // cadastro por gravação, e a gravação é uma por consultor por dia.
     match /artifacts/{appId}/public/data/stronix_daily_goal_history/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow create: if inTenant(appId) && tenantActive(appId)
         && request.resource.data.consultantAuthUid == request.auth.uid
-        && id == request.resource.data.consultantId + '_' + request.resource.data.date;
+        && id == request.resource.data.consultantId + '_' + request.resource.data.date
+        && !isProfessor(appId);
       allow update: if inTenant(appId) && tenantActive(appId)
         && resource.data.consultantAuthUid == request.auth.uid
         && request.resource.data.consultantAuthUid == request.auth.uid
         && request.resource.data.consultantId == resource.data.consultantId
-        && request.resource.data.date == resource.data.date;
+        && request.resource.data.date == resource.data.date
+        && !isProfessor(appId);
       allow delete: if false;
     }
 

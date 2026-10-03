@@ -11,7 +11,8 @@
 //      professorInteractionTypes) são iguais às de src/lib/professorWrites.js;
 //   2. as listas de professorWrites.js são as que os montadores de verdade
 //      produzem (buildSchedulePatch, logInteraction e os handlers da ficha);
-//   3. as travas continuam ligadas em lead, contrato, interação e equipe.
+//   3. as travas continuam ligadas em lead, contrato, interação, equipe e dia
+//      batido da Meta (stronix_daily_goal_history).
 // Mudou o Agendar ou o composer, o teste quebra até a regra acompanhar. Aí é
 // mudar a regra, publicar no console e só depois fazer o merge.
 import { describe, it, expect } from 'vitest';
@@ -179,6 +180,24 @@ describe('as listas do professorWrites saem dos montadores de verdade', () => {
     expect(ler('../interactions.js')).toContain('actorAuthUid: appUser?.authUid || null,');
   });
 
+  // A regra trava o valor dos dois campos do toque: lastInteractionAt igual a
+  // request.time e interactionsCount o de antes mais um. Só fecha porque o
+  // logInteraction grava a hora do servidor e o increment(1), e o patch do
+  // Agendar, que vem depois no mesmo objeto, não traz nenhum dos dois. Uma hora
+  // do navegador ou um número calculado na tela seriam recusados.
+  it('o logInteraction soma o toque com a hora do servidor e increment(1), e o patch do Agendar não mexe nele', () => {
+    const fonte = ler('../interactions.js');
+    const escrita = /LEADS_PATH, lead\.id\),\s*\{([\s\S]*?)\},\s*\{ merge: true \}/.exec(fonte);
+    expect(escrita).not.toBeNull();
+    expect(escrita[1]).toContain('lastInteractionAt: serverTimestamp(),');
+    expect(escrita[1]).toContain('interactionsCount: increment(1),');
+    expect(SCHEDULE_PATCH_FIELDS.filter((campo) => LEAD_BUMP_FIELDS.includes(campo))).toEqual([]);
+    for (const typeLabel of SCHEDULE_TYPE_LABELS) {
+      const patch = buildSchedulePatch({ typeLabel, date: new Date(2026, 9, 2, 18, 0), currentAulaId: 'a1', contactOwnerId: 'u2' });
+      for (const campo of LEAD_BUMP_FIELDS) expect(campo in patch, `${typeLabel}: ${campo}`).toBe(false);
+    }
+  });
+
   it('a Anotação do composer grava um tipo da lista', () => {
     expect(PROFESSOR_INTERACTION_TYPES).toContain(planProfileNote('Ligou de volta').type);
   });
@@ -232,6 +251,22 @@ describe('as travas do professor continuam no firestore.rules', () => {
     for (const campo of PROFESSOR_OUTCOME_FIELDS) {
       expect(vazio, campo).toContain(`request.resource.data.get('${campo}', null) == null`);
     }
+  });
+
+  // A trava fica no E de cima da função, e não dentro de um OU. O
+  // serverTimestamp() chega à regra como request.time, e o increment(1) já vem
+  // somado em request.resource.
+  it('lead: o toque do professor vale a hora do servidor e soma um, nunca um valor escolhido', () => {
+    const ok = funcaoDaRegra('professorLeadUpdateOk(appId)');
+    const termos = termosDoE(ok.slice(ok.indexOf('return ') + 'return '.length));
+    expect(termos).toContain("hasModule(appId, 'faltosos')");
+    expect(termos).toContain('changed.hasOnly(professorLeadFields())');
+    expect(termos).toContain(
+      "(!changed.hasAny(['lastInteractionAt']) || request.resource.data.lastInteractionAt == request.time)"
+    );
+    expect(termos).toContain(
+      "(!changed.hasAny(['interactionsCount']) || request.resource.data.interactionsCount == resource.data.get('interactionsCount', 0) + 1)"
+    );
   });
 
   it('contrato: o professor não cria nem altera', () => {
@@ -291,7 +326,7 @@ describe('as travas do professor continuam no firestore.rules', () => {
   // As regras juntam os allow com OU, então um segundo `allow update` ou um
   // `allow write` num bloco valeria por cima da trava do professor. Os blocos
   // com trava têm uma linha só para cada operação de escrita.
-  it.each(['stronix_users', 'stronix_leads', 'stronix_interactions', 'stronix_contratos'])(
+  it.each(['stronix_users', 'stronix_leads', 'stronix_interactions', 'stronix_contratos', 'stronix_daily_goal_history'])(
     '%s: uma linha allow por operação e nenhum allow write',
     (colecao) => {
       const bloco = blocoDe(colecao).replace(/\/\/.*$/gm, '');
@@ -301,6 +336,16 @@ describe('as travas do professor continuam no firestore.rules', () => {
       expect(bloco).not.toMatch(/allow [\w, ]*\bwrite\b/);
     }
   );
+
+  // O professor não grava dia batido (goalHitKeyToRecord com seller=false, em
+  // src/lib/dailyGoalHistory.js). Sem a trava, ele criaria pelo SDK o dia de
+  // um consultor com números inventados, e o dia de verdade nunca seria gravado.
+  it('dia batido da Meta: o professor não cria nem altera', () => {
+    const historico = blocoDe('stronix_daily_goal_history');
+    expect(termosDoE(regraDe(historico, 'create'))).toContain('!isProfessor(appId)');
+    expect(termosDoE(regraDe(historico, 'update'))).toContain('!isProfessor(appId)');
+    expect(regraDe(historico, 'delete').trim()).toBe('if false;');
+  });
 
   it('nenhum caminho do cliente faz alguém virar professor', () => {
     expect(RULES).not.toMatch(/professorRoleAllowed|professorCreateAllowed|professorAllowed/);
