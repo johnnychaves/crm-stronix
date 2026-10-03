@@ -251,12 +251,13 @@ service cloud.firestore {
     // ninguém troca papel nem professor ligado pelo cliente (roleAndProfessorKept).
     match /artifacts/{appId}/public/data/stronix_users/{userId} {
       allow read: if inTenant(appId);
-      // Professor só nasce pelo servidor: pelo cliente, o gestor cria só gestor
-      // ou consultor, sem professor ligado.
-      allow create: if isAdmin(appId) && inTenant(appId)
-        && request.resource.data.get('role', 'consultant') in ['admin', 'consultant']
-        && request.resource.data.get('professorId', null) == null;
-      allow delete: if isAdmin(appId) && inTenant(appId);
+      // Cadastro de equipe só nasce e sai pelo servidor (api/admin-users.js,
+      // api/invite-accept.js e api/provision-tenant.js), que usa o Admin SDK e
+      // não passa por estas regras. Pelo cliente, apagar e criar de novo seria
+      // o caminho para trocar o papel e o professor ligado, sem conferir a vaga
+      // do plano, e apagar o cadastro do professor deixaria o isProfessor sem
+      // doc para ler.
+      allow create, delete: if false;
       allow update: if inTenant(appId)
         && (authUidKept() || selfLinksOwnUid(userId))
         && roleAndProfessorKept()

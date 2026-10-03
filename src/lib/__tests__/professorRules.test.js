@@ -246,10 +246,22 @@ describe('as travas do professor continuam no firestore.rules', () => {
     const mantidos = funcaoDaRegra('roleAndProfessorKept()');
     expect(mantidos).toContain("request.resource.data.get('role', null) == resource.data.get('role', null)");
     expect(mantidos).toContain("request.resource.data.get('professorId', null) == resource.data.get('professorId', null)");
-    const criar = regraDe(equipe, 'create');
-    expect(criar).toContain("request.resource.data.get('role', 'consultant') in ['admin', 'consultant']");
-    expect(criar).toContain("request.resource.data.get('professorId', null) == null");
-    expect(regraDe(equipe, 'delete')).toContain('isAdmin(appId)');
+  });
+
+  // Quem cria e apaga cadastro de equipe é o servidor (api/admin-users.js,
+  // api/invite-accept.js e api/provision-tenant.js, pelo Admin SDK), que confere
+  // a vaga do plano, a carteira e a cobrança. Se o cliente pudesse criar ou
+  // apagar, o gestor trocaria o papel apagando e criando de novo, e apagar o
+  // cadastro do professor deixaria o isProfessor sem doc para ler. As regras
+  // somam os allow, então um segundo `allow create` ou um `allow write`
+  // reabriria o caminho: o bloco tem uma linha só para cada um.
+  it('equipe: o cadastro só nasce e sai pelo servidor', () => {
+    const equipe = blocoDe('stronix_users');
+    expect(regraDe(equipe, 'create').trim()).toBe('if false;');
+    expect(regraDe(equipe, 'delete').trim()).toBe('if false;');
+    expect(equipe.match(/allow [\w, ]*\bcreate\b/g)).toHaveLength(1);
+    expect(equipe.match(/allow [\w, ]*\bdelete\b/g)).toHaveLength(1);
+    expect(equipe).not.toMatch(/allow [\w, ]*\bwrite\b/);
   });
 
   it('nenhum caminho do cliente faz alguém virar professor', () => {
