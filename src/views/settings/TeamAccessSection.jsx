@@ -86,11 +86,20 @@ function MemberAvatar({ name, size = 32 }) {
   );
 }
 
+// A faixa das vagas de consultor do plano, mais a linha dos professores com
+// acesso, que não ocupam vaga. As vagas só aparecem com o limite de consultor
+// do plano (sem limite, ou com a /api/asaas fora do ar, o useSeatLimits não
+// traz). A linha dos professores não depende do plano: com professor e sem
+// limite, a faixa mostra só ela. Sem professor e sem limite, não há faixa.
 function SeatBand({ seats, consultantCount, professorCount = 0 }) {
-  if (!seats || seats.maxConsultants == null) return null;
-  const used = Math.min(consultantCount, seats.maxConsultants);
-  const extra = Math.max(0, consultantCount - seats.maxConsultants);
-  const dashes = Array.from({ length: seats.maxConsultants }, (_, i) => i < used);
+  const limited = seats != null && seats.maxConsultants != null;
+  if (!limited && professorCount === 0) return null;
+  const used = limited ? Math.min(consultantCount, seats.maxConsultants) : 0;
+  const extra = limited ? Math.max(0, consultantCount - seats.maxConsultants) : 0;
+  const dashes = limited ? Array.from({ length: seats.maxConsultants }, (_, i) => i < used) : [];
+  const professorLine = professorCount > 0
+    ? `${professorCount === 1 ? '1 professor com acesso' : `${professorCount} professores com acesso`}, fora das vagas de consultor.`
+    : null;
 
   return (
     <div className="flex items-center gap-3.5 px-[18px] py-3.5 rounded-[14px] bg-muted/60 border border-border">
@@ -98,26 +107,30 @@ function SeatBand({ seats, consultantCount, professorCount = 0 }) {
         <Shield size={16} />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-semibold">
-          {seats.planName ? `Plano ${seats.planName} · ` : ''}{used} de {seats.maxConsultants} consultores inclusos
-          {extra > 0 && ` · +${extra} extra${extra === 1 ? '' : 's'}`}
-        </div>
-        {seats.extraUserPrice != null && (
+        {limited && (
+          <div className="text-[13px] font-semibold">
+            {seats.planName ? `Plano ${seats.planName} · ` : ''}{used} de {seats.maxConsultants} consultores inclusos
+            {extra > 0 && ` · +${extra} extra${extra === 1 ? '' : 's'}`}
+          </div>
+        )}
+        {limited && seats.extraUserPrice != null && (
           <div className="text-[12px] text-muted-foreground mt-0.5">
             O {seats.maxConsultants + 1}º consultor entra como extra: +R$ {Number(seats.extraUserPrice).toLocaleString('pt-BR')}/mês, válido a partir da próxima fatura.
           </div>
         )}
-        {professorCount > 0 && (
-          <div className="text-[12px] text-muted-foreground mt-0.5">
-            {professorCount === 1 ? '1 professor com acesso' : `${professorCount} professores com acesso`}, fora das vagas de consultor.
+        {professorLine && (
+          <div className={cn(limited ? 'text-[12px] text-muted-foreground mt-0.5' : 'text-[13px] font-semibold')}>
+            {professorLine}
           </div>
         )}
       </div>
-      <div className="hidden sm:flex items-center gap-1 shrink-0">
-        {dashes.map((on, i) => (
-          <span key={i} className={cn('w-[26px] h-1.5 rounded-full', on ? 'bg-brand-600' : 'bg-border')} />
-        ))}
-      </div>
+      {limited && (
+        <div className="hidden sm:flex items-center gap-1 shrink-0">
+          {dashes.map((on, i) => (
+            <span key={i} className={cn('w-[26px] h-1.5 rounded-full', on ? 'bg-brand-600' : 'bg-border')} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -304,7 +317,12 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       }
       if (!res.ok) { toast.error(data.error || `Erro ao cadastrar ${noun}.`); return; }
 
-      toast.success(`Acesso de ${noun} criado para ${form.name.trim()}. Senha temporária: ${form.password}`, { duration: 8000, title: 'Cadastrado com sucesso' });
+      // O consultor recebe a frase de sempre, para nada mudar na academia sem
+      // o módulo Professor e faltosos.
+      const created = asProfessor
+        ? `Acesso de professor criado para ${form.name.trim()}. Senha temporária: ${form.password}`
+        : `Consultor ${form.name.trim()} cadastrado. Senha temporária: ${form.password}`;
+      toast.success(created, { duration: 8000, title: 'Cadastrado com sucesso' });
       if (data.isExtra) toast.info('Este consultor entrou como extra — a mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
       setMemberDialog(null);
     } catch (err) {

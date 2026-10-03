@@ -30,6 +30,7 @@ import { MilestoneBars } from './MilestoneBars.jsx';
 import { TeamMonthTable } from './TeamMonthTable.jsx';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
 import { isSeller } from '../../lib/acesso.js';
+import { hasModule, MODULES } from '../../lib/modules.js';
 
 // Padrões fora do componente: um array novo a cada render mudaria os memos.
 const DEFAULT_WEEKDAYS = [1, 2, 3, 4, 5];
@@ -628,7 +629,11 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
               {team && (
                 <section>
                   <SectionTitle title="Equipe no mês" question="clique numa linha para filtrar a tela por essa pessoa" />
-                  <TeamMonthTable rows={team.rows} others={team.others} total={cur} running={running} onPick={(id) => setParams({ person: id })} />
+                  <TeamMonthTable
+                    rows={team.rows} others={team.others} total={cur} running={running}
+                    onPick={(id) => setParams({ person: id })}
+                    withProfessors={hasModule(appUser?.tenantModules, MODULES.FALTOSOS)}
+                  />
                 </section>
               )}
             </div>

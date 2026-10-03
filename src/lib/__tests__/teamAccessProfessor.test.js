@@ -38,8 +38,10 @@ vi.mock('firebase/firestore', () => ({
   writeBatch: vi.fn(),
 }));
 vi.mock('../../contexts/ToastContext.jsx', () => ({ useToast: () => toast }));
-// A faixa de assentos busca o plano na API. Fora do teste.
-vi.mock('../../hooks/useSeatLimits.js', () => ({ useSeatLimits: () => null }));
+// A faixa de assentos busca o plano na API. No teste, o plano é o que o caso
+// pede, e por padrão nenhum (a API fora do ar ou sem resposta).
+const vagas = vi.hoisted(() => ({ plano: null }));
+vi.mock('../../hooks/useSeatLimits.js', () => ({ useSeatLimits: () => vagas.plano }));
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -63,6 +65,7 @@ beforeEach(() => {
   deleteDoc.mockClear();
   for (const fn of Object.values(toast)) fn.mockClear();
   respostas = [];
+  vagas.plano = null;
   vi.stubGlobal('fetch', vi.fn(async (url, init) => {
     ordem.push(['api', url, JSON.parse(init.body)]);
     const r = respostas.shift() ?? { status: 200, body: { ok: true, changed: true, token: 'convite-1', tenantId: 'academia-teste' } };
@@ -79,7 +82,7 @@ afterEach(async () => {
 });
 
 // Os módulos chegam no appUser, como o App.jsx guarda no login.
-async function montar({ modules = [MODULES.FALTOSOS] } = {}) {
+async function montar({ modules = [MODULES.FALTOSOS], equipe = EQUIPE } = {}) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -87,7 +90,7 @@ async function montar({ modules = [MODULES.FALTOSOS] } = {}) {
     root.render(h(
       GeneralConfigContext.Provider,
       { value: { modalities: [], professores: PROFESSORES } },
-      h(TeamAccessSection, { db: {}, appUser: { ...GESTOR, tenantModules: modules }, usersList: EQUIPE, leads: [] })
+      h(TeamAccessSection, { db: {}, appUser: { ...GESTOR, tenantModules: modules }, usersList: equipe, leads: [] })
     ));
   });
 }
@@ -127,6 +130,20 @@ describe('Equipe & acessos sem o módulo', () => {
     expect(botao('Cadastrar consultor')).toBeTruthy();
     await clicar(botao('Cadastrar consultor'));
     expect(campo('Papel')).toBeNull();
+  });
+
+  // O texto de sempre, palavra por palavra: sem o módulo, nada muda na tela.
+  it('cadastrar consultor mostra a frase de sempre', async () => {
+    await montar({ modules: [] });
+    await clicar(botao('Cadastrar consultor'));
+    await escrever(campo('Nome'), 'Bia');
+    await escrever(campo('E-mail de login'), 'bia@academia.com');
+    const senha = campo('Senha temporária').value;
+    await clicar(botao('Cadastrar'));
+    expect(toast.success).toHaveBeenCalledWith(
+      `Consultor Bia cadastrado. Senha temporária: ${senha}`,
+      { duration: 8000, title: 'Cadastrado com sucesso' }
+    );
   });
 
   it('o convite não oferece Professor', async () => {
@@ -178,13 +195,17 @@ describe('Equipe & acessos com o módulo', () => {
     await escrever(campo('E-mail de login'), 'lu@academia.com');
     await escrever(campo('Papel'), 'professor');
     await escrever(campo('Professor do cadastro'), 'prof-lu');
+    const senha = campo('Senha temporária').value;
     await clicar(botao('Cadastrar'));
     const [[, url, corpo]] = chamadasDaApi();
     expect(url).toBe('/api/admin-users');
     expect(corpo).toMatchObject({
       action: 'create', name: 'Luana', email: 'lu@academia.com', role: 'professor', professorId: 'prof-lu', allowExtra: false,
     });
-    expect(toast.success.mock.calls[0][0]).toMatch(/^Acesso de professor criado para Luana\./);
+    expect(toast.success).toHaveBeenCalledWith(
+      `Acesso de professor criado para Luana. Senha temporária: ${senha}`,
+      { duration: 8000, title: 'Cadastrado com sucesso' }
+    );
   });
 
   it('cadastrar pessoa como consultor manda o pedido de sempre, sem papel', async () => {
@@ -192,12 +213,17 @@ describe('Equipe & acessos com o módulo', () => {
     await clicar(botao('Cadastrar pessoa'));
     await escrever(campo('Nome'), 'Bia');
     await escrever(campo('E-mail de login'), 'bia@academia.com');
+    const senha = campo('Senha temporária').value;
     await clicar(botao('Cadastrar'));
     const [[, , corpo]] = chamadasDaApi();
     expect(corpo).toMatchObject({ action: 'create', name: 'Bia', email: 'bia@academia.com' });
     expect(corpo).not.toHaveProperty('role');
     expect(corpo).not.toHaveProperty('professorId');
-    expect(toast.success.mock.calls[0][0]).toMatch(/^Acesso de consultor criado para Bia\./);
+    // O consultor recebe a frase de sempre, com o módulo ligado ou não.
+    expect(toast.success).toHaveBeenCalledWith(
+      `Consultor Bia cadastrado. Senha temporária: ${senha}`,
+      { duration: 8000, title: 'Cadastrado com sucesso' }
+    );
   });
 
   it('editar: professor que volta a consultor passa pelo set-role antes de gravar o cadastro', async () => {
@@ -321,5 +347,49 @@ describe('Equipe & acessos com o módulo', () => {
     expect(toast.warning.mock.calls[0][0]).toContain('tem acesso ao app');
     expect(confirm).not.toHaveBeenCalled();
     expect(deleteDoc).not.toHaveBeenCalled();
+  });
+});
+
+// A faixa de vagas mostra quantos professores têm acesso, fora das vagas de
+// consultor. A linha vale com ou sem limite de consultor no plano: sem limite
+// (ou com a /api/asaas fora do ar), a faixa mostra só os professores. Sem
+// professor, a faixa fica como sempre.
+describe('faixa de vagas', () => {
+  const PLANO = { maxConsultants: 2, planName: 'Starter', extraUserPrice: 30 };
+  const LINHA = '1 professor com acesso, fora das vagas de consultor.';
+  const texto = () => document.body.textContent;
+
+  it('sem o plano, com professor: só a linha dos professores', async () => {
+    await montar();
+    expect(texto()).toContain(LINHA);
+    expect(texto()).not.toContain('consultores inclusos');
+  });
+
+  it('plano sem limite de consultor, com dois professores: a linha no plural', async () => {
+    vagas.plano = { maxConsultants: null, planName: 'Livre' };
+    const LU = { id: 'uid-lu', authUid: 'uid-lu', name: 'Lu', email: 'lu@academia.com', role: 'professor', professorId: 'prof-lu' };
+    await montar({ equipe: [...EQUIPE, LU] });
+    expect(texto()).toContain('2 professores com acesso, fora das vagas de consultor.');
+    expect(texto()).not.toContain('consultores inclusos');
+  });
+
+  it('com o limite de consultor e professor: as vagas e a linha dos professores', async () => {
+    vagas.plano = PLANO;
+    await montar();
+    expect(texto()).toContain('Plano Starter · 1 de 2 consultores inclusos');
+    expect(texto()).toContain(LINHA);
+  });
+
+  it('sem professor e sem o plano: nada de faixa, como sempre', async () => {
+    await montar({ modules: [], equipe: [GESTOR, ANA] });
+    expect(texto()).not.toContain('fora das vagas');
+    expect(texto()).not.toContain('consultores inclusos');
+  });
+
+  it('sem professor, com o limite de consultor: a faixa de sempre, sem a linha dos professores', async () => {
+    vagas.plano = PLANO;
+    await montar({ modules: [], equipe: [GESTOR, ANA] });
+    expect(texto()).toContain('Plano Starter · 1 de 2 consultores inclusos');
+    expect(texto()).not.toContain('fora das vagas');
   });
 });
