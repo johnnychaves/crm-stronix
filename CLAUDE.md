@@ -25,6 +25,18 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 - Trabalho sempre via PR (nunca commit direto na main); merge só com aprovação do Johnny.
 - UI nova invoca a skill `frontend-design`; identidade: Space Grotesk (display), azul `#2B59FF`, laranja `#FF6A2B`.
 - Firestore rules são publicadas MANUALMENTE no console Firebase (não via CLI).
+- As travas do professor no `firestore.rules`:
+  - O professor não cria nem exclui lead.
+  - Altera só os campos de `professorLeadFields()`: as chaves do `buildSchedulePatch` mais `lastInteractionAt` e `interactionsCount`.
+  - Grava o desfecho do agendamento (`professorOutcomeFields()`) só vazio.
+  - Cria interação só dos tipos de `professorInteractionTypes()`, no próprio nome (`actorAuthUid` igual ao uid). Não edita nem apaga interação.
+  - Não cria nem altera contrato.
+  - Com o módulo `faltosos` desligado, não grava lead nem interação.
+  - Nos registros de aula (`stronix_aulas`), o professor grava como qualquer membro, porque o Agendar grava ali. A trava do desfecho e a do módulo valem só no lead e nas interações. Travar as aulas é decisão do Johnny, e o comentário das regras explica as duas saídas e o custo de cada uma.
+  - O `isProfessor` confere o cadastro com `exists()` antes de ler o papel, porque conta antiga tem cadastro com id diferente do uid. Por isso só existe professor em cadastro com id igual ao uid.
+  - As três listas são cobradas pelo `src/lib/__tests__/professorRules.test.js` contra `src/lib/professorWrites.js`. Mudou o Agendar ou o composer da ficha, o teste quebra. Aí é mudar a regra, publicar no console e só depois fazer o merge.
+- `role` e `professorId` de `stronix_users` só mudam pelo servidor (`roleAndProfessorKept()`). O navegador também não cria nem apaga cadastro de equipe: isso é só do servidor (`api/admin-users.js`, `api/invite-accept.js` e `api/provision-tenant.js`, pelo Admin SDK). Tela nova que grave `role` ou `professorId`, ou que crie ou apague cadastro, cai em permission-denied, e o caminho é o `api/admin-users.js` (`set-role`, `create` e `delete`).
+- O `hasModule` das regras faz a mesma conta do `src/lib/modules.js`: lê `tenants/{id}.modules` e, sem documento ou sem lista, o módulo está desligado. Chamada nova passa o módulo escrito por extenso, porque o `modules.test.js` confere.
 - Lógica da Meta Diária é regra única em `src/lib/dailyGoal.js` — alterações de categoria/critério acontecem lá. Esse arquivo importa `lucide-react`, então nenhuma função de `api/` pode importá-lo (ver a ponte com o Stronizap, abaixo).
 - Na configuração de funis do primeiro login de gestor (`App.jsx`), o que ela cria tem id fixo e só é criado se ainda não existir (`src/lib/funnelSetup.js`, gravação por transação em `src/lib/funnelSetupWrites.js`). Assim duas abas, dois computadores ou dois gestores rodando juntos caem no mesmo documento, e a aba atrasada não sobrescreve nada. Não voltar a usar `addDoc` ali e nunca mudar um id já publicado, porque isso cria um segundo funil em toda academia. Cada execução congela a academia no início. O estado de cada configuração e as marcas de "já configurado" são guardados junto com a academia (`src/lib/setupRun.js`), porque o "Acessar como" troca de academia sem recarregar a página.
 - O login com "Manter conectado" grava a sessão no IndexedDB (`persistenceFor`, em `src/lib/firebase.js`), o mesmo lugar que o `getAuth` vigia. Quando gravava no localStorage, abrir uma segunda aba deslogava a primeira. O `getAuth` não muda: é ele que migra quem já está logado.
@@ -32,6 +44,27 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 - O "E-mail de login" de Equipe & acessos troca o e-mail no Firebase Auth e no cadastro juntos, pela ação `set-email` do `api/admin-users.js`. A regra que a tela e o servidor dividem mora em `src/lib/loginEmail.js`. As travas são as do `set-password`, e o e-mail do super-admin nunca muda por ali. A troca revoga as sessões da pessoa, e isso mata o código pendente do "Esqueci a senha". Se o cadastro ou a revogação falharem, o que já foi gravado volta. O cliente não grava o e-mail do cadastro de quem tem conta. Ele só grava esse campo em dois casos: no cadastro sem `authUid`, que não tem login para trocar, e no vínculo do login legado, que copia o e-mail da própria conta.
 - O `index.html` declara o app em português e fora da tradução automática: `lang="pt-BR"`, `translate="no"` e `<meta name="google" content="notranslate">`. Com `lang="en"`, o Chrome tratava o Stronilead como página em inglês e traduzia a tela. O tradutor troca cada texto por `<font>`, e o React, quando insere ou remove algo ao lado desses textos, derruba o app com `NotFoundError` (`insertBefore` ou `removeChild`). Em 2026-09-25 isso deu tela branca no Novo lead com indicação e no cabeçalho de uma academia, porque os modais e o cabeçalho ficam fora do `AppErrorBoundary`. O `src/lib/__tests__/indexHtml.test.js` trava as três marcas. Nos cliques registrados pelo Sentry, `font > font` ou `html.translated-ltr` antes do erro quer dizer página traduzida.
 - O desfecho de visita e aula na Meta Diária é marcado pelo botão "Marcar desfecho" (`src/components/dailygoal/OutcomePopover.jsx`), na Agenda de hoje, no card "A fazer", no Próximo compromisso e no "Feitos hoje". A gravação mora em `src/lib/appointmentOutcome.js` e as regras, em `src/lib/outcomeCorrection.js`. Quando o Compareceu leva o lead para Negociação, o lead guarda de onde saiu em `appointmentPromotedFrom`, e toda gravação de desfecho escreve esse campo (null sem promoção). A correção para Não compareceu, ou o desfazer, devolve a etapa só se o lead continua em Negociação no mesmo funil, e grava uma `daily_goal_done` com `outcomeCorrection: true`, que o relatório de visitas lê como o último desfecho do dia.
+- O papel de quem usa o app se decide só em `src/lib/acesso.js`, com `roleOf` e `ROLES`, `isGestor`, `isProfessor`, `isSeller`, `roleLabel`, `can` com `ACTIONS` e `canOpenScreen`. Comparar `role` com 'admin', 'consultant', 'professor', 'consultor' ou 'gestor' fora dele reprova o `src/lib/__tests__/acessoSweep.test.js`. O `isAdminUser` saiu de `leads.js`. A `api/` não é varrida, mas também importa `acesso.js` onde decide por papel. Ação nova entra em `ACTIONS`: o `can` recusa em silêncio a ação que não conhece, então o `src/lib/__tests__/acessoActionsRef.test.js` reprova todo `ACTIONS.NOME` de `src/` e `api/` que não exista lá.
+- `acesso.js` e `modules.js` não importam nada, porque a `api/` os lê direto. O `src/lib/__tests__/acessoImports.test.js` trava isso com o mesmo leitor do `guardianImports.test.js`.
+- Cadastro sem papel, com papel antigo ('consultor') ou com papel desconhecido vale consultor, como sempre. A comparação é exata, igual à das regras do Firestore.
+- Gestor e consultor fazem todas as ações de `ACTIONS` (como hoje, desde a PR #193), e o professor não faz nenhuma. O que é só do gestor continua em `isGestor` e na trava `gestor` de `SCREENS`, fora de `ACTIONS`: Configurações, excluir lead, Meta da equipe, filtro de responsável nas listas e cobrança. Quando os perfis editáveis vierem, a tabela `PERMISSOES` sai do código e as telas continuam perguntando igual.
+- `can` olha só o papel. O login (`canEditLead`, pelo `authUid`) continua conferido à parte, e a ficha combina os dois. A sessão do super-admin puro tem `role: 'superadmin'`, que `roleOf` lê como consultor, então `can` devolve true para ela. Tela que o super-admin puro alcance sem academia não pode confiar só no `can`.
+- Lista de pessoas que vira filtro de responsável, escolha de dono, painel por pessoa, Meta da equipe ou meta de prospecção passa por `isSeller`. Busca de nome (o chip do filtro, o autor da linha do tempo, o `usersById` da Meta) continua com o `usersList` inteiro. As telas da varredura ficam em `LISTAS_DE_QUEM_VENDE`, no `acessoSweep.test.js` (os painéis, a Meta da equipe, o Pipeline, as listas, Clientes, a ficha, o cadastro do cliente, Metas & ritmo, Migrar leads e a importação de clientes), e tela nova com lista de pessoas entra ali.
+- O que o professor registra (anotação, WhatsApp, ligação, agendamento) cai em Outros no volume do Operacional, porque ele não está nas linhas por pessoa. Decidido no plano do PR 1, em 02/10/2026, e o Johnny pode mudar.
+- O dia batido da Meta (`goalHitKeyToRecord`, em `src/lib/dailyGoalHistory.js`) só grava para quem vende. O `App.jsx` passa `seller: isSeller(appUser)`.
+- No Gerencial, o rótulo de quem vendeu sai de `sellerRoleText`. O gestor aparece como "Gestor · também vende" e os outros, pelo `roleLabel`. As tabelas de pessoas do Operacional e do CRM usam o `roleLabel`.
+
+## Módulos da academia
+
+- O super-admin liga módulos por academia, e só ele, no cartão Módulos da página da academia no super console (`src/views/console/TenantModulesCard.jsx`). Hoje existe um módulo, `faltosos` (professor e faltosos), pensado só para a STRONIX. Spec em `docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md`.
+- A lista mora em `tenants/{id}.modules`. Quem grava é a `api/tenant-status.js`, que recusa módulo fora de `src/lib/modules.js` (texto exato, sem corrigir caixa) e grava a lista inteira de uma vez, porque o `set` com merge troca listas inteiras. As regras não deixam o navegador gravar em `/tenants`. A auditoria (`tenant.update`) guarda a lista de antes (`modulesBefore`) e a de depois (`modules`). Ligar ou desligar não mexe no status e não derruba sessão.
+- Desligar o módulo com professor de login pede confirmação no console, porque esses professores passam a ver só o aviso de acesso desligado.
+- `src/lib/modules.js` é a conta única, pura e sem import: `MODULES`, `KNOWN_MODULES`, `normalizeModules` e `hasModule`, que aceita a lista, o documento da academia ou as vagas do `getSeatUsage`. A `api/` importa o arquivo direto. Módulo novo entra em `MODULES` e, se as regras o usarem, com o mesmo texto lá: o `modules.test.js` confere toda chamada da `hasModule` no `firestore.rules`.
+- O app lê a lista no login, no mesmo `getDoc` de `tenants/{id}` que decide o bloqueio, e a guarda normalizada em `appUser.tenantModules`. Tela pergunta com `hasModule(appUser?.tenantModules, MODULES.FALTOSOS)`. Não existe estado nem prop à parte: o "Acessar como" troca de academia sem recarregar a página, o `signInWithCustomToken` roda o login de novo e monta outro `appUser`, e num estado à parte a tela passaria um instante com a pessoa de uma academia e os módulos de outra. O campo vem depois do `...userDoc.data()`, então o cadastro da pessoa nunca o sobrescreve. O `tenantModulesWiring.test.js` cobra o campo em todo `appUser` montado no login.
+- A falha fecha: documento ausente, leitura que falhou ou campo fora do formato dão lista vazia. O bloqueio da academia continua abrindo na falha, como sempre. Ligar ou desligar vale no próximo login ou F5 de cada pessoa.
+- A `api/` lê os módulos pelo `getSeatUsage`, que já lê o documento da academia para o plano e devolve `modules`: o convite, o cadastro de professor e a troca de papel passam esse `modules` ao `professorLinkRefusal` (`api/_professorLink.js`), sem ler de novo. O aceite do convite confere com o documento da academia que ele já leu.
+- O console conta o professor à parte: o `api/super-overview.js` devolve `professorCount`, e o `consultantCount` (que vira o preço dos extras e o MRR) não conta professor, com a mesma conta do `getSeatUsage`. O GET da `api/tenant-status.js` devolve `professors` e `modules`, e o uso da plataforma mostra a linha "Professores (fora das vagas)" quando a academia tem algum.
+- A tela "Feature flags" do console é outra coisa: grava chaves globais em `flags/` que nenhuma parte do app lê.
 
 ## Endereço de cada tela
 
@@ -41,7 +74,11 @@ Cada tela do menu e cada ficha têm endereço próprio, com o identificador da a
 - **O endereço manda.** `activeTab`, `resolvedTab`, `profileLeadId` e `superTab` do `App.jsx` são calculados no render a partir de `useLocation()`, pelo `screenState` de `src/lib/appShell.js`. Esse módulo puro guarda o que a casca tira do endereço e da sessão: tela acesa, origem da ficha, chave da sessão, marca do login, destino do Sair, volta do "Acessar como" e funil salvo. Não existe `setActiveTab`: trocar de tela é navegar. Nada de ler a URL num effect para dar setState. O lint reprova, e esse padrão já deu defeito nas Configurações.
 - **Sem `<Routes>`.** O `BrowserRouter` fica em `src/main.jsx`, com `useTransitions={false}`, e o `AppInner` lê o endereço direto. Com `<Routes>`, corrigir `/` para `/<academia>` remontaria o `AppInner`, que guarda o login e as assinaturas. Versão fixada em `~7.18.4`, porque a 8 exige React 19.2.7.
 - **Uma decisão de rota por render**, nesta ordem: super-admin puro fica em `/` (o Console não tem endereço); sessão assumida vai para a academia assumida; a volta da visualização vai ao endereço guardado no "Acessar como"; academia do endereço diferente da sessão é corrigida sem aviso; tela de gestor mostra "Essa tela é só do gestor." e vai para `/<academia>`; endereço desconhecido mostra "Não achamos essa tela. Abrimos o Operacional.". A tela de destino já é desenhada no mesmo render, e o `RouteRedirect` troca o endereço com replace.
-- **Todo replace passa pelo `navigate`.** O React Router grava a posição da entrada (`idx`) no `history.state`, e o Voltar da ficha depende dela: com `idx` maior que zero volta uma entrada, e sem isso vai para Clientes (cliente) ou Pipeline (lead), nunca para fora do app. Um `history.replaceState` cru apaga o `idx`. O `routes.test.js` trava esse contrato na versão instalada.
+- **O professor abre só a Meta diária, Clientes e a ficha.** O `canAccess` consulta o `canOpenScreen` (`src/lib/acesso.js`) antes das travas de gestor e de super-admin.
+- **A tela inicial dele é a Meta diária** (`homeScreenFor`, em `src/lib/routes.js`). `/` e `/<academia>`, onde o login e o Sair caem, levam a ela sem aviso.
+- **Avisos do professor.** Qualquer outra tela mostra "Essa tela não está liberada para o seu acesso." e vai para a Meta diária. O super-admin continua sumindo em silêncio. Endereço desconhecido mostra "Não achamos essa tela. Abrimos a Meta diária.".
+- **A correção de academia remonta o endereço sobre a raiz da academia** (`base`), nunca sobre a tela inicial. Com a inicial do professor como base, `/pipeline` viraria `/<academia>/meta-diaria/pipeline`.
+- **Todo replace passa pelo `navigate`.** O React Router grava a posição da entrada (`idx`) no `history.state`, e o Voltar da ficha depende dela: com `idx` maior que zero volta uma entrada, e sem isso vai para Clientes (cliente) ou Pipeline (lead), e o professor, que não abre o Pipeline, volta da ficha de lead para a Meta diária (`backTarget` com `appUser`), nunca para fora do app. Um `history.replaceState` cru apaga o `idx`. O `routes.test.js` trava esse contrato na versão instalada. O "Ir para o início" da ficha usa o `homeScreenFor`.
 - **Nada de dado pessoal no endereço nem no título.** Nome, telefone, CPF e texto de busca nunca vão para o caminho nem para a query. Da ficha só vai o id, que é aleatório. O título da aba na ficha é "Ficha · <Academia> · STRONILEAD", sem o nome, porque o histórico do navegador da recepção guarda o título.
 - **`invite`, `t` e `ref` são nomes reservados de query.** São do convite (`/?invite=&t=`) e da indicação pública (`/i/<slug>?ref=`), decididos uma vez no `App()`, fora do roteador. Filtro futuro no endereço usa outro nome.
 - **O filtro da tela mora no endereço.** A tabela de parâmetros de cada tela, a leitura e a montagem moram em `src/lib/screenParams.js`, puro e testado em node; `src/hooks/useScreenParams.js` liga isso à tela. Parâmetro novo entra na tabela de lá, nunca espalhado na view, e nome novo jamais pode ser `invite`, `t` ou `ref`. Quem escolhe filtro navega: nada de `useState` para filtro e nada de ler a URL num effect. Ausente é o padrão e o padrão nunca é escrito, com uma exceção escrita na tabela, o funil das telas de lista, cujo padrão é de cada pessoa. Valor inválido ou que sumiu (consultor desligado, funil apagado, etapa que mudou de código, mês fora da janela de 12 meses, período maior que 30 dias) cai no padrão, sem aviso. `resp` tem três estados: ausente é o padrão do papel, `resp=` é toda a equipe, com ids é a lista. O filtro de responsável e o de professor são ignorados para quem não vê o controle na tela, senão um link de gestor prende o consultor num recorte que ele não teria como limpar.
@@ -60,6 +97,100 @@ Cada tela do menu e cada ficha têm endereço próprio, com o identificador da a
 - **Rolador horizontal leva `overscroll-x-contain`.** Sem isso, rolar um quadro até a borda no trackpad dispara o voltar do navegador e troca de tela. O `overscrollGuard.test.js` cobra isso de todo `overflow-x-auto` em `src/`.
 - **Custo.** O `/api/tenant-resolve` só é chamado quando a tela de login vai aparecer: o F5 de quem já está logado não gasta a cota por IP. A subaba do super-admin fica fora do `screenKey`, senão cada clique nela remontaria o `SuperAdminView` e refaria a busca do `/api/super-overview`.
 - **Sentry e o id da ficha.** Continua o `Sentry.browserTracingIntegration()`, com `beforeStartSpan` dando à transação o nome do molde da tela (`routeTemplate(options.name)`, como `/:tenant/ficha/:leadId`). O molde sai de `options.name`, que na navegação é o destino: o SDK chama o gancho antes de o endereço trocar, então `window.location` daria a tela de antes. Todo push e todo replace com endereço, inclusive o do aviso de rota, vira transação de navegação (amostra de 10%). O SDK ainda grava o caminho cru no escopo, então `src/lib/sentryScrub.js` troca `/ficha/<id>` por `/ficha/:leadId` no evento inteiro, nas migalhas, em `url.path` e no LCP, e `beforeSendSpan: scrubSpan` limpa a span do INP, que pode levar o nome do cliente pelo `alt` do avatar. O `scrubSpan` nunca devolve `null`, porque com `null` o SDK manda a span original. Segmento novo de endereço que leve id entra na `LEAD_PATH_RE` do `sentryScrub.js`, com teste. Não trocar pela integração do React Router: ela exige `<Routes>` e, sem ele, desliga a navegação do Sentry.
+
+## Professor
+
+O papel Professor só é dado com o módulo `faltosos` ligado (ver "Módulos da academia"). Spec em `docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md`.
+
+### O acesso
+
+- **Acesso de professor.**
+  - Quem tem acesso de professor é um cadastro em `stronix_users` com `role: 'professor'` e `professorId`, que diz qual professor de `stronix_professores` a pessoa é.
+  - O cadastro nasce com o id igual ao uid da conta. É por esse id que as regras do Firestore leem o papel.
+  - Só o servidor grava `role` e `professorId`. Os caminhos são três: o `create` do `api/admin-users.js`, o convite (`api/invite-create.js` mais `api/invite-accept.js`) e a ação nova `set-role` (`SET_ROLE_ACTION`), na mesma função da Vercel. Continuam 11 de 12.
+  - O navegador nunca grava esses dois campos.
+- **As regras do vínculo** moram em `src/lib/teamRoles.js`. O arquivo é puro e só importa `acesso.js` e `modules.js`, porque a `api/` também o usa; o `teamRolesImports.test.js` trava isso. As leituras ficam em `api/_professorLink.js`.
+- **O que vira professor precisa de:**
+  - o módulo `faltosos` ligado;
+  - um professor do cadastro ativo (`ativo !== false`) e sem outro login;
+  - no `set-role`, carteira vazia, contando clientes e perdas. Quem ainda é dono de algum lead recebe 409 com o pedido de passar os leads em Configurações → Migrar leads, marcando Leads em aberto, Clientes ativos e Perdas;
+  - cadastro com id igual ao uid. Cadastro antigo recebe 422 e precisa ser recriado.
+
+  A conferência de "um login por professor" não é transação, e isso foi aceito. O aceite do convite confere tudo de novo, porque o convite vale 7 dias.
+- **Vagas.**
+  - O `getSeatUsage` (`api/_plans.js`) conta o professor à parte (`professors`) e calcula consultor como total menos gestor menos professor.
+  - O `canAddSeat(seats, 'professor')` sempre cabe.
+  - A cobrança (Asaas, extras) só lê `consultants` e `extraConsultants`, então nunca cobra professor.
+  - O `getSeatUsage` devolve também os `modules` normalizados da academia, para quem cria professor não ler o documento de novo.
+  - `currentUsers` continua contando todo mundo.
+- **Troca de papel.**
+  - O `set-role` muda só entre Consultor e Professor. O gestor não muda por ali, e ninguém troca o próprio papel.
+  - Professor que volta a consultor ocupa vaga de consultor, com a mesma confirmação de extra pago do cadastro.
+  - Consultor extra que vira professor libera a vaga e sincroniza a assinatura.
+  - Virar professor apaga a meta de prospecção.
+  - Quando o papel muda, as sessões da pessoa são revogadas.
+- **Equipe & acessos** lê os módulos em `appUser.tenantModules`. Com o módulo, a tela tem:
+  - o botão "Cadastrar pessoa";
+  - o campo Papel e o "Professor do cadastro", só com ativos sem login;
+  - o selo violeta de professor, com o professor ligado embaixo;
+  - um traço no lugar da prospecção do professor;
+  - na faixa de vagas, a conta dos professores fora das vagas de consultor.
+
+  Sem o módulo, a tela fica igual à de antes.
+- **Exclusão.** O professor do cadastro que tem login não pode ser excluído pela tela, mas a trava é só de tela. Excluir um professor com acesso não mexe na assinatura.
+- **Prospecção e assentos.** O professor não entra na "Meta de prospecção" (`settingsSetup.js`, pelo `roleOf`, e `PaceSection.jsx`, pelo `isSeller`) nem na dica de assentos da Visão geral. Ele continua pesando no passo "Acessos da equipe". O atalho "Cadastrar consultor" da Visão geral mantém o nome.
+- **Convites antigos.** Convite sem papel ou com papel desconhecido entra como consultor (`roleOf`), como antes.
+
+### A ficha, a busca e o sino
+
+- **Ficha do professor.**
+  - Some: o Mudar fase do composer, o lápis, a foto, o "Adicionar etiqueta", o Indicar inteiro (Cadastrar indicação, Copiar link e Enviar pro cliente), o lápis do "Indicado por", o "Vincular indicador", Marcar venda, Marcar perda e Excluir.
+  - Contratos e Indicações aparecem sem botão.
+  - Ficam: Anotação, WhatsApp, Ligação, Agendar, o WhatsApp e o Ligar do cabeçalho e a linha do tempo.
+- **Travas da ficha.**
+  - `isReadOnly` continua sendo `!canEditLead(appUser)` (sem `authUid`).
+  - Cada ação pergunta também à lista:
+    - `canEditCadastro` (`CADASTRO_EDITAR`): foto, lápis, etiqueta e "Fez 18 anos";
+    - `canMudarFase` (`FICHA_MUDAR_FASE`): Mudar fase e Perda;
+    - `canContrato` (`CONTRATO_EDITAR`): Venda e todo botão de contrato;
+    - `canIndicar` (`INDICACAO_CADASTRAR`): menu Indicar e vínculo de indicador.
+  - Excluir continua só do gestor, pelo `isGestor`.
+  - Além do botão escondido, cada handler tem a própria trava (`negarAcesso`, "Essa ação não está liberada para o seu acesso.").
+  - A Venda pelo PhaseChanger pede as duas ações, fase e contrato.
+- A aba Contratos fica só para leitura pelo `isReadOnly={isReadOnly || !canContrato}`. Todo botão de `ContractsTab`, `ContractHeroCard`, `NextContractStrip` e do card vazio ou fechado já segue o `isReadOnly`. Botão novo na aba precisa seguir o mesmo prop.
+- `ReferralsSection` ganhou `canRefer` (padrão true). Sem ele, o aviso de vazio não manda procurar o botão Indicar.
+- Professor nunca aparece numa escolha de pessoa que dá carteira ou tarefa. Passam pelo `isSeller`:
+  - o passo "Responsável" do Agendar (`activeUsers` da ficha);
+  - o "Consultor responsável" do Editar cadastro (`ownerOptions` do `ClientRegistrationModal`);
+  - o filtro de responsável de Clientes (lista e `users` do `screenParams`).
+- Em Clientes, a lista vazia só convida a matricular ("Matricule um lead pelo Kanban ou pela ficha") quem tem `CONTRATO_EDITAR`.
+- **Busca do topo.**
+  - O `searchPeople` aceita `include`, um filtro aplicado antes de tudo, para o total e o limite contarem só quem pode aparecer. É função recebida e não import, porque `leads.js` importa `globalSearch.js`.
+  - O App passa `clientsOnly={!can(appUser, ACTIONS.LEADS_VER)}` ao `GlobalSearch`, que recorta com `isClientLead` e diz "Buscar clientes".
+  - O recorte vem depois da leitura: o `useLeadSearch` continua trazendo 20 candidatos por consulta, sem filtro de `lifecycleBucket`, que pediria índice composto. Numa academia com muitos leads de mesmo começo de nome, um cliente pode não aparecer para o professor.
+- **Topo do App.** O "Cadastrar lead" do cabeçalho, o "Cadastrar novo lead" da busca e a montagem do `AddLeadModal` pedem `ACTIONS.LEAD_CRIAR`.
+- **Sino.**
+  - Indicações pelo link e "passaram para você" só chegam a quem tem `ACTIONS.SINO_EQUIPE`.
+  - O professor recebe só as novidades, e o `useHandoffs` nem faz a leitura para ele.
+  - O recorte academia contra carteira continua no `isGestor`.
+  - O texto do sino vazio sai de `emptyBellText`, em `src/lib/notifications.js`.
+
+### As telas
+
+- **Menu lateral.**
+  - O menu sai de `sidebarNav` (`src/lib/sidebarNav.js`), que pergunta ao mesmo `canAccess` da decisão de rota. Item novo do menu de trabalho entra ali e no `professorShell.test.js`.
+  - O Suporte segue `ACTIONS.SUPORTE_ABRIR`, e o professor não assina os chamados.
+- **Professor com o módulo desligado.**
+  - Quando `professorAccessOff(appUser)` é verdade (`src/lib/sidebarNav.js`: professor numa academia sem `faltosos` em `appUser.tenantModules`), o App desenha só a `ProfessorAccessOffScreen`, com o aviso "O acesso de professor está desligado nesta academia. Fale com o gestor." e o Sair. Ela entra logo depois do bloqueio da academia.
+  - Nessa sessão o App não assina nada: a leitura dos dados da academia para logo depois da trava da academia bloqueada, e o título da aba, o sino e os chamados também não leem nada.
+  - A lista de módulos é lida no login. Se a leitura da academia falhar, ela vem vazia e o professor vê o aviso até o próximo F5.
+- **Meta diária do professor.**
+  - É o `ProfessorGoalPlaceholder` até o PR 3.
+  - O selo da Meta e as consultas de renovação e de contato de hoje (`useRenewalClients` e `useClientsWithContactToday`) só rodam para quem vende (`isSeller`).
+- **Pop-ups.**
+  - O pop-up de novidade grande (`WhatsNewModal`) e o tutorial (`WalkthroughModal`) não abrem para o professor. As novidades continuam no sino.
+  - O comentário de `audience` em `src/lib/announcements.js` diz isso.
+  - O menu da conta mostra "Professor" como papel.
 
 ## Responsável do menor de idade
 
@@ -151,6 +282,15 @@ Tudo cabe numa função só, `api/zap.js`:
 - **Erro inesperado sobe sem dado pessoal**, pelo `scrubbedError`, como no cadastro.
 - **O banco falso da rota** (`api/__tests__/zapRoute.test.js`) guarda `stronix_aulas`, lê documento de lista pelo id com o `id` no snapshot e soma o `FieldValue.increment`, como o SDK de servidor. Dentro da transação ele recusa a leitura que não passa pelo `tx.get`, porque no SDK ela não é transacional, e o campo `undefined` numa gravação, porque o `adminDb` do projeto não aceita.
 
+**O professor na ponte** (ver "Professor", acima).
+
+- O `create-lead` e o `lead-options` recusam o professor com 403 `fora_da_equipe` e o texto `professorNoLead` (`signupRefusal`, por `ACTIONS.LEAD_CRIAR`).
+- A equipe do gestor e o dono escolhido passam pelo `isSeller`.
+- O professor agenda, com `countsForMeta: false`, e com o módulo desligado o `schedule-options` e o `schedule` o recusam com 403 `fora_da_equipe` e o texto `professorOff` (`scheduleRefusal`).
+- O `teamRole` manda o professor como `'consultor'`, porque o Stronizap só conhece gestor e consultor.
+- O `openByKey` devolve também o documento da academia.
+- O Stronizap não precisou de deploy, porque mostra a recusa como ela chega.
+
 **Casamento de telefone.** O campo indexado `lead.zapMatchKey` é o DDD mais os últimos 8 dígitos. É a única parte estável entre o formato daqui (até 11 dígitos, sem DDI) e o do WhatsApp (com 55 na frente, e o nono dígito que existe em número novo e não existe em número antigo). A regra mora em `api/_zapPhone.js` e quem grava é `buildLeadSearchFields`, em `src/lib/leadDerived.js`. Esse builder tem espelho em `api/_referral.js`: mexeu num, mexa no outro, senão `src/lib/__tests__/referralApiMirror.test.js` quebra. Base antiga se acerta com `scripts/backfill-zap-match-key.js`.
 
 **Faixa de destaque** (`api/_zapStrip.js`), por ordem de precedência: visita ou aula de hoje, contrato vencido, freepass válido, marco de renovação. Os gatilhos saem de `src/lib/contracts.js`, de `src/lib/renewalGoal.js` e da conta do freepass. Nenhuma regra é recalculada do outro lado.
@@ -206,7 +346,14 @@ O `AppErrorBoundary` envolve só o conteúdo da tela (a key sai do `screenKey`, 
 - **O Sentry monta o fallback como componente** (`createElement`). Ele precisa ser uma função fixa, nunca uma arrow nova a cada render, senão o aviso remonta toda vez que o App renderiza e o Dialog abre de novo. O `open` e o `onClose` do modal chegam ao aviso por contexto.
 - **Modal novo no fim do `App.jsx` já nasce cobrado.** O `src/lib/__tests__/protecaoDeErro.sweep.test.js` exige proteção em todo componente montado depois do `</AppErrorBoundary>` e nas peças do cabeçalho. O comportamento está em `src/lib/__tests__/errorBoundaries.test.js`, que roda em jsdom (`// @vitest-environment jsdom`, com o `jsdom` nas devDependencies).
 - **Telas de entrada** (login, "Esqueci a senha", convite e indicação pública) ficam cada uma dentro de uma `ScreenErrorBoundary`. A que quebra vira o aviso "Não deu para abrir esta tela.", com o botão Recarregar e o código do erro, e o erro vai para o Sentry como nos outros. O aviso não depende de nada do app, nem do `AuthLayout`, que pode ser justamente o que quebrou: não usa hook, logotipo nem toast. As telas que se revezam no `AppInner` (carregando, login e "Esqueci a senha") levam `key` própria, para o aviso de uma não ficar preso quando a outra entra. Tela nova sem sessão já nasce cobrada: o `protecaoDeErro.sweep.test.js` lê o trecho do `App.jsx` que roda antes de existir sessão e exige a proteção em todo componente e em todo retorno dele.
-- **Ainda sem proteção própria:** o menu lateral, os banners do topo (teste, mensalidade e "Acessar como"), o Console de página inteira do super-admin puro e as telas de bloqueio de quem já tem sessão (`TenantBlockedScreen` e `TrialActivationScreen`). O `src/main.jsx` não tem proteção na raiz, então um erro de render numa delas deixa a página toda branca, e o Sentry só o recebe pelos ganchos do `createRoot`. Fica para uma tarefa separada.
+- **Ainda sem proteção própria:** o menu lateral, os banners do topo (teste, mensalidade e "Acessar como"), o Console de página inteira do super-admin puro e as telas de bloqueio de quem já tem sessão (`TenantBlockedScreen`, `TrialActivationScreen` e `ProfessorAccessOffScreen`). O `src/main.jsx` não tem proteção na raiz, então um erro de render numa delas deixa a página toda branca, e o Sentry só o recebe pelos ganchos do `createRoot`. Fica para uma tarefa separada. A `ProfessorAccessOffScreen` não pode levar `ScreenErrorBoundary`, porque o `protecaoDeErro.sweep.test.js` conta toda `ScreenErrorBoundary` do `App.jsx` como tela sem sessão.
+- O `src/lib/__tests__/professorShell.test.js` lê o `App.jsx` e cobra as ligações do professor na casca:
+  - o aviso de acesso desligado no lugar certo, depois do bloqueio da academia e antes do Console e do app;
+  - com o acesso desligado, nenhuma assinatura de dados, nem o título, o sino e os chamados;
+  - cada item do menu pelo `nav`;
+  - os chamados pela permissão do Suporte;
+  - o placeholder na Meta diária;
+  - o `isSeller` no selo e nas duas consultas.
 
 ## Esqueci a senha
 
