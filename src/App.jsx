@@ -52,6 +52,7 @@ import {
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
 import { getSafeDate } from './lib/dates.js';
 import { isAdminUser, normalizeLeadDoc } from './lib/leads.js';
+import { ACTIONS, can, isGestor, isProfessor, isSeller } from './lib/acesso.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
 import { planUpgradeSetupOps } from './lib/upgradeFunnel.js';
@@ -73,6 +74,7 @@ import {
   screenState, sessionKeyFor, loginTenantSlug,
   loginBrand, logoutDestination, returnToFrom, savedFunnelKey, readSavedFunnel,
 } from './lib/appShell.js';
+import { sidebarNav, professorAccessOff } from './lib/sidebarNav.js';
 import { ToastProvider } from './contexts/ToastContext.jsx';
 import { GeneralConfigContext } from './contexts/GeneralConfigContext.jsx';
 import { LeadProfileContext } from './contexts/LeadProfileContext.jsx';
@@ -85,6 +87,7 @@ import { ViewSkeleton } from './components/ui/Skeleton.jsx';
 import { SidebarItem, SidebarGroup, SidebarSubItem, SIDEBAR_EXPANDED_ONLY } from './components/layout/Sidebar.jsx';
 import { TenantBlockedScreen } from './views/auth/TenantBlockedScreen.jsx';
 import { TrialActivationScreen } from './views/auth/TrialActivationScreen.jsx';
+import { ProfessorAccessOffScreen } from './views/auth/ProfessorAccessOffScreen.jsx';
 import { AcceptInviteScreen } from './views/auth/AcceptInviteScreen.jsx';
 import { ReferralLandingScreen } from './views/public/ReferralLandingScreen.jsx';
 import { LoginScreen } from './views/auth/LoginScreen.jsx';
@@ -100,6 +103,7 @@ import { ClientsView } from './views/ClientsView.jsx';
 import { LeadProfileRoute } from './views/LeadProfileRoute.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
+import { ProfessorGoalPlaceholder } from './views/ProfessorGoalPlaceholder.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
 import { WalkthroughModal } from './components/WalkthroughModal.jsx';
@@ -231,7 +235,10 @@ function AppInner() {
   // o plantão com o Firestore, que é o que a recobrança dos 30 min tarifava a
   // noite inteira numa máquina esquecida ligada. Volta ao 1º sinal de vida.
   const listenersActive = useActivityGate();
-  const ticketsOn = !!appUser?.tenantId && !appUser?.superAdminOnly && !tenantBlock;
+  // O Suporte é do gestor e do consultor (ACTIONS.SUPORTE_ABRIR). O professor
+  // não tem o item no menu, então os chamados que só alimentam o selo dele não
+  // são assinados.
+  const ticketsOn = !!appUser?.tenantId && !appUser?.superAdminOnly && !tenantBlock && can(appUser, ACTIONS.SUPORTE_ABRIR);
   useEffect(() => {
     if (!ticketsOn || !listenersActive) return;
     const q = query(collection(db, 'tickets'), where('tenantId', '==', appUser.tenantId));
@@ -1355,6 +1362,10 @@ useEffect(() => {
   // Endereço dos itens do menu, do menu da conta e do aviso de mensalidade.
   // Sai da academia da sessão (claim), nunca da barra de endereço.
   const menuHref = (screen, extra) => hrefFor(sessionTenant, screen, extra);
+  // Itens do menu de trabalho que a sessão vê, pela mesma pergunta da decisão
+  // de rota (src/lib/sidebarNav.js). O professor fica com Meta diária e
+  // Clientes. O menu do computador e o do celular são o mesmo <aside>.
+  const nav = sidebarNav(appUser);
   // Funil em que o cadastro rápido nasce: o do endereço quando a tela de lista
   // traz um, e senão o último funil usado. O "Novo lead" do cabeçalho e o da
   // busca global aparecem em qualquer tela, e fora das telas de lista o
@@ -1402,7 +1413,9 @@ useEffect(() => {
   // Renovação. `clients` (o filtro A_VENCER exato) segue só pro badge âmbar de
   // Clientes; `candidates` é o pool cru (janela mais larga, até o maior marco)
   // que a Meta usa pra avaliar os marcos configuráveis (ver useRenewalClients.js).
-  const { clients: renewalClients, candidates: renewalCandidates, loading: renewalLoading } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, expiredWindowDays: renewalGraceDays, reloadKey: dayKey, enabled: !!appUser });
+  // Só quem vende tem a Meta do consultor: o professor não faz estas consultas
+  // (isSeller dá false também sem sessão, como o !!appUser de antes).
+  const { clients: renewalClients, candidates: renewalCandidates, loading: renewalLoading } = useRenewalClients({ db, contractThresholdDays, renewalCheckpoints, expiredWindowDays: renewalGraceDays, reloadKey: dayKey, enabled: isSeller(appUser) });
   // Base da META (G1d): ativo (prop) ∪ candidatos a renovação (renewalCandidates),
   // dedupe por id (global primeiro). PRÉ-flip o prop já contém os clientes →
   // no-op → números idênticos; PÓS-flip o prop vira só 'ativo' e os
@@ -1413,7 +1426,7 @@ useEffect(() => {
   // contrato longe de vencer não entra na base e o contato marcado com ele some
   // da Meta em silêncio (a categoria 5 prevê o caso, mas nunca é avaliada
   // porque o lead não chega a ser carregado).
-  const { clients: clientsContactToday, loading: contactTodayLoading } = useClientsWithContactToday({ db, reloadKey: dayKey, enabled: !!appUser });
+  const { clients: clientsContactToday, loading: contactTodayLoading } = useClientsWithContactToday({ db, reloadKey: dayKey, enabled: isSeller(appUser) });
   const metaLeads = useMemo(() => {
     const byId = new Map();
     (leads || []).forEach((l) => byId.set(l.id, l));
@@ -1424,7 +1437,9 @@ useEffect(() => {
 
   // Tarefas pendentes HOJE do usuário logado (mesma regra Meta-only da tela).
   const dailyGoalProgress = useMemo(() => {
-    if (!appUser?.id) return { total: 0, pending: 0 };
+    // Só quem vende tem a Meta do consultor. O professor fica sem pendência no
+    // menu e sem dia batido gravado: a Meta dele, a dos faltosos, vem no PR 3.
+    if (!appUser?.id || !isSeller(appUser)) return { total: 0, pending: 0 };
     void dayKey; // recalcula na virada do dia
     const slots = computeDailyGoalSlots(metaLeads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
     const { totalSlots, doneSlots } = slotTotals(slots);
@@ -1509,6 +1524,15 @@ useEffect(() => {
     return <TenantBlockedScreen reason={tenantBlock} onLogout={handleLogout} />;
   }
 
+  // Professor numa academia com o módulo "Professor e faltosos" desligado: o
+  // login vale, mas nenhuma tela é dele (professorAccessOff, em
+  // src/lib/sidebarNav.js). Fica só o aviso, com o Sair, e as regras do
+  // Firestore recusam as gravações dele. Ligar o módulo de novo devolve as
+  // telas no próximo login ou F5.
+  if (professorAccessOff(appUser)) {
+    return <ProfessorAccessOffScreen onLogout={handleLogout} />;
+  }
+
   // Super-admin "puro" (dono da plataforma): entra DIRETO no Console dark — ele é
   // a interface principal. (O SuperAdminView antigo segue como fallback p/ super-admin
   // que também é membro de um tenant; o botão "beta" continua lá pra eles.)
@@ -1558,41 +1582,45 @@ useEffect(() => {
             <>
               <div className={`px-2.5 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Workspace</div>
               <div className="space-y-1">
-                <SidebarGroup
-                  icon={<LayoutDashboard className="w-[18px] h-[18px]" />}
-                  label="Visão geral"
-                  active={isDashTab}
-                  open={overviewMenuOpen || isDashTab}
-                  onToggle={() => setOverviewMenuOpen(o => !o)}
-                >
-                  <SidebarSubItem label="Operacional" href={menuHref('dashOperacional')} onNavigate={closeDrawer} active={resolvedTab === 'dashOperacional'} />
-                  <SidebarSubItem label="CRM" href={menuHref('dashCrm')} onNavigate={closeDrawer} active={resolvedTab === 'dashCrm'} />
-                  <SidebarSubItem label="Gerencial" href={menuHref('dashGerencial')} onNavigate={closeDrawer} active={resolvedTab === 'dashGerencial'} />
-                </SidebarGroup>
-                <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />
-                <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />
-                <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />
-                <SidebarGroup
-                  icon={<Users className="w-[18px] h-[18px]" />}
-                  label="Leads"
-                  active={isLeadsTab}
-                  open={leadsMenuOpen}
-                  onToggle={() => setLeadsMenuOpen(o => !o)}
-                >
-                  <SidebarSubItem label="Todos os leads" href={menuHref('leads')} onNavigate={closeDrawer} active={activeTab === 'leads'} />
-                  <SidebarSubItem label="Aulas experimentais" href={menuHref('aulas')} onNavigate={closeDrawer} active={activeTab === 'aulas'} />
-                  <SidebarSubItem label="Visitas" href={menuHref('visitas')} onNavigate={closeDrawer} active={activeTab === 'visitas'} />
-                </SidebarGroup>
-                <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" badge={ticketsUnread > 0 ? ticketsUnread : null} active={false} onClick={() => setTicketModalOpen(true)} />
+                {nav.overview && (
+                  <SidebarGroup
+                    icon={<LayoutDashboard className="w-[18px] h-[18px]" />}
+                    label="Visão geral"
+                    active={isDashTab}
+                    open={overviewMenuOpen || isDashTab}
+                    onToggle={() => setOverviewMenuOpen(o => !o)}
+                  >
+                    <SidebarSubItem label="Operacional" href={menuHref('dashOperacional')} onNavigate={closeDrawer} active={resolvedTab === 'dashOperacional'} />
+                    <SidebarSubItem label="CRM" href={menuHref('dashCrm')} onNavigate={closeDrawer} active={resolvedTab === 'dashCrm'} />
+                    <SidebarSubItem label="Gerencial" href={menuHref('dashGerencial')} onNavigate={closeDrawer} active={resolvedTab === 'dashGerencial'} />
+                  </SidebarGroup>
+                )}
+                {nav.kanban && <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />}
+                {nav.clientes && <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />}
+                {nav.dailyGoal && <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />}
+                {nav.leads && (
+                  <SidebarGroup
+                    icon={<Users className="w-[18px] h-[18px]" />}
+                    label="Leads"
+                    active={isLeadsTab}
+                    open={leadsMenuOpen}
+                    onToggle={() => setLeadsMenuOpen(o => !o)}
+                  >
+                    <SidebarSubItem label="Todos os leads" href={menuHref('leads')} onNavigate={closeDrawer} active={activeTab === 'leads'} />
+                    <SidebarSubItem label="Aulas experimentais" href={menuHref('aulas')} onNavigate={closeDrawer} active={activeTab === 'aulas'} />
+                    <SidebarSubItem label="Visitas" href={menuHref('visitas')} onNavigate={closeDrawer} active={activeTab === 'visitas'} />
+                  </SidebarGroup>
+                )}
+                {nav.suporte && <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" badge={ticketsUnread > 0 ? ticketsUnread : null} active={false} onClick={() => setTicketModalOpen(true)} />}
               </div>
             </>
           )}
 
-          {(appUser?.superAdmin || (!appUser.superAdminOnly && isAdminUser(appUser))) && (
+          {(appUser?.superAdmin || (!appUser.superAdminOnly && isGestor(appUser))) && (
             <>
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
-                {!appUser.superAdminOnly && isAdminUser(appUser) && (
+                {!appUser.superAdminOnly && isGestor(appUser) && (
                   <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" href={menuHref('settings')} onNavigate={closeDrawer} active={activeTab === 'settings'} />
                 )}
                 {appUser?.superAdmin && (
@@ -1788,7 +1816,11 @@ useEffect(() => {
               {/* Meta Diária (G1d): base = ativo ∪ clientes a vencer (metaLeads),
                   flip-safe. computeDailyGoalSlots filtra por consultor e categoria
                   internamente. interactions segue global (G2). */}
-              {activeTab === 'dailyGoal' && <DailyGoalView leads={metaLeads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} listenersActive={listenersActive} />}
+              {/* O professor não tem a Meta do consultor. Até a Meta dos
+                  faltosos (PR 3), a tela dele diz o que falta. */}
+              {activeTab === 'dailyGoal' && (isProfessor(appUser)
+                ? <ProfessorGoalPlaceholder appUser={appUser} />
+                : <DailyGoalView leads={metaLeads} interactions={interactions} appUser={appUser} statuses={statuses} db={db} tags={tags} lossReasons={lossReasons} usersList={usersList} funnels={funnels} listenersActive={listenersActive} />)}
               {activeTab === 'leads' && <LeadsView interactions={interactions} appUser={appUser} sources={sources} statuses={statuses} usersList={usersList} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} selectedFunnelId={selectedFunnelId} setSelectedFunnelId={setSelectedFunnelId} onAddLeadClick={() => setIsAddLeadModalOpen(true)} />}
               {/* Aulas e Visitas são SOMENTE CONSULTA: não gravam desfecho, então
                   não precisam mais de interactions/statuses (que serviam ao antigo
