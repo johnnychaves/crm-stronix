@@ -2848,3 +2848,121 @@ describe('POST /api/zap com action appointment-status', () => {
     expect(String(erro.stack)).not.toContain('stronix_leads/L1');
   });
 });
+
+// ---------------------------------------------------------------------------
+// O professor na ponte (spec docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md)
+// ---------------------------------------------------------------------------
+
+// Caio, professor de pilates (p1 do cadastro de professores), com login e o
+// mesmo e-mail no Stronizap, onde usa o canal dos professores. O cadastro do
+// professor nasce pelo servidor, com o id igual ao uid da conta.
+const CAIO = {
+  id: 'auth-caio', name: 'Caio Prof', email: 'caio@stronix.com.br', authUid: 'auth-caio', role: 'professor', professorId: 'p1'
+};
+const PROFESSOR_NAO_CADASTRA = 'Seu acesso de professor no Stronilead não cadastra lead. Peça a um consultor ou ao gestor.';
+const PROFESSOR_DESLIGADO = 'O acesso de professor está desligado nesta academia. Fale com o gestor.';
+
+describe('POST /api/zap: o professor', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(AGORA);
+    zerarBanco();
+    academiaComEquipe();
+    banco.users[TENANT].push(CAIO);
+    banco.tenants[TENANT].modules = ['faltosos'];
+    banco.leads[TENANT] = [marianaLead()];
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('não abre o cadastro de lead', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoes(CAIO.email), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'fora_da_equipe', message: PROFESSOR_NAO_CADASTRA });
+  });
+
+  it('não cadastra lead, nem com o pedido montado à mão', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ actor: { email: CAIO.email, name: 'Caio' } }), res);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body).toEqual({ error: 'fora_da_equipe', message: PROFESSOR_NAO_CADASTRA });
+    expect(leadsDaAcademia().map((l) => l.id)).toEqual(['L1']);
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('não aparece na equipe que o gestor vê no cadastro', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoes(JOHNNY.email), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.team.map((u) => u.id)).toEqual(['u-ana', 'u-bruno', 'u-johnny']);
+  });
+
+  it('não vira dono do lead que o gestor cadastra', async () => {
+    const res = resposta();
+
+    await handler(pedidoCadastro({ actor: { email: JOHNNY.email }, lead: { ownerId: CAIO.id } }), res);
+
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toEqual({ error: 'responsavel_invalido', message: 'Essa pessoa não está mais na equipe do Stronilead.' });
+    expect(leadsDaAcademia().map((l) => l.id)).toEqual(['L1']);
+  });
+
+  it('abre o balão do agendamento como consultor e fora da Meta', async () => {
+    const res = resposta();
+
+    await handler(pedidoOpcoesAgenda({ email: CAIO.email }), res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.actor).toEqual({ id: CAIO.id, name: 'Caio Prof', role: 'consultor', countsForMeta: false });
+  });
+
+  it('agenda no nome dele, e o lead continua com a dona', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ actor: { email: CAIO.email, name: 'Caio' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(interacoesDaAcademia()).toEqual([expect.objectContaining({
+      consultantName: 'Caio Prof', actorId: CAIO.id, actorAuthUid: 'auth-caio',
+      leadConsultantId: 'u-ana', leadConsultantAuthUid: 'auth-ana', type: 'note', volumeKind: 'visita'
+    })]);
+    expect(leadDaAcademia('L1')).toMatchObject({
+      consultantId: 'u-ana', consultantAuthUid: 'auth-ana', appointmentType: 'visita', appointmentOutcome: null
+    });
+  });
+
+  it('com o módulo desligado, não abre o balão nem agenda', async () => {
+    banco.tenants[TENANT].modules = [];
+    const opcoes = resposta();
+    const agenda = resposta();
+
+    await handler(pedidoOpcoesAgenda({ email: CAIO.email }), opcoes);
+    await handler(pedidoAgenda({ actor: { email: CAIO.email, name: 'Caio' } }), agenda);
+
+    expect(opcoes.statusCode).toBe(403);
+    expect(opcoes.body).toEqual({ error: 'fora_da_equipe', message: PROFESSOR_DESLIGADO });
+    expect(agenda.statusCode).toBe(403);
+    expect(agenda.body).toEqual({ error: 'fora_da_equipe', message: PROFESSOR_DESLIGADO });
+    expect(interacoesDaAcademia()).toEqual([]);
+    expect(aulasDaAcademia()).toEqual([]);
+    expect(banco.gravacoes).toEqual([]);
+  });
+
+  it('com o módulo desligado, a consultora continua agendando', async () => {
+    banco.tenants[TENANT].modules = [];
+    const res = resposta();
+
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(201);
+  });
+});

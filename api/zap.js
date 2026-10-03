@@ -27,12 +27,12 @@ import { buildZapCard, buildGuardianCard, buildZapWards } from './_zapCard.js';
 import {
   LEAD_CREATE_LIMIT, ZAP_LEAD_MESSAGES, refusal, invalidData, tenantBlocked, emailFromActor, findTeamMember,
   buildLeadOptions, readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
-  buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError
+  buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError, signupRefusal
 } from './_zapLead.js';
 import {
   SCHEDULE_LIMIT, ZAP_SCHEDULE_MESSAGES, unitsView, readScheduleOptionsBody, buildScheduleOptions,
   readScheduleBody, readStatusBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
-  scheduleRecordChanges, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody
+  scheduleRecordChanges, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody, scheduleRefusal
 } from './_zapSchedule.js';
 import { contactOf } from '../src/lib/guardian.js';
 
@@ -359,8 +359,10 @@ const responder = (res, { status, body }) => res.status(status).json(body);
 const docsOf = (snap) => snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
 // Autenticação das ações do Stronizap no POST: identificador no formato da
-// casa, chave da academia e academia ativa. Devolve { tenantId } ou
-// { refusal }. Academia inexistente responde igual a chave errada, como no GET.
+// casa, chave da academia e academia ativa. Devolve { tenantId, tenant } ou
+// { refusal }, com o documento da academia já lido (o agendamento confere nele
+// o módulo do professor). Academia inexistente responde igual a chave errada,
+// como no GET.
 // `checkBlocked: false` fica só com as conferências do GET (chave e
 // identificador): é o appointment-status, que o lembrete do Stronizap consulta.
 async function openByKey(req, { checkBlocked = true } = {}) {
@@ -380,7 +382,7 @@ async function openByKey(req, { checkBlocked = true } = {}) {
   if (checkBlocked && tenantBlocked(loaded.tenant, new Date())) {
     return { refusal: refusal(403, 'academia_bloqueada', ZAP_LEAD_MESSAGES.blocked) };
   }
-  return { tenantId };
+  return { tenantId, tenant: loaded.tenant };
 }
 
 // A equipe inteira da academia: quem cadastra (pelo e-mail), o dono que o
@@ -416,7 +418,9 @@ async function handleLeadOptions(req, res) {
 
     const [team, catalogs] = await Promise.all([readTeam(access.tenantId), readCatalogs(access.tenantId)]);
     const actor = findTeamMember(team, email);
-    if (!actor) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+    // Fora da equipe ou professor: o formulário nem abre.
+    const barrado = signupRefusal(actor, email);
+    if (barrado) return responder(res, barrado);
 
     return res.status(200).json(buildLeadOptions({ actor, team, catalogs }));
   } catch (e) {
@@ -442,7 +446,8 @@ async function handleCreateLead(req, res) {
 
     const [team, catalogs] = await Promise.all([readTeam(tenantId), readCatalogs(tenantId)]);
     const member = findTeamMember(team, email);
-    if (!member) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+    const barrado = signupRefusal(member, email);
+    if (barrado) return responder(res, barrado);
     // O nome do autor é o do Stronilead, como em toda interação do app. O que
     // o Stronizap manda só entra se o cadastro da equipe não tiver nome.
     const actor = { ...member, name: member.name || actorName };
@@ -539,7 +544,7 @@ async function handleScheduleOptions(req, res) {
   try {
     const access = await openByKey(req);
     if (access.refusal) return responder(res, access.refusal);
-    const { tenantId } = access;
+    const { tenantId, tenant } = access;
 
     const read = readScheduleOptionsBody(req.body);
     if (read.refusal) return responder(res, read.refusal);
@@ -550,7 +555,9 @@ async function handleScheduleOptions(req, res) {
       readTeam(tenantId), readScheduleCatalogs(tenantId), numberPeople(tenantId, matchKey, agora, { strictWards: true })
     ]);
     const member = findTeamMember(team, email);
-    if (!member) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+    // Fora da equipe, ou professor com o módulo desligado: o balão nem abre.
+    const barrado = scheduleRefusal(member, email, tenant);
+    if (barrado) return responder(res, barrado);
 
     return res.status(200).json(
       buildScheduleOptions({ member, catalogs, owner: people.dono, wards: people.menores, now: agora })
@@ -569,7 +576,7 @@ async function handleSchedule(req, res) {
   try {
     const access = await openByKey(req);
     if (access.refusal) return responder(res, access.refusal);
-    const { tenantId } = access;
+    const { tenantId, tenant } = access;
 
     const read = readScheduleBody(req.body);
     if (read.refusal) return responder(res, read.refusal);
@@ -580,7 +587,8 @@ async function handleSchedule(req, res) {
 
     const [team, catalogs] = await Promise.all([readTeam(tenantId), readScheduleCatalogs(tenantId)]);
     const member = findTeamMember(team, email);
-    if (!member) return responder(res, refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email)));
+    const barrado = scheduleRefusal(member, email, tenant);
+    if (barrado) return responder(res, barrado);
     // O nome de quem agendou é o do Stronilead, como no cadastro. O que o
     // Stronizap manda só entra se o cadastro da equipe não tiver nome.
     const actor = { ...member, name: member.name || actorName };

@@ -32,6 +32,8 @@ import {
 } from '../src/lib/aulas.js';
 import { buildSchedulePatch } from '../src/lib/schedulePatch.js';
 import { contactOf } from '../src/lib/guardian.js';
+import { isGestor, isProfessor, isSeller } from '../src/lib/acesso.js';
+import { MODULES, hasModule } from '../src/lib/modules.js';
 
 const MINUTE_MS = 60000;
 // Dias sugeridos e até onde procurar por eles (wzDayOptions do ScheduleWizard).
@@ -77,7 +79,8 @@ export const ZAP_SCHEDULE_MESSAGES = Object.freeze({
   pastTime: 'Esse horário já passou. Escolha outro.',
   notTheLead: 'Esse cadastro não é deste número no Stronilead.',
   alreadyScheduled: 'Esse agendamento já estava no Stronilead.',
-  rateLimited: 'Muitos agendamentos em pouco tempo. Tente de novo em alguns minutos.'
+  rateLimited: 'Muitos agendamentos em pouco tempo. Tente de novo em alguns minutos.',
+  professorOff: 'O acesso de professor está desligado nesta academia. Fale com o gestor.'
 });
 
 // ---------------------------------------------------------------------------
@@ -148,11 +151,29 @@ export function suggestedDays({ now = new Date(), metaWeekdays = null } = {}) {
 }
 
 // Agendar hoje conta na Meta diária de quem agenda: consultor, em dia da meta
-// da academia, no calendário de Brasília. Gestor fica fora da régua, como no
-// Stronilead. Lista vazia de dias conta como nenhum dia, mas a rota nunca
-// chega aqui com lista vazia: o scheduleCatalogView a troca por segunda a sexta.
+// da academia, no calendário de Brasília. Gestor e professor ficam fora da
+// régua, como no Stronilead: o professor não vende (isSeller, em
+// src/lib/acesso.js), e o teamRole o manda como 'consultor' só porque o
+// Stronizap não conhece outro papel. Lista vazia de dias conta como nenhum
+// dia, mas a rota nunca chega aqui com lista vazia: o scheduleCatalogView a
+// troca por segunda a sexta.
 export function countsForMeta({ member, metaWeekdays, now = new Date() }) {
-  return teamRole(member) === 'consultor' && (metaWeekdays || []).includes(diaDaSemanaDoDia(diaDeBrasilia(now)));
+  return isSeller(member) && !isGestor(member)
+    && (metaWeekdays || []).includes(diaDaSemanaDoDia(diaDeBrasilia(now)));
+}
+
+// Quem agenda pelo Stronizap: alguém da equipe, com login. O professor agenda,
+// como no Agendar da ficha, mas só com o módulo do professor ligado na
+// academia (tenants/{id}.modules, src/lib/modules.js). Com o módulo desligado,
+// as regras do Firestore recusam a gravação do professor, e a ponte, que grava
+// pelo Admin SDK, recusa igual. O código é o fora_da_equipe, que o Stronizap
+// já mostra com o texto que vai.
+export function scheduleRefusal(member, email, tenant) {
+  if (!member) return refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email));
+  if (isProfessor(member) && !hasModule(tenant, MODULES.FALTOSOS)) {
+    return refusal(403, 'fora_da_equipe', ZAP_SCHEDULE_MESSAGES.professorOff);
+  }
+  return null;
 }
 
 // O parentesco do menor visto por quem escreve: a mãe vê "Filho" ou "Filha".
