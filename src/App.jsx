@@ -1686,13 +1686,19 @@ useEffect(() => {
             </h2>
             </SilentErrorBoundary>
           </div>
+          {/* Quem não cria lead (o professor) fica sem o "Cadastrar novo lead"
+              da busca, e quem não vê leads acha só cliente (src/lib/acesso.js). */}
           {!appUser.superAdminOnly && (
             <SilentErrorBoundary>
-              <GlobalSearch onAddLead={() => setIsAddLeadModalOpen(true)} db={db} />
+              <GlobalSearch
+                onAddLead={can(appUser, ACTIONS.LEAD_CRIAR) ? () => setIsAddLeadModalOpen(true) : null}
+                clientsOnly={!can(appUser, ACTIONS.LEADS_VER)}
+                db={db}
+              />
             </SilentErrorBoundary>
           )}
           <div className="flex items-center gap-2 md:gap-3">
-            {!appUser.superAdminOnly && (
+            {!appUser.superAdminOnly && can(appUser, ACTIONS.LEAD_CRIAR) && (
               <div className="hidden sm:flex items-center mr-1">
                 <button
                   onClick={() => setIsAddLeadModalOpen(true)}
@@ -1850,7 +1856,7 @@ useEffect(() => {
       {/* Quick-add lead, alcançável de qualquer aba pelo botão do menu lateral
           ou pelo botão da LeadsView. O "Ver ficha" abre na hora a ficha do lead
           recém-criado, porque ela lê o documento pelo id. */}
-      {isAddLeadModalOpen && (
+      {isAddLeadModalOpen && can(appUser, ACTIONS.LEAD_CRIAR) && (
         <ModalErrorBoundary onClose={() => setIsAddLeadModalOpen(false)}>
           <AddLeadModal
             dores={dores}

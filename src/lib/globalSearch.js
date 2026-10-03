@@ -18,9 +18,13 @@ export const normalize = (s) =>
 const NAME_MIN = 2;   // busca por nome dispara a partir de 2 caracteres
 const DIGITS_MIN = 3; // telefone/CPF só a partir de 3 dígitos (abaixo é ruído)
 
-// searchPeople(leads, query, { limit, now }) -> { results, total }.
+// searchPeople(leads, query, { limit, now, include }) -> { results, total }.
 // Cada result: { lead, matchKind: 'name'|'phone'|'cpf'|'guardian', matchRange:[s,e]|null }.
-export function searchPeople(leads, query, { limit = 8, now = new Date() } = {}) {
+// `include` (opcional) recorta quem pode aparecer antes de tudo, então o total
+// e o limite contam só essas pessoas. A busca do topo passa isClientLead para
+// quem só vê cliente (o professor). É função recebida, e não import, porque
+// leads.js importa este arquivo.
+export function searchPeople(leads, query, { limit = 8, now = new Date(), include = null } = {}) {
   const qNorm = normalize(String(query || '').trim());
   const qDigits = onlyDigits(query);
   const nameOn = qNorm.length >= NAME_MIN;
@@ -29,6 +33,7 @@ export function searchPeople(leads, query, { limit = 8, now = new Date() } = {})
 
   const matched = [];
   for (const lead of leads || []) {
+    if (include && !include(lead)) continue;
     const nameNorm = normalize(lead && lead.name);
     let tier = -1;
     let matchKind = null;
