@@ -94,9 +94,16 @@ describe('firestore.rules: as chamadas da hasModule', () => {
   // console nunca liga. Comentário não conta. Sem chamada nenhuma, não há o
   // que conferir.
   const semComentario = rules.replace(/\/\/.*$/gm, '');
-  const chamadas = [...semComentario.matchAll(/(function\s+)?\bhasModule\(([^)]*)\)/g)]
+  // Espaço antes do parêntese também é chamada: `hasModule (appId, 'x')`.
+  const chamadasEm = (texto) => [...texto.matchAll(/(function\s+)?\bhasModule\s*\(([^)]*)\)/g)]
     .filter((m) => !m[1])
     .map((m) => m[2].trim());
+  const chamadas = chamadasEm(semComentario);
+
+  it('a busca acha a chamada com espaço antes do parêntese e pula a definição', () => {
+    expect(chamadasEm("function hasModule (appId, key) { } hasModule (appId, 'x') && hasModule(appId, 'y')"))
+      .toEqual(["appId, 'x'", "appId, 'y'"]);
+  });
 
   it('toda chamada passa um módulo conhecido, entre aspas', () => {
     for (const args of chamadas) {

@@ -119,10 +119,10 @@ describe('o professor no agendamento', () => {
 });
 
 describe('textos novos da ponte', () => {
-  it('nenhum tem travessão', () => {
+  it('nenhum tem travessão, meia-risca nem aspas curvas', () => {
     for (const texto of [ZAP_LEAD_MESSAGES.professorNoLead, ZAP_SCHEDULE_MESSAGES.professorOff]) {
       expect(typeof texto).toBe('string');
-      expect(texto).not.toContain('—');
+      expect(texto).not.toMatch(/[—–“”‘’]/);
     }
   });
 });

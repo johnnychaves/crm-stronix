@@ -63,6 +63,29 @@ function regraDe(bloco, op) {
   return m[1];
 }
 
+// Os termos do E de cima de uma condição (`if a && (b || c) && d;` dá a,
+// (b || c) e d): parte nos `&&` fora de parênteses, sem os comentários. Um
+// `||` fora de parênteses quer dizer que não há E de cima, e a lista volta vazia.
+function termosDoE(condicao) {
+  const expr = condicao.replace(/\/\/.*$/gm, '').trim().replace(/^if\s+/, '').replace(/;\s*$/, '');
+  const termos = [];
+  let nivel = 0;
+  let inicio = 0;
+  for (let i = 0; i < expr.length; i += 1) {
+    const c = expr[i];
+    if (c === '(' || c === '[') nivel += 1;
+    else if (c === ')' || c === ']') nivel -= 1;
+    else if (nivel === 0 && expr.startsWith('||', i)) return [];
+    else if (nivel === 0 && expr.startsWith('&&', i)) {
+      termos.push(expr.slice(inicio, i).trim());
+      inicio = i + 2;
+      i += 1;
+    }
+  }
+  termos.push(expr.slice(inicio).trim());
+  return termos;
+}
+
 // O corpo de um handler `const nome = async (...) => { ... };` da ficha, até a
 // primeira linha que só fecha a função com dois espaços de recuo (o mesmo
 // recorte do registroDoAgendamento.sweep.test.js).
@@ -240,9 +263,15 @@ describe('as travas do professor continuam no firestore.rules', () => {
     expect(f).toContain("key in get(/databases/$(database)/documents/tenants/$(appId)).data.get('modules', [])");
   });
 
-  it('equipe: papel e professor ligado só mudam pelo servidor', () => {
+  // A trava fica no E de cima do update, e não só no ramo da própria pessoa:
+  // vale também para o gestor.
+  it('equipe: papel e professor ligado só mudam pelo servidor, para o gestor também', () => {
     const equipe = blocoDe('stronix_users');
-    expect(regraDe(equipe, 'update')).toContain('roleAndProfessorKept()');
+    expect(termosDoE(regraDe(equipe, 'update'))).toContain('roleAndProfessorKept()');
+    // O leitor não aceita a trava só dentro de um ramo, nem um OU por fora.
+    expect(termosDoE('if inTenant(appId) && (isAdmin(appId) || (self() && roleAndProfessorKept()));'))
+      .toEqual(['inTenant(appId)', '(isAdmin(appId) || (self() && roleAndProfessorKept()))']);
+    expect(termosDoE('if roleAndProfessorKept() && inTenant(appId) || isAdmin(appId);')).toEqual([]);
     const mantidos = funcaoDaRegra('roleAndProfessorKept()');
     expect(mantidos).toContain("request.resource.data.get('role', null) == resource.data.get('role', null)");
     expect(mantidos).toContain("request.resource.data.get('professorId', null) == resource.data.get('professorId', null)");
@@ -252,17 +281,26 @@ describe('as travas do professor continuam no firestore.rules', () => {
   // api/invite-accept.js e api/provision-tenant.js, pelo Admin SDK), que confere
   // a vaga do plano, a carteira e a cobrança. Se o cliente pudesse criar ou
   // apagar, o gestor trocaria o papel apagando e criando de novo, e apagar o
-  // cadastro do professor deixaria o isProfessor sem doc para ler. As regras
-  // somam os allow, então um segundo `allow create` ou um `allow write`
-  // reabriria o caminho: o bloco tem uma linha só para cada um.
+  // cadastro do professor deixaria o isProfessor sem doc para ler.
   it('equipe: o cadastro só nasce e sai pelo servidor', () => {
     const equipe = blocoDe('stronix_users');
     expect(regraDe(equipe, 'create').trim()).toBe('if false;');
     expect(regraDe(equipe, 'delete').trim()).toBe('if false;');
-    expect(equipe.match(/allow [\w, ]*\bcreate\b/g)).toHaveLength(1);
-    expect(equipe.match(/allow [\w, ]*\bdelete\b/g)).toHaveLength(1);
-    expect(equipe).not.toMatch(/allow [\w, ]*\bwrite\b/);
   });
+
+  // As regras juntam os allow com OU, então um segundo `allow update` ou um
+  // `allow write` num bloco valeria por cima da trava do professor. Os blocos
+  // com trava têm uma linha só para cada operação de escrita.
+  it.each(['stronix_users', 'stronix_leads', 'stronix_interactions', 'stronix_contratos'])(
+    '%s: uma linha allow por operação e nenhum allow write',
+    (colecao) => {
+      const bloco = blocoDe(colecao).replace(/\/\/.*$/gm, '');
+      for (const op of ['create', 'update', 'delete']) {
+        expect(bloco.match(new RegExp(`allow [\\w, ]*\\b${op}\\b`, 'g')), `${colecao}: ${op}`).toHaveLength(1);
+      }
+      expect(bloco).not.toMatch(/allow [\w, ]*\bwrite\b/);
+    }
+  );
 
   it('nenhum caminho do cliente faz alguém virar professor', () => {
     expect(RULES).not.toMatch(/professorRoleAllowed|professorCreateAllowed|professorAllowed/);
