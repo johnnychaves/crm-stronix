@@ -3,6 +3,7 @@ import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { User, MapPin, Phone, Briefcase, Users, Calendar, IdCard, Mail, Check, Pencil, Baby, AlertTriangle } from 'lucide-react';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { isClientLead } from '../lib/leads.js';
+import { isSeller } from '../lib/acesso.js';
 import { lookupCep, isCepComplete, isValidCpf, isCpfComplete } from '../lib/brazilLookups.js';
 import { formatCPF, formatPhone } from '../lib/masks.js';
 import {
@@ -71,10 +72,11 @@ function RegistrationForm({ lead, appUser, db, usersList, tags, onClose }) {
   // Quem pode receber o lead: gente ATIVA da equipe e com login vinculado.
   // Passar para quem saiu deixaria o lead órfão (mesma regra do dono da tarefa
   // de contato), e passar para um cadastro sem authUid deixaria o lead sem
-  // ninguém que possa editá-lo, já que a permissão é o authUid do dono.
+  // ninguém que possa editá-lo, já que a permissão é o authUid do dono. O
+  // professor não é dono de lead (isSeller, em src/lib/acesso.js).
   const ownerOptions = useMemo(
     () => (usersList || []).filter(
-      (u) => u?.id && u.name && u.authUid && u.active !== false && !u.superAdminOnly
+      (u) => u?.id && u.name && u.authUid && u.active !== false && !u.superAdminOnly && isSeller(u)
     ),
     [usersList]
   );
