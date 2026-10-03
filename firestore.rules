@@ -115,9 +115,12 @@ service cloud.firestore {
         'trialClassesPlanned'
       ];
     }
-    // O desfecho do agendamento. O Agendar sempre o grava vazio, porque
-    // compromisso novo nasce sem desfecho, e marcar Compareceu ou Não
-    // compareceu não é do professor: ele só grava esses campos vazios.
+    // O desfecho do agendamento no lead. O Agendar sempre o grava vazio, porque
+    // compromisso novo nasce sem desfecho, e no lead o professor só grava esses
+    // campos vazios. A trava vale só para o espelho do lead. No registro da
+    // aula (stronix_aulas) o professor grava como os outros membros, inclusive
+    // o status e o desfecho, e é esse registro que a conversão por professor
+    // lê. Ver o bloco de stronix_aulas, mais abaixo.
     function professorOutcomeFields() {
       return [
         'appointmentOutcome',
@@ -151,7 +154,7 @@ service cloud.firestore {
     }
     // A interação sai no nome de quem grava: o actorAuthUid é o que conta o
     // volume da Meta por pessoa, e o logInteraction sempre o grava. Com o
-    // módulo desligado, o professor não registra nada.
+    // módulo desligado, o professor não registra interação nenhuma.
     function professorInteractionOk(appId) {
       return hasModule(appId, 'faltosos')
         && request.resource.data.get('type', null) in professorInteractionTypes()
@@ -389,6 +392,18 @@ service cloud.firestore {
     // Histórico de aulas experimentais (stronix_aulas). Leitura por membro do
     // tenant; create/update por qualquer membro preservando consultantAuthUid
     // (presença cruzada / conversão por qualquer consultor). Sem delete pelo cliente.
+    //
+    // O professor (spec 2026-10-02) grava aqui como qualquer membro, porque o
+    // Agendar da ficha move ou cria o registro (recordNewAppointment). Pelo
+    // SDK, isso deixa o professor mudar o status de qualquer registro para
+    // attended ou no_show, trocar o professorId e criar registro, com o módulo
+    // ligado ou desligado, desde que mantenha o consultantAuthUid. É deste
+    // registro que saem a conversão por professor do Dashboard CRM e a carteira
+    // do professor. As travas do professor de desfecho vazio e de módulo ligado
+    // valem só para o espelho do lead e para as interações, não aqui. É o que
+    // a spec pede para as aulas, e travar também aqui é decisão do Johnny. Um
+    // efeito: com o módulo desligado no meio da sessão, o Agendar ainda move o
+    // registro da aula para a data nova e só a gravação do lead é recusada.
     match /artifacts/{appId}/public/data/stronix_aulas/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow create: if inTenant(appId) && tenantActive(appId);

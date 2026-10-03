@@ -28,7 +28,8 @@ export function sidebarNav(appUser) {
 
 // Professor numa academia com o módulo "Professor e faltosos" desligado. O
 // login continua valendo, mas nenhuma tela é dele: o App mostra só o aviso,
-// com o Sair, e as regras do Firestore recusam as gravações dele. A lista vem
+// com o Sair, e as regras do Firestore recusam as gravações dele no lead e nas
+// interações (no registro da aula, não: ver stronix_aulas). A lista vem
 // do appUser.tenantModules, lida no login; sem ela, vale desligado.
 export function professorAccessOff(appUser) {
   return isProfessor(appUser) && !hasModule(appUser?.tenantModules, MODULES.FALTOSOS);

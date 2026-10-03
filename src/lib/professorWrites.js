@@ -35,9 +35,11 @@ export const SCHEDULE_PATCH_FIELDS = sortedUnique(
 // Os campos do lead que o professor altera.
 export const PROFESSOR_LEAD_FIELDS = sortedUnique([...SCHEDULE_PATCH_FIELDS, ...LEAD_BUMP_FIELDS]);
 
-// O desfecho do agendamento. O Agendar o grava sempre vazio (compromisso novo
-// nasce sem desfecho), e a regra só deixa o professor gravá-lo vazio: marcar
-// Compareceu ou Não compareceu não é dele.
+// O desfecho do agendamento no lead. O Agendar o grava sempre vazio
+// (compromisso novo nasce sem desfecho), e a regra só deixa o professor
+// gravá-lo vazio no lead. A trava cobre só o espelho do lead: no registro da
+// aula (stronix_aulas) o professor grava como os outros membros, inclusive o
+// status e o desfecho, e é esse registro que a conversão por professor lê.
 export const PROFESSOR_OUTCOME_FIELDS = sortedUnique(
   SCHEDULE_PATCH_FIELDS.filter((campo) => campo.startsWith('appointmentOutcome'))
 );

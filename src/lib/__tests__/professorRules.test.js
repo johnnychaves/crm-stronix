@@ -3,7 +3,10 @@
 // "As regras do Firestore"). O professor só altera no lead os campos que o
 // Agendar e o composer da ficha gravam, sempre com o desfecho vazio, só cria
 // interação dos tipos que essas ações gravam, e com o módulo desligado não
-// grava nada. Este teste lê o texto da regra e cobra três coisas:
+// grava lead nem interação. No registro da aula (stronix_aulas) ele grava como
+// os outros membros, inclusive o status e o desfecho, com o módulo ligado ou
+// desligado: as travas valem só para o espelho do lead e para as interações.
+// Este teste lê o texto da regra e cobra três coisas:
 //   1. as listas da regra (professorLeadFields, professorOutcomeFields e
 //      professorInteractionTypes) são iguais às de src/lib/professorWrites.js;
 //   2. as listas de professorWrites.js são as que os montadores de verdade
@@ -254,8 +257,20 @@ describe('as travas do professor continuam no firestore.rules', () => {
     expect(RULES).not.toMatch(/'professor'\s*\]/);
   });
 
-  it('aulas: o professor grava como os outros membros, porque o Agendar grava ali', () => {
+  // O que fica aberto de propósito, pela spec ("Aulas: o professor grava como
+  // os outros membros"). Pelo SDK o professor muda o status de um registro
+  // para attended ou no_show, troca o professorId e cria registro, mesmo com o
+  // módulo desligado, e é desse registro que sai a conversão por professor.
+  // Se o Johnny decidir travar (por exemplo, o módulo ligado no create e no
+  // update), este teste muda junto com a regra e com o Playground.
+  it('aulas: o professor grava como os outros membros, inclusive status e desfecho, sem trava de módulo', () => {
     const aulas = blocoDe('stronix_aulas');
     expect(aulas).not.toContain('isProfessor');
+    expect(aulas).not.toContain('hasModule');
+    expect(regraDe(aulas, 'create').trim()).toBe('if inTenant(appId) && tenantActive(appId);');
+    expect(regraDe(aulas, 'update')).toContain(
+      'request.resource.data.consultantAuthUid == resource.data.consultantAuthUid;'
+    );
+    expect(regraDe(aulas, 'update')).not.toMatch(/status|professorId/);
   });
 });
