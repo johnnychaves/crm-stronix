@@ -13,7 +13,7 @@ import { Button } from '../components/ui/button.jsx';
 import { ProfileSkeleton } from '../components/ui/Skeleton.jsx';
 import { useProfileLead } from '../hooks/useProfileLead.js';
 import { resolveFichaView } from '../lib/fichaState.js';
-import { backTarget, hrefFor } from '../lib/routes.js';
+import { backTarget, homeScreenFor, hrefFor } from '../lib/routes.js';
 import { isClientLead } from '../lib/leads.js';
 import { cn } from '../lib/utils.js';
 import { LeadProfileView } from './LeadProfileView.jsx';
@@ -102,15 +102,19 @@ export function LeadProfileRoute({
 
   // Voltar: o histórico é lido na hora do clique, nunca no render. Com uma tela
   // do app antes desta, é o voltar do navegador. Aberta direto numa aba nova,
-  // troca a ficha pela lista (Clientes para cliente, Pipeline para lead).
+  // troca a ficha pela lista (Clientes para cliente, Pipeline para lead). O
+  // professor, que não abre o Pipeline, volta da ficha de lead para a Meta
+  // diária.
   const goBack = () => {
     if (!mountedRef.current) return;
-    const target = backTarget({ historyState: window.history.state, isClient: isClientLead(lead), tenantId });
+    const target = backTarget({ historyState: window.history.state, isClient: isClientLead(lead), tenantId, appUser });
     if (target.type === 'back') navigate(-1);
     else if (target.href) navigate(target.href, { replace: true });
   };
+  // Ir para o início: a tela inicial da sessão, direto. Para o professor é a
+  // Meta diária, sem passar pelo redirect do endereço curto da academia.
   const goHome = () => {
-    const href = hrefFor(tenantId, 'dashboard');
+    const href = hrefFor(tenantId, homeScreenFor(appUser));
     if (href) navigate(href, { replace: true });
   };
 
