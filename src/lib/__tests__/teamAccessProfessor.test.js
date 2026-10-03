@@ -184,7 +184,7 @@ describe('Equipe & acessos com o módulo', () => {
     expect(corpo).toMatchObject({
       action: 'create', name: 'Luana', email: 'lu@academia.com', role: 'professor', professorId: 'prof-lu', allowExtra: false,
     });
-    expect(toast.success.mock.calls[0][0]).toMatch(/^Professor Luana cadastrado\./);
+    expect(toast.success.mock.calls[0][0]).toMatch(/^Acesso de professor criado para Luana\./);
   });
 
   it('cadastrar pessoa como consultor manda o pedido de sempre, sem papel', async () => {
@@ -197,7 +197,7 @@ describe('Equipe & acessos com o módulo', () => {
     expect(corpo).toMatchObject({ action: 'create', name: 'Bia', email: 'bia@academia.com' });
     expect(corpo).not.toHaveProperty('role');
     expect(corpo).not.toHaveProperty('professorId');
-    expect(toast.success.mock.calls[0][0]).toMatch(/^Consultor Bia cadastrado\./);
+    expect(toast.success.mock.calls[0][0]).toMatch(/^Acesso de consultor criado para Bia\./);
   });
 
   it('editar: professor que volta a consultor passa pelo set-role antes de gravar o cadastro', async () => {
@@ -279,7 +279,7 @@ describe('Equipe & acessos com o módulo', () => {
       'Este consultor entrou como extra. A mensalidade foi ajustada a partir da próxima fatura.',
       { duration: 8000 }
     );
-    expect(toast.success).toHaveBeenCalledWith('Rafa passa a ser consultor. O acesso novo vale quando a pessoa entrar de novo.');
+    expect(toast.success).toHaveBeenCalledWith('O papel de Rafa agora é Consultor. O acesso novo vale quando a pessoa entrar de novo.');
     expect(toast.success).toHaveBeenCalledWith('Cadastro atualizado.');
   });
 
@@ -305,7 +305,7 @@ describe('Equipe & acessos com o módulo', () => {
     expect(dados.dailyVolumeTarget).toBe('apagar');
     expect(dados).not.toHaveProperty('role');
     expect(dados).not.toHaveProperty('professorId');
-    expect(toast.success).toHaveBeenCalledWith('Ana passa a ser professor. O acesso novo vale quando a pessoa entrar de novo.');
+    expect(toast.success).toHaveBeenCalledWith('O papel de Ana agora é Professor. O acesso novo vale quando a pessoa entrar de novo.');
     expect(toast.success).toHaveBeenCalledWith('Cadastro atualizado.');
   });
 

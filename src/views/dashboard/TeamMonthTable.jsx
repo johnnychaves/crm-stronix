@@ -5,7 +5,7 @@
 //
 // A venda é de quem está no contrato (entraram, upgrades) e a carteira é de
 // quem cuida do cliente hoje (taxa de renovação), README §8. A linha "Outros"
-// junta o que não é de ninguém da equipe (ex-consultor ou sem responsável),
+// junta o que não tem linha própria (professor, ex-consultor ou sem responsável),
 // para as linhas fecharem com o rodapé. Só aparece com algum número, não tem
 // meta nem prospecção e não filtra a tela. Sem o histórico dos colegas
 // (metaHidden), a meta de quem ficou sem número mostra "—", sem barra.
@@ -22,7 +22,7 @@ const SOFT = 'bg-slate-50 dark:bg-white/[0.03]';
 const HEAD = 'text-[9.5px] font-bold uppercase tracking-[0.08em] text-muted-foreground';
 const COUNT = 'num w-[78px] flex-none text-right text-[12.5px] font-semibold';
 const TOTAL = 'num flex-none text-[12px] font-bold';
-const OTHERS_SUB = 'fora da equipe ou sem responsável';
+const OTHERS_SUB = 'professores, fora da equipe ou sem responsável';
 
 const pctText = (v) => (v != null ? `${v}%` : '—');
 const numText = (v) => (v != null ? fmtNum(v) : '—');

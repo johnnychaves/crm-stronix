@@ -100,7 +100,7 @@ async function handleCreate(req, res) {
 
     const isAdmin = await isTenantAdmin(auth.tenantId, auth.uid);
     if (!isAdmin) {
-      return res.status(403).json({ error: 'Apenas o master pode cadastrar consultores.' });
+      return res.status(403).json({ error: 'Apenas o gestor pode cadastrar pessoas na equipe.' });
     }
 
     // Vagas por papel. Consultor além dos inclusos pode entrar como extra
@@ -167,7 +167,7 @@ async function handleCreate(req, res) {
     return res.status(200).json({ ok: true, authUid: userRecord.uid, role: newRole, isExtra: decision.isExtra === true });
   } catch (error) {
     console.error('admin-create-user', error);
-    return res.status(500).json({ error: 'Erro interno ao cadastrar consultor.' });
+    return res.status(500).json({ error: 'Erro interno ao cadastrar o acesso.' });
   }
 }
 

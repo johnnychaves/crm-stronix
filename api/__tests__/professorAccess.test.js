@@ -213,6 +213,22 @@ describe('cadastro pelo gestor (create)', () => {
     expect(res.body.error).toBe(erro);
     expect(contas.createUser).not.toHaveBeenCalled();
   });
+
+  // O cadastro serve a consultor e a professor, então os textos não dizem o papel.
+  it('só o gestor cadastra, e o texto vale para qualquer papel', async () => {
+    banco.sessao = { uid: 'uid-ana', tenantId: T, superAdmin: false };
+    const res = await criar({ role: 'professor', professorId: 'prof-lu' });
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error).toBe('Apenas o gestor pode cadastrar pessoas na equipe.');
+    expect(contas.createUser).not.toHaveBeenCalled();
+  });
+
+  it('erro inesperado responde com o texto do acesso, sem dizer o papel', async () => {
+    contas.createUser.mockRejectedValue(new Error('falha do Auth'));
+    const res = await criar({ role: 'professor', professorId: 'prof-lu' });
+    expect(res.statusCode).toBe(500);
+    expect(res.body.error).toBe('Erro interno ao cadastrar o acesso.');
+  });
 });
 
 describe('convite de professor', () => {

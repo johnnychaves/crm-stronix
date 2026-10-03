@@ -304,7 +304,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       }
       if (!res.ok) { toast.error(data.error || `Erro ao cadastrar ${noun}.`); return; }
 
-      toast.success(`${asProfessor ? 'Professor' : 'Consultor'} ${form.name.trim()} cadastrado. Senha temporária: ${form.password}`, { duration: 8000, title: 'Cadastrado com sucesso' });
+      toast.success(`Acesso de ${noun} criado para ${form.name.trim()}. Senha temporária: ${form.password}`, { duration: 8000, title: 'Cadastrado com sucesso' });
       if (data.isExtra) toast.info('Este consultor entrou como extra — a mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
       setMemberDialog(null);
     } catch (err) {
@@ -339,7 +339,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     if (data.changed !== false) {
       toast.success(change.role === roleOf(target)
         ? 'Professor do cadastro trocado.'
-        : `${target.name} passa a ser ${roleLabel({ role: change.role }).toLowerCase()}. O acesso novo vale quando a pessoa entrar de novo.`);
+        : `O papel de ${target.name} agora é ${roleLabel({ role: change.role })}. O acesso novo vale quando a pessoa entrar de novo.`);
     }
     if (data.isExtra) toast.info('Este consultor entrou como extra. A mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
     return true;
