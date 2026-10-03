@@ -47,6 +47,19 @@ service cloud.firestore {
         || tenantNotBlocked(get(/databases/$(database)/documents/tenants/$(appId)).data);
     }
 
+    // Módulos da academia, ligados pelo super-admin no console. A lista mora em
+    // tenants/{appId}.modules, que só a api/tenant-status.js grava (o cliente
+    // não escreve em /tenants), e src/lib/modules.js faz a mesma conta no app.
+    // Lê o mesmo documento que o tenantActive. Ao contrário dele, aqui a falta
+    // fecha: academia sem documento, sem o campo ou com o campo fora do formato
+    // de lista não tem módulo nenhum. Toda chamada passa o módulo escrito por
+    // extenso, como em MODULES, e o src/lib/__tests__/modules.test.js confere.
+    function hasModule(appId, key) {
+      return exists(/databases/$(database)/documents/tenants/$(appId))
+        && get(/databases/$(database)/documents/tenants/$(appId)).data.get('modules', []) is list
+        && key in get(/databases/$(database)/documents/tenants/$(appId)).data.get('modules', []);
+    }
+
     function userDoc(appId) {
       return get(/databases/$(database)/documents/artifacts/$(appId)/public/data/stronix_users/$(request.auth.uid));
     }
@@ -55,6 +68,94 @@ service cloud.firestore {
       return isSignedIn()
         && exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/stronix_users/$(request.auth.uid))
         && userDoc(appId).data.role == 'admin';
+    }
+
+    // Professor (módulo "faltosos", spec
+    // docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md). O papel
+    // é lido no cadastro da pessoa, como no isAdmin. O exists() vem antes do
+    // get() de propósito: conta antiga tem o cadastro com id diferente do uid,
+    // e sem ele o get() daria erro e a regra negaria a escrita do consultor
+    // legado em lead, contrato e interação. O cadastro de professor só nasce
+    // pelo servidor, com o id igual ao uid (api/admin-users.js e
+    // api/invite-accept.js), então a regra sempre enxerga o papel dele.
+    function isProfessor(appId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/stronix_users/$(request.auth.uid))
+        && userDoc(appId).data.get('role', null) == 'professor';
+    }
+
+    // O que o professor altera no lead: as chaves do buildSchedulePatch
+    // (src/lib/schedulePatch.js, o Agendar), mais o que o logInteraction
+    // (src/lib/interactions.js) soma em toda interação: lastInteractionAt e
+    // interactionsCount. A Anotação, o WhatsApp e a Ligação só somam esses dois.
+    // O src/lib/__tests__/professorRules.test.js compara esta lista com a de
+    // src/lib/professorWrites.js, que sai dos montadores de verdade: mudou o
+    // Agendar, o teste quebra até a regra acompanhar. Um texto por linha e
+    // nenhum comentário dentro da lista, porque o teste lê a lista pelo texto.
+    function professorLeadFields() {
+      return [
+        'appointmentModality',
+        'appointmentOutcome',
+        'appointmentOutcomeAt',
+        'appointmentOutcomeBy',
+        'appointmentProfessorId',
+        'appointmentProfessorName',
+        'appointmentScheduledFor',
+        'appointmentSoloTraining',
+        'appointmentType',
+        'appointmentUnit',
+        'currentAulaId',
+        'interactionsCount',
+        'lastInteractionAt',
+        'nextFollowUp',
+        'nextFollowUpNote',
+        'nextFollowUpOwnerId',
+        'nextFollowUpOwnerName',
+        'nextFollowUpType',
+        'trialClassesPlanned'
+      ];
+    }
+    // O desfecho do agendamento. O Agendar sempre o grava vazio, porque
+    // compromisso novo nasce sem desfecho, e marcar Compareceu ou Não
+    // compareceu não é do professor: ele só grava esses campos vazios.
+    function professorOutcomeFields() {
+      return [
+        'appointmentOutcome',
+        'appointmentOutcomeAt',
+        'appointmentOutcomeBy'
+      ];
+    }
+    function professorOutcomeCleared() {
+      return request.resource.data.get('appointmentOutcome', null) == null
+        && request.resource.data.get('appointmentOutcomeAt', null) == null
+        && request.resource.data.get('appointmentOutcomeBy', null) == null;
+    }
+    // O dono e a fase do lead não estão na lista, então o professor não troca o
+    // dono nem move o lead de etapa. Com o módulo desligado, ele não altera
+    // lead nenhum.
+    function professorLeadUpdateOk(appId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return hasModule(appId, 'faltosos')
+        && changed.hasOnly(professorLeadFields())
+        && (!changed.hasAny(professorOutcomeFields()) || professorOutcomeCleared());
+    }
+
+    // Os tipos de interação que o professor cria. A Anotação, o WhatsApp, a
+    // Ligação e a nota do Agendar gravam todos 'note'. O contato de falta
+    // (absence_contact) entra com a Meta do professor, no PR 3, aqui e em
+    // src/lib/professorWrites.js juntos.
+    function professorInteractionTypes() {
+      return [
+        'note'
+      ];
+    }
+    // A interação sai no nome de quem grava: o actorAuthUid é o que conta o
+    // volume da Meta por pessoa, e o logInteraction sempre o grava. Com o
+    // módulo desligado, o professor não registra nada.
+    function professorInteractionOk(appId) {
+      return hasModule(appId, 'faltosos')
+        && request.resource.data.get('type', null) in professorInteractionTypes()
+        && request.resource.data.get('actorAuthUid', null) == request.auth.uid;
     }
 
     function ownsLead(appId, lead) {
@@ -76,22 +177,36 @@ service cloud.firestore {
       return (request.resource.data.get('consultantId', null) == resource.data.get('consultantId', null))
         == (request.resource.data.get('consultantAuthUid', null) == resource.data.get('consultantAuthUid', null));
     }
+    //
+    // Professor (spec 2026-10-02): não cria nem exclui lead, e só altera os
+    // campos de professorLeadFields(), com o desfecho vazio e o módulo ligado.
+    // O isProfessor vem depois do isAdmin para reaproveitar o get() do cadastro
+    // que o isAdmin já fez.
     match /artifacts/{appId}/public/data/stronix_leads/{leadId} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow create: if inTenant(appId) && tenantActive(appId)
-        && (isAdmin(appId) || request.resource.data.consultantAuthUid == request.auth.uid);
+        && (isAdmin(appId) || request.resource.data.consultantAuthUid == request.auth.uid)
+        && !isProfessor(appId);
       allow update: if inTenant(appId) && tenantActive(appId)
-        && (isAdmin(appId) || ownerFieldsMoveTogether());
-      allow delete: if inTenant(appId) && tenantActive(appId) && (isAdmin(appId) || ownsLead(appId, resource.data));
+        && (isAdmin(appId) || ownerFieldsMoveTogether())
+        && (!isProfessor(appId) || professorLeadUpdateOk(appId));
+      allow delete: if inTenant(appId) && tenantActive(appId) && (isAdmin(appId) || ownsLead(appId, resource.data))
+        && !isProfessor(appId);
     }
 
     // Interações compartilhadas: qualquer membro lê e registra (ex.: agendar num
     // lead de outro consultor). Editar/remover: o autor da interação ou admin.
+    // O professor (spec 2026-10-02) cria só os tipos de
+    // professorInteractionTypes(), no próprio nome e com o módulo ligado, e não
+    // edita nem remove. O isProfessor faz a interação gravada sozinha, fora do
+    // lote do logInteraction, pagar o get() do cadastro: uma leitura a mais.
     match /artifacts/{appId}/public/data/stronix_interactions/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
-      allow create: if inTenant(appId) && tenantActive(appId);
+      allow create: if inTenant(appId) && tenantActive(appId)
+        && (!isProfessor(appId) || professorInteractionOk(appId));
       allow update, delete: if inTenant(appId) && tenantActive(appId)
-        && (isAdmin(appId) || resource.data.consultantAuthUid == request.auth.uid);
+        && (isAdmin(appId) || resource.data.consultantAuthUid == request.auth.uid)
+        && !isProfessor(appId);
     }
 
     // authUid é a CHAVE DE PERMISSÃO do cadastro: é ele que diz de qual conta do
@@ -114,16 +229,37 @@ service cloud.firestore {
         && request.resource.data.get('authUid', null) == request.auth.uid;
     }
 
+    // role e professorId só mudam pelo Admin SDK: api/admin-users.js (create e
+    // set-role) e o aceite de convite (api/invite-accept.js), que conferem a
+    // vaga do plano, o módulo e o professor do cadastro (spec 2026-10-02). Pelo
+    // cliente ninguém troca o papel nem o professor ligado, nem o gestor:
+    // senão o professor passaria a ver e a registrar os alunos de outro, e o
+    // gestor pularia a conta das vagas. Nenhuma tela grava esses dois campos,
+    // então a trava não muda nada para quem já usa o sistema. O `.get(campo,
+    // null)` cobre cadastro antigo sem professorId.
+    function roleAndProfessorKept() {
+      return request.resource.data.get('role', null) == resource.data.get('role', null)
+        && request.resource.data.get('professorId', null) == resource.data.get('professorId', null);
+    }
+
     // stronix_users: NÃO usa tenantActive — o login precisa ler/vincular o doc do
     // próprio usuário mesmo para conseguir mostrar a tela de bloqueio. O self-update
-    // já é travado (role/tenantId imutáveis) contra escalada de privilégio.
+    // já é travado (role/tenantId imutáveis) contra escalada de privilégio, e
+    // ninguém troca papel nem professor ligado pelo cliente (roleAndProfessorKept).
     match /artifacts/{appId}/public/data/stronix_users/{userId} {
       allow read: if inTenant(appId);
-      allow create, delete: if isAdmin(appId) && inTenant(appId);
+      // Professor só nasce pelo servidor: pelo cliente, o gestor cria só gestor
+      // ou consultor, sem professor ligado.
+      allow create: if isAdmin(appId) && inTenant(appId)
+        && request.resource.data.get('role', 'consultant') in ['admin', 'consultant']
+        && request.resource.data.get('professorId', null) == null;
+      allow delete: if isAdmin(appId) && inTenant(appId);
       allow update: if inTenant(appId)
         && (authUidKept() || selfLinksOwnUid(userId))
+        && roleAndProfessorKept()
         && (
-          // admin edita a equipe (nome, e-mail, turno, meta), menos a chave
+          // admin edita a equipe (nome, e-mail, turno, meta), menos a chave, o
+          // papel e o professor ligado
           isAdmin(appId)
           // ou o próprio usuário mexe no próprio doc (vínculo do login, "já li"
           // do sino), sem se autopromover
@@ -232,13 +368,21 @@ service cloud.firestore {
     // isAdmin vem DEPOIS para o caminho comum não pagar o get() do doc do usuário
     // (o gestor segue com a saída para corrigir uma venda creditada errado).
     // Sem delete pelo cliente — o histórico não se apaga (igual ao daily_goal_history).
+    //
+    // O professor (spec 2026-10-02) só lê: na ficha dele a aba Contratos fica
+    // sem botão, e a regra recusa criar e alterar. Com o isProfessor, o caminho
+    // comum passa a pagar o get() do cadastro que o isAdmin no fim evitava: uma
+    // leitura a mais por gravação de contrato, que é rara (matrícula,
+    // renovação, desfecho).
     match /artifacts/{appId}/public/data/stronix_contratos/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
-      allow create: if inTenant(appId) && tenantActive(appId);
+      allow create: if inTenant(appId) && tenantActive(appId)
+        && !isProfessor(appId);
       allow update: if inTenant(appId) && tenantActive(appId)
         && (request.resource.data.get('consultantAuthUid', null)
               == resource.data.get('consultantAuthUid', null)
-            || isAdmin(appId));
+            || isAdmin(appId))
+        && !isProfessor(appId);
       allow delete: if false;
     }
 
