@@ -404,6 +404,14 @@ service cloud.firestore {
     // a spec pede para as aulas, e travar também aqui é decisão do Johnny. Um
     // efeito: com o módulo desligado no meio da sessão, o Agendar ainda move o
     // registro da aula para a data nova e só a gravação do lead é recusada.
+    // Se o Johnny decidir travar, o caminho barato é exigir, só do professor, o
+    // módulo ligado no create e no update. Custa a todos uma leitura a mais do
+    // cadastro por gravação de aula, porque este bloco nunca leu o cadastro, e
+    // as gravações de aula saem uma a uma, fora de lote. Limitar as trocas de
+    // status não serve: depois de um desfecho, o Agendar do professor fecha o
+    // registro antigo (closeOpenAppointment, em src/lib/aulasWrites.js) com
+    // attended, no_show ou cancelled, e essa gravação seria recusada, deixando
+    // o registro sem o desfecho.
     match /artifacts/{appId}/public/data/stronix_aulas/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow create: if inTenant(appId) && tenantActive(appId);
