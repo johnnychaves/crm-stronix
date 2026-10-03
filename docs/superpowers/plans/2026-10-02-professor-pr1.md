@@ -10250,6 +10250,9 @@ Etapa B, no Preview do PR 1, depois de publicar (o Preview usa o Firebase de pro
 | update no próprio `stronix_users/{P}`, mudando `lastSeenReferralsAtMs` | Permitido |
 | create em `stronix_aulas` | Permitido, como antes |
 | update em `stronix_aulas`, mudando `status` para `attended` | Permitido. Aceito, ponto 9 |
+| update num lead com `lastInteractionAt` igual à hora do pedido e `interactionsCount` mais 1 (o que a Anotação grava) | Permitido |
+| update num lead com `lastInteractionAt` numa data escolhida, ou `interactionsCount` diferente de mais 1 | Negado |
+| create ou update em `stronix_daily_goal_history` | Negado |
 
 8. Desligar o módulo no super console e repetir, com P: o update do lead mudando `nextFollowUpNote` e o create da interação `note` passam a ser Negados. O create em `stronix_aulas` continua Permitido (ponto 9). Religar o módulo.
 9. Só então fazer o merge do PR 1.
@@ -10544,7 +10547,7 @@ O Johnny cola o `firestore.rules` do PR no console do Firebase, roda os cenário
 
 O Preview usa o Firebase de produção: só academia de teste, nunca a STRONIX.
 1. No super console do Preview, ligar "Professor e faltosos" na academia de teste e ver no "Logs & auditoria" a linha da mudança.
-2. Pelo "Acessar como", abrir Configurações → Equipe & acessos, cadastrar uma pessoa com o papel Professor ligada a um professor do cadastro e conferir a faixa de vagas ("Professores (fora das vagas)").
+2. Pelo "Acessar como", abrir Configurações → Equipe & acessos, cadastrar uma pessoa com o papel Professor ligada a um professor do cadastro e conferir a linha "1 professor com acesso, fora das vagas de consultor." na faixa de vagas. No super console, a página da academia mostra a linha "Professores (fora das vagas)".
 3. Tentar trocar para Professor um consultor que tenha lead na carteira e ver a recusa do D2.
 4. Entrar como o professor (o Johnny entra, porque a senha é dele) e conferir:
    - o menu só com Meta diária e Clientes;
