@@ -4,8 +4,14 @@ import { collection, doc, addDoc, getDocs, query, where, setDoc, updateDoc, dele
 import { auth, appId, LEADS_PATH, PROFESSORS_PATH, USERS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
 import { isClientLead } from '../../lib/leads.js';
-import { professorModalityNames } from '../../lib/professores.js';
+import { professorModalityNames, professorNameById } from '../../lib/professores.js';
 import { generateTemporaryPassword, passwordPolicyError, PASSWORD_RULE_TEXT } from '../../lib/passwordPolicy.js';
+import { isGestor, isProfessor, roleLabel, roleOf, ROLES } from '../../lib/acesso.js';
+import { hasModule, MODULES } from '../../lib/modules.js';
+import {
+  availableProfessors, inviteRoleOptions, linkedProfessorIds, linkedProfessorText,
+  planRoleChange, PROFESSOR_LINK_MESSAGES, SET_ROLE_ACTION
+} from '../../lib/teamRoles.js';
 import { planLoginEmailChange, loginEmailConfirmText, LOGIN_EMAIL_FAILED_MESSAGE } from '../../lib/loginEmail.js';
 import { cn } from '../../lib/utils.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
@@ -18,12 +24,15 @@ import {
   RowAction, SettingsBtn, TableHeadRow
 } from './settingsBits.jsx';
 
-// Equipe & acessos — quem entra no app, com qual papel, turno e piso de
+// Equipe & acessos: quem entra no app, com qual papel, turno e piso de
 // prospecção; e, num card à parte, os professores que conduzem aula
-// experimental (catálogo simples, sem login).
+// experimental (catálogo simples). Com o módulo Professor e faltosos ligado
+// (appUser.tenantModules), o professor do cadastro pode ganhar login com o
+// papel Professor (src/lib/teamRoles.js).
 //
 // Os caminhos de escrita são os mesmos de antes do redesign (/api/admin-*,
-// /api/invite-create e o doc do usuário): mudou a casca, não a regra.
+// /api/invite-create e o doc do usuário): mudou a casca, não a regra. O papel
+// e o professor ligado só mudam pelo servidor (set-role), nunca pelo cliente.
 
 const MEMBERS_GRID = '1.6fr .8fr .9fr .9fr 1fr 84px';
 const MEMBERS_COLUMNS = [
@@ -47,10 +56,21 @@ const PROFESSORS_COLUMNS = [
   { key: 'actions', label: '' }
 ];
 
+// Selo do papel na lista. O professor tem cor própria para não se confundir
+// com o consultor, que é quem ocupa vaga do plano.
+const ROLE_BADGE = {
+  [ROLES.GESTOR]: 'bg-accent-500/[0.14] text-accent-600 dark:text-accent-400',
+  [ROLES.CONSULTOR]: 'bg-muted text-slate-600 dark:text-slate-300',
+  [ROLES.PROFESSOR]: 'bg-violet-500/[0.12] text-violet-700 dark:text-violet-300'
+};
+
 const initialsOf = (name) => (name || '?')
   .trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
 
-const emptyForm = { name: '', email: '', password: '', shiftStart: '', shiftEnd: '', dailyVolumeTarget: '' };
+const emptyForm = {
+  name: '', email: '', password: '', shiftStart: '', shiftEnd: '', dailyVolumeTarget: '',
+  role: ROLES.CONSULTOR, professorId: ''
+};
 
 const normalizeEmail = (v) => String(v || '').trim().toLowerCase();
 const normalizeUid = (v) => String(v || '').trim();
@@ -66,7 +86,7 @@ function MemberAvatar({ name, size = 32 }) {
   );
 }
 
-function SeatBand({ seats, consultantCount }) {
+function SeatBand({ seats, consultantCount, professorCount = 0 }) {
   if (!seats || seats.maxConsultants == null) return null;
   const used = Math.min(consultantCount, seats.maxConsultants);
   const extra = Math.max(0, consultantCount - seats.maxConsultants);
@@ -87,6 +107,11 @@ function SeatBand({ seats, consultantCount }) {
             O {seats.maxConsultants + 1}º consultor entra como extra: +R$ {Number(seats.extraUserPrice).toLocaleString('pt-BR')}/mês, válido a partir da próxima fatura.
           </div>
         )}
+        {professorCount > 0 && (
+          <div className="text-[12px] text-muted-foreground mt-0.5">
+            {professorCount === 1 ? '1 professor com acesso' : `${professorCount} professores com acesso`}, fora das vagas de consultor.
+          </div>
+        )}
       </div>
       <div className="hidden sm:flex items-center gap-1 shrink-0">
         {dashes.map((on, i) => (
@@ -97,7 +122,7 @@ function SeatBand({ seats, consultantCount }) {
   );
 }
 
-function ProfessorRow({ professor, modalities, aulas, share, conversion, last, onEdit, onDelete }) {
+function ProfessorRow({ professor, modalities, aulas, share, conversion, last, withLogin = false, onEdit, onDelete }) {
   const mods = professorModalityNames(professor, modalities);
   // Cor da primeira modalidade: identifica o professor no avatar e na barra,
   // como no card do handoff.
@@ -118,7 +143,9 @@ function ProfessorRow({ professor, modalities, aulas, share, conversion, last, o
         </span>
         <div className="min-w-0">
           <div className="text-[13.5px] font-semibold truncate">{professor.nome}</div>
-          <div className="text-[11.5px] text-muted-foreground truncate">{mods.length ? mods.join(' · ') : 'Sem modalidade'}</div>
+          <div className="text-[11.5px] text-muted-foreground truncate">
+            {mods.length ? mods.join(' · ') : 'Sem modalidade'}{withLogin ? ' · com acesso ao app' : ''}
+          </div>
         </div>
       </div>
 
@@ -142,10 +169,32 @@ function ProfessorRow({ professor, modalities, aulas, share, conversion, last, o
   );
 }
 
+// Escolha do professor do cadastro que a pessoa é: só os ativos e sem login,
+// mais o próprio professor de quem está sendo editado.
+function ProfessorPicker({ value, options, onChange, disabled = false }) {
+  return (
+    <DialogField
+      label="Professor do cadastro"
+      hint={options.length === 0
+        ? 'Nenhum professor ativo sem acesso. Cadastre o professor no card Professores, mais abaixo.'
+        : 'Cada professor do cadastro tem um login só.'}
+    >
+      <select className={FIELD_INPUT} value={value} onChange={e => onChange(e.target.value)} disabled={disabled} required>
+        <option value="" disabled>Escolha o professor</option>
+        {options.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+      </select>
+    </DialogField>
+  );
+}
+
 function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHandled }) {
   const toast = useToast();
   const { professores, modalities } = useGeneralConfig();
   const seats = useSeatLimits();
+  // Módulos da academia, lidos no login e guardados no appUser
+  // (src/lib/modules.js). Sem o Professor e faltosos, a tela fica como sempre.
+  const tenantModules = appUser?.tenantModules;
+  const professorEnabled = hasModule(tenantModules, MODULES.FALTOSOS);
 
   const [memberDialog, setMemberDialog] = useState(null); // null | {mode:'create'|'edit', user}
   const [form, setForm] = useState(emptyForm);
@@ -153,7 +202,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
 
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('consultant');
+  const [inviteRole, setInviteRole] = useState(ROLES.CONSULTOR);
+  const [inviteProfessorId, setInviteProfessorId] = useState('');
   const [inviteLink, setInviteLink] = useState('');
   const [inviting, setInviting] = useState(false);
 
@@ -164,7 +214,26 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const rowRefs = useRef({});
 
   const users = useMemo(() => usersList || [], [usersList]);
-  const consultantCount = users.filter(u => u.role !== 'admin').length;
+  // Só consultor ocupa vaga de consultor do plano: o gestor tem a vaga dele e
+  // o professor não ocupa nenhuma (a mesma conta do api/_plans.js).
+  const consultantCount = users.filter(u => roleOf(u) === ROLES.CONSULTOR).length;
+  const professorCount = users.filter(u => isProfessor(u)).length;
+  const professorLogins = linkedProfessorIds(users);
+  const createLabel = professorEnabled ? 'Cadastrar pessoa' : 'Cadastrar consultor';
+
+  // Diálogo de membro, calculado no render. O papel aparece no cadastro com o
+  // módulo ligado e na edição de quem não é gestor, quando o módulo está ligado
+  // ou a pessoa já é professor (o módulo pode ter sido desligado depois).
+  const editingUser = memberDialog?.mode === 'edit' ? memberDialog.user : null;
+  const showRoleField = editingUser
+    ? !isGestor(editingUser) && (professorEnabled || isProfessor(editingUser))
+    : professorEnabled;
+  const creatingProfessor = memberDialog?.mode === 'create' && form.role === ROLES.PROFESSOR;
+  const memberProfessorOptions = availableProfessors(professores, users, {
+    exceptUserId: editingUser?.id ?? null,
+    keepId: editingUser?.professorId ?? null
+  });
+  const inviteProfessorOptions = availableProfessors(professores, users);
 
   const openCreate = () => { setForm({ ...emptyForm, password: generateTemporaryPassword() }); setMemberDialog({ mode: 'create' }); };
   const openEdit = (user) => {
@@ -174,7 +243,9 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       password: '',
       shiftStart: user.shiftStart || '',
       shiftEnd: user.shiftEnd || '',
-      dailyVolumeTarget: user.dailyVolumeTarget != null ? String(user.dailyVolumeTarget) : ''
+      dailyVolumeTarget: user.dailyVolumeTarget != null ? String(user.dailyVolumeTarget) : '',
+      role: roleOf(user),
+      professorId: user.professorId || ''
     });
     setMemberDialog({ mode: 'edit', user });
   };
@@ -208,6 +279,11 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     }
     const passwordProblem = passwordPolicyError(form.password);
     if (passwordProblem) { toast.warning(passwordProblem); return; }
+    // Professor nasce ligado a um professor do cadastro. O servidor confere de
+    // novo: módulo ligado, professor ativo e sem outro login.
+    const asProfessor = form.role === ROLES.PROFESSOR;
+    if (asProfessor && !form.professorId) { toast.warning(PROFESSOR_LINK_MESSAGES.missing); return; }
+    const noun = asProfessor ? 'professor' : 'consultor';
     if (!appUser?.authUid) { toast.error('Sessão sem authUid. Reentre no sistema.'); return; }
 
     setSaving(true);
@@ -215,7 +291,10 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       const res = await fetch('/api/admin-users', {
         method: 'POST',
         headers: await authHeader(),
-        body: JSON.stringify({ action: 'create', name: form.name.trim(), email: normalizeEmail(form.email), password: form.password, allowExtra })
+        body: JSON.stringify({
+          action: 'create', name: form.name.trim(), email: normalizeEmail(form.email), password: form.password, allowExtra,
+          ...(asProfessor ? { role: ROLES.PROFESSOR, professorId: form.professorId } : {})
+        })
       });
       const data = await res.json();
       if (res.status === 409 && data?.requiresExtraConfirmation) {
@@ -223,17 +302,47 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         if (confirmExtra(data.extraUserPrice)) return createMember(true);
         return;
       }
-      if (!res.ok) { toast.error(data.error || 'Erro ao cadastrar consultor.'); return; }
+      if (!res.ok) { toast.error(data.error || `Erro ao cadastrar ${noun}.`); return; }
 
-      toast.success(`Consultor ${form.name.trim()} cadastrado. Senha temporária: ${form.password}`, { duration: 8000, title: 'Cadastrado com sucesso' });
+      toast.success(`${asProfessor ? 'Professor' : 'Consultor'} ${form.name.trim()} cadastrado. Senha temporária: ${form.password}`, { duration: 8000, title: 'Cadastrado com sucesso' });
       if (data.isExtra) toast.info('Este consultor entrou como extra — a mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
       setMemberDialog(null);
     } catch (err) {
       console.error(err);
-      toast.error('Falha de rede ao cadastrar consultor.');
+      toast.error(`Falha de rede ao cadastrar ${noun}.`);
     } finally {
       setSaving(false);
     }
+  };
+
+  // Papel e professor ligado mudam pelo servidor (set-role do
+  // /api/admin-users), que confere o módulo, o professor do cadastro, a
+  // carteira e a vaga de consultor. Devolve true quando o resto do cadastro
+  // pode seguir.
+  const changeRole = async (target, change, allowExtra = false) => {
+    const res = await fetch('/api/admin-users', {
+      method: 'POST',
+      headers: await authHeader(),
+      body: JSON.stringify({
+        action: SET_ROLE_ACTION,
+        userDocId: target.id,
+        role: change.role,
+        ...(change.role === ROLES.PROFESSOR ? { professorId: change.professorId } : {}),
+        allowExtra
+      })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 409 && data?.requiresExtraConfirmation) {
+      return confirmExtra(data.extraUserPrice) ? changeRole(target, change, true) : false;
+    }
+    if (!res.ok) { toast.error(data.error || 'Não foi possível trocar o papel.'); return false; }
+    if (data.changed !== false) {
+      toast.success(change.role === roleOf(target)
+        ? 'Professor do cadastro trocado.'
+        : `${target.name} passa a ser ${roleLabel({ role: change.role }).toLowerCase()}. O acesso novo vale quando a pessoa entrar de novo.`);
+    }
+    if (data.isExtra) toast.info('Este consultor entrou como extra. A mensalidade foi ajustada a partir da próxima fatura.', { duration: 8000 });
+    return true;
   };
 
   const updateMember = async () => {
@@ -244,6 +353,13 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
     if (form.password.trim()) {
       const passwordProblem = passwordPolicyError(form.password);
       if (passwordProblem) { toast.warning(passwordProblem); return; }
+    }
+    // O que muda no papel. Professor sem professor escolhido nem chega ao
+    // servidor.
+    const roleChange = planRoleChange(target, form);
+    if (roleChange?.role === ROLES.PROFESSOR && !roleChange.professorId) {
+      toast.warning(PROFESSOR_LINK_MESSAGES.missing);
+      return;
     }
     // O e-mail de login de quem tem conta muda pelo servidor (set-email do
     // /api/admin-users), no Auth e no cadastro juntos, e as sessões da pessoa
@@ -264,6 +380,10 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
 
     setSaving(true);
     try {
+      // A troca de papel vai primeiro: é o único passo que pode pedir a
+      // confirmação do extra, e recusada, nada mais é salvo.
+      if (roleChange && !(await changeRole(target, roleChange))) return;
+
       if (emailChange.kind === 'account') {
         const res = await fetch('/api/admin-users', {
           method: 'POST',
@@ -294,8 +414,9 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         shiftStart: form.shiftStart || null,
         shiftEnd: form.shiftEnd || null,
         // Vazio ou 0 = sem meta de prospecção. Não existe padrão de academia:
-        // o piso é 100% individual.
-        dailyVolumeTarget: form.dailyVolumeTarget !== '' && Number(form.dailyVolumeTarget) > 0
+        // o piso é 100% individual. O professor não prospecta, então a meta
+        // dele sai junto.
+        dailyVolumeTarget: form.role !== ROLES.PROFESSOR && form.dailyVolumeTarget !== '' && Number(form.dailyVolumeTarget) > 0
           ? Math.min(500, Math.floor(Number(form.dailyVolumeTarget)))
           : deleteField(),
         password: deleteField()
@@ -344,7 +465,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   };
 
   const deleteMember = async (user) => {
-    if (user.role === 'admin') { toast.warning('O gestor não pode ser excluído por aqui.'); return; }
+    if (isGestor(user)) { toast.warning('O gestor não pode ser excluído por aqui.'); return; }
     if (!window.confirm(`Excluir o acesso de "${user.name}"?\n\nApaga a conta no Auth e o cadastro interno. Essa ação é irreversível.`)) return;
     if (!appUser?.authUid) { toast.error('Sessão sem authUid. Reentre no sistema.'); return; }
     try {
@@ -366,13 +487,15 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   const createInvite = async (allowExtra = false) => {
     const email = normalizeEmail(inviteEmail);
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.warning('E-mail inválido.'); return; }
+    const asProfessor = inviteRole === ROLES.PROFESSOR;
+    if (asProfessor && !inviteProfessorId) { toast.warning(PROFESSOR_LINK_MESSAGES.missing); return; }
     setInviting(true);
     setInviteLink('');
     try {
       const res = await fetch('/api/invite-create', {
         method: 'POST',
         headers: await authHeader(),
-        body: JSON.stringify({ email, role: inviteRole, allowExtra })
+        body: JSON.stringify({ email, role: inviteRole, allowExtra, ...(asProfessor ? { professorId: inviteProfessorId } : {}) })
       });
       const data = await res.json();
       if (res.status === 409 && data?.requiresExtraConfirmation) {
@@ -463,6 +586,12 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
   };
 
   const deleteProfessor = async (p) => {
+    // Professor com login não sai do cadastro: o acesso dele aponta para cá.
+    const login = users.find(u => isProfessor(u) && u.professorId === p.id);
+    if (login) {
+      toast.warning(`"${p.nome}" tem acesso ao app (${login.name}). Exclua esse acesso na lista da equipe antes de excluir o professor.`);
+      return;
+    }
     const inUse = (leads || []).filter(l => l.appointmentProfessorId === p.id).length;
     if (inUse > 0) {
       toast.warning(`"${p.nome}" está em ${inUse} ${inUse === 1 ? 'aula' : 'aulas'} já registradas. Não é possível excluí-lo.`);
@@ -485,11 +614,11 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
           Convidar por e-mail
         </SettingsBtn>
         <SettingsBtn kind="primary" size={38} icon={<Plus size={14} />} onClick={openCreate}>
-          Cadastrar consultor
+          {createLabel}
         </SettingsBtn>
       </SettingsSectionHeader>
 
-      <SeatBand seats={seats} consultantCount={consultantCount} />
+      <SeatBand seats={seats} consultantCount={consultantCount} professorCount={professorCount} />
 
       <section className="rounded-2xl border border-border bg-card shadow-card overflow-hidden">
         <TableHeadRow columns={MEMBERS_COLUMNS} template={MEMBERS_GRID} />
@@ -498,6 +627,8 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         ) : users.map((u, i) => {
           const linked = Boolean(normalizeUid(u.authUid));
           const target = Number(u.dailyVolumeTarget) > 0 ? u.dailyVolumeTarget : null;
+          const professorRow = isProfessor(u);
+          const linkedName = professorRow ? professorNameById(professores, u.professorId) : null;
           return (
             <div
               key={u.id}
@@ -517,23 +648,23 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
                 </div>
               </div>
 
-              <div>
-                <span className={cn(
-                  'inline-flex text-[11.5px] font-semibold px-2.5 py-1 rounded-[7px]',
-                  u.role === 'admin'
-                    ? 'bg-accent-500/[0.14] text-accent-600 dark:text-accent-400'
-                    : 'bg-muted text-slate-600 dark:text-slate-300'
-                )}>
-                  {u.role === 'admin' ? 'Gestor' : 'Consultor'}
+              <div className="min-w-0">
+                <span className={cn('inline-flex text-[11.5px] font-semibold px-2.5 py-1 rounded-[7px]', ROLE_BADGE[roleOf(u)])}>
+                  {roleLabel(u)}
                 </span>
+                {professorRow && (
+                  <div className={cn('text-[11px] mt-1 truncate', linkedName ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400')}>
+                    {linkedProfessorText(u, professores)}
+                  </div>
+                )}
               </div>
 
               <div className="text-[12.5px] text-slate-700 dark:text-slate-200 num">
                 {u.shiftStart && u.shiftEnd ? `${u.shiftStart}–${u.shiftEnd}` : '—'}
               </div>
 
-              <div className={cn('text-[12.5px] num', target ? 'font-semibold' : 'text-slate-400 dark:text-slate-500')}>
-                {target ? `${target}/dia` : 'sem meta'}
+              <div className={cn('text-[12.5px] num', target && !professorRow ? 'font-semibold' : 'text-slate-400 dark:text-slate-500')}>
+                {professorRow ? '—' : target ? `${target}/dia` : 'sem meta'}
               </div>
 
               <div className="flex items-center gap-2">
@@ -545,7 +676,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
 
               <div className="flex items-center justify-end gap-1.5">
                 <RowAction icon={<Pencil size={13} />} title="Editar membro" onClick={() => openEdit(u)} />
-                {u.role !== 'admin' && (
+                {!isGestor(u) && (
                   <RowAction kind="danger" icon={<Trash2 size={13} />} title="Excluir acesso" onClick={() => deleteMember(u)} />
                 )}
               </div>
@@ -557,7 +688,9 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       <SettingsPanel
         icon={<Dumbbell size={16} />}
         title="Professores"
-        hint="Quem conduz aulas experimentais — não têm login no app."
+        hint={professorEnabled
+          ? 'Quem conduz aulas experimentais. Com o papel Professor, na lista da equipe, ganha acesso ao app.'
+          : 'Quem conduz aulas experimentais — não têm login no app.'}
         action={
           <SettingsBtn kind="primary" size={38} icon={<Plus size={14} />} onClick={() => openProfessor(null)}>
             Cadastrar professor
@@ -576,6 +709,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
             share={share}
             conversion={conversion}
             last={i === professorStats.length - 1}
+            withLogin={professorLogins.has(professor.id)}
             onEdit={() => openProfessor(professor)}
             onDelete={() => deleteProfessor(professor)}
           />
@@ -586,10 +720,12 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       <FormDialog
         open={Boolean(memberDialog)}
         onOpenChange={(v) => !v && setMemberDialog(null)}
-        title={memberDialog?.mode === 'edit' ? `Editar ${memberDialog.user.name}` : 'Cadastrar consultor'}
+        title={memberDialog?.mode === 'edit'
+          ? `Editar ${memberDialog.user.name}`
+          : (creatingProfessor ? 'Cadastrar acesso de professor' : 'Cadastrar consultor')}
         description={memberDialog?.mode === 'edit'
           ? 'O authUid é gerado no cadastro e não muda. Preencha a nova senha só se quiser redefini-la.'
-          : 'Cria a conta no Firebase Auth e o cadastro interno numa operação só. Anote a senha temporária para entregar ao consultor.'}
+          : `Cria a conta no Firebase Auth e o cadastro interno numa operação só. Anote a senha temporária para entregar ao ${creatingProfessor ? 'professor' : 'consultor'}.`}
         submitLabel={memberDialog?.mode === 'edit' ? 'Salvar alterações' : 'Cadastrar'}
         submitting={saving}
         onSubmit={() => (memberDialog?.mode === 'edit' ? updateMember() : createMember())}
@@ -605,6 +741,25 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
             <input className={FIELD_INPUT} type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="ana@academia.com.br" required />
           </DialogField>
         </div>
+
+        {showRoleField && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <DialogField label="Papel" hint="Professor não ocupa vaga de consultor do plano.">
+              <select className={FIELD_INPUT} value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+                <option value={ROLES.CONSULTOR}>Consultor</option>
+                <option value={ROLES.PROFESSOR}>Professor</option>
+              </select>
+            </DialogField>
+            {form.role === ROLES.PROFESSOR && (
+              <ProfessorPicker
+                value={form.professorId}
+                options={memberProfessorOptions}
+                disabled={!professorEnabled}
+                onChange={(id) => setForm({ ...form, professorId: id })}
+              />
+            )}
+          </div>
+        )}
 
         <DialogField
           label={memberDialog?.mode === 'edit' ? 'Nova senha (opcional)' : 'Senha temporária'}
@@ -632,7 +787,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
           </DialogField>
         </div>
 
-        {memberDialog?.mode === 'edit' && (
+        {memberDialog?.mode === 'edit' && form.role !== ROLES.PROFESSOR && (
           <DialogField label="Meta de prospecção (ações/dia)" hint="0 ou vazio desabilita a prospecção da pessoa.">
             <input
               className={cn(FIELD_INPUT, 'num')}
@@ -647,7 +802,7 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
       {/* Convite por e-mail */}
       <FormDialog
         open={inviteOpen}
-        onOpenChange={(v) => { setInviteOpen(v); if (!v) { setInviteEmail(''); setInviteLink(''); } }}
+        onOpenChange={(v) => { setInviteOpen(v); if (!v) { setInviteEmail(''); setInviteLink(''); setInviteProfessorId(''); } }}
         title="Convidar por e-mail"
         description="O convidado define a própria senha pelo link. Envie o link gerado por e-mail ou WhatsApp — validade de 7 dias."
         submitLabel={inviting ? 'Gerando…' : 'Gerar convite'}
@@ -659,10 +814,12 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         </DialogField>
         <DialogField label="Papel">
           <select className={FIELD_INPUT} value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
-            <option value="consultant">Consultor</option>
-            <option value="admin">Gestor (admin)</option>
+            {inviteRoleOptions(tenantModules).map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </DialogField>
+        {inviteRole === ROLES.PROFESSOR && (
+          <ProfessorPicker value={inviteProfessorId} options={inviteProfessorOptions} onChange={setInviteProfessorId} />
+        )}
         {inviteLink && (
           <div className="flex items-center gap-2 p-2.5 rounded-[10px] bg-muted/60 border border-border">
             <span className="flex-1 text-[12px] text-muted-foreground truncate num">{inviteLink}</span>
@@ -676,7 +833,9 @@ function TeamAccessSection({ db, appUser, usersList, leads, focusId, onFocusHand
         open={Boolean(profDialog)}
         onOpenChange={(v) => !v && setProfDialog(null)}
         title={profDialog?.professor ? `Editar ${profDialog.professor.nome}` : 'Novo professor'}
-        description="Professores aparecem na lista ao agendar uma aula experimental. Não têm login no app."
+        description={professorEnabled
+          ? 'Professores aparecem na lista ao agendar uma aula experimental. O acesso ao app é dado na lista da equipe, com o papel Professor.'
+          : 'Professores aparecem na lista ao agendar uma aula experimental. Não têm login no app.'}
         submitLabel={profDialog?.professor ? 'Salvar' : 'Cadastrar professor'}
         submitting={saving}
         onSubmit={saveProfessor}

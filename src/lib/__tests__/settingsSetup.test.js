@@ -178,3 +178,39 @@ describe('buildSetupState — atenção por seção', () => {
     expect(s.attention.overview).toBe('3 itens pedindo atenção');
   });
 });
+
+// O professor (módulo Professor e faltosos) não é consultor: não prospecta e
+// não ocupa vaga. Mas entra no app, então pesa no passo de acessos.
+describe('buildSetupState — professor', () => {
+  it('professor sem meta de prospecção não deixa o passo pendente', () => {
+    const s = buildSetupState(complete({
+      usersList: [
+        ...complete().usersList,
+        { id: 'u3', name: 'Rafael', role: 'professor', professorId: 'p1', authUid: 'uid-3' },
+      ],
+    }));
+    expect(s.steps.find(x => x.id === 'prospect').done).toBe(true);
+    expect(s.pendings.find(x => x.id === 'prospect')).toBeUndefined();
+  });
+
+  it('só gestor e professor na equipe: ainda não há consultor para a prospecção', () => {
+    const s = buildSetupState(complete({
+      usersList: [
+        { id: 'u1', name: 'Marcelo', role: 'admin', authUid: 'uid-1', dailyVolumeTarget: 10 },
+        { id: 'u3', name: 'Rafael', role: 'professor', professorId: 'p1', authUid: 'uid-3' },
+      ],
+    }));
+    expect(s.steps.find(x => x.id === 'prospect').done).toBe(false);
+    expect(s.pendings.find(x => x.id === 'prospect')).toBeUndefined();
+  });
+
+  it('professor sem login ainda pesa no passo de acessos', () => {
+    const s = buildSetupState(complete({
+      usersList: [
+        { id: 'u1', name: 'Marcelo', role: 'admin', authUid: 'uid-1', dailyVolumeTarget: 10 },
+        { id: 'u3', name: 'Rafael', role: 'professor', professorId: 'p1', authUid: '' },
+      ],
+    }));
+    expect(s.steps.find(x => x.id === 'access').done).toBe(false);
+  });
+});

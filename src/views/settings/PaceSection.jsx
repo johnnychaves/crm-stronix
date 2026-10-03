@@ -5,6 +5,7 @@ import { appId, CONFIG_PATH, CONFIG_GENERAL_ID, USERS_PATH } from '../../lib/fir
 import { normalizeRenewalCheckpoints } from '../../lib/leadStatus.js';
 import { normalizeRenewalGraceDays, DEFAULT_RENEWAL_GRACE_DAYS } from '../../lib/renewalGoal.js';
 import { cn } from '../../lib/utils.js';
+import { isGestor, isSeller } from '../../lib/acesso.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { SettingsPanel, SettingsSectionHeader } from '../../components/ui/SettingsCard.jsx';
@@ -78,6 +79,9 @@ function PaceSection({ db, usersList, metaWeekdays }) {
   const [checkpointOpen, setCheckpointOpen] = useState(false);
   const [checkpointInput, setCheckpointInput] = useState('');
   const [savingCheckpoints, setSavingCheckpoints] = useState(false);
+  // A meta de prospecção é de quem vende: gestor e consultor. O professor não
+  // prospecta e fica fora da lista.
+  const sellers = (usersList || []).filter(isSeller);
 
   // A ref é montada na hora de gravar, não no render: render não deve tocar
   // no SDK do Firestore.
@@ -261,15 +265,15 @@ function PaceSection({ db, usersList, metaWeekdays }) {
         hint={<>Piso de ações por dia, individual. Conta como ação: agendar/reagendar, registrar ligação ou mensagem, e cadastrar lead novo. Quem zera as pendências <b>e</b> bate a prospecção ganha o selo <b>dia perfeito ⚡</b>. Vazio = sem meta.</>}
       >
         <div className="border-t border-border">
-          {(usersList || []).map((u, i) => (
+          {sellers.map((u, i) => (
             <div
               key={u.id}
-              className={cn('flex items-center gap-3 px-5 py-3', i < (usersList || []).length - 1 && 'border-b border-border')}
+              className={cn('flex items-center gap-3 px-5 py-3', i < sellers.length - 1 && 'border-b border-border')}
             >
               <span className="size-7 rounded-full grid place-items-center text-[10px] font-bold shrink-0 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
                 {initialsOf(u.name)}
               </span>
-              <span className="text-[13.5px] flex-1 truncate">{u.name}{u.role === 'admin' ? ' (gestor)' : ''}</span>
+              <span className="text-[13.5px] flex-1 truncate">{u.name}{isGestor(u) ? ' (gestor)' : ''}</span>
               <input
                 type="number" min="0" max="500"
                 defaultValue={u.dailyVolumeTarget ?? ''}
