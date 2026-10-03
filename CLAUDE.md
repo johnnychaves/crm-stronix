@@ -27,10 +27,11 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 - Firestore rules são publicadas MANUALMENTE no console Firebase (não via CLI).
 - As travas do professor no `firestore.rules`:
   - O professor não cria nem exclui lead.
-  - Altera só os campos de `professorLeadFields()`: as chaves do `buildSchedulePatch` mais `lastInteractionAt` e `interactionsCount`.
+  - Altera só os campos de `professorLeadFields()`: as chaves do `buildSchedulePatch` mais `lastInteractionAt` e `interactionsCount`. O valor desses dois também é travado: `lastInteractionAt` só como `request.time` (o `serverTimestamp()`) e `interactionsCount` só como o de antes mais um (o `increment(1)`), que é o que o `logInteraction` grava. Caminho novo do professor que grave hora do navegador ou número calculado nesses campos cai em permission-denied.
   - Grava o desfecho do agendamento (`professorOutcomeFields()`) só vazio.
   - Cria interação só dos tipos de `professorInteractionTypes()`, no próprio nome (`actorAuthUid` igual ao uid). Não edita nem apaga interação.
   - Não cria nem altera contrato.
+  - Não cria nem altera dia batido da Meta (`stronix_daily_goal_history`), porque o app nunca grava o dia dele.
   - Com o módulo `faltosos` desligado, não grava lead nem interação.
   - Nos registros de aula (`stronix_aulas`), o professor grava como qualquer membro, porque o Agendar grava ali. A trava do desfecho e a do módulo valem só no lead e nas interações. Travar as aulas é decisão do Johnny, e o comentário das regras explica as duas saídas e o custo de cada uma.
   - O `isProfessor` confere o cadastro com `exists()` antes de ler o papel, porque conta antiga tem cadastro com id diferente do uid. Por isso só existe professor em cadastro com id igual ao uid.
@@ -51,7 +52,7 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 - Gestor e consultor fazem todas as ações de `ACTIONS` (como hoje, desde a PR #193), e o professor não faz nenhuma. O que é só do gestor continua em `isGestor` e na trava `gestor` de `SCREENS`, fora de `ACTIONS`: Configurações, excluir lead, Meta da equipe, filtro de responsável nas listas e cobrança. Quando os perfis editáveis vierem, a tabela `PERMISSOES` sai do código e as telas continuam perguntando igual.
 - `can` olha só o papel. O login (`canEditLead`, pelo `authUid`) continua conferido à parte, e a ficha combina os dois. A sessão do super-admin puro tem `role: 'superadmin'`, que `roleOf` lê como consultor, então `can` devolve true para ela. Tela que o super-admin puro alcance sem academia não pode confiar só no `can`.
 - Lista de pessoas que vira filtro de responsável, escolha de dono, painel por pessoa, Meta da equipe ou meta de prospecção passa por `isSeller`. Busca de nome (o chip do filtro, o autor da linha do tempo, o `usersById` da Meta) continua com o `usersList` inteiro. As telas da varredura ficam em `LISTAS_DE_QUEM_VENDE`, no `acessoSweep.test.js` (os painéis, a Meta da equipe, o Pipeline, as listas, Clientes, a ficha, o cadastro do cliente, Metas & ritmo, Migrar leads e a importação de clientes), e tela nova com lista de pessoas entra ali.
-- O que o professor registra (anotação, WhatsApp, ligação, agendamento) cai em Outros no volume do Operacional, porque ele não está nas linhas por pessoa. Decidido no plano do PR 1, em 02/10/2026, e o Johnny pode mudar.
+- O que o professor registra (anotação, WhatsApp, ligação, agendamento) cai em Outros no volume do Operacional, porque ele não está nas linhas por pessoa. Decidido no plano do PR 1, em 02/10/2026, e o Johnny pode mudar. O subtítulo de Outros só cita os professores com o módulo `faltosos` ligado (`withProfessors`, no `TeamMonthTable.jsx`); sem ele, continua "fora da equipe ou sem responsável".
 - O dia batido da Meta (`goalHitKeyToRecord`, em `src/lib/dailyGoalHistory.js`) só grava para quem vende. O `App.jsx` passa `seller: isSeller(appUser)`.
 - No Gerencial, o rótulo de quem vendeu sai de `sellerRoleText`. O gestor aparece como "Gestor · também vende" e os outros, pelo `roleLabel`. As tabelas de pessoas do Operacional e do CRM usam o `roleLabel`.
 
@@ -128,6 +129,7 @@ O papel Professor só é dado com o módulo `faltosos` ligado (ver "Módulos da 
   - Professor que volta a consultor ocupa vaga de consultor, com a mesma confirmação de extra pago do cadastro.
   - Consultor extra que vira professor libera a vaga e sincroniza a assinatura.
   - Virar professor apaga a meta de prospecção.
+  - Virar professor devolve ao dono de cada lead as tarefas de contato que a pessoa recebeu de outros consultores (`nextFollowUpOwnerId` e `nextFollowUpOwnerName` voltam a null, em lotes de até 500), depois de todas as recusas e antes de o papel mudar. Sem isso a tarefa sumiria de todas as Metas no dia dela, porque só quem a recebeu a vê e o professor não tem essa Meta. Excluir a pessoa ainda não faz essa devolução.
   - Quando o papel muda, as sessões da pessoa são revogadas.
   - O `set-role` também troca o professor do cadastro ligado a quem já é professor, com as mesmas conferências do `professorLinkRefusal`. Essa troca não revoga as sessões, então a sessão aberta segue com o `professorId` antigo no `appUser` até o próximo login ou F5.
 - **Equipe & acessos** lê os módulos em `appUser.tenantModules`. Com o módulo, a tela tem:
@@ -135,9 +137,9 @@ O papel Professor só é dado com o módulo `faltosos` ligado (ver "Módulos da 
   - o campo Papel e o "Professor do cadastro", só com ativos sem login;
   - o selo violeta de professor, com o professor ligado embaixo;
   - um traço no lugar da prospecção do professor;
-  - na faixa de vagas, a conta dos professores fora das vagas de consultor.
+  - na faixa de vagas, a conta dos professores fora das vagas de consultor. Essa linha aparece sempre que há professor com acesso, mesmo sem limite de consultor no plano ou com a `/api/asaas` fora do ar, e aí a faixa mostra só ela.
 
-  Sem o módulo, a tela fica igual à de antes.
+  Sem o módulo, a tela fica igual à de antes, inclusive o aviso de consultor cadastrado ("Consultor X cadastrado. Senha temporária: ..."). O aviso novo ("Acesso de professor criado para X. ...") é só do professor.
 - **Exclusão.** O professor do cadastro que tem login não pode ser excluído pela tela, mas a trava é só de tela. Excluir um professor com acesso não mexe na assinatura.
 - **Prospecção e assentos.** O professor não entra na "Meta de prospecção" (`settingsSetup.js`, pelo `roleOf`, e `PaceSection.jsx`, pelo `isSeller`) nem na dica de assentos da Visão geral. Ele continua pesando no passo "Acessos da equipe". O atalho "Cadastrar consultor" da Visão geral mantém o nome.
 - **Convites antigos.** Convite sem papel ou com papel desconhecido entra como consultor (`roleOf`), como antes.
