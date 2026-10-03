@@ -26,6 +26,25 @@ describe('casca do App para o professor', () => {
     expect(app.slice(aviso, superPuro)).toContain('return <ProfessorAccessOffScreen onLogout={handleLogout} />;');
   });
 
+  it('com o módulo desligado, a leitura de dados não assina nada, logo depois da trava da academia bloqueada', () => {
+    const efeito = app.indexOf('if (appUser.superAdminOnly) { setLoadingData(false); return; }');
+    const bloqueio = app.indexOf('if (tenantBlock) { setLoadingData(false); return; }', efeito);
+    const guarda = 'if (professorAccessOff(appUser)) { setLoadingData(false); return; }';
+    expect(efeito).toBeGreaterThan(-1);
+    expect(bloqueio).toBeGreaterThan(efeito);
+    // A guarda é a próxima instrução depois da trava da academia bloqueada.
+    const depois = app.slice(bloqueio + 'if (tenantBlock) { setLoadingData(false); return; }'.length).trimStart();
+    expect(depois.startsWith(guarda)).toBe(true);
+    // E vem antes da primeira assinatura do efeito.
+    expect(app.indexOf(guarda, bloqueio)).toBeLessThan(app.indexOf('onSnapshot(', bloqueio));
+  });
+
+  it('com o módulo desligado, o título, o sino e os chamados não leem nada do professor', () => {
+    expect(app).toMatch(/const titleScreen = appUser && !appUser\.superAdminOnly && !tenantBlock && !professorAccessOff\(appUser\) \?/);
+    expect(app).toMatch(/useHandoffs\(\{[^}]*enabled: [^}]*!professorAccessOff\(appUser\)[^}]*\}\)/);
+    expect(app).toMatch(/const ticketsOn = [^;]*!professorAccessOff\(appUser\)[^;]*;/);
+  });
+
   it('o menu de trabalho mostra cada item pelo sidebarNav', () => {
     expect(app).toContain('const nav = sidebarNav(appUser);');
     const menu = app.slice(app.indexOf('>Workspace</div>'), app.indexOf('>Administração</div>'));

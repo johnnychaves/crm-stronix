@@ -238,7 +238,7 @@ function AppInner() {
   // O Suporte é do gestor e do consultor (ACTIONS.SUPORTE_ABRIR). O professor
   // não tem o item no menu, então os chamados que só alimentam o selo dele não
   // são assinados.
-  const ticketsOn = !!appUser?.tenantId && !appUser?.superAdminOnly && !tenantBlock && can(appUser, ACTIONS.SUPORTE_ABRIR);
+  const ticketsOn = !!appUser?.tenantId && !appUser?.superAdminOnly && !tenantBlock && !professorAccessOff(appUser) && can(appUser, ACTIONS.SUPORTE_ABRIR);
   useEffect(() => {
     if (!ticketsOn || !listenersActive) return;
     const q = query(collection(db, 'tickets'), where('tenantId', '==', appUser.tenantId));
@@ -257,7 +257,7 @@ function AppInner() {
   // "Já li" do sino: ids das novidades vistas + carimbo das indicações.
   const { seenIds, lastSeenReferralsAt, markAllSeen } = useNotificationsSeen({ db, appUser });
   // Leads/clientes que passaram pra carteira desta pessoa (grupo do sino).
-  const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly });
+  const handoffLeads = useHandoffs({ db, appUser, enabled: !!appUser && !appUser.superAdminOnly && !professorAccessOff(appUser) });
   // Menu do celular: aberto enquanto o endereço for o mesmo em que ele abriu
   // (location.key). Qualquer troca de endereço fecha o menu sozinha, inclusive
   // o voltar do navegador e o replace de um aviso de rota, sem effect. Os links
@@ -305,7 +305,7 @@ function AppInner() {
   // Título da aba: "<Tela> · <Academia> · STRONILEAD". Na ficha, só "Ficha",
   // nunca o nome da pessoa, porque o título fica no histórico do navegador.
   // Antes do login continua "<Academia> · STRONILEAD".
-  const titleScreen = appUser && !appUser.superAdminOnly && !tenantBlock ? (fichaOpen ? 'ficha' : resolvedTab) : null;
+  const titleScreen = appUser && !appUser.superAdminOnly && !tenantBlock && !professorAccessOff(appUser) ? (fichaOpen ? 'ficha' : resolvedTab) : null;
   const titleTenant = appUser ? (appUser.superAdminOnly ? '' : tenantDisplayName) : (urlTenant?.displayName || '');
   useEffect(() => {
     document.title = documentTitle({ screen: titleScreen, tenantName: titleTenant });
@@ -666,6 +666,12 @@ useEffect(() => {
   // a tela de bloqueio é exibida e as rules também negam no servidor. Evita
   // permission-denied silencioso nos onSnapshot.
   if (tenantBlock) { setLoadingData(false); return; }
+  // Professor com o módulo "Professor e faltosos" desligado: só vê o aviso de
+  // acesso desligado (ProfessorAccessOffScreen), então não assina nada. Sem
+  // isso, os leads, os contratos, a equipe e a configuração da academia
+  // chegariam a um navegador cujo acesso está desligado, e cada login dele
+  // gastaria leitura.
+  if (professorAccessOff(appUser)) { setLoadingData(false); return; }
   // Ociosidade (auditoria de 28/07/2026): o cleanup deste effect já derrubou as
   // assinaturas quando listenersActive virou false. Aqui é só NÃO reassinar.
   // De propósito não mexe em loadingData nem zera leads/interactions: a tela
