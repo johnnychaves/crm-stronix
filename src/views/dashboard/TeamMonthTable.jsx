@@ -15,6 +15,7 @@ import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { OTHERS_ID } from '../../lib/operacional/metrics.js';
 import { dashInitials } from './dashTokens.js';
+import { roleLabel } from '../../lib/acesso.js';
 
 const RULE = 'border-slate-100 dark:border-white/[0.06]';
 const SOFT = 'bg-slate-50 dark:bg-white/[0.03]';
@@ -26,7 +27,6 @@ const OTHERS_SUB = 'fora da equipe ou sem responsável';
 const pctText = (v) => (v != null ? `${v}%` : '—');
 const numText = (v) => (v != null ? fmtNum(v) : '—');
 const barWidth = (v) => `${Math.min(100, Math.max(0, v || 0))}%`;
-const roleOf = (user) => (user.role === 'admin' ? 'Gestor' : 'Consultor');
 const prospLine = (p) => (p && !p.on ? 'desligada' : pctText(p?.pct ?? null));
 
 function Bar({ pct, fill }) {
@@ -145,7 +145,7 @@ export function TeamMonthTable({ rows, others, total, running, onPick }) {
                   RULE
                 )}
               >
-                <NameCell name={user.name || 'Sem nome'} sub={roleOf(user)} />
+                <NameCell name={user.name || 'Sem nome'} sub={roleLabel(user)} />
                 <RowCells m={m} lateN={lateOf(user.id)} running={running} />
               </button>
             ))}

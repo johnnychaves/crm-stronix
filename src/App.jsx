@@ -51,7 +51,7 @@ import {
 } from './lib/firebase.js';
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
 import { getSafeDate } from './lib/dates.js';
-import { isAdminUser, normalizeLeadDoc } from './lib/leads.js';
+import { normalizeLeadDoc } from './lib/leads.js';
 import { ACTIONS, can, isGestor, isProfessor, isSeller } from './lib/acesso.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
 import { planRenewalSetupOps } from './lib/renewalFunnel.js';
@@ -867,7 +867,7 @@ useEffect(() => {
   );
 
   let unsubUsers = () => {};
-  if (isAdminUser(appUser)) {
+  if (isGestor(appUser)) {
     unsubUsers = onSnapshot(usersRef, (snapshot) => {
       setUsersList(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -936,7 +936,7 @@ useEffect(() => {
 
   // Migração idempotente: cria funil "Comercial" default e backfill de funnelId em leads/statuses
   useEffect(() => {
-    if (!appUser || !isAdminUser(appUser)) return;
+    if (!appUser || !isGestor(appUser)) return;
     // Academia desta execução, congelada aqui: é a chave do estado da máquina e
     // o destino de toda leitura e gravação, mesmo que a conta troque no meio
     // (ver funnelSetupWrites.js e setupRun.js).
@@ -1068,7 +1068,7 @@ useEffect(() => {
   // de indicações nunca pode virar o default de facto (fallback legado de
   // isItemInFunnel despejaria os leads sem funnelId nele).
   useEffect(() => {
-    if (!appUser || !isAdminUser(appUser)) return;
+    if (!appUser || !isGestor(appUser)) return;
     // Academia desta execução, congelada aqui: chave do estado e destino das
     // gravações (ver funnelSetupWrites.js e setupRun.js).
     const tenant = appUser.tenantId;
@@ -1125,7 +1125,7 @@ useEffect(() => {
   // acima, e guardado por ele estar 'done' para as duas escritas não correrem
   // juntas no primeiro login de admin de uma academia nova.
   useEffect(() => {
-    if (!appUser || !isAdminUser(appUser)) return;
+    if (!appUser || !isGestor(appUser)) return;
     // Academia desta execução, congelada aqui: chave do estado e destino das
     // gravações (ver funnelSetupWrites.js e setupRun.js).
     const tenant = appUser.tenantId;
@@ -1182,7 +1182,7 @@ useEffect(() => {
   // Mais simples que os irmãos: as colunas deste funil são VIRTUAIS (derivadas
   // dos marcos de renovação), então não há etapa nenhuma para criar.
   useEffect(() => {
-    if (!appUser || !isAdminUser(appUser)) return;
+    if (!appUser || !isGestor(appUser)) return;
     // Academia desta execução, congelada aqui: chave do estado e destino das
     // gravações (ver funnelSetupWrites.js e setupRun.js).
     const tenant = appUser.tenantId;
@@ -1230,7 +1230,7 @@ useEffect(() => {
   // no primeiro login de admin de uma academia nova. Só a etapa de entrada
   // nasce; as demais a academia cria em Configurações.
   useEffect(() => {
-    if (!appUser || !isAdminUser(appUser)) return;
+    if (!appUser || !isGestor(appUser)) return;
     // Academia desta execução, congelada aqui: chave do estado e destino das
     // gravações (ver funnelSetupWrites.js e setupRun.js).
     const tenant = appUser.tenantId;
@@ -1463,7 +1463,8 @@ useEffect(() => {
   // objeto, que muda a cada interação nova. O ref guarda o dia já gravado, por
   // pessoa: o doc é o mesmo, e regravar na mesma sessão só gastaria escrita.
   // A decisão (qual chave gravar, ou se grava) é a função pura
-  // goalHitKeyToRecord em lib/dailyGoalHistory.js, testada isoladamente.
+  // goalHitKeyToRecord em lib/dailyGoalHistory.js, testada isoladamente. Só
+  // quem vende grava: o professor não tem a Meta do consultor (seller).
   const goalHitRecordedRef = useRef(null);
   useEffect(() => {
     if (!db || !appUser?.id) return;
@@ -1474,7 +1475,8 @@ useEffect(() => {
       ready,
       total: dailyGoalTotal,
       pending: dailyGoalPending,
-      recordedKey: goalHitRecordedRef.current
+      recordedKey: goalHitRecordedRef.current,
+      seller: isSeller(appUser)
     });
     if (!key) return;
     goalHitRecordedRef.current = key;
@@ -1487,7 +1489,7 @@ useEffect(() => {
   // carteira do consultor e é livre para ele trocar (lib/kanban.js).
   const clientsAVencer = useMemo(() => {
     if (!appUser) return 0;
-    const scope = isAdminUser(appUser) ? renewalClients : renewalClients.filter(l => l.consultantId === appUser.id);
+    const scope = isGestor(appUser) ? renewalClients : renewalClients.filter(l => l.consultantId === appUser.id);
     return scope.filter(l => l.lifecycleStage === 'cliente').length;
   }, [renewalClients, appUser]);
 
@@ -1527,7 +1529,7 @@ useEffect(() => {
     // Trial expirado → tela de ativação (escolhe plano + paga e libera sozinho).
     // Suspensa / inadimplente seguem na TenantBlockedScreen.
     if (tenantBlock === 'trial_expired') {
-      return <TrialActivationScreen isAdmin={isAdminUser(appUser)} onLogout={handleLogout} />;
+      return <TrialActivationScreen isAdmin={isGestor(appUser)} onLogout={handleLogout} />;
     }
     return <TenantBlockedScreen reason={tenantBlock} onLogout={handleLogout} />;
   }
@@ -1745,7 +1747,7 @@ useEffect(() => {
             <SilentErrorBoundary>
               <PersonaMenu
                 appUser={appUser}
-                isAdmin={!appUser.superAdminOnly && isAdminUser(appUser)}
+                isAdmin={!appUser.superAdminOnly && isGestor(appUser)}
                 profileHref={menuHref('profile')}
                 billingHref={menuHref('billing')}
                 onLogout={handleLogout}
@@ -1761,7 +1763,7 @@ useEffect(() => {
 
         {/* Aviso de mensalidade: só p/ o admin (consultor não gerencia cobrança).
             Com o banner de trial visível, só aparece se já estiver VENCIDA. */}
-        {!appUser.superAdminOnly && isAdminUser(appUser) && billingDue && (billingDue.overdue || !trialEndsAtMs) && (
+        {!appUser.superAdminOnly && isGestor(appUser) && billingDue && (billingDue.overdue || !trialEndsAtMs) && (
           <PaymentDueBanner
             dueAtMs={billingDue.dueAtMs}
             overdue={billingDue.overdue}
@@ -1841,9 +1843,9 @@ useEffect(() => {
                   atalho de presença, hoje exclusividade da Meta Diária). */}
               {activeTab === 'aulas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
-              {activeTab === 'settings' && isAdminUser(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
-              {activeTab === 'profile' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
-              {activeTab === 'billing' && isAdminUser(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
+              {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'profile' && isGestor(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
+              {activeTab === 'billing' && isGestor(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
             </div>
           )}

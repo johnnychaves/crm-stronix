@@ -19,6 +19,7 @@ import { cn } from '../../lib/utils.js';
 import { CrmToolbar } from './CrmToolbar.jsx';
 import { CrmDashboard } from './CrmDashboard.jsx';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
+import { isSeller } from '../../lib/acesso.js';
 
 // Aviso sob a barra, quando algum mês não carregou (mesmo do Operacional).
 function Notice({ children }) {
@@ -39,7 +40,9 @@ export function DashboardCrmView({ usersList, liveLeads, interactions, db, liste
   }, []);
 
   const currentKey = monthKeyOf(now);
-  const users = useMemo(() => (usersList || []).filter((u) => u?.id), [usersList]);
+  // A conversão por pessoa e o seletor de pessoa são de quem vende: o
+  // professor não é dono de lead.
+  const users = useMemo(() => (usersList || []).filter((u) => u?.id && isSeller(u)), [usersList]);
   const leadFunnels = useMemo(() => leadFunnelsOf(funnels), [funnels]);
   // Mês, comparativo, pessoa e funil vêm do endereço. Pessoa ou funil que saiu
   // da lista (usuário removido, funil apagado) já chega como "todos", que é o

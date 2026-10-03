@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Download, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
-import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isAdminUser, isLeadConverted } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isLeadConverted } from '../lib/leads.js';
+import { isGestor, isSeller } from '../lib/acesso.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -130,7 +131,10 @@ const fromDateInput = (s) => {
 
 function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
   const { professores } = useGeneralConfig();
-  const isAdmin = isAdminUser(appUser);
+  const isAdmin = isGestor(appUser);
+  // Responsável é quem vende: o professor não é dono de lead e fica fora do
+  // filtro, do endereço e da exportação (isSeller, em src/lib/acesso.js).
+  const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
   const isAula = appointmentType === 'aula_experimental';
   // Relógio do render, congelado na montagem. Só serve para ordenar
   // futuro-primeiro, então não precisa ticar — e chamar Date.now() solto no
@@ -161,12 +165,12 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
   // O botão de filtros é de gestor, então responsável e professor num link
   // aberto por consultor são ignorados.
   const paramsCtx = useMemo(() => ({
-    users: usersList,
+    users: sellers,
     podeResp: isAdmin,
     respPadrao: [],
     professores,
     temAndamento: isAula,
-  }), [usersList, isAdmin, professores, isAula]);
+  }), [sellers, isAdmin, professores, isAula]);
   const [{ day: dayTab, de, ate, resp: respFilter, prof: profFilter = SEM_PROFESSOR }, setParams] =
     useScreenParams(isAula ? 'aulas' : 'visitas', paramsCtx);
   // A tela trabalha com Date; o endereço guarda AAAA-MM-DD.
@@ -581,7 +585,7 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                       </span>
                       {respFilter.length === 0 && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
                     </button>
-                    {(usersList || []).map(u => {
+                    {sellers.map(u => {
                       const selected = respFilter.includes(u.id);
                       return (
                         <button
@@ -820,7 +824,7 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
           appointmentType={appointmentType}
           isAula={isAula}
           isAdmin={isAdmin}
-          usersList={usersList}
+          usersList={sellers}
         />
       )}
     </>

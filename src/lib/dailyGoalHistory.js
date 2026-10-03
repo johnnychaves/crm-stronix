@@ -26,8 +26,11 @@ export function buildGoalHitDoc(appUser, dateKey, { volumeCount = null, volumeTa
 // combinar esses booleanos é responsabilidade de quem chama, não desta
 // função. Sem usuário ou sem base pronta, total zerado ou pendência ainda
 // maior que zero, ou o dia já gravado (recordedKey igual à chave): não grava.
-export function goalHitKeyToRecord({ userId, dayKey, ready, total, pending, recordedKey }) {
-  if (!userId || !ready) return null;
+// `seller` diz se a pessoa vende (isSeller, em acesso.js). Quem não vende (o
+// professor) não tem a Meta do consultor e nunca grava dia batido. Sem o
+// campo, vale quem vende, como sempre foi.
+export function goalHitKeyToRecord({ userId, dayKey, ready, total, pending, recordedKey, seller = true }) {
+  if (!userId || !ready || !seller) return null;
   if (total === 0 || pending > 0) return null;
   const key = `${userId}_${dayKey}`;
   return key === recordedKey ? null : key;

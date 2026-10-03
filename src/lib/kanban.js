@@ -1,4 +1,5 @@
-import { isAdminUser, isClientLead } from './leads.js';
+import { isClientLead } from './leads.js';
+import { isGestor } from './acesso.js';
 
 // Carteira padrão do board por PAPEL.
 //
@@ -10,7 +11,7 @@ import { isAdminUser, isClientLead } from './leads.js';
 // inteira. Até 26/08/2026 o consultor ficava preso aos próprios leads por
 // recorte de dados, sem filtro nenhum para mexer.
 export const defaultRespFilterFor = (user) =>
-  (!user || isAdminUser(user) || !user.id) ? [] : [user.id];
+  (!user || isGestor(user) || !user.id) ? [] : [user.id];
 
 // O padrão não conta como filtro ativo: é o estado natural da tela, então não
 // pinta o botão nem soma no badge. Qualquer desvio conta — inclusive o

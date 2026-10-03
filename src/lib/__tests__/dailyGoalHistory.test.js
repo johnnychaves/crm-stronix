@@ -43,3 +43,16 @@ describe('goalHitKeyToRecord', () => {
     expect(goalHitKeyToRecord(base)).toBe('ana_2026-09-11');
   });
 });
+
+describe('goalHitKeyToRecord: só quem vende grava o dia batido', () => {
+  const base = { userId: 'rafa', dayKey: '2026-10-02', ready: true, total: 5, pending: 0, recordedKey: null };
+
+  it('quem não vende (o professor) não grava, mesmo com as tarefas zeradas', () => {
+    expect(goalHitKeyToRecord({ ...base, seller: false })).toBeNull();
+  });
+
+  it('quem vende grava como sempre, e sem o campo vale quem vende', () => {
+    expect(goalHitKeyToRecord({ ...base, seller: true })).toBe('rafa_2026-10-02');
+    expect(goalHitKeyToRecord(base)).toBe('rafa_2026-10-02');
+  });
+});

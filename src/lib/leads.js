@@ -247,8 +247,8 @@ export const outcomeAppliesToAula = (categorySlug) =>
   categorySlug === DAILY_GOAL_CATEGORIES.AULA_HOJE;
 
 // --- Permissions ---
-
-export const isAdminUser = (user) => user?.role === 'admin';
+// O papel de quem usa o app (gestor, consultor, professor) se decide em
+// src/lib/acesso.js: isGestor, isSeller, can.
 
 // Dono da TAREFA de contato (mensagem/ligação) na Meta Diária. AUSENTE
 // SIGNIFICA O DONO DO LEAD, então lead antigo continua se comportando como

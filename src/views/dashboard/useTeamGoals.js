@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../../lib/firebase.js';
-import { isAdminUser } from '../../lib/leads.js';
+import { isGestor, isSeller } from '../../lib/acesso.js';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import {
   buildInteractionsByLead,
@@ -29,7 +29,7 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
   // pelo painel da Equipe) p/ o "X de Y dias" do mês.
   const [teamHistory, setTeamHistory] = useState([]);
   useEffect(() => {
-    if (!isAdminUser(appUser)) return undefined;
+    if (!isGestor(appUser)) return undefined;
     const unsub = onSnapshot(
       collection(db, 'artifacts', appId, 'public', 'data', DAILY_GOAL_HISTORY_PATH),
       (snap) => setTeamHistory(snap.docs.map((d) => d.data())),
@@ -39,7 +39,7 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
   }, [db, appUser]);
 
   const goalByConsultant = useMemo(() => {
-    if (!isAdminUser(appUser)) return {};
+    if (!isGestor(appUser)) return {};
     const byLead = buildInteractionsByLead(interactions);
     const monthDays = countMetaDaysInMonth(metaWeekdays);
     const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
@@ -68,7 +68,7 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
       if (arr) arr.push(h); else historyByConsultant.set(h.consultantId, [h]);
     });
     const map = {};
-    (usersList || []).forEach((u) => {
+    (usersList || []).filter(isSeller).forEach((u) => {
       const myLeads = leadsByConsultant.get(u.id) || [];
       const myInteractions = interactionsByAuth.get(u.authUid) || [];
       // renewalCheckpoints E renewalGraceDays vêm da configuração da academia —

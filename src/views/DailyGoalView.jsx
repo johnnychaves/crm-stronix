@@ -4,7 +4,8 @@ import confetti from 'canvas-confetti';
 import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isAdminUser, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
+import { isGestor } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
@@ -1758,7 +1759,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       ? tomorrowAppts.length
       : (counts[filter] || 0);
 
-  const isManager = isAdminUser(appUser);
+  const isManager = isGestor(appUser);
 
   return (
     <div className="h-full flex flex-col gap-6 animate-fade-in relative font-sans">

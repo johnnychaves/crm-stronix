@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { AlertCircle, Calendar, Check, Download, Phone, SlidersHorizontal, Users, X } from 'lucide-react';
-import { isAdminUser, normalizeLeadDoc } from '../lib/leads.js';
+import { normalizeLeadDoc } from '../lib/leads.js';
+import { isGestor, isSeller } from '../lib/acesso.js';
 import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isHotLeadFromDate } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -27,7 +28,10 @@ const statusColorOf = (name, statuses) =>
 
 function LeadsView({ interactions, appUser, statuses, usersList, funnels, selectedFunnelId: savedFunnelId, setSelectedFunnelId: rememberFunnel, db }) {
   const toast = useToast();
-  const isAdmin = isAdminUser(appUser);
+  const isAdmin = isGestor(appUser);
+  // Responsável é quem vende: o professor não é dono de lead e fica fora do
+  // filtro e do endereço (isSeller, em src/lib/acesso.js).
+  const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
 
   // Fonte dos leads (G1a): query própria em vez do prop global. allLeadsQuerySpec
   // traz TODOS os leads de TODOS os buckets (Venda/Perda inclusive) de uma vez;
@@ -52,13 +56,13 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
   // funil, porque o funil é lido antes da fase na mesma passada, e é isso que
   // apaga sozinha a fase de um funil que deixou de ser o escolhido.
   const paramsCtx = useMemo(() => ({
-    users: usersList,
+    users: sellers,
     funis: funnels,
     funilPadrao: savedFunnelId,
     podeResp: isAdmin,
     respPadrao: [],
     etapas: (fid) => (statuses || []).filter(s => isItemInFunnel(s, fid, defaultFunnelId)),
-  }), [usersList, funnels, savedFunnelId, isAdmin, statuses, defaultFunnelId]);
+  }), [sellers, funnels, savedFunnelId, isAdmin, statuses, defaultFunnelId]);
   const [{ funnel, stage: statusFilters, resp: consultantFilters, overdue: overdueOnly, hot: hotOnly }, setParams] =
     useScreenParams('leads', paramsCtx);
   const selectedFunnelId = funnel;
@@ -279,12 +283,12 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
                 </div>
 
                 {/* Responsável (admin) */}
-                {isAdmin && (usersList || []).length > 0 && (
+                {isAdmin && sellers.length > 0 && (
                   <>
                     <div className="mx-3.5 my-1 border-t border-slate-100 dark:border-white/10" />
                     <div className="px-2 pt-1.5 pb-3">
                       <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">Responsável</div>
-                      {(usersList || []).map(u => {
+                      {sellers.map(u => {
                         const selected = consultantFilters.includes(u.id);
                         return (
                           <button

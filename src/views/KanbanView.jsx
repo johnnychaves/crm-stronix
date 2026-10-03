@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import { serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { canEditLead, normalizeLeadDoc } from '../lib/leads.js';
+import { isSeller } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, STAGE_MOVE_BLOCK, withStageEntered } from '../lib/stageMove.js';
@@ -459,6 +460,9 @@ const KanbanColumn = memo(function KanbanColumn({
 function KanbanView({ leads, interactions, appUser, statuses, usersList, lossReasons, db, funnels, selectedFunnelId: savedFunnelId, setSelectedFunnelId: rememberFunnel }) {
   const toast = useToast();
   const [moveLead, setMoveLead] = useState(null); // lead com o menu "Mover" aberto (toque/teclado)
+  // Responsável é quem vende: o professor não é dono de lead e fica fora do
+  // filtro e do endereço (isSeller, em src/lib/acesso.js).
+  const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
   // Funil, responsáveis e atraso vêm do endereço: F5 mantém, o link abre igual
   // e cada aba pode estar num recorte diferente. Sem funil no endereço vale o
   // último funil usado, que o App guarda por academia no navegador.
@@ -467,12 +471,12 @@ function KanbanView({ leads, interactions, appUser, statuses, usersList, lossRea
   // lib/kanban.js. Aqui a seção Responsável é de todos, então o parâmetro vale
   // para qualquer papel.
   const paramsCtx = useMemo(() => ({
-    users: usersList,
+    users: sellers,
     funis: funnels,
     funilPadrao: savedFunnelId,
     podeResp: true,
     respPadrao: defaultRespFilterFor(appUser),
-  }), [usersList, funnels, savedFunnelId, appUser]);
+  }), [sellers, funnels, savedFunnelId, appUser]);
   const [{ funnel, resp: respFilter, overdue: onlyOverdue }, setParams] = useScreenParams('kanban', paramsCtx);
   const selectedFunnelId = funnel;
   const [lossModalLeadId, setLossModalLeadId] = useState(null);
@@ -1290,13 +1294,13 @@ const handleKanbanMouseMove = (e) => {
   // Lista do filtro: o próprio usuário primeiro (é a carteira que ele mais
   // procura), o resto em ordem alfabética.
   const respOptions = useMemo(() => {
-    const list = (usersList || []).filter(u => u?.id);
+    const list = sellers.filter(u => u?.id);
     return [...list].sort((a, b) => {
       if (a.id === appUser?.id) return -1;
       if (b.id === appUser?.id) return 1;
       return (a.name || '').localeCompare(b.name || '', 'pt-BR');
     });
-  }, [usersList, appUser]);
+  }, [sellers, appUser]);
 
   const toggleResp = (id) => {
     setParams((v) => ({ resp: v.resp.includes(id) ? v.resp.filter(x => x !== id) : [...v.resp, id] }));
