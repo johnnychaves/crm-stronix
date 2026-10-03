@@ -114,9 +114,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
   // notas/interações e agendar na timeline de QUALQUER lead (base compartilhada,
   // PR #101) — mesmo não sendo o responsável. Edição do cadastro, Venda/Perda,
-  // contrato e reatribuição de responsável andam junto com isso: isReadOnly hoje
-  // só barra quem está sem vínculo de authUid (ver canEditLead). A exclusão é a
-  // única coisa que continua no gestor (isGestor).
+  // contrato e reatribuição de responsável: além do isReadOnly, que barra quem
+  // está sem vínculo de authUid (ver canEditLead), cada ação pergunta à lista de
+  // permissões (can, de src/lib/acesso.js). A exclusão é a única coisa que
+  // continua no gestor (isGestor).
   const canTimeline = Boolean(appUser?.authUid);
   // O que o papel libera na ficha, pela lista única de src/lib/acesso.js. O
   // professor registra Anotação, WhatsApp, Ligação e Agendar e vê Contratos e

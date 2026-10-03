@@ -35,6 +35,7 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
   - Nos registros de aula (`stronix_aulas`), o professor grava como qualquer membro, porque o Agendar grava ali. A trava do desfecho e a do módulo valem só no lead e nas interações. Travar as aulas é decisão do Johnny, e o comentário das regras explica as duas saídas e o custo de cada uma.
   - O `isProfessor` confere o cadastro com `exists()` antes de ler o papel, porque conta antiga tem cadastro com id diferente do uid. Por isso só existe professor em cadastro com id igual ao uid.
   - As três listas são cobradas pelo `src/lib/__tests__/professorRules.test.js` contra `src/lib/professorWrites.js`. Mudou o Agendar ou o composer da ficha, o teste quebra. Aí é mudar a regra, publicar no console e só depois fazer o merge.
+  - As travas cobrem só o Firestore. Não há `storage.rules` no repositório, então subir o arquivo da foto depende das regras do Storage publicadas no console, mesmo com `photoUrl` fora da lista do professor.
 - `role` e `professorId` de `stronix_users` só mudam pelo servidor (`roleAndProfessorKept()`). O navegador também não cria nem apaga cadastro de equipe: isso é só do servidor (`api/admin-users.js`, `api/invite-accept.js` e `api/provision-tenant.js`, pelo Admin SDK). Tela nova que grave `role` ou `professorId`, ou que crie ou apague cadastro, cai em permission-denied, e o caminho é o `api/admin-users.js` (`set-role`, `create` e `delete`).
 - O `hasModule` das regras faz a mesma conta do `src/lib/modules.js`: lê `tenants/{id}.modules` e, sem documento ou sem lista, o módulo está desligado. Chamada nova passa o módulo escrito por extenso, porque o `modules.test.js` confere.
 - Lógica da Meta Diária é regra única em `src/lib/dailyGoal.js` — alterações de categoria/critério acontecem lá. Esse arquivo importa `lucide-react`, então nenhuma função de `api/` pode importá-lo (ver a ponte com o Stronizap, abaixo).
@@ -56,12 +57,12 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 
 ## Módulos da academia
 
-- O super-admin liga módulos por academia, e só ele, no cartão Módulos da página da academia no super console (`src/views/console/TenantModulesCard.jsx`). Hoje existe um módulo, `faltosos` (professor e faltosos), pensado só para a STRONIX. Spec em `docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md`.
+- O super-admin liga módulos por academia, e só ele, no cartão Módulos da página da academia no super console (`src/views/console/TenantModulesCard.jsx`). Hoje existe um módulo, `faltosos` (professor e faltosos), pensado só para a STRONIX.
 - A lista mora em `tenants/{id}.modules`. Quem grava é a `api/tenant-status.js`, que recusa módulo fora de `src/lib/modules.js` (texto exato, sem corrigir caixa) e grava a lista inteira de uma vez, porque o `set` com merge troca listas inteiras. As regras não deixam o navegador gravar em `/tenants`. A auditoria (`tenant.update`) guarda a lista de antes (`modulesBefore`) e a de depois (`modules`). Ligar ou desligar não mexe no status e não derruba sessão.
 - Desligar o módulo com professor de login pede confirmação no console, porque esses professores passam a ver só o aviso de acesso desligado.
 - `src/lib/modules.js` é a conta única, pura e sem import: `MODULES`, `KNOWN_MODULES`, `normalizeModules` e `hasModule`, que aceita a lista, o documento da academia ou as vagas do `getSeatUsage`. A `api/` importa o arquivo direto. Módulo novo entra em `MODULES` e, se as regras o usarem, com o mesmo texto lá: o `modules.test.js` confere toda chamada da `hasModule` no `firestore.rules`.
 - O app lê a lista no login, no mesmo `getDoc` de `tenants/{id}` que decide o bloqueio, e a guarda normalizada em `appUser.tenantModules`. Tela pergunta com `hasModule(appUser?.tenantModules, MODULES.FALTOSOS)`. Não existe estado nem prop à parte: o "Acessar como" troca de academia sem recarregar a página, o `signInWithCustomToken` roda o login de novo e monta outro `appUser`, e num estado à parte a tela passaria um instante com a pessoa de uma academia e os módulos de outra. O campo vem depois do `...userDoc.data()`, então o cadastro da pessoa nunca o sobrescreve. O `tenantModulesWiring.test.js` cobra o campo em todo `appUser` montado no login.
-- A falha fecha: documento ausente, leitura que falhou ou campo fora do formato dão lista vazia. O bloqueio da academia continua abrindo na falha, como sempre. Ligar ou desligar vale no próximo login ou F5 de cada pessoa.
+- A falha fecha: documento ausente, leitura que falhou ou campo fora do formato dão lista vazia, e o professor vê o aviso de acesso desligado até o próximo F5. O bloqueio da academia continua abrindo na falha, como sempre. Na tela, ligar ou desligar vale no próximo login ou F5 de cada pessoa. Nas regras, desligar vale na hora para o lead e as interações, e o registro da aula continua gravando (o comentário de `stronix_aulas` no `firestore.rules` explica).
 - A `api/` lê os módulos pelo `getSeatUsage`, que já lê o documento da academia para o plano e devolve `modules`: o convite, o cadastro de professor e a troca de papel passam esse `modules` ao `professorLinkRefusal` (`api/_professorLink.js`), sem ler de novo. O aceite do convite confere com o documento da academia que ele já leu.
 - O console conta o professor à parte: o `api/super-overview.js` devolve `professorCount`, e o `consultantCount` (que vira o preço dos extras e o MRR) não conta professor, com a mesma conta do `getSeatUsage`. O GET da `api/tenant-status.js` devolve `professors` e `modules`, e o uso da plataforma mostra a linha "Professores (fora das vagas)" quando a academia tem algum.
 - A tela "Feature flags" do console é outra coisa: grava chaves globais em `flags/` que nenhuma parte do app lê.
@@ -107,8 +108,7 @@ O papel Professor só é dado com o módulo `faltosos` ligado (ver "Módulos da 
 - **Acesso de professor.**
   - Quem tem acesso de professor é um cadastro em `stronix_users` com `role: 'professor'` e `professorId`, que diz qual professor de `stronix_professores` a pessoa é.
   - O cadastro nasce com o id igual ao uid da conta. É por esse id que as regras do Firestore leem o papel.
-  - Só o servidor grava `role` e `professorId`. Os caminhos são três: o `create` do `api/admin-users.js`, o convite (`api/invite-create.js` mais `api/invite-accept.js`) e a ação nova `set-role` (`SET_ROLE_ACTION`), na mesma função da Vercel. Continuam 11 de 12.
-  - O navegador nunca grava esses dois campos.
+  - Quem grava `role` e `professorId` está nas Convenções gerais. Os caminhos que criam ou mudam professor são três: o `create` do `api/admin-users.js`, o convite (`api/invite-create.js` mais `api/invite-accept.js`) e a ação nova `set-role` (`SET_ROLE_ACTION`), na mesma função da Vercel. Continuam 11 de 12. O `api/provision-tenant.js` também grava `role`, o do gestor da academia nova.
 - **As regras do vínculo** moram em `src/lib/teamRoles.js`. O arquivo é puro e só importa `acesso.js` e `modules.js`, porque a `api/` também o usa; o `teamRolesImports.test.js` trava isso. As leituras ficam em `api/_professorLink.js`.
 - **O que vira professor precisa de:**
   - o módulo `faltosos` ligado;
@@ -129,6 +129,7 @@ O papel Professor só é dado com o módulo `faltosos` ligado (ver "Módulos da 
   - Consultor extra que vira professor libera a vaga e sincroniza a assinatura.
   - Virar professor apaga a meta de prospecção.
   - Quando o papel muda, as sessões da pessoa são revogadas.
+  - O `set-role` também troca o professor do cadastro ligado a quem já é professor, com as mesmas conferências do `professorLinkRefusal`. Essa troca não revoga as sessões, então a sessão aberta segue com o `professorId` antigo no `appUser` até o próximo login ou F5.
 - **Equipe & acessos** lê os módulos em `appUser.tenantModules`. Com o módulo, a tela tem:
   - o botão "Cadastrar pessoa";
   - o campo Papel e o "Professor do cadastro", só com ativos sem login;
@@ -183,7 +184,6 @@ O papel Professor só é dado com o módulo `faltosos` ligado (ver "Módulos da 
 - **Professor com o módulo desligado.**
   - Quando `professorAccessOff(appUser)` é verdade (`src/lib/sidebarNav.js`: professor numa academia sem `faltosos` em `appUser.tenantModules`), o App desenha só a `ProfessorAccessOffScreen`, com o aviso "O acesso de professor está desligado nesta academia. Fale com o gestor." e o Sair. Ela entra logo depois do bloqueio da academia.
   - Nessa sessão o App não assina nada: a leitura dos dados da academia para logo depois da trava da academia bloqueada, e o título da aba, o sino e os chamados também não leem nada.
-  - A lista de módulos é lida no login. Se a leitura da academia falhar, ela vem vazia e o professor vê o aviso até o próximo F5.
 - **Meta diária do professor.**
   - É o `ProfessorGoalPlaceholder` até o PR 3.
   - O selo da Meta e as consultas de renovação e de contato de hoje (`useRenewalClients` e `useClientsWithContactToday`) só rodam para quem vende (`isSeller`).
