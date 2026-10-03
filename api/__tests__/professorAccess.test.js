@@ -12,7 +12,7 @@ import { PROFESSOR_LINK_MESSAGES } from '../../src/lib/teamRoles.js';
 // 1 gestor e 2 consultores, sem extra pago.
 
 const T = 'academia-teste';
-const banco = vi.hoisted(() => ({ docs: new Map(), consultas: [], sessao: null, ultimoId: 0 }));
+const banco = vi.hoisted(() => ({ docs: new Map(), consultas: [], lotes: [], sessao: null, ultimoId: 0 }));
 const contas = vi.hoisted(() => ({
   createUser: vi.fn(), setCustomUserClaims: vi.fn(), getUser: vi.fn(), getUserByEmail: vi.fn(),
   updateUser: vi.fn(), deleteUser: vi.fn(), revokeRefreshTokens: vi.fn(),
@@ -72,8 +72,20 @@ vi.mock('../_firebaseAdmin.js', () => {
       delete: async () => { banco.docs.delete(chave); },
     };
   };
+  // O lote grava tudo no commit, e cada lote fica anotado com o tamanho, para
+  // o teste conferir o teto de 500 gravações do Firestore.
+  const batch = () => {
+    const gravacoes = [];
+    return {
+      update: (alvo, dados) => { gravacoes.push([alvo, dados]); },
+      commit: async () => {
+        banco.lotes.push(gravacoes.length);
+        for (const [alvo, dados] of gravacoes) await alvo.update(dados);
+      },
+    };
+  };
   return {
-    adminDb: ref([]),
+    adminDb: { ...ref([]), batch },
     adminAuth: contas,
     admin: {
       firestore: {
@@ -115,6 +127,7 @@ const professorDe = (id, professorId) => ({ name: id, email: `${id}@academia.com
 // consultor ocupadas (Ana e Bia) e três professores no cadastro.
 function semear({ modules = ['faltosos'], plano = null, equipe = {} } = {}) {
   banco.consultas = [];
+  banco.lotes = [];
   banco.docs = new Map([
     [`tenants/${T}`, { plan: 'starter', status: 'active', modules, primaryAdminUid: 'gestor-1' }],
     [`${EQUIPE}/gestor-1`, { name: 'Gestor', email: 'gestor@academia.com', authUid: 'gestor-1', role: 'admin' }],
@@ -378,6 +391,87 @@ describe('troca de papel (set-role)', () => {
       expect(leuCarteira()).toBe(false);
       expect(cadastro('uid-ana').role).toBe('consultant');
       expect(contas.revokeRefreshTokens).not.toHaveBeenCalled();
+    });
+  });
+
+  // A tarefa de contato que um consultor passou para outro (o "Para quem é a
+  // tarefa" do Agendar, nextFollowUpOwnerId) só aparece na Meta de quem a
+  // recebeu. O professor não tem essa Meta, então a troca para Professor
+  // devolve cada tarefa ao dono do lead, com o mesmo null que o Agendar grava
+  // quando a tarefa é do dono (src/lib/schedulePatch.js).
+  describe('tarefas de contato recebidas de outros consultores', () => {
+    const lead = (id) => banco.docs.get(`${CARTEIRA}/${id}`);
+    const tarefaDe = (dono, delegado, nome) => ({
+      name: `Lead de ${dono}`, consultantId: dono, nextFollowUp: '2026-10-08T12:00:00.000Z', nextFollowUpType: 'Mensagem',
+      nextFollowUpOwnerId: delegado, nextFollowUpOwnerName: nome,
+    });
+    const leuTarefas = () => banco.consultas.some((c) => c.filtros.some((f) => f.campo === 'nextFollowUpOwnerId'));
+
+    it('consultor que vira professor devolve as tarefas ao dono de cada lead, e só as dele', async () => {
+      banco.docs.set(`${CARTEIRA}/L1`, tarefaDe('uid-bia', 'uid-ana', 'Ana'));
+      banco.docs.set(`${CARTEIRA}/L2`, tarefaDe('gestor-1', 'uid-ana', 'Ana'));
+      banco.docs.set(`${CARTEIRA}/L3`, tarefaDe('gestor-1', 'uid-bia', 'Bia'));
+      const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(200);
+      expect(cadastro('uid-ana').role).toBe('professor');
+      for (const id of ['L1', 'L2']) {
+        expect(lead(id), id).toMatchObject({ nextFollowUpOwnerId: null, nextFollowUpOwnerName: null });
+        expect(lead(id).nextFollowUp, id).toBe('2026-10-08T12:00:00.000Z');
+        expect(lead(id).nextFollowUpType, id).toBe('Mensagem');
+      }
+      expect(lead('L1').consultantId).toBe('uid-bia');
+      expect(lead('L2').consultantId).toBe('gestor-1');
+      expect(lead('L3')).toEqual(tarefaDe('gestor-1', 'uid-bia', 'Bia'));
+      expect(banco.lotes).toEqual([2]);
+    });
+
+    it('mais de 500 tarefas vão em lotes de no máximo 500', async () => {
+      for (let i = 0; i < 501; i += 1) banco.docs.set(`${CARTEIRA}/T${i}`, tarefaDe('uid-bia', 'uid-ana', 'Ana'));
+      const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(200);
+      expect(banco.lotes).toEqual([500, 1]);
+      expect(lead('T0').nextFollowUpOwnerId).toBeNull();
+      expect(lead('T500').nextFollowUpOwnerId).toBeNull();
+    });
+
+    it.each([
+      ['sem o módulo', { modules: [] }, 'uid-ana', 'prof-lu', 403],
+      ['professor que já tem login', { equipe: { 'uid-rafa': professorDe('uid-rafa', 'prof-rafa') } }, 'uid-ana', 'prof-rafa', 409],
+      ['professor inativo', {}, 'uid-ana', 'prof-velho', 422],
+      ['cadastro antigo', { equipe: { 'doc-antigo': { name: 'Beto', email: 'beto@academia.com', authUid: 'uid-beto', role: 'consultant' } } }, 'doc-antigo', 'prof-lu', 422],
+    ])('%s: a troca é recusada e as tarefas ficam com a pessoa', async (_caso, semente, userDocId, professorId, status) => {
+      semear(semente);
+      banco.docs.set(`${CARTEIRA}/L1`, tarefaDe('uid-bia', userDocId, 'Ana'));
+      const res = await trocarPapel({ userDocId, role: 'professor', professorId });
+      expect(res.statusCode).toBe(status);
+      expect(lead('L1')).toEqual(tarefaDe('uid-bia', userDocId, 'Ana'));
+      expect(leuTarefas()).toBe(false);
+      expect(banco.lotes).toEqual([]);
+    });
+
+    it('com leads na carteira, a troca é recusada e as tarefas ficam com a pessoa', async () => {
+      banco.docs.set(`${CARTEIRA}/L0`, { name: 'Mariana', consultantId: 'uid-ana' });
+      banco.docs.set(`${CARTEIRA}/L1`, tarefaDe('uid-bia', 'uid-ana', 'Ana'));
+      const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(409);
+      expect(res.body.error).toBe(PROFESSOR_LINK_MESSAGES.ownsLeads('Ana'));
+      expect(lead('L1')).toEqual(tarefaDe('uid-bia', 'uid-ana', 'Ana'));
+      expect(leuTarefas()).toBe(false);
+      expect(banco.lotes).toEqual([]);
+    });
+
+    it.each([
+      ['professor que volta a consultor', { role: 'consultant' }],
+      ['professor que troca o professor ligado', { role: 'professor', professorId: 'prof-lu' }],
+    ])('%s não mexe em tarefa nenhuma', async (_caso, pedido) => {
+      semear({ equipe: { 'uid-bia': null, 'uid-rafa': professorDe('uid-rafa', 'prof-rafa') } });
+      banco.docs.set(`${CARTEIRA}/L1`, tarefaDe('uid-ana', 'uid-rafa', 'Rafa'));
+      const res = await trocarPapel({ userDocId: 'uid-rafa', ...pedido });
+      expect(res.statusCode).toBe(200);
+      expect(res.body.changed).toBe(true);
+      expect(lead('L1')).toEqual(tarefaDe('uid-ana', 'uid-rafa', 'Rafa'));
+      expect(leuTarefas()).toBe(false);
+      expect(banco.lotes).toEqual([]);
     });
   });
 
