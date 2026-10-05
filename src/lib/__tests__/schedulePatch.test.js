@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { buildSchedulePatch, appointmentTaskOwnerFor, taskOwnerText } from '../schedulePatch.js';
 
 // O patch é aplicado com set(merge:true): o que ele NÃO menciona sobrevive,
@@ -238,6 +240,36 @@ describe('appointmentTaskOwnerFor', () => {
     const doDono = appointmentTaskOwnerFor({ scheduler: ANA, lead: leadDaAna });
     expect(buildSchedulePatch({ typeLabel: 'Visita', date: AULA, appointmentOwnerId: doDono?.id, appointmentOwnerName: doDono?.name }))
       .toMatchObject({ appointmentOwnerId: null, appointmentOwnerName: null });
+  });
+});
+
+// Os dois caminhos que agendam decidem o dono da tarefa pela mesma regra: o
+// assistente da ficha com quem está logado (aqui) e a ponte com o actor (o
+// buildScheduleWrites, testado em api/__tests__/zapSchedule.test.js). O
+// handler da ficha só roda com a tela inteira, então esta varredura lê o
+// código dele, como a do registro do agendamento
+// (registroDoAgendamento.sweep.test.js), e reprova quem voltar a decidir o dono
+// da tarefa na mão.
+describe('o assistente da ficha usa a regra do dono da tarefa', () => {
+  const ficha = readFileSync(fileURLToPath(new URL('../../views/LeadProfileView.jsx', import.meta.url)), 'utf8');
+  const inicio = ficha.indexOf('const handleWizardConfirm = async');
+  const corpo = ficha.slice(inicio, ficha.indexOf('\n  };\n', inicio));
+
+  it('decide com quem está logado, só na visita e na aula', () => {
+    expect(inicio).toBeGreaterThan(-1);
+    expect(corpo).toContain('appointmentType ? appointmentTaskOwnerFor({ scheduler: appUser, lead }) : null');
+  });
+
+  it('grava o dono da tarefa no patch do lead', () => {
+    const patch = corpo.slice(corpo.indexOf('const up = buildSchedulePatch({'), corpo.indexOf('});', corpo.indexOf('const up = buildSchedulePatch({')));
+    expect(patch).toContain('appointmentOwnerId: apptOwner?.id || null');
+    expect(patch).toContain('appointmentOwnerName: apptOwner?.name || null');
+  });
+
+  it('o texto diz de quem é a tarefa pelo mesmo aviso da ponte', () => {
+    expect(corpo).toContain('taskOwnerText(apptOwner.name)');
+    expect(corpo).toContain('taskOwnerText(wizOwnerName)');
+    expect(corpo).not.toContain('· tarefa de');
   });
 });
 

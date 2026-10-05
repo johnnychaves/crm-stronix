@@ -22,7 +22,7 @@ import { commitReferralLink, removeReferralLink } from '../lib/referralsWrites.j
 import { deriveLeadState, getTone, phaseToneName } from '../lib/leadState.js';
 import { professorNameById } from '../lib/professores.js';
 import { recordNewAppointment, markConvertingAula } from '../lib/aulasWrites.js';
-import { buildSchedulePatch } from '../lib/schedulePatch.js';
+import { buildSchedulePatch, appointmentTaskOwnerFor, taskOwnerText } from '../lib/schedulePatch.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
@@ -555,10 +555,17 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       // agendamento dez→jan aparece na data errada até virar o ano.
       const dateStr = date.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
       const noteStr = (wizNote || '').trim();
-      // Rastro do dono da TAREFA: quando o contato vai para outra pessoa, só ela
-      // vê a tarefa na Meta (decisão de produto). A nota é como o dono do lead
-      // fica sabendo que alguém marcou um contato no lead dele.
-      const delegado = wizOwnerId && wizOwnerId !== lead.consultantId ? ` · tarefa de ${wizOwnerName || 'outro consultor'}` : '';
+      // Dono da TAREFA do dia. No contato, quem foi escolhido no passo
+      // "Responsável". Na visita e na aula, quem está agendando, quando é
+      // consultor e não é o dono do lead (appointmentTaskOwnerFor, em
+      // lib/schedulePatch.js, a mesma regra do agendamento pelo Stronizap).
+      // Gestor, professor e o dono do lead deixam a tarefa com o dono.
+      const apptOwner = appointmentType ? appointmentTaskOwnerFor({ scheduler: appUser, lead }) : null;
+      // Rastro do dono da TAREFA: quando ela vai para outra pessoa, só essa
+      // pessoa a vê na Meta (decisão de produto). A nota é como o dono do lead
+      // fica sabendo que outra pessoa vai cuidar do contato ou do compromisso.
+      const contatoDelegado = !appointmentType && wizOwnerId && wizOwnerId !== lead.consultantId;
+      const delegado = apptOwner ? taskOwnerText(apptOwner.name) : contatoDelegado ? taskOwnerText(wizOwnerName) : '';
       const text = `🔔 ${typeLabel} agendada${extra} p/ ${dateStr}${delegado}.` + (noteStr ? ` Obs: ${noteStr}` : '');
 
       // Dual-write best-effort no histórico de aulas (stronix_aulas), na regra
@@ -590,6 +597,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
         professorName: professorId ? professorNameById(professores, professorId) : null,
         soloTraining, quantidade, unidade, note: noteStr, currentAulaId,
         contactOwnerId: wizOwnerId || null, contactOwnerName: wizOwnerName || null,
+        appointmentOwnerId: apptOwner?.id || null, appointmentOwnerName: apptOwner?.name || null,
       });
 
       await logInteraction(db, lead, appUser,
