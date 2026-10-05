@@ -98,6 +98,8 @@ service cloud.firestore {
         'appointmentOutcome',
         'appointmentOutcomeAt',
         'appointmentOutcomeBy',
+        'appointmentOwnerId',
+        'appointmentOwnerName',
         'appointmentProfessorId',
         'appointmentProfessorName',
         'appointmentScheduledFor',

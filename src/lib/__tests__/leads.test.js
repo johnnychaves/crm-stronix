@@ -25,6 +25,7 @@ import {
   outcomeAppliesToAula,
   DAILY_GOAL_CATEGORIES,
   contactOwnerId,
+  appointmentTaskOwnerId,
   canEditLead,
 } from '../leads.js';
 
@@ -424,6 +425,30 @@ describe('contactOwnerId', () => {
   it('lead sem consultor e sem escolha devolve null', () => {
     expect(contactOwnerId({})).toBeNull();
     expect(contactOwnerId(null)).toBeNull();
+  });
+
+  it('não olha o dono da tarefa da visita ou da aula', () => {
+    expect(contactOwnerId({ consultantId: 'u1', appointmentOwnerId: 'u3' })).toBe('u1');
+  });
+});
+
+describe('appointmentTaskOwnerId', () => {
+  it('sem campo, a tarefa da visita ou da aula é do dono do lead', () => {
+    expect(appointmentTaskOwnerId({ consultantId: 'u1' })).toBe('u1');
+    expect(appointmentTaskOwnerId({ consultantId: 'u1', appointmentOwnerId: null })).toBe('u1');
+  });
+
+  it('com campo, a tarefa é de quem agendou', () => {
+    expect(appointmentTaskOwnerId({ consultantId: 'u1', appointmentOwnerId: 'u3' })).toBe('u3');
+  });
+
+  it('não olha o dono da tarefa de contato', () => {
+    expect(appointmentTaskOwnerId({ consultantId: 'u1', nextFollowUpOwnerId: 'u2' })).toBe('u1');
+  });
+
+  it('lead sem consultor e sem dono da tarefa devolve null', () => {
+    expect(appointmentTaskOwnerId({})).toBeNull();
+    expect(appointmentTaskOwnerId(null)).toBeNull();
   });
 });
 

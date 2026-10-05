@@ -146,6 +146,8 @@ describe('as listas do professorWrites saem dos montadores de verdade', () => {
       currentAulaId: 'aula1',
       contactOwnerId: 'u2',
       contactOwnerName: 'Bia',
+      appointmentOwnerId: 'u3',
+      appointmentOwnerName: 'Caio',
     };
     const chaves = new Set(
       SCHEDULE_TYPE_LABELS.flatMap((typeLabel) => Object.keys(buildSchedulePatch({ ...cheio, typeLabel })))

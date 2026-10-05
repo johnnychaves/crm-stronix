@@ -252,10 +252,16 @@ export const outcomeAppliesToAula = (categorySlug) =>
 
 // Dono da TAREFA de contato (mensagem/ligação) na Meta Diária. AUSENTE
 // SIGNIFICA O DONO DO LEAD, então lead antigo continua se comportando como
-// antes e não precisa de migração. Só vale para contato: visita e aula não têm
-// dono de tarefa, elas seguem o dono do lead e já aparecem na Agenda do Dia,
-// que é compartilhada.
+// antes e não precisa de migração. Só vale para contato: a visita e a aula têm
+// o próprio dono de tarefa (appointmentTaskOwnerId, logo abaixo).
 export const contactOwnerId = (lead) => lead?.nextFollowUpOwnerId || lead?.consultantId || null;
+
+// Dono da TAREFA da visita ou da aula experimental na Meta Diária, na Agenda
+// de hoje e na prévia de amanhã. É quem agendou no lead de outro consultor,
+// quando participa da Meta (appointmentTaskOwnerFor, em schedulePatch.js, grava
+// appointmentOwnerId). AUSENTE SIGNIFICA O DONO DO LEAD, então o agendamento de
+// antes da regra (05/10/2026) continua com o dono, sem migração.
+export const appointmentTaskOwnerId = (lead) => lead?.appointmentOwnerId || lead?.consultantId || null;
 
 // Gestor e consultor têm a MESMA liberdade sobre a ficha: editar o cadastro do
 // lead/cliente, mover no funil, registrar venda, perda e desfecho de contrato.

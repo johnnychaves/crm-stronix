@@ -1003,7 +1003,11 @@ describe('buildScheduleWrites: o que o assistente grava, numa gravação só', (
       appointmentOutcomeAt: null,
       appointmentOutcomeBy: null,
       // A visita não mexe no ponteiro da aula, como no assistente.
-      currentAulaId: 'aula-velha'
+      currentAulaId: 'aula-velha',
+      // A Ana agenda no próprio lead: a tarefa fica com a dona, e o null
+      // explícito não deixa o agendamento herdar quem recebeu o anterior.
+      appointmentOwnerId: null,
+      appointmentOwnerName: null
     });
   });
 
