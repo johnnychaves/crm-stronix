@@ -15,6 +15,7 @@ import { formatPhone } from '../src/lib/masks.js';
 import { normalize } from '../src/lib/globalSearch.js';
 import { getSafeDateOrNull } from '../src/lib/dates.js';
 import { buildNewLeadDoc, leadEntryFunnels } from '../src/lib/newLead.js';
+import { ACTIONS, can, isGestor, isSeller } from '../src/lib/acesso.js';
 import { pickDefaultFunnel } from './_referral.js';
 import { nationalPhoneDigits, zapMatchKey } from './_zapPhone.js';
 
@@ -35,6 +36,7 @@ export const LEAD_CREATE_LIMIT = Object.freeze({ limit: 60, windowMs: 60 * MINUT
 export const ZAP_LEAD_MESSAGES = Object.freeze({
   blocked: 'O Stronilead desta academia está bloqueado. Fale com o gestor.',
   notInTeam: (email) => `Seu e-mail do Stronizap, ${email}, não está na equipe do Stronilead. Peça ao gestor para incluir você lá com esse mesmo e-mail.`,
+  professorNoLead: 'Seu acesso de professor no Stronilead não cadastra lead. Peça a um consultor ou ao gestor.',
   rateLimited: 'Muitos cadastros em pouco tempo. Tente de novo em alguns minutos.',
   phone: 'O número desta conversa não é um WhatsApp com DDD.',
   actor: 'Não deu para saber quem está cadastrando.',
@@ -132,8 +134,24 @@ export function findTeamMember(team, email) {
   return (team || []).find((u) => u.authUid && String(u.email ?? '').trim().toLowerCase() === email) ?? null;
 }
 
-// Gestor no Stronilead é o role 'admin'.
-export const teamRole = (member) => (member?.role === 'admin' ? 'gestor' : 'consultor');
+// Gestor no Stronilead é o role 'admin' (isGestor, em src/lib/acesso.js). O
+// professor sai como 'consultor', porque o Stronizap só conhece os dois papéis
+// (frontend/src/types/crm.ts). Quem barra o professor no cadastro é o
+// signupRefusal, e na Meta é o countsForMeta (api/_zapSchedule.js).
+export const teamRole = (member) => (isGestor(member) ? 'gestor' : 'consultor');
+
+// Quem cadastra lead pelo Stronizap: alguém da equipe, com login, que cria lead
+// no Stronilead (ACTIONS.LEAD_CRIAR, em src/lib/acesso.js). O professor fala
+// com os alunos pelo canal dos professores, mas não cadastra lead nem vira dono
+// (spec docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md). A
+// ponte grava pelo Admin SDK, que passa por cima do firestore.rules, então a
+// trava do professor mora aqui também. As duas recusas usam o código
+// fora_da_equipe, que o Stronizap já conhece e mostra com o texto que vai.
+export function signupRefusal(member, email) {
+  if (!member) return refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.notInTeam(email));
+  if (!can(member, ACTIONS.LEAD_CRIAR)) return refusal(403, 'fora_da_equipe', ZAP_LEAD_MESSAGES.professorNoLead);
+  return null;
+}
 
 // ---------------------------------------------------------------------------
 // Catálogos e opções do formulário
@@ -163,7 +181,8 @@ export function catalogView({ sources = [], dores = [], modalities = [], funnels
 
 // Resposta do lead-options. O padrão é o do Novo lead: a origem com "whats"
 // no nome (senão a primeira em ordem alfabética), o funil padrão da academia
-// e a primeira etapa dele. A equipe só vai para o gestor, com id e nome.
+// e a primeira etapa dele. A equipe só vai para o gestor, com id e nome, e só
+// com quem vende: o professor não é dono de lead (isSeller).
 export function buildLeadOptions({ actor, team, catalogs }) {
   const view = catalogView(catalogs);
   const funil = pickDefaultFunnel(view.funnels);
@@ -182,7 +201,7 @@ export function buildLeadOptions({ actor, team, catalogs }) {
   };
   if (teamRole(actor) === 'gestor') {
     options.team = (team || [])
-      .filter((u) => u.authUid && hasName(u))
+      .filter((u) => u.authUid && hasName(u) && isSeller(u))
       .map((u) => ({ id: u.id, name: u.name }))
       .sort((a, b) => byName(a.name, b.name));
   }
@@ -302,13 +321,14 @@ export function checkCatalog(lead, catalogs) {
 }
 
 // Dono do lead: quem cadastra, ou quem o gestor escolheu. Consultor não passa
-// o lead para outra pessoa, e o escolhido precisa estar na equipe com login.
+// o lead para outra pessoa, e o escolhido precisa estar na equipe com login e
+// vender: o professor nunca é dono de lead (isSeller).
 export function resolveOwner({ actor, ownerId, team }) {
   if (!ownerId || ownerId === actor.id) return { owner: actor };
   if (teamRole(actor) !== 'gestor') {
     return { refusal: refusal(422, 'responsavel_invalido', ZAP_LEAD_MESSAGES.onlyManagerPicks) };
   }
-  const owner = (team || []).find((u) => u.id === ownerId && u.authUid);
+  const owner = (team || []).find((u) => u.id === ownerId && u.authUid && isSeller(u));
   return owner ? { owner } : { refusal: refusal(422, 'responsavel_invalido', ZAP_LEAD_MESSAGES.ownerGone) };
 }
 

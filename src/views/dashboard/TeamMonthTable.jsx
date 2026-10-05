@@ -5,8 +5,10 @@
 //
 // A venda é de quem está no contrato (entraram, upgrades) e a carteira é de
 // quem cuida do cliente hoje (taxa de renovação), README §8. A linha "Outros"
-// junta o que não é de ninguém da equipe (ex-consultor ou sem responsável),
-// para as linhas fecharem com o rodapé. Só aparece com algum número, não tem
+// junta o que não tem linha própria (professor, ex-consultor ou sem responsável),
+// para as linhas fecharem com o rodapé. O subtítulo só cita os professores na
+// academia com o módulo Professor e faltosos (withProfessors), porque sem ele
+// ninguém tem acesso de professor. Só aparece com algum número, não tem
 // meta nem prospecção e não filtra a tela. Sem o histórico dos colegas
 // (metaHidden), a meta de quem ficou sem número mostra "—", sem barra.
 
@@ -15,6 +17,7 @@ import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
 import { OTHERS_ID } from '../../lib/operacional/metrics.js';
 import { dashInitials } from './dashTokens.js';
+import { roleLabel } from '../../lib/acesso.js';
 
 const RULE = 'border-slate-100 dark:border-white/[0.06]';
 const SOFT = 'bg-slate-50 dark:bg-white/[0.03]';
@@ -22,11 +25,11 @@ const HEAD = 'text-[9.5px] font-bold uppercase tracking-[0.08em] text-muted-fore
 const COUNT = 'num w-[78px] flex-none text-right text-[12.5px] font-semibold';
 const TOTAL = 'num flex-none text-[12px] font-bold';
 const OTHERS_SUB = 'fora da equipe ou sem responsável';
+const OTHERS_SUB_WITH_PROFESSORS = 'professores, fora da equipe ou sem responsável';
 
 const pctText = (v) => (v != null ? `${v}%` : '—');
 const numText = (v) => (v != null ? fmtNum(v) : '—');
 const barWidth = (v) => `${Math.min(100, Math.max(0, v || 0))}%`;
-const roleOf = (user) => (user.role === 'admin' ? 'Gestor' : 'Consultor');
 const prospLine = (p) => (p && !p.on ? 'desligada' : pctText(p?.pct ?? null));
 
 function Bar({ pct, fill }) {
@@ -111,8 +114,9 @@ function RowCells({ m, lateN, running, others = false }) {
   );
 }
 
-export function TeamMonthTable({ rows, others, total, running, onPick }) {
+export function TeamMonthTable({ rows, others, total, running, onPick, withProfessors = false }) {
   const list = rows || [];
+  const othersSub = withProfessors ? OTHERS_SUB_WITH_PROFESSORS : OTHERS_SUB;
   // Atrasados é o retrato da equipe inteira; o número de cada um está em byUser.
   const lateOf = (id) => (total?.late ? (total.late.byUser.get(id) ?? 0) : null);
   const othersLate = lateOf(OTHERS_ID) || 0;
@@ -145,14 +149,14 @@ export function TeamMonthTable({ rows, others, total, running, onPick }) {
                   RULE
                 )}
               >
-                <NameCell name={user.name || 'Sem nome'} sub={roleOf(user)} />
+                <NameCell name={user.name || 'Sem nome'} sub={roleLabel(user)} />
                 <RowCells m={m} lateN={lateOf(user.id)} running={running} />
               </button>
             ))}
 
             {showOthers && (
               <div className={cn('flex items-center gap-3.5 border-b px-[18px] py-[11px]', RULE)}>
-                <NameCell name="Outros" sub={OTHERS_SUB} others />
+                <NameCell name="Outros" sub={othersSub} others />
                 <RowCells m={others} lateN={othersLate} running={running} others />
               </div>
             )}
@@ -208,7 +212,7 @@ export function TeamMonthTable({ rows, others, total, running, onPick }) {
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[12.5px] font-semibold">Outros</div>
                 <div className="num truncate text-[10.5px] text-muted-foreground">
-                  {`${OTHERS_SUB} · renov. ${pctText(others.renewal?.rate ?? null)}`}
+                  {`${othersSub} · renov. ${pctText(others.renewal?.rate ?? null)}`}
                 </div>
               </div>
               {running && (

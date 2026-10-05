@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { Search, X, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { searchPeople, onlyDigits } from '../../lib/globalSearch.js';
+import { isClientLead } from '../../lib/leads.js';
 import { contactLabel, contactOf } from '../../lib/guardian.js';
 import { useLeadSearch } from '../../hooks/useLeadSearch.js';
 import { deriveLeadState, getTone } from '../../lib/leadState.js';
@@ -88,8 +89,9 @@ export function SearchResultRow({ row, active, onHover, onNavigate }) {
 
 // Barra de busca global fixa no header. Acha leads e clientes por nome,
 // sobrenome, CPF ou telefone e abre a ficha. Desktop = barra inline; mobile =
-// lupa que expande uma barra sobre o header.
-export function GlobalSearch({ onAddLead, db }) {
+// lupa que expande uma barra sobre o header. Com clientsOnly (quem não tem
+// ACTIONS.LEADS_VER, hoje o professor, decidido no App), acha só cliente.
+export function GlobalSearch({ onAddLead, db, clientsOnly = false }) {
   const { openProfile } = useLeadProfile();
   const { contractThresholdDays } = useGeneralConfig();
 
@@ -105,11 +107,16 @@ export function GlobalSearch({ onAddLead, db }) {
   // Fonte (G1b): candidatos por query própria (prefixo/token nos search fields)
   // em vez do prop global. searchPeople roda sobre os candidatos e reproduz o
   // MESMO ranking/tier/destaque de antes — o render abaixo não muda.
+  // O recorte de cliente vem depois da leitura (include do searchPeople),
+  // porque filtrar no Firestore pediria índice composto. Os candidatos são os
+  // mesmos 20 por consulta, então leads com o mesmo começo de nome podem
+  // tomar o lugar de um cliente na lista de quem só vê cliente.
   const { candidates, loading: searchLoading } = useLeadSearch({ db, query });
   const { results, total } = useMemo(
-    () => searchPeople(candidates, query, { limit: 8 }),
-    [candidates, query]
+    () => searchPeople(candidates, query, { limit: 8, include: clientsOnly ? isClientLead : null }),
+    [candidates, query, clientsOnly]
   );
+  const alvo = clientsOnly ? 'clientes' : 'leads e clientes';
 
   // Enriquece cada resultado com o estado (tom do anel + rótulo do chip).
   const rows = useMemo(() => {
@@ -202,7 +209,7 @@ export function GlobalSearch({ onAddLead, db }) {
         onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onInputKeyDown}
-        placeholder="Buscar leads e clientes"
+        placeholder={`Buscar ${alvo}`}
         className={inputCls}
       />
       {isMobile ? (
@@ -228,7 +235,7 @@ export function GlobalSearch({ onAddLead, db }) {
         </div>
       ) : rows.length === 0 ? (
         <div className="px-3.5 py-6 text-center">
-          <p className="text-[13px] text-slate-500 dark:text-neutral-400">Nenhum lead ou cliente encontrado</p>
+          <p className="text-[13px] text-slate-500 dark:text-neutral-400">{clientsOnly ? 'Nenhum cliente encontrado' : 'Nenhum lead ou cliente encontrado'}</p>
           {onAddLead && (
             <button onClick={() => { onAddLead(); setQuery(''); setOpen(false); setMobileOpen(false); }}
               className="mt-2 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-600 dark:text-brand-400 hover:opacity-80">
@@ -257,7 +264,7 @@ export function GlobalSearch({ onAddLead, db }) {
       {/* Mobile: só a lupa no header */}
       <button
         onClick={() => { setMobileOpen(true); setOpen(true); setTimeout(() => mobInputRef.current?.focus(), 0); }}
-        aria-label="Buscar leads e clientes"
+        aria-label={`Buscar ${alvo}`}
         className="sm:hidden p-2 rounded-xl text-slate-500 dark:text-neutral-400 hover:bg-gray-100 dark:hover:bg-neutral-800 transition"
       >
         <Search className="w-5 h-5" />

@@ -14,7 +14,7 @@
 //   (src/lib/tenantSlug.js). O tenantSlug.test.js quebra se faltar.
 
 import { TENANT_SLUG_READ_RE, isReservedTenantSlug } from './tenantSlug.js';
-import { isAdminUser } from './leads.js';
+import { canOpenScreen, isGestor } from './acesso.js';
 
 const own = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -259,21 +259,33 @@ export function canGoBackInApp(historyState) {
   return Number.isInteger(historyState?.idx) && historyState.idx > 0;
 }
 
-// Quem pode ver cada tela. Repete as travas que o App já faz no render
-// (isAdminUser nas telas de gestor, appUser.superAdmin no super-admin). Tela
-// sem trava, e id que não é tela, passam.
+// Quem pode ver cada tela. Primeiro a lista do papel (canOpenScreen, em
+// acesso.js: o professor só abre a Meta diária, Clientes e a ficha), depois as
+// travas que o App já faz no render (isGestor nas telas de gestor,
+// appUser.superAdmin no super-admin). Tela sem trava, e id que não é tela,
+// passam.
 export function canAccess(screen, appUser) {
   if (!own(SCREENS, screen)) return true;
+  if (!canOpenScreen(appUser, screen)) return false;
   const def = SCREENS[screen];
-  if (def.gestor) return isAdminUser(appUser);
+  if (def.gestor) return isGestor(appUser);
   if (def.superAdmin) return appUser?.superAdmin === true;
   return true;
+}
+
+// Tela inicial da sessão, para onde vai quem abre um endereço que não pode
+// ver. A Visão geral para quem a abre; a Meta diária para o professor, que não
+// a abre (docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md).
+export function homeScreenFor(appUser) {
+  return canAccess(HOME_SCREEN, appUser) ? HOME_SCREEN : 'dailyGoal';
 }
 
 // Avisos da troca de endereço. O App mostra com toast.warning.
 export const ROUTE_NOTICES = Object.freeze({
   'so-gestor': 'Essa tela é só do gestor.',
+  'nao-liberada': 'Essa tela não está liberada para o seu acesso.',
   'nao-encontrada': 'Não achamos essa tela. Abrimos o Operacional.',
+  'nao-encontrada-meta': 'Não achamos essa tela. Abrimos a Meta diária.',
 });
 
 const OK = Object.freeze({ kind: 'ok' });
@@ -290,14 +302,29 @@ function redirectTo(path, { search = '', notice = null } = {}) {
 
 const joinPath = (base, raw) => (raw.length ? `${base}/${raw.join('/')}` : base);
 
+// Aviso de quem não pode ver a tela. O super-admin some em silêncio, como
+// sempre; a tela fora da lista do papel não está liberada; a de gestor é só do
+// gestor.
+function blockedNotice(screen, appUser) {
+  const def = SCREENS[screen];
+  if (def.superAdmin) return null;
+  if (!canOpenScreen(appUser, screen)) return 'nao-liberada';
+  return def.gestor ? 'so-gestor' : null;
+}
+
 // Regras 6, 7 e 8, sobre um endereço que já é da academia da sessão. A trava de
 // tela vem antes da sub-tela: quem não pode ver a tela vai para a inicial com
 // aviso, e não para a tela-mãe de uma seção que ele não abriria.
 function accessRedirect(route, appUser, home, { tenantId = null, search = '' } = {}) {
   if (route.screen && !canAccess(route.screen, appUser)) {
-    return redirectTo(home, { notice: SCREENS[route.screen].gestor ? 'so-gestor' : null });
+    // O endereço curto /<academia> não é tela pedida: é onde o login e o Sair
+    // caem. Quem não abre a Visão geral vai para a tela inicial dele sem aviso.
+    if (route.screen === HOME_SCREEN) return redirectTo(home);
+    return redirectTo(home, { notice: blockedNotice(route.screen, appUser) });
   }
-  if (route.unknown) return redirectTo(home, { notice: 'nao-encontrada' });
+  if (route.unknown) {
+    return redirectTo(home, { notice: homeScreenFor(appUser) === HOME_SCREEN ? 'nao-encontrada' : 'nao-encontrada-meta' });
+  }
   // Regra 8: sub-tela desconhecida abre a tela-mãe, com replace e sem aviso.
   // Erro de digitação na seção não pode punir com perda de contexto, e o aviso
   // de "não achamos essa tela" continua só para endereço de tela.
@@ -321,20 +348,24 @@ function returnPathFor(route, appUser, returnTo) {
 
 // Regra 5: o endereço não é da academia da sessão. Devolve o caminho corrigido,
 // ou null quando o endereço já é dela. Os segmentos depois da academia vão
-// crus, do jeito que chegaram, para o id da ficha não mudar.
-function sessionPathFor(route, tenantId, home) {
+// crus, do jeito que chegaram, para o id da ficha não mudar. `base` é a raiz da
+// academia da sessão, em que a tela do endereço é remontada; `home` é a tela
+// inicial da sessão, para onde vai o endereço que não tem tela para levar. Só
+// para o professor as duas diferem (a inicial dele é a Meta diária), e usar a
+// inicial como base faria /pipeline virar /<academia>/meta-diaria/pipeline.
+function sessionPathFor(route, tenantId, base, home) {
   const raw = rawSegments(route.pathname);
   if (raw.length === 0) return home;
   if (route.tenantSlug === tenantId) {
     // Mesma academia com outra caixa (/STRONIX/...): troca só o slug.
-    return decodeSegment(raw[0]) === tenantId ? null : joinPath(home, raw.slice(1));
+    return decodeSegment(raw[0]) === tenantId ? null : joinPath(base, raw.slice(1));
   }
   // Tela sem academia (/pipeline, /ficha/<id>): põe a academia na frente.
-  if (route.tenantSlug === null) return route.unknown ? home : joinPath(home, raw);
+  if (route.tenantSlug === null) return route.unknown ? home : joinPath(base, raw);
   // Outra academia: a tela vem junto, a ficha e o super-admin não, porque são
   // dados da outra academia.
   const keepsScreen = route.screen && route.screen !== 'ficha' && route.screen !== 'superadmin';
-  return keepsScreen ? joinPath(home, raw.slice(1)) : home;
+  return keepsScreen ? joinPath(base, raw.slice(1)) : home;
 }
 
 // O que fazer com o endereço atual nesta sessão. Roda a cada render do app
@@ -345,7 +376,9 @@ function sessionPathFor(route, tenantId, home) {
 //    para a tela inicial da assumida;
 // 4. volta da visualização: vai para o caminho guardado na entrada;
 // 5. endereço sem a academia da sessão: corrige o slug, sem aviso;
-// 6. tela que a sessão não vê: tela inicial, com aviso se for de gestor;
+// 6. tela que a sessão não vê: tela inicial da sessão, com aviso de gestor ou
+//    de tela não liberada (o professor); o endereço curto da academia leva o
+//    professor à Meta diária sem aviso;
 // 7. endereço desconhecido: tela inicial, com aviso;
 // 8. sub-tela desconhecida: a tela-mãe, sem aviso.
 // A regra 5 já sai com as regras 6, 7 e 8 aplicadas ao endereço corrigido, então
@@ -356,22 +389,27 @@ export function routeDecision(route, appUser, opts = {}) {
   if (!appUser) return OK;
   if (appUser.superAdminOnly) return route.pathname === '/' ? OK : redirectTo('/');
   const tenantId = appUser.tenantId;
-  const home = hrefFor(tenantId, HOME_SCREEN);
+  // Raiz da academia (/<academia>), base de toda correção de endereço, e a tela
+  // inicial da sessão (homeScreenFor), para onde vai quem não pode ficar.
+  const base = hrefFor(tenantId, HOME_SCREEN);
+  const home = hrefFor(tenantId, homeScreenFor(appUser));
   // Trava contra laço: academia cujo id não relê como ela mesma (fora do
   // formato ou palavra reservada) não é mandada pelo endereço. Sem isso, o
   // redirect cairia nele mesmo para sempre. Vale para as regras 3 a 8.
-  if (!home || parseAppPath(home).tenantSlug !== tenantId) return OK;
+  if (!base || !home || parseAppPath(base).tenantSlug !== tenantId) return OK;
   if (appUser.impersonating && route.tenantSlug !== tenantId) return redirectTo(home);
   const back = returnPathFor(route, appUser, returnTo);
   if (back) return redirectTo(back);
-  const fixed = sessionPathFor(route, tenantId, home);
+  const fixed = sessionPathFor(route, tenantId, base, home);
   const extra = { tenantId, search };
   if (fixed !== null) return accessRedirect(parseAppPath(fixed), appUser, home, extra) ?? redirectTo(fixed, { search });
   return accessRedirect(route, appUser, home, extra) ?? OK;
 }
 
 // Voltar da ficha: pelo navegador quando há tela do app antes dela nesta aba;
-// senão, troca a entrada por Clientes (cliente) ou Pipeline (lead).
+// senão, troca a entrada por Clientes (cliente) ou Pipeline (lead). Quem não
+// abre o Pipeline (o professor) volta da ficha de lead para a tela inicial
+// dele, a Meta diária. Sem appUser vale o Pipeline, como sempre.
 //
 // A tela de origem que o state da navegação carrega (`from`) não entra aqui
 // porque o ramo seria código morto: no app logado, state literal só nasce no
@@ -385,9 +423,11 @@ export function routeDecision(route, appUser, opts = {}) {
 // dentro de `src/` é a varredura dos filtros no endereço. Levar o recorte para
 // a guia nova é decisão em aberto do Johnny, no risco da ficha aberta em outra
 // guia do spec de 2026-09-23.
-export function backTarget({ historyState, isClient, tenantId } = {}) {
+export function backTarget({ historyState, isClient, tenantId, appUser = null } = {}) {
   if (canGoBackInApp(historyState)) return { type: 'back' };
-  return { type: 'replace', href: hrefFor(tenantId, isClient ? 'clientes' : 'kanban') };
+  if (isClient) return { type: 'replace', href: hrefFor(tenantId, 'clientes') };
+  const lista = canAccess('kanban', appUser) ? 'kanban' : homeScreenFor(appUser);
+  return { type: 'replace', href: hrefFor(tenantId, lista) };
 }
 
 // Chave da tela mostrada, para a key do AppErrorBoundary e para a rolagem.

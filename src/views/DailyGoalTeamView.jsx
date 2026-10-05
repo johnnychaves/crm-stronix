@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { ArrowLeft, Target } from 'lucide-react';
 import { appId, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { DEFAULT_SLA_OVERDUE_DAYS } from '../lib/dailyGoal.js';
+import { isSeller } from '../lib/acesso.js';
 import { useTeamBoard } from './team/useTeamBoard.js';
 import { TeamWings } from './team/TeamWings.jsx';
 import { TeamDayTable } from './team/TeamDayTable.jsx';
@@ -54,8 +55,11 @@ function DailyGoalTeamView({
     return () => unsub();
   }, [db]);
 
+  // A Meta da equipe é de quem vende. O professor não tem a Meta do consultor
+  // e fica fora das linhas e da conta de quem está em dia.
+  const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
   const board = useTeamBoard({
-    leads, interactions, usersList, teamHistory,
+    leads, interactions, usersList: sellers, teamHistory,
     metaWeekdays, slaOverdueDays, renewalCheckpoints, renewalGraceDays, selectedDay, now,
   });
 

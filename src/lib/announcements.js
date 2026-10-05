@@ -4,13 +4,16 @@
 // Todas aparecem no SINO do header (lib/notifications.js), com histórico e
 // marcação de lido; só as marcadas `major: true` interrompem com o pop-up
 // (WhatsNewModal). Sem backend / sem função Vercel. Conteúdo product-wide.
-//   audience: 'todos'  → consultor e gestor veem
-//   audience: 'gestor' → só admin vê
+//   audience: 'todos'  → todos os papéis no sino; o pop-up (major) não abre
+//                        para o professor (WhatsNewModal)
+//   audience: 'gestor' → só o gestor vê
 //   date               → 'YYYY-MM-DD', usado no "há X dias" do sino
 //   major              → lançamento grande: além do sino, abre o pop-up
 //   articleId          → artigo da Central de ajuda (lib/wiki.js) que explica
 //   adminSteps         → passos "como configurar" (mostrados só p/ admin)
 // ============================================================================
+import { isGestor } from './acesso.js';
+
 export const ANNOUNCEMENTS = [
   {
     id: 'desfecho-e-indicacao-manual-2026-09',
@@ -129,7 +132,7 @@ export function seenAnnouncementIds(appUser) {
 // vivem só no sino, sem pop-up.
 export function latestUnseenAnnouncement(appUser) {
   if (!appUser?.id) return null;
-  const isAdmin = appUser.role === 'admin';
+  const isAdmin = isGestor(appUser);
   const seen = readSeen(appUser.id);
   return ANNOUNCEMENTS.find(a =>
     a.major === true && !seen.has(a.id) && (a.audience === 'todos' || (a.audience === 'gestor' && isAdmin))

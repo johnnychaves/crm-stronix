@@ -1,7 +1,8 @@
-import { adminAuth, admin, verifyRequest } from './_firebaseAdmin.js';
+import { adminAuth, adminDb, admin, verifyRequest } from './_firebaseAdmin.js';
 import { getSeatUsage, canAddSeat } from './_plans.js';
 import { syncSubscriptionValue } from './_asaas.js';
 import {
+  dataCollection,
   usersCollection,
   isTenantAdmin,
   assertTargetInTenant,
@@ -14,6 +15,15 @@ import {
   passwordRejection
 } from './_auth.js';
 import { maskEmail } from './_passwordReset.js';
+import { professorLinkRefusal } from './_professorLink.js';
+import { ROLES, roleOf } from '../src/lib/acesso.js';
+import {
+  SET_ROLE_ACTION,
+  PROFESSOR_LINK_MESSAGES,
+  planRoleChange,
+  professorIdProblem,
+  isDocId
+} from '../src/lib/teamRoles.js';
 import {
   SET_EMAIL_ACTION,
   normalizeLoginEmail,
@@ -24,11 +34,41 @@ import {
 } from '../src/lib/loginEmail.js';
 import { withSentry } from './_sentry.js';
 
+// Leads da academia, para a troca de papel conferir se a pessoa ainda tem
+// carteira. O mesmo nome de coleção de src/lib/firebase.js.
+const LEADS_PATH = 'stronix_leads';
+
+// Teto de gravações num lote do Firestore.
+const BATCH_LIMIT = 500;
+
+// Devolve ao dono do lead as tarefas de contato que outros consultores
+// passaram para a pessoa (o "Para quem é a tarefa" do Agendar grava
+// nextFollowUpOwnerId e nextFollowUpOwnerName). A tarefa só aparece na Meta de
+// quem a recebeu (contactOwnerId, em src/lib/leads.js), e o professor não tem
+// essa Meta: sem a devolução, a tarefa sumiria de todas as Metas no dia dela.
+// Grava o mesmo null que o Agendar grava quando a tarefa é do dono do lead
+// (src/lib/schedulePatch.js). Devolve quantas tarefas voltaram.
+async function returnDelegatedContactTasks(tenantId, userDocId) {
+  const delegated = await dataCollection(tenantId, LEADS_PATH)
+    .where('nextFollowUpOwnerId', '==', userDocId).get();
+  const docs = delegated.docs || [];
+  for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+    const batch = adminDb.batch();
+    for (const d of docs.slice(i, i + BATCH_LIMIT)) {
+      batch.update(d.ref, { nextFollowUpOwnerId: null, nextFollowUpOwnerName: null });
+    }
+    await batch.commit();
+  }
+  return docs.length;
+}
+
 // Consolidação de admin-create-user, admin-set-password e admin-delete-user.
 // Motivo: o plano Hobby da Vercel permite 12 funções e api/ estava no teto.
 // Cada bloco abaixo é o corpo do handler original, sem mudança de regra. A
 // troca do e-mail de login (set-email) entrou depois, aqui mesmo, pelo mesmo
 // motivo.
+//
+// A troca de papel (set-role) entrou do mesmo jeito, com o acesso de professor.
 //
 // Mantido o withSentry no export (os três originais eram todos envolvidos por
 // ele) para não perder a captura de erro inesperado — isso não estava no
@@ -42,6 +82,7 @@ export default withSentry(async function handler(req, res) {
     case 'create': return handleCreate(req, res);
     case 'set-password': return handleSetPassword(req, res);
     case SET_EMAIL_ACTION: return handleSetEmail(req, res);
+    case SET_ROLE_ACTION: return handleSetRole(req, res);
     case 'delete': return handleDelete(req, res);
     default:
       return res.status(400).json({ error: 'Ação inválida' });
@@ -49,6 +90,11 @@ export default withSentry(async function handler(req, res) {
 });
 
 // ---- admin-create-user ----
+//
+// Cadastra consultor ou, com o módulo Professor e faltosos ligado, professor
+// ligado a um professor do cadastro (role: 'professor' e professorId no
+// corpo). Qualquer outro papel no pedido cria consultor, como sempre: gestor
+// só entra por convite.
 async function handleCreate(req, res) {
   try {
     // Autenticação: ID token verificado (não confiamos mais no body).
@@ -57,7 +103,7 @@ async function handleCreate(req, res) {
       return res.status(401).json({ error: 'Não autenticado.' });
     }
 
-    const { name, email, password, allowExtra } = req.body || {};
+    const { name, email, password, allowExtra, role, professorId } = req.body || {};
 
     if (!name || !email || !password) {
       return res
@@ -70,16 +116,28 @@ async function handleCreate(req, res) {
       return res.status(400).json({ error: passwordProblem });
     }
 
-    const isAdmin = await isTenantAdmin(auth.tenantId, auth.uid);
-    if (!isAdmin) {
-      return res.status(403).json({ error: 'Apenas o master pode cadastrar consultores.' });
+    // O professor do cadastro tem formato de id, conferido antes de qualquer leitura.
+    const newRole = role === ROLES.PROFESSOR ? ROLES.PROFESSOR : ROLES.CONSULTOR;
+    if (newRole === ROLES.PROFESSOR) {
+      const bad = professorIdProblem(professorId);
+      if (bad) return res.status(bad.status).json({ error: bad.error });
     }
 
-    // Vagas por papel: este endpoint cria sempre CONSULTOR. Além dos inclusos,
-    // pode entrar como extra pago — mas só com confirmação explícita do admin
-    // (allowExtra), para nunca gerar cobrança surpresa.
+    const isAdmin = await isTenantAdmin(auth.tenantId, auth.uid);
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Apenas o gestor pode cadastrar pessoas na equipe.' });
+    }
+
+    // Vagas por papel. Consultor além dos inclusos pode entrar como extra
+    // pago, só com confirmação explícita do admin (allowExtra), para nunca
+    // gerar cobrança surpresa. Professor não ocupa vaga, mas precisa do módulo
+    // e do professor do cadastro, conferidos com a academia já lida.
     const seats = await getSeatUsage(auth.tenantId);
-    const decision = canAddSeat(seats, 'consultant', { allowExtra: allowExtra === true });
+    if (newRole === ROLES.PROFESSOR) {
+      const refused = await professorLinkRefusal({ tenantId: auth.tenantId, modules: seats.modules, professorId });
+      if (refused) return res.status(refused.status).json({ error: refused.error });
+    }
+    const decision = canAddSeat(seats, newRole, { allowExtra: allowExtra === true });
     if (!decision.ok) {
       if (decision.code === 'extra_confirm') {
         return res.status(409).json({
@@ -121,7 +179,8 @@ async function handleCreate(req, res) {
         name: normalizedName,
         email: normalizedEmail,
         authUid: userRecord.uid,
-        role: 'consultant',
+        role: newRole,
+        ...(newRole === ROLES.PROFESSOR ? { professorId } : {}),
         tenantId: auth.tenantId,
         createdAt: admin.firestore.FieldValue.serverTimestamp()
       });
@@ -130,10 +189,10 @@ async function handleCreate(req, res) {
     // vale na próxima fatura; auditado em superadmin_audit).
     if (decision.isExtra) await syncSubscriptionValue(auth.tenantId, { actorUid: auth.uid });
 
-    return res.status(200).json({ ok: true, authUid: userRecord.uid, isExtra: decision.isExtra === true });
+    return res.status(200).json({ ok: true, authUid: userRecord.uid, role: newRole, isExtra: decision.isExtra === true });
   } catch (error) {
     console.error('admin-create-user', error);
-    return res.status(500).json({ error: 'Erro interno ao cadastrar consultor.' });
+    return res.status(500).json({ error: 'Erro interno ao cadastrar o acesso.' });
   }
 }
 
@@ -194,6 +253,155 @@ async function handleSetPassword(req, res) {
       return res.status(404).json({ error: 'Conta de autenticação não encontrada.' });
     }
     return res.status(500).json({ error: 'Erro interno ao redefinir senha.' });
+  }
+}
+
+// ---- admin-set-role ----
+//
+// Troca o papel entre Consultor e Professor, ou o professor do cadastro
+// ligado a quem já é professor. Gestor da academia only. O papel do gestor
+// não muda por aqui, e ninguém troca o próprio papel. Professor exige, nesta
+// ordem: cadastro com id igual ao uid da conta (é por esse id que as regras
+// do Firestore leem o papel), o módulo Professor e faltosos, um professor
+// ativo do cadastro sem outro login e, por último, carteira vazia (o
+// professor não é dono de lead). A carteira fica no fim porque a recusa dela
+// pede uma migração de leads que não tem volta. Passadas as recusas, as
+// tarefas de contato que a pessoa recebeu de outros consultores voltam para o
+// dono de cada lead (returnDelegatedContactTasks), e só então o papel muda.
+// Professor que volta a consultor ocupa vaga de consultor, com a mesma regra
+// do cadastro (extra pago só com allowExtra).
+//
+// O cliente não grava role nem professorId (as regras travam os dois): a vaga,
+// o módulo e o professor são conferidos aqui. Com o papel trocado, as sessões
+// da pessoa são revogadas e ela entra de novo já com o menu novo. As regras
+// leem o papel a cada pedido, então a trava vale na hora.
+async function handleSetRole(req, res) {
+  try {
+    const auth = await verifyRequest(req);
+    if (!auth || !auth.tenantId) {
+      return res.status(401).json({ error: 'Não autenticado.' });
+    }
+
+    const { userDocId, role, professorId, allowExtra } = req.body || {};
+    if (!isDocId(userDocId)) {
+      return res.status(400).json({ error: 'Campo obrigatório: userDocId.' });
+    }
+    if (role !== ROLES.CONSULTOR && role !== ROLES.PROFESSOR) {
+      return res.status(400).json({ error: 'Por aqui o papel muda só entre Consultor e Professor.' });
+    }
+    if (role === ROLES.PROFESSOR) {
+      const bad = professorIdProblem(professorId);
+      if (bad) return res.status(bad.status).json({ error: bad.error });
+    }
+
+    if (!(await isTenantAdmin(auth.tenantId, auth.uid))) {
+      return res.status(403).json({ error: 'Apenas o master pode trocar o papel de alguém.' });
+    }
+
+    const ref = usersCollection(auth.tenantId).doc(userDocId);
+    const snap = await ref.get();
+    if (!snap.exists) {
+      return res.status(404).json({ error: 'Usuário não encontrado neste tenant.' });
+    }
+    const member = snap.data() || {};
+    if (snap.id === auth.uid || member.authUid === auth.uid) {
+      return res.status(400).json({ error: 'Você não pode trocar o seu próprio papel.' });
+    }
+    const from = roleOf(member);
+    if (from === ROLES.GESTOR) {
+      return res.status(400).json({ error: 'O papel do gestor não muda por aqui.' });
+    }
+
+    // O cadastro é escrito pelo próprio gestor: quem prova que a conta é desta
+    // academia é o claim do Auth, como no delete. Cadastro sem conta segue.
+    const verdict = await resolveTargetVerdict(member.authUid || null, auth.tenantId);
+    if (verdict === TARGET_FOREIGN || verdict === TARGET_SUPERADMIN) {
+      const denied = targetVerdictError(verdict);
+      return res.status(denied.status).json({ error: denied.error });
+    }
+
+    const change = planRoleChange(member, { role, professorId });
+    if (!change) return res.status(200).json({ ok: true, changed: false });
+
+    // Quem passa a ser professor agora. Quem já é professor e só troca o
+    // professor ligado não tem carteira nem cadastro antigo para conferir.
+    const becomesProfessor = change.role === ROLES.PROFESSOR && from !== ROLES.PROFESSOR;
+
+    // As regras leem o papel em stronix_users/{uid}. No cadastro antigo, de
+    // id diferente do uid, elas não veriam o professor e deixariam a pessoa
+    // gravar como consultor. Não precisa de leitura, então vem primeiro.
+    if (becomesProfessor && (!member.authUid || member.authUid !== snap.id)) {
+      return res.status(422).json({ error: PROFESSOR_LINK_MESSAGES.legacyRecord(member.name) });
+    }
+
+    const seats = await getSeatUsage(auth.tenantId);
+    let decision = { ok: true };
+    if (change.role === ROLES.PROFESSOR) {
+      const refused = await professorLinkRefusal({
+        tenantId: auth.tenantId, modules: seats.modules, professorId: change.professorId, exceptUserId: snap.id,
+      });
+      if (refused) return res.status(refused.status).json({ error: refused.error });
+
+      // A carteira fica por último. A recusa dela manda o gestor passar os
+      // leads em Configurações → Migrar leads, e essa migração não tem volta:
+      // se outra recusa (módulo, professor ou cadastro antigo) viesse só
+      // depois, o gestor teria migrado a carteira à toa.
+      //
+      // Professor não é dono de lead: Migrar leads move pelo consultantId.
+      // Barra qualquer lead da pessoa, cliente e perda inclusive: o cliente
+      // que ficasse com ela passaria o consultantId para cada indicação nova
+      // pelo link público (api/tenant-resolve.js). O texto da recusa diz os
+      // três tipos que o gestor marca lá.
+      if (becomesProfessor) {
+        const owned = await dataCollection(auth.tenantId, LEADS_PATH)
+          .where('consultantId', '==', snap.id).limit(1).get();
+        if (!owned.empty) {
+          return res.status(409).json({ error: PROFESSOR_LINK_MESSAGES.ownsLeads(member.name) });
+        }
+      }
+    } else {
+      decision = canAddSeat(seats, ROLES.CONSULTOR, { allowExtra: allowExtra === true });
+      if (!decision.ok) {
+        if (decision.code === 'extra_confirm') {
+          return res.status(409).json({
+            error: decision.error,
+            requiresExtraConfirmation: true,
+            extraUserPrice: decision.extraUserPrice,
+          });
+        }
+        return res.status(403).json({ error: decision.error });
+      }
+    }
+
+    // Com todas as recusas para trás, as tarefas de contato que a pessoa
+    // recebeu de outros consultores voltam para o dono de cada lead. Vem antes
+    // do papel: se a troca do papel falhar depois, a tarefa fica com o dono do
+    // lead, que a vê na Meta dele, e o gestor tenta de novo.
+    const returnedTasks = becomesProfessor ? await returnDelegatedContactTasks(auth.tenantId, snap.id) : 0;
+
+    // O professor não prospecta: a meta de prospecção sai junto.
+    await ref.update(change.role === ROLES.PROFESSOR
+      ? { role: ROLES.PROFESSOR, professorId: change.professorId, dailyVolumeTarget: admin.firestore.FieldValue.delete() }
+      : { role: ROLES.CONSULTOR, professorId: admin.firestore.FieldValue.delete() });
+
+    // Professor que vira consultor extra sobe o preço; consultor que vira
+    // professor, com extras em uso, libera uma vaga paga.
+    const freedExtra = from === ROLES.CONSULTOR && seats.extraConsultants > 0;
+    if (decision.isExtra || freedExtra) await syncSubscriptionValue(auth.tenantId, { actorUid: auth.uid });
+
+    if (verdict === TARGET_OK && from !== change.role) {
+      try {
+        await adminAuth.revokeRefreshTokens(member.authUid);
+      } catch (err) {
+        console.error('admin-set-role: as sessões não foram revogadas.', { academia: auth.tenantId, conta: member.authUid, codigo: err?.code || null });
+      }
+    }
+
+    console.info('admin-set-role', { academia: auth.tenantId, cadastro: snap.id, de: from, para: change.role, por: auth.uid, tarefasDevolvidas: returnedTasks });
+    return res.status(200).json({ ok: true, changed: true, role: change.role, isExtra: decision.isExtra === true });
+  } catch (error) {
+    console.error('admin-set-role', error);
+    return res.status(500).json({ error: 'Erro interno ao trocar o papel.' });
   }
 }
 
@@ -380,7 +588,7 @@ async function handleDelete(req, res) {
     }
 
     const { userDocId } = req.body || {};
-    if (!userDocId) {
+    if (!isDocId(userDocId)) {
       return res.status(400).json({ error: 'Campo obrigatório: userDocId.' });
     }
     if (userDocId === auth.uid) {
@@ -400,17 +608,20 @@ async function handleDelete(req, res) {
 
     // authUid SEMPRE do doc validado (não confiar em valor do body).
     const resolvedAuthUid = docSnap.data()?.authUid || null;
-    const deletedRole = docSnap.data()?.role || 'consultant';
+    const deletedRole = roleOf(docSnap.data());
 
     // Tirar o uid do doc em vez do body NÃO fecha o IDOR sozinho: o doc é
-    // escrito pelo próprio admin (as rules liberam o write nos usuários da
-    // academia dele), então dava para gravar ali o uid de alguém de outra
-    // academia e apagar a conta dessa pessoa. Quem decide é o claim do Auth.
+    // editado pelo próprio admin (as rules liberam só o update nos usuários
+    // da academia dele, e criar e apagar ficam com o servidor). Antes de as
+    // rules travarem o authUid (authUidKept), dava para gravar ali o uid de
+    // alguém de outra academia e apagar a conta dessa pessoa. Quem decide
+    // continua sendo o claim do Auth, que não depende do que o cadastro diz.
     //
     // Recusa só o que é ataque: conta de OUTRA academia e conta do dono da
-    // plataforma. Cadastro sem conta no Auth ou com conta sem claim segue e
-    // apaga apenas o registro interno — é limpeza de cadastro legado, e o
-    // gestor já pode apagar esse doc direto pelas rules de qualquer jeito.
+    // plataforma. Cadastro sem conta no Auth, ou com conta sem claim, segue e
+    // apaga só o registro interno, como limpeza de cadastro antigo. Só o
+    // servidor apaga cadastro de equipe: as rules têm `allow create, delete:
+    // if false` em stronix_users.
     const verdict = await resolveTargetVerdict(resolvedAuthUid, auth.tenantId);
     if (verdict === TARGET_FOREIGN || verdict === TARGET_SUPERADMIN) {
       const denied = targetVerdictError(verdict);
@@ -418,8 +629,10 @@ async function handleDelete(req, res) {
     }
 
     // Excluir consultor com extras faturáveis em uso muda o preço → sync depois.
+    // Só consultor ocupa vaga paga: excluir gestor ou professor não muda o
+    // preço, então não há o que sincronizar.
     let hadExtras = false;
-    if (deletedRole !== 'admin') {
+    if (deletedRole === ROLES.CONSULTOR) {
       try { hadExtras = (await getSeatUsage(auth.tenantId)).extraConsultants > 0; }
       catch (e) { console.error('seat check (delete)', e?.message || e); }
     }

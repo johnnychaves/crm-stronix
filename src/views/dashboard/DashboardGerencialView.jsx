@@ -21,8 +21,12 @@ import { dashboardProps } from '../../lib/gerencial/viewModel.js';
 import { GerencialToolbar } from './GerencialToolbar.jsx';
 import { GerencialDashboard } from './GerencialDashboard.jsx';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
+import { isGestor, roleLabel } from '../../lib/acesso.js';
 
-const roleOf = (user) => (user?.role === 'admin' ? 'Gestor · também vende' : 'Consultor');
+// Rótulo de quem vendeu, na tabela de vendedores. Quem vende sai dos
+// contratos, não da equipe, então quem já saiu da equipe aparece como
+// Consultor.
+const sellerRoleText = (user) => (isGestor(user) ? 'Gestor · também vende' : roleLabel(user));
 
 export function DashboardGerencialView({ usersList, liveLeads, db, listenersActive = true, onNavigate }) {
   const { contratos } = useGeneralConfig();
@@ -89,7 +93,7 @@ export function DashboardGerencialView({ usersList, liveLeads, db, listenersActi
   const users = useMemo(() => (usersList || []).filter((u) => u?.id), [usersList]);
   const userById = useMemo(() => new Map(users.map((u) => [u.id, u])), [users]);
   const props = useMemo(
-    () => dashboardProps({ cur, cmp, comparing, roleOf: (id) => roleOf(userById.get(id)) }),
+    () => dashboardProps({ cur, cmp, comparing, roleOf: (id) => sellerRoleText(userById.get(id)) }),
     [cur, cmp, comparing, userById]
   );
 

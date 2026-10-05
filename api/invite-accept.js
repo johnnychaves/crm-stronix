@@ -3,6 +3,10 @@ import { checkRateLimit, clientIp } from './_rateLimit.js';
 import { passwordPolicyError, passwordRejection } from './_auth.js';
 import { getSeatUsage, canAddSeat } from './_plans.js';
 import { syncSubscriptionValue } from './_asaas.js';
+import { professorLinkRefusal } from './_professorLink.js';
+import { ROLES, roleOf } from '../src/lib/acesso.js';
+import { normalizeModules } from '../src/lib/modules.js';
+import { PROFESSOR_LINK_MESSAGES } from '../src/lib/teamRoles.js';
 import { withSentry } from './_sentry.js';
 
 // Aceita um convite e cria a conta do usuário no tenant. PÚBLICO (o token UUID
@@ -79,9 +83,22 @@ export default withSentry(async function handler(req, res) {
     }
 
     const email = String(invite.email || '').trim().toLowerCase();
-    const role = invite.role === 'admin' ? 'admin' : 'consultant';
+    // O papel que o convite gravou: gestor, professor ou consultor. Convite
+    // antigo ou com papel desconhecido entra como consultor, como antes.
+    const role = roleOf(invite);
     if (!email) {
       return res.status(400).json({ error: 'Convite sem e-mail válido.' });
+    }
+
+    // Convite de professor: nos 7 dias do convite, o módulo pode ter sido
+    // desligado, o professor inativado ou ligado a outra pessoa. Confere de
+    // novo, com a academia já lida, antes de criar a conta. Quem recebe o
+    // aviso é o convidado, então a frase é uma só.
+    if (role === ROLES.PROFESSOR) {
+      const refused = await professorLinkRefusal({
+        tenantId: slug, modules: normalizeModules(tData.modules), professorId: invite.professorId,
+      });
+      if (refused) return res.status(409).json({ error: PROFESSOR_LINK_MESSAGES.inviteStale });
     }
 
     // Vagas por PAPEL no momento do aceite (o time pode ter mudado desde o
@@ -118,6 +135,7 @@ export default withSentry(async function handler(req, res) {
       email,
       authUid: userRecord.uid,
       role,
+      ...(role === ROLES.PROFESSOR ? { professorId: invite.professorId } : {}),
       tenantId: slug,
       createdAt: admin.firestore.FieldValue.serverTimestamp()
     });
@@ -131,7 +149,7 @@ export default withSentry(async function handler(req, res) {
     // 1º gestor do tenant (cadastro por convite de ativação): vira o admin
     // PRINCIPAL — preenche primaryAdminUid/Email (usados por "Acessar como",
     // listagens e Asaas) e encerra a ativação pendente.
-    if (role === 'admin' && !tData.primaryAdminUid) {
+    if (role === ROLES.GESTOR && !tData.primaryAdminUid) {
       try {
         await adminDb.collection('tenants').doc(slug).update({
           primaryAdminUid: userRecord.uid,

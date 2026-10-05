@@ -7,6 +7,9 @@
 //   • passados pra você — leads/clientes que outra pessoa reatribuiu pra sua
 //     carteira (campo consultantChangedAt), no MESMO carimbo das indicações:
 //     o "marcar tudo como lido" é um clique só, então um carimbo basta.
+// Indicações e passados pra você são avisos de carteira, e só chegam a quem
+// tem ACTIONS.SINO_EQUIPE (lib/acesso.js). O professor fica só com as
+// novidades.
 // Sem React, sem Firestore: os leads já vêm da assinatura que o app mantém em
 // memória, então o sino não custa nenhuma leitura nova.
 //
@@ -15,6 +18,7 @@
 
 import { getSafeDateOrNull } from './dates.js';
 import { seenAnnouncementIds } from './announcements.js';
+import { ACTIONS, can, isGestor } from './acesso.js';
 
 // Janela do feed de indicações. Passou disso, o lead virou trabalho de
 // pipeline, não aviso.
@@ -33,7 +37,10 @@ export function buildNotificationFeed({
 } = {}) {
   if (!appUser?.id) return { news: [], referrals: [], handoffs: [], unreadCount: 0 };
 
-  const isAdmin = appUser.role === 'admin';
+  const isAdmin = isGestor(appUser);
+  // Os dois grupos de carteira (indicações e passados pra você). Quem não
+  // vende, o professor, fica só com as novidades.
+  const teamFeed = can(appUser, ACTIONS.SINO_EQUIPE);
   const seen = new Set(seenIds || []);
 
   const news = (announcements || [])
@@ -56,7 +63,7 @@ export function buildNotificationFeed({
     (Boolean(appUser.id) && l?.consultantId === appUser.id);
 
   const cutoff = now.getTime() - windowDays * 86_400_000;
-  const referrals = (leads || [])
+  const referrals = (teamFeed ? (leads || []) : [])
     .filter((l) => l?.referralVia === 'link' && isMine(l))
     .map((l) => ({ lead: l, at: getSafeDateOrNull(l.createdAt) }))
     .filter((x) => x.at && x.at.getTime() >= cutoff)
@@ -81,7 +88,8 @@ export function buildNotificationFeed({
     (Boolean(appUser.id) && l?.consultantId === appUser.id);
 
   const handoffById = new Map();
-  [...(handoffLeads || []), ...(leads || [])].forEach((l) => {
+  const handoffSources = teamFeed ? [...(handoffLeads || []), ...(leads || [])] : [];
+  handoffSources.forEach((l) => {
     if (!l?.id || handoffById.has(l.id)) return;
     if (!isStrictlyMine(l)) return;
     // Troca feita por você mesmo não é aviso.
@@ -107,6 +115,15 @@ export function buildNotificationFeed({
     + handoffs.filter((h) => h.unread).length;
 
   return { news, referrals, handoffs, unreadCount };
+}
+
+// Texto do sino sem nenhum aviso. Diz só o que a pessoa pode receber: quem
+// não tem os grupos de carteira não ouve falar de indicação nem de lead
+// passado.
+export function emptyBellText(appUser) {
+  return can(appUser, ACTIONS.SINO_EQUIPE)
+    ? 'Nada por aqui ainda. Novidades do sistema, indicações pelo link e leads que passarem pra você aparecem neste espaço.'
+    : 'Nada por aqui ainda. As novidades do Stronilead aparecem neste espaço.';
 }
 
 

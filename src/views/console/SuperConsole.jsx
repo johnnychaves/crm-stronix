@@ -8,6 +8,7 @@ import { tenantSlugProblem } from '../../lib/tenantSlug.js';
 import { lookupCep, lookupCnpj, isCepComplete, isCnpjComplete, isCpfComplete, isValidCpf } from '../../lib/brazilLookups.js';
 import { ticketMessages, isUnreadForSupport, nextMessageState } from '../../lib/ticketThread.js';
 import { Icon } from './consoleIcons.jsx';
+import { TenantModulesCard } from './TenantModulesCard.jsx';
 import './console.css';
 
 // ============================================================
@@ -1149,6 +1150,22 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
       await signInWithCustomToken(auth, data.token);
     } catch (e) { console.error('enterAs', e); setErr('Falha ao entrar como a organização.'); setBusy(false); }
   };
+  // Liga ou desliga um módulo da academia (TenantModulesCard). A api recusa
+  // módulo que não existe. A lista do console é relida antes de soltar a
+  // chave, senão ela voltaria ao estado antigo por um instante.
+  const saveModules = async (modules) => {
+    let res;
+    try {
+      const token = await auth.currentUser.getIdToken();
+      res = await fetch('/api/tenant-status', { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify({ tenantId: t.id, modules }) });
+    } catch (e) {
+      console.error('console modules', e);
+      throw new Error('Não deu para falar com o servidor.');
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Não deu para salvar o módulo.');
+    await reload?.();
+  };
   const [bg, fg] = tone(t.id);
   const pays = (overview?.recentPayments || []).filter((p) => p.tenantId === tenantId).slice(0, 6);
   const events = (audit || []).filter((l) => l.tenantId === tenantId).slice(0, 6);
@@ -1168,6 +1185,10 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
       v: stats?.consultants ?? null,
       max: stats?.maxConsultants != null ? stats.maxConsultants + (stats?.extraConsultants || 0) : Math.max(3, stats?.consultants || 0),
     },
+    // Professor não ocupa vaga do plano: a linha só aparece quando a academia tem algum.
+    ...(stats?.professors > 0
+      ? [{ n: 'Professores (fora das vagas)', v: stats.professors, max: Math.max(stats.professors, stats.userCount || 0) }]
+      : []),
     { n: 'Interações registradas', v: stats?.interactionCount ?? null, max: Math.max(100, stats?.interactionCount || 0) },
   ];
   return (
@@ -1246,6 +1267,12 @@ function Detail({ tenantId, tenants, overview, audit, plans, asaasConfigured, go
               ))}
             </div>
           </div>
+          {/* A contagem da lista do console (t.professorCount) já chega antes do
+              Detail abrir; a do GET (stats) chega depois e fica null se ele
+              falhar. Com só a do GET, o clique antes dela ou o GET com erro
+              desligaria o módulo sem a confirmação, e todo professor perderia
+              o acesso. Vale a maior das duas. */}
+          <TenantModulesCard tenant={t} save={saveModules} professores={Math.max(t.professorCount || 0, stats?.professors || 0)} />
         </div>
         <div className="card">
           <div className="card-h"><h3>Atividade recente</h3></div>

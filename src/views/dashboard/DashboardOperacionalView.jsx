@@ -29,6 +29,8 @@ import { RenewalOutcomeBar } from './RenewalOutcomeBar.jsx';
 import { MilestoneBars } from './MilestoneBars.jsx';
 import { TeamMonthTable } from './TeamMonthTable.jsx';
 import { useScreenParams } from '../../hooks/useScreenParams.js';
+import { isSeller } from '../../lib/acesso.js';
+import { hasModule, MODULES } from '../../lib/modules.js';
 
 // Padrões fora do componente: um array novo a cada render mudaria os memos.
 const DEFAULT_WEEKDAYS = [1, 2, 3, 4, 5];
@@ -303,7 +305,9 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
   }, []);
 
   const currentKey = monthKeyOf(now);
-  const users = useMemo(() => (usersList || []).filter((u) => u?.id), [usersList]);
+  // As linhas por pessoa, o seletor de pessoa e o endereço são de quem vende.
+  // O que o professor registra (anotação, agendamento) cai em Outros.
+  const users = useMemo(() => (usersList || []).filter((u) => u?.id && isSeller(u)), [usersList]);
   // Mês, comparativo e pessoa vêm do endereço: F5 mantém, o link abre igual e
   // cada aba pode estar num recorte diferente. Pessoa que saiu da equipe e mês
   // fora da janela de 12 meses caem no padrão, sem aviso (src/lib/screenParams.js).
@@ -625,7 +629,11 @@ function DashboardOperacionalView({ appUser, usersList, liveLeads, interactions,
               {team && (
                 <section>
                   <SectionTitle title="Equipe no mês" question="clique numa linha para filtrar a tela por essa pessoa" />
-                  <TeamMonthTable rows={team.rows} others={team.others} total={cur} running={running} onPick={(id) => setParams({ person: id })} />
+                  <TeamMonthTable
+                    rows={team.rows} others={team.others} total={cur} running={running}
+                    onPick={(id) => setParams({ person: id })}
+                    withProfessors={hasModule(appUser?.tenantModules, MODULES.FALTOSOS)}
+                  />
                 </section>
               )}
             </div>

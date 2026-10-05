@@ -11,6 +11,7 @@ import { fmtNum } from '../../lib/format.js';
 import { fmtDuration, plural } from '../../lib/crm/format.js';
 import { dashInitials } from './dashTokens.js';
 import { CrmCard, ReadText } from './CrmParts.jsx';
+import { roleLabel } from '../../lib/acesso.js';
 
 const RULE = 'border-slate-100 dark:border-white/[0.06]';
 const GRID = 'grid grid-cols-[minmax(0,1fr)_44px_48px_52px_48px_116px_78px] items-center gap-2.5';
@@ -20,7 +21,6 @@ const GREEN_FILL = 'bg-success dark:bg-[#0E9F6E]';
 const FOOT = 'Conversão da safra: dos leads que a pessoa captou no mês, quantos já matricularam. Nunca passa de 100%, e é diferente de matrículas, que conta o que ela fechou no mês vindo de qualquer safra.';
 const OTHERS_SUB = 'fora da equipe ou sem responsável';
 
-const roleOf = (user) => (user.role === 'admin' ? 'Gestor' : 'Consultor');
 const pctText = (v) => (v == null ? '—' : `${v}%`);
 const numText = (v) => (v == null ? '—' : fmtNum(v));
 const leadsText = (v) => (v == null ? '—' : plural(v, 'lead', 'leads'));
@@ -135,7 +135,7 @@ export function PeopleConversionTable({ rows, others, person, personName, onPick
                     person === user.id && 'bg-brand-50 dark:bg-brand-500/10'
                   )}
                 >
-                  <Who name={name} sub={roleOf(user)} />
+                  <Who name={name} sub={roleLabel(user)} />
                   <Cells v={v} />
                 </button>
               );

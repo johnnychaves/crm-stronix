@@ -1,4 +1,6 @@
 import { adminDb, admin } from './_firebaseAdmin.js';
+import { ROLES } from '../src/lib/acesso.js';
+import { normalizeModules } from '../src/lib/modules.js';
 
 // Limites por plano (seats = nº de usuários da organização).
 // Enterprise = ilimitado. Leads NÃO são limitados (dado central da academia).
@@ -172,23 +174,30 @@ const usersCol = (tenantId) =>
   adminDb.collection('artifacts').doc(tenantId).collection('public').doc('data').collection('stronix_users');
 
 // Lê o plano do tenant (default 'starter') e conta os usuários POR PAPEL.
-// Gestor = role 'admin'; consultor = todo o resto (docs legados sem `role`
-// contam como consultor — mais seguro para o limite). Mantém os campos
-// legados { maxUsers, currentUsers, atLimit } para retrocompatibilidade.
+// Gestor = role 'admin'. Professor = role 'professor', contado à parte e fora
+// de qualquer vaga: não é gestor nem consultor e não entra no preço dos
+// extras. Consultor = todo o resto (docs legados sem `role` contam como
+// consultor, mais seguro para o limite). Devolve também os módulos da academia
+// (`modules`, normalizado), lidos do mesmo documento, para quem cria acesso de
+// professor não precisar ler a academia de novo. Mantém os campos legados
+// { maxUsers, currentUsers, atLimit }; currentUsers conta todo mundo.
 export async function getSeatUsage(tenantId) {
-  const [tenantSnap, totalSnap, managersSnap, plans] = await Promise.all([
+  const [tenantSnap, totalSnap, managersSnap, professorsSnap, plans] = await Promise.all([
     adminDb.collection('tenants').doc(tenantId).get(),
     usersCol(tenantId).count().get(),
-    usersCol(tenantId).where('role', '==', 'admin').count().get(),
+    usersCol(tenantId).where('role', '==', ROLES.GESTOR).count().get(),
+    usersCol(tenantId).where('role', '==', ROLES.PROFESSOR).count().get(),
     loadPlans(),
   ]);
-  const plan = (tenantSnap.exists && tenantSnap.data()?.plan) || 'starter';
+  const tenantData = tenantSnap.exists ? (tenantSnap.data() || {}) : {};
+  const plan = tenantData.plan || 'starter';
   const planDoc = plans.get(plan) || null;
   const limits = planSeatLimits(planDoc) || fallbackSeatLimits(plan);
 
   const currentUsers = totalSnap.data().count || 0;
   const managers = managersSnap.data().count || 0;
-  const consultants = Math.max(0, currentUsers - managers);
+  const professors = professorsSnap.data().count || 0;
+  const consultants = Math.max(0, currentUsers - managers - professors);
 
   const extraUserPrice = Number(planDoc?.extraUserPrice);
   const hasExtraSlots = Number.isFinite(extraUserPrice) && extraUserPrice > 0;
@@ -200,7 +209,8 @@ export async function getSeatUsage(tenantId) {
 
   return {
     plan,
-    managers, consultants,
+    modules: normalizeModules(tenantData.modules),
+    managers, consultants, professors,
     maxManagers: limits.maxManagers,
     maxConsultants: limits.maxConsultants,
     extraUserPrice: hasExtraSlots ? extraUserPrice : null,
@@ -212,13 +222,15 @@ export async function getSeatUsage(tenantId) {
 }
 
 // Pode adicionar um usuário com este papel? Centraliza a regra dos endpoints
-// (create-user / invite-create / invite-accept). Retorna:
+// (create-user / invite-create / invite-accept / set-role). Retorna:
 //   { ok:true, isExtra? }                                → pode criar
 //   { ok:false, code:'managers_limit'|'consultants_limit', error }
 //   { ok:false, code:'extra_confirm', extraUserPrice, error }  → cabe como
 //     EXTRA pago, mas o chamador precisa confirmar (allowExtra=true).
+// Professor não ocupa vaga de gestor nem de consultor: sempre cabe.
 export function canAddSeat(seats, role, { allowExtra = false } = {}) {
-  if (role === 'admin') {
+  if (role === ROLES.PROFESSOR) return { ok: true };
+  if (role === ROLES.GESTOR) {
     if (seats.managers < seats.maxManagers) return { ok: true };
     const max = seats.maxManagers;
     return {

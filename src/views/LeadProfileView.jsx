@@ -7,7 +7,8 @@ import { useLeadTimeline } from '../hooks/useLeadTimeline.js';
 import { useReferrals } from '../hooks/useReferrals.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { planStageMove, planLoss, planUpgradeMove, planUpgradeDecline, stageMoveBlockMessage, withStageEntered } from '../lib/stageMove.js';
-import { isAdminUser, canEditLead, isLeadConverted, ZAP_VIA } from '../lib/leads.js';
+import { canEditLead, isLeadConverted, ZAP_VIA } from '../lib/leads.js';
+import { ACTIONS, can, isGestor, isSeller } from '../lib/acesso.js';
 import { normalizeAppointmentType, getSafeDateOrNull } from '../lib/dates.js';
 // firstName vira contactFirstName: o arquivo já tem um firstName local, do próprio lead.
 import { contactLabel, contactOf, firstName as contactFirstName, hasPhone, isMinorNow, telHref, whatsappHref } from '../lib/guardian.js';
@@ -113,10 +114,22 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Linha do tempo COLABORATIVA: qualquer consultor do tenant pode escrever
   // notas/interações e agendar na timeline de QUALQUER lead (base compartilhada,
   // PR #101) — mesmo não sendo o responsável. Edição do cadastro, Venda/Perda,
-  // contrato e reatribuição de responsável andam junto com isso: isReadOnly hoje
-  // só barra quem está sem vínculo de authUid (ver canEditLead). A exclusão é a
-  // única coisa que continua no gestor (isAdminUser).
+  // contrato e reatribuição de responsável: além do isReadOnly, que barra quem
+  // está sem vínculo de authUid (ver canEditLead), cada ação pergunta à lista de
+  // permissões (can, de src/lib/acesso.js). A exclusão é a única coisa que
+  // continua no gestor (isGestor).
   const canTimeline = Boolean(appUser?.authUid);
+  // O que o papel libera na ficha, pela lista única de src/lib/acesso.js. O
+  // professor registra Anotação, WhatsApp, Ligação e Agendar e vê Contratos e
+  // Indicações sem botão. O isReadOnly continua valendo para quem está sem
+  // authUid, do jeito de antes.
+  const canEditCadastro = !isReadOnly && can(appUser, ACTIONS.CADASTRO_EDITAR);
+  const canMudarFase = can(appUser, ACTIONS.FICHA_MUDAR_FASE);
+  const canContrato = can(appUser, ACTIONS.CONTRATO_EDITAR);
+  const canIndicar = can(appUser, ACTIONS.INDICACAO_CADASTRAR);
+  // Última trava dos handlers. O botão já some, mas a ação não pode passar
+  // por outro caminho.
+  const negarAcesso = () => toast.warning('Essa ação não está liberada para o seu acesso.');
   const safeFunnels = Array.isArray(funnels) ? funnels : [];
 
   // Só estado de interface. Nada aqui copia campo do lead: ele chega ao vivo
@@ -151,6 +164,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   const handlePhotoPicked = async (blob) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canEditCadastro) { negarAcesso(); return; }
     setPhotoBusy(true);
     try {
       const { url, path } = await uploadLeadPhoto(storage, appId, lead.id, blob);
@@ -173,6 +187,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   const handlePhotoRemove = async () => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canEditCadastro) { negarAcesso(); return; }
     setPhotoBusy(true);
     try {
       await updateDoc(
@@ -212,6 +227,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
 
   const handleDelete = async () => {
+    if (!isGestor(appUser)) { negarAcesso(); return; }
     if (!window.confirm("Excluir este lead permanentemente? Não dá pra desfazer.")) return;
     // A rota troca a ficha por "Excluindo a ficha…" até terminar. Sem isso, o
     // aviso de doc apagado chega antes do fim e a tela piscaria "excluída".
@@ -246,6 +262,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // conversão (esta ficha e o Kanban) passam pelo MESMO modal.
   const handleWin = () => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canContrato) { negarAcesso(); return; }
     setMatriculaMode('matricula');
     setMatriculaOpen(true);
   };
@@ -254,6 +271,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // convertedAt/status — ver lib/contracts.js), apontando ao contrato vigente.
   const handleRenew = () => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canContrato) { negarAcesso(); return; }
     setMatriculaMode('renovacao');
     setMatriculaOpen(true);
   };
@@ -263,6 +281,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // agem: com renovação marcada, o card da aba é o contrato em uso.
   const openContractAction = (action, contract) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canContrato) { negarAcesso(); return; }
     if (!contract?.id) { toast.warning('Não há contrato vigente.'); return; }
     setContractAction({ action, contractId: contract.id });
   };
@@ -271,10 +290,12 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // contrato da aba. A trava de leitura fica aqui, como nas outras ações.
   const openContractEdit = (contract) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canContrato) { negarAcesso(); return; }
     if (contract?.id) setEditingContractId(contract.id);
   };
   const openActivate = (contract) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canContrato) { negarAcesso(); return; }
     if (contract?.id) setActivatingId(contract.id);
   };
   // O documento de um contrato da aba, vivo. Sem reserva: cair no último
@@ -284,6 +305,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
 
   const confirmLoss = async (reason) => {
     if (isReadOnly) { toast.warning('Você não tem permissão para alterar este lead.'); return; }
+    if (!canMudarFase) { negarAcesso(); setLossModalOpen(false); return; }
     // Cliente não vira lead perdido (src/lib/stageMove.js). O botão e o
     // PhaseChanger já barram antes; aqui é a última trava.
     const loss = planLoss(lead);
@@ -343,7 +365,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // fluxos existentes (MatriculaModal / LossReasonModal); demais fases gravam o
   // status (+funil, se mudou) e registram a transição na timeline.
   const handlePhaseConfirm = async ({ funnelId: targetFunnelId, targetStatus, note: phaseNote, referrer }) => {
+    if (!canMudarFase) { negarAcesso(); return; }
     if (targetStatus === 'Venda') {
+      // Venda abre o contrato, então pede também a ação de contrato.
+      if (!canContrato) { negarAcesso(); return; }
       // Cliente com contrato vivo renova (o contrato novo se liga ao atual);
       // lead, ou cliente vencido/cancelado, faz matrícula.
       setMatriculaMode(isClient && hasLiveContract(lead, new Date(), contractThresholdDays) ? 'renovacao' : 'matricula');
@@ -446,6 +471,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // Vincular/trocar/remover o indicador direto da ficha — corrige vínculo
   // errado e é o caminho retroativo para leads antigos com origem Indicação.
   const handleSaveReferral = async () => {
+    if (!canIndicar) { negarAcesso(); return; }
     if (!referrerPick) return;
     setLoading(true);
     try {
@@ -463,6 +489,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   };
 
   const handleRemoveReferral = async () => {
+    if (!canIndicar) { negarAcesso(); return; }
     setLoading(true);
     try {
       await removeReferralLink({ db, lead, appUser });
@@ -499,9 +526,10 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
   // (nextFollowUp/nextFollowUpType/appointmentType/appointmentScheduledFor) e
   // grava os extras por tipo (modalidade+professor+quantidade p/ aula; unidade p/ visita).
   // Só usuários ATIVOS podem receber tarefa: delegar para quem saiu da academia
-  // deixaria a tarefa órfã, sem aparecer para ninguém.
+  // deixaria a tarefa órfã, sem aparecer para ninguém. O professor também não
+  // recebe tarefa de contato, porque não vende (isSeller, em src/lib/acesso.js).
   const activeUsers = useMemo(
-    () => (usersList || []).filter(u => u?.id && u.name && u.active !== false),
+    () => (usersList || []).filter(u => u?.id && u.name && u.active !== false && isSeller(u)),
     [usersList]
   );
 
@@ -687,9 +715,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     useReferrals({ db, leadId: lead.id, enabled: isClient, active: activeProfileTab === 'referrals' });
   // Cadastro à mão de indicações (menu Indicar e aba Indicações). Só existe
   // com o funil Indicações e a etapa de entrada, a mesma trava do "É uma
-  // indicação?" do Novo lead, e só para quem pode editar.
+  // indicação?" do Novo lead, e só para quem pode editar e cadastrar indicação.
   const referralEntry = referralFunnel ? getReferralEntryStage(statuses, referralFunnel.id) : null;
-  const canQuickReferral = isClient && !isReadOnly && Boolean(referralFunnel && referralEntry);
+  const canQuickReferral = isClient && !isReadOnly && canIndicar && Boolean(referralFunnel && referralEntry);
   const [quickReferralOpen, setQuickReferralOpen] = useState(false);
 
   // Classificação + filtro da timeline (helpers compartilhados em lib/timeline.js).
@@ -792,7 +820,8 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
           { id: 'note',     label: 'Anotação',   icon: <MessageCircle size={13} /> },
           { id: 'whatsapp', label: 'WhatsApp',   icon: <MessageCircle size={13} /> },
           { id: 'call',     label: 'Ligação',    icon: <Phone size={13} /> },
-          { id: 'status',   label: 'Mudar fase', icon: <RefreshCw size={13} /> },
+          // Mudar fase fica fora de quem não muda fase (o professor).
+          ...(canMudarFase ? [{ id: 'status', label: 'Mudar fase', icon: <RefreshCw size={13} /> }] : []),
           { id: 'schedule', label: 'Agendar',    icon: <Calendar size={13} /> }
         ].map(t => (
           <button
@@ -847,7 +876,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               />
             )}
 
-            {composerTab === 'status' && (
+            {composerTab === 'status' && canMudarFase && (
               <>
                 {/* Cliente: só o funil Upgrade. O aviso vem ANTES para a pessoa
                     não montar a mudança inteira e descobrir no confirmar. */}
@@ -1166,7 +1195,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               showDot={false}
               splitHex={profileState.key === 'a_vencer' ? '#10B981' : null}
               photoUrl={lead.photoUrl}
-              onPhotoClick={isReadOnly || photoBusy ? null : () => setPhotoMenuOpen(true)}
+              onPhotoClick={!canEditCadastro || photoBusy ? null : () => setPhotoMenuOpen(true)}
             />
 
             <div className="min-w-[240px] flex-1">
@@ -1195,7 +1224,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                     Menor de idade
                   </span>
                 )}
-                {!isReadOnly && (
+                {canEditCadastro && (
                   <IconBtn icon={<Pencil size={16} />} kind="default" title="Editar cadastro" onClick={() => setIsEditing(true)} />
                 )}
               </div>
@@ -1204,7 +1233,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 {!isClient && (
                   <StatusBadge statusName={lead.status} statusesArray={statuses} />
                 )}
-                {(lead.tags || []).length === 0 && !isReadOnly && (
+                {(lead.tags || []).length === 0 && canEditCadastro && (
                   <button
                     onClick={() => setIsEditing(true)}
                     className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 px-2 py-1 rounded-md border border-dashed border-slate-300 dark:border-white/15 transition"
@@ -1228,7 +1257,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                     >
                       Indicado por {lead.referredByName || 'cliente'}
                     </LeadLink>
-                    {!isReadOnly && (
+                    {!isReadOnly && canIndicar && (
                       <button
                         type="button"
                         title="Editar vínculo de indicação"
@@ -1239,7 +1268,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                       </button>
                     )}
                   </span>
-                ) : (isInReferralFunnel && !isReadOnly && (
+                ) : (isInReferralFunnel && !isReadOnly && canIndicar && (
                   <button
                     type="button"
                     onClick={() => { setReferrerPick(null); setReferrerDialogOpen(true); }}
@@ -1256,7 +1285,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               {/* Ações de contato sem moldura: só ícone e rótulo. O que precisa
                   de peso visual são Venda e Perda, logo ao lado. */}
               <Btn kind="ghost" size="md" icon={<MessageCircle size={14} />} onClick={handleWhatsApp}>WhatsApp</Btn>
-              {isClient && (
+              {/* O menu Indicar inteiro (cadastrar, copiar e enviar o link) é de
+                  quem cadastra indicação. O professor fica sem ele. */}
+              {isClient && canIndicar && (
                 <DropdownMenu>
                   {/* Botão do próprio trigger, não o Btn: o Btn não encaminha
                       ref nem as props que o Radix injeta, então com `asChild`
@@ -1292,33 +1323,38 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
                 Ligar
               </Btn>
               {/* Venda/Perda só fazem sentido p/ LEAD: cliente já converteu e gere
-                  o contrato pela aba Contratos (Renovar / Cancelar). */}
-              {!isClient && (
+                  o contrato pela aba Contratos (Renovar / Cancelar). Venda abre o
+                  contrato e Perda muda a fase, então cada um segue a sua ação. */}
+              {!isClient && (canContrato || canMudarFase) && (
                 <>
                   <div className="w-px h-6 bg-slate-200 dark:bg-white/[0.08] mx-0.5 hidden sm:block"></div>
-                  <Btn
-                    kind="success"
-                    size="md"
-                    icon={<TrendingUp size={14} />}
-                    onClick={handleWin}
-                    disabled={lead.status === 'Venda' || loading}
-                    title={lead.status === 'Venda' ? 'Lead já marcado como venda' : 'Marcar venda'}
-                  >
-                    Marcar venda
-                  </Btn>
-                  <Btn
-                    kind="danger"
-                    size="md"
-                    icon={<Ban size={14} />}
-                    onClick={() => setLossModalOpen(true)}
-                    disabled={lead.status === 'Perda' || loading}
-                    title={lead.status === 'Perda' ? 'Lead já marcado como perda' : 'Marcar perda'}
-                  >
-                    Marcar perda
-                  </Btn>
+                  {canContrato && (
+                    <Btn
+                      kind="success"
+                      size="md"
+                      icon={<TrendingUp size={14} />}
+                      onClick={handleWin}
+                      disabled={lead.status === 'Venda' || loading}
+                      title={lead.status === 'Venda' ? 'Lead já marcado como venda' : 'Marcar venda'}
+                    >
+                      Marcar venda
+                    </Btn>
+                  )}
+                  {canMudarFase && (
+                    <Btn
+                      kind="danger"
+                      size="md"
+                      icon={<Ban size={14} />}
+                      onClick={() => setLossModalOpen(true)}
+                      disabled={lead.status === 'Perda' || loading}
+                      title={lead.status === 'Perda' ? 'Lead já marcado como perda' : 'Marcar perda'}
+                    >
+                      Marcar perda
+                    </Btn>
+                  )}
                 </>
               )}
-              {isAdminUser(appUser) && (
+              {isGestor(appUser) && (
                 <IconBtn icon={<Trash size={15} />} kind="danger" title="Excluir lead" onClick={handleDelete} />
               )}
             </div>
@@ -1429,7 +1465,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               <p className="text-[12px] font-medium text-amber-700 dark:text-amber-300">
                 Fez 18 anos. Cadastre o WhatsApp próprio.
               </p>
-              {!isReadOnly && (
+              {canEditCadastro && (
                 <button
                   onClick={() => setIsEditing(true)}
                   className="inline-flex items-center gap-1 text-[11.5px] font-medium text-slate-400 hover:text-brand-600 dark:hover:text-brand-300 px-2 py-1 rounded-md border border-dashed border-slate-300 dark:border-white/15 transition"
@@ -1665,7 +1701,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
             lead={lead}
             leadContracts={leadContracts}
             firstName={firstName}
-            isReadOnly={isReadOnly}
+            // Contratos ficam só para leitura para quem não mexe em contrato
+            // (o professor): todo botão da aba já segue o isReadOnly.
+            isReadOnly={isReadOnly || !canContrato}
             loading={loading}
             contractThresholdDays={contractThresholdDays}
             renewalCheckpoints={renewalCheckpoints}
@@ -1684,6 +1722,7 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
               items={referralItems}
               loading={referralsLoading}
               onAdd={canQuickReferral ? () => setQuickReferralOpen(true) : null}
+              canRefer={canIndicar}
             />
           </TabsContent>
         )}

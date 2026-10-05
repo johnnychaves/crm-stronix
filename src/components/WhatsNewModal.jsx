@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from './ui/dialog.jsx';
 import { Button } from './ui/button.jsx';
 import { latestUnseenAnnouncement, markAnnouncementSeen } from '../lib/announcements.js';
+import { isGestor, isProfessor } from '../lib/acesso.js';
 import { Sparkles, ArrowRight, Check } from 'lucide-react';
 
 // Pop-up de NOVIDADES — mostra o anúncio mais recente que o usuário ainda não
@@ -12,13 +13,15 @@ function WhatsNewModal({ appUser, onConfigure }) {
   // e o anúncio sai. (Só usuários da academia, não o superadmin interno.)
   const [dismissed, setDismissed] = useState(() => new Set());
   const ann = useMemo(() => {
-    if (!appUser?.id || appUser.superAdminOnly) return null;
+    // A novidade grande fala das telas de venda. O professor não abre essas
+    // telas e não recebe o pop-up: as novidades ficam no sino dele.
+    if (!appUser?.id || appUser.superAdminOnly || isProfessor(appUser)) return null;
     const a = latestUnseenAnnouncement(appUser);
     return a && !dismissed.has(a.id) ? a : null;
   }, [appUser, dismissed]);
 
   if (!ann) return null;
-  const isAdmin = appUser?.role === 'admin';
+  const isAdmin = isGestor(appUser);
 
   const close = (id) => { markAnnouncementSeen(appUser, id); setDismissed(s => new Set(s).add(id)); };
   const dismiss = () => close(ann.id);

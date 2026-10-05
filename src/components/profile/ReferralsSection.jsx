@@ -30,9 +30,11 @@ function SummaryBlock({ label, value, accent }) {
 // O menu Indicar vive no cabeçalho da ficha, ao lado do WhatsApp. `onAdd`
 // (opcional) liga o botão de cadastrar indicação à mão; a ficha só passa
 // quando a academia tem o funil Indicações e a pessoa pode editar.
+// `canRefer` (padrão true) diz se quem vê tem o menu Indicar. O professor não
+// tem (src/lib/acesso.js), então o aviso de vazio não manda procurar o botão.
 // O estado de cada indicado é derivado AO VIVO do doc dele (deriveLeadState/
 // isClientLead) — desfazer uma Venda reflete aqui sozinho.
-export function ReferralsSection({ items, loading, onAdd = null }) {
+export function ReferralsSection({ items, loading, onAdd = null, canRefer = true }) {
   const { contractThresholdDays } = useGeneralConfig();
   const summary = useMemo(() => summarizeReferrals(items || []), [items]);
   const now = new Date();
@@ -56,10 +58,14 @@ export function ReferralsSection({ items, loading, onAdd = null }) {
         </div>
         <p className="text-[14px] font-semibold text-slate-900 dark:text-white">Nenhuma indicação ainda</p>
         <p className="text-[12.5px] text-muted-foreground mt-1 max-w-[420px] mx-auto leading-relaxed">
-          {onAdd
-            ? 'Use o botão Indicar, no topo da ficha, para cadastrar as indicações do cliente ou mandar o link para ele convidar os amigos. Também dá para cadastrar um lead novo com o interruptor “É uma indicação?”.'
-            : 'Use o botão Indicar, no topo da ficha, para mandar o link para o cliente convidar os amigos, ou cadastre um lead novo com o interruptor “É uma indicação?”.'}
-          {' '}Os indicados aparecem aqui com o andamento de cada um.
+          {!canRefer ? 'Quando este cliente indicar alguém, a pessoa aparece aqui com o andamento dela.' : (
+            <>
+              {onAdd
+                ? 'Use o botão Indicar, no topo da ficha, para cadastrar as indicações do cliente ou mandar o link para ele convidar os amigos. Também dá para cadastrar um lead novo com o interruptor “É uma indicação?”.'
+                : 'Use o botão Indicar, no topo da ficha, para mandar o link para o cliente convidar os amigos, ou cadastre um lead novo com o interruptor “É uma indicação?”.'}
+              {' '}Os indicados aparecem aqui com o andamento de cada um.
+            </>
+          )}
         </p>
         {addButton && <div className="mt-4 flex justify-center">{addButton}</div>}
       </section>

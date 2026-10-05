@@ -4,6 +4,7 @@ import { collection, doc, addDoc, getDocs, query, where, serverTimestamp } from 
 import { appId, INTERACTIONS_PATH, LEADS_PATH } from '../../lib/firebase.js';
 import { commitOpsInChunks } from '../../lib/funnels.js';
 import { isClientLead } from '../../lib/leads.js';
+import { isSeller } from '../../lib/acesso.js';
 import { cn } from '../../lib/utils.js';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { SettingsSectionHeader } from '../../components/ui/SettingsCard.jsx';
@@ -81,8 +82,11 @@ function TransferSection({ db, usersList, appUser, leads }) {
     return Array.from(found.values());
   }, [leads, usersList]);
 
-  const fromOptions = [...(usersList || []), ...orphans];
-  const toOptions = (usersList || []).filter(u => u.id !== fromUser);
+  // Carteira é de quem vende: o professor não passa nem recebe leads. Ele
+  // continua no activeIds acima, então nunca aparece como "(excluído)".
+  const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
+  const fromOptions = [...sellers, ...orphans];
+  const toOptions = sellers.filter(u => u.id !== fromUser);
 
   // Carteira total por consultor, para a legenda dos dois campos.
   const walletCounts = useMemo(() => {
@@ -101,7 +105,7 @@ function TransferSection({ db, usersList, appUser, leads }) {
 
   const selectedCount = scopes.reduce((sum, id) => sum + (scopeCounts[id] || 0), 0);
   const fromObj = fromOptions.find(u => u.id === fromUser) || null;
-  const toObj = (usersList || []).find(u => u.id === toUser) || null;
+  const toObj = sellers.find(u => u.id === toUser) || null;
   const ready = Boolean(fromUser && toUser && fromUser !== toUser && scopes.length > 0);
 
   const toggleScope = (id) => setScopes(prev =>

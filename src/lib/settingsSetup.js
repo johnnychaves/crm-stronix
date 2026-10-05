@@ -7,6 +7,8 @@
 // Sem JSX de propósito: a UI recebe só dados (rótulo, nome do ícone, destino),
 // o que mantém a regra testável sem montar componente.
 
+import { roleOf, ROLES } from './acesso.js';
+
 // Passos na ordem em que aparecem no rodapé do card de progresso.
 const STEP_ORDER = [
   'funnel', 'sources', 'modalities', 'plans', 'loss',
@@ -27,7 +29,6 @@ const STEP_LABELS = {
 
 const len = (arr) => (Array.isArray(arr) ? arr.length : 0);
 const list = (arr) => (Array.isArray(arr) ? arr : []);
-const isManager = (u) => u?.role === 'admin';
 
 // Consultor sem piso de prospecção: campo vazio, 0 ou negativo = sem meta.
 const hasProspectTarget = (u) => Number(u?.dailyVolumeTarget) > 0;
@@ -44,7 +45,9 @@ function buildSetupState({
   metaWeekdays, slaOverdueDays, usersList,
 }) {
   const users = list(usersList);
-  const consultants = users.filter(u => !isManager(u));
+  // Prospecção é do consultor. O gestor tem meta à parte e o professor não
+  // prospecta. Cadastro sem papel conta como consultor (roleOf).
+  const consultants = users.filter(u => roleOf(u) === ROLES.CONSULTOR);
   const usersWithoutAccess = users.filter(u => !String(u?.authUid || '').trim());
   const consultantsWithoutTarget = consultants.filter(u => !hasProspectTarget(u));
 

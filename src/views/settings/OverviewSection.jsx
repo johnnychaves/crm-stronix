@@ -4,6 +4,7 @@ import {
   Kanban, Tag, ThumbsDown, UserPlus, UserX, ZapOff
 } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
+import { roleOf, ROLES } from '../../lib/acesso.js';
 import { useSeatLimits } from '../../hooks/useSeatLimits.js';
 import { SettingsBtn } from './settingsBits.jsx';
 
@@ -91,7 +92,9 @@ function OverviewSection({
   const seats = useSeatLimits();
 
   const seatHint = useMemo(() => {
-    const consultants = (usersList || []).filter(u => u.role !== 'admin').length;
+    // Só consultor ocupa assento de consultor, a mesma conta do api/_plans.js:
+    // o gestor tem vaga própria e o professor não ocupa nenhuma.
+    const consultants = (usersList || []).filter(u => roleOf(u) === ROLES.CONSULTOR).length;
     if (!seats || seats.maxConsultants == null) {
       return `${consultants} ${consultants === 1 ? 'consultor cadastrado' : 'consultores cadastrados'}`;
     }

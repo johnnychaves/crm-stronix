@@ -44,7 +44,9 @@ describe('ROUTE_NOTICES', () => {
   it('textos aprovados, sem travessão', () => {
     expect(ROUTE_NOTICES).toEqual({
       'so-gestor': 'Essa tela é só do gestor.',
+      'nao-liberada': 'Essa tela não está liberada para o seu acesso.',
       'nao-encontrada': 'Não achamos essa tela. Abrimos o Operacional.',
+      'nao-encontrada-meta': 'Não achamos essa tela. Abrimos a Meta diária.',
     });
     for (const txt of Object.values(ROUTE_NOTICES)) expect(txt).not.toMatch(/[—–]/);
     expect(Object.isFrozen(ROUTE_NOTICES)).toBe(true);

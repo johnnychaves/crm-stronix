@@ -5,18 +5,21 @@ import {
   DropdownMenuItem, DropdownMenuSeparator,
 } from '../ui/dropdown-menu.jsx';
 import { AppLink } from '../nav/AppLink.jsx';
+import { isProfessor } from '../../lib/acesso.js';
 
 // Menu da conta no canto superior direito (ícone de persona). Reúne o perfil da
-// academia + Plano & faturas (só para o admin) e o logout. Consultor vê apenas
-// a própria identidade + Sair. Super-admin puro não tem academia → sem perfil.
+// academia + Plano & faturas (só para o admin) e o logout. Consultor e
+// professor veem apenas a própria identidade + Sair. Super-admin puro não tem
+// academia → sem perfil.
 // Perfil da academia e Plano & faturas são links (profileHref e billingHref,
 // montados pelo App com a academia da sessão): Ctrl+clique abre em outra aba.
 // O item do menu empresta o papel e o foco ao link (asChild) e fecha o menu no
 // clique. Enter pelo teclado abre na mesma aba.
 function PersonaMenu({ appUser, isAdmin, profileHref, billingHref, onLogout, onHelp, onToggleTheme, isDarkMode }) {
   const superOnly = !!appUser?.superAdminOnly;
-  const role = superOnly ? 'Super-admin' : isAdmin ? 'Acesso Master' : 'Consultor';
-  const RoleIcon = superOnly ? Shield : isAdmin ? Shield : User;
+  const professor = !superOnly && !isAdmin && isProfessor(appUser);
+  const role = superOnly ? 'Super-admin' : isAdmin ? 'Acesso Master' : professor ? 'Professor' : 'Consultor';
+  const RoleIcon = superOnly ? Shield : isAdmin ? Shield : professor ? GraduationCap : User;
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

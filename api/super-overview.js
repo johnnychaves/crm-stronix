@@ -3,6 +3,8 @@ import { effectivePrice, loadPlans } from './_plans.js';
 import { isAsaasConfigured } from './_asaas.js';
 import { readTenantPrivate } from './_tenantPrivate.js';
 import { withSentry } from './_sentry.js';
+import { ROLES } from '../src/lib/acesso.js';
+import { normalizeModules } from '../src/lib/modules.js';
 
 // Visão agregada da plataforma para o painel super-admin — SUPER-ADMIN only.
 // Usa o Admin SDK (o super-admin não lê /artifacts de outro tenant pelas rules).
@@ -40,16 +42,19 @@ async function lastInteractionMillis(tenantId) {
 async function tenantMetrics(doc, plansMap) {
   const id = doc.id;
   const data = doc.data() || {};
-  const [userCount, managerCount, leadCount, interactionCount, lastInteractionMs, priv] = await Promise.all([
+  const [userCount, managerCount, professorCount, leadCount, interactionCount, lastInteractionMs, priv] = await Promise.all([
     countOr(dataCol(id, 'stronix_users')),
-    countOr(dataCol(id, 'stronix_users').where('role', '==', 'admin')),
+    countOr(dataCol(id, 'stronix_users').where('role', '==', ROLES.GESTOR)),
+    countOr(dataCol(id, 'stronix_users').where('role', '==', ROLES.PROFESSOR)),
     countOr(dataCol(id, 'stronix_leads')),
     countOr(dataCol(id, 'stronix_interactions')),
     lastInteractionMillis(id),
     // Perfil e WhatsApp do responsável vivem no subdocumento privado.
     readTenantPrivate(id, data),
   ]);
-  const consultantCount = Math.max(0, userCount - managerCount);
+  // Professor não ocupa vaga de consultor nem entra no preço dos extras (a
+  // mesma conta do getSeatUsage, em api/_plans.js).
+  const consultantCount = Math.max(0, userCount - managerCount - professorCount);
   const createdAt = toMillis(data.createdAt);
   const plan = data.plan || 'starter';
   const monthlyPrice = typeof data.monthlyPrice === 'number' ? data.monthlyPrice : null;
@@ -63,6 +68,7 @@ async function tenantMetrics(doc, plansMap) {
     plan,
     archived: data.archived === true,
     internal: data.internal === true, // conta interna/teste: fica na lista mas fora dos KPIs de negócio
+    modules: normalizeModules(data.modules), // módulos ligados no console (src/lib/modules.js)
     trialEndsAt: toMillis(data.trialEndsAt),
     createdAt,
     primaryAdminEmail: data.primaryAdminEmail || null,
@@ -85,6 +91,7 @@ async function tenantMetrics(doc, plansMap) {
     userCount,
     managerCount,
     consultantCount,
+    professorCount,
     leadCount,
     interactionCount,
     lastActivityAt,

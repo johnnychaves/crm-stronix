@@ -18,6 +18,7 @@ import { lookupExisting, runImport } from '../../lib/clientImportWrites.js';
 import { getDefaultFunnel, isSystemFunnel } from '../../lib/funnels.js';
 import { normalizeExpiredWindowDays } from '../../lib/expiredGoal.js';
 import { deriveLeadState, getTone } from '../../lib/leadState.js';
+import { isSeller } from '../../lib/acesso.js';
 
 // ==========================================
 // IMPORTAR CLIENTES: quatro passos, só na sessão assumida do super console.
@@ -140,11 +141,12 @@ function ImportClientsSection({ db, appUser, usersList, funnels, planos }) {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [report, setReport] = useState(null);        // { results, summary, failedFromRow, error, batchId }
 
-  // Quem pode ser dono do lead importado: gente ATIVA da equipe e com login
-  // vinculado (mesmo filtro do cadastro de cliente). Dono sem authUid não
-  // consegue editar o próprio lead, e quem saiu deixaria o lead órfão.
+  // Quem pode ser dono do lead importado: gente ATIVA da equipe, com login
+  // vinculado e que vende (mesmo filtro do cadastro de cliente). Dono sem
+  // authUid não consegue editar o próprio lead, quem saiu deixaria o lead
+  // órfão e o professor não é dono de lead.
   const consultants = useMemo(
-    () => (usersList || []).filter((u) => u?.id && u.name && u.authUid && u.active !== false && !u.superAdminOnly),
+    () => (usersList || []).filter((u) => u?.id && u.name && u.authUid && u.active !== false && !u.superAdminOnly && isSeller(u)),
     [usersList]
   );
   const defaultConsultant = consultants.find((u) => u.id === defaultConsultantId) || null;
