@@ -35,7 +35,9 @@ export function appointmentTaskOwnerFor({ scheduler = null, lead = null } = {}) 
 
 // O aviso de que a tarefa ficou com outra pessoa, no fim do texto da interação
 // do agendamento (" · tarefa de Ana"). É como o dono do lead fica sabendo, pela
-// linha do tempo, que outra pessoa vai cuidar do contato ou do compromisso.
+// linha do tempo, que outra pessoa vai cuidar do contato ou do compromisso: o
+// parseAppointment (src/lib/timeline.js) lê o nome, e o cartão do agendamento
+// na ficha mostra "Tarefa de Ana". Mudou o texto, mude o leitor junto.
 export const taskOwnerText = (name) => ` · tarefa de ${name || 'outro consultor'}`;
 
 export function buildSchedulePatch({

@@ -86,16 +86,17 @@ describe('o agendamento da ponte na linha do tempo', () => {
   beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 9, 1, 10, 0)); });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('visita: parseAppointment lê tipo, dia, hora, unidade e anotação', () => {
+  // A Ana agenda no lead do Bruno, então a tarefa fica com ela e o texto
+  // termina com " · tarefa de Ana Souza", que o cartão da ficha mostra.
+  it('visita: parseAppointment lê tipo, dia, hora, unidade, anotação e de quem é a tarefa', () => {
     const { interaction } = agendar(VISITA, VISITA_EM);
     expect(parseAppointment(interaction)).toEqual({
       kind: 'visit', label: 'Visita à unidade', when: new Date(2026, 9, 1, 18, 0),
-      location: 'Unidade Centro', note: 'Vem depois do trabalho.'
+      location: 'Unidade Centro', note: 'Vem depois do trabalho.', taskOwner: 'Ana Souza'
     });
   });
 
-  // A Ana agenda no lead do Bruno: a tarefa fica com ela e o texto termina com
-  // " · tarefa de Ana Souza". A leitura do agendamento não pode mudar por isso.
+  // A leitura do resto do agendamento não pode mudar por causa do aviso.
   it('o aviso de quem ficou com a tarefa não atrapalha a leitura', () => {
     const { interaction } = agendar(VISITA, VISITA_EM);
     expect(interaction.text).toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00 · tarefa de Ana Souza. Obs: Vem depois do trabalho.');
@@ -107,8 +108,15 @@ describe('o agendamento da ponte na linha do tempo', () => {
   it('aula: parseAppointment lê tipo, dia e hora, sem inventar local', () => {
     const { interaction } = agendar(AULA, AULA_EM);
     expect(parseAppointment(interaction)).toEqual({
-      kind: 'class', label: 'Aula experimental', when: new Date(2026, 9, 2, 19, 0), location: null, note: null
+      kind: 'class', label: 'Aula experimental', when: new Date(2026, 9, 2, 19, 0), location: null, note: null, taskOwner: 'Ana Souza'
     });
+  });
+
+  // O dono do lead agenda no próprio lead: a tarefa continua com ele, e o texto
+  // não diz de quem ela é.
+  it('o dono do lead agendando não ganha aviso de tarefa', () => {
+    const { interaction } = agendar(VISITA, VISITA_EM, BRUNO);
+    expect(parseAppointment(interaction).taskOwner).toBeNull();
   });
 
   it('entra no filtro Agendamentos, com a coluna Agenda ou Aula, e leva a origem', () => {

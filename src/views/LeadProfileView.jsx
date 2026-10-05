@@ -1104,8 +1104,11 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
       // No desfecho não há data no texto: a régua é o próprio evento.
       const when = (appt && appt.when) || i.createdAt;
       const title = appt?.label || cleanBody || 'Agendamento';
+      // "Tarefa de <nome>" quando a tarefa do dia ficou com outra pessoa (o
+      // " · tarefa de" do texto, lido pelo parseAppointment): é por aqui que o
+      // dono do lead vê quem vai cuidar da visita, da aula ou do contato.
       const detail = appt
-        ? [appt.location, appt.note, when.toLocaleDateString('pt-BR', { weekday: 'long' })].filter(Boolean).join(' · ')
+        ? [appt.location, appt.taskOwner && `Tarefa de ${appt.taskOwner}`, appt.note, when.toLocaleDateString('pt-BR', { weekday: 'long' })].filter(Boolean).join(' · ')
         : when.toLocaleDateString('pt-BR', { weekday: 'long' });
       const origin = outcomeOrigin[i.id];
 

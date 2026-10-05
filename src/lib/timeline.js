@@ -292,8 +292,11 @@ export const buildStageTransitions = (statusInteractions, leadCreatedAt = null) 
 // Detecta metadados de agendamento embutidos no texto de uma interaction.
 // O composer atual grava "🔔 {Tipo} agendada (extra) p/ DD/MM, HH:MM. Obs: ..."
 // (ver handleWizardConfirm); legados podem usar "Retorno agendado (...)".
-// Retorna { kind, label, when, location } ou null. `location` sai do bloco
-// "(...)" só quando traz "Unidade ..." (visita) — nunca é fabricado.
+// Retorna { kind, label, when, location, note, taskOwner } ou null. `location`
+// sai do bloco "(...)" só quando traz "Unidade ..." (visita) — nunca é
+// fabricado. `taskOwner` é o nome do " · tarefa de <nome>" que o agendamento
+// grava quando a tarefa do dia ficou com outra pessoa (taskOwnerText, em
+// schedulePatch.js), na visita, na aula e no contato delegado; sem ele, null.
 export const parseAppointment = (i) => {
   const t = String(i.text || '');
   if (!/retorno agendado|agendad[ao]|🔔/i.test(t)) return null;
@@ -336,5 +339,12 @@ export const parseAppointment = (i) => {
   // Observação digitada no agendamento ("… Obs: <texto>") — exibida na timeline.
   const noteMatch = t.match(/\bobs:\s*(.+)$/i);
   const note = noteMatch ? noteMatch[1].trim() : null;
-  return { kind, label, when, location, note };
+  // Dono da tarefa: o " · tarefa de <nome>." vem logo antes da anotação. Só o
+  // trecho antes dela conta, para um "tarefa de" digitado na anotação não
+  // virar dono. O nome vai até o ponto final do trecho, então "Ana C. Souza"
+  // sai inteiro.
+  const head = noteMatch ? t.slice(0, noteMatch.index) : t;
+  const ownerMatch = head.match(/·\s*tarefa de\s+(.+?)\.?\s*$/i);
+  const taskOwner = ownerMatch ? ownerMatch[1].trim() : null;
+  return { kind, label, when, location, note, taskOwner };
 };
