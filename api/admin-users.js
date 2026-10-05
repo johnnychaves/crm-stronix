@@ -47,11 +47,13 @@ const BATCH_LIMIT = 500;
 // visita ou a aula que ela agendou no lead de outro (appointmentOwnerId e
 // appointmentOwnerName, do appointmentTaskOwnerFor). A tarefa só aparece na
 // Meta de quem a tem (contactOwnerId e appointmentTaskOwnerId, em
-// src/lib/leads.js), e o professor não tem essa Meta: sem a devolução, a
-// tarefa sumiria de todas as Metas no dia dela. Grava o mesmo null que o
-// Agendar grava quando a tarefa é do dono do lead (src/lib/schedulePatch.js),
-// só nos campos da tarefa que era da pessoa, e o lead com as duas tarefas
-// muda numa gravação só. Devolve quantos leads mudaram.
+// src/lib/leads.js), e nem o professor nem quem foi excluído têm essa Meta:
+// sem a devolução, a tarefa sumiria de todas as Metas no dia dela. Grava o
+// mesmo null que o Agendar grava quando a tarefa é do dono do lead
+// (src/lib/schedulePatch.js), só nos campos da tarefa que era da pessoa, e o
+// lead com as duas tarefas muda numa gravação só. Devolve quantos leads
+// mudaram. Quem chama: o set-role, quando a pessoa vira professor, e o delete,
+// antes de excluir a pessoa.
 async function returnDelegatedTasks(tenantId, userDocId) {
   const leads = dataCollection(tenantId, LEADS_PATH);
   const [contacts, appointments] = await Promise.all([
@@ -587,7 +589,10 @@ function errorForLog(err) {
 
 // ---- admin-delete-user ----
 //
-// Exclui um consultor do tenant do admin. ADMIN do tenant only.
+// Exclui um consultor do tenant do admin. ADMIN do tenant only. Passadas as
+// recusas, as tarefas que a pessoa tinha em lead de outro consultor voltam
+// para o dono de cada lead (returnDelegatedTasks), e só então a conta e o
+// cadastro saem.
 //
 // SEGURANÇA: o authUid a deletar vem do doc dentro do tenant, nunca do body —
 // mas isso sozinho NÃO evitava o IDOR, porque o doc é escrito pelo próprio
@@ -641,6 +646,14 @@ async function handleDelete(req, res) {
       return res.status(denied.status).json({ error: denied.error });
     }
 
+    // Com as recusas para trás, as tarefas que ficaram com a pessoa em lead de
+    // outro consultor (o contato que recebeu e a visita ou a aula que agendou)
+    // voltam para o dono de cada lead, como na troca para professor. Só quem
+    // tem a tarefa a vê na Meta, então sem isso ela sumiria de todas as Metas.
+    // Vem antes da exclusão: se ela falhar depois, a tarefa fica com o dono do
+    // lead, que a vê na Meta dele, e o gestor tenta de novo.
+    const returnedTasks = await returnDelegatedTasks(auth.tenantId, userDocId);
+
     // Excluir consultor com extras faturáveis em uso muda o preço → sync depois.
     // Só consultor ocupa vaga paga: excluir gestor ou professor não muda o
     // preço, então não há o que sincronizar.
@@ -663,6 +676,7 @@ async function handleDelete(req, res) {
 
     if (hadExtras) await syncSubscriptionValue(auth.tenantId, { actorUid: auth.uid });
 
+    console.info('admin-delete-user', { academia: auth.tenantId, cadastro: userDocId, por: auth.uid, tarefasDevolvidas: returnedTasks });
     return res.status(200).json({ ok: true });
   } catch (error) {
     console.error('admin-delete-user', error);
