@@ -49,8 +49,9 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
     // POR usuário (era O(U×(N+M))). Mesmo resultado: as funções de meta/volume
     // filtram por dono internamente (caracterizado em __tests__/dailyGoal.test.js).
     // A fatia leva também a visita ou a aula que a pessoa agendou no lead de um
-    // colega (leadsByGoalOwner), o mesmo critério do useTeamBoard.
-    const leadsByConsultant = leadsByGoalOwner(leads);
+    // colega, e a que ela fez e que já passou para outra pessoa
+    // (leadsByGoalOwner, com as interações), o mesmo critério do useTeamBoard.
+    const leadsByConsultant = leadsByGoalOwner(leads, interactions);
     // Chave = dono do VOLUME (interactionOwnerAuthUid), a MESMA que
     // computeVolumeInRange usa para filtrar — senão a fatia não bate. As
     // interações da PR C gravam actorAuthUid; as antigas caem no dono do lead.

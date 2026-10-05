@@ -1021,6 +1021,94 @@ describe('visita e aula agendadas por outro consultor', () => {
   });
 });
 
+// A marca de feito da visita e da aula fica com quem tinha a tarefa na hora da
+// marcação (goalOwnerId, gravado pelo goalOwnerFields de leads.js). O dono da
+// tarefa muda a cada agendamento novo, e sem o campo a visita feita mudava de
+// Meta junto: saía do "Feitos hoje" de quem a fez e aparecia feita na Meta de
+// quem agendou o passo seguinte.
+describe('a visita e a aula feitas ficam com quem tinha a tarefa na marcação', () => {
+  const VISITA = DAILY_GOAL_CATEGORIES.VISITA_HOJE;
+  const AULA = DAILY_GOAL_CATEGORIES.AULA_HOJE;
+  const ANA = 'u-ana';
+  const BRUNO = 'u-bruno';
+  const amanha16 = new Date(2026, 6, 16, 16, 0);
+  const hoje18 = new Date(2026, 6, 15, 18, 0);
+  const slotsDe = (consultantId, leads, interactions = []) =>
+    computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), consultantId);
+  const marcaDe = (leadId, category, goalOwnerId) => ({ ...goalDone(leadId, category), goalOwnerId });
+  const aulaDeAmanha = (over = {}) => lead({
+    appointmentType: 'aula_experimental', appointmentScheduledFor: amanha16, nextFollowUp: amanha16, nextFollowUpType: 'Aula Experimental', ...over
+  });
+
+  it('o passo seguinte agendado por outra pessoa não tira a visita feita de quem a fez', () => {
+    // A visita da Ana (dona do lead) de hoje está como Compareceu. À tarde o
+    // Bruno agenda pelo Stronizap a aula de amanhã no mesmo lead.
+    const l = aulaDeAmanha({ consultantId: ANA, appointmentOwnerId: BRUNO, appointmentOwnerName: 'Bruno' });
+    const feita = [marcaDe(l.id, VISITA, ANA)];
+    const daAna = byId(slotsDe(ANA, [l], feita), l.id);
+    expect(daAna.categorySlugs).toEqual([VISITA]);
+    expect(daAna.categoryStatus[VISITA]).toBe(true);
+    // O Bruno não ganha a visita feita. Sem outras tarefas, a Meta dele fica
+    // vazia, e não com 1 de 1, que o App gravaria como dia batido.
+    const doBruno = slotsDe(BRUNO, [l], feita);
+    expect(doBruno).toEqual([]);
+    expect(slotTotals(doBruno).totalSlots).toBe(0);
+  });
+
+  it('a Ana ou o gestor agendam o passo seguinte de uma visita que o Bruno fez: ela continua do Bruno', () => {
+    // A visita que o Bruno agendou no lead da Ana está como Compareceu. Depois a
+    // Ana, ou o gestor, agenda a aula de amanhã, e a tarefa do agendamento
+    // volta para a dona do lead (appointmentOwnerId null).
+    const l = aulaDeAmanha({ consultantId: ANA, appointmentOwnerId: null, appointmentOwnerName: null });
+    const feita = [marcaDe(l.id, VISITA, BRUNO)];
+    const doBruno = byId(slotsDe(BRUNO, [l], feita), l.id);
+    expect(doBruno.categorySlugs).toEqual([VISITA]);
+    expect(doBruno.categoryStatus[VISITA]).toBe(true);
+    expect(slotsDe(ANA, [l], feita)).toEqual([]);
+  });
+
+  it('uma visita nova do Bruno, mais tarde no mesmo dia, nasce pendente mesmo com a da Ana marcada', () => {
+    const l = lead({
+      consultantId: ANA, appointmentOwnerId: BRUNO, appointmentOwnerName: 'Bruno',
+      appointmentType: 'visita', appointmentScheduledFor: hoje18, nextFollowUp: hoje18, nextFollowUpType: 'Visita'
+    });
+    const feita = [marcaDe(l.id, VISITA, ANA)];
+    const doBruno = byId(slotsDe(BRUNO, [l], feita), l.id);
+    expect(doBruno.categorySlugs).toEqual([VISITA]);
+    expect(doBruno.categoryStatus[VISITA]).toBe(false);
+    expect(byId(slotsDe(ANA, [l], feita), l.id).categoryStatus[VISITA]).toBe(true);
+    // Quando a visita do Bruno é marcada, cada um fica com a sua.
+    const asDuas = [...feita, marcaDe(l.id, VISITA, BRUNO)];
+    expect(byId(slotsDe(BRUNO, [l], asDuas), l.id).categoryStatus[VISITA]).toBe(true);
+    expect(byId(slotsDe(ANA, [l], asDuas), l.id).categoryStatus[VISITA]).toBe(true);
+  });
+
+  it('a aula feita segue a mesma regra', () => {
+    const l = lead({
+      consultantId: ANA, appointmentOwnerId: null,
+      appointmentType: 'visita', appointmentScheduledFor: amanha16, nextFollowUp: amanha16, nextFollowUpType: 'Visita'
+    });
+    const feita = [marcaDe(l.id, AULA, BRUNO)];
+    expect(byId(slotsDe(BRUNO, [l], feita), l.id).categorySlugs).toEqual([AULA]);
+    expect(slotsDe(ANA, [l], feita)).toEqual([]);
+  });
+
+  it('a marca de antes do campo continua com o dono da tarefa de agora', () => {
+    const l = aulaDeAmanha({ consultantId: ANA, appointmentOwnerId: BRUNO });
+    const antiga = [goalDone(l.id, VISITA)];
+    expect(byId(slotsDe(BRUNO, [l], antiga), l.id).categoryStatus[VISITA]).toBe(true);
+    expect(slotsDe(ANA, [l], antiga)).toEqual([]);
+  });
+
+  it('cliente, Venda e Perda continuam sem visita e aula feitas, mesmo com a marca de quem fez', () => {
+    const cliente = aulaDeAmanha({ consultantId: ANA, status: 'Venda', lifecycleStage: 'cliente' });
+    const vendido = aulaDeAmanha({ consultantId: ANA, status: 'Venda' });
+    const perdido = aulaDeAmanha({ consultantId: ANA, status: 'Perda' });
+    const feitas = [cliente, vendido, perdido].map((l) => marcaDe(l.id, VISITA, BRUNO));
+    expect(slotsDe(BRUNO, [cliente, vendido, perdido], feitas)).toEqual([]);
+  });
+});
+
 // Prévia de AMANHÃ da Meta (o chip "Amanhã" do DailyGoalView): não conta na
 // meta de hoje. A visita e a aula seguem o dono da tarefa do agendamento; o
 // contato continua com o dono do lead, como antes da regra.
@@ -1116,5 +1204,54 @@ describe('leadsByGoalOwner', () => {
       const pelaBase = computeDailyGoalSlots(leads, byLead, u);
       expect(pelaFatia.map((l) => [l.id, l.categorySlugs]), u).toEqual(pelaBase.map((l) => [l.id, l.categorySlugs]));
     }
+  });
+
+  // A visita feita fica com quem tinha a tarefa na marcação (goalOwnerId), que
+  // pode não ser mais nem o dono do lead nem o dono da tarefa de agora.
+  describe('com a marca de feito da visita ou da aula', () => {
+    const marcaDe = (leadId, goalOwnerId, category = DAILY_GOAL_CATEGORIES.VISITA_HOJE) =>
+      ({ ...goalDone(leadId, category), goalOwnerId });
+
+    it('o lead entra também na fatia de quem fez a visita', () => {
+      const l = lead({ consultantId: 'u1', appointmentOwnerId: null });
+      const fatias = leadsByGoalOwner([l], [marcaDe(l.id, 'u2')]);
+      expect(fatias.get('u1')).toEqual([l]);
+      expect(fatias.get('u2')).toEqual([l]);
+    });
+
+    it('várias marcas da mesma pessoa no mesmo lead não repetem o lead', () => {
+      const l = lead({ consultantId: 'u1', appointmentOwnerId: 'u2' });
+      const marcas = [marcaDe(l.id, 'u2'), marcaDe(l.id, 'u2', DAILY_GOAL_CATEGORIES.AULA_HOJE), marcaDe(l.id, 'u1')];
+      const fatias = leadsByGoalOwner([l], marcas);
+      expect(fatias.get('u1')).toEqual([l]);
+      expect(fatias.get('u2')).toEqual([l]);
+    });
+
+    it('marca sem dono, de lead fora da base ou que não é de feito não muda as fatias', () => {
+      const l = lead({ consultantId: 'u1' });
+      const fatias = leadsByGoalOwner([l], [
+        goalDone(l.id, DAILY_GOAL_CATEGORIES.VISITA_HOJE),
+        marcaDe('fora-da-base', 'u2'),
+        { leadId: l.id, type: 'note', goalOwnerId: 'u3' },
+      ]);
+      expect([...fatias.keys()]).toEqual(['u1']);
+    });
+
+    it('a Meta de cada pessoa pela fatia continua a mesma da base inteira', () => {
+      const leads = [
+        lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 16, 16, 0) }),
+        lead({ consultantId: 'u2', appointmentType: 'visita', appointmentScheduledFor: as16, appointmentOwnerId: 'u3' }),
+      ];
+      const marcas = [marcaDe(leads[0].id, 'u2'), marcaDe(leads[1].id, 'u1')];
+      const byLead = buildInteractionsByLead(marcas);
+      const fatias = leadsByGoalOwner(leads, marcas);
+      for (const u of ['u1', 'u2', 'u3']) {
+        const pelaFatia = computeDailyGoalSlots(fatias.get(u) || [], byLead, u);
+        const pelaBase = computeDailyGoalSlots(leads, byLead, u);
+        expect(pelaFatia.map((l) => [l.id, l.categorySlugs, l.categoryStatus]), u)
+          .toEqual(pelaBase.map((l) => [l.id, l.categorySlugs, l.categoryStatus]));
+      }
+      expect(computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2').map((l) => l.id)).toEqual([leads[0].id]);
+    });
   });
 });

@@ -6,10 +6,11 @@
 // A rule de leads permite qualquer membro do tenant dar UPDATE desde que o
 // DONO (consultantAuthUid) fique inalterado — este helper nunca o toca, então
 // funciona mesmo quando quem marca não é o dono (agenda compartilhada). O
-// crédito da Meta vem da interaction daily_goal_done, que é lida por
-// leadId+categoria (o autor não importa), então cai na Meta de quem tem a
-// tarefa: o dono do lead, ou o consultor que agendou a visita ou a aula no
-// lead dele (appointmentTaskOwnerId, em src/lib/leads.js).
+// crédito da Meta vem da interaction daily_goal_done, e o autor não importa:
+// a marca grava quem tem a tarefa na hora (goalOwnerId, do goalOwnerFields em
+// src/lib/leads.js), o dono do lead ou o consultor que agendou a visita ou a
+// aula no lead dele, e o crédito fica com essa pessoa mesmo que o próximo
+// agendamento passe a tarefa do lead para outra.
 //
 // Flags:
 //   consumeAppointment — tira o lead de "Atrasado"/"Contato Hoje" limpando o
@@ -36,7 +37,8 @@ import {
   getAppointmentOutcomeMeta,
   getInteractionSecurityFields,
   DAILY_GOAL_CATEGORY_LABEL,
-  outcomeAppliesToAula
+  outcomeAppliesToAula,
+  goalOwnerFields
 } from './leads.js';
 import { applyOutcomeToAula, clearAulaOutcome } from './aulasWrites.js';
 import { logInteraction } from './interactions.js';
@@ -124,6 +126,7 @@ export async function writeAppointmentOutcome({
         : `${meta.icon} ${meta.label} — ${sourceLabel} (${categoryLabel})`,
       type: 'daily_goal_done',
       dailyGoalCategory: categorySlug,
+      ...goalOwnerFields(lead, categorySlug),
       appointmentOutcome: outcome,
       ...(correction ? { outcomeCorrection: true } : {}),
       createdAt: serverTimestamp()

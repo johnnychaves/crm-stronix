@@ -26,6 +26,10 @@ import {
   DAILY_GOAL_CATEGORIES,
   contactOwnerId,
   appointmentTaskOwnerId,
+  APPOINTMENT_GOAL_CATEGORIES,
+  goalOwnerFields,
+  goalDoneOwnerId,
+  hasGoalDoneTodayFor,
   canEditLead,
 } from '../leads.js';
 
@@ -449,6 +453,73 @@ describe('appointmentTaskOwnerId', () => {
   it('lead sem consultor e sem dono da tarefa devolve null', () => {
     expect(appointmentTaskOwnerId({})).toBeNull();
     expect(appointmentTaskOwnerId(null)).toBeNull();
+  });
+});
+
+// A marca do dia (daily_goal_done) da visita e da aula grava quem tinha a
+// tarefa na hora da marcação (goalOwnerId), porque o dono da tarefa muda a cada
+// agendamento novo. O crédito segue a marca; a marca de antes do campo segue o
+// dono de agora.
+describe('dono da tarefa na marca do dia da visita e da aula', () => {
+  const VISITA = DAILY_GOAL_CATEGORIES.VISITA_HOJE;
+  const AULA = DAILY_GOAL_CATEGORIES.AULA_HOJE;
+  const marca = (over = {}) => ({ leadId: 'l1', type: 'daily_goal_done', dailyGoalCategory: VISITA, createdAt: TODAY_10H, ...over });
+
+  it('as categorias são só a visita e a aula experimental', () => {
+    expect(APPOINTMENT_GOAL_CATEGORIES).toEqual([VISITA, AULA]);
+  });
+
+  it('goalOwnerFields grava o dono da tarefa de agora na visita e na aula', () => {
+    expect(goalOwnerFields({ consultantId: 'u1' }, VISITA)).toEqual({ goalOwnerId: 'u1' });
+    expect(goalOwnerFields({ consultantId: 'u1', appointmentOwnerId: 'u3' }, AULA)).toEqual({ goalOwnerId: 'u3' });
+  });
+
+  it('goalOwnerFields não grava nada nas outras categorias nem em lead sem dono', () => {
+    for (const slug of [DAILY_GOAL_CATEGORIES.CONTATO_HOJE, DAILY_GOAL_CATEGORIES.ATRASADO, DAILY_GOAL_CATEGORIES.NOVO_24H, DAILY_GOAL_CATEGORIES.RENOVACAO]) {
+      expect(goalOwnerFields({ consultantId: 'u1', appointmentOwnerId: 'u3' }, slug), slug).toEqual({});
+    }
+    expect(goalOwnerFields({}, VISITA)).toEqual({});
+    expect(goalOwnerFields(null, VISITA)).toEqual({});
+  });
+
+  it('goalDoneOwnerId: a marca com o campo vale para quem tinha a tarefa', () => {
+    expect(goalDoneOwnerId({ consultantId: 'u1', appointmentOwnerId: 'u3' }, marca({ goalOwnerId: 'u2' }))).toBe('u2');
+  });
+
+  it('goalDoneOwnerId: a marca de antes do campo vale para o dono de agora', () => {
+    expect(goalDoneOwnerId({ consultantId: 'u1', appointmentOwnerId: 'u3' }, marca())).toBe('u3');
+    expect(goalDoneOwnerId({ consultantId: 'u1' }, marca())).toBe('u1');
+  });
+
+  it('hasGoalDoneTodayFor: a visita feita conta só para quem tinha a tarefa na marcação', () => {
+    const lead = { id: 'l1', consultantId: 'u1', appointmentOwnerId: 'u3' };
+    const feita = [marca({ goalOwnerId: 'u2' })];
+    expect(hasGoalDoneTodayFor(lead, VISITA, feita, TODAY_START, 'u2')).toBe(true);
+    expect(hasGoalDoneTodayFor(lead, VISITA, feita, TODAY_START, 'u3')).toBe(false);
+    expect(hasGoalDoneTodayFor(lead, VISITA, feita, TODAY_START, 'u1')).toBe(false);
+  });
+
+  it('hasGoalDoneTodayFor: a marca de antes do campo conta para o dono de agora', () => {
+    const lead = { id: 'l1', consultantId: 'u1', appointmentOwnerId: 'u3' };
+    expect(hasGoalDoneTodayFor(lead, AULA, [marca({ dailyGoalCategory: AULA })], TODAY_START, 'u3')).toBe(true);
+    expect(hasGoalDoneTodayFor(lead, AULA, [marca({ dailyGoalCategory: AULA })], TODAY_START, 'u1')).toBe(false);
+  });
+
+  it('hasGoalDoneTodayFor: lead sem dono confere a marca sem dono, para a Agenda não repetir a marca', () => {
+    expect(hasGoalDoneTodayFor({ id: 'l1' }, VISITA, [marca()], TODAY_START, null)).toBe(true);
+  });
+
+  it('hasGoalDoneTodayFor: o dia, o lead e a categoria continuam valendo', () => {
+    const lead = { id: 'l1', consultantId: 'u1' };
+    expect(hasGoalDoneTodayFor(lead, VISITA, [marca({ createdAt: YESTERDAY_10H })], TODAY_START, 'u1')).toBe(false);
+    expect(hasGoalDoneTodayFor(lead, VISITA, [marca({ leadId: 'l2' })], TODAY_START, 'u1')).toBe(false);
+    expect(hasGoalDoneTodayFor(lead, AULA, [marca()], TODAY_START, 'u1')).toBe(false);
+  });
+
+  it('hasGoalDoneTodayFor: nas outras categorias o dono não conta, como no hasGoalDoneToday', () => {
+    const lead = { id: 'l1', consultantId: 'u1' };
+    const contato = [marca({ dailyGoalCategory: DAILY_GOAL_CATEGORIES.CONTATO_HOJE, goalOwnerId: 'u9' })];
+    expect(hasGoalDoneTodayFor(lead, DAILY_GOAL_CATEGORIES.CONTATO_HOJE, contato, TODAY_START, 'u1')).toBe(true);
   });
 });
 
