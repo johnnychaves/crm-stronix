@@ -6,7 +6,8 @@ import { SOLO_TRAINING_LABEL } from '../../lib/professores.js';
 
 // Agenda do dia compartilhada (painel da Meta Diária). Só apresenta: as linhas
 // chegam prontas de computeDayAgenda e o clique sobe para o pai. NÃO conta na
-// meta de quem está olhando — quem confirma credita o DONO do lead.
+// meta de quem está olhando — quem confirma credita o dono da tarefa do
+// agendamento (o dono do lead, ou o consultor que agendou no lead dele).
 
 const hourLabel = (d) =>
   d instanceof Date

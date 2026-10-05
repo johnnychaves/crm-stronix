@@ -7,7 +7,9 @@
 // DONO (consultantAuthUid) fique inalterado — este helper nunca o toca, então
 // funciona mesmo quando quem marca não é o dono (agenda compartilhada). O
 // crédito da Meta vem da interaction daily_goal_done, que é lida por
-// leadId+categoria (o autor não importa), então cai na Meta do DONO do lead.
+// leadId+categoria (o autor não importa), então cai na Meta de quem tem a
+// tarefa: o dono do lead, ou o consultor que agendou a visita ou a aula no
+// lead dele (appointmentTaskOwnerId, em src/lib/leads.js).
 //
 // Flags:
 //   consumeAppointment — tira o lead de "Atrasado"/"Contato Hoje" limpando o
@@ -153,8 +155,8 @@ export async function writeAppointmentOutcome({
 // dia (visitOutcomesByLead) e o Operacional não conta de novo a tarefa da
 // mesma pessoa no mesmo dia (tasksByType). Desfazer não grava marca, como antes.
 // A marca de correção passa pelo writeAppointmentOutcome, como a primeira
-// marcação da agenda, para o crédito da tarefa ficar com o DONO do lead e não
-// com quem clicou. Só o status_change da volta da etapa vai por logInteraction,
+// marcação da agenda, para o crédito ficar com o dono da tarefa e não com quem
+// clicou. Só o status_change da volta da etapa vai por logInteraction,
 // que registra quem corrigiu (e status_change não conta como tarefa).
 export async function correctAppointmentOutcome({
   db,

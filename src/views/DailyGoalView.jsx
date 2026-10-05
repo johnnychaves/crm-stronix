@@ -9,7 +9,7 @@ import { isGestor } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf } from '../lib/dailyGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -1061,7 +1061,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // Agenda do dia (painel compartilhado): todas as visitas e aulas de HOJE na
   // academia, de qualquer consultor. Calculada à parte — NÃO entra em
   // processedLeads/totalSlots, não conta na minha meta. Quem confirma credita o
-  // DONO do lead (writeAppointmentOutcome).
+  // dono da tarefa do agendamento: o dono do lead, ou o consultor que agendou
+  // no lead dele (writeAppointmentOutcome e appointmentTaskOwnerId).
   const [savingAgendaId, setSavingAgendaId] = useState(null);
 
   // Índice de usuários por doc id E por authUid: consultantId guarda o id do
@@ -1707,19 +1708,11 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // Agendamentos de AMANHÃ (prévia) — visitas, aulas e contatos do consultor
   // marcados para o dia seguinte. NÃO entram na meta de hoje (não tocam em
   // processedLeads/totalSlots): é só uma antecipação do que vem pela frente.
+  // A visita e a aula seguem o dono da tarefa do agendamento, como na Meta
+  // (regra em tomorrowAppointmentsOf, src/lib/dailyGoal.js).
   const tomorrowAppts = useMemo(() => {
     void todayKey; // "amanhã" também vira com o dia (A5)
-    const tStart = new Date(); tStart.setHours(0, 0, 0, 0); tStart.setDate(tStart.getDate() + 1);
-    const tEnd = new Date(tStart); tEnd.setHours(23, 59, 59, 999);
-    return (leads || [])
-      .filter(l => l.consultantId === appUser.id && l.status !== 'Venda' && l.status !== 'Perda')
-      .map(l => {
-        const when = getLeadAppointmentDate(l) ||
-          (l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) ? l.nextFollowUp : null);
-        return { lead: l, when };
-      })
-      .filter(x => x.when && x.when >= tStart && x.when <= tEnd)
-      .sort((a, b) => a.when - b.when);
+    return tomorrowAppointmentsOf(leads, appUser.id);
   }, [leads, appUser, todayKey]);
 
   const greeting = useMemo(() => {

@@ -7,11 +7,15 @@
 // agendamento feito em cliente. Aqui não existe regra de horário: quem abre a
 // Meta vê o dia inteiro e pode registrar presença de qualquer linha.
 //
-// Nada disto conta na meta de quem confirma. O crédito vai para o DONO do lead,
-// via writeAppointmentOutcome (src/lib/appointmentOutcome.js).
+// Nada disto conta na meta de quem confirma. O crédito vai para o DONO DA
+// TAREFA do agendamento, via writeAppointmentOutcome
+// (src/lib/appointmentOutcome.js): o dono do lead, ou o consultor que agendou
+// no lead dele (appointmentTaskOwnerId, em src/lib/leads.js). É também quem a
+// linha chama de "sua" e o nome que ela mostra.
 
 import {
   DAILY_GOAL_CATEGORIES,
+  appointmentTaskOwnerId,
   getLeadAppointmentDate,
   getLeadAppointmentType,
   isClientLead,
@@ -56,7 +60,11 @@ export function computeDayAgenda({
     const scheduledAt = getLeadAppointmentDate(lead);
     if (!isSameLocalDay(scheduledAt, now)) return;
 
-    const owner = lookupUser(usersById, lead.consultantId);
+    // Dono da TAREFA do agendamento. O nome gravado vale quando a pessoa não
+    // está no índice: o do dono da tarefa, ou o do dono do lead.
+    const taskOwnerId = appointmentTaskOwnerId(lead);
+    const owner = lookupUser(usersById, taskOwnerId);
+    const savedOwnerName = lead.appointmentOwnerId ? lead.appointmentOwnerName : lead.consultantName;
 
     // O desfecho SÓ vale se foi registrado hoje. Comparecimento preserva o
     // agendamento e o wizard não limpa appointmentOutcome ao remarcar, então sem
@@ -73,8 +81,8 @@ export function computeDayAgenda({
       categorySlug: type === 'visita'
         ? DAILY_GOAL_CATEGORIES.VISITA_HOJE
         : DAILY_GOAL_CATEGORIES.AULA_HOJE,
-      ownerName: owner?.name || lead.consultantName || 'sem consultor',
-      isMine: Boolean(viewerId) && lead.consultantId === viewerId,
+      ownerName: owner?.name || savedOwnerName || 'sem consultor',
+      isMine: Boolean(viewerId) && taskOwnerId === viewerId,
       // Mesmo critério do resto do app (isClientLead): pega também quem foi
       // matriculado por etapa customizada do funil ("Matriculado", "Convertido"),
       // não só o status literal 'Venda'. É o que decide se a linha é upsell de

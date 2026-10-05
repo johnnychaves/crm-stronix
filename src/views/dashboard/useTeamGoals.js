@@ -18,7 +18,8 @@ import {
   countMetaDaysInMonth,
   volumeTargetFor,
   dgDateKey,
-  interactionOwnerAuthUid
+  interactionOwnerAuthUid,
+  leadsByGoalOwner
 } from '../../lib/dailyGoal.js';
 import { DEFAULT_RENEWAL_CHECKPOINTS } from '../../lib/renewalGoal.js';
 
@@ -47,11 +48,9 @@ export function useTeamGoals({ db, appUser, usersList, leads, interactions }) {
     // Fatias por dono calculadas UMA vez (O(N+M+H)) em vez de re-varrer tudo
     // POR usuário (era O(U×(N+M))). Mesmo resultado: as funções de meta/volume
     // filtram por dono internamente (caracterizado em __tests__/dailyGoal.test.js).
-    const leadsByConsultant = new Map();
-    (leads || []).forEach((l) => {
-      const arr = leadsByConsultant.get(l.consultantId);
-      if (arr) arr.push(l); else leadsByConsultant.set(l.consultantId, [l]);
-    });
+    // A fatia leva também a visita ou a aula que a pessoa agendou no lead de um
+    // colega (leadsByGoalOwner), o mesmo critério do useTeamBoard.
+    const leadsByConsultant = leadsByGoalOwner(leads);
     // Chave = dono do VOLUME (interactionOwnerAuthUid), a MESMA que
     // computeVolumeInRange usa para filtrar — senão a fatia não bate. As
     // interações da PR C gravam actorAuthUid; as antigas caem no dono do lead.
