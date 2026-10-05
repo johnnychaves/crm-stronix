@@ -32,7 +32,7 @@ import {
 } from '../src/lib/aulas.js';
 import { buildSchedulePatch } from '../src/lib/schedulePatch.js';
 import { contactOf } from '../src/lib/guardian.js';
-import { isGestor, isProfessor, isSeller } from '../src/lib/acesso.js';
+import { isMetaParticipant, isProfessor } from '../src/lib/acesso.js';
 import { MODULES, hasModule } from '../src/lib/modules.js';
 
 const MINUTE_MS = 60000;
@@ -151,14 +151,14 @@ export function suggestedDays({ now = new Date(), metaWeekdays = null } = {}) {
 }
 
 // Agendar hoje conta na Meta diária de quem agenda: consultor, em dia da meta
-// da academia, no calendário de Brasília. Gestor e professor ficam fora da
-// régua, como no Stronilead: o professor não vende (isSeller, em
-// src/lib/acesso.js), e o teamRole o manda como 'consultor' só porque o
+// da academia, no calendário de Brasília. O papel é a regra do Stronilead
+// (isMetaParticipant, em src/lib/acesso.js): gestor e professor ficam fora da
+// régua, e o teamRole manda o professor como 'consultor' só porque o
 // Stronizap não conhece outro papel. Lista vazia de dias conta como nenhum
 // dia, mas a rota nunca chega aqui com lista vazia: o scheduleCatalogView a
 // troca por segunda a sexta.
 export function countsForMeta({ member, metaWeekdays, now = new Date() }) {
-  return isSeller(member) && !isGestor(member)
+  return isMetaParticipant(member)
     && (metaWeekdays || []).includes(diaDaSemanaDoDia(diaDeBrasilia(now)));
 }
 

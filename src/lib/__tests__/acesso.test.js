@@ -2,7 +2,7 @@
 // vende, as ações e as telas do professor.
 import { describe, it, expect } from 'vitest';
 import {
-  ROLES, roleOf, isGestor, isProfessor, isSeller, ROLE_LABELS, roleLabel,
+  ROLES, roleOf, isGestor, isProfessor, isSeller, isMetaParticipant, ROLE_LABELS, roleLabel,
   ACTIONS, can, PROFESSOR_SCREENS, canOpenScreen,
 } from '../acesso.js';
 import { SCREENS } from '../routes.js';
@@ -57,6 +57,31 @@ describe('isGestor, isProfessor e isSeller', () => {
 
   it('serve direto no filter de uma lista da equipe', () => {
     expect([gestor, professor, consultor].filter(isSeller).map((u) => u.id)).toEqual(['u1', 'u2']);
+  });
+});
+
+// Quem participa da Meta Diária pelo papel: o consultor. É a parte do papel do
+// countsForMeta da ponte, sem o dia da meta, e decide quem fica com a tarefa da
+// visita ou da aula agendada no lead de outro consultor.
+describe('isMetaParticipant', () => {
+  it('só o consultor participa: o gestor e o professor ficam fora', () => {
+    expect([gestor, consultor, professor].map((u) => isMetaParticipant(u))).toEqual([false, true, false]);
+  });
+
+  it('cadastro sem papel e cadastro antigo valem consultor, então participam', () => {
+    expect(isMetaParticipant(semPapel)).toBe(true);
+    expect(isMetaParticipant(legado)).toBe(true);
+  });
+
+  it('sem usuário ninguém participa', () => {
+    expect(isMetaParticipant(null)).toBe(false);
+    expect(isMetaParticipant(undefined)).toBe(false);
+  });
+
+  it('é quem vende sem ser gestor', () => {
+    for (const u of [gestor, consultor, professor, semPapel, legado, null]) {
+      expect(isMetaParticipant(u)).toBe(isSeller(u) && !isGestor(u));
+    }
   });
 });
 

@@ -38,6 +38,13 @@ export const isProfessor = (user) => roleOf(user) === ROLES.PROFESSOR;
 // consultor.
 export const isSeller = (user) => !!user && !isProfessor(user);
 
+// Quem participa da Meta Diária pelo papel: só o consultor. O gestor fica fora
+// da régua (acompanha a Meta da equipe) e o professor não vende. Decide quem
+// fica com a tarefa da visita ou da aula que agenda no lead de outro consultor
+// (appointmentTaskOwnerFor, em src/lib/schedulePatch.js), e a ponte com o
+// Stronizap soma a ela o dia da meta no countsForMeta (api/_zapSchedule.js).
+export const isMetaParticipant = (user) => isSeller(user) && !isGestor(user);
+
 // Nome do papel na tela.
 export const ROLE_LABELS = Object.freeze({
   [ROLES.GESTOR]: 'Gestor',
