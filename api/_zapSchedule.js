@@ -30,7 +30,7 @@ import { professorNameById, SOLO_TRAINING_LABEL } from '../src/lib/professores.j
 import {
   AULA_STATUS, APPOINTMENT_RECORD_TYPES, aulaRecordFields, isAulaRecord, recordPlanFor, recordMatchesAppointment
 } from '../src/lib/aulas.js';
-import { buildSchedulePatch } from '../src/lib/schedulePatch.js';
+import { buildSchedulePatch, appointmentTaskOwnerFor, taskOwnerText } from '../src/lib/schedulePatch.js';
 import { contactOf } from '../src/lib/guardian.js';
 import { isMetaParticipant, isProfessor } from '../src/lib/acesso.js';
 import { MODULES, hasModule } from '../src/lib/modules.js';
@@ -445,11 +445,14 @@ const TYPE_LABEL = Object.freeze({ visita: 'Visita', aula_experimental: 'Aula Ex
 // linha do tempo lê com parseAppointment:
 //   "🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: …"
 //   "🔔 Aula Experimental agendada (Pilates · 1 aula) · Carla Dias p/ 02/10/2026, 19:00."
+// Quando a tarefa fica com quem agendou (`taskOwner`, de
+// appointmentTaskOwnerFor), o texto diz de quem ela é, antes da anotação:
+//   "🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00 · tarefa de Bruno Lima."
 // O navegador escreve o dia e a hora no fuso da academia; aqui eles saem no
 // horário de Brasília, porque a Vercel roda em UTC.
 export function scheduleInteractionText({
   type, unit = null, modality = null, quantity = null, professorId = null, professorName = null,
-  soloTraining = false, at, note = null
+  soloTraining = false, at, note = null, taskOwner = null
 }) {
   let extra = '';
   if (type === 'aula_experimental') {
@@ -460,8 +463,9 @@ export function scheduleInteractionText({
   } else if (unit) {
     extra = ` (Unidade ${unit})`;
   }
+  const tarefa = taskOwner ? taskOwnerText(taskOwner.name) : '';
   const obs = (note || '').trim();
-  return `🔔 ${TYPE_LABEL[type]} agendada${extra} p/ ${dataHoraDeBrasilia(at)}.` + (obs ? ` Obs: ${obs}` : '');
+  return `🔔 ${TYPE_LABEL[type]} agendada${extra} p/ ${dataHoraDeBrasilia(at)}${tarefa}.` + (obs ? ` Obs: ${obs}` : '');
 }
 
 // A visita em aberto do lead, como o findOpenVisitaId do aulasWrites.js: a
@@ -534,6 +538,11 @@ export function scheduleRecordChanges({ lead, schedule, at, records = [] }) {
 //     actorAuthUid, e a origem (via e zapChannelName);
 //   - leadPatch: o buildSchedulePatch do assistente, mais lastInteractionAt e
 //     interactionsCount, como o logInteraction.
+// Quem fica com a tarefa do dia sai do appointmentTaskOwnerFor, com o actor
+// (o cadastro dele em stronix_users, com o papel), na regra do assistente: o
+// consultor que agenda no lead de outro fica com a tarefa, o leadPatch leva
+// appointmentOwnerId e appointmentOwnerName e o texto diz de quem ela é. O
+// registro em stronix_aulas continua com o consultor do dono do lead.
 // `professors` são os documentos de stronix_professores, de onde sai o nome.
 // `serverTime` e `increment` são os FieldValue do firebase-admin.
 export function buildScheduleWrites({
@@ -542,6 +551,7 @@ export function buildScheduleWrites({
 }) {
   const isAula = schedule.type === 'aula_experimental';
   const professorName = isAula && schedule.professorId ? professorNameById(professors, schedule.professorId) : null;
+  const taskOwner = appointmentTaskOwnerFor({ scheduler: actor, lead });
   const recordPatch = isAula
     ? {
         professorId: schedule.professorId || null,
@@ -578,7 +588,7 @@ export function buildScheduleWrites({
     actorId: actor.id || null,
     actorAuthUid: actor.authUid || null,
     createdAt: serverTime,
-    text: scheduleInteractionText({ ...schedule, professorName, at }),
+    text: scheduleInteractionText({ ...schedule, professorName, at, taskOwner }),
     type: 'note',
     volumeKind: schedule.type,
     via: ZAP_VIA,
@@ -597,7 +607,9 @@ export function buildScheduleWrites({
       quantidade: schedule.quantity,
       unidade: schedule.unit,
       note: schedule.note,
-      currentAulaId: isAula ? recordId : (lead.currentAulaId || null)
+      currentAulaId: isAula ? recordId : (lead.currentAulaId || null),
+      appointmentOwnerId: taskOwner?.id || null,
+      appointmentOwnerName: taskOwner?.name || null
     })
   };
   const closed = close ? { id: close.id, update: { status: close.status, outcomeAt: serverTime } } : null;

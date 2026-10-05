@@ -3,7 +3,8 @@
 // (buildScheduleWrites, em api/_zapSchedule.js) e passa pelas regras que leem
 // o agendamento: a linha do tempo (parseAppointment, classifyInteraction), o
 // "Já interagido hoje" (hasActiveInteractionToday) e a Meta Diária (volume de
-// quem agendou e tarefa do dono no dia). Se uma delas deixar de reconhecer o
+// quem agendou e, no dia, a tarefa de quem agendou no lead de outro consultor,
+// ou do dono quando é ele que agenda). Se uma delas deixar de reconhecer o
 // registro, a ficha ou a Meta mudam sem ninguém perceber.
 //
 // As datas do app são locais; o texto que a ponte grava sai no horário de
@@ -54,14 +55,14 @@ const PROFESSORES = [{ id: 'p1', nome: 'Carla Dias', modalidadeIds: ['m2'] }];
 const HORA = 'HORA';
 const MAIS_UM = 'MAIS_UM';
 
-// O que a ponte grava quando a Ana agenda, com as datas como o Firestore
-// devolve: só os dois marcadores são trocados (a hora do servidor vira agora, e
-// o "mais um" soma no que o lead já tinha). O resto fica como a ponte mandou,
-// então um campo que ela deixe de gravar, como o createdAt da interação,
-// continua faltando e o teste falha.
-function agendar(schedule, at) {
+// O que a ponte grava quando a Ana agenda (ou outra pessoa, em `actor`), com as
+// datas como o Firestore devolve: só os dois marcadores são trocados (a hora do
+// servidor vira agora, e o "mais um" soma no que o lead já tinha). O resto fica
+// como a ponte mandou, então um campo que ela deixe de gravar, como o
+// createdAt da interação, continua faltando e o teste falha.
+function agendar(schedule, at, actor = ANA) {
   const { interaction, leadPatch } = buildScheduleWrites({
-    lead: lead(), actor: ANA, schedule, at, professors: PROFESSORES, channelName: 'Recepção',
+    lead: lead(), actor, schedule, at, professors: PROFESSORES, channelName: 'Recepção',
     newRecordId: 'rec-1', serverTime: HORA, increment: MAIS_UM
   });
   const agora = new Date();
@@ -90,6 +91,16 @@ describe('o agendamento da ponte na linha do tempo', () => {
     expect(parseAppointment(interaction)).toEqual({
       kind: 'visit', label: 'Visita à unidade', when: new Date(2026, 9, 1, 18, 0),
       location: 'Unidade Centro', note: 'Vem depois do trabalho.'
+    });
+  });
+
+  // A Ana agenda no lead do Bruno: a tarefa fica com ela e o texto termina com
+  // " · tarefa de Ana Souza". A leitura do agendamento não pode mudar por isso.
+  it('o aviso de quem ficou com a tarefa não atrapalha a leitura', () => {
+    const { interaction } = agendar(VISITA, VISITA_EM);
+    expect(interaction.text).toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00 · tarefa de Ana Souza. Obs: Vem depois do trabalho.');
+    expect(parseAppointment(interaction)).toMatchObject({
+      kind: 'visit', when: new Date(2026, 9, 1, 18, 0), location: 'Unidade Centro', note: 'Vem depois do trabalho.'
     });
   });
 
@@ -128,20 +139,34 @@ describe('o agendamento da ponte na Meta Diária', () => {
     expect(computeDailyVolume([agendado], [interaction], BRUNO.id, BRUNO.authUid).agendamentos).toBe(0);
   });
 
-  it('no dia, a visita vira tarefa do dono do lead e ele sai dos Atrasados', () => {
+  // Regra do dono (05/10/2026): a Ana é consultora e não é dona do lead, então
+  // a visita que ela agendou é tarefa dela. O Bruno, dono do lead, sai dos
+  // Atrasados (o próximo contato virou a visita) e não vê a visita.
+  it('no dia, a visita vira tarefa de quem agendou, e o dono do lead sai dos Atrasados', () => {
     const antes = computeDailyGoalSlots([lead()], new Map(), BRUNO.id);
     expect(antes.map((l) => l.categorySlugs)).toEqual([['atrasado']]);
     const { interaction, lead: agendado } = agendar(VISITA, VISITA_EM);
-    const depois = computeDailyGoalSlots([agendado], buildInteractionsByLead([interaction]), BRUNO.id);
-    expect(depois.map((l) => l.categorySlugs)).toEqual([['visita_hoje']]);
-    expect(depois[0].hasOtherActivityToday).toBe(true);
-    expect(computeDailyGoalSlots([agendado], buildInteractionsByLead([interaction]), ANA.id)).toEqual([]);
+    expect(agendado).toMatchObject({ consultantId: 'u-bruno', appointmentOwnerId: 'u-ana', appointmentOwnerName: 'Ana Souza' });
+    const daAna = computeDailyGoalSlots([agendado], buildInteractionsByLead([interaction]), ANA.id);
+    expect(daAna.map((l) => l.categorySlugs)).toEqual([['visita_hoje']]);
+    expect(daAna[0].hasOtherActivityToday).toBe(true);
+    expect(computeDailyGoalSlots([agendado], buildInteractionsByLead([interaction]), BRUNO.id)).toEqual([]);
   });
 
-  it('no dia da aula, ela vira tarefa de Aulas exp. do dono', () => {
+  it('no dia da aula, ela vira tarefa de Aulas exp. de quem agendou', () => {
     vi.setSystemTime(new Date(2026, 9, 2, 10, 0));
     const { interaction, lead: agendado } = agendar(AULA, AULA_EM);
-    const slots = computeDailyGoalSlots([agendado], buildInteractionsByLead([interaction]), BRUNO.id);
+    const slots = computeDailyGoalSlots([agendado], buildInteractionsByLead([interaction]), ANA.id);
     expect(slots.map((l) => l.categorySlugs)).toEqual([['aula_hoje']]);
+    expect(computeDailyGoalSlots([agendado], buildInteractionsByLead([interaction]), BRUNO.id)).toEqual([]);
+  });
+
+  it('quando o dono do lead agenda, a tarefa continua com ele, sem aviso no texto', () => {
+    const { interaction, lead: agendado } = agendar(VISITA, VISITA_EM, BRUNO);
+    expect(agendado.appointmentOwnerId).toBeNull();
+    expect(interaction.text).not.toContain('tarefa de');
+    const doBruno = computeDailyGoalSlots([agendado], buildInteractionsByLead([interaction]), BRUNO.id);
+    expect(doBruno.map((l) => l.categorySlugs)).toEqual([['visita_hoje']]);
+    expect(computeDailyGoalSlots([agendado], buildInteractionsByLead([interaction]), ANA.id)).toEqual([]);
   });
 });
