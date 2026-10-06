@@ -132,32 +132,60 @@ export const hasGoalDoneToday = (lead, categorySlug, interactions, todayStart) =
 export const APPOINTMENT_GOAL_CATEGORIES = Object.freeze([DAILY_GOAL_CATEGORIES.VISITA_HOJE, DAILY_GOAL_CATEGORIES.AULA_HOJE]);
 export const isAppointmentGoalCategory = (categorySlug) => APPOINTMENT_GOAL_CATEGORIES.includes(categorySlug);
 
-// O dono da tarefa que a marca do dia da visita e da aula grava (goalOwnerId):
-// quem tem a tarefa na hora da marcação. O dono da tarefa muda a cada
-// agendamento novo (appointmentOwnerId), e sem o campo a visita feita mudava de
-// Meta junto. Toda gravação de `daily_goal_done` com a categoria da tarefa
-// espalha este objeto na interação. As outras categorias não levam o campo, e
-// lead sem dono também não.
+// As categorias da Meta cuja tarefa tem dono próprio, que pode não ser o dono
+// do lead: a visita e a aula seguem quem agendou (appointmentTaskOwnerId) e o
+// contato segue quem recebeu o contato (contactOwnerId), os dois mais abaixo.
+// A marca de feito delas grava esse dono (goalOwnerFields), e o crédito segue a
+// marca (hasGoalDoneTodayFor). O Novo 24h, o Atrasado, a Renovação e os
+// Vencidos ficam sempre com o dono do lead.
+export const TASK_OWNER_GOAL_CATEGORIES = Object.freeze([...APPOINTMENT_GOAL_CATEGORIES, DAILY_GOAL_CATEGORIES.CONTATO_HOJE]);
+export const isTaskOwnerGoalCategory = (categorySlug) => TASK_OWNER_GOAL_CATEGORIES.includes(categorySlug);
+
+// Quem tem agora a tarefa da categoria no lead. Null nas categorias sem dono
+// de tarefa próprio.
+export const goalTaskOwnerId = (lead, categorySlug) => {
+  if (isAppointmentGoalCategory(categorySlug)) return appointmentTaskOwnerId(lead);
+  if (categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE) return contactOwnerId(lead);
+  return null;
+};
+
+// O dono da tarefa que a marca do dia da visita, da aula e do contato grava
+// (goalOwnerId): quem tem a tarefa na hora da marcação. O dono da tarefa muda
+// (a visita e a aula a cada agendamento novo, pelo appointmentOwnerId, e o
+// contato quando é passado para outra pessoa ou volta ao dono do lead, pelo
+// nextFollowUpOwnerId), e o "Contato feito" limpa o próximo contato. Sem o
+// campo, a tarefa feita mudava de Meta junto. Toda gravação de
+// `daily_goal_done` com a categoria da tarefa espalha este objeto na interação.
+// As outras categorias não levam o campo, e lead sem dono também não.
 export const goalOwnerFields = (lead, categorySlug) => {
-  if (!isAppointmentGoalCategory(categorySlug)) return {};
-  const owner = appointmentTaskOwnerId(lead);
+  const owner = goalTaskOwnerId(lead, categorySlug);
   return owner ? { goalOwnerId: owner } : {};
 };
 
-// Para quem vale a marca do dia da visita ou da aula: quem tinha a tarefa na
-// hora da marcação (goalOwnerId). A marca de antes do campo vale para o dono da
-// tarefa de agora, como valia até ali.
-export const goalDoneOwnerId = (lead, interaction) => interaction?.goalOwnerId || appointmentTaskOwnerId(lead);
+// Para quem vale a marca do dia da visita, da aula ou do contato: quem tinha a
+// tarefa na hora da marcação (goalOwnerId). No contato, a marca de antes do
+// campo (a do dia do deploy e a de uma aba aberta com o código antigo, que não
+// recarrega sozinha) vale para quem a gravou (actorId): só quem tem o contato o
+// vê na Meta e o conclui. Sem isso, o feito iria para o colega que recebesse o
+// próximo contato no mesmo dia, e o contato novo dele, quando fosse para hoje,
+// já nasceria feito. Na visita e na aula, e na marca sem autor, vale quem tem a
+// tarefa agora, como valia até ali: a Agenda de hoje é de todos, e quem marca o
+// desfecho pode não ser quem tem a visita. A categoria sai da própria marca
+// quando não é passada.
+export const goalDoneOwnerId = (lead, interaction, categorySlug = interaction?.dailyGoalCategory || interaction?.metadata?.category) =>
+  interaction?.goalOwnerId
+  || (categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE && interaction?.actorId)
+  || goalTaskOwnerId(lead, categorySlug);
 
-// hasGoalDoneToday de uma pessoa. Na visita e na aula, só conta a marca que
-// vale para `ownerId` (goalDoneOwnerId). Nas outras categorias a marca vale
-// para qualquer um, como no hasGoalDoneToday: quem decide de quem é a tarefa é
-// a Meta, pelo dono do lead ou do contato.
+// hasGoalDoneToday de uma pessoa. Na visita, na aula e no contato, só conta a
+// marca que vale para `ownerId` (goalDoneOwnerId). Nas outras categorias a
+// marca vale para qualquer um, como no hasGoalDoneToday: a tarefa é sempre do
+// dono do lead.
 export const hasGoalDoneTodayFor = (lead, categorySlug, interactions, todayStart, ownerId) => {
-  if (!isAppointmentGoalCategory(categorySlug)) return hasGoalDoneToday(lead, categorySlug, interactions, todayStart);
+  if (!isTaskOwnerGoalCategory(categorySlug)) return hasGoalDoneToday(lead, categorySlug, interactions, todayStart);
   if (!lead || !todayStart) return false;
   return (interactions || []).some(i =>
-    isGoalDoneMarkToday(i, lead, categorySlug, todayStart) && goalDoneOwnerId(lead, i) === ownerId
+    isGoalDoneMarkToday(i, lead, categorySlug, todayStart) && goalDoneOwnerId(lead, i, categorySlug) === ownerId
   );
 };
 

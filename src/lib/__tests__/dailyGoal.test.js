@@ -29,6 +29,7 @@ import {
   leadsByGoalOwner
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
+import { contactDone, contactReschedule } from '../contactGoal.js';
 
 // Quarta-feira, 15 de julho de 2026, 10:00 local — "agora" de referência.
 const NOW = new Date(2026, 6, 15, 10, 0, 0);
@@ -910,6 +911,176 @@ describe('contato delegado a outro consultor', () => {
   });
 });
 
+// A marca de feito do contato fica com quem tinha a tarefa na hora da marcação
+// (goalOwnerId, com o contactOwnerId do lead), como a da visita e a da aula. O
+// "Contato feito" limpa o próximo contato e o Reagendar o leva para outro dia,
+// então o contato sai da condição viva, e o feito de hoje só era procurado nos
+// leads do dono do lead: o feito sumia da Meta de quem recebeu o contato e
+// aparecia na Meta do dono, que não o fez.
+describe('o contato feito fica com quem tinha a tarefa na marcação', () => {
+  const CONTATO = DAILY_GOAL_CATEGORIES.CONTATO_HOJE;
+  const ANA = 'u-ana'; // dona do lead
+  const BRUNO = 'u-bruno'; // recebeu o contato
+  const slotsDe = (consultantId, leads, interactions = []) =>
+    computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), consultantId);
+  const marcaDe = (leadId, goalOwnerId) => ({ ...goalDone(leadId, CONTATO), goalOwnerId });
+  const delegadoAoBruno = (over = {}) =>
+    lead({ consultantId: ANA, nextFollowUpOwnerId: BRUNO, nextFollowUpOwnerName: 'Bruno', ...over });
+
+  it('o "Contato feito" de quem recebeu fica na Meta dele e não aparece na da dona', () => {
+    // Depois do ContactOutcomeModal: o próximo contato limpo e a marca do Bruno.
+    const l = delegadoAoBruno({ nextFollowUp: null, nextFollowUpType: null });
+    const feito = [marcaDe(l.id, BRUNO)];
+    const doBruno = byId(slotsDe(BRUNO, [l], feito), l.id);
+    expect(doBruno?.categorySlugs).toEqual([CONTATO]);
+    expect(doBruno?.categoryStatus[CONTATO]).toBe(true);
+    // A Ana não fez o contato. Sem outras tarefas, a Meta dela fica vazia, e
+    // não com 1 de 1, que o App gravaria como dia batido.
+    const daAna = slotsDe(ANA, [l], feito);
+    expect(daAna).toEqual([]);
+    expect(slotTotals(daAna).totalSlots).toBe(0);
+  });
+
+  it('o contato reagendado para outro dia também fica feito só na Meta de quem recebeu', () => {
+    const l = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Mensagem' });
+    const feito = [marcaDe(l.id, BRUNO)];
+    expect(byId(slotsDe(BRUNO, [l], feito), l.id)?.categoryStatus[CONTATO]).toBe(true);
+    expect(slotsDe(ANA, [l], feito)).toEqual([]);
+  });
+
+  it('o contato reagendado para mais tarde hoje continua feito só na Meta de quem recebeu', () => {
+    const l = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 15, 17, 0), nextFollowUpType: 'Mensagem' });
+    const feito = [marcaDe(l.id, BRUNO)];
+    expect(byId(slotsDe(BRUNO, [l], feito), l.id)?.categoryStatus[CONTATO]).toBe(true);
+    expect(slotsDe(ANA, [l], feito)).toEqual([]);
+  });
+
+  it('o contato que a dona marca para ela depois do feito nasce pendente, e o feito continua do Bruno', () => {
+    // O Agendar da ficha grava nextFollowUpOwnerId null quando o contato é do
+    // dono do lead.
+    const l = lead({ consultantId: ANA, nextFollowUpOwnerId: null, nextFollowUp: new Date(2026, 6, 15, 17, 0), nextFollowUpType: 'Ligação' });
+    const feito = [marcaDe(l.id, BRUNO)];
+    const daAna = byId(slotsDe(ANA, [l], feito), l.id);
+    expect(daAna.categorySlugs).toEqual([CONTATO]);
+    expect(daAna.categoryStatus[CONTATO]).toBe(false);
+    const doBruno = byId(slotsDe(BRUNO, [l], feito), l.id);
+    expect(doBruno?.categorySlugs).toEqual([CONTATO]);
+    expect(doBruno?.categoryStatus[CONTATO]).toBe(true);
+  });
+
+  it('o contato da própria dona continua com ela, pendente e feito', () => {
+    const pendente = lead({ consultantId: ANA, nextFollowUp: new Date(2026, 6, 15, 11, 0), nextFollowUpType: 'Mensagem' });
+    const feito = lead({ consultantId: ANA, nextFollowUp: null, nextFollowUpType: null });
+    const marcas = [marcaDe(feito.id, ANA)];
+    const daAna = slotsDe(ANA, [pendente, feito], marcas);
+    expect(byId(daAna, pendente.id).categoryStatus[CONTATO]).toBe(false);
+    expect(byId(daAna, feito.id).categoryStatus[CONTATO]).toBe(true);
+    expect(slotsDe(BRUNO, [pendente, feito], marcas)).toEqual([]);
+  });
+
+  it('a marca sem o campo e sem o autor vale para quem tem o contato agora', () => {
+    const l = delegadoAoBruno({ nextFollowUp: null, nextFollowUpType: null });
+    const antiga = [goalDone(l.id, CONTATO)];
+    expect(byId(slotsDe(BRUNO, [l], antiga), l.id)?.categoryStatus[CONTATO]).toBe(true);
+    expect(slotsDe(ANA, [l], antiga)).toEqual([]);
+  });
+
+  // A marca de antes do campo (a do dia do deploy e a de uma aba aberta com o
+  // código antigo, que não recarrega sozinha) vale para quem a gravou
+  // (actorId): só quem tem o contato o vê na Meta e o conclui. Sem isso, o
+  // feito da Ana iria para o Bruno quando ela passasse a ele o próximo contato.
+  describe('a marca de antes do campo vale para quem a gravou', () => {
+    const marcaAntigaDe = (leadId, actorId) => ({ ...goalDone(leadId, CONTATO), actorId });
+
+    it('a Ana conclui o próprio contato e passa o próximo ao Bruno para amanhã: o feito continua na Meta dela', () => {
+      const l = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Mensagem' });
+      const marcas = [marcaAntigaDe(l.id, ANA)];
+      const daAna = slotsDe(ANA, [l], marcas);
+      expect(byId(daAna, l.id)?.categoryStatus).toEqual({ [CONTATO]: true });
+      expect(slotTotals(daAna)).toMatchObject({ totalSlots: 1, doneSlots: 1 });
+      expect(slotsDe(BRUNO, [l], marcas)).toEqual([]);
+    });
+
+    it('a Ana conclui o próprio contato e passa o próximo ao Bruno para hoje: o contato do Bruno nasce pendente', () => {
+      const l = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 15, 17, 0), nextFollowUpType: 'Mensagem' });
+      const marcas = [marcaAntigaDe(l.id, ANA)];
+      expect(slotTotals(slotsDe(ANA, [l], marcas))).toMatchObject({ totalSlots: 1, doneSlots: 1 });
+      const doBruno = slotsDe(BRUNO, [l], marcas);
+      expect(byId(doBruno, l.id)?.categoryStatus).toEqual({ [CONTATO]: false });
+      expect(slotTotals(doBruno)).toMatchObject({ totalSlots: 1, doneSlots: 0 });
+    });
+
+    it('o Bruno conclui o contato que recebeu e a Ana pega o próximo para hoje: o feito fica com ele e o contato dela nasce pendente', () => {
+      const l = lead({ consultantId: ANA, nextFollowUpOwnerId: null, nextFollowUp: new Date(2026, 6, 15, 17, 0), nextFollowUpType: 'Mensagem' });
+      const marcas = [marcaAntigaDe(l.id, BRUNO)];
+      expect(byId(slotsDe(BRUNO, [l], marcas), l.id)?.categoryStatus).toEqual({ [CONTATO]: true });
+      expect(byId(slotsDe(ANA, [l], marcas), l.id)?.categoryStatus).toEqual({ [CONTATO]: false });
+    });
+  });
+
+  // O "Contato feito" tira o dono do contato (contactDone). O próximo contato
+  // que nasce por um caminho que não escolhe dono, como o "Próximo contato?"
+  // depois do Compareceu, que grava só a data e o tipo, fica com o dono do
+  // lead, e não com o antigo delegado. O Reagendar leva o mesmo contato para
+  // outro dia, e ele continua com quem o tinha.
+  describe('o próximo contato depois do "Contato feito"', () => {
+    const concluidoPeloBruno = () => ({
+      ...delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 15, 9, 0), nextFollowUpType: 'Mensagem' }),
+      ...contactDone(),
+    });
+    const proximoSemDono = (l, when) => ({ ...l, nextFollowUp: when, nextFollowUpType: 'Mensagem' });
+    const amanha = new Date(2026, 6, 16, 9, 0);
+
+    it('o próximo contato de hoje criado sem dono vai para a Ana, e o feito continua do Bruno', () => {
+      const l = proximoSemDono(concluidoPeloBruno(), new Date(2026, 6, 15, 17, 0));
+      const feito = [marcaDe(l.id, BRUNO)];
+      expect(byId(slotsDe(ANA, [l], feito), l.id)?.categoryStatus).toEqual({ [CONTATO]: false });
+      expect(byId(slotsDe(BRUNO, [l], feito), l.id)?.categoryStatus).toEqual({ [CONTATO]: true });
+    });
+
+    it('o próximo contato de amanhã criado sem dono entra na prévia da Ana, e não na do Bruno', () => {
+      const l = proximoSemDono(concluidoPeloBruno(), amanha);
+      expect(tomorrowAppointmentsOf([l], ANA)).toEqual([{ lead: l, when: amanha }]);
+      expect(tomorrowAppointmentsOf([l], BRUNO)).toEqual([]);
+    });
+
+    it('o contato que o Bruno reagenda para amanhã continua com ele, na prévia de amanhã', () => {
+      const delegado = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 15, 9, 0), nextFollowUpType: 'Mensagem' });
+      const l = { ...delegado, ...contactReschedule(delegado, amanha) };
+      expect(tomorrowAppointmentsOf([l], BRUNO)).toEqual([{ lead: l, when: amanha }]);
+      expect(tomorrowAppointmentsOf([l], ANA)).toEqual([]);
+    });
+  });
+
+  it('o cliente com o contato de renovação delegado entra como hoje, na Meta de quem recebeu', () => {
+    const cliente = delegadoAoBruno({
+      status: 'Venda', lifecycleStage: 'cliente', nextFollowUp: new Date(2026, 6, 15, 17, 0), nextFollowUpType: 'Mensagem',
+    });
+    expect(byId(slotsDe(BRUNO, [cliente]), cliente.id).categoryStatus[CONTATO]).toBe(false);
+    const feito = [marcaDe(cliente.id, BRUNO)];
+    expect(byId(slotsDe(BRUNO, [cliente], feito), cliente.id).categoryStatus[CONTATO]).toBe(true);
+    expect(slotsDe(ANA, [cliente], feito)).toEqual([]);
+  });
+
+  it('lead em Perda continua fora, com ou sem a marca', () => {
+    const perdido = delegadoAoBruno({ status: 'Perda', nextFollowUp: new Date(2026, 6, 15, 17, 0), nextFollowUpType: 'Mensagem' });
+    const feito = [marcaDe(perdido.id, BRUNO)];
+    expect(slotsDe(BRUNO, [perdido], feito)).toEqual([]);
+    expect(slotsDe(ANA, [perdido], feito)).toEqual([]);
+  });
+
+  it('o Atrasado do lead continua com a dona, mesmo com o contato delegado', () => {
+    const l = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 13, 9, 0), nextFollowUpType: 'Mensagem' });
+    expect(byId(slotsDe(ANA, [l]), l.id).categorySlugs).toEqual([DAILY_GOAL_CATEGORIES.ATRASADO]);
+    expect(slotsDe(BRUNO, [l])).toEqual([]);
+    // A Ana conclui o Atrasado: o "Contato feito" limpa o próximo contato.
+    const concluido = { ...l, nextFollowUp: null, nextFollowUpType: null };
+    const feito = [goalDone(l.id, DAILY_GOAL_CATEGORIES.ATRASADO)];
+    expect(byId(slotsDe(ANA, [concluido], feito), l.id).categoryStatus[DAILY_GOAL_CATEGORIES.ATRASADO]).toBe(true);
+    expect(slotsDe(BRUNO, [concluido], feito)).toEqual([]);
+  });
+});
+
 // Visita e aula experimental que um consultor agendou no lead de outro
 // (decisão do dono, em 05/10/2026): a tarefa do dia vai para quem agendou
 // (appointmentOwnerId, lido por appointmentTaskOwnerId em leads.js). Quem
@@ -1110,8 +1281,8 @@ describe('a visita e a aula feitas ficam com quem tinha a tarefa na marcação',
 });
 
 // Prévia de AMANHÃ da Meta (o chip "Amanhã" do DailyGoalView): não conta na
-// meta de hoje. A visita e a aula seguem o dono da tarefa do agendamento; o
-// contato continua com o dono do lead, como antes da regra.
+// meta de hoje. A visita e a aula seguem o dono da tarefa do agendamento, e o
+// contato segue quem tem o contato (contactOwnerId), como na Meta de hoje.
 describe('tomorrowAppointmentsOf', () => {
   const amanha16 = new Date(2026, 6, 16, 16, 0);
   const visitaDeAmanha = (over = {}) => lead({
@@ -1132,10 +1303,32 @@ describe('tomorrowAppointmentsOf', () => {
     expect(tomorrowAppointmentsOf([visita, aula], 'outro')).toEqual([]);
   });
 
-  it('o contato de amanhã continua com o dono do lead', () => {
+  it('o contato de amanhã sem delegado continua com o dono do lead, mesmo com a visita de outra pessoa', () => {
     const l = lead({ consultantId: 'outro', nextFollowUp: amanha16, nextFollowUpType: 'Mensagem', appointmentOwnerId: 'u1' });
     expect(ids(tomorrowAppointmentsOf([l], 'outro'))).toEqual([l.id]);
     expect(tomorrowAppointmentsOf([l], 'u1')).toEqual([]);
+  });
+
+  it('o contato delegado de amanhã aparece na prévia de quem recebeu e sai da do dono', () => {
+    const mensagem = lead({ consultantId: 'outro', nextFollowUp: amanha16, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1' });
+    const ligacao = lead({ consultantId: 'outro', nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Ligação', nextFollowUpOwnerId: 'u1' });
+    expect(tomorrowAppointmentsOf([mensagem, ligacao], 'u1')).toEqual([
+      { lead: ligacao, when: new Date(2026, 6, 16, 9, 0) },
+      { lead: mensagem, when: amanha16 },
+    ]);
+    expect(tomorrowAppointmentsOf([mensagem, ligacao], 'outro')).toEqual([]);
+  });
+
+  it('a visita de amanhã fica com o dono da tarefa da visita, mesmo com o contato do lead com outra pessoa', () => {
+    const l = visitaDeAmanha({ consultantId: 'outro', nextFollowUpOwnerId: 'u1' });
+    expect(ids(tomorrowAppointmentsOf([l], 'outro'))).toEqual([l.id]);
+    expect(tomorrowAppointmentsOf([l], 'u1')).toEqual([]);
+  });
+
+  it('o contato delegado de amanhã num lead em Perda fica de fora', () => {
+    const l = lead({ consultantId: 'outro', status: 'Perda', nextFollowUp: amanha16, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1' });
+    expect(tomorrowAppointmentsOf([l], 'u1')).toEqual([]);
+    expect(tomorrowAppointmentsOf([l], 'outro')).toEqual([]);
   });
 
   it('lead em Venda ou em Perda fica de fora', () => {
@@ -1160,8 +1353,9 @@ describe('tomorrowAppointmentsOf', () => {
 
 // A Meta da equipe monta a Meta de cada pessoa com uma fatia dos leads, para
 // não varrer a base inteira por pessoa. A fatia precisa ter todo lead em que a
-// pessoa tem tarefa de agendamento, senão a visita que um consultor agendou no
-// lead de outro some da linha dele no painel do gestor.
+// pessoa tem tarefa, senão a visita que um consultor agendou no lead de outro,
+// ou o contato que ele recebeu de um colega, some da linha dele no painel do
+// gestor.
 describe('leadsByGoalOwner', () => {
   const as16 = new Date(2026, 6, 15, 16, 0);
 
@@ -1185,6 +1379,18 @@ describe('leadsByGoalOwner', () => {
     expect(leadsByGoalOwner([l]).get('u1')).toEqual([l]);
   });
 
+  it('o lead com o contato delegado entra também na fatia de quem recebeu', () => {
+    const l = lead({ consultantId: 'u2', nextFollowUpOwnerId: 'u1' });
+    const fatias = leadsByGoalOwner([l]);
+    expect(fatias.get('u2')).toEqual([l]);
+    expect(fatias.get('u1')).toEqual([l]);
+  });
+
+  it('a mesma pessoa com o contato e a visita do lead não repete o lead', () => {
+    const l = lead({ consultantId: 'u2', nextFollowUpOwnerId: 'u1', appointmentOwnerId: 'u1' });
+    expect(leadsByGoalOwner([l]).get('u1')).toEqual([l]);
+  });
+
   it('lista vazia ou ausente dá mapa vazio', () => {
     expect(leadsByGoalOwner([]).size).toBe(0);
     expect(leadsByGoalOwner(null).size).toBe(0);
@@ -1196,6 +1402,8 @@ describe('leadsByGoalOwner', () => {
       lead({ consultantId: 'u2', appointmentType: 'aula_experimental', appointmentScheduledFor: as16 }),
       lead({ consultantId: 'u2', appointmentType: 'visita', appointmentScheduledFor: as16, appointmentOwnerId: 'u1', createdAt: new Date(2026, 6, 14, 12, 0) }),
       lead({ consultantId: 'u1', nextFollowUp: new Date(2026, 6, 13, 9, 0) }),
+      lead({ consultantId: 'u2', nextFollowUp: as16, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1' }),
+      lead({ consultantId: 'u1', nextFollowUp: as16, nextFollowUpType: 'Ligação', nextFollowUpOwnerId: 'u2', createdAt: new Date(2026, 6, 14, 12, 0) }),
     ];
     const byLead = buildInteractionsByLead([]);
     const fatias = leadsByGoalOwner(leads);
@@ -1252,6 +1460,36 @@ describe('leadsByGoalOwner', () => {
           .toEqual(pelaBase.map((l) => [l.id, l.categorySlugs, l.categoryStatus]));
       }
       expect(computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2').map((l) => l.id)).toEqual([leads[0].id]);
+    });
+
+    it('o contato feito entra na fatia de quem o fez, mesmo depois de voltar para o dono do lead', () => {
+      // O u2 fez o contato que recebeu, e depois o u1 marcou o próximo contato
+      // para ele mesmo (nextFollowUpOwnerId null).
+      const l = lead({ consultantId: 'u1', nextFollowUpOwnerId: null, nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Mensagem' });
+      const marcas = [marcaDe(l.id, 'u2', DAILY_GOAL_CATEGORIES.CONTATO_HOJE)];
+      const byLead = buildInteractionsByLead(marcas);
+      const fatias = leadsByGoalOwner([l], marcas);
+      expect(fatias.get('u2')).toEqual([l]);
+      const doU2 = computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2');
+      expect(doU2.map((x) => [x.id, x.categorySlugs, x.categoryStatus])).toEqual([[l.id, [DAILY_GOAL_CATEGORIES.CONTATO_HOJE], { [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: true }]]);
+      expect(computeDailyGoalSlots(fatias.get('u1'), byLead, 'u1')).toEqual([]);
+    });
+
+    it('a marca de contato de antes do campo entra na fatia de quem a gravou, e a Meta pela fatia é a da base inteira', () => {
+      // O u2 concluiu, numa aba com o código antigo, o contato que tinha
+      // recebido, e depois o u1 pegou o próximo contato para ele, para hoje.
+      const l = lead({ consultantId: 'u1', nextFollowUpOwnerId: null, nextFollowUp: as16, nextFollowUpType: 'Mensagem' });
+      const marcas = [{ ...goalDone(l.id, DAILY_GOAL_CATEGORIES.CONTATO_HOJE), actorId: 'u2' }];
+      const byLead = buildInteractionsByLead(marcas);
+      const fatias = leadsByGoalOwner([l], marcas);
+      expect(fatias.get('u2')).toEqual([l]);
+      for (const u of ['u1', 'u2']) {
+        const pelaFatia = computeDailyGoalSlots(fatias.get(u) || [], byLead, u);
+        const pelaBase = computeDailyGoalSlots([l], byLead, u);
+        expect(pelaFatia.map((x) => [x.id, x.categoryStatus]), u).toEqual(pelaBase.map((x) => [x.id, x.categoryStatus]));
+      }
+      expect(computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2').map((x) => x.categoryStatus))
+        .toEqual([{ [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: true }]);
     });
   });
 });

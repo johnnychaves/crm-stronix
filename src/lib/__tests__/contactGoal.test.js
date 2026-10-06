@@ -3,6 +3,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { followUpChannelOf, contactDone, contactReschedule } from '../contactGoal.js';
+import { contactOwnerId } from '../leads.js';
 
 describe('followUpChannelOf', () => {
   it('Ligação quando o nextFollowUpType do lead contém "liga"', () => {
@@ -19,8 +20,23 @@ describe('followUpChannelOf', () => {
 });
 
 describe('contactDone', () => {
-  it('limpa nextFollowUp e nextFollowUpType (conclui sem próximo contato)', () => {
-    expect(contactDone()).toEqual({ nextFollowUp: null, nextFollowUpType: null });
+  // O dono do contato sai com null explícito: o contato acabou, e o próximo
+  // contato que nascer por um caminho que não escolhe dono (o "Próximo
+  // contato?" depois do Compareceu, o Adiar, o Reagendar da Renovação) fica com
+  // o dono do lead, e não com quem recebeu este.
+  it('limpa o próximo contato e o dono dele, com null explícito (conclui sem próximo contato)', () => {
+    expect(contactDone()).toEqual({
+      nextFollowUp: null,
+      nextFollowUpType: null,
+      nextFollowUpOwnerId: null,
+      nextFollowUpOwnerName: null
+    });
+  });
+
+  it('o contato delegado concluído volta para o dono do lead', () => {
+    const delegado = { consultantId: 'u-ana', nextFollowUpOwnerId: 'u-bruno', nextFollowUpOwnerName: 'Bruno' };
+    // O patch é aplicado por cima do lead, como no merge do Firestore.
+    expect(contactOwnerId({ ...delegado, ...contactDone() })).toBe('u-ana');
   });
 
   it('NÃO toca status/funil', () => {
@@ -71,5 +87,17 @@ describe('contactReschedule', () => {
     const patch = contactReschedule({}, '2026-08-01');
     expect(patch).not.toHaveProperty('status');
     expect(patch).not.toHaveProperty('lifecycleStage');
+  });
+
+  // O Reagendar leva o MESMO contato para outro dia: ele continua com quem tem
+  // a tarefa, inclusive o colega que o recebeu.
+  it('NÃO mexe no dono do contato: o contato delegado continua com quem o recebeu', () => {
+    const delegado = { consultantId: 'u-ana', nextFollowUpOwnerId: 'u-bruno', nextFollowUpOwnerName: 'Bruno', nextFollowUpType: 'Ligação' };
+    const patch = contactReschedule(delegado, '2026-08-01');
+    expect(patch).not.toHaveProperty('nextFollowUpOwnerId');
+    expect(patch).not.toHaveProperty('nextFollowUpOwnerName');
+    const depois = { ...delegado, ...patch };
+    expect(contactOwnerId(depois)).toBe('u-bruno');
+    expect(depois.nextFollowUpOwnerName).toBe('Bruno');
   });
 });
