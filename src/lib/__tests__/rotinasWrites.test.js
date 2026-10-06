@@ -21,14 +21,19 @@ vi.mock('firebase/firestore', () => {
     setDoc: vi.fn(async (ref, data) => { s.ops.push({ op: 'set', path: ref.path, data }); }),
     updateDoc: vi.fn(async (ref, data) => { s.ops.push({ op: 'update', path: ref.path, data }); }),
     deleteDoc: vi.fn(async (ref) => { s.ops.push({ op: 'delete', path: ref.path }); }),
-    runTransaction: vi.fn(async (_db, fn) => fn({
-      get: async (ref) => {
-        const d = s.docs.get(ref.path);
-        return { id: ref.id, exists: () => d !== undefined, data: () => ({ ...d }) };
-      },
-      set: (ref, data, opts) => { s.ops.push({ op: 'set', path: ref.path, data, opts }); },
-      delete: (ref) => { s.ops.push({ op: 'delete', path: ref.path }); },
-    })),
+    // Como o SDK: depois da primeira gravação, ler na mesma transação é erro.
+    runTransaction: vi.fn(async (_db, fn) => {
+      let wrote = false;
+      return fn({
+        get: async (ref) => {
+          if (wrote) throw new Error('reads before writes');
+          const d = s.docs.get(ref.path);
+          return { id: ref.id, exists: () => d !== undefined, data: () => ({ ...d }) };
+        },
+        set: (ref, data, opts) => { wrote = true; s.ops.push({ op: 'set', path: ref.path, data, opts }); },
+        delete: (ref) => { wrote = true; s.ops.push({ op: 'delete', path: ref.path }); },
+      });
+    }),
   };
 });
 
@@ -57,6 +62,7 @@ describe('modelos', () => {
     expect(op('set', `${M}/novo-1`).data).toMatchObject({ name: 'Noite', tasks: [], followerIds: ['ana'], createdAt: 'agora', createdBy: 'g1', updatedBy: 'g1' });
     expect(op('set', `${V}/novo-1_2026-10-06`).data).toMatchObject({ modelId: 'novo-1', date: '2026-10-06', followerIds: ['ana'], deleted: false, savedBy: 'g1', savedAt: 'agora' });
     expect(op('set', `${M}/m2`).data).toMatchObject({ followerIds: [] });
+    expect(op('set', `${M}/m2`).data.createdAt).toBeUndefined();
     expect(op('set', `${V}/m2_2026-10-06`).data).toMatchObject({ followerIds: [] });
     expect(op('set', `${M}/m1`)).toBeUndefined();
   });
@@ -67,6 +73,21 @@ describe('modelos', () => {
     expect(tasks).toHaveLength(1);
     expect(tasks[0]).toMatchObject({ title: 'Conferir a agenda', time: '08:00' });
     expect(tasks[0].id).not.toBe('t1');
+  });
+
+  it('copiar de um modelo que sumiu falha com o código e não grava nada', async () => {
+    await expect(createModel({ db: {}, appUser: gestor, models: models(), name: 'Cópia', copyFrom: 'mx', now: NOW })).rejects.toMatchObject({ message: 'modelo-sumiu', code: 'modelo-sumiu' });
+    expect(s.ops).toEqual([]);
+  });
+
+  it('copiar de um modelo que a tela não tinha na lista lê o modelo e copia as tarefas', async () => {
+    const semM1 = models().filter((m) => m.id !== 'm1');
+    await createModel({ db: {}, appUser: gestor, models: semM1, name: 'Manhã 2', copyFrom: 'm1', now: NOW });
+    const tasks = op('set', `${M}/novo-1`).data.tasks;
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0]).toMatchObject({ title: 'Conferir a agenda' });
+    expect(tasks[0].id).not.toBe('t1');
+    expect(op('set', `${M}/m1`)).toBeUndefined();
   });
 
   it('duplicar dá o nome "Cópia de" e ninguém segue', async () => {
@@ -80,10 +101,18 @@ describe('modelos', () => {
     expect(op('set', `${M}/m1`).data.createdAt).toBeUndefined();
     expect(op('set', `${M}/m1`).opts).toEqual({ merge: true });
     expect(op('set', `${V}/m1_2026-10-06`).data).toMatchObject({ name: 'Manhã cedo', followerIds: ['carla', 'diego'] });
+    expect(op('set', `${V}/m1_2026-10-06`).opts).toBeUndefined();
   });
 
-  it('editar um modelo que sumiu falha', async () => {
-    await expect(updateModel({ db: {}, appUser: gestor, modelId: 'mx', edit: () => ({}), now: NOW })).rejects.toThrow('modelo-sumiu');
+  it('editar só aceita nome e tarefas: quem segue e a exclusão não passam pelo edit', async () => {
+    await updateModel({ db: {}, appUser: gestor, modelId: 'm1', edit: () => ({ followerIds: [], deleted: true }), now: NOW });
+    expect(op('delete', `${M}/m1`)).toBeUndefined();
+    expect(op('set', `${M}/m1`).data).toMatchObject({ name: 'Manhã', tasks: [TASK], followerIds: ['carla', 'diego'] });
+    expect(op('set', `${V}/m1_2026-10-06`).data).toMatchObject({ deleted: false, followerIds: ['carla', 'diego'] });
+  });
+
+  it('editar um modelo que sumiu falha com o código', async () => {
+    await expect(updateModel({ db: {}, appUser: gestor, modelId: 'mx', edit: () => ({}), now: NOW })).rejects.toMatchObject({ message: 'modelo-sumiu', code: 'modelo-sumiu' });
     expect(s.ops).toEqual([]);
   });
 
@@ -98,8 +127,17 @@ describe('modelos', () => {
     expect(op('set', `${M}/m2`)).toBeUndefined();
   });
 
-  it('pôr a pessoa num modelo que sumiu falha e não grava nada', async () => {
-    await expect(setPersonModel({ db: {}, appUser: gestor, models: [...models(), { id: 'mx' }], userId: 'ana', modelId: 'mx', now: NOW })).rejects.toThrow('modelo-sumiu');
+  it('"sem modelo" tira a pessoa de todo modelo que a tem', async () => {
+    s.docs.set(`${M}/m2`, { name: 'Tarde', tasks: [], followerIds: ['ana', 'carla'] });
+    await setPersonModel({ db: {}, appUser: gestor, models: models(), userId: 'carla', modelId: null, now: NOW });
+    expect(op('set', `${M}/m1`).data.followerIds).toEqual(['diego']);
+    expect(op('set', `${M}/m2`).data.followerIds).toEqual(['ana']);
+    expect(op('set', `${V}/m1_2026-10-06`).data.followerIds).toEqual(['diego']);
+    expect(op('set', `${V}/m2_2026-10-06`).data.followerIds).toEqual(['ana']);
+  });
+
+  it('pôr a pessoa num modelo que sumiu falha com o código e não grava nada', async () => {
+    await expect(setPersonModel({ db: {}, appUser: gestor, models: [...models(), { id: 'mx' }], userId: 'ana', modelId: 'mx', now: NOW })).rejects.toMatchObject({ message: 'modelo-sumiu', code: 'modelo-sumiu' });
     expect(s.ops).toEqual([]);
   });
 
@@ -123,6 +161,11 @@ describe('check', () => {
   it('a observação grava só o note, aparada e no limite', async () => {
     await saveMarkNote({ db: {}, markId: 'carla_2026-10-06_t1', note: `  ${'x'.repeat(150)}  ` });
     expect(op('update', `${K}/carla_2026-10-06_t1`).data).toEqual({ note: 'x'.repeat(140) });
+  });
+
+  it('a observação cortada no limite não termina em espaço', async () => {
+    await saveMarkNote({ db: {}, markId: 'carla_2026-10-06_t1', note: `${'x'.repeat(139)} resto` });
+    expect(op('update', `${K}/carla_2026-10-06_t1`).data).toEqual({ note: 'x'.repeat(139) });
   });
 
   it('desfazer apaga o check', async () => {
