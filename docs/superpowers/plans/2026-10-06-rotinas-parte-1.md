@@ -1087,6 +1087,12 @@ describe('cartão Rotina de hoje', () => {
     expect(container.querySelector('input[placeholder="Observação (opcional)"]')).toBeNull();
   });
 
+  it('enquanto carrega, o cartão não aparece', async () => {
+    routine.value = { model: MODEL, marks: new Map(), loading: true };
+    await render();
+    expect(container.innerHTML).toBe('');
+  });
+
   it('sem modelo, ou sem tarefa no dia, o cartão não aparece', async () => {
     routine.value = { model: null, marks: new Map(), loading: false };
     await render();
@@ -1225,13 +1231,15 @@ function RoutineRow({ row, now, busy, editing, draft, onDraft, onToggle, onSave,
 export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
   const toast = useToast();
   const dayKey = routineDayKey(now);
-  const { model, marks } = useMyRoutine({ db, enabled, userId: appUser?.id, dayKey });
+  const { model, marks, loading } = useMyRoutine({ db, enabled, userId: appUser?.id, dayKey });
   const [busyTask, setBusyTask] = useState(null);
   const [editing, setEditing] = useState(null); // { markId, taskId }
   const [draft, setDraft] = useState('');
 
   const tasks = tasksForDay(model, now, metaWeekdays);
-  if (!model || tasks.length === 0) return null;
+  // Enquanto o modelo e os checks do dia não chegam, o cartão não aparece: com
+  // os checks ainda vazios, o toque marcaria de novo uma tarefa já feita.
+  if (loading || !model || tasks.length === 0) return null;
 
   const rows = tasks.map((task) => {
     const mark = marks.get(task.id) || null;
@@ -2482,7 +2490,7 @@ function Headline({ people, models }) {
 
 export function RotinasView({ db, appUser, usersList, modelId, tenantId, listenersActive }) {
   const navigate = useNavigate();
-  const { models, loading } = useRoutineModels({ db, enabled: listenersActive });
+  const { models, loading, error } = useRoutineModels({ db, enabled: listenersActive, tenantId });
   const people = useMemo(() => routineParticipants(usersList), [usersList]);
   const [creatingKey, setCreatingKey] = useState(null);
   const [renameId, setRenameId] = useState(null);
@@ -2492,6 +2500,14 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
 
   const openModel = (id) => navigate(hrefFor(tenantId, 'rotinas', { modelId: id }));
   const toList = () => navigate(hrefFor(tenantId, 'rotinas'));
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-6 text-[13.5px] shadow-card">
+        Não deu para carregar as rotinas. Recarregue a página.
+      </div>
+    );
+  }
 
   if (modelId) {
     const model = models.find((m) => m.id === modelId);
