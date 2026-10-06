@@ -1213,8 +1213,8 @@ describe('a visita e a aula feitas ficam com quem tinha a tarefa na marcação',
 });
 
 // Prévia de AMANHÃ da Meta (o chip "Amanhã" do DailyGoalView): não conta na
-// meta de hoje. A visita e a aula seguem o dono da tarefa do agendamento; o
-// contato continua com o dono do lead, como antes da regra.
+// meta de hoje. A visita e a aula seguem o dono da tarefa do agendamento, e o
+// contato segue quem tem o contato (contactOwnerId), como na Meta de hoje.
 describe('tomorrowAppointmentsOf', () => {
   const amanha16 = new Date(2026, 6, 16, 16, 0);
   const visitaDeAmanha = (over = {}) => lead({
@@ -1235,10 +1235,32 @@ describe('tomorrowAppointmentsOf', () => {
     expect(tomorrowAppointmentsOf([visita, aula], 'outro')).toEqual([]);
   });
 
-  it('o contato de amanhã continua com o dono do lead', () => {
+  it('o contato de amanhã sem delegado continua com o dono do lead, mesmo com a visita de outra pessoa', () => {
     const l = lead({ consultantId: 'outro', nextFollowUp: amanha16, nextFollowUpType: 'Mensagem', appointmentOwnerId: 'u1' });
     expect(ids(tomorrowAppointmentsOf([l], 'outro'))).toEqual([l.id]);
     expect(tomorrowAppointmentsOf([l], 'u1')).toEqual([]);
+  });
+
+  it('o contato delegado de amanhã aparece na prévia de quem recebeu e sai da do dono', () => {
+    const mensagem = lead({ consultantId: 'outro', nextFollowUp: amanha16, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1' });
+    const ligacao = lead({ consultantId: 'outro', nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Ligação', nextFollowUpOwnerId: 'u1' });
+    expect(tomorrowAppointmentsOf([mensagem, ligacao], 'u1')).toEqual([
+      { lead: ligacao, when: new Date(2026, 6, 16, 9, 0) },
+      { lead: mensagem, when: amanha16 },
+    ]);
+    expect(tomorrowAppointmentsOf([mensagem, ligacao], 'outro')).toEqual([]);
+  });
+
+  it('a visita de amanhã fica com o dono da tarefa da visita, mesmo com o contato do lead com outra pessoa', () => {
+    const l = visitaDeAmanha({ consultantId: 'outro', nextFollowUpOwnerId: 'u1' });
+    expect(ids(tomorrowAppointmentsOf([l], 'outro'))).toEqual([l.id]);
+    expect(tomorrowAppointmentsOf([l], 'u1')).toEqual([]);
+  });
+
+  it('o contato delegado de amanhã num lead em Perda fica de fora', () => {
+    const l = lead({ consultantId: 'outro', status: 'Perda', nextFollowUp: amanha16, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1' });
+    expect(tomorrowAppointmentsOf([l], 'u1')).toEqual([]);
+    expect(tomorrowAppointmentsOf([l], 'outro')).toEqual([]);
   });
 
   it('lead em Venda ou em Perda fica de fora', () => {

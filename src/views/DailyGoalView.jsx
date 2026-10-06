@@ -1718,7 +1718,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // Agendamentos de AMANHÃ (prévia) — visitas, aulas e contatos do consultor
   // marcados para o dia seguinte. NÃO entram na meta de hoje (não tocam em
   // processedLeads/totalSlots): é só uma antecipação do que vem pela frente.
-  // A visita e a aula seguem o dono da tarefa do agendamento, como na Meta
+  // A visita e a aula seguem o dono da tarefa do agendamento, e o contato segue
+  // quem tem o contato, que pode ser o colega que o recebeu, como na Meta
   // (regra em tomorrowAppointmentsOf, src/lib/dailyGoal.js).
   const tomorrowAppts = useMemo(() => {
     void todayKey; // "amanhã" também vira com o dia (A5)

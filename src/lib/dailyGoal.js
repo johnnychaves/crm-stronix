@@ -524,9 +524,9 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
 // e contatos marcados para o dia seguinte. Não conta na meta de hoje. Cada lead
 // entra uma vez, pelo compromisso quando tem, senão pelo próximo contato. A
 // visita e a aula vão para o dono da tarefa do agendamento
-// (appointmentTaskOwnerId), como na Meta; o contato continua com o dono do
-// lead, como antes da regra do agendamento. Lead em Venda ou Perda fica fora.
-// Devolve [{ lead, when }] por horário.
+// (appointmentTaskOwnerId) e o contato vai para quem tem o contato
+// (contactOwnerId), que pode ser o colega que o recebeu, como na Meta de hoje.
+// Lead em Venda ou Perda fica fora. Devolve [{ lead, when }] por horário.
 export function tomorrowAppointmentsOf(leads, consultantId, refDate = new Date()) {
   const tStart = new Date(refDate); tStart.setHours(0, 0, 0, 0); tStart.setDate(tStart.getDate() + 1);
   const tEnd = new Date(tStart); tEnd.setHours(23, 59, 59, 999);
@@ -536,7 +536,7 @@ export function tomorrowAppointmentsOf(leads, consultantId, refDate = new Date()
       const appointmentAt = getLeadAppointmentDate(l);
       const when = appointmentAt ||
         (l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) ? l.nextFollowUp : null);
-      const owner = appointmentAt ? appointmentTaskOwnerId(l) : l.consultantId;
+      const owner = appointmentAt ? appointmentTaskOwnerId(l) : contactOwnerId(l);
       return { lead: l, when, owner };
     })
     .filter(x => x.owner === consultantId && x.when && x.when >= tStart && x.when <= tEnd)
