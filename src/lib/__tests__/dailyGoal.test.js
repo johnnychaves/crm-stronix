@@ -29,6 +29,7 @@ import {
   leadsByGoalOwner
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
+import { contactDone, contactReschedule } from '../contactGoal.js';
 
 // Quarta-feira, 15 de julho de 2026, 10:00 local — "agora" de referência.
 const NOW = new Date(2026, 6, 15, 10, 0, 0);
@@ -1014,6 +1015,40 @@ describe('o contato feito fica com quem tinha a tarefa na marcação', () => {
       const marcas = [marcaAntigaDe(l.id, BRUNO)];
       expect(byId(slotsDe(BRUNO, [l], marcas), l.id)?.categoryStatus).toEqual({ [CONTATO]: true });
       expect(byId(slotsDe(ANA, [l], marcas), l.id)?.categoryStatus).toEqual({ [CONTATO]: false });
+    });
+  });
+
+  // O "Contato feito" tira o dono do contato (contactDone). O próximo contato
+  // que nasce por um caminho que não escolhe dono, como o "Próximo contato?"
+  // depois do Compareceu, que grava só a data e o tipo, fica com o dono do
+  // lead, e não com o antigo delegado. O Reagendar leva o mesmo contato para
+  // outro dia, e ele continua com quem o tinha.
+  describe('o próximo contato depois do "Contato feito"', () => {
+    const concluidoPeloBruno = () => ({
+      ...delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 15, 9, 0), nextFollowUpType: 'Mensagem' }),
+      ...contactDone(),
+    });
+    const proximoSemDono = (l, when) => ({ ...l, nextFollowUp: when, nextFollowUpType: 'Mensagem' });
+    const amanha = new Date(2026, 6, 16, 9, 0);
+
+    it('o próximo contato de hoje criado sem dono vai para a Ana, e o feito continua do Bruno', () => {
+      const l = proximoSemDono(concluidoPeloBruno(), new Date(2026, 6, 15, 17, 0));
+      const feito = [marcaDe(l.id, BRUNO)];
+      expect(byId(slotsDe(ANA, [l], feito), l.id)?.categoryStatus).toEqual({ [CONTATO]: false });
+      expect(byId(slotsDe(BRUNO, [l], feito), l.id)?.categoryStatus).toEqual({ [CONTATO]: true });
+    });
+
+    it('o próximo contato de amanhã criado sem dono entra na prévia da Ana, e não na do Bruno', () => {
+      const l = proximoSemDono(concluidoPeloBruno(), amanha);
+      expect(tomorrowAppointmentsOf([l], ANA)).toEqual([{ lead: l, when: amanha }]);
+      expect(tomorrowAppointmentsOf([l], BRUNO)).toEqual([]);
+    });
+
+    it('o contato que o Bruno reagenda para amanhã continua com ele, na prévia de amanhã', () => {
+      const delegado = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 15, 9, 0), nextFollowUpType: 'Mensagem' });
+      const l = { ...delegado, ...contactReschedule(delegado, amanha) };
+      expect(tomorrowAppointmentsOf([l], BRUNO)).toEqual([{ lead: l, when: amanha }]);
+      expect(tomorrowAppointmentsOf([l], ANA)).toEqual([]);
     });
   });
 

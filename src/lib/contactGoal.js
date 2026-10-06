@@ -3,8 +3,8 @@
 // (commitNextContact / commitNoNextContact), agora embrulhado pelo
 // ContactOutcomeModal:
 //   • "Contato feito"  = tarefa concluída SEM próximo contato → limpa o
-//     nextFollowUp (senão o lead volta como Atrasado amanhã) — é o caminho
-//     "Sem próximo contato" de hoje.
+//     nextFollowUp (senão o lead volta como Atrasado amanhã) e o dono do
+//     contato — é o caminho "Sem próximo contato" de hoje.
 //   • "Reagendar"      = agenda o próximo toque (nextFollowUp futuro),
 //     preservando o CANAL (Ligação/Mensagem) do lead — é o caminho "Escolher
 //     data" de hoje, que conta como reaquecimento (volumeKind).
@@ -23,14 +23,22 @@ export function followUpChannelOf(lead) {
 
 // Patch do desfecho "Contato feito": conclui sem próximo contato agendado.
 // Limpa nextFollowUp/tipo para a tarefa não reabrir como Atrasado no dia
-// seguinte. Não toca status/funil.
+// seguinte, e o dono do contato (nextFollowUpOwnerId/Name), com null
+// explícito: o contato acabou, e o próximo contato que nascer por um caminho
+// que não escolhe dono (o "Próximo contato?" depois do Compareceu, o Adiar e o
+// Reagendar da Renovação gravam só a data e o tipo) fica com o dono do lead, e
+// não com quem recebeu este. Quem agenda pela ficha escolhe o dono no passo
+// "Quem vai fazer esse contato?". A marca de feito guarda quem tinha o contato
+// (goalOwnerId) antes de o patch limpar o dono. Não toca status/funil.
 export function contactDone() {
-  return { nextFollowUp: null, nextFollowUpType: null };
+  return { nextFollowUp: null, nextFollowUpType: null, nextFollowUpOwnerId: null, nextFollowUpOwnerName: null };
 }
 
 // Patch do desfecho "Reagendar": agenda o próximo contato na data escolhida,
 // preservando o canal do lead. Não toca status/funil. Aceita Date ou string
-// 'yyyy-mm-dd' (formato de <input type="date">).
+// 'yyyy-mm-dd' (formato de <input type="date">). Leva o MESMO contato para
+// outro dia, então não menciona o dono do contato: ele continua com quem tem a
+// tarefa, inclusive o colega que o recebeu.
 //
 // NÃO ENCOSTA no compromisso formal (visita/aula). Até 18/08/2026 este patch
 // zerava appointmentType/appointmentScheduledFor "para não conflitar com a

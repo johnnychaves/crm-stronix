@@ -23,6 +23,7 @@ const CONTATO = DAILY_GOAL_CATEGORIES.CONTATO_HOJE;
 const toast = { show: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn(), dismiss: vi.fn() };
 // O Bruno recebeu da Ana o contato de hoje com a Carla.
 const bruno = { id: 'u-bruno', name: 'Bruno', authUid: 'auth-bruno' };
+const ana = { id: 'u-ana', name: 'Ana', authUid: 'auth-ana' };
 const delegado = {
   id: 'l1', name: 'Carla Souza', consultantId: 'u-ana', consultantName: 'Ana',
   nextFollowUp: new Date(2026, 6, 15, 11, 0), nextFollowUpType: 'Mensagem',
@@ -94,5 +95,42 @@ describe('ContactOutcomeModal: a marca de feito leva quem tinha o contato', () =
     await montar({ lead: daAna, appUser: { id: 'u-ana', name: 'Ana', authUid: 'auth-ana' } });
     await clicar('Concluir');
     expect(marcasGravadas()[0]).toMatchObject({ dailyGoalCategory: CONTATO, goalOwnerId: 'u-ana' });
+  });
+});
+
+// O "Contato feito" conclui o contato e tira dele o dono (contactDone), com
+// null explícito, para o próximo contato que nascer sem escolher dono ficar
+// com o dono do lead. O Reagendar leva o mesmo contato para outro dia e não
+// mexe no dono. O patch do lead é o quinto argumento do logInteraction.
+describe('ContactOutcomeModal: o dono do contato no lead', () => {
+  beforeAll(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date(2026, 6, 15, 10, 0)); });
+  afterAll(() => { vi.useRealTimers(); });
+
+  const patchDaChamada = (n) => logInteraction.mock.calls[n][4];
+
+  it('"Contato feito" do contato delegado limpa o próximo contato e o dono dele', async () => {
+    await montar({ lead: delegado });
+    await clicar('Concluir');
+    expect(logInteraction).toHaveBeenCalledTimes(1);
+    expect(patchDaChamada(0)).toEqual({
+      nextFollowUp: null, nextFollowUpType: null, nextFollowUpOwnerId: null, nextFollowUpOwnerName: null,
+    });
+  });
+
+  it('"Contato feito" do Atrasado, que fica com a dona do lead, também limpa o dono do contato', async () => {
+    const atrasado = { ...delegado, nextFollowUp: new Date(2026, 6, 13, 11, 0) };
+    await montar({ lead: atrasado, appUser: ana, categorySlug: DAILY_GOAL_CATEGORIES.ATRASADO });
+    await clicar('Concluir');
+    expect(patchDaChamada(0)).toMatchObject({ nextFollowUpOwnerId: null, nextFollowUpOwnerName: null });
+  });
+
+  it('Reagendar leva o mesmo contato para outro dia e não mexe no dono dele', async () => {
+    await montar({ lead: delegado });
+    await clicar('Reagendar', 0);
+    await escreverMotivo('Pediu para falar amanhã.');
+    await clicar('Reagendar', -1);
+    // A nota leva o patch. A marca vem numa segunda chamada, sem patch.
+    expect(patchDaChamada(0)).toEqual({ nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Mensagem' });
+    expect(patchDaChamada(1)).toBeUndefined();
   });
 });
