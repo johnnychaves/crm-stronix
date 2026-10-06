@@ -14,7 +14,7 @@ const fusoDaMaquina = vi.hoisted(() => {
 import {
   SCHEDULE_LIMIT, LEAD_IDS_MAX, ZAP_SCHEDULE_MESSAGES, unitsView, scheduleCatalogView, suggestedDays, countsForMeta,
   wardRelationship, appointmentDetailOf, scheduleTargets, readScheduleOptionsBody, buildScheduleOptions,
-  isDocId, readScheduleBody, readStatusBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
+  isDocId, readScheduleBody, readStatusBody, scheduleWithStoredNames, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
   scheduleInteractionText, pickOpenVisitaId, isOpenAulaRecord, scheduleRecordChanges, buildScheduleWrites, alreadyScheduledBody
 } from '../_zapSchedule.js';
 import { aulaRecordFields } from '../../src/lib/aulas.js';
@@ -621,6 +621,35 @@ describe('checkScheduleCatalog: o que foi escolhido ainda existe no Stronilead',
       .toEqual(gone('quantity', 'Essa quantidade de aulas não existe mais no Stronilead. Escolha de novo.'));
     expect(checkScheduleCatalog(aula({ quantity: 3 }), { ...CATALOGOS, config: { trialClassOptions: [1, 2] } }))
       .toMatchObject({ status: 422, body: { field: 'quantity' } });
+  });
+});
+
+describe('scheduleWithStoredNames: a unidade e a modalidade que o registro guarda são as gravadas', () => {
+  // O Stronizap apara as pontas do texto antes de mandar.
+  const COM_ESPACO = {
+    ...CATALOGOS,
+    units: CATALOGOS.units.map((u) => (u.id === 'un1' ? { ...u, name: 'Centro ' } : u)),
+    modalities: CATALOGOS.modalities.map((m) => (m.id === 'm2' ? { ...m, name: ' Pilates' } : m))
+  };
+
+  it('troca pelo nome gravado que só difere nas pontas, e a conferência passa', () => {
+    const visita = scheduleWithStoredNames({ type: 'visita', unit: 'Centro', modality: null }, COM_ESPACO);
+    const aula = scheduleWithStoredNames(
+      { type: 'aula_experimental', unit: null, modality: 'Pilates', professorId: 'p1', soloTraining: false, quantity: 1 },
+      COM_ESPACO
+    );
+
+    expect(visita).toEqual({ type: 'visita', unit: 'Centro ', modality: null });
+    expect(aula).toMatchObject({ unit: null, modality: ' Pilates' });
+    expect(checkScheduleCatalog(visita, COM_ESPACO)).toBeNull();
+    expect(checkScheduleCatalog(aula, COM_ESPACO)).toBeNull();
+  });
+
+  it('o que não existe fica como veio, e a conferência recusa', () => {
+    const pedido = { type: 'visita', unit: 'Unidade Antiga', modality: null };
+
+    expect(scheduleWithStoredNames(pedido, COM_ESPACO)).toEqual(pedido);
+    expect(checkScheduleCatalog(pedido, COM_ESPACO)).toMatchObject({ status: 422, body: { field: 'unit' } });
   });
 });
 

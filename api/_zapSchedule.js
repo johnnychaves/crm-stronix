@@ -16,7 +16,8 @@
 //
 // Spec: docs/superpowers/specs/2026-09-29-agendamento-pelo-stronizap-design.md
 import {
-  ZAP_LEAD_MESSAGES, NAME_MAX, CHANNEL_MAX, NOTE_MAX, refusal, invalidData, nationalDigits, emailFromActor, teamRole
+  ZAP_LEAD_MESSAGES, NAME_MAX, CHANNEL_MAX, NOTE_MAX, refusal, invalidData, nationalDigits, emailFromActor, teamRole,
+  storedName
 } from './_zapLead.js';
 import { zapMatchKey } from './_zapPhone.js';
 import { appointmentOutcomeOf, isAppointmentCancelled } from './_zapCard.js';
@@ -354,6 +355,19 @@ export function readStatusBody(body) {
   const ok = Array.isArray(ids) && ids.length > 0 && ids.length <= LEAD_IDS_MAX
     && ids.every(isDocId) && new Set(ids).size === ids.length;
   return ok ? { value: { leadIds: ids } } : { refusal: invalidData('leadIds', ZAP_SCHEDULE_MESSAGES.leadIds) };
+}
+
+// O pedido com a unidade e a modalidade trocadas pelos nomes gravados, antes
+// do checkScheduleCatalog, pela regra do cadastro (storedName, em
+// api/_zapLead.js): o Stronizap apara as pontas do texto, e o registro guarda
+// o nome gravado.
+export function scheduleWithStoredNames(schedule, catalogs) {
+  const view = scheduleCatalogView(catalogs);
+  return {
+    ...schedule,
+    unit: storedName(view.units.map((u) => u.name), schedule.unit),
+    modality: storedName(view.modalities.map((m) => m.name), schedule.modality)
+  };
 }
 
 // Unidade, modalidade, professor e quantidade conferidos contra o que existe
