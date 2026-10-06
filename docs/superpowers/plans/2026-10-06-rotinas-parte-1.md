@@ -2255,7 +2255,7 @@ function TaskRow({ task, onEdit }) {
   );
 }
 
-export function ModelDetail({ db, appUser, model, models, people, startRenaming = false, onBack, onDuplicated }) {
+export function ModelDetail({ db, appUser, model, models, people, startRenaming = false, onBack, onDeleted, onDuplicated }) {
   const toast = useToast();
   const [renaming, setRenaming] = useState(startRenaming);
   const [nameDraft, setNameDraft] = useState(model.name);
@@ -2301,7 +2301,7 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
 
   const remove = async () => {
     const ok = await run(() => deleteModel({ db, appUser, modelId: model.id }), 'Modelo excluído. O histórico continua com ele.', 'Não deu para excluir o modelo. Tente de novo.');
-    if (ok) onBack();
+    if (ok) onDeleted();
   };
 
   const unfollow = (p) => run(
@@ -2464,10 +2464,10 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
 
 ```jsx
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { ListChecks, Plus } from 'lucide-react';
 import { useRoutineModels } from '../hooks/useRoutineModels.js';
-import { hrefFor } from '../lib/routes.js';
+import { canGoBackInApp, hrefFor } from '../lib/routes.js';
 import { firstName, modelOfUser, namesText, routineParticipants } from '../lib/rotinas.js';
 import { ModelCard } from '../components/rotinas/ModelCard.jsx';
 import { ConsultantsList } from '../components/rotinas/ConsultantsList.jsx';
@@ -2476,15 +2476,21 @@ import { NewModelSheet } from '../components/rotinas/NewModelSheet.jsx';
 
 // Tela Rotinas do gestor (spec 2026-10-06, mockup
 // 2026-10-06-tela-rotinas-gestor.html). Parte 1: a aba Modelos e o modelo
-// aberto em /rotinas/modelos/<id>. Abrir um modelo empilha no histórico, para
-// o Voltar do navegador devolver à lista.
+// aberto em /rotinas/modelos/<id>. O modelo aberto é outra tela no endereço
+// (screenKey rotinas:<id>): abrir empilha no histórico, rola para o topo e
+// remonta esta view. Por isso o que passa da lista para o modelo vai no state
+// da navegação:
+//   - rotinaNova: o modelo acabou de ser criado ou duplicado. A transação só
+//     aparece na lista quando o servidor confirma; até lá a tela fica em
+//     branco, sem o aviso de modelo excluído.
+//   - renomear: abre o modelo com o nome em edição (depois de duplicar).
 function Headline({ people, models }) {
   if (people.length === 0) return <>Nenhum consultor na equipe ainda.</>;
   const without = people.filter((p) => !modelOfUser(models, p.id));
   const withModel = people.length - without.length;
   return (
     <>
-      <em className="font-bold not-italic text-brand-600">{withModel} de {people.length}</em> consultores seguem um modelo
+      <em className="font-bold not-italic text-brand-600 dark:text-brand-300">{withModel} de {people.length}</em> consultores seguem um modelo
       {without.length
         ? <>. <em className="font-bold not-italic text-amber-700 dark:text-amber-300">{namesText(without.map((p) => firstName(p.name)))}</em> ainda {without.length === 1 ? 'está' : 'estão'} sem rotina.</>
         : '. Todos têm rotina.'}
@@ -2494,16 +2500,18 @@ function Headline({ people, models }) {
 
 export function RotinasView({ db, appUser, usersList, modelId, tenantId, listenersActive }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { models, loading, error } = useRoutineModels({ db, enabled: listenersActive, tenantId });
   const people = useMemo(() => routineParticipants(usersList), [usersList]);
   const [creatingKey, setCreatingKey] = useState(null);
-  const [renameId, setRenameId] = useState(null);
-  // A transação só aparece na lista quando o servidor confirma: o modelo
-  // recém-criado fica em branco por um instante, sem o aviso de excluído.
-  const [pendingId, setPendingId] = useState(null);
 
   const openModel = (id) => navigate(hrefFor(tenantId, 'rotinas', { modelId: id }));
-  const toList = () => navigate(hrefFor(tenantId, 'rotinas'));
+  const openNew = (id, renomear = false) =>
+    navigate(hrefFor(tenantId, 'rotinas', { modelId: id }), { state: { rotinaNova: id, renomear } });
+  const toList = () => navigate(hrefFor(tenantId, 'rotinas'), { replace: true });
+  // Voltar do modelo, como na ficha: volta uma entrada quando há para onde
+  // voltar dentro do app; senão, troca o endereço pela lista.
+  const back = () => (canGoBackInApp(window.history.state) ? navigate(-1) : toList());
 
   if (error) {
     return (
@@ -2515,8 +2523,9 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
 
   if (modelId) {
     const model = models.find((m) => m.id === modelId);
+    const fresh = location.state?.rotinaNova === modelId;
     if (!model) {
-      if (loading || modelId === pendingId) return null;
+      if (loading || fresh) return null;
       return (
         <div className="flex flex-col items-start gap-3 rounded-2xl border border-border bg-card p-6 shadow-card">
           <p className="text-[14px] font-semibold">Esse modelo não existe mais.</p>
@@ -2526,15 +2535,15 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
     }
     return (
       <ModelDetail
-        key={model.id}
         db={db}
         appUser={appUser}
         model={model}
         models={models}
         people={people}
-        startRenaming={renameId === model.id}
-        onBack={toList}
-        onDuplicated={(id) => { setRenameId(id); setPendingId(id); openModel(id); }}
+        startRenaming={fresh && location.state?.renomear === true}
+        onBack={back}
+        onDeleted={toList}
+        onDuplicated={(id) => openNew(id, true)}
       />
     );
   }
@@ -2577,7 +2586,7 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
           appUser={appUser}
           models={models}
           people={people}
-          onCreated={(id) => { setPendingId(id); openModel(id); }}
+          onCreated={(id) => openNew(id)}
         />
       )}
     </div>
@@ -2595,7 +2604,7 @@ Expected: os três passam. Se o lint reclamar de `react-hooks/set-state-in-effec
 Siga a nota de memória "Harness no navegador sem login" (Vite com fakes do Firebase) ou rode `npm run dev` numa conta de academia de teste. Confira, em claro e escuro e em 390 px de largura:
 - o menu do gestor mostra "Rotinas" depois de Meta diária, e o do consultor não;
 - `/<academia>/rotinas` mostra o título, os cartões e a lista; criar um modelo abre o modelo novo; Nova tarefa, Editar, Pausar, Excluir, Renomear, Duplicar (abre a cópia com o nome em edição) e Excluir modelo funcionam e mostram as mensagens da spec;
-- o Voltar do navegador sai do modelo para a lista;
+- abrir um modelo rola para o topo, e o Voltar do navegador (e o "Modelos" do caminho) volta para a lista na mesma posição; depois de excluir um modelo, o Voltar do navegador não cai no modelo apagado;
 - na Meta diária do consultor que segue um modelo, o cartão aparece abaixo do Próximo compromisso, o check marca, a observação salva, e o toque de novo desfaz.
 
 - [ ] **Step 11: commit**
