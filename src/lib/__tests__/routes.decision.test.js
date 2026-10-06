@@ -408,3 +408,40 @@ describe('query nos redirects, decidido de propósito', () => {
     );
   });
 });
+
+describe('Rotinas na decisão de rota', () => {
+  it('o gestor abre a lista e o modelo aberto de primeira', () => {
+    expect(decide(`/${T}/rotinas`, admin)).toEqual({ kind: 'ok' });
+    expect(decide(`/${T}/rotinas/modelos`, admin)).toEqual({ kind: 'ok' });
+    expect(decide(`/${T}/rotinas/modelos/AbC123`, admin)).toEqual({ kind: 'ok' });
+  });
+
+  it('o consultor cai no Operacional com o aviso de gestor, em qualquer endereço de Rotinas', () => {
+    for (const p of [`/${T}/rotinas`, `/${T}/rotinas/modelos/AbC123`, `/${T}/rotinas/xyz`]) {
+      expect(decide(p, consultor), p).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'so-gestor'));
+    }
+  });
+
+  it('sub-tela desconhecida e id inválido abrem a lista, com a query e sem aviso', () => {
+    expect(decide(`/${T}/rotinas/xyz`, admin, { search: '?a=1' })).toEqual(casa(`/${T}/rotinas?a=1`, { screen: 'rotinas' }));
+    expect(decide(`/${T}/rotinas/modelos/..`, admin)).toEqual(casa(`/${T}/rotinas`, { screen: 'rotinas' }));
+  });
+
+  it('a academia corrigida leva o modelo no destino e no alvo desenhado', () => {
+    expect(decide('/outra/rotinas/modelos/AbC123', admin)).toEqual(
+      casa(`/${T}/rotinas/modelos/AbC123`, { screen: 'rotinas', sub: 'modelos', modelId: 'AbC123' }),
+    );
+    expect(decide('/rotinas', admin)).toEqual(casa(`/${T}/rotinas`, { screen: 'rotinas' }));
+  });
+
+  it('a aba e o modelo não trocam a chave da tela nem entram no molde do Sentry', () => {
+    for (const p of [`/${T}/rotinas`, `/${T}/rotinas/modelos`, `/${T}/rotinas/modelos/AbC123`]) {
+      expect(screenKey(parseAppPath(p)), p).toBe('rotinas');
+      expect(routeTemplate(p), p).toBe('/:tenant/rotinas');
+    }
+  });
+
+  it('o título da aba é Rotinas e nunca leva o id', () => {
+    expect(documentTitle({ screen: 'rotinas', tenantName: 'STRONIX' })).toBe('Rotinas · STRONIX · STRONILEAD');
+  });
+});

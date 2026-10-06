@@ -17,7 +17,7 @@ const superMembro = { id: 'u3', authUid: 'uid-3', role: 'admin', tenantId: T, su
 describe('screenState', () => {
   it('tela comum: o menu acende a tela do endereço e não há ficha', () => {
     const s = screenState(parseAppPath(`/${T}/pipeline`), null, consultor);
-    expect(s).toEqual({ fichaOpen: false, profileLeadId: null, activeTab: 'kanban', resolvedTab: 'kanban', superTab: 'overview', sub: null });
+    expect(s).toEqual({ fichaOpen: false, profileLeadId: null, activeTab: 'kanban', resolvedTab: 'kanban', superTab: 'overview', sub: null, modelId: null });
   });
 
   it('endereço curto da academia abre o Operacional', () => {
@@ -204,5 +204,18 @@ describe('funil salvo', () => {
     expect(readSavedFunnel(storage({ x: 'y' }), '')).toBeNull();
     expect(readSavedFunnel({ getItem: () => { throw new Error('bloqueado'); } }, T)).toBeNull();
     expect(readSavedFunnel(null, T)).toBeNull();
+  });
+});
+
+describe('Rotinas', () => {
+  it('o modelo aberto sai do endereço; fora de Rotinas, não existe', () => {
+    expect(screenState({ screen: 'rotinas', sub: 'modelos', modelId: 'M1' }, null, gestor)).toMatchObject({ activeTab: 'rotinas', sub: 'modelos', modelId: 'M1' });
+    expect(screenState({ screen: 'rotinas' }, null, gestor)).toMatchObject({ sub: 'modelos', modelId: null });
+    expect(screenState({ screen: 'settings', modelId: 'M1' }, null, gestor).modelId).toBe(null);
+  });
+
+  it('vem do endereço de verdade, sem estado espelhado', () => {
+    expect(screenState(parseAppPath(`/${T}/rotinas/modelos/M1`), null, gestor)).toMatchObject({ activeTab: 'rotinas', resolvedTab: 'rotinas', sub: 'modelos', modelId: 'M1' });
+    expect(screenState(parseAppPath(`/${T}/rotinas`), null, gestor)).toMatchObject({ sub: 'modelos', modelId: null });
   });
 });

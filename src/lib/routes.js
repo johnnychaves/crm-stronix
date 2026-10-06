@@ -44,6 +44,11 @@ export const FICHA_TABS = Object.freeze({
   contratos: 'contratos',
   referrals: 'indicacoes',
 });
+// Abas da tela Rotinas (spec 2026-10-06). A aba Hoje entra na parte 2. O
+// modelo aberto mora em /rotinas/modelos/<id>, lido à parte em readScreen.
+export const ROTINAS_TABS = Object.freeze({
+  modelos: 'modelos',
+});
 
 // id da tela (os mesmos valores de activeTab de sempre) para os segmentos
 // depois da academia, o título da aba, a trava de acesso e, onde existe, a
@@ -56,6 +61,7 @@ export const SCREENS = Object.freeze({
   kanban: tela(['pipeline'], 'Pipeline'),
   clientes: tela(['clientes'], 'Clientes'),
   dailyGoal: tela(['meta-diaria'], 'Meta diária'),
+  rotinas: tela(['rotinas'], 'Rotinas', { gestor: true, subs: ROTINAS_TABS, subPadrao: 'modelos' }),
   leads: tela(['leads'], 'Leads'),
   aulas: tela(['leads', 'aulas'], 'Aulas'),
   visitas: tela(['leads', 'visitas'], 'Visitas'),
@@ -98,7 +104,7 @@ export const FIRST_LEVEL_SEGMENTS = Object.freeze([
 // a vaga da entrega 2: /configuracoes/equipe, /ficha/<id>/contratos).
 // GROUPS: o segundo segmento escolhe a tela, e filho desconhecido é endereço
 // desconhecido, para erro de digitação não cair calado na tela-mãe.
-const SPECIAL = new Set(['ficha', 'superadmin']);
+const SPECIAL = new Set(['ficha', 'superadmin', 'rotinas']);
 const LEAVES = {};
 const GROUPS = {};
 for (const [id, def] of Object.entries(SCREENS)) {
@@ -149,6 +155,17 @@ function readScreen(segs, out) {
     out.leadId = isValidLeadId(segs[1]) ? segs[1] : null;
     out.rest = segs.slice(2);
     readSub('ficha', out.rest, out);
+    return;
+  }
+  if (head === 'rotinas') {
+    out.screen = 'rotinas';
+    out.rest = segs.slice(1);
+    if (out.rest.length === 2 && lower(out.rest[0]) === 'modelos' && isValidLeadId(out.rest[1])) {
+      out.sub = 'modelos';
+      out.modelId = out.rest[1];
+      return;
+    }
+    readSub('rotinas', out.rest, out);
     return;
   }
   if (head === 'super-admin') {
@@ -229,7 +246,7 @@ const encode = (s) => {
 // montar (sem academia, ficha sem id válido): quem chama não navega. Tela
 // desconhecida vira a inicial.
 export function hrefFor(tenantId, screen, opts = {}) {
-  const { leadId, superTab, sub } = opts || {};
+  const { leadId, superTab, sub, modelId } = opts || {};
   if (typeof tenantId !== 'string' || tenantId === '') return null;
   const t = encode(tenantId);
   if (t === null) return null;
@@ -246,6 +263,7 @@ export function hrefFor(tenantId, screen, opts = {}) {
   if (screen === 'superadmin') {
     return `${base}/super-admin/${own(SUPER_TABS, superTab) ? SUPER_TABS[superTab] : SUPER_TABS.overview}`;
   }
+  if (screen === 'rotinas' && isValidLeadId(modelId)) return `${base}/rotinas/modelos/${encode(modelId)}`;
   return `${base}/${SCREENS[screen].segs.join('/')}${trecho}`;
 }
 
@@ -297,7 +315,7 @@ function redirectTo(path, { search = '', notice = null } = {}) {
   const r = parseAppPath(path);
   // O `sub` vai no alvo junto com a tela: sem ele, a correção de academia
   // desenharia a seção padrão por um render antes de saltar para a certa.
-  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub }, notice };
+  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub, ...(r.modelId ? { modelId: r.modelId } : {}) }, notice };
 }
 
 const joinPath = (base, raw) => (raw.length ? `${base}/${raw.join('/')}` : base);

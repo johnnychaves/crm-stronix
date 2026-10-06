@@ -111,10 +111,13 @@ export function redactDomAttrs(text) {
 // também é lido sem distinguir. Para em espaço e aspas para não comer o resto
 // da frase quando o caminho aparece numa mensagem de erro.
 const LEAD_PATH_RE = /(\/ficha\/)[^/?#\s"'<>]+/gi;
+// O id do modelo de rotina (/rotinas/modelos/<id>) também sai do endereço,
+// como pede o CLAUDE.md para todo segmento novo com id.
+const MODEL_PATH_RE = /(\/rotinas\/modelos\/)[^/?#\s"'<>]+/gi;
 
 export function scrubLeadPath(text) {
   if (typeof text !== 'string' || !text) return text;
-  return text.replace(LEAD_PATH_RE, '$1:leadId');
+  return text.replace(LEAD_PATH_RE, '$1:leadId').replace(MODEL_PATH_RE, '$1:modelId');
 }
 
 // Rede final: troca o id da ficha em qualquer texto do evento, inclusive em

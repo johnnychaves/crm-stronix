@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { UNSAFE_createBrowserHistory } from 'react-router';
 import {
   HOME_SCREEN, SCREENS, SUPER_TABS, FIRST_LEVEL_SEGMENTS,
-  isValidLeadId, parseAppPath, hrefFor, canGoBackInApp,
+  isValidLeadId, parseAppPath, hrefFor, canGoBackInApp, canAccess,
 } from '../routes.js';
 
 const T = 'stronix-crm-app';
@@ -15,7 +15,7 @@ const MEIO_EMOJI = String.fromCharCode(0xd800);
 // Os mesmos valores de activeTab que o App.jsx usa hoje.
 const TELAS = [
   'dashboard', 'dashOperacional', 'dashCrm', 'dashGerencial', 'kanban', 'clientes', 'dailyGoal',
-  'leads', 'aulas', 'visitas', 'settings', 'profile', 'billing', 'superadmin', 'ficha',
+  'leads', 'aulas', 'visitas', 'settings', 'profile', 'billing', 'superadmin', 'ficha', 'rotinas',
 ];
 
 describe('SCREENS', () => {
@@ -32,7 +32,7 @@ describe('SCREENS', () => {
   it('trava de gestor só em Configurações, Perfil da academia e Plano e faturas; super-admin só na dele', () => {
     const gestor = TELAS.filter((id) => SCREENS[id].gestor === true);
     const superAdmin = TELAS.filter((id) => SCREENS[id].superAdmin === true);
-    expect(gestor.sort()).toEqual(['billing', 'profile', 'settings']);
+    expect(gestor.sort()).toEqual(['billing', 'profile', 'rotinas', 'settings']);
     expect(superAdmin).toEqual(['superadmin']);
   });
 
@@ -45,7 +45,7 @@ describe('SCREENS', () => {
   it('primeiro segmento de cada tela, sem repetição', () => {
     expect([...FIRST_LEVEL_SEGMENTS].sort()).toEqual([
       'clientes', 'configuracoes', 'ficha', 'leads', 'meta-diaria', 'perfil-da-academia',
-      'pipeline', 'plano-e-faturas', 'super-admin', 'visao-geral',
+      'pipeline', 'plano-e-faturas', 'rotinas', 'super-admin', 'visao-geral',
     ]);
     expect(Object.isFrozen(FIRST_LEVEL_SEGMENTS)).toBe(true);
   });
@@ -462,6 +462,59 @@ describe('sub-tela no caminho', () => {
 
   it('nenhuma outra tela tem sub-tela nesta entrega', () => {
     const comSub = Object.keys(SCREENS).filter((id) => SCREENS[id].subs);
-    expect(comSub.sort()).toEqual(['ficha', 'settings']);
+    expect(comSub.sort()).toEqual(['ficha', 'rotinas', 'settings']);
+  });
+});
+
+describe('Rotinas no endereço', () => {
+  it('lê a lista, a aba Modelos e o modelo aberto', () => {
+    expect(parseAppPath(`/${T}/rotinas`)).toMatchObject({ tenantSlug: T, screen: 'rotinas', unknown: false });
+    expect(parseAppPath(`/${T}/rotinas/modelos`)).toMatchObject({ screen: 'rotinas', sub: 'modelos' });
+    expect(parseAppPath(`/${T}/rotinas/modelos/AbC123xyz`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', modelId: 'AbC123xyz' });
+  });
+
+  it('sub-tela desconhecida e id inválido caem na lista', () => {
+    expect(parseAppPath(`/${T}/rotinas/qualquer`)).toMatchObject({ screen: 'rotinas', subUnknown: true });
+    // 'a.b' é id válido do Firestore (ver isValidLeadId), então os inválidos
+    // aqui são os que a regra recusa: '..', __x__ e barra codificada.
+    for (const ruim of ['..', '__x__', 'a%2Fb']) {
+      const r = parseAppPath(`/${T}/rotinas/modelos/${ruim}`);
+      expect(r.modelId, ruim).toBeUndefined();
+      expect(r, ruim).toMatchObject({ screen: 'rotinas', subUnknown: true });
+    }
+  });
+
+  it('modelId só aparece quando existe e a lista tem a mesma forma de sempre', () => {
+    expect('modelId' in parseAppPath(`/${T}/rotinas`)).toBe(false);
+    expect('modelId' in parseAppPath(`/${T}/rotinas/modelos`)).toBe(false);
+    expect('modelId' in parseAppPath(`/${T}/pipeline`)).toBe(false);
+  });
+
+  it('o resto do endereço não vira modelo nem aba', () => {
+    expect(parseAppPath(`/${T}/rotinas/modelos/AbC/x`)).toMatchObject({ screen: 'rotinas', subUnknown: true });
+    expect(parseAppPath(`/${T}/rotinas/modelos/AbC/x`).modelId).toBeUndefined();
+    expect(parseAppPath(`/${T}/ROTINAS/MODELOS/AbC123xyz`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', modelId: 'AbC123xyz' });
+  });
+
+  it('monta o endereço da lista e do modelo', () => {
+    expect(hrefFor(T, 'rotinas')).toBe(`/${T}/rotinas`);
+    expect(hrefFor(T, 'rotinas', { sub: 'modelos' })).toBe(`/${T}/rotinas/modelos`);
+    expect(hrefFor(T, 'rotinas', { modelId: 'AbC123xyz' })).toBe(`/${T}/rotinas/modelos/AbC123xyz`);
+    expect(hrefFor(T, 'rotinas', { modelId: '..' })).toBe(`/${T}/rotinas`);
+    expect(hrefFor(T, 'rotinas', { modelId: 'a/b' })).toBe(`/${T}/rotinas`);
+    expect(hrefFor(T, 'rotinas', { modelId: 'a b' })).toBe(`/${T}/rotinas/modelos/a%20b`);
+    // modelId só vale em Rotinas.
+    expect(hrefFor(T, 'settings', { modelId: 'AbC123xyz' })).toBe(`/${T}/configuracoes`);
+  });
+
+  it('o que o hrefFor monta o parseAppPath lê de volta', () => {
+    expect(parseAppPath(hrefFor(T, 'rotinas', { modelId: 'João Silva' }))).toMatchObject({ screen: 'rotinas', modelId: 'João Silva' });
+    expect(parseAppPath(hrefFor(T, 'rotinas'))).toMatchObject({ screen: 'rotinas', sub: null });
+  });
+
+  it('só o gestor abre', () => {
+    expect(canAccess('rotinas', { id: 'g', role: 'admin' })).toBe(true);
+    expect(canAccess('rotinas', { id: 'c', role: 'consultant' })).toBe(false);
+    expect(canAccess('rotinas', { id: 'p', role: 'professor', professorId: 'x' })).toBe(false);
   });
 });
