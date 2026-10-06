@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   ALL_DAYS, MAX_TASKS_PER_MODEL, copyName, daysText, followerChanges, markDoneAt, markIdOf, minutesOf, modelDocs,
-  modelNameProblem, modelOfUser, normalizeTask, removeTask, routineDayKey, routineParticipants, spanText,
+  modelNameProblem, modelOfUser, newTaskId, normalizeTask, removeTask, routineDayKey, routineParticipants, spanText,
   stateText, taskProblems, taskRunsOn, taskStateAt, tasksForDay, upsertTask,
 } from '../rotinas.js';
 
@@ -84,7 +84,23 @@ describe('textos do modelo', () => {
   it('nome de cópia sem repetir', () => {
     expect(copyName('Consultor da manhã', [])).toBe('Cópia de Consultor da manhã');
     expect(copyName('Consultor da manhã', [{ name: 'Cópia de Consultor da manhã' }])).toBe('Cópia de Consultor da manhã (2)');
-    expect(copyName('Um nome bem comprido que passa do limite', []).length).toBeLessThanOrEqual(40);
+    // 'Cópia de Um nome bem comprido que passa do limite' cortado em 40 termina em espaço: o espaço sai.
+    const longName = 'Um nome bem comprido que passa do limite';
+    expect(`Cópia de ${longName}`.slice(0, 40)).toBe('Cópia de Um nome bem comprido que passa ');
+    expect(copyName(longName, [])).toBe('Cópia de Um nome bem comprido que passa');
+    // O nome cortado já existe: sai a variante (2), que também cabe em 40 e não deixa espaço antes dela.
+    const second = copyName(longName, [{ name: 'Cópia de Um nome bem comprido que passa' }]);
+    expect(second).toBe('Cópia de Um nome bem comprido que pa (2)');
+    expect(second.length).toBeLessThanOrEqual(40);
+  });
+
+  it('nome de cópia cortado em espaço não deixa espaço antes do (2)', () => {
+    // Aqui o corte em 36 (40 menos o " (2)") cai logo depois de um espaço.
+    const name = 'Um nome bem comprido quase xx yy zz';
+    expect(`Cópia de ${name}`.slice(0, 36)).toBe('Cópia de Um nome bem comprido quase ');
+    const first = copyName(name, []);
+    expect(first).toBe('Cópia de Um nome bem comprido quase xx y');
+    expect(copyName(name, [{ name: first }])).toBe('Cópia de Um nome bem comprido quase (2)');
   });
 });
 
@@ -105,6 +121,42 @@ describe('validação', () => {
     expect(taskProblems({ title: 'Ok', how: '', days: ALL_DAYS, time: '25:00' })).toEqual({ time: 'Escolha o horário.' });
     expect(taskProblems({ title: 'Ok', how: 'x'.repeat(241), days: ALL_DAYS, time: null })).toEqual({ how: 'Até 240 caracteres.' });
     expect(taskProblems({ title: 'Ok', how: '', days: [2], time: '09:00' })).toEqual({});
+  });
+
+  it('dia que não existe não vale como dia escolhido', () => {
+    expect(taskProblems({ title: 'Ok', how: '', days: [7], time: null })).toEqual({ days: 'Escolha pelo menos um dia.' });
+    expect(taskProblems({ title: 'Ok', how: '', days: [1, 9], time: null })).toEqual({ days: 'Escolha pelo menos um dia.' });
+    expect(taskProblems({ title: 'Ok', how: '', days: 'segunda', time: null })).toEqual({ days: 'Escolha pelo menos um dia.' });
+    expect(taskProblems({ title: 'Ok', how: '', days: [0, 6], time: null })).toEqual({});
+  });
+
+  it('a tarefa gravada sem horário ou sem dias não quebra', () => {
+    expect(normalizeTask({ title: 'Ok', how: '', days: ALL_DAYS, time: undefined }, 't').time).toBe(null);
+    expect(normalizeTask({ title: 'Ok', how: '', days: ALL_DAYS, time: '25:00' }, 't').time).toBe(null);
+    expect(normalizeTask({ title: 'Ok', how: '', days: undefined, time: null }, 't').days).toEqual([]);
+    expect(normalizeTask({ title: 'Ok', how: '', days: 'segunda', time: null }, 't').days).toEqual([]);
+  });
+
+  it('o id da tarefa tem 12 letras ou números e não se repete', () => {
+    const a = newTaskId();
+    const b = newTaskId();
+    expect(a).toMatch(/^[a-z0-9]{12}$/i);
+    expect(b).toMatch(/^[a-z0-9]{12}$/i);
+    expect(a).not.toBe(b);
+  });
+
+  it('o id da tarefa sai também onde o navegador não tem randomUUID', () => {
+    const real = globalThis.crypto;
+    vi.stubGlobal('crypto', undefined);
+    try {
+      const a = newTaskId();
+      const b = newTaskId();
+      expect(a).toMatch(/^[a-z0-9]{12}$/i);
+      expect(b).toMatch(/^[a-z0-9]{12}$/i);
+      expect(a).not.toBe(b);
+    } finally {
+      vi.stubGlobal('crypto', real);
+    }
   });
 
   it('a tarefa gravada sai limpa, com os dias em ordem', () => {
@@ -154,6 +206,18 @@ describe('quem segue', () => {
     expect(Object.fromEntries(followerChanges(models, 'm1', [], ['diego']))).toEqual({ m1: ['carla'] });
   });
 
+  it('modelo de destino que sumiu não muda ninguém', () => {
+    expect(Object.fromEntries(followerChanges(models, 'mx', ['ana']))).toEqual({});
+    expect(followerChanges(models, 'mx', ['ana'], ['carla']).size).toBe(0);
+  });
+
+  it('pôr duas pessoas de modelos diferentes de uma vez tira cada uma do modelo antigo', () => {
+    const three = [...models, { id: 'm3', name: 'Noite', followerIds: [] }];
+    expect(Object.fromEntries(followerChanges(three, 'm3', ['ana', 'carla']))).toEqual({
+      m2: [], m1: ['diego'], m3: ['ana', 'carla'],
+    });
+  });
+
   it('só consultor ativo, com nome, segue modelo', () => {
     const users = [
       { id: 'carla', name: 'Carla', role: 'consultant' },
@@ -172,6 +236,13 @@ describe('o check só conta no próprio dia', () => {
     expect(markDoneAt({ doneAt: at('23:50', 5) }, '2026-10-06')).toBe(null);
     expect(markDoneAt({ doneAt: null }, '2026-10-06')).toBe(null);
     expect(markDoneAt(null, '2026-10-06')).toBe(null);
+  });
+
+  it('aceita a hora como o Timestamp do Firestore', () => {
+    expect(markDoneAt({ doneAt: { toDate: () => at('08:06') } }, '2026-10-06')).toEqual(at('08:06'));
+    expect(markDoneAt({ doneAt: { toDate: () => at('23:50', 5) } }, '2026-10-06')).toBe(null);
+    expect(markDoneAt({ doneAt: { toDate: () => 'não é data' } }, '2026-10-06')).toBe(null);
+    expect(markDoneAt({ doneAt: { seconds: 1 } }, '2026-10-06')).toBe(null);
   });
 });
 

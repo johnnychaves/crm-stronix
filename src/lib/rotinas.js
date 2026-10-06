@@ -25,8 +25,9 @@ export const routineDayKey = (date) => dayKeyOf(date);
 // do Firestore (routineMarkDayOk) deixam uma folga de um dia na virada da
 // meia-noite, e o consultor grava o próprio check: a leitura fecha a folga.
 export function markDoneAt(mark, dateKey) {
-  const doneAt = mark?.doneAt instanceof Date ? mark.doneAt : null;
-  return doneAt && routineDayKey(doneAt) === dateKey ? doneAt : null;
+  const raw = mark?.doneAt;
+  const doneAt = raw instanceof Date ? raw : typeof raw?.toDate === 'function' ? raw.toDate() : null;
+  return doneAt instanceof Date && routineDayKey(doneAt) === dateKey ? doneAt : null;
 }
 export const markIdOf = (consultantId, dateKey, taskId) => `${consultantId}_${dateKey}_${taskId}`;
 
@@ -65,6 +66,7 @@ export const tasksForDay = (model, date, metaWeekdays) =>
 
 // Estado num instante: 'done', 'doneLate', 'now', 'late', 'later' ou 'open'
 // (sem horário e sem check). doneAt é a hora do check (Date) ou null.
+// Só olha a hora do dia de `now` e de `doneAt`: quem chama passa instantes do mesmo dia (o histórico passa o fim daquele dia, 23:59).
 export function taskStateAt(task, doneAt, now) {
   const t = minutesOf(task?.time);
   if (doneAt instanceof Date) {
@@ -116,10 +118,10 @@ export function copyName(name, models) {
   const base = `Cópia de ${clean(name)}`;
   for (let n = 1; n < 100; n += 1) {
     const suffix = n === 1 ? '' : ` (${n})`;
-    const candidate = `${base.slice(0, MODEL_NAME_MAX - suffix.length)}${suffix}`;
+    const candidate = `${base.slice(0, MODEL_NAME_MAX - suffix.length).trimEnd()}${suffix}`;
     if (!taken.has(candidate.toLowerCase())) return candidate;
   }
-  return base.slice(0, MODEL_NAME_MAX);
+  return base.slice(0, MODEL_NAME_MAX).trimEnd();
 }
 
 export function modelNameProblem(name, models, ownId = null) {
@@ -136,7 +138,9 @@ export function taskProblems(input) {
   const title = clean(input.title);
   if (!title) errors.title = 'Escreva o nome da tarefa.';
   else if (title.length > TASK_TITLE_MAX) errors.title = `O nome pode ter até ${TASK_TITLE_MAX} caracteres.`;
-  if (input.days !== ALL_DAYS && !(Array.isArray(input.days) && input.days.length)) errors.days = 'Escolha pelo menos um dia.';
+  const validDays = input.days === ALL_DAYS
+    || (Array.isArray(input.days) && input.days.length > 0 && input.days.every((d) => WEEK_ORDER.includes(d)));
+  if (!validDays) errors.days = 'Escolha pelo menos um dia.';
   if (input.time !== null && minutesOf(input.time) == null) errors.time = 'Escolha o horário.';
   if (clean(input.how).length > TASK_HOW_MAX) errors.how = `Até ${TASK_HOW_MAX} caracteres.`;
   return errors;
@@ -146,12 +150,20 @@ export const normalizeTask = (input, id) => ({
   id,
   title: clean(input.title),
   how: clean(input.how),
-  days: input.days === ALL_DAYS ? ALL_DAYS : WEEK_ORDER.filter((d) => input.days.includes(d)),
-  time: input.time === null ? null : input.time,
+  days: input.days === ALL_DAYS ? ALL_DAYS : WEEK_ORDER.filter((d) => (Array.isArray(input.days) ? input.days : []).includes(d)),
+  time: minutesOf(input.time) != null ? input.time : null,
   active: input.active !== false,
 });
 
-export const newTaskId = () => globalThis.crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+// Fora de contexto seguro (preview por IP em http) crypto.randomUUID não existe.
+// O id é curto e só precisa não repetir dentro do modelo (até 30 tarefas).
+export function newTaskId() {
+  const c = globalThis.crypto;
+  if (typeof c?.randomUUID === 'function') return c.randomUUID().replace(/-/g, '').slice(0, 12);
+  let id = '';
+  while (id.length < 12) id += Math.random().toString(36).slice(2);
+  return id.slice(0, 12);
+}
 
 export function upsertTask(tasks, next) {
   const list = tasks || [];
@@ -165,21 +177,21 @@ export const modelOfUser = (models, userId) =>
 
 // Pôr pessoas num modelo tira cada uma do modelo em que estava: cada consultor
 // segue um modelo só. Devolve um Map modeloId -> followerIds novo, com o modelo
-// de destino sempre presente.
+// de destino sempre presente; sem o modelo de destino, devolve o Map vazio e
+// ninguém muda.
 export function followerChanges(models, targetModelId, addIds = [], removeIds = []) {
   const changes = new Map();
+  const target = (models || []).find((m) => m.id === targetModelId);
+  if (!target) return changes;
   const current = (m) => changes.get(m.id) ?? (m.followerIds || []);
   for (const pid of addIds) {
-    for (const m of models || []) {
+    for (const m of models) {
       if (m.id !== targetModelId && current(m).includes(pid)) changes.set(m.id, current(m).filter((x) => x !== pid));
     }
   }
-  const target = (models || []).find((m) => m.id === targetModelId);
-  if (target) {
-    let ids = current(target).filter((x) => !removeIds.includes(x));
-    for (const pid of addIds) if (!ids.includes(pid)) ids = [...ids, pid];
-    changes.set(target.id, ids);
-  }
+  let ids = current(target).filter((x) => !removeIds.includes(x));
+  for (const pid of addIds) if (!ids.includes(pid)) ids = [...ids, pid];
+  changes.set(target.id, ids);
   return changes;
 }
 
