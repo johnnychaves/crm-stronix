@@ -33,13 +33,13 @@ export const isGestor = (user) => roleOf(user) === ROLES.GESTOR;
 export const isProfessor = (user) => roleOf(user) === ROLES.PROFESSOR;
 
 // Quem vende: gestor e consultor. Decide quem aparece na escolha de consultor
-// responsável, nos rankings, na Meta da equipe e nos painéis por pessoa. O
+// responsável, nos rankings e nos painéis por pessoa. O
 // professor não é dono de lead, não conta em venda e não ocupa vaga de
 // consultor.
 export const isSeller = (user) => !!user && !isProfessor(user);
 
 // Quem participa da Meta Diária pelo papel: só o consultor. O gestor fica fora
-// da régua (acompanha a Meta da equipe) e o professor não vende. Decide quem
+// da régua (acompanha a equipe pela Visão geral) e o professor não vende. Decide quem
 // fica com a tarefa da visita ou da aula que agenda no lead de outro consultor
 // (appointmentTaskOwnerFor, em src/lib/schedulePatch.js), e a ponte com o
 // Stronizap soma a ela o dia da meta no countsForMeta (api/_zapSchedule.js).
@@ -71,8 +71,8 @@ const TODAS = Object.freeze(Object.values(ACTIONS));
 
 // O que cada papel faz. Gestor e consultor fazem tudo o que está aqui, porque
 // é assim hoje: desde a PR #193 o consultor edita cadastro e vende igual ao
-// gestor. O que é só do gestor (Configurações, excluir lead, Meta da equipe,
-// filtro de responsável) continua no isGestor e na trava `gestor` das telas
+// gestor. O que é só do gestor (Configurações, excluir lead e filtro de
+// responsável) continua no isGestor e na trava `gestor` das telas
 // (src/lib/routes.js). O professor não faz nenhuma: na ficha ele registra
 // anotação, WhatsApp, ligação e agendamento, que não passam por esta lista.
 //

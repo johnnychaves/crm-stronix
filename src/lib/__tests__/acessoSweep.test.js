@@ -49,8 +49,8 @@ const relPosix = (file) => relative(SRC, file).split(sep).join('/');
 const arquivos = sourceFiles(SRC).filter((file) => relPosix(file) !== DONO);
 const codigo = (file) => stripComments(readFileSync(file, 'utf8'));
 
-// Listas de pessoas que viram filtro de responsável, escolha de dono, painel
-// por pessoa ou Meta da equipe. Cada uma passa pelo isSeller: o professor não
+// Listas de pessoas que viram filtro de responsável, escolha de dono ou painel
+// por pessoa. Cada uma passa pelo isSeller: o professor não
 // é dono de lead e não vende. Busca de nome (o chip do filtro, o autor da
 // linha do tempo) continua com o usersList inteiro. As listas de Clientes, da
 // ficha, do cadastro do cliente e de Metas & ritmo também passam pelo
@@ -59,10 +59,8 @@ const LISTAS_DE_QUEM_VENDE = [
   'views/KanbanView.jsx',
   'views/LeadsView.jsx',
   'views/AppointmentTrackingView.jsx',
-  'views/DailyGoalTeamView.jsx',
   'views/dashboard/DashboardOperacionalView.jsx',
   'views/dashboard/DashboardCrmView.jsx',
-  'views/dashboard/useTeamGoals.js',
   'views/settings/TransferLeadsTab.jsx',
   'views/settings/ImportClientsSection.jsx',
   // Já passam pelo isSeller desde as Tasks 6 e 8.

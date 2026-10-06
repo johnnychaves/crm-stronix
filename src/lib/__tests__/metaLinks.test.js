@@ -1,4 +1,4 @@
-// Meta diária e visão Equipe: todo nome que abre a ficha virou link. No
+// Meta diária: todo nome que abre a ficha virou link. No
 // TaskCard e no DoneCard o link é esticado (after:absolute after:inset-0) sobre
 // um container com relative, e os botões de dentro sobem com relative z-10.
 import { describe, it, expect, vi } from 'vitest';
@@ -14,7 +14,6 @@ vi.mock('../firebase.js', () => ({
 }));
 
 const { TaskCard, DoneCard, TomorrowApptRow } = await import('../../views/DailyGoalView.jsx');
-const { ConsultantDayDetail } = await import('../../views/team/ConsultantDayDetail.jsx');
 
 const TENANT = 'acad';
 const profile = {
@@ -200,57 +199,5 @@ describe('Meta diária', () => {
     }));
     expect(html).not.toContain('Abrir para corrigir');
     expect(html).toContain('Compareceu');
-  });
-});
-
-describe('visão Equipe', () => {
-  const row = {
-    cota: 3, prospDone: 1, hasCota: true, isPast: false,
-    processed: [{ ...TASK }],
-    prospAcoes: [
-      { leadId: 'abc123', leadName: 'Ana Lima', label: 'Mensagem', at: new Date('2026-09-22T09:00:00') },
-      { leadId: null, leadName: '', label: 'Ligação', at: new Date('2026-09-22T09:30:00') },
-    ],
-  };
-  const detalhe = () => render(createElement(ConsultantDayDetail, { row, slaOverdueDays: 3 }));
-
-  it('a carteira do dia vira link', () => {
-    const html = detalhe();
-    expect(html).toContain('href="/acad/ficha/abc123"');
-    expect(html.match(/href="\/acad\/ficha\/abc123"/g).length).toBeGreaterThanOrEqual(2);
-  });
-
-  it('as linhas da carteira e da prospecção não são arrastáveis', () => {
-    // A âncora é a linha inteira nos dois lados, então sem isto arrastar em
-    // qualquer ponto dela arrastaria o endereço da ficha.
-    const html = detalhe();
-    expect(html.match(/draggable="false"/g)).toHaveLength(2);
-  });
-
-  it('id que não serve para endereço não vira link nem azula no hover', () => {
-    const html = render(createElement(ConsultantDayDetail, {
-      // A carteira entra com o mesmo id quebrado: é o lado que tinha a cor de
-      // hover fixa, então sem ele o teste só exercita a prospecção.
-      row: {
-        ...row,
-        processed: [{ ...TASK, id: 'a/b' }],
-        prospAcoes: [{ leadId: 'a/b', leadName: 'Ana Lima', label: 'Mensagem', at: new Date('2026-09-22T09:00:00') }],
-      },
-      slaOverdueDays: 3,
-    }));
-    expect(html).not.toContain('<a ');
-    expect(html).toContain('Ana Lima');
-    expect(html).not.toContain('group-hover:text-brand-600');
-  });
-
-  it('a prospecção sem lead fica sem link e sem hover de link', () => {
-    const html = detalhe();
-    const i = html.indexOf('Ligação');
-    // A âncora é o <li>, que contém o wrapper inteiro. Subir só até o <span>
-    // mais próximo pegaria o span interno do texto, que nunca tem href e
-    // deixaria o teste passar mesmo se o wrapper voltasse a ser <a href>.
-    const li = html.lastIndexOf('<li', i);
-    expect(html.slice(li, i)).not.toContain('<a ');
-    expect(html).not.toContain('group-enabled:');
   });
 });
