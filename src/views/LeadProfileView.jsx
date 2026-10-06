@@ -57,6 +57,8 @@ import {
   contractEventOf,
   parseAppointment,
   extractStageNameFromInteractionText,
+  isOwnerChangeText,
+  ownerChangeText,
   buildStageTransitions,
   matchesTimelineFilter,
   timelineTypeLabel,
@@ -989,6 +991,9 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     const zapTitle = i._kind === 'appointment' ? zapScheduleTitle(i) : null;
     const appt = i._kind === 'appointment' ? parseAppointment(i) : null;
     const stageName = i._kind === 'status' ? extractStageNameFromInteractionText(i.text) : '';
+    // Troca de responsável: linha simples com o texto sem colchetes, nunca
+    // mudança de fase nem perda (isOwnerChangeText, em lib/timeline.js).
+    const ownerChange = i._kind === 'status' && isOwnerChangeText(i.text);
     // O evento de contrato vem do próprio texto: tipo, plano e valor dele, e não
     // os do contrato de hoje (contractEventOf, em lib/timeline.js).
     const contractEvent = i._kind === 'contract' ? contractEventOf(i.text) : null;
@@ -999,13 +1004,13 @@ function LeadProfileView({ lead, tab, onTab, onBack, onDeleteStart, onDeleteFail
     // colchetes — vem como "Lead perdido. Motivo: ...".
     // Evento do funil Upgrade nunca é perda de lead, mesmo que o motivo
     // configurado diga "Perda de contato".
-    const isLoss = i._kind === 'status' && !stageName && !/^upgrade: /.test(lowerText) && /perdid|perda/i.test(lowerText);
+    const isLoss = i._kind === 'status' && !stageName && !ownerChange && !/^upgrade: /.test(lowerText) && /perdid|perda/i.test(lowerText);
     const isWin = i._kind === 'status' && /^venda$/i.test(stageName);
 
     // Corpo limpo: tira os prefixos que o composer injeta (📲/📞 das conversas,
     // "Obs:" das notas, ✅/🔄/🔔 dos eventos de sistema). A coluna de TIPO já
     // diz o que a linha é.
-    const cleanBody = String(i.text || '')
+    const cleanBody = ownerChange ? ownerChangeText(i.text) : String(i.text || '')
       .replace(/^📲\s*Mensagem WhatsApp enviada:\s*/i, '')
       .replace(/^📞\s*Ligação:\s*/i, '')
       .replace(/^OBSERVAÇÃO DO CADASTRO:\s*/i, '')
