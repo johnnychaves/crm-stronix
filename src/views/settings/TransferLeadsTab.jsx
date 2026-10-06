@@ -122,7 +122,8 @@ function TransferSection({ db, usersList, appUser, leads }) {
     const active = SCOPES.filter(s => scopes.includes(s.id));
     if (!window.confirm(
       `Migrar ${selectedCount} lead(s) de "${fromObj?.name}" para "${toObj?.name}"?\n\n` +
-      `Inclui: ${active.map(s => s.label.toLowerCase()).join(', ')}, com as interações vinculadas. ` +
+      `Inclui: ${active.map(s => s.label.toLowerCase()).join(', ')}. ` +
+      'O histórico de cada lead continua na ficha, e o que já foi feito continua com quem era o responsável na época. ' +
       'Esta ação não pode ser desfeita.'
     )) return;
 
@@ -152,21 +153,10 @@ function TransferSection({ db, usersList, appUser, leads }) {
         }
       })));
 
-      // As interações carregam o dono do lead para o filtro do consultor —
-      // sem isto o histórico sumiria da visão de quem recebeu a carteira.
-      const movedSet = new Set(movedIds);
-      const interactionsSnap = await getDocs(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH));
-      const interactionOps = [];
-      interactionsSnap.forEach(d => {
-        const item = d.data();
-        if (!item.leadId || !movedSet.has(item.leadId)) return;
-        interactionOps.push({
-          ref: doc(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH, d.id),
-          data: { leadConsultantId: toUser, leadConsultantAuthUid: toObj?.authUid || null }
-        });
-      });
-      await commitOpsInChunks(db, interactionOps);
-
+      // As interações antigas ficam como estão: o dono do lead gravado em cada
+      // uma é o do dia do fato (decisão de 06/10/2026). A ficha lê a linha do
+      // tempo pelo id do lead, então quem recebe a carteira vê o histórico
+      // inteiro. O donoDaEpoca.sweep.test.js reprova quem voltar a regravar.
       await addDoc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH), {
         text: `MIGRAÇÃO: ${movedIds.length} lead(s) de [${fromObj?.name}] para [${toObj?.name}] (${active.map(s => s.label.toLowerCase()).join(', ')}).`,
         consultantName: appUser?.name,
