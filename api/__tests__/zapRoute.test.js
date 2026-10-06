@@ -1641,6 +1641,19 @@ describe('POST /api/zap com action create-lead', () => {
     expect(banco.gravacoes).toEqual([]);
   });
 
+  // Caso da Academia Shape One: a etapa está gravada como "Tur/Apresentação
+  // planos ", com espaço no fim, e o Stronizap apara as pontas do texto antes
+  // de mandar. O lead entra com o nome gravado, que é o da coluna do Pipeline.
+  it('etapa gravada com espaço no fim chega sem o espaço e entra com o nome gravado', async () => {
+    banco.catalogos[TENANT].stronix_statuses.push({ id: 'st9', funnelId: 'f-com', name: 'Tur/Apresentação planos ', order: 3 });
+    const res = resposta();
+
+    await handler(pedidoCadastro({ lead: { stage: 'Tur/Apresentação planos' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(leadsDaAcademia()[0]).toMatchObject({ funnelId: 'f-com', status: 'Tur/Apresentação planos ' });
+  });
+
   it('academia sem dor cadastrada não cadastra', async () => {
     banco.catalogos[TENANT].stronix_dores = [];
     const res = resposta();
@@ -2646,6 +2659,28 @@ describe('POST /api/zap com action schedule', () => {
     expect(res.statusCode).toBe(422);
     expect(res.body).toMatchObject({ error: 'catalogo_mudou', field });
     expect(banco.gravacoes).toEqual([]);
+  });
+
+  // O Stronizap apara as pontas do texto antes de mandar. Unidade e modalidade
+  // gravadas com espaço no fim agendam com o nome gravado.
+  it('unidade gravada com espaço no fim chega sem o espaço e agenda com o nome gravado', async () => {
+    banco.catalogos[TENANT].stronix_units.find((u) => u.id === 'un1').name = 'Centro ';
+    const res = resposta();
+
+    await handler(pedidoAgenda(), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(aulasDaAcademia()[0]).toMatchObject({ type: 'visita', unit: 'Centro ' });
+  });
+
+  it('modalidade gravada com espaço no fim chega sem o espaço e agenda com o nome gravado', async () => {
+    banco.catalogos[TENANT].stronix_modalities.find((m) => m.id === 'm2').name = 'Pilates ';
+    const res = resposta();
+
+    await handler(pedidoAgenda({ schedule: AULA_DA_CARLA }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(aulasDaAcademia()[0]).toMatchObject({ type: 'aula', modality: 'Pilates ', professorId: 'p1' });
   });
 
   it('professor com modalidadeIds malformado no cadastro é recusado como item que mudou, sem derrubar a ação', async () => {

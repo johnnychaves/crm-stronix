@@ -301,7 +301,35 @@ export function checkMinor({ minor, phone }) {
   return null;
 }
 
-// Origem, dor, modalidade, funil e etapa conferidos contra o que existe agora.
+// O nome como está gravado no catálogo. O Stronizap apara as pontas do texto
+// antes de mandar, e há catálogo gravado com espaço no fim (a etapa
+// "Tur/Apresentação planos " da Shape One, criada antes de a tela de funis
+// aparar o nome). O nome exato ganha; sem ele, vale o gravado que só difere
+// nas pontas. Sem nenhum dos dois, volta o que veio, e a conferência recusa.
+export function storedName(names, value) {
+  if (typeof value !== 'string' || names.includes(value)) return value;
+  const key = value.trim();
+  if (key === '') return value;
+  return names.find((name) => name.trim() === key) ?? value;
+}
+
+// O pedido com os nomes de catálogo trocados pelos gravados, antes do
+// checkCatalog. O lead guarda o nome gravado, que é o da coluna do Pipeline:
+// com o nome sem o espaço, ele sumiria do quadro.
+export function withStoredNames(lead, catalogs) {
+  const view = catalogView(catalogs);
+  const funnel = view.funnels.find((f) => f.id === lead.funnelId);
+  return {
+    ...lead,
+    source: storedName(view.sources, lead.source),
+    dor: storedName(view.dores, lead.dor),
+    modalidade: storedName(view.modalities, lead.modalidade),
+    stage: funnel ? storedName(funnel.stages, lead.stage) : lead.stage
+  };
+}
+
+// Origem, dor, modalidade, funil e etapa conferidos contra o que existe agora,
+// pelo nome exato: o withStoredNames já trocou o que só difere nas pontas.
 // Academia sem dor não cadastra, a mesma trava do Novo lead.
 export function checkCatalog(lead, catalogs) {
   const view = catalogView(catalogs);

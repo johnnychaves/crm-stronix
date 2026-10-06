@@ -13,7 +13,7 @@ const fusoDaMaquina = vi.hoisted(() => {
 import {
   ZAP_LEAD_MESSAGES, LEAD_CREATE_LIMIT, refusal, invalidData, tenantBlocked, nationalDigits, whatsappFromZap,
   emailFromActor, findTeamMember, teamRole, catalogView, buildLeadOptions,
-  readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
+  readCreateLeadBody, checkMinor, withStoredNames, checkCatalog, resolveOwner, sameStudentName, studentKey,
   zapSignupText, buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError
 } from '../_zapLead.js';
 import { buildNewLeadDoc } from '../../src/lib/newLead.js';
@@ -367,9 +367,58 @@ describe('checkCatalog: o que existe no Stronilead na hora do cadastro', () => {
       .toEqual(refusal(422, 'catalogo_mudou', ZAP_LEAD_MESSAGES.gone[field], { field }));
   });
 
-  it('o nome vale como está gravado: com espaço a mais é outro item', () => {
+  it('confere o nome exato: quem acerta o espaço nas pontas é o withStoredNames, antes', () => {
     expect(checkCatalog(lead({ source: 'WhatsApp ' }), CATALOGOS))
       .toEqual(refusal(422, 'catalogo_mudou', ZAP_LEAD_MESSAGES.gone.source, { field: 'source' }));
+    expect(checkCatalog(withStoredNames(lead({ source: 'WhatsApp ' }), CATALOGOS), CATALOGOS)).toBeNull();
+  });
+});
+
+describe('withStoredNames: o nome que o lead guarda é o gravado', () => {
+  const lead = (extra = {}) => ({
+    name: 'Mariana', source: 'WhatsApp', dor: 'Postura', modalidade: 'Pilates', funnelId: 'f-com', stage: 'Novo lead', ...extra
+  });
+  // Catálogo com espaço nas pontas, como a etapa "Tur/Apresentação planos "
+  // da Shape One, que o Stronizap manda sem o espaço.
+  const COM_ESPACO = {
+    ...CATALOGOS,
+    sources: [...CATALOGOS.sources, { id: 's9', name: 'Leads planilha ' }],
+    dores: [...CATALOGOS.dores, { id: 'd9', name: ' Ganho de massa' }],
+    modalities: [...CATALOGOS.modalities, { id: 'm9', name: 'Funcional ', order: 3 }],
+    statuses: [
+      ...CATALOGOS.statuses,
+      { id: 'e', funnelId: 'f-com', name: 'Tur/Apresentação planos ', order: 3 },
+      { id: 'f', funnelId: 'f-kids', name: 'Visita ', order: 2 }
+    ]
+  };
+
+  it('troca cada nome pelo gravado que só difere nas pontas, e a conferência passa', () => {
+    const pedido = lead({ source: 'Leads planilha', dor: 'Ganho de massa', modalidade: 'Funcional', stage: 'Tur/Apresentação planos' });
+    const pronto = withStoredNames(pedido, COM_ESPACO);
+
+    expect(pronto).toEqual({
+      ...pedido, source: 'Leads planilha ', dor: ' Ganho de massa', modalidade: 'Funcional ', stage: 'Tur/Apresentação planos '
+    });
+    expect(checkCatalog(pronto, COM_ESPACO)).toBeNull();
+  });
+
+  it('o nome exato ganha do parecido', () => {
+    const catalogos = { ...COM_ESPACO, statuses: [...COM_ESPACO.statuses, { id: 'g', funnelId: 'f-com', name: 'Novo lead ', order: 4 }] };
+
+    expect(withStoredNames(lead(), catalogos).stage).toBe('Novo lead');
+    expect(withStoredNames(lead({ stage: 'Novo lead ' }), catalogos).stage).toBe('Novo lead ');
+  });
+
+  it('a etapa só vem do funil escolhido', () => {
+    expect(withStoredNames(lead({ stage: 'Visita' }), COM_ESPACO).stage).toBe('Visita');
+    expect(checkCatalog(withStoredNames(lead({ stage: 'Visita' }), COM_ESPACO), COM_ESPACO))
+      .toEqual(refusal(422, 'catalogo_mudou', ZAP_LEAD_MESSAGES.gone.stage, { field: 'stage' }));
+  });
+
+  it('o que não existe, o que está em branco e a modalidade ausente ficam como vieram', () => {
+    const pedido = lead({ source: 'Facebook', dor: ' ', modalidade: null, funnelId: 'f-sumiu', stage: 'Tur/Apresentação planos' });
+
+    expect(withStoredNames(pedido, COM_ESPACO)).toEqual(pedido);
   });
 });
 

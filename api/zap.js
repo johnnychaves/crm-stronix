@@ -26,12 +26,13 @@ import { zapMatchKey } from './_zapPhone.js';
 import { buildZapCard, buildGuardianCard, buildZapWards } from './_zapCard.js';
 import {
   LEAD_CREATE_LIMIT, ZAP_LEAD_MESSAGES, refusal, invalidData, tenantBlocked, emailFromActor, findTeamMember,
-  buildLeadOptions, readCreateLeadBody, checkMinor, checkCatalog, resolveOwner, sameStudentName, studentKey,
+  buildLeadOptions, readCreateLeadBody, checkMinor, withStoredNames, checkCatalog, resolveOwner, sameStudentName, studentKey,
   buildZapLead, buildZapSignupInteraction, buildRegistrationNote, alreadyRegisteredBody, scrubbedError, signupRefusal
 } from './_zapLead.js';
 import {
   SCHEDULE_LIMIT, ZAP_SCHEDULE_MESSAGES, unitsView, readScheduleOptionsBody, buildScheduleOptions,
-  readScheduleBody, readStatusBody, checkScheduleCatalog, checkFuture, leadBelongsToNumber, hasSameAppointment,
+  readScheduleBody, readStatusBody, scheduleWithStoredNames, checkScheduleCatalog, checkFuture, leadBelongsToNumber,
+  hasSameAppointment,
   scheduleRecordChanges, buildScheduleWrites, appointmentDetailOf, alreadyScheduledBody, scheduleRefusal
 } from './_zapSchedule.js';
 import { contactOf } from '../src/lib/guardian.js';
@@ -439,7 +440,7 @@ async function handleCreateLead(req, res) {
 
     const read = readCreateLeadBody(req.body);
     if (read.refusal) return responder(res, read.refusal);
-    const { phone, matchKey, email, actorName, channelName, lead } = read.value;
+    const { phone, matchKey, email, actorName, channelName } = read.value;
 
     const limit = await checkRateLimit(`zap-create-lead:${tenantId}`, LEAD_CREATE_LIMIT);
     if (!limit.ok) return responder(res, refusal(429, 'limite', ZAP_LEAD_MESSAGES.rateLimited));
@@ -452,6 +453,8 @@ async function handleCreateLead(req, res) {
     // o Stronizap manda só entra se o cadastro da equipe não tiver nome.
     const actor = { ...member, name: member.name || actorName };
 
+    // O Stronizap apara as pontas do texto; o lead guarda o nome gravado.
+    const lead = withStoredNames(read.value.lead, catalogs);
     const problem = checkMinor({ minor: lead.minor, phone }) || checkCatalog(lead, catalogs);
     if (problem) return responder(res, problem);
     const ownership = resolveOwner({ actor, ownerId: lead.ownerId, team });
@@ -580,7 +583,7 @@ async function handleSchedule(req, res) {
 
     const read = readScheduleBody(req.body);
     if (read.refusal) return responder(res, read.refusal);
-    const { matchKey, email, actorName, channelName, at, schedule } = read.value;
+    const { matchKey, email, actorName, channelName, at } = read.value;
 
     const limit = await checkRateLimit(`zap-schedule:${tenantId}`, SCHEDULE_LIMIT);
     if (!limit.ok) return responder(res, refusal(429, 'limite', ZAP_SCHEDULE_MESSAGES.rateLimited));
@@ -594,6 +597,8 @@ async function handleSchedule(req, res) {
     const actor = { ...member, name: member.name || actorName };
 
     const agora = new Date();
+    // O Stronizap apara as pontas do texto; o registro guarda o nome gravado.
+    const schedule = scheduleWithStoredNames(read.value.schedule, catalogs);
     const problem = checkScheduleCatalog(schedule, catalogs) || checkFuture(at, agora);
     if (problem) return responder(res, problem);
 
