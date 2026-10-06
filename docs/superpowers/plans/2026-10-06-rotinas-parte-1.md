@@ -146,7 +146,7 @@ Crie `src/lib/__tests__/rotinas.test.js`:
 ```js
 import { describe, expect, it } from 'vitest';
 import {
-  ALL_DAYS, MAX_TASKS_PER_MODEL, copyName, daysText, followerChanges, markIdOf, minutesOf, modelDocs,
+  ALL_DAYS, MAX_TASKS_PER_MODEL, copyName, daysText, followerChanges, markDoneAt, markIdOf, minutesOf, modelDocs,
   modelNameProblem, modelOfUser, normalizeTask, removeTask, routineDayKey, routineParticipants, spanText,
   stateText, taskProblems, taskRunsOn, taskStateAt, tasksForDay, upsertTask,
 } from '../rotinas.js';
@@ -312,6 +312,15 @@ describe('quem segue', () => {
   });
 });
 
+describe('o check só conta no próprio dia', () => {
+  it('a hora do check precisa cair no dia do check', () => {
+    expect(markDoneAt({ doneAt: at('08:06') }, '2026-10-06')).toEqual(at('08:06'));
+    expect(markDoneAt({ doneAt: at('23:50', 5) }, '2026-10-06')).toBe(null);
+    expect(markDoneAt({ doneAt: null }, '2026-10-06')).toBe(null);
+    expect(markDoneAt(null, '2026-10-06')).toBe(null);
+  });
+});
+
 describe('o que é gravado', () => {
   it('o id do check', () => {
     expect(markIdOf('carla', '2026-10-06', 't4')).toBe('carla_2026-10-06_t4');
@@ -363,6 +372,14 @@ export const DAY_LONG = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'se
 
 // A mesma chave de dia da Meta (dgDateKey): calendário local, AAAA-MM-DD.
 export const routineDayKey = (date) => dayKeyOf(date);
+
+// O check só conta quando a hora dele cai no próprio dia do check. As regras
+// do Firestore (routineMarkDayOk) deixam uma folga de um dia na virada da
+// meia-noite, e o consultor grava o próprio check: a leitura fecha a folga.
+export function markDoneAt(mark, dateKey) {
+  const doneAt = mark?.doneAt instanceof Date ? mark.doneAt : null;
+  return doneAt && routineDayKey(doneAt) === dateKey ? doneAt : null;
+}
 export const markIdOf = (consultantId, dateKey, taskId) => `${consultantId}_${dateKey}_${taskId}`;
 
 const pad = (n) => String(n).padStart(2, '0');
@@ -1088,7 +1105,7 @@ import { Check, ListChecks, MessageSquare, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { useMyRoutine } from '../../hooks/useMyRoutine.js';
-import { NOTE_MAX, hhmmOf, minutesOf, routineDayKey, stateText, taskStateAt, tasksForDay } from '../../lib/rotinas.js';
+import { NOTE_MAX, hhmmOf, markDoneAt, minutesOf, routineDayKey, stateText, taskStateAt, tasksForDay } from '../../lib/rotinas.js';
 import { markDone, saveMarkNote, undoMark } from '../../lib/rotinasWrites.js';
 
 // Cartão "Rotina de hoje" da Meta diária (spec
@@ -1140,7 +1157,7 @@ function Needle({ now }) {
 }
 
 function RoutineRow({ row, now, busy, editing, draft, onDraft, onToggle, onSave, onClose }) {
-  const { task, mark, state } = row;
+  const { task, mark, doneAt, state } = row;
   const done = DONE.has(state);
   return (
     <li className={cn('grid grid-cols-[44px_22px_minmax(0,1fr)] items-start gap-x-2.5 rounded-xl px-2 py-2', state === 'now' && 'bg-brand-600/[0.07]')}>
@@ -1164,7 +1181,7 @@ function RoutineRow({ row, now, busy, editing, draft, onDraft, onToggle, onSave,
       </button>
       <div className="min-w-0">
         <p className={cn('text-[13px] font-medium leading-snug', done && 'text-muted-foreground')}>{task.title}</p>
-        <p className={cn('mt-0.5 text-[11.5px]', META_TONE[state])}>{stateText(task, state, mark?.doneAt ?? now, now)}</p>
+        <p className={cn('mt-0.5 text-[11.5px]', META_TONE[state])}>{stateText(task, state, doneAt ?? now, now)}</p>
         {task.how && !done && <p className="mt-0.5 text-[11.5px] text-muted-foreground">{task.how}</p>}
         {editing ? (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -1201,7 +1218,8 @@ function RoutineRow({ row, now, busy, editing, draft, onDraft, onToggle, onSave,
 
 export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
   const toast = useToast();
-  const { model, marks } = useMyRoutine({ db, enabled, userId: appUser?.id, dayKey: routineDayKey(now) });
+  const dayKey = routineDayKey(now);
+  const { model, marks } = useMyRoutine({ db, enabled, userId: appUser?.id, dayKey });
   const [busyTask, setBusyTask] = useState(null);
   const [editing, setEditing] = useState(null); // { markId, taskId }
   const [draft, setDraft] = useState('');
@@ -1211,7 +1229,10 @@ export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
 
   const rows = tasks.map((task) => {
     const mark = marks.get(task.id) || null;
-    return { task, mark, state: taskStateAt(task, mark ? (mark.doneAt ?? now) : null, now) };
+    // Check ainda sem a hora do servidor conta como agora; check cuja hora
+    // não cai no dia não conta (markDoneAt), mas pode ser desfeito.
+    const doneAt = mark ? (mark.doneAt ? markDoneAt(mark, dayKey) : now) : null;
+    return { task, mark, doneAt, state: taskStateAt(task, doneAt, now) };
   });
   const doneCount = rows.filter((r) => DONE.has(r.state)).length;
   const timed = rows.filter((r) => minutesOf(r.task.time) != null);
@@ -2770,7 +2791,8 @@ O gestor monta modelos de rotina (tarefas recorrentes sem lead) e escolhe quem s
 - **A regra do dia mora em `src/lib/rotinas.js`**, pura e sem import de tela: tarefa do dia (`taskRunsOn`, com "todos os dias de trabalho" seguindo o `metaWeekdays` da academia), estado (`taskStateAt`: agora até `ROUTINE_ON_TIME_MINUTES` depois do horário, depois atrasada), textos, validação e troca de modelo. Cartão, tela e histórico usam essa regra; não recalcule estado fora dela.
 - **Cada consultor segue um modelo só.** Quem pode seguir sai de `routineParticipants` (consultor ativo, com nome; gestor e professor não). Toda gravação que mexe em quem segue passa pela transação de `src/lib/rotinasWrites.js` (`commitModels`), que lê os modelos e grava os que mudam.
 - **Modelo e versão do dia andam juntos.** Toda gravação de modelo grava também `stronix_rotina_versoes/{modelId}_{AAAA-MM-DD}` com nome, tarefas e quem segue. É o histórico: a versão não se apaga, e o histórico de um dia usa a versão de data mais recente até ele. Gravação nova de modelo que não passe por `commitModels` deixa o histórico errado.
-- **O check** é `stronix_rotina_marcas/{consultantId}_{date}_{taskId}`, criado só pelo próprio consultor, com `doneAt` do servidor e `note` vazio; depois só o `note` muda, e o dono desfaz até 24 horas depois (a tela oferece só no dia). As regras conferem o cadastro de `consultantId` contra o uid de quem grava.
+- **O check** é `stronix_rotina_marcas/{consultantId}_{date}_{taskId}`, criado só pelo próprio consultor, com `doneAt` do servidor e `note` vazio; depois só o `note` muda, e o dono desfaz até 24 horas depois (a tela oferece só no dia). As regras conferem o cadastro de `consultantId` contra o uid de quem grava, exigem que o `date` seja o dia de agora (`routineMarkDayOk`) e só aceitam os nove campos que o app grava.
+- **O check não prova nada sozinho.** O consultor grava o próprio check, então `taskTitle`, `taskTime` e `modelId` são declarados por ele. O estado sai sempre da tarefa do modelo (hoje) ou da versão do dia (histórico), e o check só conta quando o `doneAt` cai no próprio `date` (`markDoneAt`). Contagem como "2 de 6" parte da lista de tarefas do modelo ou da versão, nunca dos checks soltos.
 - **O cartão "Rotina de hoje"** (`src/components/dailygoal/RoutineCard.jsx`) só aparece para `isMetaParticipant` com modelo e tarefa no dia, e fica fora da conta da Meta (ProgressHero, filtros, dia batido). As leituras obedecem ao `listenersActive`.
 - **A tela Rotinas** (`src/views/RotinasView.jsx`, trava `gestor`) mora em `/<academia>/rotinas`, e o modelo aberto em `/<academia>/rotinas/modelos/<id>`, lido à parte em `readScreen` (`src/lib/routes.js`). O id do modelo sai do Sentry pelo `MODEL_PATH_RE` do `sentryScrub.js`. Abrir um modelo empilha no histórico.
 - **Quem vira professor ou é excluído sai do modelo** pelo servidor (`leaveRoutineModels`, em `api/admin-users.js`), depois da devolução das tarefas delegadas, com a versão do dia no mesmo lote. O dia do servidor é o de Brasília (`isoDoDia(diaDeBrasilia(...))`).
