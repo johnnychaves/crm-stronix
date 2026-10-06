@@ -169,3 +169,7 @@ export const CONFIG_GENERAL_ID = 'general';
 // Histórico do "Ritmo do mês" da Meta Diária: 1 doc por (consultor, dia)
 // gravado quando o consultor zera a meta. ID = `${consultantId}_${YYYY-MM-DD}`.
 export const DAILY_GOAL_HISTORY_PATH = 'stronix_daily_goal_history';
+// Rotinas dos consultores (spec docs/superpowers/specs/2026-10-06-rotinas-dos-consultores-design.md).
+export const ROUTINE_MODELS_PATH = 'stronix_rotina_modelos';
+export const ROUTINE_VERSIONS_PATH = 'stronix_rotina_versoes';
+export const ROUTINE_MARKS_PATH = 'stronix_rotina_marcas';

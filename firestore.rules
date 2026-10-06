@@ -460,6 +460,47 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Rotinas dos consultores (spec
+    // docs/superpowers/specs/2026-10-06-rotinas-dos-consultores-design.md).
+    // Modelo e versão do dia: lê quem é da academia, grava só o gestor, como os
+    // catálogos. A versão é o histórico da rotina: não se apaga.
+    match /artifacts/{appId}/public/data/stronix_rotina_modelos/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
+    }
+
+    match /artifacts/{appId}/public/data/stronix_rotina_versoes/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow create, update: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
+      allow delete: if false;
+    }
+
+    // O check da rotina. Só o próprio consultor cria, no id
+    // `{consultantId}_{date}_{taskId}`, com a hora do servidor e a observação
+    // vazia. O get() confere que o cadastro de consultantId é de quem grava:
+    // sem ele, alguém criaria o check de um colega com o próprio uid, o furo
+    // descrito no comentário do stronix_daily_goal_history. Depois do check, só
+    // a observação muda, e só o dono desfaz, até 24 horas depois (a tela só
+    // oferece desfazer no mesmo dia). O professor não tem rotina.
+    match /artifacts/{appId}/public/data/stronix_rotina_marcas/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow create: if inTenant(appId) && tenantActive(appId)
+        && request.resource.data.consultantAuthUid == request.auth.uid
+        && get(/databases/$(database)/documents/artifacts/$(appId)/public/data/stronix_users/$(request.resource.data.consultantId)).data.authUid == request.auth.uid
+        && id == request.resource.data.consultantId + '_' + request.resource.data.date + '_' + request.resource.data.taskId
+        && request.resource.data.doneAt == request.time
+        && request.resource.data.note == ''
+        && !isProfessor(appId);
+      allow update: if inTenant(appId) && tenantActive(appId)
+        && resource.data.consultantAuthUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['note'])
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 140;
+      allow delete: if inTenant(appId) && tenantActive(appId)
+        && resource.data.consultantAuthUid == request.auth.uid
+        && request.time < resource.data.doneAt + duration.value(24, 'h');
+    }
+
     // Registro de tenants (raiz). Escrita SEMPRE via Admin SDK (provisionamento,
     // status, convites) — nunca pelo cliente. Leitura liberada para os membros
     // do próprio tenant (o app lê status/trial no login para bloquear academias
