@@ -4,12 +4,12 @@ import confetti from 'canvas-confetti';
 import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneToday, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneTodayFor, appointmentTaskOwnerId, goalOwnerFields, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
 import { isGestor } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
-import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel } from '../lib/dailyGoal.js';
+import { DG_CATEGORY_META, DG_CATEGORY_ORDER, COLOR_TONES, dgDateKey, buildInteractionsByLead, computeDailyGoalSlots, computeRitmo, overdueDaysOf, DEFAULT_SLA_OVERDUE_DAYS, computeDailyVolume, computeVolumeInRange, countMetaDaysInMonth, volumeTargetFor, volumeBreakdownLabel, tomorrowAppointmentsOf } from '../lib/dailyGoal.js';
 import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -1061,7 +1061,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // Agenda do dia (painel compartilhado): todas as visitas e aulas de HOJE na
   // academia, de qualquer consultor. Calculada à parte — NÃO entra em
   // processedLeads/totalSlots, não conta na minha meta. Quem confirma credita o
-  // DONO do lead (writeAppointmentOutcome).
+  // dono da tarefa do agendamento: o dono do lead, ou o consultor que agendou
+  // no lead dele (writeAppointmentOutcome e appointmentTaskOwnerId).
   const [savingAgendaId, setSavingAgendaId] = useState(null);
 
   // Índice de usuários por doc id E por authUid: consultantId guarda o id do
@@ -1122,11 +1123,15 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       // Não regrava a marca da Meta se já existe uma de hoje nesta categoria.
       // Sem isso, dois consultores confirmando a mesma linha (que é o cenário
       // normal de uma agenda compartilhada) empilham registros na timeline.
-      const jaTemMarcaHoje = hasGoalDoneToday(
+      // Só conta a marca do dono da tarefa de agora: a visita que outra pessoa
+      // fez de manhã no mesmo lead tem a marca dela, e a visita de agora
+      // precisa da sua para contar na Meta de quem a tem.
+      const jaTemMarcaHoje = hasGoalDoneTodayFor(
         row,
         row.categorySlug,
         (interactions || []).filter((i) => i.leadId === row.id),
-        new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+        appointmentTaskOwnerId(row)
       );
       await writeAppointmentOutcome({
         db, lead: row, outcome: choice, categorySlug: row.categorySlug, appUser, statuses,
@@ -1276,12 +1281,14 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       // específica. Type='daily_goal_done' é a fonte ÚNICA de verdade
       // para "tarefa cumprida" no fluxo da Meta Diária. O leadUpdate acompanha
       // a interação no mesmo batch (withBucket porque pode promover para
-      // Negociação, mudando o status resultante).
+      // Negociação, mudando o status resultante). A marca guarda quem tem a
+      // tarefa agora (goalOwnerFields), e o crédito fica com essa pessoa.
       await logInteraction(db, lead, appUser,
         {
           text: `${meta.icon} ${meta.label} — Meta Diária (${DAILY_GOAL_CATEGORY_LABEL[categorySlug] || categorySlug})`,
           type: 'daily_goal_done',
           dailyGoalCategory: categorySlug,
+          ...goalOwnerFields(lead, categorySlug),
           appointmentOutcome: outcome
         },
         withBucket(leadUpdate, lead)
@@ -1400,7 +1407,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           ? `✅ ${categoryLabel} — Meta Diária. Obs: ${noteText}`
           : `✅ ${categoryLabel} — Meta Diária concluída.`,
         type: 'daily_goal_done',
-        dailyGoalCategory: categorySlug
+        dailyGoalCategory: categorySlug,
+        ...goalOwnerFields(lead, categorySlug)
       });
       toast.success(`Tarefa "${categoryLabel}" concluída.`);
     } catch (err) {
@@ -1447,7 +1455,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
             ? `✅ ${categoryLabel} concluída — próximo contato (${followUpTypeLabel.toLowerCase()}) em ${formattedDate} às ${formattedTime}. Obs: ${noteText}`
             : `✅ ${categoryLabel} concluída — próximo contato (${followUpTypeLabel.toLowerCase()}) em ${formattedDate} às ${formattedTime}.`,
           type: closeTask ? 'daily_goal_done' : 'note',
-          ...(closeTask ? { dailyGoalCategory: categorySlug } : {}),
+          ...(closeTask ? { dailyGoalCategory: categorySlug, ...goalOwnerFields(lead, categorySlug) } : {}),
           volumeKind,
           rescheduledFor: newDate
         },
@@ -1478,7 +1486,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
               ? `✅ ${categoryLabel} concluída — sem próximo contato agendado. Obs: ${noteText}`
               : `✅ ${categoryLabel} concluída — sem próximo contato agendado.`,
             type: 'daily_goal_done',
-            dailyGoalCategory: categorySlug
+            dailyGoalCategory: categorySlug,
+            ...goalOwnerFields(lead, categorySlug)
           },
           {
             nextFollowUp: null,
@@ -1623,6 +1632,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       if (shouldCloseToday) {
         interactionPayload.dailyGoalCategory = categorySlug;
         interactionPayload.appointmentOutcome = 'rescheduled';
+        // O Remarcar não troca o dono da tarefa: a marca fica com quem a tem.
+        Object.assign(interactionPayload, goalOwnerFields(lead, categorySlug));
       }
 
       await logInteraction(db, lead, appUser, interactionPayload, leadUpdate);
@@ -1707,19 +1718,11 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   // Agendamentos de AMANHÃ (prévia) — visitas, aulas e contatos do consultor
   // marcados para o dia seguinte. NÃO entram na meta de hoje (não tocam em
   // processedLeads/totalSlots): é só uma antecipação do que vem pela frente.
+  // A visita e a aula seguem o dono da tarefa do agendamento, como na Meta
+  // (regra em tomorrowAppointmentsOf, src/lib/dailyGoal.js).
   const tomorrowAppts = useMemo(() => {
     void todayKey; // "amanhã" também vira com o dia (A5)
-    const tStart = new Date(); tStart.setHours(0, 0, 0, 0); tStart.setDate(tStart.getDate() + 1);
-    const tEnd = new Date(tStart); tEnd.setHours(23, 59, 59, 999);
-    return (leads || [])
-      .filter(l => l.consultantId === appUser.id && l.status !== 'Venda' && l.status !== 'Perda')
-      .map(l => {
-        const when = getLeadAppointmentDate(l) ||
-          (l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) ? l.nextFollowUp : null);
-        return { lead: l, when };
-      })
-      .filter(x => x.when && x.when >= tStart && x.when <= tEnd)
-      .sort((a, b) => a.when - b.when);
+    return tomorrowAppointmentsOf(leads, appUser.id);
   }, [leads, appUser, todayKey]);
 
   const greeting = useMemo(() => {

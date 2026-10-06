@@ -1,7 +1,8 @@
 // O que as ações do professor gravam no Firestore, tirado dos montadores de
 // verdade. É a lista que o firestore.rules repete nas travas do professor
-// (professorLeadFields, professorOutcomeFields e professorInteractionTypes), e
-// o src/lib/__tests__/professorRules.test.js cobra que as duas sejam iguais.
+// (professorLeadFields, professorOutcomeFields, professorTaskOwnerFields e
+// professorInteractionTypes), e o src/lib/__tests__/professorRules.test.js
+// cobra que as duas sejam iguais.
 // Spec em docs/superpowers/specs/2026-10-02-professor-e-faltosos-design.md,
 // "As regras do Firestore".
 //
@@ -42,6 +43,16 @@ export const PROFESSOR_LEAD_FIELDS = sortedUnique([...SCHEDULE_PATCH_FIELDS, ...
 // status e o desfecho, e é esse registro que a conversão por professor lê.
 export const PROFESSOR_OUTCOME_FIELDS = sortedUnique(
   SCHEDULE_PATCH_FIELDS.filter((campo) => campo.startsWith('appointmentOutcome'))
+);
+
+// O dono da tarefa da visita e da aula no lead. O professor não participa da
+// Meta, então o Agendar dele grava os dois vazios (appointmentTaskOwnerFor, em
+// schedulePatch.js), e a regra só o deixa zerar os dois ou deixá-los como
+// estavam: quem acabou de virar professor ainda tem o papel de consultor na
+// sessão aberta e, sem a trava, pegaria de volta a tarefa que o set-role
+// devolveu ao dono do lead.
+export const PROFESSOR_TASK_OWNER_FIELDS = sortedUnique(
+  SCHEDULE_PATCH_FIELDS.filter((campo) => campo.startsWith('appointmentOwner'))
 );
 
 // Os tipos de interação que o professor cria. A Anotação sai do

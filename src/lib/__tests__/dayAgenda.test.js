@@ -181,6 +181,46 @@ describe('computeDayAgenda — cliente, perda e desfecho', () => {
     expect(rows.find((r) => r.id === 'm2').ownerName).toBe('Rafael');
   });
 
+  // A visita ou a aula que um consultor agendou no lead de outro é dele
+  // (appointmentOwnerId): a linha é "sua" para quem agendou, e para o resto da
+  // equipe a meta é de quem agendou, não do dono do lead.
+  it('agendamento que ficou com quem agendou: isMine e o nome seguem o dono da tarefa', () => {
+    const delegada = lead({ id: 'd1', consultantId: 'u1', appointmentOwnerId: 'u2', appointmentOwnerName: 'Carla' });
+
+    const deQuemAgendou = computeDayAgenda({
+      liveLeads: [delegada], agendaLeads: [], usersById: users, viewerId: 'u2', now: NOW,
+    });
+    expect(deQuemAgendou.rows[0].isMine).toBe(true);
+
+    const doDono = computeDayAgenda({
+      liveLeads: [delegada], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
+    });
+    expect(doDono.rows[0].isMine).toBe(false);
+    expect(doDono.rows[0].ownerName).toBe('Carla');
+  });
+
+  it('dono da tarefa fora do índice: vale o nome gravado no lead', () => {
+    const delegada = lead({ id: 'd2', consultantId: 'u1', appointmentOwnerId: 'u9', appointmentOwnerName: 'Bia' });
+
+    const { rows } = computeDayAgenda({
+      liveLeads: [delegada], agendaLeads: [], usersById: users, viewerId: 'u1', now: NOW,
+    });
+
+    expect(rows[0].ownerName).toBe('Bia');
+    expect(rows[0].isMine).toBe(false);
+  });
+
+  it('agendamento sem dono da tarefa continua do dono do lead, com o nome gravado do dono', () => {
+    const doDono = lead({ id: 'd3', consultantId: 'u8', consultantName: 'Dani', appointmentOwnerId: null });
+
+    const { rows } = computeDayAgenda({
+      liveLeads: [doDono], agendaLeads: [], usersById: users, viewerId: 'u8', now: NOW,
+    });
+
+    expect(rows[0].isMine).toBe(true);
+    expect(rows[0].ownerName).toBe('Dani');
+  });
+
   it('lead sem consultor não quebra e recebe rótulo neutro', () => {
     const orfao = lead({ id: 'o1', consultantId: null });
 

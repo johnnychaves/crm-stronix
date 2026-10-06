@@ -79,6 +79,33 @@ describe('writeAppointmentOutcome', () => {
   });
 });
 
+// A marca do dia guarda quem tinha a tarefa na hora (goalOwnerId): o crédito
+// da Meta segue a marca, e não o dono da tarefa de depois, que muda a cada
+// agendamento novo.
+describe('writeAppointmentOutcome: dono da tarefa na marca do dia', () => {
+  it('a marca da visita leva o dono do lead quando a tarefa é dele', async () => {
+    await writeAppointmentOutcome({ db: {}, lead: NOVO, outcome: 'attended', categorySlug: VISITA, appUser: USER, statuses: STATUSES });
+    expect(m.adds[0].data).toMatchObject({ type: 'daily_goal_done', dailyGoalCategory: VISITA, goalOwnerId: 'c1' });
+    // A mudança de fase não é marca do dia e não leva o campo.
+    expect(m.adds[1].data.type).toBe('status_change');
+    expect(m.adds[1].data).not.toHaveProperty('goalOwnerId');
+  });
+
+  it('a marca da aula leva quem agendou no lead de outro consultor, e não quem clicou', async () => {
+    const delegada = { ...NOVO, appointmentOwnerId: 'c2', appointmentOwnerName: 'Bia' };
+    await writeAppointmentOutcome({ db: {}, lead: delegada, outcome: 'no_show', categorySlug: AULA, appUser: USER });
+    expect(m.adds[0].data).toMatchObject({ type: 'daily_goal_done', dailyGoalCategory: AULA, goalOwnerId: 'c2' });
+  });
+
+  it('a marca de correção também leva o dono da tarefa', async () => {
+    await correctAppointmentOutcome({
+      db: {}, lead: { ...PROMOVIDO, appointmentOwnerId: 'c2' }, from: 'attended', to: 'no_show', categorySlug: VISITA,
+      appUser: USER, statuses: STATUSES,
+    });
+    expect(m.adds[0].data).toMatchObject({ outcomeCorrection: true, goalOwnerId: 'c2' });
+  });
+});
+
 describe('writeAppointmentOutcome com extraPatch', () => {
   it('extraPatch entra no updateDoc sem sobrescrever o desfecho', async () => {
     await writeAppointmentOutcome({

@@ -2280,6 +2280,29 @@ describe('POST /api/zap com action schedule', () => {
     });
     expect(aulasDaAcademia()[0]).toMatchObject({ consultantId: 'u-ana', consultantName: 'Ana Souza' });
     expect(leadDaAcademia('L1').consultantId).toBe('u-ana');
+    // O gestor não participa da Meta: a tarefa do dia fica com a Ana.
+    expect(leadDaAcademia('L1')).toMatchObject({ appointmentOwnerId: null, appointmentOwnerName: null });
+    expect(interacoesDaAcademia()[0].text).not.toContain('tarefa de');
+  });
+
+  // Regra do dono (05/10/2026): o Bruno é consultor e agenda no lead da Ana, então
+  // a tarefa do dia é dele. A Ana continua dona do lead e do registro, e a ficha
+  // dela diz de quem é a tarefa.
+  it('consultor que agenda no lead de outro fica com a tarefa do dia', async () => {
+    const res = resposta();
+
+    await handler(pedidoAgenda({ actor: { email: BRUNO.email, name: 'Bruno' } }), res);
+
+    expect(res.statusCode).toBe(201);
+    expect(leadDaAcademia('L1')).toMatchObject({
+      consultantId: 'u-ana', consultantName: 'Ana Souza', consultantAuthUid: 'auth-ana',
+      appointmentOwnerId: 'u-bruno', appointmentOwnerName: 'Bruno Lima'
+    });
+    expect(interacoesDaAcademia()[0]).toMatchObject({
+      consultantName: 'Bruno Lima', actorId: 'u-bruno', actorAuthUid: 'auth-bruno', leadConsultantId: 'u-ana', volumeKind: 'visita',
+      text: '🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00 · tarefa de Bruno Lima. Obs: Vem depois do trabalho.'
+    });
+    expect(aulasDaAcademia()[0]).toMatchObject({ consultantId: 'u-ana', consultantAuthUid: 'auth-ana', consultantName: 'Ana Souza' });
   });
 
   it('menor de quem o número é responsável: agenda no lead dele e devolve o cartão do responsável', async () => {

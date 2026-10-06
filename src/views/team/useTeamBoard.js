@@ -8,18 +8,17 @@ import {
   buildInteractionsByLead, computeDailyGoalSlots, slotTotals, computeRitmo,
   overdueDaysOf, dgDateKey, computeDailyVolume, computeVolumeInRange,
   listVolumeActionsInRange, volumeTargetFor, countClosedMetaDaysInMonth,
-  countMetaDaysInMonthAll, interactionOwnerAuthUid,
+  countMetaDaysInMonthAll, interactionOwnerAuthUid, leadsByGoalOwner,
 } from '../../lib/dailyGoal.js';
 
 // Fatiar leads e interações por dono UMA vez, em vez de re-varrer tudo por
 // usuário. Mesmo critério que useTeamGoals usa — se divergir, a fatia não bate
-// com o filtro interno das funções de meta e volume.
+// com o filtro interno das funções de meta e volume. A fatia de leads leva
+// também a visita ou a aula que a pessoa agendou no lead de um colega, e a que
+// ela fez e que já passou para outra pessoa (leadsByGoalOwner, com as
+// interações), senão a tarefa dela sumiria da linha no painel.
 function sliceByOwner(leads, interactions) {
-  const leadsByConsultant = new Map();
-  (leads || []).forEach((l) => {
-    const arr = leadsByConsultant.get(l.consultantId);
-    if (arr) arr.push(l); else leadsByConsultant.set(l.consultantId, [l]);
-  });
+  const leadsByConsultant = leadsByGoalOwner(leads, interactions);
   const interactionsByAuth = new Map();
   (interactions || []).forEach((i) => {
     const owner = interactionOwnerAuthUid(i);

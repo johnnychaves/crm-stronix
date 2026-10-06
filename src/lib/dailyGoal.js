@@ -4,10 +4,13 @@ import {
   DAILY_GOAL_CATEGORY_LABEL,
   getLeadAppointmentType,
   getLeadAppointmentDate,
-  hasGoalDoneToday,
+  hasGoalDoneTodayFor,
   isLeadResolvedToday,
   hasActiveInteractionToday,
-  contactOwnerId
+  contactOwnerId,
+  appointmentTaskOwnerId,
+  APPOINTMENT_GOAL_CATEGORIES,
+  isAppointmentGoalCategory
 } from './leads.js';
 import { normalizeAppointmentType } from './dates.js';
 import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
@@ -266,7 +269,7 @@ export function overdueDaysOf(lead, refDate = new Date()) {
 
 // Índice de interações por leadId — varrer TODAS as interações por lead é
 // O(leads × interações) e trava a UI em volume. O(interações) p/ montar +
-// lookups O(1). hasGoalDoneToday/hasActiveInteractionToday filtram por leadId
+// lookups O(1). hasGoalDoneTodayFor/hasActiveInteractionToday filtram por leadId
 // internamente, então passar só as do lead dá EXATAMENTE o mesmo resultado.
 export function buildInteractionsByLead(interactions) {
   const map = new Map();
@@ -275,6 +278,36 @@ export function buildInteractionsByLead(interactions) {
     if (arr) arr.push(i); else map.set(i.leadId, [i]);
   });
   return map;
+}
+
+// Fatia de leads por pessoa, para quem monta a Meta de várias pessoas de uma
+// vez (a Meta da equipe, em src/views/team/useTeamBoard.js): cada lead entra na
+// fatia do dono e, quando a visita ou a aula ficou com outra pessoa
+// (appointmentOwnerId), também na fatia dela. Com as interações, o lead entra
+// ainda na fatia de quem tinha a tarefa quando a visita ou a aula foi marcada
+// como feita (goalOwnerId), que pode não ser mais nem o dono do lead nem o dono
+// da tarefa de agora. computeDailyGoalSlots decide o resto, então a fatia só
+// precisa ter todo lead em que a pessoa pode ter tarefa de agendamento, feita
+// ou não. O contato delegado (nextFollowUpOwnerId) continua fora da fatia,
+// como antes da regra do agendamento.
+export function leadsByGoalOwner(leads, interactions = []) {
+  const byOwner = new Map();
+  const add = (id, lead) => {
+    const set = byOwner.get(id);
+    if (set) set.add(lead); else byOwner.set(id, new Set([lead]));
+  };
+  const byId = new Map();
+  (leads || []).forEach(l => {
+    byId.set(l.id, l);
+    add(l.consultantId, l);
+    if (l.appointmentOwnerId) add(l.appointmentOwnerId, l);
+  });
+  (interactions || []).forEach(i => {
+    if (i?.type !== 'daily_goal_done' || !i.goalOwnerId) return;
+    const lead = byId.get(i.leadId);
+    if (lead) add(i.goalOwnerId, lead);
+  });
+  return new Map([...byOwner].map(([id, set]) => [id, [...set]]));
 }
 
 // Monta os "slots" da meta de UM consultor: cada lead alvo sai com
@@ -301,19 +334,35 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   const delegatedContactLeads = (leads || []).filter(
     l => l.consultantId !== consultantId && l.nextFollowUpOwnerId === consultantId
   );
+  // Visita ou aula que EU agendei no lead de OUTRO consultor (decisão do dono,
+  // em 05/10/2026): a tarefa do dia é minha (appointmentTaskOwnerId). Também
+  // fica fora de myLeads: recebo só a visita ou a aula, nunca o Novo 24h, o
+  // Atrasado ou o contato do lead, que continuam com o dono.
+  const delegatedAppointmentLeads = (leads || []).filter(
+    l => l.consultantId !== consultantId && l.appointmentOwnerId === consultantId
+  );
+  // As duas categorias do agendamento (APPOINTMENT_GOAL_CATEGORIES, em
+  // leads.js) seguem o dono da tarefa do agendamento, e não o dono do lead.
+  const ownsAppointmentTask = (lead) => appointmentTaskOwnerId(lead) === consultantId;
   const allTargetLeadsMap = new Map();
   const leadInteractions = (id) => interactionsByLead.get(id) || [];
+  // A marca do dia da categoria que vale para este consultor. Na visita e na
+  // aula, é a marca de quem tinha a tarefa na hora da marcação (goalOwnerId),
+  // e não a do dono da tarefa de agora (hasGoalDoneTodayFor, em leads.js).
+  const isMarkedDoneToday = (lead, categorySlug) =>
+    hasGoalDoneTodayFor(lead, categorySlug, leadInteractions(lead.id), todayStart, consultantId);
 
   // Regra única: tarefa é considerada "feita" SOMENTE se
   //   (a) lead virou Venda/Perda hoje (auto-conclui todas as
   //       categorias do lead — decisão de produto), OU
   //   (b) há uma interaction type='daily_goal_done' criada hoje
-  //       com dailyGoalCategory matching aquela categoria.
+  //       com dailyGoalCategory matching aquela categoria (na visita e na
+  //       aula, a de quem tinha a tarefa quando ela foi marcada).
   // Mover no Kanban, anotar no LeadDetailsModal, mudar fase, etc
   // NÃO marcam a tarefa. O consultor precisa confirmar pela Meta.
   const isCategoryDone = (lead, categorySlug) => {
     if (isLeadResolvedToday(lead, todayStart)) return true;
-    return hasGoalDoneToday(lead, categorySlug, leadInteractions(lead.id), todayStart);
+    return isMarkedDoneToday(lead, categorySlug);
   };
 
   const addTarget = (lead, categoryLabel, categorySlug) => {
@@ -349,6 +398,24 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.contato_hoje, DAILY_GOAL_CATEGORIES.CONTATO_HOJE);
   };
 
+  // Categorias 3 e 4 — Visitas Hoje e Aulas Exp. Hoje. Extraídas pelo mesmo
+  // motivo do contato: rodam nos leads do consultor e nas visitas e aulas que
+  // ele agendou no lead de um colega.
+  const addAppointmentTodayIfDue = (lead) => {
+    // Dono da TAREFA do agendamento, que pode não ser o dono do lead.
+    if (!ownsAppointmentTask(lead)) return;
+    if (lead.status === 'Venda' || lead.status === 'Perda') return;
+    const apptType = getLeadAppointmentType(lead);
+    const apptDate = getLeadAppointmentDate(lead);
+    if (!(apptDate >= todayStart && apptDate <= todayEnd)) return;
+    if (apptType === 'visita') {
+      addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.visita_hoje, DAILY_GOAL_CATEGORIES.VISITA_HOJE);
+    }
+    if (apptType === 'aula_experimental') {
+      addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.aula_hoje, DAILY_GOAL_CATEGORIES.AULA_HOJE);
+    }
+  };
+
   myLeads.forEach(lead => {
     // 1. Novo Lead 24h
     // A regra entra em vigor APENAS no dia seguinte ao cadastro: leads
@@ -369,23 +436,9 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
       addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.atrasado, DAILY_GOAL_CATEGORIES.ATRASADO);
     }
 
-    // 3. Visitas Hoje
-    if (lead.status !== 'Venda' && lead.status !== 'Perda') {
-      const apptType = getLeadAppointmentType(lead);
-      const apptDate = getLeadAppointmentDate(lead);
-      if (apptType === 'visita' && apptDate >= todayStart && apptDate <= todayEnd) {
-        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.visita_hoje, DAILY_GOAL_CATEGORIES.VISITA_HOJE);
-      }
-    }
-
-    // 4. Aulas Exp. Hoje
-    if (lead.status !== 'Venda' && lead.status !== 'Perda') {
-      const apptType = getLeadAppointmentType(lead);
-      const apptDate = getLeadAppointmentDate(lead);
-      if (apptType === 'aula_experimental' && apptDate >= todayStart && apptDate <= todayEnd) {
-        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL.aula_hoje, DAILY_GOAL_CATEGORIES.AULA_HOJE);
-      }
-    }
+    // 3 e 4. Visitas Hoje e Aulas Exp. Hoje — regra em addAppointmentTodayIfDue
+    // (acima): a visita ou a aula que um colega agendou neste lead é dele.
+    addAppointmentTodayIfDue(lead);
 
     // 5. Contato Hoje — regra em addContactTodayIfDue (acima), porque ela roda
     // também sobre os contatos delegados a este consultor por colegas.
@@ -417,6 +470,10 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     }
   });
 
+  // Visitas e aulas que este consultor agendou no lead de colegas: SÓ as
+  // categorias 3 e 4.
+  delegatedAppointmentLeads.forEach(addAppointmentTodayIfDue);
+
   // Contatos que colegas delegaram a este consultor: SÓ a categoria 5.
   delegatedContactLeads.forEach(addContactTodayIfDue);
 
@@ -431,18 +488,54 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   // ficar marcada como feita. Aqui ele mantém visível só o que concluiu nestas
   // duas — nada de lead muda de comportamento.
   const CLIENT_CATEGORY_SLUGS = [DAILY_GOAL_CATEGORIES.RENOVACAO, DAILY_GOAL_CATEGORIES.VENCIDO];
+  const addDoneToday = (lead, slugs) => slugs.forEach(slug => {
+    if (isMarkedDoneToday(lead, slug)) {
+      addTarget(lead, DAILY_GOAL_CATEGORY_LABEL[slug] || slug, slug);
+    }
+  });
   myLeads.forEach(lead => {
     const isCliente = lead.lifecycleStage === 'cliente';
     if (!isCliente && (lead.status === 'Venda' || lead.status === 'Perda')) return;
     const slugs = isCliente ? CLIENT_CATEGORY_SLUGS : Object.values(DAILY_GOAL_CATEGORIES);
-    slugs.forEach(slug => {
-      if (hasGoalDoneToday(lead, slug, leadInteractions(lead.id), todayStart)) {
-        addTarget(lead, DAILY_GOAL_CATEGORY_LABEL[slug] || slug, slug);
-      }
-    });
+    // A visita e a aula ficam para o laço de baixo, que olha o dono da marca.
+    addDoneToday(lead, slugs.filter(slug => !isAppointmentGoalCategory(slug)));
+  });
+  // A visita e a aula feitas hoje são de quem tinha a tarefa quando foram
+  // marcadas (goalOwnerId; a marca de antes do campo vale para o dono da
+  // tarefa de agora). Vale em qualquer lead da base: depois da marca, o passo
+  // seguinte agendado por outra pessoa troca o dono da tarefa do lead, e a
+  // visita feita não muda de Meta por isso. Mesmo guard dos leads dele:
+  // cliente não tem tarefa de visita nem de aula.
+  (leads || []).forEach(lead => {
+    if (lead.lifecycleStage === 'cliente' || lead.status === 'Venda' || lead.status === 'Perda') return;
+    addDoneToday(lead, APPOINTMENT_GOAL_CATEGORIES);
   });
 
   return Array.from(allTargetLeadsMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
+// Prévia de AMANHÃ da Meta (o chip "Amanhã" do DailyGoalView): visitas, aulas
+// e contatos marcados para o dia seguinte. Não conta na meta de hoje. Cada lead
+// entra uma vez, pelo compromisso quando tem, senão pelo próximo contato. A
+// visita e a aula vão para o dono da tarefa do agendamento
+// (appointmentTaskOwnerId), como na Meta; o contato continua com o dono do
+// lead, como antes da regra do agendamento. Lead em Venda ou Perda fica fora.
+// Devolve [{ lead, when }] por horário.
+export function tomorrowAppointmentsOf(leads, consultantId, refDate = new Date()) {
+  const tStart = new Date(refDate); tStart.setHours(0, 0, 0, 0); tStart.setDate(tStart.getDate() + 1);
+  const tEnd = new Date(tStart); tEnd.setHours(23, 59, 59, 999);
+  return (leads || [])
+    .filter(l => l.status !== 'Venda' && l.status !== 'Perda')
+    .map(l => {
+      const appointmentAt = getLeadAppointmentDate(l);
+      const when = appointmentAt ||
+        (l.nextFollowUp instanceof Date && !isNaN(l.nextFollowUp.getTime()) ? l.nextFollowUp : null);
+      const owner = appointmentAt ? appointmentTaskOwnerId(l) : l.consultantId;
+      return { lead: l, when, owner };
+    })
+    .filter(x => x.owner === consultantId && x.when && x.when >= tStart && x.when <= tEnd)
+    .sort((a, b) => a.when - b.when)
+    .map(({ lead, when }) => ({ lead, when }));
 }
 
 // Totais de slots de um conjunto processado. Sem tarefas = 100% (meta vazia).

@@ -16,8 +16,10 @@ import {
   zapScheduleTitle,
   appointmentOriginText,
   isAppointmentReschedule,
+  parseAppointment,
   TIMELINE_FILTERS
 } from '../timeline.js';
+import { taskOwnerText } from '../schedulePatch.js';
 import {
   buildContractActivate,
   buildContractCancel,
@@ -620,5 +622,50 @@ describe('isAppointmentReschedule: o Remarcar da Meta Diária', () => {
     expect(isAppointmentReschedule({ type: 'note' })).toBe(false);
     expect(isAppointmentReschedule(null)).toBe(false);
     expect(isAppointmentReschedule(undefined)).toBe(false);
+  });
+});
+
+// Quando a tarefa do dia fica com outra pessoa, o texto do agendamento termina
+// com " · tarefa de <nome>" (taskOwnerText, em schedulePatch.js), na visita e
+// na aula agendadas no lead de outro consultor e no contato delegado. É assim
+// que o dono do lead fica sabendo pela ficha, e o parser entrega o nome para o
+// cartão do agendamento. Os textos aqui saem do mesmo taskOwnerText.
+describe('parseAppointment: de quem é a tarefa', () => {
+  const agendamento = (text) => ({ type: 'note', text });
+
+  it('visita agendada por outra pessoa, com a anotação depois', () => {
+    const i = agendamento(`🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00${taskOwnerText('Bruno Lima')}. Obs: Vem depois do trabalho.`);
+    expect(parseAppointment(i)).toEqual({
+      kind: 'visit', label: 'Visita à unidade', when: new Date(2026, 9, 1, 18, 0),
+      location: 'Unidade Centro', note: 'Vem depois do trabalho.', taskOwner: 'Bruno Lima'
+    });
+  });
+
+  it('aula com professor: o " · " do professor não é o dono da tarefa', () => {
+    const i = agendamento(`🔔 Aula Experimental agendada (Pilates · 1 aula) · Carla Dias p/ 02/10/2026, 19:00${taskOwnerText('Ana Souza')}.`);
+    expect(parseAppointment(i)).toMatchObject({ kind: 'class', when: new Date(2026, 9, 2, 19, 0), note: null, taskOwner: 'Ana Souza' });
+  });
+
+  it('contato delegado', () => {
+    const i = agendamento(`🔔 Mensagem agendada p/ 08/10/2026, 10:00${taskOwnerText('Bia')}.`);
+    expect(parseAppointment(i)).toMatchObject({ kind: 'message', when: new Date(2026, 9, 8, 10, 0), taskOwner: 'Bia' });
+  });
+
+  it('nome com ponto e o texto de reserva, sem nome', () => {
+    expect(parseAppointment(agendamento(`🔔 Visita agendada p/ 01/10/2026, 18:00${taskOwnerText('Ana C. Souza')}.`)).taskOwner)
+      .toBe('Ana C. Souza');
+    expect(parseAppointment(agendamento(`🔔 Visita agendada p/ 01/10/2026, 18:00${taskOwnerText(null)}.`)).taskOwner)
+      .toBe('outro consultor');
+  });
+
+  it('agendamento que ficou com o dono do lead não tem dono de tarefa', () => {
+    expect(parseAppointment(agendamento('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: Traz a toalha.')).taskOwner)
+      .toBeNull();
+    expect(parseAppointment(agendamento('Retorno agendado (Ligação) p/ 01/10, 18:00')).taskOwner).toBeNull();
+  });
+
+  it('"tarefa de" escrito na anotação não conta', () => {
+    const i = agendamento('🔔 Visita agendada p/ 01/10/2026, 18:00. Obs: avisar · tarefa de Carla.');
+    expect(parseAppointment(i)).toMatchObject({ note: 'avisar · tarefa de Carla.', taskOwner: null });
   });
 });

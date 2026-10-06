@@ -117,3 +117,34 @@ describe('linha do tempo da ficha: faixas de contrato', () => {
     expect(html).toContain('>10/09 09:15<');
   });
 });
+
+// O agendamento que deixou a tarefa do dia com outra pessoa termina com
+// " · tarefa de <nome>" (taskOwnerText, em schedulePatch.js). O cartão do
+// agendamento mostra "Tarefa de <nome>" nos detalhes, junto da unidade e da
+// anotação. É assim que o dono do lead vê, pela ficha, que outra pessoa vai
+// cuidar da visita, da aula ou do contato.
+describe('linha do tempo da ficha: de quem é a tarefa do agendamento', () => {
+  const agendamento = (id, text) => ({ id, type: 'note', text, consultantName: 'Ana', createdAt: new Date(2026, 8, 29, 15, 42) });
+
+  it('visita agendada por outra pessoa: "Tarefa de" entre a unidade e a anotação', () => {
+    const html = ficha({ registros: [agendamento('a1', '🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00 · tarefa de Bruno Lima. Obs: Vem depois do trabalho.')] });
+    expect(html).toContain('>Unidade Centro · Tarefa de Bruno Lima · Vem depois do trabalho. · ');
+  });
+
+  it('aula com professor e contato delegado também mostram de quem é a tarefa', () => {
+    const html = ficha({
+      registros: [
+        agendamento('a1', '🔔 Aula Experimental agendada (Pilates · 1 aula) · Carla Dias p/ 02/10/2026, 19:00 · tarefa de Ana Souza.'),
+        agendamento('m1', '🔔 Mensagem agendada p/ 08/10/2026, 10:00 · tarefa de Bia.'),
+      ],
+    });
+    expect(html).toContain('>Tarefa de Ana Souza · ');
+    expect(html).toContain('>Tarefa de Bia · ');
+  });
+
+  it('agendamento que ficou com o dono do lead não diz de quem é a tarefa', () => {
+    const html = ficha({ registros: [agendamento('a1', '🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: Vem depois do trabalho.')] });
+    expect(html).toContain('>Unidade Centro · Vem depois do trabalho. · ');
+    expect(html).not.toContain('Tarefa de');
+  });
+});

@@ -98,6 +98,8 @@ service cloud.firestore {
         'appointmentOutcome',
         'appointmentOutcomeAt',
         'appointmentOutcomeBy',
+        'appointmentOwnerId',
+        'appointmentOwnerName',
         'appointmentProfessorId',
         'appointmentProfessorName',
         'appointmentScheduledFor',
@@ -133,6 +135,23 @@ service cloud.firestore {
         && request.resource.data.get('appointmentOutcomeAt', null) == null
         && request.resource.data.get('appointmentOutcomeBy', null) == null;
     }
+    // O dono da tarefa da visita e da aula no lead. O professor não participa
+    // da Meta, e o Agendar dele grava os dois vazios. Quando ele muda um dos
+    // dois, os dois precisam terminar vazios: quem acabou de virar professor
+    // ainda tem o papel de consultor na sessão aberta, e sem a trava gravaria
+    // o próprio id e pegaria de volta a tarefa que o set-role devolveu ao dono
+    // do lead. O que ele não muda fica como estava, então o lead que já tem
+    // dono de tarefa continua aceitando a anotação e o contato do professor.
+    function professorTaskOwnerFields() {
+      return [
+        'appointmentOwnerId',
+        'appointmentOwnerName'
+      ];
+    }
+    function professorTaskOwnerCleared() {
+      return request.resource.data.get('appointmentOwnerId', null) == null
+        && request.resource.data.get('appointmentOwnerName', null) == null;
+    }
     // O dono e a fase do lead não estão na lista, então o professor não troca o
     // dono nem move o lead de etapa. Com o módulo desligado, ele não altera
     // lead nenhum.
@@ -149,6 +168,7 @@ service cloud.firestore {
       return hasModule(appId, 'faltosos')
         && changed.hasOnly(professorLeadFields())
         && (!changed.hasAny(professorOutcomeFields()) || professorOutcomeCleared())
+        && (!changed.hasAny(professorTaskOwnerFields()) || professorTaskOwnerCleared())
         && (!changed.hasAny(['lastInteractionAt']) || request.resource.data.lastInteractionAt == request.time)
         && (!changed.hasAny(['interactionsCount']) || request.resource.data.interactionsCount == resource.data.get('interactionsCount', 0) + 1);
     }

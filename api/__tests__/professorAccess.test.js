@@ -395,17 +395,25 @@ describe('troca de papel (set-role)', () => {
   });
 
   // A tarefa de contato que um consultor passou para outro (o "Para quem é a
-  // tarefa" do Agendar, nextFollowUpOwnerId) só aparece na Meta de quem a
-  // recebeu. O professor não tem essa Meta, então a troca para Professor
+  // tarefa" do Agendar, nextFollowUpOwnerId) e a visita ou a aula que um
+  // consultor agendou no lead de outro (appointmentOwnerId) só aparecem na Meta
+  // de quem as tem. O professor não tem essa Meta, então a troca para Professor
   // devolve cada tarefa ao dono do lead, com o mesmo null que o Agendar grava
   // quando a tarefa é do dono (src/lib/schedulePatch.js).
-  describe('tarefas de contato recebidas de outros consultores', () => {
+  describe('tarefas que a pessoa tem em lead de outros consultores', () => {
     const lead = (id) => banco.docs.get(`${CARTEIRA}/${id}`);
     const tarefaDe = (dono, delegado, nome) => ({
       name: `Lead de ${dono}`, consultantId: dono, nextFollowUp: '2026-10-08T12:00:00.000Z', nextFollowUpType: 'Mensagem',
       nextFollowUpOwnerId: delegado, nextFollowUpOwnerName: nome,
     });
-    const leuTarefas = () => banco.consultas.some((c) => c.filtros.some((f) => f.campo === 'nextFollowUpOwnerId'));
+    const leuTarefas = () => banco.consultas.some((c) => c.filtros.some((f) => ['nextFollowUpOwnerId', 'appointmentOwnerId'].includes(f.campo)));
+    // A visita que a pessoa agendou no lead de outro consultor e que ficou com
+    // ela (appointmentOwnerId, regra de 05/10/2026). Também só aparece na Meta
+    // dela, então volta para o dono do lead do mesmo jeito.
+    const agendamentoDe = (dono, delegado, nome) => ({
+      name: `Lead de ${dono}`, consultantId: dono, appointmentType: 'visita', appointmentScheduledFor: '2026-10-08T21:00:00.000Z',
+      appointmentOwnerId: delegado, appointmentOwnerName: nome,
+    });
 
     it('consultor que vira professor devolve as tarefas ao dono de cada lead, e só as dele', async () => {
       banco.docs.set(`${CARTEIRA}/L1`, tarefaDe('uid-bia', 'uid-ana', 'Ana'));
@@ -423,6 +431,34 @@ describe('troca de papel (set-role)', () => {
       expect(lead('L2').consultantId).toBe('gestor-1');
       expect(lead('L3')).toEqual(tarefaDe('gestor-1', 'uid-bia', 'Bia'));
       expect(banco.lotes).toEqual([2]);
+    });
+
+    it('devolve também a visita e a aula que a pessoa agendou no lead de outros, e só as dela', async () => {
+      banco.docs.set(`${CARTEIRA}/A1`, agendamentoDe('uid-bia', 'uid-ana', 'Ana'));
+      banco.docs.set(`${CARTEIRA}/A2`, agendamentoDe('gestor-1', 'uid-bia', 'Bia'));
+      const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(200);
+      expect(lead('A1')).toEqual({ ...agendamentoDe('uid-bia', 'uid-ana', 'Ana'), appointmentOwnerId: null, appointmentOwnerName: null });
+      expect(lead('A2')).toEqual(agendamentoDe('gestor-1', 'uid-bia', 'Bia'));
+      expect(banco.lotes).toEqual([1]);
+    });
+
+    it('lead com o contato e o agendamento da pessoa: as duas tarefas voltam numa gravação só', async () => {
+      const ambos = { ...tarefaDe('uid-bia', 'uid-ana', 'Ana'), ...agendamentoDe('uid-bia', 'uid-ana', 'Ana') };
+      banco.docs.set(`${CARTEIRA}/L1`, ambos);
+      const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(200);
+      expect(lead('L1')).toEqual({
+        ...ambos, nextFollowUpOwnerId: null, nextFollowUpOwnerName: null, appointmentOwnerId: null, appointmentOwnerName: null,
+      });
+      expect(banco.lotes).toEqual([1]);
+    });
+
+    it('a tarefa de contato que volta não mexe no agendamento de outra pessoa', async () => {
+      banco.docs.set(`${CARTEIRA}/L1`, { ...tarefaDe('uid-bia', 'uid-ana', 'Ana'), appointmentOwnerId: 'uid-bia', appointmentOwnerName: 'Bia' });
+      const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(200);
+      expect(lead('L1')).toMatchObject({ nextFollowUpOwnerId: null, appointmentOwnerId: 'uid-bia', appointmentOwnerName: 'Bia' });
     });
 
     it('mais de 500 tarefas vão em lotes de no máximo 500', async () => {
@@ -646,5 +682,60 @@ describe('exclusão', () => {
     const consultor = await chamar(adminUsers, { action: 'delete', userDocId: 'uid-cris' });
     expect(consultor.statusCode).toBe(200);
     expect(cobranca.sincronizar).toHaveBeenCalledTimes(1);
+  });
+
+  // O contato que a pessoa recebeu de outro consultor e a visita ou a aula que
+  // ela agendou no lead de outro só aparecem na Meta dela. Excluída a pessoa,
+  // cada tarefa volta para o dono do lead, como na troca para professor, senão
+  // ela sumiria de todas as Metas no dia dela.
+  describe('tarefas que a pessoa tem em lead de outros consultores', () => {
+    const lead = (id) => banco.docs.get(`${CARTEIRA}/${id}`);
+    const contatoDe = (dono, delegado, nome) => ({
+      name: `Lead de ${dono}`, consultantId: dono, nextFollowUp: '2026-10-08T12:00:00.000Z', nextFollowUpType: 'Mensagem',
+      nextFollowUpOwnerId: delegado, nextFollowUpOwnerName: nome,
+    });
+    const agendamentoDe = (dono, delegado, nome, appointmentType = 'visita') => ({
+      name: `Lead de ${dono}`, consultantId: dono, appointmentType, appointmentScheduledFor: '2026-10-08T21:00:00.000Z',
+      appointmentOwnerId: delegado, appointmentOwnerName: nome,
+    });
+    const leuTarefas = () => banco.consultas.some((c) => c.filtros.some((f) => ['nextFollowUpOwnerId', 'appointmentOwnerId'].includes(f.campo)));
+    const excluir = (userDocId) => chamar(adminUsers, { action: 'delete', userDocId });
+
+    it('excluir devolve ao dono de cada lead o contato, a visita e a aula da pessoa, e só os dela', async () => {
+      banco.docs.set(`${CARTEIRA}/L1`, contatoDe('uid-bia', 'uid-ana', 'Ana'));
+      banco.docs.set(`${CARTEIRA}/A1`, agendamentoDe('gestor-1', 'uid-ana', 'Ana'));
+      banco.docs.set(`${CARTEIRA}/A2`, agendamentoDe('uid-bia', 'uid-ana', 'Ana', 'aula_experimental'));
+      banco.docs.set(`${CARTEIRA}/L3`, contatoDe('gestor-1', 'uid-bia', 'Bia'));
+      banco.docs.set(`${CARTEIRA}/A3`, agendamentoDe('gestor-1', 'uid-bia', 'Bia'));
+      const res = await excluir('uid-ana');
+      expect(res.statusCode).toBe(200);
+      expect(cadastro('uid-ana')).toBeUndefined();
+      expect(lead('L1')).toEqual({ ...contatoDe('uid-bia', 'uid-ana', 'Ana'), nextFollowUpOwnerId: null, nextFollowUpOwnerName: null });
+      expect(lead('A1')).toEqual({ ...agendamentoDe('gestor-1', 'uid-ana', 'Ana'), appointmentOwnerId: null, appointmentOwnerName: null });
+      expect(lead('A2')).toEqual({ ...agendamentoDe('uid-bia', 'uid-ana', 'Ana', 'aula_experimental'), appointmentOwnerId: null, appointmentOwnerName: null });
+      expect(lead('L3')).toEqual(contatoDe('gestor-1', 'uid-bia', 'Bia'));
+      expect(lead('A3')).toEqual(agendamentoDe('gestor-1', 'uid-bia', 'Bia'));
+      expect(banco.lotes).toEqual([3]);
+    });
+
+    it('as tarefas voltam antes de o cadastro sair: com a exclusão falhando, o gestor tenta de novo e nada fica perdido', async () => {
+      banco.docs.set(`${CARTEIRA}/A1`, agendamentoDe('uid-bia', 'uid-ana', 'Ana'));
+      contas.deleteUser.mockRejectedValue(Object.assign(new Error('Auth fora do ar'), { code: 'auth/internal-error' }));
+      const res = await excluir('uid-ana');
+      expect(res.statusCode).toBe(500);
+      expect(cadastro('uid-ana')).toBeDefined();
+      expect(lead('A1')).toMatchObject({ appointmentOwnerId: null, appointmentOwnerName: null });
+    });
+
+    it('a exclusão recusada não lê nem mexe nas tarefas', async () => {
+      contas.getUser.mockImplementation(async (uid) => ({ uid, customClaims: { tenantId: uid === 'uid-ana' ? 'outra-academia' : T } }));
+      banco.docs.set(`${CARTEIRA}/L1`, contatoDe('uid-bia', 'uid-ana', 'Ana'));
+      const res = await excluir('uid-ana');
+      expect(res.statusCode).toBe(404);
+      expect(cadastro('uid-ana')).toBeDefined();
+      expect(lead('L1')).toEqual(contatoDe('uid-bia', 'uid-ana', 'Ana'));
+      expect(leuTarefas()).toBe(false);
+      expect(banco.lotes).toEqual([]);
+    });
   });
 });

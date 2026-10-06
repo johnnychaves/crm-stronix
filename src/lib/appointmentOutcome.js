@@ -6,8 +6,11 @@
 // A rule de leads permite qualquer membro do tenant dar UPDATE desde que o
 // DONO (consultantAuthUid) fique inalterado — este helper nunca o toca, então
 // funciona mesmo quando quem marca não é o dono (agenda compartilhada). O
-// crédito da Meta vem da interaction daily_goal_done, que é lida por
-// leadId+categoria (o autor não importa), então cai na Meta do DONO do lead.
+// crédito da Meta vem da interaction daily_goal_done, e o autor não importa:
+// a marca grava quem tem a tarefa na hora (goalOwnerId, do goalOwnerFields em
+// src/lib/leads.js), o dono do lead ou o consultor que agendou a visita ou a
+// aula no lead dele, e o crédito fica com essa pessoa mesmo que o próximo
+// agendamento passe a tarefa do lead para outra.
 //
 // Flags:
 //   consumeAppointment — tira o lead de "Atrasado"/"Contato Hoje" limpando o
@@ -34,7 +37,8 @@ import {
   getAppointmentOutcomeMeta,
   getInteractionSecurityFields,
   DAILY_GOAL_CATEGORY_LABEL,
-  outcomeAppliesToAula
+  outcomeAppliesToAula,
+  goalOwnerFields
 } from './leads.js';
 import { applyOutcomeToAula, clearAulaOutcome } from './aulasWrites.js';
 import { logInteraction } from './interactions.js';
@@ -122,6 +126,7 @@ export async function writeAppointmentOutcome({
         : `${meta.icon} ${meta.label} — ${sourceLabel} (${categoryLabel})`,
       type: 'daily_goal_done',
       dailyGoalCategory: categorySlug,
+      ...goalOwnerFields(lead, categorySlug),
       appointmentOutcome: outcome,
       ...(correction ? { outcomeCorrection: true } : {}),
       createdAt: serverTimestamp()
@@ -153,8 +158,8 @@ export async function writeAppointmentOutcome({
 // dia (visitOutcomesByLead) e o Operacional não conta de novo a tarefa da
 // mesma pessoa no mesmo dia (tasksByType). Desfazer não grava marca, como antes.
 // A marca de correção passa pelo writeAppointmentOutcome, como a primeira
-// marcação da agenda, para o crédito da tarefa ficar com o DONO do lead e não
-// com quem clicou. Só o status_change da volta da etapa vai por logInteraction,
+// marcação da agenda, para o crédito ficar com o dono da tarefa e não com quem
+// clicou. Só o status_change da volta da etapa vai por logInteraction,
 // que registra quem corrigiu (e status_change não conta como tarefa).
 export async function correctAppointmentOutcome({
   db,

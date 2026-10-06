@@ -839,6 +839,20 @@ describe('scheduleInteractionText: o texto do assistente, no horário de Brasíl
     expect(scheduleInteractionText({ ...visita, note: '   ' })).toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00.');
   });
 
+  // A tarefa que ficou com quem agendou, e não com o dono do lead: o texto diz
+  // de quem ela é, como o assistente da ficha (taskOwnerText).
+  it('com a tarefa de outra pessoa, diz de quem é, antes da anotação', () => {
+    expect(scheduleInteractionText({ ...visita, taskOwner: { id: 'u-bruno', name: 'Bruno Lima' } }))
+      .toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00 · tarefa de Bruno Lima. Obs: Vem depois do trabalho.');
+    expect(scheduleInteractionText({ ...aula, taskOwner: { id: 'u-bruno', name: 'Bruno Lima' } }))
+      .toBe('🔔 Aula Experimental agendada (Pilates · 1 aula) · Carla Dias p/ 02/10/2026, 19:00 · tarefa de Bruno Lima.');
+  });
+
+  it('dono da tarefa sem nome vira outro consultor', () => {
+    expect(scheduleInteractionText({ ...visita, note: null, taskOwner: { id: 'u-bruno', name: null } }))
+      .toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00 · tarefa de outro consultor.');
+  });
+
   it('com o processo em UTC, 23:30 de Brasília continua no mesmo dia', () => {
     expect(scheduleInteractionText({ ...visita, at: brt('2026-10-01T23:30'), note: null }))
       .toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 23:30.');
@@ -1032,7 +1046,11 @@ describe('buildScheduleWrites: o que o assistente grava, numa gravação só', (
       appointmentOutcomeAt: null,
       appointmentOutcomeBy: null,
       // A visita não mexe no ponteiro da aula, como no assistente.
-      currentAulaId: 'aula-velha'
+      currentAulaId: 'aula-velha',
+      // A Ana agenda no próprio lead: a tarefa fica com a dona, e o null
+      // explícito não deixa o agendamento herdar quem recebeu o anterior.
+      appointmentOwnerId: null,
+      appointmentOwnerName: null
     });
   });
 
@@ -1094,6 +1112,47 @@ describe('buildScheduleWrites: o que o assistente grava, numa gravação só', (
   it('o registro novo leva os campos de consultor do dono do lead, e não os de quem agendou', () => {
     const { record } = gravar({ actor: JOHNNY, schedule: VISITA, at: atVisita, newRecordId: 'rec-novo' });
     expect(record.create).toMatchObject({ consultantId: 'u-ana', consultantAuthUid: 'auth-ana', consultantName: 'Ana Souza' });
+  });
+
+  // Regra do dono (05/10/2026): quem agenda no lead de outro consultor e
+  // participa da Meta Diária fica com a tarefa do dia. O dono do lead, o
+  // registro em stronix_aulas e o ponto de volume não mudam.
+  describe('quem fica com a tarefa do dia', () => {
+    const BRUNO = { id: 'u-bruno', name: 'Bruno Lima', email: 'bruno@stronix.com.br', authUid: 'auth-bruno', role: 'consultant' };
+    const CAIO = { id: 'u-caio', name: 'Caio Prof', email: 'caio@stronix.com.br', authUid: 'auth-caio', role: 'professor', professorId: 'p1' };
+
+    it('consultor no lead da Ana: o lead leva o dono da tarefa e o texto diz de quem é', () => {
+      const { leadPatch, interaction, record } = gravar({ actor: BRUNO, schedule: VISITA, at: atVisita, newRecordId: 'rec-novo' });
+      expect(leadPatch).toMatchObject({ appointmentOwnerId: 'u-bruno', appointmentOwnerName: 'Bruno Lima' });
+      expect(interaction.text).toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00 · tarefa de Bruno Lima. Obs: Vem depois do trabalho.');
+      expect(interaction).toMatchObject({ actorId: 'u-bruno', actorAuthUid: 'auth-bruno', leadConsultantId: 'u-ana', volumeKind: 'visita' });
+      expect(record.create).toMatchObject({ consultantId: 'u-ana', consultantAuthUid: 'auth-ana', consultantName: 'Ana Souza' });
+      expect('consultantId' in leadPatch).toBe(false);
+    });
+
+    it('vale para a aula também', () => {
+      const { leadPatch, interaction } = gravar({ actor: BRUNO, schedule: AULA, at: atAula, newRecordId: 'rec-novo' });
+      expect(leadPatch).toMatchObject({ appointmentOwnerId: 'u-bruno', appointmentOwnerName: 'Bruno Lima' });
+      expect(interaction.text).toBe('🔔 Aula Experimental agendada (Pilates · 2 aulas) · Carla Dias p/ 02/10/2026, 19:00 · tarefa de Bruno Lima.');
+    });
+
+    it.each([
+      ['a dona do lead', ANA],
+      ['o gestor', JOHNNY],
+      ['o professor', CAIO]
+    ])('%s agenda: a tarefa fica com a dona do lead, sem aviso no texto', (_quem, actor) => {
+      const { leadPatch, interaction } = gravar({ actor, schedule: VISITA, at: atVisita, newRecordId: 'rec-novo' });
+      expect(leadPatch).toMatchObject({ appointmentOwnerId: null, appointmentOwnerName: null });
+      expect(interaction.text).toBe('🔔 Visita agendada (Unidade Centro) p/ 01/10/2026, 18:00. Obs: Vem depois do trabalho.');
+    });
+
+    it('o agendamento que fica com a dona não herda quem recebeu o anterior', () => {
+      const { leadPatch } = gravar({
+        lead: { ...LEAD, appointmentOwnerId: 'u-bruno', appointmentOwnerName: 'Bruno Lima' },
+        actor: JOHNNY, schedule: VISITA, at: atVisita, newRecordId: 'rec-novo'
+      });
+      expect(leadPatch).toMatchObject({ appointmentOwnerId: null, appointmentOwnerName: null });
+    });
   });
 
   it('sem canal, zapChannelName vai null; agendar não muda a etapa; nada vai como undefined', () => {

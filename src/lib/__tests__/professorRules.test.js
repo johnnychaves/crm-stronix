@@ -7,8 +7,9 @@
 // os outros membros, inclusive o status e o desfecho, com o módulo ligado ou
 // desligado: as travas valem só para o espelho do lead e para as interações.
 // Este teste lê o texto da regra e cobra três coisas:
-//   1. as listas da regra (professorLeadFields, professorOutcomeFields e
-//      professorInteractionTypes) são iguais às de src/lib/professorWrites.js;
+//   1. as listas da regra (professorLeadFields, professorOutcomeFields,
+//      professorTaskOwnerFields e professorInteractionTypes) são iguais às de
+//      src/lib/professorWrites.js;
 //   2. as listas de professorWrites.js são as que os montadores de verdade
 //      produzem (buildSchedulePatch, logInteraction e os handlers da ficha);
 //   3. as travas continuam ligadas em lead, contrato, interação, equipe e dia
@@ -18,7 +19,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { buildSchedulePatch } from '../schedulePatch.js';
+import { buildSchedulePatch, appointmentTaskOwnerFor } from '../schedulePatch.js';
 import { planProfileNote } from '../profileNote.js';
 import {
   SCHEDULE_TYPE_LABELS,
@@ -26,6 +27,7 @@ import {
   SCHEDULE_PATCH_FIELDS,
   PROFESSOR_LEAD_FIELDS,
   PROFESSOR_OUTCOME_FIELDS,
+  PROFESSOR_TASK_OWNER_FIELDS,
   PROFESSOR_INTERACTION_TYPES,
 } from '../professorWrites.js';
 
@@ -107,6 +109,10 @@ describe('a regra do professor tem as listas do professorWrites', () => {
     expect(ordenado(listaDaRegra('professorOutcomeFields'))).toEqual(ordenado(PROFESSOR_OUTCOME_FIELDS));
   });
 
+  it('dono da tarefa: professorTaskOwnerFields() é PROFESSOR_TASK_OWNER_FIELDS', () => {
+    expect(ordenado(listaDaRegra('professorTaskOwnerFields'))).toEqual(ordenado(PROFESSOR_TASK_OWNER_FIELDS));
+  });
+
   it('tipos de interação: professorInteractionTypes() é PROFESSOR_INTERACTION_TYPES, sem repetir', () => {
     const regra = listaDaRegra('professorInteractionTypes');
     expect(new Set(regra).size).toBe(regra.length);
@@ -146,6 +152,8 @@ describe('as listas do professorWrites saem dos montadores de verdade', () => {
       currentAulaId: 'aula1',
       contactOwnerId: 'u2',
       contactOwnerName: 'Bia',
+      appointmentOwnerId: 'u3',
+      appointmentOwnerName: 'Caio',
     };
     const chaves = new Set(
       SCHEDULE_TYPE_LABELS.flatMap((typeLabel) => Object.keys(buildSchedulePatch({ ...cheio, typeLabel })))
@@ -164,6 +172,27 @@ describe('as listas do professorWrites saem dos montadores de verdade', () => {
     for (const typeLabel of ['Mensagem', 'Ligação']) {
       const patch = buildSchedulePatch({ typeLabel, date: new Date(2026, 9, 2, 18, 0) });
       for (const campo of PROFESSOR_OUTCOME_FIELDS) expect(campo in patch, `${typeLabel}: ${campo}`).toBe(false);
+    }
+  });
+
+  // O professor não participa da Meta, então o Agendar dele deixa a tarefa da
+  // visita e da aula com o dono do lead e grava o dono da tarefa vazio. É isso
+  // que a regra deixa ele gravar quando mexe nesses campos.
+  it('o dono da tarefa são os dois campos appointmentOwner*, e o Agendar do professor os grava vazios', () => {
+    expect(ordenado(PROFESSOR_TASK_OWNER_FIELDS)).toEqual(['appointmentOwnerId', 'appointmentOwnerName']);
+    const professor = { id: 'p1', name: 'Rafa', role: 'professor' };
+    const lead = { id: 'l1', consultantId: 'u1', appointmentOwnerId: 'u2', appointmentOwnerName: 'Bia' };
+    const dono = appointmentTaskOwnerFor({ scheduler: professor, lead });
+    expect(dono).toBeNull();
+    for (const typeLabel of ['Visita', 'Aula Experimental']) {
+      const patch = buildSchedulePatch({
+        typeLabel, date: new Date(2026, 9, 2, 18, 0), appointmentOwnerId: dono?.id, appointmentOwnerName: dono?.name,
+      });
+      for (const campo of PROFESSOR_TASK_OWNER_FIELDS) expect(patch[campo], `${typeLabel}: ${campo}`).toBeNull();
+    }
+    for (const typeLabel of ['Mensagem', 'Ligação']) {
+      const patch = buildSchedulePatch({ typeLabel, date: new Date(2026, 9, 2, 18, 0) });
+      for (const campo of PROFESSOR_TASK_OWNER_FIELDS) expect(campo in patch, `${typeLabel}: ${campo}`).toBe(false);
     }
   });
 
@@ -267,6 +296,23 @@ describe('as travas do professor continuam no firestore.rules', () => {
     expect(termos).toContain(
       "(!changed.hasAny(['interactionsCount']) || request.resource.data.interactionsCount == resource.data.get('interactionsCount', 0) + 1)"
     );
+  });
+
+  // Quem acabou de virar professor ainda tem o papel de consultor na sessão
+  // aberta, e o Agendar dessa sessão gravaria o próprio id como dono da tarefa
+  // que o set-role acabou de devolver ao dono do lead. A trava fica no E de
+  // cima e vale só quando o professor muda um dos dois campos: o lead que já
+  // tem dono de tarefa continua aceitando a anotação e o contato do professor,
+  // que não mexem neles. O null exigido é o do pedido, e não o do documento.
+  it('lead: o professor só zera o dono da tarefa da visita e da aula, ou o deixa como estava', () => {
+    const ok = funcaoDaRegra('professorLeadUpdateOk(appId)');
+    const termos = termosDoE(ok.slice(ok.indexOf('return ') + 'return '.length));
+    expect(termos).toContain('(!changed.hasAny(professorTaskOwnerFields()) || professorTaskOwnerCleared())');
+    const vazio = funcaoDaRegra('professorTaskOwnerCleared()');
+    for (const campo of PROFESSOR_TASK_OWNER_FIELDS) {
+      expect(vazio, campo).toContain(`request.resource.data.get('${campo}', null) == null`);
+    }
+    expect(vazio.replace(/request\.resource\.data/g, '')).not.toMatch(/resource\.data/);
   });
 
   it('contrato: o professor não cria nem altera', () => {

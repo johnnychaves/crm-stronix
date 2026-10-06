@@ -464,7 +464,9 @@ function ScheduleWizard({ onConfirm, onCancel, submitting = false, usersList = [
       quantidade: type.id === 'aula' ? (values.quantidade || null) : null,
       unidade: type.id === 'visita' ? (values.unidade || null) : null,
       note: note.trim(),
-      // Só contato tem dono de tarefa; visita e aula seguem o dono do lead.
+      // Só o contato tem dono de tarefa escolhido aqui. Na visita e na aula,
+      // quem fica com a tarefa é decidido na ficha (appointmentTaskOwnerFor, em
+      // lib/schedulePatch.js): quem agenda, quando é consultor e não é o dono.
       // A sentinela WZ_OWNER_LEAD vira null: null significa "o dono do lead".
       contactOwnerId: escolhido,
       contactOwnerName: escolhido ? (ownerOptions.find(u => u.id === escolhido)?.name || null) : null,
