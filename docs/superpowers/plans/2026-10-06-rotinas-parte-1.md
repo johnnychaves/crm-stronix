@@ -1087,8 +1087,11 @@ describe('cartão Rotina de hoje', () => {
     expect(container.querySelector('input[placeholder="Observação (opcional)"]')).toBeNull();
   });
 
-  it('enquanto carrega, o cartão não aparece', async () => {
-    routine.value = { model: MODEL, marks: new Map(), loading: true };
+  it('enquanto carrega, ou se a leitura falhou, o cartão não aparece', async () => {
+    routine.value = { model: MODEL, marks: new Map(), loading: true, error: false };
+    await render();
+    expect(container.innerHTML).toBe('');
+    routine.value = { model: MODEL, marks: new Map(), loading: false, error: true };
     await render();
     expect(container.innerHTML).toBe('');
   });
@@ -1231,15 +1234,16 @@ function RoutineRow({ row, now, busy, editing, draft, onDraft, onToggle, onSave,
 export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
   const toast = useToast();
   const dayKey = routineDayKey(now);
-  const { model, marks, loading } = useMyRoutine({ db, enabled, userId: appUser?.id, dayKey });
+  const { model, marks, loading, error } = useMyRoutine({ db, enabled, userId: appUser?.id, dayKey });
   const [busyTask, setBusyTask] = useState(null);
   const [editing, setEditing] = useState(null); // { markId, taskId }
   const [draft, setDraft] = useState('');
 
   const tasks = tasksForDay(model, now, metaWeekdays);
-  // Enquanto o modelo e os checks do dia não chegam, o cartão não aparece: com
-  // os checks ainda vazios, o toque marcaria de novo uma tarefa já feita.
-  if (loading || !model || tasks.length === 0) return null;
+  // Enquanto o modelo e os checks do dia não chegam, ou se a leitura falhou, o
+  // cartão não aparece: com os checks vazios, o toque marcaria de novo uma
+  // tarefa já feita.
+  if (loading || error || !model || tasks.length === 0) return null;
 
   const rows = tasks.map((task) => {
     const mark = marks.get(task.id) || null;
