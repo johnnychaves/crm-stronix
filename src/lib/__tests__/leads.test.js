@@ -460,8 +460,9 @@ describe('appointmentTaskOwnerId', () => {
 // A marca do dia (daily_goal_done) da visita, da aula e do contato grava quem
 // tinha a tarefa na hora da marcação (goalOwnerId), porque o dono da tarefa
 // muda: a visita e a aula a cada agendamento novo, e o contato quando alguém o
-// passa para outra pessoa ou o pega de volta. O crédito segue a marca; a marca
-// de antes do campo segue o dono de agora.
+// passa para outra pessoa ou o pega de volta. O crédito segue a marca. A marca
+// de antes do campo segue, no contato, quem a gravou, e no resto o dono de
+// agora.
 describe('dono da tarefa na marca do dia da visita, da aula e do contato', () => {
   const VISITA = DAILY_GOAL_CATEGORIES.VISITA_HOJE;
   const AULA = DAILY_GOAL_CATEGORIES.AULA_HOJE;
@@ -505,11 +506,27 @@ describe('dono da tarefa na marca do dia da visita, da aula e do contato', () =>
     expect(goalDoneOwnerId({ consultantId: 'u1' }, marca())).toBe('u1');
   });
 
-  it('goalDoneOwnerId: no contato, a marca de antes do campo vale para quem tem o contato agora', () => {
+  // Só quem tem o contato o vê na Meta e o conclui, então quem gravou a marca
+  // de contato (actorId) tinha o contato na hora.
+  it('goalDoneOwnerId: no contato, a marca de antes do campo vale para quem a gravou', () => {
+    const lead = { consultantId: 'u1', nextFollowUpOwnerId: 'u2', appointmentOwnerId: 'u3' };
+    expect(goalDoneOwnerId(lead, marca({ dailyGoalCategory: CONTATO, actorId: 'u1' }))).toBe('u1');
+    expect(goalDoneOwnerId(lead, marca({ dailyGoalCategory: CONTATO, actorId: 'u1', goalOwnerId: 'u4' }))).toBe('u4');
+  });
+
+  it('goalDoneOwnerId: no contato, a marca sem o campo e sem o autor vale para quem tem o contato agora', () => {
     const lead = { consultantId: 'u1', nextFollowUpOwnerId: 'u2', appointmentOwnerId: 'u3' };
     expect(goalDoneOwnerId(lead, marca({ dailyGoalCategory: CONTATO }))).toBe('u2');
-    expect(goalDoneOwnerId(lead, marca({ dailyGoalCategory: CONTATO, goalOwnerId: 'u4' }))).toBe('u4');
+    expect(goalDoneOwnerId(lead, marca({ dailyGoalCategory: CONTATO, actorId: null }))).toBe('u2');
     expect(goalDoneOwnerId({ consultantId: 'u1' }, marca({ dailyGoalCategory: CONTATO }))).toBe('u1');
+  });
+
+  // A Agenda de hoje é de todos: quem marca o desfecho da visita pode não ser
+  // quem tem a tarefa.
+  it('goalDoneOwnerId: na visita e na aula, quem gravou a marca não conta', () => {
+    const lead = { consultantId: 'u1', appointmentOwnerId: 'u3' };
+    expect(goalDoneOwnerId(lead, marca({ actorId: 'u5' }))).toBe('u3');
+    expect(goalDoneOwnerId(lead, marca({ dailyGoalCategory: AULA, actorId: 'u5' }))).toBe('u3');
   });
 
   it('hasGoalDoneTodayFor: a visita feita conta só para quem tinha a tarefa na marcação', () => {
@@ -544,7 +561,16 @@ describe('dono da tarefa na marca do dia da visita, da aula e do contato', () =>
     expect(hasGoalDoneTodayFor(lead, CONTATO, feito, TODAY_START, 'u1')).toBe(false);
   });
 
-  it('hasGoalDoneTodayFor: no contato, a marca de antes do campo conta para quem tem o contato agora', () => {
+  it('hasGoalDoneTodayFor: no contato, a marca de antes do campo conta para quem a gravou, mesmo com o contato passado a outra pessoa depois', () => {
+    // O u1 concluiu o próprio contato numa aba com o código antigo e depois
+    // passou o próximo contato ao u2.
+    const lead = { id: 'l1', consultantId: 'u1', nextFollowUpOwnerId: 'u2' };
+    const antiga = [marca({ dailyGoalCategory: CONTATO, actorId: 'u1' })];
+    expect(hasGoalDoneTodayFor(lead, CONTATO, antiga, TODAY_START, 'u1')).toBe(true);
+    expect(hasGoalDoneTodayFor(lead, CONTATO, antiga, TODAY_START, 'u2')).toBe(false);
+  });
+
+  it('hasGoalDoneTodayFor: no contato, a marca sem o campo e sem o autor conta para quem tem o contato agora', () => {
     const lead = { id: 'l1', consultantId: 'u1', nextFollowUpOwnerId: 'u2' };
     const antiga = [marca({ dailyGoalCategory: CONTATO })];
     expect(hasGoalDoneTodayFor(lead, CONTATO, antiga, TODAY_START, 'u2')).toBe(true);

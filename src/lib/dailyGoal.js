@@ -5,6 +5,7 @@ import {
   getLeadAppointmentType,
   getLeadAppointmentDate,
   hasGoalDoneTodayFor,
+  goalDoneOwnerId,
   isLeadResolvedToday,
   hasActiveInteractionToday,
   contactOwnerId,
@@ -286,11 +287,12 @@ export function buildInteractionsByLead(interactions) {
 // entra na fatia do dono e, quando a visita ou a aula ficou com outra pessoa
 // (appointmentOwnerId) ou o contato foi passado a um colega
 // (nextFollowUpOwnerId), também na fatia dela. Com as interações, o lead entra
-// ainda na fatia de quem tinha a tarefa quando a visita, a aula ou o contato
-// foi marcado como feito (goalOwnerId), que pode não ser mais nem o dono do
-// lead nem o dono da tarefa de agora. computeDailyGoalSlots decide o resto,
-// então a fatia só precisa ter todo lead em que a pessoa pode ter tarefa,
-// feita ou não.
+// ainda na fatia de quem ficou com a marca de feito da visita, da aula ou do
+// contato (goalDoneOwnerId, a mesma conta do crédito: o goalOwnerId da marca e,
+// na marca de contato de antes do campo, quem a gravou), que pode não ser mais
+// nem o dono do lead nem o dono da tarefa de agora. computeDailyGoalSlots
+// decide o resto, então a fatia só precisa ter todo lead em que a pessoa pode
+// ter tarefa, feita ou não.
 export function leadsByGoalOwner(leads, interactions = []) {
   const byOwner = new Map();
   const add = (id, lead) => {
@@ -305,9 +307,10 @@ export function leadsByGoalOwner(leads, interactions = []) {
     if (l.nextFollowUpOwnerId) add(l.nextFollowUpOwnerId, l);
   });
   (interactions || []).forEach(i => {
-    if (i?.type !== 'daily_goal_done' || !i.goalOwnerId) return;
+    if (i?.type !== 'daily_goal_done') return;
     const lead = byId.get(i.leadId);
-    if (lead) add(i.goalOwnerId, lead);
+    const owner = lead ? goalDoneOwnerId(lead, i) : null;
+    if (owner) add(owner, lead);
   });
   return new Map([...byOwner].map(([id, set]) => [id, [...set]]));
 }
@@ -505,8 +508,9 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     addDoneToday(lead, slugs.filter(slug => !isTaskOwnerGoalCategory(slug)));
   });
   // A visita, a aula e o contato feitos hoje são de quem tinha a tarefa quando
-  // foram marcados (goalOwnerId; a marca de antes do campo vale para o dono da
-  // tarefa de agora). Vale em qualquer lead da base: depois da marca, o passo
+  // foram marcados (goalOwnerId; a marca de antes do campo vale, no contato,
+  // para quem a gravou, e no resto para o dono da tarefa de agora, pelo
+  // goalDoneOwnerId). Vale em qualquer lead da base: depois da marca, o passo
   // seguinte agendado por outra pessoa troca o dono da tarefa do agendamento, e
   // o "Contato feito" limpa o próximo contato que o colega recebeu, e a tarefa
   // feita não muda de Meta por isso. Mesmo guard dos leads dele: cliente não

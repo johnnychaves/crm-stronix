@@ -163,11 +163,19 @@ export const goalOwnerFields = (lead, categorySlug) => {
 };
 
 // Para quem vale a marca do dia da visita, da aula ou do contato: quem tinha a
-// tarefa na hora da marcação (goalOwnerId). A marca de antes do campo vale para
-// quem tem a tarefa agora, como valia até ali. A categoria sai da própria marca
+// tarefa na hora da marcação (goalOwnerId). No contato, a marca de antes do
+// campo (a do dia do deploy e a de uma aba aberta com o código antigo, que não
+// recarrega sozinha) vale para quem a gravou (actorId): só quem tem o contato o
+// vê na Meta e o conclui. Sem isso, o feito iria para o colega que recebesse o
+// próximo contato no mesmo dia, e o contato novo dele, quando fosse para hoje,
+// já nasceria feito. Na visita e na aula, e na marca sem autor, vale quem tem a
+// tarefa agora, como valia até ali: a Agenda de hoje é de todos, e quem marca o
+// desfecho pode não ser quem tem a visita. A categoria sai da própria marca
 // quando não é passada.
 export const goalDoneOwnerId = (lead, interaction, categorySlug = interaction?.dailyGoalCategory || interaction?.metadata?.category) =>
-  interaction?.goalOwnerId || goalTaskOwnerId(lead, categorySlug);
+  interaction?.goalOwnerId
+  || (categorySlug === DAILY_GOAL_CATEGORIES.CONTATO_HOJE && interaction?.actorId)
+  || goalTaskOwnerId(lead, categorySlug);
 
 // hasGoalDoneToday de uma pessoa. Na visita, na aula e no contato, só conta a
 // marca que vale para `ownerId` (goalDoneOwnerId). Nas outras categorias a

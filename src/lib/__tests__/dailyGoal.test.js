@@ -977,11 +977,44 @@ describe('o contato feito fica com quem tinha a tarefa na marcação', () => {
     expect(slotsDe(BRUNO, [pendente, feito], marcas)).toEqual([]);
   });
 
-  it('a marca de antes do campo vale para quem tem o contato agora', () => {
+  it('a marca sem o campo e sem o autor vale para quem tem o contato agora', () => {
     const l = delegadoAoBruno({ nextFollowUp: null, nextFollowUpType: null });
     const antiga = [goalDone(l.id, CONTATO)];
     expect(byId(slotsDe(BRUNO, [l], antiga), l.id)?.categoryStatus[CONTATO]).toBe(true);
     expect(slotsDe(ANA, [l], antiga)).toEqual([]);
+  });
+
+  // A marca de antes do campo (a do dia do deploy e a de uma aba aberta com o
+  // código antigo, que não recarrega sozinha) vale para quem a gravou
+  // (actorId): só quem tem o contato o vê na Meta e o conclui. Sem isso, o
+  // feito da Ana iria para o Bruno quando ela passasse a ele o próximo contato.
+  describe('a marca de antes do campo vale para quem a gravou', () => {
+    const marcaAntigaDe = (leadId, actorId) => ({ ...goalDone(leadId, CONTATO), actorId });
+
+    it('a Ana conclui o próprio contato e passa o próximo ao Bruno para amanhã: o feito continua na Meta dela', () => {
+      const l = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Mensagem' });
+      const marcas = [marcaAntigaDe(l.id, ANA)];
+      const daAna = slotsDe(ANA, [l], marcas);
+      expect(byId(daAna, l.id)?.categoryStatus).toEqual({ [CONTATO]: true });
+      expect(slotTotals(daAna)).toMatchObject({ totalSlots: 1, doneSlots: 1 });
+      expect(slotsDe(BRUNO, [l], marcas)).toEqual([]);
+    });
+
+    it('a Ana conclui o próprio contato e passa o próximo ao Bruno para hoje: o contato do Bruno nasce pendente', () => {
+      const l = delegadoAoBruno({ nextFollowUp: new Date(2026, 6, 15, 17, 0), nextFollowUpType: 'Mensagem' });
+      const marcas = [marcaAntigaDe(l.id, ANA)];
+      expect(slotTotals(slotsDe(ANA, [l], marcas))).toMatchObject({ totalSlots: 1, doneSlots: 1 });
+      const doBruno = slotsDe(BRUNO, [l], marcas);
+      expect(byId(doBruno, l.id)?.categoryStatus).toEqual({ [CONTATO]: false });
+      expect(slotTotals(doBruno)).toMatchObject({ totalSlots: 1, doneSlots: 0 });
+    });
+
+    it('o Bruno conclui o contato que recebeu e a Ana pega o próximo para hoje: o feito fica com ele e o contato dela nasce pendente', () => {
+      const l = lead({ consultantId: ANA, nextFollowUpOwnerId: null, nextFollowUp: new Date(2026, 6, 15, 17, 0), nextFollowUpType: 'Mensagem' });
+      const marcas = [marcaAntigaDe(l.id, BRUNO)];
+      expect(byId(slotsDe(BRUNO, [l], marcas), l.id)?.categoryStatus).toEqual({ [CONTATO]: true });
+      expect(byId(slotsDe(ANA, [l], marcas), l.id)?.categoryStatus).toEqual({ [CONTATO]: false });
+    });
   });
 
   it('o cliente com o contato de renovação delegado entra como hoje, na Meta de quem recebeu', () => {
@@ -1405,6 +1438,23 @@ describe('leadsByGoalOwner', () => {
       const doU2 = computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2');
       expect(doU2.map((x) => [x.id, x.categorySlugs, x.categoryStatus])).toEqual([[l.id, [DAILY_GOAL_CATEGORIES.CONTATO_HOJE], { [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: true }]]);
       expect(computeDailyGoalSlots(fatias.get('u1'), byLead, 'u1')).toEqual([]);
+    });
+
+    it('a marca de contato de antes do campo entra na fatia de quem a gravou, e a Meta pela fatia é a da base inteira', () => {
+      // O u2 concluiu, numa aba com o código antigo, o contato que tinha
+      // recebido, e depois o u1 pegou o próximo contato para ele, para hoje.
+      const l = lead({ consultantId: 'u1', nextFollowUpOwnerId: null, nextFollowUp: as16, nextFollowUpType: 'Mensagem' });
+      const marcas = [{ ...goalDone(l.id, DAILY_GOAL_CATEGORIES.CONTATO_HOJE), actorId: 'u2' }];
+      const byLead = buildInteractionsByLead(marcas);
+      const fatias = leadsByGoalOwner([l], marcas);
+      expect(fatias.get('u2')).toEqual([l]);
+      for (const u of ['u1', 'u2']) {
+        const pelaFatia = computeDailyGoalSlots(fatias.get(u) || [], byLead, u);
+        const pelaBase = computeDailyGoalSlots([l], byLead, u);
+        expect(pelaFatia.map((x) => [x.id, x.categoryStatus]), u).toEqual(pelaBase.map((x) => [x.id, x.categoryStatus]));
+      }
+      expect(computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2').map((x) => x.categoryStatus))
+        .toEqual([{ [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: true }]);
     });
   });
 });

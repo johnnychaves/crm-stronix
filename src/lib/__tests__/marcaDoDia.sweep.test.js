@@ -1,9 +1,10 @@
 // Toda marca do dia (daily_goal_done) que a Meta Diária grava com a categoria
 // da tarefa leva o dono da tarefa da visita, da aula e do contato
 // (goalOwnerFields, em src/lib/leads.js). O crédito dessas três categorias
-// segue esse campo. A marca gravada sem ele vale para o dono da tarefa de
-// agora, que muda a cada agendamento novo e a cada contato passado para outra
-// pessoa, e aí a tarefa feita muda de Meta junto. Esta varredura lê o código
+// segue esse campo. Sem ele, a visita e a aula valem para o dono da tarefa de
+// agora, que muda a cada agendamento novo, e aí a tarefa feita muda de Meta
+// junto. No contato, a marca sem o campo vale para quem a gravou, que é a saída
+// para as marcas de antes do campo, e não a regra. Esta varredura lê o código
 // da Meta e do ContactOutcomeModal, que grava a marca do contato, e reprova
 // quem gravar a marca sem o campo. A Agenda de hoje e a correção do desfecho
 // gravam pelo writeAppointmentOutcome, que o appointmentOutcome.test.js cobre.

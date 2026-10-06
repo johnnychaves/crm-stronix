@@ -66,11 +66,31 @@ describe('Meta da equipe: o contato delegado fica na linha de quem recebeu', () 
     expect(linhas.Ana).toBe('Ana 0/0 []');
   });
 
-  it('feito com a marca de antes do campo: fica na linha de quem tem o contato agora', () => {
+  it('feito com a marca de antes do campo: fica na linha de quem a gravou', () => {
     const feito = contatoDaAnaComOBruno({ nextFollowUp: null, nextFollowUpType: null });
     const linhas = quadro({ leads: [feito], interactions: [marcaDoContato()] });
     expect(linhas.Bruno).toBe(`Bruno 1/1 [l1:${CONTATO}=feito]`);
     expect(linhas.Ana).toBe('Ana 0/0 []');
+  });
+
+  // A marca de antes do campo (a do dia do deploy e a de uma aba aberta com o
+  // código antigo) vale para quem a gravou, mesmo quando o contato muda de mãos
+  // no mesmo dia.
+  it('a Ana conclui o próprio contato com a marca de antes do campo e passa o próximo, para hoje, ao Bruno', () => {
+    const passado = contatoDaAnaComOBruno({ nextFollowUp: new Date(2026, 6, 15, 17, 0) });
+    const marca = marcaDoContato({ actorId: ana.id, actorAuthUid: ana.authUid });
+    const linhas = quadro({ leads: [passado], interactions: [marca] });
+    expect(linhas.Ana).toBe(`Ana 1/1 [l1:${CONTATO}=feito]`);
+    expect(linhas.Bruno).toBe(`Bruno 0/1 [l1:${CONTATO}=pendente]`);
+  });
+
+  it('o Bruno conclui com a marca de antes do campo e a Ana pega o próximo contato, para hoje', () => {
+    const devolvido = contatoDaAnaComOBruno({
+      nextFollowUpOwnerId: null, nextFollowUpOwnerName: null, nextFollowUp: new Date(2026, 6, 15, 17, 0),
+    });
+    const linhas = quadro({ leads: [devolvido], interactions: [marcaDoContato()] });
+    expect(linhas.Bruno).toBe(`Bruno 1/1 [l1:${CONTATO}=feito]`);
+    expect(linhas.Ana).toBe(`Ana 0/1 [l1:${CONTATO}=pendente]`);
   });
 
   it('o contato da própria Ana continua na linha dela', () => {
