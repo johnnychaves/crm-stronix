@@ -103,16 +103,18 @@ export function redactDomAttrs(text) {
   return text.replace(DOM_ATTR_RE, '[$1="[redigido]"]');
 }
 
-// O endereço da ficha leva o id do lead (/<academia>/ficha/<id>). O SDK copia
-// o caminho cru para request.url, para o nome da transação no escopo (que vai
-// em todo erro), para as migalhas de navegação e para url.path. A troca usa a
-// mesma marca do molde de rota (routeTemplate), então é idempotente e a URL
-// limpa agrupa igual à transação. Não distingue maiúscula, porque o endereço
-// também é lido sem distinguir. Para em espaço e aspas para não comer o resto
-// da frase quando o caminho aparece numa mensagem de erro.
+// Dois endereços levam o id de um documento: a ficha (/<academia>/ficha/<id>,
+// o id do lead) e o modelo de rotina aberto (/<academia>/rotinas/modelos/<id>).
+// O SDK copia o caminho cru para request.url, para o nome da transação no
+// escopo (que vai em todo erro), para as migalhas de navegação e para url.path.
+// A troca usa a mesma marca do molde de rota (routeTemplate), então é
+// idempotente e a URL limpa agrupa igual à transação. Não distingue maiúscula,
+// porque o endereço também é lido sem distinguir. Para em espaço e aspas para
+// não comer o resto da frase quando o caminho aparece numa mensagem de erro.
+// Segmento novo de endereço que leve id entra aqui, com teste.
 const LEAD_PATH_RE = /(\/ficha\/)[^/?#\s"'<>]+/gi;
-// O id do modelo de rotina (/rotinas/modelos/<id>) também sai do endereço,
-// como pede o CLAUDE.md para todo segmento novo com id.
+// O id do modelo de rotina também sai do endereço, como pede o CLAUDE.md para
+// todo segmento novo com id.
 const MODEL_PATH_RE = /(\/rotinas\/modelos\/)[^/?#\s"'<>]+/gi;
 
 export function scrubLeadPath(text) {
@@ -120,13 +122,13 @@ export function scrubLeadPath(text) {
   return text.replace(LEAD_PATH_RE, '$1:leadId').replace(MODEL_PATH_RE, '$1:modelId');
 }
 
-// Rede final: troca o id da ficha em qualquer texto do evento, inclusive em
-// campo que o SDK venha a acrescentar sem avisar (url.path entrou assim).
-// Não usa scrubDeep porque ele para em MAX_DEPTH níveis e apagaria os frames
-// do stacktrace. Pula sdkProcessingMetadata: ali ficam objetos vivos do SDK
-// (escopo, span), que ele mesmo apaga antes do envio. O WeakSet segura
-// referência circular. Só grava quando o texto muda, para não tropeçar em
-// objeto congelado que não tinha nada a trocar.
+// Rede final: troca o id da ficha e o do modelo de rotina em qualquer texto do
+// evento, inclusive em campo que o SDK venha a acrescentar sem avisar (url.path
+// entrou assim). Não usa scrubDeep porque ele para em MAX_DEPTH níveis e
+// apagaria os frames do stacktrace. Pula sdkProcessingMetadata: ali ficam
+// objetos vivos do SDK (escopo, span), que ele mesmo apaga antes do envio. O
+// WeakSet segura referência circular. Só grava quando o texto muda, para não
+// tropeçar em objeto congelado que não tinha nada a trocar.
 export function scrubLeadPathsDeep(node, seen = new WeakSet()) {
   if (!node || typeof node !== 'object' || seen.has(node) || ArrayBuffer.isView(node)) return node;
   seen.add(node);

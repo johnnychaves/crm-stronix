@@ -11,6 +11,8 @@ const NUL = String.fromCharCode(0);
 const DEL = String.fromCharCode(0x7f);
 // Metade de um emoji: o encodeURIComponent não consegue codificar.
 const MEIO_EMOJI = String.fromCharCode(0xd800);
+// Ids que o Firestore aceita e que o endereço precisa levar sem perder nada.
+const IDS_DIFICEIS = ['Ab12', 'João Silva', 'ação', '100%', '%41', 'a%2Fb', 'x?y#z', 'emoji 😀', '...', 'a'.repeat(128)];
 
 // Os mesmos valores de activeTab que o App.jsx usa hoje.
 const TELAS = [
@@ -245,10 +247,16 @@ describe('ida e volta hrefFor e parseAppPath', () => {
   });
 
   it('id com espaço, acento, %, ?, # e emoji volta igual', () => {
-    const ids = ['Ab12', 'João Silva', 'ação', '100%', '%41', 'a%2Fb', 'x?y#z', 'emoji 😀', '...', 'a'.repeat(128)];
-    for (const leadId of ids) {
+    for (const leadId of IDS_DIFICEIS) {
       const href = hrefFor(T, 'ficha', { leadId });
       expect(parseAppPath(href), leadId).toMatchObject({ tenantSlug: T, screen: 'ficha', leadId });
+    }
+  });
+
+  it('o id do modelo de rotina volta igual pela mesma lista de ids difíceis', () => {
+    for (const modelId of IDS_DIFICEIS) {
+      const href = hrefFor(T, 'rotinas', { modelId });
+      expect(parseAppPath(href), modelId).toMatchObject({ tenantSlug: T, screen: 'rotinas', sub: 'modelos', modelId, unknown: false, subUnknown: false });
     }
   });
 
@@ -496,6 +504,12 @@ describe('Rotinas no endereço', () => {
     expect(parseAppPath(`/${T}/ROTINAS/MODELOS/AbC123xyz`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', modelId: 'AbC123xyz' });
   });
 
+  it('a barra no fim do endereço do modelo abre o modelo', () => {
+    expect(parseAppPath(`/${T}/rotinas/modelos/AbC123xyz/`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', modelId: 'AbC123xyz', unknown: false, subUnknown: false });
+    expect(parseAppPath(`/${T}/rotinas/modelos/`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', subUnknown: false });
+    expect(parseAppPath(`/${T}/rotinas/modelos/`).modelId).toBeUndefined();
+  });
+
   it('monta o endereço da lista e do modelo', () => {
     expect(hrefFor(T, 'rotinas')).toBe(`/${T}/rotinas`);
     expect(hrefFor(T, 'rotinas', { sub: 'modelos' })).toBe(`/${T}/rotinas/modelos`);
@@ -503,6 +517,10 @@ describe('Rotinas no endereço', () => {
     expect(hrefFor(T, 'rotinas', { modelId: '..' })).toBe(`/${T}/rotinas`);
     expect(hrefFor(T, 'rotinas', { modelId: 'a/b' })).toBe(`/${T}/rotinas`);
     expect(hrefFor(T, 'rotinas', { modelId: 'a b' })).toBe(`/${T}/rotinas/modelos/a%20b`);
+    // Metade de um emoji passa no isValidLeadId e o encode recusa: cai na lista, nunca em /modelos/null.
+    expect(isValidLeadId(MEIO_EMOJI)).toBe(true);
+    expect(hrefFor(T, 'rotinas', { modelId: MEIO_EMOJI })).toBe(`/${T}/rotinas`);
+    expect(hrefFor(T, 'rotinas', { modelId: MEIO_EMOJI, sub: 'modelos' })).toBe(`/${T}/rotinas/modelos`);
     // modelId só vale em Rotinas.
     expect(hrefFor(T, 'settings', { modelId: 'AbC123xyz' })).toBe(`/${T}/configuracoes`);
   });

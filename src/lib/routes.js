@@ -200,16 +200,22 @@ function readScreen(segs, out) {
 
 // parseAppPath('/stronix-crm-app/ficha/AbC') →
 //   { pathname, tenantSlug, screen, leadId, superTab, rest, unknown }
+//   (mais `modelId`, só quando existe: /rotinas/modelos/<id>)
 // - raiz: tudo null e unknown false;
 // - tenantSlug: o 1º segmento em minúsculas quando tem formato de academia e
 //   não é palavra reservada. Senão fica null e o 1º segmento é lido como tela
 //   (tela sem academia, como /pipeline);
 // - ficha com id inválido ou sem id: screen 'ficha' e leadId null, que é
 //   "ficha não encontrada" e não endereço desconhecido;
-// - sub: a seção das Configurações ou a aba da ficha, quando o endereço traz
-//   um segmento a mais que a tabela da tela conhece. Segmento desconhecido não
-//   é endereço desconhecido: vira subUnknown e a decisão de rota abre a
-//   tela-mãe com replace, sem aviso.
+// - sub: a seção das Configurações, a aba da ficha ou a aba de Rotinas, quando
+//   o endereço traz um segmento a mais que a tabela da tela conhece. Segmento
+//   desconhecido não é endereço desconhecido: vira subUnknown e a decisão de
+//   rota abre a tela-mãe com replace, sem aviso;
+// - modelId: o id do modelo de rotina aberto (/rotinas/modelos/<id>), com sub
+//   'modelos'. Só existe quando o id passa no isValidLeadId e não vem segmento
+//   depois dele; senão a chave nem aparece e a tela abre a lista (subUnknown).
+//   Como o leadId, é o id cru do documento e nunca vai para o Sentry nem para o
+//   título da aba.
 export function parseAppPath(pathname) {
   const out = {
     pathname: typeof pathname === 'string' ? pathname : '',
@@ -263,7 +269,12 @@ export function hrefFor(tenantId, screen, opts = {}) {
   if (screen === 'superadmin') {
     return `${base}/super-admin/${own(SUPER_TABS, superTab) ? SUPER_TABS[superTab] : SUPER_TABS.overview}`;
   }
-  if (screen === 'rotinas' && isValidLeadId(modelId)) return `${base}/rotinas/modelos/${encode(modelId)}`;
+  if (screen === 'rotinas') {
+    // Como na ficha: id aceito pelo isValidLeadId que o encode recusa (metade de
+    // um emoji) cai na lista, nunca em /rotinas/modelos/null.
+    const mid = isValidLeadId(modelId) ? encode(modelId) : null;
+    if (mid !== null) return `${base}/rotinas/modelos/${mid}`;
+  }
   return `${base}/${SCREENS[screen].segs.join('/')}${trecho}`;
 }
 
@@ -381,9 +392,12 @@ function sessionPathFor(route, tenantId, base, home) {
   // Tela sem academia (/pipeline, /ficha/<id>): põe a academia na frente.
   if (route.tenantSlug === null) return route.unknown ? home : joinPath(base, raw);
   // Outra academia: a tela vem junto, a ficha e o super-admin não, porque são
-  // dados da outra academia.
+  // dados da outra academia. O modelo de rotina também é dado de lá: a tela
+  // Rotinas fica e o id do modelo é largado, então cai na lista da sessão.
   const keepsScreen = route.screen && route.screen !== 'ficha' && route.screen !== 'superadmin';
-  return keepsScreen ? joinPath(base, raw.slice(1)) : home;
+  if (!keepsScreen) return home;
+  if (route.modelId) return joinPath(base, SCREENS[route.screen].segs);
+  return joinPath(base, raw.slice(1));
 }
 
 // O que fazer com o endereço atual nesta sessão. Roda a cada render do app
@@ -449,12 +463,17 @@ export function backTarget({ historyState, isClient, tenantId, appUser = null } 
 }
 
 // Chave da tela mostrada, para a key do AppErrorBoundary e para a rolagem.
-// /<academia> e /visao-geral/operacional são a mesma tela, o `rest` e a subaba
-// do super-admin não trocam a chave (o SuperAdminView não remonta nem refaz a
-// busca a cada subaba), outra ficha troca.
+// /<academia> e /visao-geral/operacional são a mesma tela, o `rest`, a `sub` e a
+// subaba do super-admin não trocam a chave (o SuperAdminView não remonta nem
+// refaz a busca a cada subaba), outra ficha troca, e o modelo de rotina aberto
+// também: ele é tela própria, como a ficha, e a lista de modelos é outra. Assim
+// abrir um modelo leva ao topo, o Voltar do navegador devolve a posição da lista
+// (scrollActionFor trata chave diferente como outra tela) e o erro de um modelo
+// não fica preso na tela quando a pessoa volta.
 export function screenKey(route) {
   const screen = route?.screen;
   if (screen === 'ficha') return `ficha:${route.leadId}`;
+  if (screen === 'rotinas' && route.modelId) return `rotinas:${route.modelId}`;
   if (screen === HOME_SCREEN || screen === 'dashOperacional') return 'dashOperacional';
   return screen || 'dashboard';
 }
