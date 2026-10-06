@@ -9,8 +9,8 @@ import {
   hasActiveInteractionToday,
   contactOwnerId,
   appointmentTaskOwnerId,
-  APPOINTMENT_GOAL_CATEGORIES,
-  isAppointmentGoalCategory
+  TASK_OWNER_GOAL_CATEGORIES,
+  isTaskOwnerGoalCategory
 } from './leads.js';
 import { normalizeAppointmentType } from './dates.js';
 import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE_DAYS } from './renewalGoal.js';
@@ -346,9 +346,10 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   const ownsAppointmentTask = (lead) => appointmentTaskOwnerId(lead) === consultantId;
   const allTargetLeadsMap = new Map();
   const leadInteractions = (id) => interactionsByLead.get(id) || [];
-  // A marca do dia da categoria que vale para este consultor. Na visita e na
-  // aula, é a marca de quem tinha a tarefa na hora da marcação (goalOwnerId),
-  // e não a do dono da tarefa de agora (hasGoalDoneTodayFor, em leads.js).
+  // A marca do dia da categoria que vale para este consultor. Na visita, na
+  // aula e no contato, é a marca de quem tinha a tarefa na hora da marcação
+  // (goalOwnerId), e não a do dono da tarefa de agora (hasGoalDoneTodayFor, em
+  // leads.js).
   const isMarkedDoneToday = (lead, categorySlug) =>
     hasGoalDoneTodayFor(lead, categorySlug, leadInteractions(lead.id), todayStart, consultantId);
 
@@ -356,8 +357,8 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
   //   (a) lead virou Venda/Perda hoje (auto-conclui todas as
   //       categorias do lead — decisão de produto), OU
   //   (b) há uma interaction type='daily_goal_done' criada hoje
-  //       com dailyGoalCategory matching aquela categoria (na visita e na
-  //       aula, a de quem tinha a tarefa quando ela foi marcada).
+  //       com dailyGoalCategory matching aquela categoria (na visita, na
+  //       aula e no contato, a de quem tinha a tarefa quando ela foi marcada).
   // Mover no Kanban, anotar no LeadDetailsModal, mudar fase, etc
   // NÃO marcam a tarefa. O consultor precisa confirmar pela Meta.
   const isCategoryDone = (lead, categorySlug) => {
@@ -497,18 +498,21 @@ export function computeDailyGoalSlots(leads, interactionsByLead, consultantId, r
     const isCliente = lead.lifecycleStage === 'cliente';
     if (!isCliente && (lead.status === 'Venda' || lead.status === 'Perda')) return;
     const slugs = isCliente ? CLIENT_CATEGORY_SLUGS : Object.values(DAILY_GOAL_CATEGORIES);
-    // A visita e a aula ficam para o laço de baixo, que olha o dono da marca.
-    addDoneToday(lead, slugs.filter(slug => !isAppointmentGoalCategory(slug)));
+    // A visita, a aula e o contato ficam para o laço de baixo, que olha o dono
+    // da marca.
+    addDoneToday(lead, slugs.filter(slug => !isTaskOwnerGoalCategory(slug)));
   });
-  // A visita e a aula feitas hoje são de quem tinha a tarefa quando foram
-  // marcadas (goalOwnerId; a marca de antes do campo vale para o dono da
+  // A visita, a aula e o contato feitos hoje são de quem tinha a tarefa quando
+  // foram marcados (goalOwnerId; a marca de antes do campo vale para o dono da
   // tarefa de agora). Vale em qualquer lead da base: depois da marca, o passo
-  // seguinte agendado por outra pessoa troca o dono da tarefa do lead, e a
-  // visita feita não muda de Meta por isso. Mesmo guard dos leads dele:
-  // cliente não tem tarefa de visita nem de aula.
+  // seguinte agendado por outra pessoa troca o dono da tarefa do agendamento, e
+  // o "Contato feito" limpa o próximo contato que o colega recebeu, e a tarefa
+  // feita não muda de Meta por isso. Mesmo guard dos leads dele: cliente não
+  // tem visita nem aula, e o contato de cliente feito hoje continua fora desta
+  // lista, como antes.
   (leads || []).forEach(lead => {
     if (lead.lifecycleStage === 'cliente' || lead.status === 'Venda' || lead.status === 'Perda') return;
-    addDoneToday(lead, APPOINTMENT_GOAL_CATEGORIES);
+    addDoneToday(lead, TASK_OWNER_GOAL_CATEGORIES);
   });
 
   return Array.from(allTargetLeadsMap.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));

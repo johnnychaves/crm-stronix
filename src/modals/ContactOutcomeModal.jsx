@@ -4,7 +4,7 @@ import { fromDateTimeInputValue, toDateTimeInputValue } from '../lib/dates.js';
 import { logInteraction } from '../lib/interactions.js';
 import { formatHourLabel } from '../lib/format.js';
 import { contactDone, contactReschedule, followUpChannelOf } from '../lib/contactGoal.js';
-import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL } from '../lib/leads.js';
+import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, goalOwnerFields } from '../lib/leads.js';
 import { useToast } from '../contexts/ToastContext.jsx';
 import { cn } from '../lib/utils.js';
 import { OUTCOME_TONE, outcomeButtonClass, SegmentedOutcome } from '../components/ui/SegmentedOutcome.jsx';
@@ -88,10 +88,14 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
       if (outcome === OUTCOMES.FEITO) {
         // Igual ao "Sem próximo contato" de hoje: conclui e limpa o
         // nextFollowUp num único write (leadPatch junto do daily_goal_done).
+        // A marca guarda quem tem o contato agora (goalOwnerFields), que pode
+        // ser o colega que o recebeu, e o crédito fica com essa pessoa mesmo
+        // depois que o próximo contato é limpo ou passa para outra.
         await logInteraction(db, lead, appUser, {
           text: `✅ ${categoryLabel} — Meta Diária concluída (contato feito).`,
           type: 'daily_goal_done',
-          dailyGoalCategory: categorySlug
+          dailyGoalCategory: categorySlug,
+          ...goalOwnerFields(lead, categorySlug)
         }, contactDone());
         toast.success('Contato concluído.');
       } else if (outcome === OUTCOMES.REAGENDAR) {
@@ -108,6 +112,7 @@ function ContactOutcomeModal({ open = true, onClose, lead, categorySlug = DAILY_
           text: `✅ ${categoryLabel} — Meta Diária concluída (contato reagendado para ${dateFmt}).`,
           type: 'daily_goal_done',
           dailyGoalCategory: categorySlug,
+          ...goalOwnerFields(lead, categorySlug),
           volumeKind,
           rescheduledFor: parsedReschedule
         });

@@ -27,6 +27,7 @@ import {
   contactOwnerId,
   appointmentTaskOwnerId,
   APPOINTMENT_GOAL_CATEGORIES,
+  TASK_OWNER_GOAL_CATEGORIES,
   goalOwnerFields,
   goalDoneOwnerId,
   hasGoalDoneTodayFor,
@@ -456,17 +457,23 @@ describe('appointmentTaskOwnerId', () => {
   });
 });
 
-// A marca do dia (daily_goal_done) da visita e da aula grava quem tinha a
-// tarefa na hora da marcação (goalOwnerId), porque o dono da tarefa muda a cada
-// agendamento novo. O crédito segue a marca; a marca de antes do campo segue o
-// dono de agora.
-describe('dono da tarefa na marca do dia da visita e da aula', () => {
+// A marca do dia (daily_goal_done) da visita, da aula e do contato grava quem
+// tinha a tarefa na hora da marcação (goalOwnerId), porque o dono da tarefa
+// muda: a visita e a aula a cada agendamento novo, e o contato quando alguém o
+// passa para outra pessoa ou o pega de volta. O crédito segue a marca; a marca
+// de antes do campo segue o dono de agora.
+describe('dono da tarefa na marca do dia da visita, da aula e do contato', () => {
   const VISITA = DAILY_GOAL_CATEGORIES.VISITA_HOJE;
   const AULA = DAILY_GOAL_CATEGORIES.AULA_HOJE;
+  const CONTATO = DAILY_GOAL_CATEGORIES.CONTATO_HOJE;
   const marca = (over = {}) => ({ leadId: 'l1', type: 'daily_goal_done', dailyGoalCategory: VISITA, createdAt: TODAY_10H, ...over });
 
-  it('as categorias são só a visita e a aula experimental', () => {
+  it('as categorias do agendamento são só a visita e a aula experimental', () => {
     expect(APPOINTMENT_GOAL_CATEGORIES).toEqual([VISITA, AULA]);
+  });
+
+  it('as categorias com dono de tarefa próprio são a visita, a aula e o contato', () => {
+    expect(TASK_OWNER_GOAL_CATEGORIES).toEqual([VISITA, AULA, CONTATO]);
   });
 
   it('goalOwnerFields grava o dono da tarefa de agora na visita e na aula', () => {
@@ -474,12 +481,19 @@ describe('dono da tarefa na marca do dia da visita e da aula', () => {
     expect(goalOwnerFields({ consultantId: 'u1', appointmentOwnerId: 'u3' }, AULA)).toEqual({ goalOwnerId: 'u3' });
   });
 
+  it('goalOwnerFields grava no contato quem tem o contato agora, e não o dono da visita', () => {
+    expect(goalOwnerFields({ consultantId: 'u1' }, CONTATO)).toEqual({ goalOwnerId: 'u1' });
+    expect(goalOwnerFields({ consultantId: 'u1', nextFollowUpOwnerId: 'u2' }, CONTATO)).toEqual({ goalOwnerId: 'u2' });
+    expect(goalOwnerFields({ consultantId: 'u1', appointmentOwnerId: 'u3' }, CONTATO)).toEqual({ goalOwnerId: 'u1' });
+    expect(goalOwnerFields({ consultantId: 'u1', nextFollowUpOwnerId: 'u2' }, VISITA)).toEqual({ goalOwnerId: 'u1' });
+  });
+
   it('goalOwnerFields não grava nada nas outras categorias nem em lead sem dono', () => {
-    for (const slug of [DAILY_GOAL_CATEGORIES.CONTATO_HOJE, DAILY_GOAL_CATEGORIES.ATRASADO, DAILY_GOAL_CATEGORIES.NOVO_24H, DAILY_GOAL_CATEGORIES.RENOVACAO]) {
-      expect(goalOwnerFields({ consultantId: 'u1', appointmentOwnerId: 'u3' }, slug), slug).toEqual({});
+    for (const slug of [DAILY_GOAL_CATEGORIES.ATRASADO, DAILY_GOAL_CATEGORIES.NOVO_24H, DAILY_GOAL_CATEGORIES.RENOVACAO, DAILY_GOAL_CATEGORIES.VENCIDO]) {
+      expect(goalOwnerFields({ consultantId: 'u1', appointmentOwnerId: 'u3', nextFollowUpOwnerId: 'u2' }, slug), slug).toEqual({});
     }
     expect(goalOwnerFields({}, VISITA)).toEqual({});
-    expect(goalOwnerFields(null, VISITA)).toEqual({});
+    expect(goalOwnerFields(null, CONTATO)).toEqual({});
   });
 
   it('goalDoneOwnerId: a marca com o campo vale para quem tinha a tarefa', () => {
@@ -489,6 +503,13 @@ describe('dono da tarefa na marca do dia da visita e da aula', () => {
   it('goalDoneOwnerId: a marca de antes do campo vale para o dono de agora', () => {
     expect(goalDoneOwnerId({ consultantId: 'u1', appointmentOwnerId: 'u3' }, marca())).toBe('u3');
     expect(goalDoneOwnerId({ consultantId: 'u1' }, marca())).toBe('u1');
+  });
+
+  it('goalDoneOwnerId: no contato, a marca de antes do campo vale para quem tem o contato agora', () => {
+    const lead = { consultantId: 'u1', nextFollowUpOwnerId: 'u2', appointmentOwnerId: 'u3' };
+    expect(goalDoneOwnerId(lead, marca({ dailyGoalCategory: CONTATO }))).toBe('u2');
+    expect(goalDoneOwnerId(lead, marca({ dailyGoalCategory: CONTATO, goalOwnerId: 'u4' }))).toBe('u4');
+    expect(goalDoneOwnerId({ consultantId: 'u1' }, marca({ dailyGoalCategory: CONTATO }))).toBe('u1');
   });
 
   it('hasGoalDoneTodayFor: a visita feita conta só para quem tinha a tarefa na marcação', () => {
@@ -516,10 +537,24 @@ describe('dono da tarefa na marca do dia da visita e da aula', () => {
     expect(hasGoalDoneTodayFor(lead, AULA, [marca()], TODAY_START, 'u1')).toBe(false);
   });
 
+  it('hasGoalDoneTodayFor: o contato feito conta só para quem tinha o contato na marcação', () => {
+    const lead = { id: 'l1', consultantId: 'u1', nextFollowUpOwnerId: null };
+    const feito = [marca({ dailyGoalCategory: CONTATO, goalOwnerId: 'u2' })];
+    expect(hasGoalDoneTodayFor(lead, CONTATO, feito, TODAY_START, 'u2')).toBe(true);
+    expect(hasGoalDoneTodayFor(lead, CONTATO, feito, TODAY_START, 'u1')).toBe(false);
+  });
+
+  it('hasGoalDoneTodayFor: no contato, a marca de antes do campo conta para quem tem o contato agora', () => {
+    const lead = { id: 'l1', consultantId: 'u1', nextFollowUpOwnerId: 'u2' };
+    const antiga = [marca({ dailyGoalCategory: CONTATO })];
+    expect(hasGoalDoneTodayFor(lead, CONTATO, antiga, TODAY_START, 'u2')).toBe(true);
+    expect(hasGoalDoneTodayFor(lead, CONTATO, antiga, TODAY_START, 'u1')).toBe(false);
+  });
+
   it('hasGoalDoneTodayFor: nas outras categorias o dono não conta, como no hasGoalDoneToday', () => {
     const lead = { id: 'l1', consultantId: 'u1' };
-    const contato = [marca({ dailyGoalCategory: DAILY_GOAL_CATEGORIES.CONTATO_HOJE, goalOwnerId: 'u9' })];
-    expect(hasGoalDoneTodayFor(lead, DAILY_GOAL_CATEGORIES.CONTATO_HOJE, contato, TODAY_START, 'u1')).toBe(true);
+    const atrasado = [marca({ dailyGoalCategory: DAILY_GOAL_CATEGORIES.ATRASADO, goalOwnerId: 'u9' })];
+    expect(hasGoalDoneTodayFor(lead, DAILY_GOAL_CATEGORIES.ATRASADO, atrasado, TODAY_START, 'u1')).toBe(true);
   });
 });
 
