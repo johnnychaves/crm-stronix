@@ -14,9 +14,10 @@ import {
 // Fatiar leads e interações por dono UMA vez, em vez de re-varrer tudo por
 // usuário. Mesmo critério que useTeamGoals usa — se divergir, a fatia não bate
 // com o filtro interno das funções de meta e volume. A fatia de leads leva
-// também a visita ou a aula que a pessoa agendou no lead de um colega, e a que
-// ela fez e que já passou para outra pessoa (leadsByGoalOwner, com as
-// interações), senão a tarefa dela sumiria da linha no painel.
+// também a visita ou a aula que a pessoa agendou no lead de um colega, o
+// contato que um colega passou para ela, e a tarefa que ela fez e que já
+// passou para outra pessoa (leadsByGoalOwner, com as interações), senão a
+// tarefa dela sumiria da linha no painel.
 function sliceByOwner(leads, interactions) {
   const leadsByConsultant = leadsByGoalOwner(leads, interactions);
   const interactionsByAuth = new Map();

@@ -281,15 +281,16 @@ export function buildInteractionsByLead(interactions) {
 }
 
 // Fatia de leads por pessoa, para quem monta a Meta de várias pessoas de uma
-// vez (a Meta da equipe, em src/views/team/useTeamBoard.js): cada lead entra na
-// fatia do dono e, quando a visita ou a aula ficou com outra pessoa
-// (appointmentOwnerId), também na fatia dela. Com as interações, o lead entra
-// ainda na fatia de quem tinha a tarefa quando a visita ou a aula foi marcada
-// como feita (goalOwnerId), que pode não ser mais nem o dono do lead nem o dono
-// da tarefa de agora. computeDailyGoalSlots decide o resto, então a fatia só
-// precisa ter todo lead em que a pessoa pode ter tarefa de agendamento, feita
-// ou não. O contato delegado (nextFollowUpOwnerId) continua fora da fatia,
-// como antes da regra do agendamento.
+// vez (a Meta da equipe, em src/views/team/useTeamBoard.js, e o painel da
+// equipe da Visão geral, em src/views/dashboard/useTeamGoals.js): cada lead
+// entra na fatia do dono e, quando a visita ou a aula ficou com outra pessoa
+// (appointmentOwnerId) ou o contato foi passado a um colega
+// (nextFollowUpOwnerId), também na fatia dela. Com as interações, o lead entra
+// ainda na fatia de quem tinha a tarefa quando a visita, a aula ou o contato
+// foi marcado como feito (goalOwnerId), que pode não ser mais nem o dono do
+// lead nem o dono da tarefa de agora. computeDailyGoalSlots decide o resto,
+// então a fatia só precisa ter todo lead em que a pessoa pode ter tarefa,
+// feita ou não.
 export function leadsByGoalOwner(leads, interactions = []) {
   const byOwner = new Map();
   const add = (id, lead) => {
@@ -301,6 +302,7 @@ export function leadsByGoalOwner(leads, interactions = []) {
     byId.set(l.id, l);
     add(l.consultantId, l);
     if (l.appointmentOwnerId) add(l.appointmentOwnerId, l);
+    if (l.nextFollowUpOwnerId) add(l.nextFollowUpOwnerId, l);
   });
   (interactions || []).forEach(i => {
     if (i?.type !== 'daily_goal_done' || !i.goalOwnerId) return;

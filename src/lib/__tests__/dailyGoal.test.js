@@ -1263,8 +1263,9 @@ describe('tomorrowAppointmentsOf', () => {
 
 // A Meta da equipe monta a Meta de cada pessoa com uma fatia dos leads, para
 // não varrer a base inteira por pessoa. A fatia precisa ter todo lead em que a
-// pessoa tem tarefa de agendamento, senão a visita que um consultor agendou no
-// lead de outro some da linha dele no painel do gestor.
+// pessoa tem tarefa, senão a visita que um consultor agendou no lead de outro,
+// ou o contato que ele recebeu de um colega, some da linha dele no painel do
+// gestor.
 describe('leadsByGoalOwner', () => {
   const as16 = new Date(2026, 6, 15, 16, 0);
 
@@ -1288,6 +1289,18 @@ describe('leadsByGoalOwner', () => {
     expect(leadsByGoalOwner([l]).get('u1')).toEqual([l]);
   });
 
+  it('o lead com o contato delegado entra também na fatia de quem recebeu', () => {
+    const l = lead({ consultantId: 'u2', nextFollowUpOwnerId: 'u1' });
+    const fatias = leadsByGoalOwner([l]);
+    expect(fatias.get('u2')).toEqual([l]);
+    expect(fatias.get('u1')).toEqual([l]);
+  });
+
+  it('a mesma pessoa com o contato e a visita do lead não repete o lead', () => {
+    const l = lead({ consultantId: 'u2', nextFollowUpOwnerId: 'u1', appointmentOwnerId: 'u1' });
+    expect(leadsByGoalOwner([l]).get('u1')).toEqual([l]);
+  });
+
   it('lista vazia ou ausente dá mapa vazio', () => {
     expect(leadsByGoalOwner([]).size).toBe(0);
     expect(leadsByGoalOwner(null).size).toBe(0);
@@ -1299,6 +1312,8 @@ describe('leadsByGoalOwner', () => {
       lead({ consultantId: 'u2', appointmentType: 'aula_experimental', appointmentScheduledFor: as16 }),
       lead({ consultantId: 'u2', appointmentType: 'visita', appointmentScheduledFor: as16, appointmentOwnerId: 'u1', createdAt: new Date(2026, 6, 14, 12, 0) }),
       lead({ consultantId: 'u1', nextFollowUp: new Date(2026, 6, 13, 9, 0) }),
+      lead({ consultantId: 'u2', nextFollowUp: as16, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1' }),
+      lead({ consultantId: 'u1', nextFollowUp: as16, nextFollowUpType: 'Ligação', nextFollowUpOwnerId: 'u2', createdAt: new Date(2026, 6, 14, 12, 0) }),
     ];
     const byLead = buildInteractionsByLead([]);
     const fatias = leadsByGoalOwner(leads);
@@ -1355,6 +1370,19 @@ describe('leadsByGoalOwner', () => {
           .toEqual(pelaBase.map((l) => [l.id, l.categorySlugs, l.categoryStatus]));
       }
       expect(computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2').map((l) => l.id)).toEqual([leads[0].id]);
+    });
+
+    it('o contato feito entra na fatia de quem o fez, mesmo depois de voltar para o dono do lead', () => {
+      // O u2 fez o contato que recebeu, e depois o u1 marcou o próximo contato
+      // para ele mesmo (nextFollowUpOwnerId null).
+      const l = lead({ consultantId: 'u1', nextFollowUpOwnerId: null, nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Mensagem' });
+      const marcas = [marcaDe(l.id, 'u2', DAILY_GOAL_CATEGORIES.CONTATO_HOJE)];
+      const byLead = buildInteractionsByLead(marcas);
+      const fatias = leadsByGoalOwner([l], marcas);
+      expect(fatias.get('u2')).toEqual([l]);
+      const doU2 = computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2');
+      expect(doU2.map((x) => [x.id, x.categorySlugs, x.categoryStatus])).toEqual([[l.id, [DAILY_GOAL_CATEGORIES.CONTATO_HOJE], { [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: true }]]);
+      expect(computeDailyGoalSlots(fatias.get('u1'), byLead, 'u1')).toEqual([]);
     });
   });
 });
