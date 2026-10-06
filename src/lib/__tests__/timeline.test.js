@@ -17,9 +17,13 @@ import {
   appointmentOriginText,
   isAppointmentReschedule,
   parseAppointment,
+  extractStageNameFromInteractionText,
+  isOwnerChangeText,
+  ownerChangeText,
   TIMELINE_FILTERS
 } from '../timeline.js';
 import { taskOwnerText } from '../schedulePatch.js';
+import { ownerChangeNote } from '../clientRegistration.js';
 import {
   buildContractActivate,
   buildContractCancel,
@@ -667,5 +671,57 @@ describe('parseAppointment: de quem é a tarefa', () => {
   it('"tarefa de" escrito na anotação não conta', () => {
     const i = agendamento('🔔 Visita agendada p/ 01/10/2026, 18:00. Obs: avisar · tarefa de Carla.');
     expect(parseAppointment(i)).toMatchObject({ note: 'avisar · tarefa de Carla.', taskOwner: null });
+  });
+});
+
+// A troca de responsável é gravada como status_change com dois colchetes,
+// "Responsável alterado de [Ana] para [Bruno]." (ownerChangeNote, em
+// clientRegistration.js). O texto não muda, porque o Dashboard CRM a reconhece
+// pelo começo (src/lib/crm/contact.js) e as trocas antigas já estão gravadas
+// assim. Quem precisa saber que ela não é mudança de fase é a leitura: o nome
+// de quem saía virava etapa no chip da ficha e origem da fase seguinte.
+describe('troca de responsável na linha do tempo', () => {
+  const troca = ownerChangeNote({ fromName: 'Ana Souza', toName: 'Bruno Lima' });
+
+  it('o texto que a ficha grava é reconhecido como troca de responsável', () => {
+    expect(isOwnerChangeText(troca)).toBe(true);
+    expect(isOwnerChangeText(ownerChangeNote({ fromName: 'sem responsável', toName: 'Bruno Lima' }))).toBe(true);
+  });
+
+  it('mudança de fase não é troca de responsável', () => {
+    expect(isOwnerChangeText('Movido para a etapa [Negociação] via Kanban.')).toBe(false);
+    expect(isOwnerChangeText('Fase alterada para [Negociação].')).toBe(false);
+    expect(isOwnerChangeText('')).toBe(false);
+    expect(isOwnerChangeText(undefined)).toBe(false);
+  });
+
+  it('a troca de responsável não tem etapa', () => {
+    expect(extractStageNameFromInteractionText(troca)).toBe('');
+  });
+
+  it('a mudança de fase continua com a etapa do colchete', () => {
+    expect(extractStageNameFromInteractionText('Movido para a etapa [Negociação] via Kanban.')).toBe('Negociação');
+    expect(extractStageNameFromInteractionText('Fase voltou para [Contato feito] após correção do desfecho.')).toBe('Contato feito');
+  });
+
+  it('não entra na cadeia de fases: a fase seguinte vem da etapa anterior', () => {
+    const fase = (id, day, stage) => ({ id, createdAt: new Date(2026, 6, day, 10, 0), text: `Movido para a etapa [${stage}] via Kanban.` });
+    const doDono = { id: 'r', createdAt: new Date(2026, 6, 5, 10, 0), text: troca };
+    const out = buildStageTransitions([fase('a', 2, 'Contato feito'), doDono, fase('c', 9, 'Negociação')], new Date(2026, 5, 25, 10, 0));
+    expect(out.c.from).toBe('Contato feito');
+    expect(out.c.days).toBe(7);
+  });
+
+  it('a coluna de tipo diz Responsável, e não Fase', () => {
+    expect(timelineTypeLabel({ _kind: 'status', text: troca })).toBe('Responsável');
+    expect(timelineTypeLabel({ _kind: 'status', text: 'Movido para a etapa [Negociação] via Kanban.' })).toBe('Fase');
+  });
+
+  it('o texto da linha sai sem os colchetes', () => {
+    expect(ownerChangeText(troca)).toBe('Responsável alterado de Ana Souza para Bruno Lima.');
+  });
+
+  it('segue nos Marcos, como hoje', () => {
+    expect(classifyInteraction({ type: 'status_change', text: troca })).toBe('status');
   });
 });

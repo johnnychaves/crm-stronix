@@ -6,7 +6,20 @@ import { monthKeyOf, monthLabel } from './operacional/month.js';
 import { parseValorBRL } from './format.js';
 import { ZAP_SIGNUP_TYPE, ZAP_VIA } from './leads.js';
 
+// Troca de responsável feita pelo cadastro completo da ficha: status_change
+// com dois colchetes, "Responsável alterado de [Ana] para [Bruno]."
+// (ownerChangeNote, em clientRegistration.js). Os colchetes guardam pessoas,
+// não etapas, então ela não é mudança de fase. O texto gravado não muda: o
+// Dashboard CRM a reconhece pelo começo (src/lib/crm/contact.js) e as trocas
+// antigas já estão gravadas assim.
+const OWNER_CHANGE_PREFIX = 'Responsável alterado';
+export const isOwnerChangeText = (text) => typeof text === 'string' && text.startsWith(OWNER_CHANGE_PREFIX);
+
+// O texto da linha da troca de responsável, sem os colchetes.
+export const ownerChangeText = (text) => String(text || '').replace(/\[([^\]]*)\]/g, '$1');
+
 export const extractStageNameFromInteractionText = (text = '') => {
+  if (isOwnerChangeText(text)) return '';
   const match = String(text).match(/\[([^\]]+)\]/);
   return match ? match[1].trim() : '';
 };
@@ -243,7 +256,7 @@ export const timelineTypeLabel = (i) => {
   const t = String(i?.text || '');
   switch (i?._kind) {
     case 'contract': return 'Contrato';
-    case 'status': return 'Fase';
+    case 'status': return isOwnerChangeText(t) ? 'Responsável' : 'Fase';
     case 'referral': return 'Indicação';
     case 'origin': return 'Início';
     case 'conversation': return /^📞|ligaç/i.test(t) ? 'Ligação' : 'WhatsApp';
