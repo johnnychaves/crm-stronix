@@ -1825,7 +1825,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { firstName, modelOfUser, spanText, tasksForDay } from '../../lib/rotinas.js';
-import { setPersonModel } from '../../lib/rotinasWrites.js';
+import { MODEL_GONE, setPersonModel } from '../../lib/rotinasWrites.js';
 
 const NONE = 'sem-modelo';
 
@@ -1843,7 +1843,7 @@ export function ConsultantsList({ db, appUser, people, models, onOpenModel }) {
       toast.success(modelId ? `${name} agora segue o modelo ${models.find((m) => m.id === modelId)?.name}.` : `${name} ficou sem modelo.`);
     } catch (err) {
       console.error('rotinas: troca de modelo falhou', err);
-      toast.error('Não deu para trocar o modelo. Tente de novo.');
+      toast.error(err?.code === MODEL_GONE ? 'Esse modelo foi excluído.' : 'Não deu para trocar o modelo. Tente de novo.');
     } finally {
       setBusy(null);
     }
@@ -1914,7 +1914,7 @@ import {
   ALL_DAYS, MAX_TASKS_PER_MODEL, ROUTINE_ON_TIME_MINUTES, TASK_HOW_MAX, TASK_TITLE_MAX, firstName, namesText,
   newTaskId, normalizeTask, removeTask, taskProblems, upsertTask,
 } from '../../lib/rotinas.js';
-import { updateModel } from '../../lib/rotinasWrites.js';
+import { MODEL_GONE, updateModel } from '../../lib/rotinasWrites.js';
 import { DayChips, FieldError, Segmented } from './FormBits.jsx';
 
 const initialForm = (task) => ({
@@ -1948,7 +1948,7 @@ export function TaskSheet({ open, onOpenChange, db, appUser, model, followers, t
       onOpenChange(false);
     } catch (err) {
       console.error('rotinas: tarefa falhou', err);
-      toast.error(fail);
+      toast.error(err?.code === MODEL_GONE ? 'Esse modelo foi excluído.' : fail);
     } finally {
       setSaving(false);
     }
@@ -2096,7 +2096,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { MODEL_NAME_MAX, modelNameProblem, modelOfUser } from '../../lib/rotinas.js';
-import { createModel } from '../../lib/rotinasWrites.js';
+import { MODEL_GONE, createModel } from '../../lib/rotinasWrites.js';
 import { FieldError, Segmented } from './FormBits.jsx';
 
 // Painel Novo modelo. O pai monta com key nova a cada abertura.
@@ -2123,7 +2123,7 @@ export function NewModelSheet({ open, onOpenChange, db, appUser, models, people,
       onCreated(id);
     } catch (err) {
       console.error('rotinas: criar modelo falhou', err);
-      toast.error('Não deu para criar o modelo. Tente de novo.');
+      toast.error(err?.code === MODEL_GONE ? 'O modelo que você quis copiar foi excluído.' : 'Não deu para criar o modelo. Tente de novo.');
     } finally {
       setSaving(false);
     }
@@ -2216,7 +2216,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { MODEL_NAME_MAX, byTime, daysText, firstName, minutesOf, modelNameProblem, modelOfUser, namesText } from '../../lib/rotinas.js';
-import { deleteModel, duplicateModel, setPersonModel, updateModel } from '../../lib/rotinasWrites.js';
+import { MODEL_GONE, deleteModel, duplicateModel, setPersonModel, updateModel } from '../../lib/rotinasWrites.js';
 import { FieldError } from './FormBits.jsx';
 import { TaskSheet } from './TaskSheet.jsx';
 
@@ -2263,7 +2263,7 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
       return true;
     } catch (err) {
       console.error('rotinas:', err);
-      toast.error(fail);
+      toast.error(err?.code === MODEL_GONE ? 'Esse modelo foi excluído.' : fail);
       return false;
     }
   };
@@ -2283,7 +2283,7 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
       onDuplicated(id);
     } catch (err) {
       console.error('rotinas: duplicar falhou', err);
-      toast.error('Não deu para duplicar o modelo. Tente de novo.');
+      toast.error(err?.code === MODEL_GONE ? 'Esse modelo foi excluído.' : 'Não deu para duplicar o modelo. Tente de novo.');
     }
   };
 
@@ -2486,6 +2486,9 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
   const people = useMemo(() => routineParticipants(usersList), [usersList]);
   const [creatingKey, setCreatingKey] = useState(null);
   const [renameId, setRenameId] = useState(null);
+  // A transação só aparece na lista quando o servidor confirma: o modelo
+  // recém-criado fica em branco por um instante, sem o aviso de excluído.
+  const [pendingId, setPendingId] = useState(null);
 
   const openModel = (id) => navigate(hrefFor(tenantId, 'rotinas', { modelId: id }));
   const toList = () => navigate(hrefFor(tenantId, 'rotinas'));
@@ -2493,7 +2496,7 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
   if (modelId) {
     const model = models.find((m) => m.id === modelId);
     if (!model) {
-      if (loading) return null;
+      if (loading || modelId === pendingId) return null;
       return (
         <div className="flex flex-col items-start gap-3 rounded-2xl border border-border bg-card p-6 shadow-card">
           <p className="text-[14px] font-semibold">Esse modelo não existe mais.</p>
@@ -2511,7 +2514,7 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
         people={people}
         startRenaming={renameId === model.id}
         onBack={toList}
-        onDuplicated={(id) => { setRenameId(id); openModel(id); }}
+        onDuplicated={(id) => { setRenameId(id); setPendingId(id); openModel(id); }}
       />
     );
   }
@@ -2554,7 +2557,7 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
           appUser={appUser}
           models={models}
           people={people}
-          onCreated={openModel}
+          onCreated={(id) => { setPendingId(id); openModel(id); }}
         />
       )}
     </div>

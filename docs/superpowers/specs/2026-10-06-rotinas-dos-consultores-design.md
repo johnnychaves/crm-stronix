@@ -280,6 +280,7 @@ Nenhuma consulta precisa de índice para publicar. A Vercel continua com 11 de 1
 
 ### Limites aceitos
 
+- Cada consultor segue um modelo só, e a gravação confere isso contra os modelos que a tela já tem. Um modelo criado em outra aba um instante antes, que a tela ainda não recebeu, fica fora da conta. Escolher o modelo de novo corrige.
 - Tarefa que sai do modelo no mesmo dia em que foi marcada não conta no histórico daquele dia, porque o histórico usa a última versão do dia.
 - A tarefa com horário fica atrasada 30 minutos depois do horário mesmo que o consultor esteja em atendimento. É o mesmo para todos, e a observação existe para explicar.
 
