@@ -682,6 +682,11 @@ describe('modelos', () => {
     expect(op('set', `${M}/m2`)).toBeUndefined();
   });
 
+  it('pôr a pessoa num modelo que sumiu falha e não grava nada', async () => {
+    await expect(setPersonModel({ db: {}, appUser: gestor, models: [...models(), { id: 'mx' }], userId: 'ana', modelId: 'mx', now: NOW })).rejects.toThrow('modelo-sumiu');
+    expect(s.ops).toEqual([]);
+  });
+
   it('excluir apaga o modelo e grava a versão excluída, sem ninguém', async () => {
     await deleteModel({ db: {}, appUser: gestor, modelId: 'm1', now: NOW });
     expect(op('delete', `${M}/m1`)).toBeDefined();
@@ -791,6 +796,7 @@ export async function setPersonModel({ db, appUser, models, userId, modelId, now
       const from = fresh.find((m) => (m.followerIds || []).includes(userId));
       return from ? { [from.id]: { ...pick(from), followerIds: from.followerIds.filter((x) => x !== userId) } } : {};
     }
+    if (!fresh.some((m) => m.id === modelId)) throw new Error('modelo-sumiu');
     const out = {};
     for (const [mid, ids] of followerChanges(fresh, modelId, [userId])) {
       out[mid] = { ...pick(fresh.find((x) => x.id === mid)), followerIds: ids };
@@ -2684,7 +2690,10 @@ Expected: os três testes novos falham (o modelo continua com `uid-ana`); os ant
 
 ```js
 import { diaDeBrasilia, isoDoDia } from './_horarioDeBrasilia.js';
+import { modelDocs } from '../src/lib/rotinas.js';
 ```
+
+(`src/lib/rotinas.js` só importa `acesso.js` e `operacional/month.js`, que não importam nada, então a `api/` pode usá-lo.)
 
 2. Logo depois de `const BATCH_LIMIT = 500;`, acrescente:
 
@@ -2707,18 +2716,17 @@ async function leaveRoutineModels(tenantId, userDocId, actorId) {
   const batch = adminDb.batch();
   snap.docs.forEach((d) => {
     const data = d.data();
-    const followerIds = (data.followerIds || []).filter((id) => id !== userDocId);
-    batch.update(d.ref, { followerIds, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: actorId });
-    batch.set(dataCollection(tenantId, ROUTINE_VERSIONS_PATH).doc(`${d.id}_${date}`), {
+    // Mesma montagem de versão do app (modelDocs), para o histórico ler um formato só.
+    const { model, version } = modelDocs({
       modelId: d.id,
-      date,
       name: data.name || '',
-      tasks: data.tasks || [],
-      followerIds,
-      deleted: false,
-      savedAt: admin.firestore.FieldValue.serverTimestamp(),
-      savedBy: actorId,
+      tasks: data.tasks,
+      followerIds: (data.followerIds || []).filter((id) => id !== userDocId),
+      userId: actorId,
+      dateKey: date,
     });
+    batch.update(d.ref, { followerIds: model.followerIds, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: actorId });
+    batch.set(dataCollection(tenantId, ROUTINE_VERSIONS_PATH).doc(version.id), { ...version.data, savedAt: admin.firestore.FieldValue.serverTimestamp() });
   });
   await batch.commit();
   return snap.size;
@@ -2828,7 +2836,7 @@ As regras novas precisam estar publicadas antes de testar no preview da Vercel (
 
 - [ ] **Step 5: teste no preview, numa academia de teste**
 
-No preview da Vercel, com uma conta de gestor da academia de teste: crie um modelo, ponha um consultor de teste, crie tarefas com e sem horário, e entre como o consultor (ou peça ao Johnny) para ver o cartão na Meta, marcar, observar e desfazer. Confira também que um consultor não abre `/<academia>/rotinas` (aviso "Essa tela é só do gestor.").
+No preview da Vercel, com uma conta de gestor da academia de teste: crie um modelo, ponha um consultor de teste, crie tarefas com e sem horário, e entre como o consultor (ou peça ao Johnny) para ver o cartão na Meta, marcar, observar e desfazer. Confira também que um consultor não abre `/<academia>/rotinas` (aviso "Essa tela é só do gestor."). Se a primeira marcação do consultor voltar recusada (permission-denied), olhe primeiro a função `routineMarkDayOk` em `firestore.rules`: o validador só prova a sintaxe, e a conta do dia (com `int('05')`) só se prova com uma marcação de verdade.
 
 - [ ] **Step 6: depois do merge**
 
