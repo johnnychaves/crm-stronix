@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap } from 'lucide-react';
+import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap, ListChecks } from 'lucide-react';
 
 import {
   onAuthStateChanged,
@@ -104,6 +104,7 @@ import { LeadProfileRoute } from './views/LeadProfileRoute.jsx';
 import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { ProfessorGoalPlaceholder } from './views/ProfessorGoalPlaceholder.jsx';
+import { RotinasView } from './views/RotinasView.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
 import { WalkthroughModal } from './components/WalkthroughModal.jsx';
@@ -209,7 +210,7 @@ function AppInner() {
   // `sub` é a seção das Configurações ou a aba da ficha, já com o padrão da
   // tela quando o endereço não traz segmento. Ela NÃO entra na screenKey: o
   // AppErrorBoundary e a rolagem não podem remontar a cada troca de seção.
-  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab, sub } = screenState(shown, location.state, appUser);
+  const { fichaOpen, profileLeadId, activeTab, resolvedTab, superTab, sub, modelId } = screenState(shown, location.state, appUser);
   // As três abas da Visão geral. O grupo do menu fica aberto enquanto uma
   // delas está ativa; fora delas, vale o toggle do usuário.
   const isDashTab = resolvedTab === 'dashOperacional' || resolvedTab === 'dashCrm' || resolvedTab === 'dashGerencial';
@@ -1608,6 +1609,7 @@ useEffect(() => {
                 {nav.kanban && <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />}
                 {nav.clientes && <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />}
                 {nav.dailyGoal && <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />}
+                {nav.rotinas && <SidebarItem icon={<ListChecks className="w-[18px] h-[18px]" />} label="Rotinas" href={menuHref('rotinas')} onNavigate={closeDrawer} active={activeTab === 'rotinas'} />}
                 {nav.leads && (
                   <SidebarGroup
                     icon={<Users className="w-[18px] h-[18px]" />}
@@ -1679,6 +1681,7 @@ useEffect(() => {
               {activeTab === 'kanban' && 'Pipeline de Vendas'}
               {activeTab === 'clientes' && 'Clientes'}
               {activeTab === 'dailyGoal' && 'Sua Meta Diária'}
+              {activeTab === 'rotinas' && 'Rotinas'}
               {activeTab === 'leads' && 'Todos os Leads'}
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
@@ -1844,6 +1847,16 @@ useEffect(() => {
               {activeTab === 'aulas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
               {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
+              {activeTab === 'rotinas' && isGestor(appUser) && (
+                <RotinasView
+                  db={db}
+                  appUser={appUser}
+                  usersList={usersList}
+                  modelId={modelId}
+                  tenantId={sessionTenant}
+                  listenersActive={listenersActive}
+                />
+              )}
               {activeTab === 'profile' && isGestor(appUser) && <div className="max-w-4xl mx-auto"><GymProfileTab /></div>}
               {activeTab === 'billing' && isGestor(appUser) && <div className="max-w-4xl mx-auto"><PlanInvoicesTab /></div>}
               {activeTab === 'superadmin' && appUser?.superAdmin && <SuperAdminView tab={superTab} onOpenConsole={() => setConsoleOpen(true)} />}
