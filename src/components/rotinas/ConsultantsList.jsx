@@ -8,7 +8,9 @@ import { MODEL_GONE, setPersonModel } from '../../lib/rotinasWrites.js';
 
 const NONE = 'sem-modelo';
 
-export function ConsultantsList({ db, appUser, people, models, onOpenModel }) {
+// Enquanto os modelos não chegam (loading), a lista não diz quem está sem
+// rotina: sem os modelos, todo mundo pareceria sem modelo.
+export function ConsultantsList({ db, appUser, people, models, loading = false, onOpenModel }) {
   const toast = useToast();
   const { metaWeekdays = [1, 2, 3, 4, 5] } = useGeneralConfig();
   const [busy, setBusy] = useState(null);
@@ -35,10 +37,11 @@ export function ConsultantsList({ db, appUser, people, models, onOpenModel }) {
         <p className="text-[12.5px] text-muted-foreground">Cada um segue um modelo. Trocar aqui muda a rotina da pessoa a partir de hoje.</p>
       </div>
       <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
-        {people.length === 0 && (
+        {loading && <p className="p-5 text-[13px] text-muted-foreground">Carregando os modelos de cada consultor…</p>}
+        {!loading && people.length === 0 && (
           <p className="p-5 text-[13px] text-muted-foreground">Nenhum consultor na equipe ainda. Cadastre em Configurações, em Equipe & acessos.</p>
         )}
-        {people.map((person) => {
+        {!loading && people.map((person) => {
           const model = modelOfUser(models, person.id);
           const today = model ? tasksForDay(model, new Date(), metaWeekdays).length : 0;
           const span = model ? spanText(model) : '';

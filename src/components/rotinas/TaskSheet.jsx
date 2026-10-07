@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
@@ -7,7 +7,7 @@ import {
   ALL_DAYS, MAX_TASKS_PER_MODEL, ROUTINE_ON_TIME_MINUTES, TASK_HOW_MAX, TASK_TITLE_MAX, firstName, namesText,
   newTaskId, normalizeTask, removeTask, taskProblems, upsertTask,
 } from '../../lib/rotinas.js';
-import { MODEL_GONE, updateModel } from '../../lib/rotinasWrites.js';
+import { MODEL_GONE, TASK_GONE, TASK_LIMIT, taskGone, taskLimit, updateModel } from '../../lib/rotinasWrites.js';
 import { DayChips, FieldError, Segmented } from './FormBits.jsx';
 
 const initialForm = (task) => ({
@@ -20,66 +20,98 @@ const initialForm = (task) => ({
   active: task?.active !== false,
 });
 
+const LIMIT_TEXT = `O modelo já tem ${MAX_TASKS_PER_MODEL} tarefas, o máximo.`;
+const hasTask = (m, id) => (m.tasks || []).some((t) => t.id === id);
+
 // Painel Nova tarefa / Editar tarefa. O pai monta com key nova a cada
 // abertura, então o formulário sempre começa do que está gravado.
-export function TaskSheet({ open, onOpenChange, db, appUser, model, followers, task }) {
+// onCloseAutoFocus vai direto para o SheetContent: é o pai quem sabe para onde
+// o foco volta. onTaskRemoved avisa que a tarefa saiu do modelo (excluída
+// aqui ou em outra aba), porque aí o botão Editar dela some junto.
+export function TaskSheet({ open, onOpenChange, onCloseAutoFocus, onTaskRemoved, db, appUser, model, followers, task }) {
   const toast = useToast();
   const [form, setForm] = useState(() => initialForm(task));
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  // O estado só desliga os botões no render seguinte. A ref barra o segundo
+  // clique que chega antes disso, que criaria a tarefa duas vezes.
+  const savingRef = useRef(false);
   const editing = Boolean(task);
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const whoSees = followers.length
     ? `${namesText(followers.map((p) => firstName(p.name)))} ${followers.length === 1 ? 'vê' : 'veem'} a mudança na Meta diária a partir de hoje.`
     : 'Ninguém segue este modelo ainda.';
 
-  const write = async (edit, ok, fail) => {
+  const write = async (edit, ok, fail, { removes = false } = {}) => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       await updateModel({ db, appUser, modelId: model.id, edit });
       toast.success(ok);
+      if (removes) onTaskRemoved?.();
       onOpenChange(false);
     } catch (err) {
+      if (err?.code === TASK_GONE) {
+        toast.error('Essa tarefa foi excluída.');
+        onTaskRemoved?.();
+        onOpenChange(false);
+        return;
+      }
+      if (err?.code === TASK_LIMIT) {
+        toast.error(LIMIT_TEXT);
+        return;
+      }
       console.error('rotinas: tarefa falhou', err);
       toast.error(err?.code === MODEL_GONE ? 'Esse modelo foi excluído.' : fail);
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
-  const save = () => {
+  // Salvar e Pausar/Reativar passam pela mesma conferência e gravam o
+  // formulário inteiro: pausar não joga fora o que a pessoa digitou. O modelo
+  // que vale é o lido na transação: a tarefa editada precisa continuar nele
+  // (senão o upsert a recriaria), e a nova precisa caber no máximo.
+  const submit = (active, ok) => {
     const input = {
       title: form.title,
       how: form.how,
       days: form.daysMode === 'all' ? ALL_DAYS : form.days,
       time: form.timeMode === 'none' ? null : form.time,
-      active: form.active,
+      active,
     };
     const problems = taskProblems(input);
-    if (!editing && (model.tasks || []).length >= MAX_TASKS_PER_MODEL) problems.title = `O modelo já tem ${MAX_TASKS_PER_MODEL} tarefas, o máximo.`;
+    if (!editing && (model.tasks || []).length >= MAX_TASKS_PER_MODEL) problems.title = LIMIT_TEXT;
     setErrors(problems);
     if (Object.keys(problems).length) return;
     const next = normalizeTask(input, task?.id ?? newTaskId());
-    write((m) => ({ tasks: upsertTask(m.tasks, next) }), editing ? 'Alterações salvas.' : 'Tarefa criada.', 'Não deu para salvar a tarefa. Tente de novo.');
+    write((m) => {
+      if (editing && !hasTask(m, next.id)) throw taskGone();
+      if (!editing && (m.tasks || []).length >= MAX_TASKS_PER_MODEL) throw taskLimit();
+      return { tasks: upsertTask(m.tasks, next) };
+    }, ok, 'Não deu para salvar a tarefa. Tente de novo.');
   };
 
-  const togglePause = () => write(
-    (m) => ({ tasks: (m.tasks || []).map((t) => (t.id === task.id ? { ...t, active: !form.active } : t)) }),
-    form.active ? 'Tarefa pausada.' : 'Tarefa reativada.',
-    'Não deu para mudar a tarefa. Tente de novo.',
-  );
+  const save = () => submit(form.active, editing ? 'Alterações salvas.' : 'Tarefa criada.');
+  const togglePause = () => submit(!form.active, form.active ? 'Tarefa pausada.' : 'Tarefa reativada.');
 
   const remove = () => write(
-    (m) => ({ tasks: removeTask(m.tasks, task.id) }),
+    (m) => {
+      if (!hasTask(m, task.id)) throw taskGone();
+      return { tasks: removeTask(m.tasks, task.id) };
+    },
     'Tarefa excluída. O histórico continua com ela.',
     'Não deu para excluir a tarefa. Tente de novo.',
+    { removes: true },
   );
 
   const toggleDay = (d) => set({ days: form.days.includes(d) ? form.days.filter((x) => x !== d) : [...form.days, d] });
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[460px]">
+      <SheetContent side="right" onCloseAutoFocus={onCloseAutoFocus} className="flex w-full flex-col gap-0 p-0 sm:max-w-[460px]">
         <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <SheetTitle className="font-display text-[19px]">{editing ? 'Editar tarefa' : 'Nova tarefa'}</SheetTitle>
           <SheetDescription>No modelo {model.name}. {whoSees}</SheetDescription>

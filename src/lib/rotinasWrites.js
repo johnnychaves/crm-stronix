@@ -18,6 +18,14 @@ const markRef = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', ROUTIN
 // Modelo que alguém apagou entre a tela abrir e o gestor gravar.
 export const MODEL_GONE = 'modelo-sumiu';
 const modelGone = () => Object.assign(new Error(MODEL_GONE), { code: MODEL_GONE });
+// Tarefa que outra aba apagou enquanto o painel dela estava aberto, e modelo
+// que chegou ao máximo de tarefas pelas mãos de outra pessoa. Quem lança é o
+// edit do updateModel, que confere o modelo lido na transação, e não a cópia
+// da tela.
+export const TASK_GONE = 'tarefa-sumiu';
+export const taskGone = () => Object.assign(new Error(TASK_GONE), { code: TASK_GONE });
+export const TASK_LIMIT = 'limite-de-tarefas';
+export const taskLimit = () => Object.assign(new Error(TASK_LIMIT), { code: TASK_LIMIT });
 
 const pick = (m) => ({ name: m.name, tasks: m.tasks || [], followerIds: m.followerIds || [] });
 
@@ -67,7 +75,8 @@ export const duplicateModel = ({ db, appUser, models, source, now = new Date() }
 
 // edit(modeloAtual) devolve só o que muda: { name } ou { tasks }. Qualquer
 // outra chave é ignorada. O edit pode rodar mais de uma vez quando a transação
-// repete: tem de ser pura e só muda nome e tarefas.
+// repete: tem de ser pura e só muda nome e tarefas. Para desistir, o edit lança
+// um erro com código (taskGone, taskLimit), que chega a quem chamou.
 export async function updateModel({ db, appUser, modelId, edit, now = new Date() }) {
   await commitModels(db, appUser, [modelId], (fresh) => {
     const m = fresh.find((x) => x.id === modelId);

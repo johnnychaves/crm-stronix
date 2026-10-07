@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -8,25 +8,48 @@ import { MODEL_NAME_MAX, modelNameProblem, modelOfUser } from '../../lib/rotinas
 import { MODEL_GONE, createModel } from '../../lib/rotinasWrites.js';
 import { FieldError, Segmented } from './FormBits.jsx';
 
-// Painel Novo modelo. O pai monta com key nova a cada abertura.
-export function NewModelSheet({ open, onOpenChange, db, appUser, models, people, onCreated }) {
+// Painel Novo modelo. O pai monta com key nova a cada abertura, e pode montar
+// antes de os modelos chegarem: por isso a cópia nasce com o primeiro modelo
+// só quando ele já existe, e sem modelo escolhido o Criar pede a escolha em vez
+// de criar um modelo em branco. Sem modelo nenhum, a cópia não é oferecida.
+// onCloseAutoFocus vai direto para o SheetContent: é o pai quem sabe para onde
+// o foco volta.
+export function NewModelSheet({ open, onOpenChange, onCloseAutoFocus, db, appUser, models, people, onCreated }) {
   const toast = useToast();
   const [name, setName] = useState('');
   const [start, setStart] = useState('blank');
   const [copyFrom, setCopyFrom] = useState(models[0]?.id ?? null);
   const [followerIds, setFollowerIds] = useState([]);
-  const [error, setError] = useState(null);
+  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  // O estado só desliga o botão no render seguinte. A ref barra o segundo
+  // clique que chega antes disso, que criaria dois modelos.
+  const savingRef = useRef(false);
+  const nameErrorId = useId();
+  const copyErrorId = useId();
+  const canCopy = models.length > 0;
+  const copying = canCopy && start === 'copy';
+  // O modelo escolhido que alguém excluiu volta a pedir a escolha.
+  const chosen = models.some((m) => m.id === copyFrom) ? copyFrom : null;
 
   const toggle = (id, checked) => setFollowerIds((ids) => (checked ? [...ids, id] : ids.filter((x) => x !== id)));
+  const chooseCopy = (id) => {
+    setCopyFrom(id);
+    setErrors((e) => ({ ...e, copyFrom: null }));
+  };
 
   const save = async () => {
-    const problem = modelNameProblem(name, models);
-    setError(problem);
-    if (problem) return;
+    if (savingRef.current) return;
+    const problems = {
+      name: modelNameProblem(name, models),
+      copyFrom: copying && !chosen ? 'Escolha o modelo para copiar.' : null,
+    };
+    setErrors(problems);
+    if (problems.name || problems.copyFrom) return;
+    savingRef.current = true;
     setSaving(true);
     try {
-      const id = await createModel({ db, appUser, models, name, copyFrom: start === 'copy' ? copyFrom : null, followerIds });
+      const id = await createModel({ db, appUser, models, name, copyFrom: copying ? chosen : null, followerIds });
       toast.success('Modelo criado.');
       onOpenChange(false);
       onCreated(id);
@@ -34,13 +57,14 @@ export function NewModelSheet({ open, onOpenChange, db, appUser, models, people,
       console.error('rotinas: criar modelo falhou', err);
       toast.error(err?.code === MODEL_GONE ? 'O modelo que você quis copiar foi excluído.' : 'Não deu para criar o modelo. Tente de novo.');
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-[460px]">
+      <SheetContent side="right" onCloseAutoFocus={onCloseAutoFocus} className="flex w-full flex-col gap-0 p-0 sm:max-w-[460px]">
         <SheetHeader className="border-b border-border px-5 py-4 text-left">
           <SheetTitle className="font-display text-[19px]">Novo modelo</SheetTitle>
           <SheetDescription>Depois de criar, você põe as tarefas dentro dele.</SheetDescription>
@@ -54,13 +78,14 @@ export function NewModelSheet({ open, onOpenChange, db, appUser, models, people,
               value={name}
               maxLength={MODEL_NAME_MAX}
               placeholder="Ex.: Consultor do fim de semana"
-              aria-invalid={Boolean(error)}
+              aria-invalid={Boolean(errors.name)}
+              aria-describedby={errors.name ? nameErrorId : undefined}
               onChange={(e) => setName(e.target.value)}
             />
-            <FieldError>{error}</FieldError>
+            <FieldError id={nameErrorId}>{errors.name}</FieldError>
           </label>
 
-          {models.length > 0 && (
+          {canCopy && (
             <div className="flex flex-col gap-2">
               <span className="text-[12.5px] font-semibold">Começar</span>
               <Segmented
@@ -71,14 +96,22 @@ export function NewModelSheet({ open, onOpenChange, db, appUser, models, people,
               />
               {start === 'copy' && (
                 <>
-                  <Select value={copyFrom ?? undefined} onValueChange={setCopyFrom}>
-                    <SelectTrigger aria-label="Modelo para copiar" className="h-9 w-full"><SelectValue /></SelectTrigger>
+                  <Select value={chosen ?? ''} onValueChange={chooseCopy}>
+                    <SelectTrigger
+                      aria-label="Modelo para copiar"
+                      aria-invalid={Boolean(errors.copyFrom)}
+                      aria-describedby={errors.copyFrom ? copyErrorId : undefined}
+                      className="h-9 w-full"
+                    >
+                      <SelectValue placeholder="Escolha o modelo" />
+                    </SelectTrigger>
                     <SelectContent>
                       {models.map((m) => (
                         <SelectItem key={m.id} value={m.id}>{m.name} ({(m.tasks || []).length} tarefas)</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
+                  <FieldError id={copyErrorId}>{errors.copyFrom}</FieldError>
                   <p className="text-[11.5px] text-muted-foreground">As tarefas são copiadas. Mudar a cópia não mexe no original.</p>
                 </>
               )}

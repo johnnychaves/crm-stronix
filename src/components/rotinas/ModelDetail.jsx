@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Copy, Info, Plus, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,7 @@ import { TaskSheet } from './TaskSheet.jsx';
 function TaskRow({ task, onEdit }) {
   const paused = task.active === false;
   return (
-    <li className="grid grid-cols-[46px_14px_minmax(0,1fr)_auto] items-start gap-x-2.5 rounded-xl px-2 py-2.5 hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+    <li className="grid grid-cols-[46px_14px_minmax(0,1fr)_auto] items-start gap-x-2.5 rounded-xl px-2 py-2.5 hover:bg-muted/50">
       <span className="num flex justify-end text-[13px] font-semibold leading-[18px] text-muted-foreground">
         {task.time ?? <Repeat size={13} aria-label="Sem horário" />}
       </span>
@@ -22,10 +22,10 @@ function TaskRow({ task, onEdit }) {
         {task.how && <p className="mt-0.5 text-[12px] text-muted-foreground">{task.how}</p>}
         <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted-foreground">
           {daysText(task.days)}
-          {paused && <span className="rounded-md bg-slate-100 px-1.5 py-0.5 text-[11px] font-semibold dark:bg-white/[0.06]">Pausada</span>}
+          {paused && <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold">Pausada</span>}
         </p>
       </div>
-      <button type="button" onClick={() => onEdit(task)} className="h-[34px] rounded-[9px] border border-border bg-card px-3 text-[12.5px] font-medium">
+      <button type="button" aria-label={`Editar ${task.title}`} onClick={(e) => onEdit(task, e.currentTarget)} className="h-[34px] rounded-[9px] border border-border bg-card px-3 text-[12.5px] font-medium">
         Editar
       </button>
     </li>
@@ -37,8 +37,18 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
   const [renaming, setRenaming] = useState(startRenaming);
   const [nameDraft, setNameDraft] = useState(model.name);
   const [nameError, setNameError] = useState(null);
+  const nameErrorId = useId();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [sheet, setSheet] = useState(null); // { key, task }
+  // Renomear, duplicar e excluir: uma gravação de cada vez. O estado desliga
+  // os botões; a ref barra o segundo clique que chega antes do render, que
+  // criaria dois modelos com o mesmo nome e empilharia duas entradas.
+  const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
+  // O foco volta para quem abriu o painel (Nova tarefa ou o Editar da linha).
+  // Sem SheetTrigger, o Radix o mandaria para o <body>.
+  const openerRef = useRef(null);
+  const newTaskRef = useRef(null);
   const followers = people.filter((p) => (model.followerIds || []).includes(p.id));
   const others = people.filter((p) => !(model.followerIds || []).includes(p.id));
   const tasks = [...(model.tasks || [])].sort((a, b) => (Number(b.active !== false) - Number(a.active !== false)) || byTime(a, b));
@@ -57,15 +67,38 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
     }
   };
 
-  const saveName = async () => {
+  const guarded = async (fn) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      await fn();
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const startRename = () => {
+    setNameDraft(model.name);
+    setNameError(null);
+    setRenaming(true);
+  };
+  const cancelRename = () => {
+    setRenaming(false);
+    setNameDraft(model.name);
+    setNameError(null);
+  };
+
+  const saveName = () => guarded(async () => {
     const problem = modelNameProblem(nameDraft, models, model.id);
     setNameError(problem);
     if (problem) return;
     const ok = await run(() => updateModel({ db, appUser, modelId: model.id, edit: () => ({ name: nameDraft.trim() }) }), 'Nome salvo.', 'Não deu para salvar o nome. Tente de novo.');
     if (ok) setRenaming(false);
-  };
+  });
 
-  const duplicate = async () => {
+  const duplicate = () => guarded(async () => {
     try {
       const id = await duplicateModel({ db, appUser, models, source: model });
       toast.success('Modelo duplicado. Dê um nome e escolha quem segue.');
@@ -74,12 +107,12 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
       console.error('rotinas: duplicar falhou', err);
       toast.error(err?.code === MODEL_GONE ? 'Esse modelo foi excluído.' : 'Não deu para duplicar o modelo. Tente de novo.');
     }
-  };
+  });
 
-  const remove = async () => {
+  const remove = () => guarded(async () => {
     const ok = await run(() => deleteModel({ db, appUser, modelId: model.id }), 'Modelo excluído. O histórico continua com ele.', 'Não deu para excluir o modelo. Tente de novo.');
     if (ok) onDeleted();
-  };
+  });
 
   const unfollow = (p) => run(
     () => setPersonModel({ db, appUser, models, userId: p.id, modelId: null }),
@@ -97,7 +130,18 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
     );
   };
 
-  const openTask = (task) => setSheet({ key: `${task?.id ?? 'nova'}-${Date.now()}`, task });
+  const openTask = (task, opener) => {
+    openerRef.current = opener ?? null;
+    setSheet({ key: `${task?.id ?? 'nova'}-${Date.now()}`, task });
+  };
+  // A tarefa excluída leva junto o Editar que abriu o painel: o foco vai para
+  // o Nova tarefa.
+  const taskRemoved = () => { openerRef.current = newTaskRef.current; };
+  const restoreFocus = (event) => {
+    event.preventDefault();
+    const target = openerRef.current?.isConnected ? openerRef.current : newTaskRef.current;
+    if (target?.isConnected) target.focus();
+  };
   const taskList = (list) => (
     <ol className="relative p-2.5">
       {list.map((t) => <TaskRow key={t.id} task={t} onEdit={openTask} />)}
@@ -122,35 +166,37 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
                 maxLength={MODEL_NAME_MAX}
                 aria-label="Nome do modelo"
                 aria-invalid={Boolean(nameError)}
+                aria-describedby={nameError ? nameErrorId : undefined}
                 onChange={(e) => setNameDraft(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') saveName();
-                  if (e.key === 'Escape') { setRenaming(false); setNameDraft(model.name); setNameError(null); }
+                  if (e.key === 'Escape') cancelRename();
                 }}
                 className="h-11 min-w-[280px] font-display text-[22px] font-semibold"
               />
-              <button type="button" onClick={saveName} className="h-[38px] rounded-[10px] bg-brand-600 px-3.5 text-[13px] font-semibold text-white">Salvar nome</button>
+              <button type="button" disabled={busy} onClick={saveName} className="h-[38px] rounded-[10px] bg-brand-600 px-3.5 text-[13px] font-semibold text-white disabled:opacity-60">Salvar nome</button>
+              <button type="button" disabled={busy} onClick={cancelRename} className="h-[38px] rounded-[10px] border border-border bg-card px-3.5 text-[13px] font-medium disabled:opacity-60">Cancelar</button>
             </div>
-            <FieldError>{nameError}</FieldError>
+            <FieldError id={nameErrorId}>{nameError}</FieldError>
           </div>
         ) : (
           <h1 className="flex items-center gap-2.5 font-display text-[28px] font-semibold tracking-tight">
             {model.name}
-            <button type="button" onClick={() => setRenaming(true)} className="font-sans text-[12px] font-medium text-muted-foreground underline underline-offset-[3px]">Renomear</button>
+            <button type="button" disabled={busy} onClick={startRename} className="font-sans text-[12px] font-medium text-muted-foreground underline underline-offset-[3px]">Renomear</button>
           </h1>
         )}
         <div className="flex flex-wrap gap-1.5">
-          <button type="button" onClick={duplicate} className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] border border-border bg-card px-3 text-[12.5px] font-medium">
+          <button type="button" disabled={busy} onClick={duplicate} className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] border border-border bg-card px-3 text-[12.5px] font-medium disabled:opacity-60">
             <Copy size={14} /> Duplicar modelo
           </button>
-          <button type="button" onClick={() => setConfirmDelete(true)} className="h-[34px] rounded-[9px] px-3 text-[12.5px] font-medium text-rose-600 dark:text-rose-300">
+          <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)} className="h-[34px] rounded-[9px] px-3 text-[12.5px] font-medium text-rose-600 disabled:opacity-60 dark:text-rose-300">
             Excluir modelo
           </button>
         </div>
       </div>
 
       {confirmDelete && (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl bg-rose-50 px-3.5 py-3 text-[13px] dark:bg-rose-500/10">
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-2.5 rounded-xl bg-destructive/10 px-3.5 py-3 text-[13px]">
           <span>
             {followers.length
               ? `${namesText(followers.map((p) => firstName(p.name)))} ${followers.length === 1 ? 'fica' : 'ficam'} sem rotina até você escolher outro modelo.`
@@ -158,8 +204,8 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
             O histórico dos dias anteriores continua.
           </span>
           <span className="flex gap-1.5">
-            <button type="button" onClick={() => setConfirmDelete(false)} className="h-[34px] rounded-[9px] border border-border bg-card px-3 text-[12.5px] font-medium">Cancelar</button>
-            <button type="button" onClick={remove} className="h-[34px] rounded-[9px] bg-rose-600 px-3 text-[12.5px] font-medium text-white">Excluir modelo</button>
+            <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)} className="h-[34px] rounded-[9px] border border-border bg-card px-3 text-[12.5px] font-medium disabled:opacity-60">Cancelar</button>
+            <button type="button" disabled={busy} onClick={remove} className="h-[34px] rounded-[9px] bg-rose-600 px-3 text-[12.5px] font-medium text-white disabled:opacity-60">Excluir modelo</button>
           </span>
         </div>
       )}
@@ -169,9 +215,9 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
           <div className="flex items-center justify-between gap-2.5 border-b border-border px-4 py-3.5">
             <h2 className="flex items-center gap-2 text-[14px] font-semibold">
               Tarefas
-              <span className="num rounded-md bg-slate-100 px-1.5 text-[11px] text-muted-foreground dark:bg-white/[0.06]">{tasks.filter((t) => t.active !== false).length}</span>
+              <span className="num rounded-md bg-muted px-1.5 text-[11px] text-muted-foreground">{tasks.filter((t) => t.active !== false).length}</span>
             </h2>
-            <button type="button" onClick={() => openTask(null)} className="inline-flex h-[38px] items-center gap-2 rounded-[10px] bg-brand-600 px-3.5 text-[13px] font-semibold text-white">
+            <button type="button" ref={newTaskRef} onClick={(e) => openTask(null, e.currentTarget)} className="inline-flex h-[38px] items-center gap-2 rounded-[10px] bg-brand-600 px-3.5 text-[13px] font-semibold text-white">
               <Plus size={15} /> Nova tarefa
             </button>
           </div>
@@ -188,14 +234,14 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
         <aside className="flex flex-col gap-3">
           <section className="rounded-2xl border border-border bg-card shadow-card">
             <div className="border-b border-border px-4 py-3.5">
-              <h2 className="text-[14px] font-semibold">Quem segue <span className="num ml-1 rounded-md bg-slate-100 px-1.5 text-[11px] text-muted-foreground dark:bg-white/[0.06]">{followers.length}</span></h2>
+              <h2 className="text-[14px] font-semibold">Quem segue <span className="num ml-1 rounded-md bg-muted px-1.5 text-[11px] text-muted-foreground">{followers.length}</span></h2>
             </div>
             <div className="flex flex-col gap-2 px-4 py-3">
               {followers.length === 0 && <p className="text-[11.5px] text-muted-foreground">Ninguém segue este modelo ainda.</p>}
               {followers.map((p) => (
                 <div key={p.id} className="flex items-center gap-2.5 text-[13px]">
                   <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
-                  <button type="button" onClick={() => unfollow(p)} className="text-[12px] text-muted-foreground underline underline-offset-2">Tirar</button>
+                  <button type="button" aria-label={`Tirar ${p.name} do modelo`} onClick={() => unfollow(p)} className="text-[12px] text-muted-foreground underline underline-offset-2">Tirar</button>
                 </div>
               ))}
               {others.length > 0 && (
@@ -225,6 +271,8 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
           key={sheet.key}
           open
           onOpenChange={(open) => { if (!open) setSheet(null); }}
+          onCloseAutoFocus={restoreFocus}
+          onTaskRemoved={taskRemoved}
           db={db}
           appUser={appUser}
           model={model}
