@@ -93,9 +93,8 @@ export function ReferralsSection({ items, loading, onAdd = null, canRefer = true
             const aluno = isClientLead(l);
             const quando = fmtDia(l.referredAt) || fmtDia(l.createdAt);
             const convertido = aluno ? fmtDia(l.convertedAt) : null;
-            // Mesma pergunta que o LeadLink faz por dentro, igual ao
-            // ConsultantDayDetail: sem isto a linha realçaria no hover mesmo
-            // quando o LeadLink vira <span> e nada abre.
+            // Mesma pergunta que o LeadLink faz por dentro: sem isto a linha
+            // realçaria no hover mesmo quando o LeadLink vira <span> e nada abre.
             const ehLink = isValidLeadId(l.id);
             return (
               <li key={l.id}>

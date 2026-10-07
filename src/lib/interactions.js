@@ -29,10 +29,10 @@ export async function logInteraction(db, lead, appUser, interactionPayload, lead
   const iRef = doc(collection(db, 'artifacts', appId, 'public', 'data', INTERACTIONS_PATH));
   batch.set(iRef, {
     leadId: lead.id,
-    // Nome no momento da ação. O extrato de prospecção do painel da equipe
-    // resolve o nome pelo lead em memória, e a base carregada só tem os
-    // ATIVOS — então ação em cliente (mensagem de renovação, por exemplo)
-    // aparecia anônima. Guardar aqui dispensa leitura extra.
+    // Nome no momento da ação, para a interação se explicar sozinha mesmo
+    // quando o lead não está na base carregada, que só tem os ATIVOS (cliente
+    // em renovação, por exemplo). Quem lia era o extrato de prospecção da Meta
+    // da equipe, que saiu; o campo continua gravado.
     leadName: lead.name || null,
     consultantName: appUser?.name || null,
     ...getInteractionSecurityFields(lead, appUser),

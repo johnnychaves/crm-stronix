@@ -337,7 +337,7 @@ function AppInner() {
   // Política da ACADEMIA — definida pelo admin nas Configurações Gerais.
   const [metaWeekdays, setMetaWeekdays] = useState([1, 2, 3, 4, 5]);
   // SLA de atrasados: dias de atraso a partir dos quais o lead vira "crítico"
-  // (alerta no painel da Equipe + destaque na meta). Política da academia.
+  // (destaque vermelho na Meta Diária). Política da academia.
   const [slaOverdueDays, setSlaOverdueDays] = useState(3);
   // Meta por VOLUME: piso default de ações/dia da academia (0 = desligado);
   // alvo individual do consultor (doc do usuário) tem precedência.

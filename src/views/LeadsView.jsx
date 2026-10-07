@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { AlertCircle, Calendar, Check, Download, Phone, SlidersHorizontal, Users, X } from 'lucide-react';
 import { normalizeLeadDoc } from '../lib/leads.js';
-import { isGestor, isSeller } from '../lib/acesso.js';
+import { isSeller } from '../lib/acesso.js';
 import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isHotLeadFromDate } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -26,9 +26,8 @@ const statusColorOf = (name, statuses) =>
     : name === 'Perda' ? 'gray'
       : (statuses || []).find(s => s.name === name)?.color || 'gray';
 
-function LeadsView({ interactions, appUser, statuses, usersList, funnels, selectedFunnelId: savedFunnelId, setSelectedFunnelId: rememberFunnel, db }) {
+function LeadsView({ interactions, statuses, usersList, funnels, selectedFunnelId: savedFunnelId, setSelectedFunnelId: rememberFunnel, db }) {
   const toast = useToast();
-  const isAdmin = isGestor(appUser);
   // Responsável é quem vende: o professor não é dono de lead e fica fora do
   // filtro e do endereço (isSeller, em src/lib/acesso.js).
   const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
@@ -59,10 +58,10 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
     users: sellers,
     funis: funnels,
     funilPadrao: savedFunnelId,
-    podeResp: isAdmin,
+    podeResp: true,
     respPadrao: [],
     etapas: (fid) => (statuses || []).filter(s => isItemInFunnel(s, fid, defaultFunnelId)),
-  }), [sellers, funnels, savedFunnelId, isAdmin, statuses, defaultFunnelId]);
+  }), [sellers, funnels, savedFunnelId, statuses, defaultFunnelId]);
   const [{ funnel, stage: statusFilters, resp: consultantFilters, overdue: overdueOnly, hot: hotOnly }, setParams] =
     useScreenParams('leads', paramsCtx);
   const selectedFunnelId = funnel;
@@ -282,8 +281,8 @@ function LeadsView({ interactions, appUser, statuses, usersList, funnels, select
                   </div>
                 </div>
 
-                {/* Responsável (admin) */}
-                {isAdmin && sellers.length > 0 && (
+                {/* Responsável (toda a equipe usa) */}
+                {sellers.length > 0 && (
                   <>
                     <div className="mx-3.5 my-1 border-t border-slate-100 dark:border-white/10" />
                     <div className="px-2 pt-1.5 pb-3">

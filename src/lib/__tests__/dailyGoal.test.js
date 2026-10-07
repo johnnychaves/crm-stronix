@@ -9,14 +9,9 @@ import {
   computeDailyGoalSlots,
   computeVolumeInRange,
   computeDailyVolume,
-  listVolumeActionsInRange,
   interactionOwnerAuthUid,
   buildInteractionsByLead,
   countMetaDaysInMonth,
-  countClosedMetaDaysInMonth,
-  countMetaDaysInMonthAll,
-  countMetaDaysInRange,
-  countHitsInRange,
   volumeTargetFor,
   overdueDaysOf,
   computeRitmo,
@@ -25,8 +20,7 @@ import {
   DG_CATEGORY_ORDER,
   DG_CATEGORY_META,
   COLOR_TONES,
-  tomorrowAppointmentsOf,
-  leadsByGoalOwner
+  tomorrowAppointmentsOf
 } from '../dailyGoal.js';
 import { DAILY_GOAL_CATEGORIES } from '../leads.js';
 import { contactDone, contactReschedule } from '../contactGoal.js';
@@ -510,24 +504,6 @@ describe('interactionOwnerAuthUid (dono da ação p/ volume — PR C)', () => {
   });
 });
 
-describe('listVolumeActionsInRange (extrato do volume — mesma régua do contador)', () => {
-  const FROM = new Date(2026, 6, 13, 0, 0, 0, 0);
-  const TO = new Date(2026, 6, 15, 0, 0, 0, 0);
-  it('lista leads novos + agendamentos do dono resolvido, mais recente primeiro', () => {
-    const leads = [lead({ id: 'l1', name: 'Ana', createdAt: new Date(2026, 6, 14, 8, 0) })];
-    const interactions = [
-      { leadId: 'l1', actorAuthUid: 'a1', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 10, 0) },
-      { leadId: 'l1', leadConsultantAuthUid: 'a1', volumeKind: 'ligacao', createdAt: new Date(2026, 6, 14, 12, 0) }, // fallback conta
-      { leadId: 'l1', actorAuthUid: 'a2', volumeKind: 'visita', createdAt: new Date(2026, 6, 14, 13, 0) }, // outro autor → fora
-      { leadId: 'l1', actorAuthUid: 'a1', type: 'note', createdAt: new Date(2026, 6, 14, 14, 0) } // sem volumeKind → fora
-    ];
-    const out = listVolumeActionsInRange(leads, interactions, 'u1', 'a1', FROM, TO);
-    expect(out).toHaveLength(3); // 1 lead novo + 2 agendamentos (visita + ligacao via fallback)
-    expect(out[0].at.getTime()).toBeGreaterThanOrEqual(out[1].at.getTime()); // ordem desc
-    expect(out.map(o => o.label)).toContain('Lead cadastrado');
-  });
-});
-
 describe('buildInteractionsByLead', () => {
   it('agrupa por leadId preservando a ordem de chegada', () => {
     const i1 = { leadId: 'l1', type: 'note', createdAt: new Date(2026, 6, 14) };
@@ -544,7 +520,7 @@ describe('buildInteractionsByLead', () => {
   });
 });
 
-describe('countMetaDaysInMonth / countMetaDaysInRange / countHitsInRange', () => {
+describe('countMetaDaysInMonth', () => {
   const SEG_A_SEX = [1, 2, 3, 4, 5];
 
   it('conta dias programados de 1º até a data de referência', () => {
@@ -556,26 +532,6 @@ describe('countMetaDaysInMonth / countMetaDaysInRange / countHitsInRange', () =>
 
   it('metaWeekdays null é seguro: nenhum dia conta', () => {
     expect(countMetaDaysInMonth(null, new Date(2026, 6, 15))).toBe(0);
-    expect(countMetaDaysInRange(null, new Date(2026, 6, 13), new Date(2026, 6, 20))).toBe(0);
-    expect(countHitsInRange([{ date: '2026-07-14' }], null, new Date(2026, 6, 13), new Date(2026, 6, 20))).toBe(0);
-  });
-
-  it('countMetaDaysInRange usa intervalo [from, to) — o dia de `to` fica fora', () => {
-    // Seg 13/07 → dom 19/07 (to = 20/07 exclusivo): 13,14,15,16,17 → 5 úteis.
-    expect(countMetaDaysInRange(SEG_A_SEX, new Date(2026, 6, 13), new Date(2026, 6, 20))).toBe(5);
-    expect(countMetaDaysInRange(SEG_A_SEX, new Date(2026, 6, 13), new Date(2026, 6, 14))).toBe(1);
-  });
-
-  it('countHitsInRange: só hits dentro do intervalo E em dia programado', () => {
-    const history = [
-      { date: '2026-07-06' }, // segunda, dentro → conta
-      { date: '2026-07-11' }, // sábado, dentro → dia fora da meta, não conta
-      { date: '2026-07-13' }, // fora do intervalo (to exclusivo)
-      { date: null }, // doc sem data → ignorado
-      {}
-    ];
-    const n = countHitsInRange(history, SEG_A_SEX, new Date(2026, 6, 6), new Date(2026, 6, 13));
-    expect(n).toBe(1);
   });
 });
 
@@ -703,29 +659,9 @@ describe('computeRitmo — o mês inteiro é o denominador', () => {
   });
 });
 
-describe('countMetaDaysInMonthAll', () => {
-  it('conta o mês inteiro, não só os dias decorridos', () => {
-    expect(countMetaDaysInMonthAll([1, 2, 3, 4, 5])).toBe(23);
-  });
-
-  it('respeita a política de dias da academia', () => {
-    // Só quarta: 1, 8, 15, 22, 29 em julho/2026.
-    expect(countMetaDaysInMonthAll([3])).toBe(5);
-  });
-
-  it('devolve 0 quando nenhum dia da semana vale', () => {
-    expect(countMetaDaysInMonthAll([])).toBe(0);
-  });
-
-  it('é sempre maior ou igual ao total de dias já encerrados', () => {
-    expect(countMetaDaysInMonthAll([1, 2, 3, 4, 5]))
-      .toBeGreaterThanOrEqual(countClosedMetaDaysInMonth([1, 2, 3, 4, 5]));
-  });
-});
-
 // ── A configuração de marcos precisa CHEGAR até computeDailyGoalSlots ───────
-// A função respeita o 4º argumento; quem chamava sem ele (a Meta do gestor)
-// caía no padrão e divergia da tela do consultor.
+// A função respeita o 4º argumento; quem chamava sem ele caía no padrão e
+// divergia da tela do consultor.
 describe('computeDailyGoalSlots — marcos de renovação vêm da configuração', () => {
   const cliente = (endsAt) => lead({
     id: 'c1',
@@ -747,57 +683,6 @@ describe('computeDailyGoalSlots — marcos de renovação vêm da configuração
     const slots = computeDailyGoalSlots(leads, new Map(), 'u1', [60]);
     expect(slots).toHaveLength(1);
     expect(slots[0].categorySlugs).toContain(DAILY_GOAL_CATEGORIES.RENOVACAO);
-  });
-});
-
-// ── Nome do lead no extrato de prospecção ───────────────────────────────────
-// A base em memória só traz os leads ATIVOS, então ação em cliente (mensagem
-// de renovação, p.ex.) não resolvia nome. A interação passou a gravar leadName.
-describe('listVolumeActionsInRange — nome do lead fora da base ativa', () => {
-  const from = new Date(2026, 6, 15);
-  const acao = (over = {}) => ({
-    leadId: 'x1',
-    actorAuthUid: 'auth1',
-    volumeKind: 'mensagem',
-    createdAt: new Date(2026, 6, 15, 9, 0),
-    ...over
-  });
-
-  it('usa o nome em memória quando o lead está carregado', () => {
-    const leads = [lead({ id: 'x1', name: 'Ana Ativa' })];
-    const [a] = listVolumeActionsInRange(leads, [acao()], 'u1', 'auth1', from);
-    expect(a.leadName).toBe('Ana Ativa');
-  });
-
-  it('cai pro nome gravado na interação quando o lead saiu da base', () => {
-    const [a] = listVolumeActionsInRange([], [acao({ leadName: 'Cliente Renovando' })], 'u1', 'auth1', from);
-    expect(a.leadName).toBe('Cliente Renovando');
-  });
-
-  it('prefere o nome em memória ao gravado, que pode estar desatualizado', () => {
-    const leads = [lead({ id: 'x1', name: 'Nome Corrigido' })];
-    const [a] = listVolumeActionsInRange(leads, [acao({ leadName: 'Nome Antigo' })], 'u1', 'auth1', from);
-    expect(a.leadName).toBe('Nome Corrigido');
-  });
-
-  it('devolve o travessão quando não há nome em lugar nenhum', () => {
-    const [a] = listVolumeActionsInRange([], [acao()], 'u1', 'auth1', from);
-    expect(a.leadName).toBe('—');
-  });
-});
-
-describe('countClosedMetaDaysInMonth', () => {
-  it('conta só dias programados anteriores a hoje', () => {
-    expect(countClosedMetaDaysInMonth([1, 2, 3, 4, 5])).toBe(10);
-  });
-
-  it('ignora hoje mesmo quando hoje é dia programado', () => {
-    // Só quarta é dia de meta; 1 e 8 encerraram, 15 é hoje.
-    expect(countClosedMetaDaysInMonth([3])).toBe(2);
-  });
-
-  it('devolve 0 quando a lista de dias está vazia', () => {
-    expect(countClosedMetaDaysInMonth([])).toBe(0);
   });
 });
 
@@ -1348,148 +1233,5 @@ describe('tomorrowAppointmentsOf', () => {
   it('aceita a data de referência', () => {
     const l = visitaDeAmanha({ appointmentScheduledFor: new Date(2026, 6, 20, 10, 0) });
     expect(ids(tomorrowAppointmentsOf([l], 'u1', new Date(2026, 6, 19, 23, 0)))).toEqual([l.id]);
-  });
-});
-
-// A Meta da equipe monta a Meta de cada pessoa com uma fatia dos leads, para
-// não varrer a base inteira por pessoa. A fatia precisa ter todo lead em que a
-// pessoa tem tarefa, senão a visita que um consultor agendou no lead de outro,
-// ou o contato que ele recebeu de um colega, some da linha dele no painel do
-// gestor.
-describe('leadsByGoalOwner', () => {
-  const as16 = new Date(2026, 6, 15, 16, 0);
-
-  it('cada lead entra na fatia do dono', () => {
-    const a = lead({ consultantId: 'u1' });
-    const b = lead({ consultantId: 'u2' });
-    const fatias = leadsByGoalOwner([a, b]);
-    expect(fatias.get('u1')).toEqual([a]);
-    expect(fatias.get('u2')).toEqual([b]);
-  });
-
-  it('o lead com a visita ou a aula de outra pessoa entra também na fatia dela', () => {
-    const l = lead({ consultantId: 'u2', appointmentOwnerId: 'u1' });
-    const fatias = leadsByGoalOwner([l]);
-    expect(fatias.get('u2')).toEqual([l]);
-    expect(fatias.get('u1')).toEqual([l]);
-  });
-
-  it('dono da tarefa igual ao dono do lead não duplica', () => {
-    const l = lead({ consultantId: 'u1', appointmentOwnerId: 'u1' });
-    expect(leadsByGoalOwner([l]).get('u1')).toEqual([l]);
-  });
-
-  it('o lead com o contato delegado entra também na fatia de quem recebeu', () => {
-    const l = lead({ consultantId: 'u2', nextFollowUpOwnerId: 'u1' });
-    const fatias = leadsByGoalOwner([l]);
-    expect(fatias.get('u2')).toEqual([l]);
-    expect(fatias.get('u1')).toEqual([l]);
-  });
-
-  it('a mesma pessoa com o contato e a visita do lead não repete o lead', () => {
-    const l = lead({ consultantId: 'u2', nextFollowUpOwnerId: 'u1', appointmentOwnerId: 'u1' });
-    expect(leadsByGoalOwner([l]).get('u1')).toEqual([l]);
-  });
-
-  it('lista vazia ou ausente dá mapa vazio', () => {
-    expect(leadsByGoalOwner([]).size).toBe(0);
-    expect(leadsByGoalOwner(null).size).toBe(0);
-  });
-
-  it('a Meta de cada pessoa pela fatia é a mesma da base inteira', () => {
-    const leads = [
-      lead({ consultantId: 'u1', appointmentType: 'visita', appointmentScheduledFor: as16, appointmentOwnerId: 'u2' }),
-      lead({ consultantId: 'u2', appointmentType: 'aula_experimental', appointmentScheduledFor: as16 }),
-      lead({ consultantId: 'u2', appointmentType: 'visita', appointmentScheduledFor: as16, appointmentOwnerId: 'u1', createdAt: new Date(2026, 6, 14, 12, 0) }),
-      lead({ consultantId: 'u1', nextFollowUp: new Date(2026, 6, 13, 9, 0) }),
-      lead({ consultantId: 'u2', nextFollowUp: as16, nextFollowUpType: 'Mensagem', nextFollowUpOwnerId: 'u1' }),
-      lead({ consultantId: 'u1', nextFollowUp: as16, nextFollowUpType: 'Ligação', nextFollowUpOwnerId: 'u2', createdAt: new Date(2026, 6, 14, 12, 0) }),
-    ];
-    const byLead = buildInteractionsByLead([]);
-    const fatias = leadsByGoalOwner(leads);
-    for (const u of ['u1', 'u2']) {
-      const pelaFatia = computeDailyGoalSlots(fatias.get(u) || [], byLead, u);
-      const pelaBase = computeDailyGoalSlots(leads, byLead, u);
-      expect(pelaFatia.map((l) => [l.id, l.categorySlugs]), u).toEqual(pelaBase.map((l) => [l.id, l.categorySlugs]));
-    }
-  });
-
-  // A visita feita fica com quem tinha a tarefa na marcação (goalOwnerId), que
-  // pode não ser mais nem o dono do lead nem o dono da tarefa de agora.
-  describe('com a marca de feito da visita ou da aula', () => {
-    const marcaDe = (leadId, goalOwnerId, category = DAILY_GOAL_CATEGORIES.VISITA_HOJE) =>
-      ({ ...goalDone(leadId, category), goalOwnerId });
-
-    it('o lead entra também na fatia de quem fez a visita', () => {
-      const l = lead({ consultantId: 'u1', appointmentOwnerId: null });
-      const fatias = leadsByGoalOwner([l], [marcaDe(l.id, 'u2')]);
-      expect(fatias.get('u1')).toEqual([l]);
-      expect(fatias.get('u2')).toEqual([l]);
-    });
-
-    it('várias marcas da mesma pessoa no mesmo lead não repetem o lead', () => {
-      const l = lead({ consultantId: 'u1', appointmentOwnerId: 'u2' });
-      const marcas = [marcaDe(l.id, 'u2'), marcaDe(l.id, 'u2', DAILY_GOAL_CATEGORIES.AULA_HOJE), marcaDe(l.id, 'u1')];
-      const fatias = leadsByGoalOwner([l], marcas);
-      expect(fatias.get('u1')).toEqual([l]);
-      expect(fatias.get('u2')).toEqual([l]);
-    });
-
-    it('marca sem dono, de lead fora da base ou que não é de feito não muda as fatias', () => {
-      const l = lead({ consultantId: 'u1' });
-      const fatias = leadsByGoalOwner([l], [
-        goalDone(l.id, DAILY_GOAL_CATEGORIES.VISITA_HOJE),
-        marcaDe('fora-da-base', 'u2'),
-        { leadId: l.id, type: 'note', goalOwnerId: 'u3' },
-      ]);
-      expect([...fatias.keys()]).toEqual(['u1']);
-    });
-
-    it('a Meta de cada pessoa pela fatia continua a mesma da base inteira', () => {
-      const leads = [
-        lead({ consultantId: 'u1', appointmentType: 'aula_experimental', appointmentScheduledFor: new Date(2026, 6, 16, 16, 0) }),
-        lead({ consultantId: 'u2', appointmentType: 'visita', appointmentScheduledFor: as16, appointmentOwnerId: 'u3' }),
-      ];
-      const marcas = [marcaDe(leads[0].id, 'u2'), marcaDe(leads[1].id, 'u1')];
-      const byLead = buildInteractionsByLead(marcas);
-      const fatias = leadsByGoalOwner(leads, marcas);
-      for (const u of ['u1', 'u2', 'u3']) {
-        const pelaFatia = computeDailyGoalSlots(fatias.get(u) || [], byLead, u);
-        const pelaBase = computeDailyGoalSlots(leads, byLead, u);
-        expect(pelaFatia.map((l) => [l.id, l.categorySlugs, l.categoryStatus]), u)
-          .toEqual(pelaBase.map((l) => [l.id, l.categorySlugs, l.categoryStatus]));
-      }
-      expect(computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2').map((l) => l.id)).toEqual([leads[0].id]);
-    });
-
-    it('o contato feito entra na fatia de quem o fez, mesmo depois de voltar para o dono do lead', () => {
-      // O u2 fez o contato que recebeu, e depois o u1 marcou o próximo contato
-      // para ele mesmo (nextFollowUpOwnerId null).
-      const l = lead({ consultantId: 'u1', nextFollowUpOwnerId: null, nextFollowUp: new Date(2026, 6, 16, 9, 0), nextFollowUpType: 'Mensagem' });
-      const marcas = [marcaDe(l.id, 'u2', DAILY_GOAL_CATEGORIES.CONTATO_HOJE)];
-      const byLead = buildInteractionsByLead(marcas);
-      const fatias = leadsByGoalOwner([l], marcas);
-      expect(fatias.get('u2')).toEqual([l]);
-      const doU2 = computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2');
-      expect(doU2.map((x) => [x.id, x.categorySlugs, x.categoryStatus])).toEqual([[l.id, [DAILY_GOAL_CATEGORIES.CONTATO_HOJE], { [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: true }]]);
-      expect(computeDailyGoalSlots(fatias.get('u1'), byLead, 'u1')).toEqual([]);
-    });
-
-    it('a marca de contato de antes do campo entra na fatia de quem a gravou, e a Meta pela fatia é a da base inteira', () => {
-      // O u2 concluiu, numa aba com o código antigo, o contato que tinha
-      // recebido, e depois o u1 pegou o próximo contato para ele, para hoje.
-      const l = lead({ consultantId: 'u1', nextFollowUpOwnerId: null, nextFollowUp: as16, nextFollowUpType: 'Mensagem' });
-      const marcas = [{ ...goalDone(l.id, DAILY_GOAL_CATEGORIES.CONTATO_HOJE), actorId: 'u2' }];
-      const byLead = buildInteractionsByLead(marcas);
-      const fatias = leadsByGoalOwner([l], marcas);
-      expect(fatias.get('u2')).toEqual([l]);
-      for (const u of ['u1', 'u2']) {
-        const pelaFatia = computeDailyGoalSlots(fatias.get(u) || [], byLead, u);
-        const pelaBase = computeDailyGoalSlots([l], byLead, u);
-        expect(pelaFatia.map((x) => [x.id, x.categoryStatus]), u).toEqual(pelaBase.map((x) => [x.id, x.categoryStatus]));
-      }
-      expect(computeDailyGoalSlots(fatias.get('u2'), byLead, 'u2').map((x) => x.categoryStatus))
-        .toEqual([{ [DAILY_GOAL_CATEGORIES.CONTATO_HOJE]: true }]);
-    });
   });
 });

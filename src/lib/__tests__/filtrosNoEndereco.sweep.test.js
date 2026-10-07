@@ -97,8 +97,7 @@ describe('varredura dos filtros no endereço', () => {
   it('nenhum parâmetro entra numa key de componente', () => {
     // Lista curada e conferida: os nomes curtos do endereço (`de`, `dia`,
     // `mes`, `cat`) aparecem como pedaço de outras palavras e dariam alarme
-    // falso (`m.de` do Console, `d.day` da régua de dias da visão Equipe, que
-    // ficou fora desta entrega).
+    // falso (`m.de` do Console, por exemplo).
     // `funnel`, `person` e `sub` são os nomes de VARIÁVEL que as telas usam ao
     // desestruturar o hook, e são os erros mais caros: `key={funnel}` no
     // Kanban ou `key={person}` num dashboard remonta a tela e relê a coleção a

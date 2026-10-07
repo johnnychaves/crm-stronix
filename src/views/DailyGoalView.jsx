@@ -5,7 +5,7 @@ import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneTodayFor, appointmentTaskOwnerId, goalOwnerFields, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
-import { isGestor, isMetaParticipant } from '../lib/acesso.js';
+import { isMetaParticipant } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
@@ -32,16 +32,15 @@ import { ContactPhone } from '../components/profile/ContactPhone.jsx';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL, professorsForModality, professorNameById } from '../lib/professores.js';
 import { Avatar } from '../components/ui/Avatar.jsx';
 import { Btn, IconBtn } from '../components/ui/Btn.jsx';
-import { DailyGoalTeamView } from './DailyGoalTeamView.jsx';
 import { RenewalOutcomeModal } from '../modals/RenewalOutcomeModal.jsx';
 import { ContactOutcomeModal } from '../modals/ContactOutcomeModal.jsx';
 import { ContractModal } from '../modals/ContractModal.jsx';
-import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, Users, X, Zap } from 'lucide-react';
+import { AlertCircle, BookOpen, Building2, Calendar, Check, CheckCircle, ChevronRight, Clock, Dumbbell, Flame, Kanban, MessageCircle, MessageSquare, MoreHorizontal, Phone, RefreshCw, Target, X, Zap } from 'lucide-react';
 
 // DAILY GOAL VIEW — DESIGN PRIMITIVES
 // ==========================================
 // (metadados de categoria/cores e a lógica de slots moraram aqui; foram para
-// src/lib/dailyGoal.js para o painel da equipe do gestor reusar a MESMA regra)
+// src/lib/dailyGoal.js, que guarda a regra pura e testada)
 
 
 function WhatsappGlyph({ size = 14 }) {
@@ -447,8 +446,7 @@ export function TaskCard({ task, slug, now, slaOverdueDays = DEFAULT_SLA_OVERDUE
             )}
             {isOverdue && overdueDays > 0 && (
               overdueDays >= slaOverdueDays ? (
-                // Fora do SLA da academia: destaque sólido — é o lead que o
-                // gestor vê como "crítico" no painel da Equipe.
+                // Fora do SLA da academia: destaque sólido.
                 <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-md whitespace-nowrap bg-rose-600 text-white">
                   <AlertCircle size={11} /> {overdueDays} dias — crítico
                 </span>
@@ -964,31 +962,13 @@ function NextContactModal({ lead, contextLabel = 'Tarefa concluída', onPick, on
 // DAILY GOAL VIEW (META DIÁRIA)
 // ==========================================
 
-// Alternador "Minha meta | Equipe" — visível só para o gestor (admin).
-function ViewTab({ active, icon, label, onClick }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[12.5px] font-semibold transition ${
-        active
-          ? 'bg-white dark:bg-white/[0.1] text-slate-900 dark:text-white shadow-sm'
-          : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-      }`}
-    >
-      {icon}{label}
-    </button>
-  );
-}
-
 function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, listenersActive = true }) {
   const toast = useToast();
   // A categoria aberta vem do endereço: F5 mantém e o link abre na mesma
-  // categoria. A visão Equipe ficou fora desta entrega e continua em estado.
+  // categoria.
   const paramsCtx = useMemo(() => ({}), []);
   const [{ cat: filter }, setParams] = useScreenParams('dailyGoal', paramsCtx);
   const setFilter = (v) => setParams({ cat: v });
-  const [view, setView] = useState('mine'); // 'mine' | 'team' (team = só gestor)
   const [now, setNow] = useState(() => new Date());
   const [rescheduleTarget, setRescheduleTarget] = useState(null);
   const [nextContactTarget, setNextContactTarget] = useState(null);
@@ -1052,8 +1032,7 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
   }, [dailyHistory, metaWeekdays, todayKey]);
 
   // Slots da MINHA meta — regra única em src/lib/dailyGoal.js (Meta-only:
-  // só Venda/Perda hoje ou daily_goal_done marcam tarefa), compartilhada com
-  // o painel da equipe do gestor.
+  // só Venda/Perda hoje ou daily_goal_done marcam tarefa).
   const processedLeads = useMemo(() => {
     void todayKey; // recategoriza na virada do dia (A5)
     return computeDailyGoalSlots(leads, buildInteractionsByLead(interactions), appUser.id, renewalCheckpoints, renewalGraceDays);
@@ -1764,31 +1743,8 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
       ? tomorrowAppts.length
       : (counts[filter] || 0);
 
-  const isManager = isGestor(appUser);
-
   return (
     <div className="h-full flex flex-col gap-6 animate-fade-in relative font-sans">
-      {isManager && (
-        <div className="flex items-center gap-1 self-start bg-slate-100 dark:bg-white/[0.05] rounded-xl p-1">
-          <ViewTab active={view === 'mine'} icon={<Target size={13} />} label="Minha meta" onClick={() => setView('mine')} />
-          <ViewTab active={view === 'team'} icon={<Users size={13} />} label="Equipe" onClick={() => setView('team')} />
-        </div>
-      )}
-
-      {isManager && view === 'team' ? (
-        <DailyGoalTeamView
-          leads={leads}
-          interactions={interactions}
-          usersList={usersList}
-          metaWeekdays={metaWeekdays}
-          slaOverdueDays={slaOverdueDays}
-          renewalCheckpoints={renewalCheckpoints}
-          renewalGraceDays={renewalGraceDays}
-          db={db}
-          appUser={appUser}
-        />
-      ) : (
-      <>
       <ProgressHero
         firstName={firstName}
         greeting={greeting}
@@ -1948,8 +1904,6 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
           </div>
         </section>
       </div>
-      </>
-      )}
 
       <footer className="pt-1 pb-2 text-center text-[11.5px] text-slate-400">
         Atualizado agora · {todayLabel} · <span className="font-display font-medium">STRONI</span><span className="font-display font-bold text-brand-600 dark:text-brand-400">LEAD</span>

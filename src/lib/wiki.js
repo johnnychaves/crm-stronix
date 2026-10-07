@@ -197,7 +197,7 @@ export const WIKI_ARTICLES = [
 
       { t: 'h', text: 'Prospecção e o Dia perfeito' },
       { t: 'p', text: 'Além das tarefas, existe um piso de prospecção: um mínimo de ações novas por dia. Conta agendar visita ou aula, registrar ligação ou mensagem e cadastrar lead novo.' },
-      { t: 'tip', text: 'Quem zera as tarefas e ainda bate a prospecção ganha o selo Dia perfeito. O gestor acompanha as duas metas lado a lado no Painel da Equipe.' },
+      { t: 'tip', text: 'Quem zera as tarefas e ainda bate a prospecção ganha o selo Dia perfeito. O gestor vê as duas metas de cada pessoa lado a lado na Visão geral, aba Operacional.' },
       { t: 'warn', text: 'A meta é individual e usa o fuso do dia local. Tarefa concluída perto da meia-noite conta no dia em que você a concluiu, não no seguinte.' },
     ],
   },

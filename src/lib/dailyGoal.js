@@ -5,7 +5,6 @@ import {
   getLeadAppointmentType,
   getLeadAppointmentDate,
   hasGoalDoneTodayFor,
-  goalDoneOwnerId,
   isLeadResolvedToday,
   hasActiveInteractionToday,
   contactOwnerId,
@@ -18,8 +17,8 @@ import { shouldPromptRenewal, DEFAULT_RENEWAL_CHECKPOINTS, DEFAULT_RENEWAL_GRACE
 import { shouldPromptExpired } from './expiredGoal.js';
 
 // ============================================================================
-// Lógica compartilhada da META DIÁRIA — usada pela tela do consultor
-// (DailyGoalView) e pelo painel da equipe do gestor (DailyGoalTeamView).
+// Lógica da META DIÁRIA, usada pela tela de cada pessoa (DailyGoalView), pela
+// badge de pendências do menu e pelos painéis da Visão geral.
 // FILOSOFIA META-ONLY (regra única): uma tarefa só é "feita" quando o lead
 // virou Venda/Perda hoje OU existe interaction `daily_goal_done` da categoria
 // criada hoje. Qualquer outra atividade NÃO marca a tarefa.
@@ -64,9 +63,9 @@ export function dgDateKey(date) {
 }
 
 // ── SLA de atrasados ────────────────────────────────────────────────────────
-// A partir de QUANTOS dias de atraso um lead vira "crítico" (alerta no painel
-// da equipe + destaque na meta do consultor). Política da academia, editável
-// em Configurações Gerais (campo slaOverdueDays do config geral).
+// A partir de QUANTOS dias de atraso um lead vira "crítico" (destaque na Meta
+// Diária). Política da academia, editável em Configurações Gerais (campo
+// slaOverdueDays do config geral).
 export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 
 // ── Meta por VOLUME (piso de esforço diário) ───────────────────────────────
@@ -96,8 +95,9 @@ export const DEFAULT_SLA_OVERDUE_DAYS = 3;
 // IMPORTANTE (mudança de comportamento): antes o volume filtrava direto por
 // i.consultantAuthUid, sempre ausente, então "agendamentos" NUNCA contava
 // (volume = só leads novos). Com este resolvedor os agendamentos passam a
-// contar. Quem agrupa interações por dono (useTeamGoals/DailyGoalTeamView)
-// DEVE usar a MESMA função, senão a fatia não bate com o filtro.
+// contar. Quem agrupa interações por dono (o Operacional, em
+// src/lib/operacional/routine.js) DEVE usar a MESMA função, senão a fatia não
+// bate com o filtro.
 export const interactionOwnerAuthUid = (i) =>
   i?.actorAuthUid ?? i?.consultantAuthUid ?? i?.leadConsultantAuthUid ?? null;
 
@@ -134,105 +134,6 @@ export function countMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
     if ((metaWeekdays || []).includes(d.getDay())) n++;
   }
   return n;
-}
-
-// Dias de META já ENCERRADOS no mês (1..ontem). Denominador das asas do painel
-// da equipe: hoje ainda está em curso, então não entra nem no numerador nem no
-// denominador — contá-lo faria o time começar toda manhã devendo um dia que nem
-// começou. Diferente de countMetaDaysInMonth, que INCLUI hoje e é usada onde o
-// numerador também inclui (prospecção do mês na tela do consultor).
-export function countClosedMetaDaysInMonth(metaWeekdays, refDate = new Date()) {
-  const today = new Date(refDate);
-  today.setHours(0, 0, 0, 0);
-  let n = 0;
-  for (let day = 1; day < today.getDate(); day++) {
-    const d = new Date(today.getFullYear(), today.getMonth(), day);
-    if ((metaWeekdays || []).includes(d.getDay())) n++;
-  }
-  return n;
-}
-
-// TODOS os dias de META do mês, do dia 1 ao último — inclusive os que ainda não
-// chegaram. É o denominador das réguas do painel da equipe: a barra enche até o
-// alvo do mês inteiro, então "45%" significa "cumpriu 45% da meta do mês", não
-// "45% do que devia ter feito até agora". A leitura de ritmo vem da marca de
-// posição esperada na barra, não do denominador.
-export function countMetaDaysInMonthAll(metaWeekdays, refDate = new Date()) {
-  const d = new Date(refDate);
-  const year = d.getFullYear(), month = d.getMonth();
-  const last = new Date(year, month + 1, 0).getDate();
-  let n = 0;
-  for (let day = 1; day <= last; day++) {
-    if ((metaWeekdays || []).includes(new Date(year, month, day).getDay())) n++;
-  }
-  return n;
-}
-
-// Dias de META num intervalo [from, to) — denominador do "X de Y dias batidos"
-// quando o painel olha um período passado (ontem/semana/mês anterior/custom).
-export function countMetaDaysInRange(metaWeekdays, from, to) {
-  let n = 0;
-  const d = new Date(from); d.setHours(0, 0, 0, 0);
-  const end = new Date(to);
-  while (d < end) {
-    if ((metaWeekdays || []).includes(d.getDay())) n++;
-    d.setDate(d.getDate() + 1);
-  }
-  return n;
-}
-
-// Metas batidas (docs de histórico {date:'YYYY-MM-DD'}) dentro de [from, to),
-// só em dias programados — numerador do "X de Y dias batidos" do período.
-export function countHitsInRange(history, metaWeekdays, from, to) {
-  const fromKey = dgDateKey(from);
-  const toKey = dgDateKey(new Date(to.getTime() - 1));
-  let n = 0;
-  (history || []).forEach((h) => {
-    const key = h?.date;
-    if (!key || key < fromKey || key > toKey) return;
-    const [y, m, d] = key.split('-').map(Number);
-    if (y && m && d && (metaWeekdays || []).includes(new Date(y, m - 1, d).getDay())) n++;
-  });
-  return n;
-}
-
-// Extrato das ações de volume do dia — lista cronológica (mais recente
-// primeiro) para o gestor auditar COMO o consultor compôs o número:
-// [{ at: Date, label, leadId, leadName }]. Mesmos critérios do contador.
-const VOLUME_KIND_LABEL = {
-  visita: 'Visita agendada',
-  aula_experimental: 'Aula experimental agendada',
-  mensagem: 'Mensagem agendada',
-  ligacao: 'Ligação agendada',
-};
-
-// Extrato num INTERVALO [from, to) — base do "hoje" (sem teto) e dos períodos
-// passados (ontem/semana/mês anterior/personalizado). metaWeekdays opcional:
-// só ações em dias programados (mesma régua da contabilização).
-export function listVolumeActionsInRange(leads, interactions, consultantId, consultantAuthUid, from, to = null, metaWeekdays = null) {
-  const onMetaDay = (d) => !metaWeekdays || metaWeekdays.includes(d.getDay());
-  const inRange = (d) => d instanceof Date && d >= from && (!to || d < to) && onMetaDay(d);
-  const nameOf = new Map((leads || []).map((l) => [l.id, l.name || '—']));
-  const out = [];
-  (leads || []).forEach((l) => {
-    if (l.consultantId !== consultantId) return;
-    if (inRange(l.createdAt)) out.push({ at: l.createdAt, label: 'Lead cadastrado', leadId: l.id, leadName: l.name || '—' });
-  });
-  (interactions || []).forEach((i) => {
-    if (interactionOwnerAuthUid(i) !== consultantAuthUid) return;
-    if (!inRange(i.createdAt)) return;
-    // Nome: primeiro o lead em memória (é o nome ATUAL, se foi corrigido
-    // depois), senão o que ficou gravado na interação. O segundo cobre lead
-    // que saiu da base ativa — cliente em renovação, por exemplo.
-    if (i.volumeKind) out.push({ at: i.createdAt, label: VOLUME_KIND_LABEL[i.volumeKind] || 'Contato agendado', leadId: i.leadId, leadName: nameOf.get(i.leadId) || i.leadName || '—' });
-  });
-  return out.sort((a, b) => b.at - a.at);
-}
-
-export function listDailyVolumeActions(leads, interactions, consultantId, consultantAuthUid, refDate = new Date()) {
-  const todayStart = new Date(refDate);
-  todayStart.setHours(0, 0, 0, 0);
-  return listVolumeActionsInRange(leads, interactions, consultantId, consultantAuthUid, todayStart);
 }
 
 // Composição legível do volume ("2 agendamentos · 1 lead novo").
@@ -279,40 +180,6 @@ export function buildInteractionsByLead(interactions) {
     if (arr) arr.push(i); else map.set(i.leadId, [i]);
   });
   return map;
-}
-
-// Fatia de leads por pessoa, para quem monta a Meta de várias pessoas de uma
-// vez (a Meta da equipe, em src/views/team/useTeamBoard.js, e o painel da
-// equipe da Visão geral, em src/views/dashboard/useTeamGoals.js): cada lead
-// entra na fatia do dono e, quando a visita ou a aula ficou com outra pessoa
-// (appointmentOwnerId) ou o contato foi passado a um colega
-// (nextFollowUpOwnerId), também na fatia dela. Com as interações, o lead entra
-// ainda na fatia de quem ficou com a marca de feito da visita, da aula ou do
-// contato (goalDoneOwnerId, a mesma conta do crédito: o goalOwnerId da marca e,
-// na marca de contato de antes do campo, quem a gravou), que pode não ser mais
-// nem o dono do lead nem o dono da tarefa de agora. computeDailyGoalSlots
-// decide o resto, então a fatia só precisa ter todo lead em que a pessoa pode
-// ter tarefa, feita ou não.
-export function leadsByGoalOwner(leads, interactions = []) {
-  const byOwner = new Map();
-  const add = (id, lead) => {
-    const set = byOwner.get(id);
-    if (set) set.add(lead); else byOwner.set(id, new Set([lead]));
-  };
-  const byId = new Map();
-  (leads || []).forEach(l => {
-    byId.set(l.id, l);
-    add(l.consultantId, l);
-    if (l.appointmentOwnerId) add(l.appointmentOwnerId, l);
-    if (l.nextFollowUpOwnerId) add(l.nextFollowUpOwnerId, l);
-  });
-  (interactions || []).forEach(i => {
-    if (i?.type !== 'daily_goal_done') return;
-    const lead = byId.get(i.leadId);
-    const owner = lead ? goalDoneOwnerId(lead, i) : null;
-    if (owner) add(owner, lead);
-  });
-  return new Map([...byOwner].map(([id, set]) => [id, [...set]]));
 }
 
 // Monta os "slots" da meta de UM consultor: cada lead alvo sai com
