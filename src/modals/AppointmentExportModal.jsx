@@ -63,7 +63,7 @@ function MultiSelectGroup({ title, options, selected, onToggle }) {
 
 const fmtShort = (d) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-function AppointmentExportModal({ open, onClose, db, appointmentType, isAula, isAdmin, usersList }) {
+function AppointmentExportModal({ open, onClose, db, appointmentType, isAula, usersList }) {
   const toast = useToast();
   const { professores, modalities } = useGeneralConfig();
 
@@ -211,12 +211,10 @@ function AppointmentExportModal({ open, onClose, db, appointmentType, isAula, is
             </Field>
           </div>
 
-          {/* Responsável só pra admin — consultor só enxerga os próprios leads
-              (regra do Firestore), então filtrar por outro nome não muda nada. */}
-          {isAdmin && (
-            <MultiSelectGroup title="Responsável" options={respOptions} selected={respIds} onToggle={toggle(setRespIds)} />
-          )}
-          {isAdmin && respOptions.length === 0 && (
+          {/* Responsável: toda a equipe escolhe, como o gestor. O relatório
+              traz os agendamentos da academia inteira para todo mundo. */}
+          <MultiSelectGroup title="Responsável" options={respOptions} selected={respIds} onToggle={toggle(setRespIds)} />
+          {respOptions.length === 0 && (
             <p className="text-[11.5px] text-slate-400 dark:text-slate-500 inline-flex items-center gap-1.5"><Users className="size-[13px]" /> Nenhum responsável cadastrado.</p>
           )}
 

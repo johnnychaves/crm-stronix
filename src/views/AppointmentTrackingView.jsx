@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { Ban, BookOpen, Building2, Calendar, Check, ChevronDown, Clock, Download, Phone, SlidersHorizontal, Timer, TrendingUp, Users } from 'lucide-react';
 import { DAILY_GOAL_CATEGORIES, getAppointmentOutcomeMeta, getLeadAppointmentDate, getLeadAppointmentType, isLeadConverted } from '../lib/leads.js';
-import { isGestor, isSeller } from '../lib/acesso.js';
+import { isSeller } from '../lib/acesso.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -129,9 +129,8 @@ const fromDateInput = (s) => {
   return y && m && d ? new Date(y, m - 1, d) : null;
 };
 
-function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
+function AppointmentTrackingView({ usersList, db, appointmentType }) {
   const { professores } = useGeneralConfig();
-  const isAdmin = isGestor(appUser);
   // Responsável é quem vende: o professor não é dono de lead e fica fora do
   // filtro, do endereço e da exportação (isSeller, em src/lib/acesso.js).
   const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
@@ -162,15 +161,16 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
   // de dia e o período continuam mutuamente exclusivos, e o período ganha:
   // período torto (data que não existe, fim antes do início, mais de 30 dias,
   // metade do par) cai fora inteiro e a tela abre no atalho padrão, sem erro.
-  // O botão de filtros é de gestor, então responsável e professor num link
-  // aberto por consultor são ignorados.
+  // O botão de filtros é de toda a equipe, como o do gestor (decisão do
+  // Johnny, 07/10/2026), então responsável e professor do link valem para
+  // quem abrir.
   const paramsCtx = useMemo(() => ({
     users: sellers,
-    podeResp: isAdmin,
+    podeResp: true,
     respPadrao: [],
     professores,
     temAndamento: isAula,
-  }), [sellers, isAdmin, professores, isAula]);
+  }), [sellers, professores, isAula]);
   const [{ day: dayTab, de, ate, resp: respFilter, prof: profFilter = SEM_PROFESSOR }, setParams] =
     useScreenParams(isAula ? 'aulas' : 'visitas', paramsCtx);
   // A tela trabalha com Date; o endereço guarda AAAA-MM-DD.
@@ -529,129 +529,127 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
             <span className="font-semibold text-gray-700 dark:text-neutral-200">{filterSummary}</span>
           </div>
 
-          {/* Filtro único (Responsável) — consultor não filtra ninguém. */}
-          {isAdmin && (
-            <div ref={filterWrapRef} className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setFilterOpen(o => !o)}
-                title="Filtros"
-                aria-haspopup="dialog"
-                aria-expanded={filterOpen}
-                className={cn(
-                  'relative size-[38px] rounded-[11px] border grid place-items-center transition-colors',
-                  hasActiveFilters
-                    ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-300'
-                    : 'bg-paper-50 border-slate-200 text-gray-600 hover:border-brand-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-brand-500/40'
-                )}
-              >
-                <SlidersHorizontal className="size-[17px]" />
-                {hasActiveFilters && (
-                  <span className="absolute -top-[5px] -right-[5px] min-w-4 h-4 px-1 rounded-full bg-accent-500 text-white text-[9.5px] font-bold grid place-items-center ring-2 ring-white dark:ring-neutral-900 tabular-nums">
-                    {respFilter.length + (isAula ? profFilter.length : 0)}
-                  </span>
-                )}
-              </button>
+          {/* Filtros (Responsável e, nas Aulas, Professor): toda a equipe usa, como o gestor. */}
+          <div ref={filterWrapRef} className="relative shrink-0">
+            <button
+              type="button"
+              onClick={() => setFilterOpen(o => !o)}
+              title="Filtros"
+              aria-haspopup="dialog"
+              aria-expanded={filterOpen}
+              className={cn(
+                'relative size-[38px] rounded-[11px] border grid place-items-center transition-colors',
+                hasActiveFilters
+                  ? 'bg-brand-50 border-brand-200 text-brand-700 dark:bg-brand-500/15 dark:border-brand-500/30 dark:text-brand-300'
+                  : 'bg-paper-50 border-slate-200 text-gray-600 hover:border-brand-200 dark:bg-neutral-800 dark:border-neutral-700 dark:text-neutral-300 dark:hover:border-brand-500/40'
+              )}
+            >
+              <SlidersHorizontal className="size-[17px]" />
+              {hasActiveFilters && (
+                <span className="absolute -top-[5px] -right-[5px] min-w-4 h-4 px-1 rounded-full bg-accent-500 text-white text-[9.5px] font-bold grid place-items-center ring-2 ring-white dark:ring-neutral-900 tabular-nums">
+                  {respFilter.length + (isAula ? profFilter.length : 0)}
+                </span>
+              )}
+            </button>
 
-              {filterOpen && (
-                <div className="absolute right-0 top-[46px] w-[264px] rounded-[14px] bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-700 shadow-[0_16px_40px_-8px_rgba(14,26,64,.22)] overflow-hidden z-30">
-                  <div className="px-3.5 pt-3 pb-2.5 flex items-center justify-between border-b border-slate-100 dark:border-white/10">
-                    <span className="text-[12.5px] font-bold text-gray-900 dark:text-white">Filtros</span>
-                    <button
-                      type="button"
-                      onClick={() => setParams({ resp: [], prof: [] })}
-                      className="text-[11.5px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
-                    >
-                      Limpar
-                    </button>
+            {filterOpen && (
+              <div className="absolute right-0 top-[46px] w-[264px] rounded-[14px] bg-white dark:bg-ink-800 border border-slate-200 dark:border-ink-700 shadow-[0_16px_40px_-8px_rgba(14,26,64,.22)] overflow-hidden z-30">
+                <div className="px-3.5 pt-3 pb-2.5 flex items-center justify-between border-b border-slate-100 dark:border-white/10">
+                  <span className="text-[12.5px] font-bold text-gray-900 dark:text-white">Filtros</span>
+                  <button
+                    type="button"
+                    onClick={() => setParams({ resp: [], prof: [] })}
+                    className="text-[11.5px] font-semibold text-brand-600 hover:text-brand-700 dark:text-brand-400 dark:hover:text-brand-300 transition-colors"
+                  >
+                    Limpar
+                  </button>
+                </div>
+                <div className="pt-2.5 px-2 pb-3">
+                  <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
+                    Responsável
                   </div>
-                  <div className="pt-2.5 px-2 pb-3">
+                  <button
+                    type="button"
+                    onClick={() => setParams({ resp: [] })}
+                    className={cn(
+                      'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
+                      respFilter.length === 0 ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
+                    )}
+                  >
+                    <span className="size-6 rounded-full grid place-items-center bg-paper-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400 shrink-0">
+                      <Users className="size-[13px]" />
+                    </span>
+                    <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', respFilter.length === 0 ? 'font-bold' : 'font-medium')}>
+                      Toda a equipe
+                    </span>
+                    {respFilter.length === 0 && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                  </button>
+                  {sellers.map(u => {
+                    const selected = respFilter.includes(u.id);
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => toggleResp(u.id)}
+                        className={cn(
+                          'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
+                          selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
+                        )}
+                      >
+                        <Avatar name={u.name} size={24} />
+                        <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', selected ? 'font-bold' : 'font-medium')}>
+                          {u.name}
+                        </span>
+                        {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {isAula && (
+                  <div className="pt-2.5 px-2 pb-1 border-t border-slate-100 dark:border-white/10 mt-1">
                     <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
-                      Responsável
+                      Professor
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setParams({ resp: [] })}
-                      className={cn(
-                        'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
-                        respFilter.length === 0 ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
-                      )}
-                    >
-                      <span className="size-6 rounded-full grid place-items-center bg-paper-100 text-slate-500 dark:bg-neutral-800 dark:text-neutral-400 shrink-0">
-                        <Users className="size-[13px]" />
-                      </span>
-                      <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', respFilter.length === 0 ? 'font-bold' : 'font-medium')}>
-                        Toda a equipe
-                      </span>
-                      {respFilter.length === 0 && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
-                    </button>
-                    {sellers.map(u => {
-                      const selected = respFilter.includes(u.id);
+                    {(professores || []).map((p) => {
+                      const selected = profFilter.includes(p.id);
                       return (
                         <button
-                          key={u.id}
+                          key={p.id}
                           type="button"
-                          onClick={() => toggleResp(u.id)}
+                          onClick={() => setParams((v) => {
+                            const atual = v.prof || SEM_PROFESSOR;
+                            return { prof: atual.includes(p.id) ? atual.filter(x => x !== p.id) : [...atual, p.id] };
+                          })}
                           className={cn(
                             'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
                             selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
                           )}
                         >
-                          <Avatar name={u.name} size={24} />
-                          <span className={cn('flex-1 text-[12.5px] text-gray-900 dark:text-white truncate', selected ? 'font-bold' : 'font-medium')}>
-                            {u.name}
-                          </span>
+                          <span className="flex-1 text-[12.5px] text-gray-900 dark:text-white truncate">{p.nome}</span>
                           {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
                         </button>
                       );
                     })}
-                  </div>
-
-                  {isAula && (
-                    <div className="pt-2.5 px-2 pb-1 border-t border-slate-100 dark:border-white/10 mt-1">
-                      <div className="px-1.5 pb-1.5 text-[10.5px] font-semibold uppercase tracking-[.07em] text-gray-400 dark:text-neutral-500">
-                        Professor
-                      </div>
-                      {(professores || []).map((p) => {
-                        const selected = profFilter.includes(p.id);
-                        return (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => setParams((v) => {
-                              const atual = v.prof || SEM_PROFESSOR;
-                              return { prof: atual.includes(p.id) ? atual.filter(x => x !== p.id) : [...atual, p.id] };
-                            })}
-                            className={cn(
-                              'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
-                              selected ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
-                            )}
-                          >
-                            <span className="flex-1 text-[12.5px] text-gray-900 dark:text-white truncate">{p.nome}</span>
-                            {selected && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
-                          </button>
-                        );
+                    <button
+                      type="button"
+                      onClick={() => setParams((v) => {
+                        const atual = v.prof || SEM_PROFESSOR;
+                        return { prof: atual.includes(SOLO_TRAINING) ? atual.filter(x => x !== SOLO_TRAINING) : [...atual, SOLO_TRAINING] };
                       })}
-                      <button
-                        type="button"
-                        onClick={() => setParams((v) => {
-                          const atual = v.prof || SEM_PROFESSOR;
-                          return { prof: atual.includes(SOLO_TRAINING) ? atual.filter(x => x !== SOLO_TRAINING) : [...atual, SOLO_TRAINING] };
-                        })}
-                        className={cn(
-                          'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
-                          profFilter.includes(SOLO_TRAINING) ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
-                        )}
-                      >
-                        <span className="flex-1 text-[12.5px] text-gray-900 dark:text-white truncate">{SOLO_TRAINING_LABEL}</span>
-                        {profFilter.includes(SOLO_TRAINING) && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          )}
+                      className={cn(
+                        'w-full flex items-center gap-[9px] px-2 py-[7px] rounded-[9px] text-left transition-colors',
+                        profFilter.includes(SOLO_TRAINING) ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-paper-50 dark:hover:bg-white/5'
+                      )}
+                    >
+                      <span className="flex-1 text-[12.5px] text-gray-900 dark:text-white truncate">{SOLO_TRAINING_LABEL}</span>
+                      {profFilter.includes(SOLO_TRAINING) && <Check className="size-3.5 text-brand-600 dark:text-brand-400 shrink-0" strokeWidth={2.6} />}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
 
           {/* Exportar (PDF + CSV) — filtros próprios no modal, não usa o
               recorte da tela (aba de dia / range / filtro de responsável). */}
@@ -706,7 +704,7 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
                         <div className="text-[13.5px] font-semibold text-slate-900 dark:text-white truncate">{l.name}</div>
                         <div className="mt-px flex items-center gap-1.5 text-[11.5px] text-slate-500 dark:text-neutral-400 tabular-nums">
                           <span className="inline-flex items-center gap-1"><Phone className="size-[11px]" /> <ContactPhone lead={l} /></span>
-                          {isAdmin && consultantFirst && (
+                          {consultantFirst && (
                             <>
                               <span className="size-1 rounded-full bg-slate-300 dark:bg-white/20" />
                               <span className="text-[11px] text-brand-600 dark:text-brand-300">@{consultantFirst}</span>
@@ -823,7 +821,6 @@ function AppointmentTrackingView({ appUser, usersList, db, appointmentType }) {
           db={db}
           appointmentType={appointmentType}
           isAula={isAula}
-          isAdmin={isAdmin}
           usersList={sellers}
         />
       )}

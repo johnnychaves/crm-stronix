@@ -71,9 +71,10 @@ const TODAS = Object.freeze(Object.values(ACTIONS));
 
 // O que cada papel faz. Gestor e consultor fazem tudo o que está aqui, porque
 // é assim hoje: desde a PR #193 o consultor edita cadastro e vende igual ao
-// gestor. O que é só do gestor (Configurações, excluir lead, Meta da equipe,
-// filtro de responsável) continua no isGestor e na trava `gestor` das telas
-// (src/lib/routes.js). O professor não faz nenhuma: na ficha ele registra
+// gestor. O que é só do gestor (Configurações, excluir lead e Meta da equipe)
+// continua no isGestor e na trava `gestor` das telas (src/lib/routes.js). O
+// filtro de responsável das listas é de todo mundo desde 07/10/2026 e não
+// passa por aqui. O professor não faz nenhuma: na ficha ele registra
 // anotação, WhatsApp, ligação e agendamento, que não passam por esta lista.
 //
 // `can` olha só o papel. Ter login (authUid, canEditLead em leads.js)
