@@ -5,12 +5,14 @@ import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { firstName, modelOfUser, spanText, tasksForDay } from '../../lib/rotinas.js';
 import { MODEL_GONE, setPersonModel } from '../../lib/rotinasWrites.js';
+import { AppLink } from '../nav/AppLink.jsx';
 
 const NONE = 'sem-modelo';
 
 // Enquanto os modelos não chegam (loading), a lista não diz quem está sem
-// rotina: sem os modelos, todo mundo pareceria sem modelo.
-export function ConsultantsList({ db, appUser, people, models, loading = false, onOpenModel }) {
+// rotina: sem os modelos, todo mundo pareceria sem modelo. modelLink(id) devolve
+// o endereço e o state do "Abrir modelo", que é link de verdade.
+export function ConsultantsList({ db, appUser, people, models, loading = false, modelLink }) {
   const toast = useToast();
   const { metaWeekdays = [1, 2, 3, 4, 5] } = useGeneralConfig();
   const [busy, setBusy] = useState(null);
@@ -70,9 +72,9 @@ export function ConsultantsList({ db, appUser, people, models, loading = false, 
               </Select>
               <span>
                 {model && (
-                  <button type="button" onClick={() => onOpenModel(model.id)} className="text-[13px] font-medium text-brand-600 underline underline-offset-[3px]">
+                  <AppLink {...modelLink(model.id)} className="text-[13px] font-medium text-brand-600 underline underline-offset-[3px]">
                     Abrir modelo
-                  </button>
+                  </AppLink>
                 )}
               </span>
             </div>

@@ -17,7 +17,10 @@ import { NewModelSheet } from '../components/rotinas/NewModelSheet.jsx';
 // da navegação:
 //   - fromList: o modelo foi aberto pela lista (cartão, "Abrir modelo" ou
 //     criado no Novo modelo). Só aí o "Modelos" do topo volta uma entrada do
-//     histórico. O modelo aberto pelo Duplicar não leva a marca, senão o
+//     histórico. O cartão e o "Abrir modelo" são links (modelLink), e o Link
+//     do React Router manda o state só no clique que troca de tela nesta aba:
+//     o modelo aberto em outra aba chega sem a marca, e o "Modelos" dele troca
+//     o endereço pela lista. O modelo aberto pelo Duplicar não leva a marca, senão o
 //     "Modelos" voltaria para o modelo de origem, e não para a lista.
 //   - rotinaNova e at: o modelo acabou de ser criado ou duplicado, no instante
 //     `at`. A transação só aparece na lista quando o servidor confirma; até lá
@@ -78,7 +81,7 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
   const nova = modelId && location.state?.rotinaNova === modelId ? location.state : null;
   const { fresh, renomear } = useFreshModel(nova, Boolean(model));
 
-  const openModel = (id) => navigate(hrefFor(tenantId, 'rotinas', { modelId: id }), { state: { fromList: true } });
+  const modelLink = (id) => ({ to: hrefFor(tenantId, 'rotinas', { modelId: id }), state: { fromList: true } });
   const openNew = (id, { renomear: rename = false, fromList = false } = {}) =>
     navigate(hrefFor(tenantId, 'rotinas', { modelId: id }), { state: { rotinaNova: id, at: Date.now(), renomear: rename, fromList } });
   const toList = () => navigate(hrefFor(tenantId, 'rotinas'), { replace: true });
@@ -146,7 +149,7 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
 
       {models.length > 0 && (
         <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
-          {models.map((m) => <ModelCard key={m.id} model={m} people={people} onOpen={() => openModel(m.id)} />)}
+          {models.map((m) => <ModelCard key={m.id} model={m} people={people} link={modelLink(m.id)} />)}
         </div>
       )}
       {!loading && models.length === 0 && (
@@ -155,7 +158,7 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
         </div>
       )}
 
-      <ConsultantsList db={db} appUser={appUser} people={people} models={models} loading={loading} onOpenModel={openModel} />
+      <ConsultantsList db={db} appUser={appUser} people={people} models={models} loading={loading} modelLink={modelLink} />
 
       {creatingKey && (
         <NewModelSheet

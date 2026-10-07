@@ -1,13 +1,14 @@
 import { cn } from '@/lib/utils';
 import { firstName, minutesOf, namesText, spanText } from '../../lib/rotinas.js';
+import { AppLink } from '../nav/AppLink.jsx';
 
 const DAY_START = 7 * 60;
 const DAY_END = 21 * 60;
 const pct = (m) => ((Math.min(Math.max(m, DAY_START), DAY_END) - DAY_START) / (DAY_END - DAY_START)) * 100;
 
 // A faixa do dia: quando as tarefas com horário acontecem, de 07h a 21h. É
-// toda de span, porque mora dentro do botão do cartão, e botão só aceita
-// conteúdo de frase. O trilho fica em slate-100 (white/[0.07] no escuro), e não
+// toda de span e sem nada clicável, porque mora dentro do link do cartão, e
+// link não aceita outro elemento interativo dentro. O trilho fica em slate-100 (white/[0.07] no escuro), e não
 // no bg-muted: no escuro o token é white/[0.04], e o trilho de 2px quase some
 // sobre o cartão.
 export function DayLine({ tasks }) {
@@ -35,14 +36,17 @@ export function DayLine({ tasks }) {
   );
 }
 
-export function ModelCard({ model, people, onOpen }) {
+// O cartão inteiro é o link do modelo (`link` traz o endereço e o state da
+// navegação, montados pela RotinasView), então Ctrl+clique, botão do meio e
+// "Abrir em nova aba" abrem o modelo em outra aba. O "Abrir" de dentro é só
+// texto: um link só por cartão.
+export function ModelCard({ model, people, link }) {
   const followers = people.filter((p) => (model.followerIds || []).includes(p.id));
   const active = (model.tasks || []).filter((t) => t.active !== false).length;
   const span = spanText(model);
   return (
-    <button
-      type="button"
-      onClick={onOpen}
+    <AppLink
+      {...link}
       className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-4 text-left shadow-card transition hover:border-brand-500/50"
     >
       <span className="flex items-start justify-between gap-2.5">
@@ -58,6 +62,6 @@ export function ModelCard({ model, people, onOpen }) {
       <span className={cn('block text-[12.5px]', followers.length ? 'text-muted-foreground' : 'text-amber-700 dark:text-amber-300')}>
         {followers.length ? namesText(followers.map((p) => firstName(p.name))) : 'Ninguém segue este modelo'}
       </span>
-    </button>
+    </AppLink>
   );
 }

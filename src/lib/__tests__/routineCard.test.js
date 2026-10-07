@@ -63,8 +63,11 @@ const button = (label) => container.querySelector(`button[aria-label="${label}"]
 const click = async (el) => { await act(async () => { el.click(); }); };
 const T3 = 'carla_2026-10-06_t3';
 const T4 = 'carla_2026-10-06_t4';
-const CHECK_T3 = 'Marcar como feita: Conferir a limpeza';
-const CHECK_T4 = 'Marcar como feita: Postar o story da aula das 12h';
+// O círculo é um botão de alternar: o nome é fixo e o aria-pressed diz se a
+// tarefa conta como feita.
+const CHECK_T1 = 'Feita: Conferir a agenda do dia na recepção';
+const CHECK_T3 = 'Feita: Conferir a limpeza';
+const CHECK_T4 = 'Feita: Postar o story da aula das 12h';
 const NOTE_INPUT = 'input[placeholder="Observação (opcional)"]';
 const named = (text) => [...container.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
 // O snapshot do Firestore devolve o check na hora, com a hora do servidor ainda
@@ -115,7 +118,7 @@ describe('cartão Rotina de hoje', () => {
 
   it('o toque numa tarefa feita desfaz o check', async () => {
     await render();
-    await click(button('Desmarcar: Conferir a agenda do dia na recepção'));
+    await click(button(CHECK_T1));
     expect(undoMark).toHaveBeenCalledWith({ db: {}, markId: 'carla_2026-10-06_t1' });
   });
 
@@ -184,7 +187,7 @@ describe('cartão Rotina de hoje', () => {
     expect(saveMarkNote).not.toHaveBeenCalled();
     expect(container.querySelector(NOTE_INPUT)).toBeNull();
 
-    await click(button('Desmarcar: Postar o story da aula das 12h'));
+    await click(button(CHECK_T4));
     await snapshot('t4', null);
     await click(button(CHECK_T4));
     await snapshot('t4', pending(T4));
@@ -207,7 +210,7 @@ describe('cartão Rotina de hoje', () => {
   it('se desfazer falhar, avisa', async () => {
     undoMark.mockRejectedValueOnce(new Error('offline'));
     await render();
-    await click(button('Desmarcar: Conferir a agenda do dia na recepção'));
+    await click(button(CHECK_T1));
     expect(toast.error).toHaveBeenCalledWith('Não deu para desfazer. Tente de novo.');
   });
 
@@ -321,14 +324,97 @@ describe('cartão Rotina de hoje', () => {
     expect(saveMarkNote).toHaveBeenCalledWith({ db: {}, markId: T4_DIA_07, note: 'Story postado' });
   });
 
-  it('check de outro dia ainda aparece marcado e o toque desfaz', async () => {
-    await snapshot('t3', { id: T3, doneAt: new Date(2026, 9, 5, 22, 0), note: '' });
-    const circle = button('Desmarcar: Conferir a limpeza');
-    expect(circle).not.toBeNull();
-    expect(circle.getAttribute('aria-pressed')).toBe('true');
-    await click(circle);
+  it('o círculo diz no aria-pressed se a tarefa conta como feita, com o mesmo nome nos dois estados', async () => {
+    await render();
+    expect(button(CHECK_T1).getAttribute('aria-pressed')).toBe('true');
+    expect(button(CHECK_T4).getAttribute('aria-pressed')).toBe('false');
+    expect(container.querySelector('button[aria-label^="Desmarcar"], button[aria-label^="Marcar"]')).toBeNull();
+  });
+
+  // O check de hoje com a hora de outro dia (relógio do aparelho fora do lugar
+  // perto da meia-noite) não conta: o círculo mostra a tarefa por fazer, e o
+  // toque refaz o check com um instante novo.
+  const FORA_DO_DIA = { id: T3, doneAt: new Date(2026, 9, 5, 22, 0), note: '' };
+
+  it('check com a hora fora do dia dele aparece como não feito', async () => {
+    await snapshot('t3', FORA_DO_DIA);
+    const circle = button(CHECK_T3);
+    expect(circle.getAttribute('aria-pressed')).toBe('false');
+    expect(circle.className).not.toContain('bg-emerald-600');
+    expect(circle.querySelector('svg')).toBeNull();
+    expect(container.textContent).toContain('1 de 4');
+    expect(container.textContent).toContain('Era às 10:30, atrasada há 35 min');
+  });
+
+  it('o toque no check fora do dia apaga o check e marca de novo, nessa ordem', async () => {
+    await snapshot('t3', FORA_DO_DIA);
+    await click(button(CHECK_T3));
+    expect(undoMark).toHaveBeenCalledTimes(1);
     expect(undoMark).toHaveBeenCalledWith({ db: {}, markId: T3 });
+    expect(markDone).toHaveBeenCalledTimes(1);
+    expect(markDone).toHaveBeenCalledWith({ db: {}, appUser, model: MODEL, task: MODEL.tasks[1], now: NOW });
+    expect(undoMark.mock.invocationCallOrder[0]).toBeLessThan(markDone.mock.invocationCallOrder[0]);
+    expect(toast.error).not.toHaveBeenCalled();
+    // O check novo chega e abre a observação, como no toque comum.
+    await snapshot('t3', pending(T3));
+    expect(button(CHECK_T3).getAttribute('aria-pressed')).toBe('true');
+    expect(container.querySelector(NOTE_INPUT)).not.toBeNull();
+  });
+
+  it('o toque duplo no check fora do dia refaz uma vez só, e o círculo fica travado nas duas gravações', async () => {
+    let releaseUndo;
+    let releaseMark;
+    undoMark.mockImplementationOnce(() => new Promise((resolve) => { releaseUndo = resolve; }));
+    markDone.mockImplementationOnce(() => new Promise((resolve) => { releaseMark = () => resolve(T3); }));
+    await snapshot('t3', FORA_DO_DIA);
+    const circle = button(CHECK_T3);
+    await act(async () => { circle.click(); circle.click(); });
+    expect(undoMark).toHaveBeenCalledTimes(1);
+    expect(circle.disabled).toBe(true);
+
+    await act(async () => { releaseUndo(); });
+    expect(markDone).toHaveBeenCalledTimes(1);
+    expect(button(CHECK_T3).disabled).toBe(true);
+    await click(button(CHECK_T3));
+    expect(undoMark).toHaveBeenCalledTimes(1);
+
+    await act(async () => { releaseMark(); });
+    expect(button(CHECK_T3).disabled).toBe(false);
+    expect(undoMark).toHaveBeenCalledTimes(1);
+    expect(markDone).toHaveBeenCalledTimes(1);
+  });
+
+  // As regras só deixam apagar o check até 24 horas depois dele.
+  it('se apagar o check fora do dia for recusado, avisa, não marca de novo e o cartão fica como estava', async () => {
+    undoMark.mockRejectedValueOnce(Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' }));
+    await snapshot('t3', FORA_DO_DIA);
+    await click(button(CHECK_T3));
+    expect(toast.error).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledWith('Não deu para refazer o check desta tarefa.');
     expect(markDone).not.toHaveBeenCalled();
+    const circle = button(CHECK_T3);
+    expect(circle.disabled).toBe(false);
+    expect(circle.getAttribute('aria-pressed')).toBe('false');
+    expect(container.querySelector(NOTE_INPUT)).toBeNull();
+    expect(container.textContent).toContain('1 de 4');
+  });
+
+  it('se o check apagado não for gravado de novo, avisa como no toque comum', async () => {
+    markDone.mockRejectedValueOnce(new Error('offline'));
+    await snapshot('t3', FORA_DO_DIA);
+    await click(button(CHECK_T3));
+    expect(undoMark).toHaveBeenCalledWith({ db: {}, markId: T3 });
+    expect(toast.error).toHaveBeenCalledWith('Não deu para marcar a tarefa. Tente de novo.');
+    expect(container.querySelector(NOTE_INPUT)).toBeNull();
+  });
+
+  it('o toque duplo numa tarefa sem check marca uma vez só', async () => {
+    markDone.mockImplementationOnce(() => new Promise(() => {}));
+    await render();
+    const circle = button(CHECK_T4);
+    await act(async () => { circle.click(); circle.click(); });
+    expect(markDone).toHaveBeenCalledTimes(1);
+    expect(undoMark).not.toHaveBeenCalled();
   });
 
   it('o círculo tem fundo sólido no escuro, o check tem contraste e o ícone sem horário é decorativo', async () => {
@@ -336,7 +422,7 @@ describe('cartão Rotina de hoje', () => {
     const late = button(CHECK_T3);
     expect(late.className).toContain('dark:bg-[#2a1326]');
     expect(button(CHECK_T4).className).toContain('dark:bg-[#0c1126]');
-    const done = button('Desmarcar: Conferir a agenda do dia na recepção');
+    const done = button(CHECK_T1);
     expect(done.className).toContain('bg-emerald-600');
     expect(done.className).toContain('dark:bg-emerald-500');
     expect(container.querySelector('svg[aria-label]')).toBeNull();

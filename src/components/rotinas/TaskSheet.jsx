@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { Info } from 'lucide-react';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
@@ -36,6 +36,7 @@ export function TaskSheet({ open, onOpenChange, onCloseAutoFocus, onTaskRemoved,
   // O estado só desliga os botões no render seguinte. A ref barra o segundo
   // clique que chega antes disso, que criaria a tarefa duas vezes.
   const savingRef = useRef(false);
+  const titleErrorId = useId();
   const editing = Boolean(task);
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
   const whoSees = followers.length
@@ -126,9 +127,10 @@ export function TaskSheet({ open, onOpenChange, onCloseAutoFocus, onTaskRemoved,
               maxLength={TASK_TITLE_MAX}
               placeholder="Ex.: Conferir a agenda do dia na recepção"
               aria-invalid={Boolean(errors.title)}
+              aria-describedby={errors.title ? titleErrorId : undefined}
               onChange={(e) => set({ title: e.target.value })}
             />
-            <FieldError>{errors.title}</FieldError>
+            <FieldError id={titleErrorId}>{errors.title}</FieldError>
           </label>
 
           <label className="flex flex-col gap-1.5">

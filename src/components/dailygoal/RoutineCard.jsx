@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Check, ListChecks, MessageSquare, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useToast } from '../../contexts/ToastContext.jsx';
@@ -56,7 +56,7 @@ function Needle({ now }) {
   );
 }
 
-function RoutineRow({ row, now, busy, editing, draft, onDraft, onCheck, onUndo, onSave, onClose }) {
+function RoutineRow({ row, now, busy, editing, draft, onDraft, onToggle, onUndo, onSave, onClose }) {
   const { task, mark, doneAt, state } = row;
   const done = DONE.has(state);
   return (
@@ -69,12 +69,14 @@ function RoutineRow({ row, now, busy, editing, draft, onDraft, onCheck, onUndo, 
       >
         {task.time ?? <Repeat size={13} />}
       </span>
+      {/* Botão de alternar: o nome fica fixo e o aria-pressed diz se a tarefa
+          conta como feita, o mesmo estado do círculo. */}
       <button
         type="button"
         disabled={busy}
-        onClick={() => (mark ? onUndo(row) : onCheck(row))}
-        aria-pressed={!!mark}
-        aria-label={`${mark ? 'Desmarcar' : 'Marcar como feita'}: ${task.title}`}
+        onClick={() => onToggle(row)}
+        aria-pressed={done}
+        aria-label={`Feita: ${task.title}`}
         className={cn('relative z-10 grid size-[22px] place-items-center rounded-full border-2 transition disabled:opacity-60', CHECK_TONE[state])}
       >
         {done && <Check size={12} strokeWidth={3.2} />}
@@ -125,7 +127,10 @@ export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
   const toast = useToast();
   const dayKey = routineDayKey(now);
   const { model, marks, loading, error } = useMyRoutine({ db, enabled, userId: appUser?.id, dayKey });
-  const [busy, setBusy] = useState(() => new Set()); // tarefas com gravação em andamento
+  const [busy, setBusy] = useState(() => new Set()); // tarefas com gravação em andamento, para o desenho
+  // A mesma lista, para barrar o segundo toque que chega antes de o círculo
+  // desligar no render seguinte.
+  const busyRef = useRef(new Set());
   const [editing, setEditing] = useState(null); // { markId, taskId }: a observação aberta, presa ao check
   const [draft, setDraft] = useState('');
 
@@ -137,8 +142,9 @@ export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
 
   const rows = tasks.map((task) => {
     const mark = marks.get(task.id) || null;
-    // Check ainda sem a hora do servidor conta como agora; check cuja hora
-    // não cai no dia não conta (markDoneAt), mas pode ser desfeito.
+    // Check ainda sem a hora do servidor conta como agora. Check cuja hora não
+    // cai no dia dele não conta (markDoneAt): o círculo mostra a tarefa por
+    // fazer, e o toque refaz o check (redo).
     const doneAt = mark ? (mark.doneAt ? markDoneAt(mark, dayKey) : now) : null;
     return { task, mark, doneAt, state: taskStateAt(task, doneAt, now) };
   });
@@ -157,6 +163,18 @@ export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
       if (on) next.add(taskId); else next.delete(taskId);
       return next;
     });
+  // Cada tarefa grava uma coisa de cada vez. Quem pega a tarefa solta no fim,
+  // inclusive no refazer, que segura a tarefa nas duas gravações.
+  const claim = (taskId) => {
+    if (busyRef.current.has(taskId)) return false;
+    busyRef.current.add(taskId);
+    setBusyFor(taskId, true);
+    return true;
+  };
+  const release = (taskId) => {
+    busyRef.current.delete(taskId);
+    setBusyFor(taskId, false);
+  };
   const closeEditorOf = (markId) => setEditing((e) => (e?.markId === markId ? null : e));
 
   // Quem chama já fechou a observação; aqui só grava, e só texto que existe.
@@ -179,28 +197,58 @@ export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
   // gravado saem do mesmo `at`. Se a lista ainda está no dia anterior, o check
   // novo e a observação aparecem quando o relógio do cartão passa para o dia
   // novo, no próximo minuto.
-  const check = async ({ task }) => {
-    if (busy.has(task.id)) return;
+  //
+  // Quem chama já pegou a tarefa (claim). `dropped` é o check que o refazer
+  // acabou de apagar: a observação aberta nele não é gravada.
+  const writeCheck = async (task, dropped = null) => {
     const at = new Date();
     const markId = markIdOf(appUser.id, routineDayKey(at), task.id);
-    if (openMarkId && openMarkId !== markId) persistNote(openMarkId, draft);
+    if (openMarkId && openMarkId !== markId && openMarkId !== dropped) persistNote(openMarkId, draft);
     setEditing({ markId, taskId: task.id });
     setDraft('');
-    setBusyFor(task.id, true);
     try {
       await markDone({ db, appUser, model, task, now: at });
     } catch (err) {
       console.error('rotina: check falhou', err);
       closeEditorOf(markId);
       toast.error('Não deu para marcar a tarefa. Tente de novo.');
+    }
+  };
+
+  const check = async ({ task }) => {
+    if (!claim(task.id)) return;
+    try {
+      await writeCheck(task);
     } finally {
-      setBusyFor(task.id, false);
+      release(task.id);
+    }
+  };
+
+  // O check que existe e não conta, porque a hora dele caiu fora do dia dele
+  // (relógio do aparelho adiantado ou atrasado perto da meia-noite), aparece
+  // como tarefa por fazer, e o toque o refaz: apaga e grava de novo, com um
+  // instante novo, como no toque comum. As regras só deixam apagar até 24
+  // horas depois do check. Se o apagar for recusado, nada mais é gravado e o
+  // cartão continua como estava.
+  const redo = async ({ task, mark }) => {
+    if (!claim(task.id)) return;
+    try {
+      try {
+        await undoMark({ db, markId: mark.id });
+      } catch (err) {
+        console.error('rotina: refazer o check falhou', err);
+        toast.error('Não deu para refazer o check desta tarefa.');
+        return;
+      }
+      closeEditorOf(mark.id);
+      await writeCheck(task, mark.id);
+    } finally {
+      release(task.id);
     }
   };
 
   const undo = async ({ task, mark }) => {
-    if (busy.has(task.id)) return;
-    setBusyFor(task.id, true);
+    if (!claim(task.id)) return;
     try {
       await undoMark({ db, markId: mark.id });
       closeEditorOf(mark.id);
@@ -208,8 +256,16 @@ export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
       console.error('rotina: desfazer falhou', err);
       toast.error('Não deu para desfazer. Tente de novo.');
     } finally {
-      setBusyFor(task.id, false);
+      release(task.id);
     }
+  };
+
+  // O círculo segue o estado que conta: feita desfaz, check que não conta é
+  // refeito e tarefa sem check é marcada.
+  const toggle = (row) => {
+    if (DONE.has(row.state)) return undo(row);
+    if (row.mark) return redo(row);
+    return check(row);
   };
 
   const saveNote = (markId) => {
@@ -226,7 +282,7 @@ export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
       editing={!!row.mark && editing?.markId === row.mark.id}
       draft={draft}
       onDraft={setDraft}
-      onCheck={check}
+      onToggle={toggle}
       onUndo={undo}
       onSave={saveNote}
       onClose={closeEditorOf}

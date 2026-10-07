@@ -121,9 +121,61 @@ const type = async (el, value) => {
 const settleFocus = async () => {
   await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
 };
-const card = (name) => [...document.body.querySelectorAll('button')].find((b) => b.textContent.startsWith(name) && b.textContent.includes('Abrir'));
+// O cartão do modelo e o "Abrir modelo" da lista de consultores são links.
+const card = (name) => [...document.body.querySelectorAll('a')].find((a) => a.textContent.startsWith(name) && a.textContent.includes('Abrir'));
+const link = (label) => [...document.body.querySelectorAll('a')].find((a) => a.textContent.trim() === label);
 const TASK_TITLE = 'input[placeholder="Ex.: Conferir a agenda do dia na recepção"]';
 const MODEL_NAME = 'input[placeholder="Ex.: Consultor do fim de semana"]';
+
+describe('abrir o modelo por link', () => {
+  // O jsdom não navega: quem cancela o clique que o Link deixou passar é este
+  // ouvinte, depois de anotar se o app tinha cancelado antes (clique tratado
+  // pelo roteador) ou não (clique que fica com o navegador, como o Ctrl+clique).
+  let cancelledByApp;
+  const record = (event) => {
+    cancelledByApp = event.defaultPrevented;
+    event.preventDefault();
+  };
+  beforeEach(() => {
+    cancelledByApp = null;
+    document.addEventListener('click', record);
+  });
+  afterEach(() => document.removeEventListener('click', record));
+
+  it('o cartão e o "Abrir modelo" são links para o endereço do modelo', async () => {
+    await render(LIST);
+    expect(card('Manhã').tagName).toBe('A');
+    expect(card('Manhã').getAttribute('href')).toBe('/acad/rotinas/modelos/m1');
+    expect(link('Abrir modelo').getAttribute('href')).toBe('/acad/rotinas/modelos/m1');
+    expect(card('Manhã').querySelector('a, button, input, select, textarea, [tabindex]')).toBeNull();
+  });
+
+  it('o clique comum no "Abrir modelo" empilha o modelo com a marca da lista', async () => {
+    await render(LIST);
+    await click(link('Abrir modelo'));
+    expect(cancelledByApp).toBe(true);
+    expect(nav.type).toBe('PUSH');
+    expect(nav.location.pathname).toBe('/acad/rotinas/modelos/m1');
+    expect(nav.location.state).toEqual({ fromList: true });
+    await click(button('Modelos'));
+    expect(nav.type).toBe('POP');
+    expect(nav.location.pathname).toBe(LIST);
+  });
+
+  it.each([['Ctrl', { ctrlKey: true }], ['Cmd', { metaKey: true }], ['Shift', { shiftKey: true }]])(
+    '%s+clique fica com o navegador, que abre o modelo em outra aba ou janela',
+    async (_tecla, teclas) => {
+      await render(LIST);
+      for (const el of [card('Manhã'), link('Abrir modelo')]) {
+        await act(async () => {
+          el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...teclas }));
+        });
+        expect(cancelledByApp).toBe(false);
+        expect(nav.location.pathname).toBe(LIST);
+      }
+    },
+  );
+});
 
 describe('Duplicar modelo', () => {
   it('o clique duplo duplica uma vez só e desliga o botão enquanto grava', async () => {
@@ -369,8 +421,23 @@ describe('acessibilidade', () => {
     expect(button('Sem horário').getAttribute('aria-pressed')).toBe('false');
   });
 
-  it('o cartão do modelo não tem título nem div dentro do botão', async () => {
+  it('o erro do nome da tarefa fica ligado ao campo', async () => {
+    await render('/acad/rotinas/modelos/m1');
+    await click(button('Nova tarefa'));
+    const input = document.body.querySelector(TASK_TITLE);
+    expect(input.getAttribute('aria-invalid')).toBe('false');
+    expect(input.getAttribute('aria-describedby')).toBeNull();
+    await click(button('Criar tarefa'));
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    const erro = document.getElementById(input.getAttribute('aria-describedby'));
+    expect(erro).not.toBeNull();
+    expect(erro.textContent.trim()).not.toBe('');
+    expect(updateModel).not.toHaveBeenCalled();
+  });
+
+  it('o cartão do modelo é um link só, sem título, div ou outro elemento clicável dentro', async () => {
     await render(LIST);
     expect(card('Manhã').querySelector('div, p, h1, h2, h3, h4')).toBeNull();
+    expect(card('Manhã').querySelector('a, button, input, select, textarea, [tabindex]')).toBeNull();
   });
 });
