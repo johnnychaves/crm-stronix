@@ -101,7 +101,12 @@ function RoutineRow({ row, now, busy, editing, draft, onDraft, onCheck, onUndo, 
             <button type="button" onClick={() => onSave(mark.id)} className="h-8 rounded-lg bg-foreground px-3 text-[12px] font-medium text-background">
               Salvar
             </button>
-            <button type="button" onClick={() => onUndo(row)} className="px-1 text-[11.5px] text-muted-foreground underline underline-offset-2">
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onUndo(row)}
+              className="px-1 text-[11.5px] text-muted-foreground underline underline-offset-2 disabled:opacity-60"
+            >
               Desfazer
             </button>
           </div>
@@ -167,15 +172,23 @@ export function RoutineCard({ db, appUser, enabled, now, metaWeekdays }) {
 
   // O id do check é fixo (consultor, dia e tarefa), então a observação abre no
   // toque, sem esperar a gravação. Ela só aparece quando o check chega.
+  //
+  // O instante é um só por toque: o `now` do cartão só anda a cada minuto, e
+  // perto da meia-noite ele pode estar no dia de ontem enquanto a gravação, que
+  // usava a hora dela, caía no dia de hoje. O id da observação e o do check
+  // gravado saem do mesmo `at`. Se a lista ainda está no dia anterior, o check
+  // novo e a observação aparecem quando o relógio do cartão passa para o dia
+  // novo, no próximo minuto.
   const check = async ({ task }) => {
     if (busy.has(task.id)) return;
-    const markId = markIdOf(appUser.id, dayKey, task.id);
+    const at = new Date();
+    const markId = markIdOf(appUser.id, routineDayKey(at), task.id);
     if (openMarkId && openMarkId !== markId) persistNote(openMarkId, draft);
     setEditing({ markId, taskId: task.id });
     setDraft('');
     setBusyFor(task.id, true);
     try {
-      await markDone({ db, appUser, model, task });
+      await markDone({ db, appUser, model, task, now: at });
     } catch (err) {
       console.error('rotina: check falhou', err);
       closeEditorOf(markId);

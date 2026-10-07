@@ -33,8 +33,15 @@ const toast = { show: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn(), 
 
 let container;
 let root;
+// O relógio do cartão (a prop `now`, que a Meta diária renova a cada minuto) e
+// o relógio de verdade (`new Date()` no toque) começam no mesmo instante; os
+// testes da meia-noite separam os dois.
+let cardNow = NOW;
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(NOW);
+  cardNow = NOW;
   routine.value = {
     model: MODEL,
     marks: new Map([['t1', { id: 'carla_2026-10-06_t1', doneAt: new Date(2026, 9, 6, 8, 6), note: '' }]]),
@@ -44,12 +51,12 @@ beforeEach(() => {
   document.body.appendChild(container);
   root = createRoot(container);
 });
-afterEach(() => { act(() => root.unmount()); container.remove(); });
+afterEach(() => { act(() => root.unmount()); container.remove(); vi.useRealTimers(); });
 
 const render = async () => {
   await act(async () => {
     root.render(h(ToastContext.Provider, { value: toast },
-      h(RoutineCard, { db: {}, appUser, enabled: true, now: NOW, metaWeekdays: [1, 2, 3, 4, 5] })));
+      h(RoutineCard, { db: {}, appUser, enabled: true, now: cardNow, metaWeekdays: [1, 2, 3, 4, 5] })));
   });
 };
 const button = (label) => container.querySelector(`button[aria-label="${label}"]`);
@@ -96,7 +103,7 @@ describe('cartão Rotina de hoje', () => {
   it('o toque marca a tarefa e abre a observação, que salva só o texto', async () => {
     await render();
     await click(button(CHECK_T4));
-    expect(markDone).toHaveBeenCalledWith({ db: {}, appUser, model: MODEL, task: MODEL.tasks[2] });
+    expect(markDone).toHaveBeenCalledWith({ db: {}, appUser, model: MODEL, task: MODEL.tasks[2], now: NOW });
     await snapshot('t4', pending(T4));
     const input = container.querySelector(NOTE_INPUT);
     expect(input).not.toBeNull();
@@ -223,7 +230,7 @@ describe('cartão Rotina de hoje', () => {
     await click(button(CHECK_T3));
     expect(saveMarkNote).toHaveBeenCalledTimes(1);
     expect(saveMarkNote).toHaveBeenCalledWith({ db: {}, markId: T4, note: 'Story postado' });
-    expect(markDone).toHaveBeenLastCalledWith({ db: {}, appUser, model: MODEL, task: MODEL.tasks[1] });
+    expect(markDone).toHaveBeenLastCalledWith({ db: {}, appUser, model: MODEL, task: MODEL.tasks[1], now: NOW });
     expect(saveMarkNote.mock.invocationCallOrder[0]).toBeLessThan(markDone.mock.invocationCallOrder[1]);
 
     // A observação nova é da outra tarefa e começa vazia.
@@ -253,6 +260,65 @@ describe('cartão Rotina de hoje', () => {
     expect(markDone).toHaveBeenCalledTimes(2);
     await act(async () => { release(); });
     expect(button(CHECK_T4).disabled).toBe(false);
+  });
+
+  it('Desfazer da observação fica travado enquanto a tarefa grava, e dois cliques desfazem uma vez só', async () => {
+    let release;
+    undoMark.mockImplementationOnce(() => new Promise((resolve) => { release = resolve; }));
+    await render();
+    await click(button(CHECK_T4));
+    await snapshot('t4', pending(T4));
+    expect(named('Desfazer').disabled).toBe(false);
+
+    await click(named('Desfazer'));
+    expect(named('Desfazer').disabled).toBe(true);
+    await click(named('Desfazer'));
+    expect(undoMark).toHaveBeenCalledTimes(1);
+
+    await act(async () => { release(); });
+    expect(container.querySelector(NOTE_INPUT)).toBeNull();
+  });
+
+  it('com o check ainda sendo gravado, o Desfazer da observação fica travado e não faz nada', async () => {
+    let release;
+    markDone.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(T4); }));
+    await render();
+    await click(button(CHECK_T4));
+    await snapshot('t4', pending(T4));
+    expect(named('Desfazer').disabled).toBe(true);
+    await click(named('Desfazer'));
+    expect(undoMark).not.toHaveBeenCalled();
+
+    await act(async () => { release(); });
+    expect(named('Desfazer').disabled).toBe(false);
+  });
+
+  // O `now` do cartão anda a cada minuto. Às 23:59:30 o cartão ainda é do dia
+  // 06, mas o toque das 00:00:10 já é do dia 07: a gravação e a observação
+  // têm de falar do mesmo dia, o do toque.
+  it('perto da meia-noite, o check gravado e a observação aberta são do mesmo dia: o do toque', async () => {
+    const TAP = new Date(2026, 9, 7, 0, 0, 10);
+    const T4_DIA_07 = 'carla_2026-10-07_t4';
+    cardNow = new Date(2026, 9, 6, 23, 59, 30);
+    vi.setSystemTime(TAP);
+    await render();
+
+    await click(button(CHECK_T4));
+    expect(markDone).toHaveBeenCalledTimes(1);
+    expect(markDone.mock.calls[0][0].now).toEqual(TAP);
+    // A lista ainda é a do dia 06, e o check do dia 07 não está nela.
+    expect(container.querySelector(NOTE_INPUT)).toBeNull();
+
+    // O relógio do cartão passa para o dia 07 e o check chega do Firestore:
+    // a observação abre presa a esse check, que é o que foi gravado.
+    cardNow = new Date(2026, 9, 7, 0, 0, 40);
+    routine.value = { ...routine.value, marks: new Map([['t4', pending(T4_DIA_07)]]) };
+    await render();
+    const input = container.querySelector(NOTE_INPUT);
+    expect(input).not.toBeNull();
+    await type(input, 'Story postado');
+    await click(named('Salvar'));
+    expect(saveMarkNote).toHaveBeenCalledWith({ db: {}, markId: T4_DIA_07, note: 'Story postado' });
   });
 
   it('check de outro dia ainda aparece marcado e o toque desfaz', async () => {
