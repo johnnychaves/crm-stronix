@@ -226,7 +226,7 @@ function PaceSection({ db, usersList, metaWeekdays }) {
           icon={<AlertCircle size={16} />}
           iconTone="danger"
           title="Alerta de lead crítico"
-          hint={`Leads atrasados há ${slaOverdueDays}+ ${slaOverdueDays === 1 ? 'dia' : 'dias'} ganham alerta no painel do gestor e destaque vermelho na Meta Diária.`}
+          hint={`Leads atrasados há ${slaOverdueDays}+ ${slaOverdueDays === 1 ? 'dia' : 'dias'} ganham destaque vermelho na Meta Diária.`}
           padded
         >
           <div className="flex items-center gap-3 flex-wrap">

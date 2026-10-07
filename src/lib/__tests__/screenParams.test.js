@@ -496,7 +496,7 @@ describe('contrato do contexto de Todos os leads e da Meta', () => {
     }
   });
 
-  it('a visão Equipe da Meta ficou fora desta entrega e não tem parâmetro', () => {
+  it('a Meta guarda só a categoria no endereço, e parâmetro desconhecido cai no padrão', () => {
     expect(SCREEN_PARAM_NAMES.dailyGoal).toEqual(['cat']);
     expect(ler('dailyGoal', '?visao=equipe&dia=14', {})).toEqual({ cat: 'all' });
   });
