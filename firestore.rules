@@ -482,7 +482,9 @@ service cloud.firestore {
     // Modelo e versão do dia: lê quem é da academia, grava só o gestor, como os
     // catálogos. A versão é o histórico da rotina: não se apaga, e só se grava
     // no dia de hoje: mudar um modelo vale a partir de hoje, e o passado não
-    // se reescreve.
+    // se reescreve. O id da versão, `{modelId}_{date}`, é o que o modelDocs
+    // (src/lib/rotinas.js) monta, e o src/lib/__tests__/rotinaRules.test.js
+    // confere os dois.
     match /artifacts/{appId}/public/data/stronix_rotina_modelos/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
@@ -503,8 +505,13 @@ service cloud.firestore {
     // descrito no comentário do stronix_daily_goal_history. Depois do check, só
     // a observação muda, e só o dono desfaz, até 24 horas depois (a tela só
     // oferece desfazer no mesmo dia). O professor não tem rotina. O dia do
-    // check tem de ser o de agora (routineMarkDayOk) e o check só leva os
-    // campos que o app grava.
+    // check tem de ser o de agora (routineMarkDayOk), e o check leva
+    // exatamente os nove campos que o app grava (hasOnly mais hasAll): nem
+    // campo a mais, nem modelId, taskTitle ou taskTime a menos. O app grava o
+    // taskTime como null na tarefa sem horário. A lista, o id, o doneAt e o
+    // note vazio estão amarrados ao markDone (src/lib/rotinasWrites.js) pelo
+    // src/lib/__tests__/rotinaRules.test.js: mudou o markDone, o teste quebra
+    // até a regra acompanhar.
     match /artifacts/{appId}/public/data/stronix_rotina_marcas/{id} {
       allow read: if inTenant(appId) && tenantActive(appId);
       allow create: if inTenant(appId) && tenantActive(appId)
@@ -515,6 +522,7 @@ service cloud.firestore {
         && request.resource.data.note == ''
         && routineMarkDayOk(request.resource.data.date)
         && request.resource.data.keys().hasOnly(['consultantId', 'consultantAuthUid', 'date', 'modelId', 'taskId', 'taskTitle', 'taskTime', 'doneAt', 'note'])
+        && request.resource.data.keys().hasAll(['consultantId', 'consultantAuthUid', 'date', 'modelId', 'taskId', 'taskTitle', 'taskTime', 'doneAt', 'note'])
         && !isProfessor(appId);
       allow update: if inTenant(appId) && tenantActive(appId)
         && resource.data.consultantAuthUid == request.auth.uid
