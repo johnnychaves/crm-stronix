@@ -1,7 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { GraduationCap, Layers, Phone, SlidersHorizontal, Check, X } from 'lucide-react';
 import { isClientLead } from '../lib/leads.js';
-import { ACTIONS, can, isGestor, isSeller } from '../lib/acesso.js';
+import { ACTIONS, can, isSeller } from '../lib/acesso.js';
 import { LIST_PAGE_SIZE } from '../lib/leadStatus.js';
 import { usePagedLeads } from '../hooks/usePagedLeads.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
@@ -87,20 +87,18 @@ function ContractRingAvatar({ name, status, photoUrl = null }) {
 
 function ClientsView({ appUser, usersList, db }) {
   const { contractThresholdDays } = useGeneralConfig();
-  const isAdmin = isGestor(appUser);
   // Responsável por cliente é quem vende. O professor não é dono de lead
   // (isSeller, em src/lib/acesso.js), então fica fora do filtro e do endereço.
   const sellers = useMemo(() => (usersList || []).filter(isSeller), [usersList]);
 
   const [filterOpen, setFilterOpen] = useState(false);
-  // Situação e responsável vêm do endereço. O filtro de responsável só vale
-  // para quem vê a seção na bolha, que aqui é o gestor: um link de gestor
-  // aberto por consultor mostra a lista inteira, em vez de prender num recorte
-  // que ele não teria como limpar. O filtro de plano fica fora desta entrega,
-  // porque o dado guarda o nome do plano e não o id.
+  // Situação e responsável vêm do endereço. O filtro de responsável é de toda
+  // a equipe, como o do gestor (decisão do Johnny, 07/10/2026), então o link
+  // com responsável abre igual para quem receber. O filtro de plano fica fora
+  // desta entrega, porque o dado guarda o nome do plano e não o id.
   const paramsCtx = useMemo(() => ({
-    users: sellers, situacoes: STATUS_OPTIONS, podeResp: isAdmin, respPadrao: [],
-  }), [sellers, isAdmin]);
+    users: sellers, situacoes: STATUS_OPTIONS, podeResp: true, respPadrao: [],
+  }), [sellers]);
   const [{ status: statusFilters, resp: consultantFilters }, setParams] = useScreenParams('clientes', paramsCtx);
   const [planFilters, setPlanFilters] = useState([]);         // plano (multi)
   const [visibleCount, setVisibleCount] = useState(LIST_PAGE_SIZE);
@@ -252,8 +250,8 @@ function ClientsView({ appUser, usersList, db }) {
                   </div>
                 </div>
 
-                {/* Responsável (admin) */}
-                {isAdmin && sellers.length > 0 && (
+                {/* Responsável (toda a equipe usa) */}
+                {sellers.length > 0 && (
                   <>
                     <div className="mx-3.5 my-1 border-t border-slate-100 dark:border-white/10" />
                     <div className="px-2 pt-1.5 pb-1">
