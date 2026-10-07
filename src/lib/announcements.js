@@ -16,6 +16,15 @@ import { isGestor } from './acesso.js';
 
 export const ANNOUNCEMENTS = [
   {
+    id: 'rotinas-dos-consultores-2026-10',
+    audience: 'gestor',
+    date: '2026-10-07',
+    eyebrow: 'Novidade',
+    title: 'Rotinas: monte o dia de trabalho de cada consultor',
+    summary:
+      'Em Rotinas, no menu, você cria modelos com as tarefas do dia que não envolvem lead, como conferir a recepção ou postar o story da aula, e escolhe quem segue cada modelo. O consultor dá check na Meta diária, num cartão próprio, e a rotina não conta para o dia batido.',
+  },
+  {
     id: 'desfecho-e-indicacao-manual-2026-09',
     audience: 'todos',
     date: '2026-09-29',
