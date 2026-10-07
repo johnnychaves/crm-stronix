@@ -813,6 +813,35 @@ describe('modelo de rotina de quem sai da equipe de vendas', () => {
     expect(banco.docs.get(`${VERSOES}/M1_${hoje()}`)).toMatchObject({ followerIds: ['uid-bia'], savedBy: 'gestor-1' });
   });
 
+  // A spec diz que quem vira consultor começa sem modelo. Um navegador antigo
+  // pode ter deixado o id do professor num modelo; sem a saída na volta, a
+  // pessoa passaria a seguir esse modelo sem ninguém ter escolhido.
+  it('professor que volta a consultor sai do modelo que ficou para trás, e a versão do dia é gravada', async () => {
+    semear({ equipe: { 'uid-bia': null, 'uid-rafa': professorDe('uid-rafa', 'prof-rafa') } });
+    banco.docs.set(`${MODELOS}/M1`, { name: 'Consultor da manhã', tasks: [{ id: 't1', title: 'Abrir a recepção' }], followerIds: ['uid-rafa', 'uid-ana'] });
+    banco.docs.set(`${MODELOS}/M2`, { name: 'Consultor da tarde', tasks: [], followerIds: ['uid-ana'] });
+    const res = await trocarPapel({ userDocId: 'uid-rafa', role: 'consultant' });
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toMatchObject({ changed: true, role: 'consultant' });
+    expect(cadastro('uid-rafa').role).toBe('consultant');
+    expect(banco.docs.get(`${MODELOS}/M1`)).toMatchObject({ followerIds: ['uid-ana'], updatedBy: 'gestor-1' });
+    expect(banco.docs.get(`${MODELOS}/M2`)).toEqual({ name: 'Consultor da tarde', tasks: [], followerIds: ['uid-ana'] });
+    expect(banco.docs.get(`${VERSOES}/M1_${hoje()}`)).toMatchObject({
+      modelId: 'M1', date: hoje(), name: 'Consultor da manhã', tasks: [{ id: 't1', title: 'Abrir a recepção' }],
+      followerIds: ['uid-ana'], deleted: false, savedBy: 'gestor-1',
+    });
+    expect(banco.docs.has(`${VERSOES}/M2_${hoje()}`)).toBe(false);
+  });
+
+  it('o mesmo papel com o mesmo professor ligado responde antes e não mexe no modelo', async () => {
+    semear({ equipe: { 'uid-ana': professorDe('uid-ana', 'prof-rafa') } });
+    banco.docs.set(`${MODELOS}/M1`, { name: 'Consultor da manhã', tasks: [], followerIds: ['uid-ana', 'uid-bia'] });
+    const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-rafa' });
+    expect(res.body).toEqual({ ok: true, changed: false });
+    expect(banco.docs.get(`${MODELOS}/M1`).followerIds).toEqual(['uid-ana', 'uid-bia']);
+    expect([...banco.docs.keys()].some((k) => k.startsWith(`${VERSOES}/`))).toBe(false);
+  });
+
   it('troca recusada não mexe no modelo nem grava versão', async () => {
     semear();
     modelos();

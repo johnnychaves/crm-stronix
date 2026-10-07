@@ -435,10 +435,17 @@ async function handleSetRole(req, res) {
     // tarefa fica com o dono do lead, que a vê na Meta dele, e o gestor tenta
     // de novo.
     const returnedTasks = becomesProfessor ? await returnDelegatedTasks(auth.tenantId, snap.id) : 0;
-    // Roda para todo professor que fica professor, não só para quem acaba de
-    // virar: um id que um navegador antigo deixou no modelo é limpo na próxima
-    // vez que o gestor salva o papel ou o professor ligado dessa pessoa.
-    const leftRoutines = change.role === ROLES.PROFESSOR ? await leaveRoutineModels(auth.tenantId, snap.id, auth.uid) : 0;
+    // Professor não segue modelo de rotina, e quem volta a consultor começa sem
+    // modelo (spec 2026-10-06). Por isso roda para quem termina como professor
+    // e para quem era professor antes, não só para quem acaba de virar: um id
+    // que um navegador antigo deixou no modelo é limpo quando o papel ou o
+    // professor ligado muda de fato. Se o gestor salvar o mesmo papel com o
+    // mesmo professor, a resposta sai antes (changed: false) e nada disso roda.
+    // Sem a saída na volta, esse id faria a pessoa voltar a seguir o modelo
+    // antigo sem ninguém ter escolhido.
+    const leftRoutines = change.role === ROLES.PROFESSOR || from === ROLES.PROFESSOR
+      ? await leaveRoutineModels(auth.tenantId, snap.id, auth.uid)
+      : 0;
 
     // O professor não prospecta: a meta de prospecção sai junto.
     await ref.update(change.role === ROLES.PROFESSOR

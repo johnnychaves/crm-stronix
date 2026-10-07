@@ -460,12 +460,16 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    // O dia do check da rotina (date, 'AAAA-MM-DD') tem de ser o dia de agora
-    // em algum fuso entre UTC-12 e UTC+14. A hora do check já é a do servidor
+    // O dia da rotina (date, 'AAAA-MM-DD') tem de ser o dia de agora em algum
+    // fuso entre UTC-12 e UTC+14. Duas regras usam esta conta: a do check
+    // (stronix_rotina_marcas) e a da versão do dia do modelo
+    // (stronix_rotina_versoes). Na do check, a hora já é a do servidor
     // (doneAt == request.time); sem esta trava, o consultor marcaria pelo SDK a
     // tarefa de amanhã ou de um dia passado e ela apareceria feita no horário.
-    // Sobra uma folga de um dia na virada da meia-noite, que a leitura fecha:
-    // o check só conta quando o doneAt cai no próprio date (src/lib/rotinas.js).
+    // Na da versão, ela impede de reescrever o histórico de um dia que passou
+    // ou de gravar um dia que ainda não chegou. Sobra uma folga de um dia na
+    // virada da meia-noite, que no check a leitura fecha: o check só conta
+    // quando o doneAt cai no próprio date (src/lib/rotinas.js).
     function routineMarkDayOk(date) {
       return date is string
         && date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
