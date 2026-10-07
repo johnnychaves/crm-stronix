@@ -12,9 +12,9 @@
 // flip. Uma guarda de corrida garante que só o pedido mais recente escreva
 // (troca rápida de preset).
 //
-// ESCOPO G1c: cobre só as métricas de PERÍODO. A Meta diária por consultor
-// (useTeamGoals) e o board do Operacional usam a base CRUA de leads (categorias
-// sem janela: follow-up atrasado, renovação) — seguem no prop global até o G1d.
+// ESCOPO G1c: cobre só as métricas de PERÍODO. O board do Operacional usa a
+// base CRUA de leads (categorias sem janela: follow-up atrasado, renovação) e
+// segue no prop global até o G1d.
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { collection, query, getDocs } from 'firebase/firestore';
