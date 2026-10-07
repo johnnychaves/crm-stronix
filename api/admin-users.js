@@ -84,29 +84,37 @@ async function returnDelegatedTasks(tenantId, userDocId) {
 
 // Rotinas dos consultores (spec 2026-10-06): quem vira professor ou é
 // excluído sai do modelo de rotina que seguia, e a versão do dia do modelo é
-// gravada junto, para o histórico saber que a pessoa saiu naquele dia. Cada
-// consultor segue um modelo só, então o lote é pequeno.
+// gravada junto, para o histórico saber que a pessoa saiu naquele dia.
+//
+// É uma transação porque o gestor edita os modelos no navegador, também em
+// transação (commitModels, em src/lib/rotinasWrites.js). Com a leitura e a
+// gravação juntas, a edição dele cai antes ou depois desta gravação, nunca no
+// meio: o servidor não derruba um seguidor que o gestor acabou de pôr, e não
+// regrava a versão do dia com nome e tarefas velhos. A gravação do modelo é
+// update, não set: um modelo apagado nesse meio tempo faz a transação falhar
+// em vez de voltar a existir. Cada consultor segue um modelo só, então a
+// transação é pequena. Devolve quantos modelos a pessoa deixou.
 async function leaveRoutineModels(tenantId, userDocId, actorId) {
-  const snap = await dataCollection(tenantId, ROUTINE_MODELS_PATH).where('followerIds', 'array-contains', userDocId).get();
-  if (snap.empty) return 0;
-  const date = isoDoDia(diaDeBrasilia(new Date()));
-  const batch = adminDb.batch();
-  snap.docs.forEach((d) => {
-    const data = d.data();
-    // Mesma montagem de versão do app (modelDocs), para o histórico ler um formato só.
-    const { model, version } = modelDocs({
-      modelId: d.id,
-      name: data.name || '',
-      tasks: data.tasks,
-      followerIds: (data.followerIds || []).filter((id) => id !== userDocId),
-      userId: actorId,
-      dateKey: date,
+  return adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(dataCollection(tenantId, ROUTINE_MODELS_PATH).where('followerIds', 'array-contains', userDocId));
+    if (snap.empty) return 0;
+    const date = isoDoDia(diaDeBrasilia(new Date()));
+    snap.docs.forEach((d) => {
+      const data = d.data();
+      // Mesma montagem de versão do app (modelDocs), para o histórico ler um formato só.
+      const { model, version } = modelDocs({
+        modelId: d.id,
+        name: data.name || '',
+        tasks: data.tasks,
+        followerIds: (data.followerIds || []).filter((id) => id !== userDocId),
+        userId: actorId,
+        dateKey: date,
+      });
+      tx.update(d.ref, { followerIds: model.followerIds, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: actorId });
+      tx.set(dataCollection(tenantId, ROUTINE_VERSIONS_PATH).doc(version.id), { ...version.data, savedAt: admin.firestore.FieldValue.serverTimestamp() });
     });
-    batch.update(d.ref, { followerIds: model.followerIds, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: actorId });
-    batch.set(dataCollection(tenantId, ROUTINE_VERSIONS_PATH).doc(version.id), { ...version.data, savedAt: admin.firestore.FieldValue.serverTimestamp() });
+    return snap.size;
   });
-  await batch.commit();
-  return snap.size;
 }
 
 // Consolidação de admin-create-user, admin-set-password e admin-delete-user.
@@ -427,7 +435,10 @@ async function handleSetRole(req, res) {
     // tarefa fica com o dono do lead, que a vê na Meta dele, e o gestor tenta
     // de novo.
     const returnedTasks = becomesProfessor ? await returnDelegatedTasks(auth.tenantId, snap.id) : 0;
-    const leftRoutines = becomesProfessor ? await leaveRoutineModels(auth.tenantId, snap.id, auth.uid) : 0;
+    // Roda para todo professor que fica professor, não só para quem acaba de
+    // virar: um id que um navegador antigo deixou no modelo é limpo na próxima
+    // vez que o gestor salva o papel ou o professor ligado dessa pessoa.
+    const leftRoutines = change.role === ROLES.PROFESSOR ? await leaveRoutineModels(auth.tenantId, snap.id, auth.uid) : 0;
 
     // O professor não prospecta: a meta de prospecção sai junto.
     await ref.update(change.role === ROLES.PROFESSOR

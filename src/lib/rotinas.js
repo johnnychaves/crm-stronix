@@ -1,6 +1,10 @@
 // Rotinas dos consultores: a regra única do dia, usada pelo cartão da Meta
 // diária, pela tela Rotinas e, na parte 3, pelo histórico do Operacional. Pura
 // e sem import de tela (nada de lucide-react), para a api/ poder usar.
+// A api/ lê este arquivo (admin-users.js grava a versão do modelo quando quem o
+// segue vira professor ou é excluído), então ele só pode importar ./acesso.js e
+// ./operacional/month.js, que não importam nada. Quem trava isso é o
+// src/lib/__tests__/rotinasImports.test.js.
 // Spec: docs/superpowers/specs/2026-10-06-rotinas-dos-consultores-design.md.
 import { isGestor, isSeller } from './acesso.js';
 import { dayKeyOf } from './operacional/month.js';

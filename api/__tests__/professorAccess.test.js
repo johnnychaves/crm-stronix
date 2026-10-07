@@ -78,16 +78,33 @@ vi.mock('../_firebaseAdmin.js', () => {
   const batch = () => {
     const gravacoes = [];
     return {
-      update: (alvo, dados) => { gravacoes.push([alvo, dados, 'update']); },
-      set: (alvo, dados) => { gravacoes.push([alvo, dados, 'set']); },
+      update: (alvo, dados) => { gravacoes.push([alvo, dados]); },
       commit: async () => {
         banco.lotes.push(gravacoes.length);
-        for (const [alvo, dados, tipo] of gravacoes) await (tipo === 'set' ? alvo.set(dados) : alvo.update(dados));
+        for (const [alvo, dados] of gravacoes) await alvo.update(dados);
       },
     };
   };
+  // A transação lê antes de gravar (o SDK recusa leitura depois de escrita) e
+  // só aplica as gravações no fim, como o commit. Não entra em banco.lotes: o
+  // lote é o teto de 500 gravações da carteira de leads, e a gravação da rotina
+  // não passa por ele.
+  const runTransaction = async (fn) => {
+    const gravacoes = [];
+    const tx = {
+      get: async (alvo) => {
+        if (gravacoes.length > 0) throw new Error('Firestore transactions require all reads to be executed before all writes.');
+        return alvo.get();
+      },
+      update: (alvo, dados) => { gravacoes.push([alvo, dados, 'update']); return tx; },
+      set: (alvo, dados) => { gravacoes.push([alvo, dados, 'set']); return tx; },
+    };
+    const resultado = await fn(tx);
+    for (const [alvo, dados, tipo] of gravacoes) await (tipo === 'set' ? alvo.set(dados) : alvo.update(dados));
+    return resultado;
+  };
   return {
-    adminDb: { ...ref([]), batch },
+    adminDb: { ...ref([]), batch, runTransaction },
     adminAuth: contas,
     admin: {
       firestore: {
@@ -758,12 +775,55 @@ describe('modelo de rotina de quem sai da equipe de vendas', () => {
     modelos();
     const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
     expect(res.statusCode).toBe(200);
-    expect(banco.docs.get(`${MODELOS}/M1`).followerIds).toEqual(['uid-bia']);
-    expect(banco.docs.get(`${MODELOS}/M2`).followerIds).toEqual(['uid-bia']);
+    expect(banco.docs.get(`${MODELOS}/M1`)).toMatchObject({
+      name: 'Consultor da manhã', tasks: [{ id: 't1', title: 'Abrir a recepção' }], followerIds: ['uid-bia'], updatedBy: 'gestor-1',
+    });
+    expect(banco.docs.get(`${MODELOS}/M2`)).toEqual({ name: 'Consultor da tarde', tasks: [], followerIds: ['uid-bia'] });
     expect(banco.docs.get(`${VERSOES}/M1_${hoje()}`)).toMatchObject({
-      modelId: 'M1', date: hoje(), name: 'Consultor da manhã', followerIds: ['uid-bia'], deleted: false, savedBy: 'gestor-1',
+      modelId: 'M1', date: hoje(), name: 'Consultor da manhã', tasks: [{ id: 't1', title: 'Abrir a recepção' }],
+      followerIds: ['uid-bia'], deleted: false, savedBy: 'gestor-1',
     });
     expect(banco.docs.has(`${VERSOES}/M2_${hoje()}`)).toBe(false);
+  });
+
+  // O dia da versão é o de Brasília: 22h30 de 06/10 lá já é 01h30 de 07/10 em
+  // UTC, que é onde a Vercel roda. Só o Date é falso, para o resto andar normal.
+  it('a versão leva o dia de Brasília, mesmo quando em UTC já é o dia seguinte', async () => {
+    semear();
+    modelos();
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-10-07T01:30:00Z'));
+      const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+      expect(res.statusCode).toBe(200);
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(banco.docs.get(`${VERSOES}/M1_2026-10-06`)).toMatchObject({ modelId: 'M1', date: '2026-10-06', followerIds: ['uid-bia'] });
+    expect([...banco.docs.keys()].filter((k) => k.startsWith(`${VERSOES}/`))).toEqual([`${VERSOES}/M1_2026-10-06`]);
+  });
+
+  it('professor que só troca o professor ligado também sai do modelo que ficou para trás', async () => {
+    semear({ equipe: { 'uid-ana': professorDe('uid-ana', 'prof-rafa') } });
+    banco.docs.set(`${MODELOS}/M1`, { name: 'Consultor da manhã', tasks: [], followerIds: ['uid-ana', 'uid-bia'] });
+    const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+    expect(res.statusCode).toBe(200);
+    expect(cadastro('uid-ana')).toMatchObject({ role: 'professor', professorId: 'prof-lu' });
+    expect(banco.docs.get(`${MODELOS}/M1`).followerIds).toEqual(['uid-bia']);
+    expect(banco.docs.get(`${VERSOES}/M1_${hoje()}`)).toMatchObject({ followerIds: ['uid-bia'], savedBy: 'gestor-1' });
+  });
+
+  it('troca recusada não mexe no modelo nem grava versão', async () => {
+    semear();
+    modelos();
+    banco.docs.set(`${CARTEIRA}/L0`, { name: 'Mariana', consultantId: 'uid-ana' });
+    const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+    expect(res.statusCode).toBe(409);
+    expect(res.body.error).toBe(PROFESSOR_LINK_MESSAGES.ownsLeads('Ana'));
+    expect(banco.docs.get(`${MODELOS}/M1`).followerIds).toEqual(['uid-ana', 'uid-bia']);
+    expect(banco.docs.get(`${MODELOS}/M1`)).not.toHaveProperty('updatedBy');
+    expect([...banco.docs.keys()].some((k) => k.startsWith(`${VERSOES}/`))).toBe(false);
+    expect(banco.consultas.some((c) => c.colecao === 'stronix_rotina_modelos')).toBe(false);
   });
 
   it('quem não segue modelo não gera gravação de rotina', async () => {
