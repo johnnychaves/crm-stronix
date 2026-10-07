@@ -16,6 +16,8 @@ import {
 } from './_auth.js';
 import { maskEmail } from './_passwordReset.js';
 import { professorLinkRefusal } from './_professorLink.js';
+import { diaDeBrasilia, isoDoDia } from './_horarioDeBrasilia.js';
+import { modelDocs } from '../src/lib/rotinas.js';
 import { ROLES, roleOf } from '../src/lib/acesso.js';
 import {
   SET_ROLE_ACTION,
@@ -40,6 +42,11 @@ const LEADS_PATH = 'stronix_leads';
 
 // Teto de gravações num lote do Firestore.
 const BATCH_LIMIT = 500;
+
+// Modelos de rotina dos consultores e as versões do dia, os mesmos nomes de
+// coleção de src/lib/firebase.js.
+const ROUTINE_MODELS_PATH = 'stronix_rotina_modelos';
+const ROUTINE_VERSIONS_PATH = 'stronix_rotina_versoes';
 
 // Devolve ao dono do lead as tarefas que ficaram com a pessoa em lead de outro
 // consultor: o contato que outros consultores passaram para ela (o "Para quem é
@@ -73,6 +80,33 @@ async function returnDelegatedTasks(tenantId, userDocId) {
     await batch.commit();
   }
   return list.length;
+}
+
+// Rotinas dos consultores (spec 2026-10-06): quem vira professor ou é
+// excluído sai do modelo de rotina que seguia, e a versão do dia do modelo é
+// gravada junto, para o histórico saber que a pessoa saiu naquele dia. Cada
+// consultor segue um modelo só, então o lote é pequeno.
+async function leaveRoutineModels(tenantId, userDocId, actorId) {
+  const snap = await dataCollection(tenantId, ROUTINE_MODELS_PATH).where('followerIds', 'array-contains', userDocId).get();
+  if (snap.empty) return 0;
+  const date = isoDoDia(diaDeBrasilia(new Date()));
+  const batch = adminDb.batch();
+  snap.docs.forEach((d) => {
+    const data = d.data();
+    // Mesma montagem de versão do app (modelDocs), para o histórico ler um formato só.
+    const { model, version } = modelDocs({
+      modelId: d.id,
+      name: data.name || '',
+      tasks: data.tasks,
+      followerIds: (data.followerIds || []).filter((id) => id !== userDocId),
+      userId: actorId,
+      dateKey: date,
+    });
+    batch.update(d.ref, { followerIds: model.followerIds, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: actorId });
+    batch.set(dataCollection(tenantId, ROUTINE_VERSIONS_PATH).doc(version.id), { ...version.data, savedAt: admin.firestore.FieldValue.serverTimestamp() });
+  });
+  await batch.commit();
+  return snap.size;
 }
 
 // Consolidação de admin-create-user, admin-set-password e admin-delete-user.
@@ -393,6 +427,7 @@ async function handleSetRole(req, res) {
     // tarefa fica com o dono do lead, que a vê na Meta dele, e o gestor tenta
     // de novo.
     const returnedTasks = becomesProfessor ? await returnDelegatedTasks(auth.tenantId, snap.id) : 0;
+    const leftRoutines = becomesProfessor ? await leaveRoutineModels(auth.tenantId, snap.id, auth.uid) : 0;
 
     // O professor não prospecta: a meta de prospecção sai junto.
     await ref.update(change.role === ROLES.PROFESSOR
@@ -412,7 +447,7 @@ async function handleSetRole(req, res) {
       }
     }
 
-    console.info('admin-set-role', { academia: auth.tenantId, cadastro: snap.id, de: from, para: change.role, por: auth.uid, tarefasDevolvidas: returnedTasks });
+    console.info('admin-set-role', { academia: auth.tenantId, cadastro: snap.id, de: from, para: change.role, por: auth.uid, tarefasDevolvidas: returnedTasks, rotinasDeixadas: leftRoutines });
     return res.status(200).json({ ok: true, changed: true, role: change.role, isExtra: decision.isExtra === true });
   } catch (error) {
     console.error('admin-set-role', error);
@@ -653,6 +688,7 @@ async function handleDelete(req, res) {
     // Vem antes da exclusão: se ela falhar depois, a tarefa fica com o dono do
     // lead, que a vê na Meta dele, e o gestor tenta de novo.
     const returnedTasks = await returnDelegatedTasks(auth.tenantId, userDocId);
+    const leftRoutines = await leaveRoutineModels(auth.tenantId, userDocId, auth.uid);
 
     // Excluir consultor com extras faturáveis em uso muda o preço → sync depois.
     // Só consultor ocupa vaga paga: excluir gestor ou professor não muda o
@@ -676,7 +712,7 @@ async function handleDelete(req, res) {
 
     if (hadExtras) await syncSubscriptionValue(auth.tenantId, { actorUid: auth.uid });
 
-    console.info('admin-delete-user', { academia: auth.tenantId, cadastro: userDocId, por: auth.uid, tarefasDevolvidas: returnedTasks });
+    console.info('admin-delete-user', { academia: auth.tenantId, cadastro: userDocId, por: auth.uid, tarefasDevolvidas: returnedTasks, rotinasDeixadas: leftRoutines });
     return res.status(200).json({ ok: true });
   } catch (error) {
     console.error('admin-delete-user', error);

@@ -3,6 +3,7 @@ import inviteCreate from '../invite-create.js';
 import inviteAccept from '../invite-accept.js';
 import adminUsers from '../admin-users.js';
 import { PROFESSOR_LINK_MESSAGES } from '../../src/lib/teamRoles.js';
+import { diaDeBrasilia, isoDoDia } from '../_horarioDeBrasilia.js';
 
 // O acesso de professor pelos caminhos que criam gente na academia (convite,
 // aceite e cadastro pelo gestor), pela troca de papel (set-role) e pela
@@ -34,7 +35,7 @@ vi.mock('../_firebaseAdmin.js', () => {
     const chave = caminho.join('/');
     const filhos = () => [...banco.docs.entries()]
       .filter(([k]) => k.startsWith(`${chave}/`) && !k.slice(chave.length + 1).includes('/'))
-      .filter(([, d]) => filtros.every(({ campo, valor }) => d[campo] === valor))
+      .filter(([, d]) => filtros.every(({ campo, op, valor }) => (op === 'array-contains' ? Array.isArray(d[campo]) && d[campo].includes(valor) : d[campo] === valor)))
       .map(([k, d]) => {
         const id = k.slice(chave.length + 1);
         return { id, exists: true, data: () => ({ ...d }), ref: ref([...caminho, id]) };
@@ -43,7 +44,7 @@ vi.mock('../_firebaseAdmin.js', () => {
       id: caminho.at(-1),
       collection: (nome) => ref([...caminho, nome]),
       doc: (id) => ref([...caminho, id]),
-      where: (campo, _op, valor) => ref(caminho, [...filtros, { campo, valor }]),
+      where: (campo, op, valor) => ref(caminho, [...filtros, { campo, op, valor }]),
       limit: () => ref(caminho, filtros),
       count: () => ({ get: async () => ({ data: () => ({ count: filhos().length }) }) }),
       get: async () => {
@@ -77,10 +78,11 @@ vi.mock('../_firebaseAdmin.js', () => {
   const batch = () => {
     const gravacoes = [];
     return {
-      update: (alvo, dados) => { gravacoes.push([alvo, dados]); },
+      update: (alvo, dados) => { gravacoes.push([alvo, dados, 'update']); },
+      set: (alvo, dados) => { gravacoes.push([alvo, dados, 'set']); },
       commit: async () => {
         banco.lotes.push(gravacoes.length);
-        for (const [alvo, dados] of gravacoes) await alvo.update(dados);
+        for (const [alvo, dados, tipo] of gravacoes) await (tipo === 'set' ? alvo.set(dados) : alvo.update(dados));
       },
     };
   };
@@ -737,5 +739,46 @@ describe('exclusão', () => {
       expect(leuTarefas()).toBe(false);
       expect(banco.lotes).toEqual([]);
     });
+  });
+});
+
+// Rotinas (spec 2026-10-06): quem vira professor ou é excluído sai do modelo
+// que seguia, com a versão do dia gravada junto.
+describe('modelo de rotina de quem sai da equipe de vendas', () => {
+  const MODELOS = `artifacts/${T}/public/data/stronix_rotina_modelos`;
+  const VERSOES = `artifacts/${T}/public/data/stronix_rotina_versoes`;
+  const hoje = () => isoDoDia(diaDeBrasilia(new Date()));
+  const modelos = () => {
+    banco.docs.set(`${MODELOS}/M1`, { name: 'Consultor da manhã', tasks: [{ id: 't1', title: 'Abrir a recepção' }], followerIds: ['uid-ana', 'uid-bia'] });
+    banco.docs.set(`${MODELOS}/M2`, { name: 'Consultor da tarde', tasks: [], followerIds: ['uid-bia'] });
+  };
+
+  it('consultor que vira professor sai do modelo, e só do dele', async () => {
+    semear();
+    modelos();
+    const res = await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+    expect(res.statusCode).toBe(200);
+    expect(banco.docs.get(`${MODELOS}/M1`).followerIds).toEqual(['uid-bia']);
+    expect(banco.docs.get(`${MODELOS}/M2`).followerIds).toEqual(['uid-bia']);
+    expect(banco.docs.get(`${VERSOES}/M1_${hoje()}`)).toMatchObject({
+      modelId: 'M1', date: hoje(), name: 'Consultor da manhã', followerIds: ['uid-bia'], deleted: false, savedBy: 'gestor-1',
+    });
+    expect(banco.docs.has(`${VERSOES}/M2_${hoje()}`)).toBe(false);
+  });
+
+  it('quem não segue modelo não gera gravação de rotina', async () => {
+    semear();
+    banco.docs.set(`${MODELOS}/M2`, { name: 'Consultor da tarde', tasks: [], followerIds: ['uid-bia'] });
+    await trocarPapel({ userDocId: 'uid-ana', role: 'professor', professorId: 'prof-lu' });
+    expect([...banco.docs.keys()].some((k) => k.startsWith(`${VERSOES}/`))).toBe(false);
+  });
+
+  it('quem é excluído sai do modelo', async () => {
+    semear();
+    modelos();
+    const res = await chamar(adminUsers, { action: 'delete', userDocId: 'uid-ana' });
+    expect(res.statusCode).toBe(200);
+    expect(banco.docs.get(`${MODELOS}/M1`).followerIds).toEqual(['uid-bia']);
+    expect(banco.docs.get(`${VERSOES}/M1_${hoje()}`)).toMatchObject({ followerIds: ['uid-bia'] });
   });
 });
