@@ -237,7 +237,7 @@ Pedido do Johnny depois das decisões da seção 1.7. A conferência foi feita s
 Um relatório é redundante de dois jeitos: quando repete um número que o sistema já mostra, ou quando repete outro relatório do catálogo com outro recorte. O resultado:
 
 - 54 dos 172 repetem um número que já existe. São 24 que repetem igual e 30 que acrescentam só um recorte, uma coluna ou a lista de nomes.
-- Entre si, os 172 viram 41 relatórios, mais os 3 fora do escopo (R047, R062 e R170). Desses 41, 6 são extensão de uma tela que já existe e 35 são relatórios novos.
+- Entre si, os 172 viram 41 relatórios, mais os 3 fora do escopo (R047, R062 e R170). Desses 41, 5 são extensão de uma tela que já existe e 36 são relatórios novos.
 
 #### O que muda na recomendação
 
@@ -304,7 +304,7 @@ O número já está na tela. O caminho é pôr o recorte ou a coluna no bloco qu
 
 #### Os 41 relatórios, depois de juntar os repetidos
 
-"Extensão de tela" quer dizer que a maior parte do grupo já existe numa tela, e o caminho é completar essa tela. "Relatório novo" é uma tela da função de Relatórios, com os recortes de todos os relatórios do grupo.
+"Extensão de tela" quer dizer que a maior parte do grupo já existe numa mesma tela, e o caminho é completar essa tela. "Relatório novo" é uma tela da função de Relatórios, com os recortes de todos os relatórios do grupo.
 
 | Relatório | Junta | Já existem hoje | Tipo | O que muda entre eles |
 |---|---|---|---|---|
@@ -321,7 +321,7 @@ O número já está na tela. O caminho é pôr o recorte ou a coluna no bloco qu
 | Vendas e contratos | R049, R050, R051, R052, R053, R054, R055, R059, R060, R064 | R049, R050, R051, R052, R054 | relatório novo | Tipo, vendedor, plano, desconto, preço contra a tabela, cancelado depois, unidade, dia e hora, e a lista de contratos. |
 | Comissão e regra de ouro | R056, R057 | nenhum | relatório novo | O fechamento da comissão pela regra do sistema e pela regra de ouro do time comercial. |
 | Valor do aluno e retorno por canal | R004, R065, R075 | nenhum | relatório novo | O custo do canal, o valor já comprado e o valor estimado do aluno. |
-| Base de clientes | R066, R067, R068, R077, R079 | R066, R068, R077 | extensão de tela | Hoje, a evolução e a ponte do mês, em pessoas e em valor por mês. |
+| Base de clientes | R066, R067, R068, R077, R079 | R066, R068, R077 | relatório novo | Hoje, a evolução e a ponte do mês, em pessoas e em valor por mês. O que já existe dele está em três telas (Clientes, Operacional e Gerencial), então não há uma tela só para completar, e a evolução (R067) abre a tela de Relatórios. |
 | Saídas e retenção | R069, R070, R071, R073, R074, R076, R081, R082, R085 | R069, R070 | relatório novo | Motivo, tempo de casa, safra, perfil, professor, acompanhamento do aluno novo e engajamento. |
 | Trancamentos | R072, R084 | R072 | relatório novo | Quantos trancam e quais fogem da regra do plano. |
 | Pedidos de cancelamento e reversão | R083 | nenhum | relatório novo | Relatório único. Depende do processo de cancelamento ainda em rascunho. |
