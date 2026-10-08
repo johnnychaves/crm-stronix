@@ -16,12 +16,12 @@ import { NewModelSheet } from '../components/rotinas/NewModelSheet.jsx';
 // remonta esta view. Por isso o que passa da lista para o modelo vai no state
 // da navegação:
 //   - fromList: o modelo foi aberto pela lista (cartão, "Abrir modelo" ou
-//     criado no Novo modelo). Só aí o "Modelos" do topo volta uma entrada do
+//     criado no Novo modelo). Só aí o Voltar do modelo volta uma entrada do
 //     histórico. O cartão e o "Abrir modelo" são links (modelLink), e o Link
 //     do React Router manda o state só no clique que troca de tela nesta aba:
-//     o modelo aberto em outra aba chega sem a marca, e o "Modelos" dele troca
+//     o modelo aberto em outra aba chega sem a marca, e o Voltar dele troca
 //     o endereço pela lista. O modelo aberto pelo Duplicar não leva a marca, senão o
-//     "Modelos" voltaria para o modelo de origem, e não para a lista.
+//     Voltar levaria para o modelo de origem, e não para a lista.
 //   - rotinaNova e at: o modelo acabou de ser criado ou duplicado, no instante
 //     `at`. A transação só aparece na lista quando o servidor confirma; até lá
 //     a tela fica em branco, sem o aviso de modelo excluído. A espera dura até

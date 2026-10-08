@@ -1,5 +1,5 @@
 import { useId, useRef, useState } from 'react';
-import { Copy, Info, Plus, Repeat } from 'lucide-react';
+import { ArrowLeft, Copy, Info, Plus, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -150,11 +150,14 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
 
   return (
     <div className="flex flex-col gap-5 animate-fade-in">
-      <p className="flex items-center gap-2 text-[12.5px] text-muted-foreground">
-        <button type="button" onClick={onBack} className="font-medium text-brand-600">Modelos</button>
-        <span>/</span>
-        <span className="truncate">{model.name}</span>
-      </p>
+      {/* O mesmo Voltar da ficha: volta para a lista de modelos. */}
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex h-8 items-center gap-1.5 self-start whitespace-nowrap rounded-lg px-2.5 text-[12.5px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+      >
+        <ArrowLeft size={14} /> Voltar
+      </button>
 
       <div className="flex flex-wrap items-end justify-between gap-3.5">
         {renaming ? (

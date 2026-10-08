@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 // A tela Rotinas do gestor montada de verdade, com o roteador em memória: o
-// clique duplo no Duplicar, o "Modelos" do topo, a espera do modelo recém-
+// clique duplo no Duplicar, o Voltar do modelo, a espera do modelo recém-
 // criado, a escolha do modelo para copiar, a tarefa que outra aba apagou e o
 // que a tela mostra enquanto os modelos não chegam.
 import { act, createElement as h, useEffect } from 'react';
@@ -157,7 +157,7 @@ describe('abrir o modelo por link', () => {
     expect(nav.type).toBe('PUSH');
     expect(nav.location.pathname).toBe('/acad/rotinas/modelos/m1');
     expect(nav.location.state).toEqual({ fromList: true });
-    await click(button('Modelos'));
+    await click(button('Voltar'));
     expect(nav.type).toBe('POP');
     expect(nav.location.pathname).toBe(LIST);
   });
@@ -189,20 +189,20 @@ describe('Duplicar modelo', () => {
   });
 });
 
-describe('o "Modelos" do topo', () => {
+describe('o Voltar do modelo', () => {
   it('com o modelo aberto pela lista, volta uma entrada do histórico', async () => {
     await render(LIST);
     await click(card('Manhã'));
     expect(nav.location.pathname).toBe('/acad/rotinas/modelos/m1');
     expect(nav.location.state).toEqual({ fromList: true });
-    await click(button('Modelos'));
+    await click(button('Voltar'));
     expect(nav.type).toBe('POP');
     expect(nav.location.pathname).toBe(LIST);
   });
 
   it('com o modelo aberto por link direto, troca o endereço pela lista', async () => {
     await render('/acad/rotinas/modelos/m1');
-    await click(button('Modelos'));
+    await click(button('Voltar'));
     expect(nav.type).toBe('REPLACE');
     expect(nav.location.pathname).toBe(LIST);
   });
@@ -216,7 +216,7 @@ describe('o "Modelos" do topo', () => {
     expect(nav.location.pathname).toBe('/acad/rotinas/modelos/m2');
     expect(nav.type).toBe('PUSH');
     expect(nav.location.state.fromList).toBe(false);
-    await click(button('Modelos'));
+    await click(button('Voltar'));
     expect(nav.type).toBe('REPLACE');
     expect(nav.location.pathname).toBe(LIST);
   });
@@ -246,7 +246,8 @@ describe('o modelo recém-criado', () => {
   it('que apareceu e depois foi excluído mostra o aviso, mesmo dentro do prazo', async () => {
     s.models = [M1, M9];
     await render(freshEntry(Date.now()));
-    expect(text()).toContain('Noite');
+    // Recém-duplicado, o modelo abre com o nome em edição: o nome está no campo.
+    expect(document.querySelector('input[aria-label="Nome do modelo"]')?.value).toBe('Noite');
     s.models = [M1];
     await render();
     expect(text()).toContain('Esse modelo não existe mais.');
