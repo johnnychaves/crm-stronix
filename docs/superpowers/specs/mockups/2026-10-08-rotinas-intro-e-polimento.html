@@ -1,0 +1,681 @@
+<!doctype html>
+<html lang="pt-BR" translate="no" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google" content="notranslate">
+<title>Rotinas: introdução e polimento</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Tokens do Stronilead (src/index.css). A assinatura destas propostas é a
+   "linha do dia": o turno do consultor como um trilho das 6h às 21h, que já
+   aparece no cartão do modelo e aqui se repete no pop-up e no modelo aberto. */
+:root {
+  --bg: #F5F7FB; --card: #FFFFFF; --ink: #0E1A40; --muted: #64748B; --faint: #94A3B8;
+  --line: #E2E8F0; --soft: #F1F4F9; --brand: #2B59FF; --brand-ink: #1E44D6;
+  --brand-soft: rgba(43, 89, 255, .08); --brand-tint: #EEF2FF; --accent: #FF6A2B;
+  --done: #059669; --done-soft: rgba(5, 150, 105, .1); --warn: #B45309; --warn-soft: #FFFBF3;
+  --late: #E11D48; --red: #DC2626;
+  --shadow: 0 1px 0 rgba(15, 23, 42, .04), 0 1px 2px rgba(15, 23, 42, .06);
+  --shadow-pop: 0 30px 60px -20px rgba(14, 26, 64, .35), 0 2px 8px rgba(14, 26, 64, .08);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #080D22; --card: #0F152B; --ink: #EAEEF9; --muted: #8A93B0; --faint: #5B6482;
+  --line: rgba(255, 255, 255, .08); --soft: rgba(255, 255, 255, .05); --brand: #5A7FFF; --brand-ink: #9BB0FF;
+  --brand-soft: rgba(90, 127, 255, .13); --brand-tint: rgba(90, 127, 255, .12);
+  --done: #34D399; --done-soft: rgba(52, 211, 153, .12); --warn: #FBBF24; --warn-soft: rgba(251, 191, 36, .06);
+  --late: #FB7185; --red: #F87171;
+  --shadow: none; --shadow-pop: 0 30px 60px -16px rgba(0, 0, 0, .7);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 Geist, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; }
+ul, ol { list-style: none; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+.t { font-family: 'Space Grotesk', Geist, sans-serif; font-variant-numeric: tabular-nums; }
+svg.i { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- barra do mockup ---------- */
+.chrome { position: sticky; top: 0; z-index: 50; background: #0E1A40; color: #fff; }
+.chrome-in { padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.chrome-name { display: flex; align-items: center; gap: 8px; font: 600 13.5px/1 'Space Grotesk', sans-serif; }
+.chrome-name small { font: 600 9.5px/1 Geist, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: #FF8A57; border: 1px solid rgba(255, 138, 87, .45); padding: 4px 6px; border-radius: 5px; }
+.tabs { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; display: flex; gap: 3px; background: rgba(255, 255, 255, .07); padding: 3px; border-radius: 10px; }
+.tab { height: 30px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: rgba(255, 255, 255, .72); white-space: nowrap; }
+.tab[aria-pressed="true"] { background: #fff; color: #0E1A40; }
+.tab-sep { width: 1px; background: rgba(255, 255, 255, .15); margin: 4px 3px; }
+.theme { margin-left: auto; height: 30px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 8px; font-size: 12px; color: rgba(255, 255, 255, .85); }
+.note { padding: 0 16px 12px; font-size: 12.5px; color: rgba(255, 255, 255, .8); max-width: 1040px; }
+.note b { color: #fff; font-weight: 600; }
+
+.stage { padding: 22px 16px 60px; overflow-x: auto; overscroll-behavior-x: contain; }
+.view[hidden] { display: none; }
+.frame-label { max-width: 1180px; margin: 0 auto 8px; font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.frame { min-width: 980px; max-width: 1180px; margin: 0 auto 28px; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-pop); position: relative; }
+.page { padding: 26px 30px 32px; display: flex; flex-direction: column; gap: 20px; }
+
+/* ---------- peças comuns ---------- */
+.eyebrow { display: flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+h1.head { max-width: 560px; margin-top: 8px; font: 500 27px/1.2 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+h1.head em { font-style: normal; font-weight: 700; color: var(--brand); }
+h1.head em.warn { color: var(--warn); }
+.row-between { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.btn { height: 38px; padding: 0 14px; border-radius: 10px; background: var(--brand); color: #fff; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.btn.quiet { background: none; color: var(--muted); font-weight: 500; padding: 0 8px; }
+.btn.danger { background: none; color: var(--red); font-weight: 500; padding: 0 8px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+.avatar { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; flex-shrink: 0; border: 2px solid var(--card); }
+.av1 { background: #DBEAFE; color: #1D4ED8; } .av2 { background: #FCE7F3; color: #BE185D; } .av3 { background: #DCFCE7; color: #166534; } .av4 { background: #FEF3C7; color: #92400E; }
+.stack { display: flex; } .stack .avatar + .avatar { margin-left: -7px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11px; font-weight: 500; background: var(--soft); color: var(--muted); white-space: nowrap; }
+.chip.warn { background: rgba(245, 158, 11, .12); color: var(--warn); }
+.pick { height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; display: inline-flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12.5px; background: var(--card); min-width: 176px; }
+.link { color: var(--brand); font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 4px; }
+
+/* linha do dia horizontal (cartão do modelo) */
+.rail { position: relative; height: 26px; margin-top: 12px; }
+.rail .track { position: absolute; left: 0; right: 0; top: 7px; height: 2px; border-radius: 2px; background: var(--line); }
+.rail .span { position: absolute; top: 7px; height: 2px; background: var(--brand); opacity: .35; border-radius: 2px; }
+.rail .dot { position: absolute; top: 3px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; background: var(--card); border: 2px solid var(--brand); }
+.rail .lbl { position: absolute; top: 16px; font-size: 9.5px; color: var(--faint); transform: translateX(-50%); }
+.rail .lbl.l0 { transform: none; } .rail .lbl.l1 { transform: translateX(-100%); }
+
+/* ---------- pop-up ---------- */
+.scrim { position: absolute; inset: 0; background: rgba(8, 13, 34, .42); display: grid; place-items: center; padding: 24px; }
+.dlg { width: 100%; background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-pop); overflow: hidden; }
+.dlg-x { position: absolute; top: 14px; right: 14px; width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+.dlg-x:hover { background: var(--soft); }
+.kicker { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); }
+.dlg h2 { font: 600 21px/1.2 'Space Grotesk', sans-serif; letter-spacing: -.01em; margin-top: 6px; }
+.dlg p.txt { margin-top: 8px; font-size: 13.5px; color: var(--muted); line-height: 1.55; }
+.dlg p.txt b { color: var(--ink); font-weight: 600; }
+
+/* Carrossel */
+.car { max-width: 520px; position: relative; }
+.car .ill { height: 250px; background: linear-gradient(180deg, var(--brand-tint), transparent); border-bottom: 1px solid var(--line); display: grid; place-items: center; position: relative; overflow: hidden; }
+.car .body { padding: 20px 24px 20px; min-height: 168px; }
+.car .foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 24px 20px; }
+.dots { display: flex; gap: 6px; }
+.dots button { width: 8px; height: 8px; border-radius: 99px; background: var(--line); transition: width .25s, background .25s; }
+.dots button[aria-current="step"] { width: 22px; background: var(--brand); }
+
+/* Passo a passo ao lado */
+.side { max-width: 820px; position: relative; display: grid; grid-template-columns: 290px 1fr; }
+.side .steps { padding: 24px 20px 20px 24px; border-right: 1px solid var(--line); display: flex; flex-direction: column; }
+.side .steps h2 { margin-top: 4px; }
+.side .steps p.lead { margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.side ol { margin-top: 18px; display: flex; flex-direction: column; gap: 2px; position: relative; }
+.side ol::before { content: ""; position: absolute; left: 14px; top: 16px; bottom: 16px; width: 2px; background: var(--line); }
+.side li button { width: 100%; text-align: left; display: grid; grid-template-columns: 30px 1fr; gap: 10px; padding: 8px 8px 8px 0; border-radius: 10px; }
+.side li .n { position: relative; z-index: 1; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font: 600 12.5px/1 'Space Grotesk', sans-serif; background: var(--card); border: 2px solid var(--line); color: var(--muted); }
+.side li b { display: block; font-size: 13.5px; font-weight: 600; margin-top: 5px; }
+.side li span.s { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.side li[aria-current="step"] .n { background: var(--brand); border-color: var(--brand); color: #fff; box-shadow: 0 0 0 4px var(--brand-soft); }
+.side li.past .n { border-color: var(--brand); color: var(--brand); }
+.side li:not([aria-current="step"]) span.s { display: none; }
+.side .right { display: flex; flex-direction: column; background: linear-gradient(180deg, var(--brand-tint), transparent 60%); }
+.side .right .ill { flex: 1; display: grid; place-items: center; padding: 30px 20px 10px; min-height: 280px; }
+.side .right .cap { padding: 0 26px 6px; font-size: 13px; color: var(--muted); min-height: 58px; }
+.side .right .cap b { color: var(--ink); }
+.side .foot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 22px 20px; }
+
+/* ---------- ilustrações dos passos ---------- */
+.mini { width: 300px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 30px -14px rgba(14, 26, 64, .35); padding: 14px; }
+.mini h4 { font: 600 13.5px/1.2 Geist, sans-serif; display: flex; justify-content: space-between; align-items: baseline; }
+.mini h4 small { font-size: 11px; color: var(--muted); font-weight: 500; }
+.mini .sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
+.pop { animation: pop .35s cubic-bezier(.2, .9, .3, 1.3) both; }
+@keyframes pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: scale(1); } }
+.rise { animation: rise .4s ease-out both; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .pop, .rise { animation: none; } }
+
+.people { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+.person { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 6px 8px; border-radius: 9px; background: var(--soft); }
+.person .tag { margin-left: auto; font-size: 10.5px; color: var(--brand); font-weight: 600; }
+.person.off .tag { color: var(--warn); }
+
+.meta { width: 280px; }
+.meta .hd { display: flex; justify-content: space-between; align-items: baseline; }
+.meta .hd b { font: 600 13px/1 'Space Grotesk', sans-serif; }
+.meta .hd span { font-size: 11px; color: var(--muted); }
+.meta ul { margin-top: 10px; position: relative; display: flex; flex-direction: column; gap: 4px; }
+.meta li { display: grid; grid-template-columns: 38px 18px 1fr; align-items: center; gap: 8px; font-size: 12px; padding: 5px 6px; border-radius: 8px; }
+.meta li .h { font: 500 11px/1 'Space Grotesk', sans-serif; color: var(--muted); }
+.meta li .c { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; }
+.meta li.done .c { background: var(--done); border-color: var(--done); color: #fff; }
+.meta li.done .n { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
+.meta li.now { background: var(--brand-soft); box-shadow: inset 2px 0 0 var(--brand); }
+.meta li.now .c { border-color: var(--brand); }
+.meta li.now .n::after { content: "agora"; margin-left: 6px; font-size: 9.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--brand); }
+.meta .obs { margin: 2px 0 0 64px; font-size: 11px; color: var(--muted); font-style: italic; }
+
+/* passo "O que é": a Meta diária e a Rotina lado a lado */
+.versus { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; max-width: 440px; }
+.versus .col-lbl { font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 5px 2px; }
+.versus .col-lbl.r { color: var(--brand); }
+.versus .mini { width: 100%; padding: 10px; }
+.versus .mini.dim { opacity: .75; box-shadow: none; }
+.vlist { display: flex; flex-direction: column; gap: 5px; }
+.vlist li { display: flex; align-items: center; gap: 7px; font-size: 11.5px; padding: 4px 5px; border-radius: 7px; }
+.vlist li .ic { width: 18px; height: 18px; border-radius: 6px; display: grid; place-items: center; background: var(--soft); color: var(--muted); flex-shrink: 0; }
+.vlist li .ic svg.i { width: 11px; height: 11px; }
+.vlist li .c { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line); flex-shrink: 0; display: grid; place-items: center; }
+.vlist li.done .c { background: var(--done); border-color: var(--done); color: #fff; }
+.vlist li.done span:last-child { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--faint); }
+.versus .mini.on { border-color: rgba(43, 89, 255, .45); box-shadow: 0 12px 30px -14px rgba(43, 89, 255, .55); }
+
+/* formulários em miniatura (passos de configurar) */
+.form .fl { font-size: 10.5px; font-weight: 600; color: var(--muted); margin: 10px 0 4px; }
+.form .fl:first-of-type { margin-top: 8px; }
+.form .in { height: 30px; border: 1px solid var(--line); border-radius: 8px; padding: 0 9px; display: flex; align-items: center; font-size: 12px; background: var(--card); }
+.form .in.focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.form .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; padding: 3px; border-radius: 9px; background: var(--soft); font-size: 11px; text-align: center; }
+.form .seg span { padding: 5px 0; border-radius: 7px; color: var(--muted); }
+.form .seg span.on { background: var(--card); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
+.form .daychips { display: flex; gap: 4px; }
+.form .daychips span { width: 30px; height: 24px; border-radius: 7px; display: grid; place-items: center; font-size: 10.5px; font-weight: 600; background: var(--soft); color: var(--muted); }
+.form .daychips span.on { background: var(--brand); color: #fff; }
+.form .cta { margin-top: 12px; height: 30px; border-radius: 8px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 600; display: grid; place-items: center; }
+.where { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: 7px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.where.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); }
+.prow-mini { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 7px 8px; border-radius: 9px; }
+.prow-mini + .prow-mini { border-top: 1px solid var(--line); }
+.prow-mini .pk { margin-left: auto; height: 26px; padding: 0 8px; border: 1px solid var(--line); border-radius: 7px; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; background: var(--card); }
+.prow-mini.focus .pk { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); color: var(--brand); font-weight: 600; }
+.prow-mini.off { background: var(--warn-soft); }
+.good { margin-top: 10px; display: flex; gap: 8px; align-items: flex-start; padding: 9px 11px; border-radius: 10px; background: var(--soft); font-size: 12px; color: var(--muted); }
+.good b { color: var(--ink); }
+.pts { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.pts span { position: relative; padding-left: 20px; color: var(--ink); }
+.pts span::before { content: ""; position: absolute; left: 2px; top: 6px; width: 9px; height: 5px; border-left: 2px solid var(--brand); border-bottom: 2px solid var(--brand); transform: rotate(-45deg); }
+.side li.grp { padding: 14px 0 4px 42px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.side li .n.q { font-size: 14px; }
+
+.week { width: 320px; }
+.week .days { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 12px; }
+.week .d { border-radius: 10px; padding: 8px 6px 9px; text-align: center; border: 1px solid var(--line); background: var(--soft); }
+.week .d b { display: block; font: 600 12px/1 'Space Grotesk', sans-serif; }
+.week .d small { display: block; margin-top: 6px; font-size: 10px; color: var(--muted); }
+.week .d .bar { margin: 8px auto 0; width: 70%; height: 4px; border-radius: 4px; background: var(--faint); opacity: .5; }
+.week .d.new { background: var(--brand-soft); border-color: rgba(43, 89, 255, .35); }
+.week .d.new .bar { background: var(--brand); opacity: 1; }
+.week .d.today { box-shadow: 0 0 0 2px var(--brand); }
+.week .legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--muted); justify-content: center; }
+.week .legend i { display: inline-block; width: 10px; height: 4px; border-radius: 4px; margin-right: 5px; vertical-align: middle; }
+
+/* ---------- Página A: ajustes finos ---------- */
+.models-a { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.mcard { padding: 15px 16px 14px; display: flex; flex-direction: column; text-decoration: none; color: inherit; transition: border-color .15s, box-shadow .15s; }
+.mcard:hover { border-color: rgba(43, 89, 255, .4); box-shadow: 0 8px 20px -12px rgba(43, 89, 255, .45); }
+.mcard .top { display: flex; justify-content: space-between; align-items: baseline; }
+.mcard h3 { font: 600 15px/1.2 'Space Grotesk', sans-serif; }
+.mcard .sum { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+.mcard .foot { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; color: var(--muted); }
+.list-head { display: flex; align-items: baseline; gap: 10px; }
+.list-head h2 { font: 600 15px/1 'Space Grotesk', sans-serif; }
+.list-head span { font-size: 11.5px; color: var(--muted); }
+.plist { margin-top: 10px; overflow: hidden; }
+.prow { display: grid; grid-template-columns: 1fr auto 120px; align-items: center; gap: 14px; padding: 10px 16px; border-top: 1px solid var(--line); }
+.prow:first-child { border-top: 0; }
+.prow .who { display: flex; align-items: center; gap: 10px; }
+.prow .who b { display: block; font-size: 13px; font-weight: 600; }
+.prow .who small { font-size: 11px; color: var(--muted); }
+.prow.off { background: var(--warn-soft); }
+.prow.off .who small { color: var(--warn); }
+.prow .act { text-align: right; }
+
+.detail { display: grid; grid-template-columns: 1fr 300px; gap: 18px; align-items: start; }
+.back { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px 0 6px; margin-left: -6px; border-radius: 8px; font-size: 12.5px; font-weight: 500; color: var(--muted); align-self: flex-start; }
+.back:hover { background: var(--soft); color: var(--ink); }
+.title-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.title-row h1 { font: 600 28px/1.15 'Space Grotesk', sans-serif; letter-spacing: -.015em; display: flex; align-items: center; gap: 8px; }
+.icon-btn { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; color: var(--muted); }
+.icon-btn:hover { background: var(--soft); color: var(--ink); }
+.title-row .summary { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 6px; }
+.tasks-card { overflow: hidden; }
+.tasks-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px 12px 16px; border-bottom: 1px solid var(--line); }
+.tasks-head b { font: 600 14px/1 'Space Grotesk', sans-serif; display: flex; align-items: center; gap: 8px; }
+.count { font: 600 11px/1 Geist, sans-serif; color: var(--muted); background: var(--soft); padding: 3px 7px; border-radius: 6px; }
+.trow { display: grid; grid-template-columns: 52px 1fr auto; gap: 12px; align-items: start; padding: 11px 14px 11px 16px; border-top: 1px solid var(--line); }
+.trow:first-of-type { border-top: 0; }
+.trow:hover { background: var(--soft); }
+.trow .h { font: 600 13px/1.5 'Space Grotesk', sans-serif; color: var(--ink); }
+.trow .h.none { color: var(--faint); font-weight: 500; }
+.trow .ttl { font-size: 13.5px; font-weight: 600; }
+.trow .how { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.trow .days { margin-top: 6px; }
+.trow .edit { opacity: .55; }
+.trow:hover .edit, .trow .edit:focus-visible { opacity: 1; }
+.group-lbl { padding: 12px 16px 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); border-top: 1px dashed var(--line); }
+.aside-card { padding: 14px 16px; }
+.aside-card h3 { font: 600 14px/1 'Space Grotesk', sans-serif; display: flex; align-items: center; gap: 8px; }
+.follower { display: flex; align-items: center; gap: 9px; margin-top: 12px; font-size: 13px; }
+.follower button { margin-left: auto; font-size: 12px; color: var(--muted); }
+.follower button:hover { color: var(--red); }
+.hint { display: flex; gap: 9px; padding: 12px 14px; font-size: 12px; color: var(--muted); border: 1px dashed var(--line); border-radius: 12px; }
+
+/* ---------- Página B: linha do dia ---------- */
+.models-b { display: grid; grid-template-columns: repeat(auto-fill, minmax(420px, 1fr)); gap: 14px; }
+.mcard.big .rail { margin-top: 16px; height: 30px; }
+.vday { position: relative; padding: 6px 0 4px; }
+.vday::before { content: ""; position: absolute; left: 94px; top: 22px; bottom: 26px; width: 2px; background: linear-gradient(var(--brand), rgba(43, 89, 255, .25)); border-radius: 2px; }
+.vrow { display: grid; grid-template-columns: 62px 22px 1fr auto; gap: 12px; align-items: start; padding: 9px 14px 9px 10px; border-radius: 10px; position: relative; }
+.vrow:hover { background: var(--soft); }
+.vrow .h { font: 600 13px/1.6 'Space Grotesk', sans-serif; text-align: right; }
+.vrow .pin { width: 12px; height: 12px; margin: 5px 0 0 5px; border-radius: 50%; background: var(--card); border: 2.5px solid var(--brand); position: relative; z-index: 1; }
+.vrow .ttl { font-size: 13.5px; font-weight: 600; }
+.vrow .how { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.vrow .days { margin-top: 6px; }
+.vrow .edit { opacity: 0; }
+.vrow:hover .edit, .vrow .edit:focus-visible { opacity: 1; }
+.gap { display: grid; grid-template-columns: 62px 22px 1fr; gap: 12px; padding: 2px 14px 2px 10px; font-size: 11px; color: var(--faint); }
+.gap span:last-child { font-style: italic; }
+.anytime { margin-top: 6px; padding: 12px 14px 14px; border-top: 1px solid var(--line); }
+.anytime h4 { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.anytime .grid { margin-top: 10px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.anytime .tile { position: relative; border: 1px solid var(--line); border-radius: 12px; padding: 11px 12px; background: var(--soft); }
+.anytime .tile b { font-size: 13px; }
+.anytime .tile p { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.anytime .tile .edit { position: absolute; top: 6px; right: 6px; opacity: 0; }
+.anytime .tile:hover .edit { opacity: 1; }
+.preview-lbl { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 4px 2px 8px; display: flex; justify-content: space-between; }
+.preview-lbl span { text-transform: none; letter-spacing: 0; font-weight: 500; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<header class="chrome">
+  <div class="chrome-in">
+    <span class="chrome-name">Rotinas: introdução e polimento <small>Mockup</small></span>
+    <div class="tabs" role="group" aria-label="Proposta">
+      <button class="tab" type="button" data-view="p1" aria-pressed="true">Pop-up 1 · Carrossel</button>
+      <button class="tab" type="button" data-view="p2" aria-pressed="false">Pop-up 2 · Passos ao lado</button>
+      <span class="tab-sep" aria-hidden="true"></span>
+      <button class="tab" type="button" data-view="a" aria-pressed="false">Página A · Ajustes finos</button>
+      <button class="tab" type="button" data-view="b" aria-pressed="false">Página B · Linha do dia</button>
+    </div>
+    <button class="theme" type="button" id="theme">Tema escuro</button>
+  </div>
+  <p class="note" id="note"></p>
+</header>
+
+<main class="stage">
+
+  <!-- ================= Pop-up 1: carrossel ================= -->
+  <section class="view" data-view="p1">
+    <div class="frame-label">Clique no balão Novo do menu: abre isto, por cima da tela</div>
+    <div class="frame" style="height:640px">
+      <div class="page" style="opacity:.55" aria-hidden="true">
+        <p class="eyebrow">Rotinas</p>
+        <h1 class="head"><em>1 de 4</em> consultores seguem um modelo.</h1>
+      </div>
+      <div class="scrim">
+        <div class="dlg car" role="dialog" aria-modal="true" aria-labelledby="c-title">
+          <button class="dlg-x" type="button" aria-label="Fechar"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <div class="ill" id="c-ill"></div>
+          <div class="body">
+            <p class="kicker" id="c-kicker"></p>
+            <h2 id="c-title"></h2>
+            <p class="txt" id="c-txt"></p>
+          </div>
+          <div class="foot">
+            <div class="dots" id="c-dots" role="group" aria-label="Passos"></div>
+            <div style="display:flex;gap:8px">
+              <button class="btn ghost" type="button" id="c-prev">Voltar</button>
+              <button class="btn" type="button" id="c-next">Próximo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Pop-up 2: passos ao lado ================= -->
+  <section class="view" data-view="p2" hidden>
+    <div class="frame-label">Clique no balão Novo do menu: abre isto, por cima da tela</div>
+    <div class="frame" style="height:640px">
+      <div class="page" style="opacity:.55" aria-hidden="true">
+        <p class="eyebrow">Rotinas</p>
+        <h1 class="head"><em>1 de 4</em> consultores seguem um modelo.</h1>
+      </div>
+      <div class="scrim">
+        <div class="dlg side" role="dialog" aria-modal="true" aria-labelledby="s-title">
+          <button class="dlg-x" type="button" aria-label="Fechar"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <div class="steps">
+            <p class="kicker">Novo</p>
+            <h2 id="s-title">Rotinas</h2>
+            <p class="lead">O dia de trabalho de cada consultor, com as tarefas que não envolvem lead.</p>
+            <ol id="s-list"></ol>
+          </div>
+          <div class="right">
+            <div class="ill" id="s-ill"></div>
+            <p class="cap" id="s-cap"></p>
+            <div class="foot">
+              <button class="btn ghost" type="button" id="s-prev">Voltar</button>
+              <button class="btn" type="button" id="s-next">Próximo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Página A: ajustes finos ================= -->
+  <section class="view" data-view="a" hidden>
+    <div class="frame-label">Lista</div>
+    <div class="frame"><div class="page">
+      <div>
+        <p class="eyebrow"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8"/></svg>Rotinas</p>
+        <div class="row-between">
+          <h1 class="head"><em>2 de 4</em> consultores seguem um modelo. <em class="warn">Carla e Diego</em> ainda estão sem rotina.</h1>
+          <button class="btn" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Novo modelo</button>
+        </div>
+      </div>
+      <div class="models-a" id="a-models"></div>
+      <div>
+        <div class="list-head"><h2>Consultores</h2><span>Cada um segue um modelo. Trocar aqui muda a rotina da pessoa a partir de hoje.</span></div>
+        <div class="card plist" id="a-people"></div>
+      </div>
+    </div></div>
+
+    <div class="frame-label">Modelo aberto</div>
+    <div class="frame"><div class="page">
+      <button class="back" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Voltar</button>
+      <div class="title-row">
+        <div>
+          <h1>Consultor manhã <button class="icon-btn" type="button" aria-label="Renomear"><svg class="i" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></h1>
+          <div class="summary"><span class="chip">8 tarefas</span><span class="chip">das 06:00 às 13:00</span><span class="chip">3 sem horário</span></div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="btn ghost" type="button"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h11"/></svg>Duplicar</button>
+          <button class="btn danger" type="button">Excluir</button>
+        </div>
+      </div>
+      <div class="detail">
+        <div class="card tasks-card">
+          <div class="tasks-head"><b>Tarefas <span class="count">11</span></b><button class="btn" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nova tarefa</button></div>
+          <div id="a-tasks"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card aside-card">
+            <h3>Quem segue <span class="count">2</span></h3>
+            <div class="follower"><span class="avatar av1">AS</span>Ana Souza<button type="button">Tirar</button></div>
+            <div class="follower"><span class="avatar av2">BL</span>Bruno Lima<button type="button">Tirar</button></div>
+            <div style="margin-top:12px"><span class="pick" style="width:100%">Pôr um consultor neste modelo<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg></span></div>
+          </div>
+          <p class="hint"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>O que você muda aqui vale a partir de hoje para quem segue o modelo. Os dias anteriores continuam como estavam.</p>
+        </div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ================= Página B: linha do dia ================= -->
+  <section class="view" data-view="b" hidden>
+    <div class="frame-label">Lista</div>
+    <div class="frame"><div class="page">
+      <div>
+        <p class="eyebrow"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8"/></svg>Rotinas</p>
+        <div class="row-between">
+          <h1 class="head"><em>2 de 4</em> consultores seguem um modelo. <em class="warn">Carla e Diego</em> ainda estão sem rotina.</h1>
+          <button class="btn" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Novo modelo</button>
+        </div>
+      </div>
+      <div class="models-b" id="b-models"></div>
+      <div>
+        <div class="list-head"><h2>Consultores</h2><span>Cada um segue um modelo. Trocar aqui muda a rotina da pessoa a partir de hoje.</span></div>
+        <div class="card plist" id="b-people"></div>
+      </div>
+    </div></div>
+
+    <div class="frame-label">Modelo aberto</div>
+    <div class="frame"><div class="page">
+      <button class="back" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>Voltar</button>
+      <div class="title-row">
+        <div>
+          <h1>Consultor manhã <button class="icon-btn" type="button" aria-label="Renomear"><svg class="i" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button></h1>
+          <div class="summary"><span class="chip">8 tarefas no horário, das 06:00 às 13:00</span><span class="chip">3 a qualquer hora</span></div>
+        </div>
+        <div style="display:flex;gap:4px">
+          <button class="btn ghost" type="button"><svg class="i" viewBox="0 0 24 24"><rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16V5a2 2 0 0 1 2-2h11"/></svg>Duplicar</button>
+          <button class="btn danger" type="button">Excluir</button>
+        </div>
+      </div>
+      <div class="detail" style="grid-template-columns:1fr 310px">
+        <div class="card tasks-card">
+          <div class="tasks-head"><b>O dia do modelo <span class="count">11</span></b><button class="btn" type="button"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Nova tarefa</button></div>
+          <div class="vday" id="b-tasks"></div>
+          <div class="anytime">
+            <h4>A qualquer hora do dia</h4>
+            <div class="grid" id="b-any"></div>
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <div class="card aside-card">
+            <h3>Quem segue <span class="count">2</span></h3>
+            <div class="follower"><span class="avatar av1">AS</span>Ana Souza<button type="button">Tirar</button></div>
+            <div class="follower"><span class="avatar av2">BL</span>Bruno Lima<button type="button">Tirar</button></div>
+            <div style="margin-top:12px"><span class="pick" style="width:100%">Pôr um consultor neste modelo<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg></span></div>
+          </div>
+          <div>
+            <p class="preview-lbl">Como o consultor vê <span>na Meta diária</span></p>
+            <div class="mini meta" style="width:100%" id="b-preview"></div>
+          </div>
+          <p class="hint"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l2.5 2.5"/></svg>O que você muda aqui vale a partir de hoje. Os dias anteriores continuam como estavam.</p>
+        </div>
+      </div>
+    </div></div>
+  </section>
+</main>
+
+<script>
+// ---------------- dados de exemplo ----------------
+const TASKS = [
+  { h: '06:00', t: 'Abrir a recepção', how: '', days: 'Todos os dias de trabalho' },
+  { h: '06:30', t: 'Conferir a agenda de aulas', how: 'Ver quem tem aula experimental hoje.', days: 'Todos os dias de trabalho' },
+  { h: '07:00', t: 'Montar a lista de contatos do dia', how: 'Leads parados há mais de 3 dias primeiro.', days: 'Todos os dias de trabalho' },
+  { h: '07:30', t: 'Responder os follow-ups', how: '', days: 'Todos os dias de trabalho' },
+  { h: '10:00', t: 'Ligações para leads novos', how: '', days: 'Todos os dias de trabalho' },
+  { h: '11:00', t: 'Intervalo', how: '', days: 'Todos os dias de trabalho' },
+  { h: '12:00', t: 'Contato com inativos', how: '', days: 'Seg, Qua e Sex' },
+  { h: '13:00', t: 'Renovações do mês', how: 'Começar pelos contratos que vencem em 30 dias.', days: 'Segunda a sexta' },
+];
+const ANY = [
+  { t: 'Pedir indicações', how: 'Pelo menos uma por dia.' },
+  { t: 'Postar o story da aula', how: 'Um story por turno.' },
+  { t: 'Atualizar o Stronilead', how: 'Antes de sair.' },
+];
+const pct = (h) => { const [a, b] = h.split(':').map(Number); return ((a + b / 60) - 6) / 15 * 100; };
+const pen = '<svg class="i" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const chev = '<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg>';
+const arrow = '<svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+const check = '<svg class="i" viewBox="0 0 24 24" style="width:10px;height:10px;stroke-width:3"><path d="m5 12 5 5 9-10"/></svg>';
+
+function rail(times, { labels = true } = {}) {
+  const first = times[0], last = times[times.length - 1];
+  return `<div class="rail"><span class="track"></span><span class="span" style="left:${pct(first)}%;width:${pct(last) - pct(first)}%"></span>${times.map((h, i) => `<span class="dot pop" style="left:${pct(h)}%;animation-delay:${i * 60}ms"></span>`).join('')}${labels ? `<span class="lbl l0" style="left:0">06h</span>${pct(last) < 88 ? `<span class="lbl" style="left:${pct(last)}%">${last.replace(':00', 'h').replace(':', 'h')}</span>` : ''}<span class="lbl l1" style="left:100%">21h</span>` : ''}</div>`;
+}
+
+// ---------------- ilustrações dos passos ----------------
+const ic = (d) => `<span class="ic"><svg class="i" viewBox="0 0 24 24">${d}</svg></span>`;
+const IC_VISITA = '<path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/>';
+const IC_FONE = '<path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z"/>';
+const IC_AULA = '<path d="M6.5 6.5h11v11h-11z"/><path d="M3 9v6M21 9v6"/>';
+const ILL = [
+  // O que é a rotina: a Meta diária (leads) e a Rotina (o dia) lado a lado.
+  () => `<div class="versus rise">
+      <div><p class="col-lbl">Meta diária · leads</p><div class="mini dim"><ul class="vlist">
+        <li>${ic(IC_VISITA)}<span>Visita da Marina, 18h</span></li>
+        <li>${ic(IC_FONE)}<span>Ligar para o Rafael</span></li>
+        <li>${ic(IC_AULA)}<span>Aula experimental da Bia</span></li>
+      </ul></div></div>
+      <div><p class="col-lbl r">Rotina · o dia</p><div class="mini on"><ul class="vlist">
+        <li class="done"><span class="c">${check}</span><span>Abrir a recepção</span></li>
+        <li><span class="c"></span><span>Postar o story da aula</span></li>
+        <li><span class="c"></span><span>Atualizar o Stronilead</span></li>
+      </ul></div></div>
+    </div>`,
+  // 1. Crie um modelo
+  () => `<div class="mini form rise"><h4>Novo modelo <span class="where">+ Novo modelo</span></h4>
+      <p class="fl">Nome do modelo</p><div class="in focus">Consultor manhã</div>
+      <p class="fl">Começar</p><div class="seg"><span class="on">Em branco</span><span>Cópia de um modelo</span></div>
+      <div class="cta">Criar modelo</div></div>`,
+  // 2. Coloque as tarefas
+  () => `<div class="mini form rise"><h4>Nova tarefa <span class="where">+ Nova tarefa</span></h4>
+      <p class="fl">O que fazer</p><div class="in focus">Postar o story da aula</div>
+      <p class="fl">Dias</p><div class="daychips"><span class="on">Seg</span><span class="on">Ter</span><span class="on">Qua</span><span class="on">Qui</span><span class="on">Sex</span><span>Sáb</span></div>
+      <p class="fl">Horário (se quiser)</p><div class="in" style="width:90px">09:00</div></div>`,
+  // 3. Escolha quem segue
+  () => `<div class="mini rise" style="width:320px"><h4>Consultores <small>um modelo para cada</small></h4><div style="margin-top:8px">
+      <div class="prow-mini"><span class="avatar av1">AS</span>Ana Souza<span class="pk">Consultor manhã ${chev}</span></div>
+      <div class="prow-mini"><span class="avatar av2">BL</span>Bruno Lima<span class="pk">Consultor manhã ${chev}</span></div>
+      <div class="prow-mini off focus"><span class="avatar av3">CD</span>Carla Dias<span class="pk">Escolher modelo ${chev}</span></div>
+    </div></div>`,
+  // 4. O consultor dá check
+  () => `<div class="mini meta rise"><div class="hd"><b>Rotina de hoje</b><span>2 de 8</span></div><ul>
+      <li class="done"><span class="h">06:00</span><span class="c">${check}</span><span class="n">Abrir a recepção</span></li>
+      <li class="done"><span class="h">06:30</span><span class="c">${check}</span><span class="n">Conferir a agenda</span></li>
+      <li class="now"><span class="h">07:00</span><span class="c"></span><span class="n">Lista de contatos</span></li>
+      <li><span class="h">07:30</span><span class="c"></span><span class="n">Follow-ups</span></li>
+    </ul><p class="obs">“3 experimentais hoje”</p></div>`,
+];
+const STEPS = [
+  { intro: true, k: 'Novidade', t: 'O que é a rotina',
+    x: 'São as tarefas que o consultor faz todo dia e que <b>não dependem de um lead</b>, como abrir a recepção, postar o story da aula ou atualizar o Stronilead antes de sair.'
+      + '<span class="pts">'
+      + '<span>Você monta a lista uma vez, num modelo.</span>'
+      + '<span>Ela aparece todo dia na Meta diária de quem segue o modelo, num cartão à parte.</span>'
+      + '<span>O consultor marca o que fez. A meta de leads não muda, e a rotina não conta para o dia batido.</span>'
+      + '</span>',
+    s: 'As tarefas do dia que não dependem de lead.' },
+  { k: 'Como configurar · 1 de 4', t: 'Crie um modelo',
+    x: 'Aqui em Rotinas, clique em <b>Novo modelo</b> e dê um nome, como "Consultor manhã". Pode começar em branco ou copiar um modelo que já existe.',
+    s: 'Novo modelo, com um nome.' },
+  { k: 'Como configurar · 2 de 4', t: 'Coloque as tarefas',
+    x: 'Dentro do modelo, clique em <b>Nova tarefa</b>. Escreva o que fazer, explique como fazer se precisar, escolha os dias e, se quiser, o horário.',
+    s: 'O que fazer, dias e horário.' },
+  { k: 'Como configurar · 3 de 4', t: 'Escolha quem segue',
+    x: 'Na lista <b>Consultores</b>, escolha o modelo de cada pessoa. Cada consultor segue um modelo só, e um modelo pode ter várias pessoas. Para alguém com uma rotina diferente, duplique o modelo e ajuste a cópia.',
+    s: 'Um modelo para cada consultor.' },
+  { k: 'Como configurar · 4 de 4', t: 'Pronto: o consultor dá check',
+    x: 'No mesmo dia, a rotina aparece na <b>Meta diária</b> do consultor. A tarefa com horário fica em destaque até 30 minutos depois e, passado isso, aparece como atrasada. Ele marca o que fez e pode deixar uma observação.',
+    good: '<b>Bom saber:</b> o que você muda num modelo vale a partir de hoje. Os dias anteriores ficam como estavam.',
+    s: 'A rotina aparece na Meta diária.' },
+];
+
+// ---------------- carrossel ----------------
+let ci = 0;
+const cdots = document.getElementById('c-dots');
+cdots.innerHTML = STEPS.map((s, i) => `<button type="button" aria-label="${s.intro ? 'O que é a rotina' : `Passo ${i} de ${STEPS.length - 1}`}"></button>`).join('');
+[...cdots.children].forEach((b, i) => b.addEventListener('click', () => { ci = i; paintC(); }));
+function paintC() {
+  const s = STEPS[ci];
+  document.getElementById('c-ill').innerHTML = ILL[ci]();
+  document.getElementById('c-kicker').textContent = s.k;
+  document.getElementById('c-title').textContent = s.t;
+  document.getElementById('c-txt').innerHTML = s.x + (s.good ? `<span class="good">${s.good}</span>` : '');
+  [...cdots.children].forEach((b, i) => (i === ci ? b.setAttribute('aria-current', 'step') : b.removeAttribute('aria-current')));
+  document.getElementById('c-prev').style.visibility = ci === 0 ? 'hidden' : 'visible';
+  document.getElementById('c-next').textContent = ci === 0 ? 'Ver como configurar' : ci === STEPS.length - 1 ? 'Entendi' : 'Próximo';
+}
+document.getElementById('c-prev').addEventListener('click', () => { if (ci > 0) { ci--; paintC(); } });
+document.getElementById('c-next').addEventListener('click', () => { ci = ci === STEPS.length - 1 ? 0 : ci + 1; paintC(); });
+
+// ---------------- passos ao lado ----------------
+let si = 0;
+const slist = document.getElementById('s-list');
+slist.innerHTML = STEPS.map((s, i) => {
+  const n = s.intro ? '<span class="n q">?</span>' : `<span class="n">${i}</span>`;
+  const item = `<li data-i="${i}"><button type="button">${n}<span><b>${s.t}</b><span class="s">${s.s}</span></span></button></li>`;
+  return s.intro ? `${item}<li class="grp" aria-hidden="true">Como configurar</li>` : item;
+}).join('');
+const sItems = [...slist.querySelectorAll('li[data-i]')];
+sItems.forEach((li) => li.querySelector('button').addEventListener('click', () => { si = Number(li.dataset.i); paintS(); }));
+function paintS() {
+  sItems.forEach((li) => { const i = Number(li.dataset.i); li.classList.toggle('past', i < si); i === si ? li.setAttribute('aria-current', 'step') : li.removeAttribute('aria-current'); });
+  document.getElementById('s-ill').innerHTML = ILL[si]();
+  document.getElementById('s-cap').innerHTML = STEPS[si].x + (STEPS[si].good ? `<span class="good">${STEPS[si].good}</span>` : '');
+  document.getElementById('s-prev').style.visibility = si === 0 ? 'hidden' : 'visible';
+  document.getElementById('s-next').textContent = si === 0 ? 'Ver como configurar' : si === STEPS.length - 1 ? 'Entendi' : 'Próximo';
+}
+document.getElementById('s-prev').addEventListener('click', () => { if (si > 0) { si--; paintS(); } });
+document.getElementById('s-next').addEventListener('click', () => { si = si === STEPS.length - 1 ? 0 : si + 1; paintS(); });
+
+// ---------------- páginas ----------------
+const MODELS = [
+  { n: 'Consultor manhã', sum: '8 tarefas · das 06:00 às 13:00 · 3 a qualquer hora', times: TASKS.map((x) => x.h), who: [['AS', 'av1'], ['BL', 'av2']], names: 'Ana e Bruno' },
+  { n: 'Consultor tarde', sum: '6 tarefas · das 13:00 às 21:00', times: ['13:00', '14:00', '16:00', '18:00', '19:30', '21:00'], who: [], names: '' },
+];
+const PEOPLE = [
+  { i: 'AS', c: 'av1', n: 'Ana Souza', m: 'Consultor manhã', s: '11 tarefas hoje · das 06:00 às 13:00' },
+  { i: 'BL', c: 'av2', n: 'Bruno Lima', m: 'Consultor manhã', s: '11 tarefas hoje · das 06:00 às 13:00' },
+  { i: 'CD', c: 'av3', n: 'Carla Dias', m: '', s: 'Sem rotina na Meta diária' },
+  { i: 'DR', c: 'av4', n: 'Diego Rocha', m: '', s: 'Sem rotina na Meta diária' },
+];
+function modelCard(m, big) {
+  const foot = m.who.length
+    ? `<span class="stack">${m.who.map(([i, c]) => `<span class="avatar ${c}">${i}</span>`).join('')}</span><span>${m.names}</span>`
+    : `<span class="chip warn">Ninguém segue ainda</span>`;
+  return `<a class="card mcard ${big ? 'big' : ''}" href="#" onclick="return false"><div class="top"><h3>${m.n}</h3><span class="link">Abrir ${arrow}</span></div><p class="sum">${m.sum}</p>${rail(m.times)}<div class="foot"><span style="display:flex;align-items:center;gap:8px">${foot}</span></div></a>`;
+}
+function peopleRows() {
+  return PEOPLE.map((p) => `<div class="prow ${p.m ? '' : 'off'}"><div class="who"><span class="avatar ${p.c}">${p.i}</span><span><b>${p.n}</b><small>${p.s}</small></span></div><span class="pick">${p.m || 'Sem modelo'}${chev}</span><span class="act">${p.m ? `<span class="link">Abrir modelo ${arrow}</span>` : ''}</span></div>`).join('');
+}
+document.getElementById('a-models').innerHTML = MODELS.map((m) => modelCard(m, false)).join('');
+document.getElementById('b-models').innerHTML = MODELS.map((m) => modelCard(m, true)).join('');
+document.getElementById('a-people').innerHTML = peopleRows();
+document.getElementById('b-people').innerHTML = peopleRows();
+
+document.getElementById('a-tasks').innerHTML =
+  TASKS.map((x) => `<div class="trow"><span class="h">${x.h}</span><div><div class="ttl">${x.t}</div>${x.how ? `<div class="how">${x.how}</div>` : ''}<div class="days"><span class="chip">${x.days}</span></div></div><button class="btn quiet edit" type="button">${pen}Editar</button></div>`).join('') +
+  `<div class="group-lbl">A qualquer hora do dia</div>` +
+  ANY.map((x) => `<div class="trow"><span class="h none">—</span><div><div class="ttl">${x.t}</div><div class="how">${x.how}</div><div class="days"><span class="chip">Todos os dias de trabalho</span></div></div><button class="btn quiet edit" type="button">${pen}Editar</button></div>`).join('');
+
+const mins = (h) => { const [a, b] = h.split(':').map(Number); return a * 60 + b; };
+document.getElementById('b-tasks').innerHTML = TASKS.map((x, i) => {
+  const next = TASKS[i + 1];
+  const gap = next ? mins(next.h) - mins(x.h) : 0;
+  const gapRow = gap >= 90 ? `<div class="gap"><span></span><span></span><span>${Math.floor(gap / 60)}h${gap % 60 ? String(gap % 60).padStart(2, '0') : ''} sem tarefa</span></div>` : '';
+  return `<div class="vrow"><span class="h">${x.h}</span><span class="pin"></span><div><div class="ttl">${x.t}</div>${x.how ? `<div class="how">${x.how}</div>` : ''}<div class="days"><span class="chip">${x.days}</span></div></div><button class="icon-btn edit" type="button" aria-label="Editar ${x.t}">${pen}</button></div>${gapRow}`;
+}).join('');
+document.getElementById('b-any').innerHTML = ANY.map((x) => `<div class="tile"><b>${x.t}</b><p>${x.how}</p><button class="icon-btn edit" type="button" aria-label="Editar ${x.t}">${pen}</button></div>`).join('');
+document.getElementById('b-preview').innerHTML = `<div class="hd"><b>Rotina de hoje</b><span>2 de 11</span></div><ul>
+  <li class="done"><span class="h">06:00</span><span class="c">${check}</span><span class="n">Abrir a recepção</span></li>
+  <li class="done"><span class="h">06:30</span><span class="c">${check}</span><span class="n">Conferir a agenda de aulas</span></li>
+  <li class="now"><span class="h">07:00</span><span class="c"></span><span class="n">Lista de contatos</span></li>
+  <li><span class="h">07:30</span><span class="c"></span><span class="n">Follow-ups</span></li>
+  <li><span class="h">10:00</span><span class="c"></span><span class="n">Ligações para leads novos</span></li>
+</ul>`;
+
+// ---------------- abas e tema ----------------
+const NOTES = {
+  p1: '<b>Pop-up 1 · Carrossel.</b> A primeira tela explica o que é a rotina, com a Meta diária e a Rotina lado a lado. O botão "Ver como configurar" leva aos quatro passos, um por vez, com os nomes dos botões de verdade. É o mesmo jeito do tutorial "Como funciona" que o app já tem.',
+  p2: '<b>Pop-up 2 · Passos ao lado.</b> A lista da esquerda mostra tudo de uma vez: "O que é a rotina" em cima e, embaixo, "Como configurar" com os quatro passos. A ilustração da direita troca conforme o item, e dá para pular direto para o passo que interessa.',
+  a: '<b>Página A · Ajustes finos.</b> A tela continua a mesma, só arrumada: o resumo do modelo em etiquetas abaixo do nome, Renomear num lápis, o Editar discreto que acende ao passar o mouse, as tarefas sem horário alinhadas com um traço, rostos em quem segue e na lista de consultores, e o aviso de "vale a partir de hoje" em cinza.',
+  b: '<b>Página B · Linha do dia.</b> O modelo aberto vira o dia do consultor: os horários numa linha que desce, com o espaço vazio marcado ("2h30 sem tarefa"), as tarefas sem horário em quadrinhos embaixo e, ao lado, a prévia de como o consultor vê a rotina na Meta diária. Os cartões da lista ficam maiores, com a mesma linha do dia.',
+};
+const tabs = [...document.querySelectorAll('.tab')];
+function show(v) {
+  tabs.forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.view === v)));
+  document.querySelectorAll('.view').forEach((s) => { s.hidden = s.dataset.view !== v; });
+  document.getElementById('note').innerHTML = NOTES[v];
+  if (v === 'p1') paintC();
+  if (v === 'p2') paintS();
+}
+tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.view)));
+show('p1');
+const themeBtn = document.getElementById('theme');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  themeBtn.textContent = dark ? 'Tema claro' : 'Tema escuro';
+});
+</script>
+</body>
+</html>
