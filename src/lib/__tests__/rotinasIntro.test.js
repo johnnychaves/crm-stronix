@@ -6,14 +6,40 @@
 // do 2026-10-08-rotinas-aba-hoje.html).
 import { act, createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { NOVO_ATE, RotinasNovo } from '../../components/rotinas/RotinasIntro.jsx';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// O "Não mostrar novamente" grava pelo rotinasWrites.js, que lê o firebase.js:
+// o caminho da academia é falso, e do SDK só o doc e o setDoc.
+vi.mock('../firebase.js', () => ({
+  appId: 'acad',
+  USERS_PATH: 'stronix_users',
+  ROUTINE_MODELS_PATH: 'stronix_rotina_modelos',
+  ROUTINE_VERSIONS_PATH: 'stronix_rotina_versoes',
+  ROUTINE_MARKS_PATH: 'stronix_rotina_marcas',
+  db: {},
+  auth: {},
+}));
+vi.mock('firebase/firestore', async (importOriginal) => ({
+  ...(await importOriginal()),
+  doc: vi.fn((_db, ...path) => ({ path: path.join('/') })),
+  setDoc: vi.fn(),
+}));
+
+const { setDoc } = await import('firebase/firestore');
+const { ToastContext } = await import('../../contexts/ToastContext.jsx');
+const { NOVO_ATE, RotinasIntroDialog, RotinasNovo } = await import('../../components/rotinas/RotinasIntro.jsx');
+const { rotinasIntroSeen } = await import('../rotinasIntro.js');
+
+const toast = { show: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn(), dismiss: vi.fn() };
 
 let container;
 let root;
 beforeEach(() => {
+  vi.clearAllMocks();
+  window.sessionStorage.clear();
+  setDoc.mockResolvedValue(undefined);
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
@@ -26,7 +52,7 @@ afterEach(() => {
 
 const HOJE = new Date(2026, 9, 8, 9, 0);
 const montar = async (props) => {
-  await act(async () => { root.render(h(RotinasNovo, props)); });
+  await act(async () => { root.render(h(ToastContext.Provider, { value: toast }, h(RotinasNovo, props))); });
 };
 const balao = () => document.body.querySelector('[aria-label="Novo: o que é esta tela"]');
 const dialogo = () => document.body.querySelector('[role="dialog"]');
@@ -270,5 +296,114 @@ describe('a apresentação: foco, anúncio e detalhes', () => {
     const atraso = [...ilustracao().querySelectorAll('span')].find((el) => el.textContent === 'atrasada há 47 min');
     expect(atraso).toBeTruthy();
     expect(classes(atraso)).toContain('whitespace-nowrap');
+  });
+});
+
+// O "Não mostrar novamente" (pedido do Johnny em 08/10/2026): no último passo,
+// ao lado do Voltar e do Entendi, também quando a apresentação abre pelo balão.
+// Grava introsDismissed.rotinas no cadastro da própria pessoa, e a apresentação
+// deixa de abrir sozinha ao entrar em Rotinas. O balão continua reabrindo.
+describe('a apresentação: "Não mostrar novamente"', () => {
+  const GESTOR = { id: 'g1', authUid: 'g1', name: 'Bruno Gestor', role: 'admin', tenantId: 'acad' };
+  const FALHOU = 'Não deu para salvar. A apresentação pode aparecer de novo.';
+  const classes = (el) => el.className.split(/\s+/);
+  const abrirComo = async (appUser) => {
+    await montar({ now: HOJE, tone: 'alert', db: {}, appUser });
+    await clicar(balao());
+  };
+  const esperar = async () => {
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+  };
+
+  it('pelo balão, o último passo também tem o botão, ao lado do Voltar e do Entendi', async () => {
+    await abrirComo(GESTOR);
+    expect(botao('Não mostrar novamente')).toBeUndefined();
+    await ateOUltimo();
+    const dispensar = botao('Não mostrar novamente');
+    expect(dispensar).toBeTruthy();
+    expect(dispensar.parentElement).toBe(botao('Entendi').parentElement);
+    expect(dispensar.parentElement).toBe(botao('Voltar').parentElement);
+    // O foco continua no botão principal.
+    expect(document.activeElement).toBe(botao('Entendi'));
+  });
+
+  it('grava no próprio cadastro, fecha e o balão continua lá', async () => {
+    await abrirComo(GESTOR);
+    await ateOUltimo();
+    await clicar(botao('Não mostrar novamente'));
+    expect(dialogo()).toBeNull();
+    expect(setDoc).toHaveBeenCalledWith(
+      { path: 'artifacts/acad/public/data/stronix_users/g1' },
+      { introsDismissed: { rotinas: true } },
+      { merge: true },
+    );
+    await esperar();
+    expect(toast.error).not.toHaveBeenCalled();
+    expect(rotinasIntroSeen(GESTOR)).toBe(true);
+    // O balão reabre a apresentação a qualquer hora.
+    await clicar(balao());
+    expect(passo().titulo).toBe('O que é a rotina');
+  });
+
+  it('se a gravação falha, avisa e fecha do mesmo jeito', async () => {
+    setDoc.mockRejectedValue(new Error('permission-denied'));
+    await abrirComo(GESTOR);
+    await ateOUltimo();
+    await clicar(botao('Não mostrar novamente'));
+    expect(dialogo()).toBeNull();
+    await esperar();
+    expect(toast.error).toHaveBeenCalledWith(FALHOU);
+  });
+
+  it('o Entendi fecha sem gravar', async () => {
+    await abrirComo(GESTOR);
+    await ateOUltimo();
+    await clicar(botao('Entendi'));
+    expect(dialogo()).toBeNull();
+    expect(setDoc).not.toHaveBeenCalled();
+  });
+
+  it('quem já dispensou continua abrindo pelo balão, com o botão no fim', async () => {
+    await abrirComo({ ...GESTOR, introsDismissed: { rotinas: true } });
+    expect(passo().titulo).toBe('O que é a rotina');
+    await ateOUltimo();
+    expect(botao('Não mostrar novamente')).toBeTruthy();
+  });
+
+  it('abrir pelo balão já conta como a apresentação desta sessão', async () => {
+    expect(rotinasIntroSeen(GESTOR)).toBe(false);
+    await abrirComo(GESTOR);
+    await clicar(botao('Fechar'));
+    expect(rotinasIntroSeen(GESTOR)).toBe(true);
+    expect(setDoc).not.toHaveBeenCalled();
+  });
+
+  it('sem ninguém logado, não oferece o botão, porque não há cadastro para gravar', async () => {
+    await abrir();
+    await ateOUltimo();
+    expect(botao('Não mostrar novamente')).toBeUndefined();
+    expect(botao('Entendi')).toBeTruthy();
+  });
+
+  it('no celular o botão ganha a linha dele, e o Voltar e o Entendi continuam juntos na ponta direita', async () => {
+    await abrirComo(GESTOR);
+    await ateOUltimo();
+    const grupo = botao('Entendi').parentElement;
+    expect(classes(grupo)).toEqual(expect.arrayContaining(['ml-auto', 'flex', 'flex-wrap', 'justify-end']));
+    expect(classes(botao('Não mostrar novamente'))).toEqual(expect.arrayContaining(['basis-full', 'sm:basis-auto']));
+    // Na ordem do Tab e da tela: o botão novo, o Voltar e o Entendi.
+    expect([...grupo.children].map((b) => b.textContent.trim())).toEqual(['Não mostrar novamente', 'Voltar', 'Entendi']);
+  });
+
+  it('a apresentação que abre sozinha tem a mesma caixa da que o balão abre', async () => {
+    await abrirComo(GESTOR);
+    const doBalao = dialogo().className;
+    await clicar(botao('Fechar'));
+    await act(async () => {
+      root.render(h(ToastContext.Provider, { value: toast }, h(RotinasIntroDialog, { open: true, onOpenChange: () => {}, db: {}, appUser: GESTOR })));
+    });
+    expect(dialogo().className).toBe(doBalao);
+    expect(passo().titulo).toBe('O que é a rotina');
+    expect(document.activeElement).toBe(botao('Ver como configurar'));
   });
 });

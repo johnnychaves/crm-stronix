@@ -6,11 +6,13 @@ import { useRoutineModels } from '../hooks/useRoutineModels.js';
 import { canGoBackInApp, hrefFor } from '../lib/routes.js';
 import { firstName, modelOfUser, namesText, routineParticipants } from '../lib/rotinas.js';
 import { modelSelectDomId } from '../lib/rotinasTela.js';
+import { shouldAutoOpenRotinasIntro } from '../lib/rotinasIntro.js';
 import { ModelCard } from '../components/rotinas/ModelCard.jsx';
 import { ConsultantsList } from '../components/rotinas/ConsultantsList.jsx';
 import { ModelDetail } from '../components/rotinas/ModelDetail.jsx';
 import { NewModelSheet } from '../components/rotinas/NewModelSheet.jsx';
 import { TodayTab } from '../components/rotinas/TodayTab.jsx';
+import { RotinasIntroDialog } from '../components/rotinas/RotinasIntro.jsx';
 
 // Tela Rotinas do gestor (spec 2026-10-06; mockups 2026-10-06-tela-rotinas-gestor.html,
 // 2026-10-08-rotinas-intro-e-polimento.html e 2026-10-08-rotinas-aba-hoje.html).
@@ -90,6 +92,15 @@ export function RotinasView({ db, appUser, usersList, modelId, tab = 'modelos', 
   const model = modelId ? models.find((m) => m.id === modelId) : undefined;
   const nova = modelId && location.state?.rotinaNova === modelId ? location.state : null;
   const { fresh, renomear } = useFreshModel(nova, Boolean(model));
+  // A apresentação abre sozinha na lista e na aba Hoje, nunca no modelo aberto,
+  // uma vez por sessão e nunca mais depois do "Não mostrar novamente" (regra em
+  // src/lib/rotinasIntro.js). A decisão é da montagem: a view remonta a cada
+  // modelo aberto, e voltar para a lista monta de novo, mas aí a marca da
+  // sessão já existe. Quem grava a marca é a própria apresentação, ao abrir. O
+  // cadastro da pessoa na equipe chega ao vivo e pega a dispensa feita em outra
+  // aba depois do login.
+  const [introOpen, setIntroOpen] = useState(() =>
+    !modelId && shouldAutoOpenRotinasIntro(appUser, usersList?.find((u) => u.id === appUser?.id)));
 
   // Escolher modelo (aba Hoje) troca para a aba Modelos, e o foco precisa ir
   // junto: sem isso, o botão clicado some com a aba e o foco cai no body. Quem
@@ -244,6 +255,8 @@ export function RotinasView({ db, appUser, usersList, modelId, tab = 'modelos', 
           onCreated={(id) => openNew(id, { fromList: true })}
         />
       )}
+
+      <RotinasIntroDialog open={introOpen} onOpenChange={setIntroOpen} db={db} appUser={appUser} />
     </div>
   );
 }

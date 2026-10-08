@@ -36,6 +36,7 @@ Vale para todas as academias do Stronilead. Não depende de módulo ligado pelo 
 9. O histórico do mês vai para o Operacional do Dashboard, ao lado do resto do trabalho de cada pessoa.
 10. Mudar um modelo vale a partir de hoje. Os dias anteriores continuam como estavam.
 11. A tarefa com horário fica "agora" do horário até 30 minutos depois, e atrasada a partir daí.
+12. A apresentação das Rotinas abre sozinha quando o gestor entra na tela, uma vez por sessão, até ele marcar "Não mostrar novamente" no último passo (08/10/2026).
 
 A Meta da equipe (aba Equipe da Meta diária) foi descontinuada e sai numa PR à parte (#247 do `crm-stronix`). Esta função não se apoia nela.
 
@@ -146,7 +147,17 @@ Mockup: `2026-10-08-rotinas-intro-e-polimento.html`, **Pop-up 1 · Carrossel**, 
 5. "Como configurar · 4 de 4" · **Pronto: o consultor dá check**: "No mesmo dia, a rotina aparece na **Meta diária** do consultor. A tarefa com horário fica em destaque até 30 minutos depois e, passado isso, aparece como atrasada. Ele marca o que fez e pode deixar uma observação.", com "**Bom saber:** o que você muda num modelo vale a partir de hoje. Os dias anteriores ficam como estavam."
 6. "Acompanhar" · **Acompanhe o dia na aba Hoje**: "Na aba **Hoje**, aqui em Rotinas, você vê quanto cada consultor já fez, o que está **atrasado agora** e as observações que eles deixaram. A tela se atualiza sozinha. Você acompanha, mas o check é sempre de quem fez a tarefa." O desenho mostra uma pessoa por linha com a contagem ("Ana · 5 de 11 · 1 atrasada", "Bruno · 6 de 11 · nada atrasado") e a linha vermelha da tarefa atrasada. Não mostra a linha do dia de ninguém.
 
-Botões: no primeiro passo, "Ver como configurar"; nos do meio, Voltar e Próximo; no último, Voltar e Entendi, que fecha. Os pontinhos de baixo levam direto a cada passo. O pop-up abre sempre no primeiro passo, e o X fecha em qualquer passo.
+Botões: no primeiro passo, "Ver como configurar"; nos do meio, Voltar e Próximo; no último, "Não mostrar novamente", Voltar e Entendi, que fecha. Os pontinhos de baixo levam direto a cada passo. O pop-up abre sempre no primeiro passo, e o X fecha em qualquer passo.
+
+**Abre sozinha ao entrar em Rotinas** (decisão do Johnny em 08/10/2026, depois de ver o balão no preview: "o pop-up eu quero que abra assim que o usuário clicar em rotinas").
+
+- Quando o gestor entra em Rotinas, na lista ou na aba Hoje, a apresentação abre sozinha. É a mesma do balão, na mesma caixa. No modelo aberto ela não abre.
+- Abre no máximo uma vez por sessão do navegador. Voltar de um modelo para a lista, trocar de aba ou dar F5 não a abre de novo. A marca fica no `sessionStorage`, com o id da academia e o da pessoa, e vale para cada pessoa que entra na mesma aba. Abrir pelo balão também conta como a vez da sessão.
+- No último passo, o "Não mostrar novamente" fecha a apresentação e grava no cadastro da pessoa (ver "Dados"). A partir daí ela não abre mais sozinha, em nenhum aparelho. Se a gravação falha, a tela avisa "Não deu para salvar. A apresentação pode aparecer de novo." e fecha do mesmo jeito.
+- O Entendi, o X e o Esc só fecham. Nesse caso ela volta na próxima sessão.
+- O balão continua abrindo a apresentação a qualquer hora, com o mesmo botão no fim, também para quem já dispensou.
+- A abertura sozinha não depende da data do balão: depois de 07/11/2026 o balão some, e a apresentação continua abrindo para quem não a dispensou.
+- No celular o "Não mostrar novamente" fica numa linha só dele, em cima do Voltar e do Entendi. A partir do `sm` os três ficam na mesma linha, e o Entendi fica no lugar do Próximo.
 
 ### Aba Modelos
 
@@ -256,6 +267,10 @@ O check.
 
 O id fixo faz o segundo toque no mesmo círculo cair no mesmo documento, então não existe check duplicado.
 
+### `stronix_users/{id}`: a apresentação dispensada
+
+O "Não mostrar novamente" da apresentação grava `introsDismissed: { rotinas: true }` no cadastro da própria pessoa, com `merge`, como o "já li" do sino. O mapa guarda outras apresentações no futuro sem campo novo para cada uma. As regras de `stronix_users` já deixam isso: o gestor grava pelo `isAdmin`, e a própria pessoa pelo ramo do cadastro com id igual ao uid, sem mudar papel, academia, chave nem professor ligado. Cadastro antigo, com o id diferente do uid, é recusado, e a tela avisa que a apresentação pode voltar.
+
 ### Quem segue: um modelo só
 
 A gravação que põe alguém num modelo lê os modelos dentro de uma transação, tira a pessoa do modelo anterior e grava os dois modelos e as duas versões do dia juntos. Duas abas do gestor gravando ao mesmo tempo não deixam ninguém em dois modelos.
@@ -331,3 +346,4 @@ Nenhuma consulta precisa de índice para publicar. A Vercel continua com 11 de 1
 - **Checks da equipe (`useTeamRoutineMarks`), em jsdom:** a consulta só pelo dia, os checks separados por pessoa e tarefa, e a resposta de ontem ou da academia anterior que não aparece.
 - **Aba Hoje, em jsdom:** a troca de aba pelo endereço (com replace), o título, os cartões, a linha do agora, o "A rotina começa às", quem está sem modelo, o detalhe, as atrasadas, as observações, os casos sem conta, o check de outro dia que não conta e a ausência de qualquer botão de check.
 - **Apresentação, em jsdom:** os seis passos com os textos, os botões de cada passo, os pontinhos, o Entendi que fecha e a volta ao primeiro passo quando reabre.
+- **Apresentação que abre sozinha, em jsdom:** abre na lista e na aba Hoje e não no modelo aberto, não reabre ao voltar do modelo nem ao montar de novo na mesma sessão, não abre para quem dispensou (pelo cadastro do login ou pelo da lista da equipe), o "Não mostrar novamente" só no último passo, gravando `introsDismissed.rotinas` no cadastro certo, o aviso quando a gravação falha, e o mesmo botão quando ela abre pelo balão.

@@ -85,13 +85,13 @@ describe('casca do App para o professor', () => {
     const rotinas = app.indexOf('label="Rotinas"', inicio);
     const config = app.indexOf('label="Configurações"', inicio);
     const guarda = app.lastIndexOf('{nav.rotinas && ', rotinas);
-    const balao = app.indexOf('<RotinasNovo tone="alert" />', inicio);
+    const balao = app.indexOf('<RotinasNovo tone="alert" db={db} appUser={appUser} />', inicio);
     expect(app.indexOf('<RotinasNovo')).toBe(balao);
     expect(balao).toBeGreaterThan(rotinas);
     expect(balao).toBeLessThan(config);
     // É a prop `novo` do próprio SidebarItem do Rotinas, e some com a data.
     const item = app.slice(guarda, config);
-    expect(item).toMatch(/^\{nav\.rotinas && \(\s*<SidebarItem\s[\s\S]*?label="Rotinas"[\s\S]*?novo=\{isNewFeatureOn\(ROTINAS_NOVO_ATE\) \? <RotinasNovo tone="alert" \/> : null\}\s*\/>\s*\)\}/);
+    expect(item).toMatch(/^\{nav\.rotinas && \(\s*<SidebarItem\s[\s\S]*?label="Rotinas"[\s\S]*?novo=\{isNewFeatureOn\(ROTINAS_NOVO_ATE\) \? <RotinasNovo tone="alert" db=\{db\} appUser=\{appUser\} \/> : null\}\s*\/>\s*\)\}/);
     expect(app).toContain("import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/RotinasIntro.jsx';");
   });
 

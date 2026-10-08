@@ -8,13 +8,26 @@ import { act, createElement as h, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { SidebarItem } from '../../components/layout/Sidebar.jsx';
-import { RotinasNovo } from '../../components/rotinas/RotinasIntro.jsx';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+// O RotinasIntro.jsx grava o "Não mostrar novamente" pelo rotinasWrites.js, que
+// lê o firebase.js: sem o mock, o teste subiria o Firebase de verdade.
+vi.mock('../firebase.js', () => ({
+  appId: 'acad',
+  USERS_PATH: 'stronix_users',
+  ROUTINE_MODELS_PATH: 'stronix_rotina_modelos',
+  ROUTINE_VERSIONS_PATH: 'stronix_rotina_versoes',
+  ROUTINE_MARKS_PATH: 'stronix_rotina_marcas',
+  db: {},
+  auth: {},
+}));
+
+const { SidebarItem } = await import('../../components/layout/Sidebar.jsx');
+const { RotinasNovo } = await import('../../components/rotinas/RotinasIntro.jsx');
 
 const HOJE = new Date(2026, 9, 8, 9, 0);
 // A duração da largura do menu (o <aside> do App.jsx). O balão só aparece

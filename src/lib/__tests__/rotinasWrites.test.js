@@ -7,6 +7,7 @@ vi.mock('../firebase.js', () => ({
   ROUTINE_MODELS_PATH: 'stronix_rotina_modelos',
   ROUTINE_VERSIONS_PATH: 'stronix_rotina_versoes',
   ROUTINE_MARKS_PATH: 'stronix_rotina_marcas',
+  USERS_PATH: 'stronix_users',
 }));
 
 vi.mock('firebase/firestore', () => {
@@ -18,7 +19,7 @@ vi.mock('firebase/firestore', () => {
       return { path: path(...p), id: p[p.length - 1] };
     },
     serverTimestamp: () => 'agora',
-    setDoc: vi.fn(async (ref, data) => { s.ops.push({ op: 'set', path: ref.path, data }); }),
+    setDoc: vi.fn(async (ref, data, opts) => { s.ops.push({ op: 'set', path: ref.path, data, ...(opts ? { opts } : {}) }); }),
     updateDoc: vi.fn(async (ref, data) => { s.ops.push({ op: 'update', path: ref.path, data }); }),
     deleteDoc: vi.fn(async (ref) => { s.ops.push({ op: 'delete', path: ref.path }); }),
     // Como o SDK: depois da primeira gravação, ler na mesma transação é erro.
@@ -37,7 +38,7 @@ vi.mock('firebase/firestore', () => {
   };
 });
 
-const { createModel, deleteModel, duplicateModel, markDone, saveMarkNote, setPersonModel, undoMark, updateModel } = await import('../rotinasWrites.js');
+const { createModel, deleteModel, dismissRotinasIntro, duplicateModel, markDone, saveMarkNote, setPersonModel, undoMark, updateModel } = await import('../rotinasWrites.js');
 
 const M = 'artifacts/acad/public/data/stronix_rotina_modelos';
 const V = 'artifacts/acad/public/data/stronix_rotina_versoes';
@@ -171,5 +172,28 @@ describe('check', () => {
   it('desfazer apaga o check', async () => {
     await undoMark({ db: {}, markId: 'carla_2026-10-06_t1' });
     expect(op('delete', `${K}/carla_2026-10-06_t1`)).toBeDefined();
+  });
+});
+
+// O "Não mostrar novamente" da apresentação das Rotinas grava no cadastro da
+// própria pessoa, com merge, como o "já li" do sino (useNotificationsSeen): o
+// mapa introsDismissed junta as apresentações dispensadas sem apagar as outras,
+// e nada mais do cadastro muda (papel, academia e chave ficam como estão, que é
+// o que as regras de stronix_users conferem).
+describe('apresentação das Rotinas', () => {
+  it('"Não mostrar novamente" grava introsDismissed.rotinas no próprio cadastro, com merge', async () => {
+    await dismissRotinasIntro({ db: {}, userId: 'g1' });
+    expect(s.ops).toEqual([{
+      op: 'set',
+      path: 'artifacts/acad/public/data/stronix_users/g1',
+      data: { introsDismissed: { rotinas: true } },
+      opts: { merge: true },
+    }]);
+  });
+
+  it('sem o id do cadastro, recusa sem gravar', async () => {
+    await expect(dismissRotinasIntro({ db: {}, userId: '' })).rejects.toThrow();
+    await expect(dismissRotinasIntro({ db: {} })).rejects.toThrow();
+    expect(s.ops).toEqual([]);
   });
 });
