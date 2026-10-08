@@ -1868,6 +1868,8 @@ useEffect(() => {
                   appUser={appUser}
                   usersList={usersList}
                   modelId={modelId}
+                  tab={sub}
+                  onTab={(subId) => goToSub('rotinas', subId)}
                   tenantId={sessionTenant}
                   listenersActive={listenersActive}
                 />

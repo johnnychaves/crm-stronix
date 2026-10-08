@@ -462,12 +462,15 @@ describe('o balão "Novo"', () => {
     expect(labelled('Novo: o que é esta tela')).toBeNull();
   });
 
-  it('o cabeçalho volta a ter uma linha só: o título à esquerda e o Novo modelo à direita', async () => {
+  it('as abas ficam embaixo do sobretítulo, e a linha do título tem o título à esquerda e o Novo modelo à direita', async () => {
     await render(LIST);
     const novo = button('Novo modelo');
     const linha = novo.parentElement;
     expect(linha.querySelector('h1')).not.toBeNull();
-    expect(linha.textContent).toContain('Rotinas');
     expect(linha.lastElementChild).toBe(novo);
+    const abas = document.body.querySelector('[role="tablist"]');
+    expect([...abas.querySelectorAll('[role="tab"]')].map((t) => t.textContent)).toEqual(['Modelos', 'Hoje 1 sem modelo']);
+    expect(abas.parentElement.previousElementSibling.textContent.trim()).toBe('Rotinas');
+    expect(abas.compareDocumentPosition(novo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
