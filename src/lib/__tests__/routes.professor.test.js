@@ -104,7 +104,7 @@ describe('routeDecision: professor', () => {
   });
 
   it('Rotinas é do gestor: a lista e o modelo aberto levam o professor à Meta diária com o aviso de tela não liberada', () => {
-    for (const p of [`/${T}/rotinas`, `/${T}/rotinas/modelos`, `/${T}/rotinas/modelos/M1`, `/${T}/rotinas/xyz`]) {
+    for (const p of [`/${T}/rotinas`, `/${T}/rotinas/modelos`, `/${T}/rotinas/modelos/M1`, `/${T}/rotinas/hoje`, `/${T}/rotinas/xyz`]) {
       expect(decide(p, professor, { search: '?a=1' }), p).toEqual(meta('nao-liberada'));
       expect(decide(p, semLigacao), p).toEqual(meta('nao-liberada'));
     }

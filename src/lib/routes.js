@@ -44,10 +44,13 @@ export const FICHA_TABS = Object.freeze({
   contratos: 'contratos',
   referrals: 'indicacoes',
 });
-// Abas da tela Rotinas (spec 2026-10-06). A aba Hoje entra na parte 2. O
-// modelo aberto mora em /rotinas/modelos/<id>, lido à parte em readScreen.
+// Abas da tela Rotinas (spec 2026-10-06): Modelos e Hoje. O modelo aberto mora
+// em /rotinas/modelos/<id>, lido à parte em readScreen. A aba Modelos é o
+// endereço curto /<academia>/rotinas: a RotinasView manda sub null para ela, e
+// /rotinas/modelos continua abrindo a lista.
 export const ROTINAS_TABS = Object.freeze({
   modelos: 'modelos',
+  hoje: 'hoje',
 });
 
 // id da tela (os mesmos valores de activeTab de sempre) para os segmentos

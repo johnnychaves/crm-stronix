@@ -462,7 +462,7 @@ describe('sub-tela no caminho', () => {
   });
 
   it('a tabela de sub-telas é congelada e o padrão de cada uma existe nela', () => {
-    for (const id of ['settings', 'ficha']) {
+    for (const id of ['settings', 'ficha', 'rotinas']) {
       expect(Object.isFrozen(SCREENS[id].subs), id).toBe(true);
       expect(Object.keys(SCREENS[id].subs), id).toContain(SCREENS[id].subPadrao);
     }
@@ -479,6 +479,19 @@ describe('Rotinas no endereço', () => {
     expect(parseAppPath(`/${T}/rotinas`)).toMatchObject({ tenantSlug: T, screen: 'rotinas', unknown: false });
     expect(parseAppPath(`/${T}/rotinas/modelos`)).toMatchObject({ screen: 'rotinas', sub: 'modelos' });
     expect(parseAppPath(`/${T}/rotinas/modelos/AbC123xyz`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', modelId: 'AbC123xyz' });
+  });
+
+  it('lê e monta a aba Hoje', () => {
+    expect(parseAppPath(`/${T}/rotinas/hoje`)).toMatchObject({ screen: 'rotinas', sub: 'hoje', subUnknown: false, unknown: false });
+    expect(parseAppPath(`/${T}/rotinas/HOJE`)).toMatchObject({ screen: 'rotinas', sub: 'hoje' });
+    expect('modelId' in parseAppPath(`/${T}/rotinas/hoje`)).toBe(false);
+    expect(parseAppPath(`/${T}/rotinas/hoje/x`)).toMatchObject({ screen: 'rotinas', subUnknown: true });
+    expect(hrefFor(T, 'rotinas', { sub: 'hoje' })).toBe(`/${T}/rotinas/hoje`);
+    // A aba Modelos manda sub null: o endereço dela é o curto, o mesmo do menu.
+    expect(hrefFor(T, 'rotinas', { sub: null })).toBe(`/${T}/rotinas`);
+    expect(parseAppPath(hrefFor(T, 'rotinas', { sub: 'hoje' }))).toMatchObject({ screen: 'rotinas', sub: 'hoje' });
+    // O modelo aberto ganha da aba: o endereço do modelo é um só.
+    expect(hrefFor(T, 'rotinas', { sub: 'hoje', modelId: 'AbC' })).toBe(`/${T}/rotinas/modelos/AbC`);
   });
 
   it('sub-tela desconhecida e id inválido caem na lista', () => {

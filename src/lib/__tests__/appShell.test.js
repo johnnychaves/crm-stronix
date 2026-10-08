@@ -218,4 +218,8 @@ describe('Rotinas', () => {
     expect(screenState(parseAppPath(`/${T}/rotinas/modelos/M1`), null, gestor)).toMatchObject({ activeTab: 'rotinas', resolvedTab: 'rotinas', sub: 'modelos', modelId: 'M1' });
     expect(screenState(parseAppPath(`/${T}/rotinas`), null, gestor)).toMatchObject({ sub: 'modelos', modelId: null });
   });
+
+  it('a aba Hoje vem do endereço, sem modelo aberto', () => {
+    expect(screenState(parseAppPath(`/${T}/rotinas/hoje`), null, gestor)).toMatchObject({ activeTab: 'rotinas', sub: 'hoje', modelId: null });
+  });
 });

@@ -416,6 +416,19 @@ describe('Rotinas na decisão de rota', () => {
     expect(decide(`/${T}/rotinas/modelos/AbC123`, admin)).toEqual({ kind: 'ok' });
   });
 
+  it('a aba Hoje abre de primeira para o gestor, e só para ele', () => {
+    expect(decide(`/${T}/rotinas/hoje`, admin)).toEqual({ kind: 'ok' });
+    expect(decide(`/${T}/rotinas/hoje`, consultor)).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'so-gestor'));
+    expect(decide('/rotinas/hoje', admin)).toEqual(casa(`/${T}/rotinas/hoje`, { screen: 'rotinas', sub: 'hoje' }));
+    expect(decide('/outra/rotinas/hoje', admin)).toEqual(casa(`/${T}/rotinas/hoje`, { screen: 'rotinas', sub: 'hoje' }));
+    expect(decide(`/${T}/rotinas/hoje/x`, admin)).toEqual(casa(`/${T}/rotinas`, { screen: 'rotinas' }));
+  });
+
+  it('a aba Hoje tem a mesma chave e o mesmo molde da lista: trocar de aba não remonta a tela', () => {
+    expect(screenKey(parseAppPath(`/${T}/rotinas/hoje`))).toBe('rotinas');
+    expect(routeTemplate(`/${T}/rotinas/hoje`)).toBe('/:tenant/rotinas');
+  });
+
   it('o consultor cai no Operacional com o aviso de gestor, em qualquer endereço de Rotinas', () => {
     for (const p of [`/${T}/rotinas`, `/${T}/rotinas/modelos/AbC123`, `/${T}/rotinas/xyz`]) {
       expect(decide(p, consultor), p).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'so-gestor'));
