@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ArrowLeft, Clock, Copy, Pencil, Plus, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -29,6 +29,7 @@ function EditButton({ task, onEdit, className }) {
     <button
       type="button"
       aria-label={`Editar ${task.title}`}
+      data-edit-task={task.id}
       onClick={(e) => onEdit(task, e.currentTarget)}
       className={cn('grid size-[30px] shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground', EDIT_REVEAL, className)}
     >
@@ -101,9 +102,21 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
   // O foco volta para quem abriu o painel (Nova tarefa ou o lápis da linha).
-  // Sem SheetTrigger, o Radix o mandaria para o <body>.
+  // Sem SheetTrigger, o Radix o mandaria para o <body>. A tarefa que abriu
+  // fica guardada à parte (openerTaskRef): pausar, reativar ou tirar o horário
+  // muda a tarefa de lugar (o grupo Pausadas, a linha do dia e os quadrinhos
+  // são listas separadas), então o lápis que abriu o painel sai da tela e o
+  // foco vai para o lápis novo da mesma tarefa, achado pelo data-edit-task.
   const openerRef = useRef(null);
+  const openerTaskRef = useRef(null);
   const newTaskRef = useRef(null);
+  const dayCardRef = useRef(null);
+  // O lápis de Renomear sai da tela enquanto o campo do nome está aberto. O
+  // pedido de foco fica numa ref e o effect o cumpre depois que o campo fecha
+  // e o lápis volta (renaming falso e nenhuma gravação em curso, que deixa o
+  // lápis desligado).
+  const renameBtnRef = useRef(null);
+  const refocusRename = useRef(false);
   const followers = people.filter((p) => (model.followerIds || []).includes(p.id));
   const others = people.filter((p) => !(model.followerIds || []).includes(p.id));
   const activeCount = (model.tasks || []).filter((t) => t.active !== false).length;
@@ -112,6 +125,12 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
   const free = modelFreeTasks(model);
   const paused = modelPausedTasks(model);
   const chips = modelChips(model);
+
+  useEffect(() => {
+    if (renaming || busy || !refocusRename.current) return;
+    refocusRename.current = false;
+    renameBtnRef.current?.focus();
+  }, [renaming, busy]);
 
   const run = async (fn, ok, fail) => {
     try {
@@ -143,6 +162,7 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
     setRenaming(true);
   };
   const cancelRename = () => {
+    refocusRename.current = true;
     setRenaming(false);
     setNameDraft(model.name);
     setNameError(null);
@@ -153,7 +173,10 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
     setNameError(problem);
     if (problem) return;
     const ok = await run(() => updateModel({ db, appUser, modelId: model.id, edit: () => ({ name: nameDraft.trim() }) }), 'Nome salvo.', 'Não deu para salvar o nome. Tente de novo.');
-    if (ok) setRenaming(false);
+    if (ok) {
+      refocusRename.current = true;
+      setRenaming(false);
+    }
   });
 
   const duplicate = () => guarded(async () => {
@@ -190,14 +213,26 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
 
   const openTask = (task, opener) => {
     openerRef.current = opener ?? null;
+    openerTaskRef.current = task?.id ?? null;
     setSheet({ key: `${task?.id ?? 'nova'}-${Date.now()}`, task });
   };
   // A tarefa excluída leva junto o lápis que abriu o painel: o foco vai para
   // o Nova tarefa.
-  const taskRemoved = () => { openerRef.current = newTaskRef.current; };
+  const taskRemoved = () => {
+    openerRef.current = newTaskRef.current;
+    openerTaskRef.current = null;
+  };
+  // Primeiro o próprio lápis que abriu o painel. Se ele saiu da tela porque a
+  // tarefa mudou de lugar, o lápis da mesma tarefa na lista nova. Sem nenhum
+  // dos dois, o Nova tarefa.
   const restoreFocus = (event) => {
     event.preventDefault();
-    const target = openerRef.current?.isConnected ? openerRef.current : newTaskRef.current;
+    let target = openerRef.current?.isConnected ? openerRef.current : null;
+    if (!target && openerTaskRef.current) {
+      const pencils = dayCardRef.current?.querySelectorAll('[data-edit-task]') ?? [];
+      target = [...pencils].find((el) => el.dataset.editTask === openerTaskRef.current) ?? null;
+    }
+    if (!target) target = newTaskRef.current;
     if (target?.isConnected) target.focus();
   };
 
@@ -237,10 +272,11 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
           </div>
         ) : (
           <div className="min-w-0">
-            <h1 className="flex items-center gap-2 font-display text-[28px] font-semibold leading-tight tracking-tight">
-              <span className="min-w-0 break-words">{model.name}</span>
+            <div className="flex items-center gap-2">
+              <h1 className="min-w-0 break-words font-display text-[28px] font-semibold leading-tight tracking-tight">{model.name}</h1>
               <button
                 type="button"
+                ref={renameBtnRef}
                 aria-label="Renomear"
                 disabled={busy}
                 onClick={startRename}
@@ -248,7 +284,7 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
               >
                 <Pencil aria-hidden="true" className="size-4" />
               </button>
-            </h1>
+            </div>
             {chips.length > 0 && (
               <p className="mt-1.5 flex flex-wrap gap-1.5">
                 {chips.map((c) => (
@@ -284,7 +320,7 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
       )}
 
       <div className="grid items-start gap-[18px] lg:grid-cols-[minmax(0,1fr)_310px]">
-        <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+        <section ref={dayCardRef} className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
           <div className="flex items-center justify-between gap-2.5 border-b border-border py-3 pl-4 pr-3.5">
             <h2 className="flex items-center gap-2 font-display text-[14px] font-semibold">
               O dia do modelo <span className="num rounded-md bg-muted px-[7px] py-[3px] font-sans text-[11px] text-muted-foreground">{activeCount}</span>

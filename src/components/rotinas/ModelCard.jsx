@@ -71,7 +71,7 @@ export function ModelCard({ model, people, link }) {
           <>
             <span className="flex">
               {followers.slice(0, FACES_MAX).map((p, i) => (
-                <PersonInitials key={p.id} name={p.name} className={cn('ring-2 ring-card', i > 0 && '-ml-[7px]')} />
+                <PersonInitials key={p.id} name={p.name} className={cn('ring-2 ring-card dark:ring-[#0c1126]', i > 0 && '-ml-[7px]')} />
               ))}
             </span>
             <span className="min-w-0 truncate">{namesText(followers.map((p) => firstName(p.name)))}</span>

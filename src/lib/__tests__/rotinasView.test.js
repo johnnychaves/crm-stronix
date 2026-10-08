@@ -537,7 +537,9 @@ describe('Página B: o modelo aberto', () => {
     await render('/acad/rotinas/modelos/m5');
     const titulo = document.body.querySelector('h1');
     expect(titulo.textContent).toBe('Consultor manhã');
-    expect(titulo.querySelector('button[aria-label="Renomear"]')).not.toBeNull();
+    // O título é só o nome: o lápis fica ao lado dele, e não dentro do <h1>.
+    expect(titulo.querySelector('button')).toBeNull();
+    expect(titulo.nextElementSibling).toBe(labelled('Renomear'));
     expect(button('Renomear')).toBeUndefined();
     expect(text()).toContain('4 tarefas no horário, das 06:00 às 10:30');
     expect(text()).toContain('1 a qualquer hora');
@@ -608,5 +610,138 @@ describe('Página B: o modelo aberto', () => {
     hoje(new Date(2026, 9, 10, 10, 0));
     await render('/acad/rotinas/modelos/m5');
     expect(secao('Como o consultor vê').textContent).toContain('Hoje este modelo não tem tarefa.');
+  });
+});
+
+describe('Página B: o estado da prévia em texto', () => {
+  it('cada tarefa da prévia diz o estado por escrito, para quem não vê a cor', async () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 6, 10, 47), toFake: ['Date'] });
+    s.models = [{
+      id: 'm5',
+      name: 'Consultor manhã',
+      followerIds: [],
+      tasks: [
+        { ...TASK, id: 'a', time: '06:00', title: 'Abrir a recepção' },
+        { ...TASK, id: 'e', time: null, title: 'Pedir indicações' },
+      ],
+    }];
+    await render('/acad/rotinas/modelos/m5');
+    const previa = [...document.body.querySelectorAll('section')].find((el) => el.textContent.startsWith('Como o consultor vê'));
+    const linhas = [...previa.querySelectorAll('li')];
+    expect(linhas).toHaveLength(2);
+    expect(linhas[0].querySelector('.sr-only').textContent).toBe('. Era às 06:00, atrasada há 4h 47min');
+    expect(linhas[1].querySelector('.sr-only').textContent).toBe('. Até o fim do dia');
+  });
+});
+
+describe('Página B: o foco depois de editar uma tarefa', () => {
+  const MODELO = {
+    id: 'm5',
+    name: 'Consultor manhã',
+    followerIds: ['carla'],
+    tasks: [
+      { ...TASK, id: 'a', time: '06:00', title: 'Abrir a recepção' },
+      { ...TASK, id: 'c', time: '10:00', title: 'Ligações para leads novos' },
+      { ...TASK, id: 'e', time: null, title: 'Pedir indicações' },
+      { ...TASK, id: 'f', time: '09:00', title: 'Organizar o mural', active: false },
+    ],
+  };
+  const rerender = () => root.render(h(MemoryRouter, { initialEntries: [entry] }, h(ToastContext.Provider, { value: toast }, h(Screen))));
+  const dia = () => [...document.body.querySelectorAll('section')].find((el) => el.textContent.startsWith('O dia do modelo'));
+  // O servidor confirma a gravação e a lista nova chega antes de o painel sair
+  // da tela: o lápis que abriu o painel já foi tirado quando o foco volta.
+  beforeEach(() => {
+    s.models = [MODELO];
+    updateModel.mockImplementation(async ({ edit }) => {
+      s.models = [{ ...MODELO, ...edit(MODELO) }];
+      rerender();
+    });
+  });
+
+  it('pausar leva o foco ao lápis da tarefa, agora no grupo Pausadas', async () => {
+    await render('/acad/rotinas/modelos/m5');
+    await click(labelled('Editar Abrir a recepção'));
+    await click(button('Pausar tarefa'));
+    await settleFocus();
+    const lapis = labelled('Editar Abrir a recepção');
+    expect(lapis).not.toBeNull();
+    expect(document.activeElement).toBe(lapis);
+    expect(lapis.closest('ol').previousElementSibling.textContent).toBe('Pausadas');
+  });
+
+  it('reativar leva o foco ao lápis da tarefa, agora na linha do dia', async () => {
+    await render('/acad/rotinas/modelos/m5');
+    await click(labelled('Editar Organizar o mural'));
+    await click(button('Reativar tarefa'));
+    await settleFocus();
+    const lapis = labelled('Editar Organizar o mural');
+    expect(document.activeElement).toBe(lapis);
+    expect(dia().querySelector('ol').contains(lapis)).toBe(true);
+    expect(dia().textContent).not.toContain('Pausadas');
+  });
+
+  it('tirar o horário leva o foco ao lápis do quadrinho da tarefa', async () => {
+    await render('/acad/rotinas/modelos/m5');
+    await click(labelled('Editar Ligações para leads novos'));
+    await click(button('Sem horário'));
+    await click(button('Salvar alterações'));
+    await settleFocus();
+    const lapis = labelled('Editar Ligações para leads novos');
+    expect(document.activeElement).toBe(lapis);
+    expect(lapis.closest('li').parentElement.previousElementSibling.textContent).toBe('A qualquer hora do dia');
+  });
+
+  it('pôr um horário na tarefa sem horário leva o foco ao lápis da linha do dia', async () => {
+    await render('/acad/rotinas/modelos/m5');
+    await click(labelled('Editar Pedir indicações'));
+    await click(button('Com horário'));
+    await type(document.body.querySelector('input[type="time"]'), '11:00');
+    await click(button('Salvar alterações'));
+    await settleFocus();
+    const lapis = labelled('Editar Pedir indicações');
+    expect(document.activeElement).toBe(lapis);
+    expect(dia().querySelector('ol').contains(lapis)).toBe(true);
+  });
+});
+
+describe('Página B: o foco depois de renomear', () => {
+  const abrir = async () => {
+    await render('/acad/rotinas/modelos/m1');
+    await click(labelled('Renomear'));
+  };
+  const escape = async (el) => {
+    await act(async () => { el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); });
+  };
+
+  it('Cancelar devolve o foco ao lápis de Renomear', async () => {
+    await abrir();
+    await click(button('Cancelar'));
+    expect(document.activeElement).toBe(labelled('Renomear'));
+  });
+
+  it('Escape devolve o foco ao lápis de Renomear', async () => {
+    await abrir();
+    await escape(labelled('Nome do modelo'));
+    expect(labelled('Nome do modelo')).toBeNull();
+    expect(document.activeElement).toBe(labelled('Renomear'));
+  });
+
+  it('Salvar nome devolve o foco ao lápis de Renomear', async () => {
+    updateModel.mockResolvedValue(undefined);
+    await abrir();
+    await type(labelled('Nome do modelo'), 'Manhã cedo');
+    await click(button('Salvar nome'));
+    expect(updateModel).toHaveBeenCalledTimes(1);
+    expect(labelled('Nome do modelo')).toBeNull();
+    expect(document.activeElement).toBe(labelled('Renomear'));
+  });
+
+  it('o nome recusado deixa o campo aberto e o foco onde estava', async () => {
+    s.models = [M1, M2];
+    await abrir();
+    await type(labelled('Nome do modelo'), 'Cópia de Manhã');
+    await click(button('Salvar nome'));
+    expect(labelled('Nome do modelo')).not.toBeNull();
+    expect(document.activeElement).not.toBe(labelled('Renomear'));
   });
 });

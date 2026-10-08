@@ -2,7 +2,7 @@ import { useId } from 'react';
 import { cn } from '@/lib/utils';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useMinuteClock } from '../../hooks/useMinuteClock.js';
-import { taskStateAt, tasksForDay } from '../../lib/rotinas.js';
+import { stateText, taskStateAt, tasksForDay } from '../../lib/rotinas.js';
 import { StateMark } from './StateMark.jsx';
 
 // Quantas tarefas a prévia mostra. O resto vira "E mais 2 hoje.".
@@ -51,7 +51,12 @@ export function RoutinePreview({ model }) {
                 >
                   <span className={cn('num text-right text-[11px] font-medium', TIME_TONE[state] ?? 'text-muted-foreground')}>{task.time ?? ''}</span>
                   <StateMark state={state} />
-                  <span className="min-w-0 truncate">{task.title}</span>
+                  {/* O estado por escrito, o mesmo texto do cartão do consultor:
+                      sem ele, "agora" e "atrasada" só existiriam na cor. */}
+                  <span className="min-w-0 truncate">
+                    {task.title}
+                    <span className="sr-only">. {stateText(task, state, now, now)}</span>
+                  </span>
                 </li>
               );
             })}
