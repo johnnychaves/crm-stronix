@@ -7,7 +7,7 @@
 // Spec: docs/superpowers/specs/2026-10-06-rotinas-dos-consultores-design.md.
 // Mockups: 2026-10-08-rotinas-intro-e-polimento.html (Página B · Linha do dia)
 // e 2026-10-08-rotinas-aba-hoje.html (Hoje A · Por pessoa).
-import { byTime, minutesOf, tasksForDay } from './rotinas.js';
+import { byTime, durationText, hhmmOf, markDoneAt, minutesOf, modelOfUser, routineDayKey, taskStateAt, tasksForDay } from './rotinas.js';
 
 // A linha do dia do cartão do modelo vai das 06h às 21h.
 export const DAY_LINE_START = 6 * 60;
@@ -120,4 +120,107 @@ export function personTodayText(model, now, metaWeekdays) {
   const head = `${tarefas(today.length)} hoje`;
   const timed = today.filter(isTimed);
   return timed.length ? `${head} · ${windowText(timed[0].time, timed[timed.length - 1].time)}` : head;
+}
+
+// ---------- A aba Hoje ----------
+
+const minutesOfDay = (date) => date.getHours() * 60 + date.getMinutes();
+// A hora de um instante: o "Às 07:58" das observações e o "Ao vivo · 10:47".
+export const clockText = (date) => hhmmOf(minutesOfDay(date));
+export const isDoneState = (state) => state === 'done' || state === 'doneLate';
+
+// O dia de uma pessoa: as tarefas de hoje do modelo que ela segue, com o check
+// e o estado de cada uma no instante `now`. marks é o Map tarefa -> check da
+// pessoa no dia ({ doneAt, note }), do useTeamRoutineMarks. O check só conta
+// quando a hora dele cai no próprio dia (markDoneAt, a mesma regra do cartão
+// da Meta); o que não conta fica fora, e a observação dele vai junto.
+export function personDay(model, marks, now, metaWeekdays) {
+  const dayKey = routineDayKey(now);
+  const nowMinutes = minutesOfDay(now);
+  const rows = tasksForDay(model, now, metaWeekdays).map((task) => {
+    const mark = marks?.get(task.id) || null;
+    const doneAt = mark ? markDoneAt(mark, dayKey) : null;
+    return { task, doneAt, note: doneAt ? (mark.note || '') : '', state: taskStateAt(task, doneAt, now) };
+  });
+  const timed = rows.filter((r) => isTimed(r.task));
+  const done = rows.filter((r) => isDoneState(r.state)).length;
+  const firstAt = timed.length ? minutesOf(timed[0].task.time) : null;
+  const later = timed.findIndex((r) => minutesOf(r.task.time) > nowMinutes);
+  return {
+    rows,
+    timed,
+    free: rows.filter((r) => !isTimed(r.task)),
+    done,
+    late: rows.filter((r) => r.state === 'late').length,
+    total: rows.length,
+    // Onde a linha do agora entra entre as tarefas com horário: antes da
+    // primeira que ainda não chegou, ou no fim. Sem tarefa com horário, null.
+    nowIndex: timed.length ? (later === -1 ? timed.length : later) : null,
+    // Antes da primeira tarefa com horário, e sem nada feito, o cartão só diz
+    // quando a rotina começa.
+    startsAt: firstAt != null && firstAt > nowMinutes && done === 0 ? timed[0].task.time : null,
+  };
+}
+
+// "Era às 10:00, há 47 min", na lista "Atrasadas agora".
+export const lateText = (task, now) => `Era às ${task.time}, há ${durationText(minutesOfDay(now) - minutesOf(task.time))}`;
+
+const byPersonName = (a, b) => String(a.person.name || '').localeCompare(String(b.person.name || ''), 'pt-BR');
+
+// A equipe hoje. people são os consultores que podem seguir modelo
+// (routineParticipants), na ordem da equipe; marksByPerson é o Map consultor ->
+// (Map tarefa -> check). Devolve um cartão por pessoa, com quem está sem
+// modelo no fim; a soma de quem segue modelo; as atrasadas em ordem de horário
+// (e de nome no empate); e as observações, a mais recente primeiro.
+export function teamToday({ people, models, marksByPerson, now, metaWeekdays }) {
+  const cards = (people || []).map((person) => {
+    const model = modelOfUser(models, person.id);
+    return model
+      ? { person, model, ...personDay(model, marksByPerson?.get(person.id), now, metaWeekdays) }
+      : { person, model: null };
+  });
+  cards.sort((a, b) => Number(!a.model) - Number(!b.model));
+  const following = cards.filter((c) => c.model);
+  const sum = (key) => following.reduce((acc, c) => acc + c[key], 0);
+  const lateRows = following
+    .flatMap((c) => c.rows.filter((r) => r.state === 'late').map((r) => ({ person: c.person, task: r.task, text: lateText(r.task, now) })))
+    .sort((a, b) => byTime(a.task, b.task) || byPersonName(a, b));
+  const notes = following
+    .flatMap((c) => c.rows.filter((r) => r.note).map((r) => ({ person: c.person, task: r.task, doneAt: r.doneAt, note: r.note })))
+    .sort((a, b) => b.doneAt - a.doneAt);
+  return {
+    cards,
+    lateRows,
+    notes,
+    done: sum('done'),
+    total: sum('total'),
+    late: sum('late'),
+    following: following.length,
+    withoutModel: cards.length - following.length,
+  };
+}
+
+// A frase do topo da aba Hoje, em pedaços. O pedaço com destaque leva em:
+// 'brand' (a conta) ou 'late' (as atrasadas). A frase é a junção dos textos.
+export function todayHeadline({ peopleCount, following, done, total, late }) {
+  if (!peopleCount) return [{ text: 'Nenhum consultor na equipe ainda.' }];
+  if (!following) return [{ text: 'Ninguém segue um modelo ainda.' }];
+  if (!total) return [{ text: 'Hoje não tem tarefa da rotina para a equipe.' }];
+  const head = [
+    { text: 'A equipe fez ' },
+    { text: `${done} de ${total}`, em: 'brand' },
+    { text: ` ${total === 1 ? 'tarefa' : 'tarefas'} da rotina até agora` },
+  ];
+  if (!late) return [...head, { text: '. Nenhuma está atrasada.' }];
+  return [...head, { text: ', e ' }, { text: `${late} ${late === 1 ? 'está atrasada' : 'estão atrasadas'}`, em: 'late' }, { text: '.' }];
+}
+
+// A tarefa escolhida na aba Hoje ({ personId, taskId }), com o dia dela. null
+// quando nada foi escolhido ou quando ela sumiu (o modelo mudou, a pessoa
+// trocou de modelo ou saiu da equipe).
+export function findSelection(cards, selected) {
+  if (!selected) return null;
+  const card = (cards || []).find((c) => c.model && c.person.id === selected.personId);
+  const row = card?.rows.find((r) => r.task.id === selected.taskId);
+  return row ? { person: card.person, ...row } : null;
 }
