@@ -4,7 +4,7 @@ import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useFrozenWhileIdle, useMinuteClock } from '../../hooks/useMinuteClock.js';
 import { useTeamRoutineMarks } from '../../hooks/useTeamRoutineMarks.js';
 import { routineDayKey } from '../../lib/rotinas.js';
-import { clockText, findSelection, taskDomId, teamToday, todayHeadline } from '../../lib/rotinasTela.js';
+import { clockText, findSelection, frozenDayText, personDomId, taskDomId, teamToday, todayHeadline } from '../../lib/rotinasTela.js';
 import { PersonDayCard } from './PersonDayCard.jsx';
 import { TodayAside } from './TodayAside.jsx';
 
@@ -22,10 +22,12 @@ import { TodayAside } from './TodayAside.jsx';
 // pausa viraria atrasada sozinha. Por isso a aba congela o instante em que as
 // assinaturas pararam (useFrozenWhileIdle) e calcula tudo nele: os estados, a
 // frase do topo, as atrasadas, a linha do agora e o dia da leitura. O topo diz
-// "Atualizado às HH:MM", e a aba volta ao relógio de agora quando a pessoa mexe
-// na tela e as assinaturas voltam.
+// "Atualizado às HH:MM" (e "Atualizado ontem às HH:MM" quando o relógio de
+// verdade já passou da meia-noite), e a aba volta ao relógio de agora quando a
+// pessoa mexe na tela e as assinaturas voltam.
 export function TodayTab({ db, people, models, modelsLoading = false, tenantId, listenersActive = true, modelLink, onChooseModel }) {
-  const now = useFrozenWhileIdle(useMinuteClock(), listenersActive);
+  const clock = useMinuteClock();
+  const now = useFrozenWhileIdle(clock, listenersActive);
   const { metaWeekdays = [1, 2, 3, 4, 5] } = useGeneralConfig();
   const { marks, loading, error } = useTeamRoutineMarks({ db, enabled: listenersActive, tenantId, dayKey: routineDayKey(now) });
   const [selected, setSelected] = useState(null); // { personId, taskId }
@@ -42,12 +44,19 @@ export function TodayTab({ db, people, models, modelsLoading = false, tenantId, 
   const team = teamToday({ people, models, marksByPerson: marks, now, metaWeekdays });
   const headline = todayHeadline({ peopleCount: people.length, following: team.following, done: team.done, total: team.total, late: team.late });
   const detail = findSelection(team.cards, selected);
+  const frozenDay = frozenDayText(now, clock);
   const toggle = (personId, taskId) =>
     setSelected((cur) => (cur?.personId === personId && cur?.taskId === taskId ? null : { personId, taskId }));
   // O Fechar desmonta o próprio botão, e o foco cairia no body. A tarefa que
-  // estava aberta já está na tela, então o foco vai para ela antes de fechar.
+  // estava aberta costuma estar na tela, então o foco vai para ela antes de
+  // fechar. Se a linha dela saiu (o cartão da pessoa só diz quando a rotina
+  // começa, depois de o consultor desfazer o único check), o foco vai para o
+  // cartão da pessoa, que aceita foco por script (tabIndex -1).
   const close = () => {
-    if (selected) document.getElementById(taskDomId(selected.personId, selected.taskId))?.focus();
+    if (selected) {
+      const row = document.getElementById(taskDomId(selected.personId, selected.taskId));
+      (row ?? document.getElementById(personDomId(selected.personId)))?.focus();
+    }
     setSelected(null);
   };
 
@@ -76,7 +85,11 @@ export function TodayTab({ db, people, models, modelsLoading = false, tenantId, 
           />
           {listenersActive
             ? <span className="whitespace-nowrap">Ao vivo · <span className="num">{clockText(now)}</span></span>
-            : <span>Atualizado às <span className="num">{clockText(now)}</span> · mexa na tela para atualizar</span>}
+            : (
+              <span>
+                Atualizado{frozenDay && ` ${frozenDay}`} às <span className="num">{clockText(now)}</span> · mexa na tela para atualizar
+              </span>
+            )}
         </p>
       </div>
 

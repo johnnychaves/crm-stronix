@@ -3,7 +3,7 @@ import { ALL_DAYS } from '../rotinas.js';
 import {
   DAY_LINE_END, DAY_LINE_START, MODEL_GAP_MINUTES, clockText, dayLineLabels, dayLinePct, findSelection, gapText, hourLabel,
   isDoneState, lateText, modelCardSummary, modelChips, modelDayRows, modelFreeTasks, modelPausedTasks, modelSummary,
-  modelSelectDomId, modelTimes, personDay, personTodayText, taskDomId, teamToday, todayHeadline,
+  frozenDayText, modelSelectDomId, modelTimes, personDay, personDomId, personTodayText, taskDomId, teamToday, todayHeadline,
 } from '../rotinasTela.js';
 
 // 06/10/2026 é terça; 07/10/2026 é quarta; 10/10/2026 é sábado.
@@ -266,5 +266,32 @@ describe('os ids do DOM da tela Rotinas', () => {
   it('o seletor de modelo de cada pessoa tem o seu', () => {
     expect(modelSelectDomId('ana')).toBe('rot-modelo-ana');
     expect(modelSelectDomId('a.b')).toBe('rot-modelo-a_b');
+  });
+
+  it('o cartão de cada pessoa tem o seu, que nunca cai no id de uma tarefa nem no de um seletor', () => {
+    expect(personDomId('ana')).toBe('rotcartao-ana');
+    expect(personDomId('a.b')).toBe('rotcartao-a_b');
+    expect(personDomId('ana').startsWith('rot-')).toBe(false);
+  });
+});
+
+describe('o dia do rótulo "Atualizado" da aba Hoje', () => {
+  it('no mesmo dia não escreve dia nenhum', () => {
+    expect(frozenDayText(at('23:50'), at('23:50'))).toBe('');
+    expect(frozenDayText(at('00:05', 6), at('23:59', 6))).toBe('');
+  });
+
+  it('com a meia-noite no meio, diz ontem', () => {
+    expect(frozenDayText(at('23:50'), at('00:10', 7))).toBe('ontem');
+    expect(frozenDayText(at('08:00'), at('23:59', 7))).toBe('ontem');
+  });
+
+  it('ontem vale também na virada do mês', () => {
+    expect(frozenDayText(new Date(2026, 9, 31, 23, 50), new Date(2026, 10, 1, 0, 10))).toBe('ontem');
+  });
+
+  it('mais de um dia atrás, diz o dia e o mês', () => {
+    expect(frozenDayText(at('23:50'), at('09:00', 8))).toBe('em 06/10');
+    expect(frozenDayText(new Date(2026, 9, 30, 18, 5), new Date(2026, 10, 2, 9, 0))).toBe('em 30/10');
   });
 });

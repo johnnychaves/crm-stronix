@@ -357,11 +357,40 @@ describe('o detalhe e o foco', () => {
   });
 });
 
+describe('Fechar com a linha da tarefa fora da tela', () => {
+  it('sem a linha, o foco vai para o cartão da pessoa e não cai no body', async () => {
+    // A Carla fez a tarefa sem horário, então o cartão dela mostra a lista.
+    s.marks.set('carla', new Map([['u6', check('09:00')]]));
+    await render();
+    const linha = rowOf(card('Carla Dias'), 'Atualizar o Stronilead');
+    expect(linha).toBeTruthy();
+    await click(linha);
+    expect(detalhe().textContent).toContain('Carla Dias');
+    // O check some (o consultor desfez): antes da primeira tarefa e sem nada
+    // feito, o cartão só diz quando a rotina começa, e a lista sai da tela. O
+    // detalhe continua aberto.
+    s.marks.delete('carla');
+    await render();
+    expect(card('Carla Dias').textContent).toContain('A rotina começa às 13:00');
+    expect(card('Carla Dias').querySelectorAll('button')).toHaveLength(0);
+    expect(document.getElementById('rot-carla-u6')).toBeNull();
+    expect(detalhe()).not.toBeNull();
+    const fechar = [...detalhe().querySelectorAll('button')].find((b) => b.textContent === 'Fechar');
+    await act(async () => { fechar.focus(); });
+    await click(fechar);
+    expect(detalhe()).toBeNull();
+    expect(document.activeElement).not.toBe(document.body);
+    expect(document.activeElement).toBe(card('Carla Dias'));
+    expect(card('Carla Dias').getAttribute('tabindex')).toBe('-1');
+    expect(card('Carla Dias').id).toBe('rotcartao-carla');
+  });
+});
+
 describe('a lateral não passa da tela', () => {
   it('fica fixa no topo e rola por dentro, para uma lista longa não esconder as observações', async () => {
     await render();
     const classes = container.querySelector('aside').className.split(/\s+/);
-    expect(classes).toEqual(expect.arrayContaining(['lg:sticky', 'lg:top-4', 'lg:max-h-[calc(100dvh-2rem)]', 'lg:overflow-y-auto', 'overscroll-y-contain']));
+    expect(classes).toEqual(expect.arrayContaining(['lg:sticky', 'lg:top-4', 'lg:max-h-[calc(100dvh-6rem)]', 'lg:overflow-y-auto', 'overscroll-y-contain']));
   });
 });
 
@@ -414,10 +443,22 @@ describe('dados parados pelo portão de ociosidade', () => {
     await render();
     expect(s.args.dayKey).toBe('2026-10-06');
     await render({ listenersActive: false });
+    expect(relogio().textContent).toBe('Atualizado às 23:50 · mexa na tela para atualizar');
     await act(async () => { vi.advanceTimersByTime(20 * 60_000); });
     expect(s.args.dayKey).toBe('2026-10-06');
-    expect(relogio().textContent).toBe('Atualizado às 23:50 · mexa na tela para atualizar');
+    // Já é outro dia no relógio de verdade: o rótulo diz que a leitura é de ontem.
+    expect(relogio().textContent).toBe('Atualizado ontem às 23:50 · mexa na tela para atualizar');
     await render({ listenersActive: true });
     expect(s.args.dayKey).toBe('2026-10-07');
+    // O relógio troca no :00 mais 50 ms: em 20 minutos exatos, o último tique é o das 00:09.
+    expect(relogio().textContent).toBe('Ao vivo · 00:09');
+  });
+
+  it('no mesmo dia, o rótulo continua sem dia', async () => {
+    vi.useFakeTimers({ now: at('18:30') });
+    await render();
+    await render({ listenersActive: false });
+    await act(async () => { vi.advanceTimersByTime(5 * 60_000); });
+    expect(relogio().textContent).toBe('Atualizado às 18:30 · mexa na tela para atualizar');
   });
 });

@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { cn } from '@/lib/utils';
 import { stateText } from '../../lib/rotinas.js';
-import { clockText, isDoneState, taskDomId } from '../../lib/rotinasTela.js';
+import { clockText, isDoneState, personDomId, taskDomId } from '../../lib/rotinasTela.js';
 import { AppLink } from '../nav/AppLink.jsx';
 import { PersonInitials } from './PersonInitials.jsx';
 import { StateMark } from './StateMark.jsx';
@@ -100,8 +100,15 @@ export function PersonDayCard({ card, now, selectedTaskId, onSelect, modelLink, 
     />
   );
 
+  // O id e o tabIndex -1 existem para o Fechar do detalhe: se a linha da tarefa
+  // saiu da tela, o foco vai para o cartão (ver o TodayTab).
   return (
-    <section aria-label={person.name} className="rounded-2xl border border-border bg-card shadow-card">
+    <section
+      id={personDomId(person.id)}
+      tabIndex={-1}
+      aria-label={person.name}
+      className="rounded-2xl border border-border bg-card shadow-card outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
       <Head person={person}>
         <div className="min-w-0">
           <p className="truncate text-[14px] font-semibold">{person.name}</p>

@@ -57,8 +57,11 @@ export function TodayAside({ team, detail, now, onClose }) {
   return (
     // Fixa no topo e com rolagem própria: uma lista longa de atrasadas não pode
     // empurrar as observações para fora da tela. O -m-1 com p-1 dá folga para a
-    // sombra dos cartões não ser cortada pela rolagem.
-    <aside className="flex flex-col gap-3 overscroll-y-contain lg:sticky lg:top-4 lg:-m-1 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:p-1">
+    // sombra dos cartões não ser cortada pela rolagem. A altura máxima desconta
+    // o cabeçalho do app (h-16, 4rem, que fica fora da área que rola) e 1rem de
+    // folga em cima e em baixo. Faixa de aviso no topo (teste, mensalidade)
+    // encolhe a área e não entra na conta.
+    <aside className="flex flex-col gap-3 overscroll-y-contain lg:sticky lg:top-4 lg:-m-1 lg:max-h-[calc(100dvh-6rem)] lg:overflow-y-auto lg:p-1">
       <p aria-live="polite" className="sr-only">
         {detail ? `Detalhe: ${firstName(detail.person.name)}, ${detail.task.title}` : ''}
       </p>

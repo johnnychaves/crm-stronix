@@ -129,6 +129,18 @@ const minutesOfDay = (date) => date.getHours() * 60 + date.getMinutes();
 export const clockText = (date) => hhmmOf(minutesOfDay(date));
 export const isDoneState = (state) => state === 'done' || state === 'doneLate';
 
+// O dia a escrever no "Atualizado às 23:50" da aba Hoje quando a leitura está
+// parada (o portão de ociosidade fechou as assinaturas) e o relógio de verdade
+// já passou da meia-noite: sem o dia, o gestor leria a hora como se fosse de
+// hoje. '' no mesmo dia, 'ontem' no dia anterior e 'em 06/10' mais atrás.
+// `frozen` é o instante parado, e `live` o relógio de agora.
+export function frozenDayText(frozen, live) {
+  const day = (date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  const gap = Math.round((day(live) - day(frozen)) / 86_400_000);
+  if (gap === 0) return '';
+  return gap === 1 ? 'ontem' : `em ${pad(frozen.getDate())}/${pad(frozen.getMonth() + 1)}`;
+}
+
 // O dia de uma pessoa: as tarefas de hoje do modelo que ela segue, com o check
 // e o estado de cada uma no instante `now`. marks é o Map tarefa -> check da
 // pessoa no dia ({ doneAt, note }), do useTeamRoutineMarks. O check só conta
@@ -226,9 +238,12 @@ export function findSelection(cards, selected) {
 }
 
 // Os ids do DOM da tela Rotinas, para devolver o foco: ao Fechar o detalhe, à
-// tarefa que estava aberta; ao Escolher modelo, ao seletor daquela pessoa. O id
-// de uma tarefa ou de uma pessoa vem do Firestore, e o que não for letra,
-// número, hífen ou sublinhado vira sublinhado.
+// tarefa que estava aberta (ou, se a linha dela saiu da tela, ao cartão da
+// pessoa); ao Escolher modelo, ao seletor daquela pessoa. O id de uma tarefa ou
+// de uma pessoa vem do Firestore, e o que não for letra, número, hífen ou
+// sublinhado vira sublinhado. O do cartão não começa com `rot-`, para nunca
+// cair no id de uma tarefa nem no de um seletor.
 const domPart = (value) => String(value).replace(/[^A-Za-z0-9_-]/g, '_');
 export const taskDomId = (personId, taskId) => `rot-${domPart(personId)}-${domPart(taskId)}`;
 export const modelSelectDomId = (personId) => `rot-modelo-${domPart(personId)}`;
+export const personDomId = (personId) => `rotcartao-${domPart(personId)}`;
