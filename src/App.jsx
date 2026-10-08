@@ -1609,7 +1609,6 @@ useEffect(() => {
                 {nav.kanban && <SidebarItem icon={<Kanban className="w-[18px] h-[18px]" />} label="Pipeline" href={menuHref('kanban')} onNavigate={closeDrawer} active={activeTab === 'kanban'} />}
                 {nav.clientes && <SidebarItem icon={<GraduationCap className="w-[18px] h-[18px]" />} label="Clientes" badge={clientsAVencer > 0 ? clientsAVencer : null} href={menuHref('clientes')} onNavigate={closeDrawer} active={activeTab === 'clientes'} />}
                 {nav.dailyGoal && <SidebarItem icon={<Target className="w-[18px] h-[18px]" />} label="Meta diária" badge={dailyGoalPending > 0 ? dailyGoalPending : null} href={menuHref('dailyGoal')} onNavigate={closeDrawer} active={activeTab === 'dailyGoal'} />}
-                {nav.rotinas && <SidebarItem icon={<ListChecks className="w-[18px] h-[18px]" />} label="Rotinas" href={menuHref('rotinas')} onNavigate={closeDrawer} active={activeTab === 'rotinas'} />}
                 {nav.leads && (
                   <SidebarGroup
                     icon={<Users className="w-[18px] h-[18px]" />}
@@ -1632,6 +1631,7 @@ useEffect(() => {
             <>
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
+                {nav.rotinas && <SidebarItem icon={<ListChecks className="w-[18px] h-[18px]" />} label="Rotinas" href={menuHref('rotinas')} onNavigate={closeDrawer} active={activeTab === 'rotinas'} />}
                 {!appUser.superAdminOnly && isGestor(appUser) && (
                   <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" href={menuHref('settings')} onNavigate={closeDrawer} active={activeTab === 'settings'} />
                 )}

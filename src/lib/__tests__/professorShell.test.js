@@ -50,7 +50,7 @@ describe('casca do App para o professor', () => {
     const menu = app.slice(app.indexOf('>Workspace</div>'), app.indexOf('>Administração</div>'));
     const itens = [
       ['overview', 'Visão geral'], ['kanban', 'Pipeline'], ['clientes', 'Clientes'],
-      ['dailyGoal', 'Meta diária'], ['rotinas', 'Rotinas'], ['leads', 'Leads'], ['suporte', 'Suporte'],
+      ['dailyGoal', 'Meta diária'], ['leads', 'Leads'], ['suporte', 'Suporte'],
     ];
     for (const [chave, rotulo] of itens) {
       const idx = menu.indexOf(`label="${rotulo}"`);
@@ -60,6 +60,21 @@ describe('casca do App para o professor', () => {
       // Entre a guarda e o rótulo não pode haver outro item do menu.
       expect(menu.slice(guarda, idx).match(/label="/g) ?? [], rotulo).toEqual([]);
     }
+  });
+
+  // Rotinas fica em Administração, logo acima de Configurações (pedido do
+  // Johnny no teste do preview, 08/10/2026), e aparece pelo sidebarNav.
+  it('Rotinas fica em Administração, acima de Configurações', () => {
+    const inicio = app.indexOf('>Administração</div>');
+    const rotinas = app.indexOf('label="Rotinas"', inicio);
+    const config = app.indexOf('label="Configurações"', inicio);
+    expect(app.indexOf('label="Rotinas"')).toBe(rotinas);
+    expect(rotinas).toBeGreaterThan(inicio);
+    expect(rotinas).toBeLessThan(config);
+    const guarda = app.lastIndexOf('{nav.rotinas && ', rotinas);
+    expect(guarda).toBeGreaterThan(inicio);
+    expect(app.slice(guarda, rotinas).match(/label="/g) ?? []).toEqual([]);
+    expect(app.slice(rotinas, config).match(/label="/g) ?? []).toEqual(['label="']);
   });
 
   it('os chamados do Suporte só são assinados por quem pode abrir o Suporte', () => {
