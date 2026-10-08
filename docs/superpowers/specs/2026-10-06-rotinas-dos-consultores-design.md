@@ -123,7 +123,7 @@ As leituras do cartão obedecem ao portão de ociosidade da Meta (`listenersActi
 
 ### Menu e endereço
 
-- Item **Rotinas** no menu lateral, logo depois de Meta diária, só para o gestor. Ele leva a etiqueta "Novo" enquanto for novidade.
+- Item **Rotinas** no menu lateral, na seção Administração, logo acima de Configurações, só para o gestor. Até 08/10/2026 ficava logo depois de Meta diária; o Johnny pediu a troca no teste do preview. Ele leva a etiqueta "Novo" enquanto for novidade.
 - Tela nova em `SCREENS` (`src/lib/routes.js`) com a trava `gestor`, e a palavra `rotinas` em `RESERVED_TENANT_SLUGS`.
 - Endereços: `/<academia>/rotinas` (Modelos), `/<academia>/rotinas/hoje` e `/<academia>/rotinas/modelos/<id>` (dentro de um modelo). O id do modelo é aleatório e não leva dado pessoal.
 - O item do menu entra pelo `sidebarNav` (`src/lib/sidebarNav.js`), que pergunta ao mesmo `canAccess` da rota.
