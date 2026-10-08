@@ -1,33 +1,88 @@
 import { useId, useRef, useState } from 'react';
-import { ArrowLeft, Copy, Info, Plus, Repeat } from 'lucide-react';
+import { ArrowLeft, Clock, Copy, Pencil, Plus, Repeat } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '../../contexts/ToastContext.jsx';
-import { MODEL_NAME_MAX, byTime, daysText, firstName, minutesOf, modelNameProblem, modelOfUser, namesText } from '../../lib/rotinas.js';
+import { MODEL_NAME_MAX, daysText, firstName, modelNameProblem, modelOfUser, namesText } from '../../lib/rotinas.js';
+import { gapText, modelChips, modelDayRows, modelFreeTasks, modelPausedTasks } from '../../lib/rotinasTela.js';
 import { MODEL_GONE, deleteModel, duplicateModel, setPersonModel, updateModel } from '../../lib/rotinasWrites.js';
 import { FieldError } from './FormBits.jsx';
+import { PersonInitials } from './PersonInitials.jsx';
+import { RoutinePreview } from './RoutinePreview.jsx';
 import { TaskSheet } from './TaskSheet.jsx';
 
-function TaskRow({ task, onEdit }) {
+// Dentro de um modelo (spec 2026-10-06, "Dentro de um modelo"; mockup
+// 2026-10-08-rotinas-intro-e-polimento.html, Página B · Linha do dia): o dia
+// do modelo numa linha que desce, com os vãos de 90 minutos ou mais
+// (modelDayRows), as tarefas sem horário em quadrinhos, as pausadas no fim, e
+// ao lado quem segue, a prévia da Meta diária e o aviso.
+
+// O lápis de editar aparece ao passar o mouse na linha ou no foco do teclado
+// (o grupo tem um :focus-visible dentro). No toque (pointer-coarse) fica
+// sempre à vista, porque ali não existe hover.
+const EDIT_REVEAL = 'opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100 pointer-coarse:opacity-100';
+const SECTION_LABEL = 'text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground';
+
+function EditButton({ task, onEdit, className }) {
+  return (
+    <button
+      type="button"
+      aria-label={`Editar ${task.title}`}
+      onClick={(e) => onEdit(task, e.currentTarget)}
+      className={cn('grid size-[30px] shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground', EDIT_REVEAL, className)}
+    >
+      <Pencil aria-hidden="true" className="size-4" />
+    </button>
+  );
+}
+
+// Uma tarefa com horário na linha do dia, ou uma pausada no grupo do fim (com
+// o pino cinza, o nome apagado e o selo, o mesmo tratamento de antes).
+function DayRow({ task, onEdit }) {
   const paused = task.active === false;
   return (
-    <li className="grid grid-cols-[46px_14px_minmax(0,1fr)_auto] items-start gap-x-2.5 rounded-xl px-2 py-2.5 hover:bg-muted/50">
-      <span className="num flex justify-end text-[13px] font-semibold leading-[18px] text-muted-foreground">
-        {task.time ?? <Repeat size={13} aria-label="Sem horário" />}
+    <li className="group grid grid-cols-[62px_22px_minmax(0,1fr)_auto] items-start gap-3 rounded-[10px] py-[9px] pl-2.5 pr-3.5 hover:bg-muted/60">
+      <span className={cn('num pt-px text-right text-[13px] font-semibold leading-[1.6]', paused && 'text-muted-foreground')}>
+        {task.time ?? <Repeat aria-label="Sem horário" className="ml-auto mt-1 size-[13px]" />}
       </span>
-      <span className={cn('relative z-10 mt-0.5 size-3.5 rounded-full border-2 bg-card', paused ? 'border-slate-300 dark:border-white/20' : 'border-brand-600')} />
+      <span
+        aria-hidden="true"
+        className={cn(
+          'relative z-10 ml-[5px] mt-[5px] size-3 rounded-full border-[2.5px] bg-card dark:bg-[#0c1126]',
+          paused ? 'border-slate-300 dark:border-white/20' : 'border-brand-600',
+        )}
+      />
       <div className="min-w-0">
-        <p className={cn('text-[13.5px] font-medium', paused && 'text-muted-foreground')}>{task.title}</p>
+        <p className={cn('text-[13.5px] font-semibold', paused && 'text-muted-foreground')}>{task.title}</p>
         {task.how && <p className="mt-0.5 text-[12px] text-muted-foreground">{task.how}</p>}
-        <p className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted-foreground">
-          {daysText(task.days)}
+        <p className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <span className="inline-flex h-[22px] items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">{daysText(task.days)}</span>
           {paused && <span className="rounded-md bg-muted px-1.5 py-0.5 text-[11px] font-semibold">Pausada</span>}
         </p>
       </div>
-      <button type="button" aria-label={`Editar ${task.title}`} onClick={(e) => onEdit(task, e.currentTarget)} className="h-[34px] rounded-[9px] border border-border bg-card px-3 text-[12.5px] font-medium">
-        Editar
-      </button>
+      <EditButton task={task} onEdit={onEdit} />
+    </li>
+  );
+}
+
+function GapRow({ minutes }) {
+  return (
+    <li className="grid grid-cols-[62px_22px_minmax(0,1fr)] gap-3 py-0.5 pl-2.5 pr-3.5 text-[11px] italic text-muted-foreground">
+      <span />
+      <span />
+      <span>{gapText(minutes)}</span>
+    </li>
+  );
+}
+
+function AnyTimeTile({ task, onEdit }) {
+  return (
+    <li className="group relative rounded-xl border border-border bg-muted/50 py-[11px] pl-3 pr-10">
+      <p className="text-[13px] font-semibold">{task.title}</p>
+      {task.how && <p className="mt-[3px] text-[11.5px] text-muted-foreground">{task.how}</p>}
+      <p className="mt-1.5 text-[11px] text-muted-foreground">{daysText(task.days)}</p>
+      <EditButton task={task} onEdit={onEdit} className="absolute right-1.5 top-1.5" />
     </li>
   );
 }
@@ -45,15 +100,18 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
   // criaria dois modelos com o mesmo nome e empilharia duas entradas.
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  // O foco volta para quem abriu o painel (Nova tarefa ou o Editar da linha).
+  // O foco volta para quem abriu o painel (Nova tarefa ou o lápis da linha).
   // Sem SheetTrigger, o Radix o mandaria para o <body>.
   const openerRef = useRef(null);
   const newTaskRef = useRef(null);
   const followers = people.filter((p) => (model.followerIds || []).includes(p.id));
   const others = people.filter((p) => !(model.followerIds || []).includes(p.id));
-  const tasks = [...(model.tasks || [])].sort((a, b) => (Number(b.active !== false) - Number(a.active !== false)) || byTime(a, b));
-  const timed = tasks.filter((t) => minutesOf(t.time) != null);
-  const free = tasks.filter((t) => minutesOf(t.time) == null);
+  const activeCount = (model.tasks || []).filter((t) => t.active !== false).length;
+  const dayRows = modelDayRows(model);
+  const timedCount = dayRows.filter((r) => r.kind === 'task').length;
+  const free = modelFreeTasks(model);
+  const paused = modelPausedTasks(model);
+  const chips = modelChips(model);
 
   const run = async (fn, ok, fail) => {
     try {
@@ -134,7 +192,7 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
     openerRef.current = opener ?? null;
     setSheet({ key: `${task?.id ?? 'nova'}-${Date.now()}`, task });
   };
-  // A tarefa excluída leva junto o Editar que abriu o painel: o foco vai para
+  // A tarefa excluída leva junto o lápis que abriu o painel: o foco vai para
   // o Nova tarefa.
   const taskRemoved = () => { openerRef.current = newTaskRef.current; };
   const restoreFocus = (event) => {
@@ -142,11 +200,6 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
     const target = openerRef.current?.isConnected ? openerRef.current : newTaskRef.current;
     if (target?.isConnected) target.focus();
   };
-  const taskList = (list) => (
-    <ol className="relative p-2.5">
-      {list.map((t) => <TaskRow key={t.id} task={t} onEdit={openTask} />)}
-    </ol>
-  );
 
   return (
     <div className="flex flex-col gap-5 animate-fade-in">
@@ -159,7 +212,7 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
         <ArrowLeft size={14} /> Voltar
       </button>
 
-      <div className="flex flex-wrap items-end justify-between gap-3.5">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         {renaming ? (
           <div className="flex flex-col gap-1.5">
             <div className="flex flex-wrap items-center gap-2">
@@ -183,17 +236,34 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
             <FieldError id={nameErrorId}>{nameError}</FieldError>
           </div>
         ) : (
-          <h1 className="flex items-center gap-2.5 font-display text-[28px] font-semibold tracking-tight">
-            {model.name}
-            <button type="button" disabled={busy} onClick={startRename} className="font-sans text-[12px] font-medium text-muted-foreground underline underline-offset-[3px]">Renomear</button>
-          </h1>
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 font-display text-[28px] font-semibold leading-tight tracking-tight">
+              <span className="min-w-0 break-words">{model.name}</span>
+              <button
+                type="button"
+                aria-label="Renomear"
+                disabled={busy}
+                onClick={startRename}
+                className="grid size-[30px] shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-60"
+              >
+                <Pencil aria-hidden="true" className="size-4" />
+              </button>
+            </h1>
+            {chips.length > 0 && (
+              <p className="mt-1.5 flex flex-wrap gap-1.5">
+                {chips.map((c) => (
+                  <span key={c} className="num inline-flex h-[22px] items-center rounded-full bg-muted px-2 text-[11px] font-medium text-muted-foreground">{c}</span>
+                ))}
+              </p>
+            )}
+          </div>
         )}
-        <div className="flex flex-wrap gap-1.5">
-          <button type="button" disabled={busy} onClick={duplicate} className="inline-flex h-[34px] items-center gap-1.5 rounded-[9px] border border-border bg-card px-3 text-[12.5px] font-medium disabled:opacity-60">
-            <Copy size={14} /> Duplicar modelo
+        <div className="flex flex-wrap gap-1">
+          <button type="button" disabled={busy} onClick={duplicate} className="inline-flex h-[38px] items-center gap-1.5 rounded-[10px] border border-border bg-card px-3.5 text-[13px] font-medium disabled:opacity-60">
+            <Copy size={15} /> Duplicar
           </button>
-          <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)} className="h-[34px] rounded-[9px] px-3 text-[12.5px] font-medium text-rose-600 disabled:opacity-60 dark:text-rose-300">
-            Excluir modelo
+          <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)} className="h-[38px] rounded-[10px] px-2.5 text-[13px] font-medium text-rose-600 hover:bg-rose-500/10 disabled:opacity-60 dark:text-rose-300">
+            Excluir
           </button>
         </div>
       </div>
@@ -213,58 +283,76 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
         </div>
       )}
 
-      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
-        <section className="rounded-2xl border border-border bg-card shadow-card">
-          <div className="flex items-center justify-between gap-2.5 border-b border-border px-4 py-3.5">
-            <h2 className="flex items-center gap-2 text-[14px] font-semibold">
-              Tarefas
-              <span className="num rounded-md bg-muted px-1.5 text-[11px] text-muted-foreground">{tasks.filter((t) => t.active !== false).length}</span>
+      <div className="grid items-start gap-[18px] lg:grid-cols-[minmax(0,1fr)_310px]">
+        <section className="overflow-hidden rounded-2xl border border-border bg-card shadow-card">
+          <div className="flex items-center justify-between gap-2.5 border-b border-border py-3 pl-4 pr-3.5">
+            <h2 className="flex items-center gap-2 font-display text-[14px] font-semibold">
+              O dia do modelo <span className="num rounded-md bg-muted px-[7px] py-[3px] font-sans text-[11px] text-muted-foreground">{activeCount}</span>
             </h2>
             <button type="button" ref={newTaskRef} onClick={(e) => openTask(null, e.currentTarget)} className="inline-flex h-[38px] items-center gap-2 rounded-[10px] bg-brand-600 px-3.5 text-[13px] font-semibold text-white">
               <Plus size={15} /> Nova tarefa
             </button>
           </div>
-          {tasks.length === 0 && <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">Este modelo ainda não tem tarefa. Crie a primeira.</p>}
-          {timed.length > 0 && taskList(timed)}
+          {(model.tasks || []).length === 0 && <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">Este modelo ainda não tem tarefa. Crie a primeira.</p>}
+          {dayRows.length > 0 && (
+            <div className="relative pb-1 pt-1.5">
+              {/* A linha que desce, do primeiro ao último pino. Fica fora da
+                  lista: <ol> só aceita <li>. */}
+              {timedCount > 1 && <span aria-hidden="true" className="absolute bottom-[26px] left-[94px] top-[22px] w-0.5 rounded bg-gradient-to-b from-brand-600 to-brand-600/25" />}
+              <ol>
+                {dayRows.map((row) => (row.kind === 'gap'
+                  ? <GapRow key={row.key} minutes={row.minutes} />
+                  : <DayRow key={row.key} task={row.task} onEdit={openTask} />))}
+              </ol>
+            </div>
+          )}
           {free.length > 0 && (
-            <div className="mx-2.5 border-t border-dashed border-slate-200 pt-1.5 dark:border-white/10">
-              <p className="px-2 pt-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">Sem horário</p>
-              {taskList(free)}
+            <div className="mt-1.5 border-t border-border px-3.5 pb-3.5 pt-3">
+              <h3 className={SECTION_LABEL}>A qualquer hora do dia</h3>
+              <ul className="mt-2.5 grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+                {free.map((t) => <AnyTimeTile key={t.id} task={t} onEdit={openTask} />)}
+              </ul>
+            </div>
+          )}
+          {paused.length > 0 && (
+            <div className="border-t border-dashed border-border pb-1.5 pt-2.5">
+              <h3 className={cn(SECTION_LABEL, 'px-4')}>Pausadas</h3>
+              <ol className="mt-1">{paused.map((t) => <DayRow key={t.id} task={t} onEdit={openTask} />)}</ol>
             </div>
           )}
         </section>
 
         <aside className="flex flex-col gap-3">
-          <section className="rounded-2xl border border-border bg-card shadow-card">
-            <div className="border-b border-border px-4 py-3.5">
-              <h2 className="text-[14px] font-semibold">Quem segue <span className="num ml-1 rounded-md bg-muted px-1.5 text-[11px] text-muted-foreground">{followers.length}</span></h2>
-            </div>
-            <div className="flex flex-col gap-2 px-4 py-3">
-              {followers.length === 0 && <p className="text-[11.5px] text-muted-foreground">Ninguém segue este modelo ainda.</p>}
-              {followers.map((p) => (
-                <div key={p.id} className="flex items-center gap-2.5 text-[13px]">
-                  <span className="min-w-0 flex-1 truncate font-medium">{p.name}</span>
-                  <button type="button" aria-label={`Tirar ${p.name} do modelo`} onClick={() => unfollow(p)} className="text-[12px] text-muted-foreground underline underline-offset-2">Tirar</button>
-                </div>
-              ))}
-              {others.length > 0 && (
-                <Select value="" onValueChange={follow}>
-                  <SelectTrigger aria-label="Pôr um consultor neste modelo" className="mt-1.5 h-9 w-full">
-                    <SelectValue placeholder="Pôr um consultor neste modelo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {others.map((p) => {
-                      const current = modelOfUser(models, p.id);
-                      return <SelectItem key={p.id} value={p.id}>{p.name} {current ? `(sai do ${current.name})` : '(sem modelo)'}</SelectItem>;
-                    })}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
+          <section className="rounded-2xl border border-border bg-card px-4 py-3.5 shadow-card">
+            <h2 className="flex items-center gap-2 font-display text-[14px] font-semibold">
+              Quem segue <span className="num rounded-md bg-muted px-[7px] py-[3px] font-sans text-[11px] text-muted-foreground">{followers.length}</span>
+            </h2>
+            {followers.length === 0 && <p className="mt-2.5 text-[12px] text-muted-foreground">Ninguém segue este modelo ainda.</p>}
+            {followers.map((p) => (
+              <div key={p.id} className="mt-2.5 flex items-center gap-2.5 text-[13px]">
+                <PersonInitials name={p.name} size={26} />
+                <span className="min-w-0 flex-1 truncate">{p.name}</span>
+                <button type="button" aria-label={`Tirar ${p.name} do modelo`} onClick={() => unfollow(p)} className="text-[12px] text-muted-foreground hover:text-rose-600 dark:hover:text-rose-300">Tirar</button>
+              </div>
+            ))}
+            {others.length > 0 && (
+              <Select value="" onValueChange={follow}>
+                <SelectTrigger aria-label="Pôr um consultor neste modelo" className="mt-3 h-9 w-full">
+                  <SelectValue placeholder="Pôr um consultor neste modelo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {others.map((p) => {
+                    const current = modelOfUser(models, p.id);
+                    return <SelectItem key={p.id} value={p.id}>{p.name} {current ? `(sai do ${current.name})` : '(sem modelo)'}</SelectItem>;
+                  })}
+                </SelectContent>
+              </Select>
+            )}
           </section>
-          <p className="flex gap-2 rounded-[10px] bg-brand-600/[0.08] px-3 py-2.5 text-[12px]">
-            <Info size={15} className="mt-px shrink-0 text-brand-600" />
-            O que você muda aqui vale a partir de hoje para quem segue o modelo. Os dias anteriores continuam como estavam no histórico.
+          <RoutinePreview model={model} />
+          <p className="flex gap-2.5 rounded-xl border border-dashed border-border px-3.5 py-3 text-[12px] text-muted-foreground">
+            <Clock aria-hidden="true" className="mt-px size-4 shrink-0" />
+            O que você muda aqui vale a partir de hoje. Os dias anteriores continuam como estavam.
           </p>
         </aside>
       </div>

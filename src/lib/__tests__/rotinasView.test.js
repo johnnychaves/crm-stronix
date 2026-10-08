@@ -181,11 +181,11 @@ describe('Duplicar modelo', () => {
   it('o clique duplo duplica uma vez só e desliga o botão enquanto grava', async () => {
     duplicateModel.mockImplementation(() => new Promise(() => {}));
     await render('/acad/rotinas/modelos/m1');
-    const dup = button('Duplicar modelo');
+    const dup = button('Duplicar');
     await act(async () => { dup.click(); dup.click(); });
     expect(duplicateModel).toHaveBeenCalledTimes(1);
     expect(dup.disabled).toBe(true);
-    expect(button('Excluir modelo').disabled).toBe(true);
+    expect(button('Excluir').disabled).toBe(true);
   });
 });
 
@@ -212,7 +212,7 @@ describe('o Voltar do modelo', () => {
     duplicateModel.mockResolvedValue('m2');
     await render(LIST);
     await click(card('Manhã'));
-    await click(button('Duplicar modelo'));
+    await click(button('Duplicar'));
     expect(nav.location.pathname).toBe('/acad/rotinas/modelos/m2');
     expect(nav.type).toBe('PUSH');
     expect(nav.location.state.fromList).toBe(false);
@@ -271,7 +271,7 @@ describe('Renomear', () => {
   it('reabre com o nome gravado, sem o rascunho e o erro de antes, e tem Cancelar', async () => {
     s.models = [M1, M2];
     await render('/acad/rotinas/modelos/m1');
-    await click(button('Renomear'));
+    await click(labelled('Renomear'));
     const input = labelled('Nome do modelo');
     await type(input, 'Cópia de Manhã');
     await click(button('Salvar nome'));
@@ -282,7 +282,7 @@ describe('Renomear', () => {
     expect(updateModel).not.toHaveBeenCalled();
     await click(button('Cancelar'));
     expect(labelled('Nome do modelo')).toBeNull();
-    await click(button('Renomear'));
+    await click(labelled('Renomear'));
     expect(labelled('Nome do modelo').value).toBe('Manhã');
     expect(text()).not.toContain('Já existe um modelo com esse nome.');
   });
@@ -512,5 +512,101 @@ describe('Página B: a lista', () => {
     expect(text()).toContain('Sem rotina na Meta diária');
     const linhaDaCarla = [...document.body.querySelectorAll('p')].find((p) => p.textContent === 'Carla Souza').closest('div').parentElement;
     expect(linhaDaCarla.querySelector('span[aria-hidden="true"]').textContent).toBe('CS');
+  });
+});
+
+describe('Página B: o modelo aberto', () => {
+  const hoje = (date = new Date(2026, 9, 6, 10, 47)) => vi.useFakeTimers({ now: date, toFake: ['Date'] });
+  const DIA = {
+    id: 'm5',
+    name: 'Consultor manhã',
+    followerIds: ['carla'],
+    tasks: [
+      { ...TASK, id: 'a', time: '06:00', title: 'Abrir a recepção' },
+      { ...TASK, id: 'b', time: '07:30', title: 'Responder os follow-ups' },
+      { ...TASK, id: 'c', time: '10:00', title: 'Ligações para leads novos' },
+      { ...TASK, id: 'd', time: '10:30', title: 'Conferir as visitas' },
+      { ...TASK, id: 'e', time: null, title: 'Pedir indicações', how: 'Pelo menos uma por dia.' },
+      { ...TASK, id: 'f', time: '09:00', title: 'Organizar o mural', active: false },
+    ],
+  };
+  const secao = (inicio) => [...document.body.querySelectorAll('section')].find((el) => el.textContent.startsWith(inicio));
+  beforeEach(() => { s.models = [M1, DIA]; });
+
+  it('o título tem o lápis de Renomear e as etiquetas, e ao lado ficam Duplicar e Excluir', async () => {
+    await render('/acad/rotinas/modelos/m5');
+    const titulo = document.body.querySelector('h1');
+    expect(titulo.textContent).toBe('Consultor manhã');
+    expect(titulo.querySelector('button[aria-label="Renomear"]')).not.toBeNull();
+    expect(button('Renomear')).toBeUndefined();
+    expect(text()).toContain('4 tarefas no horário, das 06:00 às 10:30');
+    expect(text()).toContain('1 a qualquer hora');
+    expect(button('Duplicar')).toBeTruthy();
+    expect(button('Excluir')).toBeTruthy();
+    expect(button('Voltar')).toBeTruthy();
+  });
+
+  it('Excluir pede a confirmação, que tem o Excluir modelo', async () => {
+    await render('/acad/rotinas/modelos/m5');
+    await click(button('Excluir'));
+    expect(text()).toContain('Carla fica sem rotina até você escolher outro modelo.');
+    expect(button('Excluir modelo')).toBeTruthy();
+  });
+
+  it('o dia do modelo desce em ordem, com o vão de 90 minutos ou mais, e as pausadas ficam no fim', async () => {
+    await render('/acad/rotinas/modelos/m5');
+    const dia = secao('O dia do modelo');
+    expect(dia.querySelector('h2').textContent).toBe('O dia do modelo 5');
+    const linhas = [...dia.querySelector('ol').children].map((li) => li.textContent);
+    expect(linhas.map((l) => l.slice(0, 5))).toEqual(['06:00', '1h30 ', '07:30', '2h30 ', '10:00', '10:30']);
+    expect(linhas.filter((l) => l.endsWith('sem tarefa'))).toEqual(['1h30 sem tarefa', '2h30 sem tarefa']);
+    expect(dia.textContent).toContain('A qualquer hora do dia');
+    expect(dia.textContent).toContain('Pelo menos uma por dia.');
+    expect(dia.textContent).toContain('Pausadas');
+    expect(dia.textContent).toContain('Pausada');
+    expect(linhas.join(' ')).not.toContain('Organizar o mural');
+  });
+
+  it('o lápis de editar acende no hover e no foco, e fica à vista no toque', async () => {
+    await render('/acad/rotinas/modelos/m5');
+    for (const nome of ['Abrir a recepção', 'Pedir indicações', 'Organizar o mural']) {
+      const lapis = labelled(`Editar ${nome}`);
+      expect(lapis, nome).not.toBeNull();
+      expect(lapis.textContent, nome).toBe('');
+      expect(lapis.className.split(/\s+/), nome).toEqual(expect.arrayContaining([
+        'opacity-0', 'group-hover:opacity-100', 'group-has-[:focus-visible]:opacity-100', 'pointer-coarse:opacity-100',
+      ]));
+    }
+  });
+
+  it('quem segue com o rosto, a prévia de como o consultor vê e o aviso', async () => {
+    hoje();
+    await render('/acad/rotinas/modelos/m5');
+    const quemSegue = secao('Quem segue');
+    expect(quemSegue.querySelector('span[aria-hidden="true"]').textContent).toBe('CS');
+    expect(labelled('Tirar Carla Souza do modelo')).not.toBeNull();
+    const previa = secao('Como o consultor vê');
+    expect(previa.textContent).toContain('Rotina de hoje');
+    expect(previa.textContent).toContain('5 tarefas');
+    expect(previa.textContent).toContain('Abrir a recepção');
+    expect(previa.textContent).not.toContain('Organizar o mural');
+    // Só leitura: nenhum botão, e nenhum check.
+    expect(previa.querySelector('button')).toBeNull();
+    expect(text()).toContain('O que você muda aqui vale a partir de hoje. Os dias anteriores continuam como estavam.');
+  });
+
+  it('a prévia mostra até seis tarefas, e diz quantas faltam', async () => {
+    hoje();
+    s.models = [{ ...DIA, tasks: Array.from({ length: 8 }, (_, i) => ({ ...TASK, id: `x${i}`, time: `${String(8 + i).padStart(2, '0')}:00`, title: `Tarefa ${i}` })) }];
+    await render('/acad/rotinas/modelos/m5');
+    const previa = secao('Como o consultor vê');
+    expect(previa.querySelectorAll('li')).toHaveLength(6);
+    expect(previa.textContent).toContain('E mais 2 hoje.');
+  });
+
+  it('a prévia num dia sem tarefa', async () => {
+    hoje(new Date(2026, 9, 10, 10, 0));
+    await render('/acad/rotinas/modelos/m5');
+    expect(secao('Como o consultor vê').textContent).toContain('Hoje este modelo não tem tarefa.');
   });
 });
