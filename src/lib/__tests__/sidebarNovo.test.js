@@ -10,10 +10,18 @@ import { MemoryRouter, useLocation } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SidebarItem } from '../../components/layout/Sidebar.jsx';
 import { RotinasNovo } from '../../components/rotinas/RotinasIntro.jsx';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
 const HOJE = new Date(2026, 9, 8, 9, 0);
+// A duração da largura do menu (o <aside> do App.jsx). O balão só aparece
+// depois dela, senão o clique rápido no ícone cairia nele.
+// No jsdom o new URL relativo não é file:, então o caminho sai do import.meta.url como texto.
+const APP = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../App.jsx'), 'utf8');
+const MENU_MS = Number(APP.match(/className=\{`group\/sidebar [^`]*?transition-\[transform,width,box-shadow\] duration-(\d+) /)?.[1]);
 const nav = { pathname: null };
 function Where() {
   const location = useLocation();
@@ -64,6 +72,10 @@ const clicar = async (el) => {
 const pontoVermelho = () => link().querySelector('span[aria-hidden="true"].bg-red-600');
 
 describe('o item Rotinas com o balão "Novo"', () => {
+  it('a largura do menu tem duração conhecida no App.jsx', () => {
+    expect(MENU_MS).toBe(300);
+  });
+
   it('o balão fica fora do link, ao lado dele, e é vermelho', async () => {
     await montar({ novo: h(RotinasNovo, { tone: 'alert', now: HOJE }) });
     expect(link().getAttribute('href')).toBe('/acad/rotinas');
@@ -101,17 +113,27 @@ describe('o item Rotinas com o balão "Novo"', () => {
     expect(dialogo()).toBeNull();
   });
 
-  it('no trilho recolhido, o balão some e não recebe clique, e volta no hover ou no foco', async () => {
+  // O jsdom não roda transição: aqui as classes bastam. O comportamento de
+  // verdade (clique rápido no ícone abre a tela, o balão aparece depois que o
+  // menu abre) foi conferido no navegador.
+  it('no trilho recolhido, o balão fica com tamanho zero e só aparece depois que o menu termina de abrir', async () => {
     await montar({ novo: h(RotinasNovo, { tone: 'alert', now: HOJE }) });
     const lugar = balao().parentElement.className.split(/\s+/);
     expect(lugar).toEqual(expect.arrayContaining([
       'absolute', 'right-3', 'top-1/2', '-translate-y-1/2',
-      'md:opacity-0', 'md:group-hover/sidebar:opacity-100', 'md:group-has-[:focus-visible]/sidebar:opacity-100',
-      'md:pointer-events-none', 'md:group-hover/sidebar:pointer-events-auto', 'md:group-has-[:focus-visible]/sidebar:pointer-events-auto',
+      // Recolhido: tamanho zero (sem clique) e transparente, e some na hora.
+      'md:scale-0', 'md:opacity-0', 'md:[transition:none]',
+      // Aberto pelo mouse ou pelo Tab: aparece depois da largura do menu.
+      'md:group-hover/sidebar:scale-100', 'md:group-hover/sidebar:opacity-100',
+      `md:group-hover/sidebar:[transition:opacity_200ms_${MENU_MS}ms,scale_0s_${MENU_MS}ms]`,
+      'md:group-has-[:focus-visible]/sidebar:scale-100', 'md:group-has-[:focus-visible]/sidebar:opacity-100',
+      `md:group-has-[:focus-visible]/sidebar:[transition:opacity_200ms_${MENU_MS}ms,scale_0s_${MENU_MS}ms]`,
     ]));
-    // No celular (sem o prefixo md:) fica à vista e clicável.
-    expect(lugar).not.toContain('opacity-0');
-    expect(lugar).not.toContain('pointer-events-none');
+    // Sem `invisible` nem `hidden`: elemento invisível não recebe foco, e o
+    // Tab e a volta do foco ao fechar o pop-up precisam do balão.
+    expect(lugar.filter((c) => /(^|:)(invisible|hidden|pointer-events-none)$/.test(c))).toEqual([]);
+    // No celular (sem o prefixo md:) fica à vista, clicável e sem atraso.
+    expect(lugar.filter((c) => !c.startsWith('md:') && /scale|opacity|transition|delay/.test(c))).toEqual([]);
   });
 
   it('no trilho recolhido, um ponto vermelho no ícone avisa, e some no hover ou no foco', async () => {

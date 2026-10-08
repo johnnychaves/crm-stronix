@@ -9,6 +9,22 @@ import { AppLink } from '../nav/AppLink.jsx';
 const SIDEBAR_EXPANDED_ONLY =
   'transition-opacity duration-200 md:opacity-0 md:group-hover/sidebar:opacity-100 md:group-has-[:focus-visible]/sidebar:opacity-100';
 
+// O balão "Novo" de um item (prop `novo` do SidebarItem) no trilho recolhido
+// do desktop. Enquanto o menu abre, o balão passa por cima do ícone, então ele
+// só aparece depois que o menu termina de abrir: o atraso é a duração da
+// largura do <aside> no App.jsx (duration-300), e o sidebarNovo.test.js confere
+// as duas. Recolhido, o balão fica com tamanho zero (scale-0): não aparece e
+// não recebe clique, então o clique rápido no ícone sempre abre a tela. Ele
+// continua alcançável pelo Tab, e é por isso que não é `invisible`: elemento
+// invisível não recebe foco, e o pop-up, ao fechar com o menu recolhido, não
+// conseguiria devolver o foco ao balão. Ao recolher, some na hora. No menu do
+// celular nada disso vale, e o balão fica sempre à vista.
+const SIDEBAR_NOVO_REVEAL = [
+  'md:scale-0 md:opacity-0 md:[transition:none]',
+  'md:group-hover/sidebar:scale-100 md:group-hover/sidebar:opacity-100 md:group-hover/sidebar:[transition:opacity_200ms_300ms,scale_0s_300ms]',
+  'md:group-has-[:focus-visible]/sidebar:scale-100 md:group-has-[:focus-visible]/sidebar:opacity-100 md:group-has-[:focus-visible]/sidebar:[transition:opacity_200ms_300ms,scale_0s_300ms]',
+].join(' ');
+
 // Item do menu. Com `href` é um link de verdade: Ctrl+clique, botão do meio e
 // "Abrir em nova aba" funcionam, e a tela atual leva aria-current="page".
 // `onNavigate` roda só quando o clique troca de tela nesta aba (o App fecha o
@@ -69,19 +85,13 @@ function SidebarItem({ icon, label, active, badge, href, onNavigate, onClick, no
   // O balão é irmão do link, nunca filho: botão dentro de <a> é HTML inválido,
   // e o clique nele (e no pop-up, que o React sobe pela árvore) navegaria. Ele
   // fica na ponta direita da linha, no lugar do selo de pendências. No trilho
-  // recolhido do desktop some e não recebe clique, como os rótulos, e o ponto
-  // vermelho do ícone avisa; no hover ou no foco de teclado os dois trocam.
-  // No menu do celular o balão fica sempre à vista.
+  // recolhido do desktop some e não recebe clique (SIDEBAR_NOVO_REVEAL), e o
+  // ponto vermelho do ícone avisa; no hover ou no foco de teclado os dois
+  // trocam. No menu do celular o balão fica sempre à vista.
   return (
     <div className="relative">
       {item}
-      <div
-        className={cn(
-          'absolute right-3 top-1/2 flex -translate-y-1/2',
-          SIDEBAR_EXPANDED_ONLY,
-          'md:pointer-events-none md:group-hover/sidebar:pointer-events-auto md:group-has-[:focus-visible]/sidebar:pointer-events-auto'
-        )}
-      >
+      <div className={cn('absolute right-3 top-1/2 flex -translate-y-1/2', SIDEBAR_NOVO_REVEAL)}>
         {novo}
       </div>
     </div>
