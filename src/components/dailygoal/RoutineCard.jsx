@@ -5,6 +5,7 @@ import { useToast } from '../../contexts/ToastContext.jsx';
 import { useMyRoutine } from '../../hooks/useMyRoutine.js';
 import { NOTE_MAX, hhmmOf, markDoneAt, markIdOf, minutesOf, routineDayKey, stateText, taskStateAt, tasksForDay } from '../../lib/rotinas.js';
 import { markDone, saveMarkNote, undoMark } from '../../lib/rotinasWrites.js';
+import { CHECK_TONE, META_TONE, SEG_TONE } from '../rotinas/routineTones.js';
 
 // Cartão "Rotina de hoje" da Meta diária (spec
 // docs/superpowers/specs/2026-10-06-rotinas-dos-consultores-design.md, mockup
@@ -12,35 +13,6 @@ import { markDone, saveMarkNote, undoMark } from '../../lib/rotinasWrites.js';
 // não entra no ProgressHero, nos filtros da lista nem no dia batido.
 
 const DONE = new Set(['done', 'doneLate']);
-
-// No escuro o bg-card é translúcido e a régua da linha do tempo aparece por
-// dentro do círculo vazio, por isso os estados sem check levam fundo sólido.
-const CHECK_TONE = {
-  done: 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500',
-  doneLate: 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500',
-  late: 'border-rose-400 bg-rose-50 dark:bg-[#2a1326]',
-  now: 'border-brand-600 bg-card ring-4 ring-brand-600/15 dark:bg-[#0c1126]',
-  later: 'border-slate-300 bg-card dark:border-white/20 dark:bg-[#0c1126]',
-  open: 'border-slate-300 bg-card dark:border-white/20 dark:bg-[#0c1126]',
-};
-
-const META_TONE = {
-  done: 'text-emerald-700 dark:text-emerald-300',
-  doneLate: 'text-amber-700 dark:text-amber-300',
-  late: 'text-rose-600 dark:text-rose-300',
-  now: 'font-medium text-brand-600 dark:text-brand-300',
-  later: 'text-muted-foreground',
-  open: 'text-muted-foreground',
-};
-
-const SEG_TONE = {
-  done: 'bg-emerald-600 dark:bg-emerald-500',
-  doneLate: 'bg-emerald-600 dark:bg-emerald-500',
-  late: 'bg-rose-500',
-  now: 'bg-brand-600',
-  later: 'bg-slate-200 dark:bg-white/15',
-  open: 'bg-slate-200 dark:bg-white/15',
-};
 
 function Needle({ now }) {
   return (
