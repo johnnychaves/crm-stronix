@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROTINAS_PATH = fileURLToPath(new URL('../rotinas.js', import.meta.url));
 const MONTH_PATH = fileURLToPath(new URL('../operacional/month.js', import.meta.url));
+const TELA_PATH = fileURLToPath(new URL('../rotinasTela.js', import.meta.url));
 
 // `import ... from '...'` e `export ... from '...'` (grupo 1, inclusive
 // multilinha), e `import '...'` ou `import('...')` (grupo 2).
@@ -33,6 +34,13 @@ describe('rotinas.js só importa módulos puros', () => {
   it('operacional/month.js não importa nada', () => {
     const text = readFileSync(MONTH_PATH, 'utf8');
     expect(specifiersOf(text)).toEqual([]);
+  });
+
+  // As contas da tela Rotinas (src/lib/rotinasTela.js) leem a regra do dia e
+  // não podem ter outra: só importam rotinas.js.
+  it('rotinasTela.js só importa ./rotinas.js', () => {
+    const text = readFileSync(TELA_PATH, 'utf8');
+    expect(specifiersOf(text)).toEqual(['./rotinas.js']);
   });
 
   // Autoteste: o regex enxerga as formas de import que deveria pegar.
