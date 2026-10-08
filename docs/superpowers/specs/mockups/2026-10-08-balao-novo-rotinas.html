@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="pt-BR" translate="no" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google" content="notranslate">
+<title>Balão Novo das Rotinas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Tokens do Stronilead (src/index.css), os mesmos dos mockups de 2026-10-06.
+   O balão repete o NewFeatureBadge que já está na PR: fundo laranja claro,
+   borda laranja fraca, ponto laranja e texto NOVO em maiúsculas. */
+:root {
+  --bg: #F5F7FB;
+  --card: #FFFFFF;
+  --ink: #0E1A40;
+  --muted: #64748B;
+  --line: #E2E8F0;
+  --soft: #F1F4F9;
+  --brand: #2B59FF;
+  --brand-soft: rgba(43, 89, 255, .08);
+  --warn: #B45309;
+  --warn-soft: #FFFBF3;
+  --accent: #FF6A2B;
+  --novo-ink: #C2410C;
+  --novo-bg: rgba(255, 106, 43, .10);
+  --novo-line: rgba(255, 106, 43, .30);
+  --shadow: 0 1px 0 rgba(15, 23, 42, .04), 0 1px 2px rgba(15, 23, 42, .06);
+  --shadow-pop: 0 24px 48px -16px rgba(14, 26, 64, .28), 0 2px 8px rgba(14, 26, 64, .08);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #080D22;
+  --card: #0F152B;
+  --ink: #EAEEF9;
+  --muted: #8A93B0;
+  --line: rgba(255, 255, 255, .07);
+  --soft: rgba(255, 255, 255, .05);
+  --brand: #5A7FFF;
+  --brand-soft: rgba(90, 127, 255, .13);
+  --warn: #FBBF24;
+  --warn-soft: rgba(251, 191, 36, .06);
+  --novo-ink: #FF8F5E;
+  --novo-bg: rgba(255, 106, 43, .12);
+  --novo-line: rgba(255, 106, 43, .35);
+  --shadow: none;
+  --shadow-pop: 0 24px 48px -12px rgba(0, 0, 0, .6);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 Geist, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button, select { font: inherit; color: inherit; }
+button { cursor: pointer; background: none; border: 0; }
+ul { list-style: none; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+.t { font-family: 'Space Grotesk', Geist, sans-serif; }
+svg.i { width: 18px; height: 18px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- barra do mockup (fora do app) ---------- */
+.chrome { position: sticky; top: 0; z-index: 40; background: #0E1A40; color: #fff; }
+.chrome-in { padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.chrome-name { display: flex; align-items: center; gap: 8px; font: 600 13.5px/1 'Space Grotesk', sans-serif; }
+.chrome-name small { font: 600 9.5px/1 Geist, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: #FF8A57; border: 1px solid rgba(255, 138, 87, .45); padding: 4px 6px; border-radius: 5px; }
+.tabs { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; display: flex; gap: 3px; background: rgba(255, 255, 255, .07); padding: 3px; border-radius: 10px; }
+.tab { height: 30px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: rgba(255, 255, 255, .72); white-space: nowrap; }
+.tab[aria-pressed="true"] { background: #fff; color: #0E1A40; }
+.theme { margin-left: auto; height: 30px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 8px; font-size: 12px; color: rgba(255, 255, 255, .85); }
+.note { padding: 0 16px 12px; font-size: 12.5px; color: rgba(255, 255, 255, .78); max-width: 980px; }
+.note b { color: #fff; font-weight: 600; }
+
+/* ---------- o app ---------- */
+.stage { padding: 20px 16px 40px; overflow-x: auto; overscroll-behavior-x: contain; }
+.app { min-width: 1080px; max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: 220px 1fr; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-pop); }
+
+.side { background: var(--card); border-right: 1px solid var(--line); padding: 14px 10px; display: flex; flex-direction: column; gap: 2px; min-height: 620px; }
+.brand { display: flex; align-items: center; gap: 9px; padding: 4px 8px 18px; font: 700 14px/1 'Space Grotesk', sans-serif; letter-spacing: .01em; }
+.brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--brand-soft); display: grid; place-items: center; color: var(--accent); }
+.brand b { color: var(--brand); font-weight: 700; }
+.sec { padding: 14px 10px 6px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.item { position: relative; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 10px; border-radius: 9px; font-size: 13.5px; color: var(--ink); opacity: .82; }
+.item.on { background: var(--brand); color: #fff; opacity: 1; box-shadow: 0 6px 14px -8px rgba(43, 89, 255, .8); }
+.item .count { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--accent); background: rgba(255, 106, 43, .1); padding: 2px 6px; border-radius: 6px; }
+.item .chev { margin-left: auto; color: var(--muted); }
+
+.main { display: flex; flex-direction: column; min-width: 0; }
+.top { height: 56px; display: flex; align-items: center; gap: 16px; padding: 0 22px; background: var(--card); border-bottom: 1px solid var(--line); }
+.top-title { display: flex; align-items: center; gap: 10px; font: 600 17px/1 'Space Grotesk', sans-serif; min-width: 170px; }
+.search { flex: 0 1 330px; margin: 0 auto; height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+.top-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: var(--muted); }
+.top-right .cta { color: var(--brand); font-weight: 500; }
+.avatar { width: 30px; height: 30px; border-radius: 50%; background: #DCFCE7; color: #166534; display: grid; place-items: center; font-size: 11.5px; font-weight: 700; }
+
+.content { padding: 28px 32px 36px; display: flex; flex-direction: column; gap: 22px; }
+.eyebrow-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 24px; }
+.eyebrow { display: flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.eyebrow svg.i { width: 14px; height: 14px; }
+.head { display: flex; align-items: flex-end; justify-content: space-between; gap: 18px; margin-top: 8px; }
+h1 { max-width: 560px; font: 500 27px/1.2 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+h1 em { font-style: normal; font-weight: 700; color: var(--brand); }
+h1 em.warn { color: #B45309; }
+:root[data-theme="dark"] h1 em.warn { color: #FBBF24; }
+.btn { height: 38px; padding: 0 14px; border-radius: 10px; background: var(--brand); color: #fff; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+
+.model { width: 300px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 14px 12px; box-shadow: var(--shadow); }
+.model-top { display: flex; justify-content: space-between; align-items: baseline; }
+.model h3 { font: 600 14.5px/1.2 Geist, sans-serif; }
+.model .open { font-size: 12px; color: var(--brand); font-weight: 600; }
+.model p { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.rail { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 6px; display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+.model .who { margin-top: 12px; font-size: 11.5px; color: var(--muted); }
+
+.list-head { display: flex; align-items: baseline; gap: 10px; }
+.list-head h2 { font: 600 14.5px/1 'Space Grotesk', sans-serif; }
+.list-head span { font-size: 11.5px; color: var(--muted); }
+.list { margin-top: 10px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-top: 1px solid var(--line); }
+.row:first-child { border-top: 0; }
+.row.off { background: var(--warn-soft); }
+.row b { display: block; font-size: 13px; font-weight: 600; }
+.row small { font-size: 11px; color: var(--muted); }
+.row.off small { color: var(--warn); }
+.pick { width: 176px; height: 32px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; font-size: 12.5px; background: var(--card); }
+
+/* ---------- o balão Novo (igual ao NewFeatureBadge) ---------- */
+.novo { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--novo-line); background: var(--novo-bg); color: var(--novo-ink); font: 600 10px/1 Geist, sans-serif; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+.novo::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px rgba(255, 106, 43, .2); }
+.novo:hover { background: rgba(255, 106, 43, .18); }
+.novo[hidden] { display: none; }
+/* No menu, o item aceso é azul: o balão vira branco para não sumir no fundo. */
+.item.on .novo { margin-left: auto; height: 20px; padding: 0 7px; background: rgba(255, 255, 255, .16); border-color: rgba(255, 255, 255, .35); color: #fff; }
+.item.on .novo::before { background: #fff; box-shadow: 0 0 0 3px rgba(255, 255, 255, .22); }
+/* Mostra onde o balão está em cada opção. */
+.spot { animation: spot 1.6s ease-out 2; }
+@keyframes spot { 0% { box-shadow: 0 0 0 0 rgba(255, 106, 43, .55); } 100% { box-shadow: 0 0 0 10px rgba(255, 106, 43, 0); } }
+@media (prefers-reduced-motion: reduce) { .spot { animation: none; } }
+
+/* ---------- pop-up ---------- */
+.scrim { position: fixed; inset: 0; z-index: 60; background: rgba(8, 13, 34, .45); display: grid; place-items: center; padding: 16px; }
+.scrim[hidden] { display: none; }
+.dialog { width: 100%; max-width: 440px; background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 20px 20px 18px; box-shadow: var(--shadow-pop); }
+.dialog h2 { font: 600 20px/1.2 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+.dialog .desc { margin-top: 6px; font-size: 13px; color: var(--muted); }
+.dialog .intro { margin-top: 14px; font-size: 13.5px; }
+.dialog ul { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; }
+.dialog li { display: flex; gap: 10px; align-items: flex-start; }
+.dialog li svg.i { width: 16px; height: 16px; margin-top: 2px; color: var(--brand); }
+.dialog .end { margin-top: 18px; display: flex; justify-content: flex-end; }
+
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<header class="chrome">
+  <div class="chrome-in">
+    <span class="chrome-name">Balão Novo das Rotinas <small>Mockup</small></span>
+    <div class="tabs" role="group" aria-label="Onde fica o balão">
+      <button class="tab" type="button" data-opt="a" aria-pressed="true">A · Título da barra do topo</button>
+      <button class="tab" type="button" data-opt="b" aria-pressed="false">B · ROTINAS do conteúdo</button>
+      <button class="tab" type="button" data-opt="c" aria-pressed="false">C · Item do menu</button>
+    </div>
+    <button class="theme" type="button" id="theme">Tema escuro</button>
+  </div>
+  <p class="note" id="note"></p>
+</header>
+
+<div class="stage">
+  <div class="app">
+    <aside class="side" aria-label="Menu">
+      <div class="brand"><span class="brand-mark"><svg class="i" viewBox="0 0 24 24"><path d="m6 15 6-6 6 6"/><path d="m6 20 6-6 6 6"/></svg></span><span>STRONI<b>LEAD</b></span></div>
+      <div class="sec">Workspace</div>
+      <div class="item"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>Visão geral<svg class="i chev" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg></div>
+      <div class="item"><svg class="i" viewBox="0 0 24 24"><path d="M6 5v14M12 5v8M18 5v11"/></svg>Pipeline</div>
+      <div class="item"><svg class="i" viewBox="0 0 24 24"><path d="M22 10 12 5 2 10l10 5 10-5Z"/><path d="M6 12v5c3 2 9 2 12 0v-5"/></svg>Clientes<span class="count">35</span></div>
+      <div class="item"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>Meta diária<span class="count">50</span></div>
+      <div class="item"><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.8c1.7.8 2.8 2.5 3 5.2"/></svg>Leads<svg class="i chev" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg></div>
+      <div class="item"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="m5.6 5.6 3.6 3.6M14.8 14.8l3.6 3.6M18.4 5.6l-3.6 3.6M9.2 14.8l-3.6 3.6"/></svg>Suporte</div>
+      <div class="sec">Administração</div>
+      <div class="item on" id="menu-rotinas"><svg class="i" viewBox="0 0 24 24"><path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8"/></svg>Rotinas<button class="novo" type="button" data-place="c" hidden aria-label="Novo: o que é esta tela">Novo</button></div>
+      <div class="item"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/></svg>Configurações</div>
+    </aside>
+
+    <div class="main">
+      <div class="top">
+        <div class="top-title">Rotinas<button class="novo" type="button" data-place="a" hidden aria-label="Novo: o que é esta tela">Novo</button></div>
+        <div class="search"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Buscar leads e clientes</div>
+        <div class="top-right"><span class="cta">Cadastrar lead</span><svg class="i" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg><span class="avatar">JB</span></div>
+      </div>
+
+      <div class="content">
+        <div>
+          <div class="eyebrow-row">
+            <p class="eyebrow"><svg class="i" viewBox="0 0 24 24"><path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8"/></svg>Rotinas<button class="novo" type="button" data-place="b" hidden aria-label="Novo: o que é esta tela">Novo</button></p>
+          </div>
+          <div class="head">
+            <h1><em>1 de 4</em> consultores seguem um modelo. <em class="warn">Bruno, Carla e Diego</em> ainda estão sem rotina.</h1>
+            <span class="btn"><svg class="i" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M12 5v14M5 12h14"/></svg>Novo modelo</span>
+          </div>
+        </div>
+
+        <div class="model">
+          <div class="model-top"><h3>Consultor manhã</h3><span class="open">Abrir</span></div>
+          <p>4 tarefas</p>
+          <div class="rail"><span>07h</span><span>14h</span><span>21h</span></div>
+          <div class="who">Ana</div>
+        </div>
+
+        <div>
+          <div class="list-head"><h2>Consultores</h2><span>Cada um segue um modelo. Trocar aqui muda a rotina da pessoa a partir de hoje.</span></div>
+          <div class="list">
+            <div class="row"><div><b>Ana Souza</b><small>4 tarefas hoje</small></div><span class="pick">Consultor manhã<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg></span></div>
+            <div class="row off"><div><b>Bruno Lima</b><small>Sem rotina na Meta diária</small></div><span class="pick">Sem modelo<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg></span></div>
+            <div class="row off"><div><b>Carla Dias</b><small>Sem rotina na Meta diária</small></div><span class="pick">Sem modelo<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg></span></div>
+            <div class="row off"><div><b>Diego Rocha</b><small>Sem rotina na Meta diária</small></div><span class="pick">Sem modelo<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="scrim" id="scrim" hidden>
+  <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dlg-title">
+    <h2 id="dlg-title">Rotinas</h2>
+    <p class="desc">O dia de trabalho de cada consultor, com as tarefas que não envolvem lead.</p>
+    <p class="intro">Aqui você monta modelos com as tarefas que se repetem, como abrir a recepção, postar o story da aula ou mandar o resumo do dia, e escolhe quem segue cada modelo.</p>
+    <ul>
+      <li><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 2v4M16 2v4M3 10h18"/></svg>Cada tarefa tem os dias em que vale e, se quiser, um horário.</li>
+      <li><svg class="i" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5"/></svg>Cada consultor segue um modelo só, e um modelo pode ter várias pessoas. Para uma rotina diferente, duplique o modelo e ajuste.</li>
+      <li><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>O consultor vê a rotina do dia na Meta diária, num cartão próprio, e dá check em cada tarefa. A rotina não conta para o dia batido.</li>
+      <li><svg class="i" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></svg>Mudou um modelo? Vale a partir de hoje. Os dias anteriores ficam como estavam.</li>
+    </ul>
+    <div class="end"><button class="btn" type="button" id="ok">Entendi</button></div>
+  </div>
+</div>
+
+<script>
+const NOTES = {
+  a: '<b>A · Título da barra do topo.</b> O balão fica colado no "Rotinas" em negrito da barra de cima, que é o nome da tela. É o lugar que o olho bate primeiro quando a tela abre, e não disputa espaço com a frase nem com o Novo modelo.',
+  b: '<b>B · ROTINAS do conteúdo.</b> O balão fica colado no "ROTINAS" pequeno, logo acima da frase "1 de 4 consultores". Fica perto do conteúdo, mas o rótulo é pequeno e o balão aparece menos.',
+  c: '<b>C · Item do menu.</b> O balão fica no item Rotinas do menu da esquerda, como os números de Clientes e Meta diária, e o gestor vê a novidade de qualquer tela. O clique no balão abre a explicação, e o clique no resto do item abre a tela. Com o menu recolhido só aparece o ícone, e aí o balão vira um ponto laranja.',
+};
+const tabs = [...document.querySelectorAll('.tab')];
+function pick(opt) {
+  tabs.forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.opt === opt)));
+  document.querySelectorAll('.novo').forEach((b) => {
+    const on = b.dataset.place === opt;
+    b.hidden = !on;
+    b.classList.remove('spot');
+    if (on) { void b.offsetWidth; b.classList.add('spot'); }
+  });
+  document.getElementById('note').innerHTML = NOTES[opt];
+}
+tabs.forEach((t) => t.addEventListener('click', () => pick(t.dataset.opt)));
+pick('a');
+
+const scrim = document.getElementById('scrim');
+let opener = null;
+document.querySelectorAll('.novo').forEach((b) => b.addEventListener('click', () => { opener = b; scrim.hidden = false; document.getElementById('ok').focus(); }));
+function close() { scrim.hidden = true; opener?.focus(); }
+document.getElementById('ok').addEventListener('click', close);
+scrim.addEventListener('click', (e) => { if (e.target === scrim) close(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !scrim.hidden) close(); });
+
+const themeBtn = document.getElementById('theme');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  themeBtn.textContent = dark ? 'Tema claro' : 'Tema escuro';
+});
+</script>
+</body>
+</html>

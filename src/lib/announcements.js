@@ -6,7 +6,8 @@
 // (WhatsNewModal). Sem backend / sem função Vercel. Conteúdo product-wide.
 // Em 08/10/2026 as novidades grandes antigas deixaram de abrir o pop-up e
 // nenhuma entrada é `major` hoje. Tela nova se apresenta com o balão "Novo"
-// dentro dela (components/NewFeatureBadge.jsx), e o sino guarda o histórico.
+// (components/NewFeatureBadge.jsx), que nas Rotinas fica no item do menu, e o
+// sino guarda o histórico.
 //   audience: 'todos'  → todos os papéis no sino; o pop-up (major) não abre
 //                        para o professor (WhatsNewModal)
 //   audience: 'gestor' → só o gestor vê

@@ -1,18 +1,40 @@
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog.jsx';
 import { Button } from './ui/button.jsx';
 import { cn } from '../lib/utils.js';
-import { toDateInputValue } from '../lib/dates.js';
+import { isNewFeatureOn } from '../lib/newFeature.js';
 
-// Balão "Novo" de uma tela nova. Fica no canto da tela até o dia `until`
-// (AAAA-MM-DD, inclusive, no dia do aparelho) e, no clique, abre um pop-up que
-// explica a tela. Substitui o pop-up de novidade que abria sozinho: aqui quem
-// quer saber clica, e o sino continua com o histórico das novidades.
-// Data fora do formato não mostra o balão, para ele nunca ficar para sempre.
-const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+// Balão "Novo" de uma tela nova. Aparece até o dia `until` (AAAA-MM-DD,
+// inclusive, no dia do aparelho, pela conta de `isNewFeatureOn`) e, no clique,
+// abre um pop-up que explica a tela. Substitui o pop-up de novidade que abria
+// sozinho: aqui quem quer saber clica, e o sino continua com o histórico das
+// novidades.
 
-function NewFeatureBadge({ until, now = new Date(), title, description, children, className }) {
-  if (typeof until !== 'string' || !DAY_RE.test(until)) return null;
-  if (toDateInputValue(now) > until) return null;
+// soft: laranja suave, para o balão no meio da tela.
+// alert: vermelho cheio, para chamar atenção no menu. A borda branca de dentro
+// separa o vermelho do azul do item aceso, e some no menu branco; o halo
+// vermelho de fora destaca no fundo claro e no escuro.
+const TONES = {
+  soft: {
+    button: cn(
+      'h-6 gap-1.5 px-2.5 text-[10.5px] font-semibold',
+      'border-accent-500/30 bg-accent-500/10 text-orange-700 hover:bg-accent-500/20 dark:text-accent-400',
+    ),
+    dot: 'bg-accent-500 ring-[3px] ring-accent-500/20',
+  },
+  alert: {
+    button: cn(
+      'h-5 gap-1 px-2 text-[10px] font-bold',
+      'border-transparent bg-red-600 text-white hover:bg-red-700',
+      'shadow-[0_0_0_1.5px_rgba(255,255,255,.9),0_0_0_4px_rgba(220,38,38,.25)]',
+      'dark:shadow-[0_0_0_1.5px_rgba(14,26,64,.9),0_0_0_4px_rgba(248,113,113,.35)]',
+    ),
+    dot: 'bg-white ring-2 ring-white/35',
+  },
+};
+
+function NewFeatureBadge({ until, now = new Date(), tone = 'soft', title, description, children, className }) {
+  if (!isNewFeatureOn(until, now)) return null;
+  const look = TONES[tone] ?? TONES.soft;
 
   return (
     <Dialog>
@@ -21,17 +43,17 @@ function NewFeatureBadge({ until, now = new Date(), title, description, children
           type="button"
           aria-label="Novo: o que é esta tela"
           className={cn(
-            'relative inline-flex h-6 shrink-0 items-center gap-1.5 rounded-full border px-2.5',
-            'border-accent-500/30 bg-accent-500/10 text-orange-700 dark:text-accent-400',
-            'text-[10.5px] font-semibold uppercase leading-none tracking-wider',
-            'transition-colors hover:bg-accent-500/20',
+            'relative inline-flex shrink-0 items-center rounded-full border uppercase tracking-wider transition-colors',
+            look.button,
+            // Depois do tamanho da letra do tom: o cn() tira o leading que vem antes dele.
+            'leading-none',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
             // Área de toque maior que o desenho, para o dedo no celular.
             'after:absolute after:-inset-2',
             className,
           )}
         >
-          <span aria-hidden="true" className="size-1.5 rounded-full bg-accent-500 ring-[3px] ring-accent-500/20" />
+          <span aria-hidden="true" className={cn('size-1.5 rounded-full', look.dot)} />
           Novo
         </button>
       </DialogTrigger>

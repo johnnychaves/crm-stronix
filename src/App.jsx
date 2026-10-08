@@ -51,6 +51,7 @@ import {
 } from './lib/firebase.js';
 // Pure utilities — see src/lib/{constants,dates,auth,leads,funnels}.js
 import { getSafeDate } from './lib/dates.js';
+import { isNewFeatureOn } from './lib/newFeature.js';
 import { normalizeLeadDoc } from './lib/leads.js';
 import { ACTIONS, can, isGestor, isProfessor, isSeller } from './lib/acesso.js';
 import { planExpiredSetupOps } from './lib/expiredFunnel.js';
@@ -105,6 +106,7 @@ import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { ProfessorGoalPlaceholder } from './views/ProfessorGoalPlaceholder.jsx';
 import { RotinasView } from './views/RotinasView.jsx';
+import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/RotinasIntro.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
 import { WalkthroughModal } from './components/WalkthroughModal.jsx';
@@ -1631,7 +1633,20 @@ useEffect(() => {
             <>
               <div className={`px-2.5 mt-6 mb-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-gray-400 dark:text-neutral-500 whitespace-nowrap ${SIDEBAR_EXPANDED_ONLY}`}>Administração</div>
               <div className="space-y-1">
-                {nav.rotinas && <SidebarItem icon={<ListChecks className="w-[18px] h-[18px]" />} label="Rotinas" href={menuHref('rotinas')} onNavigate={closeDrawer} active={activeTab === 'rotinas'} />}
+                {/* O balão "Novo" das Rotinas, em vermelho, fica no item do
+                    menu até o ROTINAS_NOVO_ATE (mockup 2026-10-08, opção C).
+                    O clique nele abre a explicação, e no resto do item abre
+                    a tela. */}
+                {nav.rotinas && (
+                  <SidebarItem
+                    icon={<ListChecks className="w-[18px] h-[18px]" />}
+                    label="Rotinas"
+                    href={menuHref('rotinas')}
+                    onNavigate={closeDrawer}
+                    active={activeTab === 'rotinas'}
+                    novo={isNewFeatureOn(ROTINAS_NOVO_ATE) ? <RotinasNovo tone="alert" /> : null}
+                  />
+                )}
                 {!appUser.superAdminOnly && isGestor(appUser) && (
                   <SidebarItem icon={<Settings className="w-[18px] h-[18px]" />} label="Configurações" href={menuHref('settings')} onNavigate={closeDrawer} active={activeTab === 'settings'} />
                 )}

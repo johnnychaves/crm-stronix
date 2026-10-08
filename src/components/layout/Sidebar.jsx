@@ -14,7 +14,9 @@ const SIDEBAR_EXPANDED_ONLY =
 // `onNavigate` roda só quando o clique troca de tela nesta aba (o App fecha o
 // menu do celular por ele). Sem `href` continua botão, para o que abre janela
 // em vez de trocar de tela (Suporte). Link e botão têm a mesma aparência.
-function SidebarItem({ icon, label, active, badge, href, onNavigate, onClick }) {
+// `novo` é o balão "Novo" de uma tela nova (o RotinasNovo, por exemplo), já
+// decidido pela data: quem chama passa null depois do último dia.
+function SidebarItem({ icon, label, active, badge, href, onNavigate, onClick, novo }) {
   const className = cn(
     'group relative w-full h-11 pl-3.5 pr-3 rounded-xl flex items-center gap-3 text-[13.5px] font-medium transition-all',
     active
@@ -25,7 +27,10 @@ function SidebarItem({ icon, label, active, badge, href, onNavigate, onClick }) 
     <>
       {active && <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-accent-500" />}
       <span className={active ? 'text-white' : 'text-gray-400 group-hover:text-brand-600 dark:text-neutral-500 dark:group-hover:text-white transition-colors'}>{icon}</span>
-      <span className={cn('flex-1 text-left whitespace-nowrap tracking-tight', SIDEBAR_EXPANDED_ONLY)}>{label}</span>
+      {/* Com o balão, o rótulo guarda à direita o lugar dele. A folga fica no
+          rótulo, e não no link: no trilho recolhido o link continua do
+          tamanho dos outros, e o rótulo, que já passa da borda, só some. */}
+      <span className={cn('flex-1 text-left whitespace-nowrap tracking-tight', novo && 'pr-[68px]', SIDEBAR_EXPANDED_ONLY)}>{label}</span>
       {badge != null && (
         <span
           className={cn(
@@ -38,26 +43,48 @@ function SidebarItem({ icon, label, active, badge, href, onNavigate, onClick }) 
         </span>
       )}
       {/* Ponto de notificação do trilho recolhido. O selo acima some junto
-          com os rótulos, e o ponto faz o caminho inverso no hover. */}
-      {badge != null && (
+          com os rótulos, e o ponto faz o caminho inverso no hover. O balão
+          "Novo" tem o ponto vermelho, que passa na frente do laranja. */}
+      {(badge != null || novo) && (
         <span
           aria-hidden="true"
-          className="hidden md:block absolute top-2 left-[26px] size-2 rounded-full bg-accent-500 pointer-events-none transition-opacity duration-200 md:group-hover/sidebar:opacity-0 md:group-has-[:focus-visible]/sidebar:opacity-0"
+          className={cn(
+            'hidden md:block absolute top-2 left-[26px] size-2 rounded-full pointer-events-none transition-opacity duration-200 md:group-hover/sidebar:opacity-0 md:group-has-[:focus-visible]/sidebar:opacity-0',
+            novo ? 'bg-red-600 ring-2 ring-white dark:ring-ink-900' : 'bg-accent-500'
+          )}
         />
       )}
     </>
   );
-  if (href) {
-    return (
-      <AppLink to={href} onNavigate={onNavigate} aria-current={active ? 'page' : undefined} className={className}>
-        {content}
-      </AppLink>
-    );
-  }
-  return (
+  const item = href ? (
+    <AppLink to={href} onNavigate={onNavigate} aria-current={active ? 'page' : undefined} className={className}>
+      {content}
+    </AppLink>
+  ) : (
     <button type="button" onClick={onClick} className={className}>
       {content}
     </button>
+  );
+  if (!novo) return item;
+  // O balão é irmão do link, nunca filho: botão dentro de <a> é HTML inválido,
+  // e o clique nele (e no pop-up, que o React sobe pela árvore) navegaria. Ele
+  // fica na ponta direita da linha, no lugar do selo de pendências. No trilho
+  // recolhido do desktop some e não recebe clique, como os rótulos, e o ponto
+  // vermelho do ícone avisa; no hover ou no foco de teclado os dois trocam.
+  // No menu do celular o balão fica sempre à vista.
+  return (
+    <div className="relative">
+      {item}
+      <div
+        className={cn(
+          'absolute right-3 top-1/2 flex -translate-y-1/2',
+          SIDEBAR_EXPANDED_ONLY,
+          'md:pointer-events-none md:group-hover/sidebar:pointer-events-auto md:group-has-[:focus-visible]/sidebar:pointer-events-auto'
+        )}
+      >
+        {novo}
+      </div>
+    </div>
   );
 }
 

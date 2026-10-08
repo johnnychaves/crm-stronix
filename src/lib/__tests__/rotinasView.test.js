@@ -442,45 +442,31 @@ describe('acessibilidade', () => {
   });
 });
 
+// O balão "Novo" saiu da tela e foi para o item Rotinas do menu (mockup
+// 2026-10-08-balao-novo-rotinas.html, opção C). O conteúdo dele é testado no
+// rotinasIntro.test.js, e o item do menu no sidebarNovo.test.js.
 describe('o balão "Novo"', () => {
-  // Só o Date é falso: o Radix do pop-up continua com os timers de verdade.
+  // Só o Date é falso: a tela não tem timer de pop-up para atrasar.
   const hoje = (date) => vi.useFakeTimers({ now: date, toFake: ['Date'] });
-  const balao = () => labelled('Novo: o que é esta tela');
-  const dialogo = () => document.body.querySelector('[role="dialog"]');
 
-  it('fica no canto de cima da lista e abre o pop-up que explica a tela', async () => {
+  it('não fica mais na tela, nem na lista nem no modelo aberto', async () => {
     hoje(new Date(2026, 9, 8, 9, 0));
     await render(LIST);
-    expect(balao()).not.toBeNull();
-    expect(balao().textContent.trim()).toBe('Novo');
-    // Na linha do ROTINAS, e não ao lado do Novo modelo.
-    expect(balao().parentElement.textContent).toContain('Rotinas');
-    expect(balao().parentElement.contains(button('Novo modelo'))).toBe(false);
-    await click(balao());
-    expect(dialogo().querySelector('h2').textContent).toBe('Rotinas');
-    expect(dialogo().textContent).toContain('O dia de trabalho de cada consultor, com as tarefas que não envolvem lead.');
-    expect(dialogo().textContent).toContain('Aqui você monta modelos com as tarefas que se repetem');
-    expect(dialogo().textContent).toContain('A rotina não conta para o dia batido.');
-    await click(button('Entendi'));
-    expect(dialogo()).toBeNull();
-  });
-
-  it('aparece no último dia e some no dia seguinte', async () => {
-    hoje(new Date(2026, 10, 7, 23, 59));
-    await render(LIST);
-    expect(balao()).not.toBeNull();
+    expect(button('Novo modelo')).toBeTruthy();
+    expect(labelled('Novo: o que é esta tela')).toBeNull();
     act(() => root.unmount());
     root = createRoot(container);
-    hoje(new Date(2026, 10, 8, 0, 0));
-    await render(LIST);
-    expect(balao()).toBeNull();
-    expect(button('Novo modelo')).toBeTruthy();
-  });
-
-  it('não aparece no modelo aberto', async () => {
-    hoje(new Date(2026, 9, 8, 9, 0));
     await render('/acad/rotinas/modelos/m1');
     expect(text()).toContain('Manhã');
-    expect(balao()).toBeNull();
+    expect(labelled('Novo: o que é esta tela')).toBeNull();
+  });
+
+  it('o cabeçalho volta a ter uma linha só: o título à esquerda e o Novo modelo à direita', async () => {
+    await render(LIST);
+    const novo = button('Novo modelo');
+    const linha = novo.parentElement;
+    expect(linha.querySelector('h1')).not.toBeNull();
+    expect(linha.textContent).toContain('Rotinas');
+    expect(linha.lastElementChild).toBe(novo);
   });
 });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { CalendarClock, CircleCheck, History, ListChecks, Plus, Users } from 'lucide-react';
+import { ListChecks, Plus } from 'lucide-react';
 import { useRoutineModels } from '../hooks/useRoutineModels.js';
 import { canGoBackInApp, hrefFor } from '../lib/routes.js';
 import { firstName, modelOfUser, namesText, routineParticipants } from '../lib/rotinas.js';
@@ -8,7 +8,6 @@ import { ModelCard } from '../components/rotinas/ModelCard.jsx';
 import { ConsultantsList } from '../components/rotinas/ConsultantsList.jsx';
 import { ModelDetail } from '../components/rotinas/ModelDetail.jsx';
 import { NewModelSheet } from '../components/rotinas/NewModelSheet.jsx';
-import { NewFeatureBadge } from '../components/NewFeatureBadge.jsx';
 
 // Tela Rotinas do gestor (spec 2026-10-06, mockup
 // 2026-10-06-tela-rotinas-gestor.html). Parte 1: a aba Modelos e o modelo
@@ -33,43 +32,6 @@ import { NewFeatureBadge } from '../components/NewFeatureBadge.jsx';
 //   - renomear: abre o modelo com o nome em edição (depois de duplicar). Vale
 //     só durante a espera, então o F5 depois do prazo não reabre o nome.
 const FRESH_MS = 15_000;
-
-// Último dia do balão "Novo" da lista: aparece por 30 dias depois do lançamento.
-const NOVO_ATE = '2026-11-07';
-
-// O que o balão "Novo" explica. Cada linha tem o ícone do assunto dela.
-const SOBRE_ROTINAS = [
-  [CalendarClock, 'Cada tarefa tem os dias em que vale e, se quiser, um horário.'],
-  [Users, 'Cada consultor segue um modelo só, e um modelo pode ter várias pessoas. Para uma rotina diferente, duplique o modelo e ajuste.'],
-  [CircleCheck, 'O consultor vê a rotina do dia na Meta diária, num cartão próprio, e dá check em cada tarefa. A rotina não conta para o dia batido.'],
-  [History, 'Mudou um modelo? Vale a partir de hoje. Os dias anteriores ficam como estavam.'],
-];
-
-function SobreRotinas() {
-  return (
-    <NewFeatureBadge
-      until={NOVO_ATE}
-      className="-my-1"
-      title="Rotinas"
-      description="O dia de trabalho de cada consultor, com as tarefas que não envolvem lead."
-    >
-      <div className="flex flex-col gap-3 text-[13.5px] leading-relaxed">
-        <p>
-          Aqui você monta modelos com as tarefas que se repetem, como abrir a recepção, postar o story da aula ou mandar o
-          resumo do dia, e escolhe quem segue cada modelo.
-        </p>
-        <ul className="flex flex-col gap-2.5">
-          {SOBRE_ROTINAS.map(([Icon, item]) => (
-            <li key={item} className="flex items-start gap-2.5">
-              <Icon aria-hidden="true" className="mt-[3px] size-4 shrink-0 text-brand-600 dark:text-brand-300" />
-              <span>{item}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </NewFeatureBadge>
-  );
-}
 
 // A espera do modelo recém-criado. O prazo é conferido na montagem e depois
 // por um timer, porque nenhuma resposta da assinatura vai chegar para
@@ -169,26 +131,20 @@ export function RotinasView({ db, appUser, usersList, modelId, tenantId, listene
 
   return (
     <div className="flex flex-col gap-6 animate-fade-in">
-      <div className="flex flex-col gap-2">
-        {/* O balão "Novo" fica no canto de cima, na linha do ROTINAS, longe do
-            Novo modelo. A margem negativa dele não deixa a linha crescer, então
-            a tela fica igual quando o balão sai. */}
-        <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
           <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
             <ListChecks size={14} /> Rotinas
           </p>
-          <SobreRotinas />
-        </div>
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <h1 className="max-w-[720px] font-display text-[27px] font-medium leading-tight tracking-tight">
+          <h1 className="mt-2 max-w-[720px] font-display text-[27px] font-medium leading-tight tracking-tight">
             {loading
               ? <span className="text-muted-foreground">Carregando as rotinas…</span>
               : <Headline people={people} models={models} />}
           </h1>
-          <button type="button" ref={newModelRef} onClick={() => setCreatingKey(Date.now())} className="inline-flex h-[38px] items-center gap-2 rounded-[10px] bg-brand-600 px-3.5 text-[13px] font-semibold text-white">
-            <Plus size={15} /> Novo modelo
-          </button>
         </div>
+        <button type="button" ref={newModelRef} onClick={() => setCreatingKey(Date.now())} className="inline-flex h-[38px] items-center gap-2 rounded-[10px] bg-brand-600 px-3.5 text-[13px] font-semibold text-white">
+          <Plus size={15} /> Novo modelo
+        </button>
       </div>
 
       {models.length > 0 && (

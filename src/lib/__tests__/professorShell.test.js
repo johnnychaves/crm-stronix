@@ -77,6 +77,24 @@ describe('casca do App para o professor', () => {
     expect(app.slice(rotinas, config).match(/label="/g) ?? []).toEqual(['label="']);
   });
 
+  // O balão "Novo" vermelho fica no item Rotinas do menu até o último dia
+  // (mockup 2026-10-08-balao-novo-rotinas.html, opção C), sob a mesma guarda
+  // do item, e não na tela.
+  it('o balão "Novo" das Rotinas fica no item Rotinas do menu, sob a mesma guarda', () => {
+    const inicio = app.indexOf('>Administração</div>');
+    const rotinas = app.indexOf('label="Rotinas"', inicio);
+    const config = app.indexOf('label="Configurações"', inicio);
+    const guarda = app.lastIndexOf('{nav.rotinas && ', rotinas);
+    const balao = app.indexOf('<RotinasNovo tone="alert" />', inicio);
+    expect(app.indexOf('<RotinasNovo')).toBe(balao);
+    expect(balao).toBeGreaterThan(rotinas);
+    expect(balao).toBeLessThan(config);
+    // É a prop `novo` do próprio SidebarItem do Rotinas, e some com a data.
+    const item = app.slice(guarda, config);
+    expect(item).toMatch(/^\{nav\.rotinas && \(\s*<SidebarItem\s[\s\S]*?label="Rotinas"[\s\S]*?novo=\{isNewFeatureOn\(ROTINAS_NOVO_ATE\) \? <RotinasNovo tone="alert" \/> : null\}\s*\/>\s*\)\}/);
+    expect(app).toContain("import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/RotinasIntro.jsx';");
+  });
+
   it('os chamados do Suporte só são assinados por quem pode abrir o Suporte', () => {
     expect(app).toMatch(/const ticketsOn = [^;]*&& can\(appUser, ACTIONS\.SUPORTE_ABRIR\);/);
   });

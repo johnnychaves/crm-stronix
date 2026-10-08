@@ -5,6 +5,7 @@ import { act, createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NewFeatureBadge } from '../../components/NewFeatureBadge.jsx';
+import { isNewFeatureOn } from '../newFeature.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -77,5 +78,47 @@ describe('o pop-up', () => {
     await clicar(botao('Entendi'));
     expect(dialogo()).toBeNull();
     expect(balao()).not.toBeNull();
+  });
+});
+
+describe('o tom', () => {
+  const classes = () => balao().className.split(/\s+/);
+
+  it('sem tom, é o laranja suave de sempre', async () => {
+    await montar({ now: new Date(2026, 9, 8, 9, 0) });
+    expect(classes()).toEqual(expect.arrayContaining(['bg-accent-500/10', 'text-orange-700', 'h-6', 'text-[10.5px]', 'leading-none']));
+    expect(classes()).not.toContain('bg-red-600');
+    expect(classes()).not.toContain('text-white');
+  });
+
+  it('alert é vermelho cheio com texto branco, mais baixo, para caber na linha do menu', async () => {
+    await montar({ now: new Date(2026, 9, 8, 9, 0), tone: 'alert' });
+    expect(classes()).toEqual(expect.arrayContaining(['bg-red-600', 'text-white', 'hover:bg-red-700', 'h-5', 'text-[10px]', 'leading-none']));
+    expect(classes()).not.toContain('bg-accent-500/10');
+    expect(classes()).not.toContain('text-orange-700');
+    expect(classes()).not.toContain('h-6');
+    // O ponto fica branco, e o anel de foco continua.
+    expect(balao().querySelector('[aria-hidden="true"]').className).toContain('bg-white');
+    expect(classes()).toContain('focus-visible:ring-2');
+    expect(balao().getAttribute('aria-label')).toBe(NOME);
+    expect(balao().textContent.trim()).toBe('Novo');
+  });
+
+  it('tom desconhecido cai no suave', async () => {
+    await montar({ now: new Date(2026, 9, 8, 9, 0), tone: 'gritante' });
+    expect(classes()).toContain('bg-accent-500/10');
+  });
+});
+
+describe('isNewFeatureOn', () => {
+  it('vale até o último dia, inclusive, e some no seguinte', () => {
+    expect(isNewFeatureOn(ATE, new Date(2026, 9, 8, 9, 0))).toBe(true);
+    expect(isNewFeatureOn(ATE, new Date(2026, 10, 7, 23, 59))).toBe(true);
+    expect(isNewFeatureOn(ATE, new Date(2026, 10, 8, 0, 0))).toBe(false);
+  });
+
+  it('com a data fora do formato, não vale', () => {
+    expect(isNewFeatureOn('07/11/2026', new Date(2026, 9, 8))).toBe(false);
+    expect(isNewFeatureOn(undefined, new Date(2026, 9, 8))).toBe(false);
   });
 });
