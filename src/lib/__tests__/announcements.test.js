@@ -25,3 +25,10 @@ describe('novidades sem pop-up', () => {
     expect(latestUnseenAnnouncement(consultor)).toBeNull();
   });
 });
+
+describe('a novidade das rotinas', () => {
+  it('fala da aba Hoje numa frase', () => {
+    const rotinas = ANNOUNCEMENTS.find((a) => a.id === 'rotinas-dos-consultores-2026-10');
+    expect(rotinas.summary).toContain('Na aba Hoje, você acompanha o que cada um já fez, o que está atrasado e as observações do dia.');
+  });
+});

@@ -26,7 +26,7 @@ export const ANNOUNCEMENTS = [
     eyebrow: 'Novidade',
     title: 'Rotinas: monte o dia de trabalho de cada consultor',
     summary:
-      'Em Rotinas, no menu, você cria modelos com as tarefas do dia que não envolvem lead, como conferir a recepção ou postar o story da aula, e escolhe quem segue cada modelo. O consultor dá check na Meta diária, num cartão próprio, e a rotina não conta para o dia batido.',
+      'Em Rotinas, no menu, você cria modelos com as tarefas do dia que não envolvem lead, como conferir a recepção ou postar o story da aula, e escolhe quem segue cada modelo. O consultor dá check na Meta diária, num cartão próprio, e a rotina não conta para o dia batido. Na aba Hoje, você acompanha o que cada um já fez, o que está atrasado e as observações do dia.',
   },
   {
     id: 'desfecho-e-indicacao-manual-2026-09',
