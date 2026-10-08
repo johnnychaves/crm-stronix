@@ -4,6 +4,9 @@
 // Todas aparecem no SINO do header (lib/notifications.js), com histórico e
 // marcação de lido; só as marcadas `major: true` interrompem com o pop-up
 // (WhatsNewModal). Sem backend / sem função Vercel. Conteúdo product-wide.
+// Em 08/10/2026 as novidades grandes antigas deixaram de abrir o pop-up e
+// nenhuma entrada é `major` hoje. Tela nova se apresenta com o balão "Novo"
+// dentro dela (components/NewFeatureBadge.jsx), e o sino guarda o histórico.
 //   audience: 'todos'  → todos os papéis no sino; o pop-up (major) não abre
 //                        para o professor (WhatsNewModal)
 //   audience: 'gestor' → só o gestor vê
@@ -86,7 +89,6 @@ export const ANNOUNCEMENTS = [
     id: 'indicacoes-2026-08',
     audience: 'todos',
     date: '2026-08-09',
-    major: true,
     articleId: 'indicacoes',
     eyebrow: 'Novidade',
     title: 'Sistema de indicações no ar',
@@ -97,16 +99,11 @@ export const ANNOUNCEMENTS = [
       'A ficha do aluno ganhou a aba Indicações, com quem ele trouxe e quantos viraram alunos.',
       'Quando o indicado fecha matrícula, o aviso aparece na linha do tempo de quem indicou.',
     ],
-    adminSteps: [
-      'O funil "Indicações" é criado sozinho na primeira vez que um administrador entra.',
-      'Em Configurações → Pessoas, use "Indicações sem dono" para dizer quem indicou os leads antigos.',
-    ],
   },
   {
     id: 'meta-prospeccao-2026-06',
     audience: 'todos',
     date: '2026-06-20',
-    major: true,
     articleId: 'meta-diaria',
     eyebrow: 'Novidade',
     title: 'Meta de Prospecção + novo Painel da Equipe',
@@ -116,10 +113,6 @@ export const ANNOUNCEMENTS = [
       'O Painel da Equipe virou uma tabela executiva com as duas metas (diária e prospecção) lado a lado.',
       'Gráfico "Trajetória do mês" clicável: clique num dia para ver os resultados daquele dia.',
       'O gestor também pode entrar na meta de prospecção (opcional).',
-    ],
-    adminSteps: [
-      'Abra Configurações → Regras gerais.',
-      'Defina o piso de ações por dia da academia e, se quiser, um alvo por consultor.',
     ],
   },
 ];

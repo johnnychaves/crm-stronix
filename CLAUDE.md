@@ -218,6 +218,7 @@ O papel Professor só é dado com o módulo `faltosos` ligado (ver "Módulos da 
   - O selo da Meta e as consultas de renovação e de contato de hoje (`useRenewalClients` e `useClientsWithContactToday`) só rodam para quem vende (`isSeller`).
 - **Pop-ups.**
   - O pop-up de novidade grande (`WhatsNewModal`) e o tutorial (`WalkthroughModal`) não abrem para o professor. As novidades continuam no sino.
+  - O `WhatsNewModal` continua no app, mas desde 08/10/2026 nenhuma novidade é grande (`major`), então ele não abre para ninguém. O `src/lib/__tests__/professorPopups.test.js` cobre o pop-up com uma novidade grande falsa, e o `announcements.test.js` reprova quem marcar uma novidade como grande sem querer. Tela nova se apresenta pelo balão "Novo" (ver "Rotinas dos consultores").
   - O comentário de `audience` em `src/lib/announcements.js` diz isso.
   - O menu da conta mostra "Professor" como papel.
 
