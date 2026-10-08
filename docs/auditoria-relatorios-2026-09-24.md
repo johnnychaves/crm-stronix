@@ -80,6 +80,8 @@ O que mais pesa no desenho:
 
 ### 1.3 Recomendação em três ondas
 
+A onda 1 desta seção foi revista em 08/10/2026: quase todos os relatórios dela repetem números que os painéis já mostram. A ordem nova está na seção 1.8.
+
 A tela `/<academia>/relatorios` nasce só no navegador (arquitetura A da seção 7.6), com as contas dos painéis, e liga desde a primeira entrega a foto diária do pipeline (arquitetura C). O resumo mensal gravado por função (arquitetura B) fica para quando alguma academia passar de uns 2 mil registros de interação por mês, alguém pedir série de atividade maior que 12 meses ou você decidir que o mês fechado congela (decisão 8).
 
 #### Onda 1: prontos e de prioridade alta
@@ -227,6 +229,137 @@ O Johnny respondeu às decisões 1, 2, 3, 4 e 13. A 12 já estava decidida na sp
 | 14 | Dinheiro com os 494 contratos importados sem valor | O relatório sai já, com o aviso de valor suspeito e esses contratos contados à parte. |
 | 15 | Excluir lead ou membro | Arquivar o lead e desligar o membro, em vez de apagar. |
 
+
+### 1.8 Relatórios redundantes (08/10/2026)
+
+Pedido do Johnny depois das decisões da seção 1.7. A conferência foi feita sobre o catálogo da seção 5 e sobre a main de 08/10/2026 (até a PR #249), e cada um dos 172 relatórios caiu em exatamente um grupo.
+
+Um relatório é redundante de dois jeitos: quando repete um número que o sistema já mostra, ou quando repete outro relatório do catálogo com outro recorte. O resultado:
+
+- 54 dos 172 repetem um número que já existe. São 24 que repetem igual e 30 que acrescentam só um recorte, uma coluna ou a lista de nomes.
+- Entre si, os 172 viram 41 relatórios, mais os 3 fora do escopo (R047, R062 e R170). Desses 41, 6 são extensão de uma tela que já existe e 35 são relatórios novos.
+
+#### O que muda na recomendação
+
+A onda 1 da seção 1.3 fica revista. Dos 12 relatórios dela, 9 repetem exatamente um número que já existe (R049, R086, R105, R114, R008, R103, R130, R145 e R160), 2 repetem com um recorte a mais (R054 e R107) e só o R150 é novo. Na seção 1.3, "pronto" queria dizer, na prática, que o painel já faz a conta.
+
+A entrega B passa a começar assim:
+
+1. Nas telas que já existem, sem relatório novo: o período personalizado da Visão geral (spec aprovada em 25/09/2026, ainda fora da main), cada número abrindo a lista de nomes por trás dele, com exportação, e a exportação em Clientes. Isso entrega os 24 que repetem igual.
+2. Os 30 que repetem com um recorte a mais entram como recorte ou coluna no bloco que já existe.
+3. A tela de Relatórios começa pelos 9 de prioridade alta que não repetem nada: R020 (rapidez do primeiro contato contra conversão), R026 (repescagem de perdidos), R055 (relatório de contratos), R056 (insumo da comissão), R067 (evolução da carteira), R142 (pendências que cegam os números), R149 (mesma pessoa em dois cadastros), R150 (valores suspeitos) e R153 (explorador da base).
+
+A entrega A não muda. Os dados que ela grava servem aos relatórios novos, e a foto diária (PR 9 da spec da entrega A) continua servindo ao R012, ao R106 e ao R119, mesmo que o R104 saia.
+
+#### Os 24 que repetem um número igual
+
+| Já está em | Relatórios |
+|---|---|
+| Visão geral → CRM | R006 Conversão da safra por origem, consultor e funil; R008 Matrículas do período e matrículas da safra lado a lado; R010 Passagem entre etapas e tempo na etapa; R011 Pipeline agora e leads parados na etapa; R029 Conversão por professor; R031 Com professor ou treina sozinho; R114 Leads sem próximo passo |
+| Visão geral → Operacional | R068 Ponte da base do mês com nomes; R086 Renovação por coorte de vencimento; R091 Motivos de não renovar e de não voltar; R101 Prospecção contra a cota; R103 Tarefas da Meta concluídas por categoria; R105 Atrasados agora por consultor |
+| Visão geral → Gerencial | R049 Vendas do período por tipo; R077 Pessoas com contrato paralelo |
+| Pipeline (funil Vencidos) e Gerencial | R089 Fila de recuperação de vencidos |
+| Clientes (já tem o filtro de trancado; falta exportar) | R066 Situação atual da base de clientes |
+| Aulas → Em andamento | R041 Passe livre em andamento e expirando |
+| Ficha → Linha do tempo | R130 Extrato de atendimento de um lead |
+| Configurações (Equipe & acessos, Indicações sem dono e Catálogos) | R123 Quadro da equipe e vagas do plano; R139 Fila de indicações sem indicador; R145 Uso dos catálogos |
+| Console do super-admin (Visão geral, com os botões Exportar sem ação, e Faturamento) | R160 Carteira de academias; R164 Inadimplência e cobrança das academias |
+
+#### Os 30 que repetem com um recorte a mais
+
+O número já está na tela. O caminho é pôr o recorte ou a coluna no bloco que já existe.
+
+| Relatório | Já está em | O que acrescenta |
+|---|---|---|
+| R001 Entrada de leads por origem e canal | Visão geral → CRM (Leads novos e Origem) | o canal da origem (pago, orgânico, offline) |
+| R009 Velocidade até a matrícula | CRM (Dias até a matrícula) | por plano e por origem |
+| R013 Conversão por funil | CRM (filtro de funil) | os funis lado a lado e o valor vendido |
+| R021 Perdas por motivo, etapa, origem e consultor | CRM (Perdas por motivo e Etapa da perda) | por origem |
+| R027 Agenda do período pelo histórico real | Aulas e Visitas → Exportar | ler o histórico de `stronix_aulas`, e não o agendamento guardado no lead |
+| R028 Comparecimento de visitas e aulas | CRM (Agendamentos e Comparecimento) | por unidade, modalidade, origem e funil |
+| R050 Ranking de vendedores | Gerencial (Quem vendeu) | desconto médio e duração média |
+| R051 Descontos concedidos | Gerencial (Desconto, só o total) | por motivo, plano e pessoa |
+| R052 Mix de planos, durações e modalidades | Gerencial (Planos mais vendidos) | por modalidade e o peso na carteira |
+| R054 Vendas canceladas depois | Gerencial (nota de cancelado depois) | por pessoa, motivo e dias até cancelar |
+| R069 Churn mensal por segmento | Operacional (Churn) e Gerencial (Saiu neste mês) | por plano, duração e tempo de casa |
+| R070 Cancelamentos por motivo e momento | Operacional (Cancelamentos por motivo) | o momento da vigência e o valor não cumprido |
+| R072 Trancamentos | Operacional (Trancamentos) | a duração e quantos cancelam depois |
+| R087 Cobertura dos marcos de renovação | Operacional (Contatos nos marcos) | se quem foi contatado renova mais |
+| R088 Vencimentos a vir com lista nominal | Gerencial (Vencendo 30/60/90), Operacional (A vencer) e Clientes | até 180 dias e a situação do contato |
+| R090 Reconquista de ex-clientes | Gerencial (tipo retorno) e Operacional (Voltaram) | o tempo fora e o ticket na volta |
+| R093 Antecedência e encaixe da renovação | Operacional (Quando renovou) | os dias de lacuna ou de sobreposição |
+| R095 Primeira renovação contra as seguintes | Operacional (Renovação) | a taxa por ciclo: primeira, segunda e terceira renovação |
+| R097 Funil Upgrade | Pipeline (aba Upgrade), Operacional (Upgrades) e Gerencial (mix) | as recusas, o tempo até fechar e de qual plano para qual |
+| R099 Placar mensal por consultor | as tabelas por pessoa do Operacional, do CRM e do Gerencial | as três numa tabela só |
+| R100 Produção por pessoa | Operacional (Tarefas concluídas por tipo) | todas as ações registradas, não só as da Meta |
+| R102 Constância da Meta Diária | Operacional (Dias de meta) e Meta Diária (Ritmo do mês) | o dia da semana em que falha e a maior sequência |
+| R107 Tempo até o primeiro contato | CRM (Tempo até o primeiro contato) | por origem e hora de chegada, com a regra de contato da decisão 7 |
+| R113 Carteira sem toque | Pipeline (temperatura do lead) | a contagem por pessoa, com clientes |
+| R118 Carteira por pessoa e carteira órfã | Configurações → Migrar leads (carteira por consultor) | a carteira órfã |
+| R144 Importações por lote | Configurações → Importação (relatório CSV da hora) | ficar gravado |
+| R156 Resumo da semana e do mês | destaques do Operacional e do CRM com o Comparar | a semana |
+| R162 Receita recebida do SaaS | Console → Faturamento (Recebido, 25 últimos eventos) | mês a mês |
+| R167 Suporte por academia | Console → Suporte (chamados abertos) | o tempo até a primeira resposta |
+| R168 Trilha de auditoria da plataforma | Console (30 últimas ações) | o histórico inteiro, com filtro |
+
+#### Os 41 relatórios, depois de juntar os repetidos
+
+"Extensão de tela" quer dizer que a maior parte do grupo já existe numa tela, e o caminho é completar essa tela. "Relatório novo" é uma tela da função de Relatórios, com os recortes de todos os relatórios do grupo.
+
+| Relatório | Junta | Já existem hoje | Tipo | O que muda entre eles |
+|---|---|---|---|---|
+| Entrada de leads | R001 | R001 | extensão de tela | Relatório único. Falta só o canal da origem no CRM. |
+| Conversão da safra | R003, R006, R007, R008, R013, R015, R020, R135, R141 | R006, R008, R013 | relatório novo | O recorte: DDD, origem, funil, indicado ou não, caminho por visita ou aula, perfil e rapidez do primeiro contato. A maturação (R007) é a mesma safra vista por dias. |
+| Funil por etapa | R010, R011, R012, R014, R017, R018 | R010, R011 | relatório novo | Agora, numa data passada, entre funis e pela causa da entrada em Negociação. O R018 é o R010 estendido para trás. |
+| Tempos do funil | R009, R016, R024, R039, R040, R107 | R009, R107 | relatório novo | Cada trecho do caminho: primeiro contato, agendamento, comparecimento, matrícula ou perda, e os toques até lá. |
+| Previsão do mês | R019, R058, R080 | nenhum | relatório novo | O que deve fechar até o fim do mês: matrículas pelo funil, meta de vendas e base de clientes. |
+| Perdas | R021, R022, R025 | R021 | relatório novo | Pela decisão 5 toda perda do período conta, então o R022 é a definição do R021. O R025 é o recorte de quem compareceu. |
+| Perdidos que voltam e repescagem | R005, R023, R026 | nenhum | relatório novo | Quem voltou sozinho, quem foi reaberto e a fila de quem ainda pode voltar. |
+| Agenda e comparecimento | R027, R028, R033, R034, R035, R036, R037, R038, R046, R048 | R027, R028 | relatório novo | Unidade, dia e hora, antecedência, remarcação, cancelamento e confirmação. O R046 é o mesmo relatório antes de 18/08/2026. |
+| Agenda futura | R042, R115 | nenhum | relatório novo | Por professor ou por pessoa da equipe. |
+| Aulas experimentais e professores | R029, R030, R031, R032, R041, R043 | R029, R031, R041 | relatório novo | Professor, dupla com o consultor, modalidade e pacote do passe. |
+| Vendas e contratos | R049, R050, R051, R052, R053, R054, R055, R059, R060, R064 | R049, R050, R051, R052, R054 | relatório novo | Tipo, vendedor, plano, desconto, preço contra a tabela, cancelado depois, unidade, dia e hora, e a lista de contratos. |
+| Comissão e regra de ouro | R056, R057 | nenhum | relatório novo | O fechamento da comissão pela regra do sistema e pela regra de ouro do time comercial. |
+| Valor do aluno e retorno por canal | R004, R065, R075 | nenhum | relatório novo | O custo do canal, o valor já comprado e o valor estimado do aluno. |
+| Base de clientes | R066, R067, R068, R077, R079 | R066, R068, R077 | extensão de tela | Hoje, a evolução e a ponte do mês, em pessoas e em valor por mês. |
+| Saídas e retenção | R069, R070, R071, R073, R074, R076, R081, R082, R085 | R069, R070 | relatório novo | Motivo, tempo de casa, safra, perfil, professor, acompanhamento do aluno novo e engajamento. |
+| Trancamentos | R072, R084 | R072 | relatório novo | Quantos trancam e quais fogem da regra do plano. |
+| Pedidos de cancelamento e reversão | R083 | nenhum | relatório novo | Relatório único. Depende do processo de cancelamento ainda em rascunho. |
+| Satisfação (NPS) | R078 | nenhum | relatório novo | Relatório único. Precisa de dado novo. |
+| Renovação | R086, R087, R091, R092, R093, R095 | R086, R087, R091, R093, R095 | extensão de tela | Colunas do bloco Renovação do Operacional: marcos, motivos, aumento na renovação, antecedência e ciclo. |
+| Vencimentos a vir | R063, R088 | R088 | relatório novo | Quem vence e quem paga abaixo da tabela de hoje. |
+| Vencidos e ex-clientes | R089, R090, R094, R096 | R089, R090 | relatório novo | A fila de recuperação, quem volta, as etapas do funil Vencidos e as recusas revertidas. |
+| Upgrade | R044, R097, R098 | R097 | relatório novo | O funil, as aulas feitas por clientes e quem ainda pode entrar. |
+| Placar da equipe | R099, R101, R102, R124, R127, R133 | R099, R101, R102 | relatório novo | O mês, a série de meses, o consultor novo e o gestor à parte. |
+| Atividade por pessoa | R045, R100, R103, R109, R122, R132 | R100, R103 | relatório novo | O tipo de ação registrada e o resultado do contato. |
+| Follow-up e carteira parada | R104, R105, R106, R110, R111, R112, R113, R114, R128, R129 | R105, R113, R114 | relatório novo | O que está atrasado ou parado e se o combinado acontece no dia. |
+| Tempo de resposta no WhatsApp | R108 | nenhum | relatório novo | Relatório único. Depende da Parte B da ponte com o Stronizap. |
+| Carteira e passagens de bastão | R116, R117, R118, R119, R120 | R118 | relatório novo | A carteira de hoje, numa data passada, as trocas de responsável, as tarefas delegadas e quem cobre quem. |
+| Turnos e plantão | R002, R121, R131 | nenhum | relatório novo | A chegada dos leads, o horário da equipe e o plantão do digital. |
+| Equipe | R123, R125, R126 | R123 | relatório novo | O quadro de hoje, as entradas e saídas e os convites. |
+| Extrato de um lead | R130 | R130 | extensão de tela | Relatório único. É a linha do tempo da ficha. |
+| Indicações | R134, R136, R137, R138, R139, R140 | R139 | relatório novo | Ranking, recompensa do mês, consultor, canal, pendências e quem nunca indicou. |
+| Qualidade da base | R142, R143, R144, R145, R148, R149, R150, R151 | R144, R145 | relatório novo | Cada tipo de problema no cadastro e nos valores. |
+| Trilha de auditoria | R061, R146, R147, R159 | nenhum | relatório novo | Correções de contrato, configuração, exclusões e exportações. O R159 sobra só como explicação do que mudou. |
+| LGPD | R152 | nenhum | relatório novo | Relatório único. Precisa de processo e de dado novo. |
+| Explorador e listas | R153, R154, R155 | nenhum | relatório novo | O explorador com recortes salvos. Os dois aniversários são recortes dele. |
+| Resumo do período | R156, R157, R158 | R156 | relatório novo | O dia, a semana, o mês e o ano. |
+| Academias (super-admin) | R160, R161, R166, R171 | R160 | relatório novo | Carteira, uso, vagas e implantação de cada academia. |
+| Receita do SaaS (super-admin) | R162, R163, R164 | R162, R164 | extensão de tela | Recebido, MRR e inadimplência. |
+| Ciclo de vida das academias (super-admin) | R165, R172 | nenhum | relatório novo | Do trial à primeira fatura e quem segue pagando. |
+| Suporte e trilha da plataforma (super-admin) | R167, R168 | R167, R168 | extensão de tela | Chamados e ações do super-admin. |
+| Comparativo entre academias (super-admin) | R169 | nenhum | relatório novo | Relatório único. |
+| Fora do escopo | R047, R062, R170 | nenhum | não entra | Pagamento, frequência na catraca e custo de leitura por academia não estão no CRM. |
+
+#### Perderam o sentido depois das decisões ou das mudanças recentes
+
+- R159 (fechamento congelado do mês): vai contra a decisão 8, em que o mês fechado recalcula sempre. Sobra a explicação do que mudou num mês fechado, que a trilha de auditoria (R061, R146 e R147) já dá.
+- R104 (cumprimento das tarefas do dia por pessoa): a tela em que ele se apoiava, a Meta da equipe, saiu em 07/10/2026 (PR #247), porque o Operacional a substituiu. Só entra se o Johnny quiser essa visão de volta.
+- R018 e R046 não são relatórios próprios: são o R010 e o R028 estendidos para meses antigos, com dado aproximado lido do texto da linha do tempo.
+
+#### Uma redundância que já existe no sistema
+
+A conversão por professor aparece em dois lugares, com contas diferentes: no CRM (Aulas por professor) e no cartão dos professores de Configurações → Equipe & acessos, na coluna Matrícula (`src/views/settings/TeamAccessSection.jsx`), que segue uma regra mais antiga, como registrou a conferência do R029. Vale tirar uma das duas ou alinhar as contas. Fica fora da entrega A.
 
 ## 2. Mapa de dados (parte 1: leads, contratos e agenda)
 
