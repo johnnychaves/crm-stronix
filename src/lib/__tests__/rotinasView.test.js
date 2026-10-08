@@ -44,7 +44,9 @@ const { ToastContext } = await import('../../contexts/ToastContext.jsx');
 const { RotinasView } = await import('../../views/RotinasView.jsx');
 
 const toast = { show: vi.fn(), success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn(), dismiss: vi.fn() };
-const GESTOR = { id: 'g1', authUid: 'g1', name: 'Bruno Gestor', role: 'admin' };
+// O gestor destes testes já dispensou a apresentação das Rotinas, que abriria
+// sozinha por cima da tela (ver rotinasApresentacao.test.js).
+const GESTOR = { id: 'g1', authUid: 'g1', name: 'Bruno Gestor', role: 'admin', introsDismissed: { rotinas: true } };
 const EQUIPE = [
   GESTOR,
   { id: 'carla', authUid: 'carla', name: 'Carla Souza', role: 'consultant' },

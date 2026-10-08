@@ -1636,7 +1636,8 @@ useEffect(() => {
                 {/* O balão "Novo" das Rotinas, em vermelho, fica no item do
                     menu até o ROTINAS_NOVO_ATE (mockup 2026-10-08, opção C).
                     O clique nele abre a explicação, e no resto do item abre
-                    a tela. */}
+                    a tela. O db e o appUser são do "Não mostrar novamente"
+                    do último passo. */}
                 {nav.rotinas && (
                   <SidebarItem
                     icon={<ListChecks className="w-[18px] h-[18px]" />}
@@ -1644,7 +1645,7 @@ useEffect(() => {
                     href={menuHref('rotinas')}
                     onNavigate={closeDrawer}
                     active={activeTab === 'rotinas'}
-                    novo={isNewFeatureOn(ROTINAS_NOVO_ATE) ? <RotinasNovo tone="alert" /> : null}
+                    novo={isNewFeatureOn(ROTINAS_NOVO_ATE) ? <RotinasNovo tone="alert" db={db} appUser={appUser} /> : null}
                   />
                 )}
                 {!appUser.superAdminOnly && isGestor(appUser) && (

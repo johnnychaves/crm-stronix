@@ -7,13 +7,15 @@
 // do navegador não consulta coleção dentro da transação. Escolher o modelo
 // de novo resolve.
 import { collection, deleteDoc, doc, runTransaction, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
-import { appId, ROUTINE_MARKS_PATH, ROUTINE_MODELS_PATH, ROUTINE_VERSIONS_PATH } from './firebase.js';
+import { appId, ROUTINE_MARKS_PATH, ROUTINE_MODELS_PATH, ROUTINE_VERSIONS_PATH, USERS_PATH } from './firebase.js';
 import { NOTE_MAX, copyName, followerChanges, markIdOf, modelDocs, newTaskId, routineDayKey } from './rotinas.js';
+import { INTROS_DISMISSED_FIELD, ROTINAS_INTRO_ID } from './rotinasIntro.js';
 
 const modelsCol = (db) => collection(db, 'artifacts', appId, 'public', 'data', ROUTINE_MODELS_PATH);
 const modelRef = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', ROUTINE_MODELS_PATH, id);
 const versionRef = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', ROUTINE_VERSIONS_PATH, id);
 const markRef = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', ROUTINE_MARKS_PATH, id);
+const userRef = (db, id) => doc(db, 'artifacts', appId, 'public', 'data', USERS_PATH, id);
 
 // Modelo que alguém apagou entre a tela abrir e o gestor gravar.
 export const MODEL_GONE = 'modelo-sumiu';
@@ -135,3 +137,16 @@ export const saveMarkNote = ({ db, markId, note }) =>
   updateDoc(markRef(db, markId), { note: String(note ?? '').trim().slice(0, NOTE_MAX).trimEnd() });
 
 export const undoMark = ({ db, markId }) => deleteDoc(markRef(db, markId));
+
+// "Não mostrar novamente" da apresentação das Rotinas (src/lib/rotinasIntro.js).
+// Grava no cadastro da própria pessoa, para valer em qualquer aparelho, pelo
+// mesmo caminho do "já li" do sino (useNotificationsSeen): setDoc com merge,
+// que junta o mapa introsDismissed sem apagar outra apresentação dispensada e
+// não toca em papel, academia nem chave. As regras de stronix_users deixam o
+// gestor (isAdmin) e a própria pessoa (cadastro com id igual ao uid) gravarem
+// isso. Conta antiga, com o id do cadastro diferente do uid, é recusada, e a
+// tela avisa que a apresentação pode voltar.
+export async function dismissRotinasIntro({ db, userId }) {
+  if (!userId) throw new Error('Sem o cadastro de quem dispensou a apresentação.');
+  await setDoc(userRef(db, userId), { [INTROS_DISMISSED_FIELD]: { [ROTINAS_INTRO_ID]: true } }, { merge: true });
+}

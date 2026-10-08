@@ -1,9 +1,12 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button.jsx';
-import { DialogDescription, DialogTitle } from '../ui/dialog.jsx';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '../ui/dialog.jsx';
 import { NewFeatureBadge } from '../NewFeatureBadge.jsx';
+import { useToast } from '../../contexts/ToastContext.jsx';
+import { markRotinasIntroSeen } from '../../lib/rotinasIntro.js';
+import { dismissRotinasIntro } from '../../lib/rotinasWrites.js';
 import { IntroAddTasks, IntroCheck, IntroCreateModel, IntroFollowers, IntroToday, IntroWhat } from './IntroIllustrations.jsx';
 
 // O balão "Novo" da tela Rotinas, no item Rotinas do menu lateral (mockup
@@ -12,6 +15,12 @@ import { IntroAddTasks, IntroCheck, IntroCreateModel, IntroFollowers, IntroToday
 // 2026-10-08-rotinas-intro-e-polimento.html, Pop-up 1, escolhido pelo Johnny
 // em 08/10/2026, com o passo da aba Hoje do 2026-10-08-rotinas-aba-hoje.html);
 // o clique no resto do item abre a tela.
+//
+// A mesma apresentação abre sozinha quando o gestor entra em Rotinas
+// (RotinasIntroDialog, que a RotinasView monta), uma vez por sessão, até ele
+// marcar "Não mostrar novamente" no último passo. Quando abre sozinha e quando
+// abre pelo balão, ela conta como vista nesta sessão, e o botão do último passo
+// grava a dispensa nos dois casos. A regra mora em src/lib/rotinasIntro.js.
 
 // Último dia do balão "Novo" (e do ponto vermelho do menu recolhido): aparece
 // por 30 dias depois do lançamento.
@@ -20,6 +29,14 @@ export const NOVO_ATE = '2026-11-07';
 function B({ children }) {
   return <b className="font-semibold text-foreground">{children}</b>;
 }
+
+// A caixa do pop-up. O balão a passa ao NewFeatureBadge, que põe na frente a
+// altura máxima, a rolagem e a borda (DIALOG_BASE); o RotinasIntroDialog monta
+// a mesma caixa, e o teste confere que as duas saem iguais.
+const INTRO_BOX = 'grid-cols-[minmax(0,1fr)] gap-0 rounded-[18px] p-0 sm:max-w-[520px]';
+const DIALOG_BASE = 'max-h-[calc(100dvh-2rem)] overflow-y-auto border-border';
+
+const DISMISS_FAILED = 'Não deu para salvar. A apresentação pode aparecer de novo.';
 
 // Os passos, com os textos aprovados no mockup.
 const PASSOS = [
@@ -85,12 +102,32 @@ const PASSOS = [
 // mais alto (294px, medido no primeiro passo, com a caixa de 520px), para o
 // rodapé não pular de um passo para o outro e o Próximo ficar sob o mouse.
 // Mudou um texto de passo? Meça de novo: o passo mais alto tem de caber.
-function RotinasIntroCarousel({ close }) {
+//
+// No último passo, antes do Voltar, vem o "Não mostrar novamente", só quando há
+// cadastro para gravar (appUser). Ele fecha na hora e grava em segundo plano; se
+// a gravação falha, o aviso diz que a apresentação pode voltar. O Entendi, o X e
+// o Esc só fecham. No celular o botão ocupa a linha dele (basis-full) em cima
+// do Voltar e do Entendi, que continuam juntos na ponta direita; a partir do sm
+// os três ficam na mesma linha. A ordem do Tab é a da tela.
+function RotinasIntroCarousel({ close, db, appUser }) {
   const [step, setStep] = useState(0);
   const primaryRef = useRef(null);
+  const toast = useToast();
   const passo = PASSOS[step];
   const last = step === PASSOS.length - 1;
   const Illustration = passo.Illustration;
+  const canDismiss = Boolean(appUser?.id);
+
+  // Aberta pelo balão ou sozinha, a apresentação conta como vista nesta sessão.
+  useEffect(() => {
+    if (appUser?.id) markRotinasIntroSeen(appUser);
+  }, [appUser]);
+
+  const dismissForever = () => {
+    markRotinasIntroSeen(appUser);
+    close();
+    dismissRotinasIntro({ db, userId: appUser.id }).catch(() => toast.error(DISMISS_FAILED));
+  };
 
   const back = () => {
     if (step === 1) primaryRef.current?.focus();
@@ -144,7 +181,12 @@ function RotinasIntroCarousel({ close }) {
             />
           ))}
         </div>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap justify-end gap-2">
+          {last && canDismiss && (
+            <Button type="button" variant="ghost" onClick={dismissForever} className="basis-full justify-end px-3 text-[13px] text-muted-foreground sm:basis-auto sm:justify-center">
+              Não mostrar novamente
+            </Button>
+          )}
           <Button type="button" variant="outline" onClick={back} className={cn('border-border', step === 0 && 'hidden')}>
             Voltar
           </Button>
@@ -157,14 +199,29 @@ function RotinasIntroCarousel({ close }) {
   );
 }
 
-// `tone`, `now` e `className` vão direto para o NewFeatureBadge.
-export function RotinasNovo(props) {
+// `tone`, `now` e `className` vão direto para o NewFeatureBadge. `db` e
+// `appUser` são de quem está logado, para o "Não mostrar novamente".
+export function RotinasNovo({ db, appUser, ...props }) {
   return (
     <NewFeatureBadge
       {...props}
       until={NOVO_ATE}
-      contentClassName="grid-cols-[minmax(0,1fr)] gap-0 rounded-[18px] p-0 sm:max-w-[520px]"
-      renderContent={({ close }) => <RotinasIntroCarousel close={close} />}
+      contentClassName={INTRO_BOX}
+      renderContent={({ close }) => <RotinasIntroCarousel close={close} db={db} appUser={appUser} />}
     />
+  );
+}
+
+// A apresentação que abre sozinha ao entrar em Rotinas (RotinasView). É a do
+// balão, na mesma caixa, sem o balão: quem decide se abre é a tela, pela
+// shouldAutoOpenRotinasIntro.
+export function RotinasIntroDialog({ open, onOpenChange, db, appUser }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      {/* border-border: o `border` do DialogContent sozinho pega a cor do texto e fica branco no escuro. */}
+      <DialogContent className={cn(DIALOG_BASE, INTRO_BOX)}>
+        <RotinasIntroCarousel close={() => onOpenChange(false)} db={db} appUser={appUser} />
+      </DialogContent>
+    </Dialog>
   );
 }
