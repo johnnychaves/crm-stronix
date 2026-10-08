@@ -5,6 +5,7 @@ import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/
 import { appId, LEADS_PATH, INTERACTIONS_PATH, DAILY_GOAL_HISTORY_PATH } from '../lib/firebase.js';
 import { recordGoalHit as recordGoalHitDoc } from '../lib/dailyGoalHistory.js';
 import { DAILY_GOAL_CATEGORIES, DAILY_GOAL_CATEGORY_LABEL, APPOINTMENT_OUTCOMES, getAppointmentOutcomeMeta, getLeadAppointmentType, getLeadAppointmentDate, hasGoalDoneTodayFor, appointmentTaskOwnerId, goalOwnerFields, isClientLead, outcomeAppliesToAula } from '../lib/leads.js';
+import { isMetaParticipant } from '../lib/acesso.js';
 import { logInteraction } from '../lib/interactions.js';
 import { withBucket } from '../lib/leadDerived.js';
 import { stageChangeFields } from '../lib/stageMove.js';
@@ -13,6 +14,7 @@ import { computeDayAgenda } from '../lib/dayAgenda.js';
 import { useDayAgenda } from '../hooks/useDayAgenda.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
 import { DayAgendaCard } from '../components/dailygoal/DayAgendaCard.jsx';
+import { RoutineCard } from '../components/dailygoal/RoutineCard.jsx';
 import { OutcomePopover } from '../components/dailygoal/OutcomePopover.jsx';
 import { writeAppointmentOutcome, correctAppointmentOutcome } from '../lib/appointmentOutcome.js';
 import { planPromotion, correctableOutcome } from '../lib/outcomeCorrection.js';
@@ -1847,6 +1849,16 @@ function DailyGoalView({ leads, interactions, appUser, statuses, db, usersList, 
             onOutcome={handleOutcome}
             onReschedule={(t, s) => setRescheduleTarget({ lead: t, categorySlug: s })}
           />
+
+          {isMetaParticipant(appUser) && (
+            <RoutineCard
+              db={db}
+              appUser={appUser}
+              enabled={listenersActive}
+              now={now}
+              metaWeekdays={metaWeekdays}
+            />
+          )}
 
           <DayAgendaCard
             rows={dayAgenda.rows}

@@ -581,6 +581,15 @@ describe('scrubLeadPath', () => {
     expect(scrubLeadPath('/S/FICHA/Ab12')).toBe('/S/FICHA/:leadId');
   });
 
+  it('o id do modelo de rotina também sai do endereço', () => {
+    expect(scrubLeadPath('/s/rotinas/modelos/AbC123')).toBe('/s/rotinas/modelos/:modelId');
+    expect(scrubLeadPath('/s/rotinas/modelos/AbC123?x=1')).toBe('/s/rotinas/modelos/:modelId?x=1');
+    expect(scrubLeadPath('/s/rotinas/hoje')).toBe('/s/rotinas/hoje');
+    expect(scrubLeadPath('/s/rotinas/modelos')).toBe('/s/rotinas/modelos');
+    expect(scrubLeadPath('https://x.com/s/ficha/L1 e /s/rotinas/modelos/M9')).toBe('https://x.com/s/ficha/:leadId e /s/rotinas/modelos/:modelId');
+    expect(scrubLeadPath(scrubLeadPath('/s/rotinas/modelos/M9'))).toBe('/s/rotinas/modelos/:modelId');
+  });
+
   it('para em espaço e aspas quando o caminho está no meio de uma frase', () => {
     expect(scrubLeadPath('falhou ao abrir /s/ficha/Ab12 agora')).toBe('falhou ao abrir /s/ficha/:leadId agora');
     expect(scrubLeadPath('href="/s/ficha/Ab12" quebrou')).toBe('href="/s/ficha/:leadId" quebrou');

@@ -408,3 +408,86 @@ describe('query nos redirects, decidido de propósito', () => {
     );
   });
 });
+
+describe('Rotinas na decisão de rota', () => {
+  it('o gestor abre a lista e o modelo aberto de primeira', () => {
+    expect(decide(`/${T}/rotinas`, admin)).toEqual({ kind: 'ok' });
+    expect(decide(`/${T}/rotinas/modelos`, admin)).toEqual({ kind: 'ok' });
+    expect(decide(`/${T}/rotinas/modelos/AbC123`, admin)).toEqual({ kind: 'ok' });
+  });
+
+  it('a aba Hoje abre de primeira para o gestor, e só para ele', () => {
+    expect(decide(`/${T}/rotinas/hoje`, admin)).toEqual({ kind: 'ok' });
+    expect(decide(`/${T}/rotinas/hoje`, consultor)).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'so-gestor'));
+    expect(decide('/rotinas/hoje', admin)).toEqual(casa(`/${T}/rotinas/hoje`, { screen: 'rotinas', sub: 'hoje' }));
+    expect(decide('/outra/rotinas/hoje', admin)).toEqual(casa(`/${T}/rotinas/hoje`, { screen: 'rotinas', sub: 'hoje' }));
+    expect(decide(`/${T}/rotinas/hoje/x`, admin)).toEqual(casa(`/${T}/rotinas`, { screen: 'rotinas' }));
+  });
+
+  it('a aba Hoje tem a mesma chave e o mesmo molde da lista: trocar de aba não remonta a tela', () => {
+    expect(screenKey(parseAppPath(`/${T}/rotinas/hoje`))).toBe('rotinas');
+    expect(routeTemplate(`/${T}/rotinas/hoje`)).toBe('/:tenant/rotinas');
+  });
+
+  it('o consultor cai no Operacional com o aviso de gestor, em qualquer endereço de Rotinas', () => {
+    for (const p of [`/${T}/rotinas`, `/${T}/rotinas/modelos/AbC123`, `/${T}/rotinas/xyz`]) {
+      expect(decide(p, consultor), p).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'so-gestor'));
+    }
+  });
+
+  it('sub-tela desconhecida e id inválido abrem a lista, com a query e sem aviso', () => {
+    expect(decide(`/${T}/rotinas/xyz`, admin, { search: '?a=1' })).toEqual(casa(`/${T}/rotinas?a=1`, { screen: 'rotinas' }));
+    expect(decide(`/${T}/rotinas/modelos/..`, admin)).toEqual(casa(`/${T}/rotinas`, { screen: 'rotinas' }));
+  });
+
+  it('o endereço sem academia leva o modelo junto, no destino e no alvo desenhado', () => {
+    expect(decide('/rotinas/modelos/AbC123', admin)).toEqual(
+      casa(`/${T}/rotinas/modelos/AbC123`, { screen: 'rotinas', sub: 'modelos', modelId: 'AbC123' }),
+    );
+    expect(decide('/rotinas', admin)).toEqual(casa(`/${T}/rotinas`, { screen: 'rotinas' }));
+  });
+
+  it('o modelo de outra academia cai na lista, como a ficha cai na tela inicial, porque o id é dado de lá', () => {
+    expect(decide('/outra/rotinas/modelos/AbC123', admin)).toEqual(casa(`/${T}/rotinas`, { screen: 'rotinas' }));
+    // Com a caixa trocada na academia da sessão não é outra academia: o modelo fica.
+    expect(decide(`/${T.toUpperCase()}/rotinas/modelos/AbC123`, admin)).toEqual(
+      casa(`/${T}/rotinas/modelos/AbC123`, { screen: 'rotinas', sub: 'modelos', modelId: 'AbC123' }),
+    );
+    // A lista e a aba de outra academia seguem como estavam: não há id para largar.
+    expect(decide('/outra/rotinas', admin)).toEqual(casa(`/${T}/rotinas`, { screen: 'rotinas' }));
+    expect(decide('/outra/rotinas/modelos', admin)).toEqual(casa(`/${T}/rotinas/modelos`, { screen: 'rotinas', sub: 'modelos' }));
+    // A query vai junto, e o consultor continua recebendo o aviso de gestor.
+    expect(decide('/outra/rotinas/modelos/AbC123', admin, { search: '?a=1' })).toEqual(casa(`/${T}/rotinas?a=1`, { screen: 'rotinas' }));
+    expect(decide('/outra/rotinas/modelos/AbC123', consultor)).toEqual(casa(`/${T}`, { screen: 'dashboard' }, 'so-gestor'));
+  });
+
+  it('a barra no fim do endereço do modelo abre o modelo', () => {
+    expect(decide(`/${T}/rotinas/modelos/M1/`, admin)).toEqual({ kind: 'ok' });
+    expect(screenKey(parseAppPath(`/${T}/rotinas/modelos/M1/`))).toBe('rotinas:M1');
+  });
+
+  it('a lista e a aba têm uma chave só, e o modelo aberto é tela própria, como a ficha', () => {
+    expect(screenKey(parseAppPath(`/${T}/rotinas`))).toBe('rotinas');
+    expect(screenKey(parseAppPath(`/${T}/rotinas/modelos`))).toBe('rotinas');
+    expect(screenKey(parseAppPath(`/${T}/rotinas/modelos/AbC123`))).toBe('rotinas:AbC123');
+    expect(screenKey(parseAppPath(`/${T}/rotinas/modelos/Outro`))).toBe('rotinas:Outro');
+    // Abrir um modelo e voltar à lista são telas diferentes para a rolagem: abrir vai ao topo,
+    // e o Voltar do navegador devolve a posição da lista.
+    const lista = screenKey(parseAppPath(`/${T}/rotinas`));
+    const modelo = screenKey(parseAppPath(`/${T}/rotinas/modelos/AbC123`));
+    expect(scrollActionFor({ navigationType: 'PUSH', prevScreenKey: lista, screenKey: modelo })).toBe('top');
+    expect(scrollActionFor({ navigationType: 'POP', prevScreenKey: modelo, screenKey: lista })).toBe('restore');
+    // Só a ficha e o modelo guardam o id na chave: as outras telas com sub-tela não.
+    expect(screenKey({ screen: 'settings', modelId: 'AbC123', sub: 'team' })).toBe('settings');
+  });
+
+  it('o modelo não entra no molde do Sentry', () => {
+    for (const p of [`/${T}/rotinas`, `/${T}/rotinas/modelos`, `/${T}/rotinas/modelos/AbC123`]) {
+      expect(routeTemplate(p), p).toBe('/:tenant/rotinas');
+    }
+  });
+
+  it('o título da aba é Rotinas e nunca leva o id', () => {
+    expect(documentTitle({ screen: 'rotinas', tenantName: 'STRONIX' })).toBe('Rotinas · STRONIX · STRONILEAD');
+  });
+});

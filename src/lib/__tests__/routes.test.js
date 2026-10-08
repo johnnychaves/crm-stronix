@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { UNSAFE_createBrowserHistory } from 'react-router';
 import {
   HOME_SCREEN, SCREENS, SUPER_TABS, FIRST_LEVEL_SEGMENTS,
-  isValidLeadId, parseAppPath, hrefFor, canGoBackInApp,
+  isValidLeadId, parseAppPath, hrefFor, canGoBackInApp, canAccess,
 } from '../routes.js';
 
 const T = 'stronix-crm-app';
@@ -11,11 +11,13 @@ const NUL = String.fromCharCode(0);
 const DEL = String.fromCharCode(0x7f);
 // Metade de um emoji: o encodeURIComponent não consegue codificar.
 const MEIO_EMOJI = String.fromCharCode(0xd800);
+// Ids que o Firestore aceita e que o endereço precisa levar sem perder nada.
+const IDS_DIFICEIS = ['Ab12', 'João Silva', 'ação', '100%', '%41', 'a%2Fb', 'x?y#z', 'emoji 😀', '...', 'a'.repeat(128)];
 
 // Os mesmos valores de activeTab que o App.jsx usa hoje.
 const TELAS = [
   'dashboard', 'dashOperacional', 'dashCrm', 'dashGerencial', 'kanban', 'clientes', 'dailyGoal',
-  'leads', 'aulas', 'visitas', 'settings', 'profile', 'billing', 'superadmin', 'ficha',
+  'leads', 'aulas', 'visitas', 'settings', 'profile', 'billing', 'superadmin', 'ficha', 'rotinas',
 ];
 
 describe('SCREENS', () => {
@@ -32,7 +34,7 @@ describe('SCREENS', () => {
   it('trava de gestor só em Configurações, Perfil da academia e Plano e faturas; super-admin só na dele', () => {
     const gestor = TELAS.filter((id) => SCREENS[id].gestor === true);
     const superAdmin = TELAS.filter((id) => SCREENS[id].superAdmin === true);
-    expect(gestor.sort()).toEqual(['billing', 'profile', 'settings']);
+    expect(gestor.sort()).toEqual(['billing', 'profile', 'rotinas', 'settings']);
     expect(superAdmin).toEqual(['superadmin']);
   });
 
@@ -45,7 +47,7 @@ describe('SCREENS', () => {
   it('primeiro segmento de cada tela, sem repetição', () => {
     expect([...FIRST_LEVEL_SEGMENTS].sort()).toEqual([
       'clientes', 'configuracoes', 'ficha', 'leads', 'meta-diaria', 'perfil-da-academia',
-      'pipeline', 'plano-e-faturas', 'super-admin', 'visao-geral',
+      'pipeline', 'plano-e-faturas', 'rotinas', 'super-admin', 'visao-geral',
     ]);
     expect(Object.isFrozen(FIRST_LEVEL_SEGMENTS)).toBe(true);
   });
@@ -245,10 +247,16 @@ describe('ida e volta hrefFor e parseAppPath', () => {
   });
 
   it('id com espaço, acento, %, ?, # e emoji volta igual', () => {
-    const ids = ['Ab12', 'João Silva', 'ação', '100%', '%41', 'a%2Fb', 'x?y#z', 'emoji 😀', '...', 'a'.repeat(128)];
-    for (const leadId of ids) {
+    for (const leadId of IDS_DIFICEIS) {
       const href = hrefFor(T, 'ficha', { leadId });
       expect(parseAppPath(href), leadId).toMatchObject({ tenantSlug: T, screen: 'ficha', leadId });
+    }
+  });
+
+  it('o id do modelo de rotina volta igual pela mesma lista de ids difíceis', () => {
+    for (const modelId of IDS_DIFICEIS) {
+      const href = hrefFor(T, 'rotinas', { modelId });
+      expect(parseAppPath(href), modelId).toMatchObject({ tenantSlug: T, screen: 'rotinas', sub: 'modelos', modelId, unknown: false, subUnknown: false });
     }
   });
 
@@ -454,7 +462,7 @@ describe('sub-tela no caminho', () => {
   });
 
   it('a tabela de sub-telas é congelada e o padrão de cada uma existe nela', () => {
-    for (const id of ['settings', 'ficha']) {
+    for (const id of ['settings', 'ficha', 'rotinas']) {
       expect(Object.isFrozen(SCREENS[id].subs), id).toBe(true);
       expect(Object.keys(SCREENS[id].subs), id).toContain(SCREENS[id].subPadrao);
     }
@@ -462,6 +470,82 @@ describe('sub-tela no caminho', () => {
 
   it('nenhuma outra tela tem sub-tela nesta entrega', () => {
     const comSub = Object.keys(SCREENS).filter((id) => SCREENS[id].subs);
-    expect(comSub.sort()).toEqual(['ficha', 'settings']);
+    expect(comSub.sort()).toEqual(['ficha', 'rotinas', 'settings']);
+  });
+});
+
+describe('Rotinas no endereço', () => {
+  it('lê a lista, a aba Modelos e o modelo aberto', () => {
+    expect(parseAppPath(`/${T}/rotinas`)).toMatchObject({ tenantSlug: T, screen: 'rotinas', unknown: false });
+    expect(parseAppPath(`/${T}/rotinas/modelos`)).toMatchObject({ screen: 'rotinas', sub: 'modelos' });
+    expect(parseAppPath(`/${T}/rotinas/modelos/AbC123xyz`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', modelId: 'AbC123xyz' });
+  });
+
+  it('lê e monta a aba Hoje', () => {
+    expect(parseAppPath(`/${T}/rotinas/hoje`)).toMatchObject({ screen: 'rotinas', sub: 'hoje', subUnknown: false, unknown: false });
+    expect(parseAppPath(`/${T}/rotinas/HOJE`)).toMatchObject({ screen: 'rotinas', sub: 'hoje' });
+    expect('modelId' in parseAppPath(`/${T}/rotinas/hoje`)).toBe(false);
+    expect(parseAppPath(`/${T}/rotinas/hoje/x`)).toMatchObject({ screen: 'rotinas', subUnknown: true });
+    expect(hrefFor(T, 'rotinas', { sub: 'hoje' })).toBe(`/${T}/rotinas/hoje`);
+    // A aba Modelos manda sub null: o endereço dela é o curto, o mesmo do menu.
+    expect(hrefFor(T, 'rotinas', { sub: null })).toBe(`/${T}/rotinas`);
+    expect(parseAppPath(hrefFor(T, 'rotinas', { sub: 'hoje' }))).toMatchObject({ screen: 'rotinas', sub: 'hoje' });
+    // O modelo aberto ganha da aba: o endereço do modelo é um só.
+    expect(hrefFor(T, 'rotinas', { sub: 'hoje', modelId: 'AbC' })).toBe(`/${T}/rotinas/modelos/AbC`);
+  });
+
+  it('sub-tela desconhecida e id inválido caem na lista', () => {
+    expect(parseAppPath(`/${T}/rotinas/qualquer`)).toMatchObject({ screen: 'rotinas', subUnknown: true });
+    // 'a.b' é id válido do Firestore (ver isValidLeadId), então os inválidos
+    // aqui são os que a regra recusa: '..', __x__ e barra codificada.
+    for (const ruim of ['..', '__x__', 'a%2Fb']) {
+      const r = parseAppPath(`/${T}/rotinas/modelos/${ruim}`);
+      expect(r.modelId, ruim).toBeUndefined();
+      expect(r, ruim).toMatchObject({ screen: 'rotinas', subUnknown: true });
+    }
+  });
+
+  it('modelId só aparece quando existe e a lista tem a mesma forma de sempre', () => {
+    expect('modelId' in parseAppPath(`/${T}/rotinas`)).toBe(false);
+    expect('modelId' in parseAppPath(`/${T}/rotinas/modelos`)).toBe(false);
+    expect('modelId' in parseAppPath(`/${T}/pipeline`)).toBe(false);
+  });
+
+  it('o resto do endereço não vira modelo nem aba', () => {
+    expect(parseAppPath(`/${T}/rotinas/modelos/AbC/x`)).toMatchObject({ screen: 'rotinas', subUnknown: true });
+    expect(parseAppPath(`/${T}/rotinas/modelos/AbC/x`).modelId).toBeUndefined();
+    expect(parseAppPath(`/${T}/ROTINAS/MODELOS/AbC123xyz`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', modelId: 'AbC123xyz' });
+  });
+
+  it('a barra no fim do endereço do modelo abre o modelo', () => {
+    expect(parseAppPath(`/${T}/rotinas/modelos/AbC123xyz/`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', modelId: 'AbC123xyz', unknown: false, subUnknown: false });
+    expect(parseAppPath(`/${T}/rotinas/modelos/`)).toMatchObject({ screen: 'rotinas', sub: 'modelos', subUnknown: false });
+    expect(parseAppPath(`/${T}/rotinas/modelos/`).modelId).toBeUndefined();
+  });
+
+  it('monta o endereço da lista e do modelo', () => {
+    expect(hrefFor(T, 'rotinas')).toBe(`/${T}/rotinas`);
+    expect(hrefFor(T, 'rotinas', { sub: 'modelos' })).toBe(`/${T}/rotinas/modelos`);
+    expect(hrefFor(T, 'rotinas', { modelId: 'AbC123xyz' })).toBe(`/${T}/rotinas/modelos/AbC123xyz`);
+    expect(hrefFor(T, 'rotinas', { modelId: '..' })).toBe(`/${T}/rotinas`);
+    expect(hrefFor(T, 'rotinas', { modelId: 'a/b' })).toBe(`/${T}/rotinas`);
+    expect(hrefFor(T, 'rotinas', { modelId: 'a b' })).toBe(`/${T}/rotinas/modelos/a%20b`);
+    // Metade de um emoji passa no isValidLeadId e o encode recusa: cai na lista, nunca em /modelos/null.
+    expect(isValidLeadId(MEIO_EMOJI)).toBe(true);
+    expect(hrefFor(T, 'rotinas', { modelId: MEIO_EMOJI })).toBe(`/${T}/rotinas`);
+    expect(hrefFor(T, 'rotinas', { modelId: MEIO_EMOJI, sub: 'modelos' })).toBe(`/${T}/rotinas/modelos`);
+    // modelId só vale em Rotinas.
+    expect(hrefFor(T, 'settings', { modelId: 'AbC123xyz' })).toBe(`/${T}/configuracoes`);
+  });
+
+  it('o que o hrefFor monta o parseAppPath lê de volta', () => {
+    expect(parseAppPath(hrefFor(T, 'rotinas', { modelId: 'João Silva' }))).toMatchObject({ screen: 'rotinas', modelId: 'João Silva' });
+    expect(parseAppPath(hrefFor(T, 'rotinas'))).toMatchObject({ screen: 'rotinas', sub: null });
+  });
+
+  it('só o gestor abre', () => {
+    expect(canAccess('rotinas', { id: 'g', role: 'admin' })).toBe(true);
+    expect(canAccess('rotinas', { id: 'c', role: 'consultant' })).toBe(false);
+    expect(canAccess('rotinas', { id: 'p', role: 'professor', professorId: 'x' })).toBe(false);
   });
 });

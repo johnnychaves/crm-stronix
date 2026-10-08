@@ -11,6 +11,7 @@ import { hrefFor } from '../routes.js';
 vi.mock('../firebase.js', () => ({
   appId: 'acad', LEADS_PATH: 'leads', INTERACTIONS_PATH: 'inter',
   DAILY_GOAL_HISTORY_PATH: 'hist', db: {}, auth: {}, storage: {},
+  ROUTINE_MODELS_PATH: 'rotina_modelos', ROUTINE_VERSIONS_PATH: 'rotina_versoes', ROUTINE_MARKS_PATH: 'rotina_marcas',
 }));
 
 const { TaskCard, DoneCard, TomorrowApptRow } = await import('../../views/DailyGoalView.jsx');

@@ -103,6 +103,17 @@ describe('routeDecision: professor', () => {
     }
   });
 
+  it('Rotinas é do gestor: a lista e o modelo aberto levam o professor à Meta diária com o aviso de tela não liberada', () => {
+    for (const p of [`/${T}/rotinas`, `/${T}/rotinas/modelos`, `/${T}/rotinas/modelos/M1`, `/${T}/rotinas/hoje`, `/${T}/rotinas/xyz`]) {
+      expect(decide(p, professor, { search: '?a=1' }), p).toEqual(meta('nao-liberada'));
+      expect(decide(p, semLigacao), p).toEqual(meta('nao-liberada'));
+    }
+    // Sem academia ou com a de outra, o aviso sai no mesmo passo, e o id do modelo não vai junto.
+    expect(decide('/rotinas', professor)).toEqual(meta('nao-liberada'));
+    expect(decide('/rotinas/modelos/M1', professor)).toEqual(meta('nao-liberada'));
+    expect(decide('/outra/rotinas/modelos/M1', professor)).toEqual(meta('nao-liberada'));
+  });
+
   it('as telas dele abrem de primeira, com a aba da ficha', () => {
     const dele = [
       `/${T}/meta-diaria`, `/${T}/clientes`, `/${T}/ficha`, `/${T}/ficha/AbC`,
@@ -138,6 +149,7 @@ describe('routeDecision: professor', () => {
       '/', '/outra', `/${T}`, `/${T}/xyz`, `/${T}/pipeline`, `/${T}/configuracoes`, `/${T}/super-admin/planos`,
       `/${T}/visao-geral/crm`, `/${T}/ficha/a%2Fb`, '/outra/ficha/Ab12', '/pipeline', '/STRONIX-CRM-APP/clientes',
       '/academia-teste/pipeline', '/api', '/%E0%A4%A', `//${T}//pipeline`, `/${T}/ficha/AbC/xyz`,
+      `/${T}/rotinas`, `/${T}/rotinas/modelos/M1`, '/outra/rotinas/modelos/M1', '/rotinas/modelos/M1',
     ];
     const retornos = [
       null,

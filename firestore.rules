@@ -460,6 +460,80 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // O dia da rotina (date, 'AAAA-MM-DD') tem de ser o dia de agora em algum
+    // fuso entre UTC-12 e UTC+14. Duas regras usam esta conta: a do check
+    // (stronix_rotina_marcas) e a da versão do dia do modelo
+    // (stronix_rotina_versoes). Na do check, a hora já é a do servidor
+    // (doneAt == request.time); sem esta trava, o consultor marcaria pelo SDK a
+    // tarefa de amanhã ou de um dia passado e ela apareceria feita no horário.
+    // Na da versão, ela impede de reescrever o histórico de um dia que passou
+    // ou de gravar um dia que ainda não chegou. Sobra uma folga de um dia na
+    // virada da meia-noite, que no check a leitura fecha: o check só conta
+    // quando o doneAt cai no próprio date (src/lib/rotinas.js).
+    function routineMarkDayOk(date) {
+      return date is string
+        && date.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && request.time > timestamp.date(int(date.split('-')[0]), int(date.split('-')[1]), int(date.split('-')[2])) - duration.value(14, 'h')
+        && request.time < timestamp.date(int(date.split('-')[0]), int(date.split('-')[1]), int(date.split('-')[2])) + duration.value(36, 'h');
+    }
+
+    // Rotinas dos consultores (spec
+    // docs/superpowers/specs/2026-10-06-rotinas-dos-consultores-design.md).
+    // Modelo e versão do dia: lê quem é da academia, grava só o gestor, como os
+    // catálogos. A versão é o histórico da rotina: não se apaga, e só se grava
+    // no dia de hoje: mudar um modelo vale a partir de hoje, e o passado não
+    // se reescreve. O id da versão, `{modelId}_{date}`, é o que o modelDocs
+    // (src/lib/rotinas.js) monta, e o src/lib/__tests__/rotinaRules.test.js
+    // confere os dois.
+    match /artifacts/{appId}/public/data/stronix_rotina_modelos/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow write: if isAdmin(appId) && inTenant(appId) && tenantActive(appId);
+    }
+
+    match /artifacts/{appId}/public/data/stronix_rotina_versoes/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow create, update: if isAdmin(appId) && inTenant(appId) && tenantActive(appId)
+        && id == request.resource.data.modelId + '_' + request.resource.data.date
+        && routineMarkDayOk(request.resource.data.date);
+      allow delete: if false;
+    }
+
+    // O check da rotina. Só o próprio consultor cria, no id
+    // `{consultantId}_{date}_{taskId}`, com a hora do servidor e a observação
+    // vazia. O get() confere que o cadastro de consultantId é de quem grava:
+    // sem ele, alguém criaria o check de um colega com o próprio uid, o furo
+    // descrito no comentário do stronix_daily_goal_history. Depois do check, só
+    // a observação muda, e só o dono desfaz, até 24 horas depois (a tela só
+    // oferece desfazer no mesmo dia). O professor não tem rotina. O dia do
+    // check tem de ser o de agora (routineMarkDayOk), e o check leva
+    // exatamente os nove campos que o app grava (hasOnly mais hasAll): nem
+    // campo a mais, nem modelId, taskTitle ou taskTime a menos. O app grava o
+    // taskTime como null na tarefa sem horário. A lista, o id, o doneAt e o
+    // note vazio estão amarrados ao markDone (src/lib/rotinasWrites.js) pelo
+    // src/lib/__tests__/rotinaRules.test.js: mudou o markDone, o teste quebra
+    // até a regra acompanhar.
+    match /artifacts/{appId}/public/data/stronix_rotina_marcas/{id} {
+      allow read: if inTenant(appId) && tenantActive(appId);
+      allow create: if inTenant(appId) && tenantActive(appId)
+        && request.resource.data.consultantAuthUid == request.auth.uid
+        && get(/databases/$(database)/documents/artifacts/$(appId)/public/data/stronix_users/$(request.resource.data.consultantId)).data.authUid == request.auth.uid
+        && id == request.resource.data.consultantId + '_' + request.resource.data.date + '_' + request.resource.data.taskId
+        && request.resource.data.doneAt == request.time
+        && request.resource.data.note == ''
+        && routineMarkDayOk(request.resource.data.date)
+        && request.resource.data.keys().hasOnly(['consultantId', 'consultantAuthUid', 'date', 'modelId', 'taskId', 'taskTitle', 'taskTime', 'doneAt', 'note'])
+        && request.resource.data.keys().hasAll(['consultantId', 'consultantAuthUid', 'date', 'modelId', 'taskId', 'taskTitle', 'taskTime', 'doneAt', 'note'])
+        && !isProfessor(appId);
+      allow update: if inTenant(appId) && tenantActive(appId)
+        && resource.data.consultantAuthUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['note'])
+        && request.resource.data.note is string
+        && request.resource.data.note.size() <= 140;
+      allow delete: if inTenant(appId) && tenantActive(appId)
+        && resource.data.consultantAuthUid == request.auth.uid
+        && request.time < resource.data.doneAt + duration.value(24, 'h');
+    }
+
     // Registro de tenants (raiz). Escrita SEMPRE via Admin SDK (provisionamento,
     // status, convites) — nunca pelo cliente. Leitura liberada para os membros
     // do próprio tenant (o app lê status/trial no login para bloquear academias

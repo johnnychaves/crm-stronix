@@ -68,6 +68,8 @@ const LISTAS_DE_QUEM_VENDE = [
   'views/LeadProfileView.jsx',
   'modals/ClientRegistrationModal.jsx',
   'views/settings/PaceSection.jsx',
+  // Rotinas: quem pode seguir modelo (routineParticipants).
+  'lib/rotinas.js',
 ];
 
 describe('o papel se decide em src/lib/acesso.js', () => {

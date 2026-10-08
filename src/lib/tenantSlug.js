@@ -24,7 +24,7 @@ export const TENANT_SLUG_CREATE_RE = /^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$/;
 export const RESERVED_TENANT_SLUGS = Object.freeze([
   'api', 'assets', 'static', 'public', 'index', 'favicon', 'robots', 'sitemap', 'manifest', 'service-worker',
   'i', 'convite', 'invite', 'indicacao', 'login', 'entrar', 'sair', 'logout', 'cadastro', 'ativar', 'recuperar-senha',
-  'visao-geral', 'pipeline', 'clientes', 'meta-diaria', 'leads', 'configuracoes', 'perfil-da-academia', 'plano-e-faturas', 'ficha', 'super-admin',
+  'visao-geral', 'pipeline', 'clientes', 'meta-diaria', 'rotinas', 'leads', 'configuracoes', 'perfil-da-academia', 'plano-e-faturas', 'ficha', 'super-admin',
   'console', 'admin', 'superadmin', 'painel', 'app', 'www', 'suporte', 'ajuda', 'status', 'stronilead',
 ]);
 

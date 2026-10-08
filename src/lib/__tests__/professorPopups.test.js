@@ -4,12 +4,33 @@
 // Configurações, e os dois pop-ups falam dessas telas. As novidades continuam
 // no sino dele (spec 2026-10-02-professor-e-faltosos-design.md). O gestor
 // continua vendo os passos de configurar, agora pelo isGestor.
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+// Desde 08/10/2026 nenhuma novidade de verdade é grande (announcements.test.js
+// confere isso), então o pop-up recebe aqui uma novidade grande falsa, montada
+// como as de verdade. O falso a devolve para qualquer pessoa: quem segura o
+// professor é o próprio WhatsNewModal.
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { WalkthroughModal } from '../../components/WalkthroughModal.jsx';
 import { WhatsNewModal } from '../../components/WhatsNewModal.jsx';
-import { latestUnseenAnnouncement } from '../announcements.js';
+
+const NOVIDADE_GRANDE = vi.hoisted(() => ({
+  id: 'novidade-grande-de-teste',
+  audience: 'todos',
+  date: '2026-10-01',
+  major: true,
+  articleId: 'meta-diaria',
+  eyebrow: 'Novidade',
+  title: 'Uma novidade grande de teste',
+  summary: 'O resumo da novidade grande de teste.',
+  points: ['Primeiro ponto da novidade.', 'Segundo ponto da novidade.'],
+  adminSteps: ['Abra Configurações.', 'Ligue a opção nova.'],
+}));
+vi.mock('../announcements.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  latestUnseenAnnouncement: (appUser) => (appUser?.id ? NOVIDADE_GRANDE : null),
+  markAnnouncementSeen: vi.fn(),
+}));
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -49,13 +70,10 @@ describe('tutorial da jornada de venda', () => {
 });
 
 describe('novidade grande', () => {
-  it('existe novidade grande para o consultor (premissa do teste)', () => {
-    expect(latestUnseenAnnouncement(consultor)).not.toBeNull();
-  });
-
   it('abre sozinha para o consultor que ainda não viu', async () => {
     await montar(h(WhatsNewModal, { appUser: consultor, onConfigure: () => {} }));
     expect(dialogo()).not.toBeNull();
+    expect(dialogo().textContent).toContain(NOVIDADE_GRANDE.title);
   });
 
   it('não abre para o professor', async () => {

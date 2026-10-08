@@ -21,6 +21,7 @@ export function sidebarNav(appUser) {
     kanban: tela('kanban'),
     clientes: tela('clientes'),
     dailyGoal: tela('dailyGoal'),
+    rotinas: tela('rotinas'),
     leads: tela('leads') && tela('aulas') && tela('visitas'),
     suporte: can(appUser, ACTIONS.SUPORTE_ABRIR),
   });

@@ -44,6 +44,14 @@ export const FICHA_TABS = Object.freeze({
   contratos: 'contratos',
   referrals: 'indicacoes',
 });
+// Abas da tela Rotinas (spec 2026-10-06): Modelos e Hoje. O modelo aberto mora
+// em /rotinas/modelos/<id>, lido à parte em readScreen. A aba Modelos é o
+// endereço curto /<academia>/rotinas: a RotinasView manda sub null para ela, e
+// /rotinas/modelos continua abrindo a lista.
+export const ROTINAS_TABS = Object.freeze({
+  modelos: 'modelos',
+  hoje: 'hoje',
+});
 
 // id da tela (os mesmos valores de activeTab de sempre) para os segmentos
 // depois da academia, o título da aba, a trava de acesso e, onde existe, a
@@ -56,6 +64,7 @@ export const SCREENS = Object.freeze({
   kanban: tela(['pipeline'], 'Pipeline'),
   clientes: tela(['clientes'], 'Clientes'),
   dailyGoal: tela(['meta-diaria'], 'Meta diária'),
+  rotinas: tela(['rotinas'], 'Rotinas', { gestor: true, subs: ROTINAS_TABS, subPadrao: 'modelos' }),
   leads: tela(['leads'], 'Leads'),
   aulas: tela(['leads', 'aulas'], 'Aulas'),
   visitas: tela(['leads', 'visitas'], 'Visitas'),
@@ -98,7 +107,7 @@ export const FIRST_LEVEL_SEGMENTS = Object.freeze([
 // a vaga da entrega 2: /configuracoes/equipe, /ficha/<id>/contratos).
 // GROUPS: o segundo segmento escolhe a tela, e filho desconhecido é endereço
 // desconhecido, para erro de digitação não cair calado na tela-mãe.
-const SPECIAL = new Set(['ficha', 'superadmin']);
+const SPECIAL = new Set(['ficha', 'superadmin', 'rotinas']);
 const LEAVES = {};
 const GROUPS = {};
 for (const [id, def] of Object.entries(SCREENS)) {
@@ -151,6 +160,17 @@ function readScreen(segs, out) {
     readSub('ficha', out.rest, out);
     return;
   }
+  if (head === 'rotinas') {
+    out.screen = 'rotinas';
+    out.rest = segs.slice(1);
+    if (out.rest.length === 2 && lower(out.rest[0]) === 'modelos' && isValidLeadId(out.rest[1])) {
+      out.sub = 'modelos';
+      out.modelId = out.rest[1];
+      return;
+    }
+    readSub('rotinas', out.rest, out);
+    return;
+  }
   if (head === 'super-admin') {
     const child = lower(segs[1]);
     const tab = segs.length === 1 ? 'overview'
@@ -183,16 +203,22 @@ function readScreen(segs, out) {
 
 // parseAppPath('/stronix-crm-app/ficha/AbC') →
 //   { pathname, tenantSlug, screen, leadId, superTab, rest, unknown }
+//   (mais `modelId`, só quando existe: /rotinas/modelos/<id>)
 // - raiz: tudo null e unknown false;
 // - tenantSlug: o 1º segmento em minúsculas quando tem formato de academia e
 //   não é palavra reservada. Senão fica null e o 1º segmento é lido como tela
 //   (tela sem academia, como /pipeline);
 // - ficha com id inválido ou sem id: screen 'ficha' e leadId null, que é
 //   "ficha não encontrada" e não endereço desconhecido;
-// - sub: a seção das Configurações ou a aba da ficha, quando o endereço traz
-//   um segmento a mais que a tabela da tela conhece. Segmento desconhecido não
-//   é endereço desconhecido: vira subUnknown e a decisão de rota abre a
-//   tela-mãe com replace, sem aviso.
+// - sub: a seção das Configurações, a aba da ficha ou a aba de Rotinas, quando
+//   o endereço traz um segmento a mais que a tabela da tela conhece. Segmento
+//   desconhecido não é endereço desconhecido: vira subUnknown e a decisão de
+//   rota abre a tela-mãe com replace, sem aviso;
+// - modelId: o id do modelo de rotina aberto (/rotinas/modelos/<id>), com sub
+//   'modelos'. Só existe quando o id passa no isValidLeadId e não vem segmento
+//   depois dele; senão a chave nem aparece e a tela abre a lista (subUnknown).
+//   Como o leadId, é o id cru do documento e nunca vai para o Sentry nem para o
+//   título da aba.
 export function parseAppPath(pathname) {
   const out = {
     pathname: typeof pathname === 'string' ? pathname : '',
@@ -229,7 +255,7 @@ const encode = (s) => {
 // montar (sem academia, ficha sem id válido): quem chama não navega. Tela
 // desconhecida vira a inicial.
 export function hrefFor(tenantId, screen, opts = {}) {
-  const { leadId, superTab, sub } = opts || {};
+  const { leadId, superTab, sub, modelId } = opts || {};
   if (typeof tenantId !== 'string' || tenantId === '') return null;
   const t = encode(tenantId);
   if (t === null) return null;
@@ -245,6 +271,12 @@ export function hrefFor(tenantId, screen, opts = {}) {
   }
   if (screen === 'superadmin') {
     return `${base}/super-admin/${own(SUPER_TABS, superTab) ? SUPER_TABS[superTab] : SUPER_TABS.overview}`;
+  }
+  if (screen === 'rotinas') {
+    // Como na ficha: id aceito pelo isValidLeadId que o encode recusa (metade de
+    // um emoji) cai na lista, nunca em /rotinas/modelos/null.
+    const mid = isValidLeadId(modelId) ? encode(modelId) : null;
+    if (mid !== null) return `${base}/rotinas/modelos/${mid}`;
   }
   return `${base}/${SCREENS[screen].segs.join('/')}${trecho}`;
 }
@@ -297,7 +329,7 @@ function redirectTo(path, { search = '', notice = null } = {}) {
   const r = parseAppPath(path);
   // O `sub` vai no alvo junto com a tela: sem ele, a correção de academia
   // desenharia a seção padrão por um render antes de saltar para a certa.
-  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub }, notice };
+  return { kind: 'redirect', to: path + search, target: { screen: r.screen, leadId: r.leadId, superTab: r.superTab, sub: r.sub, ...(r.modelId ? { modelId: r.modelId } : {}) }, notice };
 }
 
 const joinPath = (base, raw) => (raw.length ? `${base}/${raw.join('/')}` : base);
@@ -363,9 +395,12 @@ function sessionPathFor(route, tenantId, base, home) {
   // Tela sem academia (/pipeline, /ficha/<id>): põe a academia na frente.
   if (route.tenantSlug === null) return route.unknown ? home : joinPath(base, raw);
   // Outra academia: a tela vem junto, a ficha e o super-admin não, porque são
-  // dados da outra academia.
+  // dados da outra academia. O modelo de rotina também é dado de lá: a tela
+  // Rotinas fica e o id do modelo é largado, então cai na lista da sessão.
   const keepsScreen = route.screen && route.screen !== 'ficha' && route.screen !== 'superadmin';
-  return keepsScreen ? joinPath(base, raw.slice(1)) : home;
+  if (!keepsScreen) return home;
+  if (route.modelId) return joinPath(base, SCREENS[route.screen].segs);
+  return joinPath(base, raw.slice(1));
 }
 
 // O que fazer com o endereço atual nesta sessão. Roda a cada render do app
@@ -431,12 +466,17 @@ export function backTarget({ historyState, isClient, tenantId, appUser = null } 
 }
 
 // Chave da tela mostrada, para a key do AppErrorBoundary e para a rolagem.
-// /<academia> e /visao-geral/operacional são a mesma tela, o `rest` e a subaba
-// do super-admin não trocam a chave (o SuperAdminView não remonta nem refaz a
-// busca a cada subaba), outra ficha troca.
+// /<academia> e /visao-geral/operacional são a mesma tela, o `rest`, a `sub` e a
+// subaba do super-admin não trocam a chave (o SuperAdminView não remonta nem
+// refaz a busca a cada subaba), outra ficha troca, e o modelo de rotina aberto
+// também: ele é tela própria, como a ficha, e a lista de modelos é outra. Assim
+// abrir um modelo leva ao topo, o Voltar do navegador devolve a posição da lista
+// (scrollActionFor trata chave diferente como outra tela) e o erro de um modelo
+// não fica preso na tela quando a pessoa volta.
 export function screenKey(route) {
   const screen = route?.screen;
   if (screen === 'ficha') return `ficha:${route.leadId}`;
+  if (screen === 'rotinas' && route.modelId) return `rotinas:${route.modelId}`;
   if (screen === HOME_SCREEN || screen === 'dashOperacional') return 'dashOperacional';
   return screen || 'dashboard';
 }

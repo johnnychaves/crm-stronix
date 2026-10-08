@@ -16,6 +16,8 @@ import {
 } from './_auth.js';
 import { maskEmail } from './_passwordReset.js';
 import { professorLinkRefusal } from './_professorLink.js';
+import { diaDeBrasilia, isoDoDia } from './_horarioDeBrasilia.js';
+import { modelDocs } from '../src/lib/rotinas.js';
 import { ROLES, roleOf } from '../src/lib/acesso.js';
 import {
   SET_ROLE_ACTION,
@@ -40,6 +42,11 @@ const LEADS_PATH = 'stronix_leads';
 
 // Teto de gravações num lote do Firestore.
 const BATCH_LIMIT = 500;
+
+// Modelos de rotina dos consultores e as versões do dia, os mesmos nomes de
+// coleção de src/lib/firebase.js.
+const ROUTINE_MODELS_PATH = 'stronix_rotina_modelos';
+const ROUTINE_VERSIONS_PATH = 'stronix_rotina_versoes';
 
 // Devolve ao dono do lead as tarefas que ficaram com a pessoa em lead de outro
 // consultor: o contato que outros consultores passaram para ela (o "Para quem é
@@ -73,6 +80,41 @@ async function returnDelegatedTasks(tenantId, userDocId) {
     await batch.commit();
   }
   return list.length;
+}
+
+// Rotinas dos consultores (spec 2026-10-06): quem vira professor ou é
+// excluído sai do modelo de rotina que seguia, e a versão do dia do modelo é
+// gravada junto, para o histórico saber que a pessoa saiu naquele dia.
+//
+// É uma transação porque o gestor edita os modelos no navegador, também em
+// transação (commitModels, em src/lib/rotinasWrites.js). Com a leitura e a
+// gravação juntas, a edição dele cai antes ou depois desta gravação, nunca no
+// meio: o servidor não derruba um seguidor que o gestor acabou de pôr, e não
+// regrava a versão do dia com nome e tarefas velhos. A gravação do modelo é
+// update, não set: um modelo apagado nesse meio tempo faz a transação falhar
+// em vez de voltar a existir. Cada consultor segue um modelo só, então a
+// transação é pequena. Devolve quantos modelos a pessoa deixou.
+async function leaveRoutineModels(tenantId, userDocId, actorId) {
+  return adminDb.runTransaction(async (tx) => {
+    const snap = await tx.get(dataCollection(tenantId, ROUTINE_MODELS_PATH).where('followerIds', 'array-contains', userDocId));
+    if (snap.empty) return 0;
+    const date = isoDoDia(diaDeBrasilia(new Date()));
+    snap.docs.forEach((d) => {
+      const data = d.data();
+      // Mesma montagem de versão do app (modelDocs), para o histórico ler um formato só.
+      const { model, version } = modelDocs({
+        modelId: d.id,
+        name: data.name || '',
+        tasks: data.tasks,
+        followerIds: (data.followerIds || []).filter((id) => id !== userDocId),
+        userId: actorId,
+        dateKey: date,
+      });
+      tx.update(d.ref, { followerIds: model.followerIds, updatedAt: admin.firestore.FieldValue.serverTimestamp(), updatedBy: actorId });
+      tx.set(dataCollection(tenantId, ROUTINE_VERSIONS_PATH).doc(version.id), { ...version.data, savedAt: admin.firestore.FieldValue.serverTimestamp() });
+    });
+    return snap.size;
+  });
 }
 
 // Consolidação de admin-create-user, admin-set-password e admin-delete-user.
@@ -393,6 +435,17 @@ async function handleSetRole(req, res) {
     // tarefa fica com o dono do lead, que a vê na Meta dele, e o gestor tenta
     // de novo.
     const returnedTasks = becomesProfessor ? await returnDelegatedTasks(auth.tenantId, snap.id) : 0;
+    // Professor não segue modelo de rotina, e quem volta a consultor começa sem
+    // modelo (spec 2026-10-06). Por isso roda para quem termina como professor
+    // e para quem era professor antes, não só para quem acaba de virar: um id
+    // que um navegador antigo deixou no modelo é limpo quando o papel ou o
+    // professor ligado muda de fato. Se o gestor salvar o mesmo papel com o
+    // mesmo professor, a resposta sai antes (changed: false) e nada disso roda.
+    // Sem a saída na volta, esse id faria a pessoa voltar a seguir o modelo
+    // antigo sem ninguém ter escolhido.
+    const leftRoutines = change.role === ROLES.PROFESSOR || from === ROLES.PROFESSOR
+      ? await leaveRoutineModels(auth.tenantId, snap.id, auth.uid)
+      : 0;
 
     // O professor não prospecta: a meta de prospecção sai junto.
     await ref.update(change.role === ROLES.PROFESSOR
@@ -412,7 +465,7 @@ async function handleSetRole(req, res) {
       }
     }
 
-    console.info('admin-set-role', { academia: auth.tenantId, cadastro: snap.id, de: from, para: change.role, por: auth.uid, tarefasDevolvidas: returnedTasks });
+    console.info('admin-set-role', { academia: auth.tenantId, cadastro: snap.id, de: from, para: change.role, por: auth.uid, tarefasDevolvidas: returnedTasks, rotinasDeixadas: leftRoutines });
     return res.status(200).json({ ok: true, changed: true, role: change.role, isExtra: decision.isExtra === true });
   } catch (error) {
     console.error('admin-set-role', error);
@@ -653,6 +706,7 @@ async function handleDelete(req, res) {
     // Vem antes da exclusão: se ela falhar depois, a tarefa fica com o dono do
     // lead, que a vê na Meta dele, e o gestor tenta de novo.
     const returnedTasks = await returnDelegatedTasks(auth.tenantId, userDocId);
+    const leftRoutines = await leaveRoutineModels(auth.tenantId, userDocId, auth.uid);
 
     // Excluir consultor com extras faturáveis em uso muda o preço → sync depois.
     // Só consultor ocupa vaga paga: excluir gestor ou professor não muda o
@@ -676,7 +730,7 @@ async function handleDelete(req, res) {
 
     if (hadExtras) await syncSubscriptionValue(auth.tenantId, { actorUid: auth.uid });
 
-    console.info('admin-delete-user', { academia: auth.tenantId, cadastro: userDocId, por: auth.uid, tarefasDevolvidas: returnedTasks });
+    console.info('admin-delete-user', { academia: auth.tenantId, cadastro: userDocId, por: auth.uid, tarefasDevolvidas: returnedTasks, rotinasDeixadas: leftRoutines });
     return res.status(200).json({ ok: true });
   } catch (error) {
     console.error('admin-delete-user', error);

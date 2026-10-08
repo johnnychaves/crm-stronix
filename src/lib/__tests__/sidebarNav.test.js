@@ -16,8 +16,9 @@ const semPapel = { id: 'u3', tenantId: T };
 const professor = { id: 'u4', role: 'professor', professorId: 'p1', tenantId: T, tenantModules: COM_MODULO };
 const semLigacao = { id: 'u5', role: 'professor', tenantId: T, tenantModules: COM_MODULO };
 
-const TUDO = { overview: true, kanban: true, clientes: true, dailyGoal: true, leads: true, suporte: true };
-const DO_PROFESSOR = { overview: false, kanban: false, clientes: true, dailyGoal: true, leads: false, suporte: false };
+const DO_GESTOR = { overview: true, kanban: true, clientes: true, dailyGoal: true, rotinas: true, leads: true, suporte: true };
+const DO_CONSULTOR = { ...DO_GESTOR, rotinas: false };
+const DO_PROFESSOR = { overview: false, kanban: false, clientes: true, dailyGoal: true, rotinas: false, leads: false, suporte: false };
 
 // As telas que cada item do menu abre (App.jsx, bloco Workspace).
 const TELAS = {
@@ -25,12 +26,17 @@ const TELAS = {
   kanban: ['kanban'],
   clientes: ['clientes'],
   dailyGoal: ['dailyGoal'],
+  rotinas: ['rotinas'],
   leads: ['leads', 'aulas', 'visitas'],
 };
 
 describe('sidebarNav', () => {
-  it('gestor, consultor e cadastro sem papel veem o menu inteiro, como antes', () => {
-    for (const u of [gestor, consultor, semPapel]) expect(sidebarNav(u), u.id).toEqual(TUDO);
+  it('o gestor vê o menu inteiro, com Rotinas', () => {
+    expect(sidebarNav(gestor)).toEqual(DO_GESTOR);
+  });
+
+  it('consultor e cadastro sem papel veem o menu de sempre, sem Rotinas', () => {
+    for (const u of [consultor, semPapel]) expect(sidebarNav(u), u.id).toEqual(DO_CONSULTOR);
   });
 
   it('o professor vê só a Meta diária e Clientes, com ou sem professor ligado', () => {

@@ -1,0 +1,249 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router';
+import { ListChecks, Plus } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useRoutineModels } from '../hooks/useRoutineModels.js';
+import { canGoBackInApp, hrefFor } from '../lib/routes.js';
+import { firstName, modelOfUser, namesText, routineParticipants } from '../lib/rotinas.js';
+import { modelSelectDomId } from '../lib/rotinasTela.js';
+import { ModelCard } from '../components/rotinas/ModelCard.jsx';
+import { ConsultantsList } from '../components/rotinas/ConsultantsList.jsx';
+import { ModelDetail } from '../components/rotinas/ModelDetail.jsx';
+import { NewModelSheet } from '../components/rotinas/NewModelSheet.jsx';
+import { TodayTab } from '../components/rotinas/TodayTab.jsx';
+
+// Tela Rotinas do gestor (spec 2026-10-06; mockups 2026-10-06-tela-rotinas-gestor.html,
+// 2026-10-08-rotinas-intro-e-polimento.html e 2026-10-08-rotinas-aba-hoje.html).
+// As abas Modelos e Hoje moram no endereço (/rotinas e /rotinas/hoje): quem
+// troca é o App (goToSub), com replace, e a aba não troca a chave da tela, então
+// trocar de aba não remonta esta view. O modelo aberto em /rotinas/modelos/<id>
+// é outra tela no endereço (screenKey rotinas:<id>): abrir empilha no histórico,
+// rola para o topo e remonta esta view. Por isso o que passa da lista para o
+// modelo vai no state da navegação:
+//   - fromList: o modelo foi aberto pela lista (cartão, "Abrir modelo", o
+//     modelo no cartão da pessoa na aba Hoje ou criado no Novo modelo). Só aí
+//     o Voltar do modelo volta uma entrada do histórico. Os links (modelLink)
+//     mandam o state só no clique que troca de tela nesta aba: o modelo aberto
+//     em outra aba chega sem a marca, e o Voltar dele troca o endereço pela
+//     lista. O modelo aberto pelo Duplicar não leva a marca, senão o Voltar
+//     levaria para o modelo de origem, e não para a lista.
+//   - rotinaNova e at: o modelo acabou de ser criado ou duplicado, no instante
+//     `at`. A transação só aparece na lista quando o servidor confirma; até lá
+//     a tela fica em branco, sem o aviso de modelo excluído. A espera dura até
+//     o modelo aparecer pela primeira vez nesta montagem ou até FRESH_MS
+//     depois de `at`, o que vier antes. O state sobrevive ao F5 e ao voltar e
+//     avançar do navegador: sem o prazo, o modelo novo excluído em outra aba
+//     deixaria a tela em branco para sempre.
+//   - renomear: abre o modelo com o nome em edição (depois de duplicar). Vale
+//     só durante a espera, então o F5 depois do prazo não reabre o nome.
+const FRESH_MS = 15_000;
+
+// As abas, no desenho das abas da ficha: o traço azul embaixo da aba aberta.
+const TAB_TRIGGER = 'h-10 flex-none rounded-t-lg px-3 text-[13.5px] font-medium text-muted-foreground hover:text-foreground data-[state=active]:font-semibold data-[state=active]:text-foreground after:rounded-full after:bg-brand-600 group-data-[orientation=horizontal]/tabs:after:bottom-[-1px]';
+
+// A espera do modelo recém-criado. O prazo é conferido na montagem e depois
+// por um timer, porque nenhuma resposta da assinatura vai chegar para
+// redesenhar a tela quando o modelo não existe. A primeira vez que o modelo
+// aparece é guardada no estado durante o render (o padrão do React para
+// derivar estado), junto com o renomear daquele instante: é ele que o
+// ModelDetail recebe ao montar. O estado vale para um modelo só, porque a view
+// remonta a cada modelo aberto (screenKey rotinas:<id>).
+function useFreshModel(nova, modelPresent) {
+  const at = Number.isFinite(nova?.at) ? nova.at : null;
+  const [expired, setExpired] = useState(() => at === null || Date.now() - at >= FRESH_MS);
+  const [firstSight, setFirstSight] = useState(null);
+  const waiting = !expired && firstSight === null;
+  if (modelPresent && firstSight === null) setFirstSight({ renomear: waiting && nova?.renomear === true });
+
+  useEffect(() => {
+    if (!waiting) return undefined;
+    const timer = setTimeout(() => setExpired(true), Math.max(0, at + FRESH_MS - Date.now()));
+    return () => clearTimeout(timer);
+  }, [waiting, at]);
+
+  return { fresh: waiting, renomear: firstSight?.renomear === true };
+}
+
+function Headline({ people, models }) {
+  if (people.length === 0) return <>Nenhum consultor na equipe ainda.</>;
+  const without = people.filter((p) => !modelOfUser(models, p.id));
+  const withModel = people.length - without.length;
+  return (
+    <>
+      <em className="font-bold not-italic text-brand-600 dark:text-brand-300">{withModel} de {people.length}</em> consultores seguem um modelo
+      {without.length
+        ? <>. <em className="font-bold not-italic text-amber-700 dark:text-amber-300">{namesText(without.map((p) => firstName(p.name)))}</em> ainda {without.length === 1 ? 'está' : 'estão'} sem rotina.</>
+        : '. Todos têm rotina.'}
+    </>
+  );
+}
+
+export function RotinasView({ db, appUser, usersList, modelId, tab = 'modelos', onTab, tenantId, listenersActive }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { models, loading, error } = useRoutineModels({ db, enabled: listenersActive, tenantId });
+  const people = useMemo(() => routineParticipants(usersList), [usersList]);
+  const [creatingKey, setCreatingKey] = useState(null);
+  const newModelRef = useRef(null);
+  const pageRef = useRef(null);
+  const focusAfterTab = useRef(null);
+  const model = modelId ? models.find((m) => m.id === modelId) : undefined;
+  const nova = modelId && location.state?.rotinaNova === modelId ? location.state : null;
+  const { fresh, renomear } = useFreshModel(nova, Boolean(model));
+
+  // Escolher modelo (aba Hoje) troca para a aba Modelos, e o foco precisa ir
+  // junto: sem isso, o botão clicado some com a aba e o foco cai no body. Quem
+  // pede é o clique, que guarda o seletor da pessoa em focusAfterTab; a aba nova
+  // só existe depois da troca de endereço, e é este effect que leva o foco. O
+  // conteúdo da aba (Radix Presence) monta uma renderização depois da troca, por
+  // isso o foco espera um instante, e o pedido só é apagado quando ele roda
+  // (o effect pode rodar duas vezes no desenvolvimento). Sem o seletor na tela
+  // (os modelos ainda carregando), o foco vai para a aba Modelos.
+  useEffect(() => {
+    if (!focusAfterTab.current || modelId || tab === 'hoje') return undefined;
+    const timer = setTimeout(() => {
+      const target = focusAfterTab.current;
+      focusAfterTab.current = null;
+      if (!target) return;
+      const selector = document.getElementById(target);
+      (selector ?? pageRef.current?.querySelector('[role="tab"][aria-selected="true"]'))?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [tab, modelId]);
+
+  const modelLink = (id) => ({ to: hrefFor(tenantId, 'rotinas', { modelId: id }), state: { fromList: true } });
+  const openNew = (id, { renomear: rename = false, fromList = false } = {}) =>
+    navigate(hrefFor(tenantId, 'rotinas', { modelId: id }), { state: { rotinaNova: id, at: Date.now(), renomear: rename, fromList } });
+  const toList = () => navigate(hrefFor(tenantId, 'rotinas'), { replace: true });
+  // Voltar do modelo, como na ficha, mas só quando ele foi aberto pela lista:
+  // aí a entrada de trás é a lista. Senão (link direto, F5 sem histórico,
+  // modelo aberto pelo Duplicar), troca o endereço pela lista.
+  const back = () => (location.state?.fromList && canGoBackInApp(window.history.state) ? navigate(-1) : toList());
+  // O foco volta ao Novo modelo quando o painel fecha sem criar. Depois de
+  // criar, a tela troca pelo modelo novo e o botão não existe mais.
+  const restoreFocus = (event) => {
+    event.preventDefault();
+    if (newModelRef.current?.isConnected) newModelRef.current.focus();
+  };
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-border bg-card p-6 text-[13.5px] shadow-card">
+        Não deu para carregar as rotinas. Recarregue a página.
+      </div>
+    );
+  }
+
+  if (modelId) {
+    if (!model) {
+      if (loading || fresh) return null;
+      return (
+        <div className="flex flex-col items-start gap-3 rounded-2xl border border-border bg-card p-6 shadow-card">
+          <p className="text-[14px] font-semibold">Esse modelo não existe mais.</p>
+          <button type="button" onClick={toList} className="h-[38px] rounded-[10px] bg-brand-600 px-3.5 text-[13px] font-semibold text-white">Voltar para Modelos</button>
+        </div>
+      );
+    }
+    return (
+      <ModelDetail
+        db={db}
+        appUser={appUser}
+        model={model}
+        models={models}
+        people={people}
+        startRenaming={renomear}
+        onBack={back}
+        onDeleted={toList}
+        onDuplicated={(id) => openNew(id, { renomear: true })}
+      />
+    );
+  }
+
+  const withoutModel = loading ? 0 : people.filter((p) => !modelOfUser(models, p.id)).length;
+  // A aba Modelos é o endereço curto /<academia>/rotinas, o mesmo do menu e do
+  // Voltar do modelo, e a Hoje é /<academia>/rotinas/hoje. Quem troca o
+  // endereço é o App (goToSub), com replace: trocar de aba não cria parada no
+  // voltar do navegador.
+  const goTab = (id) => onTab?.(id === 'hoje' ? 'hoje' : null);
+  const chooseModel = (person) => {
+    focusAfterTab.current = modelSelectDomId(person.id);
+    goTab('modelos');
+  };
+
+  return (
+    <div ref={pageRef} className="flex flex-col gap-3 animate-fade-in">
+      <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <ListChecks size={14} /> Rotinas
+      </p>
+      <Tabs value={tab === 'hoje' ? 'hoje' : 'modelos'} onValueChange={goTab} className="gap-5">
+        <TabsList variant="line" className="w-full justify-start gap-1 rounded-none border-b border-border p-0 group-data-[orientation=horizontal]/tabs:h-10">
+          <TabsTrigger value="modelos" className={TAB_TRIGGER}>Modelos</TabsTrigger>
+          <TabsTrigger value="hoje" className={TAB_TRIGGER}>
+            Hoje
+            {withoutModel > 0 && (
+              <>
+                {' '}
+                <span className="rounded-full bg-amber-500/15 px-[7px] py-1 text-[10.5px] font-semibold leading-none text-amber-700 dark:text-amber-300">
+                  {withoutModel} sem modelo
+                </span>
+              </>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="modelos" className="flex flex-col gap-6">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <h1 className="max-w-[720px] font-display text-[27px] font-medium leading-tight tracking-tight">
+              {loading
+                ? <span className="text-muted-foreground">Carregando as rotinas…</span>
+                : <Headline people={people} models={models} />}
+            </h1>
+            <button type="button" ref={newModelRef} onClick={() => setCreatingKey(Date.now())} className="inline-flex h-[38px] items-center gap-2 rounded-[10px] bg-brand-600 px-3.5 text-[13px] font-semibold text-white">
+              <Plus size={15} /> Novo modelo
+            </button>
+          </div>
+
+          {models.length > 0 && (
+            <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr))]">
+              {models.map((m) => <ModelCard key={m.id} model={m} people={people} link={modelLink(m.id)} />)}
+            </div>
+          )}
+          {!loading && models.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-border p-6 text-[13px] text-muted-foreground">
+              Nenhum modelo ainda. Crie o primeiro no botão Novo modelo e escolha quem segue.
+            </div>
+          )}
+
+          <ConsultantsList db={db} appUser={appUser} people={people} models={models} loading={loading} modelLink={modelLink} />
+        </TabsContent>
+
+        <TabsContent value="hoje">
+          <TodayTab
+            db={db}
+            people={people}
+            models={models}
+            modelsLoading={loading}
+            tenantId={tenantId}
+            listenersActive={listenersActive}
+            modelLink={modelLink}
+            onChooseModel={chooseModel}
+          />
+        </TabsContent>
+      </Tabs>
+
+      {creatingKey && (
+        <NewModelSheet
+          key={creatingKey}
+          open
+          onOpenChange={(open) => { if (!open) setCreatingKey(null); }}
+          onCloseAutoFocus={restoreFocus}
+          db={db}
+          appUser={appUser}
+          models={models}
+          people={people}
+          onCreated={(id) => openNew(id, { fromList: true })}
+        />
+      )}
+    </div>
+  );
+}

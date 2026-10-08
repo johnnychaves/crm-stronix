@@ -44,6 +44,7 @@ export function screenState(shown, locationState, appUser) {
     resolvedTab: activeTab === HOME_SCREEN ? 'dashOperacional' : activeTab,
     superTab: shown?.superTab ?? 'overview',
     sub: def?.subs ? (shown.sub ?? def.subPadrao) : null,
+    modelId: shown?.screen === 'rotinas' ? (shown.modelId ?? null) : null,
   };
 }
 

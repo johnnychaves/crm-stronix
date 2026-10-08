@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="pt-BR" translate="no" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="google" content="notranslate">
+<title>Rotinas: aba Hoje</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Tokens do Stronilead e a linha do dia da Página B (mockup
+   2026-10-08-rotinas-intro-e-polimento.html). Os estados das tarefas são os
+   do cartão da Meta diária: feita (verde), agora (azul), atrasada (vermelho),
+   mais tarde (vazio). */
+:root {
+  --bg: #F5F7FB; --card: #FFFFFF; --ink: #0E1A40; --muted: #64748B; --faint: #94A3B8;
+  --line: #E2E8F0; --soft: #F1F4F9; --brand: #2B59FF; --brand-soft: rgba(43, 89, 255, .08); --brand-tint: #EEF2FF;
+  --accent: #FF6A2B; --done: #059669; --done-soft: rgba(5, 150, 105, .1); --warn: #B45309; --warn-soft: #FFFBF3;
+  --late: #E11D48; --late-soft: #FFF1F3; --red: #DC2626;
+  --shadow: 0 1px 0 rgba(15, 23, 42, .04), 0 1px 2px rgba(15, 23, 42, .06);
+  --shadow-pop: 0 30px 60px -20px rgba(14, 26, 64, .35), 0 2px 8px rgba(14, 26, 64, .08);
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  --bg: #080D22; --card: #0F152B; --ink: #EAEEF9; --muted: #8A93B0; --faint: #5B6482;
+  --line: rgba(255, 255, 255, .08); --soft: rgba(255, 255, 255, .05); --brand: #5A7FFF; --brand-soft: rgba(90, 127, 255, .13); --brand-tint: rgba(90, 127, 255, .12);
+  --done: #34D399; --done-soft: rgba(52, 211, 153, .12); --warn: #FBBF24; --warn-soft: rgba(251, 191, 36, .06);
+  --late: #FB7185; --late-soft: #2A1326; --red: #F87171;
+  --shadow: none; --shadow-pop: 0 30px 60px -16px rgba(0, 0, 0, .7);
+  color-scheme: dark;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--ink); font: 14px/1.45 Geist, ui-sans-serif, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+button { font: inherit; color: inherit; cursor: pointer; background: none; border: 0; text-align: left; }
+ul, ol { list-style: none; }
+:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+.t { font-family: 'Space Grotesk', Geist, sans-serif; font-variant-numeric: tabular-nums; }
+svg.i { width: 16px; height: 16px; flex-shrink: 0; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* barra do mockup */
+.chrome { position: sticky; top: 0; z-index: 50; background: #0E1A40; color: #fff; }
+.chrome-in { padding: 10px 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.chrome-name { display: flex; align-items: center; gap: 8px; font: 600 13.5px/1 'Space Grotesk', sans-serif; }
+.chrome-name small { font: 600 9.5px/1 Geist, sans-serif; letter-spacing: .09em; text-transform: uppercase; color: #FF8A57; border: 1px solid rgba(255, 138, 87, .45); padding: 4px 6px; border-radius: 5px; }
+.tabs { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; display: flex; gap: 3px; background: rgba(255, 255, 255, .07); padding: 3px; border-radius: 10px; }
+.tab { height: 30px; padding: 0 12px; border-radius: 7px; font-size: 12.5px; font-weight: 500; color: rgba(255, 255, 255, .72); white-space: nowrap; }
+.tab[aria-pressed="true"] { background: #fff; color: #0E1A40; }
+.tab-sep { width: 1px; background: rgba(255, 255, 255, .15); margin: 4px 3px; }
+.theme { margin-left: auto; height: 30px; padding: 0 10px; border: 1px solid rgba(255, 255, 255, .16); border-radius: 8px; font-size: 12px; color: rgba(255, 255, 255, .85); }
+.note { padding: 0 16px 12px; font-size: 12.5px; color: rgba(255, 255, 255, .8); max-width: 1040px; }
+.note b { color: #fff; font-weight: 600; }
+
+.stage { padding: 22px 16px 60px; overflow-x: auto; overscroll-behavior-x: contain; }
+.view[hidden] { display: none; }
+.frame { min-width: 1020px; max-width: 1220px; margin: 0 auto; background: var(--bg); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow-pop); position: relative; }
+.page { padding: 26px 30px 32px; display: flex; flex-direction: column; gap: 18px; }
+
+/* peças */
+.eyebrow { display: flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.subtabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin-top: 10px; }
+.subtab { position: relative; padding: 9px 12px 10px; font-size: 13.5px; font-weight: 500; color: var(--muted); display: inline-flex; align-items: center; gap: 8px; }
+.subtab[aria-selected="true"] { color: var(--ink); font-weight: 600; }
+.subtab[aria-selected="true"]::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -1px; height: 2px; border-radius: 2px; background: var(--brand); }
+.pill { font: 600 10.5px/1 Geist, sans-serif; padding: 4px 7px; border-radius: 999px; background: rgba(245, 158, 11, .14); color: var(--warn); }
+h1.head { max-width: 640px; font: 500 26px/1.22 'Space Grotesk', sans-serif; letter-spacing: -.01em; }
+h1.head em { font-style: normal; font-weight: 700; color: var(--brand); }
+h1.head em.late { color: var(--late); }
+.row-between { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.live { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.live i { width: 7px; height: 7px; border-radius: 50%; background: var(--done); box-shadow: 0 0 0 3px var(--done-soft); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+.avatar { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.av1 { background: #DBEAFE; color: #1D4ED8; } .av2 { background: #FCE7F3; color: #BE185D; } .av3 { background: #DCFCE7; color: #166534; } .av4 { background: #FEF3C7; color: #92400E; }
+.btn { height: 32px; padding: 0 12px; border-radius: 9px; background: var(--brand); color: #fff; font-size: 12.5px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn.ghost { background: var(--card); color: var(--ink); border: 1px solid var(--line); font-weight: 500; }
+.link { color: var(--brand); font-size: 12px; font-weight: 600; }
+.cnt { font: 600 11px/1 Geist, sans-serif; color: var(--muted); background: var(--soft); padding: 3px 7px; border-radius: 6px; }
+.cnt.late { background: var(--late-soft); color: var(--late); }
+
+/* marca do estado (igual ao cartão da Meta) */
+.mk { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--line); display: grid; place-items: center; flex-shrink: 0; background: var(--card); }
+.mk svg.i { width: 10px; height: 10px; stroke-width: 3; }
+.s-done .mk, .s-doneLate .mk { background: var(--done); border-color: var(--done); color: #fff; }
+.s-now .mk { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.s-late .mk { border-color: var(--late); background: var(--late-soft); }
+
+/* layout */
+.today { display: grid; grid-template-columns: 1fr 320px; gap: 18px; align-items: start; }
+.people { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+
+/* cartão da pessoa */
+.pc-head { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 13px 14px 10px; }
+.pc-head b { display: block; font-size: 14px; font-weight: 600; }
+.pc-head .mdl { font-size: 11.5px; color: var(--brand); font-weight: 600; }
+.pc-head .count { text-align: right; }
+.pc-head .count .n { font: 600 18px/1 'Space Grotesk', sans-serif; }
+.pc-head .count .n small { font-size: 12px; color: var(--muted); font-weight: 500; }
+.pc-head .count .lt { display: block; margin-top: 3px; font-size: 11px; color: var(--late); font-weight: 600; }
+.pc-head .count .ok { display: block; margin-top: 3px; font-size: 11px; color: var(--muted); }
+/* a linha do dia do cartão, com a agulha do agora */
+.prail { position: relative; height: 22px; margin: 0 14px 4px; }
+.prail .track { position: absolute; left: 0; right: 0; top: 9px; height: 2px; border-radius: 2px; background: var(--line); }
+.prail .dot { position: absolute; top: 5px; width: 10px; height: 10px; margin-left: -5px; border-radius: 50%; border: 2px solid var(--faint); background: var(--card); }
+.prail .dot.s-done, .prail .dot.s-doneLate { background: var(--done); border-color: var(--done); }
+.prail .dot.s-now { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.prail .dot.s-late { background: var(--late); border-color: var(--late); }
+.prail .needle { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--brand); border-radius: 2px; }
+.pc-list { border-top: 1px solid var(--line); padding: 6px 6px 8px; }
+.task { width: 100%; display: grid; grid-template-columns: 42px 18px 1fr; gap: 9px; align-items: center; padding: 6px 8px; border-radius: 9px; }
+.task:hover { background: var(--soft); }
+.task[aria-pressed="true"] { background: var(--brand-soft); box-shadow: inset 2px 0 0 var(--brand); }
+.task .h { font: 500 11.5px/1 'Space Grotesk', sans-serif; color: var(--muted); text-align: right; }
+.task .ttl { font-size: 13px; font-weight: 500; display: block; }
+.task .meta { display: block; font-size: 11px; color: var(--muted); margin-top: 1px; }
+.task.s-done .ttl, .task.s-doneLate .ttl { color: var(--muted); }
+.task.s-doneLate .meta { color: var(--warn); }
+.task.s-now .meta { color: var(--brand); font-weight: 600; }
+.task.s-late .meta { color: var(--late); font-weight: 600; }
+.task .nt { color: var(--muted); }
+.nowline { display: grid; grid-template-columns: 42px 1fr; gap: 9px; align-items: center; padding: 2px 8px; }
+.nowline span:first-child { font: 600 10.5px/1 'Space Grotesk', sans-serif; color: var(--brand); text-align: right; }
+.nowline span:last-child { height: 2px; background: var(--brand); border-radius: 2px; position: relative; }
+.nowline span:last-child::before { content: ""; position: absolute; left: -3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--brand); }
+.anyh { padding: 8px 8px 2px 59px; font-size: 10px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.pc-none { padding: 14px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; font-size: 12.5px; color: var(--muted); background: var(--warn-soft); border-top: 1px solid var(--line); border-radius: 0 0 14px 14px; }
+.pc-later { padding: 0 14px 12px; font-size: 12px; color: var(--muted); }
+
+/* lateral */
+.aside { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 72px; }
+.aside-card { padding: 14px 14px 12px; }
+.aside-card h3 { font: 600 14px/1 'Space Grotesk', sans-serif; display: flex; align-items: center; gap: 8px; }
+.aside-row { display: grid; grid-template-columns: auto 1fr; gap: 9px; margin-top: 12px; font-size: 12.5px; }
+.aside-row .avatar { width: 24px; height: 24px; font-size: 9.5px; }
+.aside-row b { font-weight: 600; }
+.aside-row small { display: block; font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.aside-row small.bad { color: var(--late); font-weight: 600; }
+.quote { display: block; margin-top: 6px; padding: 7px 9px; border-radius: 9px; background: var(--soft); font-size: 12px; color: var(--ink); border-left: 2px solid var(--brand); }
+.empty { margin-top: 10px; font-size: 12px; color: var(--muted); }
+.detail { border-color: rgba(43, 89, 255, .45); }
+.detail-top { display: flex; justify-content: space-between; align-items: center; }
+.detail-top p { font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); }
+.detail-top button { font-size: 12px; color: var(--muted); }
+
+/* B: a linha da equipe */
+.team { padding: 14px 16px 12px; }
+.team-head { display: flex; justify-content: space-between; align-items: baseline; }
+.team-head h3 { font: 600 14px/1 'Space Grotesk', sans-serif; }
+.team-head span { font-size: 11.5px; color: var(--muted); }
+.lanes { position: relative; margin-top: 10px; }
+.hours, .lane { display: grid; grid-template-columns: 150px 1fr 76px; gap: 12px; align-items: center; }
+.hours .ticks { position: relative; height: 16px; }
+.hours .ticks span { position: absolute; transform: translateX(-50%); font: 500 10px/1 'Space Grotesk', sans-serif; color: var(--faint); }
+.lane { padding: 7px 0; border-top: 1px solid var(--line); }
+.lane .who { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.lane .who .avatar { width: 24px; height: 24px; font-size: 9.5px; }
+.lane .track { position: relative; height: 20px; }
+.lane .track::before { content: ""; position: absolute; left: 0; right: 0; top: 9px; height: 2px; background: var(--line); border-radius: 2px; }
+.lane .track .dot { position: absolute; top: 4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; border: 2px solid var(--faint); background: var(--card); }
+.lane .track .dot.s-done, .lane .track .dot.s-doneLate { background: var(--done); border-color: var(--done); }
+.lane .track .dot.s-now { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-soft); }
+.lane .track .dot.s-late { background: var(--late); border-color: var(--late); }
+.lane .end { text-align: right; font: 600 13px/1 'Space Grotesk', sans-serif; }
+.lane .end small { display: block; font: 500 10.5px/1.2 Geist, sans-serif; color: var(--late); margin-top: 3px; }
+.lane .end small.ok { color: var(--muted); }
+.lane.none .track::before { background: repeating-linear-gradient(90deg, var(--line) 0 6px, transparent 6px 12px); }
+.lane.none .end { font: 500 11px/1.2 Geist, sans-serif; color: var(--warn); }
+.team-needle { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--brand); border-radius: 2px; pointer-events: none; }
+.team-needle span { position: absolute; top: -2px; left: 50%; transform: translate(-50%, -100%); font: 600 10px/1 'Space Grotesk', sans-serif; color: #fff; background: var(--brand); padding: 3px 5px; border-radius: 5px; white-space: nowrap; }
+.legend { display: flex; gap: 14px; margin-top: 10px; font-size: 11px; color: var(--muted); }
+.legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; border: 2px solid var(--faint); }
+.legend i.d { background: var(--done); border-color: var(--done); } .legend i.n { border-color: var(--brand); } .legend i.l { background: var(--late); border-color: var(--late); }
+
+/* pop-up (carrossel aprovado, com o passo novo) */
+.scrim { position: absolute; inset: 0; background: rgba(8, 13, 34, .42); display: grid; place-items: center; padding: 24px; }
+.dlg { width: 100%; max-width: 520px; background: var(--card); border: 1px solid var(--line); border-radius: 18px; box-shadow: var(--shadow-pop); overflow: hidden; position: relative; }
+.dlg .ill { height: 250px; background: linear-gradient(180deg, var(--brand-tint), transparent); border-bottom: 1px solid var(--line); display: grid; place-items: center; }
+.dlg .body { padding: 20px 24px; }
+.kicker { font-size: 10.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--brand); }
+.dlg h2 { font: 600 21px/1.2 'Space Grotesk', sans-serif; margin-top: 6px; }
+.dlg p.txt { margin-top: 8px; font-size: 13.5px; color: var(--muted); line-height: 1.55; }
+.dlg p.txt b { color: var(--ink); }
+.dlg .foot { display: flex; align-items: center; justify-content: space-between; padding: 0 24px 20px; }
+.dots { display: flex; gap: 6px; }
+.dots span { width: 8px; height: 8px; border-radius: 99px; background: var(--line); }
+.dots span.on { width: 22px; background: var(--brand); }
+.mini { width: 330px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 30px -14px rgba(14, 26, 64, .35); padding: 12px 14px; }
+.mini h4 { font: 600 13px/1.2 'Space Grotesk', sans-serif; display: flex; justify-content: space-between; align-items: baseline; }
+.mini h4 small { font: 500 11px/1 Geist, sans-serif; color: var(--muted); }
+.mini .lane { grid-template-columns: 74px 1fr 40px; gap: 8px; padding: 6px 0; }
+.mini .lane .end { font-size: 12px; }
+.mini .lane .track .dot { width: 9px; height: 9px; margin-left: -4.5px; top: 5.5px; border-width: 2px; }
+.mini .lanes { margin-top: 6px; }
+.mini .late-row { margin-top: 8px; padding: 7px 9px; border-radius: 9px; background: var(--late-soft); font-size: 11.5px; color: var(--late); font-weight: 600; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+</style>
+</head>
+<body>
+
+<header class="chrome">
+  <div class="chrome-in">
+    <span class="chrome-name">Rotinas: aba Hoje <small>Mockup</small></span>
+    <div class="tabs" role="group" aria-label="Proposta">
+      <button class="tab" type="button" data-view="a" aria-pressed="true">Hoje A · Por pessoa</button>
+      <button class="tab" type="button" data-view="b" aria-pressed="false">Hoje B · Linha da equipe + pessoas</button>
+      <span class="tab-sep" aria-hidden="true"></span>
+      <button class="tab" type="button" data-view="p" aria-pressed="false">Pop-up · passo da aba Hoje</button>
+    </div>
+    <button class="theme" type="button" id="theme">Tema escuro</button>
+  </div>
+  <p class="note" id="note"></p>
+</header>
+
+<main class="stage">
+  <section class="view" data-view="a"><div class="frame"><div class="page" id="page-a"></div></div></section>
+  <section class="view" data-view="b" hidden><div class="frame"><div class="page" id="page-b"></div></div></section>
+  <section class="view" data-view="p" hidden>
+    <div class="frame" style="height:660px">
+      <div class="page" style="opacity:.5" aria-hidden="true"><p class="eyebrow">Rotinas</p></div>
+      <div class="scrim">
+        <div class="dlg" role="dialog" aria-modal="true" aria-labelledby="p-title">
+          <div class="ill" id="p-ill"></div>
+          <div class="body">
+            <p class="kicker">Acompanhar</p>
+            <h2 id="p-title">Acompanhe o dia na aba Hoje</h2>
+            <p class="txt">Na aba <b>Hoje</b>, aqui em Rotinas, você vê quanto cada consultor já fez, o que está <b>atrasado agora</b> e as observações que eles deixaram. A tela se atualiza sozinha. Você acompanha, mas o check é sempre de quem fez a tarefa.</p>
+          </div>
+          <div class="foot">
+            <div class="dots"><span></span><span></span><span></span><span></span><span></span><span class="on"></span></div>
+            <div style="display:flex;gap:8px"><button class="btn ghost" type="button">Voltar</button><button class="btn" type="button">Entendi</button></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+// ---------------- dados de exemplo (agora: 10:47) ----------------
+const NOW = 10 * 60 + 47;
+const ON_TIME = 30;
+const M = (h) => { const [a, b] = h.split(':').map(Number); return a * 60 + b; };
+const hh = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+const pct = (m) => ((m / 60) - 6) / 15 * 100;
+const MANHA = [
+  { id: 1, h: '06:00', t: 'Abrir a recepção' },
+  { id: 2, h: '06:30', t: 'Conferir a agenda de aulas' },
+  { id: 3, h: '07:00', t: 'Montar a lista de contatos do dia' },
+  { id: 4, h: '07:30', t: 'Responder os follow-ups' },
+  { id: 5, h: '10:00', t: 'Ligações para leads novos' },
+  { id: 6, h: '10:30', t: 'Conferir as visitas da tarde' },
+  { id: 7, h: '11:00', t: 'Intervalo' },
+  { id: 8, h: '12:00', t: 'Contato com inativos' },
+  { id: 9, h: '13:00', t: 'Renovações do mês' },
+  { id: 10, h: null, t: 'Pedir indicações' },
+  { id: 11, h: null, t: 'Postar o story da aula' },
+];
+const TARDE = [
+  { id: 21, h: '13:00', t: 'Conferir a agenda da tarde' },
+  { id: 22, h: '14:00', t: 'Ligações para leads novos' },
+  { id: 23, h: '16:00', t: 'Follow-ups da tarde' },
+  { id: 24, h: '18:00', t: 'Receber as visitas' },
+  { id: 25, h: '20:30', t: 'Resumo do dia no grupo' },
+  { id: 26, h: null, t: 'Atualizar o Stronilead' },
+];
+const PEOPLE = [
+  { id: 'ana', n: 'Ana Souza', i: 'AS', c: 'av1', model: 'Consultor manhã', tasks: MANHA,
+    done: { 1: ['06:04'], 2: ['06:41'], 3: ['07:58', 'Lista com 42 leads, começando pelos parados.'], 4: ['08:20'], 10: ['09:15', 'Pedi para 3 alunos da turma das 7h.'] } },
+  { id: 'bruno', n: 'Bruno Lima', i: 'BL', c: 'av2', model: 'Consultor manhã', tasks: MANHA,
+    done: { 1: ['06:02'], 2: ['06:33'], 3: ['07:05'], 4: ['07:40'], 5: ['10:12'], 11: ['09:30'] } },
+  { id: 'carla', n: 'Carla Dias', i: 'CD', c: 'av3', model: 'Consultor tarde', tasks: TARDE, done: {} },
+  { id: 'diego', n: 'Diego Rocha', i: 'DR', c: 'av4', model: null, tasks: [], done: {} },
+];
+function stateOf(task, p) {
+  const d = p.done[task.id];
+  if (task.h == null) return d ? 'done' : 'open';
+  const at = M(task.h);
+  if (d) return M(d[0]) > at + ON_TIME ? 'doneLate' : 'done';
+  if (NOW < at) return 'later';
+  if (NOW <= at + ON_TIME) return 'now';
+  return 'late';
+}
+const dur = (m) => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? String(m % 60).padStart(2, '0') : ''}` : `${m} min`);
+function metaOf(task, p, s) {
+  const d = p.done[task.id];
+  if (s === 'done') return `Feita às ${d[0]}`;
+  if (s === 'doneLate') return `Feita às ${d[0]}, depois do horário`;
+  if (s === 'now') return 'É agora';
+  if (s === 'late') return `Era às ${task.h}, atrasada há ${dur(NOW - M(task.h))}`;
+  if (s === 'later') return 'Mais tarde';
+  return 'A qualquer hora';
+}
+const check = '<svg class="i" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></svg>';
+const isDone = (s) => s === 'done' || s === 'doneLate';
+let selected = null;
+
+function summary(p) {
+  const st = p.tasks.map((x) => stateOf(x, p));
+  return { done: st.filter(isDone).length, total: st.length, late: st.filter((s) => s === 'late').length, st };
+}
+// No cartão, a linha cobre só o turno da pessoa (do primeiro ao último
+// horário, com o agora dentro), para os pontos não ficarem espremidos.
+function railOf(p) {
+  const timed = p.tasks.filter((x) => x.h);
+  const lo = Math.min(M(timed[0].h), NOW) - 20;
+  const hi = Math.max(M(timed[timed.length - 1].h), NOW) + 20;
+  const at = (m) => ((m - lo) / (hi - lo)) * 100;
+  return `<div class="prail" aria-hidden="true"><span class="track"></span>${timed.map((x) => `<span class="dot s-${stateOf(x, p)}" style="left:${at(M(x.h))}%"></span>`).join('')}<span class="needle" style="left:${at(NOW)}%"></span></div>`;
+}
+function personCard(p) {
+  if (!p.model) {
+    return `<section class="card" aria-label="${p.n}"><div class="pc-head"><span class="avatar ${p.c}">${p.i}</span><div><b>${p.n}</b><span class="mdl" style="color:var(--warn)">Sem modelo</span></div><span></span></div>
+      <div class="pc-none">A Meta diária não mostra rotina para essa pessoa.<button class="btn ghost" type="button">Escolher modelo</button></div></section>`;
+  }
+  const s = summary(p);
+  const timed = p.tasks.filter((x) => x.h);
+  const free = p.tasks.filter((x) => !x.h);
+  const startsLater = timed.length && M(timed[0].h) > NOW;
+  let rows = '';
+  let placed = false;
+  const row = (x) => {
+    const st = stateOf(x, p);
+    const key = `${p.id}:${x.id}`;
+    const note = p.done[x.id]?.[1];
+    return `<button type="button" class="task s-${st}" data-key="${key}" aria-pressed="${selected === key}"><span class="h">${x.h || ''}</span><span class="mk">${isDone(st) ? check : ''}</span><span><span class="ttl">${x.t}</span><span class="meta">${metaOf(x, p, st)}${note ? '<span class="nt"> · com observação</span>' : ''}</span></span></button>`;
+  };
+  if (startsLater) {
+    rows = `<p class="pc-later">A rotina começa às ${timed[0].h}. ${timed.length + free.length} tarefas hoje.</p>`;
+  } else {
+    timed.forEach((x) => { if (!placed && M(x.h) > NOW) { rows += `<div class="nowline" aria-hidden="true"><span>${hh(NOW)}</span><span></span></div>`; placed = true; } rows += row(x); });
+    if (!placed) rows += `<div class="nowline" aria-hidden="true"><span>${hh(NOW)}</span><span></span></div>`;
+    if (free.length) rows += `<p class="anyh">A qualquer hora</p>${free.map(row).join('')}`;
+  }
+  return `<section class="card" aria-label="${p.n}">
+    <div class="pc-head"><span class="avatar ${p.c}">${p.i}</span><div><b>${p.n}</b><a class="mdl" href="#" onclick="return false">${p.model}</a></div>
+      <div class="count"><span class="n t">${s.done} <small>de ${s.total}</small></span>${s.late ? `<span class="lt">${s.late} ${s.late === 1 ? 'atrasada' : 'atrasadas'}</span>` : `<span class="ok">nada atrasado</span>`}</div></div>
+    ${railOf(p)}
+    <div class="pc-list">${rows}</div></section>`;
+}
+function asideHtml() {
+  const all = [];
+  PEOPLE.forEach((p) => p.tasks.forEach((x) => all.push({ p, x, s: stateOf(x, p) })));
+  const late = all.filter((r) => r.s === 'late').sort((a, b) => M(a.x.h) - M(b.x.h));
+  const notes = all.filter((r) => isDone(r.s) && r.p.done[r.x.id][1]);
+  let detail = '';
+  if (selected) {
+    const [pid, tid] = selected.split(':');
+    const p = PEOPLE.find((q) => q.id === pid);
+    const x = p.tasks.find((t) => String(t.id) === tid);
+    const s = stateOf(x, p);
+    const note = isDone(s) ? p.done[x.id][1] : null;
+    detail = `<section class="card aside-card detail" aria-live="polite"><div class="detail-top"><p>Detalhe</p><button type="button" data-close>Fechar</button></div>
+      <div class="aside-row"><span class="avatar ${p.c}">${p.i}</span><p><b>${p.n}</b><small>${x.h ? `${x.h} · ` : ''}${x.t}</small><small class="${s === 'late' ? 'bad' : ''}">${metaOf(x, p, s)}</small>${note ? `<span class="quote">${note}</span>` : ''}</p></div></section>`;
+  }
+  return `<div class="aside">${detail}
+    <section class="card aside-card"><h3>Atrasadas agora <span class="cnt ${late.length ? 'late' : ''}">${late.length}</span></h3>
+      ${late.length ? late.map((r) => `<div class="aside-row"><span class="avatar ${r.p.c}">${r.p.i}</span><p><b>${r.p.n.split(' ')[0]}</b> · ${r.x.t}<small class="bad">Era às ${r.x.h}, há ${dur(NOW - M(r.x.h))}</small></p></div>`).join('') : '<p class="empty">Ninguém com tarefa atrasada.</p>'}</section>
+    <section class="card aside-card"><h3>Observações de hoje <span class="cnt">${notes.length}</span></h3>
+      ${notes.length ? notes.map((r) => `<div class="aside-row"><span class="avatar ${r.p.c}">${r.p.i}</span><p><b>${r.p.n.split(' ')[0]}</b> · ${r.x.t}<small>Às ${r.p.done[r.x.id][0]}</small><span class="quote">${r.p.done[r.x.id][1]}</span></p></div>`).join('') : '<p class="empty">Nenhuma observação até agora.</p>'}</section>
+  </div>`;
+}
+function headHtml() {
+  const tot = PEOPLE.reduce((a, p) => { const s = summary(p); return { d: a.d + s.done, t: a.t + s.total, l: a.l + s.late }; }, { d: 0, t: 0, l: 0 });
+  const none = PEOPLE.filter((p) => !p.model).length;
+  return `<div>
+      <p class="eyebrow"><svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m3 7 2 2 4-4M3 17l2 2 4-4M13 6h8M13 12h8M13 18h8"/></svg>Rotinas</p>
+      <div class="subtabs" role="tablist"><button class="subtab" role="tab" aria-selected="false" type="button">Modelos</button><button class="subtab" role="tab" aria-selected="true" type="button">Hoje${none ? ` <span class="pill">${none} sem modelo</span>` : ''}</button></div>
+    </div>
+    <div class="row-between"><h1 class="head">A equipe fez <em>${tot.d} de ${tot.t}</em> tarefas da rotina até agora${tot.l ? `, e <em class="late">${tot.l} ${tot.l === 1 ? 'está atrasada' : 'estão atrasadas'}</em>.` : '. Nenhuma está atrasada.'}</h1><span class="live"><i></i>Ao vivo · ${hh(NOW)}</span></div>`;
+}
+function teamHtml() {
+  const ticks = [6, 8, 10, 12, 14, 16, 18, 20].map((h) => `<span style="left:${pct(h * 60)}%">${String(h).padStart(2, '0')}h</span>`).join('');
+  const lanes = PEOPLE.map((p) => {
+    if (!p.model) return `<div class="lane none"><span class="who"><span class="avatar ${p.c}">${p.i}</span>${p.n.split(' ')[0]}</span><span class="track"></span><span class="end">Sem modelo</span></div>`;
+    const s = summary(p);
+    return `<div class="lane"><span class="who"><span class="avatar ${p.c}">${p.i}</span>${p.n.split(' ')[0]}</span><span class="track">${p.tasks.filter((x) => x.h).map((x) => `<span class="dot s-${stateOf(x, p)}" style="left:${pct(M(x.h))}%" title="${x.h} · ${x.t}"></span>`).join('')}</span><span class="end">${s.done} de ${s.total}${s.late ? `<small>${s.late} atrasada${s.late > 1 ? 's' : ''}</small>` : '<small class="ok">em dia</small>'}</span></div>`;
+  }).join('');
+  return `<section class="card team"><div class="team-head"><h3>O dia da equipe</h3><span>cada ponto é uma tarefa com horário</span></div>
+    <div class="lanes"><div class="hours"><span></span><span class="ticks">${ticks}</span><span></span></div>${lanes}
+      <div class="needle-wrap" style="position:absolute;top:16px;bottom:0;left:162px;right:88px;pointer-events:none"><span class="team-needle" style="left:${pct(NOW)}%"><span>${hh(NOW)}</span></span></div></div>
+    <div class="legend"><span><i class="d"></i>Feita</span><span><i class="n"></i>Agora</span><span><i class="l"></i>Atrasada</span><span><i></i>Mais tarde</span></div></section>`;
+}
+function render() {
+  const people = `<div class="people">${PEOPLE.map(personCard).join('')}</div>`;
+  document.getElementById('page-a').innerHTML = `${headHtml()}<div class="today"><div>${people}</div>${asideHtml()}</div>`;
+  document.getElementById('page-b').innerHTML = `${headHtml()}${teamHtml()}<div class="today"><div>${people}</div>${asideHtml()}</div>`;
+  document.querySelectorAll('.task').forEach((b) => b.addEventListener('click', () => { selected = selected === b.dataset.key ? null : b.dataset.key; render(); }));
+  document.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => { selected = null; render(); }));
+}
+render();
+
+// ilustração do passo novo do pop-up: a linha da equipe em miniatura
+document.getElementById('p-ill').innerHTML = `<div class="mini"><h4>Hoje <small>Ao vivo · ${hh(NOW)}</small></h4><div class="lanes">${PEOPLE.slice(0, 3).map((p) => {
+  const s = summary(p);
+  return `<div class="lane"><span class="who"><span class="avatar ${p.c}">${p.i}</span>${p.n.split(' ')[0]}</span><span class="track">${p.tasks.filter((x) => x.h).map((x) => `<span class="dot s-${stateOf(x, p)}" style="left:${pct(M(x.h))}%"></span>`).join('')}</span><span class="end">${s.done}/${s.total}</span></div>`;
+}).join('')}</div><p class="late-row">Ana · Ligações para leads novos · atrasada há 47 min</p></div>`;
+
+const NOTES = {
+  a: '<b>Hoje A · Por pessoa.</b> É a aba Hoje aprovada em 06/10, no desenho da Página B: um cartão por consultor com a contagem, a linha do dia com a agulha do agora, as tarefas com o estado de cada uma e as que valem a qualquer hora. Ao lado, "Atrasadas agora" e "Observações de hoje". Clicar numa tarefa abre o detalhe no topo da lateral.',
+  b: '<b>Hoje B · Linha da equipe + pessoas.</b> Igual à A, com uma faixa no topo: a equipe inteira numa linha do dia, uma pessoa por linha, e a agulha do agora cortando todas. Dá para ver num relance quem está em dia e quem acumulou atraso, antes de descer para os cartões.',
+  p: '<b>Pop-up · passo da aba Hoje.</b> O carrossel aprovado ganha um último passo, depois de "Pronto: o consultor dá check": "Acompanhe o dia na aba Hoje". Fica: O que é a rotina, os 4 passos de configurar e este, que explica onde o gestor acompanha.',
+};
+const tabs = [...document.querySelectorAll('.tab')];
+function show(v) {
+  tabs.forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.view === v)));
+  document.querySelectorAll('.view').forEach((s) => { s.hidden = s.dataset.view !== v; });
+  document.getElementById('note').innerHTML = NOTES[v];
+}
+tabs.forEach((t) => t.addEventListener('click', () => show(t.dataset.view)));
+show('a');
+const themeBtn = document.getElementById('theme');
+themeBtn.addEventListener('click', () => {
+  const dark = document.documentElement.dataset.theme !== 'dark';
+  document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+  themeBtn.textContent = dark ? 'Tema claro' : 'Tema escuro';
+});
+</script>
+</body>
+</html>
