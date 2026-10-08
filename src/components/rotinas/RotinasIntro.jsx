@@ -104,7 +104,7 @@ function RotinasIntroCarousel({ close }) {
         aria-hidden="true"
         className="grid h-auto min-h-[200px] place-items-center overflow-hidden border-b border-border bg-gradient-to-b from-brand-600/[0.08] to-transparent px-4 pb-4 pt-10 sm:h-[250px] sm:py-0"
       >
-        <div key={step} className="flex w-full justify-center animate-in fade-in duration-300 motion-reduce:animate-none">
+        <div key={step} className="flex w-full justify-center animate-in fade-in-0 duration-300 motion-reduce:animate-none">
           <Illustration />
         </div>
       </div>

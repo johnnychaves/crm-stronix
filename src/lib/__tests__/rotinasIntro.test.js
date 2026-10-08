@@ -249,8 +249,9 @@ describe('a apresentação: foco, anúncio e detalhes', () => {
   it('o desenho entra com o fade que respeita movimento reduzido', async () => {
     await abrir();
     const entrada = classes(ilustracao().firstElementChild);
-    expect(entrada).toEqual(expect.arrayContaining(['animate-in', 'fade-in', 'motion-reduce:animate-none']));
+    expect(entrada).toEqual(expect.arrayContaining(['animate-in', 'fade-in-0', 'motion-reduce:animate-none']));
     expect(entrada).not.toContain('animate-fade-in');
+    expect(entrada).not.toContain('fade-in');
   });
 
   it('as áreas de toque dos pontinhos não se sobrepõem', async () => {
