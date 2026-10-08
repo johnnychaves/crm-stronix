@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 // O balão "Novo" de tela nova (NewFeatureBadge): aparece até o dia `until`,
 // inclusive, no dia do aparelho, e no clique abre o pop-up que explica a tela.
-import { act, createElement as h } from 'react';
+import { act, createElement as h, Fragment } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { NewFeatureBadge } from '../../components/NewFeatureBadge.jsx';
+import { DialogDescription, DialogTitle } from '../../components/ui/dialog.jsx';
 import { isNewFeatureOn } from '../newFeature.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
@@ -120,5 +121,31 @@ describe('isNewFeatureOn', () => {
   it('com a data fora do formato, não vale', () => {
     expect(isNewFeatureOn('07/11/2026', new Date(2026, 9, 8))).toBe(false);
     expect(isNewFeatureOn(undefined, new Date(2026, 9, 8))).toBe(false);
+  });
+});
+
+describe('o pop-up com conteúdo próprio', () => {
+  it('renderContent desenha o pop-up inteiro e recebe o close, e contentClassName ajusta a caixa', async () => {
+    await act(async () => {
+      root.render(h(NewFeatureBadge, {
+        until: ATE,
+        now: new Date(2026, 9, 8, 9, 0),
+        contentClassName: 'p-0 sm:max-w-[520px]',
+        renderContent: ({ close }) => h(Fragment, null,
+          h(DialogTitle, null, 'Passo um'),
+          h(DialogDescription, null, 'O que o passo diz.'),
+          h('button', { type: 'button', onClick: close }, 'Pronto')),
+      }));
+    });
+    await clicar(balao());
+    expect(dialogo().querySelector('h2').textContent).toBe('Passo um');
+    expect(botao('Entendi')).toBeUndefined();
+    const caixa = dialogo().className.split(/\s+/);
+    expect(caixa).toEqual(expect.arrayContaining(['p-0', 'sm:max-w-[520px]']));
+    expect(caixa).not.toContain('p-6');
+    expect(caixa).not.toContain('sm:max-w-[480px]');
+    await clicar(botao('Pronto'));
+    expect(dialogo()).toBeNull();
+    expect(balao()).not.toBeNull();
   });
 });

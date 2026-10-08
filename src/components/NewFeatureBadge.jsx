@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog.jsx';
 import { Button } from './ui/button.jsx';
 import { cn } from '../lib/utils.js';
@@ -8,6 +9,14 @@ import { isNewFeatureOn } from '../lib/newFeature.js';
 // abre um pop-up que explica a tela. Substitui o pop-up de novidade que abria
 // sozinho: aqui quem quer saber clica, e o sino continua com o histórico das
 // novidades.
+//
+// O pop-up padrão tem título, descrição, o corpo (children) e o Entendi. Quem
+// precisa de outro desenho (a apresentação em passos das Rotinas) passa
+// renderContent: ele recebe { close } e desenha o pop-up inteiro, inclusive o
+// DialogTitle e o DialogDescription, que o leitor de tela usa como nome e
+// descrição do pop-up. contentClassName ajusta a caixa (o padding e a
+// largura). O conteúdo sai da tela quando o pop-up fecha, então quem tem
+// passos reabre sempre no primeiro.
 
 // soft: laranja suave, para o balão no meio da tela.
 // alert: vermelho cheio, para chamar atenção no menu. A borda branca de dentro
@@ -32,12 +41,14 @@ const TONES = {
   },
 };
 
-function NewFeatureBadge({ until, now = new Date(), tone = 'soft', title, description, children, className }) {
+function NewFeatureBadge({ until, now = new Date(), tone = 'soft', title, description, children, renderContent, contentClassName, className }) {
+  const [open, setOpen] = useState(false);
   if (!isNewFeatureOn(until, now)) return null;
   const look = TONES[tone] ?? TONES.soft;
+  const close = () => setOpen(false);
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <button
           type="button"
@@ -58,17 +69,21 @@ function NewFeatureBadge({ until, now = new Date(), tone = 'soft', title, descri
         </button>
       </DialogTrigger>
       {/* border-border: o `border` do DialogContent sozinho pega a cor do texto e fica branco no escuro. */}
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto border-border sm:max-w-[480px]">
-        <DialogHeader className="text-left">
-          <DialogTitle className="font-display text-[20px] tracking-tight">{title}</DialogTitle>
-          {description && <DialogDescription className="text-[13.5px] leading-relaxed">{description}</DialogDescription>}
-        </DialogHeader>
-        {children}
-        <DialogFooter>
-          <DialogClose asChild>
-            <Button>Entendi</Button>
-          </DialogClose>
-        </DialogFooter>
+      <DialogContent className={cn('max-h-[calc(100dvh-2rem)] overflow-y-auto border-border sm:max-w-[480px]', contentClassName)}>
+        {renderContent ? renderContent({ close }) : (
+          <>
+            <DialogHeader className="text-left">
+              <DialogTitle className="font-display text-[20px] tracking-tight">{title}</DialogTitle>
+              {description && <DialogDescription className="text-[13.5px] leading-relaxed">{description}</DialogDescription>}
+            </DialogHeader>
+            {children}
+            <DialogFooter>
+              <DialogClose asChild>
+                <Button>Entendi</Button>
+              </DialogClose>
+            </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

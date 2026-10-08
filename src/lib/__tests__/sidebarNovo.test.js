@@ -89,15 +89,15 @@ describe('o item Rotinas com o balão "Novo"', () => {
     expect(balao().className).toContain('bg-red-600');
   });
 
-  it('o clique no balão abre a explicação e não troca de tela, nem no Entendi', async () => {
+  it('o clique no balão abre a apresentação e não troca de tela, nem no Fechar', async () => {
     const onNavigate = vi.fn();
     await montar({ novo: h(RotinasNovo, { tone: 'alert', now: HOJE }), onNavigate });
     expect(nav.pathname).toBe('/acad');
     await clicar(balao());
     expect(cancelledByApp).toBe(false);
-    expect(dialogo().querySelector('h2').textContent).toBe('Rotinas');
+    expect(dialogo().querySelector('h2').textContent).toBe('O que é a rotina');
     expect(nav.pathname).toBe('/acad');
-    await clicar(botao('Entendi'));
+    await clicar(botao('Fechar'));
     expect(dialogo()).toBeNull();
     expect(nav.pathname).toBe('/acad');
     expect(onNavigate).not.toHaveBeenCalled();
