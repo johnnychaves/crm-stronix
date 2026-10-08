@@ -474,3 +474,43 @@ describe('o balão "Novo"', () => {
     expect(abas.compareDocumentPosition(novo) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
+
+describe('Página B: a lista', () => {
+  const hoje = () => vi.useFakeTimers({ now: new Date(2026, 9, 6, 10, 47), toFake: ['Date'] });
+  const M3 = {
+    id: 'm3',
+    name: 'Tarde',
+    followerIds: ['diego'],
+    tasks: [{ ...TASK, id: 'a', time: '13:00' }, { ...TASK, id: 'b', time: '17:30' }, { ...TASK, id: 'c', time: null }],
+  };
+
+  it('o cartão tem o resumo, a linha do dia com os rótulos e quem segue com o rosto', async () => {
+    hoje();
+    s.models = [M1, M2, M3];
+    await render(LIST);
+    const manha = card('Manhã');
+    expect(manha.textContent).toContain('1 tarefa · às 08:00');
+    expect(manha.textContent).toContain('Carla');
+    expect([...manha.querySelectorAll('span[aria-hidden="true"]')].some((el) => el.textContent === 'CS')).toBe(true);
+    const tarde = card('Tarde');
+    expect(tarde.textContent).toContain('2 tarefas · das 13:00 às 17:30 · 1 a qualquer hora');
+    expect(tarde.textContent).toContain('13h');
+    expect(tarde.textContent).toContain('17h30');
+    expect(card('Cópia de Manhã').textContent).toContain('Ninguém segue ainda');
+  });
+
+  it('a grade dos cartões é larga, mas não passa da tela no celular', async () => {
+    await render(LIST);
+    expect(card('Manhã').parentElement.className).toContain('[grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr))]');
+  });
+
+  it('na lista de consultores, o rosto, o dia de hoje e o Abrir modelo com a seta', async () => {
+    hoje();
+    await render(LIST);
+    expect(text()).toContain('1 tarefa hoje · às 08:00');
+    expect(link('Abrir modelo').querySelector('svg')).not.toBeNull();
+    expect(text()).toContain('Sem rotina na Meta diária');
+    const linhaDaCarla = [...document.body.querySelectorAll('p')].find((p) => p.textContent === 'Carla Souza').closest('div').parentElement;
+    expect(linhaDaCarla.querySelector('span[aria-hidden="true"]').textContent).toBe('CS');
+  });
+});

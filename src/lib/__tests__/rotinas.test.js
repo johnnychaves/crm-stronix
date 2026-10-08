@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   ALL_DAYS, MAX_TASKS_PER_MODEL, copyName, daysText, followerChanges, markDoneAt, markIdOf, minutesOf, modelDocs,
-  modelNameProblem, modelOfUser, newTaskId, normalizeTask, removeTask, routineDayKey, routineParticipants, spanText,
+  modelNameProblem, modelOfUser, newTaskId, normalizeTask, removeTask, routineDayKey, routineParticipants,
   stateText, taskProblems, taskRunsOn, taskStateAt, tasksForDay, upsertTask,
 } from '../rotinas.js';
 
@@ -72,13 +72,6 @@ describe('textos do modelo', () => {
     expect(daysText([2, 4])).toBe('Terças e quintas');
     expect(daysText([6, 0])).toBe('Sábados e domingos');
     expect(daysText([1, 3, 5])).toBe('Segundas, quartas e sextas');
-  });
-
-  it('o horário do modelo', () => {
-    const model = { tasks: [task({ time: '07:30' }), task({ time: '12:30' }), task({ time: null }), task({ time: '09:00', active: false })] };
-    expect(spanText(model)).toBe('07:30 às 12:30 · 1 sem horário');
-    expect(spanText({ tasks: [task({ time: '18:00' })] })).toBe('às 18:00');
-    expect(spanText({ tasks: [] })).toBe('');
   });
 
   it('nome de cópia sem repetir', () => {

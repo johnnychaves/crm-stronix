@@ -204,7 +204,7 @@ export function RotinasView({ db, appUser, usersList, modelId, tab = 'modelos', 
           </div>
 
           {models.length > 0 && (
-            <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(300px,1fr))]">
+            <div className="grid gap-3.5 [grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr))]">
               {models.map((m) => <ModelCard key={m.id} model={m} people={people} link={modelLink(m.id)} />)}
             </div>
           )}

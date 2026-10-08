@@ -106,17 +106,6 @@ export function stateText(task, state, doneAt, now) {
   return task?.days === ALL_DAYS ? 'Até o fim do dia' : `${daysText(task?.days)} · até o fim do dia`;
 }
 
-export function spanText(model) {
-  const active = (model?.tasks || []).filter((t) => t.active !== false);
-  const timed = active.filter((t) => minutesOf(t.time) != null).sort(byTime);
-  const free = active.length - timed.length;
-  const parts = [];
-  if (timed.length === 1) parts.push(`às ${timed[0].time}`);
-  if (timed.length > 1) parts.push(`${timed[0].time} às ${timed[timed.length - 1].time}`);
-  if (free) parts.push(`${free} sem horário`);
-  return parts.join(' · ');
-}
-
 export function copyName(name, models) {
   const taken = new Set((models || []).map((m) => clean(m.name).toLowerCase()));
   const base = `Cópia de ${clean(name)}`;
