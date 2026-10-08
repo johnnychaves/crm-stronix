@@ -441,3 +441,46 @@ describe('acessibilidade', () => {
     expect(card('Manhã').querySelector('a, button, input, select, textarea, [tabindex]')).toBeNull();
   });
 });
+
+describe('o balão "Novo"', () => {
+  // Só o Date é falso: o Radix do pop-up continua com os timers de verdade.
+  const hoje = (date) => vi.useFakeTimers({ now: date, toFake: ['Date'] });
+  const balao = () => labelled('Novo: o que é esta tela');
+  const dialogo = () => document.body.querySelector('[role="dialog"]');
+
+  it('fica no canto de cima da lista e abre o pop-up que explica a tela', async () => {
+    hoje(new Date(2026, 9, 8, 9, 0));
+    await render(LIST);
+    expect(balao()).not.toBeNull();
+    expect(balao().textContent.trim()).toBe('Novo');
+    // Na linha do ROTINAS, e não ao lado do Novo modelo.
+    expect(balao().parentElement.textContent).toContain('Rotinas');
+    expect(balao().parentElement.contains(button('Novo modelo'))).toBe(false);
+    await click(balao());
+    expect(dialogo().querySelector('h2').textContent).toBe('Rotinas');
+    expect(dialogo().textContent).toContain('O dia de trabalho de cada consultor, com as tarefas que não envolvem lead.');
+    expect(dialogo().textContent).toContain('Aqui você monta modelos com as tarefas que se repetem');
+    expect(dialogo().textContent).toContain('A rotina não conta para o dia batido.');
+    await click(button('Entendi'));
+    expect(dialogo()).toBeNull();
+  });
+
+  it('aparece no último dia e some no dia seguinte', async () => {
+    hoje(new Date(2026, 10, 7, 23, 59));
+    await render(LIST);
+    expect(balao()).not.toBeNull();
+    act(() => root.unmount());
+    root = createRoot(container);
+    hoje(new Date(2026, 10, 8, 0, 0));
+    await render(LIST);
+    expect(balao()).toBeNull();
+    expect(button('Novo modelo')).toBeTruthy();
+  });
+
+  it('não aparece no modelo aberto', async () => {
+    hoje(new Date(2026, 9, 8, 9, 0));
+    await render('/acad/rotinas/modelos/m1');
+    expect(text()).toContain('Manhã');
+    expect(balao()).toBeNull();
+  });
+});
