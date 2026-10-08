@@ -178,9 +178,10 @@ export function IntroCheck() {
 }
 
 // Passo 5: a aba Hoje em miniatura, uma pessoa por linha com a contagem, e a
-// tarefa atrasada em vermelho. Sem linha do dia.
+// tarefa atrasada em vermelho. Sem linha do dia. Os textos são os do cartão de
+// verdade ("1 atrasada", "nada atrasado", PersonDayCard).
 export function IntroToday() {
-  const rows = [['Ana Souza', '5 de 11', '1 atrasada', true], ['Bruno Lima', '6 de 11', 'em dia', false], ['Carla Dias', '0 de 6', 'em dia', false]];
+  const rows = [['Ana Souza', '5 de 11', '1 atrasada', true], ['Bruno Lima', '6 de 11', 'nada atrasado', false], ['Carla Dias', '0 de 6', 'nada atrasado', false]];
   return (
     <div className={cn(MINI, 'max-w-[330px] py-3')}>
       <p className="flex items-baseline justify-between">
@@ -193,12 +194,13 @@ export function IntroToday() {
             <PersonInitials name={name} size={24} />
             <span className="font-semibold">{firstName(name)}</span>
             <span className="num ml-auto font-display font-semibold">{count}</span>
-            <span className={cn('w-[68px] text-right text-[10.5px]', late ? 'font-semibold text-rose-600 dark:text-rose-300' : 'text-muted-foreground')}>{status}</span>
+            <span className={cn('w-[78px] shrink-0 whitespace-nowrap text-right text-[10.5px]', late ? 'font-semibold text-rose-600 dark:text-rose-300' : 'text-muted-foreground')}>{status}</span>
           </li>
         ))}
       </ul>
       <p className="mt-2 rounded-[9px] bg-rose-50 px-[9px] py-[7px] text-[11.5px] font-semibold text-rose-600 dark:bg-[#2a1326] dark:text-rose-300">
-        Ana · Ligações para leads novos · atrasada há 47 min
+        Ana · Ligações para leads novos ·{' '}
+        <span className="whitespace-nowrap">atrasada há 47 min</span>
       </p>
     </div>
   );

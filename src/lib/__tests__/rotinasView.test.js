@@ -736,6 +736,23 @@ describe('Página B: o foco depois de renomear', () => {
     expect(document.activeElement).toBe(labelled('Renomear'));
   });
 
+  it('Salvar nome com o foco já em outro controle não puxa o foco de volta', async () => {
+    let terminar;
+    updateModel.mockImplementation(() => new Promise((resolve) => { terminar = resolve; }));
+    await abrir();
+    await type(labelled('Nome do modelo'), 'Manhã cedo');
+    await click(button('Salvar nome'));
+    expect(updateModel).toHaveBeenCalledTimes(1);
+    // A gravação está em curso: a pessoa segue para outro controle.
+    const outro = button('Nova tarefa');
+    await act(async () => { outro.focus(); });
+    expect(document.activeElement).toBe(outro);
+    await act(async () => { terminar(); });
+    expect(labelled('Nome do modelo')).toBeNull();
+    expect(document.activeElement).toBe(outro);
+    expect(document.activeElement).not.toBe(labelled('Renomear'));
+  });
+
   it('o nome recusado deixa o campo aberto e o foco onde estava', async () => {
     s.models = [M1, M2];
     await abrir();

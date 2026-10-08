@@ -87,7 +87,7 @@ describe('a apresentação em passos', () => {
     expect(ilustracao().textContent).toContain('Meta diária · leads');
     expect(ilustracao().textContent).toContain('Rotina · o dia');
     expect(botao('Ver como configurar')).toBeTruthy();
-    expect(botao('Voltar').className).toContain('invisible');
+    expect(botao('Voltar').className.split(/\s+/)).toContain('hidden');
     expect(botao('Entendi')).toBeUndefined();
   });
 
@@ -96,7 +96,7 @@ describe('a apresentação em passos', () => {
     await clicar(botao('Ver como configurar'));
     expect(passo()).toEqual({ kicker: 'Como configurar · 1 de 4', titulo: 'Crie um modelo' });
     expect(descricao()).toBe('Aqui em Rotinas, clique em Novo modelo e dê um nome, como "Consultor manhã". Pode começar em branco ou copiar um modelo que já existe.');
-    expect(botao('Voltar').className).not.toContain('invisible');
+    expect(botao('Voltar').className.split(/\s+/)).not.toContain('hidden');
     await clicar(botao('Próximo'));
     expect(passo()).toEqual({ kicker: 'Como configurar · 2 de 4', titulo: 'Coloque as tarefas' });
     expect(descricao()).toBe('Dentro do modelo, clique em Nova tarefa. Escreva o que fazer, explique como fazer se precisar, escolha os dias e, se quiser, o horário.');
@@ -115,7 +115,7 @@ describe('a apresentação em passos', () => {
     expect(passo()).toEqual({ kicker: 'Acompanhar', titulo: 'Acompanhe o dia na aba Hoje' });
     expect(descricao()).toBe('Na aba Hoje, aqui em Rotinas, você vê quanto cada consultor já fez, o que está atrasado agora e as observações que eles deixaram. A tela se atualiza sozinha. Você acompanha, mas o check é sempre de quem fez a tarefa.');
     const desenho = ilustracao().textContent;
-    for (const trecho of ['Ana', '5 de 11', '1 atrasada', 'Bruno', '6 de 11', 'em dia', 'Ana · Ligações para leads novos · atrasada há 47 min']) {
+    for (const trecho of ['Ana', '5 de 11', '1 atrasada', 'Bruno', '6 de 11', 'nada atrasado', 'Ana · Ligações para leads novos · atrasada há 47 min']) {
       expect(desenho).toContain(trecho);
     }
     // Sem trilho com pontos: nada posicionado na horizontal.
@@ -172,5 +172,102 @@ describe('a apresentação em passos', () => {
   it('o desenho fica fora do leitor de tela', async () => {
     await abrir();
     expect(ilustracao().getAttribute('aria-hidden')).toBe('true');
+  });
+});
+
+describe('a apresentação no celular', () => {
+  const classes = (el) => el.className.split(/\s+/);
+
+  it('o primeiro passo some com o Voltar (hidden, e não invisible, que ainda ocupa lugar) e o rodapé quebra linha em tela estreita', async () => {
+    await abrir();
+    expect(classes(botao('Voltar'))).toContain('hidden');
+    expect(classes(botao('Voltar'))).not.toContain('invisible');
+    const rodape = dialogo().querySelector('[role="group"][aria-label="Passos"]').parentElement;
+    expect(classes(rodape)).toContain('flex-wrap');
+    // Quebrando, os botões continuam na ponta direita.
+    expect(classes(botao('Ver como configurar').parentElement)).toContain('ml-auto');
+    // A coluna da caixa não cresce com o conteúdo.
+    expect(classes(dialogo())).toContain('grid-cols-[minmax(0,1fr)]');
+  });
+
+  it('o quadro do desenho cresce com ele e deixa a folga do X no alto; a partir do sm tem altura fixa', async () => {
+    await abrir();
+    const quadro = classes(ilustracao());
+    expect(quadro).toEqual(expect.arrayContaining(['h-auto', 'min-h-[200px]', 'pt-10', 'pb-4', 'sm:h-[250px]', 'sm:py-0']));
+    expect(quadro).not.toContain('h-[200px]');
+  });
+});
+
+describe('a apresentação: foco, anúncio e detalhes', () => {
+  const classes = (el) => el.className.split(/\s+/);
+
+  it('abre com o foco no botão principal, e não no primeiro pontinho', async () => {
+    await abrir();
+    expect(document.activeElement).toBe(botao('Ver como configurar'));
+    await clicar(botao('Ver como configurar'));
+    expect(document.activeElement).toBe(botao('Próximo'));
+  });
+
+  it('reabrir também começa com o foco no botão principal', async () => {
+    await abrir();
+    await clicar(botao('Ver como configurar'));
+    await clicar(botao('Fechar'));
+    // O Radix devolve o foco ao balão num setTimeout(0); a pessoa só reabre depois disso.
+    await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+    expect(document.activeElement).toBe(balao());
+    await clicar(balao());
+    expect(document.activeElement).toBe(botao('Ver como configurar'));
+  });
+
+  it('o passo novo é anunciado de uma vez, com a etapa, o título e o texto, numa região só', async () => {
+    await abrir();
+    const vivas = () => dialogo().querySelectorAll('[aria-live]');
+    expect(vivas()).toHaveLength(1);
+    const viva = vivas()[0];
+    expect(viva.getAttribute('aria-live')).toBe('polite');
+    expect(viva.getAttribute('aria-atomic')).toBe('true');
+    expect(viva.contains(dialogo().querySelector('h2'))).toBe(true);
+    expect(viva.textContent).toContain('Novidade');
+    expect(viva.textContent).toContain('O que é a rotina');
+    await clicar(botao('Ver como configurar'));
+    // O mesmo nó, senão o leitor de tela não anuncia a troca.
+    expect(vivas()).toHaveLength(1);
+    expect(vivas()[0]).toBe(viva);
+    expect(viva.textContent).toContain('Como configurar · 1 de 4');
+    expect(viva.textContent).toContain('Crie um modelo');
+    expect(viva.textContent).toContain('Aqui em Rotinas, clique em Novo modelo');
+    // A descrição do pop-up continua sendo só o texto do passo.
+    expect(descricao()).not.toContain('Crie um modelo');
+  });
+
+  it('a partir do sm o corpo do texto tem a altura do passo mais alto, para o rodapé não pular', async () => {
+    await abrir();
+    const corpo = dialogo().querySelector('h2').closest('[aria-live]');
+    expect(classes(corpo)).toEqual(expect.arrayContaining(['min-h-[168px]', 'sm:min-h-[294px]']));
+  });
+
+  it('o desenho entra com o fade que respeita movimento reduzido', async () => {
+    await abrir();
+    const entrada = classes(ilustracao().firstElementChild);
+    expect(entrada).toEqual(expect.arrayContaining(['animate-in', 'fade-in', 'motion-reduce:animate-none']));
+    expect(entrada).not.toContain('animate-fade-in');
+  });
+
+  it('as áreas de toque dos pontinhos não se sobrepõem', async () => {
+    await abrir();
+    const pontos = [...dialogo().querySelectorAll('[role="group"][aria-label="Passos"] button')];
+    expect(pontos).toHaveLength(6);
+    for (const ponto of pontos) {
+      expect(classes(ponto)).toEqual(expect.arrayContaining(['after:-inset-x-[3px]', 'after:-inset-y-2']));
+      expect(classes(ponto)).not.toContain('after:-inset-2');
+    }
+  });
+
+  it('a linha da tarefa atrasada não deixa o "min" sozinho na linha de baixo', async () => {
+    await abrir();
+    await ateOUltimo();
+    const atraso = [...ilustracao().querySelectorAll('span')].find((el) => el.textContent === 'atrasada há 47 min');
+    expect(atraso).toBeTruthy();
+    expect(classes(atraso)).toContain('whitespace-nowrap');
   });
 });

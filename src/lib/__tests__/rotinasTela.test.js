@@ -286,12 +286,14 @@ describe('o dia do rótulo "Atualizado" da aba Hoje', () => {
     expect(frozenDayText(at('08:00'), at('23:59', 7))).toBe('ontem');
   });
 
-  it('ontem vale também na virada do mês', () => {
+  it('ontem vale também na virada do mês e na do ano', () => {
     expect(frozenDayText(new Date(2026, 9, 31, 23, 50), new Date(2026, 10, 1, 0, 10))).toBe('ontem');
+    expect(frozenDayText(new Date(2026, 11, 31, 23, 50), new Date(2027, 0, 1, 0, 10))).toBe('ontem');
   });
 
   it('mais de um dia atrás, diz o dia e o mês', () => {
     expect(frozenDayText(at('23:50'), at('09:00', 8))).toBe('em 06/10');
     expect(frozenDayText(new Date(2026, 9, 30, 18, 5), new Date(2026, 10, 2, 9, 0))).toBe('em 30/10');
+    expect(frozenDayText(new Date(2026, 11, 31, 23, 50), new Date(2027, 0, 2, 9, 0))).toBe('em 31/12');
   });
 });

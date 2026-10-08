@@ -71,9 +71,20 @@ const PASSOS = [
 // tela quando ele fecha. O botão principal é o mesmo elemento em todos os
 // passos ("Ver como configurar", "Próximo" e, no último, "Entendi", que
 // fecha), para o foco não se perder na troca. O Voltar fica invisível no
-// primeiro passo, e quem volta para ele leva o foco ao botão principal. O
-// texto do passo é a descrição do pop-up e mora numa região aria-live, para o
-// leitor de tela ler o passo novo.
+// primeiro passo (hidden, e não invisible: o invisible ainda ocupa lugar e, no
+// celular, alargava o rodapé além da caixa), e quem volta para ele leva o foco
+// ao botão principal. O pop-up abre com o foco nesse botão (autoFocus): sem
+// isso o Radix foca o primeiro elemento, que é o primeiro pontinho. A etapa, o
+// título e o texto do passo moram juntos numa região aria-live polite e atomic,
+// que é o mesmo nó em todos os passos, para o leitor de tela ler o passo novo
+// uma vez só. A descrição do pop-up continua sendo só o texto.
+//
+// No celular o quadro do desenho cresce com ele (h-auto, mínimo de 200px) e
+// deixa 40px no alto, para o X do pop-up não ficar em cima do canto do cartão.
+// A partir do sm o quadro tem 250px e o corpo do texto tem a altura do passo
+// mais alto (294px, medido no primeiro passo, com a caixa de 520px), para o
+// rodapé não pular de um passo para o outro e o Próximo ficar sob o mouse.
+// Mudou um texto de passo? Meça de novo: o passo mais alto tem de caber.
 function RotinasIntroCarousel({ close }) {
   const [step, setStep] = useState(0);
   const primaryRef = useRef(null);
@@ -91,17 +102,17 @@ function RotinasIntroCarousel({ close }) {
       <div
         data-ilustracao=""
         aria-hidden="true"
-        className="grid h-[200px] place-items-center overflow-hidden border-b border-border bg-gradient-to-b from-brand-600/[0.08] to-transparent px-4 sm:h-[250px]"
+        className="grid h-auto min-h-[200px] place-items-center overflow-hidden border-b border-border bg-gradient-to-b from-brand-600/[0.08] to-transparent px-4 pb-4 pt-10 sm:h-[250px] sm:py-0"
       >
-        <div key={step} className="flex w-full justify-center animate-fade-in motion-reduce:animate-none">
+        <div key={step} className="flex w-full justify-center animate-in fade-in duration-300 motion-reduce:animate-none">
           <Illustration />
         </div>
       </div>
-      <div className="min-h-[168px] px-6 py-5">
+      <div aria-live="polite" aria-atomic="true" className="min-h-[168px] px-6 py-5 sm:min-h-[294px]">
         <p className="text-[10.5px] font-semibold uppercase tracking-wider text-brand-600 dark:text-brand-300">{passo.kicker}</p>
         <DialogTitle className="mt-1.5 font-display text-[21px] font-semibold leading-tight tracking-tight">{passo.title}</DialogTitle>
         <DialogDescription asChild className="mt-2 text-[13.5px] leading-relaxed text-muted-foreground">
-          <div aria-live="polite">
+          <div>
             <p>{passo.text}</p>
             {passo.points && (
               <ul className="mt-2.5 flex flex-col gap-1.5">
@@ -117,7 +128,7 @@ function RotinasIntroCarousel({ close }) {
           </div>
         </DialogDescription>
       </div>
-      <div className="flex items-center justify-between gap-3 px-6 pb-5">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-3 px-6 pb-5">
         <div role="group" aria-label="Passos" className="flex items-center gap-1.5">
           {PASSOS.map((p, i) => (
             <button
@@ -127,17 +138,17 @@ function RotinasIntroCarousel({ close }) {
               aria-current={i === step ? 'step' : undefined}
               onClick={() => setStep(i)}
               className={cn(
-                'relative h-2 rounded-full transition-[width,background-color] duration-200 after:absolute after:-inset-2 motion-reduce:transition-none',
+                'relative h-2 rounded-full transition-[width,background-color] duration-200 after:absolute after:-inset-x-[3px] after:-inset-y-2 motion-reduce:transition-none',
                 i === step ? 'w-[22px] bg-brand-600' : 'w-2 bg-slate-200 dark:bg-white/15',
               )}
             />
           ))}
         </div>
-        <div className="flex gap-2">
-          <Button type="button" variant="outline" onClick={back} className={cn('border-border', step === 0 && 'invisible')}>
+        <div className="ml-auto flex gap-2">
+          <Button type="button" variant="outline" onClick={back} className={cn('border-border', step === 0 && 'hidden')}>
             Voltar
           </Button>
-          <Button ref={primaryRef} type="button" onClick={last ? close : () => setStep((s) => s + 1)}>
+          <Button ref={primaryRef} autoFocus type="button" onClick={last ? close : () => setStep((s) => s + 1)}>
             {step === 0 ? 'Ver como configurar' : last ? 'Entendi' : 'Próximo'}
           </Button>
         </div>
@@ -152,7 +163,7 @@ export function RotinasNovo(props) {
     <NewFeatureBadge
       {...props}
       until={NOVO_ATE}
-      contentClassName="gap-0 rounded-[18px] p-0 sm:max-w-[520px]"
+      contentClassName="grid-cols-[minmax(0,1fr)] gap-0 rounded-[18px] p-0 sm:max-w-[520px]"
       renderContent={({ close }) => <RotinasIntroCarousel close={close} />}
     />
   );

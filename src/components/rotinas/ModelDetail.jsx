@@ -114,7 +114,9 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
   // O lápis de Renomear sai da tela enquanto o campo do nome está aberto. O
   // pedido de foco fica numa ref e o effect o cumpre depois que o campo fecha
   // e o lápis volta (renaming falso e nenhuma gravação em curso, que deixa o
-  // lápis desligado).
+  // lápis desligado). Só cumpre se o foco está perdido (no body ou em lugar
+  // nenhum, que é onde o campo fechado o deixa): quem saiu do campo com o Tab
+  // enquanto a gravação corria já está em outro controle, e o foco fica lá.
   const renameBtnRef = useRef(null);
   const refocusRename = useRef(false);
   const followers = people.filter((p) => (model.followerIds || []).includes(p.id));
@@ -129,7 +131,8 @@ export function ModelDetail({ db, appUser, model, models, people, startRenaming 
   useEffect(() => {
     if (renaming || busy || !refocusRename.current) return;
     refocusRename.current = false;
-    renameBtnRef.current?.focus();
+    const active = document.activeElement;
+    if (!active || active === document.body) renameBtnRef.current?.focus();
   }, [renaming, busy]);
 
   const run = async (fn, ok, fail) => {
