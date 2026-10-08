@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { cn } from '@/lib/utils';
 import { stateText } from '../../lib/rotinas.js';
-import { clockText, isDoneState } from '../../lib/rotinasTela.js';
+import { clockText, isDoneState, taskDomId } from '../../lib/rotinasTela.js';
 import { AppLink } from '../nav/AppLink.jsx';
 import { PersonInitials } from './PersonInitials.jsx';
 import { StateMark } from './StateMark.jsx';
@@ -25,12 +25,13 @@ function NowLine({ now }) {
   );
 }
 
-function TaskRow({ row, now, pressed, onSelect }) {
+function TaskRow({ row, domId, now, pressed, onSelect }) {
   const { task, state, doneAt, note } = row;
   return (
     <li>
       <button
         type="button"
+        id={domId}
         aria-pressed={pressed}
         onClick={onSelect}
         className={cn(
@@ -77,7 +78,7 @@ export function PersonDayCard({ card, now, selectedTaskId, onSelect, modelLink, 
           A Meta diária não mostra rotina para essa pessoa.
           <button
             type="button"
-            onClick={onChooseModel}
+            onClick={() => onChooseModel?.(person)}
             className="h-8 rounded-[9px] border border-border bg-card px-3 text-[12.5px] font-medium text-foreground"
           >
             Escolher modelo
@@ -92,6 +93,7 @@ export function PersonDayCard({ card, now, selectedTaskId, onSelect, modelLink, 
     <TaskRow
       key={row.task.id}
       row={row}
+      domId={taskDomId(person.id, row.task.id)}
       now={now}
       pressed={selectedTaskId === row.task.id}
       onSelect={() => onSelect(person.id, row.task.id)}

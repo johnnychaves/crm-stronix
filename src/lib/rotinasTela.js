@@ -224,3 +224,11 @@ export function findSelection(cards, selected) {
   const row = card?.rows.find((r) => r.task.id === selected.taskId);
   return row ? { person: card.person, ...row } : null;
 }
+
+// Os ids do DOM da tela Rotinas, para devolver o foco: ao Fechar o detalhe, à
+// tarefa que estava aberta; ao Escolher modelo, ao seletor daquela pessoa. O id
+// de uma tarefa ou de uma pessoa vem do Firestore, e o que não for letra,
+// número, hífen ou sublinhado vira sublinhado.
+const domPart = (value) => String(value).replace(/[^A-Za-z0-9_-]/g, '_');
+export const taskDomId = (personId, taskId) => `rot-${domPart(personId)}-${domPart(taskId)}`;
+export const modelSelectDomId = (personId) => `rot-modelo-${domPart(personId)}`;

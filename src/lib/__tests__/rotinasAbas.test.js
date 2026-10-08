@@ -125,6 +125,9 @@ const click = async (el) => {
   expect(el).toBeTruthy();
   await act(async () => { el.click(); });
 };
+// O foco depois de Escolher modelo espera um instante (o conteúdo da aba monta uma
+// renderização depois da troca); o relógio de teste só finge o Date.
+const settle = () => act(async () => { await new Promise((resolve) => { setTimeout(resolve, 0); }); });
 
 describe('as abas no endereço', () => {
   it('/acad/rotinas abre Modelos, e a aba Hoje troca o endereço por /acad/rotinas/hoje, com replace', async () => {
@@ -172,6 +175,48 @@ describe('as abas no endereço', () => {
     await render(HOJE);
     const diego = document.body.querySelector('section[aria-label="Diego Lima"]');
     await click([...diego.querySelectorAll('button')].find((b) => b.textContent === 'Escolher modelo'));
+    expect(nav.location.pathname).toBe(LIST);
+    expect(nav.type).toBe('REPLACE');
+  });
+
+  it('Escolher modelo leva o foco ao seletor de modelo daquela pessoa, na lista de consultores', async () => {
+    await render(HOJE);
+    const diego = document.body.querySelector('section[aria-label="Diego Lima"]');
+    await click([...diego.querySelectorAll('button')].find((b) => b.textContent === 'Escolher modelo'));
+    await settle();
+    const seletor = document.activeElement;
+    expect(seletor.getAttribute('aria-label')).toBe('Modelo que Diego segue');
+    expect(seletor.id).toBe('rot-modelo-diego');
+  });
+
+  it('sem o seletor na tela (os modelos voltando a carregar), o foco vai para a aba Modelos', async () => {
+    await render(HOJE);
+    const diego = document.body.querySelector('section[aria-label="Diego Lima"]');
+    const escolher = [...diego.querySelectorAll('button')].find((b) => b.textContent === 'Escolher modelo');
+    // A próxima leitura da tela já vem com os modelos carregando, e a lista de consultores não tem seletor.
+    s.loading = true;
+    await click(escolher);
+    await settle();
+    expect(document.querySelector('#rot-modelo-diego')).toBeNull();
+    expect(document.activeElement).toBe(tab('Modelos'));
+  });
+
+  it('as setas do teclado trocam de aba, com replace no endereço', async () => {
+    await render(LIST);
+    const modelos = tab('Modelos');
+    await act(async () => { modelos.focus(); });
+    // O Radix passa o foco para a aba vizinha num setTimeout; o relógio de teste só finge o Date.
+    await act(async () => {
+      modelos.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+      await new Promise((resolve) => { setTimeout(resolve, 0); });
+    });
+    expect(nav.location.pathname).toBe(HOJE);
+    expect(nav.type).toBe('REPLACE');
+    expect(tab('Hoje').getAttribute('aria-selected')).toBe('true');
+    await act(async () => {
+      tab('Hoje').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true }));
+      await new Promise((resolve) => { setTimeout(resolve, 0); });
+    });
     expect(nav.location.pathname).toBe(LIST);
     expect(nav.type).toBe('REPLACE');
   });

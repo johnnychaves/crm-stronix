@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../../contexts/ToastContext.jsx';
 import { firstName, modelOfUser, spanText, tasksForDay } from '../../lib/rotinas.js';
+import { modelSelectDomId } from '../../lib/rotinasTela.js';
 import { MODEL_GONE, setPersonModel } from '../../lib/rotinasWrites.js';
 import { AppLink } from '../nav/AppLink.jsx';
 
@@ -62,7 +63,7 @@ export function ConsultantsList({ db, appUser, people, models, loading = false, 
                 </p>
               </div>
               <Select value={model?.id ?? NONE} onValueChange={(v) => change(person, v)} disabled={busy === person.id}>
-                <SelectTrigger aria-label={`Modelo que ${firstName(person.name)} segue`} className="h-9 w-full">
+                <SelectTrigger id={modelSelectDomId(person.id)} aria-label={`Modelo que ${firstName(person.name)} segue`} className="h-9 w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>

@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRoutineModels } from '../hooks/useRoutineModels.js';
 import { canGoBackInApp, hrefFor } from '../lib/routes.js';
 import { firstName, modelOfUser, namesText, routineParticipants } from '../lib/rotinas.js';
+import { modelSelectDomId } from '../lib/rotinasTela.js';
 import { ModelCard } from '../components/rotinas/ModelCard.jsx';
 import { ConsultantsList } from '../components/rotinas/ConsultantsList.jsx';
 import { ModelDetail } from '../components/rotinas/ModelDetail.jsx';
@@ -84,9 +85,31 @@ export function RotinasView({ db, appUser, usersList, modelId, tab = 'modelos', 
   const people = useMemo(() => routineParticipants(usersList), [usersList]);
   const [creatingKey, setCreatingKey] = useState(null);
   const newModelRef = useRef(null);
+  const pageRef = useRef(null);
+  const focusAfterTab = useRef(null);
   const model = modelId ? models.find((m) => m.id === modelId) : undefined;
   const nova = modelId && location.state?.rotinaNova === modelId ? location.state : null;
   const { fresh, renomear } = useFreshModel(nova, Boolean(model));
+
+  // Escolher modelo (aba Hoje) troca para a aba Modelos, e o foco precisa ir
+  // junto: sem isso, o botão clicado some com a aba e o foco cai no body. Quem
+  // pede é o clique, que guarda o seletor da pessoa em focusAfterTab; a aba nova
+  // só existe depois da troca de endereço, e é este effect que leva o foco. O
+  // conteúdo da aba (Radix Presence) monta uma renderização depois da troca, por
+  // isso o foco espera um instante, e o pedido só é apagado quando ele roda
+  // (o effect pode rodar duas vezes no desenvolvimento). Sem o seletor na tela
+  // (os modelos ainda carregando), o foco vai para a aba Modelos.
+  useEffect(() => {
+    if (!focusAfterTab.current || modelId || tab === 'hoje') return undefined;
+    const timer = setTimeout(() => {
+      const target = focusAfterTab.current;
+      focusAfterTab.current = null;
+      if (!target) return;
+      const selector = document.getElementById(target);
+      (selector ?? pageRef.current?.querySelector('[role="tab"][aria-selected="true"]'))?.focus();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [tab, modelId]);
 
   const modelLink = (id) => ({ to: hrefFor(tenantId, 'rotinas', { modelId: id }), state: { fromList: true } });
   const openNew = (id, { renomear: rename = false, fromList = false } = {}) =>
@@ -142,9 +165,13 @@ export function RotinasView({ db, appUser, usersList, modelId, tab = 'modelos', 
   // endereço é o App (goToSub), com replace: trocar de aba não cria parada no
   // voltar do navegador.
   const goTab = (id) => onTab?.(id === 'hoje' ? 'hoje' : null);
+  const chooseModel = (person) => {
+    focusAfterTab.current = modelSelectDomId(person.id);
+    goTab('modelos');
+  };
 
   return (
-    <div className="flex flex-col gap-3 animate-fade-in">
+    <div ref={pageRef} className="flex flex-col gap-3 animate-fade-in">
       <p className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
         <ListChecks size={14} /> Rotinas
       </p>
@@ -199,7 +226,7 @@ export function RotinasView({ db, appUser, usersList, modelId, tab = 'modelos', 
             tenantId={tenantId}
             listenersActive={listenersActive}
             modelLink={modelLink}
-            onChooseModel={() => goTab('modelos')}
+            onChooseModel={chooseModel}
           />
         </TabsContent>
       </Tabs>

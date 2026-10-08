@@ -21,7 +21,7 @@ vi.mock('firebase/firestore', () => ({
 }));
 
 const { useTeamRoutineMarks } = await import('../../hooks/useTeamRoutineMarks.js');
-const { useMinuteClock } = await import('../../hooks/useMinuteClock.js');
+const { useMinuteClock, useFrozenWhileIdle } = await import('../../hooks/useMinuteClock.js');
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,6 +35,10 @@ function ProbeMarks(props) {
 }
 function ProbeClock() {
   result = useMinuteClock();
+  return null;
+}
+function ProbeFrozen({ active }) {
+  result = useFrozenWhileIdle(useMinuteClock(), active);
   return null;
 }
 
@@ -155,15 +159,59 @@ describe('useTeamRoutineMarks: os checks de hoje da academia', () => {
 });
 
 describe('useMinuteClock', () => {
-  it('anda a cada minuto e para de andar ao sair da tela', async () => {
+  it('troca no começo de cada minuto, e não a cada 60 segundos contados da montagem', async () => {
     vi.useFakeTimers({ now: new Date(2026, 9, 6, 10, 47, 30) });
     await montar(ProbeClock, {});
     expect(result.getMinutes()).toBe(47);
-    await act(async () => { vi.advanceTimersByTime(60_000); });
+    expect(vi.getTimerCount()).toBe(1);
+    // Aos 29 segundos o minuto ainda é o 47; passados os 30 (mais a folga), é o 48, em ponto.
+    await act(async () => { vi.advanceTimersByTime(29_000); });
+    expect(result.getMinutes()).toBe(47);
+    await act(async () => { vi.advanceTimersByTime(1_100); });
     expect(result.getMinutes()).toBe(48);
+    expect(result.getSeconds()).toBe(0);
+    // Dali em diante, um intervalo de 60 segundos.
+    expect(vi.getTimerCount()).toBe(1);
+    await act(async () => { vi.advanceTimersByTime(59_000); });
+    expect(result.getMinutes()).toBe(48);
+    await act(async () => { vi.advanceTimersByTime(1_100); });
+    expect(result.getMinutes()).toBe(49);
+  });
+
+  it('para de andar ao sair da tela, antes e depois do primeiro minuto', async () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 6, 10, 47, 30) });
+    await montar(ProbeClock, {});
+    await act(async () => { root.unmount(); });
+    root = null;
+    expect(vi.getTimerCount()).toBe(0);
+
+    await montar(ProbeClock, {});
+    await act(async () => { vi.advanceTimersByTime(31_000); });
     expect(vi.getTimerCount()).toBe(1);
     await act(async () => { root.unmount(); });
     root = null;
     expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
+describe('useFrozenWhileIdle', () => {
+  it('ativo, devolve o relógio; inativo, guarda o instante em que parou; ativo de novo, volta ao relógio', async () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 6, 10, 47, 0) });
+    await montar(ProbeFrozen, { active: true });
+    expect(result.getMinutes()).toBe(47);
+    await renderizar(ProbeFrozen, { active: false });
+    await act(async () => { vi.advanceTimersByTime(30 * 60_000 + 100); });
+    expect(result.getHours()).toBe(10);
+    expect(result.getMinutes()).toBe(47);
+    await renderizar(ProbeFrozen, { active: true });
+    expect(result.getMinutes()).toBe(17);
+    expect(result.getHours()).toBe(11);
+  });
+
+  it('começar inativo congela no instante da montagem', async () => {
+    vi.useFakeTimers({ now: new Date(2026, 9, 6, 10, 47, 0) });
+    await montar(ProbeFrozen, { active: false });
+    await act(async () => { vi.advanceTimersByTime(5 * 60_000); });
+    expect(result.getMinutes()).toBe(47);
   });
 });

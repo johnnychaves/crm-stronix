@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useGeneralConfig } from '../../contexts/GeneralConfigContext.jsx';
-import { useMinuteClock } from '../../hooks/useMinuteClock.js';
+import { useFrozenWhileIdle, useMinuteClock } from '../../hooks/useMinuteClock.js';
 import { useTeamRoutineMarks } from '../../hooks/useTeamRoutineMarks.js';
 import { routineDayKey } from '../../lib/rotinas.js';
-import { clockText, findSelection, teamToday, todayHeadline } from '../../lib/rotinasTela.js';
+import { clockText, findSelection, taskDomId, teamToday, todayHeadline } from '../../lib/rotinasTela.js';
 import { PersonDayCard } from './PersonDayCard.jsx';
 import { TodayAside } from './TodayAside.jsx';
 
@@ -16,8 +16,16 @@ import { TodayAside } from './TodayAside.jsx';
 // checks de hoje da academia chegam por assinatura, presa ao portão de
 // ociosidade. As contas moram em src/lib/rotinasTela.js. A tarefa escolhida
 // fica no estado da aba, e não no endereço: é passageira, como um menu aberto.
+//
+// Com o portão de ociosidade fechado (listenersActive falso), as assinaturas
+// param e o relógio seguiria andando: toda tarefa que o consultor fez depois da
+// pausa viraria atrasada sozinha. Por isso a aba congela o instante em que as
+// assinaturas pararam (useFrozenWhileIdle) e calcula tudo nele: os estados, a
+// frase do topo, as atrasadas, a linha do agora e o dia da leitura. O topo diz
+// "Atualizado às HH:MM", e a aba volta ao relógio de agora quando a pessoa mexe
+// na tela e as assinaturas voltam.
 export function TodayTab({ db, people, models, modelsLoading = false, tenantId, listenersActive = true, modelLink, onChooseModel }) {
-  const now = useMinuteClock();
+  const now = useFrozenWhileIdle(useMinuteClock(), listenersActive);
   const { metaWeekdays = [1, 2, 3, 4, 5] } = useGeneralConfig();
   const { marks, loading, error } = useTeamRoutineMarks({ db, enabled: listenersActive, tenantId, dayKey: routineDayKey(now) });
   const [selected, setSelected] = useState(null); // { personId, taskId }
@@ -36,6 +44,12 @@ export function TodayTab({ db, people, models, modelsLoading = false, tenantId, 
   const detail = findSelection(team.cards, selected);
   const toggle = (personId, taskId) =>
     setSelected((cur) => (cur?.personId === personId && cur?.taskId === taskId ? null : { personId, taskId }));
+  // O Fechar desmonta o próprio botão, e o foco cairia no body. A tarefa que
+  // estava aberta já está na tela, então o foco vai para ela antes de fechar.
+  const close = () => {
+    if (selected) document.getElementById(taskDomId(selected.personId, selected.taskId))?.focus();
+    setSelected(null);
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -52,9 +66,17 @@ export function TodayTab({ db, people, models, modelsLoading = false, tenantId, 
             )
             : <span key={part.text}>{part.text}</span>))}
         </h1>
-        <p className="inline-flex items-center gap-2 whitespace-nowrap text-[12px] text-muted-foreground">
-          <span aria-hidden="true" className="size-[7px] rounded-full bg-emerald-600 ring-[3px] ring-emerald-600/15 dark:bg-emerald-400" />
-          <span>Ao vivo · <span className="num">{clockText(now)}</span></span>
+        <p data-relogio={listenersActive ? 'ao-vivo' : 'parado'} className="inline-flex items-center gap-2 text-[12px] text-muted-foreground">
+          <span
+            aria-hidden="true"
+            className={cn(
+              'size-[7px] shrink-0 rounded-full',
+              listenersActive ? 'bg-emerald-600 ring-[3px] ring-emerald-600/15 dark:bg-emerald-400' : 'bg-muted-foreground/50',
+            )}
+          />
+          {listenersActive
+            ? <span className="whitespace-nowrap">Ao vivo · <span className="num">{clockText(now)}</span></span>
+            : <span>Atualizado às <span className="num">{clockText(now)}</span> · mexa na tela para atualizar</span>}
         </p>
       </div>
 
@@ -77,7 +99,7 @@ export function TodayTab({ db, people, models, modelsLoading = false, tenantId, 
               />
             ))}
           </div>
-          <TodayAside team={team} detail={detail} now={now} onClose={() => setSelected(null)} />
+          <TodayAside team={team} detail={detail} now={now} onClose={close} />
         </div>
       )}
     </div>

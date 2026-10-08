@@ -3,7 +3,7 @@ import { ALL_DAYS } from '../rotinas.js';
 import {
   DAY_LINE_END, DAY_LINE_START, MODEL_GAP_MINUTES, clockText, dayLineLabels, dayLinePct, findSelection, gapText, hourLabel,
   isDoneState, lateText, modelCardSummary, modelChips, modelDayRows, modelFreeTasks, modelPausedTasks, modelSummary,
-  modelTimes, personDay, personTodayText, teamToday, todayHeadline,
+  modelSelectDomId, modelTimes, personDay, personTodayText, taskDomId, teamToday, todayHeadline,
 } from '../rotinasTela.js';
 
 // 06/10/2026 é terça; 07/10/2026 é quarta; 10/10/2026 é sábado.
@@ -252,5 +252,19 @@ describe('o título da aba Hoje', () => {
     expect(texto({ peopleCount: 0, following: 0, done: 0, total: 0, late: 0 })).toBe('Nenhum consultor na equipe ainda.');
     expect(texto({ peopleCount: 3, following: 0, done: 0, total: 0, late: 0 })).toBe('Ninguém segue um modelo ainda.');
     expect(texto({ peopleCount: 3, following: 2, done: 0, total: 0, late: 0 })).toBe('Hoje não tem tarefa da rotina para a equipe.');
+  });
+});
+
+describe('os ids do DOM da tela Rotinas', () => {
+  it('cada tarefa de cada pessoa tem um id estável, sem caractere que atrapalhe o id', () => {
+    expect(taskDomId('ana', 't3')).toBe('rot-ana-t3');
+    expect(taskDomId('ana', 't3')).toBe(taskDomId('ana', 't3'));
+    expect(taskDomId('ana', 't3')).not.toBe(taskDomId('bruno', 't3'));
+    expect(taskDomId('a b', 't/1.x')).toBe('rot-a_b-t_1_x');
+  });
+
+  it('o seletor de modelo de cada pessoa tem o seu', () => {
+    expect(modelSelectDomId('ana')).toBe('rot-modelo-ana');
+    expect(modelSelectDomId('a.b')).toBe('rot-modelo-a_b');
   });
 });

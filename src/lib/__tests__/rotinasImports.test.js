@@ -11,6 +11,10 @@ import { fileURLToPath } from 'node:url';
 const ROTINAS_PATH = fileURLToPath(new URL('../rotinas.js', import.meta.url));
 const MONTH_PATH = fileURLToPath(new URL('../operacional/month.js', import.meta.url));
 const TELA_PATH = fileURLToPath(new URL('../rotinasTela.js', import.meta.url));
+const WRITES_PATH = fileURLToPath(new URL('../rotinasWrites.js', import.meta.url));
+// A aba Hoje é de quem acompanha: o gestor nunca marca nem desmarca o check de ninguém.
+const HOJE_PATHS = ['TodayTab.jsx', 'PersonDayCard.jsx', 'TodayAside.jsx']
+  .map((name) => fileURLToPath(new URL(`../../components/rotinas/${name}`, import.meta.url)));
 
 // `import ... from '...'` e `export ... from '...'` (grupo 1, inclusive
 // multilinha), e `import '...'` ou `import('...')` (grupo 2).
@@ -41,6 +45,23 @@ describe('rotinas.js só importa módulos puros', () => {
   it('rotinasTela.js só importa ./rotinas.js', () => {
     const text = readFileSync(TELA_PATH, 'utf8');
     expect(specifiersOf(text)).toEqual(['./rotinas.js']);
+  });
+
+  // A aba Hoje só lê. Nenhum dos três arquivos importa rotinasWrites.js nem usa,
+  // pelo nome, qualquer coisa que ele exporta (markDone, undoMark, saveMarkNote,
+  // setPersonModel e o resto). A lista de nomes sai do próprio rotinasWrites.js.
+  it('TodayTab, PersonDayCard e TodayAside nunca importam rotinasWrites.js, nem pelo nome', () => {
+    const writes = readFileSync(WRITES_PATH, 'utf8');
+    const names = [...writes.matchAll(/^export\s+(?:async\s+)?(?:function|const)\s+([A-Za-z0-9_$]+)/gm)].map((m) => m[1]);
+    expect(names).toEqual(expect.arrayContaining(['markDone', 'undoMark', 'saveMarkNote', 'setPersonModel']));
+    for (const path of HOJE_PATHS) {
+      const text = readFileSync(path, 'utf8');
+      expect(specifiersOf(text).filter((spec) => /rotinasWrites/.test(spec)), path).toEqual([]);
+      const code = stripComments(text);
+      for (const name of names) {
+        expect(new RegExp(`(?<![A-Za-z0-9_$])${name.replace(/\$/g, '\\$')}(?![A-Za-z0-9_$])`).test(code), `${path} usa ${name}`).toBe(false);
+      }
+    }
   });
 
   // Autoteste: o regex enxerga as formas de import que deveria pegar.

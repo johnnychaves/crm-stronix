@@ -152,8 +152,9 @@ describe('o topo', () => {
   it('o relógio anda sozinho a cada minuto', async () => {
     vi.useFakeTimers({ now: NOW });
     await render();
-    await act(async () => { vi.advanceTimersByTime(60_000); });
+    await act(async () => { vi.advanceTimersByTime(60_100); });
     expect(container.textContent).toContain('Ao vivo · 10:48');
+    expect(container.querySelector('[data-relogio]').getAttribute('data-relogio')).toBe('ao-vivo');
   });
 });
 
@@ -222,6 +223,7 @@ describe('o cartão de cada consultor', () => {
     expect(diego.querySelector('a')).toBeNull();
     await click([...diego.querySelectorAll('button')].find((b) => b.textContent === 'Escolher modelo'));
     expect(onChooseModel).toHaveBeenCalledTimes(1);
+    expect(onChooseModel).toHaveBeenCalledWith(expect.objectContaining({ id: 'diego', name: 'Diego Rocha' }));
   });
 
   it('o check de outro dia não conta', async () => {
@@ -313,5 +315,109 @@ describe('os casos sem conta', () => {
     vi.useFakeTimers({ now: at('10:47', 10), toFake: ['Date'] });
     await render();
     expect(container.querySelector('h1').textContent).toBe('Hoje não tem tarefa da rotina para a equipe.');
+  });
+});
+
+describe('o detalhe e o foco', () => {
+  const abrirAna = (titulo) => click(rowOf(card('Ana Souza'), titulo));
+
+  it('cada tarefa tem um id estável, e Fechar devolve o foco à tarefa que estava aberta', async () => {
+    await render();
+    const linha = () => rowOf(card('Ana Souza'), 'Montar a lista de contatos do dia');
+    expect(linha().id).toBe('rot-ana-t3');
+    expect(rowOf(card('Bruno Lima'), 'Abrir a recepção').id).toBe('rot-bruno-t1');
+    await abrirAna('Montar a lista de contatos do dia');
+    const fechar = [...detalhe().querySelectorAll('button')].find((b) => b.textContent === 'Fechar');
+    await act(async () => { fechar.focus(); });
+    expect(document.activeElement).toBe(fechar);
+    await click(fechar);
+    expect(detalhe()).toBeNull();
+    expect(document.activeElement).toBe(linha());
+  });
+
+  it('o anúncio do detalhe vem de uma região escondida que só muda quando a escolha muda', async () => {
+    vi.useFakeTimers({ now: NOW });
+    await render();
+    const regiao = () => container.querySelector('[aria-live="polite"]');
+    expect(container.querySelectorAll('[aria-live]')).toHaveLength(1);
+    expect(regiao().className.split(/\s+/)).toContain('sr-only');
+    expect(regiao().textContent).toBe('');
+    await abrirAna('Ligações para leads novos');
+    expect(regiao().textContent).toBe('Detalhe: Ana, Ligações para leads novos');
+    // O detalhe que se vê não é região viva: o "atrasada há N min" não é relido a cada minuto.
+    expect(detalhe().closest('[aria-live]')).toBeNull();
+    expect(detalhe().textContent).toContain('Era às 10:00, atrasada há 47 min');
+    await act(async () => { vi.advanceTimersByTime(61_000); });
+    expect(detalhe().textContent).toContain('Era às 10:00, atrasada há 48 min');
+    expect(regiao().textContent).toBe('Detalhe: Ana, Ligações para leads novos');
+    await abrirAna('Intervalo');
+    expect(regiao().textContent).toBe('Detalhe: Ana, Intervalo');
+    await click([...detalhe().querySelectorAll('button')].find((b) => b.textContent === 'Fechar'));
+    expect(regiao().textContent).toBe('');
+  });
+});
+
+describe('a lateral não passa da tela', () => {
+  it('fica fixa no topo e rola por dentro, para uma lista longa não esconder as observações', async () => {
+    await render();
+    const classes = container.querySelector('aside').className.split(/\s+/);
+    expect(classes).toEqual(expect.arrayContaining(['lg:sticky', 'lg:top-4', 'lg:max-h-[calc(100dvh-2rem)]', 'lg:overflow-y-auto', 'overscroll-y-contain']));
+  });
+});
+
+describe('dados parados pelo portão de ociosidade', () => {
+  const titulo = () => container.querySelector('h1').textContent;
+  const relogio = () => container.querySelector('[data-relogio]');
+  const anaTexto = (t) => rowOf(card('Ana Souza'), t).textContent;
+
+  it('sem assinatura, o instante fica parado: o rótulo muda e nenhuma tarefa vira atrasada sozinha', async () => {
+    vi.useFakeTimers({ now: NOW });
+    await render();
+    expect(relogio().textContent).toBe('Ao vivo · 10:47');
+    const aoVivo = titulo();
+
+    await render({ listenersActive: false });
+    expect(s.args.enabled).toBe(false);
+    expect(relogio().getAttribute('data-relogio')).toBe('parado');
+    expect(relogio().textContent).toBe('Atualizado às 10:47 · mexa na tela para atualizar');
+    expect(relogio().textContent).not.toContain('Ao vivo');
+    // O ponto verde de "ao vivo" dá lugar a um neutro.
+    expect(relogio().querySelector('[aria-hidden="true"]').className).not.toContain('emerald');
+
+    // Passam 30 minutos com o relógio andando e sem checks novos chegando.
+    await act(async () => { vi.advanceTimersByTime(30 * 60_000); });
+    expect(relogio().textContent).toBe('Atualizado às 10:47 · mexa na tela para atualizar');
+    expect(titulo()).toBe(aoVivo);
+    expect(anaTexto('Ligações para leads novos')).toBe('10:00Ligações para leads novosEra às 10:00, atrasada há 47 min');
+    expect(anaTexto('Conferir as visitas da tarde')).toBe('10:30Conferir as visitas da tardeÉ agora');
+    expect(anaTexto('Intervalo')).toBe('11:00IntervaloEm 13 min');
+    expect(side('Atrasadas agora').textContent).toContain('Era às 10:00, há 47 min');
+    expect(container.querySelector('[data-agora]').textContent).toBe('10:47');
+  });
+
+  it('ao voltar a mexer na tela, volta ao relógio de agora', async () => {
+    vi.useFakeTimers({ now: NOW });
+    await render();
+    await render({ listenersActive: false });
+    await act(async () => { vi.advanceTimersByTime(30 * 60_000 + 100); });
+    const parado = titulo();
+    await render({ listenersActive: true });
+    expect(s.args.enabled).toBe(true);
+    expect(relogio().getAttribute('data-relogio')).toBe('ao-vivo');
+    expect(relogio().textContent).toBe('Ao vivo · 11:17');
+    expect(titulo()).not.toBe(parado);
+    expect(anaTexto('Ligações para leads novos')).toContain('atrasada há 1h 17min');
+  });
+
+  it('o dia que vira com a assinatura parada não troca o dia da leitura', async () => {
+    vi.useFakeTimers({ now: at('23:50') });
+    await render();
+    expect(s.args.dayKey).toBe('2026-10-06');
+    await render({ listenersActive: false });
+    await act(async () => { vi.advanceTimersByTime(20 * 60_000); });
+    expect(s.args.dayKey).toBe('2026-10-06');
+    expect(relogio().textContent).toBe('Atualizado às 23:50 · mexa na tela para atualizar');
+    await render({ listenersActive: true });
+    expect(s.args.dayKey).toBe('2026-10-07');
   });
 });

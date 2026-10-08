@@ -5,9 +5,11 @@ import { clockText } from '../../lib/rotinasTela.js';
 import { PersonInitials } from './PersonInitials.jsx';
 
 // A lateral da aba Hoje: o detalhe da tarefa escolhida (no topo), as
-// atrasadas de agora e as observações de hoje. O detalhe mora numa região
-// aria-live que existe desde a montagem, para o leitor de tela ler o detalhe
-// que aparece.
+// atrasadas de agora e as observações de hoje. O detalhe que se vê não é região
+// viva, porque o texto do estado ("atrasada há 47 min") muda a cada minuto e o
+// leitor de tela o releria o tempo todo. Quem anuncia é um parágrafo escondido
+// (sr-only) que existe desde a montagem e só muda de texto quando a escolha
+// muda: "Detalhe: Ana, Ligações para leads novos". Fechado, fica vazio.
 
 function Count({ n, late = false }) {
   return (
@@ -53,25 +55,29 @@ function Card({ title, count, late = false, children }) {
 
 export function TodayAside({ team, detail, now, onClose }) {
   return (
-    <aside className="flex flex-col gap-3 lg:sticky lg:top-4">
-      <div aria-live="polite">
-        {detail && (
-          <section aria-label="Detalhe da tarefa" className="rounded-2xl border border-brand-600/45 bg-card px-3.5 pb-3 pt-3.5 shadow-card">
-            <div className="flex items-center justify-between">
-              <p className="text-[10.5px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-300">Detalhe</p>
-              <button type="button" onClick={onClose} className="text-[12px] text-muted-foreground hover:text-foreground">Fechar</button>
-            </div>
-            <Row person={detail.person}>
-              <p className="font-semibold">{detail.person.name}</p>
-              <p className="mt-0.5 text-[11.5px] text-muted-foreground">{detail.task.time ? `${detail.task.time} · ` : ''}{detail.task.title}</p>
-              <p className={cn('mt-0.5 text-[11.5px]', detail.state === 'late' ? 'font-semibold text-rose-600 dark:text-rose-300' : 'text-muted-foreground')}>
-                {stateText(detail.task, detail.state, detail.doneAt ?? now, now)}
-              </p>
-              {detail.note && <Quote>{detail.note}</Quote>}
-            </Row>
-          </section>
-        )}
-      </div>
+    // Fixa no topo e com rolagem própria: uma lista longa de atrasadas não pode
+    // empurrar as observações para fora da tela. O -m-1 com p-1 dá folga para a
+    // sombra dos cartões não ser cortada pela rolagem.
+    <aside className="flex flex-col gap-3 overscroll-y-contain lg:sticky lg:top-4 lg:-m-1 lg:max-h-[calc(100dvh-2rem)] lg:overflow-y-auto lg:p-1">
+      <p aria-live="polite" className="sr-only">
+        {detail ? `Detalhe: ${firstName(detail.person.name)}, ${detail.task.title}` : ''}
+      </p>
+      {detail && (
+        <section aria-label="Detalhe da tarefa" className="rounded-2xl border border-brand-600/45 bg-card px-3.5 pb-3 pt-3.5 shadow-card">
+          <div className="flex items-center justify-between">
+            <p className="text-[10.5px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-300">Detalhe</p>
+            <button type="button" onClick={onClose} className="text-[12px] text-muted-foreground hover:text-foreground">Fechar</button>
+          </div>
+          <Row person={detail.person}>
+            <p className="font-semibold">{detail.person.name}</p>
+            <p className="mt-0.5 text-[11.5px] text-muted-foreground">{detail.task.time ? `${detail.task.time} · ` : ''}{detail.task.title}</p>
+            <p className={cn('mt-0.5 text-[11.5px]', detail.state === 'late' ? 'font-semibold text-rose-600 dark:text-rose-300' : 'text-muted-foreground')}>
+              {stateText(detail.task, detail.state, detail.doneAt ?? now, now)}
+            </p>
+            {detail.note && <Quote>{detail.note}</Quote>}
+          </Row>
+        </section>
+      )}
 
       <Card title="Atrasadas agora" count={team.lateRows.length} late>
         {team.lateRows.length === 0 && <p className="mt-2.5 text-[12px] text-muted-foreground">Ninguém com tarefa atrasada.</p>}
