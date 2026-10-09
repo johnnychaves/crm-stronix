@@ -17,7 +17,7 @@ const IDS_DIFICEIS = ['Ab12', 'João Silva', 'ação', '100%', '%41', 'a%2Fb', '
 // Os mesmos valores de activeTab que o App.jsx usa hoje.
 const TELAS = [
   'dashboard', 'dashOperacional', 'dashCrm', 'dashGerencial', 'kanban', 'clientes', 'dailyGoal',
-  'leads', 'aulas', 'visitas', 'settings', 'profile', 'billing', 'superadmin', 'ficha', 'rotinas',
+  'leads', 'aulas', 'visitas', 'settings', 'profile', 'billing', 'superadmin', 'ficha', 'rotinas', 'relatorios',
 ];
 
 describe('SCREENS', () => {
@@ -47,7 +47,7 @@ describe('SCREENS', () => {
   it('primeiro segmento de cada tela, sem repetição', () => {
     expect([...FIRST_LEVEL_SEGMENTS].sort()).toEqual([
       'clientes', 'configuracoes', 'ficha', 'leads', 'meta-diaria', 'perfil-da-academia',
-      'pipeline', 'plano-e-faturas', 'rotinas', 'super-admin', 'visao-geral',
+      'pipeline', 'plano-e-faturas', 'relatorios', 'rotinas', 'super-admin', 'visao-geral',
     ]);
     expect(Object.isFrozen(FIRST_LEVEL_SEGMENTS)).toBe(true);
   });
@@ -413,6 +413,18 @@ describe('sub-tela no caminho', () => {
     }
   });
 
+  it('Relatórios lê os submenus, abre sem submenu e marca o desconhecido', () => {
+    for (const [seg, id] of [['entrada', 'entrada'], ['conversao', 'conversao']]) {
+      const r = parseAppPath(`/${T}/relatorios/${seg}`);
+      expect([r.screen, r.sub, r.subUnknown], seg).toEqual(['relatorios', id, false]);
+    }
+    expect(parseAppPath(`/${T}/relatorios`)).toMatchObject({ screen: 'relatorios', sub: null, subUnknown: false });
+    expect(parseAppPath(`/${T}/relatorios/perdas`)).toMatchObject({ screen: 'relatorios', subUnknown: true });
+    expect(hrefFor(T, 'relatorios', { sub: 'conversao' })).toBe(`/${T}/relatorios/conversao`);
+    expect(SCREENS.relatorios).toMatchObject({ title: 'Relatórios', subPadrao: 'entrada' });
+    expect(SCREENS.relatorios.gestor).toBeUndefined();
+  });
+
   it('sem sub-tela no endereço, sub é null e subUnknown é false', () => {
     for (const p of [`/${T}/configuracoes`, `/${T}/ficha/AbC`]) {
       const r = parseAppPath(p);
@@ -462,7 +474,7 @@ describe('sub-tela no caminho', () => {
   });
 
   it('a tabela de sub-telas é congelada e o padrão de cada uma existe nela', () => {
-    for (const id of ['settings', 'ficha', 'rotinas']) {
+    for (const id of ['settings', 'ficha', 'rotinas', 'relatorios']) {
       expect(Object.isFrozen(SCREENS[id].subs), id).toBe(true);
       expect(Object.keys(SCREENS[id].subs), id).toContain(SCREENS[id].subPadrao);
     }
@@ -470,7 +482,7 @@ describe('sub-tela no caminho', () => {
 
   it('nenhuma outra tela tem sub-tela nesta entrega', () => {
     const comSub = Object.keys(SCREENS).filter((id) => SCREENS[id].subs);
-    expect(comSub.sort()).toEqual(['ficha', 'rotinas', 'settings']);
+    expect(comSub.sort()).toEqual(['ficha', 'relatorios', 'rotinas', 'settings']);
   });
 });
 
