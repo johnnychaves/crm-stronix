@@ -152,10 +152,12 @@ export function OperacionalToolbar(props) {
   // sticky respeita esse recuo: com top-0 a barra grudava 16/32px abaixo do
   // topo e o conteúdo aparecia por cima dela. O top negativo do mesmo tamanho
   // faz a barra encostar no cabeçalho do App. No escuro o bg-card é 2% de
-  // branco, translúcido, e os cards apareciam através da barra ao rolar: ela
-  // usa a cor efetiva do cabeçalho (2% de branco sobre o ink-950), opaca.
+  // branco, translúcido, e os cards apareciam através da barra ao rolar: ali
+  // ela pinta o fundo da página (dark:bg-page, o mesmo da raiz do App, em
+  // src/index.css), que é opaco. Até 09/10/2026 era um azul-marinho fixo,
+  // feito para um fundo ink-950 que o App não usa, e aparecia como uma faixa.
   return (
-    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06] dark:bg-[#0D1226]">
+    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06] dark:bg-page">
       <div className="hidden items-center gap-2.5 md:flex">
         <MonthControl {...props} />
         <CompareControl {...props} />

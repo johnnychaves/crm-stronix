@@ -91,8 +91,12 @@ describe('peças do CRM', () => {
     };
     const crm = render(createElement(CrmToolbar, { ...base, funnel: 'all', funnels: [], onFunnel: noop }));
     const op = render(createElement(OperacionalToolbar, base));
-    expect(crm).toContain('dark:bg-[#0D1226]');
-    expect(op).toContain('dark:bg-[#0D1226]');
+    // No escuro as duas pintam o fundo da página, o mesmo da raiz do App
+    // (fundoDaPagina.test.js), e não mais o azul-marinho fixo de antes.
+    expect(crm).toContain('dark:bg-page');
+    expect(op).toContain('dark:bg-page');
+    expect(crm).not.toContain('#0D1226');
+    expect(op).not.toContain('#0D1226');
     expect(crm).toContain('lucide-list-filter');
     expect(crm).not.toContain('lucide-sliders-horizontal');
     expect(op).toContain('lucide-sliders-horizontal');

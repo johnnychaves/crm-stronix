@@ -1571,7 +1571,7 @@ useEffect(() => {
         desenhada abaixo, e isto só troca o endereço (replace) e mostra o
         aviso. A key nova a cada endereço dá uma troca por endereço barrado. */}
     {decision.kind === 'redirect' && <RouteRedirect key={location.key} to={decision.to} notice={decision.notice} />}
-    <div className="flex h-[100dvh] bg-paper-50 dark:bg-neutral-950 text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
+    <div className="flex h-[100dvh] bg-page text-gray-900 dark:text-white selection:bg-brand-600 selection:text-white overflow-hidden" style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, sans-serif' }}>
       {isMobileMenuOpen && <div className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm transition-opacity" onClick={closeDrawer} />}
 
       {/* Desktop: trilho recolhido (só ícones) que expande por cima do

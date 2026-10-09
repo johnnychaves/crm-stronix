@@ -45,9 +45,10 @@ export function CrmToolbar(props) {
   const filtered = person !== 'all' || funnel !== 'all';
   // A área que rola no App tem recuo interno (p-4 md:p-8): o top negativo do
   // mesmo tamanho faz a barra encostar no cabeçalho do App (ver Operacional).
-  // No escuro a barra é opaca, pelo mesmo motivo da do Operacional.
+  // No escuro a barra pinta o fundo da página (dark:bg-page), opaco, pelo
+  // mesmo motivo da do Operacional.
   return (
-    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06] dark:bg-[#0D1226]">
+    <div className="sticky -top-4 md:-top-8 z-30 flex items-center gap-2.5 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 dark:border-t-white/[0.06] dark:bg-page">
       <div className="hidden items-center gap-2.5 md:flex">
         <MonthControl {...props} />
         <CompareControl {...props} />

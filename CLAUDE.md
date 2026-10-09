@@ -13,6 +13,7 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 3. **Tokens semânticos** (`bg-background`, `bg-card`, `text-muted-foreground`, `bg-primary`, `border-border`) em componentes novos — eles resolvem dark mode sozinhos (evite `dark:` manual em código novo).
 4. **`flex gap-*`** no lugar de `space-x/y-*`; **`size-N`** no lugar de `w-N h-N`.
 5. O ramp laranja do app continua em `accent-50..600` (sempre com sufixo numérico); `bg-accent` puro é o token semântico shadcn (hover suave).
+6. **O fundo da página é `bg-page`**, o token de `src/index.css` (paper-50 no claro, neutral-950 no escuro) que a raiz do App usa. Barra fixa que cobre o conteúdo ao rolar pinta esse fundo no escuro: `dark:bg-page`, ou `bg-page` quando o fundo é o mesmo nos dois temas. O `bg-background` não serve para isso, porque no escuro ele é o ink-950, azul-marinho, e aparece como uma faixa. O `src/lib/__tests__/fundoDaPagina.test.js` cobra a raiz e toda barra com `sticky` e top negativo.
 
 **Exceções conhecidas (APFS case-insensitive — NÃO adicionar via shadcn):** `avatar` e `skeleton` colidem com `Avatar.jsx`/`Skeleton.jsx` próprios do app — continue usando os do app.
 
