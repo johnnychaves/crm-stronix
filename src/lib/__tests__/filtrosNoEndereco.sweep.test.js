@@ -108,6 +108,9 @@ describe('varredura dos filtros no endereço', () => {
       'profFilter', 'overdueOnly', 'onlyOverdue', 'hotOnly', 'dayTab', 'selectedFunnelId',
       'funnelId', 'funil', 'resp', 'atraso', 'quente', 'fase', 'pessoa', 'comparar',
       'funnel', 'person', 'sub',
+      // Os filtros dos Relatórios: o período (nome da query e da variável da
+      // tela), a origem e o recorte da lista.
+      'periodo', 'period', 'origem', 'recorte',
     ];
     // O App.jsx entra junto: é ele que monta a chave da tela, e é ali que a
     // sub-tela entraria sem ninguém ver.

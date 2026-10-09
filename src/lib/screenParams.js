@@ -19,6 +19,7 @@ import { CONTRACT_STATUS } from './contracts.js';
 import { DAILY_GOAL_CATEGORIES } from './leads.js';
 import { SOLO_TRAINING } from './professores.js';
 import { addMonthsToKey, compareOptions } from './operacional/month.js';
+import { PERIOD_SHORTCUTS, intervalRefusal } from './period.js';
 
 const own = (obj, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(obj, key);
 
@@ -251,6 +252,80 @@ function ajustaPeriodo(valores) {
   return { ...valores, day: null };
 }
 
+// Período (src/lib/period.js), por enquanto só nos Relatórios. A Visão geral
+// passa a usar o mesmo quando o período personalizado dela for feito (spec
+// 2026-09-25). `periodo` é um dos quatro atalhos; `de` e `ate` são o
+// Personalizado e andam juntos. Precedência: `de`/`ate`, depois `periodo`,
+// depois `mes`. Com período, o `mes` não vale, nem na leitura nem na escrita.
+// O intervalo passa pela mesma recusa do balão (intervalRefusal), que precisa
+// do dia de hoje: a tela manda `todayKey` no ctx. Sem ele, intervalo nenhum vale.
+const intervaloValido = (ja, ctx) =>
+  Boolean(ctx.todayKey) && intervalRefusal(ja?.de, ja?.ate, ctx.todayKey) === null;
+const foraDoModoMes = (ja, ctx) => PERIOD_SHORTCUTS.includes(ja?.periodo) || intervaloValido(ja, ctx);
+
+const periodoDoPainel = param(
+  'periodo',
+  (raw) => (PERIOD_SHORTCUTS.includes(raw) ? raw : null),
+  (v, ctx, ja) => (PERIOD_SHORTCUTS.includes(v) && !intervaloValido(ja, ctx) ? v : null),
+);
+
+// A leitura guarda o valor cru, inclusive o torto: quem decide é o ajuste,
+// que precisa saber que o intervalo foi pedido para cair no mês atual.
+const dataDoPainel = (campo) => param(
+  campo,
+  (raw) => raw,
+  (v, ctx, ja) => (intervaloValido(ja, ctx) ? v : null),
+);
+
+// Mesmo parâmetro, que só é escrito no modo mês.
+const soNoModoMes = (p) => param(
+  p.campo,
+  p.ler,
+  (v, ctx, ja) => (foraDoModoMes(ja, ctx) ? null : p.escrever(v, ctx, ja)),
+);
+
+// Regra que cruza os parâmetros do período. Intervalo pedido e recusado (data
+// que não existe, fim antes do início, antes da janela de 12 meses, depois de
+// hoje, metade do par) cai no mês atual, sem aviso, como o mês inválido. Com
+// período que vale, o mês fica o atual e, na tela que tem mês de comparação,
+// ele some.
+function ajustaPeriodoDoPainel(valores, ctx) {
+  const semComparado = 'compareKey' in valores ? { compareKey: null } : {};
+  if (valores.de !== null || valores.ate !== null) {
+    const vale = intervaloValido(valores, ctx);
+    return {
+      ...valores,
+      periodo: null,
+      de: vale ? valores.de : null,
+      ate: vale ? valores.ate : null,
+      monthKey: ctx.currentKey,
+      ...semComparado,
+    };
+  }
+  if (valores.periodo) return { ...valores, monthKey: ctx.currentKey, ...semComparado };
+  return valores;
+}
+
+// Origem dos Relatórios: o nome de uma origem do catálogo (o lead guarda o
+// nome), ou todas. Origem que saiu do catálogo cai em todas.
+const origem = param(
+  'origem',
+  (raw, ctx) => ((ctx.origens || []).includes(raw) ? raw : null),
+  (v, ctx) => ((ctx.origens || []).includes(v) ? v : null),
+);
+
+// Filtro da lista dos Relatórios, no formato "tipo:valor"
+// (situacao:matricularam, origem:Instagram, consultor:<id>). Aqui só se confere
+// o formato; se o valor existe no submenu aberto, quem confere é a conta do
+// submenu, que ignora o que não acha. Nunca leva nome, telefone ou CPF de
+// lead: os tipos são fixos e os valores são códigos, ids e nomes de catálogo.
+const RECORTE_RE = /^[a-z-]+:[^\n]{1,80}$/;
+const recorte = param(
+  'recorte',
+  (raw) => (RECORTE_RE.test(raw || '') ? raw : null),
+  (v) => (RECORTE_RE.test(v || '') ? v : null),
+);
+
 // Tabela por tela. A ordem aqui é a ordem no endereço.
 const TABELA = {
   dashOperacional: { mes, comparar, 'comparar-com': compararCom, pessoa },
@@ -262,12 +337,22 @@ const TABELA = {
   aulas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp, prof },
   visitas: { dia, de: dataDoPeriodo('de'), ate: dataDoPeriodo('ate'), resp },
   dailyGoal: { cat },
+  relatorios: {
+    mes: soNoModoMes(mes),
+    periodo: periodoDoPainel,
+    de: dataDoPainel('de'),
+    ate: dataDoPainel('ate'),
+    resp,
+    origem,
+    funil: funilRecorte,
+    recorte,
+  },
 };
 // O endereço curto /<academia> é a mesma tela do Operacional.
 TABELA.dashboard = TABELA.dashOperacional;
 Object.freeze(TABELA);
 
-const AJUSTES = Object.freeze({ aulas: ajustaPeriodo, visitas: ajustaPeriodo });
+const AJUSTES = Object.freeze({ aulas: ajustaPeriodo, visitas: ajustaPeriodo, relatorios: ajustaPeriodoDoPainel });
 
 // Os nomes de cada tela, na ordem do endereço. Serve à varredura e ao teste.
 export const SCREEN_PARAM_NAMES = Object.freeze(

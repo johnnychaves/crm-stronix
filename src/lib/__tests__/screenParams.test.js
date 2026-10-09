@@ -550,3 +550,52 @@ describe('contrato do contexto de Aulas e Visitas', () => {
       .toBe(`?resp=u1&prof=p1,${SOLO_TRAINING}`);
   });
 });
+
+describe('Relatórios', () => {
+  // 25/09/2026: o intervalo aceita de 01/10/2025 até hoje.
+  const origens = ['Instagram', 'Indicação'];
+  const rel = { currentKey: HOJE, todayKey: '2026-09-25', users, podeResp: true, respPadrao: [], funis, origens };
+
+  it('os nomes, na ordem do endereço', () => {
+    expect(SCREEN_PARAM_NAMES.relatorios).toEqual(['mes', 'periodo', 'de', 'ate', 'resp', 'origem', 'funil', 'recorte']);
+  });
+
+  it('endereço limpo é o mês atual, a equipe toda, todas as origens e todos os funis, e nada é escrito', () => {
+    const v = ler('relatorios', '', rel);
+    expect(v).toEqual({ monthKey: HOJE, periodo: null, de: null, ate: null, resp: [], origem: null, funnel: 'all', recorte: null });
+    expect(montar('relatorios', v, rel)).toBe('');
+  });
+
+  it('atalho vale e apaga o mês; de e até ganham do atalho', () => {
+    expect(ler('relatorios', '?mes=2026-07&periodo=semana', rel)).toMatchObject({ periodo: 'semana', monthKey: HOJE });
+    expect(ler('relatorios', '?periodo=hoje&de=2026-09-01&ate=2026-09-10', rel))
+      .toMatchObject({ periodo: null, de: '2026-09-01', ate: '2026-09-10', monthKey: HOJE });
+    expect(volta('relatorios', '?mes=2026-07&periodo=semana', rel)).toBe('?periodo=semana');
+  });
+
+  it('intervalo recusado cai no mês atual, sem aviso', () => {
+    for (const q of ['?de=2026-09-10&ate=2026-09-01', '?de=2025-09-30&ate=2026-09-01', '?de=2026-09-01&ate=2026-09-26', '?de=2026-09-01']) {
+      expect(ler('relatorios', q, rel), q).toMatchObject({ periodo: null, de: null, ate: null, monthKey: HOJE });
+      expect(volta('relatorios', q, rel), q).toBe('');
+    }
+  });
+
+  it('o mês do modo mês vale nos últimos 12 meses', () => {
+    expect(volta('relatorios', '?mes=2026-07', rel)).toBe('?mes=2026-07');
+    expect(ler('relatorios', '?mes=2025-07', rel).monthKey).toBe(HOJE);
+  });
+
+  it('consultores, origem e funil do catálogo; o que sumiu cai no padrão', () => {
+    expect(ler('relatorios', '?resp=u1,u9&origem=Instagram&funil=f1', rel)).toMatchObject({ resp: ['u1'], origem: 'Instagram', funnel: 'f1' });
+    expect(ler('relatorios', '?origem=Outdoor&funil=f9', rel)).toMatchObject({ origem: null, funnel: 'all' });
+    expect(volta('relatorios', '?resp=u2&origem=Indica%C3%A7%C3%A3o&funil=f1', rel)).toBe('?resp=u2&origem=Indica%C3%A7%C3%A3o&funil=f1');
+  });
+
+  it('o recorte da lista no formato tipo:valor', () => {
+    expect(ler('relatorios', '?recorte=situacao:matricularam', rel).recorte).toBe('situacao:matricularam');
+    expect(volta('relatorios', '?recorte=origem:Instagram', rel)).toBe('?recorte=origem%3AInstagram');
+    for (const q of ['?recorte=', '?recorte=matricularam', '?recorte=Situacao:x', `?recorte=origem:${'x'.repeat(81)}`]) {
+      expect(ler('relatorios', q, rel).recorte, q).toBeNull();
+    }
+  });
+});
