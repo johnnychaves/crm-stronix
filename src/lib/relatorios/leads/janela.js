@@ -41,9 +41,13 @@ export function bucketOf(months, bucket) {
 }
 
 // Índices de toda a carga, os mesmos do painel: registros de agendamento por
-// lead, instantes de contato e desfechos de visita pela linha do tempo.
+// lead, instantes de contato e desfechos de visita pela linha do tempo. Os
+// registros vão sem repetir id, com a cópia do mês mais novo. As interações
+// entram como no cacheOf do painel, sem tirar repetidos aqui: as duas funções
+// do painel (contactTimesByLead e visitOutcomesByLead) já tiram pelo id, e a
+// interação que veio sem id continua contando.
 export function reportIndex(months) {
-  const interactions = bucketOf(months, 'interactions');
+  const interactions = Object.values(months || {}).flatMap((m) => m.interactions || []);
   const records = bucketOf(months, 'aulas');
   return {
     records,
