@@ -191,6 +191,9 @@ vi.mock('../_firebaseAdmin.js', async () => {
         get: async (opc) => { foraDaTx(opc, caminho); return consulta(linhas()); }
       };
     },
+    // select() direto na coleção, sem where (o preenchimento da chave do
+    // telefone no generate lê assim).
+    select: (...campos) => ({ get: async (opc) => { foraDaTx(opc, caminho); return consulta(listaDe(caminho), campos); } }),
     // Coleção (caminho de tamanho ímpar) devolve a lista; documento, o snapshot.
     get: async (opc) => {
       foraDaTx(opc, caminho);
@@ -230,6 +233,11 @@ vi.mock('../_firebaseAdmin.js', async () => {
         get: async (alvo) => {
           if (escritas.length > 0) throw new Error('Firestore transactions require all reads to be executed before all writes.');
           return alvo.get({ viaTx: true });
+        },
+        // Uma leitura de vários documentos, na mesma regra do get.
+        getAll: async (...alvos) => {
+          if (escritas.length > 0) throw new Error('Firestore transactions require all reads to be executed before all writes.');
+          return Promise.all(alvos.map((alvo) => alvo.get({ viaTx: true })));
         },
         create: escrever('create'),
         set: escrever('set'),
@@ -1049,6 +1057,103 @@ describe('POST /api/zap com generate e revoke', () => {
     expect(res.statusCode).toBe(200);
     expect(banco.gravacoes).toHaveLength(1);
     expect(banco.gravacoes[0].caminho).toBe(`tenants/${TENANT}`);
+  });
+});
+
+// Lead criado antes de 08/09/2026 não tem a chave do telefone, e o Stronizap só
+// procura por ela. Em 08/10/2026, na Shape One, que conectou sozinha em 15/09
+// sem a varredura, o cartão disse "Sem cadastro" para um lead de 04/09 e o
+// Cadastrar criou outro lead com o mesmo número.
+describe('POST /api/zap com generate preenche a chave do telefone dos leads antigos', () => {
+  const GABRIEL = '(31) 9 7198-3969';
+  const gerar = async () => {
+    const res = resposta();
+    await handler(
+      { method: 'POST', headers: { authorization: 'Bearer token-de-admin' }, body: { action: 'generate' } },
+      res
+    );
+    return res;
+  };
+  const leadDe = (tenantId, id) => banco.leads[tenantId].find((l) => l.id === id);
+
+  beforeEach(() => {
+    zerarBanco();
+    academiaComEquipe();
+    sessao.auth = { uid: 'admin-1', tenantId: TENANT };
+    sessao.admin = true;
+  });
+
+  it('grava a chave em quem não tem e corrige a errada, sem tocar no resto', async () => {
+    banco.leads[TENANT] = [
+      { id: 'antigo', name: 'Gabriel', whatsapp: GABRIEL },
+      { id: 'errada', name: 'Dulce', whatsapp: '(11) 9 8765-4321', zapMatchKey: '1100000000' },
+      { id: 'certa', name: 'Lia', whatsapp: '(51) 9 9812-4471', zapMatchKey: zapMatchKey('51998124471') },
+      { id: 'sem-whats', name: 'Sem número', whatsapp: '' }
+    ];
+
+    const res = await gerar();
+
+    expect(res.statusCode).toBe(200);
+    expect(leadDe(TENANT, 'antigo').zapMatchKey).toBe('3171983969');
+    expect(leadDe(TENANT, 'errada').zapMatchKey).toBe('1187654321');
+    expect(leadDe(TENANT, 'sem-whats').zapMatchKey).toBeUndefined();
+    const caminhos = banco.gravacoes.map((g) => g.caminho.split('/').at(-1));
+    // Só os dois que mudam, cada um só com a chave, e a chave da academia por último.
+    expect(caminhos).toEqual(['antigo', 'errada', TENANT]);
+    expect(banco.gravacoes.slice(0, 2).map((g) => [g.tipo, g.dados])).toEqual([
+      ['update', { zapMatchKey: '3171983969' }],
+      ['update', { zapMatchKey: '1187654321' }]
+    ]);
+  });
+
+  it('não mexe nos leads de outra academia', async () => {
+    banco.leads[TENANT] = [{ id: 'daqui', whatsapp: GABRIEL }];
+    banco.leads[OUTRA] = [{ id: 'vizinho', whatsapp: GABRIEL }];
+
+    await gerar();
+
+    expect(leadDe(TENANT, 'daqui').zapMatchKey).toBe('3171983969');
+    expect(leadDe(OUTRA, 'vizinho').zapMatchKey).toBeUndefined();
+  });
+
+  it('passa de um lote para o outro sem perder ninguém', async () => {
+    banco.leads[TENANT] = Array.from({ length: 401 }, (_, i) => ({
+      id: `l${i}`, whatsapp: `(11) 9 ${String(10000000 + i).slice(0, 4)}-${String(10000000 + i).slice(4)}`
+    }));
+
+    await gerar();
+
+    expect(banco.leads[TENANT].filter((l) => !l.zapMatchKey)).toEqual([]);
+  });
+
+  it('sem conseguir preencher, não gera a chave e responde erro', async () => {
+    banco.leads[TENANT] = [{ id: 'antigo', whatsapp: GABRIEL }];
+    banco.falhaEm = 'documento';
+    const erro = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const res = await gerar();
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body.key).toBeUndefined();
+    expect(banco.gravacoes).toEqual([]);
+    erro.mockRestore();
+  });
+
+  it('depois de gerar, o cadastro pelo Stronizap acha o lead antigo e não cria outro', async () => {
+    banco.leads[TENANT] = [{
+      id: 'antigo', name: 'Gabriel', whatsapp: GABRIEL, lifecycleStage: 'lead', status: 'Novo lead',
+      consultantId: ANA.id, consultantName: ANA.name, createdAt: ts(new Date(2026, 8, 4))
+    }];
+    await gerar();
+    // O set fora da transação só registra no banco falso, então a academia
+    // continua com a chave de antes, e é com ela que o Zap pede o cadastro.
+    const res = resposta();
+
+    await handler(pedidoCadastro({ phone: '5531971983969', lead: { name: 'Gabriel Leão' } }), res);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body.error).toBe('ja_cadastrado');
+    expect(banco.leads[TENANT]).toHaveLength(1);
   });
 });
 

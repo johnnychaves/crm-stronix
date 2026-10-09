@@ -14,19 +14,19 @@
 //   FIREBASE_ADMIN_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n" \
 //   node scripts/backfill-zap-match-key.js <tenantId>
 //
-// Varre em lotes de 400 (limite de 500 escritas por batch do Firestore, com
-// folga). Pula documento sem whatsapp aproveitável (zapMatchKey dá null) e
-// documento cujo zapMatchKey já está gravado com o valor correto — só grava o
-// que muda.
+// Desde 09/10/2026, gerar a chave em Configurações → Integrações faz a mesma
+// varredura sozinho, antes de gravar a chave. A regra mora em
+// api/_zapMatchKeyFill.js, e este script só a roda numa academia: pula lead
+// sem whatsapp aproveitável e lead com a chave certa, só grava o que muda, e
+// grava numa transação por lote de 400, que relê cada lead antes.
 
 import process from 'node:process';
 import admin from 'firebase-admin';
-import { zapMatchKey } from '../api/_zapPhone.js';
+import { fillZapMatchKeys } from '../api/_zapMatchKeyFill.js';
 
 const args = process.argv.slice(2);
 const TENANT_ID = args.find((a) => !a.startsWith('--')) || '';
 const LEADS_PATH = 'stronix_leads';
-const BATCH_SIZE = 400;
 
 if (!TENANT_ID) {
   console.error('Uso: node scripts/backfill-zap-match-key.js <tenantId>');
@@ -72,44 +72,8 @@ if (!tenantDoc.exists) {
 
 async function run() {
   console.log(`Backfill de zapMatchKey — tenant="${TENANT_ID}"\n`);
-
-  let updated = 0;
-  let skipped = 0;
-  let processed = 0;
-  let lastDoc = null;
-
-  for (;;) {
-    let query = leadsCol.orderBy('__name__').limit(BATCH_SIZE);
-    if (lastDoc) query = query.startAfter(lastDoc);
-
-    const snap = await query.get();
-    if (snap.empty) break;
-
-    const batch = db.batch();
-    let writesInBatch = 0;
-
-    for (const docSnap of snap.docs) {
-      processed++;
-      const data = docSnap.data() || {};
-      const novaChave = zapMatchKey(data.whatsapp);
-
-      if (novaChave == null || novaChave === data.zapMatchKey) {
-        skipped++;
-        continue;
-      }
-
-      batch.set(docSnap.ref, { zapMatchKey: novaChave }, { merge: true });
-      writesInBatch++;
-      updated++;
-    }
-
-    if (writesInBatch > 0) await batch.commit();
-
-    lastDoc = snap.docs[snap.docs.length - 1];
-    if (snap.docs.length < BATCH_SIZE) break;
-  }
-
-  console.log(`Concluído. Lidos: ${processed} | atualizados: ${updated} | pulados: ${skipped}.`);
+  const { read, updated } = await fillZapMatchKeys(db, leadsCol);
+  console.log(`Concluído. Lidos: ${read} | atualizados: ${updated} | pulados: ${read - updated}.`);
 }
 
 run().then(() => process.exit(0)).catch((err) => { console.error(err); process.exit(1); });
