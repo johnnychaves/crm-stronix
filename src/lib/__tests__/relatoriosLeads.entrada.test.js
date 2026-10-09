@@ -5,10 +5,19 @@ import { entradaReport, ENTRADA_COLUMNS } from '../relatorios/leads/entrada.js';
 import { metricsOf, OTHERS_ID } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
 import { periodFromParams, previousPeriod } from '../period.js';
-import { makeCtx, NOW } from './fixtures/crmCtx.js';
+import { makeCtx, NOW, L, D } from './fixtures/crmCtx.js';
 
 const SOURCES = [{ name: 'Instagram', channel: 'Pago' }];
-const ctxOf = () => ({ ...makeCtx(), sources: SOURCES });
+// Um lead de agosto depois do corte do comparado (14/08, meio-dia), para o
+// teste provar que o comparado para no mesmo ponto: sem o corte, ele entraria
+// na conta.
+const A4 = L('a4', { createdAt: D(8, 20) });
+const ctxOf = () => {
+  const c = makeCtx();
+  c.months['2026-08'] = { ...c.months['2026-08'], leadsCreated: [...c.months['2026-08'].leadsCreated, A4] };
+  c.leadsById = new Map([...c.leadsById, ['a4', A4]]);
+  return { ...c, sources: SOURCES };
+};
 const setembro = periodFromParams({ monthKey: '2026-09' }, NOW);
 const agosto = periodFromParams({ monthKey: '2026-08' }, NOW);
 const rel = (ctx, extra = {}) => entradaReport(ctx, { period: setembro, cmp: previousPeriod(setembro, NOW), ...extra });
@@ -44,6 +53,7 @@ describe('Entrada de leads', () => {
     expect(outros.rows.map((x) => x.id)).toEqual(['s5']);
     expect(outros.cutLabel).toBe('Consultor: Fora da equipe ou sem responsável');
     expect(rel(ctxOf(), { recorte: 'origem:Outdoor' })).toMatchObject({ cut: null, cutLabel: null });
+    expect(rel(ctxOf(), { recorte: 'origem:Outdoor' }).rows).toHaveLength(5);
   });
 
   it('a planilha tem o contato, o CPF e as colunas da lista', () => {
