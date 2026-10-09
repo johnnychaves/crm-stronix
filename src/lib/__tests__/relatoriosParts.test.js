@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import {
-  NumberTiles, HeroNumber, CountBreakdown, ConversionBreakdown, ReportList, ExportButton, ReportNotice,
+  NumberTiles, HeroNumber, CountBreakdown, ConversionBreakdown, ReportList, ExportButton, ReportNotice, CellText, GREEN_TEXT,
 } from '../../views/relatorios/ReportParts.jsx';
 
 const noop = () => {};
@@ -31,6 +31,18 @@ describe('números do topo', () => {
     const comRecorte = html(createElement(NumberTiles, { tiles, cut: 'situacao:matricularam', onCut: noop }));
     expect(comRecorte.match(/aria-pressed="true"/g)).toHaveLength(1);
     expect(comRecorte.indexOf('aria-pressed="true"')).toBeGreaterThan(comRecorte.indexOf('Leads da safra'));
+  });
+
+  it('o número sem variação guarda o lugar dela, para ficar alinhado com os outros', () => {
+    const tiles = [
+      { key: null, name: 'Leads da safra', value: 5, delta: { up: true, value: 25, text: '25%' } },
+      { key: 'situacao:em-aberto', name: 'Em aberto', value: 3 },
+    ];
+    const [com, sem] = html(createElement(NumberTiles, { tiles, cut: null, onCut: noop })).split('<button').slice(1);
+    // Depois do número vem a pílula da variação, ou um espaço escondido com a altura dela (h-5).
+    expect(com).toContain('▲ 25%');
+    expect(com).not.toContain('<span aria-hidden="true" class="h-5">');
+    expect(sem).toContain('<span aria-hidden="true" class="h-5"></span>');
   });
 
   it('o número grande leva a variação e o período comparado', () => {
@@ -68,6 +80,29 @@ describe('recortes', () => {
     expect(out.match(/aria-pressed="true"/g)).toHaveLength(1);
   });
 
+  it('os cartões de recorte são títulos de nível 3, abaixo do título do relatório', () => {
+    const contagem = html(createElement(CountBreakdown, { title: 'Por origem', rows: [{ key: 'origem:Instagram', name: 'Instagram', count: 4 }], cut: null, onCut: noop }));
+    const conversao = html(createElement(ConversionBreakdown, { title: 'Por origem', rows: [{ key: 'origem:Instagram', name: 'Instagram', leads: 4, enrolled: 1, conv: 25 }], cut: null, onCut: noop }));
+    for (const out of [contagem, conversao]) {
+      expect(out).toContain('>Por origem</h3>');
+      expect(out).not.toContain('<h4');
+    }
+  });
+
+  it('a linha Outros leva a explicação em letra menor, e o title tem o texto inteiro', () => {
+    const outros = { key: 'consultor:__outros__', name: 'Outros', note: 'fora da equipe ou sem responsável' };
+    const contagem = html(createElement(CountBreakdown, { title: 'Por consultor', rows: [{ ...outros, count: 1 }], cut: null, onCut: noop }));
+    expect(contagem).toContain('title="Outros, fora da equipe ou sem responsável"');
+    expect(classOf(contagem, 'fora da equipe ou sem responsável')).toContain('text-[11px]');
+    const conversao = html(createElement(ConversionBreakdown, { title: 'Por consultor', rows: [{ ...outros, leads: 1, enrolled: 0, conv: 0 }], cut: null, onCut: noop }));
+    expect(conversao).toContain('title="Outros, fora da equipe ou sem responsável"');
+    expect(classOf(conversao, 'fora da equipe ou sem responsável')).toContain('text-[11px]');
+    // O leitor de tela recebe o nome e a explicação, e a linha sem explicação continua como era.
+    expect(conversao).toContain('aria-label="Outros (fora da equipe ou sem responsável): 1 lead, 0 matrículas, 0% de conversão"');
+    const comum = html(createElement(CountBreakdown, { title: 'Por consultor', rows: [{ key: 'consultor:ana', name: 'Ana Ribeiro', note: '', count: 2 }], cut: null, onCut: noop }));
+    expect(comum).toContain('title="Ana Ribeiro"');
+  });
+
   it('na conversão, a barra é a própria conversão, em verde', () => {
     const rows = [
       { key: 'origem:Instagram', name: 'Instagram', leads: 4, enrolled: 1, conv: 25 },
@@ -89,9 +124,10 @@ describe('linhas dos recortes', () => {
   ];
   const conversion = (rows, extra = {}) => html(createElement(ConversionBreakdown, { title: 'Por origem', rows, cut: null, onCut: noop, ...extra }));
 
-  it('a matrícula e a conversão têm o mesmo verde das tabelas do painel', () => {
+  it('a matrícula e a conversão têm o mesmo verde das tabelas do painel, o único verde do texto pequeno', () => {
+    expect(GREEN_TEXT).toBe('text-emerald-700 dark:text-emerald-300');
     const out = conversion(conv.slice(0, 1));
-    const verde = 'font-semibold text-emerald-700 dark:text-emerald-300';
+    const verde = `font-semibold ${GREEN_TEXT}`;
     expect(classOf(out, '1')).toContain(verde);
     expect(classOf(out, '25%')).toContain(verde);
   });
@@ -150,6 +186,24 @@ describe('lista', () => {
     expect(out).toContain('overscroll-x-contain');
   });
 
+  it('a tabela se chama pelo número da lista, que lê "60 leads" com o espaço', () => {
+    const out = html(createElement(ReportList, { total: 60, noun: 'leads', columns, rows }));
+    const nome = out.match(/<table[^>]*aria-labelledby="([^"]+)"/);
+    expect(nome).not.toBeNull();
+    expect(out).toMatch(new RegExp(`<p[^>]*id="${nome[1].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
+    expect(out).toContain('>60</span> <span');
+  });
+
+  it('as células têm 12px entre as colunas, e a primeira e a última se alinham com o cabeçalho do cartão', () => {
+    const out = html(createElement(ReportList, { total: 2, noun: 'leads', columns, rows: rows.slice(0, 2) }));
+    // Com 16px de cada lado a coluna do nome ficava estreita e o nome quebrava em várias linhas a 1280px.
+    for (const tag of ['th', 'td']) {
+      const classes = out.match(new RegExp(`<${tag}[^>]*class="([^"]*)"`))[1];
+      for (const classe of ['px-3', 'first:pl-[18px]', 'last:pr-[18px]']) expect(classes, `${tag} ${classe}`).toContain(classe);
+      expect(classes, tag).not.toContain('px-4');
+    }
+  });
+
   it('lista vazia convida a trocar o período', () => {
     const out = html(createElement(ReportList, {
       total: 0, noun: 'leads', columns, rows: [],
@@ -162,5 +216,14 @@ describe('lista', () => {
   it('exportar desligado sem nome na lista, e o aviso do dado', () => {
     expect(html(createElement(ExportButton, { onExport: noop, disabled: true }))).toContain('disabled=""');
     expect(html(createElement(ReportNotice, null, 'Agendamentos incompletos.'))).toContain('Agendamentos incompletos.');
+  });
+});
+
+describe('célula de texto', () => {
+  it('corta em vez de quebrar a linha, com o texto inteiro no title', () => {
+    const out = html(createElement(CellText, { text: 'Google Meu Negócio - Campanha de inverno' }));
+    expect(out).toContain('title="Google Meu Negócio - Campanha de inverno"');
+    expect(out).toContain('class="block max-w-[11rem] truncate"');
+    expect(out).toContain('>Google Meu Negócio - Campanha de inverno</span>');
   });
 });

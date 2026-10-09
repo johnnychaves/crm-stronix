@@ -6,7 +6,7 @@
 // cada linha de recorte é um filtro dessa lista. A barra mostra sempre o mesmo
 // número que está ao lado dela, e matrícula e conversão são verdes, como nos
 // painéis.
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { Download, X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
@@ -17,10 +17,17 @@ const TONE_TEXT = Object.freeze({
   good: 'text-emerald-600 dark:text-emerald-400',
   bad: 'text-rose-600 dark:text-rose-400',
 });
-// O verde das tabelas do painel (ChannelTable e PeopleConversionTable).
-const GREEN_TEXT = 'text-emerald-700 dark:text-emerald-300';
+// O verde das tabelas do painel (ChannelTable e PeopleConversionTable). É o
+// único verde do texto pequeno: matrícula e conversão dos recortes, a situação
+// e o desfecho da lista usam este. Os números grandes têm o TONE_TEXT.good.
+export const GREEN_TEXT = 'text-emerald-700 dark:text-emerald-300';
 const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40';
 const RULE = 'border-slate-100 dark:border-white/[0.06]';
+// A margem das células da lista: 12px entre as colunas, e a primeira e a última
+// alinhadas com o cabeçalho do cartão (px-[18px]). Com 16px de cada lado, a
+// coluna do nome ficava com uns 120px a 1280px, na Conversão, e quebrava o nome
+// em duas e três linhas.
+const CELL = 'px-3 py-2.5 first:pl-[18px] last:pr-[18px]';
 const ROW_ON = 'bg-brand-50 hover:bg-brand-50 dark:bg-brand-500/15 dark:hover:bg-brand-500/15';
 // A linha da lista recebe o foco por código (tabIndex -1), nunca pelo Tab.
 const ROW_FOCUS = 'outline-none focus-visible:bg-brand-50 dark:focus-visible:bg-brand-500/10';
@@ -58,7 +65,9 @@ export function HeroNumber({ value, label, delta = null, lowerBetter = false, co
 // embaixo só os nomes dele, e clicar de novo volta para todos. O número sem
 // filtro próprio (key null) é o total, aceso quando a lista não tem recorte.
 // O número que é melhor quando cai (lowerBetter, como os que perderam) pinta
-// a variação ao contrário: subir fica vermelho.
+// a variação ao contrário: subir fica vermelho. O número sem variação (Em
+// aberto) guarda o lugar dela, com a altura da pílula (h-5), para o número
+// ficar na mesma linha dos outros.
 export function NumberTiles({ tiles, cut, onCut }) {
   return (
     <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-6">
@@ -78,7 +87,7 @@ export function NumberTiles({ tiles, cut, onCut }) {
           >
             <span className="text-[11.5px] font-semibold text-muted-foreground">{t.name}</span>
             <span className={cn('num font-display text-[28px] font-bold leading-none tracking-[-0.02em]', TONE_TEXT[t.tone])}>{fmtNum(t.value)}</span>
-            {t.delta && <DeltaPill delta={t.delta} lowerBetter={t.lowerBetter} />}
+            {t.delta ? <DeltaPill delta={t.delta} lowerBetter={t.lowerBetter} /> : <span aria-hidden="true" className="h-5" />}
           </button>
         );
       })}
@@ -86,13 +95,24 @@ export function NumberTiles({ tiles, cut, onCut }) {
   );
 }
 
+// O texto pequeno ao lado do nome da linha: o canal da origem, ou a explicação
+// da linha Outros (note). O title leva o nome e a explicação, porque a letra
+// menor é a primeira a ser cortada; o canal fica de fora do title, como sempre.
+const sideTextOf = (r) => r.channel || r.note || '';
+const rowTitleOf = (r) => (r.note ? `${r.name}, ${r.note}` : r.name);
+function SideText({ row }) {
+  const text = sideTextOf(row);
+  return text ? <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{text}</span> : null;
+}
+
 // Recorte em barras: cada linha filtra a lista. A barra é o próprio número ao
 // lado dela. A linha corta o que não cabe (overflow-hidden) em vez de vazar do
-// cartão, e o nome inteiro fica no title.
+// cartão, e o nome inteiro fica no title. O cartão é um título de nível 3,
+// abaixo do título do relatório.
 export function CountBreakdown({ title, hint, rows, cut, onCut, emptyText = 'Nada no período.' }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
   return (
-    <CrmCard title={title} hint={hint} className="min-w-0">
+    <CrmCard title={title} hint={hint} headingLevel={3} className="min-w-0">
       {rows.length === 0 ? (
         <p className="px-[18px] py-4 text-[12.5px] text-muted-foreground">{emptyText}</p>
       ) : (
@@ -107,9 +127,9 @@ export function CountBreakdown({ title, hint, rows, cut, onCut, emptyText = 'Nad
                   onClick={() => onCut(active ? null : r.key)}
                   className={cn('flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS, active && ROW_ON)}
                 >
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium" title={r.name}>
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium" title={rowTitleOf(r)}>
                     {r.name}
-                    {r.channel && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{r.channel}</span>}
+                    <SideText row={r} />
                   </span>
                   <span className="h-2 w-20 shrink-0 overflow-hidden rounded-full bg-muted" aria-hidden="true">
                     <span className="block h-full rounded-full bg-brand-500" style={{ width: `${(r.count / max) * 100}%` }} />
@@ -133,15 +153,16 @@ function conversionLabel(r) {
   const leads = `${fmtNum(r.leads)} ${r.leads === 1 ? 'lead' : 'leads'}`;
   const enrolled = `${fmtNum(r.enrolled)} ${r.enrolled === 1 ? 'matrícula' : 'matrículas'}`;
   const conv = r.conv == null ? 'sem conversão' : `${r.conv}% de conversão`;
-  return `${r.name}: ${leads}, ${enrolled}, ${conv}`;
+  return `${r.name}${r.note ? ` (${r.note})` : ''}: ${leads}, ${enrolled}, ${conv}`;
 }
 
 // Recorte da conversão: leads, matrículas e a conversão, com a barra sendo a
 // própria conversão, em verde. Cada linha filtra a lista. Como no recorte em
-// barras, a linha corta o que não cabe em vez de vazar do cartão.
+// barras, a linha corta o que não cabe em vez de vazar do cartão, e o cartão é
+// um título de nível 3.
 export function ConversionBreakdown({ title, hint, rows, cut, onCut, emptyText = 'Nada no período.' }) {
   return (
-    <CrmCard title={title} hint={hint} className="min-w-0">
+    <CrmCard title={title} hint={hint} headingLevel={3} className="min-w-0">
       {rows.length === 0 ? (
         <p className="px-[18px] py-4 text-[12.5px] text-muted-foreground">{emptyText}</p>
       ) : (
@@ -164,7 +185,10 @@ export function ConversionBreakdown({ title, hint, rows, cut, onCut, emptyText =
                     onClick={() => onCut(active ? null : r.key)}
                     className={cn(CONV_GRID, 'w-full min-w-0 overflow-hidden rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS, active && ROW_ON)}
                   >
-                    <span className="truncate text-[12.5px] font-medium" title={r.name}>{r.name}</span>
+                    <span className="truncate text-[12.5px] font-medium" title={rowTitleOf(r)}>
+                      {r.name}
+                      <SideText row={r} />
+                    </span>
                     <span className="num text-right text-[12.5px]">{fmtNum(r.leads)}</span>
                     <span className={cn('num text-right text-[12.5px] font-semibold', GREEN_TEXT)}>{fmtNum(r.enrolled)}</span>
                     <span className="flex items-center justify-end gap-2">
@@ -193,13 +217,15 @@ export function ConversionBreakdown({ title, hint, rows, cut, onCut, emptyText =
 // primeiros, e enquanto ele é o mesmo o "Mostrar mais" se mantém, mesmo que
 // chegue lead novo e os dados mudem. Os dois botões que saem de cena levam o
 // foco com eles: limpar o filtro leva ao número da lista, e "Mostrar mais"
-// leva à primeira linha que apareceu.
+// leva à primeira linha que apareceu. A tabela se chama pelo número do
+// cabeçalho ("120 leads").
 export function ReportList({ listId = '', total, noun, cutLabel = null, onClearCut, columns, rows, emptyTitle, emptyText, pageSize = 50 }) {
   const [more, setMore] = useState({ listId, extra: 0 });
   if (more.listId !== listId) setMore({ listId, extra: 0 });
   const extra = more.listId === listId ? more.extra : 0;
   const countRef = useRef(null);
   const bodyRef = useRef(null);
+  const countId = useId();
   const shown = rows.slice(0, pageSize + extra);
   const left = rows.length - shown.length;
 
@@ -220,8 +246,11 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
   return (
     <section className="rounded-2xl border border-border bg-card shadow-card">
       <header className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-[18px] py-3.5', RULE)}>
-        <p ref={countRef} tabIndex={-1} className="m-0 flex items-baseline gap-2 outline-none" aria-live="polite">
+        {/* O espaço entre o número e o nome não aparece (os dois são itens do flex), mas
+            faz o texto ler "120 leads", que é também o nome da tabela. */}
+        <p id={countId} ref={countRef} tabIndex={-1} className="m-0 flex items-baseline gap-2 outline-none" aria-live="polite">
           <span className="num font-display text-[24px] font-bold leading-none tracking-[-0.02em]">{fmtNum(total)}</span>
+          {' '}
           <span className="text-[13px] font-semibold text-muted-foreground">{noun}</span>
         </p>
         {cutLabel && (
@@ -243,14 +272,14 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
       ) : (
         <>
           <div className="overflow-x-auto overscroll-x-contain">
-            <table className="w-full min-w-[720px] border-collapse text-left">
+            <table aria-labelledby={countId} className="w-full min-w-[720px] border-collapse text-left">
               <thead>
                 <tr>
                   {columns.map((c) => (
                     <th
                       key={c.key}
                       scope="col"
-                      className={cn('whitespace-nowrap px-4 py-2.5 text-[10px] font-bold uppercase tracking-[0.07em] text-muted-foreground', c.className)}
+                      className={cn('whitespace-nowrap text-[10px] font-bold uppercase tracking-[0.07em] text-muted-foreground', CELL, c.className)}
                     >
                       {c.label}
                     </th>
@@ -261,7 +290,7 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
                 {shown.map((r) => (
                   <tr key={r.id} tabIndex={-1} className={cn('border-t', ROW_FOCUS, RULE)}>
                     {columns.map((c) => (
-                      <td key={c.key} className={cn('px-4 py-2.5 text-[12.5px]', c.className)}>{c.render(r)}</td>
+                      <td key={c.key} className={cn('text-[12.5px]', CELL, c.className)}>{c.render(r)}</td>
                     ))}
                   </tr>
                 ))}
@@ -283,6 +312,14 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
       )}
     </section>
   );
+}
+
+// Texto de célula da lista que corta em vez de quebrar a linha (origem,
+// consultor e funil), com o texto inteiro no title. Sem o corte, uma origem de
+// nome comprido quebrava em duas e três linhas e a lista ficava com linhas de
+// alturas diferentes.
+export function CellText({ text }) {
+  return <span className="block max-w-[11rem] truncate" title={text}>{text}</span>;
 }
 
 export function ExportButton({ onExport, disabled = false }) {

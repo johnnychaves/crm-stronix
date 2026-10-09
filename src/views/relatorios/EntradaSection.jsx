@@ -7,17 +7,22 @@
 // uns 33px para o nome a 1280px e nenhum a 1024px. O listId vem da tela e diz
 // que lista é esta (o submenu mais o endereço), para o "Mostrar mais" voltar
 // aos 50 primeiros quando o filtro ou o período mudam.
+//
+// A lista não quebra linha: situação e etapa ficam numa linha só, origem,
+// consultor e funil cortam em 11rem com o texto inteiro no title, e a data do
+// ano de agora sai sem o ano ("02/09"). O year é o ano de agora, que a tela
+// manda; a planilha continua com a data inteira.
 import { cn } from '../../lib/utils.js';
 import { LeadLink } from '../../components/nav/AppLink.jsx';
-import { fmtDate } from '../../lib/relatorios/leads/base.js';
-import { ReportHeader, HeroNumber, CountBreakdown, ReportList } from './ReportParts.jsx';
+import { fmtScreenDate } from '../../lib/relatorios/leads/base.js';
+import { ReportHeader, HeroNumber, CountBreakdown, ReportList, CellText, GREEN_TEXT } from './ReportParts.jsx';
 
 const SITUACAO_TONE = Object.freeze({
-  Cliente: 'text-emerald-700 dark:text-emerald-400',
+  Cliente: GREEN_TEXT,
   Perdido: 'text-rose-700 dark:text-rose-400',
 });
 
-const COLUMNS = [
+const columnsOf = (year) => [
   {
     key: 'nome',
     label: 'Nome',
@@ -27,19 +32,20 @@ const COLUMNS = [
       </LeadLink>
     ),
   },
-  { key: 'origem', label: 'Origem', render: (r) => r.source },
-  { key: 'consultor', label: 'Consultor', render: (r) => r.owner },
-  { key: 'funil', label: 'Funil', render: (r) => r.funnel },
-  { key: 'etapa', label: 'Etapa', render: (r) => r.stage },
-  { key: 'cadastro', label: 'Cadastro', className: 'num whitespace-nowrap', render: (r) => fmtDate(r.createdAt) },
+  { key: 'origem', label: 'Origem', render: (r) => <CellText text={r.source} /> },
+  { key: 'consultor', label: 'Consultor', render: (r) => <CellText text={r.owner} /> },
+  { key: 'funil', label: 'Funil', render: (r) => <CellText text={r.funnel} /> },
+  { key: 'etapa', label: 'Etapa', className: 'whitespace-nowrap', render: (r) => r.stage },
+  { key: 'cadastro', label: 'Cadastro', className: 'num whitespace-nowrap', render: (r) => fmtScreenDate(r.createdAt, year) },
   {
     key: 'situacao',
     label: 'Situação',
+    className: 'whitespace-nowrap',
     render: (r) => <span className={cn('font-semibold', SITUACAO_TONE[r.situation])}>{r.situation}</span>,
   },
 ];
 
-export function EntradaSection({ report, cmp, listId, onCut, exportAction }) {
+export function EntradaSection({ report, cmp, listId, year, onCut, exportAction }) {
   return (
     <div className="flex flex-col gap-5">
       <ReportHeader
@@ -64,7 +70,7 @@ export function EntradaSection({ report, cmp, listId, onCut, exportAction }) {
         noun={report.rows.length === 1 ? 'lead' : 'leads'}
         cutLabel={report.cutLabel}
         onClearCut={() => onCut(null)}
-        columns={COLUMNS}
+        columns={columnsOf(year)}
         rows={report.rows}
         emptyTitle={report.cut ? 'Nenhum lead neste filtro.' : 'Nenhum lead chegou neste período.'}
         emptyText={report.cut ? 'Limpe o filtro da lista para ver todos.' : 'Escolha outro período ou limpe os filtros.'}

@@ -160,8 +160,12 @@ export function RelatoriosToolbar(props) {
   // O fundo tem de ser o da raiz do App (bg-paper-50 dark:bg-neutral-950, em
   // App.jsx), que é o que fica atrás da barra: o bg-background do escuro é
   // azul-marinho e aparece como uma faixa. Mudou o fundo da raiz, mude aqui.
+  // No computador a barra passa 8px para cada lado do conteúdo (md:-mx-2 e
+  // md:px-2, que deixam os controles onde estavam): sem isso, o anel do número
+  // aceso e a sombra dos cartões que rolam por baixo apareciam como um fio
+  // cortado nas bordas da barra. No celular, nada muda (-mx-4 e px-4).
   return (
-    <div className="sticky -top-4 z-30 -mx-4 mb-6 flex items-center gap-2.5 border-b border-border bg-paper-50 px-4 py-2.5 dark:bg-neutral-950 md:-top-8 md:mx-0 md:px-0">
+    <div className="sticky -top-4 z-30 -mx-4 mb-6 flex items-center gap-2.5 border-b border-border bg-paper-50 px-4 py-2.5 dark:bg-neutral-950 md:-top-8 md:-mx-2 md:px-2">
       <div className="hidden flex-wrap items-center gap-2.5 md:flex">{controls(false)}</div>
       <Popover>
         <PopoverTrigger asChild>

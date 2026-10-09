@@ -298,6 +298,12 @@ describe('fundo da barra fixa', () => {
     expect(fundo).toContain('bg-paper-50');
     expect(fundo).toContain('dark:bg-neutral-950');
     expect(fundo).not.toContain('bg-background');
+    // No computador a barra passa 8px para cada lado do conteúdo (md:-mx-2, com o md:px-2 que deixa os
+    // controles onde estavam), para o anel do número aceso e a sombra dos cartões que rolam por baixo
+    // não aparecerem como um fio cortado na borda da barra. No celular, nada mudou: -mx-4 e px-4.
+    const classes = fundo.split(/\s+/);
+    for (const classe of ['md:-mx-2', 'md:px-2', '-mx-4', 'px-4']) expect(classes, classe).toContain(classe);
+    for (const classe of ['md:mx-0', 'md:px-0']) expect(classes, classe).not.toContain(classe);
     // A raiz do App continua com esse mesmo par: se ela mudar, a barra tem de mudar junto. A tela de
     // carregamento (min-h-screen) tem o mesmo par e não é o que fica atrás da barra, então a conferência
     // se prende à div da raiz pelas classes que só ela tem (flex h-[100dvh]). O fim do par olha adiante

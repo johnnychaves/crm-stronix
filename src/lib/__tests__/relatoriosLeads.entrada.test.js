@@ -28,7 +28,10 @@ describe('Entrada de leads', () => {
     expect(r.total).toBe(5);
     expect(r.delta).toMatchObject({ up: true, text: '25%' });
     expect(r.bySource.map((x) => [x.name, x.count, x.channel])).toEqual([['Instagram', 4, 'Pago'], ['Indicação', 1, '']]);
-    expect(r.byOwner.map((x) => [x.name, x.count])).toEqual([['Ana Ribeiro', 2], ['Diego Santos', 2], ['Fora da equipe ou sem responsável', 1]]);
+    // Quem saiu da equipe e o lead sem dono se chamam Outros, como nos painéis, com a explicação em letra menor.
+    expect(r.byOwner.map((x) => [x.name, x.count, x.note])).toEqual([
+      ['Ana Ribeiro', 2, ''], ['Diego Santos', 2, ''], ['Outros', 1, 'fora da equipe ou sem responsável'],
+    ]);
     expect(r.byFunnel.map((x) => [x.name, x.count])).toEqual([['Vendas', 4], ['Indicações', 1]]);
   });
 
@@ -51,7 +54,7 @@ describe('Entrada de leads', () => {
     expect([r.cut, r.cutLabel, r.rows.length, r.total]).toEqual(['origem:Instagram', 'Origem: Instagram', 4, 5]);
     const outros = rel(ctxOf(), { recorte: `consultor:${OTHERS_ID}` });
     expect(outros.rows.map((x) => x.id)).toEqual(['s5']);
-    expect(outros.cutLabel).toBe('Consultor: Fora da equipe ou sem responsável');
+    expect(outros.cutLabel).toBe('Consultor: Outros');
     expect(rel(ctxOf(), { recorte: 'origem:Outdoor' })).toMatchObject({ cut: null, cutLabel: null });
     expect(rel(ctxOf(), { recorte: 'origem:Outdoor' }).rows).toHaveLength(5);
   });

@@ -40,7 +40,7 @@ export function entradaReport(ctx, { period, cmp = null, userIds = [], funnelId 
   const before = cmp ? newLeadsIn(ctx, scope, cmp).length : null;
 
   const bySource = countRows(leads, names.sourceName, (id) => id, 'origem', (id) => ({ channel: names.channelOf(id) }));
-  const byOwner = countRows(leads, names.ownerKey, names.ownerName, 'consultor');
+  const byOwner = countRows(leads, names.ownerKey, names.ownerName, 'consultor', (id) => ({ note: names.ownerNote(id) }));
   const byFunnel = countRows(leads, names.funnelId, names.funnelName, 'funil');
 
   const rows = leads.map((l) => ({

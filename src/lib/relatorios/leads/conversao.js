@@ -6,6 +6,7 @@
 // são os do painel. Puro.
 
 import { addMonthsToKey, monthKeyOf, monthRange } from '../../operacional/month.js';
+import { APPTS_COMPLETE_MONTH } from '../../crm/scope.js';
 import { outcomeAt, firstEnrolledAtOf, lostAtOf } from '../../crm/cohort.js';
 import { cohortMilestoneOf } from '../../crm/appointments.js';
 import { firstContactMinutesOf, FIRST_CONTACT_LIMITS } from '../../crm/contact.js';
@@ -64,6 +65,14 @@ export const CONVERSAO_COLUMNS = Object.freeze([
   Object.freeze({ key: 'dataDesfecho', label: 'Data do desfecho' }),
 ]);
 
+// Os agendamentos só ficam completos a partir de setembro de 2026
+// (APPTS_COMPLETE_MONTH): as visitas só têm registro desde 18/08/2026. Com o
+// período ou o comparado começando antes disso, a variação de Agendaram e
+// Vieram fica sem base, como no painel CRM (apptsOk, em src/lib/crm/texts.js,
+// que olha o apptsBase de cada mês). A tela usa a mesma conta para o aviso.
+export const apptsPartialOf = (period, cmp) => [period, cmp]
+  .some((win) => Boolean(win) && monthKeyOf(win.start) < APPTS_COMPLETE_MONTH);
+
 // O primeiro contato olha até o fim do mês seguinte ao do cadastro de cada
 // lead, ou até o instante da safra, o que vier antes (a regra do painel).
 const contactLimitOf = (lead, asOf) => Math.min(
@@ -105,11 +114,11 @@ function totalsOf(list) {
 
 // Recorte com leads, matrículas e conversão, na ordem do channelsOf do painel:
 // mais leads primeiro, no empate mais matrículas, e depois o nome.
-function convRows(list, keyOf, nameOf, tipo) {
+function convRows(list, keyOf, nameOf, tipo, extra = () => ({})) {
   const map = new Map();
   list.forEach((x) => {
     const id = keyOf(x.lead);
-    const row = map.get(id) || { key: cutCode(tipo, id), id, name: nameOf(id), leads: 0, enrolled: 0 };
+    const row = map.get(id) || { key: cutCode(tipo, id), id, name: nameOf(id), leads: 0, enrolled: 0, ...extra(id) };
     row.leads += 1;
     if (x.outcome === 'enrolled') row.enrolled += 1;
     map.set(id, row);
@@ -129,17 +138,18 @@ export function conversaoReport(ctx, { period, cmp = null, userIds = [], funnelI
   // andamento, e até agora quando o período já fechou, como no painel.
   const before = cmp ? totalsOf(cohortOf(ctx, scope, index, cmp, period.running ? cmp.end : ctx.now)) : null;
   const delta = (k) => (before ? crmDelta(totals[k], before[k]) : null);
+  const apptsDelta = (k) => (before && apptsPartialOf(period, cmp) ? { none: true, text: 'sem base' } : delta(k));
 
   const tiles = [
     { key: null, name: 'Leads da safra', value: totals.leads, delta: delta('leads') },
-    { key: SITUACAO.agendaram, name: 'Agendaram', value: totals.sched, delta: delta('sched') },
-    { key: SITUACAO.vieram, name: 'Vieram', value: totals.came, delta: delta('came') },
+    { key: SITUACAO.agendaram, name: 'Agendaram', value: totals.sched, delta: apptsDelta('sched') },
+    { key: SITUACAO.vieram, name: 'Vieram', value: totals.came, delta: apptsDelta('came') },
     { key: SITUACAO.matricularam, name: 'Matricularam', value: totals.enrolled, tone: 'good', delta: delta('enrolled') },
     { key: SITUACAO.perderam, name: 'Perderam', value: totals.lost, tone: 'bad', delta: delta('lost'), lowerBetter: true },
     { key: SITUACAO.emAberto, name: 'Em aberto', value: totals.open },
   ];
   const bySource = convRows(list, names.sourceName, (id) => id, 'origem');
-  const byOwner = convRows(list, names.ownerKey, names.ownerName, 'consultor');
+  const byOwner = convRows(list, names.ownerKey, names.ownerName, 'consultor', (id) => ({ note: names.ownerNote(id) }));
   const bySpeed = SPEED_BUCKETS.map((b) => {
     const inIt = list.filter((x) => b.test(x.minutes));
     const enrolled = inIt.filter((x) => x.outcome === 'enrolled').length;

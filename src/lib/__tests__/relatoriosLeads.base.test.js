@@ -2,8 +2,8 @@
 // leads novos, nomes, filtro da lista e planilha.
 import { describe, it, expect } from 'vitest';
 import {
-  reportScope, newLeadsIn, namesOf, OTHERS_LABEL, cutCode, applyCut, cutLabelOf, contactCells, fmtDate,
-  exportFileName, SITUACAO_LABEL,
+  reportScope, newLeadsIn, namesOf, OTHERS_NAME, OTHERS_NOTE, cutCode, applyCut, cutLabelOf, contactCells, fmtDate,
+  fmtScreenDate, exportFileName, SITUACAO_LABEL,
 } from '../relatorios/leads/base.js';
 import { OTHERS_ID } from '../crm/scope.js';
 import { periodFromParams } from '../period.js';
@@ -46,7 +46,11 @@ describe('nomes', () => {
     expect(n.ownerKey({ consultantId: 'ana' })).toBe('ana');
     expect(n.ownerKey({ consultantId: 'ex' })).toBe(OTHERS_ID);
     expect(n.ownerName('diego')).toBe('Diego Santos');
-    expect(n.ownerName(OTHERS_ID)).toBe(OTHERS_LABEL);
+    // Nos recortes, quem saiu e o lead sem dono se chamam Outros, como nos painéis, e a explicação vai à parte.
+    expect(n.ownerName(OTHERS_ID)).toBe(OTHERS_NAME);
+    expect([OTHERS_NAME, OTHERS_NOTE]).toEqual(['Outros', 'fora da equipe ou sem responsável']);
+    expect(n.ownerNote(OTHERS_ID)).toBe(OTHERS_NOTE);
+    expect(n.ownerNote('ana')).toBe('');
     expect(n.ownerLabel({ consultantId: 'ex', consultantName: 'Carla Antiga' })).toBe('Carla Antiga');
     expect(n.ownerLabel({ consultantId: 'ex' })).toBe('Fora da equipe');
     expect(n.ownerLabel({ consultantId: null })).toBe('Sem responsável');
@@ -89,6 +93,17 @@ describe('planilha', () => {
   it('data no formato do Brasil, e vazio sem data', () => {
     expect(fmtDate(new Date(2026, 8, 2, 10))).toBe('02/09/2026');
     expect(fmtDate(null)).toBe('');
+  });
+
+  it('data na tela: sem o ano quando é o de agora, e a planilha continua com o ano', () => {
+    // Só a tela encurta: a coluna de data da lista cabe numa linha, e quem exporta recebe a data inteira.
+    expect(fmtScreenDate(new Date(2026, 8, 2, 10), 2026)).toBe('02/09');
+    expect(fmtScreenDate(new Date(2026, 0, 31, 23, 59), 2026)).toBe('31/01');
+    expect(fmtScreenDate(new Date(2025, 11, 31, 10), 2026)).toBe('31/12/2025');
+    expect(fmtScreenDate(new Date(2027, 0, 5, 10), 2026)).toBe('05/01/2027');
+    expect(fmtScreenDate(null, 2026)).toBe('');
+    expect(fmtScreenDate(new Date('x'), 2026)).toBe('');
+    expect(fmtDate(new Date(2026, 8, 2, 10))).toBe('02/09/2026');
   });
 
   it('nome do arquivo com o submenu e as datas do período', () => {

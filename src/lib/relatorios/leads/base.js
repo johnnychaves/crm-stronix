@@ -32,7 +32,12 @@ export function newLeadsIn(ctx, scope, { start, end }) {
   return newLeadsOf(fresh, { start, end, inScope: scope.inScope });
 }
 
-export const OTHERS_LABEL = 'Fora da equipe ou sem responsável';
+// A linha de quem saiu da equipe e dos leads sem dono tem o nome dos painéis
+// (Outros), com a explicação em letra menor ao lado. O texto inteiro não cabe
+// no nome da linha, que corta, mas o responsável de cada lead continua com o
+// texto explícito, na lista e na planilha (ownerLabel).
+export const OTHERS_NAME = 'Outros';
+export const OTHERS_NOTE = 'fora da equipe ou sem responsável';
 
 // Nomes que os recortes e a lista mostram. Nos recortes, quem saiu da equipe e
 // o lead sem dono entram juntos em OTHERS_ID, como o Outros do painel. Na
@@ -45,7 +50,8 @@ export function namesOf(ctx) {
   const channels = new Map((ctx.sources || []).map((s) => [String(s?.name || '').trim(), String(s?.channel || '').trim()]));
   return {
     ownerKey: (l) => (team.has(l?.consultantId) ? l.consultantId : OTHERS_ID),
-    ownerName: (id) => (id === OTHERS_ID ? OTHERS_LABEL : team.get(id) || OTHERS_LABEL),
+    ownerName: (id) => (id === OTHERS_ID ? OTHERS_NAME : team.get(id) || OTHERS_NAME),
+    ownerNote: (id) => (id === OTHERS_ID ? OTHERS_NOTE : ''),
     ownerLabel: (l) => team.get(l?.consultantId) || l?.consultantName || (l?.consultantId ? 'Fora da equipe' : 'Sem responsável'),
     funnelId: (l) => l?.funnelId || defaultFunnelId,
     funnelName: (id) => funnels.get(id) || 'Sem funil',
@@ -97,6 +103,15 @@ export function contactCells(lead, now) {
 }
 
 export const fmtDate = (d) => (d instanceof Date && !Number.isNaN(d.getTime()) ? d.toLocaleDateString('pt-BR') : '');
+
+// Data na tela: o dia e o mês quando é do ano de agora ("02/09"), e o ano
+// inteiro quando é de outro ("02/09/2025"). Só a tela encurta, para a coluna de
+// data da lista caber numa linha: a planilha usa o fmtDate, sempre com o ano.
+export function fmtScreenDate(d, currentYear) {
+  if (!(d instanceof Date) || Number.isNaN(d.getTime())) return '';
+  const dayMonth = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return d.getFullYear() === currentYear ? dayMonth : `${dayMonth}/${d.getFullYear()}`;
+}
 
 // Situação de hoje do lead, pelo deriveLeadBucket.
 export const SITUACAO_LABEL = Object.freeze({ ativo: 'Em aberto', cliente: 'Cliente', perda: 'Perdido' });

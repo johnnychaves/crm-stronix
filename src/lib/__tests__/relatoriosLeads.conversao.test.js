@@ -2,10 +2,10 @@
 // primeiro contato, o comparado, a lista e a planilha. No mês inteiro, os
 // números são os do painel CRM (metricsOf).
 import { describe, it, expect } from 'vitest';
-import { conversaoReport, CONVERSAO_COLUMNS, SPEED_BUCKETS } from '../relatorios/leads/conversao.js';
+import { conversaoReport, CONVERSAO_COLUMNS, SPEED_BUCKETS, apptsPartialOf } from '../relatorios/leads/conversao.js';
 import { metricsOf, crmDelta } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
-import { periodFromParams, previousPeriod } from '../period.js';
+import { periodFromParams, previousPeriod, monthPeriod } from '../period.js';
 import { makeCtx, NOW, L, D, N, A } from './fixtures/crmCtx.js';
 
 // Um lead de agosto depois do corte, para o teste provar que o comparado para
@@ -56,8 +56,12 @@ describe('Conversão', () => {
     // Cada número do topo mostra a variação do próprio número. "Em aberto" não
     // tem, e "Perderam" é o único em que cair é bom.
     const tile = Object.fromEntries(r.tiles.map((t) => [t.name, t]));
-    const keyOf = { 'Leads da safra': 'leads', Agendaram: 'sched', Vieram: 'came', Matricularam: 'enrolled', Perderam: 'lost' };
+    const keyOf = { 'Leads da safra': 'leads', Matricularam: 'enrolled', Perderam: 'lost' };
     Object.entries(keyOf).forEach(([name, k]) => expect(tile[name].delta, name).toEqual(crmDelta(r.totals[k], r.before[k])));
+    // Agosto não tem a base dos agendamentos (a visita só tem registro desde
+    // 18/08), então a variação de Agendaram e Vieram fica sem base, como no
+    // painel. As cinco variações com base estão no trecho de setembro, abaixo.
+    ['Agendaram', 'Vieram'].forEach((name) => expect(tile[name].delta, name).toEqual({ none: true, text: 'sem base' }));
     expect(tile['Em aberto'].delta).toBeUndefined();
     expect(r.tiles.filter((t) => t.lowerBetter).map((t) => t.name)).toEqual(['Perderam']);
   });
@@ -67,6 +71,11 @@ describe('Conversão', () => {
     expect(SPEED_BUCKETS.map((b) => b.label)).toEqual(['Até 1 hora', 'Até 24 horas', 'Mais de 24 horas', 'Sem contato']);
     expect(speedOf(r)).toEqual({ 'ate-1h': 1, 'ate-24h': 1, 'mais-24h': 2, 'sem-contato': 1 });
     expect(r.bySpeed.find((b) => b.id === 'ate-1h')).toMatchObject({ enrolled: 1, conv: 100 });
+    // A lista leva o dia e a duração do primeiro contato, e o lead sem contato leva nulo nos dois.
+    const s1 = r.rows.find((x) => x.id === 's1');
+    expect([s1.firstContactMin, s1.firstContactAt]).toEqual([30, D(9, 2, 10, 30)]);
+    const s4 = r.rows.find((x) => x.id === 's4');
+    expect([s4.firstContactMin, s4.firstContactAt]).toEqual([null, null]);
   });
 
   it('o comparado vai até o mesmo ponto quando o mês está em andamento', () => {
@@ -180,18 +189,128 @@ describe('Conversão: regras que o painel não mostra na tela', () => {
   it('o recorte por consultor junta quem saiu da equipe, e a planilha dá o desfecho de quem perdeu e de quem segue em aberto', () => {
     const ctx = { ...makeCtx(), sources: [] };
     const r = conversaoReport(ctx, { period: setembro });
-    expect(r.byOwner.map((x) => [x.key, x.name, x.leads, x.enrolled, x.conv])).toEqual([
-      ['consultor:ana', 'Ana Ribeiro', 2, 1, 50],
-      ['consultor:diego', 'Diego Santos', 2, 0, 0],
-      ['consultor:__outros__', 'Fora da equipe ou sem responsável', 1, 0, 0],
+    // Quem saiu da equipe e o lead sem dono se chamam Outros, como nos painéis, com a explicação em letra menor.
+    expect(r.byOwner.map((x) => [x.key, x.name, x.leads, x.enrolled, x.conv, x.note])).toEqual([
+      ['consultor:ana', 'Ana Ribeiro', 2, 1, 50, ''],
+      ['consultor:diego', 'Diego Santos', 2, 0, 0, ''],
+      ['consultor:__outros__', 'Outros', 1, 0, 0, 'fora da equipe ou sem responsável'],
     ]);
     const cut = conversaoReport(ctx, { period: setembro, recorte: 'consultor:__outros__' });
-    expect([cut.cutLabel, cut.rows.map((x) => x.id)]).toEqual(['Consultor: Fora da equipe ou sem responsável', ['s5']]);
+    expect([cut.cutLabel, cut.rows.map((x) => x.id)]).toEqual(['Consultor: Outros', ['s5']]);
+    // Na lista, o responsável continua com o texto explícito.
+    expect(cut.rows[0].owner).toBe('Fora da equipe');
     const lost = conversaoReport(ctx, { period: setembro, recorte: 'situacao:perderam' }).exportRows;
     expect(lost.map((x) => [x.desfecho, x.dataDesfecho])).toEqual([['Perdeu', '06/09/2026']]);
     const open = conversaoReport(ctx, { period: setembro, recorte: 'situacao:em-aberto' }).exportRows;
     expect(open.map((x) => [x.desfecho, x.dataDesfecho])).toEqual([['Em aberto', ''], ['Em aberto', ''], ['Em aberto', '']]);
     const seen = conversaoReport(ctx, { period: setembro, recorte: 'situacao:vieram' });
     expect(seen.rows.map((x) => x.id)).toEqual(['s1']);
+  });
+});
+
+// Agendamentos sem base (a regra do painel, apptsOk em src/lib/crm/texts.js):
+// antes de setembro de 2026 o histórico de agendamentos é incompleto, e a
+// variação de Agendaram e Vieram fica sem base quando o período ou o comparado
+// começa antes disso.
+describe('Conversão: variação dos agendamentos sem base', () => {
+  const semBase = { none: true, text: 'sem base' };
+  const deltasOf = (r) => Object.fromEntries(r.tiles.map((t) => [t.name, t.delta]));
+  const keyOf = { 'Leads da safra': 'leads', Agendaram: 'sched', Vieram: 'came', Matricularam: 'enrolled', Perderam: 'lost' };
+
+  // Dois trechos de setembro, depois da base dos agendamentos: o período (dias 8
+  // a 13) e o comparado (dias 2 a 7, os dias logo antes). Leads, agendamentos,
+  // comparecimentos, matrículas e perdas diferentes em cada um dão uma variação
+  // própria a cada número do topo, e a chave trocada entre dois deles aparece.
+  const trechoCtx = () => {
+    const c = makeCtx();
+    const lead = (id, day, over = {}) => L(id, { createdAt: D(9, day), ...over });
+    const venda = (day) => ({ status: 'Venda', isConverted: true, convertedAt: D(9, day) });
+    const perda = (day) => ({ status: 'Perda', lostAt: D(9, day), lossReason: 'Preço' });
+    const novos = [
+      lead('c1', 4),
+      lead('p1', 8), lead('p2', 9, venda(11)), lead('p3', 10, venda(12)), lead('p4', 11, venda(12)),
+      lead('p5', 10, perda(11)), lead('p6', 12, perda(13)), lead('p7', 9),
+    ];
+    const registros = [
+      A('rc1', 'c1', 'attended', D(9, 5), D(9, 4)),
+      A('rp1', 'p1', 'attended', D(9, 10), D(9, 9)), A('rp2', 'p2', 'attended', D(9, 10), D(9, 9)),
+      A('rp3', 'p3', 'attended', D(9, 11), D(9, 10)), A('rp4', 'p4', 'agendada', D(9, 20), D(9, 11)),
+      A('rp5', 'p5', 'agendada', D(9, 15), D(9, 10)), A('rp6', 'p6', 'agendada', D(9, 16), D(9, 12)),
+    ];
+    c.months['2026-09'] = {
+      ...c.months['2026-09'], leadsCreated: [...c.months['2026-09'].leadsCreated, ...novos], aulas: [...c.months['2026-09'].aulas, ...registros],
+    };
+    c.leadsById = new Map([...c.leadsById, ...novos.map((l) => [l.id, l])]);
+    return { ...c, sources: [] };
+  };
+  const trecho = periodFromParams({ de: '2026-09-08', ate: '2026-09-13' }, NOW);
+
+  it('com a base dos dois lados, cada um dos cinco números tem a própria variação, e nenhuma é igual a outra', () => {
+    const r = conversaoReport(trechoCtx(), { period: trecho, cmp: previousPeriod(trecho, NOW) });
+    expect(r.before).toEqual({ leads: 5, sched: 3, came: 2, enrolled: 1, lost: 1, open: 3, conv: 20 });
+    expect(r.totals).toEqual({ leads: 8, sched: 7, came: 3, enrolled: 3, lost: 2, open: 3, conv: 38 });
+    const delta = deltasOf(r);
+    Object.entries(keyOf).forEach(([name, k]) => expect(delta[name], name).toEqual(crmDelta(r.totals[k], r.before[k])));
+    expect(Object.fromEntries(Object.keys(keyOf).map((name) => [name, delta[name].text]))).toEqual({
+      'Leads da safra': '60%', Agendaram: '133,3%', Vieram: '50%', Matricularam: '200%', Perderam: '100%',
+    });
+    // Cinco variações diferentes: trocar a chave de um número pela de outro muda a variação dele.
+    expect(new Set(Object.keys(keyOf).map((name) => delta[name].value)).size).toBe(5);
+    expect(delta['Em aberto']).toBeUndefined();
+  });
+
+  it('o comparado que começa antes de setembro deixa Agendaram e Vieram sem base, e os outros números seguem', () => {
+    // O mês de setembro contra agosto, e a semana passada contra a semana que passa por 31/08.
+    const ctx = trechoCtx();
+    const semanaPassada = periodFromParams({ periodo: 'semana-passada' }, NOW);
+    for (const [period, cmp] of [[setembro, previousPeriod(setembro, NOW)], [semanaPassada, previousPeriod(semanaPassada, NOW)]]) {
+      const delta = deltasOf(conversaoReport(ctx, { period, cmp }));
+      expect([delta.Agendaram, delta.Vieram], period.label).toEqual([semBase, semBase]);
+      // O que não depende do histórico de agendamentos tem a variação de sempre.
+      expect(delta['Leads da safra'].none, period.label).toBeUndefined();
+    }
+  });
+
+  it('o período que começa antes de setembro também fica sem base, mesmo com o comparado cheio de dados', () => {
+    const ctx = ctxOf();
+    ctx.months['2026-07'] = emptyMonth();
+    withLead(ctx, '2026-07', L('j1', { createdAt: D(7, 10), status: 'Venda', isConverted: true, convertedAt: D(7, 20) }));
+    ctx.months['2026-07'].aulas.push(A('rj1', 'j1', 'attended', D(7, 15), D(7, 12)));
+    const r = conversaoReport(ctx, { period: agosto, cmp: previousPeriod(agosto, NOW) });
+    const delta = deltasOf(r);
+    // Com a base haveria variação nos dois (agosto contra julho, que tem 1 agendou e 1 veio): sem ela, é "sem base".
+    expect(r.before).toMatchObject({ leads: 1, sched: 1, came: 1 });
+    expect(crmDelta(r.totals.sched, r.before.sched).none).toBeUndefined();
+    expect(crmDelta(r.totals.came, r.before.came).none).toBeUndefined();
+    expect([delta.Agendaram, delta.Vieram]).toEqual([semBase, semBase]);
+    expect(delta['Leads da safra']).toEqual(crmDelta(r.totals.leads, r.before.leads));
+  });
+
+  it('sem comparado não há variação nenhuma, base ou não', () => {
+    for (const period of [setembro, agosto, trecho]) {
+      const r = conversaoReport(trechoCtx(), { period });
+      expect(r.tiles.map((t) => t.delta ?? null), period.label).toEqual([null, null, null, null, null, null]);
+      expect(r.conversion.delta).toBeNull();
+    }
+  });
+
+  it('a regra é a do painel: o período ou o comparado que começa antes de setembro de 2026 não tem a base', () => {
+    const win = (kind, params) => { const p = periodFromParams(params, NOW); return [p, previousPeriod(p, NOW)]; };
+    expect(apptsPartialOf(...win('mes', { monthKey: '2026-09' }))).toBe(true);
+    expect(apptsPartialOf(...win('mes', { monthKey: '2026-08' }))).toBe(true);
+    expect(apptsPartialOf(...win('intervalo', { de: '2026-09-08', ate: '2026-09-13' }))).toBe(false);
+    expect(apptsPartialOf(...win('intervalo', { de: '2026-09-08', ate: '2026-09-14' }))).toBe(false);
+    expect(apptsPartialOf(...win('hoje', { periodo: 'hoje' }))).toBe(false);
+    expect(apptsPartialOf(...win('semana', { periodo: 'semana' }))).toBe(false);
+    expect(apptsPartialOf(...win('semana-passada', { periodo: 'semana-passada' }))).toBe(true);
+    // Sem comparado, só o período conta.
+    expect(apptsPartialOf(setembro, null)).toBe(false);
+    expect(apptsPartialOf(agosto, null)).toBe(true);
+    // Mês contra mês, é o apptsBase que o painel guarda em cada mês.
+    const ctx = makeCtx();
+    for (const [a, b] of [['2026-09', '2026-08'], ['2026-08', '2026-07'], ['2026-10', '2026-09'], ['2026-12', '2026-11']]) {
+      const base = (key) => metricsOf(ctx, { monthKey: key }).apptsBase;
+      expect(apptsPartialOf(monthPeriod(a, NOW), monthPeriod(b, NOW)), `${a} contra ${b}`).toBe(!(base(a) && base(b)));
+    }
   });
 });

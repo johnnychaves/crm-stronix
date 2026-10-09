@@ -13,12 +13,12 @@ import { useCrmSources } from '../../hooks/useCrmSources.js';
 import { screenParamsQuery } from '../../lib/screenParams.js';
 import { periodFromParams, previousPeriod } from '../../lib/period.js';
 import { addMonthsToKey, dayKeyOf, monthKeyOf, monthLabel } from '../../lib/operacional/month.js';
-import { APPTS_COMPLETE_MONTH, leadFunnelsOf } from '../../lib/crm/scope.js';
+import { leadFunnelsOf } from '../../lib/crm/scope.js';
 import { relatoriosSection } from '../../lib/relatoriosRail.js';
 import { loadState, reportMonthKeys } from '../../lib/relatorios/leads/janela.js';
 import { exportFileName } from '../../lib/relatorios/leads/base.js';
 import { entradaReport } from '../../lib/relatorios/leads/entrada.js';
-import { conversaoReport } from '../../lib/relatorios/leads/conversao.js';
+import { conversaoReport, apptsPartialOf } from '../../lib/relatorios/leads/conversao.js';
 import { downloadCsv, toCsv } from '../../lib/csvExport.js';
 import { DashedNote } from '../dashboard/CrmParts.jsx';
 import { RelatoriosRail } from './RelatoriosRail.jsx';
@@ -40,6 +40,8 @@ export function RelatoriosView({
   }, []);
   const currentKey = monthKeyOf(now);
   const todayKey = dayKeyOf(now);
+  // As datas da lista do ano de agora saem sem o ano.
+  const year = now.getFullYear();
 
   // Quem vende entra no filtro de consultores e nos nomes dos recortes.
   const users = useMemo(() => (usersList || []).filter((u) => u?.id && isSeller(u)), [usersList]);
@@ -80,13 +82,19 @@ export function RelatoriosView({
   );
 
   // Enquanto o período novo carrega, o último resultado do mesmo submenu fica
-  // na tela sob o véu. Ajuste de estado no render, guardado por condição, como
-  // no painel CRM: o lint react-hooks v7 recusa efeito com setState e ref lido
-  // no render.
+  // na tela sob o véu, junto com o período e o comparado dele: o "vs. Agosto" e
+  // o aviso dos agendamentos falam dos números que estão na tela, e não do que
+  // foi escolhido agora, como no painel CRM. Ajuste de estado no render,
+  // guardado por condição, como no painel: o lint react-hooks v7 recusa efeito
+  // com setState e ref lido no render. Ele só roda quando o report muda, e isso
+  // só acontece quando o endereço, a carga ou o relógio de um minuto mudam: a
+  // useCrmSources entrega os mesmos months e leadsById enquanto nada mudou, e
+  // sem isso este ajuste não pararia de rodar.
+  const current = report ? { secao, report, period, cmp } : null;
   const [lastGood, setLastGood] = useState(null);
-  if (report && lastGood?.report !== report) setLastGood({ secao, report });
-  const shown = report || (!failed && lastGood?.secao === secao ? lastGood.report : null);
-  const veiled = !report && Boolean(shown);
+  if (current && lastGood?.report !== report) setLastGood(current);
+  const shown = current || (!failed && lastGood?.secao === secao ? lastGood : null);
+  const veiled = !current && Boolean(shown);
 
   // Que lista é esta: o submenu mais o endereço (período, filtros e o recorte da
   // lista). Quando muda, a lista volta aos 50 primeiros. Sai dos filtros do
@@ -113,20 +121,18 @@ export function RelatoriosView({
   );
 
   const canExport = can(appUser, ACTIONS.RELATORIOS_EXPORTAR);
-  const exportable = Boolean(shown) && !veiled && shown.exportRows.length > 0;
+  const exportable = Boolean(shown) && !veiled && shown.report.exportRows.length > 0;
   const doExport = () => {
     if (!exportable) return;
-    downloadCsv(exportFileName(secao, period), toCsv(shown.exportRows, shown.exportColumns));
+    downloadCsv(exportFileName(secao, shown.period), toCsv(shown.report.exportRows, shown.report.exportColumns));
   };
   const exportAction = canExport ? <ExportButton onExport={doExport} disabled={!exportable} /> : null;
 
   return (
     <div className="animate-fade-in flex flex-col gap-6 font-sans lg:flex-row lg:items-start lg:gap-8">
-      <aside className="lg:sticky lg:top-20 lg:w-[232px] lg:shrink-0">
-        <div className="mb-4 lg:px-3">
-          <h1 className="m-0 font-display text-[17px] font-bold tracking-tight">Relatórios</h1>
-          <p className="mt-1 text-[12px] text-muted-foreground">Os números do período e os nomes por trás deles.</p>
-        </div>
+      {/* A lista de relatórios sem título: o título da tela é o do cabeçalho do App.
+          O top-0 faz a lista começar na altura da barra, parada ou rolando. */}
+      <aside className="lg:sticky lg:top-0 lg:w-[232px] lg:shrink-0">
         <RelatoriosRail section={secao} onSection={goSection} />
       </aside>
       <div className="min-w-0 flex-1">
@@ -152,26 +158,36 @@ export function RelatoriosView({
           funnels={leadFunnels}
           onFunnel={(v) => setParams({ funnel: v })}
         />
-        {failed ? (
-          <DashedNote title="Não deu para carregar o período." text="Confira a internet e abra a tela de novo." />
-        ) : !shown ? (
-          <p role="status" className="py-12 text-center text-[13px] text-muted-foreground">Carregando os números do período.</p>
-        ) : (
+        {/* Uma região de estado só, sempre no DOM: o leitor de tela só anuncia o texto
+            que entra numa região que já existia, então "carregando" e "não deu para
+            carregar" aparecem aqui dentro, e não no lugar dela. */}
+        <div role="status">
+          {failed ? (
+            <DashedNote title="Não deu para carregar o período." text="Confira a internet e abra a tela de novo." />
+          ) : !shown ? (
+            <p className="py-12 text-center text-[13px] text-muted-foreground">Carregando os números do período.</p>
+          ) : null}
+        </div>
+        {!failed && shown && (
+          // Sob o véu, o conteúdo velho não recebe foco nem leitura (inert), além de
+          // ficar apagado e sem clique.
           <div
             aria-busy={veiled}
+            inert={veiled}
             className={cn('transition-opacity motion-reduce:transition-none', veiled && 'pointer-events-none opacity-35')}
           >
             {secao === 'conversao' ? (
               <ConversaoSection
-                report={shown}
-                cmp={cmp}
+                report={shown.report}
+                cmp={shown.cmp}
                 listId={listId}
+                year={year}
                 onCut={onCut}
                 exportAction={exportAction}
-                apptsPartial={monthKeyOf(period.start) < APPTS_COMPLETE_MONTH}
+                apptsPartial={apptsPartialOf(shown.period, shown.cmp)}
               />
             ) : (
-              <EntradaSection report={shown} cmp={cmp} listId={listId} onCut={onCut} exportAction={exportAction} />
+              <EntradaSection report={shown.report} cmp={shown.cmp} listId={listId} year={year} onCut={onCut} exportAction={exportAction} />
             )}
           </div>
         )}

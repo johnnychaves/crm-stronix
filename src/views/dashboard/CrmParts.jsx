@@ -30,14 +30,21 @@ export function CrmSection({ title, question, note, tag, children }) {
   );
 }
 
+// O nível do título do card: h4 no painel, onde ele fica abaixo do título de
+// seção (h3). A tela que põe o card direto abaixo de um título de página (h2)
+// pede o nível 3, para os títulos não pularem de h2 para h4. Nível que não é de
+// título (1, 7, texto) volta ao h4.
+const HEADING_TAGS = Object.freeze({ 2: 'h2', 3: 'h3', 4: 'h4', 5: 'h5', 6: 'h6' });
+
 // Casca de card (handoff, linhas 229 a 239): cabeçalho com título de 14px e a
 // dica de 11,5px; o corpo fica por conta de quem usa.
-export function CrmCard({ title, hint, action, className, children }) {
+export function CrmCard({ title, hint, action, className, headingLevel = 4, children }) {
+  const Heading = HEADING_TAGS[headingLevel] || 'h4';
   return (
     <section className={cn('flex flex-col rounded-2xl border border-border bg-card shadow-card', className)}>
       <header className={cn('flex items-center justify-between gap-3 border-b px-[18px] py-3.5', RULE)}>
         <div className="min-w-0">
-          <h4 className="m-0 text-[14px] font-semibold">{title}</h4>
+          <Heading className="m-0 text-[14px] font-semibold">{title}</Heading>
           {hint && <p className="num mt-0.5 text-[11.5px] text-muted-foreground">{hint}</p>}
         </div>
         {action}
