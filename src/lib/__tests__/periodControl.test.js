@@ -30,6 +30,10 @@ describe('seletor de período', () => {
       expect(html).toContain(`>${label}</span>`);
     }
     expect(html.match(/aria-pressed="true"/g)).toHaveLength(1);
+    // O item marcado é o do período atual, não qualquer um.
+    const marcados = [...html.matchAll(/<button[^>]*aria-pressed="true"[^>]*>(.*?)<\/button>/g)]
+      .map((m) => m[1].replace(/<[^>]+>/g, ''));
+    expect(marcados).toEqual(['Hoje']);
     expect(html).not.toContain('type="date"');
   });
 
