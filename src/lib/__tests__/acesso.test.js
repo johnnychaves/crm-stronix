@@ -111,6 +111,7 @@ describe('tabelas', () => {
       LEADS_VER: 'leads.ver',
       SINO_EQUIPE: 'sino.equipe',
       SUPORTE_ABRIR: 'suporte.abrir',
+      RELATORIOS_EXPORTAR: 'relatorios.exportar',
     });
   });
 
