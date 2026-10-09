@@ -2,7 +2,7 @@
 // a lista, número grande, recortes em barras, lista, exportar e aviso.
 import { describe, it, expect } from 'vitest';
 import { createElement } from 'react';
-import { renderToString } from 'react-dom/server';
+import { renderToString, renderToStaticMarkup } from 'react-dom/server';
 import {
   NumberTiles, HeroNumber, CountBreakdown, ConversionBreakdown, ReportList, ExportButton, ReportNotice, CellText, GREEN_TEXT,
 } from '../../views/relatorios/ReportParts.jsx';
@@ -101,6 +101,24 @@ describe('recortes', () => {
     expect(conversao).toContain('aria-label="Outros (fora da equipe ou sem responsável): 1 lead, 0 matrículas, 0% de conversão"');
     const comum = html(createElement(CountBreakdown, { title: 'Por consultor', rows: [{ key: 'consultor:ana', name: 'Ana Ribeiro', note: '', count: 2 }], cut: null, onCut: noop }));
     expect(comum).toContain('title="Ana Ribeiro"');
+  });
+
+  it('o texto pequeno vem depois de um espaço de verdade, e a margem tira o que o espaço já ocupa', () => {
+    // O leitor de tela lê o texto da linha: sem o espaço saía "InstagramPago" e "Outrosfora da equipe...".
+    // O espaço tem uns 3px, e a margem de 3px completa os 6px de antes (ml-1.5).
+    const rows = [
+      { key: 'origem:Instagram', name: 'Instagram', channel: 'Pago', count: 4 },
+      { key: 'consultor:__outros__', name: 'Outros', note: 'fora da equipe ou sem responsável', count: 1 },
+    ];
+    const pequeno = (texto) => `<span class="ml-[3px] text-[11px] font-normal text-muted-foreground">${texto}</span>`;
+    const contagem = renderToStaticMarkup(createElement(CountBreakdown, { title: 'Por origem', rows, cut: null, onCut: noop }));
+    expect(contagem).toContain(`Instagram ${pequeno('Pago')}`);
+    expect(contagem).toContain(`Outros ${pequeno('fora da equipe ou sem responsável')}`);
+    const conversao = renderToStaticMarkup(createElement(ConversionBreakdown, {
+      title: 'Por consultor', rows: [{ ...rows[1], leads: 1, enrolled: 0, conv: 0 }], cut: null, onCut: noop,
+    }));
+    expect(conversao).toContain(`Outros ${pequeno('fora da equipe ou sem responsável')}`);
+    expect(contagem + conversao).not.toContain('ml-1.5');
   });
 
   it('na conversão, a barra é a própria conversão, em verde', () => {
@@ -223,7 +241,7 @@ describe('célula de texto', () => {
   it('corta em vez de quebrar a linha, com o texto inteiro no title', () => {
     const out = html(createElement(CellText, { text: 'Google Meu Negócio - Campanha de inverno' }));
     expect(out).toContain('title="Google Meu Negócio - Campanha de inverno"');
-    expect(out).toContain('class="block max-w-[11rem] truncate"');
+    expect(out).toContain('class="block max-w-[9rem] truncate"');
     expect(out).toContain('>Google Meu Negócio - Campanha de inverno</span>');
   });
 });

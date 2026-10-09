@@ -100,9 +100,12 @@ export function NumberTiles({ tiles, cut, onCut }) {
 // menor é a primeira a ser cortada; o canal fica de fora do title, como sempre.
 const sideTextOf = (r) => r.channel || r.note || '';
 const rowTitleOf = (r) => (r.note ? `${r.name}, ${r.note}` : r.name);
+// Um espaço de verdade separa o texto pequeno do nome: só com a margem, o leitor
+// de tela lia "InstagramPago" e "Outrosfora da equipe ou sem responsável". O
+// espaço ocupa uns 3px, e a margem de 3px completa os 6px que a linha tinha.
 function SideText({ row }) {
   const text = sideTextOf(row);
-  return text ? <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{text}</span> : null;
+  return text ? <>{' '}<span className="ml-[3px] text-[11px] font-normal text-muted-foreground">{text}</span></> : null;
 }
 
 // Recorte em barras: cada linha filtra a lista. A barra é o próprio número ao
@@ -317,9 +320,11 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
 // Texto de célula da lista que corta em vez de quebrar a linha (origem,
 // consultor e funil), com o texto inteiro no title. Sem o corte, uma origem de
 // nome comprido quebrava em duas e três linhas e a lista ficava com linhas de
-// alturas diferentes.
+// alturas diferentes. O corte de 9rem deixa espaço para o nome do lead quando as
+// três colunas têm nome comprido: com 11rem, ele ficava com uns 107px a 1280px e
+// quebrava em 42 de 50 linhas.
 export function CellText({ text }) {
-  return <span className="block max-w-[11rem] truncate" title={text}>{text}</span>;
+  return <span className="block max-w-[9rem] truncate" title={text}>{text}</span>;
 }
 
 export function ExportButton({ onExport, disabled = false }) {

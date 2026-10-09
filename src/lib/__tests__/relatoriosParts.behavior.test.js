@@ -107,6 +107,24 @@ describe('números e linhas que filtram a lista', () => {
   });
 });
 
+describe('nome e texto pequeno da linha', () => {
+  const linhas = [
+    { key: 'origem:Instagram', name: 'Instagram', channel: 'Pago' },
+    { key: 'consultor:__outros__', name: 'Outros', note: 'fora da equipe ou sem responsável' },
+  ];
+
+  it.each([
+    ['contagem', CountBreakdown, (r) => ({ ...r, count: 1 })],
+    ['conversão', ConversionBreakdown, (r) => ({ ...r, leads: 1, enrolled: 0, conv: 0 })],
+  ])('na %s, o texto da linha lê o nome e o texto pequeno separados por um espaço', async (_, Recorte, comNumeros) => {
+    await montar(h(Recorte, { title: 'Por consultor', rows: linhas.map(comNumeros), cut: null, onCut: () => {} }));
+    // É o que o leitor de tela encontra no nome: sem o espaço, "InstagramPago" e "Outrosfora da equipe...".
+    const texto = (nome) => botao(nome).querySelector('[title]').textContent;
+    if (Recorte === CountBreakdown) expect(texto('Instagram')).toBe('Instagram Pago');
+    expect(texto('Outros')).toBe('Outros fora da equipe ou sem responsável');
+  });
+});
+
 describe('lista', () => {
   const colunas = [{ key: 'nome', label: 'Nome', render: (r) => r.name }];
   const leads = (prefixo, n) => Array.from({ length: n }, (_, i) => ({ id: `${prefixo}${i}`, name: `${prefixo.toUpperCase()} ${i}` }));

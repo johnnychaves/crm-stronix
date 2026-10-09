@@ -9,9 +9,11 @@
 // aos 50 primeiros quando o filtro ou o período mudam.
 //
 // A lista não quebra linha: situação e etapa ficam numa linha só, origem,
-// consultor e funil cortam em 11rem com o texto inteiro no title, e a data do
-// ano de agora sai sem o ano ("02/09"). O year é o ano de agora, que a tela
-// manda; a planilha continua com a data inteira.
+// consultor e funil cortam em 9rem com o texto inteiro no title, o nome do lead
+// não encolhe de 10rem, e a data do ano de agora sai sem o ano ("02/09"). O year
+// é o ano de agora, que a tela manda; a planilha continua com a data inteira. O
+// compareText é o texto do comparado ("vs. Agosto 2026"), que a tela monta com o
+// período e o comparado dos números que estão na tela.
 import { cn } from '../../lib/utils.js';
 import { LeadLink } from '../../components/nav/AppLink.jsx';
 import { fmtScreenDate } from '../../lib/relatorios/leads/base.js';
@@ -26,6 +28,7 @@ const columnsOf = (year) => [
   {
     key: 'nome',
     label: 'Nome',
+    className: 'min-w-[10rem]',
     render: (r) => (
       <LeadLink leadId={r.id} className="font-semibold text-foreground hover:text-brand-700 hover:underline dark:hover:text-brand-300">
         {r.name}
@@ -45,7 +48,7 @@ const columnsOf = (year) => [
   },
 ];
 
-export function EntradaSection({ report, cmp, listId, year, onCut, exportAction }) {
+export function EntradaSection({ report, compareText, listId, year, onCut, exportAction }) {
   return (
     <div className="flex flex-col gap-5">
       <ReportHeader
@@ -57,7 +60,7 @@ export function EntradaSection({ report, cmp, listId, year, onCut, exportAction 
         value={report.total}
         label={report.total === 1 ? 'lead novo' : 'leads novos'}
         delta={report.delta}
-        compareText={cmp ? `vs. ${cmp.label}` : null}
+        compareText={compareText}
       />
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <CountBreakdown title="Por origem" rows={report.bySource} cut={report.cut} onCut={onCut} />

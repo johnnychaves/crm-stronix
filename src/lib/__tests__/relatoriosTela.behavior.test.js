@@ -165,6 +165,10 @@ const regiaoDeEstado = () => container.querySelector('[role="status"]');
 // A grade que reúne os cartões de recorte: o pai do cartão que tem o título.
 const grade = (titulo) => [...container.querySelectorAll('h3')].find((t) => t.textContent === titulo).closest('section').parentElement;
 const AVISO = 'os agendamentos estão incompletos';
+// O comparado do mês em andamento (dia 14 às 12h): os mesmos primeiros dias do mês anterior, como o painel CRM diz.
+const PRORATA = 'vs. os 14 primeiros dias de Agosto 2026';
+// O texto do comparado ao lado do número grande.
+const comparado = () => [...container.querySelectorAll('span')].find((s) => s.textContent.startsWith('vs. '))?.textContent;
 
 describe('número que filtra a lista', () => {
   it('"Matricularam" escreve o recorte no endereço e deixa na lista só quem matriculou; de novo, limpa', async () => {
@@ -290,14 +294,17 @@ describe('véu enquanto o período novo carrega', () => {
     expect(container.querySelector('[aria-busy]')).toBeNull();
   });
 
-  it('o resultado velho fica com o comparado e o aviso dele, e os do período novo entram quando a carga chega', async () => {
+  it.each([
+    ['Entrada', '/acad/relatorios?de=2026-09-08&ate=2026-09-13', {}, false],
+    ['Conversão', '/acad/relatorios/conversao?de=2026-09-08&ate=2026-09-13', { section: 'conversao' }, true],
+  ])('%s: o resultado velho fica com o comparado dele, e os do período novo entram quando a carga chega', async (_, url, props, temAviso) => {
     // Agosto ainda não chegou: os dias 8 a 13 de setembro só pedem setembro, mas o mês de setembro pede agosto.
     const fontes = fontesDoPainel();
     const agosto = fontes.months['2026-08'];
     delete fontes.months['2026-08'];
     usar(fontes);
-    await montar('/acad/relatorios/conversao?de=2026-09-08&ate=2026-09-13', { section: 'conversao' });
-    expect(container.textContent).toContain('vs. 2 a 7 set');
+    await montar(url, props);
+    expect(comparado()).toBe('vs. 2 a 7 set');
     expect(container.textContent).not.toContain(AVISO);
     expect(container.querySelector('[aria-busy="false"]').hasAttribute('inert')).toBe(false);
 
@@ -306,19 +313,20 @@ describe('véu enquanto o período novo carrega', () => {
     expect(sonda()).toBe('');
     const veu = container.querySelector('[aria-busy="true"]');
     expect(veu.hasAttribute('inert')).toBe(true);
-    // Sob o véu, os números são os dos dias 8 a 13: o "vs." e o aviso são os deles, e não os do mês escolhido.
+    // Sob o véu, os números são os dos dias 8 a 13: o "vs." (e o aviso, na Conversão) são os deles, e não os do mês escolhido.
     expect(veu.textContent).toContain('vs. 2 a 7 set');
-    expect(veu.textContent).not.toContain('vs. Agosto 2026');
+    expect(veu.textContent).not.toContain('vs. os 14 primeiros dias');
     expect(veu.textContent).not.toContain(AVISO);
 
-    // Agosto chega: o resultado novo entra, com o comparado e o aviso do mês.
+    // Agosto chega: o resultado novo entra, com o comparado do mês (e o aviso, na Conversão).
     fontes.months['2026-08'] = agosto;
     usar(fontes);
-    await remontar('/acad/relatorios/conversao', { section: 'conversao' });
+    await remontar(url, props);
     expect(container.querySelector('[aria-busy="true"]')).toBeNull();
     expect(container.querySelector('[aria-busy="false"]').hasAttribute('inert')).toBe(false);
-    expect(container.textContent).toContain('vs. Agosto 2026');
-    expect(container.textContent).toContain(AVISO);
+    expect(comparado()).toBe(PRORATA);
+    expect(container.textContent).not.toContain('vs. 2 a 7 set');
+    expect(container.textContent.includes(AVISO)).toBe(temAviso);
   });
 });
 
@@ -345,6 +353,29 @@ describe('região de estado', () => {
     expect(regiao.textContent).toBe('');
     expect(container.querySelectorAll('[role="status"]')).toHaveLength(1);
     expect(container.querySelector('table')).not.toBeNull();
+  });
+});
+
+describe('texto do comparado', () => {
+  it.each([
+    ['o mês em andamento compara os mesmos primeiros dias do mês anterior', '/acad/relatorios', PRORATA],
+    ['o mês fechado mantém o nome do comparado', '/acad/relatorios?mes=2026-08', 'vs. Julho 2026'],
+    ['a semana passada mantém o nome do comparado', '/acad/relatorios?periodo=semana-passada', 'vs. 31 ago a 6 set'],
+    ['o intervalo mantém o nome do comparado', '/acad/relatorios?de=2026-09-08&ate=2026-09-13', 'vs. 2 a 7 set'],
+  ])('na Entrada, %s', async (_, url, esperado) => {
+    await montar(url);
+    expect(comparado()).toBe(esperado);
+  });
+
+  it('na Conversão o mês em andamento também compara os mesmos primeiros dias', async () => {
+    await montar('/acad/relatorios/conversao', { section: 'conversao' });
+    expect(comparado()).toBe(PRORATA);
+  });
+
+  it('no dia 1 o comparado é o primeiro dia do mês anterior', async () => {
+    vi.setSystemTime(new Date(2026, 8, 1, 12, 0));
+    await montar('/acad/relatorios');
+    expect(comparado()).toBe('vs. o primeiro dia de Agosto 2026');
   });
 });
 
@@ -407,12 +438,16 @@ describe('lista que não quebra linha', () => {
   it('na Entrada, situação e etapa ficam numa linha, origem, consultor e funil cortam com o texto inteiro no title, e a data sai sem o ano', async () => {
     await montar('/acad/relatorios');
     expect(linhas()).toHaveLength(5);
+    // O nome do lead não encolhe de 10rem, nem na linha nem no cabeçalho: com origem, consultor e funil de nome
+    // comprido, ele ficava com uns 107px a 1280px e 42 de 50 nomes quebravam.
+    expect(container.querySelector('thead th').className).toContain('min-w-[10rem]');
     for (const tr of linhas()) {
+      expect(celula(tr, 'Nome').className, 'Nome').toContain('min-w-[10rem]');
       for (const coluna of ['Etapa', 'Situação']) expect(celula(tr, coluna).className, coluna).toContain('whitespace-nowrap');
       for (const coluna of ['Origem', 'Consultor', 'Funil']) {
         const texto = celula(tr, coluna).firstElementChild;
         expect(texto.className, coluna).toContain('truncate');
-        expect(texto.className, coluna).toContain('max-w-[11rem]');
+        expect(texto.className, coluna).toContain('max-w-[9rem]');
         expect(texto.getAttribute('title'), coluna).toBe(texto.textContent);
         expect(texto.textContent, coluna).not.toBe('');
       }
@@ -427,9 +462,14 @@ describe('lista que não quebra linha', () => {
 
   it('na Conversão, o primeiro contato diz quanto levou e em que dia, e o desfecho diz o dia sem o ano', async () => {
     await montar('/acad/relatorios/conversao', { section: 'conversao' });
+    expect(container.querySelector('thead th').className).toContain('min-w-[10rem]');
     for (const tr of linhas()) {
+      expect(celula(tr, 'Nome').className, 'Nome').toContain('min-w-[10rem]');
       for (const coluna of ['Agend.', 'Veio', 'Desfecho', '1º contato', 'Cadastro']) expect(celula(tr, coluna).className, coluna).toContain('whitespace-nowrap');
-      for (const coluna of ['Origem', 'Consultor']) expect(celula(tr, coluna).firstElementChild.className, coluna).toContain('truncate');
+      for (const coluna of ['Origem', 'Consultor']) {
+        expect(celula(tr, coluna).firstElementChild.className, coluna).toContain('truncate');
+        expect(celula(tr, coluna).firstElementChild.className, coluna).toContain('max-w-[9rem]');
+      }
     }
     // s1 foi cadastrada em 02/09 às 10h e a primeira conversa foi às 10h30.
     expect(celula(linhaDe('s1'), '1º contato').textContent).toBe('30 min · 02/09');

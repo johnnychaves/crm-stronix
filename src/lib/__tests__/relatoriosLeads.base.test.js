@@ -3,10 +3,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   reportScope, newLeadsIn, namesOf, OTHERS_NAME, OTHERS_NOTE, cutCode, applyCut, cutLabelOf, contactCells, fmtDate,
-  fmtScreenDate, exportFileName, SITUACAO_LABEL,
+  fmtScreenDate, compareTextOf, exportFileName, SITUACAO_LABEL,
 } from '../relatorios/leads/base.js';
 import { OTHERS_ID } from '../crm/scope.js';
-import { periodFromParams } from '../period.js';
+import { regimeTexts } from '../crm/texts.js';
+import { periodFromParams, previousPeriod } from '../period.js';
 import { makeCtx, USERS, FUNNELS, NOW } from './fixtures/crmCtx.js';
 
 const SOURCES = [{ name: 'Instagram', channel: 'Pago' }, { name: 'Indicação', channel: '' }];
@@ -114,5 +115,66 @@ describe('planilha', () => {
 
   it('situação de hoje em palavras', () => {
     expect(SITUACAO_LABEL).toEqual({ ativo: 'Em aberto', cliente: 'Cliente', perda: 'Perdido' });
+  });
+});
+
+// O texto do comparado ao lado do número grande. Com o mês em andamento, o
+// comparado é o mesmo começo do mês anterior, como o painel CRM diz ("Pró-rata:
+// mesmos 14 primeiros dias de agosto"); nos outros períodos é o nome dele.
+describe('texto do comparado', () => {
+  const textoDe = (params, now = NOW) => {
+    const period = periodFromParams(params, now);
+    return compareTextOf(period, previousPeriod(period, now));
+  };
+  const setembroEm = (dia, hora = 12) => new Date(2026, 8, dia, hora, 0);
+
+  it('o mês em andamento compara os mesmos primeiros dias do mês anterior', () => {
+    // Dia 14 ao meio-dia: o painel diz "mesmos 14 primeiros dias" (os 13 dias e meio contam o de hoje).
+    expect(textoDe({ monthKey: '2026-09' })).toBe('vs. os 14 primeiros dias de Agosto 2026');
+    expect(textoDe({ monthKey: '2026-09' }, setembroEm(1))).toBe('vs. o primeiro dia de Agosto 2026');
+    expect(textoDe({ monthKey: '2026-09' }, setembroEm(2, 0))).toBe('vs. os 2 primeiros dias de Agosto 2026');
+    expect(textoDe({ monthKey: '2026-09' }, new Date(2026, 8, 30, 23, 59))).toBe('vs. os 30 primeiros dias de Agosto 2026');
+    // O ano do comparado aparece, como no nome dele.
+    expect(textoDe({ monthKey: '2026-01' }, new Date(2026, 0, 10, 9, 0))).toBe('vs. os 10 primeiros dias de Dezembro 2025');
+  });
+
+  it('usa os mesmos dias que o painel CRM diz na nota do comparativo', () => {
+    for (const dia of [1, 2, 14, 30]) {
+      const painel = regimeTexts({ running: true, compareOn: true, dayN: dia, shownName: 'setembro', cmpName: 'agosto' }).note;
+      const texto = textoDe({ monthKey: '2026-09' }, setembroEm(dia));
+      const dias = (t) => t.match(/(\d+) primeiros dias/)?.[1] ?? 'primeiro dia';
+      expect([dia, dias(texto)], texto).toEqual([dia, dias(painel)]);
+    }
+  });
+
+  it('quando os dias que já passaram são todos os do mês comparado, ele entra inteiro', () => {
+    // Setembro tem 30 dias, e fevereiro de 2026 tem 28: "os 31 primeiros dias" não existe.
+    expect(textoDe({ monthKey: '2026-10' }, new Date(2026, 9, 31, 12, 0))).toBe('vs. Setembro 2026');
+    expect(textoDe({ monthKey: '2026-03' }, new Date(2026, 2, 30, 12, 0))).toBe('vs. Fevereiro 2026');
+    expect(textoDe({ monthKey: '2026-03' }, new Date(2026, 2, 28, 12, 0))).toBe('vs. Fevereiro 2026');
+    expect(textoDe({ monthKey: '2026-03' }, new Date(2026, 2, 27, 12, 0))).toBe('vs. os 27 primeiros dias de Fevereiro 2026');
+  });
+
+  it('o mês fechado, o atalho e o intervalo mantêm o nome do comparado', () => {
+    expect(textoDe({ monthKey: '2026-08' })).toBe('vs. Julho 2026');
+    expect(textoDe({ de: '2026-09-08', ate: '2026-09-13' })).toBe('vs. 2 a 7 set');
+    for (const params of [{ periodo: 'hoje' }, { periodo: 'ontem' }, { periodo: 'semana' }, { periodo: 'semana-passada' }]) {
+      const period = periodFromParams(params, NOW);
+      const cmp = previousPeriod(period, NOW);
+      expect(compareTextOf(period, cmp), JSON.stringify(params)).toBe(`vs. ${cmp.label}`);
+    }
+    // Também no começo do mês, com o período em andamento: o dia 3 de setembro é menor que os 7 dias da semana
+    // e que os 4 do intervalo, e o texto continua sendo o nome do comparado, e não "os 3 primeiros dias".
+    const dia3 = setembroEm(3);
+    for (const params of [{ periodo: 'semana' }, { periodo: 'hoje' }, { de: '2026-08-31', ate: '2026-09-03' }]) {
+      const period = periodFromParams(params, dia3);
+      expect(period.running, JSON.stringify(params)).toBe(true);
+      const cmp = previousPeriod(period, dia3);
+      expect(compareTextOf(period, cmp), JSON.stringify(params)).toBe(`vs. ${cmp.label}`);
+    }
+  });
+
+  it('sem comparado não há texto', () => {
+    expect(compareTextOf(periodFromParams({ monthKey: '2026-09' }, NOW), null)).toBeNull();
   });
 });

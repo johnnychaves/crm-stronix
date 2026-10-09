@@ -11,9 +11,12 @@
 //
 // A lista não quebra linha, como a da Entrada: as colunas de sim ou não, o
 // primeiro contato e o desfecho ficam numa linha só, origem e consultor cortam
-// em 11rem com o texto inteiro no title, e a data do ano de agora sai sem o ano
-// ("02/09", "Matriculou em 05/09"). O primeiro contato diz quanto levou e em que
-// dia ("30 min · 02/09"). O year é o ano de agora, que a tela manda.
+// em 9rem com o texto inteiro no title, o nome do lead não encolhe de 10rem, e a
+// data do ano de agora sai sem o ano ("02/09", "Matriculou em 05/09"). O
+// primeiro contato diz quanto levou e em que dia ("30 min · 02/09"). O year é o
+// ano de agora, que a tela manda. O compareText é o texto do comparado ("vs.
+// Agosto 2026"), que a tela monta com o período e o comparado dos números que
+// estão na tela.
 import { cn } from '../../lib/utils.js';
 import { LeadLink } from '../../components/nav/AppLink.jsx';
 import { fmtDuration } from '../../lib/crm/format.js';
@@ -38,6 +41,7 @@ const columnsOf = (year) => [
   {
     key: 'nome',
     label: 'Nome',
+    className: 'min-w-[10rem]',
     render: (r) => (
       <LeadLink leadId={r.id} className="font-semibold text-foreground hover:text-brand-700 hover:underline dark:hover:text-brand-300">
         {r.name}
@@ -69,7 +73,7 @@ const columnsOf = (year) => [
   },
 ];
 
-export function ConversaoSection({ report, cmp, listId, year, onCut, exportAction, apptsPartial = false }) {
+export function ConversaoSection({ report, compareText, listId, year, onCut, exportAction, apptsPartial = false }) {
   return (
     <div className="flex flex-col gap-5">
       <ReportHeader
@@ -83,7 +87,7 @@ export function ConversaoSection({ report, cmp, listId, year, onCut, exportActio
         tone="good"
         label="de conversão da safra"
         delta={report.conversion.delta}
-        compareText={cmp ? `vs. ${cmp.label}` : null}
+        compareText={compareText}
       />
       {apptsPartial && (
         <ReportNotice>

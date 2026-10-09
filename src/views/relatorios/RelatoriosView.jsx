@@ -16,7 +16,7 @@ import { addMonthsToKey, dayKeyOf, monthKeyOf, monthLabel } from '../../lib/oper
 import { leadFunnelsOf } from '../../lib/crm/scope.js';
 import { relatoriosSection } from '../../lib/relatoriosRail.js';
 import { loadState, reportMonthKeys } from '../../lib/relatorios/leads/janela.js';
-import { exportFileName } from '../../lib/relatorios/leads/base.js';
+import { exportFileName, compareTextOf } from '../../lib/relatorios/leads/base.js';
 import { entradaReport } from '../../lib/relatorios/leads/entrada.js';
 import { conversaoReport, apptsPartialOf } from '../../lib/relatorios/leads/conversao.js';
 import { downloadCsv, toCsv } from '../../lib/csvExport.js';
@@ -95,6 +95,9 @@ export function RelatoriosView({
   if (current && lastGood?.report !== report) setLastGood(current);
   const shown = current || (!failed && lastGood?.secao === secao ? lastGood : null);
   const veiled = !current && Boolean(shown);
+  // O texto do comparado ("vs. os 14 primeiros dias de Agosto 2026") fala dos
+  // números que estão na tela: sob o véu, é o do resultado velho.
+  const compareText = shown ? compareTextOf(shown.period, shown.cmp) : null;
 
   // Que lista é esta: o submenu mais o endereço (período, filtros e o recorte da
   // lista). Quando muda, a lista volta aos 50 primeiros. Sai dos filtros do
@@ -179,7 +182,7 @@ export function RelatoriosView({
             {secao === 'conversao' ? (
               <ConversaoSection
                 report={shown.report}
-                cmp={shown.cmp}
+                compareText={compareText}
                 listId={listId}
                 year={year}
                 onCut={onCut}
@@ -187,7 +190,7 @@ export function RelatoriosView({
                 apptsPartial={apptsPartialOf(shown.period, shown.cmp)}
               />
             ) : (
-              <EntradaSection report={shown.report} cmp={shown.cmp} listId={listId} year={year} onCut={onCut} exportAction={exportAction} />
+              <EntradaSection report={shown.report} compareText={compareText} listId={listId} year={year} onCut={onCut} exportAction={exportAction} />
             )}
           </div>
         )}

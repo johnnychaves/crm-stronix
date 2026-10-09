@@ -113,6 +113,23 @@ export function fmtScreenDate(d, currentYear) {
   return d.getFullYear() === currentYear ? dayMonth : `${dayMonth}/${d.getFullYear()}`;
 }
 
+// O texto do comparado ao lado do número grande ("vs. Agosto 2026"). Com o mês
+// em andamento, o comparado é o mesmo começo do mês anterior, e o texto diz
+// quantos dias, como o painel CRM ("Pró-rata: mesmos 14 primeiros dias de
+// agosto"): "vs. os 14 primeiros dias de Agosto 2026", ou "vs. o primeiro dia
+// de Agosto 2026" no dia 1. Os dias são os que já passaram do mês exibido,
+// contando o de hoje (a regra do painel: o dia da data de agora). Quando eles
+// cobrem todos os dias do comparado (31 de outubro contra setembro, que tem 30),
+// o comparado entra inteiro e o texto é só o nome dele. O mês fechado, o atalho
+// e o intervalo mantêm o nome do comparado (cmp.label).
+export function compareTextOf(period, cmp) {
+  if (!cmp) return null;
+  if (period?.kind !== 'mes' || !period.running) return `vs. ${cmp.label}`;
+  const days = period.end.getDate();
+  if (days >= cmp.days) return `vs. ${cmp.label}`;
+  return days === 1 ? `vs. o primeiro dia de ${cmp.label}` : `vs. os ${days} primeiros dias de ${cmp.label}`;
+}
+
 // Situação de hoje do lead, pelo deriveLeadBucket.
 export const SITUACAO_LABEL = Object.freeze({ ativo: 'Em aberto', cliente: 'Cliente', perda: 'Perdido' });
 
