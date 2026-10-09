@@ -113,7 +113,7 @@ Tudo que a pessoa escolhe fica no endereço, pela tabela de `src/lib/screenParam
 
 - **Base:** a safra do período, que são os leads cadastrados nele, acompanhados até agora (`outcomeAt` e `cohortMilestones`).
 - **No topo:** leads da safra, quantos agendaram, vieram, matricularam, se perderam e seguem em aberto, e a conversão em %.
-- **Recortes:** origem, consultor e rapidez do primeiro contato, nas faixas do painel: até 1 hora, de 1 a 24 horas, mais de 24 horas e sem contato. Cada faixa mostra a sua conversão.
+- **Recortes:** origem, consultor e rapidez do primeiro contato, nas faixas e com os nomes do painel: até 1 hora, até 24 horas (mais de 1 hora e até 24), mais de 24 horas e sem contato. Cada faixa mostra a sua conversão.
 - **Primeiro contato:** segue a regra do painel (`isContactInteraction` e `firstContactOf`), com o limite no fim do mês seguinte ao do cadastro de cada lead.
 - **Lista:** nome, origem, consultor, data de cadastro, primeiro contato (a data e quanto demorou), se agendou, se veio, o desfecho (matriculou, perdeu ou em aberto) e a data do desfecho. Os mais recentes primeiro.
 
