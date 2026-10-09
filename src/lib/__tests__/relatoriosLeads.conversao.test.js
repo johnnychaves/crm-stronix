@@ -3,7 +3,7 @@
 // números são os do painel CRM (metricsOf).
 import { describe, it, expect } from 'vitest';
 import { conversaoReport, CONVERSAO_COLUMNS, SPEED_BUCKETS } from '../relatorios/leads/conversao.js';
-import { metricsOf } from '../crm/metrics.js';
+import { metricsOf, crmDelta } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
 import { periodFromParams, previousPeriod } from '../period.js';
 import { makeCtx, NOW, L, D, N } from './fixtures/crmCtx.js';
@@ -35,7 +35,7 @@ const withLead = (ctx, key, lead, interactions = []) => {
 const faixaOf = (r, id) => r.rows.find((x) => x.id === id).cuts.find((c) => c.startsWith('faixa:'));
 
 describe('Conversão', () => {
-  it('a safra do mês, os números e a conversão', () => {
+  it('a safra do mês, os números com a variação e a conversão', () => {
     const r = rel(ctxOf());
     expect(r.totals).toEqual({ leads: 5, sched: 3, came: 1, enrolled: 1, lost: 1, open: 3, conv: 20 });
     expect(r.conversion.value).toBe(20);
@@ -43,6 +43,13 @@ describe('Conversão', () => {
       [null, 5], ['situacao:agendaram', 3], ['situacao:vieram', 1],
       ['situacao:matricularam', 1], ['situacao:perderam', 1], ['situacao:em-aberto', 3],
     ]);
+    // Cada número do topo mostra a variação do próprio número. "Em aberto" não
+    // tem, e "Perderam" é o único em que cair é bom.
+    const tile = Object.fromEntries(r.tiles.map((t) => [t.name, t]));
+    const keyOf = { 'Leads da safra': 'leads', Agendaram: 'sched', Vieram: 'came', Matricularam: 'enrolled', Perderam: 'lost' };
+    Object.entries(keyOf).forEach(([name, k]) => expect(tile[name].delta, name).toEqual(crmDelta(r.totals[k], r.before[k])));
+    expect(tile['Em aberto'].delta).toBeUndefined();
+    expect(r.tiles.filter((t) => t.lowerBetter).map((t) => t.name)).toEqual(['Perderam']);
   });
 
   it('a rapidez do primeiro contato nas faixas do painel, com a conversão de cada uma', () => {
@@ -80,7 +87,7 @@ describe('Conversão', () => {
     }]);
   });
 
-  it('no mês inteiro, os números são os do painel CRM, para cada pessoa e funil', () => {
+  it('no mês inteiro, os números são os do painel CRM, para cada pessoa e funil, e as origens empatadas seguem a ordem dele', () => {
     const ctx = ctxOf();
     for (const userId of [null, 'ana', 'diego']) {
       for (const funnelId of [null, 'ven', 'ind']) {
@@ -98,6 +105,17 @@ describe('Conversão', () => {
         }
       }
     }
+
+    // Duas origens com os mesmos leads e matrículas diferentes: a ordem é a do
+    // painel (mais matrículas primeiro), e não a do nome.
+    const tie = { ...makeCtx(), sources: [] };
+    [
+      L('f1', { source: 'Alfa' }), L('f2', { source: 'Alfa' }),
+      L('g1', { source: 'Beta', status: 'Venda', isConverted: true, convertedAt: D(9, 5) }), L('g2', { source: 'Beta' }),
+    ].forEach((lead) => withLead(tie, '2026-09', lead));
+    const order = metricsOf(tie, { monthKey: '2026-09' }).channels.map((c) => c.name);
+    expect(order).toEqual(['Instagram', 'Beta', 'Alfa', 'Indicação']);
+    expect(conversaoReport(tie, { period: setembro }).bySource.map((x) => x.name)).toEqual(order);
   });
 });
 
