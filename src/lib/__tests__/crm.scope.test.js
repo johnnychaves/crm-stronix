@@ -127,6 +127,7 @@ describe('makeScope', () => {
     expect(duas.inScope(lead({ consultantId: 'ex' }))).toBe(false);
     expect(so.inScope(lead({ consultantId: 'diego' }))).toBe(false);
     expect(so.inScope({ id: 'z', unknown: true })).toBe(false);
+    expect(makeScope({ users: USERS, funnels: FUNNELS, userIds: [OTHERS_ID] }).inScope(lead({ consultantId: 'ex' }))).toBe(false);
     expect(vazia.inScope(lead({ consultantId: 'ex' }))).toBe(true);
     expect(vazia.inScope({ id: 'z', unknown: true })).toBe(true);
   });

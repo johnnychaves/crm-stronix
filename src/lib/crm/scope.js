@@ -52,7 +52,9 @@ export function funnelStagesOf(statuses, funnelId, defaultFunnelId) {
 // (apagado, ou busca por id que falhou) só entra na equipe toda e em Todos os
 // funis, e na pessoa conta como Outros. `userIds` é o filtro de várias pessoas
 // dos Relatórios: com ids, o dono do lead precisa ser um deles; vazio é a
-// equipe toda. Com uma pessoa só, dá o mesmo que `userId`.
+// equipe toda. Com uma pessoa da equipe só, dá o mesmo que `userId`.
+// O OTHERS_ID não vale na lista: os Relatórios só passam ids de quem está
+// na equipe.
 export function makeScope({ users, funnels, userId = null, userIds = null, funnelId = null }) {
   const team = new Set((users || []).map((u) => u.id));
   const clientIds = new Set((funnels || []).filter(isClientFunnel).map((f) => f.id));
