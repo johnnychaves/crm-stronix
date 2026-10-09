@@ -298,9 +298,13 @@ describe('fundo da barra fixa', () => {
     expect(fundo).toContain('bg-paper-50');
     expect(fundo).toContain('dark:bg-neutral-950');
     expect(fundo).not.toContain('bg-background');
-    // A raiz do App continua com esse mesmo par: se ela mudar, a barra tem de mudar junto.
+    // A raiz do App continua com esse mesmo par: se ela mudar, a barra tem de mudar junto. A tela de
+    // carregamento (min-h-screen) tem o mesmo par e não é o que fica atrás da barra, então a conferência
+    // se prende à div da raiz pelas classes que só ela tem (flex h-[100dvh]). O fim do par olha adiante
+    // para não aceitar uma classe mais comprida, como dark:bg-neutral-950/50.
     // Pelo caminho em texto: no jsdom o URL global não é o do Node, e o readFileSync recusa.
     const app = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../App.jsx'), 'utf8');
-    expect(app).toContain('bg-paper-50 dark:bg-neutral-950');
+    const raizDoApp = /<div className="flex h-\[100dvh\] bg-paper-50 dark:bg-neutral-950(?=[\s"])/;
+    expect(raizDoApp.test(app), 'a div da raiz do App (flex h-[100dvh]) mudou de fundo: acerte o da barra em RelatoriosToolbar.jsx').toBe(true);
   });
 });
