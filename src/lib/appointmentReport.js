@@ -6,6 +6,7 @@ import { getLeadAppointmentDate, getAppointmentOutcomeMeta } from './leads.js';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from './professores.js';
 import { getTrialPassNote } from './freePass.js';
 import { contactLabel, contactOf } from './guardian.js';
+import { toCsv } from './csvExport.js';
 
 const DAY_MS = 86400000;
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -118,16 +119,11 @@ export function buildReportRows(leads, { isAula = false, filters = {}, now = new
     });
 }
 
-// rowsToCsv(rows, columns) — separador ';' (Excel pt-BR). O BOM UTF-8 fica a
-// cargo de quem monta o Blob (mantém esta função testável como texto puro).
+// rowsToCsv(rows, columns): a planilha única do app (src/lib/csvExport.js),
+// com separador ';' e a proteção contra fórmula. O BOM UTF-8 fica com o
+// download (downloadCsv), e esta função continua testável como texto puro.
 export function rowsToCsv(rows, columns) {
-  const esc = (val) => {
-    const s = String(val ?? '');
-    return /[;"\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
-  const header = columns.map((c) => esc(c.label)).join(';');
-  const lines = (rows || []).map((r) => columns.map((c) => esc(r[c.key])).join(';'));
-  return [header, ...lines].join('\r\n');
+  return toCsv(rows, columns);
 }
 
 const escHtml = (val) =>

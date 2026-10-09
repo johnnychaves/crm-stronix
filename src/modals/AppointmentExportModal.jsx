@@ -8,6 +8,7 @@ import { getLeadAppointmentDate, getLeadAppointmentType } from '../lib/leads.js'
 import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
 import { SOLO_TRAINING, SOLO_TRAINING_LABEL } from '../lib/professores.js';
 import { REPORT_OUTCOME_OPTIONS, getReportColumns, buildReportRows, rowsToCsv, buildReportHtml } from '../lib/appointmentReport.js';
+import { downloadCsv } from '../lib/csvExport.js';
 import { cn } from '../lib/utils.js';
 import { useGeneralConfig } from '../contexts/GeneralConfigContext.jsx';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -172,17 +173,7 @@ function AppointmentExportModal({ open, onClose, db, appointmentType, isAula, us
       if (!result) return;
       const columns = getReportColumns(isAula);
       const csv = rowsToCsv(result.rows, columns);
-      // BOM UTF-8 explícito — sem ele o Excel pt-BR pode abrir o CSV
-      // com acentuação quebrada.
-      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${isAula ? 'aulas' : 'visitas'}_${draftStart}_a_${draftEnd}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadCsv(`${isAula ? 'aulas' : 'visitas'}_${draftStart}_a_${draftEnd}.csv`, csv);
     } finally {
       setBusy(null);
     }
