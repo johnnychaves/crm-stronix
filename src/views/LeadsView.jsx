@@ -3,9 +3,9 @@ import { AlertCircle, Calendar, Check, Download, Phone, SlidersHorizontal, Users
 import { normalizeLeadDoc } from '../lib/leads.js';
 import { isSeller } from '../lib/acesso.js';
 import { LIST_PAGE_SIZE, buildInteractionIndex, lastInteractionDateOf, isHotLeadFromDate } from '../lib/leadStatus.js';
-import { usePagedLeads } from '../hooks/usePagedLeads.js';
+import { useLiveLeads } from '../hooks/useLiveLeads.js';
 import { useScreenParams } from '../hooks/useScreenParams.js';
-import { allLeadsQuerySpec } from '../lib/leadQueries.js';
+import { allLeadsQuerySpec, ALL_LEADS_KEY } from '../lib/leadQueries.js';
 import { LEADS_PATH } from '../lib/firebase.js';
 import { getDefaultFunnel, isItemInFunnel } from '../lib/funnels.js';
 import { getKanbanColumnAccent } from '../lib/kanban.js';
@@ -26,7 +26,7 @@ const statusColorOf = (name, statuses) =>
     : name === 'Perda' ? 'gray'
       : (statuses || []).find(s => s.name === name)?.color || 'gray';
 
-function LeadsView({ interactions, statuses, usersList, funnels, selectedFunnelId: savedFunnelId, setSelectedFunnelId: rememberFunnel, db }) {
+function LeadsView({ interactions, statuses, usersList, funnels, selectedFunnelId: savedFunnelId, setSelectedFunnelId: rememberFunnel, db, listenersActive = true }) {
   const toast = useToast();
   // Responsável é quem vende: o professor não é dono de lead e fica fora do
   // filtro e do endereço (isSeller, em src/lib/acesso.js).
@@ -35,12 +35,15 @@ function LeadsView({ interactions, statuses, usersList, funnels, selectedFunnelI
   // Fonte dos leads (G1a): query própria em vez do prop global. allLeadsQuerySpec
   // traz TODOS os leads de TODOS os buckets (Venda/Perda inclusive) de uma vez;
   // a tela segue filtrando/ordenando/paginando client-side EXATAMENTE como antes
-  // — só muda a fonte. getDocs (não ao vivo): ao trocar de aba, remonta e refaz o
-  // fetch. mapDoc = normalizeLeadDoc pro shape bater com o que o App entregava
-  // (mesma normalização de App.jsx). Paginação real (server-side) fica pro H.
+  // — só muda a fonte. Ao vivo desde 09/10/2026 (useLiveLeads): a leitura única
+  // vinha inteira do servidor a cada visita, e a ao vivo, com o cache
+  // persistente, cobra só o que mudou quando a pessoa volta em até 30 minutos.
+  // A mesma consulta das Configurações (specKey ALL_LEADS_KEY). mapDoc =
+  // normalizeLeadDoc pro shape bater com o que o App entregava.
   const leadsSpec = useMemo(() => allLeadsQuerySpec(), []);
-  const { items: leads, loading: leadsLoading } = usePagedLeads({
-    db, path: LEADS_PATH, spec: leadsSpec, specKey: 'leads-all', mapDoc: normalizeLeadDoc, enabled: !!db,
+  const { items: leads, loading: leadsLoading } = useLiveLeads({
+    db, path: LEADS_PATH, spec: leadsSpec, specKey: ALL_LEADS_KEY, mapDoc: normalizeLeadDoc,
+    enabled: !!db && listenersActive,
   });
 
   const [filterOpen, setFilterOpen] = useState(false);
