@@ -63,6 +63,7 @@ import { useRenewalClients } from './hooks/useRenewalClients.js';
 import { useClientsWithContactToday } from './hooks/useClientsWithContactToday.js';
 import { useRouteScroll } from './hooks/useRouteScroll.js';
 import { useActivityGate } from './hooks/useActivityGate.js';
+import { useReloadOnUpdate } from './hooks/useReloadOnUpdate.js';
 import { getDefaultFunnel, commitOpsInChunks, ALL_FUNNELS_ID, isAllFunnels } from './lib/funnels.js';
 import { planReferralSetupOps } from './lib/referrals.js';
 import { planDefaultFunnel, planNegociacaoStages } from './lib/funnelSetup.js';
@@ -237,7 +238,10 @@ function AppInner() {
   // TODA assinatura ao vivo é derrubada. Não desloga nem limpa a tela — só corta
   // o plantão com o Firestore, que é o que a recobrança dos 30 min tarifava a
   // noite inteira numa máquina esquecida ligada. Volta ao 1º sinal de vida.
-  const listenersActive = useActivityGate();
+  // Na volta, se saiu versão nova e a tela está livre, a página recarrega antes
+  // de religar as assinaturas (src/lib/appUpdate.js).
+  const reloadIfNewVersion = useReloadOnUpdate();
+  const listenersActive = useActivityGate(undefined, { beforeResume: reloadIfNewVersion });
   // O Suporte é do gestor e do consultor (ACTIONS.SUPORTE_ABRIR). O professor
   // não tem o item no menu, então os chamados que só alimentam o selo dele não
   // são assinados.
