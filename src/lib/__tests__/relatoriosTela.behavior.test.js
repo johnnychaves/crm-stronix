@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 // A tela dos Relatórios em uso (jsdom): o que o relatoriosTela.test.js, que só
 // lê o HTML, não alcança. O número que filtra a lista e escreve o recorte no
-// endereço, o submenu que leva o período e os filtros mas não o recorte, o
-// período escolhido na barra, os filtros da barra que chegam aos números, os
-// meses que a tela pede à carga, o véu enquanto o período novo carrega (com o
+// endereço, o submenu que leva o período e os filtros mas não o recorte (e o
+// que já está aberto, que não troca nada e deixa o recorte), o período
+// escolhido na barra, os filtros da barra que chegam aos números, os meses
+// que a tela pede à carga, o véu enquanto o período novo carrega (com o
 // comparado e o aviso do que está na tela), a região de estado, os
 // agendamentos sem base, a grade dos recortes, as colunas da lista, a linha
 // Outros, a planilha, o botão que some para quem não exporta e a lista que
@@ -20,7 +21,7 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { createElement as h, act } from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, useLocation } from 'react-router';
+import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import { LeadProfileContext } from '../../contexts/LeadProfileContext.jsx';
 import { hrefFor } from '../routes.js';
 import { ENTRADA_COLUMNS } from '../relatorios/leads/entrada.js';
@@ -105,17 +106,31 @@ function Sonda() {
   return h('output', { 'data-sonda': '' }, useLocation().search);
 }
 
+// O que o App faz no onSection (o goToSub): troca o endereço pelo do submenu, com a
+// query que a tela mandou e com replace. O onSection falso do resto do arquivo não
+// navega, e sem navegar não há como ver o recorte sumir do endereço.
+function TelaQueTroca({ onSection, ...props }) {
+  const navigate = useNavigate();
+  return h(RelatoriosView, {
+    ...props,
+    onSection: (id, query) => {
+      onSection(id, query);
+      navigate(hrefFor('acad', 'relatorios', { sub: id }) + query, { replace: true });
+    },
+  });
+}
+
 let root = null;
 let container = null;
 let avisos = [];
-const arvore = (url, props) => h(MemoryRouter, { initialEntries: [url] },
-  h(LeadProfileContext.Provider, { value: profile }, h(RelatoriosView, { ...TELA, ...props })),
+const arvore = (url, props, Tela = RelatoriosView) => h(MemoryRouter, { initialEntries: [url] },
+  h(LeadProfileContext.Provider, { value: profile }, h(Tela, { ...TELA, ...props })),
   h(Sonda));
-async function montar(url, props = {}) {
+async function montar(url, props = {}, Tela) {
   container = document.createElement('div');
   document.body.appendChild(container);
   root = createRoot(container);
-  await act(async () => { root.render(arvore(url, props)); });
+  await act(async () => { root.render(arvore(url, props, Tela)); });
 }
 // Outro submenu, ou a carga trocada, na mesma árvore: o endereço inicial só vale na primeira vez.
 const remontar = (url, props = {}) => act(async () => { root.render(arvore(url, props)); });
@@ -207,6 +222,28 @@ describe('lista ao lado', () => {
     expect(onSection).toHaveBeenCalledWith('conversao', '?periodo=semana-passada&resp=diego&origem=Instagram&funil=ven');
     // Quem troca de submenu é o App, com essa query: a tela não navega sozinha.
     expect(sonda()).toBe('?periodo=semana-passada&resp=diego&origem=Instagram&funil=ven&recorte=origem%3AInstagram');
+  });
+
+  it('clicar no submenu que já está aberto não chama onSection e deixa o recorte da lista no endereço', async () => {
+    const onSection = vi.fn();
+    await montar('/acad/relatorios?resp=diego&recorte=origem%3AInstagram', { onSection }, TelaQueTroca);
+    // O recorte está valendo: da carteira do Diego, só quem veio do Instagram, com o filtro à vista na lista.
+    expect(sonda()).toBe('?resp=diego&recorte=origem%3AInstagram');
+    expect(fichas()).toEqual(['s4']);
+    expect(limpar()).not.toBeNull();
+
+    await clicar(submenu('Entrada de leads'));
+    expect(onSection).not.toHaveBeenCalled();
+    expect(sonda()).toBe('?resp=diego&recorte=origem%3AInstagram');
+    expect(fichas()).toEqual(['s4']);
+    expect(limpar()).not.toBeNull();
+
+    // Controle: o clique em outro submenu navega e leva só o recorte embora. Sem isto, o endereço
+    // acima poderia ter ficado parado por a troca de endereço do teste não funcionar.
+    await clicar(submenu('Conversão'));
+    expect(onSection).toHaveBeenCalledTimes(1);
+    expect(onSection).toHaveBeenCalledWith('conversao', '?resp=diego');
+    expect(sonda()).toBe('?resp=diego');
   });
 
   it('não repete o título da tela, que é o do cabeçalho do App, e começa na altura da barra', async () => {

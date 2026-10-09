@@ -108,8 +108,14 @@ export function RelatoriosView({
   const listId = `${secao}${screenParamsQuery('relatorios', params, paramsCtx)}`;
 
   // Trocar de submenu leva o período e os filtros junto, sem o recorte da
-  // lista, que é de cada submenu.
-  const goSection = (id) => onSection(id, screenParamsQuery('relatorios', { ...params, recorte: null }, paramsCtx));
+  // lista, que é de cada submenu. Clicar no submenu que já está aberto não
+  // troca nada: o App navegaria para o mesmo endereço sem o recorte, e a lista
+  // perderia o filtro sem ninguém ter pedido. O seletor do celular já só avisa
+  // quando o valor muda.
+  const goSection = (id) => {
+    if (id === secao) return;
+    onSection(id, screenParamsQuery('relatorios', { ...params, recorte: null }, paramsCtx));
+  };
   const onCut = (code) => setParams({ recorte: code });
   const onPeriod = (kind) => setParams(kind === 'mes'
     ? { periodo: null, de: null, ate: null, monthKey: currentKey }
