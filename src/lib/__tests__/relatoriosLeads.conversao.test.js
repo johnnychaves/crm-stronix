@@ -11,10 +11,13 @@ import { makeCtx, NOW, L, D } from './fixtures/crmCtx.js';
 // Um lead de agosto depois do corte, para o teste provar que o comparado para
 // no mesmo ponto.
 const A4 = L('a4', { createdAt: D(8, 20) });
+// Um lead de agosto com visita marcada no próprio lead: no comparado cortado,
+// esse agendamento em aberto não conta (é o retrato de hoje).
+const A5 = L('a5', { createdAt: D(8, 6), appointmentScheduledFor: D(9, 20) });
 const ctxOf = () => {
   const c = makeCtx();
-  c.months['2026-08'] = { ...c.months['2026-08'], leadsCreated: [...c.months['2026-08'].leadsCreated, A4] };
-  c.leadsById = new Map([...c.leadsById, ['a4', A4]]);
+  c.months['2026-08'] = { ...c.months['2026-08'], leadsCreated: [...c.months['2026-08'].leadsCreated, A4, A5] };
+  c.leadsById = new Map([...c.leadsById, ['a4', A4], ['a5', A5]]);
   return { ...c, sources: [] };
 };
 const setembro = periodFromParams({ monthKey: '2026-09' }, NOW);
