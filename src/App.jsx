@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap, ListChecks } from 'lucide-react';
+import { LayoutDashboard, Users, Plus, AlertTriangle, Activity, X, Menu, Settings, Kanban, Moon, Sun, Target, Globe, LifeBuoy, GraduationCap, ListChecks, ChartColumn } from 'lucide-react';
 
 import {
   onAuthStateChanged,
@@ -107,6 +107,7 @@ import { AddLeadModal } from './modals/AddLeadModal.jsx';
 import { DailyGoalView } from './views/DailyGoalView.jsx';
 import { ProfessorGoalPlaceholder } from './views/ProfessorGoalPlaceholder.jsx';
 import { RotinasView } from './views/RotinasView.jsx';
+import { RelatoriosView } from './views/relatorios/RelatoriosView.jsx';
 import { RotinasNovo, NOVO_ATE as ROTINAS_NOVO_ATE } from './components/rotinas/RotinasIntro.jsx';
 import { SettingsView } from './views/settings/SettingsView.jsx';
 import { WhatsNewModal } from './components/WhatsNewModal.jsx';
@@ -1393,9 +1394,11 @@ useEffect(() => {
   // novidade apagaria do histórico a tela em que a pessoa estava. O state vai
   // explícito porque o navigate não o repassa sozinho, e é nele que vive a
   // origem da ficha.
-  const goToSub = (screen, subId, extra) => {
+  // `query` é a dos Relatórios: trocar de submenu leva o período e os filtros
+  // junto (screenParamsQuery da tela, sem o recorte da lista).
+  const goToSub = (screen, subId, extra, query = '') => {
     const href = hrefFor(sessionTenant, screen, { sub: subId, ...extra });
-    if (href) navigate(href, { replace: shown.screen === screen, state: location.state });
+    if (href) navigate(href + query, { replace: shown.screen === screen, state: location.state });
   };
   // "Configurar agora" da novidade abre Configurações já em Metas e ritmo, e
   // agora troca a seção com a tela já aberta, porque a seção está no endereço.
@@ -1628,6 +1631,7 @@ useEffect(() => {
                     <SidebarSubItem label="Visitas" href={menuHref('visitas')} onNavigate={closeDrawer} active={activeTab === 'visitas'} />
                   </SidebarGroup>
                 )}
+                {nav.relatorios && <SidebarItem icon={<ChartColumn className="w-[18px] h-[18px]" />} label="Relatórios" href={menuHref('relatorios')} onNavigate={closeDrawer} active={activeTab === 'relatorios'} />}
                 {nav.suporte && <SidebarItem icon={<LifeBuoy className="w-[18px] h-[18px]" />} label="Suporte" badge={ticketsUnread > 0 ? ticketsUnread : null} active={false} onClick={() => setTicketModalOpen(true)} />}
               </div>
             </>
@@ -1705,6 +1709,7 @@ useEffect(() => {
               {activeTab === 'leads' && 'Todos os Leads'}
               {activeTab === 'aulas' && 'Aulas Experimentais'}
               {activeTab === 'visitas' && 'Visitas'}
+              {activeTab === 'relatorios' && 'Relatórios'}
               {activeTab === 'settings' && 'Configurações'}
               {activeTab === 'profile' && 'Perfil da academia'}
               {activeTab === 'billing' && 'Plano & faturas'}
@@ -1866,6 +1871,9 @@ useEffect(() => {
                   atalho de presença, hoje exclusividade da Meta Diária). */}
               {activeTab === 'aulas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="aula_experimental" />}
               {activeTab === 'visitas' && <AppointmentTrackingView appUser={appUser} tags={tags} lossReasons={lossReasons} db={db} funnels={funnels} usersList={usersList} appointmentType="visita" />}
+              {/* Relatórios (spec 2026-10-09): o submenu vem do endereço (sub), e
+                  trocar de submenu leva o período e os filtros junto. */}
+              {activeTab === 'relatorios' && <RelatoriosView db={db} appUser={appUser} usersList={usersList} funnels={funnels} sources={sources} liveLeads={metaLeads} interactions={interactions} listenersActive={listenersActive} section={sub} onSection={(id, query) => goToSub('relatorios', id, undefined, query)} />}
               {activeTab === 'settings' && isGestor(appUser) && <SettingsView section={sub} onSection={(id) => goToSub('settings', id)} sources={sources} statuses={statuses} db={db} usersList={usersList} appUser={appUser} tags={tags} lossReasons={lossReasons} dores={dores} funnels={funnels} modalities={modalities} planos={planos} trialClassOptions={trialClassOptions} units={units} metaWeekdays={metaWeekdays} />}
               {activeTab === 'rotinas' && isGestor(appUser) && (
                 <RotinasView

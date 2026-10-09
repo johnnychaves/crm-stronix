@@ -50,7 +50,7 @@ describe('casca do App para o professor', () => {
     const menu = app.slice(app.indexOf('>Workspace</div>'), app.indexOf('>Administração</div>'));
     const itens = [
       ['overview', 'Visão geral'], ['kanban', 'Pipeline'], ['clientes', 'Clientes'],
-      ['dailyGoal', 'Meta diária'], ['leads', 'Leads'], ['suporte', 'Suporte'],
+      ['dailyGoal', 'Meta diária'], ['leads', 'Leads'], ['relatorios', 'Relatórios'], ['suporte', 'Suporte'],
     ];
     for (const [chave, rotulo] of itens) {
       const idx = menu.indexOf(`label="${rotulo}"`);
