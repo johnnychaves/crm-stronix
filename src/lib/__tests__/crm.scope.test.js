@@ -117,4 +117,17 @@ describe('makeScope', () => {
     expect(makeScope({ users: USERS, funnels: FUNNELS, userId: OTHERS_ID }).inScope(unknown)).toBe(true);
     expect(makeScope({ users: USERS, funnels: FUNNELS, funnelId: 'ven' }).inScope(unknown)).toBe(false);
   });
+
+  it('lista de pessoas: o dono do lead é uma delas; lista vazia é a equipe toda', () => {
+    const duas = makeScope({ users: USERS, funnels: FUNNELS, userIds: ['ana', 'diego'] });
+    const so = makeScope({ users: USERS, funnels: FUNNELS, userIds: ['ana'] });
+    const vazia = makeScope({ users: USERS, funnels: FUNNELS, userIds: [] });
+    expect(duas.inScope(lead())).toBe(true);
+    expect(duas.inScope(lead({ consultantId: 'diego' }))).toBe(true);
+    expect(duas.inScope(lead({ consultantId: 'ex' }))).toBe(false);
+    expect(so.inScope(lead({ consultantId: 'diego' }))).toBe(false);
+    expect(so.inScope({ id: 'z', unknown: true })).toBe(false);
+    expect(vazia.inScope(lead({ consultantId: 'ex' }))).toBe(true);
+    expect(vazia.inScope({ id: 'z', unknown: true })).toBe(true);
+  });
 });

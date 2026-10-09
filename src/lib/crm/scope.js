@@ -50,12 +50,16 @@ export function funnelStagesOf(statuses, funnelId, defaultFunnelId) {
 // equipe. Funil = o do lead, com o lead sem funil caindo no padrão; sem funil
 // escolhido, todo lead que não está num funil de cliente. Lead desconhecido
 // (apagado, ou busca por id que falhou) só entra na equipe toda e em Todos os
-// funis, e na pessoa conta como Outros.
-export function makeScope({ users, funnels, userId = null, funnelId = null }) {
+// funis, e na pessoa conta como Outros. `userIds` é o filtro de várias pessoas
+// dos Relatórios: com ids, o dono do lead precisa ser um deles; vazio é a
+// equipe toda. Com uma pessoa só, dá o mesmo que `userId`.
+export function makeScope({ users, funnels, userId = null, userIds = null, funnelId = null }) {
   const team = new Set((users || []).map((u) => u.id));
   const clientIds = new Set((funnels || []).filter(isClientFunnel).map((f) => f.id));
   const defaultFunnelId = getDefaultFunnel(funnels)?.id || null;
+  const ids = Array.isArray(userIds) && userIds.length ? new Set(userIds) : null;
   const ownerOk = (lead) => {
+    if (ids) return Boolean(lead) && !lead.unknown && ids.has(lead.consultantId);
     if (!userId) return true;
     if (!lead || lead.unknown) return userId === OTHERS_ID;
     return userId === OTHERS_ID ? !team.has(lead.consultantId) : lead.consultantId === userId;
