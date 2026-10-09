@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  appointmentsOf, recordsByLeadOf, cohortMilestones, professorsOf, visitOutcomesByLead, effectiveStatus
+  appointmentsOf, recordsByLeadOf, cohortMilestones, cohortMilestoneOf, professorsOf, visitOutcomesByLead, effectiveStatus
 } from '../crm/appointments.js';
 
 const D = (m, d, h = 10) => new Date(2026, m - 1, d, h);
@@ -282,5 +282,21 @@ describe('professores', () => {
 
   it('mês sem aula: sem linhas, sem treina sozinho', () => {
     expect(professorsOf([], WIN)).toEqual({ rows: [], solo: null, done: 0 });
+  });
+});
+
+describe('marcos de um lead da safra', () => {
+  const asOf = D(9, 20);
+
+  it('agendou e veio, pela mesma regra da contagem', () => {
+    const recordsByLead = recordsByLeadOf([R('m1', { status: 'attended', scheduledFor: D(9, 5), createdAt: D(9, 2) })]);
+    expect(cohortMilestoneOf(lead('a'), { asOf, cut: false, recordsByLead })).toEqual({ booked: true, attended: true });
+    expect(cohortMilestones([lead('a')], { asOf, cut: false, recordsByLead })).toEqual({ sched: 1, came: 1 });
+  });
+
+  it('só agendou, ou nem agendou', () => {
+    const agendado = recordsByLeadOf([R('m2', { scheduledFor: D(9, 25), createdAt: D(9, 3) })]);
+    expect(cohortMilestoneOf(lead('a'), { asOf, cut: false, recordsByLead: agendado })).toEqual({ booked: true, attended: false });
+    expect(cohortMilestoneOf(lead('b'), { asOf, cut: false, recordsByLead: agendado })).toEqual({ booked: false, attended: false });
   });
 });

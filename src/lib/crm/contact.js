@@ -46,12 +46,7 @@ export function contactTimesByLead(interactions) {
 // eles também passaram de 24 horas sem primeiro contato.
 export function firstContactOf(cohort, { contactTimes, limit }) {
   const list = cohort || [];
-  const values = list.map((l) => {
-    if (!(l.createdAt instanceof Date)) return null;
-    const from = l.createdAt.getTime();
-    const t = (contactTimes.get(l.id) || []).find((x) => x >= from && x < limit);
-    return t == null ? null : (t - from) / 60000;
-  });
+  const values = list.map((l) => firstContactMinutesOf(l, { contactTimes, limit }));
   const waitedLong = (l) => l.createdAt instanceof Date && (limit - l.createdAt.getTime()) / 60000 > 1440;
   return {
     total: values.length,
@@ -62,4 +57,15 @@ export function firstContactOf(cohort, { contactTimes, limit }) {
     noneLate: list.filter((l, idx) => values[idx] == null && waitedLong(l)).length,
     median: medianWithMissing(values)
   };
+}
+
+// Minutos corridos do cadastro ao primeiro contato de um lead, só com
+// interação em [cadastro, limit). Sem interação no prazo, ou sem data de
+// cadastro: null. É a regra de cada lead do firstContactOf, que os Relatórios
+// mostram lead por lead.
+export function firstContactMinutesOf(l, { contactTimes, limit }) {
+  if (!(l?.createdAt instanceof Date)) return null;
+  const from = l.createdAt.getTime();
+  const t = (contactTimes.get(l.id) || []).find((x) => x >= from && x < limit);
+  return t == null ? null : (t - from) / 60000;
 }
