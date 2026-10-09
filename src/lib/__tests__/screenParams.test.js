@@ -594,8 +594,34 @@ describe('Relatórios', () => {
   it('o recorte da lista no formato tipo:valor', () => {
     expect(ler('relatorios', '?recorte=situacao:matricularam', rel).recorte).toBe('situacao:matricularam');
     expect(volta('relatorios', '?recorte=origem:Instagram', rel)).toBe('?recorte=origem%3AInstagram');
-    for (const q of ['?recorte=', '?recorte=matricularam', '?recorte=Situacao:x', `?recorte=origem:${'x'.repeat(81)}`]) {
+    for (const q of [
+      '?recorte=', '?recorte=matricularam', '?recorte=Situacao:x', `?recorte=origem:${'x'.repeat(81)}`,
+      '?recorte=origem:a%09b', // tab
+      '?recorte=origem:a%00b', // NUL
+    ]) {
       expect(ler('relatorios', q, rel).recorte, q).toBeNull();
     }
+  });
+
+  it('o que a tela monta ao escolher o período: o mês antigo não vai junto, e o intervalo ganha', () => {
+    const v = ler('relatorios', '?mes=2026-07', rel);
+    expect(montar('relatorios', { ...v, periodo: 'semana' }, rel)).toBe('?periodo=semana');
+    expect(montar('relatorios', { ...v, de: '2026-09-01', ate: '2026-09-10' }, rel)).toBe('?de=2026-09-01&ate=2026-09-10');
+    expect(montar('relatorios', { ...v, periodo: 'hoje', de: '2026-09-01', ate: '2026-09-10' }, rel)).toBe('?de=2026-09-01&ate=2026-09-10');
+    expect(montar('relatorios', { ...v, periodo: 'hoje', de: '2026-09-10', ate: '2026-09-01' }, rel)).toBe('?periodo=hoje');
+    expect(montar('relatorios', { ...v, origem: 'Outdoor', recorte: 'sem formato' }, rel)).toBe('?mes=2026-07');
+  });
+
+  it('intervalo válido: ida e volta, e o mês do endereço some na leitura', () => {
+    expect(volta('relatorios', '?mes=2026-07&periodo=hoje&de=2026-09-01&ate=2026-09-10', rel)).toBe('?de=2026-09-01&ate=2026-09-10');
+    expect(ler('relatorios', '?mes=2026-07&de=2026-09-01&ate=2026-09-10', rel))
+      .toMatchObject({ periodo: null, de: '2026-09-01', ate: '2026-09-10', monthKey: HOJE });
+  });
+
+  it('sem todayKey nenhum intervalo vale; data final sozinha e periodo desconhecido caem no padrão', () => {
+    expect(ler('relatorios', '?de=2026-09-01&ate=2026-09-10', { ...rel, todayKey: undefined }))
+      .toMatchObject({ de: null, ate: null, monthKey: HOJE });
+    expect(ler('relatorios', '?ate=2026-09-10', rel)).toMatchObject({ de: null, ate: null, periodo: null, monthKey: HOJE });
+    expect(ler('relatorios', '?mes=2026-07&periodo=banana', rel)).toMatchObject({ periodo: null, monthKey: '2026-07' });
   });
 });

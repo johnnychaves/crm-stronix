@@ -13,7 +13,8 @@
 //   convite e a indicação pública por eles, antes do roteador.
 // - O saneamento depende de dado que só a tela tem (usuários, funis, etapas,
 //   meses comparáveis, se a pessoa vê o controle). Isso chega no `ctx`, que a
-//   tela monta com useMemo e passa no render.
+//   tela monta com useMemo e passa no render. Os Relatórios mandam também
+//   `todayKey` (para o intervalo) e `origens` (o catálogo de origens).
 
 import { CONTRACT_STATUS } from './contracts.js';
 import { DAILY_GOAL_CATEGORIES } from './leads.js';
@@ -289,6 +290,8 @@ const soNoModoMes = (p) => param(
 // hoje, metade do par) cai no mês atual, sem aviso, como o mês inválido. Com
 // período que vale, o mês fica o atual e, na tela que tem mês de comparação,
 // ele some.
+// Não é o `ajustaPeriodo` de Aulas e Visitas (30 dias, sem a janela de 12
+// meses): as duas regras são diferentes de propósito.
 function ajustaPeriodoDoPainel(valores, ctx) {
   const semComparado = 'compareKey' in valores ? { compareKey: null } : {};
   if (valores.de !== null || valores.ate !== null) {
@@ -319,11 +322,13 @@ const origem = param(
 // o formato; se o valor existe no submenu aberto, quem confere é a conta do
 // submenu, que ignora o que não acha. Nunca leva nome, telefone ou CPF de
 // lead: os tipos são fixos e os valores são códigos, ids e nomes de catálogo.
-const RECORTE_RE = /^[a-z-]+:[^\n]{1,80}$/;
+const RECORTE_RE = /^[a-z-]+:.{1,80}$/u;
+const CONTROLE_RE = /\p{Cc}/u;
+const recorteValido = (v) => typeof v === 'string' && RECORTE_RE.test(v) && !CONTROLE_RE.test(v);
 const recorte = param(
   'recorte',
-  (raw) => (RECORTE_RE.test(raw || '') ? raw : null),
-  (v) => (RECORTE_RE.test(v || '') ? v : null),
+  (raw) => (recorteValido(raw) ? raw : null),
+  (v) => (recorteValido(v) ? v : null),
 );
 
 // Tabela por tela. A ordem aqui é a ordem no endereço.
