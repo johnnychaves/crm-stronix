@@ -38,7 +38,8 @@ export function RelatoriosRail({ section, onSection }) {
       </nav>
       <div className="lg:hidden">
         <Select value={section} onValueChange={onSection}>
-          <SelectTrigger aria-label="Relatório" className="h-10 w-full">
+          {/* O data-[size=default]:h-9 do shadcn tem mais peso que um h-10 solto: a altura tem de vir pela mesma variante. */}
+          <SelectTrigger aria-label="Relatório" className="w-full data-[size=default]:h-10">
             <SelectValue />
           </SelectTrigger>
           <SelectContent position="popper" className="border-border">

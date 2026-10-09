@@ -1,8 +1,11 @@
 // Barra dos Relatórios (spec 2026-10-09, "A barra de cima"): o período e, no
 // modo mês, as setas e a lista dos 12 meses; os consultores, a origem e o
 // funil. Tudo vem do endereço e volta para ele pela tela (on*). Abaixo de md
-// os controles entram num balão, como na barra do Operacional. Desenhada com
-// a skill frontend-design, no molde dos controles do Operacional e do CRM.
+// os controles entram num balão, como na barra do Operacional, e só o período
+// fica à vista: por isso o botão do balão acende e ganha um ponto quando há
+// consultor, origem ou funil escolhido, como o botão de filtros do CRM.
+// Desenhada com a skill frontend-design, no molde dos controles do Operacional
+// e do CRM.
 //
 // O trigger dos Select usa o primitivo Radix direto (SelectPrimitive.Trigger
 // asChild), pelo mesmo motivo explicado no topo do OperacionalToolbar.jsx: o
@@ -26,21 +29,25 @@ const TODAS = '__todas__';
 // ligado. Recebe do Radix (asChild) o ref, os eventos e os atributos de
 // popover ou de combobox (aria-haspopup, aria-expanded, role, data-state), que
 // vão para o botão. O nome e a descrição vêm depois do `...rest`, para nada
-// que o Radix passe poder apagá-los: o aria-label troca o texto do botão, então
-// o leitor de tela ouve só "Consultores", e o valor escolhido ("Bruno Lima")
-// chega como descrição, ligada ao texto visível. Mesma ligação do PeriodControl.
-function FilterButton({ label, icon: Icon, active, text, compact, ...rest }) {
+// que o Radix passe poder apagá-los. O aria-label troca o texto do botão, então
+// num botão comum (Consultores) o leitor de tela ouviria só "Consultores": com
+// `describeValue`, o valor escolhido ("Bruno Lima") chega como descrição, ligada
+// ao texto visível, como no PeriodControl. O combobox do Select (Origem e Funil)
+// já expõe o próprio texto como valor, e a descrição o faria ser lido duas
+// vezes, então eles não ligam. Exportado para o teste conferir essa ordem.
+export function FilterButton({ label, icon: Icon, active, text, compact, describeValue = false, ...rest }) {
   const valueId = useId();
+  const described = describeValue ? { 'aria-describedby': valueId } : null;
   return (
     <button
       type="button"
       {...rest}
+      {...described}
       aria-label={label}
-      aria-describedby={valueId}
       className={cn('flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold', FOCUS, active ? ON : IDLE, compact && 'w-full')}
     >
       <Icon size={14} className={cn('shrink-0', active ? 'text-brand-700 dark:text-brand-300' : 'text-muted-foreground')} aria-hidden="true" />
-      <span id={valueId} className={cn('truncate', compact ? 'flex-1 text-left' : 'max-w-[160px]')}>{text}</span>
+      <span id={describeValue ? valueId : undefined} className={cn('truncate', compact ? 'flex-1 text-left' : 'max-w-[160px]')}>{text}</span>
       <ChevronDown size={13} strokeWidth={2.2} className="shrink-0 text-muted-foreground" aria-hidden="true" />
     </button>
   );
@@ -81,9 +88,12 @@ export function ConsultoresControl({ resp, people, onResp, compact = false }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <FilterButton label="Consultores" icon={Users} active={resp.length > 0} text={text} compact={compact} />
+        <FilterButton label="Consultores" icon={Users} active={resp.length > 0} text={text} compact={compact} describeValue />
       </PopoverTrigger>
-      <PopoverContent align="start" aria-label="Escolher consultores" className="w-[264px] border-border p-2">
+      {/* A lista cabe na tela e rola por dentro: a altura livre é a que o Radix mede
+          do lado em que o balão abre. Com muitos consultores, sem isso o topo (Equipe toda)
+          ou os últimos nomes ficavam fora da tela. */}
+      <PopoverContent align="start" aria-label="Escolher consultores" className="w-[264px] max-h-(--radix-popover-content-available-height) overflow-y-auto overscroll-y-contain border-border p-2">
         <ConsultoresMenu resp={resp} people={people} onResp={onResp} />
       </PopoverContent>
     </Popover>
@@ -121,6 +131,10 @@ export function FunilControl({ funnel, funnels, onFunnel, compact = false }) {
 
 export function RelatoriosToolbar(props) {
   const { period } = props;
+  // No celular só o período fica à vista: com consultor, origem ou funil
+  // escolhido, o botão do balão acende e ganha um ponto, e o nome diz que há
+  // filtro ativo (o CrmToolbar faz o mesmo).
+  const filtered = props.resp.length > 0 || Boolean(props.origem) || props.funnel !== 'all';
   const controls = (compact) => (
     <>
       <PeriodControl period={period} todayKey={props.todayKey} onPeriod={props.onPeriod} onRange={props.onRange} compact={compact} />
@@ -143,20 +157,31 @@ export function RelatoriosToolbar(props) {
   );
   // A área que rola no App tem recuo (p-4 md:p-8), e o top negativo do mesmo
   // tamanho faz a barra encostar no cabeçalho ao rolar, como a do Operacional.
+  // O fundo tem de ser o da raiz do App (bg-paper-50 dark:bg-neutral-950, em
+  // App.jsx), que é o que fica atrás da barra: o bg-background do escuro é
+  // azul-marinho e aparece como uma faixa. Mudou o fundo da raiz, mude aqui.
   return (
-    <div className="sticky -top-4 z-30 -mx-4 mb-6 flex items-center gap-2.5 border-b border-border bg-background px-4 py-2.5 md:-top-8 md:mx-0 md:px-0">
+    <div className="sticky -top-4 z-30 -mx-4 mb-6 flex items-center gap-2.5 border-b border-border bg-paper-50 px-4 py-2.5 dark:bg-neutral-950 md:-top-8 md:mx-0 md:px-0">
       <div className="hidden flex-wrap items-center gap-2.5 md:flex">{controls(false)}</div>
       <Popover>
         <PopoverTrigger asChild>
           <button
             type="button"
-            aria-label="Filtros dos relatórios"
-            className={cn('grid size-9 place-items-center rounded-xl border border-border bg-card text-muted-foreground hover:bg-muted/70 hover:text-foreground md:hidden', FOCUS)}
+            aria-label={filtered ? 'Filtros dos relatórios, há filtro ativo' : 'Filtros dos relatórios'}
+            className={cn(
+              'relative grid size-9 place-items-center rounded-xl border md:hidden',
+              FOCUS,
+              filtered ? ON : 'border-border bg-card text-muted-foreground hover:bg-muted/70 hover:text-foreground'
+            )}
           >
             <SlidersHorizontal size={16} strokeWidth={2} aria-hidden="true" />
+            {filtered && <span aria-hidden="true" className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-brand-600" />}
           </button>
         </PopoverTrigger>
-        <PopoverContent align="start" aria-label="Filtros" className="flex w-[288px] flex-col gap-2.5 border-border">{controls(true)}</PopoverContent>
+        {/* Coluna flex com altura máxima encolhe os filhos antes de rolar (os
+            botões de 36px ficavam com 25px num celular deitado): o shrink-0 faz o
+            balão rolar por dentro, com cada controle no tamanho de sempre. */}
+        <PopoverContent align="start" aria-label="Filtros" className="flex w-[288px] max-h-(--radix-popover-content-available-height) flex-col gap-2.5 overflow-y-auto overscroll-y-contain border-border [&>*]:shrink-0">{controls(true)}</PopoverContent>
       </Popover>
       <span className="num min-w-0 truncate text-[12.5px] font-semibold text-muted-foreground md:hidden">{period.label}</span>
     </div>
