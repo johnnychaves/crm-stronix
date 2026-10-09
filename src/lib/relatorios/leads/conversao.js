@@ -17,8 +17,9 @@ import {
   reportScope, newLeadsIn, namesOf, cutCode, applyCut, cutLabelOf, contactCells, CONTACT_COLUMNS, fmtDate, byNewest,
 } from './base.js';
 
-// Faixas da rapidez do primeiro contato, as do painel (firstContactOf), com os
-// limites e os nomes dele.
+// Faixas da rapidez do primeiro contato. Os limites vêm do painel, no código
+// (FIRST_CONTACT_LIMITS). Os nomes são cópia dos do card de velocidade do painel
+// (SpeedCards.jsx), e nada liga as duas cópias: mudou o nome lá, mude aqui.
 export const SPEED_BUCKETS = Object.freeze([
   Object.freeze({ id: 'ate-1h', label: 'Até 1 hora', test: (m) => m != null && m <= FIRST_CONTACT_LIMITS.h1 }),
   Object.freeze({

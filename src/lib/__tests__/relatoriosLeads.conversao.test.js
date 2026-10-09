@@ -6,7 +6,7 @@ import { conversaoReport, CONVERSAO_COLUMNS, SPEED_BUCKETS } from '../relatorios
 import { metricsOf, crmDelta } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
 import { periodFromParams, previousPeriod } from '../period.js';
-import { makeCtx, NOW, L, D, N } from './fixtures/crmCtx.js';
+import { makeCtx, NOW, L, D, N, A } from './fixtures/crmCtx.js';
 
 // Um lead de agosto depois do corte, para o teste provar que o comparado para
 // no mesmo ponto.
@@ -14,10 +14,20 @@ const A4 = L('a4', { createdAt: D(8, 20) });
 // Um lead de agosto com visita marcada no próprio lead: no comparado cortado,
 // esse agendamento em aberto não conta (é o retrato de hoje).
 const A5 = L('a5', { createdAt: D(8, 6), appointmentScheduledFor: D(9, 20) });
+// Um lead de agosto perdido antes do corte e outro que veio antes do corte: com
+// eles, a variação de cada um dos cinco números do topo sai diferente das
+// outras, e a chave trocada entre dois números aparece no teste.
+const A6 = L('a6', { createdAt: D(8, 4), status: 'Perda', lostAt: D(8, 8), lossReason: 'Preço' });
+const A7 = L('a7', { createdAt: D(8, 7) });
+const R5 = A('r5', 'a7', 'attended', D(8, 9), D(8, 8));
 const ctxOf = () => {
   const c = makeCtx();
-  c.months['2026-08'] = { ...c.months['2026-08'], leadsCreated: [...c.months['2026-08'].leadsCreated, A4, A5] };
-  c.leadsById = new Map([...c.leadsById, ['a4', A4], ['a5', A5]]);
+  c.months['2026-08'] = {
+    ...c.months['2026-08'],
+    leadsCreated: [...c.months['2026-08'].leadsCreated, A4, A5, A6, A7],
+    aulas: [...c.months['2026-08'].aulas, R5],
+  };
+  c.leadsById = new Map([...c.leadsById, ['a4', A4], ['a5', A5], ['a6', A6], ['a7', A7]]);
   return { ...c, sources: [] };
 };
 const setembro = periodFromParams({ monthKey: '2026-09' }, NOW);
