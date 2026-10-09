@@ -1,5 +1,6 @@
-// Quem já usa um telefone: o lead dono do número (whatsappDigits) e os menores
-// que o têm como responsável (guardianPhoneDigits). Serve aos avisos do
+// Quem já usa um telefone: o lead dono do número e os menores que o têm como
+// responsável, pela chave do telefone (zapMatchKey e guardianZapMatchKey), a
+// mesma do useDuplicateLead e do Stronizap. Serve aos avisos do
 // cadastro e da edição, que nunca barram. Igualdade num campo só, então o
 // índice é o automático, igual ao useDuplicateLead. withOwner: false pula a
 // consulta do dono (o campo do próprio WhatsApp já usa useDuplicateLead para
@@ -14,6 +15,7 @@ import { collection, query, where, getDocs, limit } from 'firebase/firestore';
 import { appId, LEADS_PATH } from '../lib/firebase.js';
 import { normalizeLeadDoc } from '../lib/leads.js';
 import { hasPhone } from '../lib/guardian.js';
+import { zapMatchKey } from '../../api/_zapPhone.js';
 
 const VAZIO = { owner: null, wards: [], pending: false };
 const PENDENTE = { owner: null, wards: [], pending: true };
@@ -29,11 +31,12 @@ export function useGuardianMatches({ db, phoneDigits, excludeId = null, withOwne
     const t = setTimeout(async () => {
       try {
         const colRef = collection(db, 'artifacts', appId, 'public', 'data', LEADS_PATH);
+        const key = zapMatchKey(phoneDigits);
         const consultas = [
           withOwner
-            ? getDocs(query(colRef, where('whatsappDigits', '==', phoneDigits), limit(5)))
+            ? getDocs(query(colRef, where('zapMatchKey', '==', key), limit(5)))
             : null,
-          getDocs(query(colRef, where('guardianPhoneDigits', '==', phoneDigits), limit(10))),
+          getDocs(query(colRef, where('guardianZapMatchKey', '==', key), limit(10))),
         ];
         const [donos, menores] = await Promise.all(consultas);
         if (cancelled) return;

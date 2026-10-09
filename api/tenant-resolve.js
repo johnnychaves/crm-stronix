@@ -15,6 +15,7 @@ import {
   referralLinkGenericText
 } from './_referral.js';
 import { isPasswordResetAction, handlePasswordReset } from './_passwordResetRoute.js';
+import { zapMatchKey } from './_zapPhone.js';
 
 // Resolve PÚBLICO de organização por slug (?slug=ironfit).
 // GET (intacto): usado pela tela de login (App.jsx) para mostrar a MARCA da
@@ -229,9 +230,11 @@ async function referralSignup(req, res) {
     // Dedupe em DUAS chaves (telefone sempre; CPF quando veio). Cadastro já
     // existente → MESMA resposta de sucesso (não vazar quem é aluno) + evento
     // na timeline do existente pro time decidir — sem auto-vínculo nem mudança
-    // de funil (decisões de 2026-08-07, docs/indicacoes.md).
+    // de funil (decisões de 2026-08-07, docs/indicacoes.md). O telefone vai
+    // pela chave do Stronizap (DDD mais os 8 últimos), como no Novo lead: o
+    // mesmo celular sem o nono dígito ou com 55 na frente é a mesma pessoa.
     const [byPhone, byCpf] = await Promise.all([
-      leadsCol.where('whatsappDigits', '==', whatsappDigits).limit(1).get(),
+      leadsCol.where('zapMatchKey', '==', zapMatchKey(whatsappDigits)).limit(1).get(),
       cpfDigits ? leadsCol.where('cpfDigits', '==', cpfDigits).limit(1).get() : Promise.resolve(null)
     ]);
     const dupDoc = (!byPhone.empty && byPhone.docs[0]) || (byCpf && !byCpf.empty && byCpf.docs[0]) || null;
