@@ -32,7 +32,7 @@ function CashChip() {
 export function GerencialToolbar(props) {
   const { canCompare = true } = props;
   return (
-    <div className="sticky -top-4 md:-top-8 z-30 flex flex-col gap-2 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 md:flex-row md:items-center md:gap-2.5 dark:border-t-white/[0.06] dark:bg-[#0D1226]">
+    <div className="sticky -top-4 md:-top-8 z-30 flex flex-col gap-2 border-t border-b border-t-slate-100 border-b-border bg-card px-4 md:px-8 py-2.5 md:flex-row md:items-center md:gap-2.5 dark:border-t-white/[0.06] dark:bg-page">
       <div className="flex items-center gap-2.5">
         <div className="min-w-0 flex-1 md:hidden">
           <MonthControl {...props} compact />
