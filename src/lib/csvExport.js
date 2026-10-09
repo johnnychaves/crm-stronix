@@ -1,5 +1,5 @@
 // Planilha das exportações: o CSV que o Excel pt-BR abre. Uma regra só para
-// todo exportar do app (Relatórios, Todos os leads, Aulas e Visitas):
+// os exportar das telas (Relatórios, Todos os leads, Aulas e Visitas):
 // separador ';', aspas só quando o valor pede, e a proteção contra fórmula. O
 // valor que começa com =, +, -, @, tab ou retorno de carro ganha um apóstrofo
 // na frente, senão o Excel e o Google Planilhas o executariam (CSV injection).
@@ -32,5 +32,7 @@ export function downloadCsv(filename, csv) {
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  // Safari pode perder o download se o endereço sumir no clique. Um segundo de
+  // folga, o mesmo cuidado do importTemplateWrite.js.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

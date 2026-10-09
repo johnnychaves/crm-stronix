@@ -30,6 +30,7 @@ describe('planilha', () => {
     expect(csvCell('-2')).toBe("'-2");
     expect(csvCell('@cmd')).toBe("'@cmd");
     expect(csvCell('\tx')).toBe("'\tx");
+    expect(csvCell('\r=1+1')).toBe(`"'\r=1+1"`);
     expect(csvCell('=A;B')).toBe(`"'=A;B"`);
   });
 
@@ -39,7 +40,7 @@ describe('planilha', () => {
     expect(toCsv([{ a: null }], columns)).toBe('Coluna A;Coluna B\r\n;');
   });
 
-  it('o download leva o nome e o BOM, e solta o endereço do arquivo', async () => {
+  it('o download leva o nome e o BOM, e solta o endereço do arquivo um segundo depois', async () => {
     const blobs = [];
     const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL };
     URL.createObjectURL = vi.fn((blob) => { blobs.push(blob); return 'blob:planilha'; });
@@ -49,14 +50,21 @@ describe('planilha', () => {
       seen.push([this.download, this.getAttribute('href')]);
     });
     try {
+      // Só o setTimeout fica falso: com todos os timers falsos, o FileReader do
+      // jsdom (o bytesOf, mais abaixo) nunca termina.
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
       downloadCsv('leads-entrada.csv', 'Nome\r\nAna');
       expect(seen).toEqual([['leads-entrada.csv', 'blob:planilha']]);
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:planilha');
       expect(document.querySelector('a[download]')).toBeNull();
+      // Safari pode perder o download se o endereço sumir no clique.
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1000);
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:planilha');
       const bytes = await bytesOf(blobs[0]);
       expect([...bytes.slice(0, 3)]).toEqual([0xEF, 0xBB, 0xBF]);
       expect(new TextDecoder().decode(bytes.slice(3))).toBe('Nome\r\nAna');
     } finally {
+      vi.useRealTimers();
       click.mockRestore();
       URL.createObjectURL = original.create;
       URL.revokeObjectURL = original.revoke;
