@@ -6,7 +6,7 @@ import { conversaoReport, CONVERSAO_COLUMNS, SPEED_BUCKETS } from '../relatorios
 import { metricsOf } from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
 import { periodFromParams, previousPeriod } from '../period.js';
-import { makeCtx, NOW, L, D } from './fixtures/crmCtx.js';
+import { makeCtx, NOW, L, D, N } from './fixtures/crmCtx.js';
 
 // Um lead de agosto depois do corte, para o teste provar que o comparado para
 // no mesmo ponto.
@@ -24,6 +24,15 @@ const setembro = periodFromParams({ monthKey: '2026-09' }, NOW);
 const agosto = periodFromParams({ monthKey: '2026-08' }, NOW);
 const rel = (ctx, extra = {}) => conversaoReport(ctx, { period: setembro, cmp: previousPeriod(setembro, NOW), ...extra });
 const speedOf = (r) => Object.fromEntries(r.bySpeed.map((b) => [b.id, b.leads]));
+// Para a segunda parte: um mês sem nada, um lead (com as interações dele) posto
+// num mês, e a faixa de primeiro contato da linha de um lead.
+const emptyMonth = () => ({ leadsCreated: [], converted: [], lost: [], aulas: [], interactions: [] });
+const withLead = (ctx, key, lead, interactions = []) => {
+  ctx.months[key].leadsCreated.push(lead);
+  ctx.leadsById.set(lead.id, lead);
+  ctx.months[key].interactions.push(...interactions);
+};
+const faixaOf = (r, id) => r.rows.find((x) => x.id === id).cuts.find((c) => c.startsWith('faixa:'));
 
 describe('Conversão', () => {
   it('a safra do mês, os números e a conversão', () => {
@@ -38,7 +47,7 @@ describe('Conversão', () => {
 
   it('a rapidez do primeiro contato nas faixas do painel, com a conversão de cada uma', () => {
     const r = rel(ctxOf());
-    expect(SPEED_BUCKETS.map((b) => b.label)).toEqual(['Até 1 hora', 'De 1 a 24 horas', 'Mais de 24 horas', 'Sem contato']);
+    expect(SPEED_BUCKETS.map((b) => b.label)).toEqual(['Até 1 hora', 'Até 24 horas', 'Mais de 24 horas', 'Sem contato']);
     expect(speedOf(r)).toEqual({ 'ate-1h': 1, 'ate-24h': 1, 'mais-24h': 2, 'sem-contato': 1 });
     expect(r.bySpeed.find((b) => b.id === 'ate-1h')).toMatchObject({ enrolled: 1, conv: 100 });
   });
@@ -89,5 +98,72 @@ describe('Conversão', () => {
         }
       }
     }
+  });
+});
+
+// Regras que o painel aplica sem mostrar na tela: o limite do primeiro contato
+// de cada lead, o comparado de um mês fechado, as divisas das faixas e o recorte
+// por consultor com a planilha de quem perdeu e de quem segue em aberto.
+describe('Conversão: regras que o painel não mostra na tela', () => {
+  it('o primeiro contato olha até o fim do mês seguinte ao do cadastro de cada lead', () => {
+    const ctx = { ...makeCtx(), now: new Date(2026, 9, 20, 12, 0), sources: [] };
+    ctx.months['2026-10'] = emptyMonth();
+    // cadastrado em 20/08: o limite dele é 01/10; o contato de 02/10 não conta
+    withLead(ctx, '2026-08', L('x-ago', { createdAt: D(8, 20) }), [N('c1', 'x-ago', D(10, 2))]);
+    // cadastrado em 20/09: o limite dele é 01/11 (ou agora); o contato de 02/10 conta
+    withLead(ctx, '2026-09', L('x-set', { createdAt: D(9, 20) }), [N('c2', 'x-set', D(10, 2))]);
+    const period = { start: new Date(2026, 7, 1), end: new Date(2026, 9, 1), running: false };
+    const r = conversaoReport(ctx, { period });
+    expect(faixaOf(r, 'x-ago')).toBe('faixa:sem-contato');
+    expect(faixaOf(r, 'x-set')).toBe('faixa:mais-24h');
+    // a janela de dois meses é a soma dos dois meses do painel
+    const a = metricsOf(ctx, { monthKey: '2026-08' }).firstContact;
+    const s = metricsOf(ctx, { monthKey: '2026-09' }).firstContact;
+    expect(speedOf(r)).toEqual({
+      'ate-1h': a.h1 + s.h1, 'ate-24h': a.h24 + s.h24, 'mais-24h': a.over + s.over, 'sem-contato': a.none + s.none,
+    });
+  });
+
+  it('o comparado de um mês fechado é acompanhado até agora, não até o fim dele', () => {
+    const ctx = { ...makeCtx(), sources: [] };
+    ctx.months['2026-07'] = emptyMonth();
+    // cadastrado em julho e matriculado em 15/08
+    withLead(ctx, '2026-07', L('j1', { createdAt: D(7, 10), status: 'Venda', isConverted: true, convertedAt: D(8, 15) }));
+    const cmp = previousPeriod(agosto, NOW);
+    const r = conversaoReport(ctx, { period: agosto, cmp });
+    expect(r.before).toEqual(metricsOf(ctx, { monthKey: '2026-07' }).cohort);
+    expect(r.before.enrolled).toBe(1);
+  });
+
+  it('as faixas fecham em 60 e 1440 minutos, como no painel', () => {
+    const c = makeCtx();
+    const base = D(9, 3, 8, 0);
+    [['b60', 60 * 60000], ['b60p', 60 * 60000 + 1], ['b1440', 1440 * 60000], ['b1440p', 1440 * 60000 + 1]].forEach(([id, ms]) => {
+      withLead(c, '2026-09', L(id, { createdAt: base }), [N(`n-${id}`, id, new Date(base.getTime() + ms))]);
+    });
+    const ctx = { ...c, sources: [] };
+    const r = conversaoReport(ctx, { period: setembro });
+    const f = metricsOf(ctx, { monthKey: '2026-09' }).firstContact;
+    expect(speedOf(r)).toEqual({ 'ate-1h': f.h1, 'ate-24h': f.h24, 'mais-24h': f.over, 'sem-contato': f.none });
+    expect([faixaOf(r, 'b60'), faixaOf(r, 'b60p'), faixaOf(r, 'b1440'), faixaOf(r, 'b1440p')])
+      .toEqual(['faixa:ate-1h', 'faixa:ate-24h', 'faixa:ate-24h', 'faixa:mais-24h']);
+  });
+
+  it('o recorte por consultor junta quem saiu da equipe, e a planilha dá o desfecho de quem perdeu e de quem segue em aberto', () => {
+    const ctx = { ...makeCtx(), sources: [] };
+    const r = conversaoReport(ctx, { period: setembro });
+    expect(r.byOwner.map((x) => [x.key, x.name, x.leads, x.enrolled, x.conv])).toEqual([
+      ['consultor:ana', 'Ana Ribeiro', 2, 1, 50],
+      ['consultor:diego', 'Diego Santos', 2, 0, 0],
+      ['consultor:__outros__', 'Fora da equipe ou sem responsável', 1, 0, 0],
+    ]);
+    const cut = conversaoReport(ctx, { period: setembro, recorte: 'consultor:__outros__' });
+    expect([cut.cutLabel, cut.rows.map((x) => x.id)]).toEqual(['Consultor: Fora da equipe ou sem responsável', ['s5']]);
+    const lost = conversaoReport(ctx, { period: setembro, recorte: 'situacao:perderam' }).exportRows;
+    expect(lost.map((x) => [x.desfecho, x.dataDesfecho])).toEqual([['Perdeu', '06/09/2026']]);
+    const open = conversaoReport(ctx, { period: setembro, recorte: 'situacao:em-aberto' }).exportRows;
+    expect(open.map((x) => [x.desfecho, x.dataDesfecho])).toEqual([['Em aberto', ''], ['Em aberto', ''], ['Em aberto', '']]);
+    const seen = conversaoReport(ctx, { period: setembro, recorte: 'situacao:vieram' });
+    expect(seen.rows.map((x) => x.id)).toEqual(['s1']);
   });
 });

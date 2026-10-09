@@ -8,7 +8,7 @@
 import { addMonthsToKey, monthKeyOf, monthRange } from '../../operacional/month.js';
 import { outcomeAt, firstEnrolledAtOf, lostAtOf } from '../../crm/cohort.js';
 import { cohortMilestoneOf } from '../../crm/appointments.js';
-import { firstContactMinutesOf } from '../../crm/contact.js';
+import { firstContactMinutesOf, FIRST_CONTACT_LIMITS } from '../../crm/contact.js';
 import { crmDelta } from '../../crm/metrics.js';
 import { pct } from '../../crm/stats.js';
 import { fmtDuration } from '../../crm/format.js';
@@ -17,16 +17,36 @@ import {
   reportScope, newLeadsIn, namesOf, cutCode, applyCut, cutLabelOf, contactCells, CONTACT_COLUMNS, fmtDate, byNewest,
 } from './base.js';
 
-// Faixas da rapidez do primeiro contato, as do painel (firstContactOf).
+// Faixas da rapidez do primeiro contato, as do painel (firstContactOf), com os
+// limites e os nomes dele.
 export const SPEED_BUCKETS = Object.freeze([
-  Object.freeze({ id: 'ate-1h', label: 'Até 1 hora', test: (m) => m != null && m <= 60 }),
-  Object.freeze({ id: 'ate-24h', label: 'De 1 a 24 horas', test: (m) => m != null && m > 60 && m <= 1440 }),
-  Object.freeze({ id: 'mais-24h', label: 'Mais de 24 horas', test: (m) => m != null && m > 1440 }),
+  Object.freeze({ id: 'ate-1h', label: 'Até 1 hora', test: (m) => m != null && m <= FIRST_CONTACT_LIMITS.h1 }),
+  Object.freeze({
+    id: 'ate-24h',
+    label: 'Até 24 horas',
+    test: (m) => m != null && m > FIRST_CONTACT_LIMITS.h1 && m <= FIRST_CONTACT_LIMITS.h24,
+  }),
+  Object.freeze({ id: 'mais-24h', label: 'Mais de 24 horas', test: (m) => m != null && m > FIRST_CONTACT_LIMITS.h24 }),
   Object.freeze({ id: 'sem-contato', label: 'Sem contato', test: (m) => m == null }),
 ]);
 
-// Código do recorte e texto de cada desfecho.
-const OUTCOME_CODE = Object.freeze({ enrolled: 'matricularam', lost: 'perderam', open: 'em-aberto' });
+// Os códigos de recorte dos números do topo, escritos uma vez só. O número, o
+// desfecho e a linha da lista saem daqui, então um erro de digitação não faz um
+// número filtrar para uma lista vazia.
+const SITUACAO = Object.freeze({
+  agendaram: 'situacao:agendaram',
+  vieram: 'situacao:vieram',
+  matricularam: 'situacao:matricularam',
+  perderam: 'situacao:perderam',
+  emAberto: 'situacao:em-aberto',
+});
+
+// Recorte e texto de cada desfecho.
+const OUTCOME_CUT = Object.freeze({
+  enrolled: SITUACAO.matricularam,
+  lost: SITUACAO.perderam,
+  open: SITUACAO.emAberto,
+});
 export const OUTCOME_LABEL = Object.freeze({ enrolled: 'Matriculou', lost: 'Perdeu', open: 'Em aberto' });
 
 export const CONVERSAO_COLUMNS = Object.freeze([
@@ -82,7 +102,8 @@ function totalsOf(list) {
   };
 }
 
-// Recorte com leads, matrículas e conversão, do maior volume para o menor.
+// Recorte com leads, matrículas e conversão, na ordem do channelsOf do painel:
+// mais leads primeiro, no empate mais matrículas, e depois o nome.
 function convRows(list, keyOf, nameOf, tipo) {
   const map = new Map();
   list.forEach((x) => {
@@ -94,7 +115,7 @@ function convRows(list, keyOf, nameOf, tipo) {
   });
   return [...map.values()]
     .map((r) => ({ ...r, conv: pct(r.enrolled, r.leads) }))
-    .sort((a, b) => b.leads - a.leads || a.name.localeCompare(b.name, 'pt-BR'));
+    .sort((a, b) => b.leads - a.leads || b.enrolled - a.enrolled || a.name.localeCompare(b.name, 'pt-BR'));
 }
 
 export function conversaoReport(ctx, { period, cmp = null, userIds = [], funnelId = null, origem = null, recorte = null }) {
@@ -110,11 +131,11 @@ export function conversaoReport(ctx, { period, cmp = null, userIds = [], funnelI
 
   const tiles = [
     { key: null, name: 'Leads da safra', value: totals.leads, delta: delta('leads') },
-    { key: 'situacao:agendaram', name: 'Agendaram', value: totals.sched },
-    { key: 'situacao:vieram', name: 'Vieram', value: totals.came },
-    { key: 'situacao:matricularam', name: 'Matricularam', value: totals.enrolled, tone: 'good', delta: delta('enrolled') },
-    { key: 'situacao:perderam', name: 'Perderam', value: totals.lost, tone: 'bad' },
-    { key: 'situacao:em-aberto', name: 'Em aberto', value: totals.open },
+    { key: SITUACAO.agendaram, name: 'Agendaram', value: totals.sched, delta: delta('sched') },
+    { key: SITUACAO.vieram, name: 'Vieram', value: totals.came, delta: delta('came') },
+    { key: SITUACAO.matricularam, name: 'Matricularam', value: totals.enrolled, tone: 'good', delta: delta('enrolled') },
+    { key: SITUACAO.perderam, name: 'Perderam', value: totals.lost, tone: 'bad', delta: delta('lost'), lowerBetter: true },
+    { key: SITUACAO.emAberto, name: 'Em aberto', value: totals.open },
   ];
   const bySource = convRows(list, names.sourceName, (id) => id, 'origem');
   const byOwner = convRows(list, names.ownerKey, names.ownerName, 'consultor');
@@ -128,13 +149,13 @@ export function conversaoReport(ctx, { period, cmp = null, userIds = [], funnelI
     const l = x.lead;
     const speed = SPEED_BUCKETS.find((b) => b.test(x.minutes));
     const cuts = [
-      cutCode('situacao', OUTCOME_CODE[x.outcome]),
+      OUTCOME_CUT[x.outcome],
       cutCode('origem', names.sourceName(l)),
       cutCode('consultor', names.ownerKey(l)),
       cutCode('faixa', speed.id),
     ];
-    if (x.booked) cuts.push('situacao:agendaram');
-    if (x.attended) cuts.push('situacao:vieram');
+    if (x.booked) cuts.push(SITUACAO.agendaram);
+    if (x.attended) cuts.push(SITUACAO.vieram);
     return {
       id: l.id,
       lead: l,

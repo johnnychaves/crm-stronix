@@ -40,6 +40,10 @@ export function contactTimesByLead(interactions) {
   return map;
 }
 
+// Limites das faixas do primeiro contato, em minutos corridos: até 1 hora e até
+// 24 horas. O painel e os Relatórios contam as faixas por aqui.
+export const FIRST_CONTACT_LIMITS = Object.freeze({ h1: 60, h24: 1440 });
+
 // Minutos corridos do cadastro ao primeiro contato de cada lead da safra, só
 // com interação em [cadastro, limit). Sem interação no prazo: sem contato. Dos
 // sem contato, `noneLate` conta os que já tinham mais de 24 horas no limite:
@@ -47,12 +51,13 @@ export function contactTimesByLead(interactions) {
 export function firstContactOf(cohort, { contactTimes, limit }) {
   const list = cohort || [];
   const values = list.map((l) => firstContactMinutesOf(l, { contactTimes, limit }));
-  const waitedLong = (l) => l.createdAt instanceof Date && (limit - l.createdAt.getTime()) / 60000 > 1440;
+  const waitedLong = (l) => l.createdAt instanceof Date
+    && (limit - l.createdAt.getTime()) / 60000 > FIRST_CONTACT_LIMITS.h24;
   return {
     total: values.length,
-    h1: values.filter((v) => v != null && v <= 60).length,
-    h24: values.filter((v) => v != null && v > 60 && v <= 1440).length,
-    over: values.filter((v) => v != null && v > 1440).length,
+    h1: values.filter((v) => v != null && v <= FIRST_CONTACT_LIMITS.h1).length,
+    h24: values.filter((v) => v != null && v > FIRST_CONTACT_LIMITS.h1 && v <= FIRST_CONTACT_LIMITS.h24).length,
+    over: values.filter((v) => v != null && v > FIRST_CONTACT_LIMITS.h24).length,
     none: values.filter((v) => v == null).length,
     noneLate: list.filter((l, idx) => values[idx] == null && waitedLong(l)).length,
     median: medianWithMissing(values)
