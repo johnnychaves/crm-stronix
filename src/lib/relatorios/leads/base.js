@@ -12,11 +12,16 @@ import { bucketOf } from './janela.js';
 
 // Recorte da barra: consultores (lista; vazia é a equipe toda, com quem saiu
 // da equipe e os leads sem dono), funil (null é todos os funis de lead) e
-// origem (o nome no catálogo; null é todas).
+// origem (o nome no catálogo, sem os espaços das pontas; null é todas). O
+// funnelOk daqui já aplica a origem: quem passar ownerOk e funnelOk ao
+// pipelineNowOf, como o painel faz, leva o recorte inteiro, e os dois juntos
+// dão sempre o mesmo que o inScope.
 export function reportScope({ users, funnels, userIds = [], funnelId = null, origem = null }) {
   const scope = makeScope({ users, funnels, userIds, funnelId });
-  const sourceOk = (lead) => !origem || String(lead?.source || '').trim() === origem;
-  return { ...scope, sourceOk, inScope: (lead) => scope.inScope(lead) && sourceOk(lead) };
+  const wanted = String(origem || '').trim();
+  const sourceOk = (lead) => !wanted || String(lead?.source || '').trim() === wanted;
+  const funnelOk = (lead) => scope.funnelOk(lead) && sourceOk(lead);
+  return { ...scope, sourceOk, funnelOk, inScope: (lead) => scope.ownerOk(lead) && funnelOk(lead) };
 }
 
 // Os leads cadastrados na janela [start, end), na regra do painel (newLeadsOf:
@@ -31,7 +36,8 @@ export const OTHERS_LABEL = 'Fora da equipe ou sem responsável';
 
 // Nomes que os recortes e a lista mostram. Nos recortes, quem saiu da equipe e
 // o lead sem dono entram juntos em OTHERS_ID, como o Outros do painel. Na
-// lista, o lead mostra o nome gravado nele.
+// lista, o responsável aparece com o nome atual na equipe, e o nome gravado no
+// lead (consultantName) só vale para quem já saiu dela.
 export function namesOf(ctx) {
   const team = new Map((ctx.users || []).map((u) => [u.id, u.name || 'Sem nome']));
   const defaultFunnelId = getDefaultFunnel(ctx.funnels || [])?.id || null;

@@ -21,11 +21,22 @@ describe('recorte da barra', () => {
     expect(reportScope({ users: USERS, funnels: FUNNELS, origem: 'Indicação' }).inScope(lead)).toBe(false);
     expect(reportScope({ users: USERS, funnels: FUNNELS, userIds: ['diego'] }).inScope(lead)).toBe(false);
     expect(reportScope({ users: USERS, funnels: FUNNELS, funnelId: 'ind' }).inScope(lead)).toBe(false);
+    // O funnelOk já leva a origem: o painel entrega ownerOk e funnelOk ao
+    // pipelineNowOf, e os dois juntos precisam dar o mesmo que o inScope.
+    const s = reportScope({ users: USERS, funnels: FUNNELS, origem: 'Indicação' });
+    expect(s.ownerOk(lead)).toBe(true);
+    expect(s.funnelOk(lead)).toBe(false);
+    expect(s.inScope(lead)).toBe(false);
+    // A origem vale sem os espaços das pontas.
+    expect(reportScope({ users: USERS, funnels: FUNNELS, origem: ' Instagram ' }).inScope(lead)).toBe(true);
   });
 
   it('os leads novos da janela, na regra do painel: sem importado e sem funil de cliente', () => {
     const ids = newLeadsIn(ctxOf(), reportScope({ users: USERS, funnels: FUNNELS }), setembro).map((l) => l.id).sort();
     expect(ids).toEqual(['s1', 's2', 's3', 's4', 's5']);
+    const cruza = periodFromParams({ de: '2026-08-04', ate: '2026-09-03' }, NOW);
+    expect(newLeadsIn(ctxOf(), reportScope({ users: USERS, funnels: FUNNELS }), cruza).map((l) => l.id).sort())
+      .toEqual(['a2', 'a3', 'o1', 's1', 's2', 's3', 's5']);
   });
 });
 
