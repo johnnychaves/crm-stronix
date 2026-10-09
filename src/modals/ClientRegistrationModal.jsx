@@ -15,6 +15,8 @@ import { sameContactPhone } from '../lib/leadDerived.js';
 import { fromDateInputValue, toDateInputValue } from '../lib/dates.js';
 import { phoneNoticeLines } from '../lib/phoneNotice.js';
 import { useGuardianMatches } from '../hooks/useGuardianMatches.js';
+import { useDuplicateLead, findDuplicateLeadRemote } from '../hooks/useDuplicateLead.js';
+import { zapMatchKey } from '../../api/_zapPhone.js';
 import { logInteraction } from '../lib/interactions.js';
 import { cn } from '../lib/utils.js';
 import { useToast } from '../contexts/ToastContext.jsx';
@@ -90,11 +92,18 @@ function RegistrationForm({ lead, appUser, db, usersList, tags, onClose }) {
   const guardianNotice = phoneNoticeLines({ field: 'guardian', ...guardianMatches });
   // O WhatsApp do aluno pode ser o número de um responsável de outro menor
   // (irmãos, ou o próprio adulto que cadastra os filhos). Não barra, só avisa,
-  // igual ao cadastro. withOwner: false porque o dono do número, se houver, já
-  // é outro cuidado (edição de cadastro não faz dup-check de dono aqui).
+  // igual ao cadastro. withOwner: false porque o dono do número é o
+  // useDuplicateLead, logo abaixo, quem procura.
   const studentDigits = String(form.whatsapp || '').replace(/\D/g, '');
   const ownMatches = useGuardianMatches({ db, phoneDigits: studentDigits, excludeId: lead.id, withOwner: false });
-  const ownNotice = phoneNoticeLines({ field: 'own', ...ownMatches });
+  // Número trocado para o de outro lead não salva, como no Novo lead. Foi
+  // pela edição que nasceu a cópia da Maria Fernanda na Shape One (29/09/2026).
+  // Só confere quando a chave do telefone mudou: o par que já divide um número
+  // continua salvando o endereço, e pôr o nono dígito no mesmo número não é
+  // troca.
+  const numberChanged = zapMatchKey(form.whatsapp) !== zapMatchKey(lead.whatsapp);
+  const { duplicate } = useDuplicateLead({ db, phoneDigits: numberChanged ? studentDigits : '', excludeId: lead.id });
+  const ownNotice = duplicate ? [] : phoneNoticeLines({ field: 'own', ...ownMatches });
   // O aluno não pode ter o mesmo número do responsável: recria o problema que
   // a feature resolve (whatsappDigits/zapMatchKey do menor viram os da mãe).
   // O salvamento continua bloqueado por registrationGuardianIssue; aqui é só
@@ -128,6 +137,17 @@ function RegistrationForm({ lead, appUser, db, usersList, tags, onClose }) {
     if (guardianError) { setTab('identidade'); toast.warning(guardianError); return; }
     setLoading(true);
     try {
+      // Conferência fresca: o aviso tem debounce, e o número pode ter virado
+      // de outro lead com o modal aberto. O botão não fica desligado pelo
+      // aviso porque o aviso mora na aba Identidade: de outra aba, o Salvar
+      // desligado não diria por quê. Aqui ele volta para a aba e explica.
+      const dup = numberChanged ? await findDuplicateLeadRemote({ db, phoneDigits: studentDigits, excludeId: lead.id }) : null;
+      if (dup) {
+        const ownerLabel = dup.consultantName ? ` (consultor: ${dup.consultantName})` : '';
+        setTab('identidade');
+        toast.warning(`Esse WhatsApp já é de outro lead: ${dup.name}${ownerLabel}.`);
+        return;
+      }
       const patch = buildClientRegistrationPatch(form, { usersList, professores });
       const ownerChange = ownerChangeFor(lead, patch);
       if (ownerChange) {
@@ -211,9 +231,13 @@ function RegistrationForm({ lead, appUser, db, usersList, tags, onClose }) {
             <div>
               <Field label={form.isMinor ? 'WhatsApp do aluno' : 'WhatsApp'} required={!form.isMinor} hint={form.isMinor ? 'opcional' : undefined}>
                 <StyledInput icon={<Phone size={15} />} inputMode="numeric" value={form.whatsapp} onChange={(e) => set('whatsapp', formatPhone(e.target.value))}
-                  placeholder="(51) 9 0000-0000" className={sameAsGuardian ? '!border-amber-400' : ''} />
+                  placeholder="(51) 9 0000-0000" className={duplicate ? '!border-rose-400 focus:!ring-rose-400/15' : (sameAsGuardian ? '!border-amber-400' : '')} />
               </Field>
-              {sameAsGuardian ? (
+              {duplicate ? (
+                <div className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-rose-600 dark:text-rose-400">
+                  <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Já existe: <strong>{duplicate.name}</strong>{duplicate.consultantName ? ` · ${duplicate.consultantName}` : ''}{duplicate.status ? ` (${duplicate.status})` : ''}</span>
+                </div>
+              ) : sameAsGuardian ? (
                 <div className="mt-1.5 flex items-start gap-1.5 text-[11.5px] text-amber-600 dark:text-amber-400">
                   <AlertTriangle size={13} className="mt-0.5 shrink-0" /><span>Esse é o telefone do responsável. Se o aluno não tem WhatsApp próprio, deixe em branco.</span>
                 </div>
