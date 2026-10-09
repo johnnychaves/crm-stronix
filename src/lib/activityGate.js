@@ -26,6 +26,12 @@ export const IDLE_TIMEOUT_MS = 15 * 60 * 1000;
 // é só uma comparação de números em memória.
 export const IDLE_CHECK_MS = 30 * 1000;
 
+// Na volta da pausa, o app pode esperar uma conferência antes de religar as
+// assinaturas (o `beforeResume` do useActivityGate, que confere se saiu versão
+// nova). Se ela não responder neste tempo, a volta acontece mesmo assim: o app
+// nunca fica parado esperando.
+export const RESUME_HOLD_MAX_MS = 10 * 1000;
+
 // Eventos que contam como "tem gente aí". mousemove e scroll cobrem o uso
 // passivo (ler a tela, rolar uma lista) sem exigir clique.
 export const ACTIVITY_EVENTS = [

@@ -13,10 +13,25 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SENTRY_ENV =
   process.env.VITE_SENTRY_ENVIRONMENT || process.env.VERCEL_ENV || 'development'
 
+// O commit deste deploy. Vai para o código (VITE_APP_RELEASE, que o Sentry usa
+// para dizer qual deploy gerou o erro) e para o version.json.
+const RELEASE = process.env.VERCEL_GIT_COMMIT_SHA || 'dev'
+
+// Gera o version.json com a versão deste deploy. O app aberto o lê na volta da
+// pausa por inatividade e recarrega quando a versão publicada é outra
+// (src/lib/appUpdate.js).
+const versionFile = () => ({
+  name: 'stronilead-version-file',
+  generateBundle() {
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ release: RELEASE }) })
+  },
+})
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
     react(),
+    versionFile(),
     // Só entra quando o token existe. Em build local e em fork sem segredo,
     // o plugin nem carrega e o build segue normal.
     ...(process.env.SENTRY_AUTH_TOKEN
@@ -32,9 +47,7 @@ export default defineConfig({
   ],
   define: {
     // Identifica qual deploy gerou o erro.
-    'import.meta.env.VITE_APP_RELEASE': JSON.stringify(
-      process.env.VERCEL_GIT_COMMIT_SHA || 'dev'
-    ),
+    'import.meta.env.VITE_APP_RELEASE': JSON.stringify(RELEASE),
     'import.meta.env.VITE_SENTRY_ENVIRONMENT': JSON.stringify(SENTRY_ENV),
   },
   resolve: {
