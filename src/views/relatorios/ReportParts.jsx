@@ -6,7 +6,8 @@
 // cada linha de recorte é um filtro dessa lista. A barra mostra sempre o mesmo
 // número que está ao lado dela, e matrícula e conversão são verdes, como nos
 // painéis.
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Download, X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
@@ -16,9 +17,13 @@ const TONE_TEXT = Object.freeze({
   good: 'text-emerald-600 dark:text-emerald-400',
   bad: 'text-rose-600 dark:text-rose-400',
 });
+// O verde das tabelas do painel (ChannelTable e PeopleConversionTable).
+const GREEN_TEXT = 'text-emerald-700 dark:text-emerald-300';
 const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40';
 const RULE = 'border-slate-100 dark:border-white/[0.06]';
 const ROW_ON = 'bg-brand-50 hover:bg-brand-50 dark:bg-brand-500/15 dark:hover:bg-brand-500/15';
+// A linha da lista recebe o foco por código (tabIndex -1), nunca pelo Tab.
+const ROW_FOCUS = 'outline-none focus-visible:bg-brand-50 dark:focus-visible:bg-brand-500/10';
 
 // Título do submenu, a pergunta que ele responde e, à direita, o exportar.
 export function ReportHeader({ title, question, action }) {
@@ -33,14 +38,17 @@ export function ReportHeader({ title, question, action }) {
   );
 }
 
-// O número que abre o submenu, com a variação contra o período anterior.
-export function HeroNumber({ value, label, delta = null, compareText = null, percent = false, tone = null }) {
-  const text = value == null ? 'sem base' : percent ? `${value}%` : fmtNum(value);
+// O número que abre o submenu, com a variação contra o período anterior. Em
+// lowerBetter (as perdas), subir é ruim e a variação sai vermelha. Sem base,
+// o texto fica apagado: a cor do tom diria que há um resultado bom ou ruim.
+export function HeroNumber({ value, label, delta = null, lowerBetter = false, compareText = null, percent = false, tone = null }) {
+  const empty = value == null;
+  const text = empty ? 'sem base' : percent ? `${value}%` : fmtNum(value);
   return (
     <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5">
-      <span className={cn('num font-display text-[40px] font-bold leading-none tracking-[-0.03em]', TONE_TEXT[tone])}>{text}</span>
+      <span className={cn('num font-display text-[40px] font-bold leading-none tracking-[-0.03em]', empty ? 'text-muted-foreground' : TONE_TEXT[tone])}>{text}</span>
       <span className="text-[13px] font-semibold text-muted-foreground">{label}</span>
-      {delta && <DeltaPill delta={delta} />}
+      {delta && <DeltaPill delta={delta} lowerBetter={lowerBetter} />}
       {compareText && <span className="text-[12px] text-muted-foreground">{compareText}</span>}
     </div>
   );
@@ -58,7 +66,7 @@ export function NumberTiles({ tiles, cut, onCut }) {
         const active = t.key === null ? cut === null : cut === t.key;
         return (
           <button
-            key={t.name}
+            key={t.key ?? 'total'}
             type="button"
             aria-pressed={active}
             onClick={() => onCut(t.key === null || active ? null : t.key)}
@@ -79,11 +87,12 @@ export function NumberTiles({ tiles, cut, onCut }) {
 }
 
 // Recorte em barras: cada linha filtra a lista. A barra é o próprio número ao
-// lado dela.
+// lado dela. A linha corta o que não cabe (overflow-hidden) em vez de vazar do
+// cartão, e o nome inteiro fica no title.
 export function CountBreakdown({ title, hint, rows, cut, onCut, emptyText = 'Nada no período.' }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
   return (
-    <CrmCard title={title} hint={hint}>
+    <CrmCard title={title} hint={hint} className="min-w-0">
       {rows.length === 0 ? (
         <p className="px-[18px] py-4 text-[12.5px] text-muted-foreground">{emptyText}</p>
       ) : (
@@ -96,9 +105,9 @@ export function CountBreakdown({ title, hint, rows, cut, onCut, emptyText = 'Nad
                   type="button"
                   aria-pressed={active}
                   onClick={() => onCut(active ? null : r.key)}
-                  className={cn('flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS, active && ROW_ON)}
+                  className={cn('flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS, active && ROW_ON)}
                 >
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium" title={r.name}>
                     {r.name}
                     {r.channel && <span className="ml-1.5 text-[11px] font-normal text-muted-foreground">{r.channel}</span>}
                   </span>
@@ -118,62 +127,100 @@ export function CountBreakdown({ title, hint, rows, cut, onCut, emptyText = 'Nad
 
 const CONV_GRID = 'grid grid-cols-[minmax(0,1fr)_40px_40px_104px] items-center gap-x-2';
 
+// A linha é uma tabela feita de spans, e lida pelo conteúdo soaria como uma
+// fila de números soltos. O leitor de tela recebe a frase inteira.
+function conversionLabel(r) {
+  const leads = `${fmtNum(r.leads)} ${r.leads === 1 ? 'lead' : 'leads'}`;
+  const enrolled = `${fmtNum(r.enrolled)} ${r.enrolled === 1 ? 'matrícula' : 'matrículas'}`;
+  const conv = r.conv == null ? 'sem conversão' : `${r.conv}% de conversão`;
+  return `${r.name}: ${leads}, ${enrolled}, ${conv}`;
+}
+
 // Recorte da conversão: leads, matrículas e a conversão, com a barra sendo a
-// própria conversão, em verde. Cada linha filtra a lista.
-export function ConversionBreakdown({ title, hint, rows, cut, onCut }) {
+// própria conversão, em verde. Cada linha filtra a lista. Como no recorte em
+// barras, a linha corta o que não cabe em vez de vazar do cartão.
+export function ConversionBreakdown({ title, hint, rows, cut, onCut, emptyText = 'Nada no período.' }) {
   return (
-    <CrmCard title={title} hint={hint}>
-      <div className={cn(CONV_GRID, 'px-[18px] pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.07em] text-muted-foreground')}>
-        <span aria-hidden="true" />
-        <span className="text-right">Leads</span>
-        <span className="text-right">Matr.</span>
-        <span className="text-right">Conv.</span>
-      </div>
-      <ul className="m-0 flex list-none flex-col gap-0.5 px-2 pb-2">
-        {rows.map((r) => {
-          const active = cut === r.key;
-          return (
-            <li key={r.key}>
-              <button
-                type="button"
-                aria-pressed={active}
-                onClick={() => onCut(active ? null : r.key)}
-                className={cn(CONV_GRID, 'w-full rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS, active && ROW_ON)}
-              >
-                <span className="truncate text-[12.5px] font-medium">{r.name}</span>
-                <span className="num text-right text-[12.5px]">{fmtNum(r.leads)}</span>
-                <span className="num text-right text-[12.5px]">{fmtNum(r.enrolled)}</span>
-                <span className="flex items-center justify-end gap-2">
-                  <span className="h-2 w-12 overflow-hidden rounded-full bg-muted" aria-hidden="true">
-                    <span className="block h-full rounded-full bg-emerald-500" style={{ width: `${r.conv ?? 0}%` }} />
-                  </span>
-                  <span className="num w-9 text-right text-[12.5px] font-semibold text-emerald-700 dark:text-emerald-400">
-                    {r.conv == null ? '' : `${r.conv}%`}
-                  </span>
-                </span>
-              </button>
-            </li>
-          );
-        })}
-      </ul>
+    <CrmCard title={title} hint={hint} className="min-w-0">
+      {rows.length === 0 ? (
+        <p className="px-[18px] py-4 text-[12.5px] text-muted-foreground">{emptyText}</p>
+      ) : (
+        <>
+          <div aria-hidden="true" className={cn(CONV_GRID, 'overflow-hidden px-[18px] pb-1 pt-3 text-[10px] font-bold uppercase tracking-[0.07em] text-muted-foreground')}>
+            <span />
+            <span className="text-right">Leads</span>
+            <span className="text-right">Matr.</span>
+            <span className="text-right">Conv.</span>
+          </div>
+          <ul className="m-0 flex list-none flex-col gap-0.5 px-2 pb-2">
+            {rows.map((r) => {
+              const active = cut === r.key;
+              return (
+                <li key={r.key}>
+                  <button
+                    type="button"
+                    aria-pressed={active}
+                    aria-label={conversionLabel(r)}
+                    onClick={() => onCut(active ? null : r.key)}
+                    className={cn(CONV_GRID, 'w-full min-w-0 overflow-hidden rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS, active && ROW_ON)}
+                  >
+                    <span className="truncate text-[12.5px] font-medium" title={r.name}>{r.name}</span>
+                    <span className="num text-right text-[12.5px]">{fmtNum(r.leads)}</span>
+                    <span className={cn('num text-right text-[12.5px] font-semibold', GREEN_TEXT)}>{fmtNum(r.enrolled)}</span>
+                    <span className="flex items-center justify-end gap-2">
+                      <span className="h-2 w-12 overflow-hidden rounded-full bg-muted" aria-hidden="true">
+                        <span className="block h-full rounded-full bg-emerald-500" style={{ width: `${r.conv ?? 0}%` }} />
+                      </span>
+                      <span className={cn('num w-9 text-right text-[12.5px] font-semibold', r.conv == null ? 'text-muted-foreground' : GREEN_TEXT)}>
+                        {r.conv == null ? '—' : `${r.conv}%`}
+                      </span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
     </CrmCard>
   );
 }
 
 // A lista de nomes por trás dos números. O cabeçalho repete o número que ela
 // mostra e o filtro aplicado, com o botão de limpar. Mostra 50 nomes por vez,
-// e o exportar leva todos. Ao trocar de filtro, volta aos 50 primeiros: o
-// "Mostrar mais" vale para a lista em que foi clicado.
-export function ReportList({ total, noun, cutLabel = null, onClearCut, columns, rows, emptyTitle, emptyText, pageSize = 50 }) {
-  const sig = `${cutLabel || ''}|${rows.length}|${rows[0]?.id || ''}`;
-  const [more, setMore] = useState({ sig, extra: 0 });
-  const extra = more.sig === sig ? more.extra : 0;
+// e o exportar leva todos. O listId diz que lista é esta (o submenu mais o
+// filtro que a pessoa escolheu): quando ele muda, a lista volta aos 50
+// primeiros, e enquanto ele é o mesmo o "Mostrar mais" se mantém, mesmo que
+// chegue lead novo e os dados mudem. Os dois botões que saem de cena levam o
+// foco com eles: limpar o filtro leva ao número da lista, e "Mostrar mais"
+// leva à primeira linha que apareceu.
+export function ReportList({ listId = '', total, noun, cutLabel = null, onClearCut, columns, rows, emptyTitle, emptyText, pageSize = 50 }) {
+  const [more, setMore] = useState({ listId, extra: 0 });
+  if (more.listId !== listId) setMore({ listId, extra: 0 });
+  const extra = more.listId === listId ? more.extra : 0;
+  const countRef = useRef(null);
+  const bodyRef = useRef(null);
   const shown = rows.slice(0, pageSize + extra);
   const left = rows.length - shown.length;
+
+  // O botão de limpar sai de cena junto com o filtro: o foco passa ao número
+  // antes, senão cairia no body.
+  const clearCut = () => {
+    countRef.current?.focus();
+    onClearCut?.();
+  };
+  // A linha nova só existe no DOM depois de renderizar. O flushSync a faz
+  // aparecer na hora, para o foco ter onde pousar.
+  const showMore = () => {
+    const first = shown.length;
+    flushSync(() => setMore({ listId, extra: extra + pageSize }));
+    bodyRef.current?.rows[first]?.focus();
+  };
+
   return (
     <section className="rounded-2xl border border-border bg-card shadow-card">
       <header className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-[18px] py-3.5', RULE)}>
-        <p className="m-0 flex items-baseline gap-2" aria-live="polite">
+        <p ref={countRef} tabIndex={-1} className="m-0 flex items-baseline gap-2 outline-none" aria-live="polite">
           <span className="num font-display text-[24px] font-bold leading-none tracking-[-0.02em]">{fmtNum(total)}</span>
           <span className="text-[13px] font-semibold text-muted-foreground">{noun}</span>
         </p>
@@ -182,7 +229,7 @@ export function ReportList({ total, noun, cutLabel = null, onClearCut, columns, 
             {cutLabel}
             <button
               type="button"
-              onClick={onClearCut}
+              onClick={clearCut}
               aria-label="Limpar filtro da lista"
               className={cn('grid size-5 place-items-center rounded-full hover:bg-brand-100 dark:hover:bg-brand-500/25', FOCUS)}
             >
@@ -210,9 +257,9 @@ export function ReportList({ total, noun, cutLabel = null, onClearCut, columns, 
                   ))}
                 </tr>
               </thead>
-              <tbody>
+              <tbody ref={bodyRef}>
                 {shown.map((r) => (
-                  <tr key={r.id} className={cn('border-t', RULE)}>
+                  <tr key={r.id} tabIndex={-1} className={cn('border-t', ROW_FOCUS, RULE)}>
                     {columns.map((c) => (
                       <td key={c.key} className={cn('px-4 py-2.5 text-[12.5px]', c.className)}>{c.render(r)}</td>
                     ))}
@@ -225,7 +272,7 @@ export function ReportList({ total, noun, cutLabel = null, onClearCut, columns, 
             <div className={cn('border-t p-3 text-center', RULE)}>
               <button
                 type="button"
-                onClick={() => setMore({ sig, extra: extra + pageSize })}
+                onClick={showMore}
                 className={cn('h-9 rounded-full border border-border px-4 text-[12.5px] font-semibold hover:bg-muted/70', FOCUS)}
               >
                 {`Mostrar mais ${Math.min(pageSize, left)}`}

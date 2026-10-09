@@ -9,6 +9,11 @@ import {
 
 const noop = () => {};
 const html = (el) => renderToString(el);
+// As classes do <span> que traz exatamente este texto.
+const classOf = (out, text) => {
+  const m = out.match(new RegExp(`class="([^"]*)">${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</span>`));
+  return m ? m[1] : '';
+};
 
 describe('números do topo', () => {
   it('o total acende sem recorte, e cada número é um filtro da lista', () => {
@@ -34,6 +39,18 @@ describe('números do topo', () => {
     expect(out).toContain('leads novos');
     expect(out).toContain('▲ 25%');
     expect(out).toContain('vs. Agosto 2026');
+  });
+
+  it('o número grande aceita lowerBetter, e sem base fica apagado em vez de na cor do tom', () => {
+    const delta = { up: true, value: 100, text: '100%' };
+    const perdas = html(createElement(HeroNumber, { value: 12, label: 'perderam', tone: 'bad', delta, lowerBetter: true }));
+    expect(perdas).toContain('bg-rose-50');
+    expect(perdas).not.toContain('bg-emerald-50');
+    // Sem lowerBetter, o mesmo aumento continua verde.
+    expect(html(createElement(HeroNumber, { value: 12, label: 'matricularam', tone: 'good', delta }))).toContain('bg-emerald-50');
+    const semBase = html(createElement(HeroNumber, { value: null, label: 'de conversão', percent: true, tone: 'good' }));
+    expect(classOf(semBase, 'sem base')).toContain('text-muted-foreground');
+    expect(classOf(semBase, 'sem base')).not.toContain('text-emerald');
   });
 });
 
@@ -61,6 +78,60 @@ describe('recortes', () => {
     expect(out).toContain('>25%</span>');
     expect(out).toContain('width:25%');
     expect(out).toContain('bg-emerald-500');
+  });
+});
+
+describe('linhas dos recortes', () => {
+  const conv = [
+    { key: 'origem:Instagram', name: 'Instagram', leads: 4, enrolled: 1, conv: 25 },
+    { key: 'faixa:sem-contato', name: 'Sem contato', leads: 0, enrolled: 0, conv: null },
+    { key: 'origem:Indicação', name: 'Indicação', leads: 1, enrolled: 1, conv: 100 },
+  ];
+  const conversion = (rows, extra = {}) => html(createElement(ConversionBreakdown, { title: 'Por origem', rows, cut: null, onCut: noop, ...extra }));
+
+  it('a matrícula e a conversão têm o mesmo verde das tabelas do painel', () => {
+    const out = conversion(conv.slice(0, 1));
+    const verde = 'font-semibold text-emerald-700 dark:text-emerald-300';
+    expect(classOf(out, '1')).toContain(verde);
+    expect(classOf(out, '25%')).toContain(verde);
+  });
+
+  it('conversão que falta aparece como traço apagado, e não em branco', () => {
+    const out = conversion(conv.slice(1, 2));
+    expect(classOf(out, '—')).toContain('text-muted-foreground');
+    expect(classOf(out, '—')).not.toContain('text-emerald');
+  });
+
+  it('cada linha da conversão se lê inteira, e o cabeçalho visual não se lê', () => {
+    const out = conversion(conv);
+    expect(out).toContain('aria-label="Instagram: 4 leads, 1 matrícula, 25% de conversão"');
+    expect(out).toContain('aria-label="Sem contato: 0 leads, 0 matrículas, sem conversão"');
+    expect(out).toContain('aria-label="Indicação: 1 lead, 1 matrícula, 100% de conversão"');
+    expect(out).toMatch(/<div aria-hidden="true"[^>]*><span><\/span><span class="text-right">Leads<\/span>/);
+  });
+
+  it('sem linhas, a conversão diz que não há nada, como a contagem', () => {
+    const vazio = conversion([]);
+    expect(vazio).toContain('Nada no período.');
+    expect(vazio).not.toContain('<ul');
+    expect(vazio).not.toContain('>Leads</span>');
+    expect(conversion([], { emptyText: 'Nenhum lead nesta faixa.' })).toContain('Nenhum lead nesta faixa.');
+  });
+
+  it('o nome inteiro fica no title, e a linha corta em vez de vazar do cartão', () => {
+    const contagem = html(createElement(CountBreakdown, { title: 'Por origem', rows: [{ key: 'origem:Instagram', name: 'Instagram', channel: 'Pago', count: 4 }], cut: null, onCut: noop }));
+    const conversao = conversion(conv);
+    for (const out of [contagem, conversao]) {
+      expect(out).toContain('title="Instagram"');
+      const botoes = [...out.matchAll(/<button[^>]*class="([^"]*)"/g)].map((m) => m[1]);
+      expect(botoes.length).toBeGreaterThan(0);
+      for (const classes of botoes) {
+        expect(classes).toMatch(/\bmin-w-0\b/);
+        expect(classes).toMatch(/\boverflow-hidden\b/);
+      }
+    }
+    // O cabeçalho das colunas, que tem a mesma largura fixa, também corta.
+    expect(conversao).toMatch(/<div aria-hidden="true" class="[^"]*\boverflow-hidden\b/);
   });
 });
 
