@@ -3,6 +3,7 @@
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "functions": {
-    "api/tenant-resolve.js": { "maxDuration": 30 }
+    "api/tenant-resolve.js": { "maxDuration": 30 },
+    "api/zap.js": { "maxDuration": 30 }
   }
 }

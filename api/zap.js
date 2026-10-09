@@ -23,6 +23,7 @@ import { isTenantAdmin } from './_auth.js';
 import { checkRateLimit } from './_rateLimit.js';
 import { generateZapKey, verifyZapKey } from './_zapAuth.js';
 import { zapMatchKey } from './_zapPhone.js';
+import { fillZapMatchKeys } from './_zapMatchKeyFill.js';
 import { buildZapCard, buildGuardianCard, buildZapWards } from './_zapCard.js';
 import {
   LEAD_CREATE_LIMIT, ZAP_LEAD_MESSAGES, refusal, invalidData, tenantBlocked, emailFromActor, findTeamMember,
@@ -243,6 +244,11 @@ async function handlePost(req, res) {
     const tenantRef = adminDb.collection('tenants').doc(auth.tenantId);
 
     if (action === 'generate') {
+      // Antes da chave, a chave do telefone dos leads antigos: sem ela o
+      // Stronizap não acha o lead e o Cadastrar cria outro com o mesmo número.
+      // Se falhar, a chave não é gerada e o admin tenta de novo.
+      const filled = await fillZapMatchKeys(adminDb, leadsCollection(auth.tenantId));
+      console.info('zap generate: chave do telefone', { tenant: auth.tenantId, ...filled });
       const { key, keyPrefix, keyHash } = generateZapKey();
       await tenantRef.set({
         integrations: {
