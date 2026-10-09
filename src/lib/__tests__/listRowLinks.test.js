@@ -16,6 +16,10 @@ vi.mock('../firebase.js', () => ({
 vi.mock('../../hooks/usePagedLeads.js', () => ({
   usePagedLeads: () => ({ items: h.items, loading: false, hasMore: false, loadMore: () => {} }),
 }));
+// Todos os leads lê ao vivo desde 09/10/2026.
+vi.mock('../../hooks/useLiveLeads.js', () => ({
+  useLiveLeads: () => ({ items: h.items, loading: false, error: null }),
+}));
 
 const { LeadsView } = await import('../../views/LeadsView.jsx');
 const { ClientsView } = await import('../../views/ClientsView.jsx');

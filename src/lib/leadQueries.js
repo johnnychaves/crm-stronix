@@ -39,9 +39,12 @@ export const clientsAllQuerySpec = () => ({
 // A tela filtra/ordena/pagina client-side EXATAMENTE como hoje — só troca a
 // fonte (query própria em vez do prop global). Coleção inteira sem constraint é
 // sempre runnable (não exige índice composto). A leitura desta tela só cai com a
-// paginação real (server-side), que fica pro H; aqui getDocs carrega tudo uma
-// vez, ON-DEMAND (ao abrir a aba), já melhor que a assinatura global ao vivo.
+// paginação real (server-side), que fica pro H. Desde 09/10/2026 Todos os
+// leads e Configurações leem ao vivo (useLiveLeads), só com a tela aberta: na
+// volta em até 30 minutos, o cache persistente cobra só os leads que mudaram.
 export const allLeadsQuerySpec = () => ({ wheres: [] });
+// A chave das duas telas que usam a consulta acima. É a mesma de propósito.
+export const ALL_LEADS_KEY = 'all-leads';
 
 // Clientes "a vencer" (E2c) — clientes cujo contrato vence numa JANELA de datas,
 // pro badge clientsAVencer. Casa com o índice #4 (lifecycleBucket ASC,
