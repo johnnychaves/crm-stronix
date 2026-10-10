@@ -19,6 +19,7 @@ import { useId, useState } from 'react';
 import { CalendarDays, Check, ChevronDown } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover.jsx';
+import { FOCUS_RING } from '../focusRing.js';
 import { intervalRefusal, oldestDayKey } from '../../lib/period.js';
 
 const OPTIONS = [
@@ -58,7 +59,8 @@ export function PeriodMenu({ period, todayKey, onPick, onApply }) {
             aria-pressed={active}
             onClick={() => (o.id === 'intervalo' ? setCustom(true) : onPick(o.id))}
             className={cn(
-              'flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+              'flex h-8 items-center gap-2 rounded-lg px-2.5 text-left text-[12.5px] font-semibold',
+              FOCUS_RING,
               active ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'text-foreground hover:bg-muted/70'
             )}
           >
@@ -131,7 +133,8 @@ export function PeriodControl({ period, todayKey, onPeriod, onRange, compact = f
           aria-label="Período"
           aria-describedby={valueId}
           className={cn(
-            'num flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+            'num flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold',
+            FOCUS_RING,
             compact && 'w-full',
             active ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'border-border bg-card text-foreground'
           )}

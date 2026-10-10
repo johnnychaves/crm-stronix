@@ -7,6 +7,7 @@
 import { cn } from '../../lib/utils.js';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../../components/ui/select.jsx';
 import { RELATORIOS_RAIL_GROUPS } from '../../lib/relatoriosRail.js';
+import { FOCUS_RING } from '../../components/focusRing.js';
 
 export function RelatoriosRail({ section, onSection }) {
   return (
@@ -24,7 +25,8 @@ export function RelatoriosRail({ section, onSection }) {
                   aria-current={active ? 'page' : undefined}
                   onClick={() => onSection(it.id)}
                   className={cn(
-                    'flex flex-col items-start gap-0.5 rounded-xl px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-brand-500/40 motion-reduce:transition-none',
+                    'flex flex-col items-start gap-0.5 rounded-xl px-3 py-2.5 text-left transition-colors motion-reduce:transition-none',
+                    FOCUS_RING,
                     active ? 'bg-brand-50 dark:bg-brand-500/15' : 'hover:bg-muted/70'
                   )}
                 >

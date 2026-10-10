@@ -11,6 +11,7 @@ import { flushSync } from 'react-dom';
 import { Download, X } from 'lucide-react';
 import { cn } from '../../lib/utils.js';
 import { fmtNum } from '../../lib/format.js';
+import { FOCUS_RING } from '../../components/focusRing.js';
 import { CrmCard, DashedNote, DeltaPill } from '../dashboard/CrmParts.jsx';
 
 const TONE_TEXT = Object.freeze({
@@ -21,7 +22,6 @@ const TONE_TEXT = Object.freeze({
 // único verde do texto pequeno: matrícula e conversão dos recortes, a situação
 // e o desfecho da lista usam este. Os números grandes têm o TONE_TEXT.good.
 export const GREEN_TEXT = 'text-emerald-700 dark:text-emerald-300';
-const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40';
 const RULE = 'border-slate-100 dark:border-white/[0.06]';
 // A margem das células da lista: 12px entre as colunas, e a primeira e a última
 // alinhadas com o cabeçalho do cartão (px-[18px]). Com 16px de cada lado, a
@@ -83,7 +83,7 @@ export function NumberTiles({ tiles, cut, onCut }) {
             onClick={() => onCut(t.key === null || active ? null : t.key)}
             className={cn(
               'flex min-h-[96px] flex-col items-start justify-between gap-2 rounded-2xl border bg-card px-4 py-3.5 text-left shadow-card transition-colors motion-reduce:transition-none',
-              FOCUS,
+              FOCUS_RING,
               active ? 'border-brand-600 ring-1 ring-brand-600 dark:border-brand-400 dark:ring-brand-400' : 'border-border hover:border-brand-300 dark:hover:border-brand-500/40'
             )}
           >
@@ -130,7 +130,7 @@ export function CountBreakdown({ title, hint, rows, cut, onCut, emptyText = 'Nad
                   type="button"
                   aria-pressed={active}
                   onClick={() => onCut(active ? null : r.key)}
-                  className={cn('flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS, active && ROW_ON)}
+                  className={cn('flex w-full min-w-0 items-center gap-3 overflow-hidden rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS_RING, active && ROW_ON)}
                 >
                   <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium" title={rowTitleOf(r)}>
                     {r.name}
@@ -188,7 +188,7 @@ export function ConversionBreakdown({ title, hint, rows, cut, onCut, emptyText =
                     aria-pressed={active}
                     aria-label={conversionLabel(r)}
                     onClick={() => onCut(active ? null : r.key)}
-                    className={cn(CONV_GRID, 'w-full min-w-0 overflow-hidden rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS, active && ROW_ON)}
+                    className={cn(CONV_GRID, 'w-full min-w-0 overflow-hidden rounded-lg px-2.5 py-2 text-left hover:bg-muted/70', FOCUS_RING, active && ROW_ON)}
                   >
                     <span className="truncate text-[12.5px] font-medium" title={rowTitleOf(r)}>
                       {r.name}
@@ -254,7 +254,7 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
         {/* O espaço entre o número e o nome não aparece (os dois são itens do flex), mas
             faz o texto ler "120 leads", que é também o nome da tabela. O número recebe o
             foco quando o filtro é limpo, e quem limpou pelo teclado vê o anel, como nos botões. */}
-        <p id={countId} ref={countRef} tabIndex={-1} className={cn('m-0 flex items-baseline gap-2 rounded-md', FOCUS)} aria-live="polite">
+        <p id={countId} ref={countRef} tabIndex={-1} className={cn('m-0 flex items-baseline gap-2 rounded-md', FOCUS_RING)} aria-live="polite">
           <span className="num font-display text-[24px] font-bold leading-none tracking-[-0.02em]">{fmtNum(total)}</span>
           {' '}
           <span className="text-[13px] font-semibold text-muted-foreground">{noun}</span>
@@ -266,7 +266,7 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
               type="button"
               onClick={clearCut}
               aria-label="Limpar filtro da lista"
-              className={cn('grid size-5 place-items-center rounded-full hover:bg-brand-100 dark:hover:bg-brand-500/25', FOCUS)}
+              className={cn('grid size-5 place-items-center rounded-full hover:bg-brand-100 dark:hover:bg-brand-500/25', FOCUS_RING)}
             >
               <X size={12} strokeWidth={2.4} aria-hidden="true" />
             </button>
@@ -308,7 +308,7 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
               <button
                 type="button"
                 onClick={showMore}
-                className={cn('h-9 rounded-full border border-border px-4 text-[12.5px] font-semibold hover:bg-muted/70', FOCUS)}
+                className={cn('h-9 rounded-full border border-border px-4 text-[12.5px] font-semibold hover:bg-muted/70', FOCUS_RING)}
               >
                 {`Mostrar mais ${Math.min(pageSize, left)}`}
               </button>
@@ -336,7 +336,7 @@ export function ExportButton({ onExport, disabled = false }) {
       type="button"
       onClick={onExport}
       disabled={disabled}
-      className={cn('inline-flex h-9 items-center gap-2 rounded-full bg-brand-600 px-4 text-[12.5px] font-bold text-white hover:bg-brand-700 disabled:pointer-events-none disabled:opacity-40', FOCUS)}
+      className={cn('inline-flex h-9 items-center gap-2 rounded-full bg-brand-600 px-4 text-[12.5px] font-bold text-white hover:bg-brand-700 disabled:pointer-events-none disabled:opacity-40', FOCUS_RING)}
     >
       <Download size={14} strokeWidth={2.2} aria-hidden="true" />
       Exportar lista

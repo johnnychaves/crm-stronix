@@ -7,6 +7,7 @@ import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { createElement as h, act, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { NumberTiles, CountBreakdown, ConversionBreakdown, ReportList } from '../../views/relatorios/ReportParts.jsx';
+import { FOCUS_RING } from '../../components/focusRing.js';
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -184,6 +185,6 @@ describe('lista', () => {
     expect(document.activeElement).toBe(numero);
     expect(numero.textContent).toContain('3');
     // Quem limpou pelo teclado precisa ver onde o foco caiu: o número leva o anel dos botões.
-    expect(numero.className).toContain('focus-visible:ring-2');
+    for (const classe of FOCUS_RING.split(/\s+/)) expect(numero.classList.contains(classe), classe).toBe(true);
   });
 });

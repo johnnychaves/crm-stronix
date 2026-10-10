@@ -18,9 +18,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '../../components/ui/pop
 import { Select, SelectContent, SelectItem } from '../../components/ui/select.jsx';
 import { Checkbox } from '../../components/ui/checkbox.jsx';
 import { PeriodControl } from '../../components/period/PeriodControl.jsx';
+import { FOCUS_RING } from '../../components/focusRing.js';
 import { MonthControl } from '../dashboard/OperacionalToolbar.jsx';
 
-const FOCUS = 'outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40';
 const IDLE = 'border-border bg-card text-foreground';
 const ON = 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300';
 const TODAS = '__todas__';
@@ -44,7 +44,7 @@ export function FilterButton({ label, icon: Icon, active, text, compact, describ
       {...rest}
       {...described}
       aria-label={label}
-      className={cn('flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold', FOCUS, active ? ON : IDLE, compact && 'w-full')}
+      className={cn('flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold', FOCUS_RING, active ? ON : IDLE, compact && 'w-full')}
     >
       <Icon size={14} className={cn('shrink-0', active ? 'text-brand-700 dark:text-brand-300' : 'text-muted-foreground')} aria-hidden="true" />
       <span id={describeValue ? valueId : undefined} className={cn('truncate', compact ? 'flex-1 text-left' : 'max-w-[160px]')}>{text}</span>
@@ -65,7 +65,7 @@ export function ConsultoresMenu({ resp, people, onResp }) {
         onClick={() => onResp([])}
         className={cn(
           'flex h-8 items-center rounded-lg px-2.5 text-left text-[12.5px] font-semibold',
-          FOCUS,
+          FOCUS_RING,
           resp.length === 0 ? 'bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'text-foreground hover:bg-muted/70'
         )}
       >
@@ -180,7 +180,7 @@ export function RelatoriosToolbar(props) {
             aria-label={filtered ? 'Filtros dos relatórios, há filtro ativo' : 'Filtros dos relatórios'}
             className={cn(
               'relative grid size-9 place-items-center rounded-xl border md:hidden',
-              FOCUS,
+              FOCUS_RING,
               filtered ? ON : 'border-border bg-card text-muted-foreground hover:bg-muted/70 hover:text-foreground'
             )}
           >
