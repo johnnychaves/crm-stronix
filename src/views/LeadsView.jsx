@@ -17,23 +17,8 @@ import { StatusBadge } from '../components/ui/Badges.jsx';
 import { FunnelTabs } from '../components/layout/FunnelTabs.jsx';
 import { LeadLink } from '../components/nav/AppLink.jsx';
 import { ContactPhone } from '../components/profile/ContactPhone.jsx';
-import { contactLabel, contactOf } from '../lib/guardian.js';
-import { downloadCsv, toCsv } from '../lib/csvExport.js';
-
-// Colunas do exportar de Todos os leads, na ordem de sempre.
-const LEADS_CSV_COLUMNS = [
-  { key: 'nome', label: 'Nome' },
-  { key: 'whatsapp', label: 'WhatsApp' },
-  { key: 'responsavel', label: 'Responsável do aluno' },
-  { key: 'telefoneResponsavel', label: 'Telefone do responsável' },
-  { key: 'origem', label: 'Origem' },
-  { key: 'indicadoPor', label: 'Indicado por' },
-  { key: 'fase', label: 'Fase do Funil' },
-  { key: 'consultor', label: 'Consultor' },
-  { key: 'cadastro', label: 'Data Cadastro' },
-  { key: 'observacao', label: 'Observação' },
-  { key: 'motivoPerda', label: 'Motivo Perda' },
-];
+import { downloadCsv } from '../lib/csvExport.js';
+import { leadsToCsv } from '../lib/leadsCsv.js';
 
 // Cor da etapa (para chip de fase e dot). Venda/Perda mapeiam para os mesmos
 // tokens usados no Kanban; as demais vêm da cor configurada da etapa.
@@ -148,23 +133,7 @@ function LeadsView({ interactions, statuses, usersList, funnels, selectedFunnelI
       toast.warning('Não há leads para exportar com os filtros atuais.');
       return;
     }
-    const rows = filteredLeads.map((l) => {
-      const contato = contactOf(l);
-      return {
-        nome: l.name,
-        whatsapp: l.whatsapp,
-        responsavel: contato.viaGuardian ? contactLabel(contato) : '',
-        telefoneResponsavel: contato.viaGuardian ? contato.phone : '',
-        origem: l.source,
-        indicadoPor: l.referredByName,
-        fase: l.status,
-        consultor: l.consultantName,
-        cadastro: l.createdAt ? l.createdAt.toLocaleDateString('pt-BR') : '',
-        observacao: l.observation,
-        motivoPerda: l.lossReason,
-      };
-    });
-    downloadCsv(`leads_stronix_${new Date().toISOString().slice(0, 10)}.csv`, toCsv(rows, LEADS_CSV_COLUMNS));
+    downloadCsv(`leads_stronix_${new Date().toISOString().slice(0, 10)}.csv`, leadsToCsv(filteredLeads));
   };
 
   // Chips de filtros ativos (removem individualmente).
