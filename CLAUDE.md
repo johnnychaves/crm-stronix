@@ -20,6 +20,8 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 
 **Radius:** os utilitários `rounded-*` padrão do Tailwind NÃO foram redefinidos (sem `--radius-*` shadcn) para não alterar o visual atual.
 
+**Borda dos primitivos:** o `index.css` não tem a regra base do shadcn (`* { border-color: var(--border) }`), e no Tailwind v4 a borda sem cor pega a cor do texto: azul-marinho no claro e quase branca no escuro. Por isso os primitivos de `src/components/ui/` levam `border-border` junto do `border` (o balão do Popover, a lista do Select, o menu, o diálogo, o Card e o Button `outline`), e tela nova não precisa repetir o `border-border` no `className`. A regra global ficou de fora por ser a troca maior: ela vale para todo elemento com borda, e a conferência completa seria tela a tela. A varredura de 09/10/2026 não achou borda visível do app que dependa da cor do texto, então ela continua sendo uma saída; até lá, exemplo do shadcn colado fora dos primitivos leva o `border-border` à mão. Ao trazer ou sobrescrever um primitivo com `npx shadcn add`, devolva o `border-border`: o `src/lib/__tests__/bordaDosPrimitivos.test.js` cobra.
+
 ## Convenções gerais
 
 - Trabalho sempre via PR (nunca commit direto na main); merge só com aprovação do Johnny.
