@@ -269,7 +269,7 @@ function FunnelsSection({ db, funnels, statuses, leads, focusId, onFocusHandled 
                 onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedId(f.id); } }}
                 className={cn(
                   'group px-4 py-3.5 rounded-[14px] border bg-card cursor-pointer transition',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                  'focus-visible:outline-none focus-visible:anel-foco',
                   active
                     ? 'border-brand-600 shadow-[0_0_0_3px_rgba(43,89,255,.12)]'
                     : 'border-border hover:border-brand-600'

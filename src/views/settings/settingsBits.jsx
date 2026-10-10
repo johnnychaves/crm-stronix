@@ -32,7 +32,7 @@ function SettingsBtn({ kind = 'secondary', size = 34, icon, children, className 
       {...props}
       className={cn(
         'inline-flex items-center gap-1.5 rounded-[10px] font-semibold whitespace-nowrap transition active:scale-[.98]',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+        'focus-visible:outline-none focus-visible:anel-foco focus-visible:ring-offset-2 focus-visible:ring-offset-background',
         'disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100',
         BTN_SIZES[size] || BTN_SIZES[34], BTN_KINDS[kind] || BTN_KINDS.secondary, className
       )}
@@ -51,7 +51,7 @@ function SettingsAddBtn({ label = 'Adicionar', ...props }) {
       title={label}
       aria-label={label}
       {...props}
-      className="size-8 grid place-items-center rounded-[10px] border border-border bg-card text-muted-foreground transition hover:border-brand-600 hover:text-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+      className="size-8 grid place-items-center rounded-[10px] border border-border bg-card text-muted-foreground transition hover:border-brand-600 hover:text-brand-600 focus-visible:outline-none focus-visible:anel-foco"
     >
       <Plus size={15} />
     </button>
@@ -75,7 +75,7 @@ function RowAction({ icon, title, kind = 'edit', ghost = false, size = 30, ...pr
       style={{ width: size, height: size }}
       className={cn(
         'grid place-items-center rounded-lg text-slate-400 transition shrink-0',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+        'focus-visible:outline-none focus-visible:anel-foco',
         !ghost && 'border border-border bg-card',
         ROW_ACTION_KINDS[kind] || ROW_ACTION_KINDS.edit
       )}
@@ -93,7 +93,7 @@ function DashedTile({ icon, title, hint, className = '', ...props }) {
       {...props}
       className={cn(
         'group flex flex-col items-start justify-center gap-1 p-4 rounded-[14px] border border-dashed border-border text-left transition',
-        'hover:border-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+        'hover:border-brand-600 focus-visible:outline-none focus-visible:anel-foco',
         className
       )}
     >

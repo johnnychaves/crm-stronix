@@ -145,7 +145,7 @@ export function TeamMonthTable({ rows, others, total, running, onPick, withProfe
                 type="button"
                 onClick={() => onPick(user.id)}
                 className={cn(
-                  'flex w-full cursor-pointer items-center gap-3.5 border-b px-[18px] py-[11px] text-left outline-none hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-500/40',
+                  'flex w-full cursor-pointer items-center gap-3.5 border-b px-[18px] py-[11px] text-left outline-none hover:bg-muted/70 focus-visible:bg-muted/70 focus-visible:ring-inset focus-visible:anel-foco',
                   RULE
                 )}
               >
@@ -185,7 +185,7 @@ export function TeamMonthTable({ rows, others, total, running, onPick, withProfe
                 key={user.id}
                 type="button"
                 onClick={() => onPick(user.id)}
-                className="flex w-full items-center gap-2.5 rounded-lg text-left outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+                className="flex w-full items-center gap-2.5 rounded-lg text-left outline-none focus-visible:anel-foco"
               >
                 <span className="grid size-[26px] flex-none place-items-center rounded-full bg-brand-50 text-[9.5px] font-bold text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
                   {dashInitials(user.name)}
