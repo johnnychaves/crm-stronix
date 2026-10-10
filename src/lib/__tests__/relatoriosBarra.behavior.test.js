@@ -159,6 +159,19 @@ describe('listas de Origem e de Funil', () => {
     expect(onOrigem).toHaveBeenCalledWith('Indicação');
   });
 
+  it('a lista dos meses, que vem do Operacional, também tem borda própria e passa o mês escolhido', async () => {
+    const onMonth = vi.fn();
+    const meses = [{ key: '2026-09', label: 'Setembro 2026 · em andamento' }, { key: '2026-08', label: 'Agosto 2026' }];
+    await montar(h(RelatoriosToolbar, { ...barra, monthOptions: meses, onMonth }));
+    await abrir('Mês de competência');
+    expect(lista()).not.toBeNull();
+    // Sem a cor, o `border` do shadcn sai na cor do texto: no navegador, um contorno escuro em volta da lista.
+    expect(lista().className).toContain('border-border');
+    await tecla(opcao('Agosto 2026'), 'Enter');
+    expect(onMonth).toHaveBeenCalledTimes(1);
+    expect(onMonth).toHaveBeenCalledWith('2026-08');
+  });
+
   it('Funil: escolher um funil passa o id, "Todos os funis" passa all, e a lista tem borda própria', async () => {
     const onFunnel = vi.fn();
     const funil = (funnel) => h(FunilControl, { funnel, funnels, onFunnel });

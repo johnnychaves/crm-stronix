@@ -56,7 +56,9 @@ export function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext
             {compact ? <span className="truncate">{shortMonthLabel(monthOptions, monthKey)}</span> : <SelectValue />}
           </button>
         </SelectPrimitive.Trigger>
-        <SelectContent position="popper">
+        {/* Sem a cor, o `border` do shadcn sai na cor do texto: o app não tem cor de
+            borda base. A barra dos Relatórios também usa esta lista. */}
+        <SelectContent position="popper" className="border-border">
           {(monthOptions || []).map((o) => (
             <SelectItem key={o.key} value={o.key}>{o.label}</SelectItem>
           ))}
