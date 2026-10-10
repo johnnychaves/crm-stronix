@@ -50,7 +50,7 @@ describe('casca do App para o professor', () => {
     const menu = app.slice(app.indexOf('>Workspace</div>'), app.indexOf('>Administração</div>'));
     const itens = [
       ['overview', 'Visão geral'], ['kanban', 'Pipeline'], ['clientes', 'Clientes'],
-      ['dailyGoal', 'Meta diária'], ['leads', 'Leads'], ['suporte', 'Suporte'],
+      ['dailyGoal', 'Meta diária'], ['leads', 'Leads'], ['relatorios', 'Relatórios'], ['suporte', 'Suporte'],
     ];
     for (const [chave, rotulo] of itens) {
       const idx = menu.indexOf(`label="${rotulo}"`);
@@ -60,6 +60,30 @@ describe('casca do App para o professor', () => {
       // Entre a guarda e o rótulo não pode haver outro item do menu.
       expect(menu.slice(guarda, idx).match(/label="/g) ?? [], rotulo).toEqual([]);
     }
+  });
+
+  // Relatórios fica no bloco Workspace, logo abaixo do grupo Leads e acima do
+  // Suporte (spec 2026-10-09), e acende pela tela aberta: a ficha que se abre
+  // da lista de um relatório continua com ele aceso, porque o activeTab dela é a
+  // tela de origem. O endereço do item sai do menuHref, da academia da sessão.
+  it('Relatórios fica logo abaixo de Leads, acima de Suporte', () => {
+    const inicio = app.indexOf('>Workspace</div>');
+    const fim = app.indexOf('>Administração</div>');
+    const leads = app.indexOf('label="Leads"', inicio);
+    const fimDoLeads = app.indexOf('</SidebarGroup>', leads);
+    const relatorios = app.indexOf('label="Relatórios"', inicio);
+    const suporte = app.indexOf('label="Suporte"', inicio);
+    expect(leads).toBeGreaterThan(inicio);
+    expect(fimDoLeads).toBeGreaterThan(leads);
+    expect(app.indexOf('label="Relatórios"')).toBe(relatorios);
+    expect(relatorios).toBeGreaterThan(fimDoLeads);
+    expect(relatorios).toBeLessThan(suporte);
+    expect(suporte).toBeLessThan(fim);
+    // Do fim do grupo Leads até o Suporte só existe o item Relatórios.
+    expect(app.slice(fimDoLeads, suporte).match(/label="/g) ?? []).toEqual(['label="']);
+    const item = app.slice(app.lastIndexOf('{nav.relatorios && ', relatorios), app.indexOf('/>', relatorios));
+    expect(item).toContain("href={menuHref('relatorios')}");
+    expect(item).toContain("active={activeTab === 'relatorios'}");
   });
 
   // Rotinas fica em Administração, logo acima de Configurações (pedido do

@@ -16,9 +16,9 @@ const semPapel = { id: 'u3', tenantId: T };
 const professor = { id: 'u4', role: 'professor', professorId: 'p1', tenantId: T, tenantModules: COM_MODULO };
 const semLigacao = { id: 'u5', role: 'professor', tenantId: T, tenantModules: COM_MODULO };
 
-const DO_GESTOR = { overview: true, kanban: true, clientes: true, dailyGoal: true, rotinas: true, leads: true, suporte: true };
+const DO_GESTOR = { overview: true, kanban: true, clientes: true, dailyGoal: true, rotinas: true, leads: true, relatorios: true, suporte: true };
 const DO_CONSULTOR = { ...DO_GESTOR, rotinas: false };
-const DO_PROFESSOR = { overview: false, kanban: false, clientes: true, dailyGoal: true, rotinas: false, leads: false, suporte: false };
+const DO_PROFESSOR = { overview: false, kanban: false, clientes: true, dailyGoal: true, rotinas: false, leads: false, relatorios: false, suporte: false };
 
 // As telas que cada item do menu abre (App.jsx, bloco Workspace).
 const TELAS = {
@@ -28,6 +28,7 @@ const TELAS = {
   dailyGoal: ['dailyGoal'],
   rotinas: ['rotinas'],
   leads: ['leads', 'aulas', 'visitas'],
+  relatorios: ['relatorios'],
 };
 
 describe('sidebarNav', () => {

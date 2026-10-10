@@ -28,16 +28,18 @@ export { OTHERS_ID };
 // insumo no mesmo objeto de ctx zera o cache.
 const caches = new WeakMap();
 
-// Registros de agendamento de todos os meses carregados, sem repetir id, com a
-// cópia do mês mais novo. O registro remarcado de 30/08 para 03/09 continua na
-// lista de agosto (memória da sessão ou cache do aparelho) e contaria nos dois
-// meses. Com a cópia mais nova, a janela por scheduledFor põe cada registro no
-// mês da data atual.
-function newestRecordsOf(months) {
+// Um balde (aulas, leadsCreated, converted, lost ou interactions) de todos os
+// meses carregados, sem repetir id, com a cópia do mês mais novo. É a regra
+// dos registros de agendamento: o registro remarcado de 30/08 para 03/09
+// continua na lista de agosto (memória da sessão ou cache do aparelho) e
+// contaria nos dois meses. Com a cópia mais nova, a janela por scheduledFor
+// põe cada registro no mês da data atual. Os Relatórios (relatorios/leads) usam
+// esta mesma função para os outros baldes, e nada a copia.
+export function newestRecordsOf(months, bucket) {
   const seen = new Set();
   const out = [];
   Object.keys(months || {}).sort().reverse().forEach((key) => {
-    (months[key]?.aulas || []).forEach((r) => {
+    (months[key]?.[bucket] || []).forEach((r) => {
       if (!r?.id || seen.has(r.id)) return;
       seen.add(r.id);
       out.push(r);
@@ -73,7 +75,7 @@ function cacheOf(ctx) {
   if (!cache || cache.sig.some((v, i) => v !== sig[i])) {
     const loaded = Object.values(ctx.months || {});
     const interactions = loaded.flatMap((m) => m.interactions || []);
-    const records = newestRecordsOf(ctx.months);
+    const records = newestRecordsOf(ctx.months, 'aulas');
     cache = {
       sig,
       results: new Map(),

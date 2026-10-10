@@ -214,6 +214,11 @@ describe('rowsToCsv', () => {
     expect(csv).toBe('Coluna A;Coluna B\r\n"linha1\nlinha2";ok');
   });
 
+  it('protege contra fórmula, como o exportar de Todos os leads', () => {
+    const csv = rowsToCsv([{ a: '=HYPERLINK("http://x")', b: 'ok' }], columns);
+    expect(csv).toBe(`Coluna A;Coluna B\r\n"'=HYPERLINK(""http://x"")";ok`);
+  });
+
   it('trata valor ausente (null/undefined) como string vazia', () => {
     const csv = rowsToCsv([{ a: null, b: undefined }], columns);
     expect(csv).toBe('Coluna A;Coluna B\r\n;');

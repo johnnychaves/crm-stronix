@@ -550,3 +550,96 @@ describe('contrato do contexto de Aulas e Visitas', () => {
       .toBe(`?resp=u1&prof=p1,${SOLO_TRAINING}`);
   });
 });
+
+describe('Relatórios', () => {
+  // 25/09/2026: o intervalo aceita de 01/10/2025 até hoje.
+  const origens = ['Instagram', 'Indicação'];
+  const rel = { currentKey: HOJE, todayKey: '2026-09-25', users, podeResp: true, respPadrao: [], funis, origens };
+
+  it('os nomes, na ordem do endereço', () => {
+    expect(SCREEN_PARAM_NAMES.relatorios).toEqual(['mes', 'periodo', 'de', 'ate', 'resp', 'origem', 'funil', 'recorte']);
+  });
+
+  it('endereço limpo é o mês atual, a equipe toda, todas as origens e todos os funis, e nada é escrito', () => {
+    const v = ler('relatorios', '', rel);
+    expect(v).toEqual({ monthKey: HOJE, periodo: null, de: null, ate: null, resp: [], origem: null, funnel: 'all', recorte: null });
+    expect(montar('relatorios', v, rel)).toBe('');
+  });
+
+  it('atalho vale e apaga o mês; de e até ganham do atalho', () => {
+    expect(ler('relatorios', '?mes=2026-07&periodo=semana', rel)).toMatchObject({ periodo: 'semana', monthKey: HOJE });
+    expect(ler('relatorios', '?periodo=hoje&de=2026-09-01&ate=2026-09-10', rel))
+      .toMatchObject({ periodo: null, de: '2026-09-01', ate: '2026-09-10', monthKey: HOJE });
+    expect(volta('relatorios', '?mes=2026-07&periodo=semana', rel)).toBe('?periodo=semana');
+  });
+
+  it('intervalo recusado cai no mês atual, sem aviso', () => {
+    for (const q of ['?de=2026-09-10&ate=2026-09-01', '?de=2025-09-30&ate=2026-09-01', '?de=2026-09-01&ate=2026-09-26', '?de=2026-09-01']) {
+      expect(ler('relatorios', q, rel), q).toMatchObject({ periodo: null, de: null, ate: null, monthKey: HOJE });
+      expect(volta('relatorios', q, rel), q).toBe('');
+    }
+  });
+
+  it('o mês do modo mês vale nos últimos 12 meses', () => {
+    expect(volta('relatorios', '?mes=2026-07', rel)).toBe('?mes=2026-07');
+    expect(ler('relatorios', '?mes=2025-07', rel).monthKey).toBe(HOJE);
+  });
+
+  it('consultores, origem e funil do catálogo; o que sumiu cai no padrão', () => {
+    expect(ler('relatorios', '?resp=u1,u9&origem=Instagram&funil=f1', rel)).toMatchObject({ resp: ['u1'], origem: 'Instagram', funnel: 'f1' });
+    expect(ler('relatorios', '?origem=Outdoor&funil=f9', rel)).toMatchObject({ origem: null, funnel: 'all' });
+    expect(volta('relatorios', '?resp=u2&origem=Indica%C3%A7%C3%A3o&funil=f1', rel)).toBe('?resp=u2&origem=Indica%C3%A7%C3%A3o&funil=f1');
+  });
+
+  it('o recorte da lista no formato tipo:valor', () => {
+    expect(ler('relatorios', '?recorte=situacao:matricularam', rel).recorte).toBe('situacao:matricularam');
+    expect(volta('relatorios', '?recorte=origem:Instagram', rel)).toBe('?recorte=origem%3AInstagram');
+    for (const q of [
+      '?recorte=', '?recorte=matricularam', '?recorte=Situacao:x',
+      '?recorte=origem:a%09b', // tab
+      '?recorte=origem:a%00b', // NUL
+    ]) {
+      expect(ler('relatorios', q, rel).recorte, q).toBeNull();
+    }
+  });
+
+  it('o recorte de um nome de catálogo comprido vale até 200 caracteres depois do tipo, e o de 201 não', () => {
+    // O nome de uma origem não tem limite no catálogo. Com o teto antigo (80), a
+    // linha de uma origem comprida clicava e não filtrava nada.
+    const comprido = (n) => `origem:${'x'.repeat(n)}`;
+    for (const n of [80, 81, 200]) {
+      const q = `?recorte=${encodeURIComponent(comprido(n))}`;
+      expect(ler('relatorios', q, rel).recorte, `${n}`).toBe(comprido(n));
+      expect(volta('relatorios', q, rel), `${n}`).toBe(q);
+    }
+    expect(ler('relatorios', `?recorte=${comprido(201)}`, rel).recorte).toBeNull();
+    // O que a tela escreve ao clicar na linha: o de 201 não é escrito, e o de 200 é.
+    const v = ler('relatorios', '', rel);
+    expect(montar('relatorios', { ...v, recorte: comprido(200) }, rel)).toBe(`?recorte=${encodeURIComponent(comprido(200))}`);
+    expect(montar('relatorios', { ...v, recorte: comprido(201) }, rel)).toBe('');
+    // A regra do caractere de controle continua valendo no tamanho novo.
+    expect(ler('relatorios', `?recorte=${encodeURIComponent(`origem:${'x'.repeat(100)}\t${'y'.repeat(50)}`)}`, rel).recorte).toBeNull();
+  });
+
+  it('o que a tela monta ao escolher o período: o mês antigo não vai junto, e o intervalo ganha', () => {
+    const v = ler('relatorios', '?mes=2026-07', rel);
+    expect(montar('relatorios', { ...v, periodo: 'semana' }, rel)).toBe('?periodo=semana');
+    expect(montar('relatorios', { ...v, de: '2026-09-01', ate: '2026-09-10' }, rel)).toBe('?de=2026-09-01&ate=2026-09-10');
+    expect(montar('relatorios', { ...v, periodo: 'hoje', de: '2026-09-01', ate: '2026-09-10' }, rel)).toBe('?de=2026-09-01&ate=2026-09-10');
+    expect(montar('relatorios', { ...v, periodo: 'hoje', de: '2026-09-10', ate: '2026-09-01' }, rel)).toBe('?periodo=hoje');
+    expect(montar('relatorios', { ...v, origem: 'Outdoor', recorte: 'sem formato' }, rel)).toBe('?mes=2026-07');
+  });
+
+  it('intervalo válido: ida e volta, e o mês do endereço some na leitura', () => {
+    expect(volta('relatorios', '?mes=2026-07&periodo=hoje&de=2026-09-01&ate=2026-09-10', rel)).toBe('?de=2026-09-01&ate=2026-09-10');
+    expect(ler('relatorios', '?mes=2026-07&de=2026-09-01&ate=2026-09-10', rel))
+      .toMatchObject({ periodo: null, de: '2026-09-01', ate: '2026-09-10', monthKey: HOJE });
+  });
+
+  it('sem todayKey nenhum intervalo vale; data final sozinha e periodo desconhecido caem no padrão', () => {
+    expect(ler('relatorios', '?de=2026-09-01&ate=2026-09-10', { ...rel, todayKey: undefined }))
+      .toMatchObject({ de: null, ate: null, monthKey: HOJE });
+    expect(ler('relatorios', '?ate=2026-09-10', rel)).toMatchObject({ de: null, ate: null, periodo: null, monthKey: HOJE });
+    expect(ler('relatorios', '?mes=2026-07&periodo=banana', rel)).toMatchObject({ periodo: null, monthKey: '2026-07' });
+  });
+});

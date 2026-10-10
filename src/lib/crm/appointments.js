@@ -175,23 +175,31 @@ const hasOpenAppointment = (lead) =>
 // matrícula (upsertScheduledAppointment só troca a data) guarda o createdAt de
 // quando a pessoa era lead e segue valendo no agendou, mas a data dele já é a
 // da visita nova: por isso o compareceu também pede a data antes da matrícula.
-export function cohortMilestones(cohort, { asOf, cut, recordsByLead, visitOutcomes = null }) {
+export function cohortMilestones(cohort, opts) {
   let sched = 0;
   let came = 0;
   (cohort || []).forEach((l) => {
-    const enrolledAt = firstEnrolledAtOf(l);
-    const recs = (recordsByLead.get(l.id) || [])
-      .filter((r) => !(enrolledAt && bookedAt(r) && bookedAt(r) >= enrolledAt))
-      .map((r) => ({ r, status: effectiveStatus(r, visitOutcomes, l) }));
-    const attended = recs.some(({ r, status }) => status === AULA_STATUS.ATTENDED && r.scheduledFor
-      && r.scheduledFor <= asOf && !(enrolledAt && r.scheduledFor >= enrolledAt));
-    const booked = attended
-      || recs.some(({ r, status }) => status !== AULA_STATUS.CANCELLED && bookedAt(r) && bookedAt(r) <= asOf)
-      || (!cut && hasOpenAppointment(l));
-    if (booked) sched += 1;
-    if (attended) came += 1;
+    const m = cohortMilestoneOf(l, opts);
+    if (m.booked) sched += 1;
+    if (m.attended) came += 1;
   });
   return { sched, came };
+}
+
+// Marcos de um lead da safra no instante asOf, na regra do cohortMilestones
+// (comentário acima): agendou e compareceu. Os Relatórios mostram os dois lead
+// por lead, e a contagem do painel soma o que esta função devolve.
+export function cohortMilestoneOf(l, { asOf, cut, recordsByLead, visitOutcomes = null }) {
+  const enrolledAt = firstEnrolledAtOf(l);
+  const recs = (recordsByLead.get(l.id) || [])
+    .filter((r) => !(enrolledAt && bookedAt(r) && bookedAt(r) >= enrolledAt))
+    .map((r) => ({ r, status: effectiveStatus(r, visitOutcomes, l) }));
+  const attended = recs.some(({ r, status }) => status === AULA_STATUS.ATTENDED && r.scheduledFor
+    && r.scheduledFor <= asOf && !(enrolledAt && r.scheduledFor >= enrolledAt));
+  const booked = attended
+    || recs.some(({ r, status }) => status !== AULA_STATUS.CANCELLED && bookedAt(r) && bookedAt(r) <= asOf)
+    || (!cut && hasOpenAppointment(l));
+  return { booked, attended };
 }
 
 // Aulas experimentais por professor, da academia inteira (spec §4): registros

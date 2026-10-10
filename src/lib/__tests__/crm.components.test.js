@@ -38,6 +38,17 @@ describe('peças do CRM', () => {
     expect(html).toContain('Nenhum lead perdido neste mês.');
   });
 
+  it('o título do card é h4 no painel e muda de nível quando a tela pede', () => {
+    const card = (extra) => render(createElement(CrmCard, { title: 'Por origem', ...extra }, 'corpo'));
+    // O painel não passa nível e continua em h4.
+    expect(card({})).toContain('>Por origem</h4>');
+    // Os Relatórios põem os cartões abaixo do título do relatório, que é h2.
+    expect(card({ headingLevel: 3 })).toContain('>Por origem</h3>');
+    expect(card({ headingLevel: 3 })).not.toContain('<h4');
+    // Nível que não é de título volta ao h4, em vez de sair uma tag que não existe.
+    for (const headingLevel of [1, 7, 'h3', null, undefined]) expect(card({ headingLevel }), String(headingLevel)).toContain('>Por origem</h4>');
+  });
+
   it('pílula de diferença onde menor é melhor', () => {
     expect(render(createElement(DeltaPill, { delta: { up: false, text: '40 min' }, lowerBetter: true }))).toContain('text-emerald-700');
     expect(render(createElement(DeltaPill, { delta: { up: true, text: '40 min' }, lowerBetter: true }))).toContain('text-rose-700');
