@@ -250,8 +250,9 @@ export function ReportList({ listId = '', total, noun, cutLabel = null, onClearC
     <section className="rounded-2xl border border-border bg-card shadow-card">
       <header className={cn('flex flex-wrap items-center gap-x-3 gap-y-2 border-b px-[18px] py-3.5', RULE)}>
         {/* O espaço entre o número e o nome não aparece (os dois são itens do flex), mas
-            faz o texto ler "120 leads", que é também o nome da tabela. */}
-        <p id={countId} ref={countRef} tabIndex={-1} className="m-0 flex items-baseline gap-2 outline-none" aria-live="polite">
+            faz o texto ler "120 leads", que é também o nome da tabela. O número recebe o
+            foco quando o filtro é limpo, e quem limpou pelo teclado vê o anel, como nos botões. */}
+        <p id={countId} ref={countRef} tabIndex={-1} className={cn('m-0 flex items-baseline gap-2 rounded-md', FOCUS)} aria-live="polite">
           <span className="num font-display text-[24px] font-bold leading-none tracking-[-0.02em]">{fmtNum(total)}</span>
           {' '}
           <span className="text-[13px] font-semibold text-muted-foreground">{noun}</span>

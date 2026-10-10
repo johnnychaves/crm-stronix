@@ -183,5 +183,7 @@ describe('lista', () => {
     const numero = container.querySelector('[aria-live="polite"]');
     expect(document.activeElement).toBe(numero);
     expect(numero.textContent).toContain('3');
+    // Quem limpou pelo teclado precisa ver onde o foco caiu: o número leva o anel dos botões.
+    expect(numero.className).toContain('focus-visible:ring-2');
   });
 });

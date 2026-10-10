@@ -367,6 +367,22 @@ describe('véu enquanto o período novo carrega', () => {
   });
 });
 
+describe('foco embaixo da barra fixa', () => {
+  // O jsdom não rola nem mede: o que se confere é a margem de rolagem no lugar certo. No
+  // navegador, sem ela, quem voltava com Shift+Tab pela lista via o foco sumir atrás da barra.
+  it('o que recebe foco no corpo do relatório para abaixo da barra ao rolar, e a barra fica fora da margem', async () => {
+    await montar('/acad/relatorios/conversao', { section: 'conversao' });
+    const corpo = container.querySelector('[aria-busy]');
+    expect(corpo.className).toContain('[&_:is(a,button,[tabindex])]:scroll-mt-32');
+    // O que recebe foco no relatório está dentro do corpo: o exportar, os números, os recortes, os nomes e o número da lista.
+    for (const el of [botao('Exportar lista'), botao('Matricularam'), linhas()[0].querySelector('a'), numeroDaLista()]) {
+      expect(corpo.contains(el)).toBe(true);
+    }
+    // A barra é fixa e não rola até o foco: os controles dela ficam fora do corpo.
+    expect(corpo.contains(gatilho('Período'))).toBe(false);
+  });
+});
+
 describe('região de estado', () => {
   it('carregando, falhou e pronto passam pela mesma região, que está no DOM nos três casos', async () => {
     usar({ months: {}, leadsById: new Map() });

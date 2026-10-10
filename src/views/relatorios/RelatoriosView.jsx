@@ -179,11 +179,18 @@ export function RelatoriosView({
         </div>
         {!failed && shown && (
           // Sob o véu, o conteúdo velho não recebe foco nem leitura (inert), além de
-          // ficar apagado e sem clique.
+          // ficar apagado e sem clique. O scroll-mt-32 vale para o que recebe foco
+          // aqui dentro: quem volta com Shift+Tab faz o navegador rolar o item até o
+          // topo da área que rola, e sem a margem ele ficava escondido atrás da barra
+          // fixa (medido a 1280px: 15 de 40 paradas atrás da barra). Os 128px cobrem
+          // a barra em uma ou duas linhas. A barra fica fora daqui: ela não rola.
           <div
             aria-busy={veiled}
             inert={veiled}
-            className={cn('transition-opacity motion-reduce:transition-none', veiled && 'pointer-events-none opacity-35')}
+            className={cn(
+              'transition-opacity motion-reduce:transition-none [&_:is(a,button,[tabindex])]:scroll-mt-32',
+              veiled && 'pointer-events-none opacity-35'
+            )}
           >
             {secao === 'conversao' ? (
               <ConversaoSection
