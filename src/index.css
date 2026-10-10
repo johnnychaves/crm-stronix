@@ -369,3 +369,42 @@
 /* Spinner. */
 @keyframes spin { to { transform: rotate(360deg); } }
 .spin { animation: spin .7s linear infinite; }
+
+/* =========================
+   MOVIMENTO REDUZIDO
+   ========================= */
+/* Quem pede menos movimento no sistema (prefers-reduced-motion: reduce) vê
+   balão, menu, lista e diálogo abrirem e fecharem sem crescer, deslizar nem
+   esmaecer, e as entradas deste arquivo acontecem sem animação.
+   - As entradas e saídas do tw-animate saem pelo nome da classe, com ou sem
+     variante (`data-[state=open]:animate-in`), porque o utilitário escreve a
+     animação direto na regra e não deixa variável para trocar.
+   - Com `animation: none` o Radix desmonta o balão fechado na hora, sem
+     esperar uma saída que não vai acontecer.
+   - Fica fora de camada e com !important para ganhar do .fade-in e do
+     .animate-fade-in, que também estão fora de camada e venciam o
+     motion-reduce: das telas.
+   - O spinner (.spin, animate-spin) continua girando, porque avisa que algo
+     está carregando. O animate-pulse e as transições de cor ficam como estão.
+   Animação nova neste arquivo que mexa nas coisas entra na lista abaixo; o
+   movimentoReduzido.test.js cobra. */
+@media (prefers-reduced-motion: reduce) {
+  [class*="animate-in"],
+  [class*="animate-out"],
+  [class*="animate-accordion-"],
+  [class*="animate-collapsible-"],
+  .animate-wiggle,
+  .fade-in,
+  .animate-fade-in,
+  .pop,
+  .step-reveal,
+  .opt-in,
+  .sum-in,
+  .check-pop,
+  .rise,
+  .floaty,
+  .floaty2,
+  .shake {
+    animation: none !important;
+  }
+}
