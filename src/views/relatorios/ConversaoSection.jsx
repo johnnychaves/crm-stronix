@@ -100,10 +100,12 @@ export function ConversaoSection({ report, compareText, listId, year, onCut, exp
       <div className="grid gap-4 xl:grid-cols-2">
         <ConversionBreakdown title="Por origem" rows={report.bySource} cut={report.cut} onCut={onCut} />
         <ConversionBreakdown title="Por consultor" rows={report.byOwner} cut={report.cut} onCut={onCut} />
+        {/* As quatro faixas existem sempre, mas sem leads no período o cartão diz
+            "Nada no período." como os outros dois, em vez de quatro linhas zeradas. */}
         <ConversionBreakdown
           title="Rapidez do primeiro contato"
           hint="Do cadastro à primeira conversa registrada."
-          rows={report.bySpeed}
+          rows={report.totals.leads > 0 ? report.bySpeed : []}
           cut={report.cut}
           onCut={onCut}
         />

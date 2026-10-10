@@ -64,6 +64,17 @@ describe('números do topo', () => {
     expect(classOf(semBase, 'sem base')).toContain('text-muted-foreground');
     expect(classOf(semBase, 'sem base')).not.toContain('text-emerald');
   });
+
+  it('sem base, o número grande não repete "sem base" na pílula, e o comparado continua', () => {
+    // Sem leads no período, a variação da conversão também é "sem base": a pílula só repetiria o número.
+    // O comparado fica, porque é ele que diz contra o que os números de baixo variam.
+    const out = html(createElement(HeroNumber, {
+      value: null, label: 'de conversão da safra', percent: true, tone: 'good',
+      delta: { none: true, text: 'sem base' }, compareText: 'vs. 13 set',
+    }));
+    expect(out.split('sem base')).toHaveLength(2);
+    expect(out).toContain('vs. 13 set');
+  });
 });
 
 describe('recortes', () => {

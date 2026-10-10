@@ -367,6 +367,29 @@ describe('véu enquanto o período novo carrega', () => {
   });
 });
 
+describe('Conversão sem leads no período', () => {
+  // Hoje (dia 14, meio-dia) ainda não chegou lead nas fixtures; ontem chegou o s4.
+  const cartao = (titulo) => [...container.querySelectorAll('h3')].find((t) => t.textContent === titulo).closest('section');
+
+  it('o número grande diz "sem base" uma vez, com o comparado, e a rapidez diz que não há nada, como os outros recortes', async () => {
+    await montar('/acad/relatorios/conversao?periodo=hoje', { section: 'conversao' });
+    const topo = container.querySelector('.num.font-display').parentElement.textContent;
+    expect(topo.split('sem base')).toHaveLength(2);
+    expect(comparado()).toBe('vs. 13 set');
+    for (const titulo of ['Por origem', 'Por consultor', 'Rapidez do primeiro contato']) {
+      expect(cartao(titulo).textContent, titulo).toContain('Nada no período.');
+    }
+    expect(recorte('Até 1 hora')).toBeFalsy();
+    // Com leads no período (o mês), as quatro faixas voltam.
+    await clicar(gatilho('Período'));
+    await clicar(opcaoDoPeriodo('Mês'));
+    expect(sonda()).toBe('');
+    for (const faixa of ['Até 1 hora', 'Até 24 horas', 'Mais de 24 horas', 'Sem contato']) {
+      expect(recorte(faixa), faixa).toBeTruthy();
+    }
+  });
+});
+
 describe('foco embaixo da barra fixa', () => {
   // O jsdom não rola nem mede: o que se confere é a margem de rolagem no lugar certo. No
   // navegador, sem ela, quem voltava com Shift+Tab pela lista via o foco sumir atrás da barra.

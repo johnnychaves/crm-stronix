@@ -47,7 +47,9 @@ export function ReportHeader({ title, question, action }) {
 
 // O número que abre o submenu, com a variação contra o período anterior. Em
 // lowerBetter (as perdas), subir é ruim e a variação sai vermelha. Sem base,
-// o texto fica apagado: a cor do tom diria que há um resultado bom ou ruim.
+// o texto fica apagado: a cor do tom diria que há um resultado bom ou ruim. E
+// sem a pílula, que só repetiria "sem base" ao lado do número. O texto do
+// comparado fica, porque é ele que diz contra o que os números de baixo variam.
 export function HeroNumber({ value, label, delta = null, lowerBetter = false, compareText = null, percent = false, tone = null }) {
   const empty = value == null;
   const text = empty ? 'sem base' : percent ? `${value}%` : fmtNum(value);
@@ -55,7 +57,7 @@ export function HeroNumber({ value, label, delta = null, lowerBetter = false, co
     <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5">
       <span className={cn('num font-display text-[40px] font-bold leading-none tracking-[-0.03em]', empty ? 'text-muted-foreground' : TONE_TEXT[tone])}>{text}</span>
       <span className="text-[13px] font-semibold text-muted-foreground">{label}</span>
-      {delta && <DeltaPill delta={delta} lowerBetter={lowerBetter} />}
+      {delta && !empty && <DeltaPill delta={delta} lowerBetter={lowerBetter} />}
       {compareText && <span className="text-[12px] text-muted-foreground">{compareText}</span>}
     </div>
   );
