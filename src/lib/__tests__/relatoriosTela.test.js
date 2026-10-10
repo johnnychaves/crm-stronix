@@ -58,6 +58,8 @@ describe('tela dos Relatórios', () => {
     expect(out).toContain('Conversão');
     expect(out).toContain('20%');
     expect(out).toContain('Rapidez do primeiro contato');
+    // O primeiro contato é qualquer interação registrada da equipe, e não só conversa (isContactInteraction).
+    expect(out).toContain('Do cadastro à primeira interação da equipe.');
     expect(out).toContain('aria-label="Limpar filtro da lista"');
     expect(out).toContain(ficha('s1'));
     expect(out).not.toContain(ficha('s4'));

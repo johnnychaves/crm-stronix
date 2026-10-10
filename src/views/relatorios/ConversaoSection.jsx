@@ -104,7 +104,7 @@ export function ConversaoSection({ report, compareText, listId, year, onCut, exp
             "Nada no período." como os outros dois, em vez de quatro linhas zeradas. */}
         <ConversionBreakdown
           title="Rapidez do primeiro contato"
-          hint="Do cadastro à primeira conversa registrada."
+          hint="Do cadastro à primeira interação da equipe."
           rows={report.totals.leads > 0 ? report.bySpeed : []}
           cut={report.cut}
           onCut={onCut}

@@ -547,12 +547,12 @@ describe('lista que não quebra linha', () => {
         expect(celula(tr, coluna).firstElementChild.className, coluna).toContain('max-w-[9rem]');
       }
     }
-    // s1 foi cadastrada em 02/09 às 10h e a primeira conversa foi às 10h30.
+    // s1 foi cadastrada em 02/09 às 10h e a primeira interação da equipe foi às 10h30.
     expect(celula(linhaDe('s1'), '1º contato').textContent).toBe('30 min · 02/09');
     expect(celula(linhaDe('s1'), 'Cadastro').textContent).toBe('02/09');
     expect(celula(linhaDe('s1'), 'Desfecho').textContent).toBe('Matriculou em 05/09');
     expect(celula(linhaDe('s1'), 'Desfecho').firstElementChild.className).toContain('text-emerald-700 dark:text-emerald-300');
-    // Sem conversa registrada, o texto apagado de sempre.
+    // Sem interação da equipe, o texto apagado de sempre.
     const semContato = celula(linhaDe('s4'), '1º contato').firstElementChild;
     expect([semContato.textContent, semContato.className]).toEqual(['Sem contato', 'text-muted-foreground']);
     expect(container.querySelector('tbody').textContent).not.toContain('/2026');
