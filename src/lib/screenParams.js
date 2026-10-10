@@ -322,7 +322,11 @@ const origem = param(
 // o formato; se o valor existe no submenu aberto, quem confere é a conta do
 // submenu, que ignora o que não acha. Nunca leva nome, telefone ou CPF de
 // lead: os tipos são fixos e os valores são códigos, ids e nomes de catálogo.
-const RECORTE_RE = /^[a-z-]+:.{1,80}$/u;
+// O nome do catálogo não tem limite de tamanho, e o valor que passa do teto não
+// se escreve: a linha da origem comprida clicaria sem filtrar nada. Por isso o
+// teto é folgado (200 caracteres depois do tipo), só para o endereço não crescer
+// sem fim.
+const RECORTE_RE = /^[a-z-]+:.{1,200}$/u;
 const CONTROLE_RE = /\p{Cc}/u;
 const recorteValido = (v) => typeof v === 'string' && RECORTE_RE.test(v) && !CONTROLE_RE.test(v);
 const recorte = param(

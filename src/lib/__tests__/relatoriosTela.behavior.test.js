@@ -211,6 +211,23 @@ describe('número que filtra a lista', () => {
     expect(fichas()).toEqual(['s1', 's2', 's3', 's4', 's5']);
     expect(limpar()).toBeNull();
   });
+
+  it('a linha de uma origem de nome comprido filtra a lista, em vez de clicar e não fazer nada', async () => {
+    // O catálogo não limita o tamanho do nome da origem, e o endereço só guardava 80 caracteres do recorte.
+    const longo = `Campanha de verão ${'com um nome bem comprido '.repeat(5)}no catálogo`;
+    expect(longo.length).toBeGreaterThan(80);
+    const leads = [
+      L('c1', { source: longo, createdAt: D(9, 3) }), L('c2', { source: longo, createdAt: D(9, 4) }),
+      L('c3', { source: 'Instagram', createdAt: D(9, 5) }),
+    ];
+    usar({ months: { '2026-08': MES_VAZIO, '2026-09': { ...MES_VAZIO, leadsCreated: leads } }, leadsById: new Map(leads.map((l) => [l.id, l])) });
+    await montar('/acad/relatorios', { sources: [{ name: longo }, { name: 'Instagram' }] });
+    expect(fichas()).toEqual(['c1', 'c2', 'c3']);
+    await clicar(recorte(longo));
+    expect(sonda()).toBe(`?recorte=${encodeURIComponent(`origem:${longo}`)}`);
+    expect(fichas()).toEqual(['c1', 'c2']);
+    expect(limpar().parentElement.textContent).toContain(`Origem: ${longo}`);
+  });
 });
 
 describe('lista ao lado', () => {

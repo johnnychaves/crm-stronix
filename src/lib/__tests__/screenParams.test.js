@@ -595,12 +595,30 @@ describe('Relatórios', () => {
     expect(ler('relatorios', '?recorte=situacao:matricularam', rel).recorte).toBe('situacao:matricularam');
     expect(volta('relatorios', '?recorte=origem:Instagram', rel)).toBe('?recorte=origem%3AInstagram');
     for (const q of [
-      '?recorte=', '?recorte=matricularam', '?recorte=Situacao:x', `?recorte=origem:${'x'.repeat(81)}`,
+      '?recorte=', '?recorte=matricularam', '?recorte=Situacao:x',
       '?recorte=origem:a%09b', // tab
       '?recorte=origem:a%00b', // NUL
     ]) {
       expect(ler('relatorios', q, rel).recorte, q).toBeNull();
     }
+  });
+
+  it('o recorte de um nome de catálogo comprido vale até 200 caracteres depois do tipo, e o de 201 não', () => {
+    // O nome de uma origem não tem limite no catálogo. Com o teto antigo (80), a
+    // linha de uma origem comprida clicava e não filtrava nada.
+    const comprido = (n) => `origem:${'x'.repeat(n)}`;
+    for (const n of [80, 81, 200]) {
+      const q = `?recorte=${encodeURIComponent(comprido(n))}`;
+      expect(ler('relatorios', q, rel).recorte, `${n}`).toBe(comprido(n));
+      expect(volta('relatorios', q, rel), `${n}`).toBe(q);
+    }
+    expect(ler('relatorios', `?recorte=${comprido(201)}`, rel).recorte).toBeNull();
+    // O que a tela escreve ao clicar na linha: o de 201 não é escrito, e o de 200 é.
+    const v = ler('relatorios', '', rel);
+    expect(montar('relatorios', { ...v, recorte: comprido(200) }, rel)).toBe(`?recorte=${encodeURIComponent(comprido(200))}`);
+    expect(montar('relatorios', { ...v, recorte: comprido(201) }, rel)).toBe('');
+    // A regra do caractere de controle continua valendo no tamanho novo.
+    expect(ler('relatorios', `?recorte=${encodeURIComponent(`origem:${'x'.repeat(100)}\t${'y'.repeat(50)}`)}`, rel).recorte).toBeNull();
   });
 
   it('o que a tela monta ao escolher o período: o mês antigo não vai junto, e o intervalo ganha', () => {
