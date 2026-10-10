@@ -303,6 +303,18 @@ describe('o que o leitor de tela encontra', () => {
   });
 });
 
+describe('controles da barra no computador', () => {
+  it('ficam a 8px um do outro e quebram linha quando não cabem', async () => {
+    // Medido no navegador a 1280px, com a lista de relatórios ao lado: com 10px, a barra padrão do mês em
+    // andamento media 881px para 880px de espaço, e o funil caía sozinho para uma segunda linha.
+    await montar(h(RelatoriosToolbar, barra));
+    const linha = container.firstElementChild.firstElementChild.className.split(/\s+/);
+    expect(linha).toContain('gap-2');
+    expect(linha).not.toContain('gap-2.5');
+    expect(linha).toContain('flex-wrap');
+  });
+});
+
 describe('fundo da barra fixa', () => {
   it('é o da raiz do App, e não o bg-background, que no tema escuro é azul-marinho', async () => {
     await montar(h(RelatoriosToolbar, barra));

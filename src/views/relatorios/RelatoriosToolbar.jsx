@@ -164,9 +164,15 @@ export function RelatoriosToolbar(props) {
   // md:px-2, que deixam os controles onde estavam): sem isso, o anel do número
   // aceso e a sombra dos cartões que rolam por baixo apareciam como um fio
   // cortado nas bordas da barra. No celular, nada muda (-mx-4 e px-4).
+  // No computador os controles ficam a 8px um do outro (gap-2). Com 10px, a barra
+  // padrão do mês em andamento media 881px e a 1280px só tinha 880px: o funil caía
+  // sozinho para uma segunda linha, e o conteúdo pulava 46px ao trocar para um mês
+  // fechado, de rótulo mais curto. Com 8px ela mede 873px. Com um consultor
+  // escolhido, ou com a barra de rolagem fixa do Windows, ela ainda pode quebrar a
+  // 1280px, e quebra como antes (flex-wrap).
   return (
     <div className="sticky -top-4 z-30 -mx-4 mb-6 flex items-center gap-2.5 border-b border-border bg-paper-50 px-4 py-2.5 dark:bg-neutral-950 md:-top-8 md:-mx-2 md:px-2">
-      <div className="hidden flex-wrap items-center gap-2.5 md:flex">{controls(false)}</div>
+      <div className="hidden flex-wrap items-center gap-2 md:flex">{controls(false)}</div>
       <Popover>
         <PopoverTrigger asChild>
           <button
