@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { metricsOf, crmDelta, bestChannelOf, buildCrmHighlights, seriesOf, loadedRunStart, OTHERS_ID } from '../crm/metrics.js';
+import {
+  metricsOf, crmDelta, bestChannelOf, buildCrmHighlights, seriesOf, loadedRunStart, newestRecordsOf, OTHERS_ID
+} from '../crm/metrics.js';
 import { comparisonCut } from '../operacional/month.js';
 import { NOW, D, USERS, FUNNELS, STATUSES, L, MV, A, a3, s5, makeCtx } from './fixtures/crmCtx.js';
 
@@ -178,6 +180,43 @@ describe('metricsOf', () => {
 
   it('mesmo ctx e mesmo recorte devolvem o mesmo objeto', () => {
     expect(metricsOf(ctx, { monthKey: '2026-09' })).toBe(team);
+  });
+});
+
+describe('newestRecordsOf', () => {
+  // A regra única de juntar um balde de todos os meses carregados, do painel e
+  // dos Relatórios: sem repetir id, com a cópia do mês mais novo.
+  const velho = { id: 'r', status: 'agendada' };
+  const novo = { id: 'r', status: 'attended' };
+  const months = {
+    '2026-08': { aulas: [velho, { id: 'a' }], leadsCreated: [{ id: 'l1' }, { id: 'l2' }] },
+    '2026-09': { aulas: [novo, { id: 's' }], leadsCreated: [{ id: 'l2', name: 'mais novo' }] }
+  };
+
+  it('junta o balde pedido de todos os meses, do mais novo ao mais antigo, e fica com a cópia do mais novo', () => {
+    expect(newestRecordsOf(months, 'aulas')).toEqual([novo, { id: 's' }, { id: 'a' }]);
+    expect(newestRecordsOf(months, 'leadsCreated')).toEqual([{ id: 'l2', name: 'mais novo' }, { id: 'l1' }]);
+    // Balde que nenhum mês tem, e sem meses.
+    expect(newestRecordsOf(months, 'lost')).toEqual([]);
+    expect(newestRecordsOf(null, 'aulas')).toEqual([]);
+    expect(newestRecordsOf(undefined, 'aulas')).toEqual([]);
+  });
+
+  it('o que veio sem id não entra', () => {
+    expect(newestRecordsOf({ '2026-09': { aulas: [{ status: 'x' }, null, { id: '' }, { id: 'ok' }] } }, 'aulas')).toEqual([{ id: 'ok' }]);
+  });
+
+  it('é a regra do painel: o registro remarcado entre meses conta uma vez só, no mês da cópia nova', () => {
+    // O mesmo caso de "registro remarcado entre meses", de metricsOf, vendo a lista que o painel usa.
+    const moved = makeCtx();
+    const rx = (status, at) => A('rx', 'a2', status, at, D(8, 20));
+    moved.months = {
+      '2026-08': { ...moved.months['2026-08'], aulas: [...moved.months['2026-08'].aulas, rx('agendada', D(8, 30))] },
+      '2026-09': { ...moved.months['2026-09'], aulas: [...moved.months['2026-09'].aulas, rx('attended', D(9, 3))] }
+    };
+    const rxs = newestRecordsOf(moved.months, 'aulas').filter((r) => r.id === 'rx');
+    expect(rxs).toHaveLength(1);
+    expect(rxs[0].status).toBe('attended');
   });
 });
 

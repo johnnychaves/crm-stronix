@@ -1,7 +1,7 @@
 // Carga dos Relatórios de Leads: os meses que a tela pede, os baldes juntados
 // sem repetir e os índices, os mesmos do painel CRM.
 import { describe, it, expect } from 'vitest';
-import { reportMonthKeys, bucketOf, reportIndex, loadState } from '../relatorios/leads/janela.js';
+import { reportMonthKeys, reportIndex, loadState } from '../relatorios/leads/janela.js';
 import { periodFromParams, previousPeriod } from '../period.js';
 import { makeCtx, D } from './fixtures/crmCtx.js';
 
@@ -25,12 +25,11 @@ describe('meses que a tela pede', () => {
 });
 
 describe('baldes e índices', () => {
-  it('junta os meses sem repetir, com a cópia do mês mais novo', () => {
+  it('os registros do índice vêm de todos os meses, sem repetir id e com a cópia do mês mais novo', () => {
     const velho = { id: 'r', status: 'agendada' };
     const novo = { id: 'r', status: 'attended' };
     const months = { '2026-08': { aulas: [velho] }, '2026-09': { aulas: [novo, { id: 's' }] } };
-    expect(bucketOf(months, 'aulas')).toEqual([novo, { id: 's' }]);
-    expect(bucketOf(null, 'aulas')).toEqual([]);
+    expect(reportIndex(months).records).toEqual([novo, { id: 's' }]);
   });
 
   it('os índices do painel, de todos os meses carregados', () => {

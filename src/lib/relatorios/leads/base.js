@@ -5,10 +5,10 @@
 
 import { makeScope, OTHERS_ID } from '../../crm/scope.js';
 import { newLeadsOf } from '../../crm/cohort.js';
+import { newestRecordsOf } from '../../crm/metrics.js';
 import { getDefaultFunnel } from '../../funnels.js';
 import { contactLabel, contactOf } from '../../guardian.js';
 import { dayKeyOf } from '../../operacional/month.js';
-import { bucketOf } from './janela.js';
 
 // Recorte da barra: consultores (lista; vazia é a equipe toda, com quem saiu
 // da equipe e os leads sem dono), funil (null é todos os funis de lead) e
@@ -28,7 +28,7 @@ export function reportScope({ users, funnels, userIds = [], funnelId = null, ori
 // sem importados e sem data de cadastro ausente), com a versão mais nova de
 // cada lead (leadsById).
 export function newLeadsIn(ctx, scope, { start, end }) {
-  const fresh = bucketOf(ctx.months, 'leadsCreated').map((l) => ctx.leadsById?.get(l.id) || l);
+  const fresh = newestRecordsOf(ctx.months, 'leadsCreated').map((l) => ctx.leadsById?.get(l.id) || l);
   return newLeadsOf(fresh, { start, end, inScope: scope.inScope });
 }
 

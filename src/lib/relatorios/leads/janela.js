@@ -1,11 +1,13 @@
 // Carga dos Relatórios de Leads (spec 2026-10-09, "A carga" e "As contas").
 // Puro. A carga é a do painel CRM (useCrmSources), por mês e com a mesma
-// memória de sessão: aqui se decide quais meses pedir e como juntar os baldes
-// deles, do mesmo jeito que o painel faz (cacheOf, em src/lib/crm/metrics.js).
+// memória de sessão: aqui se decide quais meses pedir e se monta o índice deles,
+// juntando os baldes pela mesma função do painel (newestRecordsOf, em
+// src/lib/crm/metrics.js).
 
 import { addMonthsToKey, monthKeyOf } from '../../operacional/month.js';
 import { contactTimesByLead } from '../../crm/contact.js';
 import { recordsByLeadOf, visitOutcomesByLead } from '../../crm/appointments.js';
+import { newestRecordsOf } from '../../crm/metrics.js';
 
 // O mesmo teto do painel (crmMonthKeys): uma data torta não prende o laço.
 const MAX_SPAN_MONTHS = 36;
@@ -23,23 +25,6 @@ export function reportMonthKeys(period, cmp, currentKey) {
   return keys.length ? keys : [currentKey];
 }
 
-// Um balde (leadsCreated, converted, lost, aulas ou interactions) de todos os
-// meses carregados, sem repetir id, com a cópia do mês mais novo: o registro
-// remarcado de agosto para setembro continua na lista de agosto e contaria
-// duas vezes (o newestRecordsOf do painel faz o mesmo com os registros).
-export function bucketOf(months, bucket) {
-  const seen = new Set();
-  const out = [];
-  Object.keys(months || {}).sort().reverse().forEach((key) => {
-    (months[key]?.[bucket] || []).forEach((x) => {
-      if (!x?.id || seen.has(x.id)) return;
-      seen.add(x.id);
-      out.push(x);
-    });
-  });
-  return out;
-}
-
 // Índices de toda a carga, os mesmos do painel: registros de agendamento por
 // lead, instantes de contato e desfechos de visita pela linha do tempo. Os
 // registros vão sem repetir id, com a cópia do mês mais novo. As interações
@@ -48,7 +33,7 @@ export function bucketOf(months, bucket) {
 // interação que veio sem id continua contando.
 function buildIndex(months) {
   const interactions = Object.values(months || {}).flatMap((m) => m.interactions || []);
-  const records = bucketOf(months, 'aulas');
+  const records = newestRecordsOf(months, 'aulas');
   return {
     records,
     recordsByLead: recordsByLeadOf(records),
