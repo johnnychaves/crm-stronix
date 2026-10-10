@@ -76,6 +76,9 @@ export function RelatoriosView({
     [now, users, funnels, sources, src.months, src.leadsById]
   );
   const funnelId = funnel === 'all' ? null : funnel;
+  // O relatório se refaz a cada clique num número, a cada minuto e a cada período
+  // novo. A parte pesada, o índice das interações, não vai junto: o reportIndex
+  // o guarda pelo objeto de meses e só o refaz quando os meses mudam.
   const report = useMemo(
     () => (ready ? REPORTS[secao](ctx, { period, cmp, userIds: resp, funnelId, origem, recorte }) : null),
     [ready, secao, ctx, period, cmp, resp, funnelId, origem, recorte]

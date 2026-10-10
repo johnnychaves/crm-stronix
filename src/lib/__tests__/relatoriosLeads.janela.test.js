@@ -43,6 +43,23 @@ describe('baldes e índices', () => {
     expect(reportIndex(sem).contactTimes.get('z')).toEqual([D(9, 3).getTime()]);
   });
 
+  it('o índice é o mesmo enquanto os meses são o mesmo objeto, e outro quando os meses são outro objeto', () => {
+    const { months } = makeCtx();
+    const idx = reportIndex(months);
+    expect(reportIndex(months)).toBe(idx);
+    // A useCrmSources entrega outro objeto quando chega interação, lead ou registro: o índice é refeito.
+    const outro = reportIndex({ ...months });
+    expect(outro).not.toBe(idx);
+    expect(outro).toEqual(idx);
+  });
+
+  it('sem meses, o índice é vazio', () => {
+    for (const vazio of [null, undefined, {}]) {
+      const idx = reportIndex(vazio);
+      expect([idx.records, idx.contactTimes.size, idx.recordsByLead.size, idx.visitOutcomes.size]).toEqual([[], 0, 0, 0]);
+    }
+  });
+
   it('a carga fica pronta com todos os meses, e a falha de um aparece', () => {
     expect(loadState({ '2026-09': {} }, ['2026-09', '2026-10'])).toEqual({ ready: false, failed: false });
     expect(loadState({ '2026-09': {}, '2026-10': { failed: true } }, ['2026-09', '2026-10'])).toEqual({ ready: true, failed: true });

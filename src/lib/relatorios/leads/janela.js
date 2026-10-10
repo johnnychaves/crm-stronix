@@ -46,7 +46,7 @@ export function bucketOf(months, bucket) {
 // entram como no cacheOf do painel, sem tirar repetidos aqui: as duas funções
 // do painel (contactTimesByLead e visitOutcomesByLead) já tiram pelo id, e a
 // interação que veio sem id continua contando.
-export function reportIndex(months) {
+function buildIndex(months) {
   const interactions = Object.values(months || {}).flatMap((m) => m.interactions || []);
   const records = bucketOf(months, 'aulas');
   return {
@@ -55,6 +55,28 @@ export function reportIndex(months) {
     contactTimes: contactTimesByLead(interactions),
     visitOutcomes: visitOutcomesByLead(interactions),
   };
+}
+
+// O índice depende só dos meses carregados, e a tela refaz o relatório a cada
+// clique num número ou numa linha de recorte, a cada virada de minuto e a cada
+// período novo. Refazê-lo a cada vez era reler as interações de todos os meses
+// à toa, e era a maior parte da conta da Conversão. Por isso ele fica guardado
+// pelo objeto de meses, como o cacheOf do painel (src/lib/crm/metrics.js)
+// guarda pelo ctx: a useCrmSources entrega o mesmo objeto enquanto nada muda e
+// outro quando chega interação, lead ou registro, e aí o índice é refeito. O
+// resultado é compartilhado e ninguém o altera. Quem muda um insumo entrega
+// outro objeto de meses; mexer por dentro do mesmo objeto devolve o índice
+// velho.
+const indexes = new WeakMap();
+
+export function reportIndex(months) {
+  if (!months || typeof months !== 'object') return buildIndex(months);
+  let index = indexes.get(months);
+  if (!index) {
+    index = buildIndex(months);
+    indexes.set(months, index);
+  }
+  return index;
 }
 
 // Estado da carga dos meses pedidos: pronta quando todos chegaram; com falha
