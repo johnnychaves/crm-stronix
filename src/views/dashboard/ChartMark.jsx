@@ -11,7 +11,7 @@ export function ChartMark({ tip, as: Comp = 'span', className, style, children }
           tabIndex={0}
           role="img"
           aria-label={tip}
-          className={cn('cursor-help outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40', className)}
+          className={cn('cursor-help outline-none focus-visible:anel-foco', className)}
           style={style}
         >
           {children}

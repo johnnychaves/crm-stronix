@@ -49,7 +49,7 @@ function ConsultantPicker({ label, value, onChange, options, counts, focused }) 
           value={value}
           onChange={e => onChange(e.target.value)}
           aria-label={label}
-          className="absolute inset-0 w-full h-full appearance-none bg-transparent opacity-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+          className="absolute inset-0 w-full h-full appearance-none bg-transparent opacity-0 cursor-pointer rounded-xl focus-visible:outline-none focus-visible:anel-foco"
         >
           <option value="">Selecione o consultor…</option>
           {options.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
@@ -223,7 +223,7 @@ function TransferSection({ db, usersList, appUser, leads }) {
                   aria-pressed={on}
                   className={cn(
                     'inline-flex items-center gap-2 h-9 px-3.5 rounded-[10px] text-[12.5px] font-semibold transition border',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                    'focus-visible:outline-none focus-visible:anel-foco',
                     on
                       ? 'bg-brand-600 text-white border-brand-600'
                       : 'bg-card text-muted-foreground border-border hover:bg-muted'

@@ -50,7 +50,7 @@ export function MonthControl({ monthKey, monthOptions, onMonth, canPrev, canNext
             className={cn(
               'num flex h-[30px]',
               compact ? 'min-w-0 flex-1' : 'min-w-[150px]',
-              'items-center justify-center rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40'
+              'items-center justify-center rounded-[9px] px-1.5 text-[13px] font-semibold text-foreground outline-none focus-visible:anel-foco'
             )}
           >
             {compact ? <span className="truncate">{shortMonthLabel(monthOptions, monthKey)}</span> : <SelectValue />}
@@ -102,7 +102,7 @@ export function CompareControl({ compareOn, onCompareOn, compareKey, compareOpti
               <button
                 type="button"
                 aria-label="Mês de comparação"
-                className="flex h-[34px] items-center px-[11px] text-[12.5px] font-semibold text-brand-700 outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 dark:text-brand-300"
+                className="flex h-[34px] items-center px-[11px] text-[12.5px] font-semibold text-brand-700 outline-none focus-visible:anel-foco dark:text-brand-300"
               >
                 <SelectValue />
               </button>
@@ -128,7 +128,7 @@ export function PersonControl({ person, people, onPerson }) {
           type="button"
           aria-label="Pessoa"
           className={cn(
-            'flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+            'flex h-9 items-center gap-2 rounded-xl border px-3 text-[12.5px] font-semibold outline-none focus-visible:anel-foco',
             active ? 'border-brand-600 bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300' : 'border-border bg-card text-foreground'
           )}
         >

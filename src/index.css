@@ -140,6 +140,22 @@
 }
 
 /* =========================
+   ANEL DE FOCO
+   ========================= */
+/* O anel do foco pelo teclado: 2 px sólidos na cor do --ring (brand-600 no
+   claro, brand-500 no escuro). Use sempre com a variante do foco:
+   `focus-visible:anel-foco`, mais `focus-visible:ring-inset` para o anel por
+   dentro e `focus-visible:after:anel-foco` no link esticado. O anel antigo,
+   `ring-brand-500/40`, dava 1,6:1 no branco e 1,8:1 no escuro, abaixo dos
+   3:1 que um indicador de foco precisa; este dá 4,5:1 ou mais nos fundos do
+   app. A cor vem do --ring, e não de um dark: aqui dentro, porque o dark:
+   quebraria o seletor do after:. O anelDeFoco.test.js refaz a conta e barra
+   o anel antigo. */
+@utility anel-foco {
+  @apply ring-2 ring-ring;
+}
+
+/* =========================
    SCROLLBAR STRONIX
    ========================= */
 

@@ -24,6 +24,8 @@ A fundação shadcn está instalada: `components.json`, alias `@/` → `src/`, `
 
 **Movimento reduzido:** o tw-animate-css não respeita o `prefers-reduced-motion`, então o fim do `index.css` tem um bloco só, fora de camada e com `!important`, que põe `animation: none` nas entradas e saídas do tw-animate (pelo nome da classe, `[class*="animate-in"]` e afins, porque a regra do utilitário não deixa variável para trocar) e nas animações próprias do arquivo que mexem nas coisas (`.fade-in`, `.animate-fade-in`, `.pop`, `.rise`, `.shake`...). Com `animation: none` o Radix desmonta o balão fechado na hora. O spinner (`.spin`, `animate-spin`) e o `animate-pulse` continuam, e as transições de cor ficam como estão. Animação nova no `index.css` entra no bloco ou, se for aviso de carregamento, na lista `FICAM` do `src/lib/__tests__/movimentoReduzido.test.js`, que cobra as duas coisas.
 
+**Anel de foco:** o foco pelo teclado usa `focus-visible:anel-foco`, o `@utility` do `index.css`: 2 px sólidos na cor do `--ring`, brand-600 no claro e brand-500 no escuro, com 4,5:1 ou mais nos fundos do app. Para o anel por dentro, junte `focus-visible:ring-inset`; no link esticado, use `focus-visible:after:anel-foco`. Não copie o antigo `focus-visible:ring-2 focus-visible:ring-brand-500/40`: ele dava 1,6:1 no branco e 1,8:1 no escuro, abaixo dos 3:1 que um indicador de foco precisa. O `src/lib/__tests__/anelDeFoco.test.js` refaz a conta com as cores do `index.css` e reprova anel brand com transparência no `focus-visible`.
+
 ## Convenções gerais
 
 - Trabalho sempre via PR (nunca commit direto na main); merge só com aprovação do Johnny.

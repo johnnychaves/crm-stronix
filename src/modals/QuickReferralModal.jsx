@@ -30,7 +30,7 @@ import { cn } from '../lib/utils.js';
 
 const EMPTY = { name: '', whatsapp: '', modalidade: '', dor: '' };
 const onlyDigits = (s) => String(s || '').replace(/\D/g, '');
-const INPUT = 'w-full h-9 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40';
+const INPUT = 'w-full h-9 rounded-lg border border-border bg-background px-3 text-[13px] text-foreground outline-none focus-visible:anel-foco';
 
 function Field({ label, required = false, children }) {
   return (
@@ -178,7 +178,7 @@ export function QuickReferralModal({ db, appUser, referrer, referralFunnelId, en
                           }}
                           className={cn(
                             'h-7 px-3 rounded-full border text-[12px] font-medium transition',
-                            'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40',
+                            'focus:outline-none focus-visible:anel-foco',
                             on
                               ? 'bg-brand-600 border-brand-600 text-white'
                               : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'

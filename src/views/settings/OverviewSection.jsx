@@ -77,7 +77,7 @@ function ShortcutCard({ icon, title, hint, onClick }) {
     <button
       type="button"
       onClick={onClick}
-      className="text-left p-4 rounded-[14px] border border-border bg-card shadow-card transition hover:border-brand-600 hover:shadow-card-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40"
+      className="text-left p-4 rounded-[14px] border border-border bg-card shadow-card transition hover:border-brand-600 hover:shadow-card-lg focus-visible:outline-none focus-visible:anel-foco"
     >
       <span className="text-brand-600 dark:text-brand-300 block">{icon}</span>
       <div className="text-[13.5px] font-semibold mt-2.5">{title}</div>

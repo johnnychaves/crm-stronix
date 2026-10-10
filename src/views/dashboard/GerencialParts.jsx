@@ -65,7 +65,7 @@ export function GerencialEmpty({ onGoToPipeline }) {
       <button
         type="button"
         onClick={onGoToPipeline}
-        className="mt-5 h-10 rounded-xl bg-brand-600 px-[18px] text-[13px] font-semibold text-white outline-none transition hover:bg-brand-700 focus-visible:ring-2 focus-visible:ring-brand-500/40"
+        className="mt-5 h-10 rounded-xl bg-brand-600 px-[18px] text-[13px] font-semibold text-white outline-none transition hover:bg-brand-700 focus-visible:anel-foco"
       >
         Ir para o pipeline
       </button>
