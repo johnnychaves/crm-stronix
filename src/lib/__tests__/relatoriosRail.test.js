@@ -2,7 +2,7 @@
 // settingsRail.test.js faz com as Configurações.
 import { describe, it, expect } from 'vitest';
 import {
-  RELATORIOS_RAIL_GROUPS, RELATORIOS_RAIL_IDS, RELATORIOS_DEFAULT_SECTION, relatoriosSection, relatoriosItem,
+  RELATORIOS_RAIL_GROUPS, RELATORIOS_RAIL_IDS, RELATORIOS_DEFAULT_SECTION, relatoriosSection,
 } from '../relatoriosRail.js';
 import { RELATORIOS_SUBS } from '../routes.js';
 
@@ -24,9 +24,7 @@ describe('lista ao lado dos Relatórios', () => {
     expect(relatoriosSection('perdas')).toBe('entrada');
   });
 
-  it('acha o item pelo id, e nada muda em tempo de execução', () => {
-    expect(relatoriosItem('conversao')).toMatchObject({ label: 'Conversão' });
-    expect(relatoriosItem('xyz')).toBeNull();
+  it('nada muda em tempo de execução', () => {
     expect(Object.isFrozen(RELATORIOS_RAIL_GROUPS)).toBe(true);
     expect(Object.isFrozen(RELATORIOS_RAIL_GROUPS[0].items)).toBe(true);
   });

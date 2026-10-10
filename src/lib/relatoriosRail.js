@@ -27,6 +27,3 @@ export const RELATORIOS_DEFAULT_SECTION = SCREENS.relatorios.subPadrao;
 
 // Submenu que a tela desenha: o do endereço, ou o padrão.
 export const relatoriosSection = (sub) => (RELATORIOS_RAIL_IDS.includes(sub) ? sub : RELATORIOS_DEFAULT_SECTION);
-
-export const relatoriosItem = (id) =>
-  RELATORIOS_RAIL_GROUPS.flatMap((g) => g.items).find((i) => i.id === id) || null;
